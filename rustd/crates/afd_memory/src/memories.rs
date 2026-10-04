@@ -236,9 +236,13 @@ impl Memories {
         Ok(access)
     }
 
-    /// Upserts `entries` into every store `owner`'s workspace route writes to,
-    /// and again into any store a flip adds before the route holds still,
-    /// answering what the route's own store housekept.
+    /// Upserts `entries` into every store `owner`'s workspace route writes to
+    /// (the route's own store, then a flip's mirror) and again into any store
+    /// a flip adds before the route holds still, answering what the route's
+    /// own store housekept.
+    ///
+    /// The store being left is written first, so a row a write puts in the
+    /// store being filled is already in the one being left.
     ///
     /// No lock: a write that saw the route before a flip began finds the new
     /// route when it looks again, and writes the store it missed. Each write
@@ -251,12 +255,12 @@ impl Memories {
     ) -> Result<Housekept> {
         let mut route = self.routes().of(owner.workspace);
         let mut written: Vec<Arc<dyn MemoryStore>> = Vec::with_capacity(2);
+        let answer = route.store.upsert(owner, entries, now).await?;
+        written.push(Arc::clone(&route.store));
         if let Some(mirror) = &route.mirror {
             mirror.upsert(owner, entries, now).await?;
             written.push(Arc::clone(mirror));
         }
-        let answer = route.store.upsert(owner, entries, now).await?;
-        written.push(Arc::clone(&route.store));
         loop {
             let current = self.routes().of(owner.workspace);
             if Arc::ptr_eq(&current, &route) {

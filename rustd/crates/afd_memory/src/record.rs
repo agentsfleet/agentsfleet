@@ -42,17 +42,6 @@ pub struct Record {
 }
 
 impl Record {
-    /// This entry as a delta that borrows its text.
-    #[must_use]
-    pub fn delta(&self) -> MemoryDelta<'_> {
-        MemoryDelta {
-            key: Cow::Borrowed(&self.key),
-            content: Cow::Borrowed(&self.content),
-            category: Cow::Borrowed(&self.category),
-            visibility: self.visibility,
-        }
-    }
-
     /// This entry as a delta, its text moved rather than copied.
     #[must_use]
     pub fn into_delta(self) -> MemoryDelta<'static> {
