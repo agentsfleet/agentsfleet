@@ -48,6 +48,11 @@ async fn should_retry_a_send_that_could_not_connect() {
 
     assert!(unanswered.retryable());
     assert_eq!(unanswered.status(), None);
+    assert_eq!(
+        unanswered.wait(BACKOFF),
+        BACKOFF,
+        "a send that never got a status waits the backoff"
+    );
     assert!(
         unanswered.into_answer().unwrap_err().is_connect(),
         "the transport's own failure, for rig to read"
