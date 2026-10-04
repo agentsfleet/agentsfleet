@@ -52,14 +52,3 @@ impl Schema {
         }
     }
 }
-
-/// One tool as the model is offered it.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ToolSpec<'a> {
-    /// The name the model calls it by.
-    pub name: &'a str,
-    /// What the tool does.
-    pub description: &'a str,
-    /// The arguments' JSON Schema.
-    pub parameters: &'a serde_json::Value,
-}

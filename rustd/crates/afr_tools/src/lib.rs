@@ -29,4 +29,4 @@ pub use self::catalog::{Catalog, Entry, Selection};
 pub use self::error::{Error, Result};
 pub use self::lease::Lease;
 pub use self::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput};
-pub use self::schema::{Schema, ToolSpec};
+pub use self::schema::Schema;

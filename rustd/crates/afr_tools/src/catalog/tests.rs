@@ -21,7 +21,7 @@ fn catalog() -> Catalog {
 }
 
 fn names<'a>(selection: &'a Selection<'_>) -> Vec<&'a str> {
-    selection.specs().map(|spec| spec.name).collect()
+    selection.tools().map(crate::Tool::name).collect()
 }
 
 #[test]
@@ -31,12 +31,14 @@ fn test_catalog_offers_policy_tools() {
     let selection = catalog.select(&["http_request", "memory_recall"]).unwrap();
 
     assert_eq!(names(&selection), ["http_request", "memory_recall"]);
-    for spec in selection.specs() {
+    for tool in selection.tools() {
+        let schema = tool.schema();
         assert_eq!(
-            spec.description, spec.name,
-            "each spec carries its own schema"
+            schema.description(),
+            tool.name(),
+            "each handler carries its own schema"
         );
-        assert_eq!(spec.parameters["type"], "object");
+        assert_eq!(schema.parameters()["type"], "object");
     }
     assert!(
         selection.tool("update_plan").is_none(),
