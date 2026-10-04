@@ -1,5 +1,7 @@
 //! A limit at both edges of two routes' ceilings.
 
+use std::hint::black_box;
+
 use super::{Ceiling, Limit, LimitBreak};
 
 /// The thread route's ceiling: the smallest of the ten.
@@ -56,4 +58,22 @@ fn digits_past_every_integer_are_out_of_range_not_malformed() {
 #[test]
 fn a_ceiling_reads_back_what_it_was_built_with() {
     assert_eq!((EVENTS.max(), EVENTS.default_rows()), (200, 50));
+}
+
+// Every route builds its ceiling in a `const`, where the check runs at compile
+// time; building one at run time is the only way to watch that check run.
+#[test]
+fn a_ceiling_built_at_run_time_holds_the_bounds_it_was_given() {
+    let built = Ceiling::new(black_box(200), black_box(50));
+
+    assert_eq!((built.max(), built.default_rows()), (200, 50));
+}
+
+#[test]
+fn a_default_of_zero_or_past_the_ceiling_is_refused() {
+    for default in [0, 26] {
+        let refused = std::panic::catch_unwind(|| Ceiling::new(black_box(25), black_box(default)));
+
+        assert_eq!(refused.ok(), None, "default {default}");
+    }
 }

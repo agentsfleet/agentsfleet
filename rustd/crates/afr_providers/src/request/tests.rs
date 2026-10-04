@@ -6,10 +6,11 @@
 )]
 
 use rig_core::completion::CompletionRequest;
-use rig_core::message::{AssistantContent, Message as RigMessage, UserContent};
+use rig_core::message::{AssistantContent, Message as RigMessage, ToolName, UserContent};
 use serde_json::{Value, json};
 
 use super::request;
+use crate::error::raise;
 use crate::provider::{Call, Hosted, Message, Replay, Request, ToolSpec};
 use crate::registry::Wire;
 
@@ -235,4 +236,29 @@ fn should_offer_web_search_as_each_wire_spells_it_and_chat_not_at_all() {
     );
     assert_eq!(responses, json!([{"type": Hosted::WebSearch.name()}]));
     assert_eq!(hosted(Wire::Chat), None::<Value>);
+}
+
+#[test]
+fn should_refuse_a_call_that_names_no_tool() {
+    let nameless = Call {
+        name: String::new(),
+        ..plan_call()
+    };
+    let messages = [
+        Message::User(QUESTION.to_owned()),
+        said(PREAMBLE, vec![nameless], Replay::default()),
+    ];
+    let turn = Request {
+        model: MODEL,
+        instructions: INSTRUCTIONS,
+        messages: &messages,
+        tools: &[],
+        hosted: &[],
+    };
+
+    let refused = request(Wire::Chat, &turn).unwrap_err();
+
+    let empty = ToolName::new(String::new()).unwrap_err();
+    assert_eq!(refused.detail(), raise::unnamed(CALL_ID, empty).detail());
+    assert_eq!(refused.failure_class(), None);
 }

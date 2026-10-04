@@ -193,6 +193,12 @@ pub(crate) fn cut_call(id: &str, name: &str, arguments: &Value) -> Reply {
     Reply::Stream(messages(call.into(), "max_tokens"))
 }
 
+/// A Messages turn that calls `name` under call id `id` with the arguments
+/// `raw` as written, JSON or not.
+pub(crate) fn raw_call(id: &str, name: &str, raw: &str) -> Reply {
+    Reply::Stream(messages(tool_use(0, id, name, raw).into(), "tool_use"))
+}
+
 /// A Messages tool-use block at `index`: opened, its arguments `raw`, closed.
 fn tool_use(index: u64, id: &str, name: &str, raw: &str) -> [Value; 3] {
     [

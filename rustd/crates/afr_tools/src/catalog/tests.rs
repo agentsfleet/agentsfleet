@@ -176,3 +176,16 @@ fn the_catalog_publishes_exactly_the_architecture_table() {
 
     assert_eq!(published, documented);
 }
+
+/// The name a test-built entry carries; no published tool has it.
+const UNPUBLISHED: &str = "an_unpublished_tool";
+
+/// Every published entry is built in a `const`, so this is the one build the
+/// runtime sees: an entry reads back the name and runtime it was given.
+#[test]
+fn an_entry_reads_back_the_name_and_runtime_it_was_built_with() {
+    let entry = Entry::new(UNPUBLISHED, Runtime::Sandbox);
+
+    assert_eq!(entry.name(), UNPUBLISHED);
+    assert_eq!(entry.runtime(), Runtime::Sandbox);
+}

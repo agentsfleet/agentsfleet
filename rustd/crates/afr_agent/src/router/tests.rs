@@ -3,12 +3,15 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use afr_tools::catalog::{FILE_READ, UPDATE_PLAN, WEB_SEARCH};
 use afr_tools::stub::{STUB_PATH, Stub};
-use afr_tools::{Catalog, Lease, ToolErrorCode};
+use afr_tools::{
+    Catalog, Entry, Lease, Runtime, Schema, Tool, ToolContext, ToolErrorCode, ToolOutput,
+};
 use bytes::Bytes;
 
 use super::Router;
@@ -142,4 +145,62 @@ async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
 
     assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
     assert!(output.text.contains("file_read"));
+}
+
+/// A handler claiming the provider's runtime for a tool the catalog publishes
+/// as a supervisor one, counting every call that reaches it.
+#[derive(Debug)]
+struct ClaimsProvider {
+    served: Box<dyn Tool>,
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl Tool for ClaimsProvider {
+    fn entry(&self) -> &'static Entry {
+        self.served.entry()
+    }
+
+    fn schema(&self) -> &Schema {
+        self.served.schema()
+    }
+
+    async fn call(
+        &self,
+        arguments: &serde_json::Value,
+        context: ToolContext<'_, '_>,
+    ) -> ToolOutput {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.served.call(arguments, context).await
+    }
+
+    fn runtime(&self) -> Runtime {
+        Runtime::Provider
+    }
+}
+
+#[tokio::test]
+async fn a_handler_claiming_the_providers_runtime_is_never_run() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let claimant = ClaimsProvider {
+        served: Stub::boxed(&UPDATE_PLAN),
+        calls: Arc::clone(&calls),
+    };
+    let catalog = Catalog::new(vec![Box::new(claimant)]);
+    let selection = catalog.select(&[UPDATE_PLAN.name()]).unwrap();
+    let router = Router::new(&selection, None);
+
+    let output = router
+        .dispatch(
+            UPDATE_PLAN.name(),
+            &serde_json::json!({}),
+            &mut Lease::default(),
+        )
+        .await;
+
+    assert_eq!(
+        output.error_code,
+        Some(ToolErrorCode::HostedToolUnavailable)
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "the handler never ran");
 }

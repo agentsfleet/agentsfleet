@@ -4,12 +4,14 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
 use afd_wire::lease::LeasePayload;
-use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
+use afd_wire::policy::{CUSTOM_PROVIDER_PREFIX, ExecutionPolicy};
+use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_tools::catalog::{BROWSER, FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 
 use super::{
@@ -206,3 +208,45 @@ async fn a_custom_endpoint_at_a_private_address_refuses_the_lease() {
 /// The URL of a self-hosted endpoint at a loopback literal, which this runner
 /// never dials whatever the policy allows.
 const PRIVATE_URL: &str = "https://127.0.0.1/v1";
+
+/// The status the nameless refusal below carries.
+const NAMELESS_STATUS: u16 = 503;
+
+/// An engine whose admission refuses for a reason naming no tool, provider
+/// or endpoint.
+#[derive(Debug)]
+struct NamelessRefusal;
+
+#[async_trait::async_trait]
+impl AgentEngine for NamelessRefusal {
+    fn admit(&self, _policy: &ExecutionPolicy<'_>) -> afr_agent::Result<Needs> {
+        Err(afr_providers::Error::refused(NAMELESS_STATUS).into())
+    }
+
+    async fn run(&self, _run: AgentRun<'_>) -> afr_agent::Result<RunOutput> {
+        unreachable!("a refused lease runs no turn")
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refusal_naming_nothing_still_ends_the_lease_before_anything_starts() {
+    let capture = Capture::install();
+    let mut rig = rig();
+    let Some(lessee) = Arc::get_mut(&mut rig.lessee) else {
+        unreachable!("the rig holds the only handle on its lessee");
+    };
+    lessee.agent = Box::new(NamelessRefusal);
+
+    rig.run(&offering(&[UPDATE_PLAN.name()])).await.unwrap();
+
+    let calls = rig.calls();
+    let report = reported(&calls);
+    assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
+    assert_eq!(report[FAILURE_DETAIL], DETAIL_UNHOSTED);
+    assert_eq!(position(&calls, Verb::Hydrate), None);
+    let refused = capture.only(EVENT_UNHOSTED);
+    assert_eq!(refused.level, tracing::Level::ERROR);
+    assert_eq!(refused.field(FIELD_NAME), None, "there is nothing to name");
+    let code = afr_providers::Error::refused(NAMELESS_STATUS).code();
+    assert_eq!(refused.field(FIELD_ERROR_CODE), Some(code.as_str()));
+}

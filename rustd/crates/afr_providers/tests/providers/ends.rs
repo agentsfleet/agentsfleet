@@ -16,9 +16,9 @@ use super::support::{Fake, Reply, engine, lease, run};
 use super::{ANSWER, CALL_ID};
 
 /// What the model thought before its call.
-const THOUGHT: &str = "two and two make four";
+pub(crate) const THOUGHT: &str = "two and two make four";
 /// The signature Messages seals that thought with.
-const SIGNATURE: &str = "sig-a1b2";
+pub(crate) const SIGNATURE: &str = "sig-a1b2";
 /// The bytes one padding event spends: a Server-Sent Events comment, which
 /// every wire reads past and shows nothing for.
 const PAD_BYTES: usize = 64 * 1024;

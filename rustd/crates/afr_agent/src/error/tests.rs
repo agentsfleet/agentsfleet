@@ -57,3 +57,16 @@ fn should_name_the_blocked_endpoint_when_a_custom_model_is_refused() {
         "the address is named, never a provider with no wire"
     );
 }
+
+/// An executor failure under the scripted engine is the engine's own fault:
+/// logged as an internal failure, and naming nothing the lease asked for.
+#[cfg(feature = "test-util")]
+#[test]
+fn should_log_an_executor_failure_as_internal_and_name_nothing_unhosted() {
+    let lost = afr_executor::Error::from(std::io::Error::other("the executor socket closed"));
+
+    let failure = Error::from(lost);
+
+    assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(failure.unhosted(), None);
+}

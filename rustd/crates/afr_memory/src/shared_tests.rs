@@ -222,3 +222,21 @@ async fn a_full_window_and_a_refusing_daemon_both_answer_from_the_window() {
     assert_eq!(daemon.asked.load(Ordering::SeqCst), 1, "the miss asked");
     assert_eq!(answered.len(), 1, "a refused ask answers from the window");
 }
+
+/// A seed's size is the fleet's own window: entries other fleets shared never
+/// make an empty window read as a full one.
+#[test]
+fn a_seed_holding_only_shared_entries_has_an_empty_window() {
+    let published = [shared("deploy-3")];
+    let only_shared = Seed {
+        shared: &published,
+        ..Seed::default()
+    };
+    let window = [entry("deploy-1")];
+    let own = Seed::window(&window);
+
+    assert!(only_shared.is_empty());
+    assert_eq!(only_shared.len(), 0);
+    assert!(!own.is_empty());
+    assert_eq!(own.len(), 1);
+}

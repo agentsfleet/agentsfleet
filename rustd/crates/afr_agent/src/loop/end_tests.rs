@@ -1,17 +1,22 @@
-//! How a turn ended: a turn cut at the output limit runs none of its calls.
+//! How a turn ended: a turn cut at the output limit runs none of its calls,
+//! and one the lease stopped ends the run.
 
 #![expect(
     clippy::panic,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use afd_core::test_util::trace::Capture;
+use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::Message;
 use afr_tools::ToolErrorCode;
 use afr_tools::catalog::UPDATE_PLAN;
 use tokio_util::sync::CancellationToken;
 
+use super::finish::DETAIL_STOPPED;
 use super::tests::{completions, drive, engine};
+use super::{EVENT_PROVIDER_FAILED, REASON_STOPPED};
 use crate::fixture::{Canned, Script, call, ended, lease, say, unbounded};
 
 /// What the plan tool answers when it runs.
@@ -93,4 +98,27 @@ async fn test_a_whole_turns_calls_run() {
         [("1".to_owned(), ToolCallStatus::Succeeded)]
     );
     assert_eq!(answered(&script), RAN);
+}
+
+/// A lease stopped before the model answered ends the run as stopped, and the
+/// cut turn is logged as the lease's doing rather than a provider failure.
+#[tokio::test]
+async fn a_lease_stopped_before_the_model_answers_ends_the_run_as_stopped() {
+    let capture = Capture::install();
+    let script = Script::new([vec![say(RETRIED)]]);
+    let engine = engine(Vec::new(), &script);
+    let stop = CancellationToken::new();
+    stop.cancel();
+
+    let (output, frames) = drive(&engine, &lease(&[], unbounded()), &stop).await;
+
+    let ResultOutcome::Failed(failure) = output.result.outcome else {
+        panic!("a stopped run is not a completed one");
+    };
+    assert_eq!(failure.detail, DETAIL_STOPPED);
+    assert_eq!(output.result.content, "", "the answer was never heard");
+    assert!(frames.is_empty(), "{frames:?}");
+    let cut = capture.only(EVENT_PROVIDER_FAILED);
+    assert_eq!(cut.level, tracing::Level::DEBUG);
+    assert_eq!(cut.field("reason"), Some(REASON_STOPPED));
 }
