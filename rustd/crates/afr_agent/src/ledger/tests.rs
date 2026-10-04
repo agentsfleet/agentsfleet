@@ -8,7 +8,7 @@ use afr_providers::Call;
 use afr_tools::ToolOutput;
 use afr_tools::catalog::UPDATE_PLAN;
 
-use afd_core::test_util::trace::Capture;
+use afd_core::test_util::trace::{Capture, CapturedEvent};
 
 use super::{EVENT_RECORD_DROPPED, Ledger};
 use crate::fixture::{Frames, scrub};
@@ -68,25 +68,17 @@ async fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_stil
     let dropped: Vec<_> = (capture.events().into_iter())
         .filter(|event| event.field("event") == Some(EVENT_RECORD_DROPPED))
         .collect();
-    assert_eq!(
-        dropped.len(),
-        LARGE_CALLS - fit,
-        "one warn per record kept out"
-    );
+    assert_eq!(dropped.len(), LARGE_CALLS - fit, "one per record kept out");
+    let warned = |event: &CapturedEvent| {
+        event.level == tracing::Level::WARN && event.field("lease_id") == Some(LEASE_ID)
+    };
     assert!(
-        dropped
-            .iter()
-            .all(|event| event.level == tracing::Level::WARN)
+        dropped.iter().all(warned),
+        "each drop warns under its lease"
     );
     assert_eq!(
         dropped.first().and_then(|event| event.field("call_number")),
         Some((fit + 1).to_string().as_str()),
         "the first drop is the first call past the budget"
-    );
-    assert!(
-        dropped
-            .iter()
-            .all(|event| event.field("lease_id") == Some(LEASE_ID)),
-        "every drop names its lease"
     );
 }

@@ -4,6 +4,7 @@
 )]
 
 use afd_core::error_code;
+use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
 use afd_wire::report::FailureClass;
 use http::StatusCode;
 use rig_core::ProviderError;
@@ -147,18 +148,19 @@ fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it() {
     );
 }
 
-/// A self-hosted endpoint at a loopback literal.
-const PRIVATE_ENDPOINT: &str = "custom:https://127.0.0.1/v1";
+/// The URL of a self-hosted endpoint at a loopback literal.
+const PRIVATE_URL: &str = "https://127.0.0.1/v1";
 
 #[test]
 fn should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhosted() {
-    let blocked = raise::blocked_endpoint(PRIVATE_ENDPOINT);
+    let endpoint = format!("{CUSTOM_PROVIDER_PREFIX}{PRIVATE_URL}");
+    let blocked = raise::blocked_endpoint(&endpoint);
     let unhosted = raise::unhosted("bedrock");
 
     assert_eq!(blocked.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
     assert_eq!(blocked.failure_class(), None);
-    assert_eq!(blocked.blocked_endpoint(), Some(PRIVATE_ENDPOINT));
+    assert_eq!(blocked.blocked_endpoint(), Some(endpoint.as_str()));
     assert_eq!(blocked.unhosted_provider(), None);
     assert_eq!(unhosted.blocked_endpoint(), None);
-    assert!(blocked.detail().contains(PRIVATE_ENDPOINT));
+    assert!(blocked.detail().contains(&endpoint));
 }

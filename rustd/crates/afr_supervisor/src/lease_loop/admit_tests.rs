@@ -9,6 +9,7 @@ use std::sync::atomic::Ordering;
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
 use afd_wire::lease::LeasePayload;
+use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
 use afr_tools::catalog::{BROWSER, FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 
 use super::{
@@ -178,8 +179,9 @@ const UNSPOKEN_PROVIDER: &str = "bedrock";
 async fn a_custom_endpoint_at_a_private_address_refuses_the_lease() {
     let capture = Capture::install();
     let mut rig = rig();
+    let endpoint = format!("{CUSTOM_PROVIDER_PREFIX}{PRIVATE_URL}");
     let mut refused_lease = offering(&[UPDATE_PLAN.name()]);
-    refused_lease.policy.provider = PRIVATE_ENDPOINT.into();
+    refused_lease.policy.provider = endpoint.clone().into();
 
     rig.run(&refused_lease).await.unwrap();
 
@@ -194,13 +196,13 @@ async fn a_custom_endpoint_at_a_private_address_refuses_the_lease() {
     assert_eq!(position(&calls, Verb::Hydrate), None);
     let refused = capture.only(EVENT_UNHOSTED_PROVIDER);
     assert_eq!(refused.level, tracing::Level::ERROR);
-    assert_eq!(refused.field(FIELD_NAME), Some(PRIVATE_ENDPOINT));
+    assert_eq!(refused.field(FIELD_NAME), Some(endpoint.as_str()));
     assert_eq!(
         refused.field(FIELD_ERROR_CODE),
         Some(error_code::AGENTSFLEET_INVALID_CONFIG.as_str())
     );
 }
 
-/// A self-hosted endpoint at a loopback literal, which this runner never
-/// dials whatever the policy allows.
-const PRIVATE_ENDPOINT: &str = "custom:https://127.0.0.1/v1";
+/// The URL of a self-hosted endpoint at a loopback literal, which this runner
+/// never dials whatever the policy allows.
+const PRIVATE_URL: &str = "https://127.0.0.1/v1";
