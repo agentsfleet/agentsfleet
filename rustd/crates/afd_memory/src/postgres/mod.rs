@@ -12,7 +12,6 @@
 
 mod page;
 mod read;
-mod sql;
 mod write;
 
 use afd_core::clock::UnixMillis;
@@ -27,6 +26,7 @@ use crate::error::detail::ROLE_SWITCH;
 use crate::error::{Error, Result, query, unavailable};
 use crate::page::{After, View};
 use crate::record::{Housekept, Owner, Record};
+use crate::sql;
 use crate::store::MemoryStore;
 
 /// The name the flip's log lines give this store.

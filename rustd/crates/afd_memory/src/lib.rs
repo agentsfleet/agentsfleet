@@ -31,6 +31,7 @@ pub mod page;
 mod postgres;
 mod record;
 mod route;
+mod sql;
 mod store;
 pub mod window;
 
