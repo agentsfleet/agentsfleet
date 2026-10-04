@@ -140,6 +140,22 @@ impl Scrub {
             .unwrap_or(0);
         text.len() - text.floor_char_boundary(text.len() - held)
     }
+
+    /// Where `text` may be cut so that everything before the cut is masked
+    /// and sent: before any tail that could start a secret, and never inside
+    /// a secret `text` holds whole. A whole secret whose last bytes also start
+    /// one would otherwise be cut there, and the part before the cut, no
+    /// longer the secret, would go out unmasked.
+    #[must_use]
+    pub fn safe_cut(&self, text: &str) -> usize {
+        let mut cut = text.len() - self.pending(text);
+        for found in self.matcher.find_iter(text) {
+            if found.start() < cut && found.end() > cut {
+                cut = found.start();
+            }
+        }
+        cut
+    }
 }
 
 /// The longest proper prefix of `secret` that `text` ends with; a one-byte
@@ -184,11 +200,13 @@ impl Carry {
     /// What to hold back is read from the raw text, before anything is
     /// masked: a tail that completes one secret may still be the head of a
     /// longer one, and masking it first would send the longer secret's rest
-    /// in the clear with the next chunk.
+    /// in the clear with the next chunk. The cut never lands inside a secret
+    /// the text holds whole, so a secret goes out masked in one piece or is
+    /// held whole until the next chunk settles what follows it.
     pub fn push(&mut self, scrub: &Scrub, chunk: &str) -> String {
         self.held.push_str(chunk);
-        let keep = scrub.pending(&self.held);
-        let tail = self.held.split_off(self.held.len() - keep);
+        let cut = scrub.safe_cut(&self.held);
+        let tail = self.held.split_off(cut);
         let ready = std::mem::replace(&mut self.held, tail);
         scrub.masked(&ready).unwrap_or(ready)
     }
