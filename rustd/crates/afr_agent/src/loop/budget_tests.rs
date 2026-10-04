@@ -26,6 +26,10 @@ use crate::testing::Discard;
 
 /// A cap no test here reaches.
 const WIDE_CAP: u32 = 1000;
+/// The window the capped tests run in, and a prompt past its 0.75 stage
+/// fraction that is still inside it, as a provider would answer it.
+const CAP: u32 = 100;
+const FILLED: u64 = 80;
 
 /// A turn that calls the plan tool once and reports `input` prompt tokens.
 fn one_call(id: &str, input: u64) -> Vec<afr_providers::Chunk> {
@@ -76,12 +80,12 @@ async fn test_loop_honours_context_budget() {
 #[tokio::test]
 async fn reaching_the_context_cap_offers_no_tools_and_asks_for_the_answer() {
     let capture = Capture::install();
-    let script = Script::new([one_call("a", 60), vec![say("partial answer")]]);
+    let script = Script::new([one_call("a", FILLED), vec![say("partial answer")]]);
     let engine = engine(vec![Canned::boxed(&UPDATE_PLAN, "4")], &script);
 
     let (output, _frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name(), "web_search"], budget(0, 50)),
+        &lease(&[UPDATE_PLAN.name(), "web_search"], budget(0, CAP)),
         &CancellationToken::new(),
     )
     .await;
@@ -98,14 +102,14 @@ async fn reaching_the_context_cap_offers_no_tools_and_asks_for_the_answer() {
     let reached = capture.only(EVENT_CAP_REACHED);
     assert_eq!(reached.level, tracing::Level::INFO);
     assert_eq!(reached.field("turns"), Some("1"));
-    assert_eq!(reached.field("tokens"), Some("60"));
+    assert_eq!(reached.field("tokens"), Some(FILLED.to_string().as_str()));
     assert_eq!(reached.field("lease_id"), Some("lease-1"));
 }
 
 #[tokio::test]
 async fn a_call_made_after_the_cap_ends_the_run_with_its_text() {
     let script = Script::new([
-        one_call("a", 60),
+        one_call("a", FILLED),
         vec![
             say("enough"),
             call("b", UPDATE_PLAN.name(), serde_json::json!({})),
@@ -115,7 +119,7 @@ async fn a_call_made_after_the_cap_ends_the_run_with_its_text() {
 
     let (output, _frames) = drive(
         &engine,
-        &lease(&[UPDATE_PLAN.name()], budget(0, 50)),
+        &lease(&[UPDATE_PLAN.name()], budget(0, CAP)),
         &CancellationToken::new(),
     )
     .await;

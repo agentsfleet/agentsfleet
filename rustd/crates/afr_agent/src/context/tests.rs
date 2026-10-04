@@ -51,10 +51,12 @@ fn should_keep_every_result_under_a_zero_window() {
     assert_eq!(outputs(&messages), ["1", "2"]);
 }
 
+// The fixture's stage fraction is 0.75: a 100-token window fills at 75.
 #[test]
-fn should_reach_the_cap_at_its_token_count_and_never_under_a_zero_cap() {
-    assert!(!budget_of(0, 50).reached(49));
-    assert!(budget_of(0, 50).reached(50));
+fn should_reach_the_cap_at_the_stage_fraction_and_never_under_a_zero_cap() {
+    assert!(!budget_of(0, 100).reached(74));
+    assert!(budget_of(0, 100).reached(75));
+    assert!(budget_of(0, 100).reached(u64::MAX));
     assert!(!budget_of(0, 0).reached(u64::MAX));
 }
 
