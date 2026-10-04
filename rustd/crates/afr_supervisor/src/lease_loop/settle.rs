@@ -35,7 +35,13 @@ impl LeaseRun<'_> {
                 .take()
                 .and_then(|trace| serde_json::to_string(&trace).ok());
         }
-        let report = report(self.lease, ending, started.elapsed(), trace.as_deref());
+        let report = report(
+            self.lease,
+            ending,
+            &self.meter,
+            started.elapsed(),
+            trace.as_deref(),
+        );
         let bytes = match serde_json::to_vec(&report) {
             Ok(bytes) => Bytes::from(bytes),
             Err(failure) => {

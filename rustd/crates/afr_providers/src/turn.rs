@@ -238,9 +238,13 @@ fn reopens(failure: &ProviderError) -> bool {
 /// The chunks a finished turn ends on: what it spent, then its end.
 fn ending(response: CompletionResponse) -> Ending {
     let usage = response.usage;
+    // rig counts cache reads inside `input_tokens` on every wire; the daemon
+    // bills `input` and `cached_input` as two disjoint counts, so the reads
+    // come out of the prompt total here, once, where every wire meets.
+    let cached_input = usage.cached_input_tokens.unwrap_or(0);
     let spent = Usage {
-        input: usage.input_tokens.unwrap_or(0),
-        cached_input: usage.cached_input_tokens.unwrap_or(0),
+        input: usage.input_tokens.unwrap_or(0).saturating_sub(cached_input),
+        cached_input,
         output: usage.output_tokens.unwrap_or(0),
     };
     let cut = response.finish_reason() == Some(FinishReason::Length);

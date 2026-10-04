@@ -270,7 +270,7 @@ pub(crate) fn answer() -> RunOutput {
         result: ExecutionResult {
             outcome: ResultOutcome::Completed(Completed {}),
             content: "done".into(),
-            token_count: 7,
+            token_count: 8,
             wall_seconds: 1,
             memory_peak_bytes: 0,
             cpu_throttled_ms: 0,

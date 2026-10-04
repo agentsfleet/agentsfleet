@@ -159,7 +159,10 @@ async fn test_report_sums_token_usage() {
         ),
         (35, 6, 12)
     );
-    assert_eq!(result.token_count, 47);
+    assert_eq!(
+        result.token_count, 53,
+        "the whole prompt, cache reads included, and the completion"
+    );
 }
 
 /// The supervisor reads the meter into every renewal while the run goes on,

@@ -163,9 +163,10 @@ impl<'run> Harness<'run> {
                 break Ending::Stopped;
             }
             self.budget.evict(&mut self.messages);
-            if self.budget.reached(turn.usage.input) {
+            // The whole prompt fills the window, cache reads included.
+            if self.budget.reached(turn.usage.prompt()) {
                 capped = true;
-                self.cap_reached(turns, turn.usage.input);
+                self.cap_reached(turns, turn.usage.prompt());
             }
         };
         self.finish(ending)
@@ -223,7 +224,7 @@ impl<'run> Harness<'run> {
         };
         match &taken {
             Some(Ok(done)) => {
-                let input_tokens = done.usage.input;
+                let input_tokens = done.usage.prompt();
                 let output_tokens = done.usage.output;
                 spans::spent(&span, input_tokens, output_tokens);
                 let calls = done.calls.len();

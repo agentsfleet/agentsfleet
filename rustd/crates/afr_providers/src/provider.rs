@@ -124,7 +124,8 @@ pub struct Request<'a> {
 /// Tokens one turn spent, or a run summed over its turns.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Usage {
-    /// Prompt tokens, cached ones included.
+    /// Prompt tokens the provider read fresh; with `cached_input` they make
+    /// the whole prompt, and the daemon bills the two at their own rates.
     pub input: u64,
     /// Prompt tokens read from the provider's cache.
     pub cached_input: u64,
@@ -133,10 +134,16 @@ pub struct Usage {
 }
 
 impl Usage {
-    /// Prompt and completion tokens together.
+    /// Every token the turn spent: the whole prompt and the completion.
     #[must_use]
     pub const fn total(self) -> u64 {
-        self.input.saturating_add(self.output)
+        self.prompt().saturating_add(self.output)
+    }
+
+    /// The whole prompt, fresh and cached: what fills the context window.
+    #[must_use]
+    pub const fn prompt(self) -> u64 {
+        self.input.saturating_add(self.cached_input)
     }
 }
 
