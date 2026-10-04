@@ -34,6 +34,23 @@ fn test_v4_blocklist_matches_the_retired_ranges() {
     }
 }
 
+/// Shared address space: the tailnet the dev runners sit on numbers its peers
+/// from it, and Alibaba Cloud's metadata service lives inside it.
+#[test]
+fn test_v4_shared_address_space_is_blocked_to_its_edges() {
+    for blocked in [
+        "100.64.0.0",
+        "100.100.100.200",
+        "100.127.255.255",
+        "::ffff:100.64.0.1",
+    ] {
+        assert!(blocks(blocked), "{blocked} must be blocked");
+    }
+    for allowed in ["100.63.255.255", "100.128.0.0"] {
+        assert!(!blocks(allowed), "{allowed} must be allowed");
+    }
+}
+
 #[test]
 fn test_v4_public_boundaries_are_not_over_blocked() {
     // A /12 or /16 widened by one octet is how an SSRF guard quietly stops a
