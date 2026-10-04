@@ -9,6 +9,7 @@
 use afd_core::clock::UnixMillis;
 use afd_memory::Record;
 use afd_memory::page::{After, View};
+use afd_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_wire::memory::{PINNED_CATEGORY, Visibility};
 
 use crate::workspace::{Grants, Workspace, delta};
@@ -192,4 +193,29 @@ async fn test_a_category_page_walk_past_two_writers_tied_on_instant_and_key_skip
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_search_page_walk_past_two_writers_tied_on_instant_and_key_skips_neither() {
     a_page_walk_past_two_tied_writers_skips_neither(View::Search(SEARCHED)).await;
+}
+
+/// A change naming neither grant writes nothing and answers both as they are.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_an_access_change_naming_neither_grant_answers_both_as_they_stand() {
+    let space = Workspace::create().await;
+    let read = Grants {
+        read: true,
+        ..Grants::default()
+    };
+    let reader = space.fleet("reader", read).await;
+
+    let access = space
+        .memories
+        .set_access(&space.id, &reader, MemoryAccessRequest::default())
+        .await
+        .expect("an access change naming neither grant");
+
+    let held = MemoryAccess {
+        read: true,
+        publish: false,
+    };
+    assert_eq!(access, held, "the grants the fleet was seeded with");
+    space.cleanup().await;
 }
