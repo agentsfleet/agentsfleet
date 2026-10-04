@@ -185,6 +185,8 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
             sse_max_streams,
             posthog,
             otlp,
+            #[cfg(feature = "test-util")]
+            exchanger: None,
         }),
         // Anything else: a knob that is missing or unusable, the identity
         // provider included. Every one of them has already pushed its own
