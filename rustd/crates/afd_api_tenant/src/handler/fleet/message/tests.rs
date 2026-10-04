@@ -16,6 +16,7 @@
 use afd_events::{Cursor, EventDetailRow, THREAD_DEFAULT_LIMIT, THREAD_MAX_LIMIT};
 
 use super::{PAGE_BUDGET_BYTES, included_under_budget, page, parse_cursor, requested_limit};
+use crate::handler::paging::store_ceiling;
 
 /// The millisecond the fixture thread's oldest row was stamped.
 const FIRST_MS: i64 = 1_700_000_000_000;
@@ -73,6 +74,24 @@ fn should_refuse_a_size_outside_the_band_rather_than_clamp_it() {
             "{asked} is not a page size this surface serves"
         );
     }
+}
+
+/// The band is the event store's own thread constants, narrowed exactly: the
+/// store binds them as `i64`, the route serves them as `u32`.
+#[test]
+fn should_narrow_the_stores_thread_constants_into_the_band_exactly() {
+    let band = store_ceiling(THREAD_MAX_LIMIT, THREAD_DEFAULT_LIMIT);
+
+    assert_eq!(i64::from(band.max()), THREAD_MAX_LIMIT);
+    assert_eq!(i64::from(band.default_rows()), THREAD_DEFAULT_LIMIT);
+}
+
+/// A store constant wider than a `u32` is refused rather than truncated into
+/// a band no store declared.
+#[test]
+#[should_panic(expected = "a store's page constants must be positive and fit a u32")]
+fn should_refuse_a_store_constant_wider_than_the_band_can_carry() {
+    let _band = store_ceiling(i64::from(u32::MAX) + 1, THREAD_DEFAULT_LIMIT);
 }
 
 /// A cursor is optional, and one this walk minted comes back whole.
