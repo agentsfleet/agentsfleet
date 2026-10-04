@@ -144,6 +144,9 @@ fn should_admit_a_body_only_when_every_locked_field_holds_its_value() {
         Some(r#"{"base":"main","draft":true}"#),
         Some(r#"{"base":"dev","draft":"true"}"#),
         Some(r#"{"draft":true}"#),
+        Some(r#"{"base":"dev","draft":false,"draft":true}"#),
+        Some(r#"{"base":"dev","draft":true,"draft":false}"#),
+        Some(r#"{"base":"main","base":"dev","draft":true}"#),
         Some("not json"),
         None,
     ] {

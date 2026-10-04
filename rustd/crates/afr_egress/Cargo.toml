@@ -30,7 +30,9 @@ async-trait.workspace = true
 regex.workspace = true
 # The one client every egress tool sends through, and its resolver seam.
 reqwest.workspace = true
-# Origin rules lock fields of a JSON body.
+# Origin rules lock fields of a JSON body, read by a visitor that refuses a
+# repeated key.
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 # The resolver's lookup, which the guard checks before reqwest connects.
