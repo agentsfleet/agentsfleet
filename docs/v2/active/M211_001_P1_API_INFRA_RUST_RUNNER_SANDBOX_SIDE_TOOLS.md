@@ -65,6 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_sandbox/src/toolbox.rs` + `toolbox/` (`manifest.rs`, `stage.rs`, `loop_device.rs`, `adopt.rs`, `holds.rs`), `bubblewrap_engine.rs`, `warm_slots.rs`, `rustd/crates/afr_sandbox/Cargo.toml`, `rustd/Cargo.lock` | EDIT / CREATE | Admission by descriptor, adoption by identity, holds and retention; the path mount and the post-mount re-hash go |
 | `rustd/crates/afr_sandbox/tests/kernel_lane.rs`, `rustd/crates/afr_tools/tests/` | EDIT / CREATE | Real-sandbox proofs for every handler; unit proofs for parsers and routing |
 | `rustd/crates/agentsfleetd/tests/integration_rust_runner_bundles.rs` | EDIT | One bundle that runs a test suite with `shell` and edits with `apply_patch`, on the unsandboxed engine |
+| `scripts/check-migrate-unprivileged.sh`, `make/quality.mk`, `schema/110_roles_and_privileges.sql`, `docs/v2/pending/M213_001_P0_API_DOCS_INFRA_RUST_RUNNER_CUTOVER_ZIG_RETIRED.md` | DELETE / EDIT | Indy's ask (Discovery): the stale non-superuser migrate lane goes — the script, its target and `.PHONY` entry, the schema comment that cited it, and M213_001's plan to edit the deleted script |
 
 ## Applicable Rules
 
@@ -267,7 +268,7 @@ Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) �
 
 ## Dead Code Sweep
 
-N/A — no files deleted. The stub sandbox-side handlers from M210_002 §1 are replaced in place, not left beside the real ones.
+`scripts/check-migrate-unprivileged.sh` and its `make/quality.mk` target, at Indy's ask (Discovery). The stub sandbox-side handlers from M210_002 §1 are replaced in place, not left beside the real ones.
 
 ## Out of Scope
 
@@ -311,9 +312,9 @@ N/A — no files deleted. The stub sandbox-side handlers from M210_002 §1 are r
   - **S5 Sandbox boundary** — inside a lease: count inherited descriptors; call `clone` and `clone3` with namespace flags, `setns` on `/proc/1/ns/*`, and an i386 call on amd64. Pass: only the executor's own descriptors are open and every call is refused.
   - **S6 Writable-state exhaustion** — four leases fill their workspace disks and `/tmp` at once. Pass: each gets `ENOSPC`, the host keeps its free-space reserve, and loop-device I/O shows in each lease's cgroup `io.stat`.
 - **Browser** — Indy (in-session, Oct 03, 2026): "Yes stick to chromium then", choosing Debian's `chromium-headless-shell` over the full package and over Lightpanda. Lightpanda renders no pixels (its PNG is a text-layout dump), speaks CDP over WebSocket only, is beta and AGPL-3.0, which the offline bundle would distribute. Headless shell is the same engine without the GTK3 stack: 222.4 MB installed against 319.8 MB for `chromium` on amd64 (packages.debian.org, trixie, 154.0.8037.92); S1 proves its pipe and screenshot, and §6 records the image-size delta.
-- **Network inside the sandbox** — M210_001 §3 leaves the sandbox at loopback only, so the browser is proven on loopback here and reaches real pages when the allowlist spec lands; recorded so the limit is read as sequencing, not design.
 - **Agent defaults** — `sh -c` for `shell`; a session cap per lease; the five refused git subcommands; SHA-256 for the hashed file tools; PNG for screenshots; Chromium over `--remote-debugging-pipe`; the loop ioctls declared by hand over `libc`; cosign key-pair signatures checked with the `p256` crate as Elliptic Curve Digital Signature Algorithm (ECDSA) P-256 over SHA-256, confirmed against `cosign verify-blob` at PLAN.
 - **Metrics review** — No analytics or funnel playbook update required: no user surface; three operator log events added.
 - **Skill-chain outcomes** — pending.
+- **Stale migrate lane removed** — Indy (2026-10-04): "In the above prompt include text to remove the target check-migrate-unpriviledged." The lane ran the retired Zig migrator (`build.zig` has no run step), died silently under `set -e`, and no workflow ran it; the script, its target, M213_001's row and the schema comment's claim go, and no lane now proves a non-superuser migrator. `afd_db` records versions, not checksums, so the comment edit cannot fail a deploy.
 - **Deferrals** —
   > Indy (2026-10-03 13:51): "I dont want to focus on revocation of a compromised toolbox, first is to get the toolbox working" — context: revoking a compromised toolbox digest, from Tarzy's review; left out of this spec and M213_001.
