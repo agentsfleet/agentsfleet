@@ -127,8 +127,8 @@ FROM api_runtime, memory_runtime,
 -- Note it stores no `pg_default_acl` row today: PostgreSQL grants PUBLIC no
 -- privileges on new tables, so this revokes something never granted. It is
 -- defence in depth against a later `ALTER DEFAULT PRIVILEGES … GRANT … TO
--- PUBLIC`, not an active grant removal — `make check-migrate-unprivileged`
--- pins the behaviour either way.
+-- PUBLIC`, not an active grant removal. No lane migrates as a non-superuser
+-- today, so nothing in the repository pins this behaviour.
 ALTER DEFAULT PRIVILEGES
     IN SCHEMA core, fleet, billing, vault, audit, memory
     REVOKE ALL ON TABLES FROM PUBLIC;
