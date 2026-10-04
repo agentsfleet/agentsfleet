@@ -9,7 +9,7 @@
 // The check is a predicate plus the sentence to print, so the sentence lives
 // beside the rule it belongs to rather than inside a thrown error object.
 
-import { Flag, Argument } from "effect/unstable/cli";
+import { Flag, Argument } from "effect/cli";
 import { EXAMPLE_UUIDV7, isValidId } from "../../lib/id.ts";
 import { LIBRARY_ID_PLACEHOLDER } from "../../constants/cli-flags.ts";
 import {

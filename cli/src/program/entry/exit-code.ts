@@ -21,7 +21,7 @@
 // error with a non-empty `errors` array is a real usage failure and exits 4.
 
 import { Cause, Runtime } from "effect";
-import { CliError } from "effect/unstable/cli";
+import { CliError } from "effect/cli";
 import { EXIT_CODE } from "../../errors/index.ts";
 import { GuardRefused } from "../../runtime/guard.service.ts";
 
