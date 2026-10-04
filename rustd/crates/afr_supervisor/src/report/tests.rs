@@ -2,8 +2,22 @@ use std::time::Duration;
 
 use afd_wire::report::{ExecutionResult, Failure, FailureClass, Outcome, ResultOutcome};
 
+use afr_agent::Meter;
+use afr_providers::Usage;
+
 use super::{Ending, narrow, report};
 use crate::test_support::{FENCING, FLEET_ID, LEASE_ID, answer, lease};
+
+/// A meter that counted `input` fresh, `cached_input` cached and `output`.
+fn spent(input: u64, cached_input: u64, output: u64) -> Meter {
+    let meter = Meter::default();
+    meter.add(Usage {
+        input,
+        cached_input,
+        output,
+    });
+    meter
+}
 
 #[test]
 fn a_completed_run_reports_its_answer_tokens_and_timings() {
@@ -13,7 +27,13 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
         first_chunk: Some(Duration::from_millis(120)),
     };
 
-    let report = report(&lease, &ending, Duration::from_secs(2), None);
+    let report = report(
+        &lease,
+        &ending,
+        &spent(3, 1, 4),
+        Duration::from_secs(2),
+        None,
+    );
 
     assert_eq!(report.outcome, Outcome::Processed);
     assert_eq!(report.failure_reason, None);
@@ -28,7 +48,8 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
             report.cached_input_tokens,
             report.output_tokens
         ),
-        (7, 3, 1, 4)
+        (8, 3, 1, 4),
+        "the whole prompt and the completion, then the three counts apart"
     );
     assert_eq!(report.telemetry.time_to_first_token_ms, 120);
     assert_eq!(report.telemetry.wall_ms, 2_000);
@@ -50,7 +71,7 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
         first_chunk: None,
     };
 
-    let report = report(&lease, &ending, Duration::ZERO, None);
+    let report = report(&lease, &ending, &Meter::default(), Duration::ZERO, None);
 
     assert_eq!(report.outcome, Outcome::FleetError);
     assert_eq!(report.failure_reason, Some(FailureClass::PolicyDeny));
@@ -59,14 +80,52 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
 }
 
 #[test]
-fn a_run_that_never_finished_reports_zero_usage() {
+fn a_run_that_never_finished_still_reports_what_it_spent() {
+    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let ending = Ending::Failed {
+        class: FailureClass::RunnerCrash,
+        detail: "the engine broke mid-run",
+    };
+
+    let report = report(
+        &lease,
+        &ending,
+        &spent(7, 2, 3),
+        Duration::from_millis(5),
+        None,
+    );
+
+    assert_eq!(report.outcome, Outcome::FleetError);
+    assert_eq!(report.failure_reason, Some(FailureClass::RunnerCrash));
+    assert_eq!(report.failure_detail, "the engine broke mid-run");
+    assert_eq!(report.response_text, "");
+    assert_eq!(
+        (
+            report.tokens,
+            report.input_tokens,
+            report.cached_input_tokens,
+            report.output_tokens
+        ),
+        (12, 7, 2, 3),
+        "the turns the meter counted before the break are billed"
+    );
+}
+
+#[test]
+fn a_run_that_never_started_reports_zero_usage() {
     let lease = lease(LEASE_ID, FLEET_ID, None);
     let ending = Ending::Failed {
         class: FailureClass::StartupPosture,
         detail: "no sandbox",
     };
 
-    let report = report(&lease, &ending, Duration::from_millis(5), None);
+    let report = report(
+        &lease,
+        &ending,
+        &Meter::default(),
+        Duration::from_millis(5),
+        None,
+    );
 
     assert_eq!(report.outcome, Outcome::FleetError);
     assert_eq!(report.failure_reason, Some(FailureClass::StartupPosture));

@@ -7,8 +7,11 @@ use serde_json::{Value, json};
 
 use super::Reply;
 
-/// The usage every scripted turn reports.
-const PROMPT_TOKENS: u64 = 10;
+/// The usage every scripted turn reports: a prompt of [`PROMPT_TOKENS`], of
+/// which [`CACHED_TOKENS`] were cache reads, each wire spelling the split as
+/// its provider does.
+pub(crate) const PROMPT_TOKENS: u64 = 10;
+pub(crate) const CACHED_TOKENS: u64 = 4;
 const COMPLETION_TOKENS: u64 = 3;
 
 /// One of the three wires.
@@ -206,7 +209,8 @@ fn tool_use(index: u64, id: &str, name: &str, raw: &str) -> [Value; 3] {
 fn messages(blocks: Vec<Value>, stop_reason: &str) -> Vec<String> {
     let start = json!({"type": "message_start", "message": {"id": "msg_1", "type": "message",
         "role": "assistant", "model": "model-1", "content": [], "stop_reason": null,
-        "stop_sequence": null, "usage": {"input_tokens": PROMPT_TOKENS, "output_tokens": 0}}});
+        "stop_sequence": null, "usage": {"input_tokens": PROMPT_TOKENS - CACHED_TOKENS,
+            "cache_read_input_tokens": CACHED_TOKENS, "output_tokens": 0}}});
     let delta = json!({"type": "message_delta",
         "delta": {"stop_reason": stop_reason, "stop_sequence": null},
         "usage": {"output_tokens": COMPLETION_TOKENS}});
@@ -227,7 +231,7 @@ fn responses(events: Vec<Value>, output: &[Value]) -> Vec<String> {
         "response": response("in_progress", &[], Value::Null)});
     let usage = json!({"input_tokens": PROMPT_TOKENS, "output_tokens": COMPLETION_TOKENS,
         "total_tokens": PROMPT_TOKENS + COMPLETION_TOKENS,
-        "input_tokens_details": {"cached_tokens": 0},
+        "input_tokens_details": {"cached_tokens": CACHED_TOKENS},
         "output_tokens_details": {"reasoning_tokens": 0}});
     let completed = json!({"type": "response.completed",
         "response": response("completed", output, usage)});
@@ -259,7 +263,8 @@ fn chat(delta: &Value, finish_reason: &str) -> Vec<String> {
         chunk(
             json!([]),
             json!({"prompt_tokens": PROMPT_TOKENS, "completion_tokens": COMPLETION_TOKENS,
-                "total_tokens": PROMPT_TOKENS + COMPLETION_TOKENS}),
+                "total_tokens": PROMPT_TOKENS + COMPLETION_TOKENS,
+                "prompt_tokens_details": {"cached_tokens": CACHED_TOKENS}}),
         ),
     ];
     let mut events: Vec<String> = chunks.iter().map(framed).collect();

@@ -24,7 +24,7 @@ use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;
 
-use self::support::wires::Wire;
+use self::support::wires::{CACHED_TOKENS, PROMPT_TOKENS, Wire};
 use self::support::{Fake, KEY, LEASE_ID, Reply, TOKEN, engine, lease, run};
 
 /// The answer every scripted run ends on.
@@ -73,7 +73,14 @@ async fn test_each_provider_drives_a_tool_turn() {
             [UPDATE_PLAN.name()],
             "{wire:?}: the call's result goes back in the wire's own shape"
         );
-        assert_eq!(output.result.input_tokens, 20, "{wire:?}: two turns of 10");
+        assert_eq!(
+            (
+                output.result.input_tokens,
+                output.result.cached_input_tokens
+            ),
+            (2 * (PROMPT_TOKENS - CACHED_TOKENS), 2 * CACHED_TOKENS),
+            "{wire:?}: two turns, the cache reads counted once and apart"
+        );
     }
 }
 

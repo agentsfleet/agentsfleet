@@ -9,7 +9,7 @@ use afd_wire::report::{
     ExecutionResult, Failure, FailureClass, Outcome, ReportCheckpoint, ReportRequest,
     ReportTelemetry, ResultOutcome,
 };
-use afr_agent::RunOutput;
+use afr_agent::{Meter, RunOutput};
 
 /// How a lease's run ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,10 +57,13 @@ impl Ending {
 }
 
 /// The report for `lease`, which ran for `wall`, carrying `trace`: the run's
-/// trace encoded, when it called a tool.
+/// trace encoded, when it called a tool. Its tokens are the result's when the
+/// run handed one back, and otherwise what `meter` counted turn by turn, so a
+/// run that never finished still bills what it spent.
 pub(crate) fn report<'a>(
     lease: &'a LeasePayload<'a>,
     ending: &'a Ending,
+    meter: &Meter,
     wall: Duration,
     trace: Option<&'a str>,
 ) -> ReportRequest<'a> {
@@ -75,6 +78,18 @@ pub(crate) fn report<'a>(
     let response_text = result.map_or(Cow::Borrowed(""), |result| {
         Cow::Borrowed(result.content.as_ref())
     });
+    let spent = meter.read();
+    let (tokens, input, cached_input, output) = result.map_or(
+        (spent.total(), spent.input, spent.cached_input, spent.output),
+        |result| {
+            (
+                result.token_count,
+                result.input_tokens,
+                result.cached_input_tokens,
+                result.output_tokens,
+            )
+        },
+    );
     ReportRequest {
         lease_id: Cow::Borrowed(&lease.lease_id),
         event_id: Cow::Borrowed(&lease.event.event_id),
@@ -83,10 +98,10 @@ pub(crate) fn report<'a>(
         failure_reason,
         failure_detail,
         response_text: response_text.clone(),
-        tokens: result.map_or(0, |result| result.token_count),
-        input_tokens: narrow(result.map_or(0, |result| result.input_tokens)),
-        cached_input_tokens: narrow(result.map_or(0, |result| result.cached_input_tokens)),
-        output_tokens: narrow(result.map_or(0, |result| result.output_tokens)),
+        tokens,
+        input_tokens: narrow(input),
+        cached_input_tokens: narrow(cached_input),
+        output_tokens: narrow(output),
         telemetry: ReportTelemetry {
             time_to_first_token_ms: narrow(first_chunk.map_or(0, saturating_millis)),
             wall_ms: saturating_millis(wall),

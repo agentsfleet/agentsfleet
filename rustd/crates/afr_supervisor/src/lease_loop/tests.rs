@@ -186,7 +186,7 @@ async fn a_run_cut_by_its_renewal_still_reports_its_tokens_and_pushes_its_memory
     let calls = rig.calls();
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
-    assert_eq!(report["tokens"], 7, "the run's tokens are billed");
+    assert_eq!(report["tokens"], 8, "the run's tokens are billed");
     assert_eq!(report["input_tokens"], 3);
     assert_eq!(report["output_tokens"], 4);
     assert!(
