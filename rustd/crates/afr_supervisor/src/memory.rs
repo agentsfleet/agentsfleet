@@ -13,9 +13,6 @@ use afr_agent::Checkpoint;
 use crate::client::{Body, ControlPlane, retrying};
 use crate::error::Result;
 
-/// The event a checkpoint that was not written logs under.
-const EVENT_CHECKPOINT_FAILED: &str = "memory_checkpoint_failed";
-
 /// Reads the fleet's memory, retrying a blip.
 ///
 /// # Errors
@@ -81,19 +78,9 @@ impl<'a> LeaseCheckpoint<'a> {
 impl Checkpoint for LeaseCheckpoint<'_> {
     /// One attempt, no retry: the push before the report retries, and carries
     /// every entry again.
-    async fn push(&self, memory: Vec<MemoryDelta<'static>>) {
+    async fn push(&self, memory: Vec<MemoryDelta<'static>>) -> afr_agent::Result<()> {
         let request = push_request(self.lease, memory);
-        if let Err(failure) = self.plane.capture(self.fleet_id, &request).await {
-            let error_code = failure.code().as_str();
-            let lease_id = self.lease.lease_id.as_ref();
-            let event = EVENT_CHECKPOINT_FAILED;
-            tracing::warn!(
-                error_code,
-                lease_id,
-                event,
-                "a mid-run memory checkpoint was not written; the push before the report carries it"
-            );
-        }
+        (self.plane.capture(self.fleet_id, &request).await).map_err(afr_agent::Error::checkpoint)
     }
 }
 

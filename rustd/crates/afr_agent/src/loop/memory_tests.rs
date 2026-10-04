@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 
+use afd_core::test_util::trace::Capture;
 use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 use afr_egress::testing::{CountingMint, RecordingTransport};
 use afr_providers::Message;
@@ -16,7 +17,7 @@ use afr_tools::catalog::{MEMORY_FORGET, MEMORY_LIST, MEMORY_RECALL, MEMORY_STORE
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use super::Loop;
+use super::{EVENT_CHECKPOINT_FAILED, Loop};
 use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter};
 use crate::fixture::{Frames, Script, call, lease, say, unbounded};
 use crate::testing::{Discard, Recording};
@@ -172,9 +173,58 @@ struct Hanging;
 
 #[async_trait::async_trait]
 impl Checkpoint for Hanging {
-    async fn push(&self, _memory: Vec<MemoryDelta<'static>>) {
-        std::future::pending::<()>().await;
+    async fn push(&self, _memory: Vec<MemoryDelta<'static>>) -> crate::Result<()> {
+        std::future::pending().await
     }
+}
+
+/// A checkpoint the daemon refuses every time.
+#[derive(Debug)]
+struct Refused;
+
+#[async_trait::async_trait]
+impl Checkpoint for Refused {
+    async fn push(&self, _memory: Vec<MemoryDelta<'static>>) -> crate::Result<()> {
+        Err(crate::Error::checkpoint(afr_providers::Error::refused(503)))
+    }
+}
+
+#[tokio::test]
+async fn a_refused_checkpoint_is_logged_under_its_code_and_the_run_goes_on() {
+    let capture = Capture::install();
+    let store = call(
+        "store",
+        MEMORY_STORE.name(),
+        json!({"key": "held", "content": "x"}),
+    );
+    let script = Script::new([vec![store], vec![say("answered")]]);
+    let (transport, _sent) = RecordingTransport::replying(200, "");
+    let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
+    let lease = lease(&[MEMORY_STORE.name()], every_call());
+    let frames = Frames::default();
+    let sink = frames.sink();
+
+    let output = engine
+        .run(AgentRun {
+            lease: &lease,
+            memory: afr_memory::Seed::default(),
+            executor: None,
+            mint: &CountingMint::never(),
+            checkpoint: &Refused,
+            events: &sink,
+            meter: &Meter::default(),
+            stop: &CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+    frames.taken();
+
+    assert_eq!(output.result.content, "answered");
+    let failed = capture.only(EVENT_CHECKPOINT_FAILED);
+    assert_eq!(failed.level, tracing::Level::WARN);
+    let code = afr_providers::Error::refused(503).code();
+    assert_eq!(failed.field("error_code"), Some(code.as_str()));
+    assert_eq!(failed.field("lease_id"), Some("lease-1"));
 }
 
 #[tokio::test(start_paused = true)]

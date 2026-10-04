@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afd_core::id::Uuid7;
 use afd_wire::memory::MemoryHydrateResponse;
 
-use afd_core::test_util::trace::Capture;
 use afr_agent::Checkpoint as _;
 
 use super::{LeaseCheckpoint, capture, hydrate};
@@ -77,7 +76,8 @@ async fn a_checkpoint_pushes_the_runs_memory_under_the_fencing_token() {
 
     LeaseCheckpoint::new(&plane, &fleet, &lease)
         .push(answer().memory)
-        .await;
+        .await
+        .unwrap();
 
     let pushed = drain(&mut calls);
     assert_eq!(pushed.len(), 1);
@@ -87,8 +87,7 @@ async fn a_checkpoint_pushes_the_runs_memory_under_the_fencing_token() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_checkpoint_the_daemon_refuses_is_logged_once_and_never_retried() {
-    let capture = Capture::install();
+async fn a_checkpoint_the_daemon_refuses_is_returned_once_and_never_retried() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&attempts);
     let (plane, _calls) = plane(move |_call| {
@@ -98,20 +97,16 @@ async fn a_checkpoint_the_daemon_refuses_is_logged_once_and_never_retried() {
     let lease = lease(LEASE_ID, FLEET_ID, None);
     let fleet = Uuid7::parse(FLEET_ID).unwrap();
 
-    LeaseCheckpoint::new(&plane, &fleet, &lease)
+    let refused = LeaseCheckpoint::new(&plane, &fleet, &lease)
         .push(answer().memory)
-        .await;
+        .await
+        .unwrap_err();
 
     assert_eq!(
         attempts.load(Ordering::SeqCst),
         1,
         "a checkpoint is one attempt"
     );
-    let failed: Vec<_> = capture
-        .events()
-        .into_iter()
-        .filter(|event| event.field("event") == Some("memory_checkpoint_failed"))
-        .collect();
-    assert_eq!(failed.len(), 1);
-    assert_eq!(failed[0].field("lease_id"), Some(LEASE_ID));
+    let daemons = error::unavailable(Verb::Capture, 503).code();
+    assert_eq!(refused.code(), daemons, "the daemon's code, kept");
 }
