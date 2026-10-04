@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M210
 **Workstream:** 005
 **Date:** Oct 03, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — 56 hand-written input checks answer callers today, ten of them the same `?limit` rule spelled ten ways, and three inputs have no bound at all
 **Categories:** API
 **Batch:** B2 — folded into M210_002 and shipped in its Pull Request, by Indy's call ("The schemars/garge must be fixed in this mielstone/PR"); the milestone's fifth, cross-cutting workstream
@@ -222,15 +222,15 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | No hand-written report mapper remains (§1) | `grep -rn "fn detail_for\|fn entry_detail" rustd/crates --include='*.rs'` | no output | P0 | ✅ no output |
 | R2 | One provider bound (§4) | `grep -rn "const PROVIDER_MAX_BYTES" rustd/crates --include='*.rs' \| wc -l` | `1` | P0 | ✅ `1` |
-| R3 | Routes refuse with their sentences (§2, §4, §5) | `make test-integration-rustd` | exit 0 | P0 | |
+| R3 | Routes refuse with their sentences (§2, §4, §5) | `make test-integration-rustd` | exit 0 | P0 | → CI on the Pull Request (Indy's call, M210_002 Discovery) |
 | R4 | Model schemas are derived (§6) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools test_stub_schema_is_derived` | exit 0 | P0 | ✅ `test result: ok. 1 passed; 0 failed` |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from this table or a folded spec's | P0 | ✅ this spec's commits (`git diff --name-only b697e15d3`) name 0 paths outside the table; the rest of `origin/main...HEAD` is M210_002's |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | → Session Notes, `orly gate pr` |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | → Session Notes, `orly gate pr` |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Repository-command rows point to the final `orly gate pr` results in Pull Request Session Notes.
 
@@ -297,5 +297,5 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 - **Agent default:** the stub and the loop fixture share one argument type, `afr_tools::stub::NoArguments`, behind the `test-util` feature that already gates the stub; its doc line is one sentence for the model, because schemars hands a type's doc comment to the model as the schema's `description`.
 - **Agent default:** `stage_chunk_threshold` (`afd_fleet_runtime/src/config/raw/policy.rs`, `f32`) is the second float input, and it was exposed: `1e39` arrives as +∞, which serializes into every lease as `null`. It declares `finite` (widened to `f64`) and `0.0..=1.0` on the raw context, so a break answers `OutOfBounds` like the network allow-lists beside it, and `ContextBudget` needs no new reason.
 - **Review fixes** — > Indy (2026-10-04 06:59): "Fix both now (Recommended)" — context: review P2-16 (`afd_library/src/model.rs`: a bundle's size bounds ran after its credential scan parsed, the garde ordering pitfall) and P2-18 (eleven refusal sentences restated their bounds by hand, rule UFS); fixed in `d49cbea52` and `44b18cae3`, the second building each sentence from its constant with `const_format::concatcp!`.
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — `/review`: gstack, three passes on Oct 04, recorded in M210_002's Discovery and the Pull Request's Review section; `/orly-write-unit-test`: the ledger over `72db051b8..HEAD` (this spec's rows included) is in Pull Request Session Notes; `orly-babysit-prs`: after the push.
 - **Deferrals** — none.
