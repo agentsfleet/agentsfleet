@@ -608,6 +608,13 @@ hyper-util = { version = "0.1.20", default-features = false, features = [
     "http1",
     "http2",
 ] }
+# The integration lane's HTTPS fakes, dev-only: rcgen issues a test CA and a
+# leaf for the upstream hosts a bundle names, and rustls serves them through
+# tokio-rustls. All three on aws-lc-rs, the provider rustls already builds
+# with here, so no second crypto backend arrives.
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
+rustls = { version = "0.23.45", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+tokio-rustls = { version = "0.26.5", default-features = false, features = ["aws_lc_rs", "tls12"] }
 # The HTTP vocabulary types, shared with axum rather than re-exported through
 # it: `route_meta` names methods and statuses and has no business depending on
 # a web framework to do it.
