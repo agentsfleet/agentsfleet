@@ -281,6 +281,34 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
     Ok(())
 }
 
+/// A memory-store failure answers with the code, the sentence and the outage
+/// class `afd_memory` decided; the lease plane restates none of them.
+#[test]
+fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(), &'static str> {
+    let outage = afd_db::error::one_of_each_kind()
+        .into_iter()
+        .find(|(kind, _error)| *kind == "datastore unavailable")
+        .map(|(_kind, error)| error)
+        .ok_or("database test utility has no outage kind")?;
+    let unreadable_writer = afd_core::id::Uuid7::parse("not-an-id")
+        .err()
+        .ok_or("fixture id unexpectedly parsed")?;
+
+    for (memory, unavailable) in [
+        (afd_memory::Error::from(outage), true),
+        (afd_memory::Error::from(unreadable_writer), false),
+    ] {
+        let (code, detail) = (memory.code(), memory.detail());
+        let lifted = Error::from(memory);
+
+        assert_eq!(lifted.code(), code);
+        assert_eq!(lifted.detail(), detail);
+        assert_eq!(lifted.is_datastore_unavailable(), unavailable);
+        assert!(lifted.source().is_some());
+    }
+    Ok(())
+}
+
 fn expected(error: Error, code: ErrorCode, detail: &'static str) -> Expected {
     Expected {
         error,
