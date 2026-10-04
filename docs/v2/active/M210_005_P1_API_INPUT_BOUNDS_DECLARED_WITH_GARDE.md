@@ -57,15 +57,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_validate/`, `rustd/crates/agentsfleet_runner/tests/dependency_graph.rs` | CREATE / EDIT | Shared rules, `Limit`, `Sentences`; depends on garde alone, so the runner, which reads `afd_wire`, may link it |
+| `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_validate/`, `rustd/crates/agentsfleet_runner/tests/dependency_graph.rs` | CREATE / EDIT | Shared rules, `Limit`, `Sentences`; depends on garde alone, so the runner, which reads `afd_wire`, may link it; `const_format` joins the workspace so a refusal sentence is built from its bound's constant |
 | `rustd/crates/afd_core/` (`Cargo.toml`, `src/paging.rs`, `src/paging/tests.rs`) | EDIT | `Paging::parse` reads its limit through `Limit` with the caller's ceiling |
 | `rustd/crates/afd_wire/src/` (`runner.rs`, `activity.rs`, `tool_trace.rs`, `tool_detail.rs`, `admin_catalogue.rs`, `admin_library.rs`, `secret.rs`, `tenant.rs`, `workspace.rs`, `team.rs`, `auth.rs`, `fleet.rs`) and their tests | EDIT | Request and wire types derive `Validate`; one `PROVIDER_MAX_BYTES` |
 | `rustd/crates/afd_runner/` (`Cargo.toml`; `src/` `validate.rs`, `bounds.rs`, `view.rs`, `view/`, `heartbeat.rs`, `store.rs`, `lib.rs`) | EDIT | Registration, policy, binds and capability bounds move to the wire types; enrolment (`store.rs`) proves the whole request through `registration`; `PageLimit` is deleted from `view/` and its re-export from `lib.rs` |
 | `rustd/crates/afd_fleet/tests/` (`integration_runner_views.rs`, `integration_runner_views_malformed.rs`) | EDIT | The runner-view pins read the shared paging ceiling once `PageLimit` is gone |
 | `rustd/crates/afd_api_tenant/src/handler/` (`paging.rs`, `tenant/`, `fleet/`, `event/`, `approval/`, `schedule*`, `secret.rs`, `connector/callback.rs`) | EDIT | Query, path and body bounds through `Limit`, path types and `Sentences` |
-| `rustd/crates/afd_api_operator/src/handler/` (`admin/platform_keys.rs`, `admin/models.rs`, `admin/libraries_request.rs`, `operator/query.rs`) | EDIT | Same |
+| `rustd/crates/afd_api_operator/src/handler/` (`admin/platform_keys.rs`, `admin/models.rs`, `admin/libraries.rs`, `admin/libraries_request.rs`, `operator/query.rs`) | EDIT | Same |
 | `rustd/crates/{afd_tenant,afd_vault,afd_cron,afd_billing,afd_events,afd_connector}/` (`Cargo.toml` and the inventoried files) | EDIT | garde joins the six crates that hand-write every bound today |
-| `rustd/crates/afd_library/src/` (`prepare.rs`, `github.rs`, `frontmatter.rs`, `model.rs`), `rustd/crates/afd_fleet_runtime/src/` (`config/trigger.rs`, `name.rs`, `config/policy.rs`, `config/raw/policy.rs`), `rustd/crates/afd_fleet_lifecycle/` (`Cargo.toml`, `src/install/authored.rs`) | EDIT | Document bounds as garde; parsers take `Valid<T>`; the finite budget |
+| `rustd/crates/afd_library/src/` (`prepare.rs`, `github.rs`, `frontmatter.rs`, `model.rs`, `validate.rs`), `rustd/crates/afd_fleet_runtime/src/` (`config/trigger.rs`, `name.rs`, `config/policy.rs`, `config/raw/policy.rs`), `rustd/crates/afd_fleet_lifecycle/` (`Cargo.toml`, `src/install/authored.rs`) | EDIT | Document bounds as garde; parsers take `Valid<T>`; the finite budget |
 | `rustd/crates/afd_fleet/src/lease/` (`tool_trace.rs`, `tool_detail.rs`) | EDIT | A report maps back to the drop reason it logs today |
 | `rustd/crates/afd_api/tests/` | EDIT / CREATE | Route suites for the limits, paths and filters |
 | `rustd/crates/afr_tools/src/` (`schema.rs`, `stub.rs`, `catalog.rs`), `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_providers/src/request.rs` | EDIT | `Schema` built only by `Schema::of`; read through accessors |
@@ -296,5 +296,6 @@ cron/timezone/channel/name/segment parsers: fn parse(input: &garde::Valid<T>) ->
 - **Agent default:** `?limit=+5` is refused as not-digits.
 - **Agent default:** the stub and the loop fixture share one argument type, `afr_tools::stub::NoArguments`, behind the `test-util` feature that already gates the stub; its doc line is one sentence for the model, because schemars hands a type's doc comment to the model as the schema's `description`.
 - **Agent default:** `stage_chunk_threshold` (`afd_fleet_runtime/src/config/raw/policy.rs`, `f32`) is the second float input, and it was exposed: `1e39` arrives as +∞, which serializes into every lease as `null`. It declares `finite` (widened to `f64`) and `0.0..=1.0` on the raw context, so a break answers `OutOfBounds` like the network allow-lists beside it, and `ContextBudget` needs no new reason.
+- **Review fixes** — > Indy (2026-10-04 06:59): "Fix both now (Recommended)" — context: review P2-16 (`afd_library/src/model.rs`: a bundle's size bounds ran after its credential scan parsed, the garde ordering pitfall) and P2-18 (eleven refusal sentences restated their bounds by hand, rule UFS); fixed in `d49cbea52` and `44b18cae3`, the second building each sentence from its constant with `const_format::concatcp!`.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

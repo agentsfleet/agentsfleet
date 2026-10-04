@@ -67,6 +67,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/check-migrate-unprivileged.sh` | EDIT | Its Zig reference goes with the tree |
 | `VERSION`, `rustd/Cargo.toml`, `cli/package.json` | EDIT | The cutover is a release: one minor bump, synced |
 | `docs/architecture/runner_execution.md` | EDIT | Decisions row: the cutover date and the rollback artifact |
+| `rustd/crates/agentsfleet_runner/src/main.rs` | EDIT | The binary builds the agent loop and serves leases; `NO_AGENT_ENGINE` and its refusal leave (M210_002 review P1-7) |
 | `rustd/crates/afr_sandbox/src/toolbox/manifest.rs` | EDIT | `TOOLBOX_RELEASE_PUBLIC_KEY` becomes the release key's public half, replacing M211_001's fixture key |
 
 ## Applicable Rules
@@ -100,6 +101,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.1** — The binary is static; the toolbox is content-addressed, its manifest verifies against the release public key, and the SBOM and offline bundle ship with it → Test `test_release_artifacts_are_static_and_addressed`
 - **Dimension 1.2** — The dev lane deploys the Rust runner; it registers and its capability report names `/dev/kvm` and the toolbox filesystem → Test `test_dev_runner_registers_with_capabilities`
 - **Dimension 1.3** — The four reference bundles run on the dev runner from their channels and webhooks → Test `test_reference_bundles_run_on_dev`
+- **Dimension 1.4** — The binary takes leases through `afr_agent::Loop` over the provider registry; `NO_AGENT_ENGINE` and its refusal are gone, which 1.2 and 1.3 rely on → Test `test_runner_binary_runs_a_lease`
 
 ### §2 — The Zig runner leaves, and the lanes do not miss it
 
@@ -171,6 +173,7 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 | 1.1 | manual | `test_release_artifacts_are_static_and_addressed` | release run → zero `NEEDED` for the binary; toolbox name equals its SHA-256; `cosign verify-blob` with the release public key passes; SBOM and bundle attached; run URL in Session Notes |
 | 1.2 | manual | `test_dev_runner_registers_with_capabilities` | dev deploy → `agentsfleet runners list` shows the runner with `kvm` and `toolbox_fs` fields; output pasted |
 | 1.3 | manual | `test_reference_bundles_run_on_dev` | one mention, one repairer line, one `pull_request`, one `workflow_run` → four settled threads; links pasted |
+| 1.4 | integration | `test_runner_binary_runs_a_lease` | the built binary against a fake daemon granting one lease → one settled report and no `run_refused` line |
 | 2.1 | unit | `test_no_zig_sources_remain` | `git ls-files '*.zig' build.zig build.zig.zon build_runner.zig` → empty |
 | 2.2 | integration | `test_lanes_need_no_zig` | `PATH` without `zig` → `make test-unit-all` and `make lint-all` exit 0 |
 | 2.3 | unit | `test_check_version_reads_two_manifests` | `make check-version` → exit 0; no `build.zig.zon` in its output |
@@ -249,6 +252,7 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 - **Toolbox review** — Tarzy reviewed the toolbox design on Oct 03, 2026; Indy chose "Approve as classified (Recommended)". This spec carries signing, the SBOM and scan, and eager distribution with an offline bundle; M211_001 carries the pinned build and admission (`runner_execution.md` §Toolbox, Decisions).
 - **Required human decisions** — Indy's explicit approval of each of the eight workflow edits (R4), and the release itself (`gh release create` is his).
 - **Credentials** — the toolbox release key pair: the private half a CI secret the signing step reads, the public half built into the runner as `TOOLBOX_RELEASE_PUBLIC_KEY`. Both exist and are named before §1 starts.
+- **Carried from M210_002** — review P1-7: `agentsfleet_runner/src/main.rs:134` refuses every lease, so M210_002's §1–§4 run nowhere in production until this spec switches the engine on. > Indy (2026-10-04 08:51): "Defer to M213 (Recommended)" — context: Dimension 1.4 here.
 - **Metrics review** — No analytics or funnel playbook update required.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** —
