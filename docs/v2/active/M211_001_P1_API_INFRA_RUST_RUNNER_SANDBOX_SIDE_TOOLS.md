@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M211
 **Workstream:** 001
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the half of the harness where a fleet runs code, reads a repository and looks at a page; without it the fleets Indy plans beyond the four bundles cannot run on Rust
 **Categories:** API, INFRA
-**Batch:** B1 — the milestone's ready Pull Request; the nested loops (`delegate`, `spawn`) are its follow-up
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Batch:** B1 — the milestone's one ready Pull Request; the nested loops (`delegate`, `spawn`, M211_002) fold into it
+**Branch:** `feat/m211-sandbox-tools-and-nested-loops`
+**Baseline revision:** `b0138d7b3124b871668f07e2361dba923bc774d2`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M210_001 (the bubblewrap engine, the executor's `process/*` and `fs/*` calls, the toolbox build) · M210_002 (the catalog, the router, the `Sandbox` runtime) · the six toolbox spikes in Discovery, each run and recorded before EXECUTE
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from `docs/architecture/runner_execution.md` §"Tool catalog" and Indy's decision that the runner carries every published tool; Codex at `~/Projects/oss/rs/codex` `2e5fea64e`

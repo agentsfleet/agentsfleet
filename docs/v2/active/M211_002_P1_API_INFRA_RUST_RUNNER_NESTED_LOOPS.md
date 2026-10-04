@@ -16,13 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M211
 **Workstream:** 002
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the last published tools without a Rust home; a fleet that splits an incident into parallel reads cannot move until they exist
 **Categories:** API, INFRA
-**Batch:** B2 — the milestone's follow-up Pull Request, after M211_001
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Batch:** B1 — folded into M211_001 and shipped in its Pull Request; its Sections run after M211_001's, on those tools
+**Branch:** `feat/m211-sandbox-tools-and-nested-loops`
+**Folded-into:** `M211_001`
+**Baseline revision:** `b0138d7b3124b871668f07e2361dba923bc774d2`
+**Test Baseline:** pending — measured before the Pull Request; shared with M211_001
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M210_002 (the loop, the catalog, the router, the run-wide call counter and trace) · M211_001 (children share the sandbox-side tools)
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from `docs/architecture/runner_execution.md` §"Tool catalog" and Indy's decision that the runner carries every published tool; Codex at `~/Projects/oss/rs/codex` `2e5fea64e`
