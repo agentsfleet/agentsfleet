@@ -58,9 +58,8 @@ only here. `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never
 sets it.
 
 `make lint-all` is the lint claim: `lint-rustd` (`cargo fmt --check` plus
-`cargo clippy --workspace --all-targets -- -D warnings`), `lint-scripts` (every
-`scripts/*_test.py`), the TypeScript lints, the shell and OpenAPI checks, and the
-safety gates.
+`cargo clippy --workspace --all-targets -- -D warnings`), the TypeScript lints,
+the shell and OpenAPI checks, and the safety gates.
 
 `lint-rustd` and `test-unit-rustd` both `cd` into `rustd/` rather than passing
 `--manifest-path`. `rust-toolchain.toml` resolves from the working directory, so
