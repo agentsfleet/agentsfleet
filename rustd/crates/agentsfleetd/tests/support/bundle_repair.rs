@@ -54,8 +54,14 @@ pub(crate) fn github_auth() -> Value {
 }
 
 /// The walk, with `reads` — the bundle's evidence reads plus the head and the
-/// file — made in one turn after reconciliation.
-pub(crate) fn script(repo: Repo, reads: Vec<Value>) -> impl Fn(&Asked) -> Vec<Chunk> + Send + Sync {
+/// file — made in one turn after reconciliation, and `refused` — requests the
+/// policy must turn away — tried beside the ref read, where their refusals
+/// never count as a failed read.
+pub(crate) fn script(
+    repo: Repo,
+    reads: Vec<Value>,
+    refused: Vec<Value>,
+) -> impl Fn(&Asked) -> Vec<Chunk> + Send + Sync {
     move |asked| {
         let branch = repair_branch(asked).unwrap_or_default();
         let owner = repo.name.split('/').next().unwrap_or_default();
@@ -79,11 +85,16 @@ pub(crate) fn script(repo: Repo, reads: Vec<Value>) -> impl Fn(&Asked) -> Vec<Ch
             {
                 vec![say(&format!("The draft is already open: {DRAFT_URL}"))]
             }
-            1 => vec![http(
+            1 => std::iter::once(http(
                 "ref",
                 json!({"headers": github_auth(),
                                          "url": repo.url(&format!("git/ref/heads/{branch}"))}),
-            )],
+            ))
+            .chain(
+                (refused.iter().enumerate())
+                    .map(|(index, probe)| http(&format!("refused-{index}"), probe.clone())),
+            )
+            .collect(),
             2 => (reads.iter().enumerate())
                 .map(|(index, read)| http(&format!("read-{index}"), read.clone()))
                 .collect(),

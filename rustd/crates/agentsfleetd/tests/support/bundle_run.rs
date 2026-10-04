@@ -56,7 +56,7 @@ pub(crate) async fn run_event(
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = CancellationToken::new();
-    let runner = tokio::spawn(runner(
+    let mut runner = tokio::spawn(runner(
         run,
         home.path(),
         sandboxes.path(),
@@ -64,7 +64,14 @@ pub(crate) async fn run_event(
         model,
         shutdown.clone(),
     ));
-    let status = settled(run, event_id).await;
+    // A runner that stops on its own before the event settles failed to
+    // boot or to lease; that is the failure to report, not a 90 s silence.
+    let status = tokio::select! {
+        status = settled(run, event_id) => status,
+        exited = &mut runner => {
+            panic!("the runner stopped before event {event_id} settled: {exited:?}")
+        }
+    };
     shutdown.cancel();
     runner
         .await

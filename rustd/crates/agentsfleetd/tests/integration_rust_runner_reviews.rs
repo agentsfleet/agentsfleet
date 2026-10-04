@@ -19,6 +19,7 @@ use serde_json::json;
 use crate::bundle_install::install_bundle;
 use crate::bundle_repair::{GITHUB, github_auth};
 use crate::bundle_run::{posts, run_event};
+use crate::e2e::REQUEST_JSON;
 use crate::fake_model::{FakeModel, http, say};
 use crate::https::{Reply, Route, Upstream};
 
@@ -102,11 +103,25 @@ async fn test_pr_reviewer_posts_one_review() {
         "{results:#?}"
     );
 
+    // A steer: the event's own text is what the model is asked, and the
+    // script, following the SKILL.md, reaches for no upstream.
     let steer = run.enqueue_event(EventType::Chat).await;
     let quiet = Upstream::serve(routes()).await;
-    let (model, _transcript) = FakeModel::new(vec![vec![say("Noted; no review for a steer.")]]);
+    let (model, transcript) = FakeModel::new(vec![vec![say("Noted; no review for a steer.")]]);
     let settled = run_event(&run, &steer, &quiet, model).await;
     assert_eq!(settled.status, "processed");
+    let steer_text = serde_json::from_str::<serde_json::Value>(REQUEST_JSON)
+        .ok()
+        .and_then(|body| body.get("prompt")?.as_str().map(str::to_owned))
+        .expect("the seeded steer carries a prompt");
+    let asked = transcript.asked();
+    assert!(
+        asked.first().is_some_and(|turn| turn
+            .user
+            .iter()
+            .any(|message| message.contains(&steer_text))),
+        "the steer's text reached the model as its question: {asked:#?}"
+    );
     assert!(quiet.seen().is_empty(), "a steer reads and posts nothing");
 
     supervisor.shutdown().await;

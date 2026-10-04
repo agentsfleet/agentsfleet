@@ -119,6 +119,8 @@ pub(crate) struct Seen {
     pub(crate) host: String,
     pub(crate) method: Method,
     pub(crate) path: String,
+    /// The query, empty when the request carried none.
+    pub(crate) query: String,
     pub(crate) headers: HeaderMap,
     pub(crate) body: String,
 }
@@ -224,6 +226,7 @@ async fn answer(
         .map(|value| value.split(':').next().unwrap_or(value).to_owned())
         .unwrap_or_default();
     let path = parts.uri.path().to_owned();
+    let query = parts.uri.query().unwrap_or_default().to_owned();
     let bytes = axum::body::to_bytes(Body::new(body), BODY_LIMIT)
         .await
         .unwrap_or_default();
@@ -236,6 +239,7 @@ async fn answer(
         host,
         method: parts.method,
         path,
+        query,
         headers: parts.headers,
         body: String::from_utf8_lossy(&bytes).into_owned(),
     });
