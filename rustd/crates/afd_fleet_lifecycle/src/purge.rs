@@ -10,18 +10,18 @@
 //!
 //! # What survives, and why
 //!
-//! `core.fleet_events` and `core.integration_grants` cascade. The memories,
-//! approval gates and sessions do not, so they are deleted here, in the same
-//! transaction as the parent.
+//! `core.fleet_events`, `core.integration_grants` and `memory.memory_entries`
+//! cascade from the fleet row. The approval gates and sessions do not, so they
+//! are deleted here, in the same transaction as the parent.
 //!
-//! # The memory rows need a role this path does not otherwise hold
+//! # The memory rows go with the fleet row
 //!
-//! `memory.memory_entries` sits behind `memory_runtime`, which `api_runtime`
-//! holds WITH INHERIT FALSE (schema/110) and must assume per transaction. The
-//! purge assumes it, deletes, and gives it straight back — see
-//! [`purge_children`]. Every other memory reader in the product already did
-//! this; the purge did not, and a login role carrying `pg_write_all_data` meant
-//! no deployment could report the difference.
+//! `fk_memory_entries_fleet_id` is `ON DELETE CASCADE` (schema/820), so the
+//! parent delete takes the fleet's memory and this crate runs no statement on
+//! memory at all; every one lives in `afd_memory`. `api_runtime` reaches memory
+//! directly only by assuming `memory_runtime` (schema/110), and the cascade
+//! needs no such step: `the_purge_itself_runs_as_api_runtime` purges a fleet
+//! holding memory through a pool with only `api_runtime`, and counts none left.
 //!
 //! `billing.usage_ledger` survives deliberately, and since schema/915 it
 //! survives WITH its attribution: `fleet_id` is no longer a foreign key, so a
@@ -143,40 +143,11 @@ impl Fleets {
     }
 }
 
-/// Logs a best-effort cleanup that did not happen.
-///
-/// `warn` rather than `error`: the purge SUCCEEDED — Postgres committed — and
-/// what is left behind is unreachable rather than harmful. Paging somebody for
-/// keys that age out on their own would train them to ignore the signal.
-/// Deletes the child rows, each under the role entitled to reach it.
-///
-/// Split out of [`Fleets::purge`] because the memory rows need a role change
-/// either side of them, and three statements with two role changes between them
-/// read as a sequence rather than as the loop this used to be.
-///
-/// The order is load-bearing twice over. Memory first, while the role is held;
-/// `core` after, once it is given back — [`sql::purge::RELEASE_ROLE`] says why
-/// the reverse deadlocks on a permission error rather than merely looking untidy.
+/// Deletes the child rows no foreign key cascades.
 ///
 /// Every statement shares [`CONTEXT_CHILDREN`], so a refusal names the purge
-/// step rather than the role, which is the level an operator reads at.
+/// step, which is the level an operator reads at.
 async fn purge_children(connection: &mut sqlx::PgConnection, fleet: &str) -> Result<()> {
-    sqlx::query(sql::purge::ASSUME_MEMORY_ROLE)
-        .execute(&mut *connection)
-        .await
-        .map_err(error::query(CONTEXT_CHILDREN))?;
-
-    sqlx::query(sql::purge::PURGE_MEMORY)
-        .bind(fleet)
-        .execute(&mut *connection)
-        .await
-        .map_err(error::query(CONTEXT_CHILDREN))?;
-
-    sqlx::query(sql::purge::RELEASE_ROLE)
-        .execute(&mut *connection)
-        .await
-        .map_err(error::query(CONTEXT_CHILDREN))?;
-
     for &statement in sql::purge::PURGE_CHILDREN {
         sqlx::query(statement)
             .bind(fleet)
@@ -187,6 +158,11 @@ async fn purge_children(connection: &mut sqlx::PgConnection, fleet: &str) -> Res
     Ok(())
 }
 
+/// Logs a best-effort cleanup that did not happen.
+///
+/// `warn` rather than `error`: the purge SUCCEEDED — Postgres committed — and
+/// what is left behind is unreachable rather than harmful. Paging somebody for
+/// keys that age out on their own would train them to ignore the signal.
 fn report(fleet: &str, failure: &afd_dragonfly::Error, event: &'static str) {
     let reason = failure.to_string();
     tracing::warn!(
