@@ -1,47 +1,17 @@
 //! One lease's outbound guard: what its tools send passes here first.
 
 use std::borrow::Cow;
-use std::sync::LazyLock;
 
-use afd_core::clock::{Clock, SystemClock};
-use afd_core::error_code;
-use afd_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
+use afd_core::clock::Clock;
+use afd_wire::policy::ExecutionPolicy;
 use afr_secrets::StaticSecrets;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
 use crate::admission::{Admission, Draft};
-use crate::error::{Error, Result, raise};
-use crate::mint::{Mint, Minted};
+use crate::error::{Result, raise};
+use crate::mint::Mint;
 use crate::transport::Outbound;
 use crate::vault::Vault;
-
-/// The policy a closed guard admits under: no host, no credential.
-static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPolicy {
-    network_policy: NetworkPolicy {
-        allow: Vec::new(),
-        read_only: true,
-        read_post_paths: Vec::new(),
-    },
-    tools: Vec::new(),
-    secrets_map: None,
-    mintable: Vec::new(),
-    provider: Cow::Borrowed(""),
-    api_key: Cow::Borrowed(""),
-    inference_host: Cow::Borrowed(""),
-    base_url: None,
-    repository_binding: None,
-    http_origin_policies: Vec::new(),
-    context: ContextBudget {
-        tool_window: 0,
-        memory_checkpoint_every: 0,
-        stage_chunk_threshold: 0.0,
-        model: Cow::Borrowed(""),
-        context_cap_tokens: 0,
-    },
-});
-
-/// What a closed guard answers a mint with.
-const CLOSED_MINT: &str = "this run mints no credential";
 
 /// What every call of one lease sends through.
 #[derive(Debug)]
@@ -66,12 +36,6 @@ impl<'run> Egress<'run> {
             admission: Admission::new(policy),
             vault: Vault::new(lease_id, mint, clock),
         }
-    }
-
-    /// A guard that admits nothing.
-    #[must_use]
-    pub fn closed() -> Egress<'static> {
-        Egress::new("", &CLOSED, &Closed, &SystemClock)
     }
 
     /// `draft`, admitted and with its credentials in place, ready for a
@@ -128,20 +92,6 @@ impl<'run> Egress<'run> {
             headers.append(header, sent);
         }
         Ok(headers)
-    }
-}
-
-/// The mint of a guard that admits nothing.
-#[derive(Debug)]
-struct Closed;
-
-#[async_trait::async_trait]
-impl Mint for Closed {
-    async fn mint(&self, _integration: &str) -> Result<Minted> {
-        Err(Error::mint_refused(
-            error_code::INVALID_REQUEST,
-            CLOSED_MINT,
-        ))
     }
 }
 

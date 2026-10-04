@@ -4,7 +4,6 @@
 use std::borrow::Cow;
 
 use afd_wire::memory::SharedMemory;
-use afr_egress::Egress;
 use afr_memory::{Hydrated, Seed};
 use serde_json::json;
 
@@ -36,7 +35,7 @@ async fn test_workspace_store_needs_publish() {
             publish: false,
             ..Seed::default()
         })),
-        Egress::closed(),
+        afr_egress::testing::closed(),
     );
 
     let refused = call(
@@ -65,7 +64,7 @@ async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
             publish: true,
             ..Seed::default()
         })),
-        Egress::closed(),
+        afr_egress::testing::closed(),
     );
 
     let stored = call(
@@ -88,7 +87,7 @@ async fn test_recall_names_the_writer_of_a_shared_entry() {
             shared: &shared,
             ..Seed::default()
         })),
-        Egress::closed(),
+        afr_egress::testing::closed(),
     );
 
     let recalled = call(
@@ -112,7 +111,7 @@ async fn test_forget_leaves_another_fleets_entry() {
             shared: &shared,
             ..Seed::default()
         })),
-        Egress::closed(),
+        afr_egress::testing::closed(),
     );
 
     let forgot = call(

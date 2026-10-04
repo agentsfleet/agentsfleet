@@ -4,15 +4,21 @@
 //! suite proves a lease mints once. [`RecordingTransport`] records what would
 //! have reached the wire, credentials in place, and answers what its closure
 //! says, so a suite proves both what was sent and that nothing was.
+//! [`closed`] is a guard that admits nothing, for a suite whose tools never
+//! send.
 
+use std::borrow::Cow;
 use std::fmt;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use afd_core::clock::{Clock, FixedClock, UnixMillis};
+use afd_core::clock::{Clock, FixedClock, SystemClock, UnixMillis};
 use afd_core::error_code::{self, ErrorCode};
+use afd_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
 use afr_secrets::Secret;
 
+use crate::egress::Egress;
 use crate::error::{Error, Result};
 use crate::mint::{Mint, Minted};
 use crate::transport::{Inbound, Outbound, Transport};
@@ -204,5 +210,47 @@ pub fn inbound(status: u16, body: &str) -> Inbound {
         content_type: None,
         body: body.to_owned(),
         truncated: false,
+    }
+}
+
+/// The policy a closed guard admits under: no host, no credential.
+static CLOSED: LazyLock<ExecutionPolicy<'static>> = LazyLock::new(|| ExecutionPolicy {
+    network_policy: NetworkPolicy {
+        allow: Vec::new(),
+        read_only: true,
+        read_post_paths: Vec::new(),
+    },
+    tools: Vec::new(),
+    secrets_map: None,
+    mintable: Vec::new(),
+    provider: Cow::Borrowed(""),
+    api_key: Cow::Borrowed(""),
+    inference_host: Cow::Borrowed(""),
+    base_url: None,
+    repository_binding: None,
+    http_origin_policies: Vec::new(),
+    context: ContextBudget {
+        tool_window: 0,
+        memory_checkpoint_every: 0,
+        stage_chunk_threshold: 0.0,
+        model: Cow::Borrowed(""),
+        context_cap_tokens: 0,
+    },
+});
+
+/// A guard that admits nothing and mints nothing.
+#[must_use]
+pub fn closed() -> Egress<'static> {
+    Egress::new("", &CLOSED, &Closed, &SystemClock)
+}
+
+/// The mint of a guard that admits nothing.
+#[derive(Debug)]
+struct Closed;
+
+#[async_trait::async_trait]
+impl Mint for Closed {
+    async fn mint(&self, _integration: &str) -> Result<Minted> {
+        Err(Error::mint_refused(MINT_REFUSED, NEVER))
     }
 }

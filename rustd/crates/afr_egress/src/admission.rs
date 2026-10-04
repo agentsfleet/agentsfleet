@@ -15,7 +15,7 @@ use std::net::IpAddr;
 
 use afd_core::net::is_blocked;
 use afd_wire::policy::{ExecutionPolicy, HttpOriginPolicy, Mintable, NetworkPolicy};
-use afr_secrets::{FIELD_HOST, StaticSecrets};
+use afr_secrets::{FIELD_HOST, FIELD_TOKEN, StaticSecrets};
 use reqwest::header::{AUTHORIZATION, HOST};
 use reqwest::{Method, Url};
 use url::Host;
@@ -40,9 +40,6 @@ const READS: [Method; 2] = [Method::GET, Method::HEAD];
 
 /// The only scheme sent.
 const HTTPS: &str = "https";
-
-/// The field a minted credential's token is named by.
-pub(crate) const FIELD_TOKEN: &str = "token";
 
 /// What a placeholder in the URL is called when it is refused.
 const IN_URL: &str = "a placeholder in the URL, or credentials in its userinfo";
