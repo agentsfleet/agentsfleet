@@ -9,7 +9,7 @@ page carries only what is specific to this repository.
 | Tier | Command | When |
 |---|---|---|
 | conform | `make harness-verify` | Section lane and boundary, after EXECUTE and before the rest. Any 🔴 returns to EXECUTE. |
-| lint | `make lint-all` | Boundary. Rust rides `lint-rustd` (rustfmt + Clippy, warnings are errors); script self-tests ride `lint-scripts`. |
+| lint | `make lint-all` | Boundary. Rust rides `lint-rustd` (rustfmt + Clippy, warnings are errors). |
 | unit | `make test-unit-all` | Boundary. The cargo workspace plus every TypeScript package coverage gate. |
 | version | `make check-version` | Boundary. `VERSION` against `build.zig.zon`, `cli/package.json` and both `rustd/Cargo.toml` sites. |
 | integration | `make test-integration-rustd` | Boundary. Live Postgres and Dragonfly via docker compose, schemas reset per run. `orly gate pr` skips it on a branch carrying no code. |

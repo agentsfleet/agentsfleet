@@ -11,8 +11,7 @@ name: test-unit-rustd
 # One job per `test-unit-rustd-<shard>` target in make/test-unit.mk, which says
 # what each shard holds. Three named jobs rather than a matrix, so every target
 # this file runs is spelled out and `make check-gh-actions-valid` can resolve
-# it; `scripts/rustd_unit_shards_test.py` fails when these jobs and the targets
-# `test-unit-rustd` runs drift apart.
+# it.
 #
 # `test-unit-rustd` is a required check on `main`, so the name stays the lane's
 # verdict: the last job below, green only when every job before it was.

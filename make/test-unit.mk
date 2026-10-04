@@ -10,21 +10,21 @@
 #
 #   runner       `afr_*` and `agentsfleet_runner`: the Rust runner
 #   daemon       `agentsfleetd`: the daemon binary and its suites
-#   daemon-libs  `afd_*`: the daemon's library crates, `afd_bench` included
+#   daemon-libs  every other crate: `afd_*`, `afd_bench` included
 #
 # Families by crate-name prefix rather than a list, so a crate added under
 # `crates/` joins its family's shard with no edit here; the directory name is
-# the crate name (`rustd/Cargo.toml`, M-CRATES-FLAT-FOLDER). A crate in no
-# family is in no shard, and `scripts/rustd_unit_shards_test.py` fails on it.
-# `afd_bench` is in `daemon-libs`: the coverage lane drops its LINES as a
-# measuring instrument, but its tests run here, as they always have.
+# the crate name (`rustd/Cargo.toml`, M-CRATES-FLAT-FOLDER). `daemon-libs` is
+# the rest of the workspace rather than a prefix, so a crate no family names
+# still runs. `afd_bench` is in `daemon-libs`: the coverage lane drops its
+# LINES as a measuring instrument, but its tests run here, as they always have.
 #
 # Every selection runs through `_rust_lane`, whose zero-tests guard fails a
 # shard that selects nothing.
 _rustd_family = $(sort $(notdir $(wildcard $(RUSTD_DIR)/crates/$(1)*)))
 _RUSTD_UNIT_RUNNER = $(call _rustd_family,afr_) agentsfleet_runner
 _RUSTD_UNIT_DAEMON = agentsfleetd
-_RUSTD_UNIT_DAEMON_LIBS = $(call _rustd_family,afd_)
+_RUSTD_UNIT_DAEMON_LIBS = $(filter-out $(_RUSTD_UNIT_RUNNER) $(_RUSTD_UNIT_DAEMON),$(call _rustd_family,))
 # --all-features for the same reason lint-rustd carries it: the `test-util`
 # mocks are how the failure paths a real datastore will not produce on demand
 # get reached at all, and a default-feature run silently skips them.

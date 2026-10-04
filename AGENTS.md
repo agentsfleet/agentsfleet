@@ -37,7 +37,7 @@ facts.
   `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never sets it.
 - **Make targets are the only repository claims — never hand-roll their
   equivalents.** CONFORM → `make harness-verify` · lint → `make lint-all`
-  (Rust lint rides `lint-rustd`, script self-tests ride `lint-scripts`) ·
+  (Rust lint rides `lint-rustd`) ·
   unit → `make test-unit-all` (cargo workspace + every TypeScript coverage
   gate) · integration → `make test-integration-rustd` (live Postgres + Dragonfly) ·
   version → `make check-version` · dry lanes → `make dry-app` /
