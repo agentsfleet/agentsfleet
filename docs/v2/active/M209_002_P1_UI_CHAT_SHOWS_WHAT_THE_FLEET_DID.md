@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B2 — after M209_001 and M209_003 are on `main`; the milestone's follow-up Pull Request
 **Branch:** feat/m209-002-chat-tool-calls
 **Baseline revision:** b0138d7b3124b871668f07e2361dba923bc774d2
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** `unit=9824 integration=799` — `make test-unit-all` (Rust 3745 + app 3512 + CLI 1780 + design system 645 + website 142, exit 0) and `make test-integration-rustd` (799 passed / 2 failed in the shared suite, exit 2: two `daemon_suite` timing failures on `main` that pass on this branch) at `b0138d7b3` in a detached worktree. Final: `unit=9905 integration=803` (app 3591, design system 647; 801 shared + 2 exclusive), both exit 0.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M209_002-b0138d7b3.md`
 **Depends on:** M209_001 (frame outcome, saved trace), M209_003 (full call read). Production rows need the Rust runner that emits them (`docs/architecture/runner_execution.md`); every test here drives fixture frames
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from a source trace on `main` at `93e96897a`; assistant-ui read from the installed `@assistant-ui/react` 0.15.22 / core 0.3.21; Codex TUI rules read at `~/Projects/oss/rs/codex` `2e5fea64e`
 **Canonical architecture:** `docs/architecture/user_flow.md` §chat surface; `docs/architecture/runner_fleet.md` §Live activity
@@ -74,6 +74,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/package.json`, `bun.lock` | EDIT | `@assistant-ui/react` ^0.15.23 (latest), `diff` ^9 for edit diffs |
 | `ui/packages/design-system/package.json`, `ui/packages/website/package.json`, `cli/package.json`, `cli/bun.lock`, `cli/src/**`, `ui/packages/website/src/components/Footer.tsx` | EDIT | Every package to latest; effect 4.0.0 moves the CLI module to `effect/cli`; oxlint 1.86's purity rule moves the footer's year out of render |
 | `ui/packages/app/components/domain/fleetMessageRenderers.tsx` | EDIT | The operator row passes its `createdAt` to `FleetMessageRow` |
+| `playbooks/operations/acceptance/baselines/M209_002-b0138d7b3.md` | CREATE | The baseline report the `Baseline evidence:` header cites |
 | `ui/packages/app/components/domain/tool-call-copy.test.ts`, `ui/packages/app/components/domain/tool-call-diff.test.ts`, `ui/packages/app/components/domain/tool-call-explore.test.ts`, `ui/packages/app/components/domain/FleetExplored.test.tsx`, `ui/packages/app/components/domain/FleetToolOutputDialog.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-tool-trace.test.ts`, `ui/packages/app/components/domain/FleetReplyFigures.test.tsx`, `ui/packages/app/lib/events/run-figures-format.test.ts` | CREATE | Unit proofs |
 
 ## Applicable Rules
@@ -130,7 +131,7 @@ Bullet `•`: shimmer while running (static dim under reduced motion), `text-suc
 - **Dimension 3.4** — Eight output lines render three plus "+5 lines" → Test `test_tool_cell_previews_three_rows` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
 - **Dimension 3.5** — Empty output reads `(no output)`; no outcome reads `(output unavailable)` → Test `test_tool_cell_names_empty_and_unknown_output` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
 - **Dimension 3.6** — The shimmer stops under `prefers-reduced-motion` → Test `test_running_bullet_respects_reduced_motion` — DONE (`ui/packages/design-system/src/tokens.css.test.ts`)
-- **Dimension 3.7** — A live run in the real page shows a shimmering cell turning into a green "Requested GET …" with its output → Test `test_live_tool_cell_settles_green`
+- **Dimension 3.7** — A live run in the real page shows a shimmering cell turning into a green "Requested GET …" with its output → Test `test_live_tool_cell_settles_green` — DONE (`ui/packages/app/tests/e2e/acceptance/fleet-reply-parts.spec.ts`)
 - **Dimension 3.8** — A four-line command renders `Ran` with its first line, two rail lines and `… +1 lines`; exit code 2 adds a red ` (exit 2)` → Test `test_command_cell_renders_like_codex` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
 
 ### §4 — Reads fold under Explored

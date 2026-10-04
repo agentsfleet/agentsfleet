@@ -153,7 +153,7 @@ export function keptRows(outcome: ToolResult | undefined): NumberedRow[] {
   const tail = linesOf(outcome?.outputTail ?? "");
   const rows: NumberedRow[] = head.map((text, index) => ({ number: index + 1, text }));
   const count = outcome?.outputLineCount;
-  if (count === undefined || tail.length === 0 || count <= head.length) return rows;
+  if (count === undefined || tail.length === 0) return rows;
   const firstTail = count - tail.length + 1;
   const firstShown = Math.max(firstTail, head.length + 1);
   if (firstShown > head.length + 1) rows.push({ number: null, text: "" });

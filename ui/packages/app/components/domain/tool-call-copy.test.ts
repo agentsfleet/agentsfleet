@@ -140,5 +140,7 @@ describe("argument helpers", () => {
   it("shows a sandbox path relative to the workspace", () => {
     expect(workspacePath(PATH)).toBe(SHOWN_PATH);
     expect(workspacePath("/etc/hosts")).toBe("/etc/hosts");
+    // HTTP output ends its lines in CRLF; a row must not carry the carriage return.
+    expect(outputPreview("HTTP/1.1 200 OK\r\nok\r\n", 2, TOOL_CALL_STATUS.SUCCEEDED).rows).toEqual(["HTTP/1.1 200 OK", "ok"]);
   });
 });
