@@ -13,8 +13,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use afd_core::clock::saturating_millis;
+use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
 use bytes::{Bytes, BytesMut};
 use futures_util::{Stream, StreamExt as _, TryStreamExt as _};
+use reqwest::Url;
 use rig_core::http_client::{
     self as rig_http, BoxedStream, HttpClientExt, LazyBody, MultipartForm, Request, Response,
     StreamingResponse,
@@ -58,6 +60,20 @@ struct Whose {
     provider: Box<str>,
 }
 
+/// What a log line names for `provider`: a registry name as it is, a `custom:`
+/// endpoint by its host alone, so no path, query or userinfo reaches the
+/// journal.
+fn logged(provider: &str) -> Box<str> {
+    provider
+        .strip_prefix(CUSTOM_PROVIDER_PREFIX)
+        .and_then(|base| Url::parse(base).ok())
+        .and_then(|base| {
+            base.host_str()
+                .map(|host| format!("{CUSTOM_PROVIDER_PREFIX}{host}"))
+        })
+        .map_or_else(|| provider.into(), String::into_boxed_str)
+}
+
 impl fmt::Debug for Transport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Transport")
@@ -72,7 +88,7 @@ impl Transport {
     pub(crate) fn new(client: reqwest::Client, lease_id: &str, provider: &str) -> Self {
         let whose = Whose {
             lease_id: lease_id.into(),
-            provider: provider.into(),
+            provider: logged(provider),
         };
         Self {
             client,

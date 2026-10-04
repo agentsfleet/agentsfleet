@@ -118,11 +118,13 @@ impl Registry {
     }
 
     /// The route `provider` names: a registered name or alias, or an `https`
-    /// `custom:<url>` with a host.
+    /// `custom:<url>` with a host and nothing a journal must not carry: no
+    /// userinfo, no query, no fragment.
     ///
     /// # Errors
     /// The provider is neither, or its endpoint is an address this runner
-    /// never dials.
+    /// never dials. A `custom:` URL carrying userinfo or a query is refused
+    /// as unhosted and named without them.
     pub(crate) fn route(&self, provider: &str) -> Result<Route> {
         if let Some(route) = self.routes.get(provider) {
             return Ok(route.clone());
@@ -132,6 +134,10 @@ impl Registry {
             .and_then(|base| Url::parse(base).ok())
             .filter(|base| base.scheme() == HTTPS && base.host_str().is_some())
             .ok_or_else(|| raise::unhosted(provider))?;
+        if carries_secrets(&base) {
+            let shown = format!("{CUSTOM_PROVIDER_PREFIX}{}", bare(base));
+            return Err(raise::unhosted(&shown));
+        }
         if private_literal(&base) {
             return Err(raise::blocked_endpoint(provider));
         }
@@ -141,6 +147,28 @@ impl Registry {
             dialect: None,
         })
     }
+}
+
+/// Whether `base` carries userinfo, a query or a fragment: none belongs to an
+/// endpoint rig joins the chat path onto, and any may be a credential that a
+/// log line or a report must never repeat.
+fn carries_secrets(base: &Url) -> bool {
+    !base.username().is_empty()
+        || base.password().is_some()
+        || base.query().is_some()
+        || base.fragment().is_some()
+}
+
+/// `base` with its userinfo, query and fragment removed: what a refusal of it
+/// may name.
+fn bare(mut base: Url) -> Url {
+    // Both fail only for a URL with no authority, which the https-with-host
+    // filter refused before this.
+    base.set_username("").unwrap_or_default();
+    base.set_password(None).unwrap_or_default();
+    base.set_query(None);
+    base.set_fragment(None);
+    base
 }
 
 /// Whether `base` names a private, loopback or reserved address literal. A

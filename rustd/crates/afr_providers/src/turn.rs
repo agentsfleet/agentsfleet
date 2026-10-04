@@ -30,7 +30,7 @@ use rig_core::message::{AssistantContent, CallId};
 use rig_core::operation::Completion;
 use rig_core::streaming::{CompletionStream, Item, StreamEvent};
 
-use crate::error::{Result, raise};
+use crate::error::{Error, Result, raise};
 use crate::provider::{Call, Chunk, End, Provider, Replay, Request, Usage};
 use crate::registry::Wire;
 use crate::request;
@@ -46,6 +46,8 @@ pub(crate) struct Turns {
     model: DynModel<Completion>,
     wire: Wire,
     lease_id: Box<str>,
+    /// The provider as the policy spells it, named when its endpoint is refused.
+    provider: Box<str>,
     unnamed: AtomicU64,
 }
 
@@ -59,13 +61,30 @@ impl fmt::Debug for Turns {
 }
 
 impl Turns {
-    /// Lease `lease_id`'s provider, speaking `wire` through `model`.
-    pub(crate) fn new(model: DynModel<Completion>, wire: Wire, lease_id: &str) -> Self {
+    /// Lease `lease_id`'s provider, `provider` as the policy spells it,
+    /// speaking `wire` through `model`.
+    pub(crate) fn new(
+        model: DynModel<Completion>,
+        wire: Wire,
+        lease_id: &str,
+        provider: &str,
+    ) -> Self {
         Self {
             model,
             wire,
             lease_id: lease_id.into(),
+            provider: provider.into(),
             unnamed: AtomicU64::new(0),
+        }
+    }
+
+    /// `failure` as the kind a report names. An endpoint the client's guard
+    /// refused is the policy's error, named as such, never a lost connection.
+    fn failed(&self, failure: ProviderError) -> Error {
+        if raise::blocked(&failure) {
+            raise::blocked_endpoint(&self.provider)
+        } else {
+            raise::provider(failure)
         }
     }
 
@@ -92,7 +111,9 @@ impl Turns {
     /// The conversation cannot be sent, or rig could not start the reply.
     fn open(&self, request: &Request<'_>) -> Result<CompletionStream> {
         let built = request::request(self.wire, request)?;
-        self.model.stream(built).map_err(raise::provider)
+        self.model
+            .stream(built)
+            .map_err(|failure| self.failed(failure))
     }
 
     /// Logs a turn opened again after `failure`.
@@ -191,10 +212,10 @@ impl Reading {
                 turns.reopened(self.attempt, &failure);
                 Step::Continue(Pass::Opening(self.attempt + 1))
             }
-            Some(Err(failure)) => Step::Break((Err(raise::provider(failure)), Pass::Done)),
+            Some(Err(failure)) => Step::Break((Err(turns.failed(failure)), Pass::Done)),
             None => match self.stream.finish().await {
                 Ok(response) => Step::Continue(Pass::Ending(ending(response))),
-                Err(failure) => Step::Break((Err(raise::provider(failure)), Pass::Done)),
+                Err(failure) => Step::Break((Err(turns.failed(failure)), Pass::Done)),
             },
         }
     }
@@ -228,11 +249,13 @@ fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
 
 /// Whether a failure mid-stream may pass on a second opening: one the
 /// provider sent after its reply began, with no status of its own. A reply
-/// the transport ended at its cap is not one: the next would be as long.
+/// the transport ended at its cap is not one: the next would be as long. Nor
+/// is an endpoint the guard refused: its name resolves the same way again.
 fn reopens(failure: &ProviderError) -> bool {
     failure.provider_response_status().is_none()
         && failure.is_retryable()
         && !raise::oversize(failure)
+        && !raise::blocked(failure)
 }
 
 /// The chunks a finished turn ends on: what it spent, then its end.

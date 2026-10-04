@@ -3,8 +3,9 @@
 //! `backon` runs the loop, as it does for the supervisor's calls to the
 //! daemon; what is decided here is which answers are worth another send and how
 //! long to wait. A 429 or a 5xx is retried, honouring `Retry-After` in either
-//! of its forms, and so is a send that could not connect or timed out; a 4xx is
-//! a refusal no retry changes (RULE ECL). Nothing is retried once a stream has
+//! of its forms, and so is a send that could not connect or timed out, unless
+//! the client's own guard refused the name: that resolves the same way every
+//! time. A 4xx is a refusal no retry changes (RULE ECL). Nothing is retried once a stream has
 //! started, since its chunks have already gone out live. A wait the provider
 //! asks for past [`WAIT_CEILING`] is not waited: the lease would spend its time
 //! asleep, so the turn ends with the status instead.
@@ -60,7 +61,10 @@ impl Unanswered {
                 let status = response.status();
                 status == StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
             }
-            Self::Transport(failure) => failure.is_connect() || failure.is_timeout(),
+            Self::Transport(failure) => {
+                (failure.is_connect() || failure.is_timeout())
+                    && !afr_egress::blocked_address(failure)
+            }
         }
     }
 

@@ -248,7 +248,7 @@ pub struct MemoryRecallRequest<'a> {
     pub fencing_token: u64,
     /// Text to find in a key or content, ignoring case; empty matches all.
     #[serde(borrow)]
-    #[garde(length(bytes, max = MAX_CONTENT_LEN))]
+    #[garde(length(bytes, max = MAX_CONTENT_LEN), custom(nul_free))]
     pub query: Cow<'a, str>,
     /// The most entries of each kind to answer with.
     #[cfg_attr(feature = "openapi", schema(minimum = 1, maximum = 50))]

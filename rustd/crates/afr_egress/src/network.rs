@@ -136,7 +136,7 @@ fn origin_of(request: &Url, target: &str) -> Option<String> {
 
 /// The refusal a failed send answers with.
 fn unreached(host: &str, failed: &reqwest::Error) -> Error {
-    if blocked(failed) {
+    if blocked_address(failed) {
         raise::address_not_allowed(host)
     } else if failed.is_timeout() {
         raise::upstream_unreachable(host, TIMED_OUT)
@@ -146,7 +146,10 @@ fn unreached(host: &str, failed: &reqwest::Error) -> Error {
 }
 
 /// Whether the guard refused the name somewhere in `failed`'s causes.
-fn blocked(failed: &(dyn StdError + 'static)) -> bool {
+///
+/// The endpoint resolves to an address this runner never reaches, which no
+/// second send changes; the model providers' retry reads it to stop retrying.
+pub fn blocked_address(failed: &(dyn StdError + 'static)) -> bool {
     std::iter::successors(Some(failed), |&error| error.source())
         .any(<dyn StdError>::is::<BlockedAddress>)
 }
