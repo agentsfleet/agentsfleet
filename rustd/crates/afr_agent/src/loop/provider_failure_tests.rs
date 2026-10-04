@@ -55,12 +55,16 @@ async fn a_lost_provider_connection_ends_the_run_as_transport_loss() {
 }
 
 #[tokio::test]
-async fn a_provider_that_cannot_be_reached_is_an_engine_error() {
+async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
     let engine = super::Loop::new(afr_tools::Catalog::new(Vec::new()), Unreachable);
     let lease = lease(&[], unbounded());
     let frames = Frames::default();
     let sink = frames.sink();
 
+    assert!(
+        engine.admit(&lease.policy).is_ok(),
+        "admission never dials the model; only the run connects"
+    );
     let failure = engine
         .run(AgentRun {
             lease: &lease,

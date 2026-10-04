@@ -12,6 +12,8 @@ use crate::fixture::{lease, unbounded};
 
 /// The bound repository, as the `ci-repairer` fixture names it.
 const REPOSITORY: &str = "agentsfleet/linkwarden";
+/// A repository the binding does not name.
+const ELSEWHERE: &str = "agentsfleet/elsewhere";
 /// The branch the daemon named for this lease.
 const BRANCH: &str = "agentsfleet-repair/run-41";
 /// The binding's base.
@@ -105,7 +107,7 @@ fn test_prompt_carries_trusted_repair_context() {
 
 #[test]
 fn should_render_no_repair_context_without_a_ref_rule_for_the_bound_repository() {
-    for rules in [Vec::new(), vec![locked_ref("agentsfleet/elsewhere")]] {
+    for rules in [Vec::new(), vec![locked_ref(ELSEWHERE)]] {
         let prompt = Prompt::new(&bound(RepositoryAccess::Write, rules));
 
         assert!(!prompt.instructions.contains(REPAIR_HEADING));
@@ -118,4 +120,20 @@ fn should_render_the_repair_context_alone_without_instructions() {
     lease.instructions = Cow::Borrowed("");
 
     assert!(Prompt::new(&lease).instructions.starts_with(REPAIR_HEADING));
+}
+
+/// The branch a repair may push names one repository, so a write binding naming
+/// none or several authorises no repair, even with the ref rule locked.
+#[test]
+fn should_render_no_repair_context_for_a_write_binding_not_naming_one_repository() {
+    for repositories in [Vec::new(), vec![REPOSITORY.into(), ELSEWHERE.into()]] {
+        let mut lease = bound(RepositoryAccess::Write, vec![locked_ref(REPOSITORY)]);
+        lease.policy.repository_binding = Some(RepositoryBinding {
+            repositories,
+            access: RepositoryAccess::Write,
+            base_branch: BASE.into(),
+        });
+
+        assert!(!Prompt::new(&lease).instructions.contains(REPAIR_HEADING));
+    }
 }

@@ -287,6 +287,23 @@ fn should_refuse_userinfo_carrying_only_a_name_or_only_a_password() {
     }
 }
 
+// A tool may build a body holding a credential it read for itself, so a
+// draft's debug output names its method and placement and nothing it carries.
+#[test]
+fn should_debug_a_draft_as_its_method_and_placement_alone() {
+    let drafted = draft(
+        "POST",
+        "https://api.github.com/repos?sig=url-secret",
+        &[("authorization", "Bearer header-secret")],
+        Some("body-secret"),
+    );
+
+    assert_eq!(
+        format!("{drafted:?}"),
+        "Draft { method: \"POST\", placement: Authorization, .. }"
+    );
+}
+
 /// What `what`, set where no placeholder may stand, is refused with.
 pub(super) fn misplaced(what: &str) -> Shown {
     shown(&raise::placement_not_allowed(what))

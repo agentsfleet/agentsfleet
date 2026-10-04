@@ -11,14 +11,14 @@ use std::time::Duration;
 use afd_core::test_util::trace::Capture;
 use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 use afr_egress::testing::{CountingMint, RecordingTransport};
-use afr_providers::Message;
+use afr_providers::{Chunk, Message};
 use afr_tools::Catalog;
 use afr_tools::catalog::{MEMORY_FORGET, MEMORY_LIST, MEMORY_RECALL, MEMORY_STORE};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::{EVENT_CHECKPOINT_FAILED, Loop};
-use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter};
+use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter, RunOutput};
 use crate::fixture::{Frames, Script, call, lease, say, unbounded};
 use crate::testing::{Discard, Recording};
 
@@ -189,15 +189,22 @@ impl Checkpoint for Refused {
     }
 }
 
-#[tokio::test]
-async fn a_refused_checkpoint_is_logged_under_its_code_and_the_run_goes_on() {
-    let capture = Capture::install();
-    let store = call(
+/// The key of the one note the checkpoint tests store.
+const HELD: &str = "held";
+
+/// A model call storing the note under [`HELD`].
+fn store_held() -> Chunk {
+    call(
         "store",
         MEMORY_STORE.name(),
-        json!({"key": "held", "content": "x"}),
-    );
-    let script = Script::new([vec![store], vec![say("answered")]]);
+        json!({"key": HELD, "content": "x"}),
+    )
+}
+
+/// Runs a lease that stores one entry and then answers, checkpointing after
+/// every call into `checkpoint`.
+async fn store_then_answer(checkpoint: &dyn Checkpoint) -> RunOutput {
+    let script = Script::new([vec![store_held()], vec![say("answered")]]);
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
     let lease = lease(&[MEMORY_STORE.name()], every_call());
@@ -210,7 +217,7 @@ async fn a_refused_checkpoint_is_logged_under_its_code_and_the_run_goes_on() {
             memory: afr_memory::Seed::default(),
             executor: None,
             mint: &CountingMint::never(),
-            checkpoint: &Refused,
+            checkpoint,
             events: &sink,
             meter: &Meter::default(),
             stop: &CancellationToken::new(),
@@ -218,6 +225,14 @@ async fn a_refused_checkpoint_is_logged_under_its_code_and_the_run_goes_on() {
         .await
         .unwrap();
     frames.taken();
+    output
+}
+
+#[tokio::test]
+async fn a_refused_checkpoint_is_logged_under_its_code_and_the_run_goes_on() {
+    let capture = Capture::install();
+
+    let output = store_then_answer(&Refused).await;
 
     assert_eq!(output.result.content, "answered");
     let failed = capture.only(EVENT_CHECKPOINT_FAILED);
@@ -227,14 +242,31 @@ async fn a_refused_checkpoint_is_logged_under_its_code_and_the_run_goes_on() {
     assert_eq!(failed.field("lease_id"), Some("lease-1"));
 }
 
+#[tokio::test]
+async fn a_discarded_checkpoint_fails_nothing_and_leaves_the_final_push_whole() {
+    let capture = Capture::install();
+
+    let output = store_then_answer(&Discard).await;
+
+    assert_eq!(output.result.content, "answered");
+    assert!(
+        capture
+            .events()
+            .iter()
+            .all(|event| event.field("event") != Some(EVENT_CHECKPOINT_FAILED)),
+        "a discarded checkpoint is not a failed one"
+    );
+    let pushed: Vec<_> = output
+        .memory
+        .iter()
+        .map(|delta| delta.key.as_ref())
+        .collect();
+    assert_eq!(pushed, [HELD], "the final push still carries it");
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
-    let store = call(
-        "store",
-        MEMORY_STORE.name(),
-        json!({"key": "held", "content": "x"}),
-    );
-    let script = Script::new([vec![store], vec![say("never reached")]]);
+    let script = Script::new([vec![store_held()], vec![say("never reached")]]);
     let (transport, _sent) = RecordingTransport::replying(200, "");
     let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
     let lease = lease(&[MEMORY_STORE.name()], every_call());

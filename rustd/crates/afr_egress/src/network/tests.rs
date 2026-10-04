@@ -3,13 +3,42 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
+use std::io::{Read as _, Write as _};
+use std::net::{SocketAddr, TcpListener};
+use std::time::Duration;
+
 use reqwest::header::HeaderMap;
-use reqwest::{Method, Url};
+use reqwest::{Client, Method, Url};
 
 use super::{BlockedAddress, Capped, Network, guarded_lookup, origin_of};
 use crate::error::raise;
 use crate::fixture::shown;
 use crate::transport::{Outbound, Transport};
+
+/// How long a read that should return at once is given before the test fails.
+const PROMPTLY: Duration = Duration::from_secs(5);
+/// A loopback listener on whatever port the system hands out.
+const ANY_LOOPBACK_PORT: &str = "127.0.0.1:0";
+
+/// A plain-HTTP server on a loopback port that reads one request's head,
+/// answers it with `reply`, and holds the connection open until the client
+/// closes it.
+fn answering_and_holding(reply: &'static [u8]) -> SocketAddr {
+    let listener = TcpListener::bind(ANY_LOOPBACK_PORT).unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut head = Vec::new();
+        let mut byte = [0_u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            stream.read_exact(&mut byte).unwrap();
+            head.extend_from_slice(&byte);
+        }
+        stream.write_all(reply).unwrap();
+        let _closed = std::io::copy(&mut stream, &mut std::io::sink());
+    });
+    address
+}
 
 #[test]
 fn should_keep_a_body_whole_under_the_cap_and_cut_it_past() {
@@ -96,7 +125,9 @@ async fn should_answer_unreachable_when_the_name_does_not_resolve() {
 // it out at once.
 #[tokio::test(start_paused = true)]
 async fn should_answer_timed_out_when_the_host_never_answers() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(ANY_LOOPBACK_PORT)
+        .await
+        .unwrap();
     let address = listener.local_addr().unwrap();
     tokio::spawn(async move {
         let _held = listener.accept().await;
@@ -120,4 +151,60 @@ async fn should_answer_timed_out_when_the_host_never_answers() {
     let host = address.ip().to_string();
     let timed_out = raise::upstream_unreachable(&host, super::TIMED_OUT);
     assert_eq!(refused, Some(shown(&timed_out)));
+}
+
+// A chunked body whose last chunk never comes: only the cap ends the read, so
+// a read that went on past it would wait here until the test gave up.
+#[tokio::test]
+async fn should_stop_reading_a_body_once_it_passes_the_cap() {
+    let address = answering_and_holding(
+        b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n8\r\nabcdefgh\r\n",
+    );
+    let response = Client::new()
+        .get(format!("http://{address}/"))
+        .send()
+        .await
+        .unwrap();
+
+    let read = tokio::time::timeout(PROMPTLY, Capped::read(response, 6)).await;
+
+    let read = read.unwrap().unwrap();
+    assert_eq!(
+        (read.bytes.as_slice(), read.truncated),
+        (b"abcdef".as_slice(), true)
+    );
+}
+
+// The client here is plain, without the guard or `https_only`, so the loopback
+// server answers: what is under test is how a body that is not UTF-8 is handed
+// to the tool, after the guard has already let the request go.
+#[tokio::test]
+async fn should_hand_back_a_body_that_is_not_utf8_with_its_bad_bytes_replaced() {
+    let address = answering_and_holding(b"HTTP/1.1 200 OK\r\ncontent-length: 3\r\n\r\nok\xff");
+    let network = Network {
+        client: Client::new(),
+    };
+    let outbound = Outbound {
+        method: Method::GET,
+        url: Url::parse(&format!("http://{address}/")).unwrap(),
+        headers: HeaderMap::new(),
+        body: None,
+    };
+
+    let inbound = network.send(outbound).await.unwrap();
+
+    assert_eq!(
+        (inbound.status, inbound.body.as_str(), inbound.truncated),
+        (200, "ok\u{fffd}", false)
+    );
+}
+
+#[tokio::test]
+async fn should_answer_every_address_of_a_host_none_of_whose_addresses_is_blocked() {
+    let resolved = guarded_lookup("1.1.1.1".to_owned()).await.unwrap();
+
+    assert_eq!(
+        resolved.collect::<Vec<_>>(),
+        [SocketAddr::from(([1, 1, 1, 1], 0))]
+    );
 }

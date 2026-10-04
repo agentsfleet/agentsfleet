@@ -134,3 +134,29 @@ async fn test_forget_leaves_another_fleets_entry() {
         recalled.text
     );
 }
+
+#[tokio::test]
+async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
+    let mut lease = Lease::new(
+        Box::new(Hydrated::new(Seed {
+            publish: true,
+            ..Seed::default()
+        })),
+        afr_egress::testing::closed(),
+    );
+
+    let stored = call(
+        Typed::boxed(MemoryStore).as_ref(),
+        &mut lease,
+        json!({"key": "deploy_target", "content": "iad", "visibility": "fleet"}),
+    )
+    .await;
+
+    assert_eq!(stored.error_code, None, "{}", stored.text);
+    let pushed = lease.memory.into_pending();
+    assert_eq!(pushed.len(), 1);
+    assert!(
+        pushed.iter().all(|delta| !delta.visibility.is_workspace()),
+        "the grant to publish is not a choice to"
+    );
+}

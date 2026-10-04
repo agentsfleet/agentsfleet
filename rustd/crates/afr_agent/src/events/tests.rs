@@ -1,3 +1,8 @@
+#![expect(
+    clippy::panic,
+    reason = "test module: one test fails for its own reason to prove the frame guard stands down"
+)]
+
 use std::time::Instant;
 
 use afd_wire::activity::{ActivityFrame, StreamTextKind};
@@ -62,4 +67,21 @@ fn the_frame_guard_fails_a_test_that_leaves_a_frame_unread() {
     let mut live = Live::new(&sink, &scrub, Instant::now());
 
     live.text(StreamTextKind::Answer, "said and never asserted");
+}
+
+/// What a test failing for its own reason panics with.
+const OWN_FAILURE: &str = "the test's own assertion failed";
+
+/// The guard stands down while a test is already failing: a second panic
+/// during the unwind would abort the whole suite and hide the first.
+#[test]
+#[should_panic(expected = "the test's own assertion failed")]
+fn the_frame_guard_stands_down_while_a_test_is_already_failing() {
+    let scrub = scrub();
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let mut live = Live::new(&sink, &scrub, Instant::now());
+
+    live.text(StreamTextKind::Answer, "said and never asserted");
+    std::panic::panic_any(OWN_FAILURE);
 }

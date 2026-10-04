@@ -220,6 +220,14 @@ pub(crate) const CHAT_PROVIDER: &str = "fake-chat";
 /// The loop hosting a stub plan tool, with each wire's provider served by
 /// `fake`.
 pub(crate) fn engine(fake: &Fake) -> Loop {
+    Loop::new(
+        Catalog::new(vec![Stub::boxed(&UPDATE_PLAN)]),
+        connector(fake),
+    )
+}
+
+/// The connector reaching each wire's provider at `fake`.
+pub(crate) fn connector(fake: &Fake) -> Connector {
     let entry = |name: &str, wire, base_url: String| ProviderSpec {
         name: name.to_owned(),
         aliases: Vec::new(),
@@ -233,8 +241,7 @@ pub(crate) fn engine(fake: &Fake) -> Loop {
         entry(CHAT_PROVIDER, Wire::Chat, format!("{}/v1", fake.base)),
     ])
     .unwrap();
-    let connector = Connector::new(registry).unwrap();
-    Loop::new(Catalog::new(vec![Stub::boxed(&UPDATE_PLAN)]), connector)
+    Connector::new(registry).unwrap()
 }
 
 /// Runs `lease` on `engine` to its end, with every frame it sent.
