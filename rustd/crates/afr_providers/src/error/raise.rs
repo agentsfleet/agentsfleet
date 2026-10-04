@@ -101,6 +101,16 @@ pub(crate) fn provider(failure: ProviderError) -> Error {
     }
 }
 
+/// Whether the client's guard refused `failure`'s endpoint: its name resolves
+/// to an address this runner never reaches, which no second send changes.
+pub(crate) fn blocked(failure: &ProviderError) -> bool {
+    let ProviderError::Http(transport) = failure else {
+        return false;
+    };
+    let first: &(dyn StdError + 'static) = &**transport;
+    afr_egress::blocked_address(first)
+}
+
 /// Whether the transport ended `failure`'s read for passing its cap. rig
 /// keeps the transport's error behind its own and names no source for it, so
 /// the walk starts there.

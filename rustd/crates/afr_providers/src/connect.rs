@@ -87,7 +87,12 @@ impl Connect for Connector {
         let lease_id = lease.lease_id.as_ref();
         let transport = Transport::new(self.client.clone(), lease_id, &policy.provider);
         let model = wire::model(&route, &policy.api_key, &policy.context.model, transport);
-        Ok(Box::new(Turns::new(model, route.wire, lease_id)))
+        Ok(Box::new(Turns::new(
+            model,
+            route.wire,
+            lease_id,
+            &policy.provider,
+        )))
     }
 }
 

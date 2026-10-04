@@ -168,6 +168,32 @@ fn should_keep_a_vendor_whose_dialect_drops_tools_a_plain_gateway() {
     assert_eq!(perplexity.dialect, None);
 }
 
+/// A URL's userinfo, query or fragment may be a credential, and a refusal's
+/// detail reaches the report and the journal, so the refusal names the
+/// endpoint without them.
+#[test]
+fn should_refuse_a_custom_url_carrying_userinfo_or_a_query_and_name_it_bare() {
+    let registry = Registry::new([]).unwrap();
+    let custom = |base: &str| format!("{CUSTOM_PROVIDER_PREFIX}{base}");
+
+    for (secret, leaked) in [
+        ("https://user:s3cret@vllm.corp/v1", "s3cret"),
+        ("https://t0ken@vllm.corp/v1", "t0ken"),
+        ("https://vllm.corp/v1?key=k3y", "k3y"),
+        ("https://vllm.corp/v1#fr4g", "fr4g"),
+    ] {
+        let refused = registry.route(&custom(secret)).unwrap_err();
+
+        assert_eq!(
+            refused.unhosted_provider(),
+            Some(custom(CUSTOM_BASE).as_str()),
+            "{secret}"
+        );
+        let detail = refused.detail();
+        assert!(!detail.contains(leaked), "{secret}: {detail}");
+    }
+}
+
 #[test]
 fn should_refuse_a_custom_endpoint_at_a_private_address_literal() {
     let registry = Registry::builtin().unwrap();

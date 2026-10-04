@@ -9,8 +9,8 @@
 use std::borrow::Cow;
 
 use afd_wire::memory::{
-    MemoryCaptureResponse, MemoryDelta, MemoryHydrateResponse, PINNED_CATEGORY, RECALL_LIMIT_MAX,
-    SharedMemory, Visibility,
+    MemoryCaptureResponse, MemoryDelta, MemoryHydrateResponse, MemoryRecallRequest,
+    PINNED_CATEGORY, RECALL_LIMIT_MAX, SharedMemory, Visibility,
 };
 use garde::Validate as _;
 
@@ -117,6 +117,30 @@ fn test_the_published_recall_limit_is_the_proved_range() {
     );
 }
 
+/// A recall query holding NUL is malformed, named on `query`: the search runs
+/// as a Postgres parameter, where NUL fails the statement instead of matching
+/// nothing, and a runner should hear "malformed", not "datastore error".
+#[test]
+fn test_a_recall_query_holding_nul_is_malformed() {
+    let clean = MemoryRecallRequest {
+        lease_id: Cow::Borrowed("lease-1"),
+        fencing_token: 1,
+        query: Cow::Borrowed("deploy"),
+        limit: 1,
+    };
+    clean.validate().unwrap();
+
+    let report = MemoryRecallRequest {
+        query: Cow::Borrowed("dep\0loy"),
+        ..clean
+    }
+    .validate()
+    .unwrap_err();
+
+    let paths: Vec<String> = report.iter().map(|(path, _)| path.to_string()).collect();
+    assert_eq!(paths, ["query"]);
+}
+
 /// A delta holding NUL in any text field is malformed, and the report names
 /// that field: Postgres cannot store NUL in `text`, so one such delta would
 /// fail the whole push's statement instead of being skipped as malformed.
@@ -158,4 +182,26 @@ fn test_a_delta_holding_nul_is_malformed_on_every_text_field() {
         let paths: Vec<String> = report.iter().map(|(path, _)| path.to_string()).collect();
         assert_eq!(paths, [field], "{field}");
     }
+}
+
+/// A shared entry read out of a reply outlives the reply's bytes with every
+/// field in its own place: the text it borrowed is dropped before the entry
+/// is read, which the borrow checker allows only for an entry that copied it.
+#[test]
+fn test_a_shared_entry_detached_from_its_reply_keeps_every_field() {
+    let entry = SharedMemory {
+        key: Cow::Borrowed("incident:41"),
+        content: Cow::Borrowed("escalated"),
+        category: Cow::Borrowed(PINNED_CATEGORY),
+        writer_fleet_id: Cow::Borrowed("fleet-2"),
+        writer_fleet_name: Cow::Borrowed("triage"),
+        updated_at: 7,
+    };
+    let text = serde_json::to_string(&entry).unwrap();
+    let read: SharedMemory<'_> = serde_json::from_str(&text).unwrap();
+
+    let detached = read.into_owned();
+    drop(text);
+
+    assert_eq!(detached, entry);
 }

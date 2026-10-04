@@ -10,9 +10,9 @@ use std::error::Error as StdError;
 use bytes::Bytes;
 use futures_util::{StreamExt as _, stream};
 use http::Method;
-use rig_core::http_client::{self as rig_http, HttpClientExt as _};
+use rig_core::http_client::{self as rig_http, HttpClientExt as _, MultipartForm};
 
-use super::{Oversize, REPLY_MAX_BYTES, Transport, Unread, capped, whole};
+use super::{NO_MULTIPART, Oversize, REPLY_MAX_BYTES, Transport, Unread, capped, logged, whole};
 
 /// The cap every direct read here is under.
 const CAP: usize = 8;
@@ -80,6 +80,17 @@ fn is_dropped(error: &Unread) -> bool {
         .any(|error| error.to_string() == DROPPED)
 }
 
+// A `custom:` endpoint's URL is the tenant's to spell; the retry line is the
+// operator's to read, so it carries the host and nothing the URL may hide.
+#[test]
+fn a_custom_endpoint_is_logged_by_its_host_alone() {
+    assert_eq!(
+        &*logged("custom:https://user:s3cret@vllm.corp/v1?key=k3y"),
+        "custom:vllm.corp"
+    );
+    assert_eq!(&*logged("anthropic"), "anthropic");
+}
+
 #[tokio::test]
 async fn a_reply_of_exactly_the_cap_is_read_whole() {
     let body = whole(reply(&[4, 4]), CAP).await.unwrap();
@@ -131,5 +142,45 @@ async fn a_whole_reply_past_the_cap_is_refused_at_rigs_buffered_seam() {
     assert!(
         matches!(&refused, rig_http::Error::Instance(failure) if is_oversize(failure)),
         "{refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_whole_reply_under_the_cap_is_read_whole_at_rigs_buffered_seam() {
+    let sent = sent_whole(2).await;
+
+    let body = sent.into_body().await.unwrap();
+
+    assert_eq!(body.len(), 2 * SERVED_CHUNK);
+}
+
+#[tokio::test]
+async fn a_multipart_send_is_refused_since_no_wire_uploads_a_file() {
+    let transport = Transport::new(reqwest::Client::new(), "lease-1", "fake");
+    let request = rig_http::Request::builder()
+        .method(Method::POST)
+        .uri("http://127.0.0.1:9/v1/files")
+        .body(MultipartForm::new())
+        .unwrap();
+
+    let refused = transport
+        .send_multipart::<Bytes>(request)
+        .await
+        .map(drop)
+        .unwrap_err();
+
+    assert!(
+        matches!(&refused, rig_http::Error::Instance(failure) if failure.to_string() == NO_MULTIPART),
+        "{refused:?}"
+    );
+}
+
+#[test]
+fn a_transport_prints_whose_sends_it_makes_and_not_its_client() {
+    let transport = Transport::new(reqwest::Client::new(), "lease-1", "fake");
+
+    assert_eq!(
+        format!("{transport:?}"),
+        r#"Transport { lease_id: "lease-1", provider: "fake", .. }"#
     );
 }
