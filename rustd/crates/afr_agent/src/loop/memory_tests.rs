@@ -17,7 +17,7 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::Loop;
-use crate::engine::{AgentEngine, AgentRun, Checkpoint};
+use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter};
 use crate::fixture::{Frames, Script, call, lease, say, unbounded};
 use crate::testing::{Discard, Recording};
 
@@ -74,6 +74,7 @@ async fn test_memory_tools_round_trip_through_push() {
             mint: &CountingMint::never(),
             checkpoint: &Discard,
             events: &sink,
+            meter: &Meter::default(),
             stop: &CancellationToken::new(),
         })
         .await
@@ -144,6 +145,7 @@ async fn the_memory_is_checkpointed_every_n_calls() {
             mint: &CountingMint::never(),
             checkpoint: &checkpoint,
             events: &sink,
+            meter: &Meter::default(),
             stop: &CancellationToken::new(),
         })
         .await
@@ -204,6 +206,7 @@ async fn a_checkpoint_that_never_answers_does_not_outlive_the_lease() {
             mint: &CountingMint::never(),
             checkpoint: &Hanging,
             events: &sink,
+            meter: &Meter::default(),
             stop: &stop,
         }),
     )
@@ -232,6 +235,7 @@ async fn a_cadence_with_nothing_stored_pushes_nothing() {
             mint: &CountingMint::never(),
             checkpoint: &checkpoint,
             events: &sink,
+            meter: &Meter::default(),
             stop: &CancellationToken::new(),
         })
         .await

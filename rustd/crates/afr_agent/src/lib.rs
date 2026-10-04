@@ -30,7 +30,7 @@ pub mod testing;
 mod trace;
 mod turn;
 
-pub use self::engine::{AgentEngine, AgentRun, Checkpoint, EventSink, Needs, RunOutput};
+pub use self::engine::{AgentEngine, AgentRun, Checkpoint, EventSink, Meter, Needs, RunOutput};
 pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::Loop;
 pub use self::router::Router;

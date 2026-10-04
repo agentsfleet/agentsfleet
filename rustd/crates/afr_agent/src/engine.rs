@@ -1,6 +1,7 @@
 //! The seam between the supervisor and whatever runs a turn.
 
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
@@ -12,6 +13,7 @@ use afd_wire::tool_trace::ToolTrace;
 use afr_egress::Mint;
 use afr_executor::Executor;
 use afr_memory::Seed;
+use afr_providers::Usage;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
@@ -62,6 +64,9 @@ pub struct AgentRun<'run> {
     pub checkpoint: &'run dyn Checkpoint,
     /// Where activity frames go.
     pub events: &'run dyn EventSink,
+    /// The tokens the run has spent so far, which the engine adds to after
+    /// each turn and the supervisor reads into every renewal.
+    pub meter: &'run Meter,
     /// Cancelled when the lease ends early. The engine closes every open call
     /// `interrupted` and returns what it has.
     pub stop: &'run CancellationToken,
@@ -74,6 +79,39 @@ impl fmt::Debug for AgentRun<'_> {
             .field("memory", &self.memory.len())
             .field("executor", &self.executor)
             .finish_non_exhaustive()
+    }
+}
+
+/// The tokens a run has spent so far, readable while it runs.
+///
+/// The engine adds each turn's usage, and the supervisor reports the running
+/// total with every lease renewal, so the daemon meters a run before it ends.
+/// Each count is its own atomic: a read between two adds may see one turn's
+/// input without its output, and the next renewal carries both.
+#[derive(Debug, Default)]
+pub struct Meter {
+    input: AtomicU64,
+    cached_input: AtomicU64,
+    output: AtomicU64,
+}
+
+impl Meter {
+    /// Adds one turn's tokens.
+    pub fn add(&self, usage: Usage) {
+        self.input.fetch_add(usage.input, Ordering::Relaxed);
+        self.cached_input
+            .fetch_add(usage.cached_input, Ordering::Relaxed);
+        self.output.fetch_add(usage.output, Ordering::Relaxed);
+    }
+
+    /// Everything the run has spent so far.
+    #[must_use]
+    pub fn read(&self) -> Usage {
+        Usage {
+            input: self.input.load(Ordering::Relaxed),
+            cached_input: self.cached_input.load(Ordering::Relaxed),
+            output: self.output.load(Ordering::Relaxed),
+        }
     }
 }
 

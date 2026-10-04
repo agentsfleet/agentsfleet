@@ -24,7 +24,7 @@ use afd_core::spelling::to_spelling;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
-use afr_agent::{AgentEngine, Unhosted};
+use afr_agent::{AgentEngine, Meter, Unhosted};
 use afr_memory::Seed;
 use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
@@ -107,6 +107,8 @@ pub(super) struct LeaseRun<'a> {
     lease: &'a LeasePayload<'a>,
     ids: Ids,
     interrupt: CancellationToken,
+    /// What the run has spent so far, read into every renewal.
+    meter: Meter,
 }
 
 /// Which of a lease's side tasks are still going.
@@ -137,6 +139,7 @@ impl Lessee {
                 fleet: Uuid7::parse(&lease.event.fleet_id)?,
             },
             interrupt: CancellationToken::new(),
+            meter: Meter::default(),
         };
         let lease_id = run.ids.lease.as_str();
         let event = EVENT_ACQUIRED;
@@ -170,6 +173,7 @@ impl LeaseRun<'_> {
             &self.ids.lease,
             self.lease.lease_expires_at,
             lessee.clock.as_ref(),
+            &self.meter,
         );
         let pumping = pump.run();
         let renewal = renewal.keep();
@@ -187,16 +191,21 @@ impl LeaseRun<'_> {
                 class = &mut renewal, if live.renewing => {
                     live.renewing = false;
                     self.interrupt.cancel();
-                    cut.get_or_insert(failed(class, DETAIL_RENEWAL));
+                    cut.get_or_insert((class, DETAIL_RENEWAL));
                 }
                 () = lessee.halt.running().cancelled(), if !self.interrupt.is_cancelled() => {
                     self.interrupt.cancel();
-                    cut.get_or_insert(failed(FailureClass::RenewalTerminate, DETAIL_STOPPED));
+                    cut.get_or_insert((FailureClass::RenewalTerminate, DETAIL_STOPPED));
                 }
                 () = &mut pumping, if live.pumping => live.pumping = false,
             }
         };
-        let mut ending = cut.unwrap_or(ran);
+        // A cut keeps what the run handed back, its tokens and memory with it,
+        // and reports the cut as the reason it ended.
+        let mut ending = match cut {
+            Some((class, detail)) => ran.cut(class, detail),
+            None => ran,
+        };
         {
             let settle = self.settle(&mut ending, started);
             tokio::pin!(settle);

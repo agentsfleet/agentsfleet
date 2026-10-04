@@ -10,7 +10,7 @@ use afd_core::id::Uuid7;
 use afd_wire::activity::ActivityRequest;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::MemoryPushRequest;
-use afd_wire::report::RenewResponse;
+use afd_wire::report::{RenewRequest, RenewResponse};
 use afd_wire::runner::HeartbeatRequest;
 use axum::body::Bytes as AxumBytes;
 use axum::http::{HeaderMap, Method, StatusCode, Uri};
@@ -84,7 +84,7 @@ async fn send_every_verb(plane: &super::ControlPlane) {
     plane.heartbeat(&heartbeat).await.unwrap();
     plane.lease().await.unwrap();
     assert_eq!(
-        plane.renew(&lease).await.unwrap(),
+        plane.renew(&lease, &RenewRequest::default()).await.unwrap(),
         7,
         "renewal returns its new expiry"
     );

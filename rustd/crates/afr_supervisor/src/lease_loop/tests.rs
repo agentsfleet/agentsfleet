@@ -175,6 +175,27 @@ async fn a_4xx_renewal_mid_run_ends_it_and_still_tears_down() {
     );
 }
 
+/// A cut keeps what the run handed back: the daemon bills its tokens and
+/// keeps its memory, and the report names the cut as the reason it ended.
+#[tokio::test(start_paused = true)]
+async fn a_run_cut_by_its_renewal_still_reports_its_tokens_and_pushes_its_memory() {
+    let mut rig = rig(renewal_lost, FakeEngine::default(), Behaviour::Stops);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+
+    let calls = rig.calls();
+    let report = reported(&calls);
+    assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
+    assert_eq!(report["tokens"], 7, "the run's tokens are billed");
+    assert_eq!(report["input_tokens"], 3);
+    assert_eq!(report["output_tokens"], 4);
+    assert!(
+        position(&calls, Verb::Capture).is_some(),
+        "the run's memory is pushed"
+    );
+    assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_stop_ends_a_lease_in_flight_and_still_tears_down() {
     let mut rig = rig(healthy, FakeEngine::default(), Behaviour::Hang);

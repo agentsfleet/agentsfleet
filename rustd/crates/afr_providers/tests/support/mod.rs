@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afr_agent::testing::Discard;
-use afr_agent::{AgentEngine as _, AgentRun, Loop, RunOutput};
+use afr_agent::{AgentEngine as _, AgentRun, Loop, Meter, RunOutput};
 use afr_egress::testing::CountingMint;
 use afr_providers::{Connector, ProviderSpec, Registry, Wire};
 use afr_tools::Catalog;
@@ -211,6 +211,7 @@ pub(crate) async fn run(
         mint: &CountingMint::never(),
         checkpoint: &Discard,
         events: &sink,
+        meter: &Meter::default(),
         stop: &stop,
     };
     let output = engine.run(run).await.unwrap();
