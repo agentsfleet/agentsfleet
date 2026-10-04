@@ -171,6 +171,19 @@ describe("FleetStatusLine", () => {
     expect(screen.queryByText("tok")).toBeNull();
   });
 
+  it("test_status_line_formats_unchanged", () => {
+    // Pin test: the literals are the strings the line drew before its
+    // formatters moved to run-figures-format.
+    renderLine(event({ tokens: 1_234_567, wall_ms: 850, cost_nanos: 2_500_000_000 }));
+    expect(screen.getByText("1,234,567")).toBeTruthy();
+    expect(screen.getByText("850ms")).toBeTruthy();
+    expect(screen.getByText("$2.50")).toBeTruthy();
+    cleanup();
+    // A failed summary read shows every figure as unknown, reported or not.
+    renderLine(event(), 0, false);
+    expect(screen.getAllByText("—")).toHaveLength(3);
+  });
+
   it("links pending approvals to the fleet-filtered inbox", () => {
     renderLine(event(), 2);
     const link = screen.getByRole("link", { name: /2 approvals waiting/i });

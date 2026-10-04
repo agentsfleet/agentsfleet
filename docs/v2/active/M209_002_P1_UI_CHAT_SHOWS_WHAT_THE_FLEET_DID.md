@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A reply whose fleet read two files, recalled a memory, failed a `POST`, edited a file and was then killed mid-call renders an Explored row ("Read a.md, b.md", "Search deploy window in memory"), a red `Requested POST …` with its error under `└`, `Edited deploy.yaml (+2 −1)` with a coloured diff, a red `Interrupted …` row, and "Worked for 41s · 12.4k tokens · $0.03". After a reload it renders the same rows, and "show all" opens a call's full output.
+**Goal (testable):** A reply whose fleet read two files, recalled a memory, failed a `POST`, edited a file and was then killed mid-call renders an Explored row ("Read a.md, b.md", "Search deploy window in memory"), a red `Requested POST …` with its error under `└`, `Edited deploy.yaml (+2 −1)` with a coloured diff, a red `Interrupted …` row, and "Worked for 41s · 12.4K tokens · $0.03". After a reload it renders the same rows, and "show all" opens a call's full output.
 **Problem:** Every call renders as a glyph, a bare name and a clock (`components/domain/FleetToolCalls.tsx:31-47`). Arguments are hard-coded to `{}` and the result to `null` (`components/domain/fleetReplyMessage.ts:32-35,103-104`). A reload loses every row (`lib/streaming/fleet-stream-frames.ts:296`), and each turn's figures reach the row (`lib/streaming/fleet-stream-row.ts:173-175`) without ever being drawn.
 **Solution summary:** Frontend only. The reducer keeps each call's arguments and typed outcome, and settle swaps in the saved trace. Parts carry real `args`, `result` and `isError`. A per-tool copy map renders Codex's cell anatomy on design tokens, and `groupPartByType` folds reads under Explored. Edits render as diffs from their own arguments. "Show all" reads M209_003 through a same-origin proxy into a `Dialog`. A settled reply ends with Codex's "Worked for" line; a running one shows elapsed time.
 
@@ -60,16 +60,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/[eventId]/tool-calls/[callId]/route.ts`, `ui/packages/app/lib/api/live-json-proxy.ts`, `ui/packages/app/tests/tool-call-route.test.ts` | CREATE | Same-origin proxy for the full-call read, on one helper every JSON proxy shares |
 | `ui/packages/app/app/live/v1/workspaces/[workspaceId]/events/route.ts`, `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/route.ts`, `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/[eventId]/route.ts`, `ui/packages/app/tests/stream-proxy-routing.test.ts`, `docs/AUTH.md` | EDIT | The three JSON proxies move onto the shared helper; the routing test and the auth doc name the seventh route |
 | `ui/packages/app/components/domain/fleetReplyMessage.ts` | EDIT | Parts carry `args`, `argsText`, `result`, `isError`; the reply's custom bag carries its figures |
-| `ui/packages/app/components/domain/tool-call-copy.ts`, `ui/packages/app/components/domain/tool-call-diff.ts` | CREATE | Verbs, targets and explore class per tool; line diff from edit arguments |
+| `ui/packages/app/components/domain/tool-call-copy.ts`, `ui/packages/app/components/domain/tool-call-diff.ts`, `ui/packages/app/components/domain/tool-call-explore.ts` | CREATE | Verbs, targets and bodies per tool; line diff from edit arguments; which tools fold under Explored and how each line reads |
+| `ui/packages/app/components/domain/FleetToolCallBody.tsx` | CREATE | The cell's body (output preview, command rail, diff rows), apart from its header at the length cap |
+| `ui/packages/app/lib/streaming/fleet-tool-call-reader.ts`, `ui/packages/app/lib/streaming/fleet-tool-call-reader.test.ts` | CREATE | "Show all" reads one call over the same-origin route, narrowed at the boundary |
+| `ui/packages/app/lib/api/errors.ts`, `ui/packages/app/lib/streaming/fleet-stream-detail-recovery.ts` | EDIT | `HTTP_STATUS_NOT_FOUND` gains its second reader, so it moves beside the other status constants |
+| `ui/packages/app/components/domain/FleetThread.tsx`, `ui/packages/app/components/domain/FleetTimestamp.tsx` | EDIT / CREATE | The thread provides its workspace and fleet to "show all"; the row timestamp leaves `FleetMessageRow` at its length cap |
 | `ui/packages/app/components/domain/FleetToolCalls.tsx`, `ui/packages/app/components/domain/FleetExplored.tsx`, `ui/packages/app/components/domain/FleetToolOutputDialog.tsx`, `ui/packages/app/components/domain/FleetReplyBody.tsx` | EDIT / CREATE | Cell, Explored group, full-output dialog, group map |
 | `ui/packages/app/components/domain/FleetReplyFigures.tsx`, `ui/packages/app/lib/events/run-figures-format.ts` | CREATE | "Worked for" line; formatters moved out of the status line |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetStatusLine.tsx`, `ui/packages/app/components/domain/FleetMessageRow.tsx`, `ui/packages/app/components/domain/fleetMessageReaders.ts` | EDIT | Shared formatters; turn timestamps; figure readers |
-| `ui/packages/design-system/src/tokens.css` | EDIT | `tool-shimmer` keyframe with a `prefers-reduced-motion` static fallback |
+| `ui/packages/design-system/src/tokens.css`, `ui/packages/design-system/src/tokens.css.test.ts` | EDIT | `tool-shimmer` keyframe with a `prefers-reduced-motion` static fallback, pinned as text the way the other animations are |
 | `ui/packages/app/tests/fleet-tool-calls.test.tsx`, `ui/packages/app/components/domain/fleetReplyMessage.test.ts`, `ui/packages/app/components/domain/FleetReplyBody.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`, `ui/packages/app/tests/fleet-thread/role-reply-parts.test.ts`, `ui/packages/app/tests/e2e/acceptance/fleet-reply-parts.spec.ts` | EDIT | Existing pins move to the new cell (the `{}`/`null` and repeat-start pins change on purpose) |
+| `ui/packages/app/tests/fleet-thread/harness.ts`, `ui/packages/app/tests/fleet-thread/role-reasoning.test.ts`, `ui/packages/app/tests/fleet-thread/role-rows.test.ts`, `ui/packages/app/tests/fleet-thread/role-turns.test.ts`, `ui/packages/app/tests/fleet-thread/malformed-metadata.test.ts`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetStatusLine.test.tsx` | EDIT | The fixture carries a run's figures; pins on the waiting verb, a recall's row and an operator row's time move to the new shapes; the status line's strings are pinned across the move |
 | `ui/packages/app/package.json`, `bun.lock` | EDIT | `@assistant-ui/react` ^0.15.23 (latest), `diff` ^9 for edit diffs |
 | `ui/packages/design-system/package.json`, `ui/packages/website/package.json`, `cli/package.json`, `cli/bun.lock`, `cli/src/**`, `ui/packages/website/src/components/Footer.tsx` | EDIT | Every package to latest; effect 4.0.0 moves the CLI module to `effect/cli`; oxlint 1.86's purity rule moves the footer's year out of render |
 | `ui/packages/app/components/domain/fleetMessageRenderers.tsx` | EDIT | The operator row passes its `createdAt` to `FleetMessageRow` |
-| `ui/packages/app/components/domain/tool-call-copy.test.ts`, `ui/packages/app/components/domain/tool-call-diff.test.ts`, `ui/packages/app/components/domain/FleetExplored.test.tsx`, `ui/packages/app/components/domain/FleetToolOutputDialog.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-tool-trace.test.ts`, `ui/packages/app/components/domain/FleetReplyFigures.test.tsx`, `ui/packages/app/lib/events/run-figures-format.test.ts` | CREATE | Unit proofs |
+| `ui/packages/app/components/domain/tool-call-copy.test.ts`, `ui/packages/app/components/domain/tool-call-diff.test.ts`, `ui/packages/app/components/domain/tool-call-explore.test.ts`, `ui/packages/app/components/domain/FleetExplored.test.tsx`, `ui/packages/app/components/domain/FleetToolOutputDialog.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-tool-trace.test.ts`, `ui/packages/app/components/domain/FleetReplyFigures.test.tsx`, `ui/packages/app/lib/events/run-figures-format.test.ts` | CREATE | Unit proofs |
 
 ## Applicable Rules
 
@@ -112,50 +117,50 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 2.2** — A malformed saved trace reads as no calls without throwing → Test `test_malformed_saved_trace_reads_absent` — DONE (`ui/packages/app/lib/streaming/fleet-stream-tool-trace.test.ts`)
 - **Dimension 2.3** — Settle prefers a saved trace and keeps live rows when it is `null` → Test `test_settle_prefers_saved_trace` — DONE (`ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`)
 - **Dimension 2.4** — A live call still open at settle renders interrupted → Test `test_settle_interrupts_open_live_calls` — DONE (`ui/packages/app/lib/streaming/fleet-stream-frames.tools.test.ts`)
-- **Dimension 2.5** — `omitted_call_count` above zero renders "N more calls not recorded" → Test `test_omitted_calls_render_count`
-- **Dimension 2.6** — Reloading a settled turn shows the same rows → Test `test_reload_shows_saved_tool_rows`
+- **Dimension 2.5** — `omitted_call_count` above zero renders "N more calls not recorded" → Test `test_omitted_calls_render_count` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
+- **Dimension 2.6** — Reloading a settled turn shows the same rows → Test `test_reload_shows_saved_tool_rows` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
 
 ### §3 — Each call renders as a Codex cell
 
 Bullet `•`: shimmer while running (static dim under reduced motion), `text-success` on `succeeded`, `text-destructive` on `failed` and `interrupted`, dim with no outcome. Header: the bold verb (`-ing` while running, past tense when done; `Interrupted` replaces it), the target in mono, then dim ` · 1.2s`. Copy: `file_write` Wrote ·path· (+N), `file_append` Appended, `file_delete` Deleted, `http_request` Requesting/Requested ·method· ·url·, `memory_store` Remembered ·key·, `memory_forget` Forgot ·key·, unknown tools Called ·name·(·compact arguments·). Output: dim mono under `└`, three rows, then dim "+N lines" and a "show all" control. Empty output on success reads `(no output)`; a call with no recorded outcome reads `(output unavailable)`. A failed call ends its header in red "(failed)", so status never rests on colour alone (`docs/DESIGN_SYSTEM.md` §Color). The full arguments sit behind a collapsed Accordion. `exec_command` and `shell` render Codex's command cell: `Running`, then `Ran`, with the command on the header line, at most two dim `│` rail lines of a longer command and then `… +N lines`, and a red ` (exit N)` on a non-zero exit.
 
-- **Dimension 3.1** — Each hosted tool renders its verb and target, running and done → Test `test_tool_cell_names_verb_and_target`
-- **Dimension 3.2** — An unknown tool renders `Called name(arguments)` → Test `test_unknown_tool_cell_calls_by_name`
-- **Dimension 3.3** — Bullet colour follows status; `Interrupted` replaces the verb → Test `test_tool_cell_bullet_follows_status`
-- **Dimension 3.4** — Eight output lines render three plus "+5 lines" → Test `test_tool_cell_previews_three_rows`
-- **Dimension 3.5** — Empty output reads `(no output)`; no outcome reads `(output unavailable)` → Test `test_tool_cell_names_empty_and_unknown_output`
-- **Dimension 3.6** — The shimmer stops under `prefers-reduced-motion` → Test `test_running_bullet_respects_reduced_motion`
+- **Dimension 3.1** — Each hosted tool renders its verb and target, running and done → Test `test_tool_cell_names_verb_and_target` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
+- **Dimension 3.2** — An unknown tool renders `Called name(arguments)` → Test `test_unknown_tool_cell_calls_by_name` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
+- **Dimension 3.3** — Bullet colour follows status; `Interrupted` replaces the verb → Test `test_tool_cell_bullet_follows_status` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
+- **Dimension 3.4** — Eight output lines render three plus "+5 lines" → Test `test_tool_cell_previews_three_rows` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
+- **Dimension 3.5** — Empty output reads `(no output)`; no outcome reads `(output unavailable)` → Test `test_tool_cell_names_empty_and_unknown_output` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
+- **Dimension 3.6** — The shimmer stops under `prefers-reduced-motion` → Test `test_running_bullet_respects_reduced_motion` — DONE (`ui/packages/design-system/src/tokens.css.test.ts`)
 - **Dimension 3.7** — A live run in the real page shows a shimmering cell turning into a green "Requested GET …" with its output → Test `test_live_tool_cell_settles_green`
-- **Dimension 3.8** — A four-line command renders `Ran` with its first line, two rail lines and `… +1 lines`; exit code 2 adds a red ` (exit 2)` → Test `test_command_cell_renders_like_codex`
+- **Dimension 3.8** — A four-line command renders `Ran` with its first line, two rail lines and `… +1 lines`; exit code 2 adds a red ` (exit 2)` → Test `test_command_cell_renders_like_codex` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
 
 ### §4 — Reads fold under Explored
 
 The group map sends `tool-call:file_read`, `tool-call:file_read_hashed`, `tool-call:memory_recall` and `tool-call:memory_list` to an explore group, and every other `tool-call` to the tool group. A bold "Exploring" with a shimmer reads "Explored" with a dim bullet once all are done. Under `└`, consecutive successful reads merge into one de-duplicated "Read a, b" line; `memory_recall` reads "Search ·query· in memory"; `memory_list` reads "List memory ·category·". Verbs use `text-info`, the light blue Codex draws them in, and a failed line ends in red "(failed)".
 
-- **Dimension 4.1** — Read, read, recall render one Explored group with "Read a, b" and "Search q in memory" → Test `test_consecutive_reads_fold_under_explored`
-- **Dimension 4.2** — A write between reads yields two Explored groups around it → Test `test_non_read_call_splits_explored`
-- **Dimension 4.3** — The header reads Exploring while any folded call runs → Test `test_explored_header_tracks_running`
-- **Dimension 4.4** — A failed read keeps the group and marks its line "(failed)" → Test `test_failed_read_marks_its_explored_line`
+- **Dimension 4.1** — Read, read, recall render one Explored group with "Read a, b" and "Search q in memory" → Test `test_consecutive_reads_fold_under_explored` — DONE (`ui/packages/app/components/domain/FleetExplored.test.tsx`)
+- **Dimension 4.2** — A write between reads yields two Explored groups around it → Test `test_non_read_call_splits_explored` — DONE (`ui/packages/app/components/domain/FleetExplored.test.tsx`)
+- **Dimension 4.3** — The header reads Exploring while any folded call runs → Test `test_explored_header_tracks_running` — DONE (`ui/packages/app/components/domain/FleetExplored.test.tsx`)
+- **Dimension 4.4** — A failed read keeps the group and marks its line "(failed)" → Test `test_failed_read_marks_its_explored_line` — DONE (`ui/packages/app/components/domain/FleetExplored.test.tsx`)
 
 ### §5 — Edits render as diffs, and "show all" opens the rest
 
 `file_edit` and `file_edit_hashed` render `Edited ·path· (+N −M)`, with +N in `text-success` and −M in `text-destructive`. A line diff that jsdiff (`diff`) builds from `old_text` and `new_text` uses `bg-destructive/10` and `bg-success/10` rows, indented four. "Show all" opens a `Dialog` that reads the full call through the proxy, with numbered lines, full arguments and the full diff. A 404 shows the saved head and tail with "Full output wasn't kept for this call."
 
-- **Dimension 5.1** — An edit renders its header counts and coloured diff rows → Test `test_edit_cell_renders_diff`
-- **Dimension 5.2** — The diff of `a\nb` → `a\nc\nd` counts +2 −1 → Test `test_edit_diff_counts_lines`
-- **Dimension 5.3** — "Show all" renders every line of the full output → Test `test_output_dialog_shows_full_output`
-- **Dimension 5.4** — A 404 falls back to head and tail with the not-kept note → Test `test_output_dialog_falls_back_when_not_kept`
+- **Dimension 5.1** — An edit renders its header counts and coloured diff rows → Test `test_edit_cell_renders_diff` — DONE (`ui/packages/app/tests/fleet-tool-calls.test.tsx`)
+- **Dimension 5.2** — The diff of `a\nb` → `a\nc\nd` counts +2 −1 → Test `test_edit_diff_counts_lines` — DONE (`ui/packages/app/components/domain/tool-call-diff.test.ts`)
+- **Dimension 5.3** — "Show all" renders every line of the full output → Test `test_output_dialog_shows_full_output` — DONE (`ui/packages/app/components/domain/FleetToolOutputDialog.test.tsx`)
+- **Dimension 5.4** — A 404 falls back to head and tail with the not-kept note → Test `test_output_dialog_falls_back_when_not_kept` — DONE (`ui/packages/app/components/domain/FleetToolOutputDialog.test.tsx`)
 - **Dimension 5.5** — The proxy forwards the call id percent-encoded and passes the status through → Test `test_tool_call_proxy_forwards_encoded_id` — DONE (`ui/packages/app/tests/tool-call-route.test.ts`)
 
 ### §6 — Every turn says when it ran, how long and what it cost
 
-`toReplyMessage` carries the turn's tokens, wall time and cost in the reply's custom bag, never the trigger's, because `convertEvent`'s output is compared to detect trigger changes. A settled reply ends with dim "Worked for 41s · 12.4k tokens · $0.03", using formatters moved from `FleetStatusLine.tsx` into `lib/events/run-figures-format.ts`. A running reply's indicator adds its elapsed time ("Pondering… (1m 05s)") and its status stays named "Working". Turn rows show their time through `FleetMessageRow`'s `Timestamp`.
+`toReplyMessage` carries the turn's tokens, wall time and cost in the reply's custom bag, never the trigger's, because `convertEvent`'s output is compared to detect trigger changes. A settled reply ends with dim "Worked for 41s · 12.4k tokens · $0.03", using formatters moved from `FleetStatusLine.tsx` into `lib/events/run-figures-format.ts`. A running reply's indicator adds its elapsed time ("Pondering… (1m 5s)") and its status stays named "Working". The row that opens a turn shows its time through `FleetMessageRow`'s `Timestamp`, once per turn.
 
-- **Dimension 6.1** — A settled reply shows its figures line → Test `test_settled_reply_shows_figures`
-- **Dimension 6.2** — An unreported figure is left out, never shown as zero → Test `test_unknown_figure_left_out`
-- **Dimension 6.3** — A running reply shows elapsed time and no figures line → Test `test_running_reply_shows_elapsed`
-- **Dimension 6.4** — The status line renders the same strings after the move → Test `test_status_line_formats_unchanged`
-- **Dimension 6.5** — Operator and reply rows show their timestamp → Test `test_turn_rows_show_timestamp`
+- **Dimension 6.1** — A settled reply shows its figures line → Test `test_settled_reply_shows_figures` — DONE (`ui/packages/app/components/domain/FleetReplyFigures.test.tsx`)
+- **Dimension 6.2** — An unreported figure is left out, never shown as zero → Test `test_unknown_figure_left_out` — DONE (`ui/packages/app/components/domain/FleetReplyFigures.test.tsx`)
+- **Dimension 6.3** — A running reply shows elapsed time and no figures line → Test `test_running_reply_shows_elapsed` — DONE (`ui/packages/app/components/domain/FleetReplyFigures.test.tsx`)
+- **Dimension 6.4** — The status line renders the same strings after the move → Test `test_status_line_formats_unchanged` — DONE (`ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetStatusLine.test.tsx`)
+- **Dimension 6.5** — The operator row shows the turn's time, and its reply shows no second copy → Test `test_turn_rows_show_timestamp` — DONE (`ui/packages/app/tests/fleet-thread/role-turns.test.ts`)
 
 ## Interfaces
 
@@ -163,7 +168,7 @@ The group map sends `tool-call:file_read`, `tool-call:file_read_hashed`, `tool-c
 FleetToolCall += { args?: Record<string, unknown>; status?: "succeeded"|"failed"|"interrupted";
                    outputHead?: string; outputTail?: string; outputLineCount?: number; exitCode?: number }
 EventDetail   += { tool_calls: { calls: SavedToolCall[]; omitted_call_count: number } | null }
-tool-call part : { toolName, args, argsText, result?: { head, tail, lineCount }, isError, timing }
+tool-call part : { toolName, args?, result?: { status?, outputHead?, outputTail?, outputLineCount?, exitCode?, callId? }, isError, timing }
 Group keys     : "group-reasoning" · "group-explore" · "group-tool"
 Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-calls/{call} → M209_003
 ```
@@ -205,7 +210,7 @@ Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-cal
 | 2.3 | unit | `test_settle_prefers_saved_trace` | live 1 + saved 3 → 3; live 1 + `null` → 1 |
 | 2.4 | unit | `test_settle_interrupts_open_live_calls` | open live call, settle with `null` → `interrupted` |
 | 2.5 | unit | `test_omitted_calls_render_count` | `omitted_call_count: 4` → "4 more calls not recorded" |
-| 2.6 | e2e | `test_reload_shows_saved_tool_rows` | settled turn, reload → same cells |
+| 2.6 | unit | `test_reload_shows_saved_tool_rows` | three calls through the live reducer, and the same calls as the saved row a reload reads → identical cells |
 | 3.1 | unit | `test_tool_cell_names_verb_and_target` | each non-read tool, running and done → expected header |
 | 3.2 | unit | `test_unknown_tool_cell_calls_by_name` | `fly_status {app:"x"}` → `Called fly_status({"app":"x"})` |
 | 3.3 | unit | `test_tool_cell_bullet_follows_status` | succeeded → success; failed, interrupted → destructive; interrupted header |
@@ -213,7 +218,7 @@ Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-cal
 | 3.5 | unit | `test_tool_cell_names_empty_and_unknown_output` | empty success → `(no output)`; no status → `(output unavailable)` |
 | 3.6 | unit | `test_running_bullet_respects_reduced_motion` | reduced-motion media → no shimmer animation class |
 | 3.7 | e2e | `test_live_tool_cell_settles_green` | fixture frames → shimmer, then green "Requested GET …" and output |
-| 3.8 | unit | `test_command_cell_renders_like_codex` | 4-line command, exit 2 → `Ran` + 1 header line + 2 rail lines + `… +1 lines` + ` (exit 2)` |
+| 3.8 | unit | `test_command_cell_renders_like_codex` | 4-line command, exit 2 → `Ran` + 1 header line + 2 rail lines + `… +1 line` + ` (exit 2)` |
 | 4.1 | unit | `test_consecutive_reads_fold_under_explored` | read a, read b, recall q → "Read a, b", "Search q in memory" |
 | 4.2 | unit | `test_non_read_call_splits_explored` | read, write, read → Explored, Wrote, Explored |
 | 4.3 | unit | `test_explored_header_tracks_running` | one running → "Exploring"; all done → "Explored" |
@@ -223,18 +228,18 @@ Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-cal
 | 5.3 | unit | `test_output_dialog_shows_full_output` | 224-line response → 224 numbered lines |
 | 5.4 | unit | `test_output_dialog_falls_back_when_not_kept` | 404 → head, tail and the not-kept note |
 | 5.5 | unit | `test_tool_call_proxy_forwards_encoded_id` | id `7:3` → upstream path ends `/tool-calls/7%3A3`; 404 passes through |
-| 6.1 | unit | `test_settled_reply_shows_figures` | tokens 12400, wall 41000 → "Worked for 41s · 12.4k tokens · $…" |
+| 6.1 | unit | `test_settled_reply_shows_figures` | tokens 12400, wall 41000 → "Worked for 41s · 12.4K tokens · $…" |
 | 6.2 | unit | `test_unknown_figure_left_out` | cost `null` → no cost segment, no "$0" |
-| 6.3 | unit | `test_running_reply_shows_elapsed` | running 65 s → the "Working" status shows "(1m 05s)", no figures line |
+| 6.3 | unit | `test_running_reply_shows_elapsed` | running 65 s → the "Working" status shows "(1m 5s)", no figures line |
 | 6.4 | unit | `test_status_line_formats_unchanged` | fixed figures → same strings as before the move |
-| 6.5 | unit | `test_turn_rows_show_timestamp` | operator and reply rows → `time` element with `dateTime` |
+| 6.5 | unit | `test_turn_rows_show_timestamp` | operator row → `time` with `datetime`; its reply row → no `time` |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Cells, Explored and diffs render like Codex (§3–§5) | `cd ui/packages/app && bunx vitest run tests/fleet-tool-calls.test.tsx components/domain/tool-call-copy.test.ts components/domain/FleetExplored.test.tsx components/domain/tool-call-diff.test.ts` | exit 0 | P0 | |
-| R2 | Live cells settle and saved rows survive a reload in the real page (§2, §3) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts tests/e2e/acceptance/fleet-reply-parts.spec.ts` | exit 0 | P0 | |
+| R1 | Cells, Explored and diffs render like Codex, and a reloaded turn reads as it did live (§2–§5) | `cd ui/packages/app && bunx vitest run tests/fleet-tool-calls.test.tsx components/domain/tool-call-copy.test.ts components/domain/FleetExplored.test.tsx components/domain/tool-call-diff.test.ts` | exit 0 | P0 | |
+| R2 | Live cells settle in the real page (§3) | `cd ui/packages/app && bunx playwright test --config=playwright.acceptance.config.ts tests/e2e/acceptance/fleet-reply-parts.spec.ts` | exit 0 | P0 | |
 | R3 | Every turn shows its time and cost (§6) | `cd ui/packages/app && bunx vitest run components/domain/FleetReplyFigures.test.tsx lib/events/run-figures-format.test.ts` | exit 0 | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -298,4 +303,12 @@ Proxy          : /live/v1/workspaces/{ws}/fleets/{fleet}/events/{event}/tool-cal
 - **PLAN amendments (Oct 04, 2026)** — Indy (in-session): "ensure we use the altest assistant-ui pacakge. Do we need to write our own assistant-ui? or use the pacakge?" → the package, bumped to 0.15.23; "avoid handrolled code, use it only if need be" → edit diffs from jsdiff 9. Agent defaults stated at PLAN with no correction: `text-info` replaces `text-accent` because `--accent` is `--surface-3` (`ui/packages/design-system/src/theme.css:36`), a surface; a red "(failed)" marks failed calls (`docs/DESIGN_SYSTEM.md` §Color; Codex `history_cell/dynamic.rs:146` swaps the verb to `Failed`); `calculator` leaves the copy map because the Rust runner's catalog has no such tool (`rustd/crates/afr_tools/src/catalog.rs`), and `shell` joins the command cell; the running indicator keeps its existing verb and adds the elapsed; diff rows carry no file line numbers because edit arguments carry no offsets.
 - **Proxy shape (Oct 04, 2026)** — Indy (in-session): "IS this the way to go for a proxy and is it like others?", then "just to be clear we are reducing code here? by sharing?"; chose "Share it, move all 3". The four JSON reads share `lib/api/live-json-proxy.ts` as the two streams share `lib/api/event-stream-proxy.ts`; the three existing route tests pass unchanged. Next 16.3.6 decodes route params (`next/dist/shared/lib/router/utils/route-matcher.js:19`), so the call id is encoded once.
 - **Package refresh (Oct 04, 2026)** — Indy (in-session): "also check and update all the packages like typescript, oxlint, react, next.js, clerk, tailwind, vitest, pretty much all the pacakges"; chose "Fold into this PR"; "effect needs to move up to 4.0.0"; "If next.js, react are updated then use the latest feature of them." Every workspace moves to latest in one commit. React 19.3.0, Tailwind 4.3.3 and TypeScript 7.0.2 were already latest. `typescript-jsapi` stays on typescript@6.0.2 per Indy's Jul 30, 2026 decision, because typescript@7 ships no compiler API (`typeof ts.createSourceFile` is `undefined` under 7.0.2).
+- **EXECUTE defaults (Oct 04, 2026)** — stated here, uncorrected:
+  - **Clipped arguments.** The runner cuts every argument string at 256 bytes, unmarked, in live frames and the saved trace alike (`rustd/crates/afr_agent/src/trace.rs:105`). A write's `(+N)` therefore shows only when its content arrived whole. An edit whose text may have been cut draws no inline diff and no counts; it says so and offers "show all", whose full read carries the untrimmed edit (`afd_wire/src/tool_detail.rs:50`).
+  - **Spec strings follow `Intl`.** `Intl.NumberFormat` compact spells "12.4K", which is Codex's `format_tokens_compact`; `Intl.DurationFormat` narrow spells "1m 5s" where Codex pads "1m 05s"; one hidden line reads "+1 line".
+  - **Interrupted reads "(output unavailable)".** Only a call that returned and said how can claim it printed nothing.
+  - **"Show all" needs a call id.** A call from a runner that sends none has nothing to read it by, so its cell shows "+N lines" alone.
+  - **One timestamp per turn.** The operator row carries it, and an integration turn's activity row already does. A reply repeating the same instant would be noise. This brings turn times back after `34d973fe9` (Jul 26, 2026) took them off conversation rows.
+  - **Reload proof on the unit tier.** A reload reads the thread on the server (`app/(dashboard)/w/[workspaceId]/fleets/[id]/components/view-data.ts:93`), which a browser route cannot stand in for, and only the fleet-execution lane has a real runner. Indy (in-session, Oct 04, 2026), asked how Dimension 2.6 is proven, chose "Unit tier (Recommended)": the same calls through the live reducer and as the saved row a reload reads must render identical cells. R2 keeps the live half; R1 carries the reload half.
+  - **Diffs ignore a missing final line break.** Edit arguments rarely end in one, so jsdiff runs with `ignoreNewlineAtEof`; otherwise a shared last line would read as removed and re-added.
 - **Deferrals** — none.

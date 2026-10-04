@@ -1,6 +1,7 @@
 import { ev, mockStream, renderThread, threadElement } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, renderHook, screen } from "@testing-library/react";
+import { EXPLORING_LABEL } from "@/components/domain/FleetExplored";
 import { FIRST_VISIBLE_MEASURE, useFirstVisiblePaint } from "@/components/domain/useFirstVisiblePaint";
 import { OUTCOME } from "@/lib/events/event-summary";
 import { applyReplyGone } from "@/lib/streaming/fleet-stream-reply-frames";
@@ -199,7 +200,8 @@ describe("FleetThread — reasoning disclosure", () => {
       mockStream([ev({ role: "assistant", actor: "fleet", status: "received", submittedAtMs: 1,
         tools: [{ name: "memory_recall", startedAtMs: 1, ms: null, done: false }] })]);
       renderThread();
-      expect(screen.getByText("memory_recall")).toBeTruthy();
+      // A recall folds under Explored, which is the first thing the reply shows.
+      expect(screen.getByText(EXPLORING_LABEL)).toBeTruthy();
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       act(() => { for (const [id, callback] of [...frames]) { frames.delete(id); callback(0); } });
       expect(measure).toHaveBeenCalledWith(FIRST_VISIBLE_MEASURE, expect.objectContaining({ start: 1 }));
