@@ -78,12 +78,6 @@ pub(crate) fn budget(tool_window: u32, cap: u32) -> serde_json::Value {
         "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": cap})
 }
 
-/// The schema a fixture tool offers: its name, and the arguments of a tool
-/// that takes none.
-fn schema(entry: &'static Entry) -> Schema {
-    Schema::of::<NoArguments>(entry.name())
-}
-
 /// A tool answering every call with `output`, or never answering when
 /// `output` is empty.
 #[derive(Debug)]
@@ -97,7 +91,7 @@ impl Canned {
     pub(crate) fn boxed(entry: &'static Entry, output: &str) -> Box<dyn Tool> {
         Box::new(Self {
             entry,
-            schema: schema(entry),
+            schema: Schema::of::<NoArguments>(entry.name()),
             output: output.to_owned(),
         })
     }
@@ -137,7 +131,7 @@ impl Exits {
     pub(crate) fn boxed(entry: &'static Entry, code: i32) -> Box<dyn Tool> {
         Box::new(Self {
             entry,
-            schema: schema(entry),
+            schema: Schema::of::<NoArguments>(entry.name()),
             code,
         })
     }

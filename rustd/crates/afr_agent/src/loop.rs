@@ -293,10 +293,19 @@ impl<'run> Harness<'run> {
                 self.scrub.text(&text).into_owned(),
             ),
             Ending::Failed(failure) => {
-                let detail = failure.detail().into();
-                (failed(failure.failure_class(), detail), String::new())
+                let failed = Failure {
+                    class: failure.failure_class(),
+                    detail: failure.detail().into(),
+                };
+                (ResultOutcome::Failed(failed), String::new())
             }
-            Ending::Stopped => (failed(None, DETAIL_STOPPED.into()), String::new()),
+            Ending::Stopped => {
+                let stopped = Failure {
+                    class: None,
+                    detail: DETAIL_STOPPED.into(),
+                };
+                (ResultOutcome::Failed(stopped), String::new())
+            }
         };
         let (trace, records) = self.ledger.finish();
         RunOutput {
@@ -316,13 +325,6 @@ impl<'run> Harness<'run> {
             records,
         }
     }
-}
-
-fn failed(
-    class: Option<afd_wire::report::FailureClass>,
-    detail: std::borrow::Cow<'static, str>,
-) -> ResultOutcome<'static> {
-    ResultOutcome::Failed(Failure { class, detail })
 }
 
 #[cfg(test)]

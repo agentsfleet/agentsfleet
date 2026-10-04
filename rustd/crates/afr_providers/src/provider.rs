@@ -136,24 +136,6 @@ pub enum Chunk {
     End(End),
 }
 
-impl Chunk {
-    /// Answer text.
-    pub(crate) const fn answer(text: String) -> Self {
-        Self::Text {
-            kind: StreamTextKind::Answer,
-            text,
-        }
-    }
-
-    /// The model's reasoning.
-    pub(crate) const fn reasoning(text: String) -> Self {
-        Self::Text {
-            kind: StreamTextKind::Reasoning,
-            text,
-        }
-    }
-}
-
 /// A model provider.
 pub trait Provider: Send + Sync + fmt::Debug {
     /// Streams one turn. The stream ends when the turn does; an error ends it

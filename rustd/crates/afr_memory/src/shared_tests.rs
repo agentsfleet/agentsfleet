@@ -13,6 +13,7 @@ use afd_wire::memory::{MemoryDelta, MemoryRecallResponse, PINNED_CATEGORY, Visib
 
 use super::{Hydrated, MemoryBackend, RECALL_MISS_CAP, Recall, Seed};
 use crate::Result;
+use crate::tests::keys;
 
 /// The limit every recall here asks for.
 const LIMIT: usize = 5;
@@ -91,11 +92,6 @@ async fn test_recall_miss_cap_answers_from_the_window() {
     assert_eq!(keys, ["deploy-1"], "the window's answer");
 }
 
-/// The keys a recall past the window answered with, in order.
-fn keys_of(found: &[crate::Recalled<'_>]) -> Vec<String> {
-    found.iter().map(|hit| hit.key.to_string()).collect()
-}
-
 #[tokio::test]
 async fn a_recall_past_the_window_never_brings_back_a_key_the_run_forgot() {
     let window = vec![entry("deploy-1")];
@@ -112,7 +108,7 @@ async fn a_recall_past_the_window_never_brings_back_a_key_the_run_forgot() {
 
     assert_eq!(daemon.asked.load(Ordering::SeqCst), 1, "the miss asked");
     assert_eq!(
-        keys_of(&found),
+        keys(&found),
         ["deploy-9"],
         "a forgotten key stays forgotten for the run"
     );
@@ -137,7 +133,7 @@ async fn a_recall_past_the_window_never_brings_back_a_key_the_run_overwrote() {
 
     assert_eq!(daemon.asked.load(Ordering::SeqCst), 1, "the miss asked");
     assert_eq!(
-        keys_of(&found),
+        keys(&found),
         ["deploy-1", "deploy-7"],
         "the stale copy of an overwritten key is never answered"
     );

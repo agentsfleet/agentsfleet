@@ -1,8 +1,8 @@
 //! Where a credential may be sent: its own host, an origin policy naming it,
 //! and nowhere at all from a tool that carries none.
 
-use super::Placement;
-use super::tests::{admit, draft, misplaced, refused};
+use super::tests::{admit, draft, refused};
+use super::{Placement, misplaced};
 use crate::fixture::{ELASTIC, GITHUB, GRAFANA};
 use crate::refusal::Refusal;
 

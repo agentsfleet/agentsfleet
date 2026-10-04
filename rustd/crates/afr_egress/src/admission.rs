@@ -153,7 +153,7 @@ impl<'p> Admission<'p> {
             .map(|(name, _rest)| {
                 self.statics
                     .host(name)
-                    .ok_or_else(|| not_found(name, FIELD_HOST))
+                    .ok_or_else(|| Refusal::secret_not_found(name, FIELD_HOST))
             })
             .transpose()?;
         let resolved = match (named, host) {
@@ -193,7 +193,7 @@ impl<'p> Admission<'p> {
     fn bound(self, secret: SecretRef<'_>, host: &str) -> Result<(), Refusal> {
         let sent_here = match self.mints(secret.name) {
             Some(_minted) if secret.field != FIELD_TOKEN => {
-                return Err(not_found(secret.name, secret.field));
+                return Err(Refusal::secret_not_found(secret.name, secret.field));
             }
             Some(_minted) => self.origin(host).is_some_and(|origin| {
                 origin
@@ -204,7 +204,7 @@ impl<'p> Admission<'p> {
             None => {
                 self.statics
                     .field(secret.name, secret.field)
-                    .ok_or_else(|| not_found(secret.name, secret.field))?;
+                    .ok_or_else(|| Refusal::secret_not_found(secret.name, secret.field))?;
                 self.statics
                     .host(secret.name)
                     .is_some_and(|bound| bound.eq_ignore_ascii_case(host))
@@ -325,10 +325,6 @@ fn misplaced(what: &str) -> Refusal {
     Refusal::PlacementNotAllowed {
         what: what.to_owned(),
     }
-}
-
-fn not_found(name: &str, field: &str) -> Refusal {
-    Refusal::secret_not_found(name, field)
 }
 
 #[cfg(test)]

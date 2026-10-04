@@ -103,7 +103,11 @@ pub(crate) fn body(value: &ImportBody) -> Result<(), InvalidBundle> {
 fn refuse_credentials(body: &Valid<&ImportBody>) -> Result<(), InvalidBundle> {
     let mut documents = iter::once(body.skill_markdown.as_slice())
         .chain(body.trigger_markdown.as_deref())
-        .chain(body.support_files.iter().map(|file| file.content.as_slice()));
+        .chain(
+            body.support_files
+                .iter()
+                .map(|file| file.content.as_slice()),
+        );
     if documents.any(contains_credential) {
         return Err(InvalidBundle::EmbeddedCredential);
     }

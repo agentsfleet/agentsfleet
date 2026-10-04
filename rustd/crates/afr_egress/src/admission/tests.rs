@@ -1,4 +1,4 @@
-use super::{Admission, Draft, Placement};
+use super::{Admission, Draft, Placement, misplaced};
 use crate::fixture::{ELASTIC_QUERY, GITHUB, policy};
 use crate::refusal::Refusal;
 
@@ -30,12 +30,6 @@ pub(super) fn admit(read_only: bool, draft: Draft) -> Result<String, Refusal> {
 
 pub(super) fn refused(read_only: bool, draft: Draft) -> Option<Refusal> {
     admit(read_only, draft).err()
-}
-
-pub(super) fn misplaced(what: &str) -> Refusal {
-    Refusal::PlacementNotAllowed {
-        what: what.to_owned(),
-    }
 }
 
 #[test]
