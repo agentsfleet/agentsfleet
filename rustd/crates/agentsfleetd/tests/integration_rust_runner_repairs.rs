@@ -44,12 +44,29 @@ const ELASTIC: &str = "demo.es.us-east-1.aws.elastic.cloud";
 const GRAFANA: &str = "demo-grafana.internal";
 const QUERY: &str = "/_query";
 const ANNOTATIONS: &str = "/api/annotations";
+/// A write the read-only telemetry policy admits nowhere.
+const BULK: &str = "/_bulk";
 /// The five Git Data writes and the draft, in the order a repair makes them.
 const WRITES: [&str; 5] = ["git/blobs", "git/trees", "git/commits", "git/refs", "pulls"];
 
 /// `repo`'s write paths, in [`WRITES`] order.
 fn writes(repo: Repo) -> Vec<String> {
     WRITES.iter().map(|rest| repo.path(rest)).collect()
+}
+
+/// The reconcile query the run sent `repo` before writing, which must name
+/// `branch` as the head it looked for.
+fn assert_reconciled_for(repo: Repo, branch: &str, seen: &[crate::https::Seen]) {
+    let owner = repo.name.split('/').next().unwrap_or_default();
+    let reconcile = seen
+        .iter()
+        .find(|request| request.method == Method::GET && request.path == repo.path("pulls"))
+        .expect("the run reconciled before any write");
+    assert!(
+        reconcile.query.contains(&format!("head={owner}:{branch}")),
+        "the reconcile looked for the daemon's branch: {}",
+        reconcile.query
+    );
 }
 
 /// A run's draft and ref went to the branch the daemon named for `event_id`,
@@ -95,7 +112,8 @@ async fn test_ci_repairer_opens_one_draft_pull_request() {
     let mut supervisor = Supervisor::new();
     let run = install_bundle(&mut supervisor, "ci-repairer", &[], None).await;
     let upstream = Upstream::serve(routes(LINKWARDEN, None, file_at_head())).await;
-    let (model, transcript) = FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN)));
+    let (model, transcript) =
+        FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN), Vec::new()));
 
     let settled = run_event(&run, &run.event_id, &upstream, model).await;
 
@@ -103,18 +121,32 @@ async fn test_ci_repairer_opens_one_draft_pull_request() {
     assert!(settled.answer.contains(DRAFT_URL), "{}", settled.answer);
     let (seen, asked) = (upstream.seen(), transcript.asked());
     assert_eq!(posts(&seen), writes(LINKWARDEN));
+    assert_reconciled_for(LINKWARDEN, &branch_for(&run.event_id), &seen);
     assert_repaired_on_named_branch(LINKWARDEN, &run.event_id, &seen, &asked);
     assert_token_stayed_on_the_wire(&seen, &asked);
 
+    // A second event: its own branch, which an earlier run already opened a
+    // draft from. The prompt names that branch, the reconcile looks for it,
+    // and finding the draft ends the run with its link and no write.
     let second = run.enqueue_event(EventType::Chat).await;
     let found = branch_for(&second);
     let again = Upstream::serve(routes(LINKWARDEN, Some(&found), file_at_head())).await;
-    let (model, _transcript) = FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN)));
+    let (model, transcript) =
+        FakeModel::deciding(script(LINKWARDEN, head_reads(LINKWARDEN), Vec::new()));
     let settled = run_event(&run, &second, &again, model).await;
     assert_eq!(settled.status, "processed");
     assert!(settled.answer.contains(DRAFT_URL), "{}", settled.answer);
+    let (seen, asked) = (again.seen(), transcript.asked());
     assert!(
-        posts(&again.seen()).is_empty(),
+        asked[0]
+            .instructions
+            .contains(&format!("repair branch: {found}")),
+        "the second run's prompt names its own branch: {}",
+        asked[0].instructions
+    );
+    assert_reconciled_for(LINKWARDEN, &found, &seen);
+    assert!(
+        posts(&seen).is_empty(),
         "a found draft ends the run before any write"
     );
 
@@ -134,6 +166,13 @@ fn telemetry() -> [Secret; 2] {
             body: json!({"host": GRAFANA, "token": "glsa_fixture_editor"}),
         },
     ]
+}
+
+/// A write to the telemetry host that `read_only` with one listed query path
+/// must refuse before it leaves.
+fn bulk_write() -> Value {
+    json!({"url": format!("https://${{secrets.elastic.host}}{BULK}"), "method": "POST",
+           "headers": {"Authorization": "ApiKey ${secrets.elastic.api_key}"}, "body": "{}"})
 }
 
 /// The telemetry, the compare and the head the repairer reads before writing.
@@ -201,7 +240,8 @@ async fn test_incident_repairer_ships_or_stops() {
     let mut supervisor = Supervisor::new();
     let run = install_bundle(&mut supervisor, "incident-repairer", &telemetry(), None).await;
     let upstream = Upstream::serve(incident_upstream(file_at_head())).await;
-    let (model, transcript) = FakeModel::deciding(script(AGENTSFLEET, incident_reads()));
+    let (model, transcript) =
+        FakeModel::deciding(script(AGENTSFLEET, incident_reads(), vec![bulk_write()]));
 
     let settled = run_event(&run, &run.event_id, &upstream, model).await;
 
@@ -211,6 +251,17 @@ async fn test_incident_repairer_ships_or_stops() {
     let mut shipped = vec![QUERY.to_owned()];
     shipped.extend(writes(AGENTSFLEET));
     assert_eq!(posts(&seen), shipped);
+    let refused = format!("[{}]", ToolErrorCode::MethodNotAllowed.as_str());
+    assert!(
+        (asked.iter().flat_map(|turn| &turn.results)).any(|result| result.starts_with(&refused)),
+        "the unlisted write was refused and the model read why: {asked:#?}"
+    );
+    assert!(
+        !seen
+            .iter()
+            .any(|request| request.host == ELASTIC && request.path == BULK),
+        "the refused write never reached the host"
+    );
     let key = seen
         .iter()
         .find(|request| request.host == ELASTIC)
@@ -226,13 +277,24 @@ async fn test_incident_repairer_ships_or_stops() {
         &json!({"message": "Resource not accessible by integration"}),
     );
     let partial = Upstream::serve(incident_upstream(forbidden)).await;
-    let (model, transcript) = FakeModel::deciding(script(AGENTSFLEET, incident_reads()));
+    let (model, transcript) =
+        FakeModel::deciding(script(AGENTSFLEET, incident_reads(), Vec::new()));
     let settled = run_event(&run, &second, &partial, model).await;
-    let read = transcript.asked().last().map(|turn| turn.results.clone());
+    let read = transcript
+        .asked()
+        .last()
+        .map(|turn| turn.results.clone())
+        .unwrap_or_default();
     assert_eq!(
         (settled.status.as_str(), settled.answer.as_str()),
         ("processed", DIAGNOSIS_ONLY),
         "{read:#?}"
+    );
+    let forbidden_read = format!("[{}]", ToolErrorCode::UpstreamStatus.as_str());
+    assert!(
+        read.iter()
+            .any(|result| result.starts_with(&forbidden_read) && result.contains("Status: 403")),
+        "the 403 reached the model as a failed read, which is what stopped it: {read:#?}"
     );
     assert_eq!(
         posts(&partial.seen()),

@@ -38,6 +38,8 @@ pub(crate) struct Asked {
     pub(crate) tools: Vec<String>,
     /// The system prompt.
     pub(crate) instructions: String,
+    /// What the fleet was asked, each user message in order.
+    pub(crate) user: Vec<String>,
     /// Every tool output fed back so far, in order.
     pub(crate) results: Vec<String>,
 }
@@ -113,6 +115,12 @@ impl Provider for FakeModel {
                 Message::User(_) | Message::Assistant { .. } => None,
             })
             .collect();
+        let user = (request.messages.iter())
+            .filter_map(|message| match message {
+                Message::User(text) => Some(text.clone()),
+                Message::ToolResult { .. } | Message::Assistant { .. } => None,
+            })
+            .collect();
         let asked = Asked {
             turn: self.script.next.fetch_add(1, Ordering::Relaxed),
             tools: request
@@ -121,6 +129,7 @@ impl Provider for FakeModel {
                 .map(|spec| spec.name.to_owned())
                 .collect(),
             instructions: request.instructions.to_owned(),
+            user,
             results,
         };
         let turn = (self.script.decide)(&asked);
