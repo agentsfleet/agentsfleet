@@ -15,22 +15,31 @@ pub(crate) const CAP_REACHED: &str = "The context budget for this run is spent a
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Budget {
     tool_window: usize,
-    cap_tokens: u64,
+    /// The prompt, in tokens, that reaches the cap; none when the model's
+    /// window is unknown.
+    limit: Option<f64>,
 }
 
 impl Budget {
-    /// The budget a lease's policy sets. A zero window keeps every result, and
-    /// a zero cap is one the daemon could not resolve, so it never trips.
+    /// The budget a lease's policy sets. A zero window keeps every result.
+    /// The cap is reached at the fill fraction a stage chunks at, of the
+    /// model's window, as `capabilities.md` §4 measures fill; a zero window is
+    /// one the daemon could not resolve, and the runtime bakes in none, so it
+    /// never trips.
     pub(crate) fn new(budget: &ContextBudget<'_>) -> Self {
+        let window = budget.context_cap_tokens;
+        let fill = f64::from(budget.stage_chunk_threshold);
         Self {
             tool_window: budget.tool_window as usize,
-            cap_tokens: u64::from(budget.context_cap_tokens),
+            limit: (window > 0).then(|| f64::from(window) * fill),
         }
     }
 
-    /// Whether a turn whose prompt took `input_tokens` reached the cap.
-    pub(crate) const fn reached(self, input_tokens: u64) -> bool {
-        self.cap_tokens > 0 && input_tokens >= self.cap_tokens
+    /// Whether a turn whose prompt took `input_tokens` reached the cap. A
+    /// count past `u32` is past any window.
+    pub(crate) fn reached(self, input_tokens: u64) -> bool {
+        let input = f64::from(u32::try_from(input_tokens).unwrap_or(u32::MAX));
+        self.limit.is_some_and(|limit| input >= limit)
     }
 
     /// Replaces the output of every tool result older than the newest
