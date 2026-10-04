@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use afr_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN};
+use afd_core::test_util::trace::Capture;
+use afr_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, LEASE_ID};
 use afr_egress::testing::{RecordingTransport, Sent, inbound};
 use afr_egress::{Inbound, RESPONSE_MAX_BYTES};
 use serde_json::{Value, json};
@@ -36,10 +37,15 @@ async fn request_through(
 
 #[tokio::test]
 async fn test_http_request_refuses_unlisted_host() {
+    let capture = Capture::install();
     let (output, sent) = request(false, json!({"url": "https://evil.example/exfil"})).await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::HostNotAllowed));
     assert_eq!(sent, Vec::new());
+    let refused = capture.only("tool_refused");
+    assert_eq!(refused.field("lease_id"), Some(LEASE_ID));
+    assert_eq!(refused.field("tool"), Some("http_request"));
+    assert_eq!(refused.field("error_code"), Some("host_not_allowed"));
 }
 
 #[tokio::test]
@@ -126,6 +132,7 @@ async fn test_placeholder_substituted_only_in_authorization() {
 
 #[tokio::test]
 async fn test_mintable_credential_minted_once() {
+    let capture = Capture::install();
     let run = Run::new(false);
     let (transport, sent) = replying(200, "[]");
     let tool = Typed::boxed(HttpRequest::new(transport));
@@ -143,6 +150,15 @@ async fn test_mintable_credential_minted_once() {
     assert_eq!(output.error_code, None);
     assert_eq!(run.mint.asked(), 2);
     assert_eq!(sent.try_iter().count(), 4);
+    let minted: Vec<_> = (capture.events().into_iter())
+        .filter(|event| event.field("event") == Some("credential_minted"))
+        .collect();
+    assert_eq!(minted.len(), 2);
+    assert!(
+        minted
+            .iter()
+            .all(|event| event.field("lease_id") == Some(LEASE_ID))
+    );
 }
 
 #[tokio::test]

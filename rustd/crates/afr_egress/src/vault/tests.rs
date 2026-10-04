@@ -5,7 +5,7 @@ use crate::admission::Admission;
 use afd_core::error_code::GH_MINT_FAILED;
 
 use crate::error::Error;
-use crate::fixture::{GRAFANA_TOKEN, policy, shown};
+use crate::fixture::{GRAFANA_TOKEN, LEASE_ID, policy, shown};
 use crate::testing::CountingMint;
 
 /// When every suite's clock starts.
@@ -20,7 +20,7 @@ async fn should_fill_a_static_placeholder_from_secrets_map() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
-    let mut vault = Vault::new(&mint, &clock);
+    let mut vault = Vault::new(LEASE_ID, &mint, &clock);
 
     let filled = vault
         .fill(Admission::new(&policy), "Bearer ${secrets.grafana.token}")
@@ -41,7 +41,7 @@ async fn should_mint_once_and_reuse_until_shortly_before_expiry() {
     let admission = Admission::new(&policy);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
-    let mut vault = Vault::new(&mint, &clock);
+    let mut vault = Vault::new(LEASE_ID, &mint, &clock);
 
     for _call in 0..3 {
         let filled = vault.fill(admission, "token ${secrets.github.token}").await;
@@ -76,7 +76,7 @@ async fn should_refuse_with_the_daemons_words_when_the_mint_is_refused() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::refusing("UZ-REPAIR-004: grant revoked", clock.clone());
-    let mut vault = Vault::new(&mint, &clock);
+    let mut vault = Vault::new(LEASE_ID, &mint, &clock);
 
     let filled = vault
         .fill(Admission::new(&policy), "${secrets.github.token}")
@@ -96,7 +96,7 @@ async fn should_mask_every_minted_token_and_nothing_before_a_mint() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
-    let mut vault = Vault::new(&mint, &clock);
+    let mut vault = Vault::new(LEASE_ID, &mint, &clock);
     let echoed = format!("upstream echoed {MINTED}");
 
     assert_eq!(vault.mask(&echoed), echoed);
@@ -118,7 +118,7 @@ async fn should_refuse_a_minted_credentials_field_other_than_its_token() {
     let policy = policy(false);
     let clock = FixedClock::at(START);
     let mint = CountingMint::answering(MINTED, HOUR, clock.clone());
-    let mut vault = Vault::new(&mint, &clock);
+    let mut vault = Vault::new(LEASE_ID, &mint, &clock);
 
     let filled = vault
         .fill(Admission::new(&policy), "${secrets.github.password}")

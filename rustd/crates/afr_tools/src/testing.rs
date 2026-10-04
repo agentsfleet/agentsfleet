@@ -7,7 +7,7 @@ use std::sync::mpsc::Receiver;
 use afd_core::clock::{FixedClock, UnixMillis};
 use afd_wire::policy::ExecutionPolicy;
 use afr_egress::Egress;
-use afr_egress::fixture::policy;
+use afr_egress::fixture::{LEASE_ID, policy};
 use afr_egress::testing::{CountingMint, RecordingTransport, Sent};
 use afr_memory::Hydrated;
 
@@ -61,7 +61,7 @@ impl Run {
     pub(crate) fn lease(&self) -> Lease<'_> {
         Lease::new(
             Box::new(Hydrated::default()),
-            Egress::new(&self.policy, &self.mint, &self.clock),
+            Egress::new(LEASE_ID, &self.policy, &self.mint, &self.clock),
         )
     }
 }

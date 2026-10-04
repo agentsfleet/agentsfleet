@@ -21,6 +21,8 @@ use serde_json::{Map, Value};
 use crate::error::Error;
 use crate::refusal::Refusal;
 
+/// The lease every suite's guard belongs to.
+pub const LEASE_ID: &str = "lease-1";
 /// The bound repository.
 pub const REPOSITORY: &str = "acme/widgets";
 /// The branch the daemon named.

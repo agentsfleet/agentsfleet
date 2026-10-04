@@ -31,6 +31,7 @@ const EVENT_CREDENTIAL_MINTED: &str = "credential_minted";
 /// One lease's credentials.
 #[derive(Debug)]
 pub(crate) struct Vault<'run> {
+    lease_id: &'run str,
     mint: &'run dyn Mint,
     clock: &'run dyn Clock,
     minted: HashMap<String, Minted>,
@@ -42,9 +43,11 @@ pub(crate) struct Vault<'run> {
 }
 
 impl<'run> Vault<'run> {
-    /// A vault minting through `mint`, its tokens expiring against `clock`.
-    pub(crate) fn new(mint: &'run dyn Mint, clock: &'run dyn Clock) -> Self {
+    /// Lease `lease_id`'s vault, minting through `mint`, its tokens expiring
+    /// against `clock`.
+    pub(crate) fn new(lease_id: &'run str, mint: &'run dyn Mint, clock: &'run dyn Clock) -> Self {
         Self {
+            lease_id,
             mint,
             clock,
             minted: HashMap::new(),
@@ -116,8 +119,9 @@ impl<'run> Vault<'run> {
         )
         .map_err(raise::unmaskable)?;
         let expires_at_ms = minted.expires_at().as_millis();
+        let lease_id = self.lease_id;
         let event = EVENT_CREDENTIAL_MINTED;
-        tracing::info!(integration, expires_at_ms, event);
+        tracing::info!(lease_id, integration, expires_at_ms, event);
         if let Some(replaced) = self.minted.insert(name.to_owned(), minted) {
             self.retired.push((name.to_owned(), replaced));
         }

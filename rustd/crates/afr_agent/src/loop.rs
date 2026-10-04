@@ -119,7 +119,7 @@ impl<'run> Harness<'run> {
             scrub,
             lease: Lease::new(
                 Box::new(Hydrated::new(run.memory)),
-                Egress::new(policy, run.mint, &SystemClock),
+                Egress::new(&run.lease.lease_id, policy, run.mint, &SystemClock),
             ),
             live: Live::new(run.events, scrub, started),
             ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
