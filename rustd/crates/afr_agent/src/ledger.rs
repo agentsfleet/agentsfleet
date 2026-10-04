@@ -7,14 +7,16 @@
 //! and, when its handler returned, its full record. A call whose future is
 //! dropped before the handler returned (the lease stopped, the run future was
 //! dropped) ends `interrupted`, live and in the trace, so no run ending can
-//! leave a call open.
+//! leave a call open. Records are held only while they fit what one event may
+//! keep, measured as the daemon measures it: one it would refuse is not held
+//! to be posted.
 
 use std::borrow::Cow;
 use std::time::Instant;
 
 use afd_core::clock::{saturating_millis, saturating_millis_signed};
 use afd_wire::activity::{ActivityFrame, ToolCallCompleted, ToolCallStarted};
-use afd_wire::tool_detail::ToolCallRecord;
+use afd_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, ToolCallRecord};
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_providers::Call;
 use afr_tools::ToolOutput;
@@ -37,6 +39,8 @@ pub(crate) struct Ledger<'run> {
     scrub: &'run Scrub,
     trace: Trace,
     records: Vec<ToolCallRecord<'static>>,
+    /// What the held records spend of the event's budget.
+    spent: usize,
     calls: u64,
 }
 
@@ -50,6 +54,7 @@ impl<'run> Ledger<'run> {
             scrub,
             trace: Trace::default(),
             records: Vec::new(),
+            spent: 0,
             calls: 0,
         }
     }
@@ -96,6 +101,17 @@ impl<'run> Ledger<'run> {
         }
     }
 
+    /// Holds `record` when it fits what is left of [`DETAIL_EVENT_MAX_BYTES`].
+    /// A record past it is dropped and a later, smaller one may still fit, as
+    /// the daemon keeps them.
+    fn hold(&mut self, record: ToolCallRecord<'static>) {
+        let after = self.spent.saturating_add(record.byte_count());
+        if after <= DETAIL_EVENT_MAX_BYTES {
+            self.spent = after;
+            self.records.push(record);
+        }
+    }
+
     /// The run's trace, none for a run that called no tool, and every record.
     pub(crate) fn finish(self) -> (Option<ToolTrace<'static>>, Vec<ToolCallRecord<'static>>) {
         (self.trace.finish(), self.records)
@@ -129,7 +145,7 @@ impl Opened<'_, '_> {
         if let Some((shown, bounded)) = self.arguments.take() {
             self.end(bounded, outcome);
             let full = record(self.number, shown, &text);
-            self.ledger.records.push(full);
+            self.ledger.hold(full);
         }
         text
     }
@@ -168,3 +184,7 @@ impl Drop for Opened<'_, '_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "ledger/tests.rs"]
+mod tests;

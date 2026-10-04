@@ -227,9 +227,12 @@ fn chunk(turns: &Turns, event: StreamEvent) -> Option<Chunk> {
 }
 
 /// Whether a failure mid-stream may pass on a second opening: one the
-/// provider sent after its reply began, with no status of its own.
+/// provider sent after its reply began, with no status of its own. A reply
+/// the transport ended at its cap is not one: the next would be as long.
 fn reopens(failure: &ProviderError) -> bool {
-    failure.provider_response_status().is_none() && failure.is_retryable()
+    failure.provider_response_status().is_none()
+        && failure.is_retryable()
+        && !raise::oversize(failure)
 }
 
 /// The chunks a finished turn ends on: what it spent, then its end.

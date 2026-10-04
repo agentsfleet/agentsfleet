@@ -1,10 +1,13 @@
 //! How a failure becomes an [`Error`](super::Error): the lift, and the
 //! raisers for the kinds that carry data.
 
+use std::error::Error as StdError;
+
 use rig_core::message::EmptyToolName;
 use rig_core::{ProviderError, ProviderResponseError};
 
 use super::{Error, ErrorKind};
+use crate::transport::Oversize;
 
 /// The longest provider code a report carries; a longer one is a message.
 const CODE_CAP: usize = 64;
@@ -65,7 +68,8 @@ pub(crate) fn unnamed(call_id: &str, source: EmptyToolName) -> Error {
 /// `failure`, as rig reported it, as the kind a report names: a status the
 /// provider answered is a refusal under the provider's own code, a reply cut
 /// short or a connection that dropped is lost, a provider's error after its
-/// reply began ended the turn, and anything else is the wire's.
+/// reply began ended the turn, a reply past the transport's cap is oversized,
+/// and anything else is the wire's.
 pub(crate) fn provider(failure: ProviderError) -> Error {
     let named = code(&failure);
     if let Some(status) = failure
@@ -79,6 +83,7 @@ pub(crate) fn provider(failure: ProviderError) -> Error {
         });
     }
     match failure {
+        _ if oversize(&failure) => Error::from(ErrorKind::Oversize(Oversize)),
         ProviderError::Http(_) | ProviderError::Truncated => Error::lost(failure),
         ProviderError::Provider(_) => ended(UNNAMED_END),
         _ if failure.provider_response().is_some() => {
@@ -86,6 +91,17 @@ pub(crate) fn provider(failure: ProviderError) -> Error {
         }
         source => Error::from(ErrorKind::Wire { source }),
     }
+}
+
+/// Whether the transport ended `failure`'s read for passing its cap. rig
+/// keeps the transport's error behind its own and names no source for it, so
+/// the walk starts there.
+pub(crate) fn oversize(failure: &ProviderError) -> bool {
+    let ProviderError::Http(transport) = failure else {
+        return false;
+    };
+    let first: &(dyn StdError + 'static) = &**transport;
+    std::iter::successors(Some(first), |&error| error.source()).any(<dyn StdError>::is::<Oversize>)
 }
 
 /// The provider's own name for `failure`, when it gave one that reads as a

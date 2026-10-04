@@ -20,6 +20,8 @@ use afd_wire::report::FailureClass;
 use rig_core::ProviderError;
 use rig_core::message::EmptyToolName;
 
+use crate::transport::Oversize;
+
 pub(crate) mod raise;
 
 afd_core::error_shell!(
@@ -54,6 +56,11 @@ pub(crate) enum ErrorKind {
         /// The provider's own name for the error, never its message.
         reason: String,
     },
+
+    /// The provider's reply passed the bytes one turn may carry; the read
+    /// ended there.
+    #[error(transparent)]
+    Oversize(Oversize),
 
     /// A request or a streamed event was not the JSON its wire defines.
     #[error("the model provider's turn could not be written or read")]
@@ -149,6 +156,7 @@ impl Error {
             ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
+            | ErrorKind::Oversize(_)
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Registry { .. }
             | ErrorKind::Unsendable { .. }
@@ -159,13 +167,14 @@ impl Error {
     }
 
     /// The class the report names, where the failure has one. A refusal, an
-    /// unreadable turn and a provider this runner does not speak are the
-    /// fleet's error and carry none.
+    /// unreadable or oversized turn and a provider this runner does not speak
+    /// are the fleet's error and carry none.
     #[must_use]
     pub fn failure_class(&self) -> Option<FailureClass> {
         match self.kind() {
             ErrorKind::Lost { .. } | ErrorKind::Ended { .. } => Some(FailureClass::TransportLoss),
             ErrorKind::Refused { .. }
+            | ErrorKind::Oversize(_)
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Unhosted { .. }
             | ErrorKind::Registry { .. }
@@ -184,6 +193,7 @@ impl Error {
             ErrorKind::Refused { .. }
             | ErrorKind::Lost { .. }
             | ErrorKind::Ended { .. }
+            | ErrorKind::Oversize(_)
             | ErrorKind::Unreadable { .. }
             | ErrorKind::Registry { .. }
             | ErrorKind::Unsendable { .. }
