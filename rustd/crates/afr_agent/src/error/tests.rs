@@ -6,6 +6,7 @@
 use std::error::Error as _;
 
 use afd_core::error_code;
+use afr_providers::Connect as _;
 use afr_tools::Catalog;
 
 use super::{Error, Unhosted};
@@ -32,4 +33,24 @@ fn should_name_no_tool_when_a_checkpoint_failed() {
 
     assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(failure.unhosted(), None);
+}
+
+/// A self-hosted endpoint at a loopback literal, which no runner dials.
+const PRIVATE_ENDPOINT: &str = "custom:https://127.0.0.1/v1";
+
+#[test]
+fn should_name_the_blocked_endpoint_when_a_custom_model_is_refused() {
+    let mut policy = afr_egress::fixture::policy(true);
+    policy.provider = PRIVATE_ENDPOINT.into();
+    let connector =
+        afr_providers::Connector::new(afr_providers::Registry::builtin().unwrap()).unwrap();
+
+    let refused = Error::from(connector.admit(&policy).unwrap_err());
+
+    assert_eq!(refused.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
+    assert_eq!(
+        refused.unhosted(),
+        Some(Unhosted::Endpoint(PRIVATE_ENDPOINT)),
+        "the address is named, never a provider with no wire"
+    );
 }

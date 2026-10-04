@@ -1,7 +1,9 @@
-//! How a turn ended, on the socket: the reasoning a provider signed goes back
-//! with the turn that made it, a call cut at the output limit never runs, and
-//! a reply past the transport's cap ends the run without being asked again.
+//! How a turn ended, on the socket: the reasoning a provider signed showed
+//! live as reasoning and goes back with the turn that made it, a call cut at
+//! the output limit never runs, and a reply past the transport's cap ends the
+//! run without being asked again.
 
+use afd_wire::activity::{ActivityFrame, StreamTextKind};
 use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::REPLY_MAX_BYTES;
@@ -39,6 +41,16 @@ fn last_turn(body: &Value) -> Vec<Value> {
         .unwrap()
 }
 
+/// The kind and text of the first chunk of model output a run showed live.
+fn first_shown<'a>(frames: &'a [ActivityFrame<'_>]) -> Option<(Option<StreamTextKind>, &'a str)> {
+    frames.iter().find_map(|frame| match frame {
+        ActivityFrame::FleetResponseChunk(chunk) => Some((chunk.text_kind, chunk.text.as_ref())),
+        ActivityFrame::ToolCallStarted(_)
+        | ActivityFrame::ToolCallCompleted(_)
+        | ActivityFrame::ToolCallProgress(_) => None,
+    })
+}
+
 #[tokio::test]
 async fn a_turns_signed_thinking_goes_back_ahead_of_its_call() {
     let wire = Wire::Messages;
@@ -50,9 +62,14 @@ async fn a_turns_signed_thinking_goes_back_ahead_of_its_call() {
     .await;
     let leased = lease(&wire.provider(), &[UPDATE_PLAN.name()], "what is 2+2?");
 
-    let (output, _frames) = run(&engine(&fake), &leased).await;
+    let (output, frames) = run(&engine(&fake), &leased).await;
 
     assert_eq!(output.result.content, ANSWER);
+    assert_eq!(
+        first_shown(&frames),
+        Some((Some(StreamTextKind::Reasoning), THOUGHT)),
+        "the thought showed live as reasoning, ahead of everything else"
+    );
     let turn = last_turn(&fake.seen()[1].body);
     assert_eq!(turn[0]["type"], "thinking", "{turn:?}");
     assert_eq!(

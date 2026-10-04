@@ -139,9 +139,26 @@ fn should_name_a_reply_past_the_cap_the_fleets_error_and_never_reopen_it() {
     assert!(raise::oversize(&failure()));
     assert!(!raise::oversize(&reset), "a reset is lost, not oversized");
     assert_eq!(oversized.failure_class(), None);
+    assert_eq!(oversized.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert_eq!(oversized.detail(), Oversize.to_string());
     assert_eq!(
         raise::provider(reset).failure_class(),
         Some(FailureClass::TransportLoss)
     );
+}
+
+/// A self-hosted endpoint at a loopback literal.
+const PRIVATE_ENDPOINT: &str = "custom:https://127.0.0.1/v1";
+
+#[test]
+fn should_name_a_blocked_endpoint_as_the_fleets_configuration_and_never_as_unhosted() {
+    let blocked = raise::blocked_endpoint(PRIVATE_ENDPOINT);
+    let unhosted = raise::unhosted("bedrock");
+
+    assert_eq!(blocked.code(), error_code::AGENTSFLEET_INVALID_CONFIG);
+    assert_eq!(blocked.failure_class(), None);
+    assert_eq!(blocked.blocked_endpoint(), Some(PRIVATE_ENDPOINT));
+    assert_eq!(blocked.unhosted_provider(), None);
+    assert_eq!(unhosted.blocked_endpoint(), None);
+    assert!(blocked.detail().contains(PRIVATE_ENDPOINT));
 }

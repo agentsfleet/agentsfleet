@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use afd_core::test_util::trace::Capture;
+use afr_egress::error::one_of_each_kind;
 use afr_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, LEASE_ID};
 use afr_egress::testing::{RecordingTransport, Sent, inbound};
 use afr_egress::{Inbound, RESPONSE_MAX_BYTES};
@@ -158,6 +159,39 @@ async fn test_mintable_credential_minted_once() {
         minted
             .iter()
             .all(|event| event.field("lease_id") == Some(LEASE_ID))
+    );
+    assert!(
+        (capture.events().iter()).all(|event| event.fields.values().all(|v| !v.contains(MINTED))),
+        "no log line carries the minted token"
+    );
+}
+
+/// A transport failure that names no refusal — the client itself broke — is
+/// still an answer the model can act on: unreachable, under that code, and
+/// never a bare registry string.
+#[tokio::test]
+async fn should_hand_a_transport_failure_back_as_upstream_unreachable() {
+    let (transport, _sent) = RecordingTransport::answering(|_outbound| {
+        let Some((_name, failure)) = (one_of_each_kind().into_iter())
+            .find(|(name, failure)| *name == "client" && failure.refusal().is_none())
+        else {
+            unreachable!("the client failure is one of each kind and no refusal")
+        };
+        Err(failure)
+    });
+
+    let output = request_through(
+        false,
+        Arc::new(transport),
+        json!({"url": "https://api.github.com/repos/acme/widgets/"}),
+    )
+    .await;
+
+    assert_eq!(output.error_code, Some(ToolErrorCode::UpstreamUnreachable));
+    assert!(
+        output.text.starts_with("[upstream_unreachable] "),
+        "{}",
+        output.text
     );
 }
 

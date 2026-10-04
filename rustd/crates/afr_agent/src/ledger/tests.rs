@@ -8,7 +8,9 @@ use afr_providers::Call;
 use afr_tools::ToolOutput;
 use afr_tools::catalog::UPDATE_PLAN;
 
-use super::Ledger;
+use afd_core::test_util::trace::Capture;
+
+use super::{EVENT_RECORD_DROPPED, Ledger};
 use crate::fixture::{Frames, scrub};
 
 /// The lease every call here belongs to.
@@ -35,6 +37,7 @@ fn spent(records: &[ToolCallRecord<'_>]) -> usize {
 
 #[tokio::test]
 async fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_still_is() {
+    let capture = Capture::install();
     let frames = Frames::default();
     let sink = frames.sink();
     let scrub = scrub();
@@ -62,4 +65,28 @@ async fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_stil
         "the small call came after the dropped ones"
     );
     assert!(spent(&records) <= DETAIL_EVENT_MAX_BYTES);
+    let dropped: Vec<_> = (capture.events().into_iter())
+        .filter(|event| event.field("event") == Some(EVENT_RECORD_DROPPED))
+        .collect();
+    assert_eq!(
+        dropped.len(),
+        LARGE_CALLS - fit,
+        "one warn per record kept out"
+    );
+    assert!(
+        dropped
+            .iter()
+            .all(|event| event.level == tracing::Level::WARN)
+    );
+    assert_eq!(
+        dropped.first().and_then(|event| event.field("call_number")),
+        Some((fit + 1).to_string().as_str()),
+        "the first drop is the first call past the budget"
+    );
+    assert!(
+        dropped
+            .iter()
+            .all(|event| event.field("lease_id") == Some(LEASE_ID)),
+        "every drop names its lease"
+    );
 }

@@ -11,7 +11,10 @@ use afd_core::test_util::trace::Capture;
 use afd_wire::lease::LeasePayload;
 use afr_tools::catalog::{BROWSER, FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
 
-use super::{DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED, EVENT_UNHOSTED_PROVIDER};
+use super::{
+    DETAIL_BLOCKED_ENDPOINT, DETAIL_UNHOSTED, DETAIL_UNHOSTED_PROVIDER, EVENT_UNHOSTED,
+    EVENT_UNHOSTED_PROVIDER,
+};
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::test_support::{
@@ -170,3 +173,34 @@ async fn a_lease_naming_a_provider_no_wire_speaks_is_refused_before_anything_sta
 /// A provider the daemon accepts and no runner wire speaks: it signs its
 /// requests rather than taking a key.
 const UNSPOKEN_PROVIDER: &str = "bedrock";
+
+#[tokio::test(start_paused = true)]
+async fn a_custom_endpoint_at_a_private_address_refuses_the_lease() {
+    let capture = Capture::install();
+    let mut rig = rig();
+    let mut refused_lease = offering(&[UPDATE_PLAN.name()]);
+    refused_lease.policy.provider = PRIVATE_ENDPOINT.into();
+
+    rig.run(&refused_lease).await.unwrap();
+
+    let calls = rig.calls();
+    let report = reported(&calls);
+    assert_eq!(report[FAILURE_REASON], STARTUP_POSTURE);
+    assert_eq!(
+        report[FAILURE_DETAIL], DETAIL_BLOCKED_ENDPOINT,
+        "the address is the cause, never the provider name"
+    );
+    assert_no_model_call(&rig);
+    assert_eq!(position(&calls, Verb::Hydrate), None);
+    let refused = capture.only(EVENT_UNHOSTED_PROVIDER);
+    assert_eq!(refused.level, tracing::Level::ERROR);
+    assert_eq!(refused.field(FIELD_NAME), Some(PRIVATE_ENDPOINT));
+    assert_eq!(
+        refused.field(FIELD_ERROR_CODE),
+        Some(error_code::AGENTSFLEET_INVALID_CONFIG.as_str())
+    );
+}
+
+/// A self-hosted endpoint at a loopback literal, which this runner never
+/// dials whatever the policy allows.
+const PRIVATE_ENDPOINT: &str = "custom:https://127.0.0.1/v1";

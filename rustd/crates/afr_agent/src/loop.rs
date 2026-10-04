@@ -307,6 +307,10 @@ mod tests;
 mod budget_tests;
 
 #[cfg(test)]
+#[path = "loop/provider_failure_tests.rs"]
+mod provider_failure_tests;
+
+#[cfg(test)]
 #[path = "loop/turn_tests.rs"]
 mod turn_tests;
 

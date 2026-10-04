@@ -138,3 +138,25 @@ fn a_count_past_the_wire_width_saturates() {
     assert_eq!(narrow(u64::MAX), u32::MAX);
     assert_eq!(narrow(9), 9);
 }
+
+#[test]
+fn a_finished_run_bills_its_result_not_the_meter() {
+    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let ending = Ending::Ran {
+        output: answer(),
+        first_chunk: None,
+    };
+
+    let report = report(&lease, &ending, &spent(100, 50, 25), Duration::ZERO, None);
+
+    assert_eq!(
+        (
+            report.tokens,
+            report.input_tokens,
+            report.cached_input_tokens,
+            report.output_tokens
+        ),
+        (8, 3, 1, 4),
+        "what the engine handed back is what is billed; the meter is the fallback"
+    );
+}

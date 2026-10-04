@@ -301,6 +301,10 @@ mod tests {
         assert!(refused_id("").is_some());
         assert!(refused_id(&"n".repeat(MAX_SKILL_NAME_LEN)).is_none());
         assert!(refused_id(&"n".repeat(MAX_SKILL_NAME_LEN + 1)).is_some());
+        assert!(
+            refused_id("a\u{0}b").is_some(),
+            "a NUL is refused at the edge, as every other bound here refuses it"
+        );
         assert!(DETAIL_ID_BOUNDS.contains(&MAX_SKILL_NAME_LEN.to_string()));
     }
 }

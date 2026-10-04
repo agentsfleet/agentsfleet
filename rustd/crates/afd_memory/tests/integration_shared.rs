@@ -19,6 +19,8 @@ const PUBLISHER: &str = "incident-fleet-3";
 const SHARED_KEY: &str = "deploy_target";
 /// How many entries a recall asks for.
 const LIMIT: usize = 5;
+/// The text a search page looks for, which the shared key holds.
+const SEARCHED: &str = "deploy";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -117,27 +119,24 @@ async fn test_shared_memory_reaches_only_granted_fleets() {
     space.cleanup().await;
 }
 
-/// Two publishers share one key in one millisecond; a reader paging one row
-/// at a time reaches both, because the writer is part of the keyset.
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_page_walk_past_two_writers_tied_on_instant_and_key_skips_neither() {
+/// Two publishers share one key in one millisecond; a reader paging `view`
+/// one row at a time reaches both, because the writer is part of the keyset.
+///
+/// Each view runs its own continuation statement, so each has its own chance
+/// to drop the writer from the seek; the tests below walk every one.
+async fn a_page_walk_past_two_tied_writers_skips_neither(view: View<'_>) {
     let space = Workspace::create().await;
     let publish = Grants {
         publish: true,
         ..Grants::default()
     };
+    let read = Grants {
+        read: true,
+        ..Grants::default()
+    };
     let first = space.fleet("publisher-a", publish).await;
     let second = space.fleet("publisher-b", publish).await;
-    let reader = space
-        .fleet(
-            "reader",
-            Grants {
-                read: true,
-                ..Grants::default()
-            },
-        )
-        .await;
+    let reader = space.fleet("reader", read).await;
     let shared = [delta(SHARED_KEY, PINNED_CATEGORY, Visibility::Workspace)];
     let tied = UnixMillis::from_millis(1_760_000_000_000);
     for writer in [&first, &second] {
@@ -158,7 +157,7 @@ async fn test_a_page_walk_past_two_writers_tied_on_instant_and_key_skips_neither
         });
         let page = space
             .memories
-            .page(&space.id, &reader, View::Recent, boundary, 1)
+            .page(&space.id, &reader, view, boundary, 1)
             .await
             .expect("a page");
         walked.extend(page);
@@ -171,4 +170,26 @@ async fn test_a_page_walk_past_two_writers_tied_on_instant_and_key_skips_neither
     expected.sort_unstable();
     assert_eq!(writers, expected);
     space.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_page_walk_past_two_writers_tied_on_instant_and_key_skips_neither() {
+    a_page_walk_past_two_tied_writers_skips_neither(View::Recent).await;
+}
+
+/// The two tied rows sit in one category, so the category walk meets the
+/// same tie the recent walk does.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_category_page_walk_past_two_writers_tied_on_instant_and_key_skips_neither() {
+    a_page_walk_past_two_tied_writers_skips_neither(View::Category(PINNED_CATEGORY)).await;
+}
+
+/// Both tied rows hold the searched text in their key, so the search walk
+/// meets the tie too.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_search_page_walk_past_two_writers_tied_on_instant_and_key_skips_neither() {
+    a_page_walk_past_two_tied_writers_skips_neither(View::Search(SEARCHED)).await;
 }
