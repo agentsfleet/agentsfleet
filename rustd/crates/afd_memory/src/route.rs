@@ -2,8 +2,11 @@
 //!
 //! ```text
 //!   settled    reads ─► store          writes ─► store
-//!   flipping   reads ─► store (from)   writes ─► mirror (to), then store (from)
+//!   flipping   reads ─► store (from)   writes ─► store (from), then mirror (to)
 //! ```
+//!
+//! A flipping write reaches the store being left first, so it reaches the
+//! store being filled only once the one being left holds it.
 //!
 //! The table is one `HashMap` behind an [`ArcSwap`]: every call loads it
 //! without blocking, and only a flip — rare, and refused while another is
@@ -22,10 +25,12 @@ use crate::store::MemoryStore;
 /// Where one workspace's memory lives right now.
 #[derive(Debug)]
 pub(crate) struct Route {
-    /// The store every read answers from, and the last one a write reaches.
+    /// The store every read answers from, and the first one a write reaches.
     pub(crate) store: Arc<dyn MemoryStore>,
-    /// During a flip, the store being filled; written first, so a write the
-    /// caller is told succeeded never sits only in the store being left.
+    /// During a flip, the store being filled. Written after `store`, so a
+    /// write reaches it only once the store being left holds that write, and
+    /// a write the caller is told succeeded never sits only in the store
+    /// being left.
     pub(crate) mirror: Option<Arc<dyn MemoryStore>>,
 }
 
@@ -38,9 +43,10 @@ impl Route {
         }
     }
 
-    /// Every store a write must reach, in the order it reaches them.
+    /// Every store a write must reach, in the order it reaches them: the
+    /// route's own store, then a flip's mirror.
     pub(crate) fn writers(&self) -> impl Iterator<Item = &Arc<dyn MemoryStore>> {
-        self.mirror.iter().chain(std::iter::once(&self.store))
+        std::iter::once(&self.store).chain(self.mirror.iter())
     }
 }
 

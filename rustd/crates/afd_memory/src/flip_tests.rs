@@ -1,9 +1,10 @@
-//! Dimensions 2.1–2.3: a flip copies every entry, a failed copy keeps the old
-//! store, and a push racing the copy reaches both stores.
+//! Dimensions 2.1–2.3: a flip copies every entry, a flip onto the store it is
+//! on keeps them all, a failed copy keeps the old store, and a push racing the
+//! copy reaches both stores.
 //!
 //! Against the in-memory store, so the interleaving is the test's to force: a
-//! store that pauses its export holds the copy at the exact point a push has
-//! to survive.
+//! store that holds one verb pins the flip at the exact point a push has to
+//! survive.
 #![expect(
     clippy::expect_used,
     reason = "test module: an unmet precondition should fail the test loudly"
@@ -11,18 +12,25 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::MEM_UNAVAILABLE;
 use afd_core::id::Uuid7;
+use afd_core::test_util::trace::Capture;
 use afd_db::test_util::unreachable_db;
 use afd_wire::memory::{MemoryDelta, Visibility};
-use tokio::sync::Notify;
 
-use crate::error::Result;
-use crate::page::{After, View};
-use crate::record::{Housekept, Owner, Record};
-use crate::{InMemory, Memories, MemoryStore};
+use self::fixture::{Hold, Rigged};
+use super::EVENT_FAILED;
+use crate::record::{Owner, Record};
+use crate::{Flipped, InMemory, Memories, MemoryStore};
+
+#[path = "flip_fixture.rs"]
+mod fixture;
+#[path = "flip_prune_tests.rs"]
+mod prune;
+#[path = "flip_race_tests.rs"]
+mod race;
 
 const WORKSPACE: &str = "01990000-0000-7000-8000-0000000000a1";
 const FLEETS: [&str; 3] = [
@@ -38,6 +46,8 @@ const SEEDED_AT: i64 = 1_760_000_000_000;
 const PUSHED_AT: i64 = SEEDED_AT + 60_000;
 /// The import the failing target refuses, counted from one.
 const FAILS_ON: usize = 5;
+/// The field a failure's log line carries its registry code in.
+const ERROR_CODE: &str = "error_code";
 
 fn id(text: &str) -> Uuid7 {
     Uuid7::parse(text).expect("a fixture identifier is a v7 spelling")
@@ -87,94 +97,6 @@ async fn rows(store: &dyn MemoryStore) -> Vec<Record> {
     rows
 }
 
-/// An in-memory store rigged to fail one import, or to pause its export.
-#[derive(Debug)]
-struct Rigged {
-    inner: InMemory,
-    /// The import to refuse, counted from one.
-    fails_on: Option<usize>,
-    imported: AtomicUsize,
-    /// Whether an export snapshots, says so, then waits to be released.
-    pauses: bool,
-    exported: Notify,
-    release: Notify,
-}
-
-impl Rigged {
-    fn new(name: &'static str, fails_on: Option<usize>, pauses: bool) -> Self {
-        Self {
-            inner: InMemory::new(name),
-            fails_on,
-            imported: AtomicUsize::new(0),
-            pauses,
-            exported: Notify::new(),
-            release: Notify::new(),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl MemoryStore for Rigged {
-    fn name(&self) -> &'static str {
-        self.inner.name()
-    }
-
-    async fn window(&self, owner: Owner<'_>, reads: bool) -> Result<Vec<Record>> {
-        self.inner.window(owner, reads).await
-    }
-
-    async fn upsert(
-        &self,
-        owner: Owner<'_>,
-        entries: &[&MemoryDelta<'_>],
-        now: UnixMillis,
-    ) -> Result<Housekept> {
-        self.inner.upsert(owner, entries, now).await
-    }
-
-    async fn search(
-        &self,
-        owner: Owner<'_>,
-        reads: bool,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<Record>> {
-        self.inner.search(owner, reads, query, limit).await
-    }
-
-    async fn page(
-        &self,
-        owner: Owner<'_>,
-        reads: bool,
-        view: View<'_>,
-        after: Option<After<'_>>,
-        limit: i64,
-    ) -> Result<Vec<Record>> {
-        self.inner.page(owner, reads, view, after, limit).await
-    }
-
-    async fn forget(&self, owner: Owner<'_>, key: &str) -> Result<bool> {
-        self.inner.forget(owner, key).await
-    }
-
-    async fn export(&self, workspace: &Uuid7) -> Result<Vec<Record>> {
-        let snapshot = self.inner.export(workspace).await;
-        if self.pauses {
-            self.exported.notify_one();
-            self.release.notified().await;
-        }
-        snapshot
-    }
-
-    async fn import(&self, workspace: &Uuid7, record: &Record) -> Result<()> {
-        let nth = self.imported.fetch_add(1, Ordering::SeqCst) + 1;
-        if self.fails_on == Some(nth) {
-            return Err(crate::Error::refused(TARGET));
-        }
-        self.inner.import(workspace, record).await
-    }
-}
-
 #[tokio::test]
 async fn test_flip_copies_every_entry_then_switches() {
     let source = Arc::new(InMemory::new(SOURCE));
@@ -213,22 +135,58 @@ async fn test_flip_copies_every_entry_then_switches() {
 }
 
 #[tokio::test]
+async fn test_a_flip_onto_the_store_it_is_on_keeps_every_entry() {
+    let source = Arc::new(InMemory::new(SOURCE));
+    seeded(&source).await;
+    let before = rows(source.as_ref()).await;
+    let store = Arc::<_>::clone(&source) as Arc<dyn MemoryStore>;
+    let memories = Memories::over(unreachable_db(), Arc::clone(&store));
+
+    let flipped = memories
+        .flip(&id(WORKSPACE), Arc::clone(&store))
+        .await
+        .expect("a flip onto the store it is on completes");
+
+    assert_eq!(
+        flipped,
+        Flipped {
+            pruned: 0,
+            copied: 0
+        },
+        "nothing is pruned from or copied onto the store it is on"
+    );
+    assert_eq!(rows(source.as_ref()).await, before, "and kept as it stood");
+    let route = memories.routes().of(&id(WORKSPACE));
+    assert!(Arc::ptr_eq(&route.store, &store), "on the store it was on");
+    assert!(route.mirror.is_none(), "and no write is mirrored");
+}
+
+#[tokio::test]
 async fn test_failed_flip_keeps_the_old_store() {
     let source = Arc::new(InMemory::new(SOURCE));
     seeded(&source).await;
     let before = rows(source.as_ref()).await;
-    let target = Arc::new(Rigged::new(TARGET, Some(FAILS_ON), false));
+    let target = Arc::new(Rigged::new(TARGET, Some(FAILS_ON), Hold::Nothing));
     let memories = Memories::over(
         unreachable_db(),
         Arc::<_>::clone(&source) as Arc<dyn MemoryStore>,
     );
+
+    let capture = Capture::install();
 
     let refused = memories
         .flip(&id(WORKSPACE), target)
         .await
         .expect_err("a target that refuses entry five fails the flip");
 
-    assert_eq!(refused.code(), afd_core::error_code::MEM_UNAVAILABLE);
+    assert_eq!(refused.code(), MEM_UNAVAILABLE);
+    let failed = capture.only(EVENT_FAILED);
+    let logged = failed.field(ERROR_CODE);
+    assert_eq!(
+        logged,
+        Some(MEM_UNAVAILABLE.as_str()),
+        "logged once, as refused"
+    );
     let route = memories.routes().of(&id(WORKSPACE));
     assert_eq!(route.store.name(), SOURCE, "the source is still the store");
     assert!(route.mirror.is_none(), "and no write is mirrored any more");
@@ -241,9 +199,10 @@ async fn test_failed_flip_keeps_the_old_store() {
 
 #[tokio::test]
 async fn test_push_during_flip_reaches_both_stores() {
-    let source = Arc::new(Rigged::new(SOURCE, None, true));
-    seeded(&source.inner).await;
-    let target = Arc::new(InMemory::new(TARGET));
+    let source = Arc::new(InMemory::new(SOURCE));
+    seeded(&source).await;
+    // Held at its first import, by when the copy has its snapshot.
+    let target = Arc::new(Rigged::new(TARGET, None, Hold::Import));
     let memories = Memories::over(
         unreachable_db(),
         Arc::<_>::clone(&source) as Arc<dyn MemoryStore>,
@@ -253,7 +212,7 @@ async fn test_push_during_flip_reaches_both_stores() {
 
     let push = async {
         // The copy holds `k00` as seeded in its snapshot when this write lands.
-        source.exported.notified().await;
+        target.reached.notified().await;
         let owner = Owner {
             workspace: &workspace,
             fleet: &fleet,
@@ -263,7 +222,7 @@ async fn test_push_during_flip_reaches_both_stores() {
             .upsert_through(owner, &[&raced], at)
             .await
             .expect("a push during the copy is taken");
-        source.release.notify_one();
+        target.release.notify_one();
     };
     let (flipped, ()) = tokio::join!(
         memories.flip(&workspace, Arc::<_>::clone(&target) as Arc<dyn MemoryStore>),
@@ -271,8 +230,8 @@ async fn test_push_during_flip_reaches_both_stores() {
     );
     flipped.expect("the flip completes around the push");
 
-    // The source read through its inner store: its own export pauses.
-    for store in [&source.inner as &dyn MemoryStore, target.as_ref()] {
+    // The target read through its inner store, past its hold.
+    for store in [source.as_ref() as &dyn MemoryStore, &target.inner] {
         let landed = rows(store)
             .await
             .into_iter()
