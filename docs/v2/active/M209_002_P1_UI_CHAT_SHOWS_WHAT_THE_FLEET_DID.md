@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M209
 **Workstream:** 002
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing: the thread is where a person decides whether to trust a fleet, and today it cannot show what the fleet did
 **Categories:** UI
 **Batch:** B2 — after M209_001 and M209_003 are on `main`; the milestone's follow-up Pull Request
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m209-002-chat-tool-calls
+**Baseline revision:** b0138d7b3124b871668f07e2361dba923bc774d2
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M209_001 (frame outcome, saved trace), M209_003 (full call read). Production rows need the Rust runner that emits them (`docs/architecture/runner_execution.md`); every test here drives fixture frames
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 02, 2026) from a source trace on `main` at `93e96897a`; assistant-ui read from the installed `@assistant-ui/react` 0.15.22 / core 0.3.21; Codex TUI rules read at `~/Projects/oss/rs/codex` `2e5fea64e`
