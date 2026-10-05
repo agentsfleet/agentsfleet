@@ -14,7 +14,8 @@ import { exploreLines, type ExploreCall } from "./tool-call-explore";
 // The reads a reply made in a row, folded the way Codex folds them: one bold
 // "Exploring" while any runs, "Explored" once all are back, and a line per
 // look under it. Only the calls the group map sends here, which change
-// nothing, so folding them hides nothing the fleet did.
+// nothing, so folding them hides nothing the fleet did: a read that failed
+// keeps its error under its line.
 
 export const EXPLORING_LABEL = "Exploring";
 export const EXPLORED_LABEL = "Explored";
@@ -32,28 +33,29 @@ export const FleetExplored = memo(function FleetExplored({ content, indices, run
   const lines = useMemo(() => exploreLines(exploreCalls(content, indices)), [content, indices]);
   const label = running ? EXPLORING_LABEL : EXPLORED_LABEL;
   return (
-    <div data-explored={label} className="mb-xs flex min-w-0 flex-col gap-3xs font-mono text-label leading-mono text-text-dim">
+    <div data-explored={label} className="mb-xs flex min-w-0 flex-col gap-xs font-mono text-label leading-mono text-text-subtle">
       <span className="flex items-baseline gap-xs">
-        <span aria-hidden="true" data-tool-shimmer={running} className="text-text-dim transition-colors duration-snap ease-snap">
+        <span aria-hidden="true" data-tool-bullet="" data-tool-shimmer={running} className="text-text-dim transition-colors duration-snap ease-snap">
           {TOOL_BULLET}
         </span>
         <span className="font-semibold text-foreground">{label}</span>
       </span>
-      <List variant="plain" aria-label={label} className="flex flex-col space-y-0 pl-md">
+      <List variant="plain" aria-label={label} className="flex flex-col space-y-0 pl-md text-label leading-mono">
         {lines.map((line, index) => (
           <ListItem key={index} data-failed={line.failed || undefined}>
             <RailRow glyph={index === 0 ? OUTPUT_RAIL : null}>
               <span className="text-info">{line.verb}</span>{" "}
-              <span className="text-foreground">{[...line.targets].join(TARGET_SEPARATOR)}</span>
+              <span className="text-foreground">{line.targets.join(TARGET_SEPARATOR)}</span>
               {line.scope === null ? null : ` ${line.scope}`}
               {line.failed ? <span className="text-destructive"> {FAILED_MARK}</span> : null}
             </RailRow>
+            {line.error === null ? null : <RailRow glyph={null}>{line.error}</RailRow>}
           </ListItem>
         ))}
       </List>
     </div>
   );
-});
+}, sameFold);
 
 /** The group's calls with what Explored needs of each: a call is failed once
  * its outcome says it failed or was cut off. */
@@ -61,8 +63,26 @@ function exploreCalls(content: MessageState["content"], indices: readonly number
   return indices.flatMap((index) => {
     const part = content[index];
     if (part?.type !== "tool-call") return [];
-    const status = readToolResult(part.result)?.status;
+    const outcome = readToolResult(part.result);
+    const status = outcome?.status;
     const args: ToolArgs = part.args;
-    return [{ name: part.toolName, args, failed: status !== undefined && FAILED.has(status) }];
+    const failed = status !== undefined && FAILED.has(status);
+    return [{ name: part.toolName, args: Object.keys(args).length > 0 ? args : undefined, failed, output: outcome?.outputHead }];
   });
+}
+
+// The message's parts are rebuilt on every streamed word and the library
+// regroups them, so neither `content` nor `indices` keeps its identity. The
+// fold redraws only when a part it reads changed.
+export function sameFold(prev: FleetExploredProps, next: FleetExploredProps): boolean {
+  if (prev.running !== next.running || prev.indices.length !== next.indices.length) return false;
+  const after = next.indices.map((index) => next.content[index]);
+  return prev.indices.every((index, at) => samePart(prev.content[index], after[at]));
+}
+
+type ContentPart = MessageState["content"][number];
+
+function samePart(before: ContentPart | undefined, after: ContentPart | undefined): boolean {
+  if (before?.type !== "tool-call" || after?.type !== "tool-call") return before === after;
+  return before.toolName === after.toolName && before.args === after.args && before.result === after.result;
 }

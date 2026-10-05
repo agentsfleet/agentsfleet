@@ -7,7 +7,6 @@ const URL_FOR_AT = "/live/v1/workspaces/ws%201/fleets/flt_1/events/evt_1/tool-ca
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  vi.useRealTimers();
 });
 
 function answer(response: Response | Promise<Response>) {
@@ -47,7 +46,7 @@ describe("readToolCall", () => {
     expect(await readToolCall(AT, new AbortController().signal)).toEqual({ kind: TOOL_CALL_READ.FAILED });
   });
 
-  it("should fail, never throw, when the read is cancelled or hangs", async () => {
+  it("should fail, never throw, when the read is cancelled", async () => {
     vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_, reject) => {
       init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
     })));
@@ -55,10 +54,20 @@ describe("readToolCall", () => {
     const pending = readToolCall(AT, cancelled.signal);
     cancelled.abort();
     expect(await pending).toEqual({ kind: TOOL_CALL_READ.FAILED });
+  });
 
-    vi.useFakeTimers();
+  it("should fail when the read outlasts its timeout", async () => {
+    // AbortSignal.timeout runs on the real clock, so the test owns the signal
+    // it hands out instead of waiting the timeout out.
+    const timer = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timer.signal);
+    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_, reject) => {
+      init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    })));
     const hung = readToolCall(AT, new AbortController().signal);
-    await vi.advanceTimersByTimeAsync(TOOL_CALL_READ_TIMEOUT_MS);
+    expect(timeoutSpy).toHaveBeenCalledWith(TOOL_CALL_READ_TIMEOUT_MS);
+    timer.abort(new DOMException("timed out", "TimeoutError"));
     expect(await hung).toEqual({ kind: TOOL_CALL_READ.FAILED });
+    timeoutSpy.mockRestore();
   });
 });

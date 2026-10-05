@@ -20,7 +20,7 @@ export const TOOL_CALL_READ = {
 /** `afd_wire::tool_detail::ToolCallDetail`, narrowed. */
 export type ToolCallFull = {
   args: ToolArgs | undefined;
-  /** The runner cut an argument string short even in the full read. */
+  /** The arguments passed the full read's cap, so the runner kept none. */
   argsTruncated: boolean;
   output: string;
   /** The output passed the full read's cap and ends early. */

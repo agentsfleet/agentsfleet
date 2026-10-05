@@ -3,9 +3,10 @@ import { describe, expect, it } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import type { MessageState } from "@assistant-ui/react";
 
-import { EXPLORED_LABEL, EXPLORING_LABEL, FleetExplored } from "./FleetExplored";
+import { EXPLORED_LABEL, EXPLORING_LABEL, FleetExplored, sameFold } from "./FleetExplored";
 import { TOOL_BULLET, TOOL_CALLS_LABEL } from "./FleetToolCalls";
-import { FAILED_MARK, TOOL_NAME } from "./tool-call-copy";
+import { FAILED_MARK } from "./tool-call-copy";
+import { TOOL_NAME } from "./tool-call-shape";
 import type { FleetEventStatus, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
@@ -34,6 +35,20 @@ const linesOf = (group: HTMLElement) => within(group).getAllByRole("listitem").m
 });
 
 describe("FleetExplored", () => {
+  it("should redraw the fold only when a part it reads changed", () => {
+    const result = { status: "succeeded" };
+    const args = { path: "a.md" };
+    const part = (over: object = {}) => ({ type: "tool-call", toolName: TOOL_NAME.FILE_READ, args, result, ...over });
+    const props = (content: unknown[], running = false) => ({ content: content as unknown as MessageState["content"], indices: [0, 1], running });
+    const text = { type: "text", text: "x" };
+    // A streamed word rebuilds the arrays, but each part it reads is the same.
+    expect(sameFold(props([part(), text]), props([part(), text]))).toBe(true);
+    expect(sameFold(props([part(), text]), props([part({ result: { status: "failed" } }), text]))).toBe(false);
+    expect(sameFold(props([part(), text]), props([part(), { type: "text", text: "y" }]))).toBe(false);
+    expect(sameFold(props([part(), text]), props([part(), text], true))).toBe(false);
+    expect(sameFold(props([part(), text]), { ...props([part(), text]), indices: [0] })).toBe(false);
+  });
+
   it("should draw no line for a part that is no tool call", () => {
     const content = [{ type: "text", text: "x" }, { type: "tool-call", toolName: TOOL_NAME.FILE_READ, args: { path: "a.md" } }] as unknown as MessageState["content"];
     render(<FleetExplored content={content} indices={[0, 1, 5]} running={false} />);
@@ -85,6 +100,14 @@ describe("FleetThread — Explored", () => {
     expect(linesOf(group!)).toEqual(["└Read a.md, b.md"]);
   });
 
+  it("test_explored_header_settles_while_turn_runs", () => {
+    // The reads are back; the turn runs on in a write, outside the fold.
+    renderReply([read("a.md"), { name: TOOL_NAME.FILE_WRITE, args: { path: "b.md" }, startedAtMs: STARTED_AT_MS, ms: null, done: false }], RECEIVED);
+    const [group] = groups();
+    expect(group!.getAttribute("data-explored")).toBe(EXPLORED_LABEL);
+    expect(within(group!).getByText(TOOL_BULLET).getAttribute("data-tool-shimmer")).toBe("false");
+  });
+
   it("test_explored_header_settles", () => {
     renderReply([read("a.md")]);
     const [group] = groups();
@@ -102,5 +125,17 @@ describe("FleetThread — Explored", () => {
     expect(linesOf(group!)).toEqual(["└Read a.md", ` Read b.md ${FAILED_MARK}`, " Read c.md", ` Read d.md ${FAILED_MARK}`]);
     expect(within(group!).getAllByText(FAILED_MARK, { exact: false })[0]!.className).toContain("text-destructive");
     expect(group!.querySelectorAll("[data-failed]")).toHaveLength(2);
+  });
+
+  it("test_explored_keeps_paths_and_errors", () => {
+    renderReply([
+      read("/workspace/src/a/index.ts"),
+      read("/workspace/src/b/index.ts"),
+      read(".env", { status: FAILED, outputHead: "path escapes the workspace" }),
+    ]);
+    const [group] = groups();
+    expect(linesOf(group!)[0]).toBe("└Read a/index.ts, b/index.ts");
+    // The error sits under the failed line, readable, not just "(failed)".
+    expect(group!.textContent).toContain("path escapes the workspace");
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CopyButton,
   Dialog,
@@ -9,14 +9,16 @@ import {
   DialogHeader,
   DialogTitle,
   TerminalPanel,
+  cn,
 } from "@agentsfleet/design-system";
 
 import { TOOL_CALL_READ, readToolCall, type ToolCallFull, type ToolCallRead } from "@/lib/streaming/fleet-tool-call-reader";
 import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
+import type { FleetScope } from "./FleetScope";
 import { DiffRows } from "./FleetToolCallBody";
 import type { ToolResult } from "./fleetReplyMessage";
-import { editSides, linesOf } from "./tool-call-copy";
-import { lineDiff } from "./tool-call-diff";
+import { fullDiff } from "./tool-call-copy";
+import { outputLines } from "./tool-call-text";
 
 // "Show all": one call read in full, its output with line numbers, its edit as
 // a whole diff, and its arguments. When the runner kept no full output, the
@@ -26,47 +28,38 @@ export const LOADING_LABEL = "Reading the full output…";
 export const NOT_KEPT_NOTE = "Full output wasn't kept for this call.";
 export const READ_FAILED_NOTE = "Couldn't read the full output; this is what the thread kept.";
 export const OUTPUT_CUT_NOTE = "The output was cut short.";
+export const ARGS_NOT_KEPT_NOTE = "The arguments were too large to keep.";
+/** Lines the dialog lays out; a longer output is one copy away in full. */
+export const MAX_SHOWN_ROWS = 2_000;
 const OUTPUT_TITLE = "Output";
 const COPY_OUTPUT_LABEL = "Copy output";
 const SKIPPED_LINES = "⋯";
 const NOTE_CLASS = "text-body-sm text-text-subtle";
-
-/** The workspace and fleet a thread reads, for the reads a row makes on its own. */
-export type FleetScope = { workspaceId: string; fleetId: string };
-
-const FleetScopeContext = createContext<FleetScope | null>(null);
-
-export function FleetScopeProvider({ workspaceId, fleetId, children }: FleetScope & { children: ReactNode }) {
-  const scope = useMemo(() => ({ workspaceId, fleetId }), [workspaceId, fleetId]);
-  return <FleetScopeContext value={scope}>{children}</FleetScopeContext>;
-}
-
-/** Null outside a thread: nothing there can be read in full. */
-export function useFleetScope(): FleetScope | null {
-  return useContext(FleetScopeContext);
-}
 
 type FleetToolOutputDialogProps = {
   scope: FleetScope;
   eventId: string;
   callId: string;
   name: string;
-  /** The cell's header, verb and target, as its title. */
-  title: string;
+  /** The cell's header, as its title: the verb in words, the target as a value. */
+  verb: string;
+  target: string;
   outcome: ToolResult | undefined;
   onClose: () => void;
 };
 
 /** Mounted when "show all" is pressed, so the read starts with it and is
  * dropped with it. */
-export function FleetToolOutputDialog({ scope, eventId, callId, name, title, outcome, onClose }: FleetToolOutputDialogProps) {
+export function FleetToolOutputDialog({ scope, eventId, callId, name, verb, target, outcome, onClose }: FleetToolOutputDialogProps) {
   const read = useToolCallRead(scope, eventId, callId);
   return (
     // Controlled open, so the only change the dialog asks for is to close.
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-h-svh max-w-3xl overflow-y-auto">
-        <DialogHeader className="border-b border-border pb-lg pr-4xl">
-          <DialogTitle><span className="break-words font-mono">{title}</span></DialogTitle>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader className="border-b border-border pb-lg">
+          <DialogTitle>
+            <span className="leading-heading">{verb} <span className="break-words font-mono">{target}</span></span>
+          </DialogTitle>
           <DialogDescription className="sr-only">{name}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-lg pt-lg">
@@ -101,16 +94,14 @@ function ReadBody({ read, name, outcome }: { read: ToolCallRead | null; name: st
 }
 
 function FullCall({ call, name }: { call: ToolCallFull; name: string }) {
-  const diff = useMemo(() => {
-    const sides = editSides(name, call.args);
-    return sides === null ? null : lineDiff(sides.before, sides.after);
-  }, [name, call.args]);
-  const rows = useMemo(() => linesOf(call.output).map((text, index) => ({ number: index + 1, text })), [call.output]);
+  const diff = useMemo(() => fullDiff(name, call.args), [name, call.args]);
+  const rows = useMemo(() => outputLines(call.output).map((text, index) => ({ number: index + 1, text })), [call.output]);
   return (
     <>
       {diff === null ? null : <div className="font-mono text-label leading-mono"><DiffRows diff={diff} /></div>}
       <NumberedOutput rows={rows} copyValue={call.output} />
       {call.outputTruncated ? <p className={NOTE_CLASS}>{OUTPUT_CUT_NOTE}</p> : null}
+      {call.argsTruncated ? <p className={NOTE_CLASS}>{ARGS_NOT_KEPT_NOTE}</p> : null}
       {call.args === undefined ? null : <FleetPayloadDisclosure json={JSON.stringify(call.args)} />}
     </>
   );
@@ -127,10 +118,11 @@ function NumberedOutput({ rows, copyValue }: { rows: readonly NumberedRow[]; cop
       bodyClassName="bg-surface-deep"
     >
       <pre className="grid grid-cols-[auto_1fr] gap-x-md p-lg font-mono text-mono leading-mono text-foreground">
-        {rows.map((row, index) => (
+        {rows.slice(0, MAX_SHOWN_ROWS).map((row, index) => (
           <NumberedLine key={index} row={row} />
         ))}
       </pre>
+      {rows.length > MAX_SHOWN_ROWS ? <p className={cn(NOTE_CLASS, "px-lg pb-lg")}>{moreRowsNote(rows.length - MAX_SHOWN_ROWS)}</p> : null}
     </TerminalPanel>
   );
 }
@@ -146,11 +138,15 @@ function NumberedLine({ row }: { row: NumberedRow }) {
   );
 }
 
+function moreRowsNote(hidden: number): string {
+  return `${hidden} more lines; copy the output to read them all.`;
+}
+
 /** What the trace kept: the head from line 1, then the tail where it falls,
  * the gap marked and any line both ends hold shown once. */
 export function keptRows(outcome: ToolResult | undefined): NumberedRow[] {
-  const head = linesOf(outcome?.outputHead ?? "");
-  const tail = linesOf(outcome?.outputTail ?? "");
+  const head = outputLines(outcome?.outputHead ?? "");
+  const tail = outputLines(outcome?.outputTail ?? "");
   const rows: NumberedRow[] = head.map((text, index) => ({ number: index + 1, text }));
   const count = outcome?.outputLineCount;
   if (count === undefined || tail.length === 0) return rows;

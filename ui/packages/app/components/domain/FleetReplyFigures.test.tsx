@@ -53,6 +53,12 @@ describe("FleetThread — reply figures", () => {
     expect(figures()).toBeNull();
   });
 
+  it("should draw no figures line while the final reply is still being read", () => {
+    renderTurn({ reply: "", replyRecovering: true, tokens: TOKENS, wallMs: WALL_MS, costNanos: COST_NANOS });
+    expect(screen.getByText(/Loading final reply/)).toBeTruthy();
+    expect(figures()).toBeNull();
+  });
+
   it("test_running_reply_shows_elapsed", () => {
     renderTurn({ status: "received", reply: "", createdAt: new Date(NOW - RUNNING_FOR_MS), tokens: TOKENS });
     const working = screen.getByRole("status", { name: "Working" });

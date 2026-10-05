@@ -43,7 +43,9 @@ const TOOL_RESULT = z.object({
 
 export type ToolResult = z.infer<typeof TOOL_RESULT>;
 
-const RUNNING = { type: "running" } as const;
+/** The status type assistant-ui gives a message or part that is still running. */
+export const STATUS_RUNNING = "running";
+const RUNNING = { type: STATUS_RUNNING } as const;
 // A finished turn stopped normally; the message status needs the reason, a
 // part's status does not.
 const MESSAGE_COMPLETE = { type: "complete", reason: "stop" } as const;
@@ -124,19 +126,40 @@ export function readToolResult(result: unknown): ToolResult | undefined {
   return result === undefined ? undefined : TOOL_RESULT.catch({}).parse(result);
 }
 
+type PartFields = { result: ToolResult | undefined; timing: { startedAt: number; completedAt?: number } };
+
+// A call's result and timing, by the call object they describe. The reducer
+// keeps a call's object until the call itself changes, so a reply converted
+// again for a streamed word hands each cell the same objects and its memo
+// holds; a WeakMap lets a replaced call's entry go with it.
+const PART_FIELDS = new WeakMap<FleetToolCall, PartFields>();
+
 function toolCallPart(eventId: string, tool: FleetToolCall, index: number): ReplyPart {
-  const completedAt = tool.done && tool.ms !== null ? tool.startedAtMs + tool.ms : undefined;
+  const { result, timing } = partFields(tool);
   return {
     type: "tool-call",
-    // Append-only per event, so the index is a stable identity.
-    toolCallId: `${eventId}${TOOL_CALL_ID_INFIX}${index}`,
+    // The runner's own id when it names the call: a saved trace that replaces
+    // the live list keeps each call's identity even where positions differ.
+    toolCallId: `${eventId}${TOOL_CALL_ID_INFIX}${tool.callId ?? index}`,
     toolName: tool.name,
     // Absent arguments read as `{}` in the library, which is what a call
     // that named none was made with.
     ...(tool.args === undefined ? {} : { args: tool.args }),
-    ...(tool.done ? { result: toolResult(tool), isError: tool.status !== undefined && ERROR_STATUSES.has(tool.status) } : {}),
+    ...(result === undefined ? {} : { result, isError: tool.status !== undefined && ERROR_STATUSES.has(tool.status) }),
+    timing,
+  };
+}
+
+function partFields(tool: FleetToolCall): PartFields {
+  const known = PART_FIELDS.get(tool);
+  if (known !== undefined) return known;
+  const completedAt = tool.done && tool.ms !== null ? tool.startedAtMs + tool.ms : undefined;
+  const fields: PartFields = {
+    result: tool.done ? toolResult(tool) : undefined,
     timing: completedAt === undefined ? { startedAt: tool.startedAtMs } : { startedAt: tool.startedAtMs, completedAt },
   };
+  PART_FIELDS.set(tool, fields);
+  return fields;
 }
 
 function toolResult({ status, outputHead, outputTail, outputLineCount, exitCode, callId }: FleetToolCall): ToolResult {

@@ -107,6 +107,26 @@ export function isGone(entry: Entry, eventId: string, status: number | undefined
 }
 
 // A saved row over the live one: its status and figures, then its answer.
+/**
+ * Reads a settled event once more for its saved trace, when its turn had to
+ * close a call it never heard end. One attempt: the answer is already on
+ * screen, so a failed read leaves the turn as it is rather than retrying or
+ * marking anything gone.
+ */
+export function refreshSavedTrace(
+  entry: Entry,
+  fleetId: string,
+  eventId: string,
+  apply: ApplyEvents,
+  isCurrent: () => boolean,
+  read: EventDetailReader | null,
+): void {
+  if (read === null) return;
+  void read(entry.workspaceId, fleetId, eventId).then((result) => {
+    if (result.ok && isCurrent()) apply((prev) => mergeBackfill(prev, [result.data]), {});
+  }, () => {});
+}
+
 export function applyDetail(prev: FleetEvent[], detail: EventDetail): FleetEvent[] {
   return applyFinalReply(mergeBackfill(prev, [detail]), detail);
 }

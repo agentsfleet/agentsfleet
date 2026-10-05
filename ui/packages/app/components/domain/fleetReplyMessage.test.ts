@@ -48,7 +48,7 @@ describe("toReplyMessage", () => {
     expect(message.content).toEqual([
       { type: "reasoning", text: "Weighing it.", status: { type: "complete" } },
       {
-        type: "tool-call", toolCallId: "e1:reply:tool:0", toolName: "search_repo", args: ARGS,
+        type: "tool-call", toolCallId: `e1:reply:tool:${CALL_ID}`, toolName: "search_repo", args: ARGS,
         result: { status: SUCCEEDED, outputHead: OUTPUT, outputLineCount: 1, callId: CALL_ID }, isError: false,
         timing: { startedAt: STARTED, completedAt: STARTED + DONE_AFTER_MS },
       },
@@ -73,6 +73,19 @@ describe("toReplyMessage", () => {
       type: "tool-call", toolCallId: "e1:reply:tool:0", toolName: "late",
       result: {}, isError: false, timing: { startedAt: STARTED },
     });
+  });
+
+  it("test_streamed_word_keeps_a_finished_call_s_part_fields", () => {
+    // A streamed word replaces the reply's event but not its calls: each
+    // finished cell must get the same result and timing, or its memo misses.
+    const tools = [{ name: "shell", callId: CALL_ID, startedAtMs: STARTED, ms: DONE_AFTER_MS, done: true, status: SUCCEEDED }];
+    const callOf = (event: FleetEvent) => replyParts(event).find((part) => part.type === "tool-call");
+    const first = callOf(evt({ id: "e1:reply", reply: "Step 1", tools }));
+    const next = callOf(evt({ id: "e1:reply", reply: "Step 1 and 2", tools }));
+    expect(next?.type === "tool-call" && first?.type === "tool-call" && next.result === first.result && next.timing === first.timing).toBe(true);
+    // A call that changed is a new object, so it is drawn again.
+    const changed = callOf(evt({ id: "e1:reply", tools: [{ ...tools[0]!, status: FAILED }] }));
+    expect(changed?.type === "tool-call" && first?.type === "tool-call" && changed.result !== first.result).toBe(true);
   });
 
   it("test_failed_and_interrupted_calls_mark_error", () => {

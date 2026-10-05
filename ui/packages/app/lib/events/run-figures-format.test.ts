@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { formatCompactCount, formatCount, formatElapsed, runFigure } from "./run-figures-format";
 
@@ -30,5 +30,21 @@ describe("run-figures-format", () => {
     expect(formatElapsed(65_000)).toBe("1m 5s");
     expect(formatElapsed(3_723_000)).toBe("1h 2m 3s");
     expect(formatElapsed(7_200_000)).toBe("2h 0s");
+    // No clock at all (an unparseable instant) reads as no time, never a throw.
+    expect(formatElapsed(Number.NaN)).toBe("0s");
+    expect(formatElapsed(Number.POSITIVE_INFINITY)).toBe("0s");
+  });
+
+  it("test_elapsed_needs_no_duration_format", async () => {
+    // Stands in for Firefox before 136: the API is simply not there.
+    const original = Object.getOwnPropertyDescriptor(Intl, "DurationFormat");
+    Reflect.deleteProperty(Intl, "DurationFormat");
+    try {
+      vi.resetModules();
+      const fresh = await import("./run-figures-format");
+      expect(fresh.formatElapsed(65_000)).toBe("1m 5s");
+    } finally {
+      if (original !== undefined) Object.defineProperty(Intl, "DurationFormat", original);
+    }
   });
 });
