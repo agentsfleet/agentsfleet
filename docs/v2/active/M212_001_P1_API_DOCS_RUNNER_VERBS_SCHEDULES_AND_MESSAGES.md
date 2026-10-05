@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M212
 **Workstream:** 001
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the tools the published page lists that the Zig runner refuses; without them a fleet cannot plan a follow-up or speak before it finishes
 **Categories:** API, DOCS
 **Batch:** B1 — the daemon half depends on nothing and can start beside M210_002; the runner half plugs into M210_002's catalog. One Pull Request
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m212-001-runner-schedules-messages`
+**Baseline revision:** `c5f7680f2ee4a475a9f6f6c8701c98262c6d5c8d`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M210_002 (the catalog and router the three handlers plug into) — the daemon half (§1, §2) has no dependency and tests through `rustd/crates/agentsfleetd/tests/support/e2e_wire.rs`
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from a source trace on `main` (`rustd/crates/afd_cron`, `rustd/crates/afd_outbound`) and Indy's decision "Yes, runner verb onto daemon schedules"
