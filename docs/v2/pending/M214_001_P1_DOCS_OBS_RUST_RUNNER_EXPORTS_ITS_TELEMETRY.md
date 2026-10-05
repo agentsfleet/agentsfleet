@@ -34,7 +34,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** `test_runner_exports_spans_and_metrics_when_configured` — with `OTEL_EXPORTER_OTLP_ENDPOINT` set, one lease run delivers its `runner.lease`, `invoke_agent`, `chat` and `execute_tool` spans and the runner metric families to an OTLP receiver standing in for the runner collector, and the runner sent no header; with the knob unset, `run` builds no exporter and starts no export thread.
 **Problem:** The runner creates four span kinds and exports none. `agentsfleetd` sees only what a verb carries, so provider turn latency and retries, sandbox start time, dropped activity frames and failed memory pushes are invisible; tool durations reach it as frames but feed no metric. The OTLP builder lives in the `agentsfleetd` binary (`agentsfleetd/src/telemetry.rs:195-271`), which the runner may not link (`agentsfleet_runner/tests/dependency_graph.rs:13`). The metric census is daemon-only, and `every_census_family_has_a_producer` would fail a runner row.
-**Solution summary:** The exporter construction leaves the daemon binary for a small crate, `afd_otlp`, that both binaries call. The runner's `run` entry reads the same endpoint, protocol and timeout knobs, refuses any header and any credential in the endpoint, and exports traces and metrics; `sandbox` and `probe` export nothing. Logs stay on stderr for the runner collector to read from the host's log store. A sampler holds runner spans to a fixed budget. Six runner metric families with closed label sets are declared in their own census, read with `Registry::read` and graded by their own producer-coverage test. The runner collector itself, on the bare-metal host, is separate later work.
+**Solution summary:** The exporter construction leaves the daemon binary for a small crate, `afd_otlp`, that both binaries call. The runner's `run` entry reads the same endpoint, protocol and timeout knobs, refuses any header and any credential in the endpoint, and exports traces and metrics; `sandbox` and `probe` export nothing. Logs stay on stderr for the runner collector to read from the host's log store. A sampler holds runner spans to a fixed budget. Nine runner metric families with closed label sets are declared in their own census, read with `Registry::read` and graded by their own producer-coverage test. The runner collector itself, on the bare-metal host, is separate later work.
 
 ## PR Intent & comprehension handshake
 
@@ -59,7 +59,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/agentsfleetd/src/telemetry.rs`, `src/preflight/otlp.rs`, `Cargo.toml` | EDIT | Call `afd_otlp`; daemon behaviour unchanged |
 | `rustd/crates/agentsfleet_runner/` (`src/main.rs`, `Cargo.toml`, `tests/dependency_graph.rs`, `tests/runner_suite.rs`) | EDIT | `run` installs the exporter; `afd_otlp` joins the allowed crates |
 | `rustd/crates/afr_telemetry/` | CREATE | The credential-free endpoint config, the span sampler, the runner instruments, the runner census reader |
-| `rustd/crates/afr_agent/src/` (`spans.rs`, `loop*`), `afr_providers/src/retry.rs`, `afr_sandbox/src/`, `afr_supervisor/src/` (`activity.rs`, `memory.rs`) | EDIT | Record the six families where each fact is known |
+| `rustd/crates/afr_agent/src/` (`spans.rs`, `loop*`), `afr_providers/src/retry.rs`, `afr_sandbox/src/`, `afr_supervisor/src/` (`activity.rs`, `memory.rs`, `holds.rs`, `worker_pool.rs`) | EDIT | Record the nine families where each fact is known |
 | `docs/metrics.runner.census.tsv` | CREATE | The runner families, graded both directions |
 | `docs/architecture/observability.md`, `docs/architecture/runner_fleet.md` | EDIT | The runner side moves from "decided" to "built"; the collector stays "built later" |
 | `~/Projects/docs` (self-hosting runner page, changelog) | EDIT | The runner's three knobs, on a `chore/m214-runner-telemetry-changelog` branch |
@@ -112,9 +112,9 @@ A `ShouldSample` implementation admits at most `MAX_LEASE_SPANS` spans per lease
 - **Dimension 3.1** — A lease past `MAX_LEASE_SPANS` exports exactly that many and counts the rest → Test `test_lease_spans_stop_at_the_budget`
 - **Dimension 3.2** — A burst past the per-second budget is shed and counted, and the next second admits again → Test `test_span_budget_refills_each_second`
 
-### §4 — Six runner metric families
+### §4 — Nine runner metric families
 
-`provider_turn_duration_seconds` (provider, outcome), `provider_retries_total` (provider, reason), `sandbox_start_duration_seconds` (outcome), `activity_frames_dropped_total` (reason), `memory_push_failures_total` (reason) and `tool_call_duration_seconds` (tool, outcome), each `agentsfleet_runner_`-prefixed. Every label value comes from a closed set: providers from the registry, tools from the catalog, outcomes and reasons from enums. They are declared in `docs/metrics.runner.census.tsv` and read with `Registry::read`; the daemon census is untouched.
+`provider_turn_duration_seconds` (provider, outcome), `provider_retries_total` (provider, reason), `sandbox_start_duration_seconds` (outcome), `activity_frames_dropped_total` (reason), `memory_push_failures_total` (reason), `tool_call_duration_seconds` (tool, outcome), `tool_out_of_memory_total` and `capacity_short_total` (M211_003, no labels), and `sandbox_holds_total` (outcome: `parked`, `reused` or the hold's release reason; M211_004), each `agentsfleet_runner_`-prefixed. Every label value comes from a closed set: providers from the registry, tools from the catalog, outcomes and reasons from enums. They are declared in `docs/metrics.runner.census.tsv` and read with `Registry::read`; the daemon census is untouched.
 
 - **Dimension 4.1** — Every runner census family has a producer, and every producer a row → Test `test_every_runner_census_family_has_a_producer`
 - **Dimension 4.2** — A provider retry records `provider_retries_total` with the registry's provider name → Test `test_provider_retry_is_counted`
@@ -160,7 +160,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT | _PROTOCOL | _TIMEOUT                           (th
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| The six `agentsfleet_runner_*` families | ops | Per §4 | provider, tool, outcome, reason | Closed sets; no tenant, fleet, lease or event id | `test_every_runner_census_family_has_a_producer` |
+| The nine `agentsfleet_runner_*` families | ops | Per §4 | provider, tool, outcome, reason | Closed sets; no tenant, fleet, lease or event id | `test_every_runner_census_family_has_a_producer` |
 | `agentsfleet_runner_spans_suppressed_total` | ops | A span is shed | none | Count only | `test_lease_spans_stop_at_the_budget` |
 | `telemetry_export_started` / `telemetry_export_disabled` (runner log) | ops | `run` boots | knob name, protocol | Never the endpoint value | `test_runner_exports_nothing_when_unconfigured` |
 
@@ -223,7 +223,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT | _PROTOCOL | _TIMEOUT                           (th
 1. **Successful user moment** — An operator opens a slow lease and sees it as one trace (each provider turn, each tool call), and a panel showing which provider is slow this hour.
 2. **Preserved user behaviour** — A runner with no endpoint behaves exactly as today; `sandbox` and `probe` are unchanged; the daemon's export is unchanged.
 3. **Optimal-way check** — The daemon's builder, counting wrappers and census machinery are reused; only the runner's facts are new.
-4. **Rebuild-vs-iterate** — Iterate: move the builder, add a sampler and six families.
+4. **Rebuild-vs-iterate** — Iterate: move the builder, add a sampler and nine families.
 5. **What we build** — `afd_otlp`, `afr_telemetry`, the runner census, the doc flip for the runner side.
 6. **What we do NOT build** — The runner collector, a log bridge, protocol trace context, dashboards.
 7. **Fit with existing features** — Same knobs as the daemon, minus headers; the daemon's families and census are untouched.
