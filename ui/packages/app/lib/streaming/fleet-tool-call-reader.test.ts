@@ -45,6 +45,9 @@ describe("readToolCall", () => {
     expect(await readToolCall(AT, new AbortController().signal)).toEqual({ kind: TOOL_CALL_READ.FAILED });
     answer(new Response("not json", { status: 200 }));
     expect(await readToolCall(AT, new AbortController().signal)).toEqual({ kind: TOOL_CALL_READ.FAILED });
+    // JSON that is no object is no call either.
+    answer(json([{ output: "ok" }]));
+    expect(await readToolCall(AT, new AbortController().signal)).toEqual({ kind: TOOL_CALL_READ.FAILED });
   });
 
   it("should fail, never throw, when the read is cancelled", async () => {

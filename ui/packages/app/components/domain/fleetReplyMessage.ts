@@ -1,5 +1,5 @@
 import type { ThreadMessageLike } from "@assistant-ui/react";
-import { z } from "zod";
+import * as v from "valibot";
 
 import { isSteerBy } from "@/lib/events/event-summary";
 import {
@@ -7,7 +7,11 @@ import {
   type FleetEvent,
   type FleetToolCall,
 } from "@/lib/streaming/fleet-stream-row";
-import { TOOL_CALL_STATUS, type ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
+import {
+  TOOL_CALL_STATUS,
+  TOOL_CALL_STATUS_SCHEMA,
+  type ToolArgs,
+} from "@/lib/streaming/fleet-stream-tool-trace";
 
 // A reply row as assistant-ui models it: an assistant message whose status is
 // the run's, and whose content is the reasoning, tool-call and text parts the
@@ -32,16 +36,16 @@ export const REPLY_FIGURE = {
 
 // A done call's `result`: what tells the library the call finished, and what
 // its cell shows. Each field narrows on its own, as the frames that fill it do.
-const TOOL_RESULT = z.object({
-  status: z.enum([TOOL_CALL_STATUS.SUCCEEDED, TOOL_CALL_STATUS.FAILED, TOOL_CALL_STATUS.INTERRUPTED]).optional().catch(undefined),
-  outputHead: z.string().optional().catch(undefined),
-  outputTail: z.string().optional().catch(undefined),
-  outputLineCount: z.number().optional().catch(undefined),
-  exitCode: z.number().optional().catch(undefined),
-  callId: z.string().optional().catch(undefined),
+const TOOL_RESULT = v.object({
+  status: v.fallback(v.optional(TOOL_CALL_STATUS_SCHEMA), undefined),
+  outputHead: v.fallback(v.optional(v.string()), undefined),
+  outputTail: v.fallback(v.optional(v.string()), undefined),
+  outputLineCount: v.fallback(v.optional(v.number()), undefined),
+  exitCode: v.fallback(v.optional(v.number()), undefined),
+  callId: v.fallback(v.optional(v.string()), undefined),
 });
 
-export type ToolResult = z.infer<typeof TOOL_RESULT>;
+export type ToolResult = v.InferOutput<typeof TOOL_RESULT>;
 
 /** The status type assistant-ui gives a message or part that is still running. */
 export const STATUS_RUNNING = "running";
@@ -123,7 +127,9 @@ export function replyParts(event: FleetEvent): ReplyPart[] {
 
 /** A tool-call part's result, or undefined while the call runs. */
 export function readToolResult(result: unknown): ToolResult | undefined {
-  return result === undefined ? undefined : TOOL_RESULT.catch({}).parse(result);
+  if (result === undefined) return undefined;
+  const parsed = v.safeParse(TOOL_RESULT, result);
+  return parsed.success ? parsed.output : {};
 }
 
 type PartFields = { result: ToolResult | undefined; timing: { startedAt: number; completedAt?: number } };
