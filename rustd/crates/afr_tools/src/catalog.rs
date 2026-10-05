@@ -18,8 +18,8 @@ use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
 use crate::sandbox::{
-    ApplyPatch, ExecCommand, FileAppend, FileDelete, FileEdit, FileEditHashed, FileRead,
-    FileReadHashed, FileWrite, Git, Image, Shell, WriteStdin,
+    ApplyPatch, Browser, BrowserOpen, ExecCommand, FileAppend, FileDelete, FileEdit,
+    FileEditHashed, FileRead, FileReadHashed, FileWrite, Git, Image, Screenshot, Shell, WriteStdin,
 };
 use crate::web_fetch::WebFetch;
 
@@ -205,6 +205,9 @@ impl Catalog {
             Typed::boxed(FileEditHashed),
             Typed::boxed(ApplyPatch),
             Typed::boxed(Image),
+            Typed::boxed(BrowserOpen),
+            Typed::boxed(Browser),
+            Typed::boxed(Screenshot),
         ])
     }
 

@@ -106,6 +106,9 @@ pub enum ToolErrorCode {
     NotAnImage,
     /// The model's wire takes no image with a call's result.
     ImageInputUnavailable,
+    /// The browser tools wait for the Firecracker engine; this sandbox cannot
+    /// start Chromium.
+    BrowserUnavailable,
 }
 
 impl ToolErrorCode {
@@ -144,6 +147,7 @@ impl ToolErrorCode {
             Self::PatchInvalid => "patch_invalid",
             Self::NotAnImage => "not_an_image",
             Self::ImageInputUnavailable => "image_input_unavailable",
+            Self::BrowserUnavailable => "browser_unavailable",
         }
     }
 }
