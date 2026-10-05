@@ -13,6 +13,7 @@ use futures_util::stream::BoxStream;
 use rig_core::message::AssistantContent;
 
 use crate::error::Result;
+use crate::image_input::ImageInput;
 
 /// The name the provider's own web search is called by.
 const WEB_SEARCH: &str = "web_search";
@@ -75,6 +76,8 @@ pub enum Message {
         call_id: String,
         /// What the call returned.
         output: String,
+        /// An image the call read, for the model to see with the output.
+        image: Option<ImageInput>,
     },
 }
 
@@ -178,4 +181,9 @@ pub trait Provider: Send + Sync + fmt::Debug {
     /// Streams one turn. The stream ends when the turn does; an error ends it
     /// early, and the run with it.
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk>>;
+
+    /// Whether a call's result may carry an image for the model to see. A
+    /// handler that would attach one refuses the call, before any read, on a
+    /// provider that answers no.
+    fn accepts_images(&self) -> bool;
 }

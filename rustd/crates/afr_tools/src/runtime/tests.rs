@@ -53,6 +53,11 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
         (ToolErrorCode::TextNotFound, "text_not_found"),
         (ToolErrorCode::HashMismatch, "hash_mismatch"),
         (ToolErrorCode::PatchInvalid, "patch_invalid"),
+        (ToolErrorCode::NotAnImage, "not_an_image"),
+        (
+            ToolErrorCode::ImageInputUnavailable,
+            "image_input_unavailable",
+        ),
     ];
 
     for (code, spelling) in spelled {

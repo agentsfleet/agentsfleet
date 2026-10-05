@@ -137,6 +137,7 @@ impl<'run> Harness<'run> {
     }
 
     async fn drive(mut self, provider: &dyn Provider) -> RunOutput {
+        self.lease.image_input = provider.accepts_images();
         let mut capped = false;
         let mut turns: u64 = 0;
         let ending = loop {
@@ -285,9 +286,13 @@ impl<'run> Harness<'run> {
             () = self.stop.cancelled() => return None,
             text = self.ledger.call(call, handler) => text,
         };
+        // The image a call read rides its result alone; the ledger, the trace
+        // and the frames saw the text.
+        let image = self.lease.attachment.take().map(attach::image_input);
         Some(Message::ToolResult {
             call_id: call.id.clone(),
             output: text.into_inner(),
+            image,
         })
     }
 
@@ -299,12 +304,18 @@ impl<'run> Harness<'run> {
     }
 }
 
+#[path = "loop/attach.rs"]
+mod attach;
 #[path = "loop/finish.rs"]
 mod finish;
 
 #[cfg(test)]
 #[path = "loop/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "loop/image_tests.rs"]
+mod image_tests;
 
 #[cfg(test)]
 #[path = "loop/budget_tests.rs"]

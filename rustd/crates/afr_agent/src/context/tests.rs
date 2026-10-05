@@ -14,6 +14,7 @@ fn result(output: &str) -> Message {
     Message::ToolResult {
         call_id: "c".to_owned(),
         output: output.to_owned(),
+        image: None,
     }
 }
 

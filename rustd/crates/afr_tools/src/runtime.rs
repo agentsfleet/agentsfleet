@@ -93,7 +93,8 @@ pub enum ToolErrorCode {
     PathNotAllowed,
     /// The path names no file or directory in the workspace.
     FileNotFound,
-    /// The file is longer than one read carries, so it cannot be edited whole.
+    /// The file is longer than the call carries: one read, for an edit; the
+    /// image cap, for an image.
     FileTooLarge,
     /// The text to replace is not in the file.
     TextNotFound,
@@ -101,6 +102,10 @@ pub enum ToolErrorCode {
     HashMismatch,
     /// The patch does not parse, or a hunk's lines are not in the file.
     PatchInvalid,
+    /// The file is not an image the wires take.
+    NotAnImage,
+    /// The model's wire takes no image with a call's result.
+    ImageInputUnavailable,
 }
 
 impl ToolErrorCode {
@@ -137,6 +142,8 @@ impl ToolErrorCode {
             Self::TextNotFound => "text_not_found",
             Self::HashMismatch => "hash_mismatch",
             Self::PatchInvalid => "patch_invalid",
+            Self::NotAnImage => "not_an_image",
+            Self::ImageInputUnavailable => "image_input_unavailable",
         }
     }
 }

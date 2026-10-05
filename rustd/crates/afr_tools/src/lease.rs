@@ -8,7 +8,7 @@
 use afr_egress::Egress;
 use afr_memory::MemoryBackend;
 
-use crate::sandbox::{Checkout, Sessions};
+use crate::sandbox::{Checkout, ImageAttachment, Sessions};
 
 /// One lease's state, as its calls see it.
 #[derive(Debug)]
@@ -23,11 +23,17 @@ pub struct Lease<'run> {
     pub sessions: Sessions,
     /// The repositories checked out in the lease's workspace.
     pub checkouts: Vec<Checkout<'run>>,
+    /// Whether the model's wire takes an image with a call's result; `image`
+    /// refuses before any read when it does not.
+    pub image_input: bool,
+    /// The image the last call read, until the loop attaches it to that
+    /// call's result.
+    pub attachment: Option<ImageAttachment>,
 }
 
 impl<'run> Lease<'run> {
     /// A lease whose calls read and write `memory` and send through `egress`,
-    /// with no session open yet.
+    /// with no session open yet and a wire that takes no image until told.
     #[must_use]
     pub fn new(memory: Box<dyn MemoryBackend + 'run>, egress: Egress<'run>) -> Self {
         Self {
@@ -35,6 +41,8 @@ impl<'run> Lease<'run> {
             egress,
             sessions: Sessions::default(),
             checkouts: Vec::new(),
+            image_input: false,
+            attachment: None,
         }
     }
 
@@ -42,6 +50,14 @@ impl<'run> Lease<'run> {
     #[must_use]
     pub fn with_checkouts(mut self, checkouts: Vec<Checkout<'run>>) -> Self {
         self.checkouts = checkouts;
+        self
+    }
+
+    /// The same lease, whose wire takes an image with a call's result, or
+    /// not.
+    #[must_use]
+    pub fn with_image_input(mut self, image_input: bool) -> Self {
+        self.image_input = image_input;
         self
     }
 }
