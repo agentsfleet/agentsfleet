@@ -10,6 +10,7 @@
 pub mod error;
 
 mod connect;
+mod image_input;
 mod logs;
 mod provider;
 mod registry;
@@ -21,6 +22,7 @@ mod wire;
 
 pub use self::connect::{Connect, Connector};
 pub use self::error::{Error, Result};
+pub use self::image_input::{ImageInput, ImageKind};
 pub use self::logs::log_filter;
 pub use self::provider::{
     Call, Chunk, End, Hosted, Message, Provider, Replay, Request, ToolSpec, Usage,

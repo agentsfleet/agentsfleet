@@ -8,7 +8,7 @@ use afr_egress::testing::RecordingTransport;
 use afr_sandbox::{Engine, Limits, SandboxRequest};
 use afr_tools::catalog::{
     APPLY_PATCH, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_EDIT_HASHED, FILE_READ,
-    FILE_READ_HASHED, FILE_WRITE, SHELL,
+    FILE_READ_HASHED, FILE_WRITE, IMAGE, SHELL,
 };
 use afr_tools::{Catalog, Lease, ToolContext, ToolErrorCode, ToolOutput};
 use libtest_mimic::Failed;
@@ -31,6 +31,9 @@ const TODO: &str = "notes/todo.txt";
 const TWO: &str = "two";
 /// What the file holds once every tool has had its turn.
 const FINAL: &str = "one\nTWO\nthree\n";
+/// The image a trial writes, eight bytes of PNG, and where.
+const SHOT: &str = "notes/shot.png";
+const WRITE_PNG: &str = "printf '\\211PNG\\r\\n\\032\\n' > notes/shot.png";
 /// Prints whether the file is the sandbox user's own.
 const OWNED: &str = "[ \"$(stat -c %u notes/todo.txt)\" = \"$(id -u)\" ] && echo owned";
 /// A link from the workspace to the sandbox's own `/etc`.
@@ -70,6 +73,7 @@ fn in_fresh_sandbox(
             FILE_EDIT.name(),
             FILE_EDIT_HASHED.name(),
             APPLY_PATCH.name(),
+            IMAGE.name(),
         ];
         let selection = catalog.select(&names)?;
         let engine = lane.engine();
@@ -78,7 +82,7 @@ fn in_fresh_sandbox(
             limits: Limits::default(),
         };
         let sandbox = engine.prepare(request).await?;
-        let mut lease = Lease::default();
+        let mut lease = Lease::default().with_image_input(true);
         let mut outputs = Vec::with_capacity(steps.len());
         for step in steps {
             let (name, arguments) = step(&outputs);
@@ -124,7 +128,7 @@ fn all_succeeded(outputs: &[ToolOutput]) -> Result<(), Failed> {
 /// the workspace from inside the sandbox, as its user, and a delete removes
 /// what they made.
 pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
-    let steps: [Step; 10] = [
+    let steps: [Step; 12] = [
         |_before| (FILE_WRITE.name(), json!({PATH: TODO, CONTENT: "one\n"})),
         |_before| {
             (
@@ -149,6 +153,8 @@ pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
         |_before| (APPLY_PATCH.name(), json!({PATCH_FIELD: PATCH})),
         |_before| (FILE_READ.name(), json!({PATH: TODO})),
         |_before| (SHELL.name(), json!({COMMAND: OWNED})),
+        |_before| (SHELL.name(), json!({COMMAND: WRITE_PNG})),
+        |_before| (IMAGE.name(), json!({PATH: SHOT})),
         |_before| (FILE_DELETE.name(), json!({PATH: "notes/extra.txt"})),
         |_before| (SHELL.name(), json!({COMMAND: "ls notes"})),
     ];
@@ -163,12 +169,23 @@ pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
         patched,
         read,
         owned,
+        _png,
+        viewed,
         _delete,
         listed,
     ] = outputs.as_slice()
     else {
         return Err(wrong_count(steps.len(), &outputs));
     };
+    expect(
+        viewed
+            .text
+            .starts_with("Attached notes/shot.png (8 bytes, image/png)"),
+        format!(
+            "the image is read inside the sandbox, got {:?}",
+            viewed.text
+        ),
+    )?;
     expect(
         patched.text.ends_with("+2 \u{2212}1"),
         format!("the patch counts its lines, got {:?}", patched.text),
@@ -182,7 +199,7 @@ pub(crate) fn file_tools_run_inside(lane: &Lane) -> Result<(), Failed> {
         format!("the file is the sandbox user's, got {:?}", owned.text),
     )?;
     expect(
-        listed.text.trim() == "todo.txt",
+        listed.text.trim() == "shot.png\ntodo.txt",
         format!("the added file is gone again, got {:?}", listed.text),
     )
 }

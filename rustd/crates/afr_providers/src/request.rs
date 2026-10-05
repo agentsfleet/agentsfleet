@@ -16,6 +16,7 @@ use rig_core::message::{
 };
 
 use crate::error::{Result, raise};
+use crate::image_input::{self, ImageInput};
 use crate::provider::{Call, Hosted, Message, Request};
 use crate::registry::Wire;
 
@@ -89,8 +90,12 @@ impl<'a> Conversation<'a> {
                         history.push(RigMessage::Assistant { id: None, content });
                     }
                 }
-                Message::ToolResult { call_id, output } => {
-                    let result = self.result(call_id, output)?;
+                Message::ToolResult {
+                    call_id,
+                    output,
+                    image,
+                } => {
+                    let result = self.result(call_id, output, image.as_ref())?;
                     user(&mut history, result);
                 }
             }
@@ -121,14 +126,21 @@ impl<'a> Conversation<'a> {
         Ok(content)
     }
 
-    /// One call's result, under the tool its call named.
-    fn result(&self, call_id: &str, output: &str) -> Result<UserContent> {
+    /// One call's result, under the tool its call named: its text, then the
+    /// image it read, when it read one.
+    fn result(
+        &self,
+        call_id: &str,
+        output: &str,
+        image: Option<&ImageInput>,
+    ) -> Result<UserContent> {
         let name = self
             .tools
             .get(call_id)
             .cloned()
             .ok_or_else(|| raise::unsendable(call_id))?;
-        let content = vec![ToolResultContent::text(output.to_owned())];
+        let mut content = vec![ToolResultContent::text(output.to_owned())];
+        content.extend(image.map(image_input::content));
         Ok(UserContent::tool_result(
             CallId::from_wire(call_id.to_owned()),
             name,

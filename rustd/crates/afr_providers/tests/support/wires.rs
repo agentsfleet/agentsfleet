@@ -143,6 +143,36 @@ impl Wire {
             .collect()
     }
 
+    /// The images a request carries back inside tool results, as the media
+    /// type each wire names them by; chat completions carry none.
+    pub(crate) fn images(self, body: &Value) -> Vec<String> {
+        let blocks = |value: &Value| value.as_array().cloned().unwrap_or_default();
+        match self {
+            Self::Messages => blocks(&body["messages"])
+                .iter()
+                .flat_map(|message| blocks(&message["content"]))
+                .filter(|block| block["type"] == "tool_result")
+                .flat_map(|block| blocks(&block["content"]))
+                .filter(|part| part["type"] == "image")
+                .filter_map(|part| part["source"]["media_type"].as_str().map(str::to_owned))
+                .collect(),
+            Self::Responses => blocks(&body["input"])
+                .iter()
+                .filter(|item| item["type"] == "function_call_output")
+                .flat_map(|item| blocks(&item["output"]))
+                .filter(|part| part["type"] == "input_image")
+                .filter_map(|part| {
+                    part["image_url"]
+                        .as_str()
+                        .and_then(|url| url.strip_prefix("data:"))
+                        .and_then(|rest| rest.split(';').next())
+                        .map(str::to_owned)
+                })
+                .collect(),
+            Self::Chat => Vec::new(),
+        }
+    }
+
     /// The tool names a request offers, hosted specs by their type.
     pub(crate) fn offered(self, body: &Value) -> Vec<String> {
         let tools = body["tools"].as_array().into_iter().flatten();

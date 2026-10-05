@@ -54,6 +54,15 @@ pub enum Wire {
     Chat,
 }
 
+impl Wire {
+    /// Whether a tool's result may carry an image on this wire: Messages and
+    /// Responses take one as content, chat completions take text alone.
+    #[must_use]
+    pub const fn carries_images(self) -> bool {
+        matches!(self, Self::Messages | Self::Responses)
+    }
+}
+
 /// One named provider, as the table spells it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]

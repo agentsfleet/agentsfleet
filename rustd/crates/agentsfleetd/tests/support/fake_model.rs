@@ -138,6 +138,10 @@ impl Provider for FakeModel {
         let ended = [Chunk::Usage(TURN_USAGE), Chunk::End(End::default())];
         futures_util::stream::iter(turn.into_iter().chain(ended).map(Ok)).boxed()
     }
+
+    fn accepts_images(&self) -> bool {
+        true
+    }
 }
 
 /// An `http_request` call, under provider id `id`.
