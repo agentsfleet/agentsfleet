@@ -6,7 +6,7 @@
 // the two, because the parser already produced the values the Effect asks for.
 
 import { Option } from "effect";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
   apiKeyCreateEffectFromArgs,

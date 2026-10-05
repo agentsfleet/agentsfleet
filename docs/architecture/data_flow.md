@@ -41,6 +41,8 @@ Each trap is enforced in its owner section; this list is the index.
 - Never acquire a second Postgres connection while holding one — that is how a pool deadlocks (§The Postgres pool).
 - The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
 - `gate_blocked` rows are NEVER reopened (§"C. EXECUTE" step 3).
+- A Pull Request reviewer cannot post a review or a comment: no egress write rule admits one (§"A Pull Request through one lease").
+- Nothing coalesces per Pull Request: every push is its own admitted event, queued behind the fleet's running lease (§"A Pull Request through one lease").
 - Never carry a separate event id in the payload — the stream entry id IS the canonical event id (§B. TRIGGER).
 - The continuation actor is FLAT — it never re-nests `continuation:` (§B. TRIGGER).
 - `repositories` is required for GitHub App traffic; omission means no delivery, never every repository (§B. TRIGGER).
@@ -798,12 +800,16 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    agentsfleetd — lease handler:
 
      assign.select():
-       non-blocking XREADGROUP fleet:{id}:events across all ACTIVE
-       fleets, sticky-ordered by last_runner_id; claim the per-fleet
-       fleet.runner_affinity slot (wins iff free or prior lease expired)
-       and bump the monotonic fencing_seq. A lease past lease_expires_at
-       is RECLAIMED: its event envelope + billing are reused, re-fenced
-       with a higher token.
+       peek one fleet:ready:{p} partition (sixteen, rotated per poll) for
+       at most 64 fleets with work; an empty peek answers at once and
+       reads no Postgres. Order the candidates sticky by last_runner_id,
+       claim the per-fleet fleet.runner_affinity slot (wins iff free or
+       its leased_until has passed) and bump the monotonic fencing_seq.
+       A lease past lease_expires_at is RECLAIMED: its event envelope +
+       billing are reused, re-fenced with a higher token. Otherwise take
+       the group's oldest pending entry (XAUTOCLAIM, min-idle 0), else a
+       new one (XREADGROUP >, COUNT 1). Both empty: release the slot, and
+       clear the mark only if its token is the one this poll peeked.
 
      1. INSERT core.fleet_events                  ← narrative log opens
           (status='received', actor, request_json)
@@ -1118,6 +1124,97 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 - Continuity across runs is the checkpoint in `agentsfleetd`, not runner-local state — so any runner can pick up the next run. Sticky routing (prefer `last_runner_id`) is a hint for warm-sandbox reuse, never ownership.
 
 Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency = TTL plus poll density (the S0 lazy-reclaim SLA). Tightening it is M80_006.
+
+## A Pull Request through one lease
+
+How one GitHub Pull Request (PR) becomes a run: the records it writes, the timers that move it, and the reply it can or cannot post. The daemon half is the Rust `agentsfleetd`. The runner half is the Zig `agentsfleet-runner`, which serves every lease today because the Rust runner binary still refuses them (`rustd/crates/agentsfleet_runner/src/main.rs:27`). Both runners enforce the same per-lease egress policy, which `afd_gate` builds.
+
+**Records, in the order they appear.**
+
+```
+ INSTALL       core.fleets  installing → active                 Postgres
+ (once)        stream fleet:{id}:events + group fleet_lease     Dragonfly
+               no admission, event, lease or affinity row yet
+
+ EVENT IN      core.fleet_admissions  dedupe key + backlog cap  Postgres
+               XADD fleet:{id}:events                           Dragonfly
+               HSET fleet:ready:{p}  "this fleet has work"      Dragonfly
+
+ RUNNER POLL   fleet.runner_affinity  claim: fence+1, 30 s      Postgres
+               core.fleet_events      received                  Postgres
+               fleet.runner_leases    active                    Postgres
+
+ SETTLE        one transaction: lease reported, event terminal,
+               wallet debit, session checkpoint, slot released;
+               then XACK the stream entry                       Dragonfly
+```
+
+Admission is a ledger, not a queue. It de-duplicates and caps the backlog (`afd_admission/src/admit.rs:79`, `budget.rs:40`), and it writes no event row: that row opens only when a runner claims the work (`afd_fleet/src/lease/event.rs:109`). Install writes the fleet row and its stream group and nothing else (`afd_fleet_lifecycle/src/install.rs:200`).
+
+**A PR opened on a repository the fleet subscribes to.**
+
+```
+ GitHub     agentsfleetd          Postgres         Dragonfly     runner
+   │             │                    │                 │           │
+   ├─pull_req───►│ HMAC-SHA256 vs     │                 │           │
+   │  opened     │ vault github-app   │                 │           │
+   │             │ install → workspace│                 │           │
+   │             │ body → 12-field    │                 │           │
+   │             │ PullRequestDigest  │                 │           │
+   │             │ fleets: active,    │                 │           │
+   │             │ github grant, repo │                 │           │
+   │             │ in TRIGGER.md      │                 │           │
+   │             ├─admission─────────►│ key fleet:      │           │
+   │             │                    │ sha256(body)    │           │
+   │             ├─XADD event─────────┼────────────────►│           │
+   │             ├─mark ready─────────┼────────────────►│           │
+   │◄─202────────┤                    │                 │           │
+   │             │◄───────────────────┼─────────────────┼─poll 1 s──┤
+   │             ├─peek ≤64 fleets────┼────────────────►│           │
+   │             ├─claim slot────────►│ fence+1, +30 s  │           │
+   │             ├─XREADGROUP 1───────┼────────────────►│           │
+   │             ├─event row─────────►│ received        │           │
+   │             ├─gates, lease row──►│ active          │           │
+   │             ├─lease + digest + repo-scoped token───┼──────────►│
+   │             │                    │                 │           │
+   │◄────────────┼─ GET …/pulls/{n} (diff), egress allowed ─────────┤
+   │      ✗ ─────┼─ POST …/pulls/{n}/reviews, refused at egress ────┤
+   │             │◄─ renew every 5 s; activity every 250 ms ────────┤
+   │             │◄─ tool records, memory, report ──────────────────┤
+   │             ├─settle: one transaction, then XACK───────────────►
+```
+
+The fleet receives the digest, not GitHub's payload: action, repository, number, title, URL, state, draft, author, head and base refs, head commit and receipt time (`afd_api_ingress/src/handler/webhook/github.rs`). The ingress steps are §"B. TRIGGER"; the lease and report steps are §"C. EXECUTE".
+
+**The timers that move it.**
+
+| Constant | Value | Where |
+|---|---|---|
+| `NO_WORK_RETRY_AFTER_MS` | 1 s, an empty poll's `retry_after_ms` | `afd_core/src/timing.rs:68` |
+| `LEASE_TTL_MS` | 30 s, a claim or lease with no renewal | `afd_core/src/timing.rs:27` |
+| `RENEWAL_TICK_MS` | 5 s, the runner's renewal cadence | `afd_core/src/timing.rs:39` |
+| `MAX_RUNTIME_MS` | 12 h; no renewal extends past it | `afd_core/src/timing.rs:47` |
+| `RUNNER_OFFLINE_AFTER_MS` | 90 s of silence marks a runner offline | `afd_core/src/timing.rs:55` |
+| `MAX_READY_CANDIDATES_PER_POLL` | 64 fleets peeked per poll | `afd_fleet/src/lease/assign.rs:56` |
+| `FLEET_BACKLOG_BUDGET` | 10,000 unacknowledged events per fleet | `afd_admission/src/budget.rs:40` |
+
+**How the fleet replies.** `SKILL.md` decides, in prose. The reply is ordinary `http_request` calls, with `Authorization: Bearer ${secrets.github.token}` substituted at egress from a token minted per lease and narrowed to the binding's repositories. The egress write rules admit git blobs, trees and commits, one ref on the fleet's repair branch, and a draft `/pulls` with head and base locked (`afd_gate/src/policy/egress/write.rs:32`). No rule admits `/pulls/{n}/reviews` or an issue comment, and an origin carrying scoped rules denies every request none of them matches: `src/runner/engine/runtime/http_request_policy.zig:22-30` on the Zig runner, `afr_egress/src/admission.rs` on the Rust one. So a reviewer reads the diff, and its review POST comes back `RequestPolicyNotAllowed`. `rustd/crates/agentsfleetd/tests/integration_rust_runner_reviews.rs:87-104` asserts that zero POSTs reach GitHub. A fleet can push a fix to its repair branch and open a draft PR; it cannot comment.
+
+**A steer from the chat** is admitted through the same ledger as its own event and waits behind the running lease (`afd_events/src/steer.rs`). Nothing is injected into a run in progress, and no route cancels one.
+
+**The author pushes again.**
+
+```
+ push ──► pull_request synchronize ──► new body ──► new sha256 key
+                                      ──► new admission + XADD
+
+ fleet:{id}:events  [ opened ]  [ synchronize ]  [ labeled ]  [ edited ]
+                      running     waits for the     every App action
+                         ▲        fleet's slot      wakes the fleet
+                         └─ one lease per fleet, first in first out
+```
+
+The dedupe key is the digest of the signed body. `X-GitHub-Delivery` is not used, because GitHub does not sign it (`afd_ingress/src/app.rs:184`). Nothing keys on the PR number or head commit, so nothing coalesces, supersedes or cancels per PR: three pushes queue three runs. App ingress wakes the fleet on every `pull_request` action except one on a repair branch; the per-fleet manual route narrows to opened, reopened, synchronize and ready-for-review (`afd_api_ingress/src/handler/webhook/github.rs:80-87,254-267`). Memory belongs to the fleet, not the PR, so a second review knows the first only if `SKILL.md` has it read the existing reviews.
 
 ## What the coding fleet never does
 

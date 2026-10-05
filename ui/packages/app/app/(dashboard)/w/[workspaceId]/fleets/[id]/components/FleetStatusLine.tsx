@@ -14,6 +14,7 @@ import { cn, StatusLine, StatusLineItem, type StatusLineTone, Time } from "@agen
 import type { RunFigures } from "@/lib/events/run-summary";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { formatMs } from "@/lib/utils";
+import { formatCount, runFigure } from "@/lib/events/run-figures-format";
 import { EVENT_STATUS, outcomeFor } from "@/lib/events/event-summary";
 import { formatDollars } from "@/app/(dashboard)/settings/billing/lib/charges";
 import {
@@ -31,7 +32,6 @@ import {
   METRICS_VALUE_UNKNOWN,
 } from "./console-copy";
 
-const COUNT_FORMATTER = new Intl.NumberFormat("en-US");
 const ICON_SIZE = 12;
 const TOKENS_UNIT = "tok";
 const APPROVALS_ARROW = "→";
@@ -106,19 +106,19 @@ export default function FleetStatusLine({
       <Figure
         Icon={HashIcon}
         label={METRICS_TOKENS_LABEL}
-        value={formatTokens(latest, summaryAvailable)}
+        value={shownFigure(summaryAvailable, runFigure(latest?.tokens, formatCount))}
         unit={TOKENS_UNIT}
       />
       <Figure
         Icon={CoinsIcon}
         label={METRICS_COST_LABEL}
-        value={formatCost(latest, summaryAvailable)}
+        value={shownFigure(summaryAvailable, runFigure(latest?.cost_nanos, formatDollars))}
         tone="foreground"
       />
       <Figure
         Icon={TimerIcon}
         label={METRICS_TIME_LABEL}
-        value={formatDuration(latest, summaryAvailable)}
+        value={shownFigure(summaryAvailable, runFigure(latest?.wall_ms, formatMs))}
         unit={METRICS_TIME_UNIT}
       />
       {pendingApprovals > 0 ? (
@@ -200,23 +200,8 @@ function outcomeCell(latest: RunFigures | null, available: boolean): OutcomeCell
   return { text, tone: "success", Icon: CheckIcon, live: false, at };
 }
 
-function formatTokens(latest: RunFigures | null, available: boolean): string {
-  if (!available) return METRICS_VALUE_UNKNOWN;
-  return latest?.tokens === null || latest?.tokens === undefined
-    ? METRICS_VALUE_UNKNOWN
-    : COUNT_FORMATTER.format(latest.tokens);
-}
-
-function formatDuration(latest: RunFigures | null, available: boolean): string {
-  if (!available) return METRICS_VALUE_UNKNOWN;
-  return latest?.wall_ms === null || latest?.wall_ms === undefined
-    ? METRICS_VALUE_UNKNOWN
-    : formatMs(latest.wall_ms);
-}
-
-function formatCost(latest: RunFigures | null, available: boolean): string {
-  if (!available) return METRICS_VALUE_UNKNOWN;
-  return latest?.cost_nanos === null || latest?.cost_nanos === undefined
-    ? METRICS_VALUE_UNKNOWN
-    : formatDollars(latest.cost_nanos);
+// What a figure cell shows: the figure, or the unknown mark when the read
+// failed or the run did not report it.
+function shownFigure(available: boolean, text: string | null): string {
+  return available ? text ?? METRICS_VALUE_UNKNOWN : METRICS_VALUE_UNKNOWN;
 }

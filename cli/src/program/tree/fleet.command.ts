@@ -7,7 +7,7 @@
 // `list` does not exist.
 
 import { Option } from "effect";
-import { Command, Flag } from "effect/unstable/cli";
+import { Command, Flag } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import { OPT_TTY } from "../../constants/cli-flags.ts";
 import {

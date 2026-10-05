@@ -1,6 +1,6 @@
 import type { MessageState } from "@assistant-ui/react";
 
-import { REASONING_SPAN } from "./fleetReplyMessage";
+import { REASONING_SPAN, REPLY_FIGURE } from "./fleetReplyMessage";
 import { GROUP_META, RENDER_KIND_KEY } from "./useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 
@@ -54,6 +54,24 @@ export function readReasoningSpan(message: MessageState): { startedAtMs: number 
     startedAtMs: finiteNumber(message.metadata.custom[REASONING_SPAN.STARTED]),
     endedAtMs: finiteNumber(message.metadata.custom[REASONING_SPAN.ENDED]),
   };
+}
+
+/** What the turn cost, as the run reported it. A figure it did not report
+ * reads null, so nothing draws it as zero. */
+export type ReplyFigures = { tokens: number | null; wallMs: number | null; costNanos: number | null };
+
+export function readReplyFigures(message: MessageState): ReplyFigures {
+  const custom = message.metadata.custom;
+  return {
+    tokens: finiteNumber(custom[REPLY_FIGURE.TOKENS]),
+    wallMs: finiteNumber(custom[REPLY_FIGURE.WALL_MS]),
+    costNanos: finiteNumber(custom[REPLY_FIGURE.COST_NANOS]),
+  };
+}
+
+/** How many calls the saved trace left out to stay inside its bounds. */
+export function readOmittedCallCount(message: MessageState): number {
+  return Math.max(0, finiteNumber(message.metadata.custom[REPLY_FIGURE.OMITTED_CALLS]) ?? 0);
 }
 
 export function readReplyRecovering(message: MessageState): boolean {

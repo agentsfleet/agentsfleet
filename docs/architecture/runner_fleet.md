@@ -590,6 +590,8 @@ A dedicated low-latency cancel channel can come later; heartbeat-carried revocat
 
 Default is **cold**: every lease forks a fresh sandbox, runs, and tears it down. No pinning, no stale state, no idle cost.
 
+That is the Zig runner. The Rust runner's per-lease sandbox, its measured cold start and where its bytes live are in [Runner execution](./runner_execution.md) §"A lease's sandbox today"; a lease whose tools all run in the supervisor starts no sandbox at all.
+
 A later, opt-in **warm** mode keeps the sandbox shell alive across leases for the same fleet to skip cold setup. Warm reuses only the sandbox shell — never fleet state or config. Two guards make it safe. First, the lease always carries fresh config + secrets (config is never cached, see below), and the checkpoint is the only carried state. Second, sticky routing is a *hint*, not ownership: if the warm runner is busy or dead, any eligible runner takes the event, and idle warm children self-evict. A Fleet is never stuck waiting for one runner.
 
 ## Config

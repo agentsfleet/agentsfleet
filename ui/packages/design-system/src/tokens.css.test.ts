@@ -131,6 +131,23 @@ describe("tokens.css — the onboarding beckon [data-beckon] selector contract",
   });
 });
 
+describe("tokens.css — the running tool bullet [data-tool-shimmer] contract", () => {
+  const css = readFileSync(TOKENS_CSS_PATH, "utf8");
+
+  it('only shimmers the literal [data-tool-shimmer="true"] value, at the live cadence', () => {
+    // A done cell renders `data-tool-shimmer` false or not at all, and must sit still.
+    expect(css).toMatch(/\[data-tool-shimmer="true"\]\s*\{[^}]*animation: tool-shimmer 2\.4s/);
+    expect(css).not.toMatch(/\[data-tool-shimmer\]\s*\{/);
+    expect(css).toMatch(/@keyframes tool-shimmer\s*\{[^@]*color: var\(--text-dim\)[^@]*color: var\(--pulse\)/);
+    expect(css).not.toMatch(/@keyframes tool-shimmer[^@]{0,300}gradient/);
+  });
+
+  it("test_running_bullet_respects_reduced_motion", () => {
+    const reduced = css.split("prefers-reduced-motion: reduce").slice(1).join("");
+    expect(reduced).toMatch(/\[data-tool-shimmer="true"\]\s*\{[^}]*animation: none;[^}]*color: var\(--pulse\);[^}]*opacity: 1/);
+  });
+});
+
 describe("tokens.css — the braille spinner and settled-row contracts", () => {
   const css = readFileSync(TOKENS_CSS_PATH, "utf8");
 

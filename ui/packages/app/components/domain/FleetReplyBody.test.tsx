@@ -45,6 +45,8 @@ const REPLY: ReplyContext = {
   eventId: "e1",
   reasoning: "",
   span: { startedAtMs: null, endedAtMs: null },
+  content: [],
+  startedAtMs: 0,
 };
 const RUNNING = "running";
 const COMPLETE = "complete";

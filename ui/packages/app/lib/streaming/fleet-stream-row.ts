@@ -7,6 +7,7 @@ import {
   roleFor,
   triggerBodyFor,
 } from "@/lib/events/event-summary";
+import { readSavedTrace, type ToolArgs, type ToolOutcome } from "./fleet-stream-tool-trace";
 
 // The row model the live timeline is made of, the one conversion from a
 // durable row into it, and the two readers every wire value passes through.
@@ -53,8 +54,9 @@ export const TERMINAL_STATUSES: ReadonlySet<string> = new Set([
 
 // One tool the fleet called while working an event, as the three tool frames
 // describe it — started with no timing yet, progressing with elapsed time,
-// completed with the final wall time.
-export type FleetToolCall = {
+// completed with the final wall time and its outcome — or as the event's saved
+// trace records it.
+export type FleetToolCall = ToolOutcome & {
   name: string;
   /** The runner's id for this call, when its frames carry one. */
   callId?: string;
@@ -63,6 +65,12 @@ export type FleetToolCall = {
   /** Wall time so far (from a progress frame) or final (from a completion). */
   ms: number | null;
   done: boolean;
+  /** The redacted arguments, absent when the call named none. */
+  args?: ToolArgs;
+  /** Closed as interrupted only because its turn ended first. The runner's
+   * activity is best-effort and its report may overtake it, so a completion
+   * that lands later, or the saved trace, still replaces this guess. */
+  closedAtSettle?: true;
 };
 
 export type FleetEvent = {
@@ -133,6 +141,8 @@ export type FleetEvent = {
   costNanos?: number | null;
   /** Tools called while working this event, in first-seen order. */
   tools?: FleetToolCall[];
+  /** Calls the saved trace dropped to stay inside its bounds. */
+  omittedCallCount?: number;
   custom?: { requestJson?: string | null };
 };
 
@@ -159,6 +169,9 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
   // passes them and nothing is lost.
   const bodies = row as Partial<EventDetail>;
   const request_json = bodies.request_json ?? EMPTY_PAYLOAD;
+  // A list row carries no trace, and a run that recorded none carries null:
+  // either way the row says nothing about its calls.
+  const trace = readSavedTrace(bodies.tool_calls, row.created_at);
   return {
     id: row.event_id,
     role: roleFor(row.actor),
@@ -174,6 +187,7 @@ export function rowToEvent(row: EventRow | EventDetail): FleetEvent {
     wallMs: figure(row.wall_ms),
     costNanos: figure(row.cost_nanos),
     custom: { requestJson: request_json },
+    ...(trace === null ? {} : { tools: trace.calls, omittedCallCount: trace.omitted }),
   };
 }
 

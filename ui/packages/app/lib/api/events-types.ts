@@ -113,6 +113,13 @@ export function fleetEventDetailUrl(workspaceId: string, fleetId: string, eventI
   );
 }
 
+// Same-origin URL for one tool call's full arguments and output. Intercepted by
+// the Route Handler at app/live/.../events/[eventId]/tool-calls/[callId]/route.ts.
+// A call id is `{fence}:{n}`, so it is encoded like every other segment.
+export function fleetToolCallUrl(workspaceId: string, fleetId: string, eventId: string, callId: string): string {
+  return `${fleetEventDetailUrl(workspaceId, fleetId, eventId)}/tool-calls/${encodeURIComponent(callId)}`;
+}
+
 // Same-origin URL for the ONE multiplexed workspace SSE stream. Intercepted by
 // the Next Route Handler at app/live/.../events/stream/route.ts, which mints
 // the api-audience Bearer server-side. This is the wall's single connection —

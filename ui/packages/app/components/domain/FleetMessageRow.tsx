@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { BracesIcon } from "lucide-react";
 import {
   Accordion,
@@ -15,17 +8,14 @@ import {
   AccordionItem,
   AccordionTrigger,
   Badge,
-  Time,
   cn,
-  formatTimeAbsolute,
-  formatTimeRelative,
 } from "@agentsfleet/design-system";
 
 import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
+import { RelativeNowProvider, Timestamp } from "./FleetTimestamp";
 
 const ROW_ENTER =
   "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream";
-const RELATIVE_TIME_REFRESH_MS = 30_000;
 
 export const ROW_TONE = {
   OPERATOR: "operator",
@@ -38,7 +28,6 @@ export type RowTone = (typeof ROW_TONE)[keyof typeof ROW_TONE];
 // rather than the word "fleet". Rows are rendered by a callback the thread
 // primitive owns, so the name reaches them through context rather than props.
 const SenderLabelContext = createContext<string>("");
-const RelativeNowContext = createContext<Date | null>(null);
 
 export function SenderLabelProvider({
   senderLabel,
@@ -47,21 +36,9 @@ export function SenderLabelProvider({
   senderLabel: string;
   children: ReactNode;
 }) {
-  const [now, setNow] = useState(() => new Date());
-
-  useEffect(() => {
-    const timer = window.setInterval(
-      () => setNow(new Date()),
-      RELATIVE_TIME_REFRESH_MS,
-    );
-    return () => window.clearInterval(timer);
-  }, []);
-
   return (
     <SenderLabelContext.Provider value={senderLabel}>
-      <RelativeNowContext.Provider value={now}>
-        {children}
-      </RelativeNowContext.Provider>
+      <RelativeNowProvider>{children}</RelativeNowProvider>
     </SenderLabelContext.Provider>
   );
 }
@@ -82,6 +59,8 @@ export type FleetMessageRowProps = {
   failed?: boolean;
   /** Names the sender above the bubble: someone else's turn in a shared thread. */
   showSender?: boolean;
+  /** When the turn was sent, on the row that opens it: one time per turn. */
+  createdAt?: Date;
 };
 
 export function FleetMessageRow({
@@ -92,6 +71,7 @@ export function FleetMessageRow({
   dimmed,
   failed,
   showSender,
+  createdAt,
 }: FleetMessageRowProps) {
   const isOperator = tone === ROW_TONE.OPERATOR;
   return (
@@ -144,6 +124,7 @@ export function FleetMessageRow({
             <span className="sr-only">{sender}: </span>
             {children}
           </div>
+          {createdAt ? <span className="flex"><Timestamp createdAt={createdAt} /></span> : null}
         </div>
       </div>
     </div>
@@ -319,25 +300,3 @@ export function FleetGroupRow({
 }
 
 const GROUP_VALUE = "group";
-
-// Relative time stays visual-only so the 30-second refresh cannot repeatedly
-// announce the live region. Assistive technology gets one stable exact instant.
-function Timestamp({ createdAt }: { createdAt: Date }) {
-  const now = useContext(RelativeNowContext);
-  const absolute = useMemo(() => formatTimeAbsolute(createdAt), [createdAt]);
-
-  return (
-    <>
-      <Time
-        aria-hidden="true"
-        value={createdAt}
-        format="relative"
-        label={now ? formatTimeRelative(createdAt, now) : undefined}
-        tooltip={false}
-        title={absolute}
-        className="shrink-0 font-mono text-label leading-mono text-muted-foreground tabular-nums"
-      />
-      <span className="sr-only">Occurred {absolute}</span>
-    </>
-  );
-}
