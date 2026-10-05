@@ -10,6 +10,11 @@ use crate::lane::Lane;
 
 /// How long one command may run before the trial calls it hung.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+/// What [`REACH_OUT`] prints when no connection could be opened.
+pub(crate) const UNREACHABLE: &str = "unreachable";
+/// Tries to open a connection outside loopback and prints whether it could.
+pub(crate) const REACH_OUT: &str = "python3 -c 'import socket; \
+     socket.create_connection((\"1.1.1.1\", 443), 3)' 2>/dev/null && echo reached || echo unreachable";
 
 /// What one command produced.
 pub(crate) struct Outcome {

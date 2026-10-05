@@ -144,9 +144,12 @@ impl Error {
         error_code::INTERNAL_OPERATION_FAILED
     }
 
-    /// What the other end is told: the failure and, when it has one, its
-    /// cause — never the registry code or a backtrace, which are this host's.
-    pub(crate) fn wire_message(&self) -> String {
+    /// What anyone past this host is told: the failure and, when it has one,
+    /// its cause, never the registry code or a backtrace, which are this
+    /// host's. The other end of the socket reads it, and so does a model
+    /// reading why its tool call failed.
+    #[must_use]
+    pub fn wire_message(&self) -> String {
         let kind = self.kind();
         std::error::Error::source(kind)
             .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"))

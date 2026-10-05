@@ -27,6 +27,8 @@ afr_executor.workspace = true
 afr_egress.workspace = true
 # The field a credential's token sits in, which `pushover` reads.
 afr_secrets.workspace = true
+# What `write_stdin` queues to a process's input.
+bytes.workspace = true
 # `web_fetch` reads a page's text, never its markup.
 html2text.workspace = true
 # `Tool` is `dyn`: the catalog holds production handlers, tests hold stubs.
@@ -37,6 +39,9 @@ serde.workspace = true
 # A call's arguments are JSON.
 serde_json.workspace = true
 thiserror.workspace = true
+# A session's yield is a deadline on its event channel, and a scripted
+# process's events travel on the same channel type the executor's do.
+tokio = { workspace = true, features = ["sync", "time"] }
 # A refused call logs `tool_refused` with its code.
 tracing.workspace = true
 
@@ -50,7 +55,9 @@ test-util = ["afr_egress/test-util"]
 # The counting mint and the recording transport the egress suites send through.
 afr_egress = { workspace = true, features = ["test-util"] }
 afd_core = { workspace = true, features = ["test-util"] }
-bytes.workspace = true
 # The parse error a refused URL carries, built by the refusal-code suite.
 url.workspace = true
-tokio = { workspace = true, features = ["macros", "rt"] }
+# The session suites pause the clock so a yield passes without waiting.
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
+# The live session suite serves a real executor on a scratch socket.
+tempfile.workspace = true
