@@ -197,6 +197,9 @@ rustls.workspace = true
 tokio-rustls.workspace = true
 # A storage home and a sandbox base the run leaves behind for the test to read.
 tempfile.workspace = true
+# The runner's export, driven end to end against this daemon on a thread of
+# its own.
+afr_telemetry.workspace = true
 
 [lints]
 workspace = true

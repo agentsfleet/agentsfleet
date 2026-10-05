@@ -1248,6 +1248,7 @@ dependencies = [
  "afr_providers",
  "afr_sandbox",
  "afr_supervisor",
+ "afr_telemetry",
  "afr_tools",
  "axum",
  "base64 0.23.1",

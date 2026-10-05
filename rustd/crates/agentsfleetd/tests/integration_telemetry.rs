@@ -33,11 +33,11 @@ use opentelemetry::logs::{LogRecord as _, Logger as _, LoggerProvider as _};
 use opentelemetry::trace::{Tracer as _, TracerProvider as _};
 
 /// What the collector saw: the path, and the body it was sent.
-type Received = Arc<Mutex<Vec<(String, String)>>>;
+pub(crate) type Received = Arc<Mutex<Vec<(String, String)>>>;
 
 /// A signal path the fixture accepts.
-const TRACES: &str = "/v1/traces";
-const METRICS: &str = "/v1/metrics";
+pub(crate) const TRACES: &str = "/v1/traces";
+pub(crate) const METRICS: &str = "/v1/metrics";
 const LOGS: &str = "/v1/logs";
 
 /// An event name the Zig daemon emits, and this one must keep.
@@ -51,7 +51,7 @@ const PORTED_EVENT: &str = "supervised_task_started";
 const DELIVERY_GRACE: Duration = Duration::from_millis(500);
 
 /// A collector that keeps what it is posted.
-async fn collector() -> (String, Received) {
+pub(crate) async fn collector() -> (String, Received) {
     let received: Received = Arc::new(Mutex::new(Vec::new()));
     let app = Router::new()
         .route(TRACES, post(accept))

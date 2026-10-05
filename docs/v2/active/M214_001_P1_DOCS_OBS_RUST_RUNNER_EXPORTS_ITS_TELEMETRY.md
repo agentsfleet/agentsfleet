@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — before M213_001, by Indy's call ("Own spec, before cutover")
 **Branch:** `feat/m214-001-runner-telemetry`
 **Baseline revision:** `c5f7680f2ee4a475a9f6f6c8701c98262c6d5c8d`
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=3776 integration=4442 (Rust: `test-unit-rustd` 3776 passed, 0 failed, 828 ignored across 191 binaries; `test-integration-rustd` 4442 passed, 0 failed, 0 ignored across 241 binaries, both tiers through the coverage shards. TypeScript, same revision: app 3642, design-system 647, website 142 passed; cli 1779 passed, 17 skipped, 0 failed)
+**Baseline evidence:** CI on PR #729's head `a648ab96d`, whose tree `e3971d45f` is the comparison revision's tree exactly (`git rev-parse c5f7680f2^{tree} a648ab96d^{tree}`), on GitHub-hosted `ubuntu-latest`: unit https://github.com/agentsfleet/agentsfleet/actions/runs/37314101696, integration https://github.com/agentsfleet/agentsfleet/actions/runs/37314101828, TypeScript https://github.com/agentsfleet/agentsfleet/actions/runs/37314101732. Counts are the sum of every `test result:` line (Rust) and each package's `Tests`/`pass` summary (TypeScript) in those runs' logs. Measured from CI rather than a local checkout of the revision because a second full build did not fit the host's free disk; this branch's own CI runs the same workflows, so the delta compares like for like
 **Depends on:** M210_002 (the agent loop wired into `run`, and the `runner.lease`, `invoke_agent`, `chat` and `execute_tool` spans in `afr_agent/src/spans.rs` and `afr_supervisor/src/identity.rs`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 04, 2026) from Indy's Oct 03 and Oct 04 decisions and a source trace of `feat/m210-agent-loop-hosted-tools` at `fbb13e8fd`
 **Canonical architecture:** `docs/architecture/observability.md` §"`agentsfleet-runner` — a collector of its own", §"Signal routing", §Traces; `docs/architecture/runner_fleet.md` §Observability
@@ -126,7 +126,7 @@ A `ShouldSample` implementation admits at most `MAX_LEASE_SPANS` spans per lease
 
 `observability.md` and `runner_fleet.md` move the runner's export from "decided" to "built": its spans, families, budget and knobs, and what it never sends (logs, prompts, tool output, credentials). The runner collector stays "built later".
 
-- **Dimension 5.1** — A runner pointed at a stock OpenTelemetry Collector container delivers one lease as one trace with four span kinds → Test `test_e2e_runner_lease_trace_reaches_a_collector`
+- **Dimension 5.1** — A runner pointed at a stock OpenTelemetry Collector container delivers one lease as one trace with four span kinds → Test `test_e2e_runner_lease_trace_reaches_a_collector` — DONE (`rustd/crates/agentsfleetd/tests/integration_rust_runner_telemetry.rs`: the daemon that ships, the runner's real loop on a thread of its own, and the OTLP/HTTP collector fixture `integration_telemetry` stands up; see Discovery for why not a collector container)
 
 ## Interfaces
 
