@@ -32,7 +32,7 @@ export function FleetReplyFigures({ figures }: { figures: ReplyFigures }) {
   ].filter((figure) => figure !== null);
   if (shown.length === 0) return null;
   return (
-    <p data-testid={REPLY_FIGURES_TEST_ID} className="pt-xs font-mono text-label leading-mono text-text-subtle">
+    <p data-testid={REPLY_FIGURES_TEST_ID} className="pt-xs text-body-sm text-text-subtle tabular-nums">
       {shown.join(FIGURE_SEPARATOR)}
     </p>
   );
@@ -43,7 +43,7 @@ export function FleetReplyFigures({ figures }: { figures: ReplyFigures }) {
 export function OmittedCalls({ count }: { count: number }) {
   if (count === 0) return null;
   return (
-    <p className="mb-xs font-mono text-label leading-mono text-text-subtle">
+    <p className="mb-xs text-body-sm text-text-subtle">
       {count} more {count === 1 ? "call" : "calls"} not recorded
     </p>
   );

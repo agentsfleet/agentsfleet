@@ -7,6 +7,7 @@ import {
   isGone,
   readMissingBodies,
   recoverFinalReply,
+  refreshSavedTrace,
   type ApplyEvents,
   type EventDetailReader,
 } from "./fleet-stream-detail-recovery";
@@ -14,6 +15,7 @@ import { applyLiveFrame } from "./fleet-stream-frames";
 import { applyFinalReplyText, applyReplyDelta, applyReplyGone, applyReplyRecovery } from "./fleet-stream-reply-frames";
 import type { Entry } from "./fleet-stream-entry";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
+import { closedAnyAtSettle } from "./fleet-stream-tool-trace";
 import { ReplyStreamDecoder } from "./reply-stream-decoder";
 import { STREAM_SILENCE_TIMEOUT_MS } from "./stream-recovery-window";
 
@@ -108,8 +110,11 @@ function completeReply(
 ): void {
   const finalReply = typeof frame.final_reply === "string" ? frame.final_reply : null;
   const settle = () => {
+    // Set inside `apply`, which runs its update at once (`setEvents`).
+    const seen = { closedCalls: false };
     apply((prev) => {
       const completed = applyLiveFrame(prev, frame);
+      seen.closedCalls = closedAnyAtSettle(completed, frame.event_id);
       return finalReply === null
         ? applyReplyRecovery(completed, frame.event_id, false)
         : applyFinalReplyText(completed, frame.event_id, finalReply);
@@ -119,7 +124,12 @@ function completeReply(
       // a missing final chunk has no later sequence number to expose its gap.
       entry.replyGaps.add(frame.event_id);
       recoverFinalReply(entry, fleetId, frame.event_id, apply, isCurrent, readEventDetail);
-    } else entry.replyGaps.delete(frame.event_id);
+      return;
+    }
+    entry.replyGaps.delete(frame.event_id);
+    // The answer came inline, but a call the turn closed itself may have ended
+    // otherwise: the saved trace says how.
+    if (seen.closedCalls) refreshSavedTrace(entry, fleetId, frame.event_id, apply, isCurrent, readEventDetail);
   };
   const decoder = entry.replyStreams.get(frame.event_id);
   if (decoder === undefined) {

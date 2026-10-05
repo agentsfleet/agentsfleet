@@ -3,7 +3,8 @@ import { Button, cn } from "@agentsfleet/design-system";
 
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { ToolResult } from "./fleetReplyMessage";
-import { TOOL_BODY, moreLinesLabel, outputPreview, type ToolCopy } from "./tool-call-copy";
+import { moreLinesLabel, outputPreview } from "./tool-call-copy";
+import { PLAN_STATUS, TOOL_BODY, type PlanStatus, type PlanStep, type ToolCopy } from "./tool-call-shape";
 import { DIFF_ROW, type DiffRow, type LineDiff } from "./tool-call-diff";
 
 // What sits under a tool cell's header, as Codex lays it out: a command's
@@ -12,6 +13,8 @@ import { DIFF_ROW, type DiffRow, type LineDiff } from "./tool-call-diff";
 
 export const SHOW_ALL_LABEL = "show all";
 export const CLIPPED_EDIT_NOTE = "Too long to diff here";
+/** Under output the runner kept only the edges of: a long line, or a few. */
+export const OUTPUT_CUT_LABEL = "… output continues";
 export const OUTPUT_RAIL = "└";
 const COMMAND_RAIL = "│";
 const MORE_COMMAND = "…";
@@ -28,10 +31,33 @@ const DIFF_TONE: Record<DiffRow["kind"], string> = {
   [DIFF_ROW.REMOVED]: "bg-destructive/10",
   [DIFF_ROW.CONTEXT]: "",
 };
+// The sign and tint are for the eye; assistive tech hears the side in words.
+const SPOKEN_SIDE: Record<DiffRow["kind"], string> = {
+  [DIFF_ROW.ADDED]: "added: ",
+  [DIFF_ROW.REMOVED]: "removed: ",
+  [DIFF_ROW.CONTEXT]: "",
+};
 const SIGN_TONE: Record<DiffRow["kind"], string> = {
   [DIFF_ROW.ADDED]: "text-success",
   [DIFF_ROW.REMOVED]: "text-destructive",
   [DIFF_ROW.CONTEXT]: "",
+};
+
+// A plan step's state in shape and, for assistive tech, in words.
+const PLAN_GLYPH: Record<PlanStatus, string> = {
+  [PLAN_STATUS.PENDING]: "□",
+  [PLAN_STATUS.IN_PROGRESS]: "◐",
+  [PLAN_STATUS.COMPLETED]: "✔",
+};
+const PLAN_SPOKEN: Record<PlanStatus, string> = {
+  [PLAN_STATUS.PENDING]: "to do",
+  [PLAN_STATUS.IN_PROGRESS]: "in progress",
+  [PLAN_STATUS.COMPLETED]: "done",
+};
+const PLAN_TONE: Record<PlanStatus, string> = {
+  [PLAN_STATUS.PENDING]: "",
+  [PLAN_STATUS.IN_PROGRESS]: "text-foreground",
+  [PLAN_STATUS.COMPLETED]: "line-through",
 };
 
 type ToolCallBodyProps = {
@@ -51,6 +77,7 @@ export function ToolCallBody({ copy, diff, outcome, onShowAll }: ToolCallBodyPro
   return (
     <div className="flex min-w-0 flex-col pl-md">
       {body.kind === TOOL_BODY.COMMAND ? <CommandRail rail={body.rail} hiddenLines={body.hiddenLines} /> : null}
+      {body.kind === TOOL_BODY.PLAN ? <PlanSteps explanation={body.explanation} steps={body.steps} /> : null}
       {diff === null ? null : <DiffRows diff={diff} />}
       {body.kind === TOOL_BODY.CLIPPED_EDIT ? (
         <RailRow glyph={OUTPUT_RAIL}>{CLIPPED_EDIT_NOTE}<ShowAll onShowAll={onShowAll} /></RailRow>
@@ -68,10 +95,29 @@ export function DiffRows({ diff }: { diff: LineDiff }) {
       {diff.rows.map((row, index) => (
         <span key={index} data-diff={row.kind} className={cn(RAIL_ROW, "px-xs", DIFF_TONE[row.kind])}>
           <span aria-hidden="true" className={cn("shrink-0", SIGN_TONE[row.kind])}>{DIFF_SIGN[row.kind]}</span>
-          <span className={cn(RAIL_TEXT, "text-foreground")}>{row.text}</span>
+          <span className={cn(RAIL_TEXT, "text-foreground")}>
+            {SPOKEN_SIDE[row.kind] === "" ? null : <span className="sr-only">{SPOKEN_SIDE[row.kind]}</span>}
+            {row.text}
+          </span>
         </span>
       ))}
     </div>
+  );
+}
+
+/** Codex's plan cell: the explanation, then each step with its state. */
+function PlanSteps({ explanation, steps }: { explanation: string | null; steps: readonly PlanStep[] }) {
+  return (
+    <>
+      {explanation === null ? null : <RailRow glyph={OUTPUT_RAIL}>{explanation}</RailRow>}
+      {steps.map((step, index) => (
+        <RailRow key={index} glyph={index === 0 && explanation === null ? OUTPUT_RAIL : null}>
+          <span aria-hidden="true" data-plan-step={step.status}>{PLAN_GLYPH[step.status]}</span>{" "}
+          <span className={PLAN_TONE[step.status]}>{step.step}</span>
+          <span className="sr-only"> ({PLAN_SPOKEN[step.status]})</span>
+        </RailRow>
+      ))}
+    </>
   );
 }
 
@@ -85,7 +131,7 @@ function CommandRail({ rail, hiddenLines }: { rail: readonly string[]; hiddenLin
 }
 
 function OutputPreview({ outcome, onShowAll }: { outcome: ToolResult | undefined; onShowAll: (() => void) | undefined }) {
-  const preview = outputPreview(outcome?.outputHead, outcome?.outputLineCount, outcome?.status);
+  const preview = outputPreview(outcome?.outputHead, outcome?.outputLineCount, outcome?.status, outcome?.outputTail);
   return (
     <>
       {preview.rows.map((row, index) => <RailRow key={index} glyph={index === 0 ? OUTPUT_RAIL : null}>{row}</RailRow>)}
@@ -93,6 +139,7 @@ function OutputPreview({ outcome, onShowAll }: { outcome: ToolResult | undefined
       {preview.hiddenLines > 0 ? (
         <RailRow glyph={null}>{moreLinesLabel(preview.hiddenLines)}<ShowAll onShowAll={onShowAll} /></RailRow>
       ) : null}
+      {preview.cut ? <RailRow glyph={null}>{OUTPUT_CUT_LABEL}<ShowAll onShowAll={onShowAll} /></RailRow> : null}
     </>
   );
 }
@@ -102,7 +149,7 @@ function OutputPreview({ outcome, onShowAll }: { outcome: ToolResult | undefined
 export function RailRow({ glyph, children }: { glyph: string | null; children: ReactNode }) {
   return (
     <span className={RAIL_ROW}>
-      <span aria-hidden="true" className={cn("shrink-0", glyph === null && "invisible")}>{glyph ?? OUTPUT_RAIL}</span>
+      <span aria-hidden="true" className={cn("shrink-0 text-text-dim", glyph === null && "invisible")}>{glyph ?? OUTPUT_RAIL}</span>
       <span className={RAIL_TEXT}>{children}</span>
     </span>
   );

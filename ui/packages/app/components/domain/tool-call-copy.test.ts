@@ -2,22 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import {
-  ARGS_LEAF_MAX_BYTES,
   CELL_STATE,
   INTERRUPTED_VERB,
   EMPTY_OUTPUT,
   OUTPUT_UNAVAILABLE,
-  TOOL_BODY,
-  TOOL_NAME,
   cellState,
-  mayBeClipped,
+  fullDiff,
   moreLinesLabel,
   outputPreview,
-  editSides,
   toolCopy,
   verbFor,
-  workspacePath,
 } from "./tool-call-copy";
+import { ARGS_NOT_RECORDED, TOOL_BODY, TOOL_NAME } from "./tool-call-shape";
+import { ARGS_LEAF_MAX_BYTES, CLIP_MARK } from "./tool-call-text";
 
 const PATH = "/workspace/deploy.yaml";
 const SHOWN_PATH = "deploy.yaml";
@@ -52,7 +49,9 @@ describe("toolCopy", () => {
 
   it("requests GET when the call names no method, and reads missing targets as empty", () => {
     expect(toolCopy(TOOL_NAME.HTTP_REQUEST, { url: URL }).target).toBe(`GET ${URL}`);
-    expect(toolCopy(TOOL_NAME.MEMORY_STORE, undefined).target).toBe("");
+    // No arguments kept at all: nothing is invented, the cell says so.
+    expect(toolCopy(TOOL_NAME.MEMORY_STORE, undefined).target).toBe(ARGS_NOT_RECORDED);
+    expect(toolCopy(TOOL_NAME.HTTP_REQUEST, undefined)).toMatchObject({ target: ARGS_NOT_RECORDED, verbs: { done: "Requested" } });
     expect(toolCopy(TOOL_NAME.MEMORY_FORGET, {}).target).toBe("");
     expect(toolCopy(TOOL_NAME.FILE_DELETE, { path: 7 }).target).toBe("");
   });
@@ -65,10 +64,38 @@ describe("toolCopy", () => {
     expect(toolCopy("fly_status", { note: "y".repeat(500) }).target.endsWith("…)")).toBe(true);
   });
 
-  it("names an edit's two sides for a full read, and none for any other tool", () => {
-    expect(editSides(TOOL_NAME.FILE_EDIT_HASHED, { old_text: CLIPPED, new_text: "b" })).toEqual({ before: CLIPPED, after: "b" });
-    expect(editSides(TOOL_NAME.FILE_EDIT, undefined)).toEqual({ before: "", after: "" });
-    expect(editSides(TOOL_NAME.FILE_WRITE, { old_text: "a" })).toBeNull();
+  it("test_clipped_targets_marked", () => {
+    const long = "x".repeat(ARGS_LEAF_MAX_BYTES);
+    expect(toolCopy(TOOL_NAME.HTTP_REQUEST, { url: long }).target).toBe(`GET ${long}${CLIP_MARK}`);
+    expect(toolCopy(TOOL_NAME.FILE_DELETE, { path: long }).target).toBe(`${long}${CLIP_MARK}`);
+    expect(toolCopy(TOOL_NAME.MEMORY_FORGET, { key: long }).target).toBe(`${long}${CLIP_MARK}`);
+    // A cut command marks its last line shown, unless "+N lines" already says more follows.
+    expect(toolCopy(TOOL_NAME.EXEC_COMMAND, { cmd: long }).target).toBe(`${long}${CLIP_MARK}`);
+    expect(toolCopy(TOOL_NAME.SHELL, { command: `a\n${long}` }).body).toEqual({ kind: TOOL_BODY.COMMAND, rail: [`${long}${CLIP_MARK}`], hiddenLines: 0 });
+    expect(toolCopy(TOOL_NAME.SHELL, { command: `a\nb\nc\n${long}` }).body).toEqual({ kind: TOOL_BODY.COMMAND, rail: ["b", "c"], hiddenLines: 1 });
+    // A single long line the runner cut: no line left out, but more exists.
+    expect(outputPreview("{\"ok\":", 1, TOOL_CALL_STATUS.SUCCEEDED, "true}")).toEqual({ rows: ["{\"ok\":"], hiddenLines: 0, note: null, cut: true });
+    expect(outputPreview("a\nb\nc\nd", 9, TOOL_CALL_STATUS.SUCCEEDED, "z").cut).toBe(false);
+  });
+
+  it("diffs an edit or a patch whole for a full read, and nothing it cannot compare", () => {
+    expect(fullDiff(TOOL_NAME.FILE_EDIT_HASHED, { old_text: CLIPPED, new_text: "b" })?.removed).toBe(1);
+    expect(fullDiff(TOOL_NAME.APPLY_PATCH, { patch: "*** Update File: a.md\n-x\n+y\n+z" })).toMatchObject({ added: 2, removed: 1 });
+    // Not kept, tagged by line rather than old text, or not an edit: no diff.
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, undefined)).toBeNull();
+    expect(fullDiff(TOOL_NAME.FILE_EDIT_HASHED, { path: "a.md", target: "L10:abc", new_text: "b" })).toBeNull();
+    expect(fullDiff(TOOL_NAME.FILE_WRITE, { old_text: "a" })).toBeNull();
+    // A patch argument that is missing reads as an empty patch; an edit with no new text removes.
+    expect(fullDiff(TOOL_NAME.APPLY_PATCH, {})).toEqual({ rows: [], added: 0, removed: 0 });
+    expect(fullDiff(TOOL_NAME.FILE_EDIT, { old_text: "gone" })).toMatchObject({ added: 0, removed: 1 });
+  });
+
+  it("names a hashed edit's line when it carries no old text to diff", () => {
+    expect(toolCopy(TOOL_NAME.FILE_EDIT_HASHED, { path: "/workspace/a.md", target: "L10:abc", new_text: "b" }))
+      .toEqual({ verbs: { running: "Editing", done: "Edited" }, target: "a.md at L10:abc", body: { kind: TOOL_BODY.OUTPUT } });
+    expect(toolCopy(TOOL_NAME.FILE_EDIT_HASHED, { path: "a.md", target: "L10:abc", end_target: "L12:def", new_text: "b" }).target)
+      .toBe("a.md at L10:abc–L12:def");
+    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: "a.md", new_text: "b" }).target).toBe("a.md");
   });
 
   it("replaces the verb with Interrupted, whatever the tool", () => {
@@ -85,7 +112,8 @@ describe("toolCopy", () => {
     expect(toolCopy(TOOL_NAME.FILE_EDIT_HASHED, { path: PATH, old_text: "a", new_text: "b" }).body)
       .toEqual({ kind: TOOL_BODY.EDIT, before: "a", after: "b" });
     expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH, old_text: CLIPPED, new_text: "b" }).body).toEqual({ kind: TOOL_BODY.CLIPPED_EDIT });
-    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH }).body).toEqual({ kind: TOOL_BODY.EDIT, before: "", after: "" });
+    // No old text: nothing to diff against, so no diff drawn as all-new lines.
+    expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH }).body).toEqual({ kind: TOOL_BODY.OUTPUT });
   });
 
   it("puts a command's first line on the header, two more on the rail, and counts the rest", () => {
@@ -109,9 +137,9 @@ describe("cellState", () => {
 
 describe("outputPreview", () => {
   it("keeps three rows and counts the lines it left out", () => {
-    expect(outputPreview(EIGHT_LINES, 8, TOOL_CALL_STATUS.SUCCEEDED)).toEqual({ rows: ["1", "2", "3"], hiddenLines: 5, note: null });
+    expect(outputPreview(EIGHT_LINES, 8, TOOL_CALL_STATUS.SUCCEEDED)).toEqual({ rows: ["1", "2", "3"], hiddenLines: 5, note: null, cut: false });
     // Without a count, the head's own lines are the whole output.
-    expect(outputPreview("a\nb", undefined, TOOL_CALL_STATUS.SUCCEEDED)).toEqual({ rows: ["a", "b"], hiddenLines: 0, note: null });
+    expect(outputPreview("a\nb", undefined, TOOL_CALL_STATUS.SUCCEEDED)).toEqual({ rows: ["a", "b"], hiddenLines: 0, note: null, cut: false });
   });
 
   it("says there was no output, or that none was kept", () => {
@@ -120,27 +148,16 @@ describe("outputPreview", () => {
     // Cut off before it reported: nothing says it printed nothing.
     expect(outputPreview(undefined, undefined, TOOL_CALL_STATUS.INTERRUPTED).note).toBe(OUTPUT_UNAVAILABLE);
     expect(outputPreview("", 0, TOOL_CALL_STATUS.FAILED).note).toBe(EMPTY_OUTPUT);
-    expect(outputPreview(undefined, 12, TOOL_CALL_STATUS.SUCCEEDED)).toEqual({ rows: [], hiddenLines: 12, note: OUTPUT_UNAVAILABLE });
+    expect(outputPreview(undefined, 12, TOOL_CALL_STATUS.SUCCEEDED)).toEqual({ rows: [], hiddenLines: 12, note: OUTPUT_UNAVAILABLE, cut: false });
+  });
+
+  it("drops a CRLF's carriage return and terminal colour from a row", () => {
+    expect(outputPreview("HTTP/1.1 200 OK\r\nok\r\n", 2, TOOL_CALL_STATUS.SUCCEEDED).rows).toEqual(["HTTP/1.1 200 OK", "ok"]);
+    expect(outputPreview("\u001B[31merror\u001B[0m", 1, TOOL_CALL_STATUS.FAILED).rows).toEqual(["error"]);
   });
 
   it("labels one hidden line in the singular", () => {
     expect(moreLinesLabel(1)).toBe("+1 line");
     expect(moreLinesLabel(5)).toBe("+5 lines");
-  });
-});
-
-describe("argument helpers", () => {
-  it("treats a string at the cut length as possibly clipped, counting bytes", () => {
-    expect(mayBeClipped("x".repeat(ARGS_LEAF_MAX_BYTES - 4))).toBe(false);
-    expect(mayBeClipped("x".repeat(ARGS_LEAF_MAX_BYTES - 3))).toBe(true);
-    // 85 three-byte characters: 255 bytes, cut at the boundary below 256.
-    expect(mayBeClipped("€".repeat(85))).toBe(true);
-  });
-
-  it("shows a sandbox path relative to the workspace", () => {
-    expect(workspacePath(PATH)).toBe(SHOWN_PATH);
-    expect(workspacePath("/etc/hosts")).toBe("/etc/hosts");
-    // HTTP output ends its lines in CRLF; a row must not carry the carriage return.
-    expect(outputPreview("HTTP/1.1 200 OK\r\nok\r\n", 2, TOOL_CALL_STATUS.SUCCEEDED).rows).toEqual(["HTTP/1.1 200 OK", "ok"]);
   });
 });

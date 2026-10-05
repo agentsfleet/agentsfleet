@@ -1,25 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { CLIPPED_EDIT_NOTE } from "./FleetToolCallBody";
+import { FleetScopeProvider, useFleetScope } from "./FleetScope";
 import {
-  FleetScopeProvider,
+  ARGS_NOT_KEPT_NOTE,
   FleetToolOutputDialog,
   LOADING_LABEL,
+  MAX_SHOWN_ROWS,
   NOT_KEPT_NOTE,
   OUTPUT_CUT_NOTE,
   READ_FAILED_NOTE,
   keptRows,
-  useFleetScope,
 } from "./FleetToolOutputDialog";
-import { TOOL_NAME } from "./tool-call-copy";
+import { TOOL_NAME } from "./tool-call-shape";
 import type { ToolResult } from "./fleetReplyMessage";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
 const SCOPE = { workspaceId: "ws_1", fleetId: "flt_1" };
 const EVENT_ID = "evt_1";
 const CALL_ID = "f1:3";
-const TITLE = "Requested GET https://api.example/run";
+const VERB = "Requested";
+const TARGET = "GET https://api.example/run";
+const TITLE = `${VERB} ${TARGET}`;
 const HTTP_NOT_FOUND = 404;
 const HTTP_ERROR = 500;
 const SAVED: ToolResult = {
@@ -48,7 +51,8 @@ function renderDialog(over: { name?: string; outcome?: ToolResult; onClose?: () 
       eventId={EVENT_ID}
       callId={CALL_ID}
       name={over.name ?? TOOL_NAME.HTTP_REQUEST}
-      title={TITLE}
+      verb={VERB}
+      target={TARGET}
       outcome={over.outcome ?? SAVED}
       onClose={over.onClose ?? (() => {})}
     />,
@@ -113,18 +117,55 @@ describe("FleetToolOutputDialog", () => {
     expect(numbers()).toEqual(["1", "2", "223", "224"]);
   });
 
-  it("should close on request and drop a read still in flight", async () => {
-    let resolve: (response: Response) => void = () => {};
-    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((settle) => { resolve = settle; })));
+  it("test_output_dialog_aborts_its_read_on_close", () => {
+    let sent: AbortSignal | undefined;
+    vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => {
+      sent = init.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    }));
     const onClose = vi.fn();
     const view = renderDialog({ onClose });
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(sent?.aborted).toBe(false);
     view.unmount();
-    // Answered after the dialog went: nothing renders and nothing throws.
-    resolve(new Response("{}", { status: HTTP_NOT_FOUND }));
-    await Promise.resolve();
-    expect(screen.queryByText(NOT_KEPT_NOTE)).toBeNull();
+    // A closed dialog leaves no read running out its timeout.
+    expect(sent?.aborted).toBe(true);
+  });
+
+  it("should ignore a read that answers after the dialog closed", async () => {
+    let answer: (response: Response) => void = () => {};
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((settle) => { answer = settle; })));
+    const view = renderDialog();
+    view.unmount();
+    answer(new Response(JSON.stringify({ output: "late" }), { status: 200 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText("late")).toBeNull();
+  });
+
+  it("test_output_dialog_notes_dropped_arguments", async () => {
+    stubRead(200, { call_id: CALL_ID, arguments: {}, truncated_arguments: true, output: "ok\n", output_line_count: 1, truncated: false });
+    renderDialog({ name: TOOL_NAME.FILE_EDIT });
+    await waitFor(() => expect(screen.getByText(ARGS_NOT_KEPT_NOTE)).toBeTruthy());
+    expect(document.querySelectorAll("[data-diff]")).toHaveLength(0);
+    expect(screen.queryByText("Details")).toBeNull();
+  });
+
+  it("test_output_dialog_caps_its_rows", async () => {
+    const output = Array.from({ length: MAX_SHOWN_ROWS + 5 }, (_, index) => `l${index}`).join("\n");
+    stubRead(200, { arguments: {}, output });
+    renderDialog();
+    await waitFor(() => expect(numbers()).toHaveLength(MAX_SHOWN_ROWS));
+    expect(screen.getByText("5 more lines; copy the output to read them all.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy output" })).toBeTruthy();
+  });
+
+  it("should draw the full output as literal text, never markup", async () => {
+    const hostile = "**bold** <img src=x onerror=alert(1)>";
+    stubRead(200, { arguments: {}, output: hostile });
+    renderDialog();
+    await waitFor(() => expect(screen.getByText(hostile)).toBeTruthy());
+    expect(screen.getByRole("dialog").querySelector("img, strong")).toBeNull();
   });
 
   it("should give a row the thread's scope, and none outside a thread", () => {
@@ -161,10 +202,10 @@ describe("keptRows", () => {
     expect(rows(undefined)).toEqual([]);
   });
 
-  it("should still render inside the dialog's terminal panel", () => {
+  it("should draw the not-kept note and no rows for an outcome with nothing saved", async () => {
     stubRead(HTTP_NOT_FOUND);
     renderDialog({ outcome: {} });
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText(TITLE)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(NOT_KEPT_NOTE)).toBeTruthy());
+    expect(numbers()).toEqual([]);
   });
 });

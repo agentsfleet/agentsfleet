@@ -27,7 +27,7 @@ import { useMessageDelivery } from "./useFleetMessageDelivery";
 import { useFleetSteerQueue } from "./useFleetSteerQueue";
 import { reportsOwnRun } from "./fleetReplyMessage";
 import { FleetThreadViewport } from "./FleetThreadViewport";
-import { FleetScopeProvider } from "./FleetToolOutputDialog";
+import { FleetScopeProvider } from "./FleetScope";
 
 export type FleetThreadProps = {
   workspaceId: string;

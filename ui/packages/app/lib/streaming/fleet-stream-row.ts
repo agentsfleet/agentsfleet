@@ -67,6 +67,10 @@ export type FleetToolCall = ToolOutcome & {
   done: boolean;
   /** The redacted arguments, absent when the call named none. */
   args?: ToolArgs;
+  /** Closed as interrupted only because its turn ended first. The runner's
+   * activity is best-effort and its report may overtake it, so a completion
+   * that lands later, or the saved trace, still replaces this guess. */
+  closedAtSettle?: true;
 };
 
 export type FleetEvent = {

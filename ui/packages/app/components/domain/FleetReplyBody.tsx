@@ -16,6 +16,7 @@ import { messageOutcome } from "./fleetFailureCopy";
 import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readSubmittedAtMs, readText } from "./fleetMessageReaders";
 import { STATUS_AGENT_ERROR } from "./fleetMessageStatus";
 import { EXPLORE_TOOLS } from "./tool-call-explore";
+import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
 
@@ -72,7 +73,7 @@ export function FleetReply({
   status: string;
 }) {
   const errored = status === STATUS_AGENT_ERROR;
-  const running = message.status?.type === "running";
+  const running = message.status?.type === STATUS_RUNNING;
   const recovering = readReplyRecovering(message);
   const answer = readText(message).trim();
   const span = readReasoningSpan(message);
@@ -130,7 +131,7 @@ export function renderReplyPart(
     case GROUP.REASONING:
       return (
         <FleetThought
-          live={part.status.type === "running"}
+          live={part.status.type === STATUS_RUNNING}
           answered={reply.answered}
           reasoning={reply.reasoning}
           startedAtMs={reply.span.startedAtMs}
@@ -153,7 +154,8 @@ export function renderReplyPart(
           args={part.args}
           argsText={part.argsText}
           result={part.result}
-          running={part.status.type === "running"}
+          running={part.status.type === STATUS_RUNNING}
+          settled={!reply.running}
           eventId={reply.eventId}
         />
       );

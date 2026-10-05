@@ -2,9 +2,10 @@ import { ev, mockStream, renderThread, threadElement } from "./fleet-thread/harn
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 
-import { CLIPPED_EDIT_NOTE, SHOW_ALL_LABEL } from "@/components/domain/FleetToolCallBody";
-import { TOOL_BULLET, TOOL_CALLS_LABEL } from "@/components/domain/FleetToolCalls";
-import { EMPTY_OUTPUT, OUTPUT_UNAVAILABLE, TOOL_NAME } from "@/components/domain/tool-call-copy";
+import { CLIPPED_EDIT_NOTE, OUTPUT_CUT_LABEL, SHOW_ALL_LABEL } from "@/components/domain/FleetToolCallBody";
+import { TOOL_BULLET, TOOL_CALLS_LABEL, TOOL_SUCCEEDED_GLYPH } from "@/components/domain/FleetToolCalls";
+import { EMPTY_OUTPUT, OUTPUT_UNAVAILABLE } from "@/components/domain/tool-call-copy";
+import { ARGS_NOT_RECORDED, TOOL_NAME } from "@/components/domain/tool-call-shape";
 import type { LiveFrame, SavedToolCall } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import { applyLiveFrame } from "@/lib/streaming/fleet-stream-frames";
@@ -51,7 +52,7 @@ function renderCalls(tools: FleetToolCall[], status: FleetEventStatus = PROCESSE
 
 const cells = () => [...document.querySelectorAll<HTMLElement>("li[data-tool]")];
 const headerOf = (cell: Element) => cell.firstElementChild?.textContent ?? "";
-const bulletOf = (cell: Element) => within(cell as HTMLElement).getByText(TOOL_BULLET);
+const bulletOf = (cell: Element) => cell.querySelector("[data-tool-bullet]")!;
 
 // Pin tests throughout: the literals are the words a cell draws.
 const HEADERS: ReadonlyArray<readonly [FleetToolCall["name"], FleetToolCall["args"], string, string]> = [
@@ -101,7 +102,7 @@ describe("FleetThread — tool cells", () => {
     expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , live]) => `${TOOL_BULLET}${live} · 2.0s`));
     cleanup();
     renderCalls(HEADERS.map(([name, args]) => call({ name, args })));
-    expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , , done]) => `${TOOL_BULLET}${done} · 0.7s`));
+    expect(cells().map(headerOf)).toEqual(HEADERS.map(([, , , done]) => `${TOOL_SUCCEEDED_GLYPH}${done} · 0.7s`));
   });
 
   it("test_unknown_tool_cell_calls_by_name", () => {
@@ -111,7 +112,7 @@ describe("FleetThread — tool cells", () => {
     renderCalls([call({ name: "fly_status", args: { app: "x" } }), call({ name: "fly_apps" })]);
     expect(headerOf(cells()[0]!)).toContain('Called fly_status({"app":"x"})');
     // No arguments: no parentheses, and no arguments disclosure.
-    expect(headerOf(cells()[1]!)).toMatch(/^•Called fly_apps · /);
+    expect(headerOf(cells()[1]!)).toMatch(/^✓Called fly_apps · /);
     expect(within(cells()[1]!).queryByText("Details")).toBeNull();
     expect(within(cells()[0]!).getByText("Details")).toBeTruthy();
   });
@@ -182,7 +183,7 @@ describe("FleetThread — tool cells", () => {
     expect(headerOf(ran!)).not.toContain("(failed)");
     expect(within(ran!).getByText("(exit 2)", { exact: false }).className).toContain(DESTRUCTIVE);
     expect(ran!.textContent).toContain("│echo two│echo three│… +1 line└boom");
-    expect(headerOf(shell!)).toMatch(/^•Ran ls · /);
+    expect(headerOf(shell!)).toMatch(/^✓Ran ls · /);
     expect(headerOf(shell!)).not.toContain("exit");
   });
 
@@ -192,17 +193,17 @@ describe("FleetThread — tool cells", () => {
       call({ name: TOOL_NAME.FILE_EDIT_HASHED, args: { path: "big.md", old_text: "x".repeat(300), new_text: "y" }, callId: CALL_ID }),
     ]);
     const [edit, clipped] = cells();
-    expect(headerOf(edit!)).toMatch(/^•Edited deploy\.yaml \(\+2 −1\) · /);
+    expect(headerOf(edit!)).toMatch(/^✓Edited deploy\.yaml \(\+2 −1\) · /);
     const rows = [...edit!.querySelectorAll("[data-diff]")];
     expect(rows.map((row) => [row.getAttribute("data-diff"), row.textContent])).toEqual([
-      ["context", " a"], ["removed", "-b"], ["added", "+c"], ["added", "+d"],
+      ["context", " a"], ["removed", "-removed: b"], ["added", "+added: c"], ["added", "+added: d"],
     ]);
     expect(rows[1]!.className).toContain("bg-destructive/10");
     expect(rows[2]!.className).toContain("bg-success/10");
     // A succeeded edit shows its diff alone.
     expect(edit!.textContent).not.toContain(EMPTY_OUTPUT);
     // Arguments the runner may have cut short draw no diff and no counts.
-    expect(headerOf(clipped!)).toMatch(/^•Edited big\.md · /);
+    expect(headerOf(clipped!)).toMatch(/^✓Edited big\.md · /);
     expect(clipped!.querySelector("[data-diff]")).toBeNull();
     expect(within(clipped!).getByText(CLIPPED_EDIT_NOTE, { exact: false })).toBeTruthy();
     expect(within(clipped!).getByRole("button", { name: SHOW_ALL_LABEL })).toBeTruthy();
@@ -212,11 +213,16 @@ describe("FleetThread — tool cells", () => {
     // The read itself is the dialog's to test; here it never answers.
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
     try {
-      renderCalls([call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 })]);
+      const view = renderCalls([call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 })]);
       fireEvent.click(screen.getByRole("button", { name: SHOW_ALL_LABEL }));
       const dialog = screen.getByRole("dialog", { name: "Requested GET https://x" });
       expect(dialog).toBeTruthy();
       fireEvent.keyDown(dialog, { key: "Escape" });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      // Opened on one call, it closes rather than read another the saved trace puts in its row.
+      fireEvent.click(screen.getByRole("button", { name: SHOW_ALL_LABEL }));
+      mockStream([ev({ id: "evt_tools", role: "user", actor: "operator", text: "Go", status: PROCESSED, tools: [call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://y" }, callId: "f1:9", outputHead: "1\n2\n3\n4", outputLineCount: 4 })] })]);
+      view.rerender(threadElement());
       expect(screen.queryByRole("dialog")).toBeNull();
     } finally {
       vi.unstubAllGlobals();
@@ -258,6 +264,60 @@ describe("FleetThread — tool cells", () => {
     expect(liveCells[1]).toContain("Requested POST https://x (failed)");
   });
 
+  it("test_cells_claim_only_what_they_hold", () => {
+    const long = call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 });
+    renderCalls([long], RECEIVED);
+    // The call finished but its turn runs on: its full record is not posted yet.
+    expect(within(cells()[0]!).getByText("+1 line")).toBeTruthy();
+    expect(within(cells()[0]!).queryByRole("button", { name: SHOW_ALL_LABEL })).toBeNull();
+    cleanup();
+    renderCalls([long]);
+    expect(within(cells()[0]!).getByRole("button", { name: SHOW_ALL_LABEL })).toBeTruthy();
+    cleanup();
+    // Output the runner kept only the edges of says it continues, with show all.
+    renderCalls([call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "{\"items\":[", outputTail: "]}", outputLineCount: 1 })]);
+    const [cell] = cells();
+    expect(cell!.textContent).toContain(OUTPUT_CUT_LABEL);
+    expect(within(cell!).getByRole("button", { name: SHOW_ALL_LABEL })).toBeTruthy();
+    cleanup();
+    // Arguments the runner dropped are never invented.
+    renderCalls([call({ name: TOOL_NAME.HTTP_REQUEST }), call({ name: TOOL_NAME.FILE_WRITE })]);
+    const [request, write] = cells();
+    expect(headerOf(request!)).toContain(`Requested ${ARGS_NOT_RECORDED}`);
+    expect(headerOf(request!)).not.toContain("GET");
+    expect(headerOf(write!)).toContain(`Wrote ${ARGS_NOT_RECORDED}`);
+    cleanup();
+    // Text the runner may have cut at its leaf cap ends in a mark.
+    const cutUrl = `https://x/${"a".repeat(260)}`;
+    renderCalls([call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: cutUrl } })]);
+    expect(headerOf(cells()[0]!)).toContain(`${cutUrl}…`);
+  });
+
+  it("test_failed_edit_shows_its_error", () => {
+    renderCalls([call({ name: TOOL_NAME.FILE_EDIT, status: FAILED, args: { path: "d.yaml", old_text: "a", new_text: "b" }, outputHead: "old_text not found", outputLineCount: 1 })]);
+    const [edit] = cells();
+    // What it tried stays visible; the error says it did not apply.
+    expect(edit!.querySelectorAll("[data-diff]")).toHaveLength(2);
+    expect(edit!.textContent).toContain("└old_text not found");
+    expect(headerOf(edit!)).toContain("(failed)");
+  });
+
+  it("test_tool_output_is_literal_text", () => {
+    const hostile = "**bold** <img src=x onerror=alert(1)>";
+    renderCalls([call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, outputHead: hostile, outputLineCount: 1 })]);
+    const [cell] = cells();
+    expect(cell!.textContent).toContain(hostile);
+    expect(cell!.querySelector("img, strong")).toBeNull();
+  });
+
+  it("test_cell_text_is_readable", () => {
+    renderCalls([call({ name: TOOL_NAME.FILE_DELETE, args: { path: "a.md" }, outputHead: "ok", outputLineCount: 1 })]);
+    const [cell] = cells();
+    // text-dim measures 4.41:1 on the light page; readable text uses text-subtle.
+    expect(cell!.className).toContain("text-text-subtle");
+    expect(cell!.className).not.toContain("text-text-dim");
+  });
+
   it("test_omitted_calls_render_count", () => {
     renderCalls([call({ name: TOOL_NAME.FILE_DELETE })], PROCESSED, { omittedCallCount: 4 });
     expect(screen.getByText("4 more calls not recorded")).toBeTruthy();
@@ -266,6 +326,6 @@ describe("FleetThread — tool cells", () => {
     expect(screen.getByText("1 more call not recorded")).toBeTruthy();
     cleanup();
     renderCalls([call({ name: TOOL_NAME.FILE_DELETE })]);
-    expect(screen.queryByText(/not recorded/)).toBeNull();
+    expect(screen.queryByText(/more calls? not recorded/)).toBeNull();
   });
 });

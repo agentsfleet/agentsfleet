@@ -105,16 +105,6 @@ export type SavedToolCall = {
   duration_ms: number;
 };
 
-/** `afd_wire::tool_detail::ToolCallDetail`: one call in full. */
-export type ToolCallDetail = {
-  call_id: string;
-  arguments: Record<string, unknown>;
-  truncated_arguments: boolean;
-  output: string;
-  output_line_count: number;
-  truncated: boolean;
-};
-
 export async function listFleetEvents(
   workspaceId: string,
   fleetId: string,

@@ -8,10 +8,13 @@ import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { formatSeconds } from "@/lib/utils";
 import { FleetPayloadDisclosure } from "./FleetPayloadDisclosure";
 import { ToolCallBody } from "./FleetToolCallBody";
-import { FleetToolOutputDialog, useFleetScope } from "./FleetToolOutputDialog";
+import { useFleetScope } from "./FleetScope";
+import { FleetToolOutputDialog } from "./FleetToolOutputDialog";
 import { readToolResult } from "./fleetReplyMessage";
-import { CELL_STATE, FAILED_MARK, TOOL_BODY, cellState, toolCopy, verbFor, type CellState } from "./tool-call-copy";
-import { lineDiff } from "./tool-call-diff";
+import { CELL_STATE, FAILED_MARK, cellState, toolCopy, verbFor, type CellState } from "./tool-call-copy";
+import { TOOL_BODY, type ToolCopy } from "./tool-call-shape";
+import type { ToolResult } from "./fleetReplyMessage";
+import { lineDiff, type LineDiff } from "./tool-call-diff";
 
 // A tool call as Codex's transcript draws one: a status bullet, a bold verb
 // and its target, dim figures, and what came back under a rail. The words come
@@ -19,6 +22,8 @@ import { lineDiff } from "./tool-call-diff";
 
 export const TOOL_CALLS_LABEL = "Tool calls";
 export const TOOL_BULLET = "•";
+// A call the runner confirmed went well says so in shape as well as colour.
+export const TOOL_SUCCEEDED_GLYPH = "✓";
 const FIGURE_SEPARATOR = " · ";
 const MINUS = "−";
 
@@ -46,49 +51,45 @@ export type ToolCallRowProps = {
   result: unknown;
   /** The part is still running: its turn runs and it has no result yet. */
   running: boolean;
+  /** The turn has ended, so the runner has posted every call's full record. */
+  settled: boolean;
   eventId: string;
 };
 
 /**
- * One `tool-call` part. The figures and the body memo on the part's own
- * fields, so a sibling's clock tick or a streamed word re-renders neither; the
- * clock is a leaf of its own for the same reason.
+ * One `tool-call` part. It memos on the part's own fields, which keep their
+ * identity while the reply streams (`toolCallPart`), so a streamed word or a
+ * sibling's clock tick re-renders neither; the clock is a leaf of its own.
  */
-export const ToolCallRow = memo(function ToolCallRow({ name, args, argsText, result, running, eventId }: ToolCallRowProps) {
+export const ToolCallRow = memo(function ToolCallRow({ name, args, argsText, result, running, settled, eventId }: ToolCallRowProps) {
   const named = Object.keys(args).length > 0 ? args : undefined;
   const copy = useMemo(() => toolCopy(name, named), [name, named]);
   const outcome = readToolResult(result);
   const state = cellState(outcome !== undefined, outcome?.status, running);
   const diff = useMemo(
-    () => (copy.body.kind === TOOL_BODY.EDIT ? lineDiff(copy.body.before, copy.body.after) : null),
+    () => {
+      if (copy.body.kind === TOOL_BODY.EDIT) return lineDiff(copy.body.before, copy.body.after);
+      return copy.body.kind === TOOL_BODY.PATCH ? copy.body.diff : null;
+    },
     [copy],
   );
+  // A row is keyed by its call's own id (`toolCallPart`), so a saved trace that
+  // puts another call in this place mounts a new row, and an open dialog goes.
   const [shown, setShown] = useState(false);
   const scope = useFleetScope();
   const callId = outcome?.callId;
   const verb = verbFor(copy.verbs, state);
-  // Only a call the runner named can be read in full, and only inside a thread.
-  const canShowAll = scope !== null && callId !== undefined;
+  // Only a call the runner named can be read in full, only inside a thread,
+  // and only once its turn has ended: the runner posts full records at settle.
+  const canShowAll = scope !== null && callId !== undefined && settled;
   return (
     <ListItem
       data-tool={name}
       data-done={outcome !== undefined || undefined}
       data-state={state}
-      className="flex min-w-0 flex-col gap-3xs font-mono text-label leading-mono text-text-dim"
+      className="flex min-w-0 flex-col gap-xs font-mono text-label leading-mono text-text-subtle"
     >
-      <span className="flex min-w-0 items-baseline gap-xs">
-        <span aria-hidden="true" data-tool-shimmer={state === CELL_STATE.RUNNING} className={cn("transition-colors duration-snap ease-snap", BULLET_TONE[state])}>
-          {TOOL_BULLET}
-        </span>
-        <span className="min-w-0 break-words">
-          <span className="font-semibold text-foreground">{verb}</span>{" "}
-          <span className="text-foreground">{copy.target}</span>
-          {copy.addedLines !== undefined ? <> <span className="text-success">(+{copy.addedLines})</span></> : null}
-          {diff !== null ? <> (<span className="text-success">+{diff.added}</span> <span className="text-destructive">{MINUS}{diff.removed}</span>)</> : null}
-          <HeaderMark exitCode={outcome?.exitCode} failed={state === CELL_STATE.FAILED} />
-          <CallClock running={state === CELL_STATE.RUNNING} />
-        </span>
-      </span>
+      <ToolCallHeader verb={verb} copy={copy} diff={diff} outcome={outcome} state={state} />
       {state === CELL_STATE.RUNNING ? null : (
         <ToolCallBody copy={copy} diff={diff} outcome={outcome} onShowAll={canShowAll ? () => setShown(true) : undefined} />
       )}
@@ -99,7 +100,8 @@ export const ToolCallRow = memo(function ToolCallRow({ name, args, argsText, res
           eventId={eventId}
           callId={callId}
           name={name}
-          title={`${verb} ${copy.target}`.trim()}
+          verb={verb}
+          target={copy.target}
           outcome={outcome}
           onClose={() => setShown(false)}
         />
@@ -107,6 +109,32 @@ export const ToolCallRow = memo(function ToolCallRow({ name, args, argsText, res
     </ListItem>
   );
 });
+
+/** The bullet, the verb and what it touched, the line counts, how it ended,
+ * and how long it took. */
+function ToolCallHeader({ verb, copy, diff, outcome, state }: {
+  verb: string;
+  copy: ToolCopy;
+  diff: LineDiff | null;
+  outcome: ToolResult | undefined;
+  state: CellState;
+}) {
+  return (
+    <span className="flex min-w-0 items-baseline gap-xs">
+      <span aria-hidden="true" data-tool-bullet="" data-tool-shimmer={state === CELL_STATE.RUNNING} className={cn("transition-colors duration-snap ease-snap", BULLET_TONE[state])}>
+        {state === CELL_STATE.SUCCEEDED ? TOOL_SUCCEEDED_GLYPH : TOOL_BULLET}
+      </span>
+      <span className="min-w-0 break-words">
+        <span className="font-semibold text-foreground">{verb}</span>{" "}
+        <span className="text-foreground">{copy.target}</span>
+        {copy.addedLines !== undefined ? <> <span className="text-success">(+{copy.addedLines})</span></> : null}
+        {diff !== null ? <> (<span className="text-success">+{diff.added}</span> <span className="text-destructive">{MINUS}{diff.removed}</span>)</> : null}
+        <HeaderMark exitCode={outcome?.exitCode} failed={state === CELL_STATE.FAILED} />
+        <CallClock running={state === CELL_STATE.RUNNING} />
+      </span>
+    </span>
+  );
+}
 
 /** A non-zero exit says how a command failed; any other failure says so in
  * words, so the outcome never rests on the bullet's colour alone. */

@@ -106,11 +106,11 @@ function byCallId(tools: FleetToolCall[], step: ToolStep, nowMs: number): FleetT
   const at = tools.findIndex((t) => t.callId === step.callId);
   const call = tools[at];
   if (call === undefined) return [...tools, called(step, nowMs)];
-  return call.done ? tools : moved(tools, at, call, step);
+  return call.done && call.closedAtSettle !== true ? tools : moved(tools, at, call, step);
 }
 
 function byTiming(tools: FleetToolCall[], step: ToolStep, nowMs: number): FleetToolCall[] {
-  const open = tools.findIndex((t) => t.name === step.name && !t.done);
+  const open = tools.findIndex((t) => t.name === step.name && (!t.done || t.closedAtSettle === true));
   const call = tools[open];
   if (call !== undefined) return moved(tools, open, call, step);
   if (!step.opens && restatesFinished(tools, step.name, step.ms, step.done)) return tools;
@@ -133,7 +133,15 @@ function moved(tools: FleetToolCall[], open: number, call: FleetToolCall, step: 
   if (step.opens) return withArgs(tools, open, call, step.args);
   if (!step.done) return tools;
   const { name: _name, callId: _callId, ms, done, opens: _opens, ...fields } = step;
-  return replaced(tools, open, { ...call, ...(fields satisfies StepFields), ms: ms ?? call.ms, done });
+  return replaced(tools, open, { ...heard(call), ...(fields satisfies StepFields), ms: ms ?? call.ms, done });
+}
+
+// A completion that lands after its turn ended is the truth the turn guessed
+// at: the guessed status goes with the guess, even when the completion names none.
+function heard(call: FleetToolCall): FleetToolCall {
+  if (call.closedAtSettle !== true) return call;
+  const { closedAtSettle: _guessed, status: _guessedStatus, ...rest } = call;
+  return rest;
 }
 
 function withArgs(tools: FleetToolCall[], open: number, call: FleetToolCall, args: ToolArgs | undefined): FleetToolCall[] {

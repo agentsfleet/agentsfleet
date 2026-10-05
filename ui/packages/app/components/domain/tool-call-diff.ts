@@ -1,6 +1,6 @@
 import { diffLines, type Change } from "diff";
 
-import { linesOf } from "./tool-call-copy";
+import { linesOf } from "./tool-call-text";
 
 // An edit as Codex draws it: the lines it removed and added, with the lines
 // they share between. jsdiff builds it from the edit's own arguments, so a

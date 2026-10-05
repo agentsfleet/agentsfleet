@@ -124,8 +124,13 @@ export function interruptOpenCalls(event: FleetEvent): FleetEvent {
   if (tools === undefined || tools.every((call) => call.done)) return event;
   return {
     ...event,
-    tools: tools.map((call) => (call.done ? call : { ...call, done: true, status: TOOL_CALL_STATUS.INTERRUPTED })),
+    tools: tools.map((call) => (call.done ? call : { ...call, done: true, status: TOOL_CALL_STATUS.INTERRUPTED, closedAtSettle: true })),
   };
+}
+
+/** Whether the turn closed any call itself rather than hearing how it ended. */
+export function closedAnyAtSettle(events: readonly FleetEvent[], eventId: string): boolean {
+  return events.find((event) => event.id === eventId)?.tools?.some((call) => call.closedAtSettle === true) ?? false;
 }
 
 /**
