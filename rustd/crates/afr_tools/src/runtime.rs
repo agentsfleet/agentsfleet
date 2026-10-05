@@ -87,6 +87,8 @@ pub enum ToolErrorCode {
     SessionCapReached,
     /// The session named is not open: it never was, or its process ended.
     SessionNotFound,
+    /// The subcommand reaches a remote, and the sandbox has no network.
+    SubcommandNotAllowed,
 }
 
 impl ToolErrorCode {
@@ -116,6 +118,7 @@ impl ToolErrorCode {
             Self::Interrupted => "interrupted",
             Self::SessionCapReached => "session_cap_reached",
             Self::SessionNotFound => "session_not_found",
+            Self::SubcommandNotAllowed => "subcommand_not_allowed",
         }
     }
 }

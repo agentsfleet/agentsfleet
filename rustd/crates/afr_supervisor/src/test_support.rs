@@ -24,7 +24,7 @@ use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
 use afr_executor::{Executor, ProcessId, Spawn};
 use afr_providers::{Connect as _, Connector, Registry, Usage};
 use afr_tools::Catalog;
-use afr_tools::catalog::{FILE_READ, HTTP_REQUEST, UPDATE_PLAN};
+use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST, UPDATE_PLAN};
 use afr_tools::stub::Stub;
 use bytes::Bytes;
 use serde::Serialize;
@@ -32,10 +32,12 @@ use tokio::sync::mpsc;
 
 use crate::client::{Call, ControlPlane, RunnerApi};
 
+mod git_fixture;
 mod rig;
 #[path = "test_support/sandbox.rs"]
 mod sandbox;
 
+pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{FakeEngine, Writes};
 
@@ -176,8 +178,9 @@ pub(crate) enum Behaviour {
 }
 
 /// An agent engine that counts its runs and how many overlap, admitting
-/// through a catalog of stubs: `file_read` runs in the sandbox, `update_plan`
-/// and `http_request` in the supervisor, and nothing else is hosted.
+/// through a catalog of stubs: `file_read` and `git` run in the sandbox,
+/// `update_plan` and `http_request` in the supervisor, and nothing else is
+/// hosted.
 #[derive(Debug)]
 pub(crate) struct FakeAgent {
     pub(crate) behaviour: Behaviour,
@@ -197,6 +200,7 @@ impl FakeAgent {
             running: AtomicUsize::new(0),
             catalog: Catalog::new(vec![
                 Stub::boxed(&FILE_READ),
+                Stub::boxed(&GIT),
                 Stub::boxed(&UPDATE_PLAN),
                 Stub::boxed(&HTTP_REQUEST),
             ]),

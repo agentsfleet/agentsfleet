@@ -58,10 +58,16 @@ afd_core = { workspace = true, features = ["test-util"] }
 # catalog, with a lease whose egress sends nothing.
 afr_egress = { workspace = true, features = ["test-util"] }
 afr_tools = { workspace = true, features = ["test-util"] }
+# The supervisor's own host-side checkout, so the kernel lane proves the clone
+# that ships rather than a copy of it. A dev-dependency cycle: the example links
+# the one `afr_sandbox` library the supervisor does.
+afr_supervisor.workspace = true
 bytes.workspace = true
 libtest-mimic.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
+# The checkout's interrupt in the kernel lane.
+tokio-util.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
 
 # Confines a child process and reads back what it said; it has its own `main`

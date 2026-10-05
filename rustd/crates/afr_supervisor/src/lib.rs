@@ -27,6 +27,7 @@
 pub mod capability;
 pub mod config;
 pub mod error;
+pub mod workspace_clone;
 
 mod activity;
 mod bundles;
@@ -71,6 +72,7 @@ use self::heartbeat::{Assignment, Heartbeat};
 use self::identity::Whoami;
 use self::lease_loop::Lessee;
 use self::report_spool::ReportSpool;
+use self::workspace_clone::{GITHUB_ORIGIN, Mirrors};
 
 /// Everything a runner process is made of.
 #[derive(Debug)]
@@ -148,6 +150,7 @@ pub(crate) async fn serve(runner: Runner, shutdown: CancellationToken) -> Result
         agent,
         spool: ReportSpool::new(&home),
         bundles: BundleCache::new(&home),
+        mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
         limits,
         clock,
         halt: Halt::new(shutdown),

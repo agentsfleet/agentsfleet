@@ -13,6 +13,7 @@ use afr_egress::Egress;
 use afr_memory::Hydrated;
 use afr_providers::{Call, Connect, Hosted, Message, Provider, Replay, Request, ToolSpec};
 use afr_secrets::Scrub;
+use afr_tools::sandbox::checkouts;
 use afr_tools::{Catalog, Lease, Selection};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
@@ -118,10 +119,13 @@ impl<'run> Harness<'run> {
             specs: offer::specs(selection),
             hosted: offer::hosted(selection),
             scrub,
+            // The supervisor refused a lease whose binding does not parse
+            // before this turn began, so none reaches here.
             lease: Lease::new(
                 Box::new(Hydrated::new(run.memory)),
                 Egress::new(&run.lease.lease_id, policy, run.mint, &SystemClock),
-            ),
+            )
+            .with_checkouts(checkouts(policy).unwrap_or_default()),
             live: Live::new(run.events, scrub, started),
             ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
             budget: Budget::new(&policy.context),
@@ -325,3 +329,7 @@ mod memory_tests;
 #[cfg(test)]
 #[path = "loop/session_tests.rs"]
 mod session_tests;
+
+#[cfg(test)]
+#[path = "loop/checkout_tests.rs"]
+mod checkout_tests;

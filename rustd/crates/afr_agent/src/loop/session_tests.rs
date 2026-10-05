@@ -58,7 +58,7 @@ fn opening(id: &str, cmd: &str, yield_ms: Option<u64>) -> Chunk {
 
 /// Runs `lease` on the hosted catalog with `executor` as its sandbox's, until
 /// it ends or `stop` is cancelled.
-async fn drive_in(
+pub(super) async fn drive_in(
     script: &Script,
     lease: &LeasePayload<'_>,
     executor: &ScriptedExecutor,

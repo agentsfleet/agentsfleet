@@ -58,8 +58,8 @@ fn detail(refused: &Error) -> String {
 ///
 /// # Errors
 /// A refusal — an ungranted integration, a lease no longer held — or a
-/// transport failure. Minting is not retried: the tool that asked decides.
-async fn mint(
+/// transport failure. Minting is not retried: the caller decides.
+pub(crate) async fn mint(
     plane: &ControlPlane,
     lease_id: &Uuid7,
     integration: &str,
