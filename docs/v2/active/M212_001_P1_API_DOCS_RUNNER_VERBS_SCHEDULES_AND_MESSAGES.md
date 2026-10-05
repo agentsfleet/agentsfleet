@@ -105,7 +105,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — A fleet owns schedules on the daemon's plane
 
-`POST`, `GET`, `PATCH`, `DELETE` on `/v1/runners/me/leases/{lease_id}/schedules[/{schedule_id}]` and `POST …/schedules/{schedule_id}/run`, each carrying `fencing_token`. The fleet is the lease's; the body never names one. A create stores source `fleet` and `source_key` = the creating event id, validates `cron`, `timezone` and `message` through `afd_cron::validate`, refuses the `FLEET_SCHEDULES_MAX`+1th schedule with `SCHEDULE_CAP_REACHED`, and reconciles to QStash as the tenant create does. List returns every schedule of the fleet with its source; update and delete refuse a schedule whose source is not `fleet` with `SCHEDULE_NOT_FLEET_OWNED`. Run-now admits one `schedule_fire` event for that schedule through the same producer QStash's callback uses. `GET …/schedules/{schedule_id}/runs` lists the fleet's events with actor `cron:<schedule_id>`, newest first, paged.
+`POST`, `GET`, `PATCH`, `DELETE` on `/v1/runners/me/leases/{lease_id}/schedules[/{schedule_id}]` and `POST …/schedules/{schedule_id}/runs` (run now, modelled as creating a run, since the REST guide bans a verb in a path), each carrying `fencing_token`. The fleet is the lease's; the body never names one. A create stores source `fleet` and `source_key` = the creating event id, validates `cron`, `timezone` and `message` through `afd_cron::validate`, refuses the `FLEET_SCHEDULES_MAX`+1th schedule with `SCHEDULE_CAP_REACHED`, and reconciles to QStash as the tenant create does. List returns every schedule of the fleet with its source; update and delete refuse a schedule whose source is not `fleet` with `SCHEDULE_NOT_FLEET_OWNED`. Run-now admits one `schedule_fire` event for that schedule through the same producer QStash's callback uses. `GET …/schedules/{schedule_id}/runs` lists the fleet's events with actor `cron:<schedule_id>`, newest first, paged.
 
 - **Dimension 1.1** — A valid create stores a `fleet`-sourced row and reconciles once → Test `test_fleet_creates_its_own_schedule`
 - **Dimension 1.2** — A stale fence is refused and stores nothing → Test `test_stale_fence_schedule_refused`
@@ -143,7 +143,7 @@ POST   /v1/runners/me/leases/{lease_id}/schedules                 { fencing_toke
 GET    /v1/runners/me/leases/{lease_id}/schedules?fencing_token=N  → { schedules: [{ schedule_id, source, once, cron, timezone, message, status, sync, … }] }
 PATCH  /v1/runners/me/leases/{lease_id}/schedules/{id}            { fencing_token, cron?, timezone?, message?, paused? } → schedule view
 DELETE /v1/runners/me/leases/{lease_id}/schedules/{id}?fencing_token=N  → 204, or the view while QStash has not agreed
-POST   /v1/runners/me/leases/{lease_id}/schedules/{id}/run        { fencing_token } → { event_id }
+POST   /v1/runners/me/leases/{lease_id}/schedules/{id}/runs       { fencing_token } → { event_id }  (run now: creates a run)
 GET    /v1/runners/me/leases/{lease_id}/schedules/{id}/runs?fencing_token=N&limit=&starting_after=  → events with actor cron:<id>, newest first
 POST   /v1/runners/me/leases/{lease_id}/messages                  { fencing_token, text } → { delivered: bool }
 
@@ -263,6 +263,6 @@ N/A — no files deleted.
 - **Agent defaults** — the cap of 16 schedules per fleet; 4 KiB and 8 messages per run; `source_key` as the creating event id; `schedule` as a once schedule.
 - **Metrics review** — No analytics or funnel playbook update required: no user action; four operator log events added.
 - **Skill-chain outcomes** — pending.
-- **PLAN decisions** (agent, Oct 05, 2026, from source on `main`): the seven assumptions under the handshake. The ones that change the spec as authored: the fence rides the query on `GET` and `DELETE`; a patch names `paused` as the tenant route does, so `deleting` cannot be set by a patch; the fire actor becomes `cron:<schedule_id>`; slots 928 and 929; the daemon reuses `afr_secrets::Scrub`; a fourth code for the per-run message cap; `source_key` gains a millisecond suffix, because one run may create two schedules and the key is unique per fleet.
+- **PLAN decisions** (agent, Oct 05, 2026, from source on `main`): the seven assumptions under the handshake. The ones that change the spec as authored: the fence rides the query on `GET` and `DELETE`; run-now is `POST …/runs`, a run created, not a `/run` verb in the path; a patch names `paused` as the tenant route does, so `deleting` cannot be set by a patch; the fire actor becomes `cron:<schedule_id>`; slots 928 and 929; the daemon reuses `afr_secrets::Scrub`; a fourth code for the per-run message cap; `source_key` gains a millisecond suffix, because one run may create two schedules and the key is unique per fleet.
 - **Owner direction** (Indy, in-session, Oct 05, 2026): "If there is api docs to be updated do so, and update docs, but skip changelog" — the docs pages move into this stream on their own branch in `~/Projects/docs`; no changelog entry. "the rust patch diff must be 99%, all typescript must be 100%".
 - **Deferrals** — none.

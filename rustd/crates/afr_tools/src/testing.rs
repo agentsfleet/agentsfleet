@@ -62,6 +62,7 @@ impl Run {
         Lease::new(
             Box::new(Hydrated::default()),
             Egress::new(LEASE_ID, &self.policy, &self.mint, &self.clock),
+            &crate::verbs::CLOSED,
         )
     }
 }
@@ -71,4 +72,76 @@ impl Run {
 pub(crate) fn replying(status: u16, body: &str) -> (SharedTransport, Receiver<Sent>) {
     let (transport, sent) = RecordingTransport::replying(status, body);
     (Arc::new(transport), sent)
+}
+
+/// One call a tool made through the lease's verbs, owned so a suite can read
+/// it after the call returns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Asked {
+    /// A schedules call, as its debug rendering.
+    Schedules(String),
+    /// A message, as the text that left the runner.
+    Message(String),
+}
+
+/// Lease verbs answering every call with `answer`, recording what was asked.
+#[derive(Debug)]
+pub(crate) struct RecordingVerbs {
+    answer: Result<String, crate::verbs::Unanswered>,
+    delivered: Result<bool, crate::verbs::Unanswered>,
+    asked: std::sync::Mutex<Vec<Asked>>,
+}
+
+impl RecordingVerbs {
+    /// Verbs answering schedules calls with `answer` and messages with
+    /// `delivered`.
+    pub(crate) fn answering(
+        answer: Result<String, crate::verbs::Unanswered>,
+        delivered: Result<bool, crate::verbs::Unanswered>,
+    ) -> Self {
+        Self {
+            answer,
+            delivered,
+            asked: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Everything asked so far, in order.
+    pub(crate) fn asked(&self) -> Vec<Asked> {
+        self.asked
+            .lock()
+            .map(|asked| asked.clone())
+            .unwrap_or_default()
+    }
+
+    fn record(&self, asked: Asked) {
+        if let Ok(mut held) = self.asked.lock() {
+            held.push(asked);
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::verbs::LeaseVerbs for RecordingVerbs {
+    async fn schedules(
+        &self,
+        call: crate::verbs::ScheduleCall<'_>,
+    ) -> Result<String, crate::verbs::Unanswered> {
+        self.record(Asked::Schedules(format!("{call:?}")));
+        self.answer.clone()
+    }
+
+    async fn message(&self, text: &str) -> Result<bool, crate::verbs::Unanswered> {
+        self.record(Asked::Message(text.to_owned()));
+        self.delivered
+    }
+}
+
+/// A lease whose verbs are `verbs`, with empty memory and closed egress.
+pub(crate) fn lease_with(verbs: &dyn crate::verbs::LeaseVerbs) -> Lease<'_> {
+    Lease::new(
+        Box::new(Hydrated::default()),
+        afr_egress::testing::closed(),
+        verbs,
+    )
 }

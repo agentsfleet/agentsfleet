@@ -148,6 +148,21 @@ pub const SCHEDULE_KEY_TAKEN: ErrorCode = ErrorCode::declare("UZ-SCHED-008");
 /// answers send a caller to different places.
 pub const SCHEDULE_SYNCING: ErrorCode = ErrorCode::declare("UZ-SCHED-006");
 
+/// The fleet already holds as many schedules as it may create itself.
+///
+/// A 409 beside [`SCHEDULE_LIMIT_REACHED`], and a separate code because the
+/// remedy differs: the fleet removes one of its own, where a full fleet needs
+/// a person to remove one of theirs. Numbered past the Zig's family, which
+/// ends at `UZ-SCHED-008`, so no client reads it as a code it already knows.
+pub const SCHEDULE_CAP_REACHED: ErrorCode = ErrorCode::declare("UZ-SCHED-009");
+
+/// The fleet asked to change or delete a schedule a person made.
+///
+/// A 403: the schedule is the fleet's to read and not to rewrite. A fleet that
+/// could edit an `api` or `trigger` schedule could undo what its operator set,
+/// and a row of another fleet's answers [`SCHEDULE_NOT_FOUND`] instead.
+pub const SCHEDULE_NOT_FLEET_OWNED: ErrorCode = ErrorCode::declare("UZ-SCHED-010");
+
 /// The path named a preference key outside the writable registry.
 pub const PREF_KEY_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-PREFS-001");
 

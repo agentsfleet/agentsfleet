@@ -13,7 +13,7 @@ pub mod openapi;
 
 use std::sync::Arc;
 
-use axum::routing::{MethodRouter, get, post};
+use axum::routing::{MethodRouter, get, patch, post};
 use route::RunnerRoute;
 use services::Services;
 
@@ -32,6 +32,14 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::ToolCalls => post(handler::runner::tool_call::handle::<D>),
         RunnerRoute::Bundle => get(handler::runner::bundle::handle::<D>),
         RunnerRoute::CredentialsMint => post(handler::runner::credential::handle::<D>),
+        RunnerRoute::Schedules => {
+            get(handler::runner::schedule::list::<D>).post(handler::runner::schedule::create::<D>)
+        }
+        RunnerRoute::Schedule => patch(handler::runner::schedule_edit::update::<D>)
+            .delete(handler::runner::schedule_edit::remove::<D>),
+        RunnerRoute::ScheduleRuns => get(handler::runner::schedule_run::runs::<D>)
+            .post(handler::runner::schedule_run::run::<D>),
+        RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
     }
 }
 

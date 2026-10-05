@@ -155,7 +155,7 @@ pub(crate) async fn receive<D: Services>(
 
     let fired = services
         .schedules()
-        .fire(&schedule, &target, &proven.message_id)
+        .fire(&schedule, &target, &proven.message_id, services.now())
         .await
         .map_err(Refusal::at(EVENT_APPEND))?;
 

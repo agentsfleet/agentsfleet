@@ -13,7 +13,10 @@
 //! daemon and read here as "active" would push a schedule the operator had
 //! deleted back to the external scheduler on the next sync.
 
+use std::borrow::Cow;
+
 use afd_core::id::Uuid7;
+use afd_wire::schedule::View;
 
 /// The most schedules one fleet may hold.
 ///
@@ -22,6 +25,13 @@ use afd_core::id::Uuid7;
 /// an author who has hit it has a configuration problem a silent acceptance
 /// would hide until the invoice.
 pub const MAX_SCHEDULES_PER_FLEET: usize = 32;
+
+/// The most schedules a fleet may hold that it created itself.
+///
+/// Half of [`MAX_SCHEDULES_PER_FLEET`], so a fleet that loops, or is talked
+/// into scheduling by what it reads, fills its own half and never the slots a
+/// person's schedules need.
+pub const FLEET_SCHEDULES_MAX: usize = 16;
 
 /// The timezone a schedule that named none is interpreted in.
 pub const DEFAULT_TIMEZONE: &str = "UTC";
@@ -39,11 +49,17 @@ pub enum Source {
     Api,
     /// Derived from a `cron` trigger in the fleet's stored document.
     Trigger,
+    /// Created by the fleet itself, through the lease it was running under.
+    ///
+    /// The only source a fleet may change or delete: the other two belong to
+    /// a person, and a fleet that could rewrite them could undo what its
+    /// operator set.
+    Fleet,
 }
 
 impl Source {
     /// Every source, for the readers that walk them.
-    pub const ALL: &'static [Self] = &[Self::Api, Self::Trigger];
+    pub const ALL: &'static [Self] = &[Self::Api, Self::Trigger, Self::Fleet];
 
     /// The word the column holds.
     #[must_use]
@@ -51,6 +67,7 @@ impl Source {
         match self {
             Self::Api => "api",
             Self::Trigger => "trigger",
+            Self::Fleet => "fleet",
         }
     }
 
@@ -99,6 +116,15 @@ impl DesiredStatus {
     #[must_use]
     pub fn parse(stored: &str) -> Option<Self> {
         Self::ALL.iter().copied().find(|it| it.as_str() == stored)
+    }
+
+    /// The intent a caller's `paused` flag names: paused, or firing.
+    ///
+    /// The one mapping both schedule surfaces' patches go through, so neither
+    /// can reach [`Self::Deleting`] by a patch — a delete is its own verb.
+    #[must_use]
+    pub const fn of_paused(paused: bool) -> Self {
+        if paused { Self::Paused } else { Self::Active }
     }
 
     /// Whether a fire arriving for this schedule should wake the fleet.
@@ -180,6 +206,8 @@ pub struct Schedule {
     pub timezone: String,
     /// What the fleet is asked to do when it fires.
     pub message: String,
+    /// Whether it retires after its first fire.
+    pub once: bool,
     /// What the operator wants.
     pub desired_status: DesiredStatus,
     /// How far upstream has been brought in line.
@@ -196,4 +224,28 @@ pub struct Schedule {
     pub created_at: i64,
     /// When it was last changed.
     pub updated_at: i64,
+}
+
+impl Schedule {
+    /// This row as both schedule surfaces render it, borrowing its text.
+    ///
+    /// Declared on the row, so the tenant surface and the runner's verb cannot
+    /// render one schedule two ways.
+    #[must_use]
+    pub fn view(&self) -> View<'_> {
+        View {
+            schedule_id: Cow::Borrowed(self.schedule_id.as_str()),
+            fleet_id: Cow::Borrowed(self.fleet_id.as_str()),
+            cron: Cow::Borrowed(&self.cron),
+            timezone: Cow::Borrowed(&self.timezone),
+            message: Cow::Borrowed(&self.message),
+            source: Cow::Borrowed(self.source.as_str()),
+            once: self.once,
+            status: Cow::Borrowed(self.desired_status.as_str()),
+            sync: Cow::Borrowed(self.sync_status.as_str()),
+            last_error: self.last_error.as_deref().map(Cow::Borrowed),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+        }
+    }
 }

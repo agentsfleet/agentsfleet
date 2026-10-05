@@ -14,6 +14,7 @@ fn marker() -> AnswerMarker {
     AnswerMarker {
         fleet_id: "0195b4ba-8d3a-7a11-8abc-000000000003".to_owned(),
         event_id: "1760000000001-0".to_owned(),
+        part: None,
     }
 }
 
@@ -97,4 +98,37 @@ fn the_check_reads_from_just_before_the_question() {
     for unreadable in ["T024BE7LD:Ev01:notice", "1760000000001", "-0", "x-0"] {
         assert_eq!(since(unreadable), None, "{unreadable}");
     }
+}
+
+/// An interim line carries its own part, so a thread holding one does not yet
+/// hold the answer, and a repeat of the answer still posts it.
+#[test]
+fn test_interim_marker_is_not_the_answer() {
+    let answer = marker();
+    let interim = AnswerMarker {
+        part: Some(1),
+        ..marker()
+    };
+    let stamp = serde_json::to_string(&interim.metadata()).expect("a stamp serializes");
+    let message = posted(&format!(
+        r#"{{"ts":"1","user":"{BOT_USER}","text":"working on it","metadata":{stamp}}}"#
+    ));
+
+    assert!(
+        !message.carries(&answer, BOT_USER),
+        "an interim line read as the answer would silence it"
+    );
+    assert!(
+        message.carries(&interim, BOT_USER),
+        "a repeat of the line finds its own"
+    );
+    assert!(stamp.contains(r#""part":1"#), "{stamp}");
+}
+
+/// The answer's marker carries no part on the wire, so every answer posted
+/// before interim lines existed still reads as an answer.
+#[test]
+fn an_answer_marker_carries_no_part_on_the_wire() {
+    let stamp = serde_json::to_string(&marker().metadata()).expect("a stamp serializes");
+    assert!(!stamp.contains("part"), "{stamp}");
 }

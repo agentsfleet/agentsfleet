@@ -60,6 +60,14 @@ pub const QSTASH_TOKEN_KNOB: &str = "QSTASH_TOKEN";
 /// found it ignored was configuring something the daemon never read.
 pub const QSTASH_URL_KNOB: &str = "QSTASH_URL";
 
+/// Which Slack API the answer and interim posts go to.
+///
+/// Optional, and its absence resolves to `afd_connector::slack::SLACK_API_BASE`.
+/// A Slack that is not `slack.com` — a government tenancy, a regional
+/// deployment, a local stand-in — is a different base, and the outbound worker
+/// and the interim message poster must post to the same one.
+pub const SLACK_API_URL_KNOB: &str = "SLACK_API_URL";
+
 /// What a signup event from the identity provider is verified against.
 ///
 /// Optional, and its absence is FAIL-CLOSED rather than a degradation: the

@@ -47,3 +47,17 @@ fn test_static_secrets_tolerate_an_absent_or_odd_map() {
         assert!(!secrets.contains("github"));
     }
 }
+
+/// A map read without a `Value` around it yields what the policy view does,
+/// so the daemon and the runner mask the same names.
+#[test]
+fn test_a_map_view_reads_as_the_policy_view() {
+    let policy = json!({"github": {"token": "ghp_1", "host": "api.github.com"}});
+    let map = policy.as_object().cloned().unwrap_or_default();
+
+    let from_map: Vec<_> = StaticSecrets::of_map(&map).values().collect();
+    let from_policy: Vec<_> = StaticSecrets::new(Some(&policy)).values().collect();
+
+    assert_eq!(from_map, from_policy);
+    assert_eq!(from_map, vec![("github.token".to_owned(), "ghp_1")]);
+}

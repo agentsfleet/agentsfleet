@@ -32,6 +32,8 @@ const COL_TIMEZONE: &str = "timezone";
 /// See [`COL_ID`].
 const COL_MESSAGE: &str = "message";
 /// See [`COL_ID`].
+const COL_ONCE: &str = "once";
+/// See [`COL_ID`].
 const COL_DESIRED_STATUS: &str = "desired_status";
 /// See [`COL_ID`].
 const COL_SYNC_STATUS: &str = "sync_status";
@@ -76,6 +78,7 @@ impl FromRow<'_, PgRow> for Schedule {
             cron: row.try_get(COL_CRON)?,
             timezone: row.try_get(COL_TIMEZONE)?,
             message: row.try_get(COL_MESSAGE)?,
+            once: row.try_get(COL_ONCE)?,
             desired_status: DesiredStatus::parse(&desired_status)
                 .ok_or_else(|| unreadable(COL_DESIRED_STATUS))?,
             sync_status: SyncStatus::parse(&sync_status)

@@ -20,10 +20,16 @@ openapi = ["dep:utoipa", "afd_http/openapi", "afd_wire/openapi"]
 
 [dependencies]
 afd_core.workspace = true
+# The schedule store and its vocabulary, which the schedules verb drives.
+afd_cron.workspace = true
+# A schedule's runs are its events, read through the history listing.
+afd_events.workspace = true
 afd_fleet.workspace = true
 afd_http.workspace = true
 afd_observability.workspace = true
 afd_runner.workspace = true
+# The runs page's `?limit`, bounded as every keyset list is.
+afd_validate.workspace = true
 afd_wire.workspace = true
 # A recall body is checked against the bounds `afd_wire` declares on it.
 garde.workspace = true

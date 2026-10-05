@@ -35,3 +35,6 @@ pub use self::engine::{AgentEngine, AgentRun, Checkpoint, EventSink, Meter, Need
 pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::Loop;
 pub use self::router::Router;
+// The seam a run's schedule and message tools reach `agentsfleetd` through,
+// re-exported so the supervisor implements it through the crate it drives.
+pub use afr_tools::{LeaseVerbs, ScheduleCall, Unanswered};

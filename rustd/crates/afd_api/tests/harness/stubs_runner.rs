@@ -164,6 +164,29 @@ impl Leasing for NoWork {
     ) -> impl Future<Output = afd_fleet::Result<UnixMillis>> + Send {
         std::future::ready(Ok(now))
     }
+
+    /// Holds no lease, so every lease-addressed verb is refused as one this
+    /// runner does not hold — the answer a plane with no rows gives.
+    fn standing(
+        &self,
+        _runner_id: &Uuid7,
+        _lease_id: Uuid7,
+        _fencing_token: u64,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_fleet::lease::Standing>> + Send {
+        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+    }
+
+    /// Refused for the reason [`NoWork::standing`] is.
+    fn message(
+        &self,
+        _runner_id: &Uuid7,
+        _lease_id: Uuid7,
+        _request: &afd_wire::message_verb::MessageRequest<'_>,
+        _now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<afd_outbound::Interim>> + Send {
+        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+    }
 }
 
 /// The identifier a stubbed settle reports against.

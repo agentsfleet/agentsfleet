@@ -18,7 +18,6 @@ use afd_approval::{Origin, Requested, Wanted};
 use crate::error::Result;
 use crate::lease::answer::{EVENT_LEASED, no_work, render};
 use crate::lease::envelope::Acquired;
-use crate::lease::installed::Installed;
 use crate::lease::issue::Billed;
 use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
 use afd_core::event::label;
@@ -41,7 +40,7 @@ impl Plane {
             .vault
             .declared(
                 &admitted.acquired.workspace_id,
-                &names(&admitted.installed),
+                &admitted.installed.credential_names(),
                 &self.connectors,
             )
             .await?;
@@ -316,16 +315,6 @@ const fn answers(asked: Option<Requested>) -> Ungranted {
         Some(Requested::Raised | Requested::Pending) => Ungranted::Parks,
         Some(Requested::Approved) | None => Ungranted::Retries,
     }
-}
-
-/// The credential names a fleet declared, as the vault read wants them.
-fn names(installed: &Installed) -> Vec<&str> {
-    installed
-        .config
-        .credentials()
-        .iter()
-        .map(afd_fleet_runtime::CredentialName::as_str)
-        .collect()
 }
 
 #[cfg(test)]
