@@ -5,9 +5,13 @@
 //! commit (`../../vendor/apply_patch/NOTICE`). What is ours: the path gate on
 //! every hunk, the reads and writes through the sandbox, and the count the
 //! thread's cell shows. Every hunk is read and computed before the first
-//! write, so a patch that cannot land leaves the workspace as it was.
+//! write, each from what the hunks before it leave, as Codex applies them one
+//! after another: a patch with a hunk that does not apply changes nothing. A
+//! write the executor refuses partway is reported, and the hunks before it
+//! stay landed.
 
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::path::{Component, Path, PathBuf};
 
 use afr_executor::Executor;
 use bytes::Bytes;
@@ -34,6 +38,9 @@ const MODIFIED: char = 'M';
 const DELETED: char = 'D';
 /// The minus of the thread's `+N −M` cell.
 const MINUS: char = '−';
+/// What a hunk on a path an earlier hunk moved away or deleted reads back
+/// after the path.
+const REMOVED_EARLIER: &str = "was moved or deleted earlier in this patch";
 
 /// `apply_patch`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -65,6 +72,49 @@ enum Planned<'hunk> {
         added: usize,
         removed: usize,
     },
+}
+
+/// What the hunks planned so far leave at each path they touched, by its
+/// spelling with `./` dropped: the text, or `None` where one moved the file
+/// away or deleted it. A later hunk on that path starts from here.
+#[derive(Debug, Default)]
+struct Overlay(BTreeMap<PathBuf, Option<String>>);
+
+impl Overlay {
+    /// The text at `path`: what an earlier hunk left, or the file itself.
+    async fn text(&self, executor: &dyn Executor, path: &str) -> Result<String, ToolOutput> {
+        match self.0.get(&key(path)) {
+            Some(Some(text)) => Ok(text.clone()),
+            Some(None) => Err(ToolOutput::failed(
+                ToolErrorCode::FileNotFound,
+                &format!("{path} {REMOVED_EARLIER}"),
+            )),
+            None => whole(executor, path).await,
+        }
+    }
+
+    /// Records what `path` holds once the hunk being planned lands.
+    fn leave(&mut self, path: &str, text: Option<String>) {
+        self.0.insert(key(path), text);
+    }
+
+    /// Records `path` updated to `text`, and moved to `moved_to` when the
+    /// hunk names a new path.
+    fn update(&mut self, path: &str, moved_to: Option<&str>, text: &str) {
+        if moved_to.is_some() {
+            self.leave(path, None);
+        }
+        self.leave(moved_to.unwrap_or(path), Some(text.to_owned()));
+    }
+}
+
+/// `path` as the overlay keys it: `src/a`, `./src/a` and `src/./a` are one
+/// file.
+fn key(path: &str) -> PathBuf {
+    Path::new(path)
+        .components()
+        .filter(|part| *part != Component::CurDir)
+        .collect()
 }
 
 impl Planned<'_> {
@@ -112,8 +162,9 @@ async fn apply(context: &ToolContext<'_, '_>, patch: &str) -> Answer {
         return Err(invalid("the patch changes no file"));
     }
     let mut planned = Vec::with_capacity(hunks.len());
+    let mut overlay = Overlay::default();
     for hunk in &hunks {
-        planned.push(plan(executor, hunk).await?);
+        planned.push(plan(executor, &mut overlay, hunk).await?);
     }
     for step in &planned {
         land(executor, step).await?;
@@ -126,19 +177,23 @@ fn invalid(why: impl std::fmt::Display) -> ToolOutput {
     ToolOutput::failed(ToolErrorCode::PatchInvalid, &why.to_string())
 }
 
-/// `hunk` read and computed, every path checked, nothing written.
+/// `hunk` read and computed from what the hunks before it leave in
+/// `overlay`, every path checked, nothing written.
 async fn plan<'hunk>(
     executor: &dyn Executor,
+    overlay: &mut Overlay,
     hunk: &'hunk Hunk,
 ) -> Result<Planned<'hunk>, ToolOutput> {
     match hunk {
-        Hunk::AddFile { path, contents } => Ok(Planned::Add {
-            path: inside(named(path))?,
-            contents,
-        }),
+        Hunk::AddFile { path, contents } => {
+            let path = inside(named(path))?;
+            overlay.leave(path, Some(contents.clone()));
+            Ok(Planned::Add { path, contents })
+        }
         Hunk::DeleteFile { path } => {
             let path = inside(named(path))?;
-            let text = whole(executor, path).await?;
+            let text = overlay.text(executor, path).await?;
+            overlay.leave(path, None);
             Ok(Planned::Delete {
                 path,
                 lines: text.lines().count(),
@@ -150,9 +205,17 @@ async fn plan<'hunk>(
             chunks,
         } => {
             let path = inside(named(path))?;
-            let moved_to = move_path.as_deref().map(named).map(inside).transpose()?;
-            let original = whole(executor, path).await?;
+            // A move to the path the file already has is an update: landing
+            // it as a move would delete what it just wrote.
+            let moved_to = move_path
+                .as_deref()
+                .map(named)
+                .map(inside)
+                .transpose()?
+                .filter(|to| key(to) != key(path));
+            let original = overlay.text(executor, path).await?;
             let updated = codex::updated(path, &original, chunks).map_err(invalid)?;
+            overlay.update(path, moved_to, &updated.contents);
             Ok(Planned::Update {
                 path,
                 moved_to,
@@ -227,3 +290,11 @@ fn summary(planned: &[Planned<'_>]) -> String {
 #[cfg(test)]
 #[path = "apply_patch/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "apply_patch/landing_tests.rs"]
+mod landing_tests;
+
+#[cfg(test)]
+#[path = "apply_patch/chunk_tests.rs"]
+mod chunk_tests;
