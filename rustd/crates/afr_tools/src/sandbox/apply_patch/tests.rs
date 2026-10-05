@@ -353,15 +353,19 @@ async fn a_move_whose_delete_is_refused_keeps_both_files_and_a_retry_heals_it() 
 }
 
 /// `original` with the one update hunk of `patch` applied: the contents and
-/// the lines added and removed, or the parser's sentence.
-fn applied(patch: &str, original: &str) -> Result<(String, usize, usize), String> {
-    let hunks = super::codex::parse_patch(patch).map_err(ToString::to_string)?;
+/// the lines added and removed, or the parser's own error.
+fn applied(
+    patch: &str,
+    original: &str,
+) -> Result<(String, usize, usize), super::codex::ApplyPatchError> {
+    let hunks = super::codex::parse_patch(patch)?;
     let Some(super::codex::Hunk::UpdateFile { chunks, .. }) = hunks.first() else {
-        return Err("the patch holds one update hunk".to_owned());
+        return Err(super::codex::ApplyPatchError::ComputeReplacements(
+            "the patch holds one update hunk".to_owned(),
+        ));
     };
-    super::codex::updated("f.txt", original, chunks)
-        .map(|updated| (updated.contents, updated.added, updated.removed))
-        .map_err(ToString::to_string)
+    let updated = super::codex::updated("f.txt", original, chunks)?;
+    Ok((updated.contents, updated.added, updated.removed))
 }
 
 #[test]
@@ -452,7 +456,9 @@ fn a_context_marker_that_is_not_in_the_file_is_refused_by_name() {
 
     assert_eq!(
         applied(patch, "a\n"),
-        Err("Failed to find context 'nope' in f.txt".to_owned())
+        Err(super::codex::ApplyPatchError::ComputeReplacements(
+            "Failed to find context 'nope' in f.txt".to_owned()
+        ))
     );
 }
 
