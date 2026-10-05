@@ -228,6 +228,22 @@
   [data-braille-rest] { display: inline; }
 }
 
+/* A running tool call's bullet, the way Codex's transcript marks one: its colour
+ * breathes between dim and the live signal for as long as the call runs. A
+ * colour cycle rather than Codex's sheen, because gradients are forbidden (see
+ * the beckon below), at wake-pulse's cadence so a busy reply does not strobe.
+ * Reduced motion holds the live colour still. */
+@keyframes tool-shimmer {
+  0%, 100% { color: var(--text-dim); }
+  50% { color: var(--pulse); }
+}
+
+[data-tool-shimmer="true"] { animation: tool-shimmer 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-tool-shimmer="true"] { animation: none; color: var(--pulse); opacity: 1; }
+}
+
 /* A settled transcript row skips layout while off screen; the streaming row is
  * still growing, and a remembered placeholder height would misstate the scroll.
  *

@@ -1,6 +1,6 @@
 // The library's help document, held back until the run says whether it belongs.
 //
-// `effect/unstable/cli` does not fail with a parse error on its own: it wraps
+// `effect/cli` does not fail with a parse error on its own: it wraps
 // one in `ShowHelp` so the help document renders beneath it. That is the right
 // shape for a person and the wrong shape for `--json`, where a consumer reading
 // stdout gets a screen of help text followed by the error envelope and
