@@ -80,9 +80,11 @@ impl Signals {
                 afd_observability::semconv::SCOPE_NAME,
             ),
         );
-        let records = opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new(
-            exports.logger(),
-        );
+        // An `Option` layer is a no-op when empty; this daemon always builds
+        // its log pipeline, so the bridge is there whenever `exports` is.
+        let records = exports
+            .logger()
+            .map(opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge::new);
         self.0
             .modify(|slot| *slot = Some(Box::new(spans.and_then(records))))
             .is_ok()
@@ -144,6 +146,8 @@ mod tests {
     use tracing_subscriber::layer::SubscriberExt as _;
 
     use super::{Attached, Signals};
+    use afd_otlp::Encoding;
+
     use crate::preflight::{OTEL_ENDPOINT_KNOB, OtlpConfig};
     use crate::telemetry::Exports;
 
@@ -154,15 +158,13 @@ mod tests {
     const UNREACHABLE: &str = "http://127.0.0.1:1";
 
     fn exports() -> Result<Exports, &'static str> {
-        crate::telemetry::install(&OtlpConfig {
-            endpoint: UNREACHABLE.into(),
-            source: OTEL_ENDPOINT_KNOB,
-            headers: Vec::new(),
-            protocol: "http/json".into(),
-            timeout: Duration::from_millis(50),
-        })
-        .map(|(exports, _instruments)| exports)
-        .map_err(|_refused| "a well-formed endpoint builds a transport")
+        let config = OtlpConfig::new(UNREACHABLE, OTEL_ENDPOINT_KNOB)
+            .map_err(|_refused| "the fixture endpoint is an absolute URL")?
+            .with_encoding(Encoding::HttpJson)
+            .with_timeout(Duration::from_millis(50));
+        crate::telemetry::install(&config)
+            .map(|(exports, _instruments)| exports)
+            .map_err(|_refused| "a well-formed endpoint builds a transport")
     }
 
     /// The reload slot takes the bridges, and `Debug` does not unfold it.

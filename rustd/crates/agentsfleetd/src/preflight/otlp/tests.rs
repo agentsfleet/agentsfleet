@@ -34,7 +34,7 @@ fn resolved<'a>(pairs: impl IntoIterator<Item = (&'a str, &'a str)>) -> super::O
 /// The header of a given name, if the resolution produced one.
 fn header(config: &super::OtlpConfig, name: &str) -> Option<String> {
     config
-        .headers
+        .headers()
         .iter()
         .find(|(existing, _value)| existing.eq_ignore_ascii_case(name))
         .map(|(_name, value)| value.clone())
@@ -57,9 +57,10 @@ fn no_endpoint_is_no_export_and_no_fault() {
 fn the_vendor_endpoint_alone_still_exports() {
     let config = resolved([(GRAFANA_ENDPOINT_KNOB, VENDOR_ENDPOINT)]);
 
-    assert_eq!(&*config.endpoint, VENDOR_ENDPOINT);
+    assert_eq!(config.signal_endpoint(""), VENDOR_ENDPOINT);
     assert_eq!(
-        config.source, GRAFANA_ENDPOINT_KNOB,
+        config.source(),
+        GRAFANA_ENDPOINT_KNOB,
         "the source names the knob it came from, so a boot line can say which"
     );
 }
@@ -77,8 +78,8 @@ fn the_standard_endpoint_outranks_the_vendor_alias() {
         (OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT),
     ]);
 
-    assert_eq!(&*config.endpoint, STANDARD_ENDPOINT);
-    assert_eq!(config.source, OTEL_ENDPOINT_KNOB);
+    assert_eq!(config.signal_endpoint(""), STANDARD_ENDPOINT);
+    assert_eq!(config.source(), OTEL_ENDPOINT_KNOB);
 }
 
 /// The vendor's two halves become one basic credential.
@@ -137,7 +138,7 @@ fn a_standard_header_replaces_the_vendor_credential() {
         Some("Bearer collector-token")
     );
     assert_eq!(
-        config.headers.len(),
+        config.headers().len(),
         1,
         "the replaced credential must not survive beside its replacement"
     );
@@ -195,7 +196,7 @@ fn a_timeout_is_kept_in_the_milliseconds_it_was_written_in() {
         (OTEL_TIMEOUT_KNOB, "1500"),
     ]);
 
-    assert_eq!(config.timeout, core::time::Duration::from_millis(1500));
+    assert_eq!(config.timeout(), core::time::Duration::from_millis(1500));
 }
 
 /// One malformed pair faults without taking its neighbours with it.
@@ -228,7 +229,7 @@ fn a_malformed_pair_faults_without_dropping_its_neighbours() {
         "a value carrying its own `=` splits at the first one, not at every one"
     );
     assert_eq!(
-        config.headers.len(),
+        config.headers().len(),
         2,
         "an empty pair is skipped rather than sent as a header with no name"
     );
@@ -254,7 +255,7 @@ fn a_repeated_header_name_keeps_only_the_last_value() {
         Some("tenant-b")
     );
     assert_eq!(
-        config.headers.len(),
+        config.headers().len(),
         1,
         "the replaced entry must not survive beside its replacement"
     );
@@ -302,9 +303,9 @@ fn an_unusable_knob_is_a_fault_that_names_itself() {
 fn unset_knobs_resolve_to_the_documented_defaults() {
     let config = resolved([(OTEL_ENDPOINT_KNOB, STANDARD_ENDPOINT)]);
 
-    assert_eq!(&*config.protocol, super::PROTOCOL_PROTOBUF);
-    assert_eq!(config.timeout, super::DEFAULT_TIMEOUT);
-    assert!(config.headers.is_empty());
+    assert_eq!(config.encoding(), afd_otlp::Encoding::HttpProtobuf);
+    assert_eq!(config.timeout(), afd_otlp::DEFAULT_TIMEOUT);
+    assert!(config.headers().is_empty());
 }
 
 /// A resolved configuration never renders the credential it carries.

@@ -154,11 +154,11 @@ pub enum BootFailure {
     /// The telemetry transport would not build from the resolved knobs.
     ///
     /// Refuses boot, and that is not over-strictness: preflight already
-    /// accepted every knob, so a failure here is an endpoint the exporter
-    /// cannot parse. A daemon that served on through it would export nothing
-    /// and look exactly like a collector that is down.
+    /// accepted every knob, so a failure here is a defect in the build. A
+    /// daemon that served on through it would export nothing and look exactly
+    /// like a collector that is down.
     #[error("agentsfleetd cannot boot: the telemetry exporter would not build")]
-    Exporter(#[from] opentelemetry_otlp::ExporterBuildError),
+    Exporter(#[from] afd_otlp::Error),
     /// The metric contract and the code disagree.
     ///
     /// A family a producer names and the census does not declare, a kind or a
