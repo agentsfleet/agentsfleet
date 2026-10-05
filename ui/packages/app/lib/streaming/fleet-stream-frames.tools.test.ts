@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type LiveFrame } from "@/lib/api/events";
+import { type LiveFrame, type SavedToolCall } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { applyLiveFrame, parseLiveFrame } from "./fleet-stream-frames";
-import type { FleetEvent } from "./fleet-stream-row";
-import { evt } from "@/tests/helpers/fleet-stream-fixtures";
+import { applyLiveFrame, mergeBackfill, parseLiveFrame } from "./fleet-stream-frames";
+import type { FleetEvent, FleetToolCall } from "./fleet-stream-row";
+import { TOOL_CALL_STATUS } from "./fleet-stream-tool-trace";
+import { evt, row } from "@/tests/helpers/fleet-stream-fixtures";
 
 // The three tool frames: how a call attaches to its event, progresses, and
 // completes, and what happens to a frame whose event is not there. The wire
@@ -190,3 +191,92 @@ describe("applyLiveFrame — tool frames", () => {
     expect(applyLiveFrame(seed, started("search_repo", "ghost"), STARTED_AT)).toBe(seed);
   });
 });
+
+const READ = "file_read";
+const REQUEST = "http_request";
+const CALL_ONE = "7:1";
+const CALL_TWO = "7:2";
+const CALL_THREE = "7:3";
+const PATH_A = "a.md";
+const REQUEST_MS = 400;
+const DENIED = "denied";
+
+function startedWith(name: string, args: unknown, call_id?: string): LiveFrame {
+  return wire({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name, args_redacted: args, call_id });
+}
+
+function completedWith(name: string, ms: number, outcome: Record<string, unknown>, call_id?: string): LiveFrame {
+  return wire({ kind: FRAME_KIND.TOOL_CALL_COMPLETED, event_id: "e1", name, ms, call_id, ...outcome });
+}
+
+describe("applyLiveFrame — tool arguments and outcome", () => {
+  it("test_started_frame_keeps_arguments", () => {
+    const out = applyLiveFrame([evt({ id: "e1" })], startedWith(READ, { path: PATH_A }, CALL_ONE), STARTED_AT);
+    expect(out[0]?.tools).toEqual([
+      { name: READ, callId: CALL_ONE, startedAtMs: STARTED_AT, ms: null, done: false, args: { path: PATH_A } },
+    ]);
+    // `{}` names no arguments, so the call carries none rather than an empty bag.
+    const bare = applyLiveFrame([evt({ id: "e1" })], startedWith(READ, {}, CALL_ONE), STARTED_AT);
+    expect(bare[0]?.tools?.[0]).not.toHaveProperty("args");
+  });
+
+  it("test_repeat_start_merges_arguments_keeps_clock", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], startedWith(READ, {}, CALL_ONE), STARTED_AT);
+    out = applyLiveFrame(out, startedWith(READ, { path: PATH_A }, CALL_ONE), REPEAT_AT);
+    expect(out[0]?.tools).toEqual([
+      { name: READ, callId: CALL_ONE, startedAtMs: STARTED_AT, ms: null, done: false, args: { path: PATH_A } },
+    ]);
+    // A later repeat adds to what the call holds; it never drops a key.
+    out = applyLiveFrame(out, startedWith(READ, { limit: 5 }, CALL_ONE), REPEAT_AT);
+    expect(out[0]?.tools?.[0]?.args).toEqual({ path: PATH_A, limit: 5 });
+    // One that adds nothing returns the timeline unchanged.
+    expect(applyLiveFrame(out, startedWith(READ, { path: PATH_A }, CALL_ONE), REPEAT_AT)).toBe(out);
+    expect(applyLiveFrame(out, startedWith(READ, {}, CALL_ONE), REPEAT_AT)).toBe(out);
+
+    // A runner that names no call merges into the open call of that name.
+    let timed = applyLiveFrame([evt({ id: "e1" })], started("grep"), STARTED_AT);
+    timed = applyLiveFrame(timed, startedWith("grep", { pattern: "deploy" }), REPEAT_AT);
+    expect(timed[0]?.tools).toEqual([{ name: "grep", startedAtMs: STARTED_AT, ms: null, done: false, args: { pattern: "deploy" } }]);
+  });
+
+  it("test_completed_frame_keeps_outcome", () => {
+    let out = applyLiveFrame([evt({ id: "e1" })], startedWith(REQUEST, { method: "POST" }, CALL_TWO), STARTED_AT);
+    const outcome = { status: TOOL_CALL_STATUS.FAILED, output_head: DENIED, output_tail: DENIED, output_line_count: 1, exit_code: 2 };
+    out = applyLiveFrame(out, completedWith(REQUEST, REQUEST_MS, outcome, CALL_TWO), COMPLETED_AT);
+    expect(out[0]?.tools).toEqual([{
+      name: REQUEST, callId: CALL_TWO, startedAtMs: STARTED_AT, ms: REQUEST_MS, done: true, args: { method: "POST" },
+      status: TOOL_CALL_STATUS.FAILED, outputHead: DENIED, outputTail: DENIED, outputLineCount: 1, exitCode: 2,
+    }]);
+    // Paired by timing, and first seen at its completion, the outcome lands the same way.
+    const byTiming = applyLiveFrame(
+      applyLiveFrame([evt({ id: "e1" })], started(REQUEST), STARTED_AT),
+      completedWith(REQUEST, REQUEST_MS, { status: TOOL_CALL_STATUS.SUCCEEDED }),
+      COMPLETED_AT,
+    );
+    expect(byTiming[0]?.tools?.[0]).toMatchObject({ done: true, status: TOOL_CALL_STATUS.SUCCEEDED });
+    const firstSeen = applyLiveFrame([evt({ id: "e1" })], completedWith(REQUEST, REQUEST_MS, { output_line_count: 0 }, CALL_THREE), COMPLETED_AT);
+    expect(firstSeen[0]?.tools).toEqual([{ name: REQUEST, callId: CALL_THREE, startedAtMs: COMPLETED_AT, ms: REQUEST_MS, done: true, outputLineCount: 0 }]);
+  });
+
+  it("test_malformed_tool_fields_read_absent", () => {
+    const seed = [evt({ id: "e1" })];
+    // Arguments that are not an object of JSON values name nothing.
+    for (const args of [[1], "path", 7, null, undefined]) {
+      expect(applyLiveFrame(seed, startedWith(READ, args), STARTED_AT)[0]?.tools).toEqual([
+        { name: READ, startedAtMs: STARTED_AT, ms: null, done: false },
+      ]);
+    }
+    const open = applyLiveFrame(seed, started(READ), STARTED_AT);
+    const malformed = { status: "ok", output_head: 7, output_tail: ["tail"], output_line_count: -1, exit_code: 1.5 };
+    expect(applyLiveFrame(open, completedWith(READ, REQUEST_MS, malformed), COMPLETED_AT)[0]?.tools).toEqual([
+      { name: READ, startedAtMs: STARTED_AT, ms: REQUEST_MS, done: true },
+    ]);
+    // One bad field leaves the good ones standing.
+    const mixed = { status: TOOL_CALL_STATUS.SUCCEEDED, output_head: "# readme", output_line_count: 2.5 };
+    expect(applyLiveFrame(open, completedWith(READ, REQUEST_MS, mixed), COMPLETED_AT)[0]?.tools).toEqual([
+      { name: READ, startedAtMs: STARTED_AT, ms: REQUEST_MS, done: true, status: TOOL_CALL_STATUS.SUCCEEDED, outputHead: "# readme" },
+    ]);
+  });
+});
+
+// A saved call as `GET …/messages` serves it.

@@ -160,8 +160,8 @@ export function withCommandInstrumentation<Flags extends Record<string, unknown>
     return withCommandTracingImplementation();
   }
   // Supabase reads argv from Stdio service; agentsfleet reads
-  // process.argv.slice(2) directly. When (c) lands and effect/unstable/
-  // cli's Command.runWith is in place, argv is provided by the Command
+  // process.argv.slice(2) directly. When (c) lands and effect/cli's
+  // Command.runWith is in place, argv is provided by the Command
   // primitive — the read site here moves from process.argv to the
   // Command-provided value but the consumer code is identical.
   return withCommandAnalyticsImplementation(options, process.argv.slice(2));

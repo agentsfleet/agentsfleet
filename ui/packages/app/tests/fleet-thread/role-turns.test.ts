@@ -39,6 +39,19 @@ describe("FleetThread — role rendering: turns and connection", () => {
     expect(replyRow?.getAttribute("data-role")).toBe("assistant");
   });
 
+  it("test_turn_rows_show_timestamp", () => {
+    const sentAt = new Date(Date.UTC(2026, 9, 4, 9, 30, 0));
+    mockStream([
+      ev({ id: "evt_turn", role: "user", actor: "steer:user_abc", text: "Status?", reply: "All green.", createdAt: sentAt }),
+    ]);
+    const { container } = renderThread();
+    const operator = container.querySelector('[data-role="user"]');
+    const reply = container.querySelector('[data-role="assistant"]');
+    // The turn says when it was sent, once: on the row that opens it.
+    expect(operator?.querySelector("time")?.getAttribute("datetime")).toBe(sentAt.toISOString());
+    expect(reply?.querySelector("time")).toBeNull();
+  });
+
   it("announces an API steer with its real sender", () => {
     mockStream([
       ev({
@@ -150,7 +163,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
     // "Still working." reads the same at one second and at five minutes.
     expect(screen.getByTestId("fleet-working")).toBeTruthy();
     // The accessible name stays "Working"; the visible words are one waiting verb.
-    const label = screen.getByRole("status", { name: "Working" }).lastElementChild?.textContent ?? "";
+    const label = screen.getByRole("status", { name: "Working" }).querySelector("[data-waiting-verb]")?.textContent ?? "";
     expect(LOADING_VERBS.map((verb) => `${verb}…`)).toContain(label);
     expect(screen.queryByText(OUTCOME.WORKING)).toBeNull();
   });

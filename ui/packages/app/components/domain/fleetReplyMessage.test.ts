@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { MessageState, ThreadMessageLike } from "@assistant-ui/react";
 
-import { REASONING_SPAN, replyParts, reportsOwnRun, toReplyMessage } from "./fleetReplyMessage";
-import { readReasoningSpan } from "./fleetMessageReaders";
+import { REASONING_SPAN, REPLY_FIGURE, readToolResult, replyParts, reportsOwnRun, toReplyMessage } from "./fleetReplyMessage";
+import { readOmittedCallCount, readReasoningSpan, readReplyFigures } from "./fleetMessageReaders";
 import { evt } from "@/tests/helpers/fleet-stream-fixtures";
 import { ACTOR } from "@/lib/events/event-summary";
 import { AGENTSFLEET_EVENT_STATUS, type FleetEvent, type FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import { TOOL_CALL_STATUS, type ToolCallStatus } from "@/lib/streaming/fleet-stream-tool-trace";
 
 const STARTED = 1_000;
 const DONE_AFTER_MS = 900;
+const { SUCCEEDED, FAILED, INTERRUPTED } = TOOL_CALL_STATUS;
+const CALL_ID = "f1:0";
+const ARGS = { query: "deploy window" } as const;
+const OUTPUT = "3 matches";
+const TOKENS = 12_400;
+const WALL_MS = 41_000;
+const OMITTED = 4;
 const BASE: ThreadMessageLike = {
   role: "user",
   id: "e1:reply",
@@ -27,7 +35,10 @@ describe("toReplyMessage", () => {
       reasoningStartedAtMs: STARTED,
       reasoningEndedAtMs: STARTED + DONE_AFTER_MS,
       tools: [
-        { name: "search_repo", startedAtMs: STARTED, ms: DONE_AFTER_MS, done: true },
+        {
+          name: "search_repo", callId: CALL_ID, startedAtMs: STARTED, ms: DONE_AFTER_MS, done: true,
+          args: ARGS, status: SUCCEEDED, outputHead: OUTPUT, outputLineCount: 1,
+        },
         { name: "read_file", startedAtMs: STARTED + DONE_AFTER_MS, ms: null, done: false },
       ],
     });
@@ -37,13 +48,12 @@ describe("toReplyMessage", () => {
     expect(message.content).toEqual([
       { type: "reasoning", text: "Weighing it.", status: { type: "complete" } },
       {
-        type: "tool-call", toolCallId: "e1:reply:tool:0", toolName: "search_repo", args: {},
-        result: null, timing: { startedAt: STARTED, completedAt: STARTED + DONE_AFTER_MS },
+        type: "tool-call", toolCallId: `e1:reply:tool:${CALL_ID}`, toolName: "search_repo", args: ARGS,
+        result: { status: SUCCEEDED, outputHead: OUTPUT, outputLineCount: 1, callId: CALL_ID }, isError: false,
+        timing: { startedAt: STARTED, completedAt: STARTED + DONE_AFTER_MS },
       },
-      {
-        type: "tool-call", toolCallId: "e1:reply:tool:1", toolName: "read_file", args: {},
-        timing: { startedAt: STARTED + DONE_AFTER_MS },
-      },
+      // A running call that named no arguments carries none, and no result.
+      { type: "tool-call", toolCallId: "e1:reply:tool:1", toolName: "read_file", args: {}, timing: { startedAt: STARTED + DONE_AFTER_MS } },
       { type: "text", text: "Opened the PR." },
     ]);
     // The row's custom bag rides through; the span joins it.
@@ -61,8 +71,66 @@ describe("toReplyMessage", () => {
     const [part] = replyParts(evt({ id: "e1:reply", tools: [{ name: "late", startedAtMs: STARTED, ms: null, done: true }] }));
     expect(part).toEqual({
       type: "tool-call", toolCallId: "e1:reply:tool:0", toolName: "late", args: {},
-      result: null, timing: { startedAt: STARTED },
+      result: {}, isError: false, timing: { startedAt: STARTED },
     });
+  });
+
+  it("test_streamed_word_keeps_a_finished_call_s_part_fields", () => {
+    // A streamed word replaces the reply's event but not its calls: each
+    // finished cell must get the same result and timing, or its memo misses.
+    const tools = [{ name: "shell", callId: CALL_ID, startedAtMs: STARTED, ms: DONE_AFTER_MS, done: true, status: SUCCEEDED }];
+    const callOf = (event: FleetEvent) => replyParts(event).find((part) => part.type === "tool-call");
+    const first = callOf(evt({ id: "e1:reply", reply: "Step 1", tools }));
+    const next = callOf(evt({ id: "e1:reply", reply: "Step 1 and 2", tools }));
+    expect(next?.type === "tool-call" && first?.type === "tool-call" && next.result === first.result && next.timing === first.timing).toBe(true);
+    // A call that changed is a new object, so it is drawn again.
+    const changed = callOf(evt({ id: "e1:reply", tools: [{ ...tools[0]!, status: FAILED }] }));
+    expect(changed?.type === "tool-call" && first?.type === "tool-call" && changed.result !== first.result).toBe(true);
+  });
+
+  it("should hand every call that named no arguments one empty object", () => {
+    // Left off, the library mints a fresh `{}` per conversion, and a fresh
+    // object misses the memo of every cell and fold that holds it.
+    const argsOf = (event: FleetEvent) => replyParts(event).flatMap((part) => (part.type === "tool-call" ? [part.args] : []));
+    const tools = [
+      { name: "cron_list", startedAtMs: STARTED, ms: null, done: false },
+      { name: "fly_apps", startedAtMs: STARTED, ms: null, done: false },
+    ];
+    const [first, sibling] = argsOf(evt({ id: "e1:reply", reply: "Step 1", tools }));
+    const [next] = argsOf(evt({ id: "e1:reply", reply: "Step 1 and 2", tools }));
+    expect(first).toEqual({});
+    expect([next, sibling]).toEqual([first, first]);
+    expect(next === first && sibling === first).toBe(true);
+    expect(Object.isFrozen(first)).toBe(true);
+  });
+
+  it("test_failed_and_interrupted_calls_mark_error", () => {
+    const done = (status: ToolCallStatus) => ({ name: "http_request", startedAtMs: STARTED, ms: DONE_AFTER_MS, done: true, status });
+    const parts = replyParts(evt({ tools: [done(SUCCEEDED), done(FAILED), done(INTERRUPTED)] }));
+    expect(parts.map((part) => (part.type === "tool-call" ? part.isError : undefined))).toEqual([false, true, true]);
+  });
+
+  it("test_malformed_tool_result_reads_absent", () => {
+    // Running: no result to read.
+    expect(readToolResult(undefined)).toBeUndefined();
+    // Each field narrows on its own; a non-object reads as an empty outcome.
+    expect(readToolResult({ status: "ok", outputHead: 7, outputLineCount: 2, exitCode: "1" })).toEqual({ outputLineCount: 2 });
+    expect(readToolResult("x")).toEqual({});
+    expect(readToolResult(null)).toEqual({});
+  });
+
+  it("test_reply_figures_ride_the_reply_bag", () => {
+    const row = evt({ tokens: TOKENS, wallMs: WALL_MS, costNanos: null, omittedCallCount: OMITTED });
+    const message = toReplyMessage(BASE, row);
+    expect(message.metadata?.custom).toMatchObject({
+      [REPLY_FIGURE.TOKENS]: TOKENS,
+      [REPLY_FIGURE.WALL_MS]: WALL_MS,
+      [REPLY_FIGURE.COST_NANOS]: null,
+      [REPLY_FIGURE.OMITTED_CALLS]: OMITTED,
+    });
+    // An unreported figure reads null, never zero.
+    expect(readReplyFigures(asState(message.metadata?.custom))).toEqual({ tokens: TOKENS, wallMs: WALL_MS, costNanos: null });
+    expect(readOmittedCallCount(asState(message.metadata?.custom))).toBe(OMITTED);
   });
 
   it("test_malformed_reply_metadata_reads_absent", () => {
@@ -70,12 +138,20 @@ describe("toReplyMessage", () => {
     expect(replyParts(evt({ reply: "   ", reasoning: "", tools: undefined }))).toEqual([]);
     // A live reasoning part runs on its own status.
     expect(replyParts(evt({ reasoning: "Still thinking", thinking: true }))[0]).toMatchObject({ status: { type: "running" } });
-    const malformed = { metadata: { custom: { [REASONING_SPAN.STARTED]: "1000", [REASONING_SPAN.ENDED]: Number.NaN } } };
-    expect(readReasoningSpan(malformed as unknown as MessageState)).toEqual({ startedAtMs: null, endedAtMs: null });
-    const missing = { metadata: { custom: {} } };
-    expect(readReasoningSpan(missing as unknown as MessageState)).toEqual({ startedAtMs: null, endedAtMs: null });
+    const malformed = asState({ [REASONING_SPAN.STARTED]: "1000", [REASONING_SPAN.ENDED]: Number.NaN });
+    expect(readReasoningSpan(malformed)).toEqual({ startedAtMs: null, endedAtMs: null });
+    expect(readReasoningSpan(asState({}))).toEqual({ startedAtMs: null, endedAtMs: null });
+    const wrongFigures = asState({ [REPLY_FIGURE.TOKENS]: "12", [REPLY_FIGURE.WALL_MS]: Number.POSITIVE_INFINITY, [REPLY_FIGURE.OMITTED_CALLS]: -3 });
+    expect(readReplyFigures(wrongFigures)).toEqual({ tokens: null, wallMs: null, costNanos: null });
+    expect(readOmittedCallCount(wrongFigures)).toBe(0);
+    expect(readOmittedCallCount(asState({}))).toBe(0);
   });
 });
+
+// A message state carrying only the custom bag the readers look at.
+function asState(custom: Record<string, unknown> | undefined): MessageState {
+  return { metadata: { custom: custom ?? {} } } as unknown as MessageState;
+}
 
 const SUBJECT = "user_viewer";
 const OWN = `${ACTOR.STEER_PREFIX}${SUBJECT}`;

@@ -17,7 +17,7 @@
 // only reflows what it produced. A rewrite here would be a second help
 // renderer to keep in step with the tree.
 
-import { CliError, CliOutput } from "effect/unstable/cli";
+import { CliError, CliOutput } from "effect/cli";
 
 const MAX_WIDTH = 80;
 const NEWLINE = "\n";

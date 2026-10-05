@@ -21,6 +21,7 @@ import {
   type FleetEventStatus,
 } from "./fleet-stream-row";
 import { applyToolFrame } from "./fleet-stream-tool-frames";
+import { interruptOpenCalls, settleTools } from "./fleet-stream-tool-trace";
 import { applyEventAdmitted, receivedUpdate, startWaiting } from "./fleet-stream-admitted";
 
 // Pure frame-transform helpers shared by the streaming registry: how each
@@ -194,7 +195,8 @@ function applyEventComplete(
   const detail = text(frame.failure_detail);
   const createdAt = figure(frame.created_at);
   const updated = [...prev];
-  updated[index] = closeReasoningSpan({
+  // A call still open when its turn ends was cut off, so it reads interrupted.
+  updated[index] = closeReasoningSpan(interruptOpenCalls({
     ...existing,
     status,
     outcome: outcomeForCompletion(status, label, detail),
@@ -208,7 +210,7 @@ function applyEventComplete(
     tokens: figure(frame.tokens),
     wallMs: figure(frame.wall_ms),
     costNanos: figure(frame.cost_nanos),
-  }, nowMs);
+  }), nowMs);
   return updated;
 }
 
@@ -263,7 +265,7 @@ export function mergeBackfill(
   // none (`afd_events` history/statement.rs asserts the select omits
   // `response_text`, and it omits `request_json` too), so taking the row
   // wholesale would blank a message the operator has already read. The live
-  // text is kept for the same reason `tools` is.
+  // text is kept for the same reason; the calls follow `settleTools`.
   // An in-progress backfill row ("received", or "queued" for a message still
   // waiting) never clobbers the live row: the stream is newer than the page.
   // The one exception moves forward only: a "received" row starts a live row
@@ -293,7 +295,7 @@ export function mergeBackfill(
       thinking: e.thinking === undefined ? undefined : false,
       custom: reconciled.text.length > 0 ? reconciled.custom : e.custom,
     }, nowMs);
-    const settled = e.tools ? { ...withBodies, tools: e.tools } : withBodies;
+    const settled = settleTools(withBodies, e);
     // A page restating a row this thread already settled leaves its object alone.
     return sameEvent(settled, e) ? e : settled;
   });
