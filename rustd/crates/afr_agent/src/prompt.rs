@@ -20,6 +20,9 @@ const INSTALLED_INSTRUCTIONS: &str = "## Installed instructions\n\n";
 const TRUSTED_REPAIR_CONTEXT: &str = "## Trusted repair context";
 /// The heading the workspace's checkouts render under.
 const WORKSPACE: &str = "## Workspace";
+/// The branch a checkout is on when its binding names no base: a read
+/// binding's, which the supervisor checks out at the remote's default.
+const DEFAULT_BRANCH: &str = "its default branch";
 /// What separates two blocks of the system prompt.
 const BLOCK_BREAK: &str = "\n\n";
 /// The request field holding the event's message.
@@ -138,10 +141,15 @@ impl fmt::Display for Workspace<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{WORKSPACE}")?;
         for checkout in &self.0 {
+            let branch = if checkout.base.is_empty() {
+                DEFAULT_BRANCH
+            } else {
+                checkout.base
+            };
             write!(
                 f,
-                "\n{} is checked out at ./{} on {}, with origin set",
-                checkout.repository, checkout.name, checkout.base
+                "\n{} is checked out at ./{} on {branch}, with origin set",
+                checkout.repository, checkout.name
             )?;
         }
         Ok(())

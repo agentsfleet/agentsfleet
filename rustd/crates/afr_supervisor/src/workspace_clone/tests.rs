@@ -233,6 +233,34 @@ async fn a_base_other_than_the_default_branch_is_checked_out() {
     );
 }
 
+/// A read binding names no base, so the checkout takes the remote's default
+/// branch, as `git clone` does; `trunk` here, so `main` cannot pass for it.
+#[tokio::test]
+async fn a_binding_with_no_base_checks_out_the_default_branch() {
+    let fixture = Fixture::new();
+    let remote = fixture.remote();
+    git(&remote, &["checkout", "--quiet", "-b", "trunk"]);
+    commit(&remote, "TRUNK.md", "trunk notes");
+    let workspace = fixture.workspace("lease_1");
+
+    fixture.check_out(&workspace, "").await.unwrap();
+
+    let copy = workspace.join(NAME);
+    assert_eq!(git(&copy, &["symbolic-ref", "--short", "HEAD"]), "trunk");
+    assert_eq!(
+        git(&copy, &["rev-parse", "HEAD"]),
+        git(&remote, &["rev-parse", "trunk"])
+    );
+    assert_eq!(
+        git(&copy, &["rev-parse", "--abbrev-ref", "@{upstream}"]),
+        "origin/trunk"
+    );
+    assert_eq!(
+        fs::read_to_string(copy.join("TRUNK.md")).unwrap(),
+        "trunk notes"
+    );
+}
+
 #[tokio::test]
 async fn every_file_is_handed_to_the_owner() {
     let fixture = Fixture::new();

@@ -29,7 +29,8 @@ pub struct Checkout<'p> {
     pub owner: &'p str,
     /// The name part, which is also its directory under the workspace.
     pub name: &'p str,
-    /// The branch checked out.
+    /// The branch checked out; empty for a read binding, which names none, so
+    /// the supervisor checks out the repository's default branch.
     pub base: &'p str,
 }
 

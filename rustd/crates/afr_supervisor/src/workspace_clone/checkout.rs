@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicBool;
 
 use afr_tools::sandbox::{GIT_IDENTITY_EMAIL, GIT_IDENTITY_NAME};
+use gix::bstr::ByteSlice as _;
 use gix::refs::transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog};
 use gix::refs::{FullName, Target};
 
@@ -41,7 +42,8 @@ const COMMITTER_NAME: &str = "committer.name";
 const COMMITTER_EMAIL: &str = "committer.email";
 
 /// Makes `destination` a working copy of `mirror` at `base`, whose origin is
-/// `url`, every file owned by `owner`.
+/// `url`, every file owned by `owner`. A read binding names no base, so an
+/// empty `base` checks out the remote's default branch (`branch_of`).
 pub(super) fn check_out(
     mirror: &Path,
     destination: &Path,
@@ -60,6 +62,7 @@ pub(super) fn check_out(
     .to_thread_local();
     copy_tree(&mirror.join(OBJECTS), &repository.git_dir().join(OBJECTS))?;
     let source = gix::open_opts(mirror, gix::open::Options::isolated())?;
+    let base = branch_of(&source, base)?;
     let repository = gix::open_opts(
         destination,
         gix::open::Options::isolated().config_overrides([
@@ -67,10 +70,23 @@ pub(super) fn check_out(
             format!("{COMMITTER_EMAIL}={GIT_IDENTITY_EMAIL}"),
         ]),
     )?;
-    record_branches(&source, &repository, base)?;
-    configure_origin(&repository, url, base)?;
-    write_worktree(&repository, base, stop)?;
+    record_branches(&source, &repository, &base)?;
+    configure_origin(&repository, url, &base)?;
+    write_worktree(&repository, &base, stop)?;
     hand_over(destination, owner)
+}
+
+/// `base`, or for a binding that names none, the branch the mirror's `HEAD`
+/// names: the remote's default branch when the mirror was first cloned, which
+/// is the one `git clone` would have checked out.
+fn branch_of(source: &gix::Repository, base: &str) -> GitResult<String> {
+    if !base.is_empty() {
+        return Ok(base.to_owned());
+    }
+    let head = source
+        .head_name()?
+        .ok_or("the repository's HEAD names no branch")?;
+    Ok(head.shorten().to_str()?.to_owned())
 }
 
 /// Records every branch the mirror fetched as `origin`'s, then `base` as the
