@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use afr_executor::Ending;
 use afr_sandbox::{
     BubblewrapEngine, Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, ProbePaths, SandboxRequest,
-    WarmSlots, probe,
+    Toolbox, WarmSlots, probe,
 };
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
@@ -19,7 +19,7 @@ use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, secco
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::lane::{Lane, missing};
-use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, runtime};
+use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
 use crate::toolbox::toolbox_carries_the_tools;
 use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 
@@ -234,14 +234,41 @@ fn reproducible(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
+/// `/usr` is the toolbox, read-only; a sandbox holds the toolbox it runs on
+/// until it is destroyed, so retention never unmounts one under a lease. The
+/// trial counts holds on a toolbox handle of its own, since trials run at once.
 fn toolbox_read_only(lane: &Lane) -> Result<(), Failed> {
-    let said = in_sandbox(
-        lane,
-        "toolbox",
-        Limits::default(),
-        "git --version && (touch /usr/x 2>/dev/null && echo usr-leaked || echo usr-denied)",
-    )?
-    .output;
+    let mut config = lane.config.clone();
+    let shared = &lane.config.toolbox;
+    config.toolbox = Arc::new(Toolbox::at(
+        shared.root().to_owned(),
+        shared.digest().to_owned(),
+    ));
+    let toolbox = Arc::clone(&config.toolbox);
+    let (said, unheld, held) = runtime().block_on(async {
+        let engine = BubblewrapEngine::new(config, &probe(&lane.config.probe_paths()))?;
+        let unheld = Arc::strong_count(&toolbox);
+        let request = SandboxRequest {
+            lease_id: "toolbox",
+            limits: Limits::default(),
+        };
+        let sandbox = engine.prepare(request).await?;
+        let held = Arc::strong_count(&toolbox);
+        let script =
+            "git --version && (touch /usr/x 2>/dev/null && echo usr-leaked || echo usr-denied)";
+        let outcome = run_in(sandbox.executor(), shell(script)).await;
+        sandbox.destroy().await?;
+        let after = Arc::strong_count(&toolbox);
+        expect(
+            after == unheld,
+            format!("destroyed, the sandbox let go: {after} != {unheld}"),
+        )?;
+        Ok::<_, Failed>((outcome?.output, unheld, held))
+    })?;
+    expect(
+        held == unheld + 1,
+        format!("the sandbox holds its toolbox: {held} != {unheld} + 1"),
+    )?;
     expect(
         said.contains("git version") && said.contains("usr-denied"),
         format!("git runs, /usr is read-only, got {said:?}"),

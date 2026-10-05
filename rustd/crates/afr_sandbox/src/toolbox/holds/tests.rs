@@ -10,11 +10,12 @@ use std::sync::{Arc, Mutex};
 
 use super::{Mounter, Toolboxes};
 use crate::error::{Result, ToolboxRefusal};
-use crate::toolbox::testing::{Signer, facts, manifest_bytes};
+use crate::toolbox::testing::{Signer, facts, manifest_bytes, sha256};
 use crate::toolbox::{Manifest, Toolbox, image_name};
 
-/// Mounts nothing; records what it was asked to mount and unmount, and
-/// refuses unmounts while told to.
+/// Mounts nothing; checks the image's length and digest as admission does,
+/// records what it was asked to mount and unmount, and refuses unmounts while
+/// told to.
 #[derive(Debug, Default)]
 struct Recorder {
     mounted: Mutex<Vec<String>>,
@@ -24,7 +25,9 @@ struct Recorder {
 
 impl Mounter for Arc<Recorder> {
     fn mount(&self, manifest: &Manifest, image: &Path) -> Result<Toolbox> {
-        assert!(image.exists(), "only a published image is mounted");
+        let bytes = fs::read(image)?;
+        manifest.check_length(u64::try_from(bytes.len()).unwrap())?;
+        manifest.check_digest(&sha256(&bytes))?;
         let digest = manifest.sha256().to_owned();
         self.mounted.lock().unwrap().push(digest.clone());
         Ok(Toolbox::at(image.with_extension("mnt"), digest))
@@ -254,5 +257,39 @@ fn should_release_an_image_already_removed_and_keep_one_it_cannot_remove() {
             four.manifest.sha256()
         ],
         "the one whose image would not go stays admitted"
+    );
+}
+
+/// A published image that is no longer the manifest's, rotted or edited in
+/// place, is removed and staged again from the download, once; it does not
+/// refuse every later admission of its release.
+#[test]
+fn should_stage_again_a_published_image_that_is_not_the_manifests() {
+    let dir = tempfile::tempdir().unwrap();
+    let signer = Signer::new();
+    let one = release(&signer, dir.path(), 1);
+    let (toolboxes, recorder) = open(dir.path());
+    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.close().unwrap();
+    let published = dir
+        .path()
+        .join("images")
+        .join(image_name(one.manifest.sha256()));
+    fs::write(&published, vec![9_u8; 64]).unwrap();
+
+    toolboxes.admit(&one.manifest, &one.source).unwrap();
+
+    assert_eq!(fs::read(&published).unwrap(), vec![1_u8; 64]);
+    assert_eq!(recorder.mounted.lock().unwrap().len(), 2);
+    fs::write(&one.source, vec![9_u8; 64]).unwrap();
+    toolboxes.close().unwrap();
+    fs::write(&published, vec![9_u8; 64]).unwrap();
+    assert_eq!(
+        toolboxes
+            .admit(&one.manifest, &one.source)
+            .unwrap_err()
+            .toolbox_refusal(),
+        Some(ToolboxRefusal::Digest),
+        "a download that is not the image either is refused, once"
     );
 }

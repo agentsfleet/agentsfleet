@@ -13,13 +13,15 @@ use procfs_core::process::MountInfos;
 use super::loop_device::{self, LO_FLAGS_READ_ONLY};
 use crate::error::Result;
 use crate::mounts;
+use crate::probe::MECHANISM_TOOLBOX_FILESYSTEM as EROFS;
 
 /// Where the kernel lists this process's mounts.
 const MOUNTINFO: &str = "/proc/self/mountinfo";
-/// The file system every toolbox is.
-pub(crate) const EROFS: &str = "erofs";
 /// The options every toolbox mount carries.
 const REQUIRED_OPTIONS: [&str; 3] = ["ro", "nosuid", "nodev"];
+/// The root a mount of a whole file system shows: anything else is a bind of
+/// a directory inside one.
+const WHOLE_FILE_SYSTEM: &str = "/";
 /// The block-device major number every loop device has.
 const LOOP_MAJOR: u32 = 7;
 /// Where the kernel publishes every block device by number, and the file
@@ -74,6 +76,20 @@ fn mismatch(root: &Path, image: (u64, u64)) -> Result<Option<String>> {
     if mount.fs_type != EROFS {
         return Ok(Some(format!("a {} file system", mount.fs_type)));
     }
+    if mount.root != WHOLE_FILE_SYSTEM {
+        return Ok(Some(format!(
+            "a bind of {} inside its file system",
+            mount.root
+        )));
+    }
+    // A sandbox binds the toolbox root with everything under it.
+    if mounts
+        .0
+        .iter()
+        .any(|other| other.mount_point != canonical && other.mount_point.starts_with(&canonical))
+    {
+        return Ok(Some("a mount stacked beneath it".to_owned()));
+    }
     if let Some(missing) = REQUIRED_OPTIONS
         .iter()
         .find(|option| !mount.mount_options.contains_key(**option))
@@ -122,3 +138,7 @@ fn loop_node(major: u32, minor: u32) -> Result<PathBuf> {
             io::Error::other(format!("loop device {major}:{minor} names no node")).into()
         })
 }
+
+#[cfg(test)]
+#[path = "adopt/tests.rs"]
+mod tests;

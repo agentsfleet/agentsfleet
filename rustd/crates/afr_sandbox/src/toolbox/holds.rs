@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::{Manifest, Toolbox, stage};
-use crate::error::Result;
+use crate::error::{Result, ToolboxRefusal};
 
 /// How many of the newest releases a host keeps mounted whether or not a
 /// sandbox holds them: the current one, and the previous one to roll back to.
@@ -23,6 +23,15 @@ pub const TOOLBOX_KEEP_RELEASES: usize = 2;
 const EVENT_RELEASED: &str = "sandbox_toolbox_released";
 /// The event an image retention could not let go of is logged under.
 const EVENT_RELEASE_FAILED: &str = "sandbox_toolbox_release_failed";
+/// The event a published image staged again is logged under.
+const EVENT_RESTAGED: &str = "sandbox_toolbox_restaged";
+/// The refusals that say the published file is not the manifest's image, so
+/// a fresh copy of the download may be.
+const REFUSALS_OF_THE_FILE: [ToolboxRefusal; 3] = [
+    ToolboxRefusal::Length,
+    ToolboxRefusal::Digest,
+    ToolboxRefusal::NotAFile,
+];
 
 /// Mounts an admitted image and unmounts one: the kernel on a host, a
 /// recorder in the unit suites.
@@ -101,7 +110,8 @@ impl<M: Mounter> Toolboxes<M> {
     /// stay as they were.
     pub fn admit(&self, manifest: &Manifest, source: &Path) -> Result<Arc<Toolbox>> {
         let image = stage::published(&self.dir, manifest);
-        if !image.exists() {
+        let fresh = !image.exists();
+        if fresh {
             stage::stage(manifest, source, &self.dir)?;
         }
         let mut admitted = self.admitted();
@@ -110,7 +120,7 @@ impl<M: Mounter> Toolboxes<M> {
             .position(|toolbox| toolbox.digest() == manifest.sha256());
         let toolbox = match existing {
             Some(index) => admitted.remove(index),
-            None => Arc::new(self.mounter.mount(manifest, &image)?),
+            None => Arc::new(self.mount(manifest, source, &image, fresh)?),
         };
         admitted.push(Arc::clone(&toolbox));
         if let Err(stuck) = self.retain_in(&mut admitted) {
@@ -140,7 +150,9 @@ impl<M: Mounter> Toolboxes<M> {
             .collect()
     }
 
-    /// Unmounts every admitted image; the host is shutting down.
+    /// Unmounts every admitted image and removes its published file; the
+    /// host is shutting down, and its next start stages each release it
+    /// admits again, so no image outlives the list that would let it go.
     ///
     /// # Errors
     /// An unmount was refused; the images not yet unmounted stay admitted.
@@ -153,6 +165,35 @@ impl<M: Mounter> Toolboxes<M> {
             }
         }
         Ok(())
+    }
+
+    /// Mounts the published `image`. One published before this admission
+    /// that is no longer the manifest's image, rotted, edited in place or
+    /// swapped for a link, is removed and staged again from `source`, once.
+    fn mount(
+        &self,
+        manifest: &Manifest,
+        source: &Path,
+        image: &Path,
+        fresh: bool,
+    ) -> Result<Toolbox> {
+        match self.mounter.mount(manifest, image) {
+            Err(refused)
+                if !fresh
+                    && refused
+                        .toolbox_refusal()
+                        .is_some_and(|refusal| REFUSALS_OF_THE_FILE.contains(&refusal)) =>
+            {
+                let digest = manifest.sha256();
+                let reason = refused.to_string();
+                let event = EVENT_RESTAGED;
+                tracing::warn!(digest, reason, event);
+                fs::remove_file(image)?;
+                stage::stage(manifest, source, &self.dir)?;
+                self.mounter.mount(manifest, image)
+            }
+            mounted => mounted,
+        }
     }
 
     fn retain_in(&self, admitted: &mut Vec<Arc<Toolbox>>) -> Result<usize> {

@@ -7,6 +7,7 @@
 //! release to this host: its architecture, this runner's version, and EROFS
 //! features every kernel this runner supports parses.
 
+use afd_validate::rules::charset;
 use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
 use base64::Engine as _;
 use garde::Validate as _;
@@ -38,6 +39,8 @@ pub(crate) const MANIFEST_MAX_BYTES: usize = 1024 * 1024;
 /// The longest architecture name, digest, feature or version a manifest may
 /// carry, and the most features and versions it may list.
 const FIELD_MAX: usize = 128;
+/// A SHA-256 in hexadecimal: sixty-four digits.
+const SHA256_HEX_LEN: usize = 64;
 const LIST_MAX: usize = 64;
 
 /// What admission holds a release to: the key it must be signed with, and the
@@ -159,8 +162,9 @@ pub struct Manifest {
     /// The image's length in bytes.
     #[garde(range(min = 1))]
     length: u64,
-    /// The image's SHA-256, lowercase hexadecimal.
-    #[garde(length(min = 1, max = FIELD_MAX))]
+    /// The image's SHA-256, lowercase hexadecimal. It names files under the
+    /// toolbox directory before the image is hashed, so nothing else is read.
+    #[garde(length(bytes, equal = SHA256_HEX_LEN), custom(charset(is_lower_hex)))]
     sha256: String,
     /// The EROFS features the image uses.
     #[garde(length(max = LIST_MAX), inner(length(min = 1, max = FIELD_MAX)))]
@@ -211,6 +215,11 @@ fn host_arch() -> &'static str {
         "aarch64" => "arm64",
         other => other,
     }
+}
+
+/// Whether `digit` is a lowercase hexadecimal digit.
+fn is_lower_hex(digit: char) -> bool {
+    digit.is_ascii_digit() || ('a'..='f').contains(&digit)
 }
 
 #[cfg(test)]
