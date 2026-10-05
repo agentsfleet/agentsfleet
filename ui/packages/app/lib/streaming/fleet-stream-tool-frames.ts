@@ -110,11 +110,20 @@ function byCallId(tools: FleetToolCall[], step: ToolStep, nowMs: number): FleetT
 }
 
 function byTiming(tools: FleetToolCall[], step: ToolStep, nowMs: number): FleetToolCall[] {
-  const open = tools.findIndex((t) => t.name === step.name && (!t.done || t.closedAtSettle === true));
-  const call = tools[open];
-  if (call !== undefined) return moved(tools, open, call, step);
+  const open = tools.findIndex((t) => t.name === step.name && !t.done);
+  const call = tools[open] ?? closedByTurn(tools, step);
+  if (call !== undefined) return moved(tools, tools.indexOf(call), call, step);
   if (!step.opens && restatesFinished(tools, step.name, step.ms, step.done)) return tools;
   return [...tools, called(step, nowMs)];
+}
+
+// A call its turn closed unheard still takes its own frames, but a frame that
+// could restate a call of that name which did report is that call's repeat.
+function closedByTurn(tools: FleetToolCall[], step: ToolStep): FleetToolCall | undefined {
+  const call = tools.find((t) => t.name === step.name && t.closedAtSettle === true);
+  if (call === undefined || step.opens) return call;
+  const reported = tools.filter((t) => t.closedAtSettle !== true);
+  return restatesFinished(reported, step.name, step.ms, step.done) ? undefined : call;
 }
 
 function called({ opens: _opens, ...call }: ToolStep, nowMs: number): FleetToolCall {

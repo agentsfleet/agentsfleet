@@ -74,6 +74,9 @@ export type Entry = {
   /** Settled events a backfill brought in without a body, whose saved row has
    * been read once for it. */
   bodyReads: Set<string>;
+  /** Settled events whose turn closed a call it never heard end, whose saved
+   * trace has been read once for it. */
+  traceReads: Set<string>;
   listeners: Set<Listener>;
   refCount: number;
   eventSource: EventSource | null;
@@ -131,6 +134,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
     replyHeard: new Map(),
     replyExists: new Set(),
     bodyReads: new Set(),
+    traceReads: new Set(),
     listeners: new Set(),
     refCount: 0,
     eventSource: null,

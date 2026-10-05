@@ -42,7 +42,13 @@ describe("runner tool copy", () => {
       [TOOL_NAME.BROWSER, { action: "scroll" }, "Browsing scroll", "Browsed scroll"],
       [TOOL_NAME.SCREENSHOT, {}, "Taking screenshot", "Took screenshot"],
       [TOOL_NAME.GIT, { args: ["status", "--short"] }, "Running git status --short", "Ran git status --short"],
-      [TOOL_NAME.WRITE_STDIN, { session_id: 3, chars: "y\n" }, "Writing to terminal 3: y", "Wrote to terminal 3: y"],
+      // A word that is not a string still shows, rather than vanishing from the command.
+      [TOOL_NAME.GIT, { args: ["log", "-n", 5] }, "Running git log -n 5", "Ran git log -n 5"],
+      [TOOL_NAME.GIT, { args: "push --force" }, 'Running ({"args":"push --force"})', 'Ran ({"args":"push --force"})'],
+      [TOOL_NAME.WRITE_STDIN, { session_id: 3, chars: "y\n" }, 'Writing to terminal 3: "y\\n"', 'Wrote to terminal 3: "y\\n"'],
+      // Enter and Ctrl-C, the keys a session mostly gets, drawn so they show.
+      [TOOL_NAME.WRITE_STDIN, { session_id: 3, chars: "\n" }, 'Writing to terminal 3: "\\n"', 'Wrote to terminal 3: "\\n"'],
+      [TOOL_NAME.WRITE_STDIN, { session_id: 3, chars: "\u0003" }, 'Writing to terminal 3: "\\u0003"', 'Wrote to terminal 3: "\\u0003"'],
       [TOOL_NAME.WRITE_STDIN, { session_id: 3 }, "Waiting for terminal 3", "Waited for terminal 3"],
       [TOOL_NAME.DELEGATE, { task: "Summarise the logs" }, "Delegating Summarise the logs", "Delegated Summarise the logs"],
       [TOOL_NAME.SPAWN, { task: "Watch the queue" }, "Starting agent Watch the queue", "Started agent Watch the queue"],
@@ -61,7 +67,7 @@ describe("runner tool copy", () => {
       [TOOL_NAME.SPAWN, { tools: [] }, "Starting agent", "Started agent"],
       [TOOL_NAME.BROWSER, { action: "text", selector: "#main" }, "Reading #main", "Read #main"],
       [TOOL_NAME.BROWSER, { selector: "#x" }, "Browsing #x", "Browsed #x"],
-      [TOOL_NAME.WRITE_STDIN, { chars: "q" }, "Writing to terminal: q", "Wrote to terminal: q"],
+      [TOOL_NAME.WRITE_STDIN, { chars: "q" }, 'Writing to terminal: "q"', 'Wrote to terminal: "q"'],
       [TOOL_NAME.SCHEDULE, { message: "Check" }, "Scheduling Check", "Scheduled Check"],
       [TOOL_NAME.CRON_ADD, { cron: "0 9 * * *" }, "Adding schedule 0 9 * * *", "Added schedule 0 9 * * *"],
     ];
@@ -99,6 +105,21 @@ describe("runner tool copy", () => {
       ],
     });
     expect(toolCopy(TOOL_NAME.UPDATE_PLAN, { plan: "x" }).body).toEqual({ kind: TOOL_BODY.PLAN, explanation: null, steps: [] });
+    // A step or explanation at the leaf cap may be cut, and is marked so.
+    const long = "s".repeat(ARGS_LEAF_MAX_BYTES);
+    expect(toolCopy(TOOL_NAME.UPDATE_PLAN, { explanation: long, plan: [{ step: long, status: "pending" }] }).body).toEqual({
+      kind: TOOL_BODY.PLAN, explanation: `${long}${CLIP_MARK}`, steps: [{ step: `${long}${CLIP_MARK}`, status: PLAN_STATUS.PENDING }],
+    });
+  });
+
+  it("should mark each git word the runner may have cut, and no other", () => {
+    const paths = Array.from({ length: 30 }, (_, at) => `src/file-${at}.ts`);
+    // Thirty short words, over the cap only once joined: none was cut.
+    expect(toolCopy(TOOL_NAME.GIT, { args: ["add", ...paths] }).target).toBe(["git", "add", ...paths].join(" "));
+    const cut = "m".repeat(ARGS_LEAF_MAX_BYTES);
+    expect(toolCopy(TOOL_NAME.GIT, { args: ["commit", "-m", cut, "--quiet"] }).target).toBe(`git commit -m ${cut}${CLIP_MARK} --quiet`);
+    // Keys the runner may have cut carry the mark after their quotes.
+    expect(header(TOOL_NAME.WRITE_STDIN, { chars: cut }, CELL_STATE.SUCCEEDED)).toBe(`Wrote to terminal: "${cut}"${CLIP_MARK}`);
   });
 
   it("test_patch_copy_reads_its_files_and_lines", () => {
@@ -120,6 +141,12 @@ describe("runner tool copy", () => {
       verbs: { running: "Editing", done: "Edited" }, target: `a.md${CLIP_MARK}`, body: { kind: TOOL_BODY.CLIPPED_EDIT },
     });
     expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: "x".repeat(ARGS_LEAF_MAX_BYTES) }).target).toBe("");
-    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { other: 1 })).toMatchObject({ target: "", body: { kind: TOOL_BODY.PATCH } });
+    // No patch text, or none in the patch grammar: the arguments as they came,
+    // never "+0 −0" for a change nobody saw.
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { input: "*** Begin Patch" })).toEqual({
+      verbs: { running: "Editing", done: "Edited" }, target: '({"input":"*** Begin Patch"})', body: { kind: TOOL_BODY.OUTPUT },
+    });
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: 7 }).target).toBe('({"patch":7})');
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: "just words" })).toMatchObject({ target: '({"patch":"just words"})', body: { kind: TOOL_BODY.OUTPUT } });
   });
 });

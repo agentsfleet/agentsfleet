@@ -7,7 +7,7 @@ import {
   type FleetEvent,
   type FleetToolCall,
 } from "@/lib/streaming/fleet-stream-row";
-import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
+import { TOOL_CALL_STATUS, type ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 
 // A reply row as assistant-ui models it: an assistant message whose status is
 // the run's, and whose content is the reasoning, tool-call and text parts the
@@ -134,6 +134,11 @@ type PartFields = { result: ToolResult | undefined; timing: { startedAt: number;
 // holds; a WeakMap lets a replaced call's entry go with it.
 const PART_FIELDS = new WeakMap<FleetToolCall, PartFields>();
 
+// What a call that named no arguments was made with. One object for all of
+// them: left off, the library mints a fresh `{}` for the part each time the
+// reply is converted, and a fresh object breaks every memo that holds it.
+const NO_ARGS: ToolArgs = Object.freeze({});
+
 function toolCallPart(eventId: string, tool: FleetToolCall, index: number): ReplyPart {
   const { result, timing } = partFields(tool);
   return {
@@ -142,9 +147,7 @@ function toolCallPart(eventId: string, tool: FleetToolCall, index: number): Repl
     // the live list keeps each call's identity even where positions differ.
     toolCallId: `${eventId}${TOOL_CALL_ID_INFIX}${tool.callId ?? index}`,
     toolName: tool.name,
-    // Absent arguments read as `{}` in the library, which is what a call
-    // that named none was made with.
-    ...(tool.args === undefined ? {} : { args: tool.args }),
+    args: tool.args ?? NO_ARGS,
     ...(result === undefined ? {} : { result, isError: tool.status !== undefined && ERROR_STATUSES.has(tool.status) }),
     timing,
   };

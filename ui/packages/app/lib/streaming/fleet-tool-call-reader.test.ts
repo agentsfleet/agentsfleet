@@ -7,6 +7,7 @@ const URL_FOR_AT = "/live/v1/workspaces/ws%201/fleets/flt_1/events/evt_1/tool-ca
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function answer(response: Response | Promise<Response>) {
@@ -68,6 +69,5 @@ describe("readToolCall", () => {
     expect(timeoutSpy).toHaveBeenCalledWith(TOOL_CALL_READ_TIMEOUT_MS);
     timer.abort(new DOMException("timed out", "TimeoutError"));
     expect(await hung).toEqual({ kind: TOOL_CALL_READ.FAILED });
-    timeoutSpy.mockRestore();
   });
 });

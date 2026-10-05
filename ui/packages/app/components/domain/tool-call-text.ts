@@ -16,11 +16,14 @@ const UTF8_MAX_CHAR_BYTES = 4;
 const WORKSPACE_ROOT = "/workspace/";
 const PATH_ARG = "path";
 const LINE_BREAK = /\r?\n/;
-// Terminal control sequences a command's output carries: CSI (colour, cursor),
-// OSC (titles, links) ended by BEL or ST, and lone two-byte escapes (keypad
-// modes `=` and `>` among them).
-const TERMINAL_CONTROL = /\u001B\[[0-?]*[ -/]*[@-~]|\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)|\u001B[=>@-Z\\-_]/g;
+// Terminal control sequences a command's output carries: CSI (colour, cursor);
+// the string sequences OSC (titles, links), DCS, APC and PM, ended by BEL or
+// ST, or by the line when the output was cut inside one; and every other
+// escape, its intermediates first (charset `ESC ( B`, cursor save `ESC 7`).
+const TERMINAL_CONTROL = /\u001B\[[0-?]*[ -/]*[@-~]|\u001B[\]PX^_][^\u0007\u001B\n]*(?:\u0007|\u001B\\)?|\u001B[ -/]*[0-~]/g;
 const CARRIAGE_RETURN = "\r";
+// A line ending in a return leaves its text on screen; only text after one overwrites.
+const TRAILING_RETURNS = /\r+$/;
 const UTF8 = new TextEncoder();
 const COMPACT_ARGS_MAX_CHARS = 120;
 
@@ -49,7 +52,12 @@ export function linesOf(text: string): string[] {
 /** Output as a terminal would have shown it: control sequences dropped, and a
  * line a carriage return overwrote (a progress bar) left at its last state. */
 export function outputLines(text: string): string[] {
-  return linesOf(text.replace(TERMINAL_CONTROL, "")).map((line) => line.slice(line.lastIndexOf(CARRIAGE_RETURN) + 1));
+  return linesOf(text.replace(TERMINAL_CONTROL, "")).map(lastState);
+}
+
+function lastState(line: string): string {
+  const shown = line.replace(TRAILING_RETURNS, "");
+  return shown.slice(shown.lastIndexOf(CARRIAGE_RETURN) + 1);
 }
 
 /** A string argument, or undefined when it is absent or not a string. */

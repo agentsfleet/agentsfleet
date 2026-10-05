@@ -229,6 +229,25 @@ describe("FleetThread — tool cells", () => {
     }
   });
 
+  it("should not reopen show all by itself when its turn runs and settles again", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    try {
+      const tool = call({ name: TOOL_NAME.HTTP_REQUEST, args: { url: "https://x" }, callId: CALL_ID, outputHead: "1\n2\n3\n4", outputLineCount: 4 });
+      const turn = (status: FleetEventStatus) => ev({ id: "evt_tools", role: "user", actor: "operator", text: "Go", status, tools: [tool] });
+      const view = renderCalls([tool]);
+      fireEvent.click(screen.getByRole("button", { name: SHOW_ALL_LABEL }));
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      mockStream([turn(RECEIVED)]);
+      view.rerender(threadElement());
+      expect(screen.queryByRole("dialog")).toBeNull();
+      mockStream([turn(PROCESSED)]);
+      view.rerender(threadElement());
+      expect(screen.queryByRole("dialog")).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("test_reload_shows_saved_tool_rows", () => {
     // One turn's calls, as the runner saved them at settle.
     const saved: SavedToolCall[] = [

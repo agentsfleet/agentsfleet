@@ -5,6 +5,7 @@ import { createEntry } from "./fleet-stream-entry";
 import { applyFinalReply, applyFinalReplyText, applyReplyDelta } from "./fleet-stream-reply-frames";
 import { rowToEvent, type FleetEvent } from "./fleet-stream-row";
 import { dispatchReplyFrame, setEventDetailReader, type EventDetailReader } from "./fleet-stream-reply-registry";
+import { refreshSavedTrace } from "./fleet-stream-detail-recovery";
 import { setupRegistryTests, row, sourceAt, WS, Z_A } from "@/tests/helpers/fleet-stream-registry-fixtures";
 import { setupBackfillTests, fetchSpy, flushBackfill, pageWith, reconnect, MISSED_AT_MS, SEED_AT_MS } from "@/tests/helpers/fleet-stream-backfill-fixtures";
 import { failedAction, fleetActionsMock, getFleetEventActionMock, resetFleetEventAction } from "@/tests/helpers/fleet-stream-reply-action-mock";
@@ -75,6 +76,40 @@ describe("fleet stream reply delivery", () => {
     expect(events[0]?.tools?.[0]).toMatchObject({ status: "interrupted", closedAtSettle: true });
     expect(events[0]?.reply).toBe("Done.");
     expect(getFleetEventActionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("should read the saved trace once per event, however often its completion repeats", async () => {
+    vi.useRealTimers();
+    const entry = createEntry(WS, []);
+    let events: FleetEvent[] = [{ ...rowToEvent(row({ event_id: "evt_tools", status: "received" })), tools: [{ name: "http_request", callId: "f1:0", startedAtMs: 1, ms: null, done: false }] }];
+    const apply = (next: (prev: FleetEvent[]) => FleetEvent[]) => { events = next(events); };
+    // A row with no trace keeps the guess, so every repeat still finds a call closed unheard.
+    getFleetEventActionMock.mockResolvedValue({ ok: true, data: row({ event_id: "evt_tools", status: "processed", tool_calls: null }) });
+    const complete = { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "evt_tools", status: "processed", final_reply: "Done." } as const;
+    dispatchReplyFrame(entry, Z_A, complete, apply, () => true);
+    dispatchReplyFrame(entry, Z_A, complete, apply, () => true);
+    await vi.waitFor(() => expect(getFleetEventActionMock).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    dispatchReplyFrame(entry, Z_A, complete, apply, () => true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events[0]?.tools?.[0]).toMatchObject({ closedAtSettle: true });
+    expect(getFleetEventActionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("should contain a refresh whose update throws, leaving no rejection unhandled", async () => {
+    vi.useRealTimers();
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const read: EventDetailReader = async () => ({ ok: true, data: row({ event_id: "evt_tools", status: "processed" }) });
+      const apply = vi.fn(() => { throw new Error("the update failed"); });
+      refreshSavedTrace(createEntry(WS, []), Z_A, "evt_tools", apply, () => true, read);
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
   });
 
   it("should read nothing without a reader, and apply nothing once the entry is gone", async () => {

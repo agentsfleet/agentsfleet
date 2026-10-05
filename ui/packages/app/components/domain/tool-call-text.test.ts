@@ -47,6 +47,24 @@ describe("tool-call-text", () => {
     expect(outputLines("10%\r50%\r100% done\nnext")).toEqual(["100% done", "next"]);
     // CRLF still ends a line rather than overwriting it.
     expect(outputLines("a\r\nb\r\n")).toEqual(["a", "b"]);
+    // A return that ends the line overwrites nothing: its text stays on screen.
+    expect(outputLines("progress 50%\r")).toEqual(["progress 50%"]);
+    expect(outputLines("a\r\r\n")).toEqual(["a"]);
+  });
+
+  it("should drop every kind of escape a terminal swallows, and keep the text around it", () => {
+    const E = "\u001B";
+    const cases: ReadonlyArray<readonly [string, string[]]> = [
+      [`${E}(Bok`, ["ok"]], // charset, from `tput sgr0`
+      [`${E}7saved${E}8`, ["saved"]], // cursor save and restore
+      [`${E}]0;title${E}\\after`, ["after"]], // OSC ended by ST
+      [`${E}]0;cut title\nnext`, ["", "next"]], // OSC the output cut before its end
+      [`${E}_Gf=100;AAAA${E}\\img`, ["img"]], // APC (kitty graphics)
+      [`${E}Pq#0;2${E}\\x`, ["x"]], // DCS (sixel)
+      [`${E}>keys`, ["keys"]], // keypad mode
+      ["plain [x] (y) text", ["plain [x] (y) text"]],
+    ];
+    for (const [input, lines] of cases) expect([JSON.stringify(input), outputLines(input)]).toEqual([JSON.stringify(input), lines]);
   });
 
   it("takes the first spelling present, and ids as strings or numbers", () => {

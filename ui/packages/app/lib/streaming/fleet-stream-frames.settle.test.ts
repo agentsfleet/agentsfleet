@@ -79,6 +79,26 @@ describe("settling a turn's tool calls", () => {
     expect(paired[0]?.tools?.[0]?.closedAtSettle).toBeUndefined();
   });
 
+  it("should keep a repeat of a reported call off the call its turn closed", () => {
+    // No call ids: the first call reported, the second was still open when the
+    // turn ended. Tool frames can repeat, so the first one's completion may land again.
+    const first = openCall({ callId: undefined, ms: 100, done: true, status: TOOL_CALL_STATUS.SUCCEEDED });
+    const live = [evt({ id: "e1", status: "received", tools: [first, openCall({ callId: undefined })] })];
+    const completed = applyLiveFrame(live, { kind: FRAME_KIND.EVENT_COMPLETE, event_id: "e1", status: "processed" }, COMPLETED_AT);
+    expect(completed[0]?.tools?.[1]).toMatchObject({ status: TOOL_CALL_STATUS.INTERRUPTED, closedAtSettle: true });
+    // Its figure restates the first call, so it is the first call's repeat.
+    expect(applyLiveFrame(completed, completedWith(READ, 100, { status: TOOL_CALL_STATUS.SUCCEEDED }), REPEAT_AT)).toBe(completed);
+    // One past that figure is the second call's own, and lands on it.
+    const late = applyLiveFrame(completed, completedWith(READ, REQUEST_MS, { status: TOOL_CALL_STATUS.SUCCEEDED }), REPEAT_AT);
+    expect(late[0]?.tools).toEqual([first, openCall({ callId: undefined, ms: REQUEST_MS, done: true, status: TOOL_CALL_STATUS.SUCCEEDED })]);
+    // A repeated start lands its arguments on the closed call, opening no other.
+    const started = parseLiveFrame(JSON.stringify({ kind: FRAME_KIND.TOOL_CALL_STARTED, event_id: "e1", name: READ, args_redacted: { path: PATH_A } }));
+    if (started === null) throw new Error("the parser refused a frame it should let through");
+    const restarted = applyLiveFrame(completed, started, REPEAT_AT);
+    expect(restarted[0]?.tools).toHaveLength(2);
+    expect(restarted[0]?.tools?.[1]).toMatchObject({ args: { path: PATH_A }, closedAtSettle: true });
+  });
+
   it("test_settle_interrupts_open_live_calls", () => {
     const live = [evt({ id: "e1", status: "received", tools: [openCall({ ms: 300 }), openCall({ callId: CALL_TWO, ms: 9, done: true })] })];
     const settled = mergeBackfill(live, [row({ event_id: "e1", tool_calls: null })]);

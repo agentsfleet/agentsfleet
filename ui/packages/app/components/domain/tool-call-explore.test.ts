@@ -36,6 +36,8 @@ describe("exploreLines", () => {
     const [line] = exploreLines([read("/workspace/src/a/index.ts"), read("/workspace/src/b/index.ts"), read("/workspace/README.md")]);
     expect(line?.targets).toEqual(["a/index.ts", "b/index.ts", "README.md"]);
     expect(distinctNames(["x/y/z.ts", "w/y/z.ts", "z.ts"])).toEqual(["x/y/z.ts", "w/y/z.ts", "z.ts"]);
+    // A directory's trailing slash keeps its name.
+    expect(distinctNames(["src/", "lib/src/"])).toEqual(["src", "lib/src"]);
   });
 
   it("gives a failed call its first output line, and a read with no arguments says so", () => {
@@ -44,12 +46,35 @@ describe("exploreLines", () => {
       { name: TOOL_NAME.FILE_READ, args: undefined, failed: false },
       { ...read("gone.md", true) },
       { ...read("blank.md", true), output: "" },
+      { ...read("spaced.md", true), output: "\n  \nnot found\n" },
     ]);
     expect(lines.map((line) => [line.targets, line.error])).toEqual([
       [["secret.md"], "path escapes the workspace"],
       [[ARGS_NOT_RECORDED], null],
       [["gone.md"], null],
       [["blank.md"], null],
+      // Blank lines say nothing: the first line with words is the error.
+      [["spaced.md"], "not found"],
+    ]);
+  });
+
+  it("should show arguments it cannot name as they came, never as not recorded", () => {
+    const lines = exploreLines([
+      read("a.md"),
+      { name: TOOL_NAME.FILE_READ, args: { file: "src/b.md" }, failed: false },
+      read("c.md"),
+      { name: TOOL_NAME.FILE_READ, args: { path: 7 }, failed: false },
+      { name: TOOL_NAME.MEMORY_RECALL, args: { q: "deploy" }, failed: false },
+      { name: TOOL_NAME.WEB_FETCH, args: { href: "https://x.test" }, failed: false },
+    ]);
+    // An unnamed read is not a path: it merges with no read and is not shortened.
+    expect(lines.map((line) => [line.verb, line.targets])).toEqual([
+      [EXPLORE_VERB.READ, ["a.md"]],
+      [EXPLORE_VERB.READ, ['({"file":"src/b.md"})']],
+      [EXPLORE_VERB.READ, ["c.md"]],
+      [EXPLORE_VERB.READ, ['({"path":7})']],
+      [EXPLORE_VERB.SEARCH, ['({"q":"deploy"})']],
+      [EXPLORE_VERB.FETCH, ['({"href":"https://x.test"})']],
     ]);
   });
 

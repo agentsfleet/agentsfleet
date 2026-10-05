@@ -53,7 +53,7 @@ describe("toReplyMessage", () => {
         timing: { startedAt: STARTED, completedAt: STARTED + DONE_AFTER_MS },
       },
       // A running call that named no arguments carries none, and no result.
-      { type: "tool-call", toolCallId: "e1:reply:tool:1", toolName: "read_file", timing: { startedAt: STARTED + DONE_AFTER_MS } },
+      { type: "tool-call", toolCallId: "e1:reply:tool:1", toolName: "read_file", args: {}, timing: { startedAt: STARTED + DONE_AFTER_MS } },
       { type: "text", text: "Opened the PR." },
     ]);
     // The row's custom bag rides through; the span joins it.
@@ -70,7 +70,7 @@ describe("toReplyMessage", () => {
     // missing completedAt as "duration unknown", so no clock claims a time.
     const [part] = replyParts(evt({ id: "e1:reply", tools: [{ name: "late", startedAtMs: STARTED, ms: null, done: true }] }));
     expect(part).toEqual({
-      type: "tool-call", toolCallId: "e1:reply:tool:0", toolName: "late",
+      type: "tool-call", toolCallId: "e1:reply:tool:0", toolName: "late", args: {},
       result: {}, isError: false, timing: { startedAt: STARTED },
     });
   });
@@ -86,6 +86,22 @@ describe("toReplyMessage", () => {
     // A call that changed is a new object, so it is drawn again.
     const changed = callOf(evt({ id: "e1:reply", tools: [{ ...tools[0]!, status: FAILED }] }));
     expect(changed?.type === "tool-call" && first?.type === "tool-call" && changed.result !== first.result).toBe(true);
+  });
+
+  it("should hand every call that named no arguments one empty object", () => {
+    // Left off, the library mints a fresh `{}` per conversion, and a fresh
+    // object misses the memo of every cell and fold that holds it.
+    const argsOf = (event: FleetEvent) => replyParts(event).flatMap((part) => (part.type === "tool-call" ? [part.args] : []));
+    const tools = [
+      { name: "cron_list", startedAtMs: STARTED, ms: null, done: false },
+      { name: "fly_apps", startedAtMs: STARTED, ms: null, done: false },
+    ];
+    const [first, sibling] = argsOf(evt({ id: "e1:reply", reply: "Step 1", tools }));
+    const [next] = argsOf(evt({ id: "e1:reply", reply: "Step 1 and 2", tools }));
+    expect(first).toEqual({});
+    expect([next, sibling]).toEqual([first, first]);
+    expect(next === first && sibling === first).toBe(true);
+    expect(Object.isFrozen(first)).toBe(true);
   });
 
   it("test_failed_and_interrupted_calls_mark_error", () => {
