@@ -283,9 +283,10 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   model made up never leaves the host.
 - **A fixed span budget** (`rustd/crates/afr_telemetry/src/budget.rs`): at
   most `MAX_LEASE_SPANS` (256) spans per lease, its root included, and
-  `RUNNER_SPANS_PER_SECOND` (128) per monotonic second across the runner, roots
-  included. A lease's root is never refused: a full second keeps it and charges
-  it all the same. A span started under a shed span is shed too, so no
+  `RUNNER_SPANS_PER_SECOND` (128) per monotonic second across the runner. A
+  lease's root is never refused: it is charged to its second while the second
+  has room, and kept uncharged in a second already spent, so a second's
+  exports pass 128 only by the roots of leases started after it was spent. A span started under a shed span is shed too, so no
   exported span points at a parent the collector never received. The budget is
   a fixed table of lease slots claimed by compare-and-swap and one packed word
   for the second, so admitting a span never waits on another worker. A shed
@@ -378,7 +379,7 @@ the allowlist proof.
 | runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | OTLP push (streamed per-runner families) | 4096 runner slots; overflow → `_other` |
 | runner own metrics | the runner (`afr_telemetry`), for facts no verb carries | OTLP → runner collector → backends | closed label sets in `docs/metrics.runner.census.tsv`; no tenant, fleet, lease or event identifier |
 | runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
-| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per lease and 128 per second, roots included and never refused, the rest counted; joins `fleet.delivery` by the `event_id` attribute, and the lease identifier tells a redelivered event's runs apart |
+| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per lease, root included, and 128 per second, roots never refused, the rest counted; joins `fleet.delivery` by the `event_id` attribute, and the lease identifier tells a redelivered event's runs apart |
 | control-plane logs | structured logger | stderr + OTLP to Loki | 2047 queued records; enqueue never blocks |
 | control-plane metrics | runtime + cost families | one OTLP push; no pull endpoint | fixed labels or explicit caps |
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | route policy keeps output under the budget |

@@ -255,6 +255,10 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
         .unwrap()
         .expect("an endpoint is configured");
     let telemetry = Telemetry::install(&endpoint).expect("the runner's pipeline builds");
+    assert!(
+        telemetry.recording(),
+        "the only install in this test binary is the process recorder"
+    );
     let _global = tracing::subscriber::set_global_default(tracing_subscriber::registry());
     let subscriber = tracing_subscriber::registry().with(telemetry.layer());
     let guard = tracing::subscriber::set_default(subscriber);

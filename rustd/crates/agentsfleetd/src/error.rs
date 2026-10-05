@@ -158,7 +158,7 @@ pub enum BootFailure {
     /// daemon that served on through it would export nothing and look exactly
     /// like a collector that is down.
     #[error("agentsfleetd cannot boot: the telemetry exporter would not build")]
-    Exporter(afd_otlp::Error),
+    Exporter(#[source] afd_otlp::Error),
     /// The metric contract and the code disagree.
     ///
     /// A family a producer names and the census does not declare, a kind or a
@@ -295,7 +295,12 @@ mod tests {
             knob: afd_otlp::OTEL_ENDPOINT_KNOB,
             why: "a sentence",
         });
-        assert!(matches!(BootFailure::from(knob), BootFailure::Exporter(_)));
+        let exporter = BootFailure::from(knob);
+        assert!(matches!(exporter, BootFailure::Exporter(_)));
+        assert!(
+            std::error::Error::source(&exporter).is_some(),
+            "the transport's reason is the cause a boot log walks to"
+        );
         Ok(())
     }
 

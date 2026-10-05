@@ -178,8 +178,9 @@ fn test_span_budget_refills_each_second() {
     assert_eq!(pipeline.kept(), RUNNER_SPANS_PER_SECOND as usize + 1);
 }
 
-/// A root is charged to its second and never refused: a second already
-/// spent keeps the next lease's root, and that root's charge sheds a child.
+/// A root is charged to its second while the second has room, and never
+/// refused: the first root spends a one-span second and sheds its child, and
+/// the next root, in the spent second, is kept uncharged.
 #[test]
 fn a_root_is_charged_to_its_second_and_never_refused() {
     let pipeline = Pipeline::new(Limits {
@@ -440,8 +441,9 @@ fn traces_differing_only_in_their_high_half_get_different_keys() {
 
 /// A runner at its per-second budget fills less of the pinned span queue than
 /// the queue holds before the next send, so against a collector that keeps up
-/// the queue never drops a span the budget admitted. Roots are inside the
-/// budget, which is what lets this one product stand for the whole runner.
+/// the queue never drops a span the budget admitted. Roots started in a spent
+/// second are outside this product; one per lease, they are bounded by the
+/// rate leases start at.
 #[test]
 fn the_per_second_budget_fits_the_pinned_queue() {
     let sends_every = usize::try_from(afd_otlp::SPAN_SEND_EVERY.as_secs()).unwrap_or(usize::MAX);
