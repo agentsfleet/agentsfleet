@@ -13,12 +13,15 @@
 //! # Why the root is always kept
 //!
 //! Each lease is its own trace, joined to the daemon's `fleet.delivery` span by
-//! its `agentsfleet.lease.id` and `agentsfleet.event.id` attributes. A trace
+//! its `agentsfleet.event.id`; its `agentsfleet.lease.id` tells a redelivered
+//! event's runs apart. A trace
 //! whose root was shed is a pile of children an operator cannot find, so the
 //! root spends one of its lease's spans and is never refused. It is charged to
-//! the second all the same, so the children that second admits make room for
-//! it. What bounds roots is the rate leases start at, not this budget: one per
-//! lease, and a runner holds at most `MAX_WORKERS` leases at a time.
+//! its second when that second has room, so the children it admits make room
+//! for it; in a second already spent it is kept uncharged. What bounds roots is
+//! the rate leases start at, not this budget: one per lease, and a runner holds
+//! at most `MAX_WORKERS` leases at a time — so a second's exports can pass the
+//! budget by the roots started after it was spent.
 //!
 //! # Why a shed span's children are shed
 //!
@@ -60,7 +63,9 @@ mod tests;
 /// on one tool reaches it, and the rest of that lease is counted, not sent.
 pub const MAX_LEASE_SPANS: u32 = 256;
 
-/// Spans the whole runner may export per monotonic second, roots included.
+/// Spans the whole runner may export per monotonic second: children, and the
+/// roots that start while the second has room. A root in a spent second is
+/// kept anyway, so this bounds everything but roots.
 ///
 /// The batch processor holds [`afd_otlp::SPAN_QUEUE`] spans and sends every
 /// [`afd_otlp::SPAN_SEND_EVERY`], both pinned, so 128 a second fills at most
@@ -227,9 +232,10 @@ impl core::fmt::Debug for Budget {
 
 impl Budget {
     /// A lease's root span started: its slot is claimed, its root counted
-    /// against the lease and charged to the second. A full table leaves the
-    /// root kept and its children untracked, which sheds them; a full second
-    /// keeps the root anyway, because a root is never refused.
+    /// against the lease, and charged to the second when the second has room.
+    /// A full table leaves the root kept and its children untracked, which
+    /// sheds them; a spent second keeps the root uncharged, because a root is
+    /// never refused.
     fn open(&self, trace: TraceId) {
         let _claimed = self.leases.open(key(trace));
         let _charged = self

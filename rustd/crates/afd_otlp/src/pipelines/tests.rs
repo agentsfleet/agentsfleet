@@ -208,8 +208,10 @@ fn the_observer_sees_exactly_what_the_sampler_keeps() {
     );
 }
 
-/// The span queue is the pinned one, whatever the environment says: the
-/// pinned values are the SDK's own defaults, so a deployment sees no change.
+/// pin test: the pinned span-queue values are the SDK's own defaults, so
+/// pinning them changed nothing a deployment sees. That `tracer()` builds its
+/// processor from these constants rather than from `OTEL_BSP_*` is read in
+/// its body; this test keeps the numbers from drifting off the defaults.
 #[test]
 fn the_span_queue_is_pinned_at_the_sdks_defaults() {
     assert_eq!(SPAN_QUEUE, 2048);

@@ -156,16 +156,22 @@ impl Telemetry {
     /// hold a runner's exit, and what was still queued is lost either way.
     pub fn close_within(self, budget: Duration) {
         let (done, finished) = mpsc::channel();
-        // A spawn that fails drops the closure, and the pipelines in it shut
-        // themselves down on this thread through their own `Drop`: nothing
-        // is waited for, and nothing is reported lost.
+        let exports = Arc::new(self.exports);
+        let closing = Arc::clone(&exports);
         let spawned = std::thread::Builder::new()
             .name(CLOSING_THREAD.into())
             .spawn(move || {
-                self.exports.shutdown();
+                closing.shutdown();
                 let _waiting = done.send(());
             });
-        if spawned.is_ok() && finished.recv_timeout(budget).is_err() {
+        if spawned.is_err() {
+            // No thread to bound it on: shut down here, unbounded, rather
+            // than leave the span layer's provider clone holding what is
+            // buffered past the process's exit.
+            exports.shutdown();
+            return;
+        }
+        if finished.recv_timeout(budget).is_err() {
             let budget_ms = budget.as_millis();
             let event = EVENT_CLOSE_TIMED_OUT;
             tracing::warn!(budget_ms, event, "some telemetry was not delivered");

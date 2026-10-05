@@ -69,6 +69,9 @@ fn a_compression_knob_refuses_naming_itself() {
         for pairs in [
             vec![(knob, "gzip")],
             vec![(knob, "gzip"), (OTEL_ENDPOINT_KNOB, COLLECTOR)],
+            // A blank value, as `Environment=KNOB=` writes it: the exporter
+            // parses it and refuses to build, naming nothing.
+            vec![(knob, ""), (OTEL_ENDPOINT_KNOB, COLLECTOR)],
         ] {
             let Err(refused) = Endpoint::from_env(&MapEnv::from_pairs(pairs)) else {
                 unreachable!("`{knob}` must refuse `run`");

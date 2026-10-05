@@ -23,13 +23,13 @@ use crate::test_support::{
 };
 use crate::turns::FleetTurns;
 
-/// One answer the test daemon gives before its defaults.
 /// The metered fields a renewal and a report carry, by their wire names.
 const TOKENS: &str = "tokens";
 const INPUT_TOKENS: &str = "input_tokens";
 const CACHED_INPUT_TOKENS: &str = "cached_input_tokens";
 const OUTPUT_TOKENS: &str = "output_tokens";
 
+/// One answer the test daemon gives before its defaults.
 type Special = fn(&Call) -> Option<Answer>;
 
 fn rig(special: Special, engine: FakeEngine, behaviour: Behaviour) -> Rig {

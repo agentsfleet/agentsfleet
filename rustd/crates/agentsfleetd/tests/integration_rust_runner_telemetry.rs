@@ -134,6 +134,10 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
         .expect("every knob reads")
         .expect("an endpoint is configured");
     let telemetry = Telemetry::install(&endpoint).expect("the runner's pipeline builds");
+    assert!(
+        telemetry.recording(),
+        "the only install in this test binary is the process recorder"
+    );
     let layer = telemetry.layer();
     let (model, _transcript) = FakeModel::new(vec![
         vec![call(

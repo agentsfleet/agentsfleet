@@ -37,7 +37,9 @@ impl Endpoint {
     /// A header knob is refused even when the endpoint is unset: a runner
     /// someone tried to hand a credential to is misconfigured whether or not
     /// it would have exported. A compression knob is refused too, because the
-    /// exporter would refuse to build on it without naming it.
+    /// exporter would refuse to build on it without naming it — blank
+    /// included: the exporter parses a blank compression value and refuses
+    /// it, where a blank header knob adds no header.
     ///
     /// # Errors
     /// A header knob or a user in the endpoint, naming the knob; a
@@ -47,7 +49,10 @@ impl Endpoint {
         if let Some(knob) = first_set(env, &HEADER_KNOBS) {
             return Err(refused(knob, NO_CREDENTIAL).into());
         }
-        if let Some(knob) = first_set(env, &COMPRESSION_KNOBS) {
+        if let Some(knob) = COMPRESSION_KNOBS
+            .into_iter()
+            .find(|knob| env.get(knob).is_some())
+        {
             return Err(refused(knob, NO_COMPRESSION).into());
         }
         let Some(config) = OtlpConfig::from_env(env)? else {
