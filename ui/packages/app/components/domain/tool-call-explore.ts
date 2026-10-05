@@ -1,7 +1,7 @@
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "./tool-call-shape";
-import { clipMarked, outputLines, pathArg, scalarArg, stringArg } from "./tool-call-text";
+import { clipMarked, compactArgs, outputLines, pathArg, scalarArg, stringArg } from "./tool-call-text";
 
 // The calls Codex folds under one "Explored" cell: the ones that look and
 // change nothing. One table says both which tools fold and how each reads, so
@@ -9,7 +9,13 @@ import { clipMarked, outputLines, pathArg, scalarArg, stringArg } from "./tool-c
 
 export const EXPLORE_VERB = { READ: "Read", SEARCH: "Search", LIST: "List", FETCH: "Fetch" } as const;
 
-type LineCopy = { verb: (typeof EXPLORE_VERB)[keyof typeof EXPLORE_VERB]; target: string; scope: string | null };
+type LineCopy = {
+  verb: (typeof EXPLORE_VERB)[keyof typeof EXPLORE_VERB];
+  target: string;
+  scope: string | null;
+  /** The target is a file's path: it merges with the reads beside it and is shortened among them. */
+  path?: true;
+};
 
 /** A folded call: what it was, and for one that failed, its output. */
 export type ExploreCall = { name: string; args: ToolArgs | undefined; failed: boolean; output?: string };
@@ -19,7 +25,7 @@ export type ExploreCall = { name: string; args: ToolArgs | undefined; failed: bo
  * where. A read names each file by the shortest path that tells it from the
  * other files on its line; a failed call carries its output's first line.
  */
-export type ExploreLine = Omit<LineCopy, "target"> & { targets: readonly string[]; failed: boolean; error: string | null };
+export type ExploreLine = Omit<LineCopy, "target" | "path"> & { targets: readonly string[]; failed: boolean; error: string | null };
 
 const ARG = { QUERY: "query", CATEGORY: "category", URL: "url" } as const;
 const MEMORY_SCOPE = "in memory";
@@ -33,7 +39,8 @@ const SCHEDULE_ID = ["schedule_id", "id", "job_id"] as const;
 const PATH_SEPARATOR = "/";
 
 // A Map, not an object literal: a tool named `constructor` must miss.
-const EXPLORE_LINE: ReadonlyMap<string, (args: ToolArgs | undefined) => LineCopy> = new Map([
+type LineReader = (args: ToolArgs | undefined) => LineCopy;
+const EXPLORE_LINE: ReadonlyMap<string, LineReader> = new Map<string, LineReader>([
   [TOOL_NAME.FILE_READ, readLine],
   [TOOL_NAME.FILE_READ_HASHED, readLine],
   [TOOL_NAME.MEMORY_RECALL, searchLine],
@@ -54,28 +61,26 @@ export const EXPLORE_TOOLS: readonly string[] = [...EXPLORE_LINE.keys()];
  * none, though the group map never sends one here.
  */
 export function exploreLines(calls: readonly ExploreCall[]): ExploreLine[] {
-  const lines: (Omit<ExploreLine, "targets"> & { paths: Set<string> })[] = [];
+  const lines: (Omit<ExploreLine, "targets"> & { paths: Set<string>; path: boolean })[] = [];
   for (const { name, args, failed, output } of calls) {
     const copy = EXPLORE_LINE.get(name)?.(args);
     if (copy === undefined) continue;
     const last = lines.at(-1);
-    if (copy.verb === EXPLORE_VERB.READ && !failed && last?.verb === EXPLORE_VERB.READ && !last.failed) {
+    if (copy.path === true && !failed && last?.path === true && !last.failed) {
       last.paths.add(copy.target);
     } else {
-      const error = failed && output !== undefined ? (outputLines(output)[0] ?? null) : null;
-      lines.push({ verb: copy.verb, paths: new Set([copy.target]), scope: copy.scope, failed, error });
+      const error = failed && output !== undefined ? (outputLines(output).find((line) => line.trim().length > 0) ?? null) : null;
+      lines.push({ verb: copy.verb, paths: new Set([copy.target]), scope: copy.scope, failed, error, path: copy.path === true });
     }
   }
-  return lines.map(({ paths, ...line }) => ({
-    ...line,
-    targets: line.verb === EXPLORE_VERB.READ ? distinctNames([...paths]) : [...paths],
-  }));
+  return lines.map(({ paths, path, ...line }) => ({ ...line, targets: path ? distinctNames([...paths]) : [...paths] }));
 }
 
 /** Each path by its last segment, or as many more as it takes to tell it from
  * another on the same line: `a/index.ts, b/index.ts`. */
 export function distinctNames(paths: readonly string[]): string[] {
-  const segmented = paths.map((path) => path.split(PATH_SEPARATOR));
+  // Empty segments name nothing: a directory's trailing slash keeps its name.
+  const segmented = paths.map((path) => path.split(PATH_SEPARATOR).filter((segment) => segment.length > 0));
   return segmented.map((segments) => {
     let shown = 1;
     while (shown < segments.length && segmented.some((other) => other !== segments && tail(other, shown) === tail(segments, shown))) shown += 1;
@@ -89,17 +94,24 @@ function tail(segments: readonly string[], count: number): string {
 
 function readLine(args: ToolArgs | undefined): LineCopy {
   const path = pathArg(args);
-  return { verb: EXPLORE_VERB.READ, target: path.length > 0 ? path : ARGS_NOT_RECORDED, scope: null };
+  if (path.length === 0) return { verb: EXPLORE_VERB.READ, target: unnamed(args), scope: null };
+  return { verb: EXPLORE_VERB.READ, target: path, scope: null, path: true };
 }
 
 function searchLine(args: ToolArgs | undefined): LineCopy {
   const query = stringArg(args, ARG.QUERY);
-  return { verb: EXPLORE_VERB.SEARCH, target: query === undefined ? ARGS_NOT_RECORDED : clipMarked(query), scope: MEMORY_SCOPE };
+  return { verb: EXPLORE_VERB.SEARCH, target: query === undefined ? unnamed(args) : clipMarked(query), scope: MEMORY_SCOPE };
 }
 
 function urlTarget(args: ToolArgs | undefined): string {
   const url = stringArg(args, ARG.URL);
-  return url === undefined ? ARGS_NOT_RECORDED : clipMarked(url);
+  return url === undefined ? unnamed(args) : clipMarked(url);
+}
+
+// A call whose target this table cannot name: dropped arguments say so, and
+// arguments it does not know read as they came, never as not recorded.
+function unnamed(args: ToolArgs | undefined): string {
+  return args === undefined ? ARGS_NOT_RECORDED : compactArgs(args);
 }
 
 // The provider runs web search and names its own arguments; a query, when

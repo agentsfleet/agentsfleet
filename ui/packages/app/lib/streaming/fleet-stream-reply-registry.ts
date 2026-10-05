@@ -196,6 +196,7 @@ export function disposeReplyStreams(entry: Entry): void {
   entry.replyHeard.clear();
   entry.replyExists.clear();
   entry.bodyReads.clear();
+  entry.traceReads.clear();
 }
 
 // A running event the stream stopped telling this tab about — its completion

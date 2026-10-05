@@ -31,6 +31,7 @@ export const OUTPUT_CUT_NOTE = "The output was cut short.";
 export const ARGS_NOT_KEPT_NOTE = "The arguments were too large to keep.";
 /** Lines the dialog lays out; a longer output is one copy away in full. */
 export const MAX_SHOWN_ROWS = 2_000;
+const COPY_TO_READ = "copy the output to read";
 const OUTPUT_TITLE = "Output";
 const COPY_OUTPUT_LABEL = "Copy output";
 const SKIPPED_LINES = "⋯";
@@ -139,7 +140,7 @@ function NumberedLine({ row }: { row: NumberedRow }) {
 }
 
 function moreRowsNote(hidden: number): string {
-  return `${hidden} more lines; copy the output to read them all.`;
+  return hidden === 1 ? `1 more line; ${COPY_TO_READ} it.` : `${hidden} more lines; ${COPY_TO_READ} them all.`;
 }
 
 /** What the trace kept: the head from line 1, then the tail where it falls,

@@ -160,6 +160,12 @@ describe("FleetToolOutputDialog", () => {
     expect(screen.getByRole("button", { name: "Copy output" })).toBeTruthy();
   });
 
+  it("should count one hidden line as one", async () => {
+    stubRead(200, { arguments: {}, output: Array.from({ length: MAX_SHOWN_ROWS + 1 }, (_, index) => `l${index}`).join("\n") });
+    renderDialog();
+    await waitFor(() => expect(screen.getByText("1 more line; copy the output to read it.")).toBeTruthy());
+  });
+
   it("should draw the full output as literal text, never markup", async () => {
     const hostile = "**bold** <img src=x onerror=alert(1)>";
     stubRead(200, { arguments: {}, output: hostile });

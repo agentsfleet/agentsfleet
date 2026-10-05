@@ -1,7 +1,7 @@
 import type { JsonValue, ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import { DIFF_ROW, type DiffRow, type LineDiff } from "./tool-call-diff";
 import { PLAN_STATUS, TOOL_BODY, TOOL_NAME, plainCopy, type PlanStatus, type PlanStep, type ToolCopy, type Verbs } from "./tool-call-shape";
-import { clipMarked, compactArgs, firstLine, firstString, linesOf, mayBeClipped, pathArg, scalarArg, stringArg, workspacePath } from "./tool-call-text";
+import { CLIP_MARK, clipMarked, compactArgs, firstLine, firstString, linesOf, mayBeClipped, pathArg, scalarArg, stringArg, workspacePath } from "./tool-call-text";
 
 // The runner's tools beyond files, requests, memory and commands, as their
 // cells read. Argument names come from the runner: `afr_tools` for the tools
@@ -118,19 +118,23 @@ function patchRow(line: string): DiffRow {
 }
 
 function patchCopy(args: ToolArgs): ToolCopy {
-  const patch = stringArg(args, ARG.PATCH) ?? "";
+  const patch = stringArg(args, ARG.PATCH);
+  // No patch text, or none in the patch grammar: no counts to claim, so the
+  // arguments as they came.
+  if (patch === undefined) return plainCopy(VERBS.EDIT, compactArgs(args));
   const { files, diff } = patchDiff(patch);
   const target = files.join(", ");
   // Cut at the leaf cap, a patch's counts and lines would be a part shown as the whole.
-  if (mayBeClipped(patch)) return { verbs: VERBS.EDIT, target: target.length > 0 ? `${target}…` : "", body: { kind: TOOL_BODY.CLIPPED_EDIT } };
+  if (mayBeClipped(patch)) return { verbs: VERBS.EDIT, target: target.length > 0 ? `${target}${CLIP_MARK}` : "", body: { kind: TOOL_BODY.CLIPPED_EDIT } };
+  if (files.length === 0) return plainCopy(VERBS.EDIT, compactArgs(args));
   return { verbs: VERBS.EDIT, target, body: { kind: TOOL_BODY.PATCH, diff } };
 }
 
 function planCopy(args: ToolArgs): ToolCopy {
   const raw: JsonValue | undefined = args[ARG.PLAN];
   const steps = Array.isArray(raw) ? raw.flatMap(planStep) : [];
-  const explanation = stringArg(args, ARG.EXPLANATION) ?? null;
-  return { verbs: VERBS.PLAN, target: "", body: { kind: TOOL_BODY.PLAN, explanation, steps } };
+  const explanation = stringArg(args, ARG.EXPLANATION);
+  return { verbs: VERBS.PLAN, target: "", body: { kind: TOOL_BODY.PLAN, explanation: explanation === undefined ? null : clipMarked(explanation), steps } };
 }
 
 function planStep(value: JsonValue): PlanStep[] {
@@ -138,7 +142,7 @@ function planStep(value: JsonValue): PlanStep[] {
   const step = (value as { readonly [key: string]: JsonValue })[ARG.STEP];
   const status = (value as { readonly [key: string]: JsonValue })[ARG.STATUS];
   if (typeof step !== "string" || typeof status !== "string" || !PLAN_STATUSES.has(status)) return [];
-  return [{ step, status: status as PlanStatus }];
+  return [{ step: clipMarked(step), status: status as PlanStatus }];
 }
 
 function browserCopy(args: ToolArgs): ToolCopy {
@@ -158,10 +162,12 @@ function browserCopy(args: ToolArgs): ToolCopy {
   }
 }
 
+// The runner caps each word on its own, so each carries its own mark.
 function gitCopy(args: ToolArgs): ToolCopy {
   const raw: JsonValue | undefined = args[ARG.ARGS];
-  const words = Array.isArray(raw) ? raw.filter((word): word is string => typeof word === "string") : [];
-  return { verbs: VERBS.RUN, target: clipMarked([GIT, ...words].join(SEPARATOR)), body: { kind: TOOL_BODY.OUTPUT } };
+  if (!Array.isArray(raw)) return { verbs: VERBS.RUN, target: compactArgs(args), body: { kind: TOOL_BODY.OUTPUT } };
+  const words = raw.map((word) => (typeof word === "string" ? clipMarked(word) : JSON.stringify(word)));
+  return { verbs: VERBS.RUN, target: [GIT, ...words].join(SEPARATOR), body: { kind: TOOL_BODY.OUTPUT } };
 }
 
 // Codex's background terminal: writing keys to a running command, or, with
@@ -171,7 +177,14 @@ function stdinCopy(args: ToolArgs): ToolCopy {
   const chars = stringArg(args, ARG.CHARS) ?? "";
   const terminal = session === undefined ? TERMINAL : `${TERMINAL} ${session}`;
   if (chars.length === 0) return plainCopy(VERBS.WAIT_FOR, terminal);
-  return plainCopy(VERBS.WRITE_TO, `${terminal}: ${firstLine(chars)}`);
+  return plainCopy(VERBS.WRITE_TO, `${terminal}: ${keysOf(chars)}`);
+}
+
+// Keys as they were sent: Enter, Ctrl-C and their kind are what a terminal
+// session mostly receives, and drawn raw they are blank or invisible.
+function keysOf(chars: string): string {
+  const quoted = JSON.stringify(chars);
+  return mayBeClipped(chars) ? `${quoted}${CLIP_MARK}` : quoted;
 }
 
 function scheduleCopy(args: ToolArgs): ToolCopy {

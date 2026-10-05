@@ -82,6 +82,9 @@ export const ToolCallRow = memo(function ToolCallRow({ name, args, argsText, res
   // Only a call the runner named can be read in full, only inside a thread,
   // and only once its turn has ended: the runner posts full records at settle.
   const canShowAll = scope !== null && callId !== undefined && settled;
+  // A reply that runs again takes its dialog with it, and settling again does
+  // not bring it back unasked.
+  if (shown && !canShowAll) setShown(false);
   return (
     <ListItem
       data-tool={name}
