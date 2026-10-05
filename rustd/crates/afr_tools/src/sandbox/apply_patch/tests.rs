@@ -15,7 +15,7 @@ use crate::testing::{Live, call_in, hosted, offered};
 const PATCH: &str = "patch";
 
 /// The files the patches work on, and what they start as.
-const KEEP: &str = "src/keep.txt";
+pub(super) const KEEP: &str = "src/keep.txt";
 const KEEP_TEXT: &str = "one\ntwo\nthree\n";
 const OLD: &str = "src/old.txt";
 const OLD_TEXT: &str = "bye\n";
@@ -36,7 +36,7 @@ const EACH_KIND: &str = concat!(
 );
 
 /// Applies `patch` through `live`'s executor.
-async fn apply(live: &Live, patch: &str) -> ToolOutput {
+pub(super) async fn apply(live: &Live, patch: &str) -> ToolOutput {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[APPLY_PATCH.name()]).unwrap();
     let mut lease = Lease::default();
@@ -50,7 +50,7 @@ async fn apply(live: &Live, patch: &str) -> ToolOutput {
 }
 
 /// A workspace holding [`KEEP`] and [`OLD`].
-async fn planted() -> Live {
+pub(super) async fn planted() -> Live {
     let live = Live::start().await;
     std::fs::create_dir(live.root.join("src")).unwrap();
     std::fs::write(live.root.join(KEEP), KEEP_TEXT).unwrap();
@@ -255,225 +255,4 @@ async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
             refused.text
         );
     }
-}
-
-/// A write the executor refuses while hunks land is reported in the
-/// executor's words, and what landed before it stays: the patch is not
-/// transactional past its first write, and the answer says which it was.
-#[tokio::test]
-async fn a_write_refused_while_landing_reports_the_executor_and_keeps_what_landed() {
-    if rustix::process::geteuid().is_root() {
-        // Root writes through mode bits, so there is no refusal to inject.
-        return;
-    }
-    let live = Live::start().await;
-    let locked = live.root.join("kept.txt");
-    std::fs::write(&locked, "a\n").unwrap();
-    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o444)).unwrap();
-    let patch = concat!(
-        "*** Begin Patch\n",
-        "*** Add File: landed.txt\n",
-        "+first\n",
-        "*** Update File: kept.txt\n",
-        "@@\n",
-        "-a\n",
-        "+b\n",
-        "*** End Patch\n",
-    );
-
-    let refused = apply(&live, patch).await;
-    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o644)).unwrap();
-
-    assert_eq!(
-        refused.error_code,
-        Some(ToolErrorCode::SandboxUnavailable),
-        "{refused:?}"
-    );
-    assert!(
-        refused.text.contains("ermission denied"),
-        "{}",
-        refused.text
-    );
-    assert_eq!(
-        std::fs::read_to_string(live.root.join("landed.txt")).unwrap(),
-        "first\n",
-        "the add hunk landed before the refused write"
-    );
-    assert_eq!(std::fs::read_to_string(&locked).unwrap(), "a\n");
-    live.stop().await;
-}
-
-/// A move writes the new path, then removes the old; a delete the executor
-/// refuses leaves both files, says so, and a retry heals it.
-#[tokio::test]
-async fn a_move_whose_delete_is_refused_keeps_both_files_and_a_retry_heals_it() {
-    if rustix::process::geteuid().is_root() {
-        // Root unlinks through mode bits, so there is no refusal to inject.
-        return;
-    }
-    let live = Live::start().await;
-    let locked = live.root.join("ro");
-    std::fs::create_dir(&locked).unwrap();
-    std::fs::write(locked.join("old.txt"), "a\n").unwrap();
-    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o555)).unwrap();
-    let patch = concat!(
-        "*** Begin Patch\n",
-        "*** Update File: ro/old.txt\n",
-        "*** Move to: moved.txt\n",
-        "@@\n",
-        "-a\n",
-        "+b\n",
-        "*** End Patch\n",
-    );
-
-    let refused = apply(&live, patch).await;
-    std::fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
-    let healed = apply(&live, patch).await;
-
-    assert_eq!(
-        refused.error_code,
-        Some(ToolErrorCode::SandboxUnavailable),
-        "{refused:?}"
-    );
-    assert!(
-        refused.text.contains("ermission denied"),
-        "{}",
-        refused.text
-    );
-    assert_eq!(healed.error_code, None, "{healed:?}");
-    assert_eq!(
-        std::fs::read_to_string(live.root.join("moved.txt")).unwrap(),
-        "b\n"
-    );
-    assert!(
-        !locked.join("old.txt").exists(),
-        "the retry removed the old path"
-    );
-    live.stop().await;
-}
-
-/// `original` with the one update hunk of `patch` applied: the contents and
-/// the lines added and removed, or the parser's own error.
-fn applied(
-    patch: &str,
-    original: &str,
-) -> Result<(String, usize, usize), super::codex::ApplyPatchError> {
-    let hunks = super::codex::parse_patch(patch)?;
-    let Some(super::codex::Hunk::UpdateFile { chunks, .. }) = hunks.first() else {
-        return Err(super::codex::ApplyPatchError::ComputeReplacements(
-            "the patch holds one update hunk".to_owned(),
-        ));
-    };
-    let updated = super::codex::updated("f.txt", original, chunks)?;
-    Ok((updated.contents, updated.added, updated.removed))
-}
-
-#[test]
-fn an_update_with_context_lines_around_the_change_keeps_them_and_counts_only_the_change() {
-    let patch = concat!(
-        "*** Begin Patch\n",
-        "*** Update File: f.txt\n",
-        "@@\n",
-        " a\n",
-        "-b\n",
-        "+B\n",
-        " c\n",
-        "*** End Patch\n",
-    );
-
-    assert_eq!(
-        applied(patch, "a\nb\nc\nd\n"),
-        Ok(("a\nB\nc\nd\n".to_owned(), 1, 1))
-    );
-}
-
-/// Models end a region with an empty `-` line for the file's last newline;
-/// the match is retried without it.
-#[test]
-fn an_update_whose_old_lines_end_in_an_empty_line_is_retried_without_it() {
-    let patch = concat!(
-        "*** Begin Patch\n",
-        "*** Update File: f.txt\n",
-        "@@\n",
-        "-b\n",
-        "-\n",
-        "+B\n",
-        "+\n",
-        "*** End Patch\n",
-    );
-
-    assert_eq!(applied(patch, "a\nb\n"), Ok(("a\nB\n".to_owned(), 1, 1)));
-}
-
-#[test]
-fn an_update_marked_end_of_file_seeks_from_the_end() {
-    let patch = concat!(
-        "*** Begin Patch\n",
-        "*** Update File: f.txt\n",
-        "@@\n",
-        "-x\n",
-        "+Z\n",
-        "*** End of File\n",
-        "*** End Patch\n",
-    );
-
-    assert_eq!(
-        applied(patch, "x\ny\nx\n"),
-        Ok(("x\ny\nZ\n".to_owned(), 1, 1))
-    );
-}
-
-#[test]
-fn a_context_marker_moves_each_chunk_past_the_one_before() {
-    let patch = concat!(
-        "*** Begin Patch\n",
-        "*** Update File: f.txt\n",
-        "@@\n",
-        "-v\n",
-        "+V1\n",
-        "@@ k\n",
-        "-v\n",
-        "+V2\n",
-        "*** End Patch\n",
-    );
-
-    assert_eq!(
-        applied(patch, "k\nv\nk\nv\n"),
-        Ok(("k\nV1\nk\nV2\n".to_owned(), 2, 2))
-    );
-}
-
-#[test]
-fn a_context_marker_that_is_not_in_the_file_is_refused_by_name() {
-    let patch = concat!(
-        "*** Begin Patch\n",
-        "*** Update File: f.txt\n",
-        "@@ nope\n",
-        "-a\n",
-        "+b\n",
-        "*** End Patch\n",
-    );
-
-    assert_eq!(
-        applied(patch, "a\n"),
-        Err(super::codex::ApplyPatchError::ComputeReplacements(
-            "Failed to find context 'nope' in f.txt".to_owned()
-        ))
-    );
-}
-
-#[test]
-fn an_insertion_with_no_old_lines_lands_at_the_end_of_the_file() {
-    let patch = concat!(
-        "*** Begin Patch\n",
-        "*** Update File: f.txt\n",
-        "@@\n",
-        "+tail\n",
-        "*** End Patch\n",
-    );
-
-    assert_eq!(
-        applied(patch, "a\nb\n"),
-        Ok(("a\nb\ntail\n".to_owned(), 1, 0))
-    );
 }
