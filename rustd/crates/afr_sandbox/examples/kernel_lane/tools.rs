@@ -33,20 +33,24 @@ const NONE_LEFT: &str = "0";
 const OWN_STATUS: &str = "cat /proc/self/status";
 
 /// `outputs` as exactly `N` answers.
-fn answers<const N: usize>(outputs: &[ToolOutput]) -> Result<&[ToolOutput; N], Failed> {
+pub(crate) fn answers<const N: usize>(outputs: &[ToolOutput]) -> Result<&[ToolOutput; N], Failed> {
     outputs
         .try_into()
         .map_err(|_wrong_count| format!("{N} answers, got {outputs:?}").into())
 }
 
 /// `shell`'s arguments: `command`, with `timeout_ms` when one is given.
-fn shell(command: &str, timeout_ms: Option<u64>) -> Value {
+pub(crate) fn shell(command: &str, timeout_ms: Option<u64>) -> Value {
     json!({"command": command, "timeout_ms": timeout_ms})
 }
 
 /// Makes `calls` to `shell`, one after another, in one fresh sandbox, through
 /// the handler the runner's catalog hosts; what each answered, in order.
-fn shell_calls(lane: &Lane, lease_id: &str, calls: &[Value]) -> Result<Vec<ToolOutput>, Failed> {
+pub(crate) fn shell_calls(
+    lane: &Lane,
+    lease_id: &str,
+    calls: &[Value],
+) -> Result<Vec<ToolOutput>, Failed> {
     runtime().block_on(async {
         let (transport, _sent) = RecordingTransport::replying(200, "");
         let catalog = Catalog::hosted(Arc::new(transport));

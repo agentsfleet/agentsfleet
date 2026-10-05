@@ -13,11 +13,13 @@ use afr_sandbox::{
 };
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
+use crate::budgets::start_budgets;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::lane::{Lane, missing};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, runtime};
+use crate::toolbox::toolbox_carries_the_tools;
 use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 
 /// Workspace disk a limit trial fills past.
@@ -49,7 +51,7 @@ type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: [(&str, Body); 20] = [
+    let rows: [(&str, Body); 22] = [
         ("test_sandbox_process_has_no_capabilities", no_capabilities),
         (
             "test_sandbox_cannot_plant_files_on_the_host",
@@ -73,6 +75,7 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         ("test_unbuildable_sandbox_refuses_lease", unbuildable),
         ("test_toolbox_build_is_reproducible", reproducible),
         ("test_lease_sees_toolbox_read_only", toolbox_read_only),
+        ("test_toolbox_carries_the_tools", toolbox_carries_the_tools),
         (
             "test_shell_runs_inside_the_sandbox_with_exit_code",
             shell_exit_code,
@@ -96,6 +99,7 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
             file_tools_refuse_link_out,
         ),
         ("test_warm_start_beats_cold_start", warm_beats_cold),
+        ("test_start_budgets_with_four_leases", start_budgets),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];
     let trials = rows

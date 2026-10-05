@@ -15,8 +15,9 @@
 # What reproducible means here, exactly: two builds of one manifest on one
 # architecture, by the same versions of mmdebstrap, apt, dpkg and erofs-utils,
 # are byte-identical — the runner's kernel lane proves it. A different host
-# tool version may lay the image out differently, so the release names the
-# digest it shipped and the runner refuses any other.
+# tool version may lay the image out differently, so the release records the
+# versions that made it, names the digest it shipped, and the runner refuses
+# any other.
 #
 # The release manifest is unsigned here. The runner admits an image only on a
 # signature over the manifest's exact bytes, made by the release process (or,
@@ -57,6 +58,9 @@ readonly RESOLVER_FILE="etc/resolv.conf"
 readonly HOSTNAME_FILE="etc/hostname"
 # The image's own /etc/hosts maps this name, so reading it sends no query.
 readonly IMAGE_HOSTNAME="localhost"
+# The builder's own tools, recorded in the release manifest: liblz4 is the
+# compressor the manifest's `erofs` line names.
+readonly BUILDER_PACKAGES=(mmdebstrap apt dpkg erofs-utils liblz4-1)
 
 if [ "$#" -ne 1 ]; then
   echo "usage: $0 <output-dir>" >&2
@@ -172,12 +176,18 @@ mkfs.erofs "${erofs[@]}" -T"$SOURCE_DATE_EPOCH" -U"$uuid" --all-root --quiet \
 digest="$(sha256sum "$work/toolbox.erofs" | cut -d' ' -f1)"
 length="$(stat -c %s "$work/toolbox.erofs")"
 features="$(dump.erofs -s "$work/toolbox.erofs" | sed -n 's/^Filesystem features:[[:space:]]*//p')"
+# A builder missing one of these fails here rather than shipping a release
+# that cannot say what made it.
+dpkg-query -W -f="\${Package}\t\${Version}\n" "${BUILDER_PACKAGES[@]}" >"$work/builder.tsv"
+printf '%s\n' "${archives[@]}" >"$work/archives.txt"
 
 python3 - "$work/release.json" "$arch" "$length" "$digest" "$features" "$RUNNER_VERSIONS" \
-  "$work/packages.txt" "$work/vendored.tsv" <<'PY'
+  "$work/packages.txt" "$work/vendored.tsv" "$snapshot" "$work/archives.txt" \
+  "$work/builder.tsv" <<'PY'
 import json, sys
 
-out, arch, length, digest, features, versions, packages_path, vendored_path = sys.argv[1:]
+(out, arch, length, digest, features, versions, packages_path, vendored_path, snapshot,
+ archives_path, builder_path) = sys.argv[1:]
 packages, record = [], {}
 for line in open(packages_path, encoding="utf-8").read().splitlines() + [""]:
     if not line.strip():
@@ -192,6 +202,10 @@ vendored = []
 for line in open(vendored_path, encoding="utf-8").read().splitlines():
     url, sha256 = line.split("\t")
     vendored.append({"url": url, "sha256": sha256})
+builder = {}
+for line in open(builder_path, encoding="utf-8").read().splitlines():
+    package, version = line.split("\t")
+    builder[package] = version
 manifest = {
     "arch": arch,
     "length": int(length),
@@ -200,6 +214,9 @@ manifest = {
     "runner_versions": versions.split(","),
     "packages": sorted(packages, key=lambda p: (p["package"], p.get("architecture", ""))),
     "vendored": vendored,
+    "snapshot": snapshot,
+    "archives": open(archives_path, encoding="utf-8").read().splitlines(),
+    "builder": builder,
 }
 with open(out, "w", encoding="utf-8") as handle:
     json.dump(manifest, handle, indent=2, sort_keys=True)
