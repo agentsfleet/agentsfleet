@@ -40,7 +40,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat(api): runner verbs for schedules and messages; cron_* and message become real tools
 - **Intent (one sentence):** A fleet can plan its own follow-up and say something to the thread before it finishes, with the daemon still owning every timer and every channel credential.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (PLAN, Oct 05, 2026): a running fleet asks `agentsfleetd`, through its own lease, to keep a schedule or to say one line in the thread it was asked from; the daemon stores the schedule and lets QStash keep time, and the daemon holds the Slack token and posts the line. The runner gains no clock and no channel credential. Matches the Intent.
+- **ASSUMPTIONS I'M MAKING** (each read from source on `main` at `c5f7680f2`; recorded in Discovery):
+  1. A `GET` and a `DELETE` carry `fencing_token` as a query parameter, never a body; `POST` and `PATCH` carry it in the body.
+  2. A schedule fire records actor `cron:<schedule_id>`, replacing `schedule:qstash` (`rustd/crates/afd_cron/src/fire.rs:37`). The app already filters cron runs by `cron:*` (`ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/last-delivery.ts:8`), so the old spelling matched nothing there, and `runs` reads by this actor.
+  3. `once` needs a column: nothing on the row survives a fire to say "delete me", and `source_key` is replaced by QStash's id at the first sync. Slot `928` adds it; `VERSION` is `0.56.0`, so this is a forward migration.
+  4. The per-run message count lives on the lease row (slot `929`), so the fence, the count and the cap are one guarded `UPDATE`.
+  5. The daemon masks with the runner's `afr_secrets::Scrub`, the one masker `docs/architecture/runner_execution.md` §Credentials names, over the fleet's declared credentials from the vault. A second masker would drift on the `«secret:NAME»` spelling.
+  6. An interim post carries its own marker part, so a repeat of the final answer cannot mistake an interim line for the answer (`afd_connector::slack::answered`).
+  7. The two new schedule codes sit beside their siblings in `error_code/request.rs`; the message codes sit in `fleet.rs`. A fourth code, `MESSAGE_LIMIT_REACHED`, names the per-run cap, which the spec's three codes left unnamed.
 
 ## Implementing agent — read these first
 
@@ -54,17 +62,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_wire/src/schedule_verb.rs`, `rustd/crates/afd_wire/src/message_verb.rs`, `rustd/crates/afd_wire/src/paths.rs`, `rustd/crates/afd_wire/src/lib.rs` | CREATE / EDIT | Request and response types, bounds, the two path constants |
-| `rustd/crates/afd_http/src/route/runner.rs` | EDIT | Variants, `ALL` entries and `meta()` for both verbs |
-| `rustd/crates/afd_api_runner/src/handler/runner/schedule.rs`, `rustd/crates/afd_api_runner/src/handler/runner/message.rs`, `rustd/crates/afd_api_runner/src/handler/runner/mod.rs` | CREATE / EDIT | Fence, narrow, cap, store, reconcile; fence, scrub, dispatch |
-| `rustd/crates/afd_cron/src/model.rs`, `rustd/crates/afd_cron/src/store.rs`, `rustd/crates/afd_cron/src/sql.rs` | EDIT | `Source::Fleet`; a per-fleet count; run-now |
-| `rustd/crates/afd_outbound/src/interim.rs`, `rustd/crates/afd_outbound/src/lib.rs` | CREATE / EDIT | An interim post into the event's origin thread |
-| `rustd/crates/afd_core/src/error_code/fleet.rs` | EDIT | `SCHEDULE_CAP_REACHED`, `SCHEDULE_NOT_FLEET_OWNED`, `MESSAGE_NO_CHANNEL` |
+| `schema/928_fleet_schedules_once.sql`, `schema/929_runner_leases_messages_posted.sql`, `rustd/crates/afd_db/src/migration.rs` | CREATE / EDIT | `once` on a schedule; the per-run message count on a lease |
+| `rustd/crates/afd_wire/src/schedule_verb.rs`, `rustd/crates/afd_wire/src/message_verb.rs`, `rustd/crates/afd_wire/src/schedule.rs`, `rustd/crates/afd_wire/src/paths.rs`, `rustd/crates/afd_wire/src/lib.rs` | CREATE / EDIT | Request and response types, bounds, the path segments; a schedule view names its source and `once` |
+| `rustd/crates/afd_http/src/route/runner.rs`, `rustd/crates/afd_http/src/services/leasing.rs`, `rustd/crates/afd_http/src/services/schedule.rs` | EDIT | Variants, `ALL` entries and `meta()`; the lease seam's two verbs; a once schedule retires after it fires |
+| `rustd/crates/afd_api_runner/src/handler/runner/schedule.rs`, `rustd/crates/afd_api_runner/src/handler/runner/schedule_fire.rs`, `rustd/crates/afd_api_runner/src/handler/runner/message.rs`, `rustd/crates/afd_api_runner/src/handler/runner/mod.rs`, `rustd/crates/afd_api_runner/src/lib.rs` | CREATE / EDIT | Fence, narrow, cap, store, reconcile; fire and runs; fence, scrub, post |
+| `rustd/crates/afd_cron/src/model.rs`, `rustd/crates/afd_cron/src/store.rs`, `rustd/crates/afd_cron/src/store/decode.rs`, `rustd/crates/afd_cron/src/sql.rs`, `rustd/crates/afd_cron/src/fire.rs`, `rustd/crates/afd_cron/src/lib.rs` | EDIT | `Source::Fleet`, `once`, the fleet-authored cap, the `cron:<schedule_id>` actor |
+| `rustd/crates/afd_fleet/src/lease/standing.rs`, `rustd/crates/afd_fleet/src/lease/message.rs`, `rustd/crates/afd_fleet/src/lease/sql/*.rs`, `rustd/crates/afd_fleet/src/lease/pull.rs`, `rustd/crates/afd_fleet/src/lease/mod.rs`, `rustd/crates/afd_fleet/Cargo.toml` | CREATE / EDIT | The proved lease a verb names; the interim message's fence, count, destination, scrub and post |
+| `rustd/crates/afd_connector/src/slack/answered.rs` | EDIT | A marker part, so an interim line is never read as the answer |
+| `rustd/crates/afd_outbound/src/interim.rs`, `rustd/crates/afd_outbound/src/slack.rs`, `rustd/crates/afd_outbound/src/slack/*.rs`, `rustd/crates/afd_outbound/src/lib.rs` | CREATE / EDIT | An interim post into the event's origin thread, through the existing poster and retry |
+| `rustd/crates/afd_core/src/error_code/fleet.rs`, `rustd/crates/afd_core/src/error_code/request.rs`, `rustd/crates/afd_core/src/error_code.rs`, `rustd/crates/afd_core/src/problem/*.rs` | EDIT | `SCHEDULE_CAP_REACHED`, `SCHEDULE_NOT_FLEET_OWNED`, `MESSAGE_NO_CHANNEL`, `MESSAGE_LIMIT_REACHED` and their problems |
+| `rustd/crates/afr_secrets/src/statics.rs` | EDIT | A view over a declared map, so the daemon masks with the one masker |
+| `rustd/crates/agentsfleetd/src/plane/*.rs`, `rustd/crates/agentsfleetd/src/outbound.rs`, `rustd/crates/agentsfleetd/src/preflight*` | EDIT | One Slack poster for the worker and the interim post; its base address knob |
 | `public/openapi.json` | EDIT | Regenerated; new fields declare `x-stability` |
-| `rustd/crates/afr_tools/src/verbs/` (`schedules.rs`, `message.rs`, `error.rs`), `rustd/crates/afr_tools/src/catalog.rs` | CREATE / EDIT | The eight handlers onto the two verbs |
-| `rustd/crates/agentsfleetd/tests/support/e2e_wire.rs`, `rustd/crates/agentsfleetd/tests/support/fake_qstash.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_messages.rs` | EDIT / CREATE | Runner-shaped posts and live-datastore proofs (`#[ignore]`d, run by `make test-integration-rustd`) |
-| `rustd/crates/afr_tools/tests/` | CREATE | Unit proofs for the eight handlers |
-| `docs/architecture/capabilities.md` | EDIT | Landed at authoring: the fleet as a third schedule author |
+| `rustd/crates/afr_tools/src/verbs.rs`, `rustd/crates/afr_tools/src/verbs/*.rs`, `rustd/crates/afr_tools/src/lease.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/catalog.rs`, `rustd/crates/afr_tools/src/lib.rs`, `rustd/crates/afr_tools/Cargo.toml` | CREATE / EDIT | The lease-verb seam and the eight handlers onto it |
+| `rustd/crates/afr_supervisor/src/client.rs`, `rustd/crates/afr_supervisor/src/client/http.rs`, `rustd/crates/afr_supervisor/src/verbs.rs`, `rustd/crates/afr_supervisor/src/turns.rs`, `rustd/crates/afr_agent/src/*.rs` | CREATE / EDIT | The seam over the daemon's HTTP verbs, with `PATCH` and `DELETE`; handed to each run |
+| `rustd/crates/agentsfleetd/tests/support/*.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_messages.rs`, `rustd/crates/*/tests/**`, `rustd/crates/**/tests.rs` | EDIT / CREATE | Runner-shaped posts, fake QStash and Slack, live-datastore proofs (`#[ignore]`d, run by `make test-integration-rustd`); unit proofs beside each change |
+| `docs/architecture/capabilities.md`, `docs/architecture/runner_execution.md`, `docs/architecture/data_flow.md` | EDIT | The fleet as a third schedule author; the interim post; the fire actor |
 
 ## Applicable Rules
 
@@ -77,7 +90,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | ERROR REGISTRY | yes | Three codes declared in `afd_core` and used by the verbs |
-| SCHEMA GUARD | no | `core.fleet_schedules.source` is `TEXT` with no `CHECK`; `fleet` is an application constant |
+| SCHEMA GUARD | yes | `VERSION=0.56.0` (migrate): `migration:schema/928_fleet_schedules_once.sql`, `migration:schema/929_runner_leases_messages_posted.sql`. `source` stays `TEXT` with no `CHECK`; `fleet` is an application constant |
 | UFS / LOGGING / MILESTONE-ID | yes | Constants once; scoped events with ids and counts only |
 | Architecture consult | yes | `capabilities.md` §2 and `runner_execution.md` §"Tool catalog" already state these facts |
 | File & Function Length (≤350/≤50/≤70) | yes | One verb per handler file; the interim poster in its own module |
@@ -102,6 +115,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.6** — Run-now admits exactly one event with actor `cron:<schedule_id>` → Test `test_schedule_run_now_admits_one_event`
 - **Dimension 1.7** — Runs lists that event, newest first → Test `test_schedule_runs_lists_events`
 - **Dimension 1.8** — Delete sets the desired status and reconciles; the row leaves QStash → Test `test_fleet_deletes_its_schedule`
+- **Dimension 1.9** — A `once` schedule retires after its first fire, from QStash or run-now → Test `test_once_schedule_retires_after_fire`
 
 ### §2 — A fleet posts to its thread mid-run
 
@@ -112,6 +126,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 2.3** — The per-run count and the byte cap refuse with their codes → Test `test_message_caps_refuse`
 - **Dimension 2.4** — An event without a channel is refused with `MESSAGE_NO_CHANNEL` → Test `test_message_without_channel_refused`
 - **Dimension 2.5** — A secret value in the text is masked before delivery → Test `test_message_is_scrubbed`
+- **Dimension 2.6** — An interim line carries its own marker, so a repeat of the final answer still posts it → Test `test_interim_marker_is_not_the_answer`
 
 ### §3 — The harness carries the eight tools
 
@@ -124,17 +139,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Interfaces
 
 ```
-POST   /v1/runners/me/leases/{lease_id}/schedules            { fencing_token, cron, timezone, message, once? }
-GET    /v1/runners/me/leases/{lease_id}/schedules            { fencing_token } → [{ schedule_id, source, cron, timezone, message, desired_status, sync_status }]
-PATCH  /v1/runners/me/leases/{lease_id}/schedules/{id}       { fencing_token, cron?, timezone?, message?, desired_status? }
-DELETE /v1/runners/me/leases/{lease_id}/schedules/{id}       { fencing_token }
-POST   /v1/runners/me/leases/{lease_id}/schedules/{id}/run   { fencing_token } → { event_id }
-GET    /v1/runners/me/leases/{lease_id}/schedules/{id}/runs  { fencing_token, limit?, starting_after? } → events with actor cron:<id>
-POST   /v1/runners/me/leases/{lease_id}/messages             { fencing_token, text } → { delivered: bool }
+POST   /v1/runners/me/leases/{lease_id}/schedules                 { fencing_token, cron, timezone?, message, once? } → schedule view
+GET    /v1/runners/me/leases/{lease_id}/schedules?fencing_token=N  → { schedules: [{ schedule_id, source, once, cron, timezone, message, status, sync, … }] }
+PATCH  /v1/runners/me/leases/{lease_id}/schedules/{id}            { fencing_token, cron?, timezone?, message?, paused? } → schedule view
+DELETE /v1/runners/me/leases/{lease_id}/schedules/{id}?fencing_token=N  → 204, or the view while QStash has not agreed
+POST   /v1/runners/me/leases/{lease_id}/schedules/{id}/run        { fencing_token } → { event_id }
+GET    /v1/runners/me/leases/{lease_id}/schedules/{id}/runs?fencing_token=N&limit=&starting_after=  → events with actor cron:<id>, newest first
+POST   /v1/runners/me/leases/{lease_id}/messages                  { fencing_token, text } → { delivered: bool }
 
-core.fleet_schedules.source ∈ { api, trigger, fleet }; source_key = creating event id for fleet
+core.fleet_schedules.source ∈ { api, trigger, fleet }; core.fleet_schedules.once (slot 928)
+source_key for a fleet create = "<creating event id>-<millis>" until QStash's id replaces it
+fleet.runner_leases.messages_posted (slot 929)
+A schedule fire's actor = cron:<schedule_id> (QStash and run-now alike)
 Constants: FLEET_SCHEDULES_MAX 16 · MESSAGE_MAX_BYTES 4096 · MESSAGES_PER_RUN_MAX 8
-Codes: SCHEDULE_CAP_REACHED · SCHEDULE_NOT_FLEET_OWNED · MESSAGE_NO_CHANNEL
+Codes: SCHEDULE_CAP_REACHED (UZ-SCHED-009, 409) · SCHEDULE_NOT_FLEET_OWNED (UZ-SCHED-010, 403) · MESSAGE_NO_CHANNEL (UZ-RUN-019, 409) · MESSAGE_LIMIT_REACHED (UZ-RUN-020, 429)
 ```
 
 ## Failure Modes
@@ -176,11 +194,13 @@ Codes: SCHEDULE_CAP_REACHED · SCHEDULE_NOT_FLEET_OWNED · MESSAGE_NO_CHANNEL
 | 1.6 | integration | `test_schedule_run_now_admits_one_event` | run → 1 event, actor `cron:<id>`, type `cron` |
 | 1.7 | integration | `test_schedule_runs_lists_events` | 3 fires → 3 events newest first, `limit=2` pages |
 | 1.8 | integration | `test_fleet_deletes_its_schedule` | delete → desired status deleted, fake QStash 1 delete |
+| 1.9 | unit | `test_once_schedule_retires_after_fire` | a fire of a `once` row → the plane claims it `deleting` and reconciles; a recurring row is left alone |
 | 2.1 | integration | `test_fleet_posts_a_message_mid_run` | post → Slack fake receives text in `thread_ts` before report |
 | 2.2 | integration | `test_stale_fence_message_refused` | stale token → 0 posts |
 | 2.3 | integration | `test_message_caps_refuse` | 9th post → refused; 5 KiB text → refused |
 | 2.4 | integration | `test_message_without_channel_refused` | API-steer event → `MESSAGE_NO_CHANNEL` |
 | 2.5 | integration | `test_message_is_scrubbed` | text with the token → Slack fake sees `«secret:github.token»` |
+| 2.6 | unit | `test_interim_marker_is_not_the_answer` | a thread holding an interim line → `holds_answer` for the final marker answers false |
 | 3.1 | unit | `test_cron_tools_map_onto_the_verb` | each of six tools → the verb, method and path expected, fence carried |
 | 3.2 | unit | `test_schedule_tool_is_once` | `schedule {at, message}` → create with `once: true` |
 | 3.3 | unit | `test_message_tool_posts_or_names_gap` | 200 → `delivered: true`; `MESSAGE_NO_CHANNEL` → tool error with that code |
@@ -191,7 +211,7 @@ Codes: SCHEDULE_CAP_REACHED · SCHEDULE_NOT_FLEET_OWNED · MESSAGE_NO_CHANNEL
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | A fleet schedules and posts through the daemon (§1, §2) | `make test-integration-rustd && grep -cE "fn test_(fleet_creates_its_own_schedule\|fleet_posts_a_message_mid_run)\(" rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs rustd/crates/agentsfleetd/tests/integration_runner_messages.rs` | 2 | P0 | |
 | R2 | The eight handlers map onto the verbs (§3) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools verbs` | exit 0 | P0 | |
-| R3 | The three codes are registered | `grep -cE "SCHEDULE_CAP_REACHED\|SCHEDULE_NOT_FLEET_OWNED\|MESSAGE_NO_CHANNEL" rustd/crates/afd_core/src/error_code/fleet.rs` | 3 | P0 | |
+| R3 | The four codes are declared | `grep -rhcE "^pub const (SCHEDULE_CAP_REACHED\|SCHEDULE_NOT_FLEET_OWNED\|MESSAGE_NO_CHANNEL\|MESSAGE_LIMIT_REACHED):" rustd/crates/afd_core/src/error_code/ \| paste -sd+ - \| bc` | 4 | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -213,7 +233,7 @@ N/A — no files deleted.
 
 - Messages into the app's fleet thread for events with no channel — the thread today shows the reply at settle; an interim row in the thread is a chat change for a later spec.
 - Schedules that wake a different fleet — a fleet schedules only itself.
-- The published pages: the schedules page and the tools page in `~/Projects/docs` gain the fleet as an author on a matching branch (`chore/m212-fleet-schedules-changelog`), never edited through this worktree.
+- The changelog entry (owner direction, Oct 05, 2026). The published pages are in scope on their own branch in `~/Projects/docs`, never edited through this worktree.
 - The Zig runner keeps refusing these tools until the cutover.
 
 ---
@@ -243,4 +263,6 @@ N/A — no files deleted.
 - **Agent defaults** — the cap of 16 schedules per fleet; 4 KiB and 8 messages per run; `source_key` as the creating event id; `schedule` as a once schedule.
 - **Metrics review** — No analytics or funnel playbook update required: no user action; four operator log events added.
 - **Skill-chain outcomes** — pending.
+- **PLAN decisions** (agent, Oct 05, 2026, from source on `main`): the seven assumptions under the handshake. The ones that change the spec as authored: the fence rides the query on `GET` and `DELETE`; a patch names `paused` as the tenant route does, so `deleting` cannot be set by a patch; the fire actor becomes `cron:<schedule_id>`; slots 928 and 929; the daemon reuses `afr_secrets::Scrub`; a fourth code for the per-run message cap; `source_key` gains a millisecond suffix, because one run may create two schedules and the key is unique per fleet.
+- **Owner direction** (Indy, in-session, Oct 05, 2026): "If there is api docs to be updated do so, and update docs, but skip changelog" — the docs pages move into this stream on their own branch in `~/Projects/docs`; no changelog entry. "the rust patch diff must be 99%, all typescript must be 100%".
 - **Deferrals** — none.
