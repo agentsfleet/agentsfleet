@@ -49,8 +49,11 @@ const SERVICE: Service = Service::new(semconv::SCOPE_NAME, env!("CARGO_PKG_VERSI
 /// otherwise present as a collector receiving nothing.
 pub fn install(config: &OtlpConfig) -> Result<(Exports, Instruments), BootFailure> {
     let registry = Registry::declared()?;
+    // The globals too: the delivery span is opened through
+    // `opentelemetry::global::tracer`.
     Ok(Builder::new(config, SERVICE, registry)
         .with_logs()
+        .with_global_providers()
         .install()?)
 }
 

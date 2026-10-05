@@ -207,9 +207,9 @@ rather than a dashboard edit.
 Development and production resolve to the same Grafana stack, the same
 namespace, the same Prometheus datasource and the same ingest credential — the
 vault items differ in name only. No series carries a `deployment.environment`
-attribute either: `rustd/crates/agentsfleetd/src/telemetry/resource.rs` builds
-the resource from service name, namespace, version and an optional instance
-identifier, and stops there.
+attribute either: `rustd/crates/afd_otlp/src/resource.rs` builds the resource
+both binaries send from service name, namespace, version and an optional
+instance identifier, and stops there.
 
 Today every series in the store is development, because the production Fly
 application runs no machines. That makes the development dashboard correct by
@@ -244,15 +244,52 @@ makes it much smaller than the three missing families above.
 
 ## `agentsfleet-runner` — a collector of its own
 
-**Built today: no runner exports anything.** The Zig runner (`src/runner/`)
-carries no metrics, OTel, or PostHog; its lone `record_metric` hook is a no-op
-stub. The Rust runner opens `runner.lease`, `invoke_agent`, `chat` and
-`execute_tool` spans (`rustd/crates/afr_agent/src/spans.rs`,
-`rustd/crates/afr_supervisor/src/identity.rs`) and exports none of them. Both
-write logfmt to stderr and report liveness and results over `/v1/runners`
-(heartbeat, `/renew`, result-report). `agentsfleetd` owns the runner's
-observable state in `afd_observability`'s per-runner table and derives fleet
-liveness itself.
+**Built: the runner exports its own spans and metric families. The runner
+collector is built later.** The Zig runner (`src/runner/`) carries no metrics,
+OTel, or PostHog; its lone `record_metric` hook is a no-op stub. The Rust
+runner's `run` entry exports over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT`
+names a collector (`rustd/crates/afr_telemetry/`, built on the transport both
+binaries share, `rustd/crates/afd_otlp/`). Both runners write logfmt to stderr
+and report liveness and results over `/v1/runners` (heartbeat, `/renew`,
+result-report). `agentsfleetd` owns the runner's observable state in
+`afd_observability`'s per-runner table and derives fleet liveness itself.
+Until M213_001 switches the agent engine on, `run` refuses every lease, so the
+export is built and configured but carries no lease yet.
+
+**What the runner reads.** The endpoint, protocol and timeout knobs the daemon
+reads, and not the fourth: `OTEL_EXPORTER_OTLP_HEADERS`, or a user in the
+endpoint (`http://user:secret@…`), stops `run` naming the knob. A header is
+how an OTLP exporter carries a credential, and the runner holds none; the
+credential belongs to the runner collector on the host, which a lease cannot
+read. `sandbox` and `probe` read no telemetry knob, so hardening still sees a
+single thread. `run` logs `telemetry_export_started` with the knob's name and
+the protocol, or `telemetry_export_disabled` once, and never the endpoint.
+
+**What it exports.**
+
+- **Spans:** `runner.lease`, `invoke_agent`, `chat` and `execute_tool`, and
+  nothing else. The layer admits only spans under the `agentsfleet-runner`
+  target, so no library's span leaves the host and no log record rides a span
+  as an event. Each lease is its own root trace carrying
+  `agentsfleet.lease.id` and `agentsfleet.event.id`.
+- **A fixed span budget** (`rustd/crates/afr_telemetry/src/budget.rs`): every
+  lease's root span is kept, and its children are held to `MAX_LEASE_SPANS`
+  (256) per lease and `RUNNER_SPANS_PER_SECOND` (128) per monotonic second.
+  The budget is a fixed table of lease slots claimed by compare-and-swap and
+  one packed word for the second, so admitting a span never waits on another
+  worker. A shed span counts in `agentsfleet_runner_spans_suppressed_total`.
+  128 a second fills at most 640 of the batch exporter's 2048-span queue
+  between its five-second sends.
+- **Six metric families of its own**, declared in
+  `docs/metrics.runner.census.tsv` and graded both ways against their
+  producers: provider turn duration and retries (by provider and outcome or
+  reason), sandbox start duration, live-tail frames dropped, failed memory
+  pushes, and tool call duration (by tool and outcome). A provider label is
+  OpenTelemetry's well-known name or `_other`; a tool label is a published
+  catalog name or `_other`; every outcome and reason is a closed enum.
+- **Never:** logs (stderr, read by the collector from the host's log store),
+  prompts, replies, tool output, credentials, and no tenant, fleet, lease or
+  event identifier on a metric.
 
 **Decided 2026-10-04; the collector is built later.** Indy: "we will run an
 otel collector and collect the observability log, trace, metrics"; "we will
@@ -263,27 +300,20 @@ current collectors "are for the agentsfleetd daemon only".
   separate from `otelcol-{dev,prod}` (§The export path), which stay the
   daemon's alone, and it exports to the backends itself. How it is deployed,
   and the credential it holds for its backends, are settled when it is built.
-- The runner's `run` entry exports its spans and its own metric families over
-  OTLP to that collector. `sandbox` and `probe` export nothing, so hardening
-  still sees a single thread. The runner sends no header and no credential.
 - The runner keeps logging to stderr alone. The runner collector reads those
   lines from the host's log store (journald on a systemd host), which also
   catches a crash, a refusal before boot and a sandbox's stderr, and no line is
   emitted twice.
-- The runner's families carry only what no verb does: provider turn latency
-  and retries, sandbox start time, dropped activity frames, failed memory
-  pushes and tool-call duration. Every fact that rides a verb stays
-  `agentsfleetd`'s.
+- The runner's families carry only what no verb does. Every fact that rides a
+  verb stays `agentsfleetd`'s.
 
 Runners stay cattle (`runner_fleet.md`). A runner knows one collector endpoint
-and no backend, so moving a vendor stays collector configuration. The runner
-side is the runner-telemetry workstream; the collector is its own
-later work.
+and no backend, so moving a vendor stays collector configuration.
 
 ## Signal routing
 
 ```text
-BARE-METAL HOST (the runner collector is decided, built later; the verbs are built)
+BARE-METAL HOST (the runner's export and the verbs are built; its collector is built later)
   agentsfleet-runner
     ├─ structured stderr ──► journald ─────────► runner collector ──► backends
     ├─ spans + runner families ── OTLP ──────────►┘  (its own; never otelcol-{env})
@@ -317,9 +347,9 @@ the allowlist proof.
 |---|---|---|---|
 | runner logs | runner logfmt on stderr; host owns retention | today none off the host; decided: host log store → runner collector → backends | host policy caps disk; the allowlist above; loss never blocks a run |
 | runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | OTLP push (streamed per-runner families) | 4096 runner slots; overflow → `_other` |
-| runner own metrics | decided: the runner, for facts no verb carries | OTLP → runner collector → backends | closed label sets in a runner census of their own; no tenant, fleet, lease or event identifier |
+| runner own metrics | the runner (`afr_telemetry`), for facts no verb carries | OTLP → runner collector → backends | closed label sets in `docs/metrics.runner.census.tsv`; no tenant, fleet, lease or event identifier |
 | runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
-| runner traces | today none exported; decided: the runner's four span kinds | OTLP → runner collector → backends | fixed per-lease and per-second span budget; joins `fleet.delivery` by `lease_id` and `event_id` attributes |
+| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per lease and 128 per second, every lease root kept, the rest counted; joins `fleet.delivery` by `lease_id` and `event_id` attributes |
 | control-plane logs | structured logger | stderr + OTLP to Loki | 2047 queued records; enqueue never blocks |
 | control-plane metrics | runtime + cost families | one OTLP push; no pull endpoint | fixed labels or explicit caps |
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | route policy keeps output under the budget |
@@ -331,11 +361,11 @@ the allowlist proof.
 |---|---|---|
 | structured stderr | installed, called | `rustd/crates/agentsfleetd/src/logs.rs` installs the subscriber on stderr at boot; `AGENTSFLEET_LOG_LEVEL` sets the level |
 | server spans | emitted | `rustd/crates/afd_api/src/router/trace.rs` opens one span per matched request, carrying the route template, the method and the status — never the raw path |
-| OTLP logs | installed, called when configured | `rustd/crates/agentsfleetd/src/telemetry.rs` builds the log exporter; `logs.rs` bridges every `tracing` event the stderr layer already sees into it through the reload slot, so the two streams are one emit read twice |
+| OTLP logs | installed, called when configured | `rustd/crates/afd_otlp/src/pipelines.rs` builds the log exporter `agentsfleetd`'s `telemetry.rs` asks for; `logs.rs` bridges every `tracing` event the stderr layer already sees into it through the reload slot, so the two streams are one emit read twice |
 | OTLP traces | installed, called when configured | the same module builds the span exporter inside `afd_observability`'s counting wrapper; `serve.rs` spawns `otlp_export`, whose only job is the shutdown flush |
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); families this build cannot feed are named in `metrics/produced.rs` and logged once at boot |
 | PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
-| runner exporter | absent; decided, not built | one local stderr sink; the Rust runner's spans (`rustd/crates/afr_agent/src/spans.rs`) reach no exporter |
+| runner export | installed, called when configured | `run` in `rustd/crates/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot; it carries no lease until M213_001 switches the agent engine on |
 | runner collector | absent; decided, built later | `deploy/baremetal/` carries `agentsfleet-runner.service` and no collector; `deploy/fly/otelcol-{dev,prod}` serve the daemon only |
 
 ## Metrics stay semantic
@@ -358,12 +388,12 @@ census of its own, beside `docs/metrics.census.tsv` rather than in it.
 `agentsfleetd` accepts W3C `traceparent` at ingress and emits `http.request`
 spans, plus one `fleet.delivery` span after an accepted terminal report. A
 missing or malformed `traceparent` starts a new local root; invalid input never
-rejects a request. The Rust runner produces spans but exports none yet, and its
-verbs carry no trace field; `event_id` and `lease_id` correlate logs. Decided,
-not yet built: the runner exports its spans to the runner collector under a
-fixed per-lease and per-second budget. Each lease is its own root trace carrying
-`agentsfleet.lease.id` and `agentsfleet.event.id`, so it joins `fleet.delivery`
-by attribute, and no W3C context crosses the runner protocol.
+rejects a request. The Rust runner exports its spans to the runner collector
+under a fixed per-lease and per-second budget (§"`agentsfleet-runner` — a
+collector of its own"), and its verbs carry no trace field. Each lease is its
+own root trace carrying `agentsfleet.lease.id` and `agentsfleet.event.id`, so
+it joins `fleet.delivery` by attribute, and no W3C context crosses the runner
+protocol.
 
 **Route policy.** Successful heartbeat, lease, renew,
 activity, and report requests never enqueue spans. Responses ≥ 500 enter the
@@ -535,7 +565,8 @@ would present as a collector fault for as long as nobody checked.
 
 No endpoint is the ordinary case and not a fault. The daemon boots, serves,
 logs `startup_otel_disabled`, and supervises no export task. With one, boot
-(`rustd/crates/agentsfleetd/src/telemetry.rs`) builds four pipelines on the
+(`rustd/crates/agentsfleetd/src/telemetry.rs`, through the builder both
+binaries share in `rustd/crates/afd_otlp/`) builds four pipelines on the
 published `opentelemetry-otlp` exporter over HTTP, each posting under its
 signal path (`/v1/traces`, `/v1/metrics`, `/v1/logs`) appended to the one
 endpoint, on the SDK's own batch threads with a blocking client. The periodic

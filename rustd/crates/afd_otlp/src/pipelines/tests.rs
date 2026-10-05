@@ -76,12 +76,16 @@ async fn a_new_pipeline_reports_no_losses_on_any_signal() {
         let registry = Registry::declared().expect("the compiled-in census reads");
         let mut builder = Builder::new(&config, service(), registry);
         if logs {
-            builder = builder.with_logs();
+            builder = builder.with_logs().with_global_providers();
         }
         let rendered = format!("{builder:?}");
         assert!(
             rendered.starts_with("Builder") && !rendered.contains(UNREACHABLE),
             "the builder renders without its endpoint's value: {rendered}"
+        );
+        assert!(
+            rendered.contains(&format!("globals: {logs}")),
+            "the globals are installed only when asked for: {rendered}"
         );
 
         let (exports, instruments) = builder.install().expect("a well-formed endpoint builds");

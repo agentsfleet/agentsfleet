@@ -165,6 +165,7 @@ pub struct Builder<'a> {
     sampler: Option<Box<dyn ShouldSample>>,
     steps: Vec<SpanStep>,
     logs: bool,
+    globals: bool,
 }
 
 impl core::fmt::Debug for Builder<'_> {
@@ -176,6 +177,7 @@ impl core::fmt::Debug for Builder<'_> {
             .field("sampled", &self.sampler.is_some())
             .field("steps", &self.steps.len())
             .field(SIGNAL_LOGS, &self.logs)
+            .field("globals", &self.globals)
             .finish()
     }
 }
@@ -192,6 +194,7 @@ impl<'a> Builder<'a> {
             sampler: None,
             steps: Vec::new(),
             logs: false,
+            globals: false,
         }
     }
 
@@ -218,7 +221,19 @@ impl<'a> Builder<'a> {
         self
     }
 
-    /// Builds every pipeline and sets the process-wide tracer and meter.
+    /// Installs the tracer and meter providers as the process-wide ones, for
+    /// a binary whose code reaches them through `opentelemetry::global`.
+    ///
+    /// Opt-in: a process-wide provider is shared state, and a binary that
+    /// reads no global has no reason to overwrite one.
+    #[must_use]
+    pub const fn with_global_providers(mut self) -> Self {
+        self.globals = true;
+        self
+    }
+
+    /// Builds every pipeline, and sets the process-wide tracer and meter when
+    /// [`Builder::with_global_providers`] asked for them.
     ///
     /// The globals are set BEFORE the instruments are claimed, so a family
     /// built here is built on the provider this process will actually export
@@ -236,6 +251,7 @@ impl<'a> Builder<'a> {
             sampler,
             steps,
             logs,
+            globals,
         } = self;
         let resource = service.describe();
         let headers: HashMap<String, String> = config.headers().iter().cloned().collect();
@@ -252,8 +268,10 @@ impl<'a> Builder<'a> {
         let (delta, _delta_drops) =
             meter_provider(config, &resource, &registry, Temporality::Delta, &headers)?;
 
-        opentelemetry::global::set_tracer_provider(tracer.clone());
-        opentelemetry::global::set_meter_provider(cumulative.clone());
+        if globals {
+            opentelemetry::global::set_tracer_provider(tracer.clone());
+            opentelemetry::global::set_meter_provider(cumulative.clone());
+        }
 
         let scope = service.name();
         let instruments = Instruments::new(registry, cumulative.meter(scope), delta.meter(scope));
