@@ -14,6 +14,11 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The daemon's integration lane runs the supervisor against fixture
+# repositories served over `file://` (`run_fetching_from`).
+test-util = []
+
 [dependencies]
 # The span vocabulary every runner span is written in, beside the daemon's.
 afd_observability.workspace = true

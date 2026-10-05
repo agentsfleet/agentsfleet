@@ -53,6 +53,19 @@ pub(crate) async fn run_event(
     upstream: &Upstream,
     model: FakeModel,
 ) -> Settled {
+    run_event_from(run, event_id, upstream, model, None).await
+}
+
+/// [`run_event`], the runner fetching the fleet's bound repositories from
+/// `origin` (a `file://` URL ending in `/`) rather than from GitHub, when one
+/// is given.
+pub(crate) async fn run_event_from(
+    run: &Scenario,
+    event_id: &str,
+    upstream: &Upstream,
+    model: FakeModel,
+    origin: Option<String>,
+) -> Settled {
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
     let shutdown = CancellationToken::new();
@@ -61,7 +74,7 @@ pub(crate) async fn run_event(
         home.path(),
         sandboxes.path(),
         upstream.network(),
-        model,
+        (model, origin),
         shutdown.clone(),
     ));
     // A runner that stops on its own before the event settles failed to
@@ -116,13 +129,13 @@ async fn settled(run: &Scenario, event_id: &str) -> Option<String> {
 }
 
 /// The Rust runner's supervisor, pointed at the scenario's daemon, hosting
-/// the real loop.
+/// the real loop over `model`, and fetching from `origin` when one is given.
 fn runner(
     run: &Scenario,
     home: &std::path::Path,
     sandboxes: &std::path::Path,
     network: afr_egress::Network,
-    model: FakeModel,
+    (model, origin): (FakeModel, Option<String>),
     shutdown: CancellationToken,
 ) -> impl Future<Output = afr_supervisor::Result<()>> + use<> {
     let home = home.to_string_lossy().into_owned();
@@ -136,15 +149,22 @@ fn runner(
         .expect("a debug build permits the unsandboxed engine");
     let agent = afr_agent::Loop::new(afr_tools::Catalog::hosted(Arc::new(network)), model);
     async move {
-        afr_supervisor::run(
-            &config,
-            home,
-            Box::new(engine),
-            Box::new(agent),
-            capable(),
-            shutdown,
-        )
-        .await
+        let (engine, agent) = (Box::new(engine), Box::new(agent));
+        match origin {
+            Some(origin) => {
+                afr_supervisor::run_fetching_from(
+                    &config,
+                    home,
+                    engine,
+                    agent,
+                    capable(),
+                    &origin,
+                    shutdown,
+                )
+                .await
+            }
+            None => afr_supervisor::run(&config, home, engine, agent, capable(), shutdown).await,
+        }
     }
 }
 

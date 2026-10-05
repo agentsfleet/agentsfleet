@@ -29,10 +29,14 @@
 //! `use super::*` and that path resolves against the directory of the file that
 //! declares it — which aggregation does not move.
 
+#[path = "support/bundle_code.rs"]
+mod bundle_code;
 #[path = "support/bundle_install.rs"]
 mod bundle_install;
 #[path = "support/bundle_repair.rs"]
 mod bundle_repair;
+#[path = "support/bundle_responder.rs"]
+mod bundle_responder;
 #[path = "support/bundle_run.rs"]
 mod bundle_run;
 #[path = "support/e2e.rs"]
