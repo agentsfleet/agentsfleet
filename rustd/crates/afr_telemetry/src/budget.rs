@@ -2,11 +2,12 @@
 //!
 //! ```text
 //!   span starts ─► LeaseSampler::should_sample
-//!                    │ no parent: a lease's root ─► claim a slot; always kept
-//!                    │ a parent: its lease's slot ─► per-lease count < MAX_LEASE_SPANS?
-//!                    │                              per-second window < RUNNER_SPANS_PER_SECOND?
-//!                    │                               both ─► kept   either not ─► shed, counted
-//!   root span ends ─► LeaseReaper::on_end ─► the slot is free for the next lease
+//!                    │ no parent: a lease's root ─► claim a slot, charge the second; always kept
+//!                    │ a parent that was shed    ─► shed, counted (its trace has a hole above it)
+//!                    │ a kept parent: its lease's slot ─► per-lease count < MAX_LEASE_SPANS?
+//!                    │                                   per-second window < RUNNER_SPANS_PER_SECOND?
+//!                    │                                   both ─► kept   either not ─► shed, counted
+//!   root span ends ─► LeaseReaper::ended ─► the slot is free for the next lease
 //! ```
 //!
 //! # Why the root is always kept
@@ -14,8 +15,18 @@
 //! Each lease is its own trace, joined to the daemon's `fleet.delivery` span by
 //! its `agentsfleet.lease.id` and `agentsfleet.event.id` attributes. A trace
 //! whose root was shed is a pile of children an operator cannot find, so the
-//! root spends one of its lease's spans and is never refused. Roots are bounded
-//! anyway: one per lease, and a runner holds at most `MAX_WORKERS` leases.
+//! root spends one of its lease's spans and is never refused. It is charged to
+//! the second all the same, so the children that second admits make room for
+//! it. What bounds roots is the rate leases start at, not this budget: one per
+//! lease, and a runner holds at most `MAX_WORKERS` leases at a time.
+//!
+//! # Why a shed span's children are shed
+//!
+//! The SDK keeps a span it dropped as the active parent of what starts inside
+//! it. Admitting those children would export spans pointing at a parent the
+//! collector never received — an orphaned subtree that spends its lease's
+//! budget and joins nothing. So a child of a span that was not sampled is shed
+//! and counted like any other.
 //!
 //! # Why atomics and no lock
 //!
@@ -26,15 +37,13 @@
 //! than growing.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use afd_core::limits::MAX_WORKERS;
+use afd_otlp::SpanEnd;
 use opentelemetry::trace::{Link, SpanKind, TraceContextExt as _, TraceId, TraceState};
 use opentelemetry::{Context, KeyValue};
-use opentelemetry_sdk::error::OTelSdkResult;
-use opentelemetry_sdk::trace::{
-    SamplingDecision, SamplingResult, ShouldSample, Span, SpanData, SpanProcessor,
-};
+use opentelemetry_sdk::trace::{SamplingDecision, SamplingResult, ShouldSample, SpanData};
 
 use self::table::{LeaseTable, SecondWindow};
 
@@ -43,7 +52,7 @@ mod table;
 #[cfg(test)]
 mod tests;
 
-/// Spans one lease may export, its root included.
+/// Spans one lease may export, its root included: the root and 255 children.
 ///
 /// Sized from the heaviest lease the suites drive — the repair bundle's run,
 /// a root, its `invoke_agent`, and a `chat` and an `execute_tool` per step,
@@ -51,11 +60,15 @@ mod tests;
 /// on one tool reaches it, and the rest of that lease is counted, not sent.
 pub const MAX_LEASE_SPANS: u32 = 256;
 
-/// Spans the whole runner may export per monotonic second, roots aside.
+/// Spans the whole runner may export per monotonic second, roots included.
 ///
-/// The batch exporter queues 2048 spans and sends every five seconds, so 128 a
-/// second fills at most 640 of that queue: a runner at its budget never drops
-/// a span the budget admitted.
+/// The batch processor holds [`afd_otlp::SPAN_QUEUE`] spans and sends every
+/// [`afd_otlp::SPAN_SEND_EVERY`], both pinned, so 128 a second fills at most
+/// 640 of its 2048: against a collector that keeps up, the queue never drops
+/// a span the budget admitted. A collector slower than the budget is a
+/// different matter — its failed exports are counted in
+/// `agentsfleet_runner_otlp_entries_discarded_total`, and a queue it lets fill
+/// drops inside the SDK, where nothing counts it.
 pub const RUNNER_SPANS_PER_SECOND: u32 = 128;
 
 /// Leases the table tracks at once: four times the most a runner can hold, so
@@ -159,7 +172,8 @@ impl ShouldSample for LeaseSampler {
                 self.budget.open(trace_id);
                 true
             }
-            Some(_lease) => self.budget.admit(trace_id),
+            Some(shed) if !shed.span().span_context().is_sampled() => self.budget.refuse(),
+            Some(_kept) => self.budget.admit(trace_id),
         };
         SamplingResult {
             decision: if admitted {
@@ -176,26 +190,20 @@ impl ShouldSample for LeaseSampler {
 }
 
 /// Frees a lease's slot in the budget when the lease's root span ends.
+///
+/// An observer inside the pipeline's one processor rather than a processor of
+/// its own, so the SDK moves each ended span once instead of cloning it for a
+/// second processor (`afd_otlp::SpanEnd` says why).
 #[derive(Debug)]
 pub struct LeaseReaper {
     budget: Arc<Budget>,
 }
 
-impl SpanProcessor for LeaseReaper {
-    fn on_start(&self, _span: &mut Span, _cx: &Context) {}
-
-    fn on_end(&self, span: SpanData) {
+impl SpanEnd for LeaseReaper {
+    fn ended(&self, span: &SpanData) {
         if span.parent_span_id == opentelemetry::trace::SpanId::INVALID {
             self.budget.close(span.span_context.trace_id());
         }
-    }
-
-    fn force_flush(&self) -> OTelSdkResult {
-        Ok(())
-    }
-
-    fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
-        Ok(())
     }
 }
 
@@ -218,11 +226,15 @@ impl core::fmt::Debug for Budget {
 }
 
 impl Budget {
-    /// A lease's root span started: its slot is claimed and its root counted.
-    /// A full table leaves the root kept and its children untracked, which
-    /// sheds them.
+    /// A lease's root span started: its slot is claimed, its root counted
+    /// against the lease and charged to the second. A full table leaves the
+    /// root kept and its children untracked, which sheds them; a full second
+    /// keeps the root anyway, because a root is never refused.
     fn open(&self, trace: TraceId) {
         let _claimed = self.leases.open(key(trace));
+        let _charged = self
+            .window
+            .take(self.clock.second(), self.limits.per_second);
     }
 
     /// A child span started: kept when its lease and the second both have
@@ -242,10 +254,13 @@ impl Budget {
             // Untracked (the table was full when its root started) or spent.
             _refused => false,
         };
-        if !admitted {
-            (self.shed)();
-        }
-        admitted
+        if admitted { true } else { self.refuse() }
+    }
+
+    /// A span refused: counted as shed, and never admitted.
+    fn refuse(&self) -> bool {
+        (self.shed)();
+        false
     }
 
     /// A lease's root span ended: its slot is free.

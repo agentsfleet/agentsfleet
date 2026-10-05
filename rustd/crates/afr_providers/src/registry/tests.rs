@@ -219,3 +219,27 @@ fn should_refuse_a_custom_endpoint_at_a_private_address_literal() {
         assert!(registry.route(&custom(public)).is_ok(), "{public}");
     }
 }
+
+/// Every name and alias the shipped table routes is labelled by the name it
+/// selects, so a retry or a turn on any registered provider is its own series.
+///
+/// The label set is read from this same file in `afr_telemetry`; this is the
+/// check that the two readings agree.
+#[test]
+fn every_shipped_provider_is_its_own_label() {
+    let specs: Vec<ProviderSpec> = serde_json::from_str(BUILTIN).unwrap();
+    for spec in &specs {
+        for configured in spec.aliases.iter().chain([&spec.name]) {
+            assert_eq!(
+                afr_telemetry::labels::Provider::of(configured).as_str(),
+                spec.name,
+                "`{configured}` is labelled by the name it selects"
+            );
+        }
+    }
+    assert_eq!(
+        afr_telemetry::labels::Provider::count(),
+        specs.len() + 1,
+        "every shipped provider, and `_other`"
+    );
+}

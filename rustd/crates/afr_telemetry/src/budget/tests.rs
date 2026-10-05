@@ -7,17 +7,19 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
+use std::time::Duration;
 
+use afd_otlp::SpanEnd as _;
 use opentelemetry::Context;
 use opentelemetry::trace::{
     Span as _, TraceContextExt as _, TraceId, Tracer as _, TracerProvider as _,
 };
 use opentelemetry_sdk::error::OTelSdkResult;
-use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, SpanExporter};
+use opentelemetry_sdk::trace::{SdkTracerProvider, Span, SpanData, SpanExporter, SpanProcessor};
 
 use super::table::{LeaseTable, SecondWindow};
 use super::{
-    LeaseSampler, Limits, MAX_LEASE_SPANS, Monotonic, RUNNER_SPANS_PER_SECOND, Seconds,
+    LeaseReaper, LeaseSampler, Limits, MAX_LEASE_SPANS, RUNNER_SPANS_PER_SECOND, Seconds,
     TRACKED_LEASES, key,
 };
 
@@ -45,6 +47,27 @@ impl SpanExporter for Kept {
     }
 }
 
+/// The reaper as a processor of its own, as a bare SDK pipeline takes it; the
+/// production pipeline runs it as an observer inside its one processor.
+#[derive(Debug)]
+struct Reaping(LeaseReaper);
+
+impl SpanProcessor for Reaping {
+    fn on_start(&self, _span: &mut Span, _cx: &Context) {}
+
+    fn on_end(&self, span: SpanData) {
+        self.0.ended(&span);
+    }
+
+    fn force_flush(&self) -> OTelSdkResult {
+        Ok(())
+    }
+
+    fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
+        Ok(())
+    }
+}
+
 /// A pipeline under `limits`, what it kept, what it shed, and its clock.
 struct Pipeline {
     provider: SdkTracerProvider,
@@ -65,7 +88,7 @@ impl Pipeline {
         let kept = Kept::default();
         let provider = SdkTracerProvider::builder()
             .with_sampler(sampler.clone())
-            .with_span_processor(sampler.reaper())
+            .with_span_processor(Reaping(sampler.reaper()))
             .with_simple_exporter(kept.clone())
             .build();
         Self {
@@ -138,19 +161,84 @@ fn test_span_budget_refills_each_second() {
     });
     let lease = pipeline.lease();
 
+    // The root took one of the second's spans, so the burst is shed past
+    // the budget less one.
     pipeline.children(&lease, RUNNER_SPANS_PER_SECOND + 5);
-    assert_eq!(pipeline.shed(), 5, "the burst past the second is shed");
+    assert_eq!(pipeline.shed(), 6, "the burst past the second is shed");
     assert_eq!(
         pipeline.kept(),
-        RUNNER_SPANS_PER_SECOND as usize,
-        "the second admitted its budget; the root waits for its end"
+        RUNNER_SPANS_PER_SECOND as usize - 1,
+        "the second admitted its budget, the root's share aside; the root waits for its end"
     );
 
     pipeline.clock.0.store(1, Ordering::SeqCst);
     pipeline.children(&lease, 1);
-    assert_eq!(pipeline.shed(), 5, "the next second admits again");
+    assert_eq!(pipeline.shed(), 6, "the next second admits again");
     lease.span().end();
-    assert_eq!(pipeline.kept(), RUNNER_SPANS_PER_SECOND as usize + 2);
+    assert_eq!(pipeline.kept(), RUNNER_SPANS_PER_SECOND as usize + 1);
+}
+
+/// A root is charged to its second and never refused: a second already
+/// spent keeps the next lease's root, and that root's charge sheds a child.
+#[test]
+fn a_root_is_charged_to_its_second_and_never_refused() {
+    let pipeline = Pipeline::new(Limits {
+        per_lease: u32::MAX,
+        per_second: 1,
+    });
+    let first = pipeline.lease();
+    let second = pipeline.lease();
+
+    pipeline.children(&first, 1);
+    first.span().end();
+    second.span().end();
+
+    assert_eq!(
+        pipeline.kept(),
+        2,
+        "both roots, though the second was spent"
+    );
+    assert_eq!(
+        pipeline.shed(),
+        1,
+        "the first root spent the second its child wanted"
+    );
+}
+
+/// A span started under a shed span is shed too, even once the second has
+/// room again: exported, it would point at a parent the collector never got.
+#[test]
+fn a_shed_spans_children_are_shed_with_it() {
+    let pipeline = Pipeline::new(Limits {
+        per_lease: u32::MAX,
+        per_second: 2,
+    });
+    let tracer = pipeline.provider.tracer(SCOPE);
+    let lease = pipeline.lease();
+    let kept = lease.with_span(tracer.start_with_context("invoke_agent", &lease));
+    let shed = lease.with_span(tracer.start_with_context("invoke_agent", &lease));
+    assert_eq!(
+        pipeline.shed(),
+        1,
+        "the second's budget was the root and one child"
+    );
+
+    pipeline.clock.0.store(1, Ordering::SeqCst);
+    pipeline.children(&shed, 1);
+    pipeline.children(&kept, 1);
+    kept.span().end();
+    lease.span().end();
+
+    assert_eq!(
+        pipeline.shed(),
+        2,
+        "the shed span's child is shed with it, with the second's room to spare"
+    );
+    assert_eq!(
+        pipeline.kept(),
+        3,
+        "the root, the kept child and its own child"
+    );
 }
 
 /// Two leases are budgeted apart: one spending its whole budget leaves the
@@ -244,16 +332,6 @@ fn a_key_is_never_vacant() {
     assert_ne!(key(TraceId::from(42_u128)), 0);
 }
 
-/// The production clock starts at second zero, and the sampler renders
-/// without its closures.
-#[test]
-fn the_production_clock_starts_at_zero_and_the_sampler_renders() {
-    assert_eq!(Monotonic::start().second(), 0);
-    let sampler = LeaseSampler::new(Limits::default(), Monotonic::start(), || {});
-    let rendered = format!("{sampler:?} {:?}", sampler.reaper());
-    assert!(rendered.contains("per_lease"), "{rendered}");
-}
-
 /// Workers released together onto one lease, as a burst of tool calls lands.
 const WORKERS: usize = 128;
 
@@ -320,8 +398,8 @@ fn contended_children_never_overrun_the_second() {
 
         assert_eq!(
             pipeline.kept(),
-            100 + 1,
-            "the second's budget, and the root"
+            100,
+            "the second's budget, the root's share included"
         );
         assert_eq!(
             u64::try_from(pipeline.kept()).unwrap_or(u64::MAX) + pipeline.shed(),
@@ -358,4 +436,20 @@ fn traces_differing_only_in_their_high_half_get_different_keys() {
     let second = TraceId::from((2_u128 << 64) | low);
 
     assert_ne!(key(first), key(second));
+}
+
+/// A runner at its per-second budget fills less of the pinned span queue than
+/// the queue holds before the next send, so against a collector that keeps up
+/// the queue never drops a span the budget admitted. Roots are inside the
+/// budget, which is what lets this one product stand for the whole runner.
+#[test]
+fn the_per_second_budget_fits_the_pinned_queue() {
+    let sends_every = usize::try_from(afd_otlp::SPAN_SEND_EVERY.as_secs()).unwrap_or(usize::MAX);
+    let per_second = usize::try_from(RUNNER_SPANS_PER_SECOND).unwrap_or(usize::MAX);
+
+    assert!(
+        per_second * sends_every <= afd_otlp::SPAN_QUEUE,
+        "{per_second} a second for {sends_every} s overruns a {}-span queue",
+        afd_otlp::SPAN_QUEUE
+    );
 }

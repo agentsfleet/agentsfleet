@@ -2,20 +2,39 @@
 
 use std::collections::BTreeSet;
 
-use afd_observability::semconv::provider::WELL_KNOWN;
 use afr_tools::catalog::PUBLISHED;
 
 use super::{
-    FrameDrop, OTHER, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome,
+    FrameDrop, Names, OTHER, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome,
     TurnOutcome,
 };
 
-/// A provider OpenTelemetry names keeps its name; any other is `_other`.
+/// A registered provider keeps the registry's name, including the ones
+/// OpenTelemetry spells otherwise; an alias is the name it selects; a
+/// `custom:` endpoint, or anything the registry does not ship, is `_other`.
 #[test]
-fn a_provider_is_its_well_known_name_or_other() {
-    assert_eq!(Provider::of("Anthropic").as_str(), "anthropic");
-    assert_eq!(Provider::of("our-internal-gateway").as_str(), OTHER);
-    assert_eq!(Provider::COUNT, WELL_KNOWN.len() + 1);
+fn a_provider_is_its_registry_name_or_other() {
+    for (configured, label) in [
+        ("anthropic", "anthropic"),
+        ("mistral", "mistral"),
+        ("xai", "xai"),
+        ("grok", "xai"),
+        ("moonshot-cn", "moonshot"),
+        ("custom:https://models.example.com/v1", OTHER),
+        ("our-internal-gateway", OTHER),
+    ] {
+        assert_eq!(Provider::of(configured).as_str(), label, "`{configured}`");
+    }
+    // Every shipped entry, and `_other`: the ceiling is sized to this.
+    assert_eq!(Provider::count(), 40);
+}
+
+/// A table that will not parse names no provider, so every label is `_other`
+/// rather than a value no census declared.
+#[test]
+fn an_unreadable_table_names_no_provider() {
+    let names = Names::read("not json");
+    assert!(names.canonical.is_empty() && names.selects.is_empty());
 }
 
 /// A tool the catalog publishes keeps its name; a made-up one is `_other`.

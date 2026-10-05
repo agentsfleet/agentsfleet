@@ -36,6 +36,33 @@ pub const OTEL_ENDPOINT_KNOB: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 /// constant the binary that reads it uses.
 pub const OTEL_HEADERS_KNOB: &str = "OTEL_EXPORTER_OTLP_HEADERS";
 
+/// Every header knob the exporter reads from the process environment itself.
+///
+/// The general knob and each signal's own, which it prefers: `opentelemetry-otlp`
+/// 0.32's `build_client` (`exporter/http/mod.rs`) reads them whatever the
+/// programmatic configuration says and merges the result into every request.
+/// A binary that refuses a header has to refuse all four, or a credential
+/// rides the knob it did not check.
+pub const HEADER_KNOBS: [&str; 4] = [
+    OTEL_HEADERS_KNOB,
+    opentelemetry_otlp::OTEL_EXPORTER_OTLP_TRACES_HEADERS,
+    opentelemetry_otlp::OTEL_EXPORTER_OTLP_METRICS_HEADERS,
+    opentelemetry_otlp::OTEL_EXPORTER_OTLP_LOGS_HEADERS,
+];
+
+/// Every compression knob the exporter reads from the process environment
+/// itself, when the programmatic configuration names none.
+///
+/// This build compiles no compression in, so the exporter refuses to build on
+/// any of them — with an error that names no knob. A binary that grades them
+/// first names the one an operator has to clear.
+pub const COMPRESSION_KNOBS: [&str; 4] = [
+    opentelemetry_otlp::OTEL_EXPORTER_OTLP_COMPRESSION,
+    opentelemetry_otlp::OTEL_EXPORTER_OTLP_TRACES_COMPRESSION,
+    opentelemetry_otlp::OTEL_EXPORTER_OTLP_METRICS_COMPRESSION,
+    opentelemetry_otlp::OTEL_EXPORTER_OTLP_LOGS_COMPRESSION,
+];
+
 /// Which encoding goes on the wire.
 pub const OTEL_PROTOCOL_KNOB: &str = "OTEL_EXPORTER_OTLP_PROTOCOL";
 
@@ -67,8 +94,12 @@ const WHY_TIMEOUT: &str = "how long one export may take, in whole milliseconds";
 /// back as `invalid URI <the whole value>`, and that value is read from the
 /// same place as the credential beside it — a rejection that echoed it would
 /// print to stderr and to whatever ships stderr.
-const WHY_ENDPOINT: &str = "an absolute URL the exporter can post to, such as \
+const WHY_ENDPOINT: &str = "an http or https URL with a host and no query, such as \
                             https://collector.example:4318";
+
+/// The two schemes an HTTP exporter posts over.
+const SCHEME_HTTP: &str = "http";
+const SCHEME_HTTPS: &str = "https";
 
 /// One optional knob, absent when it is unset or blank.
 ///
@@ -199,9 +230,10 @@ impl OtlpConfig {
     /// with no headers and the default encoding and timeout.
     ///
     /// # Errors
-    /// [`Refused`] naming `source`, when `endpoint` is not an absolute URL.
+    /// [`Refused`] naming `source`, when `endpoint` is not a base every
+    /// signal path can be appended to — see [`postable`].
     pub fn new(endpoint: &str, source: &'static str) -> core::result::Result<Self, Refused> {
-        if endpoint.parse::<http::Uri>().is_err() {
+        if !postable(endpoint) {
             return Err(Refused {
                 knob: source,
                 why: WHY_ENDPOINT,
@@ -314,4 +346,23 @@ impl OtlpConfig {
     pub fn signal_endpoint(&self, path: &str) -> String {
         format!("{}{path}", self.endpoint.trim_end_matches('/'))
     }
+}
+
+/// Whether `endpoint` is a base every signal path can be appended to.
+///
+/// Parsing as a URI is not enough. `http::Uri` also takes the authority form
+/// (`collector:4318`) and the origin form (`/v1/traces`): the first builds no
+/// exporter once a path is appended, and the exporter's refusal echoes the
+/// whole value; the second builds one that fails every export. A query or a
+/// fragment would swallow the appended path, so every signal posts to `/`.
+/// What is left is an `http` or `https` URL with a host, which is exactly
+/// what the exporter can post to.
+fn postable(endpoint: &str) -> bool {
+    let Ok(uri) = endpoint.parse::<http::Uri>() else {
+        return false;
+    };
+    matches!(uri.scheme_str(), Some(SCHEME_HTTP | SCHEME_HTTPS))
+        && uri.authority().is_some()
+        && uri.query().is_none()
+        && !endpoint.contains('#')
 }

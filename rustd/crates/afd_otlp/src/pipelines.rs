@@ -33,10 +33,12 @@ use afd_observability::{CountingExporter, CountingLogExporter, LogDrops, SpanDro
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_otlp::{WithExportConfig as _, WithHttpConfig as _};
 use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::logs::SdkLoggerProvider;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 use opentelemetry_sdk::trace::{
-    SdkTracerProvider, ShouldSample, SpanProcessor, TracerProviderBuilder,
+    BatchConfigBuilder, BatchSpanProcessor, SdkTracerProvider, ShouldSample, Span, SpanData,
+    SpanProcessor,
 };
 
 use crate::config::OtlpConfig;
@@ -56,6 +58,21 @@ const SIGNAL_TRACES: &str = "traces";
 const SIGNAL_METRICS: &str = "metrics";
 const SIGNAL_METRICS_DELTA: &str = "metrics_delta";
 const SIGNAL_LOGS: &str = "logs";
+
+/// Spans the batch processor holds before it drops one.
+///
+/// Pinned rather than inherited: the SDK's default reads `OTEL_BSP_*` from the
+/// process environment, so a host variable or an SDK bump would move the
+/// number a span budget is sized against with nothing to say so. The value is
+/// the SDK's own default, so pinning it changes nothing a deployment sees.
+pub const SPAN_QUEUE: usize = 2048;
+
+/// Spans one export carries at most. The SDK's default, pinned.
+pub const SPAN_BATCH: usize = 512;
+
+/// How often the batch processor sends what it holds. The SDK's default,
+/// pinned.
+pub const SPAN_SEND_EVERY: Duration = Duration::from_secs(5);
 
 /// How often the metric reader collects and exports.
 ///
@@ -88,23 +105,34 @@ impl Exports {
     /// is worth a line rather than a non-zero exit. Parks the thread it runs
     /// on; a caller on a reactor moves it to the blocking pool.
     pub fn flush(&self) {
-        let logs = self.logger.as_ref().map(SdkLoggerProvider::force_flush);
-        for (signal, outcome) in [
+        report_failures([
             (SIGNAL_TRACES, Some(self.tracer.force_flush())),
             (SIGNAL_METRICS, Some(self.cumulative.force_flush())),
             (SIGNAL_METRICS_DELTA, Some(self.delta.force_flush())),
-            (SIGNAL_LOGS, logs),
-        ] {
-            if let Some(Err(failure)) = outcome {
-                let reason = failure.to_string();
-                tracing::warn!(
-                    signal,
-                    reason,
-                    event = "telemetry_flush_failed",
-                    "a signal could not be flushed before shutdown"
-                );
-            }
-        }
+            (
+                SIGNAL_LOGS,
+                self.logger.as_ref().map(SdkLoggerProvider::force_flush),
+            ),
+        ]);
+    }
+
+    /// Delivers everything buffered and stops every pipeline, for a process
+    /// that will not export again.
+    ///
+    /// A shutdown delivers what it holds, so a caller needs no flush before
+    /// it, and the providers' own `Drop` then finds nothing left to do: one
+    /// round of exports on the way out, never two. Failures are reported, as
+    /// [`Exports::flush`] reports them. Parks the thread it runs on.
+    pub fn shutdown(&self) {
+        report_failures([
+            (SIGNAL_TRACES, Some(self.tracer.shutdown())),
+            (SIGNAL_METRICS, Some(self.cumulative.shutdown())),
+            (SIGNAL_METRICS_DELTA, Some(self.delta.shutdown())),
+            (
+                SIGNAL_LOGS,
+                self.logger.as_ref().map(SdkLoggerProvider::shutdown),
+            ),
+        ]);
     }
 
     /// The logger provider, for the bridge that feeds it log records; absent
@@ -144,26 +172,86 @@ impl Exports {
     }
 }
 
-/// One step a binary adds to the span pipeline, applied when it is built.
+/// Reports each signal whose flush or shutdown failed, once, by name.
 ///
-/// A callable rather than a boxed processor: the SDK takes a processor by
-/// value and boxes it itself, so holding it boxed here would be a second box
-/// and a `Clone` the trait does not have.
-type SpanStep = Box<dyn FnOnce(TracerProviderBuilder) -> TracerProviderBuilder>;
+/// This runs on the way out, where there is nothing left to abort and a lost
+/// batch is worth a line rather than a non-zero exit.
+fn report_failures(outcomes: [(&'static str, Option<OTelSdkResult>); 4]) {
+    for (signal, outcome) in outcomes {
+        if let Some(Err(failure)) = outcome {
+            let reason = failure.to_string();
+            tracing::warn!(
+                signal,
+                reason,
+                event = "telemetry_flush_failed",
+                "a signal could not be flushed before shutdown"
+            );
+        }
+    }
+}
+
+/// Sees each recorded span the moment it ends, before the batch exporter
+/// takes it.
+///
+/// An observer rather than a second [`SpanProcessor`]: with one processor the
+/// SDK MOVES each ended span into it, and with two it deep-clones the span for
+/// each — every attribute string a fresh allocation, on every exported span.
+/// An observer reads the span by reference inside the one processor, so the
+/// span is moved once whatever is watching.
+pub trait SpanEnd: Send + Sync + core::fmt::Debug {
+    /// `span` ended and was recorded; it goes to the exporter next.
+    fn ended(&self, span: &SpanData);
+}
+
+/// The batch processor, with the observers a binary added in front of it.
+#[derive(Debug)]
+struct Observed {
+    inner: BatchSpanProcessor,
+    observers: Vec<Box<dyn SpanEnd>>,
+}
+
+impl SpanProcessor for Observed {
+    fn on_start(&self, span: &mut Span, cx: &opentelemetry::Context) {
+        self.inner.on_start(span, cx);
+    }
+
+    fn on_end(&self, span: SpanData) {
+        for observer in &self.observers {
+            observer.ended(&span);
+        }
+        self.inner.on_end(span);
+    }
+
+    fn force_flush(&self) -> OTelSdkResult {
+        self.inner.force_flush()
+    }
+
+    fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult {
+        self.inner.shutdown_with_timeout(timeout)
+    }
+
+    fn shutdown(&self) -> OTelSdkResult {
+        self.inner.shutdown()
+    }
+
+    fn set_resource(&mut self, resource: &Resource) {
+        self.inner.set_resource(resource);
+    }
+}
 
 /// Builds every pipeline for one process, installs the process-wide handles,
 /// and claims the instrument set.
 ///
 /// Struct-driven so the two binaries say what differs between them and
 /// nothing else: the daemon adds a log pipeline, the runner a span sampler
-/// and a processor of its own. What they share — the exporters, the counting
+/// and an observer of its own. What they share — the exporters, the counting
 /// wrappers, the two meter providers, the globals — is built once, here.
 pub struct Builder<'a> {
     config: &'a OtlpConfig,
     service: Service,
     registry: Registry,
     sampler: Option<Box<dyn ShouldSample>>,
-    steps: Vec<SpanStep>,
+    observers: Vec<Box<dyn SpanEnd>>,
     logs: bool,
     globals: bool,
 }
@@ -175,8 +263,8 @@ impl core::fmt::Debug for Builder<'_> {
             .field("service", &self.service)
             .field("families", &self.registry.len())
             .field("sampled", &self.sampler.is_some())
-            .field("steps", &self.steps.len())
-            .field(SIGNAL_LOGS, &self.logs)
+            .field("observers", &self.observers.len())
+            .field("log_pipeline", &self.logs)
             .field("globals", &self.globals)
             .finish()
     }
@@ -192,7 +280,7 @@ impl<'a> Builder<'a> {
             service,
             registry,
             sampler: None,
-            steps: Vec::new(),
+            observers: Vec::new(),
             logs: false,
             globals: false,
         }
@@ -205,12 +293,10 @@ impl<'a> Builder<'a> {
         self
     }
 
-    /// Sees every span as it starts and ends, beside the batch exporter.
+    /// Sees every recorded span as it ends, ahead of the batch exporter.
     #[must_use]
-    pub fn with_span_processor(mut self, processor: impl SpanProcessor + 'static) -> Self {
-        self.steps.push(Box::new(move |builder| {
-            builder.with_span_processor(processor)
-        }));
+    pub fn with_span_end(mut self, observer: impl SpanEnd + 'static) -> Self {
+        self.observers.push(Box::new(observer));
         self
     }
 
@@ -249,14 +335,14 @@ impl<'a> Builder<'a> {
             service,
             registry,
             sampler,
-            steps,
+            observers,
             logs,
             globals,
         } = self;
         let resource = service.describe();
         let headers: HashMap<String, String> = config.headers().iter().cloned().collect();
 
-        let (tracer, spans_lost) = tracer(config, &resource, &headers, sampler, steps)?;
+        let (tracer, spans_lost) = tracer(config, &resource, &headers, sampler, observers)?;
         let (logger, records_lost) = logger(config, &resource, &headers, logs)?;
         let (cumulative, cycles_lost) = meter_provider(
             config,
@@ -291,14 +377,15 @@ impl<'a> Builder<'a> {
     }
 }
 
-/// The span pipeline: the counting exporter behind a batch processor, then
-/// the sampler and the steps the binary added.
+/// The span pipeline: the counting exporter behind one batch processor sized
+/// by the pinned constants, the binary's observers in front of it, and the
+/// sampler the binary added.
 fn tracer(
     config: &OtlpConfig,
     resource: &Resource,
     headers: &HashMap<String, String>,
     sampler: Option<Box<dyn ShouldSample>>,
-    steps: Vec<SpanStep>,
+    observers: Vec<Box<dyn SpanEnd>>,
 ) -> Result<(SdkTracerProvider, SpanDrops)> {
     let spans = CountingExporter::new(
         opentelemetry_otlp::SpanExporter::builder()
@@ -310,14 +397,23 @@ fn tracer(
             .build()?,
     );
     let spans_lost = spans.drops();
+    let batch = BatchSpanProcessor::builder(spans)
+        .with_batch_config(
+            BatchConfigBuilder::default()
+                .with_max_queue_size(SPAN_QUEUE)
+                .with_max_export_batch_size(SPAN_BATCH)
+                .with_scheduled_delay(SPAN_SEND_EVERY)
+                .build(),
+        )
+        .build();
     let mut builder = SdkTracerProvider::builder()
         .with_resource(resource.clone())
-        .with_batch_exporter(spans);
+        .with_span_processor(Observed {
+            inner: batch,
+            observers,
+        });
     if let Some(sampler) = sampler {
         builder = builder.with_sampler(sampler);
-    }
-    for step in steps {
-        builder = step(builder);
     }
     Ok((builder.build(), spans_lost))
 }

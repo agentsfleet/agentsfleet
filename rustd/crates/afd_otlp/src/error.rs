@@ -57,9 +57,10 @@ pub(crate) enum ErrorKind {
         source: opentelemetry_otlp::ExporterBuildError,
     },
 
-    /// The metric contract and the code disagree.
-    #[error("the metric contract was refused")]
-    Contract {
+    /// The metric census and the code disagree, or the SDK refused a series
+    /// ceiling the census declares.
+    #[error("the metric census was refused")]
+    Census {
         /// The instrument layer's reason.
         #[source]
         source: afd_observability::Error,
@@ -69,7 +70,7 @@ pub(crate) enum ErrorKind {
 afd_core::error_lifts!(Error, ErrorKind:
     Refused => Knob,
     opentelemetry_otlp::ExporterBuildError => Exporter,
-    afd_observability::Error => Contract,
+    afd_observability::Error => Census,
 );
 
 impl Error {
@@ -81,7 +82,7 @@ impl Error {
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Knob { .. } => error_code::STARTUP_ENV_CHECK,
-            ErrorKind::Exporter { .. } | ErrorKind::Contract { .. } => {
+            ErrorKind::Exporter { .. } | ErrorKind::Census { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED
             }
         }
@@ -93,6 +94,29 @@ impl Error {
         match self.kind() {
             ErrorKind::Knob { source } => Some(*source),
             _built => None,
+        }
+    }
+
+    /// The census refusal this failure carries, handed back by value; any
+    /// other failure, unchanged.
+    ///
+    /// A caller that reports a census refusal under its own variant — the
+    /// daemon's boot does, as it did before the transport moved here — takes
+    /// it back out rather than reporting it as an exporter that would not
+    /// build.
+    ///
+    /// # Errors
+    /// `self`, untouched, when it is not a census refusal.
+    pub fn into_census(self) -> core::result::Result<afd_observability::Error, Self> {
+        let inner = *self.inner;
+        match inner.kind {
+            ErrorKind::Census { source } => Ok(source),
+            kind => Err(Self {
+                inner: Box::new(ErrorShellInner {
+                    kind,
+                    backtrace: inner.backtrace,
+                }),
+            }),
         }
     }
 }
@@ -115,9 +139,9 @@ mod tests {
                                 a.family\tbogus\tu64\t1\tcumulative\t-\t-\tfixed:1\tno\ttraffic\tnothing\n";
 
     /// A refused knob carries itself as data and answers the configuration
-    /// code; a refused contract answers the internal one and carries no knob.
+    /// code; a refused census answers the internal one and carries no knob.
     #[test]
-    fn a_refused_knob_is_data_and_a_refused_contract_is_not() {
+    fn a_refused_knob_is_data_and_a_refused_census_is_not() {
         let refused = Refused {
             knob: "A_KNOB",
             why: "a sentence",
@@ -133,12 +157,20 @@ mod tests {
 
         let census = afd_observability::metrics::registry::Registry::read(SEEDED_WRONG)
             .expect_err("a census declaring a kind nobody spelled does not read");
-        let contract = Error::from(census);
-        assert_eq!(contract.refused(), None);
-        assert_eq!(contract.code(), error_code::INTERNAL_OPERATION_FAILED);
+        let refused_census = Error::from(census);
+        assert_eq!(refused_census.refused(), None);
+        assert_eq!(refused_census.code(), error_code::INTERNAL_OPERATION_FAILED);
         assert!(
-            contract.source().is_some(),
+            refused_census.source().is_some(),
             "the instrument layer's own sentence survives as the cause"
         );
+        assert!(
+            refused_census.into_census().is_ok(),
+            "a census refusal comes back out as the instrument layer's error"
+        );
+        let knob = knob
+            .into_census()
+            .expect_err("a refused knob is no census refusal");
+        assert_eq!(knob.refused(), Some(refused), "and comes back unchanged");
     }
 }

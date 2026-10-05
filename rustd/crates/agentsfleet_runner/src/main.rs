@@ -21,6 +21,7 @@ use clap::{Parser, Subcommand};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::Layer as _;
 use tracing_subscriber::filter::Targets;
+use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 
@@ -117,7 +118,7 @@ fn run() -> ExitCode {
     };
     let ended = supervise();
     if let Some(telemetry) = telemetry {
-        telemetry.flush();
+        telemetry.close();
     }
     ended
 }
@@ -183,20 +184,29 @@ fn supervise() -> ExitCode {
     ExitCode::from(REFUSED)
 }
 
-/// Sends structured records to stderr through [`log_filter`], and the
+/// Installs [`subscriber`] for the process, writing records to stderr.
+fn install_logs(env: &impl EnvSource, spans: Option<SpanLayer>) {
+    subscriber(env, spans, std::io::stderr).init();
+}
+
+/// Sends structured records to `records` through [`log_filter`], and the
 /// runner's spans to `spans` when it exports.
 ///
-/// The level filter sits on the stderr layer alone, so an operator quieting
+/// The level filter sits on the record layer alone, so an operator quieting
 /// the journal does not quiet the traces: the span layer carries a filter of
 /// its own, admitting the runner's four span kinds and nothing else.
-fn install_logs(env: &impl EnvSource, spans: Option<SpanLayer>) {
+fn subscriber<W>(
+    env: &impl EnvSource,
+    spans: Option<SpanLayer>,
+    records: W,
+) -> impl tracing::Subscriber + Send + Sync + 'static
+where
+    W: for<'writer> MakeWriter<'writer> + Send + Sync + 'static,
+{
     let records = tracing_subscriber::fmt::layer()
-        .with_writer(std::io::stderr)
+        .with_writer(records)
         .with_filter(log_filter(env));
-    tracing_subscriber::registry()
-        .with(spans)
-        .with(records)
-        .init();
+    tracing_subscriber::registry().with(spans).with(records)
 }
 
 /// The level the environment names, with the model library's own lines held

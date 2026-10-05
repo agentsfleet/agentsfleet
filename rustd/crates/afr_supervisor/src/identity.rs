@@ -64,8 +64,10 @@ async fn read(plane: &ControlPlane) -> Result<Identity> {
 /// The span `lease`'s work runs under, naming `identity`'s runner when known.
 ///
 /// The root of the lease's own trace: no trace context crosses the runner
-/// protocol, so the lease and event identifiers are what join it to the
-/// daemon's `fleet.delivery` span for the same event.
+/// protocol, so the event identifier is what joins it to the daemon's
+/// `fleet.delivery` span for the same event. That span carries no lease
+/// identifier, so a redelivered event joins every lease that ran it; the
+/// lease identifier on this span tells those runs apart.
 pub(crate) fn lease_span(identity: Option<&Identity>, lease: &LeasePayload<'_>) -> Span {
     let runner_id = identity.map(|known| &*known.runner_id);
     let host = identity.map(|known| &*known.host);

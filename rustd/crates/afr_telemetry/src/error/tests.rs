@@ -17,25 +17,39 @@ use super::Error;
 const ZERO_CEILING: &str = "name\tkind\tnumber\tunit\ttemporality\tlabels\tbounds\tpolicy\tlive_read\tcategory\twatch_for\n\
                             a.family\tcounter\tu64\t1\tcumulative\t-\t-\tfixed:0\tno\ttraffic\tnothing\n";
 
-/// A transport failure that is not a knob stays the transport's: no knob,
-/// the transport's own code, and its cause kept.
+/// An exporter that would not build stays the transport's: no knob, the
+/// transport's own code, and its cause kept.
 #[test]
 fn a_transport_failure_keeps_its_code_and_names_no_knob() {
-    let config =
-        OtlpConfig::new("http://127.0.0.1:1", OTEL_ENDPOINT_KNOB).expect("an absolute URL");
-    let registry = Registry::read(ZERO_CEILING).expect("a zero ceiling reads");
-    let transport = Builder::new(&config, Service::new("a-test", "0.0.0"), registry)
-        .install()
-        .expect_err("the SDK refuses a zero ceiling");
+    let transport = afd_otlp::Error::from(opentelemetry_otlp::ExporterBuildError::NoHttpClient);
 
     let lifted = Error::from(transport);
 
     assert_eq!(lifted.knob(), None);
     assert_eq!(lifted.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert!(lifted.to_string().contains("transport"), "{lifted}");
     assert!(
         lifted.source().is_some(),
         "the transport's failure is the cause"
     );
+}
+
+/// A series ceiling the SDK refuses, raised inside the transport's install,
+/// is lifted as the census refusal it is rather than as the transport.
+#[test]
+fn a_ceiling_refused_at_install_is_a_census_refusal() {
+    let config =
+        OtlpConfig::new("http://127.0.0.1:1", OTEL_ENDPOINT_KNOB).expect("an absolute URL");
+    let registry = Registry::read(ZERO_CEILING).expect("a zero ceiling reads");
+    let refused = Builder::new(&config, Service::new("a-test", "0.0.0"), registry)
+        .install()
+        .expect_err("the SDK refuses a zero ceiling");
+
+    let lifted = Error::from(refused);
+
+    assert_eq!(lifted.knob(), None);
+    assert_eq!(lifted.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert!(lifted.to_string().contains("census"), "{lifted}");
 }
 
 /// A knob the transport refused is still a knob once lifted.
@@ -56,11 +70,11 @@ fn a_knob_the_transport_refused_stays_a_knob() {
 #[test]
 fn a_refused_census_is_a_defect_with_no_knob() {
     let census = Registry::read(&ZERO_CEILING.replace("counter", "bogus")).map(drop);
-    let contract = census.expect_err("a census declaring a kind nobody spelled does not read");
+    let unreadable = census.expect_err("a census declaring a kind nobody spelled does not read");
 
-    let lifted = Error::from(contract);
+    let lifted = Error::from(unreadable);
 
     assert_eq!(lifted.knob(), None);
     assert_eq!(lifted.code(), error_code::INTERNAL_OPERATION_FAILED);
-    assert!(lifted.to_string().contains("contract"), "{lifted}");
+    assert!(lifted.to_string().contains("census"), "{lifted}");
 }
