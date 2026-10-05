@@ -253,7 +253,7 @@ binaries share, `rustd/crates/afd_otlp/`). Both runners write logfmt to stderr
 and report liveness and results over `/v1/runners` (heartbeat, `/renew`,
 result-report). `agentsfleetd` owns the runner's observable state in
 `afd_observability`'s per-runner table and derives fleet liveness itself.
-Until M213_001 switches the agent engine on, `run` refuses every lease, so the
+Until the runner cutover switches the agent engine on, `run` refuses every lease, so the
 export is built and configured but carries no lease yet.
 
 **What the runner reads.** The endpoint, protocol and timeout knobs the daemon
@@ -394,7 +394,7 @@ the allowlist proof.
 | OTLP traces | installed, called when configured | the same module builds the span exporter inside `afd_observability`'s counting wrapper; `serve.rs` spawns `otlp_export`, whose only job is the shutdown flush |
 | OTLP run metrics | installed, called when configured | every census family is claimed from the registry at boot and produced at the call site that owns its mechanism (`rustd/crates/afd_observability/src/producers/`); families this build cannot feed are named in `metrics/produced.rs` and logged once at boot |
 | PostHog events | installed, called when configured | `rustd/crates/afd_observability/src/product.rs`; boot opens the client, the supervised `analytics_flush` task drains it before exit |
-| runner export | installed, called when configured | `run` in `rustd/crates/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot; it carries no lease until M213_001 switches the agent engine on |
+| runner export | installed, called when configured | `run` in `rustd/crates/agentsfleet_runner/src/main.rs` builds it from `afr_telemetry` before boot; it carries no lease until the runner cutover switches the agent engine on |
 | runner collector | absent; decided, built later | `deploy/baremetal/` carries `agentsfleet-runner.service` and no collector; `deploy/fly/otelcol-{dev,prod}` serve the daemon only |
 
 ## Metrics stay semantic
