@@ -1,8 +1,3 @@
-#![expect(
-    clippy::unwrap_used,
-    reason = "test module: a failed precondition should fail the test loudly"
-)]
-
 use std::path::PathBuf;
 
 use super::{TOOLBOX_PREFIX, TOOLBOX_SUFFIX, Toolbox, image_name};
@@ -27,6 +22,11 @@ fn an_adopted_root_is_used_as_given() {
 /// loop device or mount is needed, so these run unprivileged.
 #[cfg(target_os = "linux")]
 mod refusals {
+    #![expect(
+        clippy::unwrap_used,
+        reason = "test module: a failed precondition should fail the test loudly"
+    )]
+
     use std::fs;
     use std::os::unix::fs::symlink;
 
