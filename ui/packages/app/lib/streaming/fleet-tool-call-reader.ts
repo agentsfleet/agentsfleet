@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as v from "valibot";
 
 import { HTTP_STATUS_NOT_FOUND } from "@/lib/api/errors";
 import { fleetToolCallUrl } from "@/lib/api/events-types";
@@ -32,11 +32,11 @@ export type ToolCallRead =
   | { kind: typeof TOOL_CALL_READ.NOT_KEPT }
   | { kind: typeof TOOL_CALL_READ.FAILED };
 
-const DETAIL = z.object({
-  arguments: z.unknown(),
-  truncated_arguments: z.boolean().catch(false),
-  output: z.string(),
-  truncated: z.boolean().catch(false),
+const DETAIL = v.object({
+  arguments: v.optional(v.unknown()),
+  truncated_arguments: v.fallback(v.boolean(), false),
+  output: v.string(),
+  truncated: v.fallback(v.boolean(), false),
 });
 
 export type ToolCallAt = { workspaceId: string; fleetId: string; eventId: string; callId: string };
@@ -54,9 +54,9 @@ export async function readToolCall(at: ToolCallAt, signal: AbortSignal): Promise
     });
     if (res.status === HTTP_STATUS_NOT_FOUND) return { kind: TOOL_CALL_READ.NOT_KEPT };
     if (!res.ok) return { kind: TOOL_CALL_READ.FAILED };
-    const parsed = DETAIL.safeParse(await res.json());
+    const parsed = v.safeParse(DETAIL, await res.json());
     if (!parsed.success) return { kind: TOOL_CALL_READ.FAILED };
-    const { arguments: args, truncated_arguments, output, truncated } = parsed.data;
+    const { arguments: args, truncated_arguments, output, truncated } = parsed.output;
     return {
       kind: TOOL_CALL_READ.FULL,
       call: { args: readToolArgs(args), argsTruncated: truncated_arguments, output, outputTruncated: truncated },

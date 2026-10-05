@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as v from "valibot";
 
 import type { FleetEvent, FleetToolCall } from "./fleet-stream-row";
 
@@ -8,7 +8,9 @@ import type { FleetEvent, FleetToolCall } from "./fleet-stream-row";
 // renders without it — the frame's name and timing are what make a call, and
 // `fleet-stream-tool-frames` reads those. Also where a settled turn's calls
 // are decided: the saved trace when it has one, else the live rows with any
-// still open closed.
+// still open closed. Valibot rather than zod: this module rides every fleet
+// page, and zod's core cost each of them 79 kB gzipped against a 100 KiB route
+// budget (`.size-limit.mjs`).
 
 /** How a call ended, as `afd_wire::tool_trace::ToolCallStatus` spells it. */
 export const TOOL_CALL_STATUS = {
@@ -18,6 +20,9 @@ export const TOOL_CALL_STATUS = {
 } as const;
 
 export type ToolCallStatus = (typeof TOOL_CALL_STATUS)[keyof typeof TOOL_CALL_STATUS];
+
+/** A call's status, narrowed off the wire. */
+export const TOOL_CALL_STATUS_SCHEMA = v.picklist(Object.values(TOOL_CALL_STATUS));
 
 /** A JSON value as `JSON.parse` hands it back, so arguments can reach the
  * library's tool-call part without a cast. */
@@ -35,47 +40,61 @@ export type ToolOutcome = {
   exitCode?: number;
 };
 
-const STATUS = z.enum([TOOL_CALL_STATUS.SUCCEEDED, TOOL_CALL_STATUS.FAILED, TOOL_CALL_STATUS.INTERRUPTED]);
-const LINE_COUNT = z.number().int().nonnegative();
-const EXIT_CODE = z.number().int();
+const LINE_COUNT = v.pipe(v.number(), v.safeInteger(), v.minValue(0));
+const EXIT_CODE = v.pipe(v.number(), v.safeInteger());
+const NAMED = v.pipe(v.string(), v.nonEmpty());
+
+// Valibot's `record` reads an array as an object keyed "0", "1", …, so a JSON
+// array is tried first and never reaches it.
+const JSON_VALUE: v.GenericSchema<JsonValue> = v.lazy(() =>
+  v.union([v.string(), v.pipe(v.number(), v.finite()), v.boolean(), v.null(), v.array(JSON_VALUE), v.record(v.string(), JSON_VALUE)]),
+);
+
 // An object of JSON values; an array, a scalar or `{}` names no arguments.
-const ARGS = z.record(z.string(), z.json()).refine((args) => Object.keys(args).length > 0);
+const ARGS = v.pipe(
+  v.unknown(),
+  v.check((value) => !Array.isArray(value)),
+  v.record(v.string(), JSON_VALUE),
+  v.check((args) => Object.keys(args).length > 0),
+);
 
-const OUTCOME = z.object({
-  status: STATUS.optional().catch(undefined),
-  output_head: z.string().optional().catch(undefined),
-  output_tail: z.string().optional().catch(undefined),
-  output_line_count: LINE_COUNT.optional().catch(undefined),
-  exit_code: EXIT_CODE.optional().catch(undefined),
+const OUTCOME = v.object({
+  status: v.fallback(v.optional(TOOL_CALL_STATUS_SCHEMA), undefined),
+  output_head: v.fallback(v.optional(v.string()), undefined),
+  output_tail: v.fallback(v.optional(v.string()), undefined),
+  output_line_count: v.fallback(v.optional(LINE_COUNT), undefined),
+  exit_code: v.fallback(v.optional(EXIT_CODE), undefined),
 });
 
-const SAVED_CALL = OUTCOME.extend({
-  call_id: z.string().min(1),
-  name: z.string().min(1),
-  arguments: z.unknown(),
-  duration_ms: z.number().nonnegative(),
+const SAVED_CALL = v.object({
+  ...OUTCOME.entries,
+  call_id: NAMED,
+  name: NAMED,
+  arguments: v.optional(v.unknown()),
+  duration_ms: v.pipe(v.number(), v.finite(), v.minValue(0)),
 });
 
-const SAVED_TRACE = z.object({
-  calls: z.array(z.unknown()),
-  omitted_call_count: LINE_COUNT.catch(0),
+const SAVED_TRACE = v.object({
+  calls: v.array(v.unknown()),
+  omitted_call_count: v.fallback(LINE_COUNT, 0),
 });
 
 export type SavedTrace = { calls: FleetToolCall[]; omitted: number };
 
 /** A frame's or a saved call's arguments, or undefined when there are none to show. */
 export function readToolArgs(value: unknown): ToolArgs | undefined {
-  const parsed = ARGS.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  const parsed = v.safeParse(ARGS, value);
+  return parsed.success ? parsed.output : undefined;
 }
 
 /** The outcome fields a completion or a saved call carries, each one absent
  * when missing or malformed. */
 export function readToolOutcome(value: unknown): ToolOutcome {
-  return outcomeOf(OUTCOME.catch({}).parse(value));
+  const parsed = v.safeParse(OUTCOME, value);
+  return parsed.success ? outcomeOf(parsed.output) : {};
 }
 
-function outcomeOf({ status, output_head, output_tail, output_line_count, exit_code }: z.infer<typeof OUTCOME>): ToolOutcome {
+function outcomeOf({ status, output_head, output_tail, output_line_count, exit_code }: v.InferOutput<typeof OUTCOME>): ToolOutcome {
   return {
     ...(status === undefined ? {} : { status }),
     ...(output_head === undefined ? {} : { outputHead: output_head }),
@@ -93,25 +112,25 @@ function outcomeOf({ status, output_head, output_tail, output_line_count, exit_c
  * still says something is missing.
  */
 export function readSavedTrace(value: unknown, startedAtMs: number): SavedTrace | null {
-  const trace = SAVED_TRACE.safeParse(value);
+  const trace = v.safeParse(SAVED_TRACE, value);
   if (!trace.success) return null;
   const calls: FleetToolCall[] = [];
-  let omitted = trace.data.omitted_call_count;
-  for (const raw of trace.data.calls) {
-    const call = SAVED_CALL.safeParse(raw);
+  let omitted = trace.output.omitted_call_count;
+  for (const raw of trace.output.calls) {
+    const call = v.safeParse(SAVED_CALL, raw);
     if (!call.success) {
       omitted += 1;
       continue;
     }
-    const args = readToolArgs(call.data.arguments);
+    const args = readToolArgs(call.output.arguments);
     calls.push({
-      name: call.data.name,
-      callId: call.data.call_id,
+      name: call.output.name,
+      callId: call.output.call_id,
       startedAtMs,
-      ms: call.data.duration_ms,
+      ms: call.output.duration_ms,
       done: true,
       ...(args === undefined ? {} : { args }),
-      ...outcomeOf(call.data),
+      ...outcomeOf(call.output),
     });
   }
   return { calls, omitted };

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { rowToEvent } from "./fleet-stream-row";
-import { TOOL_CALL_STATUS, readSavedTrace, readToolArgs } from "./fleet-stream-tool-trace";
+import { TOOL_CALL_STATUS, readSavedTrace, readToolArgs, readToolOutcome } from "./fleet-stream-tool-trace";
 import { MS_PER_SECOND, row } from "@/tests/helpers/fleet-stream-fixtures";
 
 // An event's saved trace, narrowed where it enters the browser: the rows a
@@ -77,6 +77,14 @@ describe("readToolArgs", () => {
     expect(readToolArgs(nested)).toEqual(nested);
     for (const value of [{}, [], [{ path: PATH_A }], "a", 1, true, null, undefined]) {
       expect(readToolArgs(value)).toBeUndefined();
+    }
+  });
+});
+
+describe("readToolOutcome", () => {
+  it("should read anything but an object as no outcome", () => {
+    for (const value of [[{ status: TOOL_CALL_STATUS.SUCCEEDED }], "succeeded", 0, null, undefined]) {
+      expect(readToolOutcome(value)).toEqual({});
     }
   });
 });
