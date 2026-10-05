@@ -121,7 +121,38 @@ pub async fn run(
     probe: HostProbe,
     shutdown: CancellationToken,
 ) -> Result<()> {
-    let runner = Runner {
+    serve(compose(config, home, engine, agent, probe)?, shutdown).await
+}
+
+/// [`run`], fetching every bound repository from `origin`, which ends in `/`,
+/// rather than from GitHub: the daemon's integration lane serves its fixture
+/// repositories over `file://`.
+///
+/// # Errors
+/// As [`run`].
+#[cfg(feature = "test-util")]
+pub async fn run_fetching_from(
+    config: &Config,
+    home: StorageHome,
+    engine: Box<dyn Engine>,
+    agent: Box<dyn AgentEngine>,
+    probe: HostProbe,
+    origin: &str,
+    shutdown: CancellationToken,
+) -> Result<()> {
+    let runner = compose(config, home, engine, agent, probe)?;
+    serve_from(runner, origin, shutdown).await
+}
+
+/// The runner a configuration, a storage home and the host's parts make.
+fn compose(
+    config: &Config,
+    home: StorageHome,
+    engine: Box<dyn Engine>,
+    agent: Box<dyn AgentEngine>,
+    probe: HostProbe,
+) -> Result<Runner> {
+    Ok(Runner {
         plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?)),
         home,
         engine,
@@ -129,12 +160,16 @@ pub async fn run(
         probe,
         limits: Limits::default(),
         clock: Box::new(SystemClock),
-    };
-    serve(runner, shutdown).await
+    })
 }
 
 /// Runs a composed supervisor until `shutdown`, or until the daemon says stop.
 pub(crate) async fn serve(runner: Runner, shutdown: CancellationToken) -> Result<()> {
+    serve_from(runner, GITHUB_ORIGIN, shutdown).await
+}
+
+/// [`serve`], with the bound repositories fetched from `origin`.
+async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -> Result<()> {
     let Runner {
         plane,
         home,
@@ -150,7 +185,7 @@ pub(crate) async fn serve(runner: Runner, shutdown: CancellationToken) -> Result
         agent,
         spool: ReportSpool::new(&home),
         bundles: BundleCache::new(&home),
-        mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
+        mirrors: Mirrors::new(home.mirrors(), origin),
         limits,
         clock,
         halt: Halt::new(shutdown),
