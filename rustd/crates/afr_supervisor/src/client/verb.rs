@@ -78,6 +78,31 @@ pub(crate) enum Verb {
 }
 
 impl Verb {
+    /// Every verb, so a suite walks the whole vocabulary rather than a
+    /// hand-kept list that a new verb can miss.
+    #[cfg(test)]
+    pub(crate) const ALL: [Self; 19] = [
+        Self::Heartbeat,
+        Self::Lease,
+        Self::Renew,
+        Self::Activity,
+        Self::Report,
+        Self::Hydrate,
+        Self::Capture,
+        Self::Recall,
+        Self::Bundle,
+        Self::Mint,
+        Self::Records,
+        Self::Me,
+        Self::ScheduleCreate,
+        Self::ScheduleList,
+        Self::ScheduleUpdate,
+        Self::ScheduleDelete,
+        Self::ScheduleRun,
+        Self::ScheduleRuns,
+        Self::Message,
+    ];
+
     /// The method this verb is sent with.
     pub(crate) const fn method(self) -> Method {
         match self {

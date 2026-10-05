@@ -3,6 +3,11 @@
 //! Parsed from text, never from a `serde_json::Value`: the text fields borrow
 //! from the body they are read out of, as the daemon reads them.
 
+#![expect(
+    clippy::expect_used,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
 use super::{ScheduleCreateRequest, SchedulePatchRequest, ScheduleRunRequest};
 
 #[test]
@@ -22,7 +27,8 @@ fn a_create_naming_only_the_required_fields_defaults_the_rest() {
 #[test]
 fn a_create_naming_a_fleet_is_refused() {
     let body = r#"{"fencing_token":7,"cron":"0 9 * * 1","message":"m","fleet_id":"x"}"#;
-    assert!(serde_json::from_str::<ScheduleCreateRequest<'_>>(body).is_err());
+    let _refused =
+        serde_json::from_str::<ScheduleCreateRequest<'_>>(body).expect_err("the body is refused");
 }
 
 #[test]
@@ -53,7 +59,8 @@ fn a_patch_carrying_only_the_fence_changes_nothing() {
 #[test]
 fn a_patch_naming_a_desired_status_is_refused() {
     let body = r#"{"fencing_token":7,"desired_status":"deleting"}"#;
-    assert!(serde_json::from_str::<SchedulePatchRequest<'_>>(body).is_err());
+    let _refused =
+        serde_json::from_str::<SchedulePatchRequest<'_>>(body).expect_err("the body is refused");
 }
 
 #[test]
@@ -62,5 +69,6 @@ fn a_run_request_carries_the_fence_and_nothing_else() {
         serde_json::from_str(r#"{"fencing_token":7}"#).expect("the fence parses");
     assert_eq!(parsed.fencing_token, 7);
     let extra = r#"{"fencing_token":7,"schedule_id":"x"}"#;
-    assert!(serde_json::from_str::<ScheduleRunRequest>(extra).is_err());
+    let _refused =
+        serde_json::from_str::<ScheduleRunRequest>(extra).expect_err("the body is refused");
 }

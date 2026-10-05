@@ -9,6 +9,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
+use sqlx::postgres::PgRow;
 
 use crate::error::{Result, lease_not_found, query, row_malformed, stale_fence};
 use crate::lease::pull::Plane;
@@ -41,15 +42,51 @@ pub struct Standing {
     pub workspace_id: Uuid7,
     /// The event it is running, as the ledger names it.
     pub event_id: String,
+    /// Who woke the fleet for that event, as the ledger recorded it: a
+    /// schedule's fire reads `cron:<schedule_id>`.
+    pub actor: String,
 }
 
-/// Whether a lease whose own token is `fence` still holds a fleet whose live
-/// sequence is `live_seq`, and `presented` is that lease's own token.
-///
-/// The one fence rule every lease-addressed verb applies: the tool-call
-/// records read it under a row lock, the schedules and messages verbs without.
-pub(crate) fn holds(fence: i64, live_seq: i64, presented: u64) -> bool {
-    fence >= live_seq && u64::try_from(fence).is_ok_and(|own| own == presented)
+/// A lease row as the `live_lease!` statements read it, before the fence
+/// is applied: what the standing proof and the tool-call records both read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LiveLease {
+    /// The fleet the lease runs.
+    pub(crate) fleet_id: String,
+    /// The workspace that fleet belongs to.
+    pub(crate) workspace_id: String,
+    /// The event the lease runs.
+    pub(crate) event_id: String,
+    /// Who woke the fleet for that event.
+    pub(crate) actor: String,
+    /// The lease's own fencing token, which keys every row it writes.
+    pub(crate) fence: i64,
+    /// The fleet's live sequence.
+    pub(crate) live_seq: i64,
+}
+
+impl LiveLease {
+    /// The row a `live_lease!` statement answered, in its column order.
+    pub(crate) fn read(row: &PgRow, context: &'static str) -> Result<Self> {
+        Ok(Self {
+            fleet_id: row.try_get(0).map_err(query(context))?,
+            workspace_id: row.try_get(1).map_err(query(context))?,
+            event_id: row.try_get(2).map_err(query(context))?,
+            fence: row.try_get(3).map_err(query(context))?,
+            live_seq: row.try_get(4).map_err(query(context))?,
+            actor: row.try_get(5).map_err(query(context))?,
+        })
+    }
+
+    /// Whether this lease still holds the fleet, and `presented` is its own
+    /// token.
+    ///
+    /// The one fence rule every lease-addressed verb applies: the tool-call
+    /// records read it under a row lock, the schedules and messages verbs
+    /// without.
+    pub(crate) fn holds(&self, presented: u64) -> bool {
+        self.fence >= self.live_seq && u64::try_from(self.fence).is_ok_and(|own| own == presented)
+    }
 }
 
 impl Plane {
@@ -73,7 +110,7 @@ impl Plane {
         let Some(read) = self.leases.standing_row(runner_id, &lease_id, now).await? else {
             return Err(lease_not_found());
         };
-        if !holds(read.fence, read.live_seq, presented) {
+        if !read.holds(presented) {
             let fleet_id = read.fleet_id.as_str();
             let live_seq = read.live_seq;
             tracing::debug!(
@@ -90,18 +127,9 @@ impl Plane {
             workspace_id: Uuid7::parse(&read.workspace_id)
                 .map_err(row_malformed(TABLE, COLUMN_WORKSPACE))?,
             event_id: read.event_id,
+            actor: read.actor,
         })
     }
-}
-
-/// The lease row as the standing statement reads it, before it is proved.
-#[derive(Debug)]
-struct StandingRow {
-    fleet_id: String,
-    workspace_id: String,
-    event_id: String,
-    fence: i64,
-    live_seq: i64,
 }
 
 impl Leases {
@@ -111,7 +139,7 @@ impl Leases {
         runner_id: &Uuid7,
         lease_id: &Uuid7,
         now: UnixMillis,
-    ) -> Result<Option<StandingRow>> {
+    ) -> Result<Option<LiveLease>> {
         let mut connection = self.pool().acquire().await?;
         let found = sqlx::query(SELECT_STANDING)
             .bind(lease_id.as_str())
@@ -122,15 +150,7 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_STANDING))?;
         found
-            .map(|row| {
-                Ok(StandingRow {
-                    fleet_id: row.try_get(0).map_err(query(CONTEXT_STANDING))?,
-                    workspace_id: row.try_get(1).map_err(query(CONTEXT_STANDING))?,
-                    event_id: row.try_get(2).map_err(query(CONTEXT_STANDING))?,
-                    fence: row.try_get(3).map_err(query(CONTEXT_STANDING))?,
-                    live_seq: row.try_get(4).map_err(query(CONTEXT_STANDING))?,
-                })
-            })
+            .map(|row| LiveLease::read(&row, CONTEXT_STANDING))
             .transpose()
     }
 }

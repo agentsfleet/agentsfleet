@@ -198,6 +198,13 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::SCHEDULE_NOT_RUNNABLE,
+        status: 409,
+        title: "Schedule cannot run now",
+        hint: "The schedule is paused or being deleted, or this run was started by a schedule. Run it from a run a person or a webhook started, or ask a person to resume it.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::APPROVAL_NOT_FOUND,
         status: 404,
         title: "Approval not found",

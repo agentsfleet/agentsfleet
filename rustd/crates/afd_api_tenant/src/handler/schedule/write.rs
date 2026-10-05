@@ -91,7 +91,7 @@ pub(crate) async fn create<D: Services>(
                 // until the scheduler answers with its id. It has to be unique
                 // per fleet, which the fleet's own identifier plus the instant
                 // already is.
-                source_key: &format!("{fleet_id}-{}", services.now().as_millis()),
+                source_key: Some(&format!("{fleet_id}-{}", services.now().as_millis())),
                 cron: &input.cron,
                 timezone: &timezone,
                 message: &input.message,

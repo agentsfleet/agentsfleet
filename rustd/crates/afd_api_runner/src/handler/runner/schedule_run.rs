@@ -1,19 +1,31 @@
 //! `/v1/runners/me/leases/{lease_id}/schedules/{schedule_id}/runs` — one
 //! schedule's runs: the ones that ran, and a new one to fire it now.
 //!
-//! A run is an event whose actor is `cron:<schedule_id>`, which a QStash fire
+//! A run is an event whose actor is `cron:<schedule_id>`, which a `QStash` fire
 //! and a run-now both record (`afd_cron::schedule_actor`). Running now admits
-//! through the same producer QStash's callback does, keyed by the lease, so a
-//! retried post answers the run it already created rather than a second one.
-//! A run joins this list once a runner has taken it: until then it is queued
+//! through the same producer `QStash`'s callback does, keyed by the event the
+//! lease runs, so a retried post, from this lease or one a reclaim handed the
+//! event to, answers the run it already created rather than a second one. A
+//! run joins this list once a runner has taken it: until then it is queued
 //! work, not history.
+//!
+//! # A run-now fires only what would fire
+//!
+//! The `QStash` callback drops a fire for a paused or retiring schedule and for
+//! a fleet that will not take work, and a run-now answers those with a 409
+//! rather than overriding them. A run a schedule started may not run one now
+//! either: without that, each run could wake the next, and a fleet steered by
+//! what it read could fan its own queue out without end.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_core::paging::{CEILING, QUERY_LIMIT, QUERY_STARTING_AFTER};
-use afd_cron::schedule_actor;
-use afd_events::{Cursor, EventRow, Filter, next_cursor, prefix_to_like};
+use afd_core::error_code;
+use afd_core::paging::{CEILING, PagingRefusal, QUERY_LIMIT, QUERY_STARTING_AFTER};
+use afd_cron::{ACTOR_PREFIX, FireTarget, schedule_actor};
+use afd_events::{Cursor, EventRow, next_cursor};
+use afd_fleet::lease::Standing;
+use afd_fleet_lifecycle::FleetStatus;
 use afd_http::handler::schedule::not_found;
 use afd_http::handler::{Refusal, parameter, read_strict_body};
 use afd_validate::Limit;
@@ -25,18 +37,37 @@ use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
-use super::schedule::{DETAIL_MALFORMED, EVENT_FAILED, fence, schedule_id, standing};
+use super::schedule::{DETAIL_MALFORMED, EVENT_FAILED, fence, log_refused, schedule_id, standing};
 use crate::auth::RunnerIdentity;
 use crate::services::{FleetSchedules as _, Services, WorkspaceEvents as _};
 
-/// The refusal a page size outside the served band earns.
-const DETAIL_LIMIT: &str = "limit must be between 1 and 100";
+/// The refusal a page size outside the served band earns: the paging
+/// vocabulary's own sentence, which names [`CEILING`].
+const DETAIL_LIMIT: &str = PagingRefusal::Limit.detail();
+
+/// The refusal a schedule that would not fire on its own earns.
+const DETAIL_NOT_RUNNABLE: &str =
+    "This schedule is paused or being removed, so it does not run now; a person resumes it";
+
+/// The refusal a run a schedule started earns when it runs one now.
+const DETAIL_SCHEDULED_RUN: &str =
+    "A run a schedule started cannot run a schedule now, so no schedule wakes its fleet in a loop";
+
+/// The refusal a fleet that will not take work earns.
+const DETAIL_FLEET_NOT_RUNNABLE: &str = "The fleet is not taking new work, so nothing runs now";
+
+/// The `current_state` a run a schedule started names.
+const STATE_SCHEDULED_RUN: &str = "scheduled_run";
+
+/// The `current_state` a fleet whose stored status this build cannot read
+/// names: refused as not runnable, as the `QStash` callback drops it.
+const STATE_FLEET_UNREADABLE: &str = "unknown";
 
 /// The refusal a cursor this daemon did not mint earns.
 const DETAIL_CURSOR: &str = "starting_after must be a next_cursor this daemon returned";
 
-/// What a run-now's admission key names after the schedule: the lease that
-/// asked, so one lease's retries of one run are one run.
+/// What a run-now's admission key names after the schedule: the event the
+/// asking lease runs, so every retry of one run is one run, across a reclaim.
 const RUN_KEY_PREFIX: &str = "run:";
 
 /// Fires a schedule of the fleet's now.
@@ -49,8 +80,12 @@ const RUN_KEY_PREFIX: &str = "run:";
     description = concat!(
         "Creates a run of a schedule of the running fleet now, as if QStash ",
         "had fired it: one event with actor `cron:<schedule_id>`, queued for ",
-        "the fleet. Posting again under the same lease answers the same run. A ",
-        "`once` schedule retires after this run. ",
+        "the fleet. Posting again for the same leased event answers the same ",
+        "run. A schedule that is paused or being removed answers `UZ-SCHED-011` ",
+        "with its `current_state`, as does a run a schedule started ",
+        "(`scheduled_run`), so no schedule wakes its fleet in a loop. A fleet ",
+        "that is not taking work answers `UZ-AGT-012`. A `once` schedule ",
+        "retires after this run, so a repeat after that answers 404. ",
     ),
     request_body = ScheduleRunRequest,
     params(afd_http::openapi::path::LeaseSchedule),
@@ -94,7 +129,8 @@ pub(crate) async fn run<D: Services>(
         .map_err(Refusal::at(EVENT_FAILED))?
         .filter(|target| target.fleet == lease.fleet_id)
         .ok_or_else(not_found)?;
-    let key = format!("{RUN_KEY_PREFIX}{}", lease.lease_id);
+    runnable(&lease, &target)?;
+    let key = format!("{RUN_KEY_PREFIX}{}", lease.event_id);
     let fired = services
         .schedules()
         .fire(&schedule, &target, &key, now)
@@ -161,17 +197,13 @@ pub(crate) async fn runs<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_FAILED))?
         .ok_or_else(not_found)?;
-    let filter = Filter {
-        actor_like: Some(prefix_to_like(&schedule_actor(&schedule))),
-        since: None,
-    };
     let rows = i64::from(limit);
     let page = services
         .events()
-        .page_for_fleet(
+        .page_of_actor(
             &lease.workspace_id,
             &lease.fleet_id,
-            &filter,
+            &schedule_actor(&schedule),
             cursor.as_ref(),
             rows,
         )
@@ -182,4 +214,38 @@ pub(crate) async fn runs<D: Services>(
         next_cursor: next_cursor(&page, rows).map(|after| Cow::Owned(after.encode())),
     })
     .into_response())
+}
+
+/// Refuses a run-now the scheduler's own fire would not make, or one a
+/// schedule's run asked for.
+///
+/// The fleet first, as the `QStash` callback orders it: a stopped fleet halts
+/// everything, whatever its schedules say.
+fn runnable(lease: &Standing, target: &FireTarget) -> Result<(), Refusal> {
+    let fleet = FleetStatus::parse(&target.fleet_status);
+    if !fleet.is_some_and(FleetStatus::is_runnable) {
+        log_refused(lease, error_code::AGENTSFLEET_PAUSED_INGRESS);
+        return Err(Refusal::conflict(
+            error_code::AGENTSFLEET_PAUSED_INGRESS,
+            DETAIL_FLEET_NOT_RUNNABLE,
+            fleet.map_or(STATE_FLEET_UNREADABLE, FleetStatus::as_str),
+        ));
+    }
+    if !target.desired_status.fires() {
+        log_refused(lease, error_code::SCHEDULE_NOT_RUNNABLE);
+        return Err(Refusal::conflict(
+            error_code::SCHEDULE_NOT_RUNNABLE,
+            DETAIL_NOT_RUNNABLE,
+            target.desired_status.as_str(),
+        ));
+    }
+    if lease.actor.starts_with(ACTOR_PREFIX) {
+        log_refused(lease, error_code::SCHEDULE_NOT_RUNNABLE);
+        return Err(Refusal::conflict(
+            error_code::SCHEDULE_NOT_RUNNABLE,
+            DETAIL_SCHEDULED_RUN,
+            STATE_SCHEDULED_RUN,
+        ));
+    }
+    Ok(())
 }

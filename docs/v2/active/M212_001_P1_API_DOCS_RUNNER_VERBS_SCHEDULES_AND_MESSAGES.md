@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — the daemon half depends on nothing and can start beside M210_002; the runner half plugs into M210_002's catalog. One Pull Request
 **Branch:** `feat/m212-001-runner-schedules-messages`
 **Baseline revision:** `c5f7680f2ee4a475a9f6f6c8701c98262c6d5c8d`
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit 3776 passed, 0 failed (daemon libraries 3033 · runner 613 · daemon 130); integration and coverage 4442 passed, 0 failed (substrate 3844 + 2 exclusive · runner crates 410 · runner against the daemon 2 · daemon 184); Rust line coverage 98.8644% (52670 of 53275)
+**Baseline evidence:** Continuous Integration (CI) on `a648ab96d`, the tree `c5f7680f2` merged unchanged: `make test-unit-rustd` shards in https://github.com/agentsfleet/agentsfleet/actions/runs/37314101696 and `make test-integration-rustd` coverage shards in https://github.com/agentsfleet/agentsfleet/actions/runs/37314101828, ubuntu runners with docker compose Postgres and Dragonfly; counts read from each shard's `✓ [rustd] … — N passed` line
 **Depends on:** M210_002 (the catalog and router the three handlers plug into) — the daemon half (§1, §2) has no dependency and tests through `rustd/crates/agentsfleetd/tests/support/e2e_wire.rs`
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from a source trace on `main` (`rustd/crates/afd_cron`, `rustd/crates/afd_outbound`) and Indy's decision "Yes, runner verb onto daemon schedules"
 **Canonical architecture:** `docs/architecture/runner_execution.md` §"Tool catalog"; `docs/architecture/capabilities.md` §"2. The platform tools the fleet can call"; `docs/architecture/data_flow.md` §B. TRIGGER (QStash owns the clock)
@@ -62,20 +62,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `schema/928_fleet_schedules_once.sql`, `schema/929_runner_leases_messages_posted.sql`, `rustd/crates/afd_db/src/migration.rs` | CREATE / EDIT | `once` on a schedule; the per-run message count on a lease |
+| `schema/928_fleet_schedules_once.sql`, `schema/929_runner_leases_messages_posted.sql`, `schema/930_fleet_events_actor_index.sql`, `rustd/crates/afd_db/src/migration.rs` | CREATE / EDIT | `once` on a schedule; the per-run message count on a lease; one actor's events read by index |
 | `rustd/crates/afd_wire/src/schedule_verb.rs`, `rustd/crates/afd_wire/src/message_verb.rs`, `rustd/crates/afd_wire/src/schedule.rs`, `rustd/crates/afd_wire/src/paths.rs`, `rustd/crates/afd_wire/src/lib.rs` | CREATE / EDIT | Request and response types, bounds, the path segments; a schedule view names its source and `once` |
-| `rustd/crates/afd_http/src/route/runner.rs`, `rustd/crates/afd_http/src/services/leasing.rs`, `rustd/crates/afd_http/src/services/schedule.rs` | EDIT | Variants, `ALL` entries and `meta()`; the lease seam's two verbs; a once schedule retires after it fires |
-| `rustd/crates/afd_api_runner/src/handler/runner/schedule.rs`, `rustd/crates/afd_api_runner/src/handler/runner/schedule_fire.rs`, `rustd/crates/afd_api_runner/src/handler/runner/message.rs`, `rustd/crates/afd_api_runner/src/handler/runner/mod.rs`, `rustd/crates/afd_api_runner/src/lib.rs` | CREATE / EDIT | Fence, narrow, cap, store, reconcile; fire and runs; fence, scrub, post |
-| `rustd/crates/afd_cron/src/model.rs`, `rustd/crates/afd_cron/src/store.rs`, `rustd/crates/afd_cron/src/store/decode.rs`, `rustd/crates/afd_cron/src/sql.rs`, `rustd/crates/afd_cron/src/fire.rs`, `rustd/crates/afd_cron/src/lib.rs` | EDIT | `Source::Fleet`, `once`, the fleet-authored cap, the `cron:<schedule_id>` actor |
-| `rustd/crates/afd_fleet/src/lease/standing.rs`, `rustd/crates/afd_fleet/src/lease/message.rs`, `rustd/crates/afd_fleet/src/lease/sql/*.rs`, `rustd/crates/afd_fleet/src/lease/pull.rs`, `rustd/crates/afd_fleet/src/lease/mod.rs`, `rustd/crates/afd_fleet/Cargo.toml` | CREATE / EDIT | The proved lease a verb names; the interim message's fence, count, destination, scrub and post |
-| `rustd/crates/afd_connector/src/slack/answered.rs` | EDIT | A marker part, so an interim line is never read as the answer |
+| `rustd/crates/afd_http/src/route/runner.rs`, `rustd/crates/afd_http/src/services/*.rs`, `rustd/crates/afd_http/src/handler/mod.rs`, `rustd/crates/afd_http/src/handler/schedule.rs`, `rustd/crates/afd_http/src/handler/schedule/tests.rs`, `rustd/crates/afd_http/src/openapi/*.rs`, `rustd/crates/afd_http/Cargo.toml` | EDIT | Variants, `ALL` entries and `meta()`; the lease seam's two verbs, its mask and the event reads; one schedule renderer for both surfaces; a once schedule retires after it fires |
+| `rustd/crates/afd_api_runner/src/handler/runner/schedule*.rs`, `rustd/crates/afd_api_runner/src/handler/runner/message.rs`, `rustd/crates/afd_api_runner/src/handler/runner/mod.rs`, `rustd/crates/afd_api_runner/src/lib.rs`, `rustd/crates/afd_api_runner/src/openapi.rs`, `rustd/crates/afd_api_runner/Cargo.toml` | CREATE / EDIT | Fence, narrow, cap, store, reconcile; edit; run-now gates and runs; fence, scrub, post under the deadline |
+| `rustd/crates/afd_api_tenant/src/handler/schedule.rs`, `rustd/crates/afd_api_tenant/src/handler/schedule/*.rs`, `rustd/crates/afd_api_ingress/src/handler/webhook/qstash_route.rs`, `rustd/crates/afd_api/src/**`, `rustd/crates/afd_api/Cargo.toml` | EDIT | The tenant routes share the schedule renderer; the QStash route retires a `once` fire it drops; `x-stability` on the new fields |
+| `rustd/crates/afd_cron/src/**`, `rustd/crates/afd_cron/Cargo.toml` | EDIT | `Source::Fleet`, `once`, the fleet-authored cap, admission and refusal reasons, retirement, the `cron:<schedule_id>` actor |
+| `rustd/crates/afd_events/src/history/**` | CREATE / EDIT | Exact-actor statements and `page_of_actor`, so a schedule's runs read through slot 930 |
+| `rustd/crates/afd_fleet/src/lease/**`, `rustd/crates/afd_fleet/src/error/*.rs`, `rustd/crates/afd_fleet/Cargo.toml` | CREATE / EDIT | The proved lease a verb names; the interim message's fence, count, destination, scrub and post; the installed secrets the mask reads; the message codes' problems |
+| `rustd/crates/afd_connector/src/slack.rs`, `rustd/crates/afd_connector/src/slack/answered.rs`, `rustd/crates/afd_connector/src/test_util.rs` | EDIT | An interim stamp and a lease-scoped marker part, so an interim line is never read as the answer |
 | `rustd/crates/afd_outbound/src/interim.rs`, `rustd/crates/afd_outbound/src/slack.rs`, `rustd/crates/afd_outbound/src/slack/*.rs`, `rustd/crates/afd_outbound/src/lib.rs` | CREATE / EDIT | An interim post into the event's origin thread, through the existing poster and retry |
-| `rustd/crates/afd_core/src/error_code/fleet.rs`, `rustd/crates/afd_core/src/error_code/request.rs`, `rustd/crates/afd_core/src/error_code.rs`, `rustd/crates/afd_core/src/problem/*.rs` | EDIT | `SCHEDULE_CAP_REACHED`, `SCHEDULE_NOT_FLEET_OWNED`, `MESSAGE_NO_CHANNEL`, `MESSAGE_LIMIT_REACHED` and their problems |
+| `rustd/crates/afd_core/src/error_code/fleet.rs`, `rustd/crates/afd_core/src/error_code/request.rs`, `rustd/crates/afd_core/src/error_code.rs`, `rustd/crates/afd_core/src/problem/*.rs`, `rustd/crates/afd_core/src/id.rs` | EDIT | `SCHEDULE_CAP_REACHED`, `SCHEDULE_NOT_FLEET_OWNED`, `SCHEDULE_NOT_RUNNABLE`, `MESSAGE_NO_CHANNEL`, `MESSAGE_LIMIT_REACHED` and their problems |
 | `rustd/crates/afr_secrets/src/statics.rs` | EDIT | A view over a declared map, so the daemon masks with the one masker |
-| `rustd/crates/agentsfleetd/src/plane/*.rs`, `rustd/crates/agentsfleetd/src/outbound.rs`, `rustd/crates/agentsfleetd/src/preflight*` | EDIT | One Slack poster for the worker and the interim post; its base address knob |
+| `rustd/crates/agentsfleetd/src/plane.rs`, `rustd/crates/agentsfleetd/src/plane/*.rs`, `rustd/crates/agentsfleetd/src/outbound.rs`, `rustd/crates/agentsfleetd/src/preflight.rs`, `rustd/crates/agentsfleetd/src/preflight/*.rs`, `rustd/crates/agentsfleetd/src/serve/runtime.rs`, `rustd/crates/agentsfleetd/Cargo.toml` | EDIT | One Slack poster for the worker and the interim post; its base address knob, refused unless https or loopback http |
 | `public/openapi.json` | EDIT | Regenerated; new fields declare `x-stability` |
-| `rustd/crates/afr_tools/src/verbs.rs`, `rustd/crates/afr_tools/src/verbs/*.rs`, `rustd/crates/afr_tools/src/lease.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/catalog.rs`, `rustd/crates/afr_tools/src/lib.rs`, `rustd/crates/afr_tools/Cargo.toml` | CREATE / EDIT | The lease-verb seam and the eight handlers onto it |
-| `rustd/crates/afr_supervisor/src/client.rs`, `rustd/crates/afr_supervisor/src/client/http.rs`, `rustd/crates/afr_supervisor/src/verbs.rs`, `rustd/crates/afr_supervisor/src/turns.rs`, `rustd/crates/afr_agent/src/*.rs` | CREATE / EDIT | The seam over the daemon's HTTP verbs, with `PATCH` and `DELETE`; handed to each run |
+| `rustd/crates/afr_tools/src/verbs.rs`, `rustd/crates/afr_tools/src/verbs/**`, `rustd/crates/afr_tools/src/lease.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/catalog.rs`, `rustd/crates/afr_tools/src/lib.rs`, `rustd/crates/afr_tools/src/testing.rs`, `rustd/crates/afr_tools/src/memory/shared_tests.rs`, `rustd/crates/afr_tools/Cargo.toml` | CREATE / EDIT | The lease-verb seam and the eight handlers onto it, masking what they send |
+| `rustd/crates/afr_supervisor/src/**`, `rustd/crates/afr_agent/src/**`, `rustd/Cargo.lock` | CREATE / EDIT | The seam over the daemon's HTTP verbs, with `PATCH` and `DELETE`; handed to each run |
 | `rustd/crates/agentsfleetd/tests/support/*.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_messages.rs`, `rustd/crates/*/tests/**`, `rustd/crates/**/tests.rs` | EDIT / CREATE | Runner-shaped posts, fake QStash and Slack, live-datastore proofs (`#[ignore]`d, run by `make test-integration-rustd`); unit proofs beside each change |
 | `docs/architecture/capabilities.md`, `docs/architecture/runner_execution.md`, `docs/architecture/data_flow.md` | EDIT | The fleet as a third schedule author; the interim post; the fire actor |
 
@@ -89,8 +91,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ERROR REGISTRY | yes | Three codes declared in `afd_core` and used by the verbs |
-| SCHEMA GUARD | yes | `VERSION=0.56.0` (migrate): `migration:schema/928_fleet_schedules_once.sql`, `migration:schema/929_runner_leases_messages_posted.sql`. `source` stays `TEXT` with no `CHECK`; `fleet` is an application constant |
+| ERROR REGISTRY | yes | Five codes declared in `afd_core` and used by the verbs |
+| SCHEMA GUARD | yes | `VERSION=0.56.0` (migrate): `migration:schema/928_fleet_schedules_once.sql`, `migration:schema/929_runner_leases_messages_posted.sql`, `migration:schema/930_fleet_events_actor_index.sql`. `source` stays `TEXT` with no `CHECK`; `fleet` is an application constant |
 | UFS / LOGGING / MILESTONE-ID | yes | Constants once; scoped events with ids and counts only |
 | Architecture consult | yes | `capabilities.md` §2 and `runner_execution.md` §"Tool catalog" already state these facts |
 | File & Function Length (≤350/≤50/≤70) | yes | One verb per handler file; the interim poster in its own module |
@@ -105,7 +107,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — A fleet owns schedules on the daemon's plane
 
-`POST`, `GET`, `PATCH`, `DELETE` on `/v1/runners/me/leases/{lease_id}/schedules[/{schedule_id}]` and `POST …/schedules/{schedule_id}/runs` (run now, modelled as creating a run, since the REST guide bans a verb in a path), each carrying `fencing_token`. The fleet is the lease's; the body never names one. A create stores source `fleet` and `source_key` = the creating event id, validates `cron`, `timezone` and `message` through `afd_cron::validate`, refuses the `FLEET_SCHEDULES_MAX`+1th schedule with `SCHEDULE_CAP_REACHED`, and reconciles to QStash as the tenant create does. List returns every schedule of the fleet with its source; update and delete refuse a schedule whose source is not `fleet` with `SCHEDULE_NOT_FLEET_OWNED`. Run-now admits one `schedule_fire` event for that schedule through the same producer QStash's callback uses. `GET …/schedules/{schedule_id}/runs` lists the fleet's events with actor `cron:<schedule_id>`, newest first, paged.
+`POST`, `GET`, `PATCH`, `DELETE` on `/v1/runners/me/leases/{lease_id}/schedules[/{schedule_id}]` and `POST …/schedules/{schedule_id}/runs` (run now, modelled as creating a run, since the REST guide bans a verb in a path), each carrying `fencing_token`. The fleet is the lease's; the body never names one. A create stores source `fleet`, keyed by its own minted schedule id, validates `cron`, `timezone` and `message` through `afd_cron::validate`, refuses the `FLEET_SCHEDULES_MAX`+1th schedule with `SCHEDULE_CAP_REACHED`, and reconciles to QStash as the tenant create does. List returns every schedule of the fleet with its source; update and delete refuse a schedule whose source is not `fleet` with `SCHEDULE_NOT_FLEET_OWNED`. Run-now admits one `schedule_fire` event for that schedule through the same producer QStash's callback uses, keyed `run:<event_id>` so a reclaimed lease replays the run. It applies the callback's gates first: a fleet that takes no work answers `UZ-AGT-012`, and a paused or deleting schedule, or a run a schedule started, answers `SCHEDULE_NOT_RUNNABLE`; each is a 409 naming `current_state`, so no schedule wakes its fleet in a loop. `GET …/schedules/{schedule_id}/runs` lists the fleet's events with actor `cron:<schedule_id>`, newest first, paged, through the slot-930 index.
 
 - **Dimension 1.1** — A valid create stores a `fleet`-sourced row and reconciles once → Test `test_fleet_creates_its_own_schedule` → **DONE**
 - **Dimension 1.2** — A stale fence is refused and stores nothing → Test `test_stale_fence_schedule_refused` → **DONE**
@@ -116,10 +118,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.7** — Runs lists that event, newest first → Test `test_schedule_runs_lists_events` → **DONE**
 - **Dimension 1.8** — Delete sets the desired status and reconciles; the row leaves QStash → Test `test_fleet_deletes_its_schedule` → **DONE**
 - **Dimension 1.9** — A `once` schedule retires after its first fire, from QStash or run-now → Test `test_once_schedule_retires_after_fire` → **DONE**
+- **Dimension 1.10** — Run-now of a paused or deleting schedule is refused with `SCHEDULE_NOT_RUNNABLE` and its state → Test `test_run_now_refuses_a_schedule_that_would_not_fire` → **DONE**
+- **Dimension 1.11** — Run-now for a fleet that takes no work is refused with `UZ-AGT-012` → Test `test_run_now_refuses_a_fleet_that_takes_no_work` → **DONE**
+- **Dimension 1.12** — A run a schedule started cannot run a schedule now → Test `test_run_now_from_a_scheduled_run_is_refused` → **DONE**
+- **Dimension 1.13** — One schedule's runs read through the actor index, never the fleet's whole history → Test `test_event_list_plans_use_the_index` → **DONE**
 
 ### §2 — A fleet posts to its thread mid-run
 
-`POST /v1/runners/me/leases/{lease_id}/messages { fencing_token, text }` delivers `text` to the event's origin channel in the same thread through the outbound posters, with retry. `text` is capped at `MESSAGE_MAX_BYTES` and scrubbed of the lease's secret values; a run may post at most `MESSAGES_PER_RUN_MAX`. An event with no origin channel (an API steer, a webhook) is refused with `MESSAGE_NO_CHANNEL`, which the tool returns to the model.
+`POST /v1/runners/me/leases/{lease_id}/messages { fencing_token, text }` delivers `text` to the event's origin channel in the same thread through the outbound posters, with retry. `text` is capped at `MESSAGE_MAX_BYTES` and scrubbed of the lease's secret values; a run may post at most `MESSAGES_PER_RUN_MAX`, counted in the same statement that proves the fence. Delivery stops at `MESSAGE_DELIVERY_DEADLINE` (12 s), inside the runner's call timeout, and answers `delivered: false`. An interim line is stamped `agentsfleet_interim` with a `{lease_id, line}` part, so neither a repeat of the answer nor a reclaimed lease's line 1 matches it. An event with no origin channel (an API steer, a webhook) is refused with `MESSAGE_NO_CHANNEL`, which the tool returns to the model.
 
 - **Dimension 2.1** — A message reaches the Slack thread fake before the run ends → Test `test_fleet_posts_a_message_mid_run` → **DONE**
 - **Dimension 2.2** — A stale fence posts nothing → Test `test_stale_fence_message_refused` → **DONE**
@@ -127,6 +133,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 2.4** — An event without a channel is refused with `MESSAGE_NO_CHANNEL` → Test `test_message_without_channel_refused` → **DONE**
 - **Dimension 2.5** — A secret value in the text is masked before delivery → Test `test_message_is_scrubbed` → **DONE**
 - **Dimension 2.6** — An interim line carries its own marker, so a repeat of the final answer still posts it → Test `test_interim_marker_is_not_the_answer` → **DONE**
+- **Dimension 2.7** — A reclaimed lease's interim line never matches the dead lease's line → Test `test_reclaimed_lease_line_is_not_the_dead_lease_line` → **DONE**
+- **Dimension 2.8** — Posts racing for the last slots never pass the cap → Test `test_concurrent_messages_never_pass_the_cap` → **DONE**
+- **Dimension 2.9** — A stalled Slack answers `delivered: false` at the deadline → Test `test_message_to_a_stalled_slack_answers_at_the_deadline` → **DONE**
+- **Dimension 2.10** — A line naming `<!channel>` reaches the thread as literal text and notifies nobody → Test `test_a_line_naming_the_channel_notifies_nobody` → **DONE**
 
 ### §3 — The harness carries the eight tools
 
@@ -148,11 +158,14 @@ GET    /v1/runners/me/leases/{lease_id}/schedules/{id}/runs?fencing_token=N&limi
 POST   /v1/runners/me/leases/{lease_id}/messages                  { fencing_token, text } → { delivered: bool }
 
 core.fleet_schedules.source ∈ { api, trigger, fleet }; core.fleet_schedules.once (slot 928)
-source_key for a fleet create = "<creating event id>-<millis>" until QStash's id replaces it
+source_key for a fleet create = its minted schedule_id until QStash's id replaces it
+run-now idempotency key = run:<leased event_id>
+interim marker = event_type agentsfleet_interim, part { lease_id, line }
 fleet.runner_leases.messages_posted (slot 929)
 A schedule fire's actor = cron:<schedule_id> (QStash and run-now alike)
-Constants: FLEET_SCHEDULES_MAX 16 · MESSAGE_MAX_BYTES 4096 · MESSAGES_PER_RUN_MAX 8
-Codes: SCHEDULE_CAP_REACHED (UZ-SCHED-009, 409) · SCHEDULE_NOT_FLEET_OWNED (UZ-SCHED-010, 403) · MESSAGE_NO_CHANNEL (UZ-RUN-019, 409) · MESSAGE_LIMIT_REACHED (UZ-RUN-020, 429)
+Constants: FLEET_SCHEDULES_MAX 16 · MESSAGE_MAX_BYTES 4096 · MESSAGES_PER_RUN_MAX 8 · MESSAGE_DELIVERY_DEADLINE 12 s
+Codes: SCHEDULE_CAP_REACHED (UZ-SCHED-009, 409) · SCHEDULE_NOT_FLEET_OWNED (UZ-SCHED-010, 403) · SCHEDULE_NOT_RUNNABLE (UZ-SCHED-011, 409) · MESSAGE_NO_CHANNEL (UZ-RUN-019, 409) · MESSAGE_LIMIT_REACHED (UZ-RUN-020, 409)
+Every 409 body names current_state
 ```
 
 ## Failure Modes
@@ -165,7 +178,10 @@ Codes: SCHEDULE_CAP_REACHED (UZ-SCHED-009, 409) · SCHEDULE_NOT_FLEET_OWNED (UZ-
 | QStash unreachable | Scheduler down | Row stored, `sync_status` reports it, the sweeper reconciles later, as for tenant creates |
 | No channel | Steer or webhook event | `MESSAGE_NO_CHANNEL`; the fleet says it in the report instead (Dimension 2.4) |
 | Channel delivery fails | Slack fault | Retried as a reply is; the tool returns `delivered: false` |
+| Slack stalls | Posts held open | Answered `delivered: false` at the 12 s deadline, before the runner's call times out (Dimension 2.9) |
+| Run-now loops or wakes a stopped fleet | A scheduled run calls run-now; a paused schedule or fleet | 409 `SCHEDULE_NOT_RUNNABLE` or `UZ-AGT-012` with `current_state` (Dimensions 1.10–1.12) |
 | Secret in a message | Fleet echoes a token | Masked before delivery (Dimension 2.5) |
+| Steered fleet pages the channel | Thread content tells the model to write `<!channel>` | `&`, `<`, `>` posted as Slack entities; the line shows as typed (Dimension 2.10) |
 
 ## Invariants
 
@@ -195,12 +211,20 @@ Codes: SCHEDULE_CAP_REACHED (UZ-SCHED-009, 409) · SCHEDULE_NOT_FLEET_OWNED (UZ-
 | 1.7 | integration | `test_schedule_runs_lists_events` | 3 fires → 3 events newest first, `limit=2` pages |
 | 1.8 | integration | `test_fleet_deletes_its_schedule` | delete → desired status deleted, fake QStash 1 delete |
 | 1.9 | integration | `test_once_schedule_retires_after_fire` | run-now of a `once` row → fake QStash 1 delete, row gone |
+| 1.10 | integration | `test_run_now_refuses_a_schedule_that_would_not_fire` | paused `api` row, deleting `fleet` row → 409 `UZ-SCHED-011`, `current_state` = that status, 0 events |
+| 1.11 | integration | `test_run_now_refuses_a_fleet_that_takes_no_work` | fleet paused → 409 `UZ-AGT-012`, `current_state` = fleet status, 0 events |
+| 1.12 | integration | `test_run_now_from_a_scheduled_run_is_refused` | lease on a `cron:` event → 409 `UZ-SCHED-011`, `current_state` `scheduled_run` |
+| 1.13 | integration | `test_event_list_plans_use_the_index` | generic plan of the exact-actor page → index scan on slot 930, no sort |
 | 2.1 | integration | `test_fleet_posts_a_message_mid_run` | post → Slack fake receives text in `thread_ts` before report |
 | 2.2 | integration | `test_stale_fence_message_refused` | stale token → 0 posts |
 | 2.3 | integration | `test_message_caps_refuse` | 9th post → refused; 5 KiB text → refused |
 | 2.4 | integration | `test_message_without_channel_refused` | API-steer event → `MESSAGE_NO_CHANNEL` |
 | 2.5 | integration | `test_message_is_scrubbed` | text with the token → Slack fake sees `«secret:github.token»` |
 | 2.6 | unit | `test_interim_marker_is_not_the_answer` | a thread holding an interim line → `holds_answer` for the final marker answers false |
+| 2.7 | unit | `test_reclaimed_lease_line_is_not_the_dead_lease_line` | dead lease's line 1 in the thread → the new lease's line 1 is not held |
+| 2.8 | integration | `test_concurrent_messages_never_pass_the_cap` | posts racing for the last slots → exactly the cap land, the rest 409, count = cap |
+| 2.9 | integration | `test_message_to_a_stalled_slack_answers_at_the_deadline` | Slack holds posts → 200 `delivered: false`, elapsed within 12–15 s |
+| 2.10 | unit | `test_a_line_naming_the_channel_notifies_nobody` | `<!channel> … <@U…>` → `&lt;!channel&gt; … &lt;@U…&gt;`; the live poster case sees the same text on the wire |
 | 3.1 | unit | `test_cron_tools_map_onto_the_verb` | each of six tools → the verb, method and path expected, fence carried |
 | 3.2 | unit | `test_schedule_tool_is_once` | `schedule {at, message}` → create with `once: true` |
 | 3.3 | unit | `test_message_tool_posts_or_names_gap` | 200 → `delivered: true`; `MESSAGE_NO_CHANNEL` → tool error with that code |
@@ -211,7 +235,7 @@ Codes: SCHEDULE_CAP_REACHED (UZ-SCHED-009, 409) · SCHEDULE_NOT_FLEET_OWNED (UZ-
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | A fleet schedules and posts through the daemon (§1, §2) | `make test-integration-rustd && grep -cE "fn test_(fleet_creates_its_own_schedule\|fleet_posts_a_message_mid_run)\(" rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs rustd/crates/agentsfleetd/tests/integration_runner_messages.rs` | 2 | P0 | |
 | R2 | The eight handlers map onto the verbs (§3) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools verbs` | exit 0 | P0 | |
-| R3 | The four codes are declared | `grep -rhcE "^pub const (SCHEDULE_CAP_REACHED\|SCHEDULE_NOT_FLEET_OWNED\|MESSAGE_NO_CHANNEL\|MESSAGE_LIMIT_REACHED):" rustd/crates/afd_core/src/error_code/ \| paste -sd+ - \| bc` | 4 | P0 | |
+| R3 | The five codes are declared | `grep -rhcE "^pub const (SCHEDULE_CAP_REACHED\|SCHEDULE_NOT_FLEET_OWNED\|SCHEDULE_NOT_RUNNABLE\|MESSAGE_NO_CHANNEL\|MESSAGE_LIMIT_REACHED):" rustd/crates/afd_core/src/error_code/ \| paste -sd+ - \| bc` | 5 | P0 | |
 | R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -262,7 +286,18 @@ N/A — no files deleted.
 - **Consults** — Indy (in-session, Oct 02, 2026): "i need all the tools, since cron has a scheduler i think"; chose "Yes, runner verb onto daemon schedules" when asked whether to reverse "Scheduled wakes are not a child tool". The reversal is recorded in `docs/architecture/capabilities.md` §2 and `runner_execution.md` Decisions.
 - **Agent defaults** — the cap of 16 schedules per fleet; 4 KiB and 8 messages per run; `source_key` as the creating event id; `schedule` as a once schedule.
 - **Metrics review** — No analytics or funnel playbook update required: no user action; four operator log events added.
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — `/orly-write-unit-test` audit closed its gaps in `bc09ef632`. gstack `/review` (Oct 06, 2026) ran six specialists: security, API design, performance, testing, maintainability, adversarial.
+- **Review: fixed** (agent, Oct 06, 2026):
+  - Run-now skipped the callback's gates; it now refuses a fleet that takes no work, a paused or deleting schedule, and a run a schedule started (Dimensions 1.10–1.12, new `SCHEDULE_NOT_RUNNABLE`), keyed `run:<event_id>`.
+  - A schedule's runs scanned the fleet's history; exact-actor statements read slot 930 (Dimension 1.13).
+  - The message count proves the fence in one statement (Dimension 2.8); delivery is bounded by a 12 s deadline under the runner's 20 s call timeout (Dimension 2.9); interim lines carry their own stamp and a lease-scoped part (Dimension 2.7).
+  - Every 409 names `current_state`; `MESSAGE_LIMIT_REACHED` moved from 429 to 409, since the cap is the run's state and a retry cannot clear it.
+  - Schedule messages are masked on both sides: the runner masks minted tokens, the daemon masks declared static secrets.
+  - A fleet-made schedule is keyed by its minted id, so two creates in one millisecond cannot collide; `schedule` rounds `at` up to the next minute and needs a minute of lead; `SLACK_API_URL` must be https or loopback http.
+  - A dropped `once` fire for a fleet that takes no work retires the schedule; a held retirement claim answers `UZ-SCHED-006`, so the caller repeats it.
+  - Interim lines post `&`, `<` and `>` as Slack entities, so a steered fleet cannot page the channel up to eight times a run (Dimension 2.10; agent call while Indy was away, Oct 06, 2026, revertible).
+  - Splits and helpers for over-long files and functions; cross-fleet negative tests on run-now, PATCH, DELETE and runs.
+- **Review: recorded, not changed** — awaiting Indy's call before CHORE(close): Slack mention escaping on the answer path, which has had the exposure since M206 and would lose `<url|label>` links; a distinct actor for fleet-made fires; a per-lease schedule-write budget; `installed()` over-fetch on the mask path; `once` retirement off the request path; a `lock_timeout` on slot 929 (no precedent); list envelope and DELETE idempotency parity with the tenant routes; PATCH reviving a `deleting` row (the tenant PATCH does the same); mixed-version rollout and rollback notes; the dashboard's `cron:*` filter now matching every fire; four functions already over the length cap grew a few lines; the `afr_secrets` scrub-failure lift no test reaches without a test-only constructor.
 - **PLAN decisions** (agent, Oct 05, 2026, from source on `main`): the seven assumptions under the handshake. The ones that change the spec as authored: the fence rides the query on `GET` and `DELETE`; run-now is `POST …/runs`, a run created, not a `/run` verb in the path; a patch names `paused` as the tenant route does, so `deleting` cannot be set by a patch; the fire actor becomes `cron:<schedule_id>`; slots 928 and 929; the daemon reuses `afr_secrets::Scrub`; a fourth code for the per-run message cap; `source_key` gains a millisecond suffix, because one run may create two schedules and the key is unique per fleet.
 - **Owner direction** (Indy, in-session, Oct 05, 2026): "If there is api docs to be updated do so, and update docs, but skip changelog" — the docs pages move into this stream on their own branch in `~/Projects/docs`; no changelog entry. "the rust patch diff must be 99%, all typescript must be 100%".
 - **Deferrals** — none.

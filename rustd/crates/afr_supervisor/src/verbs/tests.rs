@@ -9,7 +9,7 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afr_agent::{LeaseVerbs as _, ScheduleCall, Unanswered};
 
-use super::LeaseVerbs;
+use super::FencedVerbs;
 use crate::client::Verb;
 use crate::error;
 use crate::test_support::{Answer, FENCING, LEASE_ID, json, plane};
@@ -21,7 +21,7 @@ const PAGE: &str = r#"{"schedules":[]}"#;
 async fn a_schedules_reply_reaches_the_tool_as_its_text() {
     let (plane, _calls) = plane(|_call| Answer::Reply(bytes::Bytes::from_static(PAGE.as_bytes())));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = LeaseVerbs::new(&plane, &lease, FENCING);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING);
     assert_eq!(verbs.schedules(ScheduleCall::List).await.unwrap(), PAGE);
 }
 
@@ -37,7 +37,7 @@ async fn a_refusal_keeps_its_code() {
         ))
     });
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = LeaseVerbs::new(&plane, &lease, FENCING);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING);
     assert_eq!(
         verbs.message("hello").await,
         Err(Unanswered::Refused(Some(error_code::MESSAGE_NO_CHANNEL)))
@@ -50,7 +50,7 @@ async fn a_refusal_keeps_its_code() {
 async fn an_unavailable_daemon_is_unreachable_after_one_attempt() {
     let (plane, mut calls) = plane(|call| Answer::Fail(error::unavailable(call.verb, 503)));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = LeaseVerbs::new(&plane, &lease, FENCING);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING);
     assert_eq!(
         verbs.schedules(ScheduleCall::List).await,
         Err(Unanswered::Unreachable)
@@ -65,7 +65,7 @@ async fn a_message_answers_whether_the_thread_has_it() {
         _other => json(&serde_json::json!({})),
     });
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = LeaseVerbs::new(&plane, &lease, FENCING);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING);
     assert_eq!(verbs.message("status").await, Ok(false));
 }
 
@@ -74,6 +74,6 @@ async fn a_message_answers_whether_the_thread_has_it() {
 async fn an_unreadable_message_reply_is_unreachable() {
     let (plane, _calls) = plane(|_call| json(&serde_json::json!(["not", "a", "reply"])));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = LeaseVerbs::new(&plane, &lease, FENCING);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING);
     assert_eq!(verbs.message("status").await, Err(Unanswered::Unreachable));
 }

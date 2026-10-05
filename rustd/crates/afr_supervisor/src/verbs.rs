@@ -11,15 +11,16 @@ use afr_agent::{ScheduleCall, Unanswered};
 
 use crate::client::ControlPlane;
 
-/// The verbs of one held lease, over the control plane.
+/// The verbs of one held lease, over the control plane, each call carrying
+/// the lease's fence: [`afr_agent::LeaseVerbs`] as the supervisor serves it.
 #[derive(Debug)]
-pub(crate) struct LeaseVerbs<'a> {
+pub(crate) struct FencedVerbs<'a> {
     plane: &'a ControlPlane,
     lease_id: &'a Uuid7,
     fencing_token: u64,
 }
 
-impl<'a> LeaseVerbs<'a> {
+impl<'a> FencedVerbs<'a> {
     /// The verbs of `lease_id`, fenced by `fencing_token`, through `plane`.
     pub(crate) const fn new(
         plane: &'a ControlPlane,
@@ -35,7 +36,7 @@ impl<'a> LeaseVerbs<'a> {
 }
 
 #[async_trait::async_trait]
-impl afr_agent::LeaseVerbs for LeaseVerbs<'_> {
+impl afr_agent::LeaseVerbs for FencedVerbs<'_> {
     async fn schedules(&self, call: ScheduleCall<'_>) -> Result<String, Unanswered> {
         self.plane
             .schedules(self.lease_id, self.fencing_token, call)

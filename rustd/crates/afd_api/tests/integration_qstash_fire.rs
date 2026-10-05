@@ -31,7 +31,7 @@
 use crate::harness;
 
 #[path = "qstash_fire_live/fixture.rs"]
-mod fixture;
+pub(crate) mod fixture;
 
 use self::fixture::Fixture;
 use self::harness::json_body;

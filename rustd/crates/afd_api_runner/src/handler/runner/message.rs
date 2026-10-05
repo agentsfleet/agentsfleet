@@ -9,14 +9,19 @@
 
 use std::sync::Arc;
 
-use afd_http::handler::{Refusal, parse_id, read_strict_body};
-use afd_wire::message_verb::{MessagePosted, MessageRequest};
+use afd_core::error_code;
+use afd_http::handler::{Refusal, read_strict_body};
+use afd_wire::message_verb::{
+    MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MESSAGES_PER_RUN_MAX, MessagePosted,
+    MessageRequest,
+};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use garde::Validate as _;
 
+use super::schedule::lease;
 use crate::auth::RunnerIdentity;
 use crate::services::{Leasing as _, Services};
 
@@ -27,10 +32,37 @@ const EVENT_FAILED: &str = "runner_message_failed";
 const DETAIL_MALFORMED: &str = "Malformed message body";
 
 /// The refusal a text outside its bound earns.
-const DETAIL_TEXT: &str = "text must be 1 to 4096 bytes with no NUL";
+const DETAIL_TEXT: &str = const_format::concatcp!(
+    "text must be 1 to ",
+    MESSAGE_MAX_BYTES,
+    " bytes with no NUL"
+);
 
-/// The refusal a lease path segment that is not an identifier earns.
-const DETAIL_LEASE_ID: &str = "lease_id must be a valid UUIDv7";
+/// The `current_state` an event with no thread names.
+const STATE_NO_THREAD: &str = "no_thread";
+
+/// The `current_state` a run at its message cap names.
+const STATE_AT_CAPACITY: &str = "at_capacity";
+
+/// A post that outlasted [`MESSAGE_DELIVERY_DEADLINE`], answered undelivered.
+const EVENT_DEADLINE: &str = "runner_message_deadline";
+
+/// What [`handle`] documents, its caps spelled from their constants.
+#[cfg(feature = "openapi")]
+const DESCRIPTION: &str = const_format::concatcp!(
+    "Posts one line to the thread the leased event came from, before the ",
+    "run answers, with the fleet's secret values masked. The daemon holds ",
+    "the channel's credential and posts; the runner sends text. A run may ",
+    "post at most ",
+    MESSAGES_PER_RUN_MAX,
+    " messages, refused past that with `UZ-RUN-020`. An event from no ",
+    "thread, such as an API steer, a webhook or a schedule, is refused with ",
+    "`UZ-RUN-019`. Both are 409s naming their `current_state`. `delivered` ",
+    "is false when the channel refused the line, or stayed unreachable ",
+    "through every retry within ",
+    MESSAGE_DELIVERY_DEADLINE.as_secs(),
+    " seconds. Takes no `Idempotency-Key`: each line is its own post. ",
+);
 
 /// Posts one line to the event's thread.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -39,15 +71,7 @@ const DETAIL_LEASE_ID: &str = "lease_id must be a valid UUIDv7";
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_post_message",
     summary = "Post a message to the event's thread",
-    description = concat!(
-        "Posts one line to the thread the leased event came from, before the ",
-        "run answers, with the fleet's secret values masked. The daemon holds ",
-        "the channel's credential and posts; the runner sends text. A run may ",
-        "post at most 8 messages, refused past that with `UZ-RUN-020`. An ",
-        "event from no thread, such as an API steer, a webhook or a schedule, ",
-        "is refused with `UZ-RUN-019`. `delivered` is false when the channel ",
-        "refused the line or stayed unreachable through every retry. ",
-    ),
+    description = DESCRIPTION,
     request_body = MessageRequest,
     params(afd_http::openapi::path::Lease),
     responses(
@@ -74,12 +98,34 @@ pub(crate) async fn handle<D: Services>(
     request
         .validate()
         .map_err(|_report| Refusal::malformed(DETAIL_TEXT))?;
-    let lease = parse_id(&lease_id, DETAIL_LEASE_ID)?;
     let interim = services
         .leases()
-        .message(runner.id(), lease, &request, services.now())
+        .message(runner.id(), lease(&lease_id)?, &request, services.now())
         .await
-        .map_err(Refusal::at(EVENT_FAILED))?;
-    let delivered = services.interjector().interject(interim).await;
+        .map_err(refused)?;
+    let part = interim.part;
+    let posting = services.interjector().interject(interim);
+    let delivered = tokio::time::timeout(MESSAGE_DELIVERY_DEADLINE, posting)
+        .await
+        .unwrap_or_else(|_elapsed| {
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let lease_id = lease_id.as_str();
+            let error_code = error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
+            tracing::warn!(error_code, lease_id, part, event = EVENT_DEADLINE);
+            false
+        });
     Ok(Json(MessagePosted { delivered }).into_response())
+}
+
+/// A message the lease plane refused, as the runner reads it: each 409 names
+/// the state that forbade it.
+fn refused(error: afd_fleet::Error) -> Refusal {
+    let code = error.code();
+    if code == error_code::MESSAGE_NO_CHANNEL {
+        Refusal::conflict_at(EVENT_FAILED, STATE_NO_THREAD)(error)
+    } else if code == error_code::MESSAGE_LIMIT_REACHED {
+        Refusal::conflict_at(EVENT_FAILED, STATE_AT_CAPACITY)(error)
+    } else {
+        Refusal::at(EVENT_FAILED)(error)
+    }
 }

@@ -40,6 +40,8 @@ test-util = [
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+# The message-cap sentence spells the cap from its constant.
+const_format.workspace = true
 # The families this crate produces. The dependency points this way and not the
 # other: telemetry knows nothing about leases or memory, and the counts below exist only
 # where the work happens.

@@ -20,6 +20,9 @@ use super::Refusal;
 /// may retry in a moment — the two answers send a caller to different places.
 pub const DETAIL_HELD: &str = "This schedule is being synchronised. Try again in a moment.";
 
+/// The `current_state` a schedule another syncer holds names.
+pub const STATE_SYNCING: &str = "syncing";
+
 /// The refusal a fleet changing a schedule a person made earns.
 pub const DETAIL_NOT_FLEET_OWNED: &str =
     "A fleet can change or delete only the schedules it created; a person created this one.";
@@ -38,7 +41,10 @@ pub fn checked(fields: validate::Fields<'_>) -> Result<(), Refusal> {
 /// A refused create, as the caller reads it.
 #[must_use]
 pub fn refused(refusal: Refused) -> Refusal {
-    Refusal::coded(refusal.code(), refusal.detail())
+    match refusal.current_state() {
+        Some(state) => Refusal::conflict(refusal.code(), refusal.detail(), state),
+        None => Refusal::coded(refusal.code(), refusal.detail()),
+    }
 }
 
 /// What one reconcile answers.
@@ -54,7 +60,11 @@ pub fn rendered(reconciled: Reconciled, status: StatusCode) -> Result<Response, 
             Ok((status, Json(schedule.view())).into_response())
         }
         Reconciled::Removed => Ok(StatusCode::NO_CONTENT.into_response()),
-        Reconciled::Superseded => Err(Refusal::coded(error_code::SCHEDULE_SYNCING, DETAIL_HELD)),
+        Reconciled::Superseded => Err(Refusal::conflict(
+            error_code::SCHEDULE_SYNCING,
+            DETAIL_HELD,
+            STATE_SYNCING,
+        )),
     }
 }
 
@@ -79,10 +89,7 @@ pub fn not_fleet_owned() -> Refusal {
 /// The refusal a schedule the fleet does not hold earns.
 #[must_use]
 pub fn not_found() -> Refusal {
-    Refusal::coded(
-        error_code::SCHEDULE_NOT_FOUND,
-        afd_cron::store_detail::DETAIL_NOT_FOUND,
-    )
+    refused(Refused::NoSuchFleet)
 }
 
 #[cfg(test)]

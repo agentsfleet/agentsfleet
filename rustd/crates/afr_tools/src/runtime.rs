@@ -82,6 +82,9 @@ pub enum ToolErrorCode {
     ScheduleCapReached,
     /// The schedule is a person's, so the fleet may read it and not change it.
     ScheduleNotFleetOwned,
+    /// The schedule is paused or being removed, or a schedule started this
+    /// run, so it does not run now.
+    ScheduleNotRunnable,
     /// The event came from no thread, so a message has nowhere to go.
     MessageNoChannel,
     /// The run already posted as many messages as one run may.
@@ -117,6 +120,7 @@ impl ToolErrorCode {
             Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
             Self::ScheduleCapReached => "schedule_cap_reached",
             Self::ScheduleNotFleetOwned => "schedule_not_fleet_owned",
+            Self::ScheduleNotRunnable => "schedule_not_runnable",
             Self::MessageNoChannel => "message_no_channel",
             Self::MessageLimitReached => "message_limit_reached",
             Self::AgentsfleetdRefused => "agentsfleetd_refused",

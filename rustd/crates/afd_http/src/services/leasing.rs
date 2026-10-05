@@ -196,6 +196,18 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         request: &MessageRequest<'_>,
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send;
+
+    /// `text` with the lease's fleet's declared static secrets masked: what a
+    /// schedule the fleet writes stores and hands the scheduler.
+    ///
+    /// # Errors
+    /// Refuses a fleet no longer installed; reports a vault that would not
+    /// answer and a mask that could not be built.
+    fn masked(
+        &self,
+        standing: &Standing,
+        text: &str,
+    ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
 }
 
 /// The production plane answers it directly.
@@ -302,6 +314,14 @@ impl Leasing for Plane {
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send {
         Self::message(self, runner_id, lease_id, request, now)
+    }
+
+    fn masked(
+        &self,
+        standing: &Standing,
+        text: &str,
+    ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
+        Self::masked(self, standing, text)
     }
 
     async fn renew(

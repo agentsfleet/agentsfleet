@@ -13,8 +13,14 @@
 //! The list shows a person's schedules beside the fleet's, each naming its
 //! source, so the model plans around what exists. An edit or a delete of a
 //! schedule a person made answers `UZ-SCHED-010`. The store, the reconcile to
-//! QStash and every rendering are the tenant surface's own, so a schedule a
+//! `QStash` and every rendering are the tenant surface's own, so a schedule a
 //! fleet made behaves exactly as one a person made.
+//!
+//! # What a fleet writes is masked
+//!
+//! A schedule's message is the prompt a later run reads, and it is stored and
+//! handed to `QStash`. Every declared secret of the fleet is masked out of it
+//! before either, as a message to a thread is.
 //!
 //! [`create`] and [`list`] are here, with the helpers the sibling verbs share;
 //! the edit and the delete are in `schedule_edit`, the runs in `schedule_run`.
@@ -22,7 +28,7 @@
 use std::sync::Arc;
 
 use afd_core::clock::UnixMillis;
-use afd_core::error_code::ErrorCode;
+use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
 use afd_cron::model::DEFAULT_TIMEZONE;
 use afd_cron::{NewSchedule, Reconciled, Source, validate};
@@ -52,8 +58,9 @@ const EVENT_REFUSED: &str = "fleet_schedule_refused";
 /// The refusal a body this verb cannot read earns.
 pub(super) const DETAIL_MALFORMED: &str = "Malformed schedules body";
 
-/// The refusal a lease path segment that is not an identifier earns.
-const DETAIL_LEASE_ID: &str = "lease_id must be a valid UUIDv7";
+/// The refusal a lease path segment that is not an identifier earns: one
+/// spelling for every lease-addressed verb.
+pub(super) const DETAIL_LEASE_ID: &str = "lease_id must be a valid UUIDv7";
 
 /// The refusal a schedule path segment that is not an identifier earns.
 const DETAIL_SCHEDULE_ID: &str = "schedule_id must be a valid UUIDv7";
@@ -65,6 +72,21 @@ pub(super) const DETAIL_FENCE: &str = "fencing_token must be the lease's fencing
 #[cfg(feature = "openapi")]
 pub(super) const RECONCILED: &str = "The schedule as reconciled with the scheduler";
 
+/// What [`create`] documents, its cap spelled from the constant.
+#[cfg(feature = "openapi")]
+const CREATE_DESCRIPTION: &str = const_format::concatcp!(
+    "Creates a schedule for the fleet the lease runs, with source `fleet`, ",
+    "and registers it in QStash as a person's schedule is. The fleet comes ",
+    "from the lease and never from the body, and the fleet's declared secrets ",
+    "are masked out of the message. A fleet holds at most ",
+    afd_cron::FLEET_SCHEDULES_MAX,
+    " schedules it created, refused past that with `UZ-SCHED-009`. With ",
+    "`once` set, the schedule retires after its first fire. A schedule ",
+    "that saved and did not register answers 201 with its `sync` state. ",
+    "Takes no `Idempotency-Key`: the runner does not retry a call, and a ",
+    "model that repeats one has asked for a second schedule. ",
+);
+
 /// Creates a schedule for the fleet the lease runs.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
@@ -72,14 +94,7 @@ pub(super) const RECONCILED: &str = "The schedule as reconciled with the schedul
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_create_schedule",
     summary = "Create a schedule for the running fleet",
-    description = concat!(
-        "Creates a schedule for the fleet the lease runs, with source `fleet`, ",
-        "and registers it in QStash as a person's schedule is. The fleet comes ",
-        "from the lease and never from the body. A fleet holds at most 16 ",
-        "schedules it created, refused past that with `UZ-SCHED-009`. With ",
-        "`once` set, the schedule retires after its first fire. A schedule ",
-        "that saved and did not register answers 201 with its `sync` state. ",
-    ),
+    description = CREATE_DESCRIPTION,
     request_body = ScheduleCreateRequest,
     params(afd_http::openapi::path::Lease),
     responses(
@@ -113,16 +128,15 @@ pub(crate) async fn create<D: Services>(
     )
     .await?;
     let timezone = request.timezone.as_deref().unwrap_or(DEFAULT_TIMEZONE);
-    checked(validate::Fields {
-        expression: Some(&request.cron),
-        timezone: Some(timezone),
-        message: Some(&request.message),
-    })
-    .inspect_err(|_invalid| log_refused(&lease, afd_core::error_code::INVALID_REQUEST))?;
-    // Prefixed by the event that created it, so the key says which run made
-    // the schedule until QStash's own id replaces it; the instant keeps two
-    // schedules one run makes apart, because the key is unique per fleet.
-    let source_key = format!("{}-{}", lease.event_id, now.as_millis());
+    checked_for(
+        &lease,
+        validate::Fields {
+            expression: Some(&request.cron),
+            timezone: Some(timezone),
+            message: Some(&request.message),
+        },
+    )?;
+    let message = masked(&*services, &lease, &request.message).await?;
     let created = services
         .schedules()
         .create(
@@ -130,10 +144,10 @@ pub(crate) async fn create<D: Services>(
             NewSchedule {
                 fleet: &lease.fleet_id,
                 source: Source::Fleet,
-                source_key: &source_key,
+                source_key: None,
                 cron: &request.cron,
                 timezone,
-                message: &request.message,
+                message: &message,
                 once: request.once,
             },
             now,
@@ -145,16 +159,7 @@ pub(crate) async fn create<D: Services>(
         refused(refusal)
     })?;
     if let Reconciled::Synced(schedule) | Reconciled::Failed(schedule) = &reconciled {
-        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let fleet_id = lease.fleet_id.as_str();
-        let schedule_id = schedule.schedule_id.as_str();
-        let agentsfleet_event_id = lease.event_id.as_str();
-        tracing::info!(
-            fleet_id,
-            schedule_id,
-            agentsfleet_event_id,
-            event = EVENT_CREATED
-        );
+        log_written(&lease, &schedule.schedule_id, EVENT_CREATED);
     }
     rendered(reconciled, StatusCode::CREATED)
 }
@@ -213,12 +218,43 @@ pub(super) async fn standing<D: Services>(
     token: u64,
     now: UnixMillis,
 ) -> Result<Standing, Refusal> {
-    let lease = parse_id(lease_id, DETAIL_LEASE_ID)?;
     services
         .leases()
-        .standing(runner, lease, token, now)
+        .standing(runner, lease(lease_id)?, token, now)
         .await
         .map_err(Refusal::at(EVENT_FAILED))
+}
+
+/// The lease a path names.
+pub(super) fn lease(raw: &str) -> Result<Uuid7, Refusal> {
+    parse_id(raw, DETAIL_LEASE_ID)
+}
+
+/// `fields` checked, a refusal logged against the lease's fleet.
+pub(super) fn checked_for(lease: &Standing, fields: validate::Fields<'_>) -> Result<(), Refusal> {
+    checked(fields).inspect_err(|_invalid| log_refused(lease, error_code::INVALID_REQUEST))
+}
+
+/// `text` with the lease's fleet's declared secrets masked.
+pub(super) async fn masked<D: Services>(
+    services: &D,
+    lease: &Standing,
+    text: &str,
+) -> Result<String, Refusal> {
+    services
+        .leases()
+        .masked(lease, text)
+        .await
+        .map_err(Refusal::at(EVENT_FAILED))
+}
+
+/// Logs a schedule the fleet wrote, under `event`; never its message.
+pub(super) fn log_written(lease: &Standing, schedule: &Uuid7, event: &'static str) {
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let fleet_id = lease.fleet_id.as_str();
+    let schedule_id = schedule.as_str();
+    let agentsfleet_event_id = lease.event_id.as_str();
+    tracing::info!(fleet_id, schedule_id, agentsfleet_event_id, event);
 }
 
 /// The schedule a path names.
@@ -248,7 +284,7 @@ pub(super) async fn fleet_owned<D: Services>(
     if found.source == Source::Fleet {
         Ok(())
     } else {
-        log_refused(lease, afd_core::error_code::SCHEDULE_NOT_FLEET_OWNED);
+        log_refused(lease, error_code::SCHEDULE_NOT_FLEET_OWNED);
         Err(not_fleet_owned())
     }
 }

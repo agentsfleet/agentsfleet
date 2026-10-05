@@ -43,7 +43,7 @@
 //! already there — see `afd_connector::slack::holds_answer` for what the
 //! check can and cannot promise.
 
-use afd_connector::slack::{AnswerMarker, Stamp, Thread};
+use afd_connector::slack::{AnswerMarker, Part, Stamp, Thread};
 use afd_connector::{Grants, Provider};
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretString;
@@ -155,11 +155,11 @@ impl SlackPoster {
     }
 
     /// Both inputs, the address first and from the job alone, and the marker
-    /// `part` names: `None` for the answer, a line number for an interim post.
+    /// `part` names: `None` for the answer, a line's place for an interim post.
     ///
     /// Answers a verdict directly on failure — see the module note on why
     /// nothing here is an error.
-    async fn inputs(&self, job: &OutboundDelivery, part: Option<u32>) -> Result<Inputs, Verdict> {
+    async fn inputs(&self, job: &OutboundDelivery, part: Option<&Part>) -> Result<Inputs, Verdict> {
         let destination = destination(job)?;
         let Ok(workspace) = Uuid7::parse(&job.workspace_id) else {
             // An identifier this daemon queued that will not parse is this
@@ -182,7 +182,7 @@ impl SlackPoster {
         let marker = AnswerMarker {
             fleet_id: job.fleet_id.clone(),
             event_id: job.event_id.clone(),
-            part,
+            part: part.cloned(),
         };
         Ok(Inputs {
             destination,
@@ -227,7 +227,11 @@ impl SlackPoster {
 
 impl SlackPoster {
     /// Posts `job` under the marker `part` names, once.
-    pub(crate) async fn deliver_part(&self, job: &OutboundDelivery, part: Option<u32>) -> Verdict {
+    pub(crate) async fn deliver_part(
+        &self,
+        job: &OutboundDelivery,
+        part: Option<&Part>,
+    ) -> Verdict {
         match self.inputs(job, part).await {
             Ok(inputs) => self.post(job, &inputs).await,
             Err(verdict) => verdict,
@@ -239,7 +243,7 @@ impl SlackPoster {
     pub(crate) async fn redeliver_part(
         &self,
         job: &OutboundDelivery,
-        part: Option<u32>,
+        part: Option<&Part>,
     ) -> Verdict {
         let inputs = match self.inputs(job, part).await {
             Ok(inputs) => inputs,

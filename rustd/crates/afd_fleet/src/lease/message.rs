@@ -27,6 +27,7 @@ use sqlx::Row as _;
 
 use crate::error::{Result, lease_not_found, message_limit_reached, message_no_channel, query};
 use crate::lease::pull::Plane;
+use crate::lease::sql;
 use crate::lease::sql::standing::COUNT_MESSAGE;
 use crate::lease::standing::Standing;
 use crate::lease::store::Leases;
@@ -62,13 +63,21 @@ impl Plane {
             .await?
         }
         .ok_or_else(message_no_channel)?;
-        let part = self
+        let counted = self
             .leases
-            .count_message(&standing.lease_id)
-            .await?
-            .ok_or_else(message_limit_reached)?;
+            .count_message(&standing.lease_id, request.fencing_token, now)
+            .await?;
+        let Some(part) = counted else {
+            // No slot taken: the run is at its cap, or a reclaim superseded the
+            // holder after its standing was read. The second read says which.
+            let Standing { lease_id, .. } = standing;
+            self.standing(runner_id, lease_id, request.fencing_token, now)
+                .await?;
+            return Err(message_limit_reached());
+        };
         let text = self.masked(&standing, &request.text).await?;
         let Standing {
+            lease_id,
             fleet_id,
             workspace_id,
             event_id,
@@ -80,13 +89,21 @@ impl Plane {
             workspace_id: workspace_id.into(),
             fleet_id: fleet_id.into(),
             event_id,
+            lease_id: lease_id.into(),
             text,
             part,
         })
     }
 
     /// `text` with every declared static secret of the lease's fleet masked.
-    async fn masked(&self, standing: &Standing, text: &str) -> Result<String> {
+    ///
+    /// What a message posts and what a schedule a fleet writes stores, so a
+    /// secret the model echoes reaches neither a thread nor the scheduler.
+    ///
+    /// # Errors
+    /// Refuses a fleet that is no longer installed. Reports a datastore or
+    /// vault that would not answer, and a mask that could not be built.
+    pub async fn masked(&self, standing: &Standing, text: &str) -> Result<String> {
         let installed = self
             .leases
             .installed(&standing.fleet_id)
@@ -106,14 +123,22 @@ impl Plane {
 }
 
 impl Leases {
-    /// Counts one message against `lease_id`, answering which line of the run
-    /// it is, or `None` once the run has said
-    /// [`MESSAGES_PER_RUN_MAX`].
-    async fn count_message(&self, lease_id: &Uuid7) -> Result<Option<u32>> {
+    /// Counts one message against `lease_id` while it holds its fleet under
+    /// `presented`, answering which line of the run it is, or `None` once the
+    /// run has said [`MESSAGES_PER_RUN_MAX`] or the lease no longer holds.
+    async fn count_message(
+        &self,
+        lease_id: &Uuid7,
+        presented: u64,
+        now: UnixMillis,
+    ) -> Result<Option<u32>> {
         let mut connection = self.pool().acquire().await?;
         let counted = sqlx::query(COUNT_MESSAGE)
             .bind(lease_id.as_str())
             .bind(i32::try_from(MESSAGES_PER_RUN_MAX).unwrap_or(i32::MAX))
+            .bind(i64::try_from(presented).unwrap_or(i64::MAX))
+            .bind(sql::LEASE_STATUS_ACTIVE)
+            .bind(now.as_millis())
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_COUNT))?;
@@ -125,3 +150,7 @@ impl Leases {
             .transpose()
     }
 }
+
+#[cfg(test)]
+#[path = "message/tests.rs"]
+mod tests;

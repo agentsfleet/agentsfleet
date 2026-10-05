@@ -53,6 +53,10 @@ mod fake_model;
 mod https;
 #[path = "support/e2e_reads.rs"]
 mod reads;
+#[path = "support/e2e_schedules.rs"]
+mod schedules;
+#[path = "support/e2e_speaking.rs"]
+mod speaking;
 #[path = "support/mod.rs"]
 mod support;
 #[path = "support/e2e_tail.rs"]
@@ -84,8 +88,16 @@ mod integration_runner_brackets;
 mod integration_runner_e2e;
 #[path = "integration_runner_messages.rs"]
 mod integration_runner_messages;
+#[path = "integration_runner_messages_fence.rs"]
+mod integration_runner_messages_fence;
 #[path = "integration_runner_schedules.rs"]
 mod integration_runner_schedules;
+#[path = "integration_runner_schedules_edit.rs"]
+mod integration_runner_schedules_edit;
+#[path = "integration_runner_schedules_refusals.rs"]
+mod integration_runner_schedules_refusals;
+#[path = "integration_runner_schedules_runs.rs"]
+mod integration_runner_schedules_runs;
 #[path = "integration_runner_shapes.rs"]
 mod integration_runner_shapes;
 #[path = "integration_rust_runner.rs"]

@@ -125,9 +125,10 @@ pub const MESSAGE_NO_CHANNEL: ErrorCode = ErrorCode::declare("UZ-RUN-019");
 
 /// The lease already posted as many messages as one run may.
 ///
-/// A 429, and per lease rather than per window: the bound is on how much one
-/// run says to a person's thread, so waiting does not lift it. A reclaimed
-/// lease starts its own count.
+/// A 409 carrying `current_state`, and per lease rather than per window: the
+/// bound is on how much one run says to a person's thread, so waiting does not
+/// lift it and a 429 would tell a client to retry into the same refusal. A
+/// reclaimed lease starts its own count.
 pub const MESSAGE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-RUN-020");
 
 /// A fleet declared a credential the vault does not hold.

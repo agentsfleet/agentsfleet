@@ -4885,7 +4885,7 @@
           "Runners"
         ],
         "summary": "Post a message to the event's thread",
-        "description": "Posts one line to the thread the leased event came from, before the run answers, with the fleet's secret values masked. The daemon holds the channel's credential and posts; the runner sends text. A run may post at most 8 messages, refused past that with `UZ-RUN-020`. An event from no thread, such as an API steer, a webhook or a schedule, is refused with `UZ-RUN-019`. `delivered` is false when the channel refused the line or stayed unreachable through every retry. ",
+        "description": "Posts one line to the thread the leased event came from, before the run answers, with the fleet's secret values masked. The daemon holds the channel's credential and posts; the runner sends text. A run may post at most 8 messages, refused past that with `UZ-RUN-020`. An event from no thread, such as an API steer, a webhook or a schedule, is refused with `UZ-RUN-019`. Both are 409s naming their `current_state`. `delivered` is false when the channel refused the line, or stayed unreachable through every retry within 12 seconds. Takes no `Idempotency-Key`: each line is its own post. ",
         "operationId": "runner_post_message",
         "parameters": [
           {
@@ -5264,7 +5264,7 @@
           "Schedules"
         ],
         "summary": "Create a schedule for the running fleet",
-        "description": "Creates a schedule for the fleet the lease runs, with source `fleet`, and registers it in QStash as a person's schedule is. The fleet comes from the lease and never from the body. A fleet holds at most 16 schedules it created, refused past that with `UZ-SCHED-009`. With `once` set, the schedule retires after its first fire. A schedule that saved and did not register answers 201 with its `sync` state. ",
+        "description": "Creates a schedule for the fleet the lease runs, with source `fleet`, and registers it in QStash as a person's schedule is. The fleet comes from the lease and never from the body, and the fleet's declared secrets are masked out of the message. A fleet holds at most 16 schedules it created, refused past that with `UZ-SCHED-009`. With `once` set, the schedule retires after its first fire. A schedule that saved and did not register answers 201 with its `sync` state. Takes no `Idempotency-Key`: the runner does not retry a call, and a model that repeats one has asked for a second schedule. ",
         "operationId": "runner_create_schedule",
         "parameters": [
           {
@@ -5541,7 +5541,7 @@
           "Schedules"
         ],
         "summary": "Change a schedule the fleet made",
-        "description": "Changes the fields a body names on a schedule the running fleet created, and pushes the result to QStash. A schedule a person made answers `UZ-SCHED-010`. Sending the same body twice leaves the same schedule. ",
+        "description": "Changes the fields a body names on a schedule the running fleet created, and pushes the result to QStash. A new message has the fleet's declared secrets masked out. A schedule a person made answers `UZ-SCHED-010`. Sending the same body twice leaves the same schedule. ",
         "operationId": "runner_update_schedule",
         "parameters": [
           {
@@ -5842,7 +5842,7 @@
           "Schedules"
         ],
         "summary": "Run a schedule now",
-        "description": "Creates a run of a schedule of the running fleet now, as if QStash had fired it: one event with actor `cron:<schedule_id>`, queued for the fleet. Posting again under the same lease answers the same run. A `once` schedule retires after this run. ",
+        "description": "Creates a run of a schedule of the running fleet now, as if QStash had fired it: one event with actor `cron:<schedule_id>`, queued for the fleet. Posting again for the same leased event answers the same run. A schedule that is paused or being removed answers `UZ-SCHED-011` with its `current_state`, as does a run a schedule started (`scheduled_run`), so no schedule wakes its fleet in a loop. A fleet that is not taking work answers `UZ-AGT-012`. A `once` schedule retires after this run, so a repeat after that answers 404. ",
         "operationId": "runner_run_schedule",
         "parameters": [
           {
@@ -20903,7 +20903,8 @@
           },
           "once": {
             "type": "boolean",
-            "description": "Whether it retires after its first fire."
+            "description": "Whether it retires after its first fire. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "schedule_id": {
             "type": "string",
@@ -20911,7 +20912,8 @@
           },
           "source": {
             "type": "string",
-            "description": "Who made it: `api` for a person, `trigger` for the fleet's own\ndocument, `fleet` for the fleet while it ran. Only a `fleet` schedule\ncan be changed by the fleet."
+            "description": "Who made it: `api` for a person, `trigger` for the fleet's own\ndocument, `fleet` for the fleet while it ran. Only a `fleet` schedule\ncan be changed by the fleet. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "status": {
             "type": "string",

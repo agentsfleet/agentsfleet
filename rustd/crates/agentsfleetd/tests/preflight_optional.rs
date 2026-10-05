@@ -2,6 +2,7 @@
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
+    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -11,7 +12,7 @@ use agentsfleetd::BootFailure;
 use agentsfleetd::preflight::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, Fault, PLATFORM_ADMIN_WORKSPACE_KNOB,
     R2_ACCESS_KEY_ID_KNOB, R2_ACCOUNT_ID_KNOB, R2_BUCKET_KNOB, R2_SECRET_ACCESS_KEY_KNOB,
-    preflight,
+    SLACK_API_URL_KNOB, preflight,
 };
 
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
@@ -47,6 +48,51 @@ fn unset_optional_settings_resolve_to_documented_defaults() {
     assert!(config.bundles().is_none());
     assert!(config.platform_admin_workspace().is_none());
     assert!(config.identity().jwks_url.is_none());
+    assert_eq!(
+        config.slack_api_base(),
+        afd_connector::slack::SLACK_API_BASE,
+        "every answer and interim line goes to slack.com unless told otherwise"
+    );
+}
+
+/// A Slack base carries every workspace's bot token, so it is https, or http
+/// only on a loopback host; anything else refuses boot rather than sending a
+/// token in the clear or to a host nobody meant.
+#[test]
+fn a_slack_base_follows_its_knob_only_where_a_token_is_safe() {
+    for safe in [
+        "https://slack.example.test/api",
+        "http://127.0.0.1:9/api",
+        "http://localhost:9/api",
+        "http://[::1]:9/api",
+    ] {
+        let config = preflight(&with_optional([(SLACK_API_URL_KNOB, safe)]))
+            .unwrap_or_else(|refused| panic!("{safe} boots: {refused:?}"));
+        assert_eq!(config.slack_api_base(), safe);
+    }
+    for unsafe_base in [
+        "http://slack.example.test/api",
+        "http://10.0.0.7/api",
+        "ftp://127.0.0.1/api",
+        "not a url",
+    ] {
+        let refusal = preflight(&with_optional([(SLACK_API_URL_KNOB, unsafe_base)]))
+            .expect_err("an unsafe base refuses boot");
+        assert!(
+            refusal.faults().iter().any(|fault| matches!(
+                fault,
+                Fault::Invalid {
+                    knob: SLACK_API_URL_KNOB,
+                    ..
+                }
+            )),
+            "{unsafe_base}: {refusal:?}"
+        );
+        assert!(
+            !format!("{refusal:?}").contains(unsafe_base),
+            "the refusal never echoes the value"
+        );
+    }
 }
 
 #[test]

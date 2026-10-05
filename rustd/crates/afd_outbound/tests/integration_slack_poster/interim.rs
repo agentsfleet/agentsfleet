@@ -9,6 +9,9 @@ use super::*;
 /// The line a run says before it answers.
 const LINE: &str = "fix pushed as a draft";
 
+/// The lease the fixture line was said under.
+const LEASE: &str = "0195b4ba-8d3a-7a11-8abc-0000000000aa";
+
 /// The line the fixture job's thread is owed, numbered `part`.
 fn interim(fixture: &Fixture, part: u32) -> Interim {
     let job = fixture.job();
@@ -18,6 +21,7 @@ fn interim(fixture: &Fixture, part: u32) -> Interim {
         workspace_id: job.workspace_id,
         fleet_id: job.fleet_id,
         event_id: job.event_id,
+        lease_id: LEASE.to_owned(),
         text: LINE.to_owned(),
         part,
     }
@@ -39,7 +43,15 @@ async fn an_interim_line_posts_under_its_own_part() {
     let sent = received(&slack);
     assert_eq!(sent.field("text"), Some(LINE));
     assert_eq!(sent.field("thread_ts"), Some(THREAD));
-    assert_eq!(sent.body["metadata"]["event_payload"]["part"], 2);
+    let stamped = |pointer: &str| sent.body.pointer(pointer).cloned();
+    assert_eq!(
+        stamped("/metadata/event_type"),
+        Some(afd_connector::slack::INTERIM_EVENT_TYPE.into())
+    );
+    assert_eq!(
+        stamped("/metadata/event_payload/part"),
+        Some(serde_json::json!({"lease_id": LEASE, "line": 2}))
+    );
     assert_eq!(slack.reads(), 0, "a first attempt reads no thread");
     fixture.cleanup().await;
 }
@@ -110,7 +122,10 @@ async fn a_line_whose_acknowledgement_was_lost_is_not_posted_twice() {
     let marker = afd_connector::slack::AnswerMarker {
         fleet_id: landed.fleet_id.clone(),
         event_id: landed.event_id.clone(),
-        part: Some(4),
+        part: Some(afd_connector::slack::Part {
+            lease_id: LEASE.to_owned(),
+            line: 4,
+        }),
     };
     let stamp = serde_json::to_string(&marker.metadata()).expect("a stamp serializes");
     slack.answer(
@@ -133,5 +148,31 @@ async fn a_line_whose_acknowledgement_was_lost_is_not_posted_twice() {
         .filter(Request::is_post)
         .count();
     assert_eq!(posts, 1, "only the attempt whose answer was lost posted");
+    fixture.cleanup().await;
+}
+
+/// A line that names the channel reaches the thread as text Slack shows
+/// literally, so a steered fleet cannot page the channel.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_interim_line_naming_the_channel_posts_as_text() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    fixture.seal_grant(BOT_TOKEN).await;
+    let slack = slack_answering(200, r#"{"ok":true}"#).await;
+    let paging = Interim {
+        text: "<!channel> look".to_owned(),
+        ..interim(&fixture, 1)
+    };
+
+    let delivered = Interjector::new(fixture.poster(&slack.api_base()))
+        .interject(paging)
+        .await;
+
+    assert!(delivered);
+    assert_eq!(
+        received(&slack).field("text"),
+        Some("&lt;!channel&gt; look")
+    );
     fixture.cleanup().await;
 }

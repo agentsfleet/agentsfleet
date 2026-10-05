@@ -144,15 +144,29 @@ pub(crate) fn daemon(
             Verb::Activity | Verb::Report | Verb::Bundle | Verb::Mint => {
                 json(&ReportResponse { ok: true })
             }
-            Verb::ScheduleList => json(&serde_json::json!({"schedules": []})),
-            Verb::ScheduleCreate | Verb::ScheduleUpdate => json(&serde_json::json!({
-                "schedule_id": SCHEDULE_ID, "source": "fleet", "once": false,
-            })),
-            Verb::ScheduleDelete => Answer::Reply(bytes::Bytes::new()),
-            Verb::ScheduleRun => json(&serde_json::json!({"event_id": RUN_EVENT_ID})),
-            Verb::ScheduleRuns => json(&serde_json::json!({"items": [], "next_cursor": null})),
-            Verb::Message => json(&serde_json::json!({"delivered": true})),
+            Verb::ScheduleList
+            | Verb::ScheduleCreate
+            | Verb::ScheduleUpdate
+            | Verb::ScheduleDelete
+            | Verb::ScheduleRun
+            | Verb::ScheduleRuns
+            | Verb::Message => lease_verb_reply(call.verb),
         })
+    }
+}
+
+/// What a healthy daemon answers a lease verb with.
+fn lease_verb_reply(verb: Verb) -> Answer {
+    match verb {
+        Verb::ScheduleList => json(&serde_json::json!({"schedules": []})),
+        Verb::ScheduleCreate | Verb::ScheduleUpdate => json(&serde_json::json!({
+            "schedule_id": SCHEDULE_ID, "source": "fleet", "once": false,
+        })),
+        Verb::ScheduleDelete => Answer::Reply(bytes::Bytes::new()),
+        Verb::ScheduleRun => json(&serde_json::json!({"event_id": RUN_EVENT_ID})),
+        Verb::ScheduleRuns => json(&serde_json::json!({"items": [], "next_cursor": null})),
+        // `Message`: `daemon` routes only lease verbs here, and it is the last.
+        _message => json(&serde_json::json!({"delivered": true})),
     }
 }
 

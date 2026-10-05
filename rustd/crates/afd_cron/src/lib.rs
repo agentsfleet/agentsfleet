@@ -57,11 +57,5 @@ pub use self::qstash::QStash;
 pub use self::service::{Reconciled, Schedules as ScheduleService};
 pub use self::store::{Change, FireTarget, NewSchedule, Refused, SYNC_LEASE_MS, Schedules};
 
-/// The sentences a refused create and a missing schedule answer with.
-pub mod store_detail {
-    pub use crate::store::refused::{
-        DETAIL_DUPLICATE, DETAIL_FLEET_CAP, DETAIL_NOT_FOUND, DETAIL_TOO_MANY,
-    };
-}
 pub use self::validate::Invalid;
 pub use self::verifier::{SigningKeys, Unverified, VerifiedFire};

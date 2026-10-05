@@ -43,42 +43,54 @@ pub(super) async fn refusal(
         .map_err(error::query(CONTEXT_WRITE))?;
 
     if new.source == Source::Fleet
-        && count(transaction, sql::COUNT_FOR_SOURCE, fleet, Some(new.source)).await?
-            >= FLEET_SCHEDULES_MAX
+        && Tally::Source(new.source).count(transaction, fleet).await? >= FLEET_SCHEDULES_MAX
     {
         return Ok(Some(Refused::FleetCapReached));
     }
-    if count(transaction, sql::COUNT_FOR_FLEET, fleet, None).await? >= MAX_SCHEDULES_PER_FLEET {
+    if Tally::Fleet.count(transaction, fleet).await? >= MAX_SCHEDULES_PER_FLEET {
         return Ok(Some(Refused::TooMany));
     }
 
+    // A key the store mints from the new row's own id cannot be held yet.
+    let Some(key) = new.source_key else {
+        return Ok(None);
+    };
     let duplicate = sqlx::query(sql::SOURCE_KEY_EXISTS)
         .bind(fleet)
-        .bind(new.source_key)
+        .bind(key)
         .fetch_optional(&mut *transaction)
         .await
         .map_err(error::query(CONTEXT_WRITE))?;
     Ok(duplicate.map(|_held| Refused::DuplicateKey))
 }
 
-/// One count statement's answer, bound to the fleet and, for a per-source
-/// count, the source's stored word.
-async fn count(
-    transaction: &mut PgConnection,
-    statement: &'static str,
-    fleet: &str,
-    source: Option<Source>,
-) -> Result<usize> {
-    let query = sqlx::query(statement).bind(fleet);
-    let query = match source {
-        Some(source) => query.bind(source.as_str()),
-        None => query,
-    };
-    let held: i64 = query
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(error::query(CONTEXT_WRITE))?
-        .try_get(0)
-        .map_err(error::query(CONTEXT_WRITE))?;
-    Ok(usize::try_from(held).unwrap_or(usize::MAX))
+/// Which of a fleet's schedules a count covers.
+///
+/// The statement and its binds are picked together, so a per-source count
+/// cannot run without the source it filters on.
+#[derive(Debug, Clone, Copy)]
+enum Tally {
+    /// Every schedule the fleet holds.
+    Fleet,
+    /// The schedules of one source.
+    Source(Source),
+}
+
+impl Tally {
+    /// How many of `fleet`'s schedules this tally covers.
+    async fn count(self, transaction: &mut PgConnection, fleet: &str) -> Result<usize> {
+        let query = match self {
+            Self::Fleet => sqlx::query(sql::COUNT_FOR_FLEET).bind(fleet),
+            Self::Source(source) => sqlx::query(sql::COUNT_FOR_SOURCE)
+                .bind(fleet)
+                .bind(source.as_str()),
+        };
+        let held: i64 = query
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_WRITE))?
+            .try_get(0)
+            .map_err(error::query(CONTEXT_WRITE))?;
+        Ok(usize::try_from(held).unwrap_or(usize::MAX))
+    }
 }

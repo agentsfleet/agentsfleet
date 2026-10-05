@@ -121,7 +121,7 @@ pub(super) const FLEET: &[Problem] = &[
     },
     Problem {
         code: error_code::MESSAGE_LIMIT_REACHED,
-        status: 429,
+        status: 409,
         title: "Run message limit reached",
         hint: "A run can post at most 8 messages before it answers. Put the rest in the run's answer.",
         user_message: None,

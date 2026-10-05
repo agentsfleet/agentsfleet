@@ -3,6 +3,9 @@
 //! Each parses its arguments, proves any schedule id is one before it can
 //! reach a path, and hands `agentsfleetd`'s answer back to the model as it
 //! came: the schedule's view, the list, the run, or the refusal with its code.
+//! A message a schedule will hand a later run is masked for every token the
+//! lease minted before it leaves, as a line to the thread is; `agentsfleetd`
+//! masks the fleet's stored secrets.
 
 use afd_core::id::Uuid7;
 use schemars::JsonSchema;
@@ -10,6 +13,7 @@ use serde::Deserialize;
 
 use super::{ScheduleCall, answered};
 use crate::catalog::{CRON_ADD, CRON_LIST, CRON_REMOVE, CRON_RUN, CRON_RUNS, CRON_UPDATE, Entry};
+use crate::egress;
 use crate::handler::Handler;
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 
@@ -87,10 +91,11 @@ impl Handler for CronAdd {
     type Arguments = Add;
 
     async fn run(&self, arguments: Add, context: ToolContext<'_, '_>) -> ToolOutput {
+        let message = egress::masked(context.lease, arguments.message);
         let call = ScheduleCall::Create {
             cron: &arguments.cron,
             timezone: arguments.timezone.as_deref(),
-            message: &arguments.message,
+            message: &message,
             once: false,
         };
         answered(context.lease.verbs.schedules(call).await)
@@ -151,11 +156,14 @@ impl Handler for CronUpdate {
             Ok(schedule) => schedule,
             Err(refused) => return refused,
         };
+        let message = arguments
+            .message
+            .map(|text| egress::masked(context.lease, text));
         let call = ScheduleCall::Update {
             schedule: &schedule,
             cron: arguments.cron.as_deref(),
             timezone: arguments.timezone.as_deref(),
-            message: arguments.message.as_deref(),
+            message: message.as_deref(),
             paused: arguments.paused,
         };
         answered(context.lease.verbs.schedules(call).await)

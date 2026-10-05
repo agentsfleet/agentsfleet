@@ -163,6 +163,14 @@ pub const SCHEDULE_CAP_REACHED: ErrorCode = ErrorCode::declare("UZ-SCHED-009");
 /// and a row of another fleet's answers [`SCHEDULE_NOT_FOUND`] instead.
 pub const SCHEDULE_NOT_FLEET_OWNED: ErrorCode = ErrorCode::declare("UZ-SCHED-010");
 
+/// The fleet asked to run a schedule now that would not fire on its own.
+///
+/// A 409 carrying `current_state`: `paused` or `deleting` for a schedule the
+/// scheduler would drop, and `scheduled_run` for a run a schedule started,
+/// which may not start another so that a schedule cannot wake its fleet in a
+/// loop. A run-now overrides neither a person's pause nor a retirement.
+pub const SCHEDULE_NOT_RUNNABLE: ErrorCode = ErrorCode::declare("UZ-SCHED-011");
+
 /// The path named a preference key outside the writable registry.
 pub const PREF_KEY_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-PREFS-001");
 

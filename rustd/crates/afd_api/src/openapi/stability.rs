@@ -43,6 +43,10 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // runner that reads them; either may reshape what a reply carries.
     ("ScheduleRun", &["event_id"]),
     ("MessagePosted", &["delivered"]),
+    // A schedule's view gained who made it and whether it retires after one
+    // fire. `source` grew a third value with the fleet as an author, and both
+    // are read by that same new runner.
+    ("View", &["source", "once"]),
 ];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.

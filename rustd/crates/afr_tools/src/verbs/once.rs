@@ -3,9 +3,16 @@
 //!
 //! The moment becomes the five-field expression that matches only its minute
 //! — minute, hour, day and month in UTC — created with `once`, so
-//! `agentsfleetd` fires it through QStash and then retires it. A cron has no
+//! `agentsfleetd` fires it through `QStash` and then retires it. A cron has no
 //! year, so the moment must fall within the next year, where that expression
 //! matches exactly once.
+//!
+//! # Rounded up, and at least a minute out
+//!
+//! A cron fires on a minute's first second. A moment inside a minute rounds up
+//! to the next one, so the run is never early, and the rounded minute must be
+//! at least [`LEAD_MS`] away: `QStash` has to hold the schedule before its
+//! minute begins, or the expression's next match is a year later.
 
 use afd_core::clock::{self, UnixMillis};
 use afd_core::timing::DAY_MS;
@@ -16,6 +23,7 @@ use serde::Deserialize;
 
 use super::{ScheduleCall, answered};
 use crate::catalog::{Entry, SCHEDULE};
+use crate::egress;
 use crate::handler::Handler;
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 
@@ -26,11 +34,18 @@ const UTC: &str = "UTC";
 /// matches only once.
 const HORIZON_MS: i64 = 365 * DAY_MS;
 
+/// One minute, the resolution a cron fires at.
+const MINUTE_MS: i64 = 60_000;
+
+/// How far ahead the rounded minute must be, so the schedule is registered
+/// before that minute begins.
+const LEAD_MS: i64 = MINUTE_MS;
+
 /// What an unreadable moment reads back.
 const DETAIL_AT: &str = "at must be an RFC 3339 instant such as 2026-10-06T09:00:00+05:30";
 
-/// What a moment already gone reads back.
-const DETAIL_PAST: &str = "at must be in the future";
+/// What a moment already gone, or too close to register, reads back.
+const DETAIL_PAST: &str = "at must be at least a minute in the future";
 
 /// What a moment past the horizon reads back.
 const DETAIL_TOO_FAR: &str = "at must fall within the next year";
@@ -62,27 +77,35 @@ impl Handler for ScheduleOnce {
             Ok(cron) => cron,
             Err(detail) => return ToolOutput::failed(ToolErrorCode::InvalidArguments, detail),
         };
+        let message = egress::masked(context.lease, arguments.message);
         let call = ScheduleCall::Create {
             cron: &cron,
             timezone: Some(UTC),
-            message: &arguments.message,
+            message: &message,
             once: true,
         };
         answered(context.lease.verbs.schedules(call).await)
     }
 }
 
-/// The UTC expression that fires at `at`'s minute, or why it cannot.
+/// The UTC expression that fires at `at`, rounded up to its minute, or why
+/// it cannot.
 fn minute_of(at: &str, now: UnixMillis) -> Result<String, &'static str> {
     let instant: Timestamp = at.parse().map_err(|_unreadable| DETAIL_AT)?;
-    let ahead = instant.as_millisecond() - now.as_millis();
-    if ahead <= 0 {
+    let millis = instant.as_millisecond();
+    let to_next_minute = (MINUTE_MS - millis.rem_euclid(MINUTE_MS)) % MINUTE_MS;
+    let minute = millis
+        .checked_add(to_next_minute)
+        .and_then(|rounded| Timestamp::from_millisecond(rounded).ok())
+        .ok_or(DETAIL_TOO_FAR)?;
+    let ahead = minute.as_millisecond() - now.as_millis();
+    if ahead < LEAD_MS {
         return Err(DETAIL_PAST);
     }
     if ahead > HORIZON_MS {
         return Err(DETAIL_TOO_FAR);
     }
-    let civil = instant.to_zoned(TimeZone::UTC).datetime();
+    let civil = minute.to_zoned(TimeZone::UTC).datetime();
     Ok(format!(
         "{} {} {} {} *",
         civil.minute(),
