@@ -137,7 +137,7 @@ async fn a_person_s_schedule_is_forbidden_to_the_fleet() {
 /// The validator's refusals reach a caller as a bad request, each with the
 /// sentence of the field it broke.
 #[tokio::test]
-async fn a_broken_field_is_a_bad_request_naming_it() {
+async fn test_schedule_fields_validated() {
     let six_fields = checked(validate::Fields {
         expression: Some("* * * * * *"),
         ..validate::Fields::default()

@@ -81,7 +81,7 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 /// a budget. The budget is a dollar because the run below charges under a
 /// thousandth of one — large enough that the ceiling never decides this test,
 /// small enough that a runaway charge would still trip it.
-const FLEET_CONFIG_JSON: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0}}}"#;
+pub(crate) const FLEET_CONFIG_JSON: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0}}}"#;
 
 /// The context window a seeded catalogue row advertises. Unread; `NOT NULL`.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
@@ -111,6 +111,7 @@ pub(crate) async fn seed_fleet(
     fleet: &str,
     workspace: &str,
     tenant: &str,
+    config: &str,
     now: UnixMillis,
 ) {
     let at = now.as_millis();
@@ -156,7 +157,7 @@ pub(crate) async fn seed_fleet(
     .bind(tenant)
     .bind("e2e-fleet")
     .bind("# fixture")
-    .bind(FLEET_CONFIG_JSON)
+    .bind(config)
     .bind("active")
     .bind(at)
     .execute(&mut *connection)
