@@ -46,37 +46,48 @@ export function recoverFinalReply(
   if (read === null || !isCurrent()) return;
   if (entry.replyRecoveries.has(eventId)) return;
   entry.replyRecoveries.add(eventId);
-  void (async () => {
-    try {
-      for (let attempt = 0; isCurrent(); attempt += 1) {
-        let retryMs: number = FINAL_REPLY_RETRY_MS[attempt] ?? TRANSIENT_MAX_RETRY_MS;
-        try {
-          const result = await read(entry.workspaceId, fleetId, eventId);
-          if (result.ok) {
-            if (!isCurrent()) return;
-            apply((prev) => applyDetail(prev, result.data), {});
-            entry.replyGaps.delete(eventId);
-            return;
-          }
-          // A stale session or missing event cannot heal at the transient
-          // retry cadence. Keep the draft unavailable, but check again after
-          // reauthentication or eventual detail repair without request churn.
-          if (result.status !== undefined && EVENT_GONE_STATUSES.has(result.status)) {
-            apply((prev) => applyReplyGone(prev, eventId), {});
-            return;
-          }
-          if (result.status !== undefined && PERMANENT_DETAIL_STATUSES.has(result.status)) {
-            retryMs = PERMANENT_DETAIL_RETRY_MS;
-          }
-        } catch {
-          // A transient detail failure can clear while the live stream stays up.
-        }
-        await new Promise<void>((resolve) => setTimeout(resolve, retryMs));
+  const onRead = (detail: EventDetail) => {
+    apply((prev) => applyDetail(prev, detail), {});
+    entry.replyGaps.delete(eventId);
+  };
+  // Keep the draft unavailable once the event is gone.
+  const onGone = () => apply((prev) => applyReplyGone(prev, eventId), {});
+  void readUntilAnswered(entry, fleetId, eventId, isCurrent, read, onRead, onGone)
+    .catch(() => {})
+    .finally(() => entry.replyRecoveries.delete(eventId));
+}
+
+// The read loop every recovery shares: how soon it asks again, and when it
+// stops. A read that throws is tried again, since a transient failure clears
+// while the live stream stays up; a stale session or a repairable row is asked
+// a minute apart, without request churn; a gone event ends it, told to the
+// caller that has something to mark. An update that throws ends it too, and
+// the caller contains the rejection.
+async function readUntilAnswered(
+  entry: Entry,
+  fleetId: string,
+  eventId: string,
+  isCurrent: () => boolean,
+  read: EventDetailReader,
+  onRead: (detail: EventDetail) => void,
+  onGone?: () => void,
+): Promise<void> {
+  for (let attempt = 0; isCurrent(); attempt += 1) {
+    let retryMs: number = FINAL_REPLY_RETRY_MS[attempt] ?? TRANSIENT_MAX_RETRY_MS;
+    const result = await read(entry.workspaceId, fleetId, eventId).catch(() => null);
+    if (result !== null) {
+      if (result.ok) {
+        if (isCurrent()) onRead(result.data);
+        return;
       }
-    } finally {
-      entry.replyRecoveries.delete(eventId);
+      if (result.status !== undefined && EVENT_GONE_STATUSES.has(result.status)) {
+        onGone?.();
+        return;
+      }
+      if (result.status !== undefined && PERMANENT_DETAIL_STATUSES.has(result.status)) retryMs = PERMANENT_DETAIL_RETRY_MS;
     }
-  })();
+    await new Promise<void>((resolve) => setTimeout(resolve, retryMs));
+  }
 }
 
 // An event that started and ended while the stream was away arrives as a list
@@ -107,10 +118,12 @@ export function isGone(entry: Entry, eventId: string, status: number | undefined
 }
 
 /**
- * Reads a settled event once more for its saved trace, when its turn had to
- * close a call it never heard end. One attempt per event, however often its
- * completion repeats: the answer is already on screen, so a failed read leaves
- * the turn as it is rather than retrying or marking anything gone.
+ * Reads a settled event again for its saved trace, when its turn had to close
+ * a call it never heard end. One read loop per event, however often its
+ * completion repeats, at the final reply's cadence: a read that fails once
+ * must not leave the guess standing as "interrupted" when the saved row says
+ * the call went fine. The answer is already on screen, so a gone event marks
+ * nothing; the loop just ends.
  */
 export function refreshSavedTrace(
   entry: Entry,
@@ -122,11 +135,8 @@ export function refreshSavedTrace(
 ): void {
   if (read === null || entry.traceReads.has(eventId)) return;
   entry.traceReads.add(eventId);
-  void read(entry.workspaceId, fleetId, eventId)
-    .then((result) => {
-      if (result.ok && isCurrent()) apply((prev) => mergeBackfill(prev, [result.data]), {});
-    })
-    .catch(() => {});
+  const onRead = (detail: EventDetail) => apply((prev) => mergeBackfill(prev, [detail]), {});
+  void readUntilAnswered(entry, fleetId, eventId, isCurrent, read, onRead).catch(() => {});
 }
 
 // A saved row over the live one: its status and figures, then its answer.
