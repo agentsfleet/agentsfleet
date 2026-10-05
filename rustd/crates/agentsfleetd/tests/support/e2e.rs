@@ -42,7 +42,6 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use afd_core::clock::UnixMillis;
-use afd_core::env::MapEnv;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_runner::Runners;
@@ -50,24 +49,26 @@ use afd_wire::event::EventType;
 use agentsfleetd::serve::{Booted, boot};
 use agentsfleetd::supervisor::Supervisor;
 
+pub(crate) use crate::e2e_db::daemon_environment;
 use crate::e2e_db::scenario_database;
 use crate::e2e_event::{enqueue, enqueue_unsupported};
 use crate::e2e_retire::retire_fleet;
 use crate::e2e_seed::{
-    DEEP_POOL, enrolment, seed_fleet, seed_model_rate, seed_platform_default, seed_wallet,
+    DEEP_POOL, FLEET_CONFIG_JSON, enrolment, seed_fleet, seed_model_rate, seed_platform_default,
+    seed_wallet,
 };
 use crate::e2e_seed_keys::seed_provider_key;
 
-use crate::support::{IDENTITY, SESSION_PEPPER, install_subscriber};
+use crate::support::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 pub(crate) const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
 /// Where the lane publishes the TLS Dragonfly it brought up.
-const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
+pub(crate) const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
 
 /// Where the lane extracted the Dragonfly certificate authority to.
-const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
+pub(crate) const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The port that asks the kernel to choose one.
 ///
@@ -128,38 +129,6 @@ pub(crate) fn lane(knob: &str) -> String {
     std::env::var(knob).unwrap_or_else(|_unset| {
         panic!("{knob} is unset — run these through `make test-integration-rustd`")
     })
-}
-
-/// An environment pointing the daemon at `database` and the lane's Dragonfly, on an
-/// ephemeral port.
-///
-/// The database is a parameter rather than the lane knob: each scenario boots
-/// the daemon against a database it created, so the two cannot be the same
-/// value and passing the knob would silently restore the shared-state bug the
-/// module documentation describes.
-pub(crate) fn daemon_environment(database: &str, provider_base: Option<&str>) -> MapEnv {
-    MapEnv::from_pairs(
-        [
-            ("DATABASE_URL_API", database),
-            ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB).as_str()),
-            (
-                "DRAGONFLY_TLS_CA_CERT_FILE",
-                lane(DRAGONFLY_CA_LANE_KNOB).as_str(),
-            ),
-            ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
-        ]
-        .into_iter()
-        // Required at boot, and resolved rather than used: this lane boots the
-        // daemon for real, so it has to satisfy preflight in full.
-        .chain(SESSION_PEPPER)
-        .chain(IDENTITY)
-        // LAST, so a caller's live provider wins over the fixture base above.
-        // The runner scenarios keep the non-resolving fixture — their plane
-        // never dials it — while the tenant-plane walk points the daemon at a
-        // listener it stood up, which is the only way a capability read over
-        // the booted daemon can answer instead of timing out.
-        .chain(provider_base.map(|base| ("CLERK_API_BASE", base))),
-    )
 }
 
 /// The lane's Dragonfly, as a configuration a second client can be built from.
@@ -245,6 +214,20 @@ pub(crate) async fn scenario_with_provider(
     supervisor: &mut Supervisor,
     provider_base: Option<&str>,
 ) -> Scenario {
+    scenario_with(supervisor, provider_base, &[], FLEET_CONFIG_JSON).await
+}
+
+/// [`scenario_with_provider`], with a suite's own knobs and fleet document.
+///
+/// `extra` points the daemon at what the suite stood up — a scheduler, a
+/// Slack — and `config` is the fleet's stored document, for a suite whose
+/// fleet must declare something the fixture one does not.
+pub(crate) async fn scenario_with(
+    supervisor: &mut Supervisor,
+    provider_base: Option<&str>,
+    extra: &[(&str, &str)],
+    config: &str,
+) -> Scenario {
     install_subscriber();
     // Before the daemon boots, because booting one is joining the consumer
     // group this guards.
@@ -255,7 +238,7 @@ pub(crate) async fn scenario_with_provider(
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
 
     let booted = boot(
-        &daemon_environment(&database_url, provider_base),
+        &daemon_environment(&database_url, provider_base, extra),
         EPHEMERAL,
         supervisor,
     )
@@ -265,7 +248,7 @@ pub(crate) async fn scenario_with_provider(
     let now = afd_core::clock::now();
 
     let (fleet, workspace, tenant) = unique_ids();
-    seed_fleet(&booted, &fleet, &workspace, &tenant, now).await;
+    seed_fleet(&booted, &fleet, &workspace, &tenant, config, now).await;
     seed_wallet(&booted, &tenant, DEEP_POOL, now).await;
     seed_model_rate(&booted, now).await;
     let default = seed_platform_default(&booted, &workspace, now).await;

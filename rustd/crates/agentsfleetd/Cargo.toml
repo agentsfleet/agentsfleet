@@ -30,6 +30,7 @@ path = "src/main.rs"
 test-util = [
     "afd_api/test-util",
     "afd_auth/test-util",
+    "afd_connector/test-util",
     "afd_core/test-util",
     "afd_crypto/test-util",
     "afd_db/test-util",

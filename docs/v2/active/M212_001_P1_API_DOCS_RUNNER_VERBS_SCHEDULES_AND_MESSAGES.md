@@ -107,34 +107,34 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `POST`, `GET`, `PATCH`, `DELETE` on `/v1/runners/me/leases/{lease_id}/schedules[/{schedule_id}]` and `POST …/schedules/{schedule_id}/runs` (run now, modelled as creating a run, since the REST guide bans a verb in a path), each carrying `fencing_token`. The fleet is the lease's; the body never names one. A create stores source `fleet` and `source_key` = the creating event id, validates `cron`, `timezone` and `message` through `afd_cron::validate`, refuses the `FLEET_SCHEDULES_MAX`+1th schedule with `SCHEDULE_CAP_REACHED`, and reconciles to QStash as the tenant create does. List returns every schedule of the fleet with its source; update and delete refuse a schedule whose source is not `fleet` with `SCHEDULE_NOT_FLEET_OWNED`. Run-now admits one `schedule_fire` event for that schedule through the same producer QStash's callback uses. `GET …/schedules/{schedule_id}/runs` lists the fleet's events with actor `cron:<schedule_id>`, newest first, paged.
 
-- **Dimension 1.1** — A valid create stores a `fleet`-sourced row and reconciles once → Test `test_fleet_creates_its_own_schedule`
-- **Dimension 1.2** — A stale fence is refused and stores nothing → Test `test_stale_fence_schedule_refused`
-- **Dimension 1.3** — The cap refuses the next create with its code → Test `test_schedule_cap_refuses_with_code`
-- **Dimension 1.4** — An `api`- or `trigger`-sourced schedule cannot be updated or deleted by the fleet → Test `test_fleet_cannot_touch_human_schedules`
-- **Dimension 1.5** — An invalid cron, timezone or message is refused with the validator's reason → Test `test_schedule_fields_validated`
-- **Dimension 1.6** — Run-now admits exactly one event with actor `cron:<schedule_id>` → Test `test_schedule_run_now_admits_one_event`
-- **Dimension 1.7** — Runs lists that event, newest first → Test `test_schedule_runs_lists_events`
-- **Dimension 1.8** — Delete sets the desired status and reconciles; the row leaves QStash → Test `test_fleet_deletes_its_schedule`
-- **Dimension 1.9** — A `once` schedule retires after its first fire, from QStash or run-now → Test `test_once_schedule_retires_after_fire`
+- **Dimension 1.1** — A valid create stores a `fleet`-sourced row and reconciles once → Test `test_fleet_creates_its_own_schedule` → **DONE**
+- **Dimension 1.2** — A stale fence is refused and stores nothing → Test `test_stale_fence_schedule_refused` → **DONE**
+- **Dimension 1.3** — The cap refuses the next create with its code → Test `test_schedule_cap_refuses_with_code` → **DONE**
+- **Dimension 1.4** — An `api`- or `trigger`-sourced schedule cannot be updated or deleted by the fleet → Test `test_fleet_cannot_touch_human_schedules` → **DONE**
+- **Dimension 1.5** — An invalid cron, timezone or message is refused with the validator's reason → Test `test_schedule_fields_validated` → **DONE**
+- **Dimension 1.6** — Run-now admits exactly one event with actor `cron:<schedule_id>` → Test `test_schedule_run_now_admits_one_event` → **DONE**
+- **Dimension 1.7** — Runs lists that event, newest first → Test `test_schedule_runs_lists_events` → **DONE**
+- **Dimension 1.8** — Delete sets the desired status and reconciles; the row leaves QStash → Test `test_fleet_deletes_its_schedule` → **DONE**
+- **Dimension 1.9** — A `once` schedule retires after its first fire, from QStash or run-now → Test `test_once_schedule_retires_after_fire` → **DONE**
 
 ### §2 — A fleet posts to its thread mid-run
 
 `POST /v1/runners/me/leases/{lease_id}/messages { fencing_token, text }` delivers `text` to the event's origin channel in the same thread through the outbound posters, with retry. `text` is capped at `MESSAGE_MAX_BYTES` and scrubbed of the lease's secret values; a run may post at most `MESSAGES_PER_RUN_MAX`. An event with no origin channel (an API steer, a webhook) is refused with `MESSAGE_NO_CHANNEL`, which the tool returns to the model.
 
-- **Dimension 2.1** — A message reaches the Slack thread fake before the run ends → Test `test_fleet_posts_a_message_mid_run`
-- **Dimension 2.2** — A stale fence posts nothing → Test `test_stale_fence_message_refused`
-- **Dimension 2.3** — The per-run count and the byte cap refuse with their codes → Test `test_message_caps_refuse`
-- **Dimension 2.4** — An event without a channel is refused with `MESSAGE_NO_CHANNEL` → Test `test_message_without_channel_refused`
-- **Dimension 2.5** — A secret value in the text is masked before delivery → Test `test_message_is_scrubbed`
-- **Dimension 2.6** — An interim line carries its own marker, so a repeat of the final answer still posts it → Test `test_interim_marker_is_not_the_answer`
+- **Dimension 2.1** — A message reaches the Slack thread fake before the run ends → Test `test_fleet_posts_a_message_mid_run` → **DONE**
+- **Dimension 2.2** — A stale fence posts nothing → Test `test_stale_fence_message_refused` → **DONE**
+- **Dimension 2.3** — The per-run count and the byte cap refuse with their codes → Test `test_message_caps_refuse` → **DONE**
+- **Dimension 2.4** — An event without a channel is refused with `MESSAGE_NO_CHANNEL` → Test `test_message_without_channel_refused` → **DONE**
+- **Dimension 2.5** — A secret value in the text is masked before delivery → Test `test_message_is_scrubbed` → **DONE**
+- **Dimension 2.6** — An interim line carries its own marker, so a repeat of the final answer still posts it → Test `test_interim_marker_is_not_the_answer` → **DONE**
 
 ### §3 — The harness carries the eight tools
 
 `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` and `schedule` (NullClaw's one-shot: a cron that deletes itself after firing, expressed as a create with `once: true`) map onto §1; `message` maps onto §2. Each is a `Supervisor` handler in the catalog; a refusal's code reaches the model as the tool's error.
 
-- **Dimension 3.1** — Each cron tool issues its verb with the lease's fence and returns the daemon's answer → Test `test_cron_tools_map_onto_the_verb`
-- **Dimension 3.2** — `schedule` creates a once schedule that is deleted after its first fire → Test `test_schedule_tool_is_once`
-- **Dimension 3.3** — `message` posts and returns the refusal code when there is no channel → Test `test_message_tool_posts_or_names_gap`
+- **Dimension 3.1** — Each cron tool issues its verb with the lease's fence and returns the daemon's answer → Test `test_cron_tools_map_onto_the_verb` → **DONE**
+- **Dimension 3.2** — `schedule` creates a once schedule that is deleted after its first fire → Test `test_schedule_tool_is_once` → **DONE**
+- **Dimension 3.3** — `message` posts and returns the refusal code when there is no channel → Test `test_message_tool_posts_or_names_gap` → **DONE**
 
 ## Interfaces
 
@@ -194,7 +194,7 @@ Codes: SCHEDULE_CAP_REACHED (UZ-SCHED-009, 409) · SCHEDULE_NOT_FLEET_OWNED (UZ-
 | 1.6 | integration | `test_schedule_run_now_admits_one_event` | run → 1 event, actor `cron:<id>`, type `cron` |
 | 1.7 | integration | `test_schedule_runs_lists_events` | 3 fires → 3 events newest first, `limit=2` pages |
 | 1.8 | integration | `test_fleet_deletes_its_schedule` | delete → desired status deleted, fake QStash 1 delete |
-| 1.9 | unit | `test_once_schedule_retires_after_fire` | a fire of a `once` row → the plane claims it `deleting` and reconciles; a recurring row is left alone |
+| 1.9 | integration | `test_once_schedule_retires_after_fire` | run-now of a `once` row → fake QStash 1 delete, row gone |
 | 2.1 | integration | `test_fleet_posts_a_message_mid_run` | post → Slack fake receives text in `thread_ts` before report |
 | 2.2 | integration | `test_stale_fence_message_refused` | stale token → 0 posts |
 | 2.3 | integration | `test_message_caps_refuse` | 9th post → refused; 5 KiB text → refused |

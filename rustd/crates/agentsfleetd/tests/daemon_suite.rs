@@ -57,6 +57,8 @@ mod reads;
 mod support;
 #[path = "support/e2e_tail.rs"]
 mod tail;
+#[path = "support/e2e_verbs.rs"]
+mod verbs;
 #[path = "support/e2e_wire.rs"]
 mod wire;
 
@@ -80,6 +82,10 @@ mod integration_runner_activity_call_id;
 mod integration_runner_brackets;
 #[path = "integration_runner_e2e.rs"]
 mod integration_runner_e2e;
+#[path = "integration_runner_messages.rs"]
+mod integration_runner_messages;
+#[path = "integration_runner_schedules.rs"]
+mod integration_runner_schedules;
 #[path = "integration_runner_shapes.rs"]
 mod integration_runner_shapes;
 #[path = "integration_rust_runner.rs"]

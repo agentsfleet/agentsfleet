@@ -104,7 +104,7 @@ pub(crate) async fn install_bundle(
     let exclusive = READY_STREAM.lock().await;
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
     let booted = boot_with_exchanger(
-        &daemon_environment(&database_url, provider_base),
+        &daemon_environment(&database_url, provider_base, &[]),
         EPHEMERAL,
         supervisor,
         Arc::new(MintedToken),
@@ -183,7 +183,7 @@ async fn seed_workspace(
 
 /// Seals `body` into the workspace's vault under `name`, as the tenant plane's
 /// secret write does.
-async fn seal(
+pub(crate) async fn seal(
     booted: &agentsfleetd::serve::Booted,
     workspace: &Uuid7,
     name: &str,
