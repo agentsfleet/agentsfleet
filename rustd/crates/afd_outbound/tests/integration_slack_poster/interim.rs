@@ -95,3 +95,43 @@ async fn a_retried_line_checks_the_thread_for_its_own_part() {
     );
     fixture.cleanup().await;
 }
+
+/// Slack took the line and the acknowledgement was lost: the retry finds the
+/// line by its own part in the thread and posts nothing more, so the thread
+/// holds it exactly once.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_line_whose_acknowledgement_was_lost_is_not_posted_twice() {
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    fixture.seal_grant(BOT_TOKEN).await;
+    let slack = slack_answering(503, r#"{"ok":false}"#).await;
+    let landed = interim(&fixture, 4);
+    let marker = afd_connector::slack::AnswerMarker {
+        fleet_id: landed.fleet_id.clone(),
+        event_id: landed.event_id.clone(),
+        part: Some(4),
+    };
+    let stamp = serde_json::to_string(&marker.metadata()).expect("a stamp serializes");
+    slack.answer(
+        THREAD,
+        200,
+        &format!(
+            r#"{{"ok":true,"messages":[{{"ts":"{THREAD}","user":"U01","text":"why?"}},
+                {{"ts":"1712345678.000901","user":"{BOT_USER}","text":"{LINE}","metadata":{stamp}}}]}}"#
+        ),
+    );
+
+    let delivered = Interjector::new(fixture.poster(&slack.api_base()))
+        .interject(landed)
+        .await;
+
+    assert!(delivered, "the thread already holds the line");
+    let posts = slack
+        .requests()
+        .into_iter()
+        .filter(Request::is_post)
+        .count();
+    assert_eq!(posts, 1, "only the attempt whose answer was lost posted");
+    fixture.cleanup().await;
+}
