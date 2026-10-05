@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M214
 **Workstream:** 001
 **Date:** Oct 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the cutover retires the Zig runner, and after it nobody can see a slow provider, a sandbox that starts slowly or a memory push that fails, because `agentsfleetd` never observes them
 **Categories:** DOCS, OBS
 **Batch:** B1 — before M213_001, by Indy's call ("Own spec, before cutover")
@@ -56,13 +56,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/afd_otlp/` | CREATE | `OtlpConfig`, the knobs and the span, log and meter providers, moved from the daemon binary |
-| `rustd/crates/agentsfleetd/src/telemetry.rs`, `src/preflight/otlp.rs`, `Cargo.toml` | EDIT | Call `afd_otlp`; daemon behaviour unchanged |
+| `rustd/crates/agentsfleetd/src/telemetry.rs`, `src/telemetry/`, `src/preflight.rs`, `src/preflight/otlp.rs` and its tests, `src/error.rs`, `src/logs.rs`, `src/lib.rs`, `Cargo.toml` | EDIT | Call `afd_otlp`; daemon behaviour unchanged — a census refused inside the transport's install still reports as the census refusal |
+| `rustd/crates/agentsfleetd/tests/` (`daemon_suite.rs`, `integration_rust_runner_telemetry.rs`, `integration_telemetry.rs`, `integration_rust_runner.rs`, `support/bundle_run.rs`) | EDIT | Dimension 5.1 end to end; the collector fixture and runner helpers shared with it |
 | `rustd/crates/agentsfleet_runner/` (`src/main.rs`, `Cargo.toml`, `tests/dependency_graph.rs`, `tests/runner_suite.rs`) | EDIT | `run` installs the exporter; `afd_otlp` joins the allowed crates |
 | `rustd/crates/afr_telemetry/` | CREATE | The credential-free endpoint config, the span sampler, the runner instruments, the runner census reader |
-| `rustd/crates/afr_agent/src/` (`loop.rs`, `ledger.rs`), `afr_providers/src/` (`transport.rs`, `turn.rs`), `afr_supervisor/src/` (`activity.rs`, `memory.rs`, `error.rs`, `identity.rs`, `lease_loop/workspace.rs`), their `Cargo.toml` and tests | EDIT | Record the six families where each fact is known; the lease span carries `agentsfleet.event.id` |
-| `rustd/crates/afd_observability/src/metrics/label.rs`, `src/semconv.rs` | EDIT | `closed_set!` exported so the runner's label sets use the daemon's macro rather than a copy; `RUNNER_SPAN_KEYS` gains the event id |
+| `rustd/crates/afr_agent/src/` (`loop.rs`, `ledger.rs`, `spans.rs`), `afr_providers/src/` (`transport.rs`, `turn.rs`, `registry/tests.rs`), `afr_supervisor/src/` (`activity.rs`, `memory.rs`, `error.rs`, `identity.rs`, `lib.rs`, `lease_loop/workspace.rs`, `lease_telemetry_tests.rs`), their `Cargo.toml` and tests | EDIT | Record the six families where each fact is known; the lease span carries `agentsfleet.event.id`; the tool span names its tool by the catalog's closed set; frames a lease abandons at its drain wait are counted |
+| `rustd/crates/afd_observability/src/metrics/label.rs`, `src/semconv.rs`, `src/producers/http.rs` | EDIT | `closed_set!` exported so the runner's label sets use the daemon's macro rather than a copy; `RUNNER_SPAN_KEYS` gains the event id; the shared counting wrappers' losses route to a process with no daemon producer set |
 | `docs/metrics.runner.census.tsv` | CREATE | The runner families, graded both directions |
-| `docs/architecture/observability.md`, `docs/architecture/runner_fleet.md` | EDIT | The runner side moves from "decided" to "built"; the collector stays "built later" |
+| `docs/architecture/observability.md`, `docs/architecture/runner_fleet.md`, `docs/architecture/runner_execution.md` | EDIT | The runner side moves from "decided" to "built"; the collector stays "built later" |
 | `~/Projects/docs` (self-hosting runner page, changelog) | EDIT | The runner's three knobs, on a `chore/m214-runner-telemetry-changelog` branch |
 
 ## Applicable Rules
@@ -99,7 +100,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §2 — `run` exports with no credential; `sandbox` and `probe` never do
 
-`run` parses `OTEL_EXPORTER_OTLP_ENDPOINT` after its configuration into a type that refuses user information in the URL, refuses any `OTEL_EXPORTER_OTLP_HEADERS`, installs the trace and meter providers, logs `telemetry_export_started` with the knob name, and flushes on shutdown. Logs stay on stderr. `sandbox` and `probe` construct no provider, so hardening still sees one thread.
+`run` parses `OTEL_EXPORTER_OTLP_ENDPOINT` after its configuration into a type that refuses user information in the URL, refuses every header knob the exporter reads (`OTEL_EXPORTER_OTLP_HEADERS` and each signal's own, which the exporter reads from the environment itself and prefers) and every compression knob, installs the trace and meter providers, logs `telemetry_export_started` with the knob name, and on exit shuts the providers down within one export's timeout. Logs stay on stderr. `sandbox` and `probe` construct no provider, so hardening still sees one thread.
 
 - **Dimension 2.1** — `run` with the endpoint set exports a lease's spans and families to an in-process receiver, with no header → Test `test_runner_exports_spans_and_metrics_when_configured` — DONE (`rustd/crates/afr_supervisor/src/lease_telemetry_tests.rs`: the real lease loop and agent loop over a scripted model, since `run` refuses every lease until M213_001)
 - **Dimension 2.2** — A header knob, or user information in the endpoint, refuses `run` naming the knob → Test `test_runner_refuses_a_credential` — DONE (`rustd/crates/afr_telemetry/src/endpoint/tests.rs`; the binary: `run_refuses_a_credential_naming_the_knob` in `rustd/crates/agentsfleet_runner/tests/entries.rs`)
@@ -132,37 +133,38 @@ A `ShouldSample` implementation admits at most `MAX_LEASE_SPANS` spans per lease
 
 ```
 afd_otlp::OtlpConfig::from_env(&impl Env) → Result<Option<OtlpConfig>>     (None ⇔ endpoint unset)
-afd_otlp::install(&OtlpConfig, census: &str) → Result<(Exports, Instruments)>
+afd_otlp::Builder::new(&OtlpConfig, Service, Registry)…install() → Result<(Exports, Instruments)>
 afr_telemetry::Endpoint::from_env(&impl Env) → Result<Option<Endpoint>>    refuses any header knob and URL user information
 afr_telemetry::LeaseSampler: opentelemetry_sdk::trace::ShouldSample        (per-lease and per-second budget)
-OTEL_EXPORTER_OTLP_ENDPOINT | _PROTOCOL | _TIMEOUT                           (the runner reads no _HEADERS)
+OTEL_EXPORTER_OTLP_ENDPOINT | _PROTOCOL | _TIMEOUT                           (the runner refuses every *_HEADERS and *_COMPRESSION knob)
 ```
 
 ## Failure Modes
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
-| Collector down or wrong | Not running, endpoint typo | Batches drop and count in `agentsfleet_otlp_entries_discarded_total`; no lease slows (Dimension 2.1 with the receiver stopped) |
-| Credential on a runner | An operator sets a header or `user:pass@` in the endpoint | `run` refuses with the knob's name (Dimension 2.2) |
-| Malformed knob | Bad URL, protocol or timeout | `run` refuses with the knob's name, as the daemon does (Dimension 2.2's negative cases) |
+| Collector down or wrong | Not running, endpoint typo | Batches drop and count in `agentsfleet_runner_otlp_entries_discarded_total` (the daemon's loss family, under the runner's name: neither census declares the other's families); no lease slows (`a_refused_collector_counts_each_loss_on_its_own_signal`, `a_shared_wrappers_loss_reaches_the_runner_recorder`) |
+| Credential on a runner | An operator sets any header knob — a signal's own included — or `user:pass@` in the endpoint | `run` refuses with the knob's name (Dimension 2.2) |
+| Malformed knob | Bad URL (no scheme, no host, a query), protocol, timeout or any compression knob | `run` refuses with the knob's name, as the daemon does (Dimension 2.2's negative cases) |
 | Span storm | A lease with thousands of tool calls | Budget sheds and counts (Dimensions 3.1, 3.2) |
 | Label explosion | A provider or tool name outside its set | The instrument maps it to the overflow value; ceilings hold (Dimension 4.4) |
 | Thread before hardening | Exporter built in `sandbox` | `sandbox` constructs no provider (Dimension 2.4) |
 
 ## Invariants
 
-1. The runner holds no observability credential — enforced by `afr_telemetry::Endpoint`, the only way `run` reaches `afd_otlp`, which refuses a header knob and URL user information; Dimension 2.2.
+1. The runner holds no observability credential — enforced by `afr_telemetry::Endpoint`, which refuses every header knob the exporter reads and URL user information, and by the runner's dependency graph, in which `afr_telemetry` is the only crate that reaches `afd_otlp` (`only_the_credential_gate_reaches_the_transport`); Dimension 2.2.
 2. `sandbox` starts no thread before hardening — enforced by `main.rs` dispatching `sandbox` before any telemetry call; Dimension 2.4.
 3. A runner span never carries prompt, response or tool output text — enforced by the span constructors in `afr_agent/src/spans.rs`, the only place runner spans are built, which take no content argument.
 4. Runner metric labels come from closed sets — enforced by typed label enums and `test_runner_ceilings_admit_their_label_product`.
-5. Export never blocks a lease — enforced by the SDK's bounded batch queues; drops are counted, never retried.
+5. Export never blocks a lease — enforced by the SDK's bounded batch queue, pinned in `afd_otlp` rather than read from `OTEL_BSP_*`; failed exports are counted, never retried. A queue a slow collector lets fill drops inside the SDK, where nothing counts it.
 
 ## Metrics & Observability
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
 | The six `agentsfleet_runner_*` families | ops | Per §4 | provider, tool, outcome, reason | Closed sets; no tenant, fleet, lease or event id | `test_every_runner_census_family_has_a_producer` |
-| `agentsfleet_runner_spans_suppressed_total` | ops | A span is shed | none | Count only | `test_lease_spans_stop_at_the_budget` |
+| `agentsfleet_runner_spans_suppressed_total` | ops | A span is shed | none | Count only | `test_lease_spans_stop_at_the_budget`, `every_span_the_budget_sheds_is_counted` |
+| `agentsfleet_runner_otlp_entries_discarded_total` | ops | An export fails | signal, reason | Closed sets | `every_producer_writes_the_keys_its_census_row_declares` |
 | `telemetry_export_started` / `telemetry_export_disabled` (runner log) | ops | `run` boots | knob name, protocol | Never the endpoint value | `test_runner_exports_nothing_when_unconfigured` |
 
 ## Test Specification (tiered)
@@ -172,9 +174,9 @@ OTEL_EXPORTER_OTLP_ENDPOINT | _PROTOCOL | _TIMEOUT                           (th
 | 1.1 | unit | `test_daemon_otlp_install_is_unchanged` | same knobs before and after → same endpoints, protocol, timeout, header names |
 | 1.2 | unit | `test_runner_links_no_datastore_crate` | resolved graph → `afd_otlp` present; `sqlx`, `redis`, control-plane crates absent |
 | 2.1 | integration | `test_runner_exports_spans_and_metrics_when_configured` | scripted lease with one tool call → receiver holds 4 span kinds under one trace and the turn and tool families; no request carried an `Authorization` header |
-| 2.2 | unit | `test_runner_refuses_a_credential` | `OTEL_EXPORTER_OTLP_HEADERS=a=b` → refused; `http://u:p@collector:4318` → refused; both name the knob |
+| 2.2 | unit | `test_runner_refuses_a_credential` | each of the four header knobs `=a=b`, endpoint set or not → refused; `http://u:p@collector:4318` → refused; each names its knob |
 | 2.3 | unit | `test_runner_exports_nothing_when_unconfigured` | endpoint unset → no provider, one disabled event |
-| 2.4 | integration | `test_sandbox_hardens_with_telemetry_configured` | endpoint set, `sandbox` entry → hardening succeeds |
+| 2.4 | integration | `test_sandbox_hardens_with_telemetry_configured` | endpoint set, `sandbox` entry → refuses exactly as without it and logs no export line, so it never reached the export decision; that the sequence hardens once bound is `afr_sandbox/tests/confine.rs` (see Discovery) |
 | 3.1 | unit | `test_lease_spans_stop_at_the_budget` | `MAX_LEASE_SPANS` + 10 spans in one lease → budget exported, 10 counted |
 | 3.2 | unit | `test_span_budget_refills_each_second` | burst over the per-second budget → shed and counted; after one second → admitted |
 | 4.1 | unit | `test_every_runner_census_family_has_a_producer` | runner census ↔ producers, both directions |
@@ -187,15 +189,15 @@ OTEL_EXPORTER_OTLP_ENDPOINT | _PROTOCOL | _TIMEOUT                           (th
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | One builder for both binaries (§1) | `grep -rn "SpanExporter::builder" rustd/crates --include='*.rs' \| grep -v '^rustd/crates/afd_otlp/'` | no output | P0 | |
-| R2 | The runner exports a lease when configured (§2–§4) | `cargo test --manifest-path rustd/Cargo.toml -p agentsfleet-runner --test runner_suite test_runner_exports_spans_and_metrics_when_configured` | exit 0 | P0 | |
-| R3 | The architecture says the runner side is built (§5) | `grep -c "runner exporter.*absent" docs/architecture/observability.md` | `0` | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | One builder for both binaries (§1) | `grep -rn "SpanExporter::builder" rustd/crates --include='*.rs' \| grep -v '^rustd/crates/afd_otlp/'` | no output | P0 | ✅ no output |
+| R2 | The runner exports a lease when configured (§2–§4) | `cargo test --manifest-path rustd/Cargo.toml -p afr_supervisor --all-features test_runner_exports_spans_and_metrics_when_configured` | exit 0 | P0 | ✅ `test_runner_exports_spans_and_metrics_when_configured ... ok`, 1 passed |
+| R3 | The architecture says the runner side is built (§5) | `grep -c "runner exporter.*absent" docs/architecture/observability.md` | `0` | P0 | ✅ `0` |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ exit 0; every commit's `orly gate work` green |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ `✓ All unit lanes passed` — runner 643, daemon 131, daemon libraries 3056; TypeScript coverage 100% |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | ✅ `✓ All lint checks passed` |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | ✅ `integration suite — 802 passed`, `(exclusive) — 2 passed` |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | ✅ `all versions match 0.56.0` |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Repository-command rows point to the final `orly gate pr` results in Pull Request Session Notes.
 
@@ -241,6 +243,13 @@ OTEL_EXPORTER_OTLP_ENDPOINT | _PROTOCOL | _TIMEOUT                           (th
 ## Discovery (consult log)
 
 - **Consults** — Indy, Oct 03, 2026: runner telemetry gets "Own spec, before cutover". Indy, Oct 04, 2026: "since we will run an otel collector and collect the observability log, trace, metrics?"; "update the relevant observability md file for runners"; "we will have a new collector for the runner later on in the baremetal host"; the current collectors are "for the agentsfleetd daemon only". The architecture pages record these as decided in `feat/m210-agent-loop-hosted-tools`.
-- **Agent defaults** — the runner refuses any header and URL user information, so the credential lives only with the runner collector; logs reach that collector from the host's log store rather than a runner log bridge; `MAX_LEASE_SPANS` and `RUNNER_SPANS_PER_SECOND` are set at EXECUTE from a measured lease.
-- **Skill-chain outcomes** — pending.
+- **Agent defaults** — the runner refuses every header knob and URL user information, so the credential lives only with the runner collector; logs reach that collector from the host's log store rather than a runner log bridge; `MAX_LEASE_SPANS` and `RUNNER_SPANS_PER_SECOND` are set at EXECUTE from a measured lease.
+- **Dimension 2.1's home** — `run` refuses every lease until the runner cutover switches the agent engine on, so the lease is driven through the real lease loop and agent loop over a scripted model in `afr_supervisor/src/lease_telemetry_tests.rs`, against an in-process OTLP receiver.
+- **Dimension 2.4's proof** — the `sandbox` entry binds its executor socket at a fixed path before it hardens, and outside a sandbox that bind refuses first. The binary test therefore proves the entry never reaches the export decision (both runs refuse identically and neither logs an export line), and `afr_sandbox/tests/confine.rs` proves the sequence hardens once bound.
+- **Dimension 5.1's collector** — the daemon suite's OTLP/HTTP collector fixture (`integration_telemetry`) rather than a collector container: the integration lane runs its datastores in containers on the host and the runner in the test process, so a fixture in that process is the receiver it can reach on every lane.
+- **Provider labels** — §4 says "providers from the registry". The first build labelled by OpenTelemetry's well-known names, which cover six of the registry's 39 providers; review corrected it to the registry's names (`afr_providers/assets/providers.json`, 40 values with `_other`). The `invoke_agent` span keeps the well-known `gen_ai.provider.name`.
+- **The loss family's name** — the Failure Modes row named the daemon's `agentsfleet_otlp_entries_discarded_total`; the census header rule (neither census declares the other's families) puts the runner's under its own prefix, `agentsfleet_runner_otlp_entries_discarded_total`.
+- **Review (gstack `/review`, three passes)** — specialists, a native adversarial pass and a red team, then two re-review cycles. The one CRITICAL was a credential bypass: the exporter reads each signal's own header knob from the environment itself, and the runner refused only the general one. Fixed, with the test proven red on the old code (`a credential for OTEL_EXPORTER_OTLP_TRACES_HEADERS must refuse run`) and green after. Every other finding was fixed or answered with evidence; the PR's Session notes carry the table.
+- **Skill-chain outcomes** — `/orly-write-unit-test`: patch coverage 99.79% at the boundary audit before review, graded again by the integration workflow's coverage shards on the pull request; mutation testing over the budget, endpoint and labels after review, 40 of 43 viable mutants caught and the three survivors equivalent or diagnostic-only (the PR lists them). gstack `/review`: as above. `/orly-write-integration-test`: Dimensions 2.1 and 5.1 cross the runner–collector boundary with real input and output.
+- **Awaiting Indy** — the published docs (`~/Projects/docs`: the runner page's knobs and a changelog entry) are drafted, not written: a write to that repository needs Indy's per-session approval. Recommended timing is with the runner cutover, since until then no deployed runner reads these knobs.
 - **Deferrals** — none.
