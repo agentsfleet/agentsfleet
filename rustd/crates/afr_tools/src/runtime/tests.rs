@@ -58,6 +58,7 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
             ToolErrorCode::ImageInputUnavailable,
             "image_input_unavailable",
         ),
+        (ToolErrorCode::BrowserUnavailable, "browser_unavailable"),
     ];
 
     for (code, spelling) in spelled {

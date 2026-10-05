@@ -16,6 +16,7 @@ use afr_executor::{Executor, Spawn};
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 
 mod apply_patch;
+mod browser;
 mod exec_session;
 mod files;
 mod git;
@@ -30,6 +31,7 @@ mod sessions;
 mod shell;
 
 pub(crate) use self::apply_patch::ApplyPatch;
+pub(crate) use self::browser::{Browser, BrowserOpen, Screenshot};
 pub(crate) use self::exec_session::{ExecCommand, WriteStdin};
 pub(crate) use self::files::{FileAppend, FileDelete, FileEdit, FileRead, FileWrite};
 pub(crate) use self::git::Git;
