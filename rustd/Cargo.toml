@@ -383,6 +383,10 @@ aws-lc-rs = { version = "1.18.0", default-features = false, features = [
     "aws-lc-sys",
     "alloc",
 ] }
+# The PEM `PUBLIC KEY` a toolbox release is signed against, as `cosign` writes
+# it, read into the SubjectPublicKeyInfo `aws-lc-rs` verifies with. Already in
+# the build through rustls; declared so the runner's sandbox crate names it.
+rustls-pki-types = { version = "1.15.1", default-features = false, features = ["std"] }
 
 # The subject to capability-claim cache. `future` rather than `sync`: the
 # request path is asynchronous, and `try_get_with` coalesces concurrent loads

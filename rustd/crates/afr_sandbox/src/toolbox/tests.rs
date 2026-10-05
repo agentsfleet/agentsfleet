@@ -1,200 +1,74 @@
 #![expect(
     clippy::unwrap_used,
-    reason = "a test fails loudly on a fixture it cannot write"
+    reason = "test module: a failed precondition should fail the test loudly"
 )]
 
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use super::{Toolbox, ToolboxImage, sha256_of};
-use crate::host::HostTools;
+use super::{TOOLBOX_PREFIX, TOOLBOX_SUFFIX, Toolbox, image_name};
 
-/// The SHA-256 of `toolbox bytes`, so an image can be named correctly.
-const BYTES: &[u8] = b"toolbox bytes";
+#[test]
+fn an_image_is_published_under_its_digest() {
+    let name = image_name("abc123");
 
-fn named(dir: &Path, digest: &str) -> PathBuf {
-    let path = dir.join(format!("toolbox-{digest}.erofs"));
-    fs::write(&path, BYTES).unwrap();
-    path
+    assert_eq!(name, "toolbox-abc123.erofs");
+    assert!(name.starts_with(TOOLBOX_PREFIX) && name.ends_with(TOOLBOX_SUFFIX));
 }
 
 #[test]
-fn test_an_image_whose_bytes_match_its_name_is_verified() {
-    let dir = tempfile::tempdir().unwrap();
-    let scratch = dir.path().join("scratch");
-    fs::write(&scratch, BYTES).unwrap();
-    let digest = sha256_of(&scratch).unwrap();
+fn an_adopted_root_is_used_as_given() {
+    let toolbox = Toolbox::at(PathBuf::from("/srv/root"), "abc".to_owned());
 
-    let image = ToolboxImage::verify(&named(dir.path(), &digest)).unwrap();
-
-    assert_eq!(image.digest(), digest);
-    assert!(image.path().ends_with(format!("toolbox-{digest}.erofs")));
+    assert_eq!(toolbox.root(), PathBuf::from("/srv/root"));
+    assert_eq!(toolbox.digest(), "abc");
 }
 
-/// A flipped byte is never mounted: [`Toolbox::mount`] takes only a
-/// [`ToolboxImage`], and `verify` is the only way to make one.
-#[test]
-fn test_toolbox_hash_mismatch_refused() {
-    let dir = tempfile::tempdir().unwrap();
-    let scratch = dir.path().join("scratch");
-    fs::write(&scratch, BYTES).unwrap();
-    let digest = sha256_of(&scratch).unwrap();
-    let path = named(dir.path(), &digest);
-    let mut tampered = BYTES.to_vec();
-    if let Some(first) = tampered.first_mut() {
-        *first ^= 1;
+/// Admission reads the image through one descriptor and refuses before any
+/// loop device or mount is needed, so these run unprivileged.
+#[cfg(target_os = "linux")]
+mod refusals {
+    use std::fs;
+    use std::os::unix::fs::symlink;
+
+    use crate::error::ToolboxRefusal;
+    use crate::toolbox::Toolbox;
+    use crate::toolbox::testing::Signer;
+
+    const IMAGE: &[u8] = b"an image";
+
+    fn refusal(image: &std::path::Path) -> Option<ToolboxRefusal> {
+        let mounts = tempfile::tempdir().unwrap();
+        let manifest = Signer::new().manifest(IMAGE);
+        Toolbox::admit_now(&manifest, image, mounts.path())
+            .err()
+            .and_then(|refused| refused.toolbox_refusal())
     }
-    fs::write(&path, &tampered).unwrap();
-    fs::write(&scratch, &tampered).unwrap();
-    let actual = sha256_of(&scratch).unwrap();
 
-    let refused = ToolboxImage::verify(&path).unwrap_err().to_string();
-
-    assert_ne!(actual, digest);
-    assert!(
-        refused.contains(&format!("(it hashes to {actual})")),
-        "{refused}"
-    );
-}
-
-#[test]
-fn test_an_image_named_without_a_digest_is_refused() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("rootfs.img");
-    fs::write(&path, BYTES).unwrap();
-
-    let unnamed = ToolboxImage::verify(&path).unwrap_err();
-    // Never read: a file that is not there is refused for its name, not for
-    // the read that would have failed.
-    let absent = ToolboxImage::verify(&dir.path().join("absent.erofs")).unwrap_err();
-
-    assert!(unnamed.to_string().contains("is not named"), "{unnamed}");
-    assert!(absent.to_string().contains("is not named"), "{absent}");
-}
-
-#[tokio::test]
-async fn test_a_toolbox_that_cannot_be_mounted_is_refused() {
-    let dir = tempfile::tempdir().unwrap();
-    let scratch = dir.path().join("scratch");
-    fs::write(&scratch, BYTES).unwrap();
-    let image = ToolboxImage::verify(&named(dir.path(), &sha256_of(&scratch).unwrap())).unwrap();
-    let tools = HostTools {
-        mount: PathBuf::from("/nonexistent/mount"),
-        ..HostTools::default()
-    };
-
-    let refused = Toolbox::mount(&image, &tools, &dir.path().join("mounts")).await;
-
-    refused.unwrap_err();
-    assert!(
-        dir.path().join("mounts").join(image.digest()).is_dir(),
-        "the mount point was made"
-    );
-}
-
-#[test]
-fn test_an_adopted_root_is_used_as_given() {
-    let toolbox = Toolbox::at(PathBuf::from("/"), "abc".to_owned());
-
-    assert_eq!((toolbox.root(), toolbox.digest()), (Path::new("/"), "abc"));
-}
-
-/// A mount that reports success but leaves no loop device of the image behind
-/// is refused: what is verified is what is mounted, not what was asked for.
-#[tokio::test]
-async fn test_a_mount_that_is_not_the_image_is_refused() {
-    let dir = tempfile::tempdir().unwrap();
-    let scratch = dir.path().join("scratch");
-    fs::write(&scratch, BYTES).unwrap();
-    let image = ToolboxImage::verify(&named(dir.path(), &sha256_of(&scratch).unwrap())).unwrap();
-    // `true` stands in for `mount`: it succeeds and mounts nothing.
-    let tools = HostTools {
-        mount: PathBuf::from("/usr/bin/true"),
-        ..HostTools::default()
-    };
-    let capture = afd_core::test_util::trace::Capture::install();
-
-    let refused = Toolbox::mount(&image, &tools, &dir.path().join("mounts")).await;
-
-    refused.unwrap_err();
-    // Logged with the digest it was for; on Linux, the attempt to detach what
-    // was mounted at the root is logged beside it.
-    let failed: Vec<_> = capture
-        .events()
-        .into_iter()
-        .filter(|event| event.field("event") == Some("sandbox_toolbox_mount_failed"))
-        .collect();
-    assert!(
-        failed
-            .iter()
-            .any(|event| event.field("digest") == Some(image.digest())
-                && event.field("error_code").is_some()),
-        "{failed:?}"
-    );
-}
-
-#[cfg(target_os = "linux")]
-#[test]
-fn test_a_toolbox_that_is_not_mounted_cannot_be_unmounted() {
-    let dir = tempfile::tempdir().unwrap();
-
-    let refused = Toolbox::at(dir.path().to_owned(), "abc".to_owned()).unmount();
-
-    refused.unwrap_err();
-    assert!(
-        dir.path().exists(),
-        "nothing is removed while still mounted"
-    );
-}
-
-#[cfg(target_os = "linux")]
-#[test]
-fn test_only_a_loop_device_is_named_and_by_its_kernel_name() {
-    let sys = tempfile::tempdir().unwrap();
-    fs::create_dir(sys.path().join("7:3")).unwrap();
-    fs::write(
-        sys.path().join("7:3/uevent"),
-        "MAJOR=7\nMINOR=3\nDEVNAME=loop3\n",
-    )
-    .unwrap();
-    fs::create_dir(sys.path().join("7:4")).unwrap();
-    fs::write(sys.path().join("7:4/uevent"), "MAJOR=7\nMINOR=4\n").unwrap();
-
-    assert_eq!(
-        super::loop_node(sys.path(), 7, 3).unwrap(),
-        Path::new("/dev/loop3")
-    );
-    super::loop_node(sys.path(), 7, 4).unwrap_err();
-    super::loop_node(sys.path(), 7, 5).unwrap_err();
-    let disk = super::loop_node(sys.path(), 8, 0).unwrap_err();
-    assert!(
-        disk.to_string().contains("not a named loop device"),
-        "a disk is never hashed: {disk}"
-    );
-}
-
-#[cfg(target_os = "linux")]
-#[test]
-fn test_a_device_is_verified_by_its_bytes_and_a_wrong_one_is_detached() {
-    let dir = tempfile::tempdir().unwrap();
-    let device = dir.path().join("loop3");
-    fs::write(&device, BYTES).unwrap();
-    let digest = sha256_of(&device).unwrap();
-    let capture = afd_core::test_util::trace::Capture::install();
-
-    Toolbox::at(dir.path().to_owned(), digest)
-        .verify_device(&device)
+    #[test]
+    fn should_refuse_a_link_a_directory_a_pipe_a_wrong_length_or_wrong_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        fs::write(&real, IMAGE).unwrap();
+        let link = dir.path().join("link");
+        symlink(&real, &link).unwrap();
+        let pipe = dir.path().join("pipe");
+        rustix::fs::mknodat(
+            rustix::fs::CWD,
+            &pipe,
+            rustix::fs::FileType::Fifo,
+            rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+            0,
+        )
         .unwrap();
-    let wrong = Toolbox::at(dir.path().to_owned(), "0".repeat(64));
-    let refused = wrong.verify_device(&device).unwrap_err();
-    wrong.detach();
+        let long = dir.path().join("long");
+        fs::write(&long, b"an image!").unwrap();
+        let other = dir.path().join("other");
+        fs::write(&other, b"an imagE").unwrap();
 
-    assert!(refused.to_string().contains("does not hash"), "{refused}");
-    // Nothing is mounted there, so the detach is refused and said so.
-    assert!(
-        capture
-            .only("sandbox_toolbox_detach_failed")
-            .field("error_code")
-            .is_some()
-    );
+        assert_eq!(refusal(&link), Some(ToolboxRefusal::NotAFile));
+        assert_eq!(refusal(dir.path()), Some(ToolboxRefusal::NotAFile));
+        assert_eq!(refusal(&pipe), Some(ToolboxRefusal::NotAFile));
+        assert_eq!(refusal(&long), Some(ToolboxRefusal::Length));
+        assert_eq!(refusal(&other), Some(ToolboxRefusal::Digest));
+    }
 }

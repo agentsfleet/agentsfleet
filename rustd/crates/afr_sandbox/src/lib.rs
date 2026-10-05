@@ -22,6 +22,7 @@ mod cgroup;
 mod engine;
 mod harden;
 mod host;
+#[cfg(target_os = "linux")]
 mod mounts;
 mod probe;
 mod serve;
@@ -40,7 +41,7 @@ pub use self::engine::{
     DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine,
     HostWorkspace, Limits, Sandbox, SandboxRequest,
 };
-pub use self::error::{Error, Result};
+pub use self::error::{Error, Result, ToolboxRefusal};
 #[cfg(target_os = "linux")]
 pub use self::harden::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 pub use self::harden::{WRITABLE, WRITABLE_DEVICES, capabilities_dropped, harden, single_threaded};
@@ -51,7 +52,12 @@ pub use self::probe::{
     ProbePaths, REQUIRED_CONTROLLERS, SECCOMP_ACTIONS_PATH, probe,
 };
 pub use self::serve::{serve_confined, serve_sandboxed};
-pub use self::toolbox::{TOOLBOX_PREFIX, TOOLBOX_SUFFIX, Toolbox, ToolboxImage};
+#[cfg(target_os = "linux")]
+pub use self::toolbox::KernelMounter;
+pub use self::toolbox::{
+    Manifest, Mounter, Release, TOOLBOX_KEEP_RELEASES, TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY,
+    TOOLBOX_SUFFIX, Toolbox, Toolboxes,
+};
 pub use self::unsandboxed::UnsandboxedEngine;
 pub use self::warm_slots::WarmSlots;
 pub use self::workspace_disk::WorkspaceDisk;

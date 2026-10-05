@@ -6,7 +6,7 @@ use std::fs;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use afr_sandbox::{Engine, Limits, SandboxRequest, ToolboxImage};
+use afr_sandbox::{Engine, KernelMounter, Limits, SandboxRequest, Toolboxes};
 use futures_util::future::try_join_all;
 use libtest_mimic::Failed;
 
@@ -27,6 +27,9 @@ const DROP_ALL: &str = "3";
 /// The first useful command a lease runs, and what it prints.
 const FIRST_COMMAND: &str = "git --version";
 const GIT_VERSION: &str = "git version";
+/// Where a staging measurement keeps its image and mounts it.
+const IMAGES: &str = "images";
+const MOUNTS: &str = "mounts";
 /// The two cache states, as the figures name them.
 const COLD: &str = "cold";
 const WARM: &str = "warm";
@@ -87,21 +90,27 @@ pub(crate) fn start_budgets(lane: &Lane) -> Result<(), Failed> {
     })
 }
 
-/// The median time to read the lane's image whole and hash it, the step a
-/// host's admission spends longest on before it mounts anything.
+/// The median time a host takes to admit the lane's image into a toolbox
+/// directory of its own: staged (copied, hashed, synced, renamed), then
+/// admitted by descriptor (hashed again, attached, mounted).
 fn host_staging(lane: &Lane, cache: Cache) -> Result<Duration, Failed> {
     let mut taken = Vec::with_capacity(STAGINGS);
     for _ in 0..STAGINGS {
+        let dir = tempfile::tempdir_in("/tmp")?;
+        let mounter = KernelMounter::new(dir.path().join(MOUNTS));
+        let toolboxes = Toolboxes::open(dir.path().join(IMAGES), mounter)?;
         if cache == Cache::Cold {
             drop_caches()?;
         }
         let started = Instant::now();
-        let verified = ToolboxImage::verify(lane.image.path())?;
+        let admitted = toolboxes.admit(&lane.manifest, lane.image.path())?;
         taken.push(started.elapsed());
         expect(
-            verified.digest() == lane.image.digest(),
-            format!("{} != {}", verified.digest(), lane.image.digest()),
+            admitted.digest() == lane.image.digest(),
+            format!("{} != {}", admitted.digest(), lane.image.digest()),
         )?;
+        drop(admitted);
+        toolboxes.close()?;
     }
     taken.sort_unstable();
     taken

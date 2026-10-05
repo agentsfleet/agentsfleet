@@ -11,6 +11,8 @@
 //! `agentsfleet-runner sandbox` does.
 
 #[cfg(target_os = "linux")]
+mod admission;
+#[cfg(target_os = "linux")]
 mod budgets;
 #[cfg(target_os = "linux")]
 mod confinement;
@@ -20,6 +22,8 @@ mod files;
 mod git;
 #[cfg(target_os = "linux")]
 mod lane;
+#[cfg(target_os = "linux")]
+mod release;
 #[cfg(target_os = "linux")]
 mod run;
 #[cfg(target_os = "linux")]

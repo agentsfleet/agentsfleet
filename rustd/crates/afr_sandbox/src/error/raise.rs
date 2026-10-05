@@ -3,7 +3,7 @@
 
 use std::process::ExitStatus;
 
-use super::{Error, ErrorKind};
+use super::{Error, ErrorKind, ToolboxRefusal};
 
 // Every lift is a `From`, so `?` does the conversion and no `map_err` appears
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2).
@@ -52,28 +52,33 @@ pub(crate) fn cgroup_left(path: &std::path::Path) -> impl Fn(std::io::Error) -> 
     }
 }
 
-/// Refuses a toolbox image whose name states no digest.
-pub(crate) fn toolbox_unnamed(path: &std::path::Path) -> Error {
-    ErrorKind::ToolboxUnnamed {
-        path: path.to_owned(),
+/// Refuses a toolbox release whose `what` would not parse, failing admission's
+/// `refusal` check, and keeps the parser's reason as the cause.
+pub(crate) fn toolbox_unreadable<E>(
+    refusal: ToolboxRefusal,
+    what: &'static str,
+) -> impl Fn(E) -> Error
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    move |source| {
+        ErrorKind::ToolboxUnreadable {
+            refusal,
+            what,
+            source: Box::new(source),
+        }
+        .into()
     }
-    .into()
 }
 
-/// Refuses a toolbox image, or the device it is mounted from, whose bytes
-/// hash to `actual` rather than the digest it is named by.
-pub(crate) fn toolbox_unverified(path: &std::path::Path, actual: String) -> Error {
-    ErrorKind::ToolboxUnverified {
-        path: path.to_owned(),
-        actual,
+/// Refuses a toolbox release that failed admission's `refusal` check, saying
+/// what the check found.
+pub(crate) fn toolbox_refused(refusal: ToolboxRefusal, detail: impl Into<String>) -> Error {
+    ErrorKind::ToolboxRefused {
+        refusal,
+        detail: detail.into(),
     }
     .into()
-}
-
-/// Refuses a toolbox root not mounted from a named loop device.
-#[cfg(target_os = "linux")]
-pub(crate) fn toolbox_device(major: u32, minor: u32) -> Error {
-    ErrorKind::ToolboxDevice { major, minor }.into()
 }
 
 /// Reports an executor not reached within `waited`, with why.

@@ -13,6 +13,7 @@
 //! log line says which failure it was. Minting a `UZ-RUN-*` code would publish
 //! it in `public/openapi.json` for a condition no client can observe.
 
+use std::fmt;
 use std::path::PathBuf;
 use std::process::ExitStatus;
 #[cfg(target_os = "linux")]
@@ -23,11 +24,11 @@ use afd_core::error_code::{self, ErrorCode};
 mod raise;
 
 pub(crate) use self::raise::{
-    cgroup, cgroup_left, lease_id_unsafe, program, refused, toolbox_unnamed, toolbox_unverified,
+    cgroup, cgroup_left, lease_id_unsafe, program, refused, toolbox_refused, toolbox_unreadable,
     unconfined,
 };
 #[cfg(target_os = "linux")]
-pub(crate) use self::raise::{not_ready, toolbox_device, toolbox_unexpected};
+pub(crate) use self::raise::{not_ready, toolbox_unexpected};
 
 afd_core::error_shell!(
     /// A sandbox failure, with the backtrace of where it was raised.
@@ -52,31 +53,26 @@ pub(crate) enum ErrorKind {
         missing: &'static str,
     },
 
-    /// A toolbox image's file name states no digest.
-    #[error("the toolbox image {path} is not named toolbox-<digest>.erofs")]
-    ToolboxUnnamed {
-        /// The image that failed.
-        path: PathBuf,
+    /// A toolbox release failed one of admission's checks, before anything
+    /// of it was mounted.
+    #[error("the toolbox release was refused ({refusal}): {detail}")]
+    ToolboxRefused {
+        /// Which check it failed.
+        refusal: ToolboxRefusal,
+        /// What the check found.
+        detail: String,
     },
 
-    /// A toolbox root is not mounted from a loop device the kernel names, so
-    /// it is not an image and is never hashed: it could be a whole disk.
-    #[cfg(target_os = "linux")]
-    #[error("the toolbox root's device {major}:{minor} is not a named loop device")]
-    ToolboxDevice {
-        /// The device's major number.
-        major: u32,
-        /// The device's minor number.
-        minor: u32,
-    },
-
-    /// A toolbox image's bytes do not hash to the digest it is named by.
-    #[error("the toolbox image {path} does not hash to its name (it hashes to {actual})")]
-    ToolboxUnverified {
-        /// The image that failed.
-        path: PathBuf,
-        /// What its bytes actually hash to.
-        actual: String,
+    /// A toolbox release's key, signature or manifest could not be read.
+    #[error("the toolbox release was refused ({refusal}): {what} could not be read")]
+    ToolboxUnreadable {
+        /// Which check it failed.
+        refusal: ToolboxRefusal,
+        /// What could not be read.
+        what: &'static str,
+        /// The parser's reason.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
 
     /// A host program the engine runs exited unsuccessfully.
@@ -224,5 +220,61 @@ impl Error {
             ErrorKind::Refused { missing } => Some(missing),
             _built => None,
         }
+    }
+
+    /// Which admission check a toolbox release failed, when that is the
+    /// failure.
+    #[must_use]
+    pub fn toolbox_refusal(&self) -> Option<ToolboxRefusal> {
+        match self.kind() {
+            ErrorKind::ToolboxRefused { refusal, .. }
+            | ErrorKind::ToolboxUnreadable { refusal, .. } => Some(*refusal),
+            _other => None,
+        }
+    }
+}
+
+/// Why a toolbox release was not admitted: one value per check, so a log line,
+/// the capability report and a test tell them apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolboxRefusal {
+    /// The manifest's signature is not the release key's over its exact bytes.
+    Signature,
+    /// The manifest is not one admission can read.
+    Manifest,
+    /// The release is built for another architecture.
+    Architecture,
+    /// The release does not serve this runner's version.
+    RunnerVersion,
+    /// The release uses an EROFS feature this runner does not admit.
+    Features,
+    /// The image is not the length the manifest names.
+    Length,
+    /// The image's bytes do not hash to the manifest's digest.
+    Digest,
+    /// The image is not a regular file: a link, a directory or a device.
+    NotAFile,
+}
+
+impl ToolboxRefusal {
+    /// How a log line spells it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Signature => "signature_invalid",
+            Self::Manifest => "manifest_invalid",
+            Self::Architecture => "architecture_mismatch",
+            Self::RunnerVersion => "runner_unserved",
+            Self::Features => "features_unsupported",
+            Self::Length => "length_mismatch",
+            Self::Digest => "digest_mismatch",
+            Self::NotAFile => "not_a_file",
+        }
+    }
+}
+
+impl fmt::Display for ToolboxRefusal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
