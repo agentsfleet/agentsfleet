@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M214
 **Workstream:** 001
 **Date:** Oct 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the cutover retires the Zig runner, and after it nobody can see a slow provider, a sandbox that starts slowly or a memory push that fails, because `agentsfleetd` never observes them
 **Categories:** DOCS, OBS
 **Batch:** B1 — before M213_001, by Indy's call ("Own spec, before cutover")
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** `feat/m214-001-runner-telemetry`
+**Baseline revision:** `c5f7680f2ee4a475a9f6f6c8701c98262c6d5c8d`
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M210_002 (the agent loop wired into `run`, and the `runner.lease`, `invoke_agent`, `chat` and `execute_tool` spans in `afr_agent/src/spans.rs` and `afr_supervisor/src/identity.rs`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 04, 2026) from Indy's Oct 03 and Oct 04 decisions and a source trace of `feat/m210-agent-loop-hosted-tools` at `fbb13e8fd`
