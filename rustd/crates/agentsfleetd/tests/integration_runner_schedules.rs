@@ -569,6 +569,27 @@ async fn test_runner_schedule_refusals() {
             400,
             "UZ-REQ-001",
         ),
+        (
+            Method::PATCH,
+            leased.path(&format!("/{unknown}")),
+            Some(json!({"fencing_token": leased.fence, "desired_status": "deleting"})),
+            400,
+            "UZ-REQ-001",
+        ),
+        (
+            Method::POST,
+            leased.path(&format!("/{unknown}/runs")),
+            Some(json!({"fencing_token": leased.fence, "now": true})),
+            400,
+            "UZ-REQ-001",
+        ),
+        (
+            Method::POST,
+            leased.path("/not-a-schedule/runs"),
+            Some(json!({"fencing_token": leased.fence})),
+            400,
+            "UZ-REQ-001",
+        ),
     ];
     for (method, path, body, status, code) in cases {
         let (answered, refusal) = leased.call(method.clone(), &path, body.as_ref()).await;

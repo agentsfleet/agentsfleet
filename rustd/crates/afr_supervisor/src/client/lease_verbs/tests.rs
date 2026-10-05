@@ -127,3 +127,18 @@ async fn every_lease_verb_carries_its_method_path_and_fence() {
     assert_eq!(update["message"], "daily check");
     assert_eq!(calls[6].3.as_ref().unwrap()["text"], "fix pushed");
 }
+
+/// Each method reaches the HTTP client as the method it names; a PATCH sent
+/// as a POST would be refused by the route, and a DELETE as a GET would read.
+#[test]
+fn every_method_is_sent_as_itself() {
+    let cases = [
+        (Method::Get, reqwest::Method::GET),
+        (Method::Post, reqwest::Method::POST),
+        (Method::Patch, reqwest::Method::PATCH),
+        (Method::Delete, reqwest::Method::DELETE),
+    ];
+    for (method, http) in cases {
+        assert_eq!(method.http(), http, "{method:?}");
+    }
+}

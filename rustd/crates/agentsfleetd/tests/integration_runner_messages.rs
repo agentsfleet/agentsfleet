@@ -202,6 +202,19 @@ async fn test_message_without_channel_refused() {
     );
     let (status, _) = speaking.say(("not-a-lease", fence), "malformed").await;
     assert_eq!(status, 400);
+    let path = format!("/v1/runners/me/leases/{lease_id}/messages");
+    let unread = post(
+        &speaking.http,
+        &speaking.run,
+        &path,
+        &json!({"fencing_token": fence}),
+    )
+    .await;
+    assert_eq!(
+        unread.status().as_u16(),
+        400,
+        "a body with no text is malformed"
+    );
     speaking.finish(supervisor).await;
 }
 
