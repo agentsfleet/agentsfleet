@@ -209,6 +209,12 @@ async fn a_repository_that_will_not_check_out_fails_the_start() {
         failed.field("error_code"),
         Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
+    assert!(
+        failed
+            .field("reason")
+            .is_some_and(|reason| !reason.is_empty()),
+        "an operator reads why the checkout failed"
+    );
 }
 
 #[tokio::test]
