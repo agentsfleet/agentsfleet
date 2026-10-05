@@ -27,6 +27,21 @@ const TOKEN: &str = "agt_r_entries_test";
 /// The exit status of an entry this build refuses.
 const REFUSED: i32 = 2;
 
+/// Where an instrumented build writes its coverage profile. Kept across a
+/// cleared environment, so the binary's own lines are measured when the suite
+/// runs under coverage; absent, it changes nothing.
+const PROFILE_KNOB: &str = "LLVM_PROFILE_FILE";
+
+/// `word` with an empty environment, but for the coverage profile's path.
+fn cleared(word: &str) -> Command {
+    let mut command = Command::new(BINARY);
+    command.arg(word).env_clear();
+    if let Some(profile) = std::env::var_os(PROFILE_KNOB) {
+        command.env(PROFILE_KNOB, profile);
+    }
+    command
+}
+
 fn entry(word: &str) -> Output {
     Command::new(BINARY)
         .arg(word)
@@ -72,9 +87,7 @@ fn run_fails_at_boot_without_its_environment() {
 #[test]
 fn run_boots_then_refuses_without_an_agent_engine() {
     let home = tempfile::tempdir().expect("a storage home");
-    let ran = Command::new(BINARY)
-        .arg("run")
-        .env_clear()
+    let ran = cleared("run")
         .env(ENV_API_URL, UNREACHABLE_DAEMON)
         .env(ENV_RUNNER_TOKEN, TOKEN)
         .env(ENV_STORAGE_HOME, home.path())
@@ -120,9 +133,7 @@ const EXPORT_DISABLED: &str = "telemetry_export_disabled";
 /// `run` against a valid environment plus `extra`, its storage home under
 /// `home`.
 fn run_with(home: &std::path::Path, extra: &[(&str, &str)]) -> Output {
-    Command::new(BINARY)
-        .arg("run")
-        .env_clear()
+    cleared("run")
         .env(ENV_API_URL, UNREACHABLE_DAEMON)
         .env(ENV_RUNNER_TOKEN, TOKEN)
         .env(ENV_STORAGE_HOME, home)

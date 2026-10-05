@@ -153,3 +153,29 @@ fn a_sampler_and_a_processor_reach_the_tracer() {
     );
     assert_eq!(exports.spans_lost().count(), 0);
 }
+
+/// A series ceiling the SDK refuses refuses the install, as a defect in the
+/// build rather than a knob an operator could fix.
+#[test]
+fn a_ceiling_the_sdk_refuses_refuses_the_install() {
+    let config = configured(Encoding::HttpJson);
+    let registry = Registry::read(ZERO_CEILING).expect("a zero ceiling reads; the SDK refuses it");
+
+    let refused = Builder::new(&config, service(), registry)
+        .install()
+        .expect_err("a zero series ceiling cannot build a stream");
+
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+    assert_eq!(refused.refused(), None, "no knob is at fault");
+    assert!(
+        std::error::Error::source(&refused).is_some(),
+        "the instrument layer's own sentence survives as the cause"
+    );
+}
+
+/// A census of one counter whose ceiling is zero.
+const ZERO_CEILING: &str = "name\tkind\tnumber\tunit\ttemporality\tlabels\tbounds\tpolicy\tlive_read\tcategory\twatch_for\n\
+                            a.family\tcounter\tu64\t1\tcumulative\t-\t-\tfixed:0\tno\ttraffic\tnothing\n";

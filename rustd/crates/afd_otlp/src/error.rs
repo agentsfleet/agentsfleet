@@ -99,6 +99,11 @@ impl Error {
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the binaries"
+    )]
+
     use std::error::Error as _;
 
     use afd_core::error_code;
@@ -126,9 +131,8 @@ mod tests {
             "a refusal is the whole story; nothing caused it"
         );
 
-        let Err(census) = afd_observability::metrics::registry::Registry::read(SEEDED_WRONG) else {
-            unreachable!("a census declaring a kind nobody spelled does not read");
-        };
+        let census = afd_observability::metrics::registry::Registry::read(SEEDED_WRONG)
+            .expect_err("a census declaring a kind nobody spelled does not read");
         let contract = Error::from(census);
         assert_eq!(contract.refused(), None);
         assert_eq!(contract.code(), error_code::INTERNAL_OPERATION_FAILED);
