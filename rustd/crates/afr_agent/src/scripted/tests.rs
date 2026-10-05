@@ -70,6 +70,12 @@ impl Executor for Canned {
     async fn write_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
         Ok(())
     }
+    async fn append_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
+        Ok(())
+    }
+    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
+        Ok(())
+    }
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
         Ok(Listing::default())
     }

@@ -8,14 +8,18 @@
 //! command starts with, how output and endings read (`output`), a command
 //! run to its end (`oneshot`), the processes a lease keeps open (`sessions`),
 //! and the repositories its workspace holds (`repositories`). `git` runs the
-//! toolbox's git on those.
+//! toolbox's git on those. The file tools (`files`, `hashed`, `apply_patch`)
+//! go through the executor's file calls instead, under one path gate.
 
 use afr_executor::{Executor, Spawn};
 
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 
+mod apply_patch;
 mod exec_session;
+mod files;
 mod git;
+mod hashed;
 mod oneshot;
 mod output;
 mod repositories;
@@ -24,8 +28,11 @@ mod scripted;
 mod sessions;
 mod shell;
 
+pub(crate) use self::apply_patch::ApplyPatch;
 pub(crate) use self::exec_session::{ExecCommand, WriteStdin};
+pub(crate) use self::files::{FileAppend, FileDelete, FileEdit, FileRead, FileWrite};
 pub(crate) use self::git::Git;
+pub(crate) use self::hashed::{FileEditHashed, FileReadHashed};
 pub use self::repositories::{CREDENTIAL_GITHUB, Checkout, checkouts};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::scripted::{ScriptedExecutor, ScriptedProcess};

@@ -1150,6 +1150,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "html2text",
+ "rustix",
  "schemars",
  "serde",
  "serde_json",

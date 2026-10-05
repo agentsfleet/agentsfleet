@@ -60,7 +60,7 @@ agentsfleet-runner (one binary; a VM or a bare-metal host)
 
 **The agent loop runs outside the sandbox.** No model key ever enters a sandbox, so a prompt-injected command cannot read one, and the sandbox is a plain executor, so bubblewrap and a microVM sit behind one interface. A model call starts while the workspace is still restoring, because nothing about the call needs the sandbox.
 
-**The executor is small and ours.** One process per lease inside the sandbox serves spawn, write, read and kill for processes on pseudo-terminals, file reads and writes, and `apply_patch`. Its methods mirror Codex's `exec-server` (`~/Projects/oss/rs/codex/codex-rs/exec-server/README.md`), so the Codex engine and our loop drive the same shapes.
+**The executor is small and ours.** One process per lease inside the sandbox serves spawn, write, read and kill for processes on pseudo-terminals, and the file calls — read, write, append, delete, list — that the file tools and `apply_patch` edit through from the supervisor. Its methods mirror Codex's `exec-server` (`~/Projects/oss/rs/codex/codex-rs/exec-server/README.md`), so the Codex engine and our loop drive the same shapes.
 
 **Every call ends exactly once.** When a run ends for any reason — answer, crash, kill, timeout — the supervisor closes each call still open as `interrupted`, live and in the trace ([Runner Fleet](./runner_fleet.md) §Live activity). A session's process outlives the call that started it, so the run's end also kills every session still open, and none reaches whatever the sandbox serves next.
 

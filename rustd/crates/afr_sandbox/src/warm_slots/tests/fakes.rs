@@ -35,6 +35,12 @@ impl Executor for Idle {
     async fn write_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
         unused()
     }
+    async fn append_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
+        unused()
+    }
+    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
+        unused()
+    }
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
         unused()
     }

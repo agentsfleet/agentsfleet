@@ -31,6 +31,10 @@ pub(crate) const METHOD_READ_FILE: &str = "fs/read";
 pub(crate) const METHOD_WRITE_FILE: &str = "fs/write";
 /// `fs/list`: list a directory.
 pub(crate) const METHOD_LIST_DIR: &str = "fs/list";
+/// `fs/append`: add to the end of a file, making it when absent.
+pub(crate) const METHOD_APPEND_FILE: &str = "fs/append";
+/// `fs/delete`: remove a file.
+pub(crate) const METHOD_DELETE_FILE: &str = "fs/delete";
 /// The notification carrying a chunk of a process's output.
 pub(crate) const NOTIFY_OUTPUT: &str = "process/output";
 /// The notification carrying a process's end; always its last.
@@ -41,14 +45,19 @@ pub(crate) const NOTIFY_EXITED: &str = "process/exited";
 pub(crate) const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 /// What ends every message on the wire.
 pub(crate) const DELIMITER: u8 = b'\n';
-/// The most a single read answers with, so the reply fits in one frame.
-pub(crate) const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
+/// The most a single read answers with, so the reply fits in one frame. A
+/// caller that must have the whole file reads up to it and refuses a file
+/// the read cut.
+pub const MAX_READ_BYTES: u64 = 8 * 1024 * 1024;
 
 /// A path that leaves the workspace. Clear of the codes `jsonrpsee-types`
 /// reserves, inside the range the specification leaves to servers.
 pub(crate) const PATH_REFUSED_CODE: i32 = -32_010;
 /// A process this executor does not have, or no longer has.
 pub(crate) const UNKNOWN_PROCESS_CODE: i32 = -32_011;
+/// A file or directory the workspace does not have: the one caller's mistake
+/// a handler names to the model, so it is told from the rest.
+pub(crate) const FILE_NOT_FOUND_CODE: i32 = -32_012;
 
 /// `process/spawn` parameters: borrowed where the client sends them, owned
 /// where the executor reads them.
@@ -109,7 +118,7 @@ pub(crate) struct ReadResult {
     pub(crate) truncated: bool,
 }
 
-/// `fs/write` parameters.
+/// `fs/write` and `fs/append` parameters.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct WriteFileParams<'a> {
     /// The file, inside the workspace.
@@ -119,10 +128,12 @@ pub(crate) struct WriteFileParams<'a> {
     pub(crate) content: Bytes,
 }
 
-/// `fs/list` parameters; the result is a [`Listing`](crate::api::Listing).
+/// `fs/list` and `fs/delete` parameters: one name inside the workspace. A
+/// listing answers with a [`Listing`](crate::api::Listing), a delete with
+/// nothing.
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct ListParams<'a> {
-    /// The directory, inside the workspace.
+pub(crate) struct PathParams<'a> {
+    /// The directory or file, inside the workspace.
     pub(crate) path: Cow<'a, str>,
 }
 

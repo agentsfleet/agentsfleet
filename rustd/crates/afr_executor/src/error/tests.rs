@@ -7,9 +7,10 @@ use jsonrpsee_types::error::{
 
 use super::{
     Error, connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
-    not_a_file, path_refused, program_unavailable, refused, unknown_process, unresponsive,
+    not_a_file, not_found, path_refused, program_unavailable, refused, unknown_process,
+    unresponsive,
 };
-use crate::protocol::{PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
+use crate::protocol::{FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
 
 #[test]
 fn every_failure_without_a_cause_renders_and_reports_none() {
@@ -90,6 +91,41 @@ fn an_operating_system_refusal_is_the_callers_only_when_it_is_about_the_name() {
             INTERNAL_ERROR_CODE,
             "{kind:?}"
         );
+    }
+    // A workspace name that is not there is sorted by the file calls, not
+    // here: a program that is not there is still only the caller's mistake.
+    let missing = not_found(io::Error::from(io::ErrorKind::NotFound));
+    assert_eq!(missing.rpc_code(), FILE_NOT_FOUND_CODE, "{missing}");
+    assert!(
+        missing
+            .wire_message()
+            .starts_with("the workspace has no such file or directory: "),
+        "{}",
+        missing.wire_message()
+    );
+}
+
+/// A handler reads the refusal where it is raised, in the executor, or as the
+/// answer the client decoded; each predicate holds on both and on nothing else.
+#[test]
+fn a_refused_path_and_a_missing_name_read_the_same_on_both_ends_of_the_socket() {
+    let path_raised = path_refused();
+    let path_decoded = refused(PATH_REFUSED_CODE, "outside");
+    let missing_raised = not_found(io::Error::from(io::ErrorKind::NotFound));
+    let missing_decoded = refused(FILE_NOT_FOUND_CODE, "absent");
+
+    assert!(path_raised.is_path_refused() && path_decoded.is_path_refused());
+    assert!(missing_raised.is_not_found() && missing_decoded.is_not_found());
+    assert!(!path_raised.is_not_found() && !path_decoded.is_not_found());
+    assert!(!missing_raised.is_path_refused() && !missing_decoded.is_path_refused());
+    for other in [
+        not_a_file(),
+        unknown_process(),
+        refused(INVALID_PARAMS_CODE, "bad"),
+        Error::from(io::Error::from(io::ErrorKind::NotFound)),
+        Error::from(io::Error::from(io::ErrorKind::PermissionDenied)),
+    ] {
+        assert!(!other.is_path_refused() && !other.is_not_found(), "{other}");
     }
 }
 
