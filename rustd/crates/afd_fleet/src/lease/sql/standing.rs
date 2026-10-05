@@ -5,9 +5,9 @@
 
 /// The lease a runner verb names, if this runner holds it live.
 ///
-/// Answers the lease's fleet, workspace and event, its own fencing token, and
-/// the fleet's live sequence, so the caller can refuse a holder a reclaim has
-/// superseded. `LEFT JOIN`, as the memory fence reads it: a lease whose fleet
+/// Answers the lease's fleet, workspace and event, its own fencing token, the
+/// fleet's live sequence, and the event's actor, so the caller can refuse a
+/// holder a reclaim has superseded and see whether a schedule woke the run. `LEFT JOIN`, as the memory fence reads it: a lease whose fleet
 /// has no slot row is fenced by its own token.
 ///
 /// A macro expanding to a literal, because the tool-call verb runs the same
@@ -19,7 +19,7 @@ macro_rules! live_lease {
     () => {
         "\
 SELECT l.fleet_id::text, l.workspace_id::text, l.event_id, l.fencing_token,
-       COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
+       COALESCE(a.fencing_seq, l.fencing_token) AS live_seq, l.actor
 FROM fleet.runner_leases l
 LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
 WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
@@ -28,18 +28,30 @@ WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
 }
 pub(crate) use live_lease;
 
-/// [`live_lease`], unlocked: the schedules and messages verbs read the lease
-/// and act on other tables, so nothing they write races a settle.
+/// [`live_lease`], unlocked.
+///
+/// The schedules verbs act on other tables, and the messages verb writes only
+/// `messages_posted`, through [`COUNT_MESSAGE`], which re-checks the fence
+/// itself, so neither holds a lock across the read.
 pub const SELECT_STANDING: &str = live_lease!();
 
-/// Counts one interim message against its lease while the count is under the
-/// cap, answering the new count; at the cap no row is touched or returned.
+/// Counts one interim message against a lease that still holds its fleet.
 ///
-/// One guarded statement, so two concurrent posts cannot both take the last
-/// slot.
+/// Answers the new count while it is under the cap; a lease a reclaim
+/// superseded since its standing was read, or one at the cap, touches no row
+/// and returns none.
 ///
-/// `$1` lease, `$2` the cap.
+/// The fence is in the statement rather than only in the standing read before
+/// it, so a holder superseded between the two cannot take a slot, and one
+/// guarded statement means two concurrent posts cannot both take the last.
+///
+/// `$1` lease, `$2` the cap, `$3` the presented token, `$4` the active status,
+/// `$5` now.
 pub const COUNT_MESSAGE: &str = "\
-UPDATE fleet.runner_leases SET messages_posted = messages_posted + 1
-WHERE id = $1::uuid AND messages_posted < $2
-RETURNING messages_posted";
+UPDATE fleet.runner_leases l SET messages_posted = l.messages_posted + 1
+WHERE l.id = $1::uuid AND l.messages_posted < $2
+  AND l.fencing_token = $3 AND l.status = $4 AND l.lease_expires_at > $5
+  AND l.fencing_token >= COALESCE(
+        (SELECT a.fencing_seq FROM fleet.runner_affinity a WHERE a.fleet_id = l.fleet_id),
+        l.fencing_token)
+RETURNING l.messages_posted";

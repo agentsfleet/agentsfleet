@@ -70,8 +70,13 @@ pub struct NewSchedule<'a> {
     pub fleet: &'a Uuid7,
     /// Who asked for it.
     pub source: Source,
-    /// The key the external scheduler will know it by.
-    pub source_key: &'a str,
+    /// The key the external scheduler will know it by, or `None` for the
+    /// schedule's own identifier.
+    ///
+    /// `None` is unique by construction, which a fleet needs: one run may
+    /// create two schedules in the same instant, and the key is unique per
+    /// fleet.
+    pub source_key: Option<&'a str>,
     /// The expression, already through [`crate::validate::cron`].
     pub cron: &'a str,
     /// The zone, already through [`crate::validate::timezone`].
@@ -217,7 +222,7 @@ impl Schedules {
             .bind(schedule_id.as_str())
             .bind(new.fleet.as_str())
             .bind(new.source.as_str())
-            .bind(new.source_key)
+            .bind(new.source_key.unwrap_or_else(|| schedule_id.as_str()))
             .bind(new.cron)
             .bind(new.timezone)
             .bind(new.message)

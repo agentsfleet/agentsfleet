@@ -16,7 +16,7 @@ use crate::activity::ActivitySink;
 use crate::credentials::LeaseMint;
 use crate::memory::LeaseCheckpoint;
 use crate::report::Ending;
-use crate::verbs::LeaseVerbs;
+use crate::verbs::FencedVerbs;
 
 const DETAIL_ENGINE: &str = "the agent engine stopped before the turn ended";
 /// How long a stopped engine has to close its open calls and hand back what
@@ -38,7 +38,7 @@ impl LeaseRun<'_> {
     ) -> Ending {
         let mint = LeaseMint::new(&self.lessee.plane, &self.ids.lease);
         let checkpoint = LeaseCheckpoint::new(&self.lessee.plane, &self.ids.fleet, self.lease);
-        let verbs = LeaseVerbs::new(
+        let verbs = FencedVerbs::new(
             &self.lessee.plane,
             &self.ids.lease,
             self.lease.fencing_token,

@@ -6,6 +6,7 @@
 //! here so the runner's tool and the daemon's verb refuse the same requests.
 
 use std::borrow::Cow;
+use std::time::Duration;
 
 use afd_validate::nul_free;
 use garde::Validate;
@@ -23,6 +24,15 @@ pub const MESSAGE_MAX_BYTES: usize = 4096;
 /// being steered by what it read; the thread is a person's, and it is not
 /// flooded either way.
 pub const MESSAGES_PER_RUN_MAX: u32 = 8;
+
+/// The longest the daemon spends posting one message, every retry included,
+/// before it answers `delivered: false`.
+///
+/// Declared beside the request because both ends depend on it: the runner's
+/// own call timeout must outlast it, or a slow channel reads to the model as a
+/// daemon that never answered, and a retried tool call posts the line twice.
+/// The runner pins that ordering at compile time.
+pub const MESSAGE_DELIVERY_DEADLINE: Duration = Duration::from_secs(12);
 
 /// `POST /v1/runners/me/leases/{lease_id}/messages` request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

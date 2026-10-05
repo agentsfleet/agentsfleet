@@ -23,31 +23,13 @@ use afd_wire::tool_detail::{
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::pull::Plane;
+use crate::lease::standing::LiveLease;
 
 /// A record was not kept; the run is unaffected.
 const EVENT_SKIPPED: &str = "tool_detail_skipped";
 
 /// A superseded holder posted records; nothing was kept.
 const EVENT_FENCED: &str = "tool_detail_fenced";
-
-/// The lease a post names, as the statement proved it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct DetailTarget {
-    fleet_id: String,
-    workspace_id: String,
-    event_id: String,
-    /// The lease's own fencing token, which keys every row it writes.
-    fence: i64,
-    /// The fleet's live sequence.
-    live_seq: i64,
-}
-
-impl DetailTarget {
-    /// Whether this lease still holds the fleet, and the post is its own.
-    fn holds(&self, presented: u64) -> bool {
-        crate::lease::standing::holds(self.fence, self.live_seq, presented)
-    }
-}
 
 /// A record that passed its own bounds, and where it sat in the post.
 #[derive(Debug)]
@@ -137,10 +119,10 @@ enum Kept {
     /// No live lease of this runner's under that id.
     NoLease,
     /// The lease is not the fleet's current holder, or the post is not its own.
-    Fenced(DetailTarget),
+    Fenced(LiveLease),
     /// Written: how many records, and those that did not fit.
     Stored {
-        target: DetailTarget,
+        target: LiveLease,
         stored: usize,
         over: Vec<Skip>,
     },
@@ -198,7 +180,7 @@ impl Plane {
 }
 
 /// One skipped record, by position and size; its content is never logged.
-fn log_skip(target: &DetailTarget, skip: Skip) {
+fn log_skip(target: &LiveLease, skip: Skip) {
     let fleet_id = target.fleet_id.as_str();
     let event_id = target.event_id.as_str();
     let Skip {

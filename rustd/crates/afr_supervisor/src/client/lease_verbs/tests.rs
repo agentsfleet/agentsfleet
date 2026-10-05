@@ -2,7 +2,9 @@
 
 #![expect(
     clippy::unwrap_used,
-    reason = "test target: a fixture that cannot be built is a broken test"
+    clippy::indexing_slicing,
+    reason = "test target: a fixture that cannot be built is a broken test, and a step \
+              indexes the calls it just sent"
 )]
 
 use afd_core::id::Uuid7;
@@ -107,7 +109,13 @@ async fn every_lease_verb_carries_its_method_path_and_fence() {
             ),
         ]
     );
-    // Every body carries the lease's fence, and no read or delete has one.
+}
+
+/// Every body carries the lease's fence and the fields its call named, and no
+/// read or delete has a body at all.
+#[tokio::test]
+async fn every_lease_verb_body_carries_its_fence_and_fields() {
+    let calls = sent().await;
     for (verb, method, _path, body) in &calls {
         match method {
             Method::Get | Method::Delete => assert!(body.is_none(), "{verb:?}"),

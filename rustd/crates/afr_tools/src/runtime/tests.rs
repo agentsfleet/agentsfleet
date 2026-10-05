@@ -35,6 +35,23 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
         ),
         (ToolErrorCode::UpstreamUnreachable, "upstream_unreachable"),
         (ToolErrorCode::UpstreamStatus, "upstream_status"),
+        (
+            ToolErrorCode::WorkspaceMemoryNotGranted,
+            "workspace_memory_not_granted",
+        ),
+        (ToolErrorCode::ScheduleCapReached, "schedule_cap_reached"),
+        (
+            ToolErrorCode::ScheduleNotFleetOwned,
+            "schedule_not_fleet_owned",
+        ),
+        (ToolErrorCode::ScheduleNotRunnable, "schedule_not_runnable"),
+        (ToolErrorCode::MessageNoChannel, "message_no_channel"),
+        (ToolErrorCode::MessageLimitReached, "message_limit_reached"),
+        (ToolErrorCode::AgentsfleetdRefused, "agentsfleetd_refused"),
+        (
+            ToolErrorCode::AgentsfleetdUnreachable,
+            "agentsfleetd_unreachable",
+        ),
     ];
 
     for (code, spelling) in spelled {

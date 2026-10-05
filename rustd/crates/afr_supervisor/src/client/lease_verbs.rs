@@ -41,13 +41,7 @@ impl ControlPlane {
                 message,
                 once,
             } => {
-                let body = ScheduleCreateRequest {
-                    fencing_token,
-                    cron: Cow::Borrowed(cron),
-                    timezone: timezone.map(Cow::Borrowed),
-                    message: Cow::Borrowed(message),
-                    once,
-                };
+                let body = created(fencing_token, cron, timezone, message, once);
                 self.send_json(Verb::ScheduleCreate, collection, &body)
                     .await
             }
@@ -62,14 +56,8 @@ impl ControlPlane {
                 message,
                 paused,
             } => {
-                let body = SchedulePatchRequest {
-                    fencing_token,
-                    cron: cron.map(Cow::Borrowed),
-                    timezone: timezone.map(Cow::Borrowed),
-                    message: message.map(Cow::Borrowed),
-                    paused,
-                };
                 let path = member(&collection, schedule, None);
+                let body = patched(fencing_token, cron, timezone, message, paused);
                 self.send_json(Verb::ScheduleUpdate, path, &body).await
             }
             ScheduleCall::Delete { schedule } => {
@@ -145,6 +133,40 @@ fn fenced(path: &str, fencing_token: u64, page: Page<'_>) -> Cow<'static, str> {
         query.append_pair(QUERY_STARTING_AFTER, after);
     }
     Cow::Owned(format!("{path}?{}", query.finish()))
+}
+
+/// A create's body, fenced.
+fn created<'a>(
+    fencing_token: u64,
+    cron: &'a str,
+    timezone: Option<&'a str>,
+    message: &'a str,
+    once: bool,
+) -> ScheduleCreateRequest<'a> {
+    ScheduleCreateRequest {
+        fencing_token,
+        cron: Cow::Borrowed(cron),
+        timezone: timezone.map(Cow::Borrowed),
+        message: Cow::Borrowed(message),
+        once,
+    }
+}
+
+/// A patch's body, fenced: each field it names, and nothing else.
+fn patched<'a>(
+    fencing_token: u64,
+    cron: Option<&'a str>,
+    timezone: Option<&'a str>,
+    message: Option<&'a str>,
+    paused: Option<bool>,
+) -> SchedulePatchRequest<'a> {
+    SchedulePatchRequest {
+        fencing_token,
+        cron: cron.map(Cow::Borrowed),
+        timezone: timezone.map(Cow::Borrowed),
+        message: message.map(Cow::Borrowed),
+        paused,
+    }
 }
 
 #[cfg(test)]

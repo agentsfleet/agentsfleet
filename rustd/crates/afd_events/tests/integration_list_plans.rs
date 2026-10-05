@@ -58,6 +58,10 @@ const SEED_TENANT: &str = "INSERT INTO core.tenants (id, name, created_at, updat
 VALUES ($1::uuid, 'plan-probe', $2, $2)";
 
 /// Decoy workspaces, their fleets and their events, in one statement.
+///
+/// Most events are steers and a quarter are fires of a few schedules per
+/// fleet, so the actor column has the spread a deployment's has: one value
+/// common and many rare, which is what an exact actor read is costed against.
 const SEED_SPREAD: &str = "
 WITH workspaces AS (
     INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at)
@@ -76,8 +80,9 @@ WITH workspaces AS (
 INSERT INTO core.fleet_events
   (fleet_id, workspace_id, event_id, actor, event_type, status, request_json,
    created_at, updated_at)
-SELECT fleets.id, fleets.workspace_id, 'plan-probe-' || e, 'steer:api', 'chat',
-       'completed', '{}'::jsonb, $2 + e, $2 + e
+SELECT fleets.id, fleets.workspace_id, 'plan-probe-' || e,
+       CASE WHEN e % 4 = 0 THEN 'cron:' || fleets.id || ':' || (e % 8) ELSE 'steer:api' END,
+       'chat', 'completed', '{}'::jsonb, $2 + e, $2 + e
   FROM fleets, generate_series(1, $5) e";
 
 /// Refreshes the statistics every plan here is costed from, the dependency

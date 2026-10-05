@@ -117,7 +117,7 @@ async fn a_fleet_outside_the_proven_workspace_is_refused_as_no_such_fleet() {
             afd_cron::NewSchedule {
                 fleet: &foreign_fleet,
                 source: Source::Api,
-                source_key: "key-foreign",
+                source_key: Some("key-foreign"),
                 cron: NIGHTLY,
                 timezone: "UTC",
                 message: "run the nightly repair",

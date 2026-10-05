@@ -4,12 +4,12 @@
 //! Both prove the lease, then that the schedule is the fleet's and was made by
 //! it (`super::schedule::fleet_owned`), then reconcile exactly as the tenant
 //! surface does. A delete does not delete: it sets `deleting` and pushes, and
-//! the row goes once QStash agrees — see `afd_cron::DesiredStatus::Deleting`.
+//! the row goes once `QStash` agrees — see `afd_cron::DesiredStatus::Deleting`.
 
 use std::sync::Arc;
 
-use afd_cron::{Change, DesiredStatus, validate};
-use afd_http::handler::schedule::{checked, held_or};
+use afd_cron::{Change, DesiredStatus, Reconciled, validate};
+use afd_http::handler::schedule::held_or;
 use afd_http::handler::{Refusal, read_strict_body};
 use afd_wire::schedule_verb::SchedulePatchRequest;
 use axum::body::Bytes;
@@ -18,7 +18,8 @@ use axum::response::Response;
 use http::StatusCode;
 
 use super::schedule::{
-    DETAIL_MALFORMED, EVENT_FAILED, fence, fleet_owned, log_refused, schedule_id, standing,
+    DETAIL_MALFORMED, EVENT_FAILED, checked_for, fence, fleet_owned, log_written, masked,
+    schedule_id, standing,
 };
 use crate::auth::RunnerIdentity;
 use crate::services::{FleetSchedules as _, Services};
@@ -35,7 +36,8 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
     summary = "Change a schedule the fleet made",
     description = concat!(
         "Changes the fields a body names on a schedule the running fleet ",
-        "created, and pushes the result to QStash. A schedule a person made ",
+        "created, and pushes the result to QStash. A new message has the ",
+        "fleet's declared secrets masked out. A schedule a person made ",
         "answers `UZ-SCHED-010`. Sending the same body twice leaves the same ",
         "schedule. ",
     ),
@@ -72,13 +74,19 @@ pub(crate) async fn update<D: Services>(
         now,
     )
     .await?;
-    checked(validate::Fields {
-        expression: request.cron.as_deref(),
-        timezone: request.timezone.as_deref(),
-        message: request.message.as_deref(),
-    })
-    .inspect_err(|_invalid| log_refused(&lease, afd_core::error_code::INVALID_REQUEST))?;
+    checked_for(
+        &lease,
+        validate::Fields {
+            expression: request.cron.as_deref(),
+            timezone: request.timezone.as_deref(),
+            message: request.message.as_deref(),
+        },
+    )?;
     fleet_owned(&*services, &lease, &schedule).await?;
+    let message = match request.message.as_deref() {
+        Some(text) => Some(masked(&*services, &lease, text).await?),
+        None => None,
+    };
     let changed = services
         .schedules()
         .change(
@@ -87,7 +95,7 @@ pub(crate) async fn update<D: Services>(
             Change {
                 cron: request.cron.as_deref(),
                 timezone: request.timezone.as_deref(),
-                message: request.message.as_deref(),
+                message: message.as_deref(),
                 desired_status: request.paused.map(DesiredStatus::of_paused),
             },
             now,
@@ -147,15 +155,10 @@ pub(crate) async fn remove<D: Services>(
         )
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
-    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let fleet_id = lease.fleet_id.as_str();
-    let schedule_id = schedule.as_str();
-    let agentsfleet_event_id = lease.event_id.as_str();
-    tracing::info!(
-        fleet_id,
-        schedule_id,
-        agentsfleet_event_id,
-        event = EVENT_DELETED
-    );
+    // Logged once the row is gone: a delete QStash has not yet agreed to
+    // answers the row, and a superseded one a conflict.
+    if matches!(removed, Some(Reconciled::Removed)) {
+        log_written(&lease, &schedule, EVENT_DELETED);
+    }
     held_or(removed, StatusCode::OK)
 }

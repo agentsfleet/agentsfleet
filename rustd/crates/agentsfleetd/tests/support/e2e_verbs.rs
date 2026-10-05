@@ -1,4 +1,4 @@
-//! What the runner-verb suites stand up beside a booted daemon: a QStash that
+//! What the runner-verb suites stand up beside a booted daemon: a `QStash` that
 //! records what it is told, a loopback Slack, a Slack grant, and an event
 //! admitted from a Slack thread.
 //!
@@ -40,7 +40,7 @@ pub(crate) const CHANNEL: &str = "C0FIXTUREINTERIM";
 /// The thread inside it.
 pub(crate) const THREAD: &str = "1712345678.000200";
 
-/// The header QStash reads a schedule's expression from.
+/// The header `QStash` reads a schedule's expression from.
 const HEADER_CRON: &str = "Upstash-Cron";
 /// The fixture bearer the daemon presents to the fake scheduler.
 pub(crate) const QSTASH_TOKEN: &str = "qstash-fixture-token";
@@ -54,7 +54,7 @@ pub(crate) enum Told {
     Delete(String),
 }
 
-/// A QStash that registers whatever it is sent and records it.
+/// A `QStash` that registers whatever it is sent and records it.
 pub(crate) struct FakeQStash {
     base: String,
     told: Arc<Mutex<Vec<Told>>>,
@@ -64,6 +64,16 @@ pub(crate) struct FakeQStash {
 impl FakeQStash {
     /// Starts one on a loopback port.
     pub(crate) async fn start() -> Self {
+        Self::serve(None).await
+    }
+
+    /// Starts one that answers every registration `status`, as a scheduler
+    /// that is down does; it still records what it was sent.
+    pub(crate) async fn refusing(status: u16) -> Self {
+        Self::serve(Some(status)).await
+    }
+
+    async fn serve(refusal: Option<u16>) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a loopback port is available");
@@ -82,7 +92,11 @@ impl FakeQStash {
                         .to_owned();
                     let mut held = told.lock().expect("the record is never poisoned");
                     held.push(Told::Upsert(cron));
-                    axum::Json(json!({"scheduleId": format!("scd_fixture_{}", held.len())}))
+                    let status = refusal
+                        .and_then(|code| axum::http::StatusCode::from_u16(code).ok())
+                        .unwrap_or(axum::http::StatusCode::OK);
+                    let body = json!({"scheduleId": format!("scd_fixture_{}", held.len())});
+                    (status, axum::Json(body))
                 }
             })
             .delete(move |Path(key): Path<String>| {
@@ -182,7 +196,7 @@ pub(crate) fn posts(slack: &FakeSlack) -> Vec<Value> {
     slack
         .requests()
         .into_iter()
-        .filter(|request| request.is_post())
+        .filter(afd_connector::test_util::Request::is_post)
         .map(|request| request.body)
         .collect()
 }

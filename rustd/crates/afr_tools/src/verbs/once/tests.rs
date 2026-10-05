@@ -1,5 +1,11 @@
 //! `schedule`: a moment, written as the UTC minute it fires at, once.
 
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test target: an unmet precondition should fail the test loudly"
+)]
+
 use afd_core::clock::{self, UnixMillis};
 use afd_core::timing::DAY_MS;
 use jiff::Timestamp;
@@ -8,7 +14,7 @@ use serde_json::json;
 use super::{DETAIL_AT, DETAIL_PAST, DETAIL_TOO_FAR, ScheduleOnce, minute_of};
 use crate::handler::Typed;
 use crate::runtime::ToolErrorCode;
-use crate::testing::{Asked, RecordingVerbs, call, lease_with};
+use crate::testing::{Asked, OwnedCall, RecordingVerbs, call, lease_with};
 
 /// The instant every pure case is measured from: 2026-10-05T00:00:00Z.
 const NOW: UnixMillis = UnixMillis::from_millis(1_791_158_400_000);
@@ -25,6 +31,34 @@ fn an_offset_moment_is_written_as_its_utc_minute() {
 #[test]
 fn a_moment_already_gone_is_refused() {
     assert_eq!(minute_of("2026-10-04T09:00:00Z", NOW), Err(DETAIL_PAST));
+}
+
+/// A moment inside a minute fires at the next minute, never before it.
+#[test]
+fn a_moment_inside_a_minute_rounds_up() {
+    assert_eq!(
+        minute_of("2026-10-06T09:00:30Z", NOW),
+        Ok("1 9 6 10 *".to_owned())
+    );
+}
+
+/// A minute already begun, or about to, could not be registered in time, and
+/// its expression's next match is a year away: refused, not deferred.
+#[test]
+fn a_moment_inside_the_lead_is_refused() {
+    // NOW is midnight; 00:00:30 rounds to 00:01, one minute out: allowed.
+    assert_eq!(
+        minute_of("2026-10-05T00:00:30Z", NOW),
+        Ok("1 0 5 10 *".to_owned())
+    );
+    // NOW itself, and anything rounding to it, is too close.
+    assert_eq!(minute_of("2026-10-05T00:00:00Z", NOW), Err(DETAIL_PAST));
+    let just_after = UnixMillis::from_millis(NOW.as_millis() + 1);
+    assert_eq!(
+        minute_of("2026-10-05T00:01:00Z", just_after),
+        Err(DETAIL_PAST),
+        "a rounded minute less than a minute out"
+    );
 }
 
 /// A cron has no year: past the horizon the expression would fire early.
@@ -53,14 +87,20 @@ async fn test_schedule_tool_is_once() {
     .await;
     assert_eq!(output.error_code, None, "{}", output.text);
     let asked = verbs.asked();
-    let [Asked::Schedules(created)] = asked.as_slice() else {
-        panic!("one schedules call, not {asked:?}");
+    let [
+        Asked::Schedules(OwnedCall::Create {
+            timezone,
+            once,
+            message,
+            ..
+        }),
+    ] = asked.as_slice()
+    else {
+        panic!("one create, not {asked:?}");
     };
-    assert!(
-        created.starts_with("Create") && created.contains("once: true"),
-        "{created}"
-    );
-    assert!(created.contains(r#"timezone: Some("UTC")"#), "{created}");
+    assert!(*once, "a one-off retires after it fires");
+    assert_eq!(timezone.as_deref(), Some("UTC"));
+    assert_eq!(message, "re-check the error rate");
 }
 
 #[tokio::test]

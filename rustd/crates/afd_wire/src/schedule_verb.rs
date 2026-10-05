@@ -78,8 +78,9 @@ pub struct ScheduleRun<'a> {
     pub event_id: Cow<'a, str>,
 }
 
-/// The query parameter a schedules read, a delete and a runs read carry the
-/// lease's fencing token in. A read and a delete carry no body, so the fence
+/// The query parameter that carries the lease's fencing token.
+///
+/// A schedules read, a delete and a runs read carry no body, so the fence
 /// rides the query; the page parameters beside it on a runs read are the
 /// keyset pair every list takes (`afd_core::paging`).
 pub const QUERY_FENCING_TOKEN: &str = "fencing_token";

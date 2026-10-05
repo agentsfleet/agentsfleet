@@ -187,6 +187,15 @@ impl Leasing for NoWork {
     ) -> impl Future<Output = afd_fleet::Result<afd_outbound::Interim>> + Send {
         std::future::ready(Err(afd_fleet::Error::lease_not_found()))
     }
+
+    /// Refused for the reason [`NoWork::standing`] is.
+    fn masked(
+        &self,
+        _standing: &afd_fleet::lease::Standing,
+        _text: &str,
+    ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
+        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
+    }
 }
 
 /// The identifier a stubbed settle reports against.

@@ -25,6 +25,7 @@
 //! drop or repeat rows whenever two events share a millisecond, which under a
 //! webhook burst is most of them.
 
+mod actor;
 mod cursor;
 mod detail;
 mod filter;

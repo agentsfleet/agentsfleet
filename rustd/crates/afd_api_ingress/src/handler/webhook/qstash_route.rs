@@ -150,6 +150,16 @@ pub(crate) async fn receive<D: Services>(
         return Ok(dropped(REASON_SCHEDULE_PAUSED));
     }
     if !FleetStatus::parse(&target.fleet_status).is_some_and(FleetStatus::is_runnable) {
+        // A `once` schedule's one moment has passed whether or not the fleet
+        // ran, and kept, it would match the same minute next year. A paused
+        // SCHEDULE is the person's to resume, so only this drop retires.
+        if target.once {
+            services
+                .schedules()
+                .retire(&target.fleet, &schedule, services.now())
+                .await
+                .map_err(Refusal::at(EVENT_DROPPED))?;
+        }
         return Ok(dropped(webhook::REASON_FLEET_PAUSED));
     }
 

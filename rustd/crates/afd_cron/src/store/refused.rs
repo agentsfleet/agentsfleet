@@ -8,17 +8,22 @@
 use afd_core::error_code::{self, ErrorCode};
 
 /// The sentence a fleet that is not in the caller's workspace earns.
-pub const DETAIL_NOT_FOUND: &str = "No schedule with that identifier belongs to this fleet.";
+pub(crate) const DETAIL_NOT_FOUND: &str = "No schedule with that identifier belongs to this fleet.";
 
 /// The sentence a fleet at its schedule ceiling earns.
-pub const DETAIL_TOO_MANY: &str = "This fleet already holds as many schedules as it may.";
+pub(crate) const DETAIL_TOO_MANY: &str = "This fleet already holds as many schedules as it may.";
 
 /// The sentence a fleet at its own cap earns.
-pub const DETAIL_FLEET_CAP: &str =
+pub(crate) const DETAIL_FLEET_CAP: &str =
     "This fleet already holds as many schedules as it may create itself.";
 
 /// The sentence a duplicate upstream key earns.
-pub const DETAIL_DUPLICATE: &str = "This fleet already has a schedule under that key.";
+pub(crate) const DETAIL_DUPLICATE: &str = "This fleet already has a schedule under that key.";
+
+/// The `current_state` a refusal at a ceiling names.
+pub(crate) const STATE_AT_CAPACITY: &str = "at_capacity";
+/// The `current_state` a refusal of a key already held names.
+pub(crate) const STATE_KEY_HELD: &str = "key_held";
 
 /// Why a create was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +55,17 @@ impl Refused {
             Self::TooMany => error_code::SCHEDULE_LIMIT_REACHED,
             Self::FleetCapReached => error_code::SCHEDULE_CAP_REACHED,
             Self::DuplicateKey => error_code::SCHEDULE_KEY_TAKEN,
+        }
+    }
+
+    /// The state a 409 names as what forbade the create, or `None` for the
+    /// one refusal that is not a conflict.
+    #[must_use]
+    pub const fn current_state(self) -> Option<&'static str> {
+        match self {
+            Self::NoSuchFleet => None,
+            Self::TooMany | Self::FleetCapReached => Some(STATE_AT_CAPACITY),
+            Self::DuplicateKey => Some(STATE_KEY_HELD),
         }
     }
 

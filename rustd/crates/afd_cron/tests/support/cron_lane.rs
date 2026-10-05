@@ -159,7 +159,7 @@ impl CronLane {
                 NewSchedule {
                     fleet: &fleet,
                     source: Source::Api,
-                    source_key,
+                    source_key: Some(source_key),
                     cron,
                     timezone: "UTC",
                     message: "run the nightly repair",

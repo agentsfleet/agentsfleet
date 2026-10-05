@@ -28,10 +28,11 @@ pub const MAX_SCHEDULES_PER_FLEET: usize = 32;
 
 /// The most schedules a fleet may hold that it created itself.
 ///
-/// Half of [`MAX_SCHEDULES_PER_FLEET`], so a fleet that loops, or is talked
-/// into scheduling by what it reads, fills its own half and never the slots a
-/// person's schedules need.
-pub const FLEET_SCHEDULES_MAX: usize = 16;
+/// Half of [`MAX_SCHEDULES_PER_FLEET`]. The fleet's own schedules count toward
+/// that ceiling too, so a fleet that loops, or is talked into scheduling by
+/// what it reads, can take at most this many of the fleet's slots and always
+/// leaves the other half to the schedules people make.
+pub const FLEET_SCHEDULES_MAX: usize = MAX_SCHEDULES_PER_FLEET / 2;
 
 /// The timezone a schedule that named none is interpreted in.
 pub const DEFAULT_TIMEZONE: &str = "UTC";

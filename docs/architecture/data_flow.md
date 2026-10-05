@@ -772,10 +772,19 @@ the fleet's `TRIGGER.md`, `api` for a person, and `fleet` for the fleet itself,
 through its lease's schedules verb. The fleet is the lease's, so a body cannot
 name another; a fleet holds at most 16 schedules it made, and it can change or
 delete only those. A run-now admits through the same `schedule_fire` producer a
-QStash fire does, keyed by the lease, so both record `actor=cron:<schedule_id>`
-and a schedule's runs are its history rows under that actor. A `once` schedule
-(slot 928) retires inside that one fire seam: the fire is admitted, then the
-schedule is claimed `deleting` and removed from QStash.
+QStash fire does, keyed `run:<event_id>` by the leased event so a reclaimed
+lease replays the run, and both record `actor=cron:<schedule_id>`. A run-now
+applies the fire's gates in the callback's order: a fleet that takes no work
+answers `UZ-AGT-012`; a paused or deleting schedule, or a run a schedule
+started, answers `UZ-SCHED-011`. Each is a 409 naming `current_state`, and the
+last one means no schedule wakes its fleet in a loop. A schedule's runs are its
+history rows under that actor, read through slot 930's
+`(fleet_id, actor, created_at, event_id)` index, so a page never walks the
+fleet's whole history. A `once` schedule (slot 928) retires inside that one
+fire seam: the fire is admitted, then the schedule is claimed `deleting` and
+removed from QStash. A QStash fire dropped because the fleet takes no work also
+retires a `once` schedule, since its moment has passed; a retirement whose
+claim is held answers `UZ-SCHED-006`, so QStash repeats the fire.
 
 #### The webhook auth taxonomy
 
@@ -944,7 +953,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
    dead runner is fenced out at claimReport (UZ-RUN-005).
 ```
 
-**Answer round-trip to a connector thread.** Two connector-specific hops bracket this generic trace without altering it. *At ingress:* the producer that owns a reply surface re-reads the thread (Slack `conversations.replies`, bounded) into the event's `message` and records the event's reply destination — provider plus an opaque address — on the admission. A failed re-read degrades to the mention alone. *On the way out:* the report transaction owes a delivery (`core.fleet_obligations`) only when the event, or the event an approval continuation resumes, carries a destination, addressed by that destination's connector; an empty answer owes nothing. The outbound worker (the one blocking Dragonfly consumer sized in [`scaling.md`](./scaling.md)) routes the job by provider and posts from the obligation's own address with bounded retry; a permanent refusal abandons the obligation so recovery stops re-offering it. The core report path stays provider-agnostic: the worker is the only place a connector poster is imported. *Before the answer:* a run may say up to 8 lines to the same thread through its lease's messages verb (`fleet.runner_leases.messages_posted`, slot 929). `agentsfleetd` masks the fleet's declared secrets and posts each through the worker's Slack poster directly, never through the queue or the obligation ledger, so a line lands while the run is still leased and is never mistaken for the answer. Each line carries its own marker part, so a repeat of the final answer still finds no answer in the thread and posts it. Delivery shipped in M206_001; the Slack producer is M206_002; walkthrough in [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §5–§6.
+**Answer round-trip to a connector thread.** Two connector-specific hops bracket this generic trace without altering it. *At ingress:* the producer that owns a reply surface re-reads the thread (Slack `conversations.replies`, bounded) into the event's `message` and records the event's reply destination — provider plus an opaque address — on the admission. A failed re-read degrades to the mention alone. *On the way out:* the report transaction owes a delivery (`core.fleet_obligations`) only when the event, or the event an approval continuation resumes, carries a destination, addressed by that destination's connector; an empty answer owes nothing. The outbound worker (the one blocking Dragonfly consumer sized in [`scaling.md`](./scaling.md)) routes the job by provider and posts from the obligation's own address with bounded retry; a permanent refusal abandons the obligation so recovery stops re-offering it. The core report path stays provider-agnostic: the worker is the only place a connector poster is imported. *Before the answer:* a run may say up to 8 lines to the same thread through its lease's messages verb (`fleet.runner_leases.messages_posted`, slot 929). `agentsfleetd` masks the fleet's declared secrets and posts each through the worker's Slack poster directly, never through the queue or the obligation ledger, so a line lands while the run is still leased and is never mistaken for the answer. The count proves the lease's fence in the same statement, and delivery stops at 12 s, inside the runner's 20 s call timeout, answering `delivered: false`. Each line is stamped `agentsfleet_interim` with a `{lease_id, line}` part, so a repeat of the final answer still finds no answer in the thread and posts it, and a reclaimed lease's first line never matches the dead lease's. A line goes out as literal text, `&`, `<` and `>` as Slack entities, so a line cannot notify the channel. Delivery shipped in M206_001; the Slack producer is M206_002; walkthrough in [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §5–§6.
 
 *Shipped* (M206_001): `afd_admission::Reply` records the destination — `&'static` connector, so no runtime string can be one — and a continuation copies it inside its own insert; the report reads it in its transaction (`afd_fleet/src/lease/obligation.rs`) and owes `afd_connector::Provider`, never the lease's model provider; the queue job carries the address; a `Permanent` verdict or `MAX_DELIVERY_CYCLES` spent abandons the row (`afd_outbound/src/abandon.rs`), and both recovery scans skip abandoned and destination-less rows (slots 918–920). Before it, every non-empty answer was owed to the model provider and re-appended every 300 seconds; the retired Zig daemon took the provider from the fleet's `core.connector_channels` binding and owed nothing for an unbound fleet.
 
