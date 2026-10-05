@@ -121,6 +121,7 @@ async fn a_fleet_outside_the_proven_workspace_is_refused_as_no_such_fleet() {
                 cron: NIGHTLY,
                 timezone: "UTC",
                 message: "run the nightly repair",
+                once: false,
             },
             &CronLane::token(),
             CronLane::now(),

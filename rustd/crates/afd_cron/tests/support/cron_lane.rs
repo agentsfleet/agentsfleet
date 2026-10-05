@@ -163,6 +163,7 @@ impl CronLane {
                     cron,
                     timezone: "UTC",
                     message: "run the nightly repair",
+                    once: false,
                 },
                 token,
                 Self::now(),

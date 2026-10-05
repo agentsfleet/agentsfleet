@@ -44,6 +44,7 @@ mod report;
 mod report_spool;
 mod storage_home;
 mod turns;
+mod verbs;
 mod worker_pool;
 
 #[cfg(test)]

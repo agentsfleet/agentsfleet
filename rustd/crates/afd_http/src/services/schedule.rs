@@ -16,8 +16,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_cron::{
-    Change, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused, Result as CronResult,
-    Schedule, ScheduleService, Schedules,
+    Change, DesiredStatus, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused,
+    Result as CronResult, Schedule, ScheduleService, Schedules,
 };
 use afd_crypto::entropy::Entropy;
 
@@ -88,17 +88,29 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         schedule: &Uuid7,
     ) -> impl Future<Output = CronResult<Option<FireTarget>>> + Send;
 
-    /// Appends one verified fire, at most once however often it arrives.
+    /// Appends one fire, at most once however often it arrives, and retires
+    /// a `once` schedule once its fire is admitted.
+    ///
+    /// The retirement is here rather than in either caller because the
+    /// QStash callback and a fleet's run-now are both fires, and a `once`
+    /// schedule run now must not fire again on its own expression.
     ///
     /// # Errors
-    /// Reports a queue that would not take the append.
+    /// Reports a ledger that would not record the fire, and a store that would
+    /// not take the retirement. Either is retried safely: a repeated fire
+    /// replays the admitted event, and a repeated retirement claims a row
+    /// already on its way out.
     fn fire(
         &self,
         schedule: &Uuid7,
         target: &FireTarget,
         message_id: &str,
+        now: UnixMillis,
     ) -> impl Future<Output = CronResult<Fired>> + Send;
 }
+
+/// A `once` schedule retired after its fire.
+const EVENT_RETIRED: &str = "schedule_once_retired";
 
 /// The store, the reconciler and the appender, as one value.
 ///
@@ -213,12 +225,26 @@ impl FleetSchedules for SchedulePlane {
         self.store().fire_target(schedule)
     }
 
-    fn fire(
+    async fn fire(
         &self,
         schedule: &Uuid7,
         target: &FireTarget,
         message_id: &str,
-    ) -> impl Future<Output = CronResult<Fired>> + Send {
-        self.fire.deliver(schedule, target, message_id)
+        now: UnixMillis,
+    ) -> CronResult<Fired> {
+        let fired = self.fire.deliver(schedule, target, message_id).await?;
+        if target.once {
+            let retiring = Change {
+                desired_status: Some(DesiredStatus::Deleting),
+                ..Change::default()
+            };
+            let retired = self.change(&target.fleet, schedule, retiring, now).await?;
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let fleet_id = target.fleet.as_str();
+            let schedule_id = schedule.as_str();
+            let claimed = retired.is_some();
+            tracing::info!(fleet_id, schedule_id, claimed, event = EVENT_RETIRED);
+        }
+        Ok(fired)
     }
 }

@@ -29,12 +29,24 @@ use afd_wire::event::EventType;
 use crate::error::Result;
 use crate::store::FireTarget;
 
-/// What a schedule-driven wake records as the actor.
+/// What every schedule-driven wake's actor begins with.
 ///
-/// Names the SCHEDULER and no person. A schedule was created by somebody, but
-/// the fire was not — recording its author would let an actor-shaped assertion
-/// certify that a human woke this fleet at 3am when a cron did.
-const ACTOR_SCHEDULE: &str = "schedule:qstash";
+/// The actor names the SCHEDULE and no person. A schedule was created by
+/// somebody, but the fire was not — recording its author would let an
+/// actor-shaped assertion certify that a human woke this fleet at 3am when a
+/// cron did. Naming the schedule rather than the scheduler is what lets a
+/// fleet list one schedule's runs, and it is the `cron:*` the dashboard
+/// already filters cron runs by.
+pub const ACTOR_PREFIX: &str = "cron:";
+
+/// The actor a fire of `schedule` records: [`ACTOR_PREFIX`], then its id.
+///
+/// The one place the two are joined, so the fire that writes the actor and the
+/// listing that reads a schedule's runs by it cannot spell it differently.
+#[must_use]
+pub fn schedule_actor(schedule: &Uuid7) -> String {
+    format!("{ACTOR_PREFIX}{}", schedule.as_str())
+}
 
 /// What one fire put on the stream.
 #[derive(Debug, Clone)]
@@ -78,6 +90,7 @@ impl Fire {
         // schedules, and a key that was the message id alone would let two
         // schedules firing on the same tick silence each other.
         let key = format!("{fleet}:{schedule}:{message_id}");
+        let actor = schedule_actor(schedule);
 
         let admitted = self
             .admissions
@@ -86,7 +99,7 @@ impl Fire {
                 key: Key::Repeated(&key),
                 fleet,
                 workspace: target.workspace.as_str(),
-                actor: ACTOR_SCHEDULE,
+                actor: &actor,
                 event_type: EventType::Cron,
                 request_json: &target.message,
                 // A schedule has no one to answer.

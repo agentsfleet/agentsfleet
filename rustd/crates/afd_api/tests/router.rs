@@ -212,6 +212,10 @@ const fn runner_is_mounted(route: RunnerRoute) -> bool {
             | RunnerRoute::ToolCalls
             | RunnerRoute::Bundle
             | RunnerRoute::CredentialsMint
+            | RunnerRoute::Schedules
+            | RunnerRoute::Schedule
+            | RunnerRoute::ScheduleRuns
+            | RunnerRoute::Messages
     )
 }
 

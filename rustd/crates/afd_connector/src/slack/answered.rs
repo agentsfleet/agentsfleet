@@ -58,6 +58,15 @@ pub struct AnswerMarker {
     pub fleet_id: String,
     /// The event it answers.
     pub event_id: String,
+    /// Which interim line of the run this is, or `None` for the answer.
+    ///
+    /// A run may speak before it answers, and every line it says lands in the
+    /// same thread under the same fleet and event. Without this, a repeat of
+    /// the final answer would find an interim line's marker, read it as the
+    /// answer, and post nothing. Absent on the wire for the answer, so every
+    /// marker posted before interim lines existed still reads as an answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<u32>,
 }
 
 impl AnswerMarker {

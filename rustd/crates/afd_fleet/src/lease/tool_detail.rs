@@ -45,7 +45,7 @@ pub(crate) struct DetailTarget {
 impl DetailTarget {
     /// Whether this lease still holds the fleet, and the post is its own.
     fn holds(&self, presented: u64) -> bool {
-        self.fence >= self.live_seq && u64::try_from(self.fence).is_ok_and(|own| own == presented)
+        crate::lease::standing::holds(self.fence, self.live_seq, presented)
     }
 }
 

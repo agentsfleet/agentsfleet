@@ -115,6 +115,10 @@ impl Services for Fleet {
         &self.live
     }
 
+    fn interjector(&self) -> &afd_outbound::Interjector {
+        &self.interjector
+    }
+
     fn analytics(&self) -> &Analytics {
         &self.analytics
     }

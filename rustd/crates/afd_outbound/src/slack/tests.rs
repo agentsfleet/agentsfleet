@@ -107,6 +107,7 @@ fn test_the_body_escapes_an_answer_carrying_json_punctuation() {
     let marker = AnswerMarker {
         fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
         event_id: "1700000000000-0".to_owned(),
+        part: None,
     };
     let round_tripped: Option<serde_json::Value> = serde_json::to_vec(&Message {
         channel: "C123",
@@ -134,6 +135,7 @@ fn every_post_carries_its_answer_marker() {
     let marker = AnswerMarker {
         fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
         event_id: "1700000000000-0".to_owned(),
+        part: None,
     };
     let body: Option<serde_json::Value> = serde_json::to_vec(&Message {
         channel: "C123",

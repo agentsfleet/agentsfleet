@@ -50,19 +50,22 @@ const VERB_SPLITS: usize = 1;
 
 /// Routes this daemon serves that the Zig one never did.
 ///
-/// Fifteen: `GET /v1/users/me`, plus the owned library collection and its
+/// Nineteen: `GET /v1/users/me`, plus the owned library collection and its
 /// removal — the Zig daemon had no removal to port, because slot 460 withheld
 /// the grant — plus the eight team-account routes: an account's invites, one
 /// invite, sending its email again, its members, one member, the invites
 /// waiting for the caller, accepting one, and a workspace's member names —
 /// plus the two tool-call record routes: the runner's post of each call in
 /// full, and the read of one call — plus the two shared-memory routes: the
-/// runner's recall past its window, and a fleet's memory-access grants.
+/// runner's recall past its window, and a fleet's memory-access grants — plus
+/// the four lease routes a running fleet manages its own schedules and speaks
+/// to its thread through: the schedules, one schedule, one schedule's runs, and
+/// the messages.
 ///
 /// A term of its own rather than a smaller [`ZIG_ROUTE_COUNT`], which is not
 /// ours to edit: an addition hidden inside it would make the next one
 /// indistinguishable from a route the port dropped.
-const POST_PORT_ADDITIONS: usize = 15;
+const POST_PORT_ADDITIONS: usize = 19;
 
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize =

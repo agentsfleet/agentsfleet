@@ -27,7 +27,7 @@
 macro_rules! row_columns {
     () => {
         "id::text, fleet_id::text, source, source_key, cron_expression, \
-         timezone, message, desired_status, sync_status, generation, \
+         timezone, message, once, desired_status, sync_status, generation, \
          sync_token::text, sync_lease_until, last_error, created_at, updated_at"
     };
 }
@@ -66,6 +66,14 @@ pub const LOCK_FLEET: &str = "SELECT f.id::text FROM core.fleets f \
 pub const COUNT_FOR_FLEET: &str =
     "SELECT COUNT(*) FROM core.fleet_schedules WHERE fleet_id = $1::uuid";
 
+/// How many schedules of one source this fleet holds.
+///
+/// Read under the same fleet lock as [`COUNT_FOR_FLEET`], for a create whose
+/// source carries a cap of its own: a fleet's own schedules are bounded below
+/// the fleet's whole complement.
+pub const COUNT_FOR_SOURCE: &str =
+    "SELECT COUNT(*) FROM core.fleet_schedules WHERE fleet_id = $1::uuid AND source = $2";
+
 /// Whether this fleet already registered that upstream key.
 pub const SOURCE_KEY_EXISTS: &str = "SELECT 1::bigint FROM core.fleet_schedules \
      WHERE fleet_id = $1::uuid AND source_key = $2 LIMIT 1";
@@ -95,9 +103,9 @@ pub const INSERT: &str = concat!(
     "INSERT INTO core.fleet_schedules \
      (id, fleet_id, source, source_key, cron_expression, timezone, message, \
      desired_status, sync_status, generation, sync_token, sync_lease_until, \
-     last_error, created_at, updated_at) \
+     last_error, created_at, updated_at, once) \
      VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, \
-     $11::uuid, $12, NULL, $13, $13) RETURNING ",
+     $11::uuid, $12, NULL, $13, $13, $14) RETURNING ",
     row_columns!()
 );
 
@@ -179,6 +187,6 @@ pub const DELETE_CLAIMED: &str = "DELETE FROM core.fleet_schedules \
 /// scheduler not yet knowing it was paused, and a paused FLEET is an operator
 /// who stopped the whole thing.
 pub const FIRE_TARGET: &str = "SELECT s.fleet_id::text, f.workspace_id::text, s.message, \
-     s.desired_status, f.status \
+     s.once, s.desired_status, f.status \
      FROM core.fleet_schedules s JOIN core.fleets f ON f.id = s.fleet_id \
      WHERE s.id = $1::uuid";

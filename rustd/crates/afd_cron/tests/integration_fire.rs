@@ -44,6 +44,7 @@ fn target(lane: &CronLane) -> FireTarget {
         fleet: lane.fleet_id(),
         workspace: lane.workspace_id(),
         message: MESSAGE.to_owned(),
+        once: false,
         desired_status: DesiredStatus::Active,
         fleet_status: "active".to_owned(),
     }

@@ -52,6 +52,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::poster::{Deliver, Verdict};
 
+mod verdict;
+
+use self::verdict::{classify, destination, failed, verdict_of};
+
 /// The method one answer is posted through.
 const METHOD_POST_MESSAGE: &str = "/chat.postMessage";
 
@@ -150,11 +154,12 @@ impl SlackPoster {
         }
     }
 
-    /// Both inputs, the address first and from the job alone.
+    /// Both inputs, the address first and from the job alone, and the marker
+    /// `part` names: `None` for the answer, a line number for an interim post.
     ///
     /// Answers a verdict directly on failure — see the module note on why
     /// nothing here is an error.
-    async fn inputs(&self, job: &OutboundDelivery) -> Result<Inputs, Verdict> {
+    async fn inputs(&self, job: &OutboundDelivery, part: Option<u32>) -> Result<Inputs, Verdict> {
         let destination = destination(job)?;
         let Ok(workspace) = Uuid7::parse(&job.workspace_id) else {
             // An identifier this daemon queued that will not parse is this
@@ -177,6 +182,7 @@ impl SlackPoster {
         let marker = AnswerMarker {
             fleet_id: job.fleet_id.clone(),
             event_id: job.event_id.clone(),
+            part,
         };
         Ok(Inputs {
             destination,
@@ -219,16 +225,23 @@ impl SlackPoster {
     }
 }
 
-impl Deliver for SlackPoster {
-    async fn deliver(&self, job: &OutboundDelivery) -> Verdict {
-        match self.inputs(job).await {
+impl SlackPoster {
+    /// Posts `job` under the marker `part` names, once.
+    pub(crate) async fn deliver_part(&self, job: &OutboundDelivery, part: Option<u32>) -> Verdict {
+        match self.inputs(job, part).await {
             Ok(inputs) => self.post(job, &inputs).await,
             Err(verdict) => verdict,
         }
     }
 
-    async fn redeliver(&self, job: &OutboundDelivery) -> Verdict {
-        let inputs = match self.inputs(job).await {
+    /// Posts `job` under the marker `part` names, unless the thread already
+    /// holds a message carrying that marker.
+    pub(crate) async fn redeliver_part(
+        &self,
+        job: &OutboundDelivery,
+        part: Option<u32>,
+    ) -> Verdict {
+        let inputs = match self.inputs(job, part).await {
             Ok(inputs) => inputs,
             Err(verdict) => return verdict,
         };
@@ -271,6 +284,17 @@ impl Deliver for SlackPoster {
     }
 }
 
+/// The answer: posted under the marker with no part.
+impl Deliver for SlackPoster {
+    fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+        self.deliver_part(job, None)
+    }
+
+    fn redeliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+        self.redeliver_part(job, None)
+    }
+}
+
 /// Everything one post needs, gathered before any vendor call begins.
 #[derive(Debug)]
 struct Inputs {
@@ -281,69 +305,6 @@ struct Inputs {
     author: Option<String>,
     /// Which answer this is, as the post carries it and a repeat looks for it.
     marker: AnswerMarker,
-}
-
-/// Where the answer goes, read from the job's recorded address.
-///
-/// Not JSON, missing a field, or naming an empty channel or thread — one
-/// answer for all of them, because a caller does the same thing with each: the
-/// job names nowhere this poster can post, and no retry changes that. Nothing
-/// has been read or requested when it answers.
-fn destination(job: &OutboundDelivery) -> Result<Thread, Verdict> {
-    Thread::parse(&job.destination)
-        .ok_or_else(|| failed(job, REASON_ADDRESS_UNREADABLE, Verdict::Permanent))
-}
-
-/// The verdict a status and a body earn, or the event a failure is logged as.
-///
-/// `Ok` for the one success. `Err` carries the event name, which the caller
-/// pairs with [`verdict_of`]. Split because the two are different facts: the
-/// verdict decides what happens next, and the event is what an operator greps
-/// — and §8A asks a port to keep the Zig's event spellings, which a verdict
-/// enum has no room to carry.
-fn classify(status: u16, payload: &str) -> Result<Verdict, &'static str> {
-    if status == STATUS_TOO_MANY_REQUESTS || status >= STATUS_SERVER_ERROR_FLOOR {
-        return Err("slack_post_retryable");
-    }
-    if status != STATUS_OK {
-        return Err("slack_post_unexpected_status");
-    }
-    // Slack answers 200 with `{"ok": false}` for app-level refusals — a channel
-    // that is gone, a scope that was never granted. The status alone would read
-    // every one of those as a delivered answer.
-    if serde_json::from_str::<Accepted>(payload).is_ok_and(|body| body.ok) {
-        Ok(Verdict::Delivered)
-    } else {
-        Err("slack_post_app_error")
-    }
-}
-
-/// The verdict a status earns once [`classify`] has refused it.
-const fn verdict_of(status: u16) -> Verdict {
-    if status == STATUS_TOO_MANY_REQUESTS || status >= STATUS_SERVER_ERROR_FLOOR {
-        Verdict::Retryable
-    } else {
-        // Includes the 200 that carried `{"ok": false}`: a bad scope or a
-        // deleted channel refuses identically on every retry.
-        Verdict::Permanent
-    }
-}
-
-/// Logs why a delivery did not land and returns the verdict it earns.
-///
-/// The event goes to the operator and never to Slack. One site, so a failure
-/// added later cannot be the one that forgets to say anything.
-fn failed(job: &OutboundDelivery, event: &'static str, verdict: Verdict) -> Verdict {
-    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let error_code = afd_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
-    let workspace_id = job.workspace_id.as_str();
-    let fleet_id = job.fleet_id.as_str();
-    let reason = match verdict {
-        Verdict::Delivered | Verdict::Permanent => "permanent",
-        Verdict::Retryable => "retryable",
-    };
-    tracing::warn!(error_code, workspace_id, fleet_id, reason, event);
-    verdict
 }
 
 #[cfg(test)]

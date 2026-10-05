@@ -26,6 +26,13 @@ pub struct View<'s> {
     /// What the fleet is asked to do.
     #[serde(borrow)]
     pub message: Cow<'s, str>,
+    /// Who made it: `api` for a person, `trigger` for the fleet's own
+    /// document, `fleet` for the fleet while it ran. Only a `fleet` schedule
+    /// can be changed by the fleet.
+    #[serde(borrow)]
+    pub source: Cow<'s, str>,
+    /// Whether it retires after its first fire.
+    pub once: bool,
     /// What the operator wants it to be doing.
     #[serde(borrow)]
     pub status: Cow<'s, str>,

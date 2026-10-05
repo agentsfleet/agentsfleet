@@ -7,7 +7,7 @@
 use afd_core::error_code;
 
 use super::{Error, ErrorKind, raise};
-use crate::client::Verb;
+use crate::client::{Method, Verb};
 
 const VERBS: [Verb; 10] = [
     Verb::Heartbeat,
@@ -42,7 +42,11 @@ fn every_verb_logs_under_its_own_family() {
             "{verb:?} logs in lower case"
         );
     }
-    assert!(Verb::Bundle.reads() && Verb::Hydrate.reads() && !Verb::Report.reads());
+    assert!(
+        Verb::Bundle.method() == Method::Get
+            && Verb::Hydrate.method() == Method::Get
+            && Verb::Report.method() == Method::Post
+    );
 }
 
 #[test]

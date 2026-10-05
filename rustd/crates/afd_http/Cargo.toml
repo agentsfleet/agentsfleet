@@ -43,6 +43,8 @@ afd_library.workspace = true
 afd_mail.workspace = true
 # Fleet memory, behind `services::FleetMemories` and the lease plane's verbs.
 afd_memory.workspace = true
+# The interim message poster, behind `Services::interjector`.
+afd_outbound.workspace = true
 afd_observability.workspace = true
 afd_runner.workspace = true
 afd_sse.workspace = true

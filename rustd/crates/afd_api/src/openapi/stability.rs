@@ -39,6 +39,10 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
         ],
     ),
     ("ToolCallRecordsStored", &["stored_count", "skipped_count"]),
+    // The runner's schedules and messages verbs are new, and so is the Rust
+    // runner that reads them; either may reshape what a reply carries.
+    ("ScheduleRun", &["event_id"]),
+    ("MessagePosted", &["delivered"]),
 ];
 
 /// Publishes `fields` as `beta`, answering the entries the document lacks.

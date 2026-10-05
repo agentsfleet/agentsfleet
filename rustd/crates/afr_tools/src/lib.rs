@@ -23,6 +23,7 @@ mod runtime;
 mod schema;
 #[cfg(test)]
 mod testing;
+pub mod verbs;
 mod web_fetch;
 
 pub use self::catalog::{Catalog, Entry, Selection};
@@ -30,3 +31,4 @@ pub use self::error::{Error, Result};
 pub use self::lease::Lease;
 pub use self::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput};
 pub use self::schema::Schema;
+pub use self::verbs::{CLOSED, Closed, LeaseVerbs, ScheduleCall, Unanswered};

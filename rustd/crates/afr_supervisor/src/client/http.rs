@@ -56,14 +56,10 @@ impl RunnerApi for HttpRunnerApi {
     async fn send(&self, call: Call) -> Result<Bytes> {
         // Relative, so a base carrying a path prefix keeps it.
         let url = self.base.join(call.path.trim_start_matches('/'))?;
+        let request = self.client.request(call.verb.method().http(), url);
         let request = match call.body {
-            Some(body) => self
-                .client
-                .post(url)
-                .header(CONTENT_TYPE, APPLICATION_JSON)
-                .body(body),
-            None if call.verb.reads() => self.client.get(url),
-            None => self.client.post(url),
+            Some(body) => request.header(CONTENT_TYPE, APPLICATION_JSON).body(body),
+            None => request,
         };
         let response = request.send().await.map_err(error::transport(call.verb))?;
         let status = response.status();

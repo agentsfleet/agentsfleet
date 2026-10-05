@@ -110,6 +110,8 @@ afd_billing.workspace = true
 afd_credential.workspace = true
 afd_crypto = { workspace = true, features = ["test-util"] }
 afd_fleet = { workspace = true, features = ["test-util"] }
+# The interim message poster the harness builds its services with.
+afd_outbound.workspace = true
 # The memory store the harness builds the plane with, and the in-memory store.
 afd_memory = { workspace = true, features = ["test-util"] }
 afd_fleet_lifecycle = { workspace = true, features = ["test-util"] }

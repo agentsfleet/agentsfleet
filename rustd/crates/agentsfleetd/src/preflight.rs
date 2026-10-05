@@ -40,7 +40,7 @@ pub use self::knobs::{
     OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB,
     PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB,
     QSTASH_TOKEN_KNOB, QSTASH_URL_KNOB, R2_ACCESS_KEY_ID_KNOB, R2_ACCOUNT_ID_KNOB, R2_BUCKET_KNOB,
-    R2_SECRET_ACCESS_KEY_KNOB, SESSION_CODE_PEPPER_KNOB,
+    R2_SECRET_ACCESS_KEY_KNOB, SESSION_CODE_PEPPER_KNOB, SLACK_API_URL_KNOB,
 };
 
 use self::knobs::{
@@ -180,6 +180,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
             platform_admin_workspace,
             qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
             qstash_url: optional(env, QSTASH_URL_KNOB),
+            slack_api_url: optional(env, SLACK_API_URL_KNOB),
             identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
             qstash_keys: signing_keys(env),
             sse_max_streams,

@@ -113,6 +113,20 @@ pub(super) const FLEET: &[Problem] = &[
         ),
     },
     Problem {
+        code: error_code::MESSAGE_NO_CHANNEL,
+        status: 409,
+        title: "Event has no thread to message",
+        hint: "The event came from an API steer, a webhook or a schedule, so no thread is waiting. Say it in the run's answer instead.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::MESSAGE_LIMIT_REACHED,
+        status: 429,
+        title: "Run message limit reached",
+        hint: "A run can post at most 8 messages before it answers. Put the rest in the run's answer.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424, matching the Zig entry's `.failed_dependency`. The fleet's own
         // request is well-formed; what is missing is a credential it depends
