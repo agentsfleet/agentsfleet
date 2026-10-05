@@ -15,8 +15,8 @@ pub(crate) type GitError = Box<dyn std::error::Error + Send + Sync>;
 /// The one alias this module's fallible steps spell.
 pub(crate) type GitResult<T> = std::result::Result<T, GitError>;
 
-/// The remote every mirror fetches from.
-const ORIGIN: &str = "origin";
+/// The remote every mirror fetches from, and every working copy names.
+pub(super) const ORIGIN: &str = "origin";
 /// The configuration key an extra request header is set under.
 const EXTRA_HEADER: &str = "http.extraHeader";
 

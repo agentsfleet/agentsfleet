@@ -78,8 +78,16 @@ impl LeaseRun<'_> {
             Err(failure) => {
                 let code = failure.code().as_str();
                 let detail = DETAIL_CHECKOUT;
+                let reason = failure.to_string();
                 let event = EVENT_CHECKOUT_FAILED;
-                tracing::warn!(error_code = code, lease_id, repository, event, detail);
+                tracing::warn!(
+                    error_code = code,
+                    lease_id,
+                    repository,
+                    reason,
+                    event,
+                    detail
+                );
                 Err(Box::new(failed(
                     FailureClass::StartupPosture,
                     DETAIL_CHECKOUT,

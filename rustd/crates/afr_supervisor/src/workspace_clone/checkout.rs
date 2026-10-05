@@ -12,7 +12,7 @@ use gix::bstr::ByteSlice as _;
 use gix::refs::transaction::{Change, LogChange, PreviousValue, RefEdit, RefLog};
 use gix::refs::{FullName, Target};
 
-use super::fetch::GitResult;
+use super::fetch::{GitResult, ORIGIN};
 
 /// Where a repository keeps its objects, under its git directory.
 const OBJECTS: &str = "objects";
@@ -33,8 +33,12 @@ const REFLOG_MESSAGE: &str = "checked out from the runner's mirror";
 const REMOTE: &str = "remote";
 /// The branch section a base branch's upstream is configured under.
 const BRANCH: &str = "branch";
-/// `origin`, as the configuration names it.
-const ORIGIN: &str = "origin";
+/// The keys of those sections the working copy sets.
+const URL: &str = "url";
+const FETCH: &str = "fetch";
+const MERGE: &str = "merge";
+/// The configuration file in a git directory.
+const CONFIG: &str = "config";
 /// Where `origin`'s branches are fetched to.
 const ORIGIN_REFSPEC: &str = "+refs/heads/*:refs/remotes/origin/*";
 /// The configuration keys the reference logs' committer is read from.
@@ -140,14 +144,14 @@ fn update(name: FullName, target: Target) -> RefEdit {
 /// Names `url` as `origin`, with no credential in it, and makes it `base`'s
 /// upstream, so `git status` reads like any fresh clone's.
 fn configure_origin(repository: &gix::Repository, url: &str, base: &str) -> GitResult<()> {
-    let path = repository.git_dir().join("config");
+    let path = repository.git_dir().join(CONFIG);
     let mut config =
         gix::config::File::from_path_no_includes(path.clone(), gix::config::Source::Local)?;
-    config.set_raw_value_by(REMOTE, Some(ORIGIN.into()), "url", url)?;
-    config.set_raw_value_by(REMOTE, Some(ORIGIN.into()), "fetch", ORIGIN_REFSPEC)?;
+    config.set_raw_value_by(REMOTE, Some(ORIGIN.into()), URL, url)?;
+    config.set_raw_value_by(REMOTE, Some(ORIGIN.into()), FETCH, ORIGIN_REFSPEC)?;
     config.set_raw_value_by(BRANCH, Some(base.into()), REMOTE, ORIGIN)?;
     let merge = format!("{LOCAL_BRANCHES}{base}");
-    config.set_raw_value_by(BRANCH, Some(base.into()), "merge", merge.as_str())?;
+    config.set_raw_value_by(BRANCH, Some(base.into()), MERGE, merge.as_str())?;
     let mut file = fs::File::create(&path)?;
     config.write_to(&mut file)?;
     Ok(())
