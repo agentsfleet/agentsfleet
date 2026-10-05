@@ -157,7 +157,7 @@ function editCopy(args: ToolArgs): ToolCopy {
   if (before === undefined) return plainCopy(VERBS.EDIT, `${pathArg(args)}${anchorOf(args)}`);
   const body: ToolBody = mayBeClipped(before) || mayBeClipped(after)
     ? { kind: TOOL_BODY.CLIPPED_EDIT }
-    : { kind: TOOL_BODY.EDIT, before, after };
+    : { kind: TOOL_BODY.DIFF, diff: lineDiff(before, after) };
   return { verbs: VERBS.EDIT, target: pathArg(args), body };
 }
 

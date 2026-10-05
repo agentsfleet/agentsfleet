@@ -135,7 +135,7 @@ describe("runner tool copy", () => {
     expect([diff.added, diff.removed]).toEqual([3, 1]);
     expect(patchDiff("*** Update File: a\n*** Move to: b\nplain").files).toEqual(["a", "b"]);
     const short = "*** Update File: a.md\n-x\n+y";
-    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: short })).toMatchObject({ target: "a.md", body: { kind: TOOL_BODY.PATCH } });
+    expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: short })).toMatchObject({ target: "a.md", body: { kind: TOOL_BODY.DIFF } });
     const cut = `*** Update File: a.md\n+${"x".repeat(ARGS_LEAF_MAX_BYTES)}`;
     expect(toolCopy(TOOL_NAME.APPLY_PATCH, { patch: cut })).toEqual({
       verbs: { running: "Editing", done: "Edited" }, target: `a.md${CLIP_MARK}`, body: { kind: TOOL_BODY.CLIPPED_EDIT },

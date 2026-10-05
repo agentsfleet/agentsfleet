@@ -127,7 +127,7 @@ function patchCopy(args: ToolArgs): ToolCopy {
   // Cut at the leaf cap, a patch's counts and lines would be a part shown as the whole.
   if (mayBeClipped(patch)) return { verbs: VERBS.EDIT, target: target.length > 0 ? `${target}${CLIP_MARK}` : "", body: { kind: TOOL_BODY.CLIPPED_EDIT } };
   if (files.length === 0) return plainCopy(VERBS.EDIT, compactArgs(args));
-  return { verbs: VERBS.EDIT, target, body: { kind: TOOL_BODY.PATCH, diff } };
+  return { verbs: VERBS.EDIT, target, body: { kind: TOOL_BODY.DIFF, diff } };
 }
 
 function planCopy(args: ToolArgs): ToolCopy {
