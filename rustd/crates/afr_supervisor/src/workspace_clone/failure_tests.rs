@@ -57,6 +57,29 @@ async fn a_missing_base_branch_refuses() {
     );
 }
 
+/// With no base to fall back on, a remote whose `HEAD` names no branch has
+/// no default branch to check out, and the checkout says so.
+#[tokio::test]
+async fn a_binding_with_no_base_refuses_a_remote_with_no_default_branch() {
+    let fixture = Fixture::new();
+    git(&fixture.remote(), &["checkout", "--quiet", "--detach"]);
+
+    let refused = fixture
+        .check_out(&fixture.workspace("lease_1"), "")
+        .await
+        .unwrap_err();
+
+    let message = refused.to_string();
+    assert!(
+        message.contains(REPOSITORY) && message.contains("checked out"),
+        "{message}"
+    );
+    let cause = std::error::Error::source(&refused)
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    assert_eq!(cause, "the repository's HEAD names no branch");
+}
+
 #[tokio::test]
 async fn an_unreadable_mirror_is_replaced() {
     let fixture = Fixture::new();

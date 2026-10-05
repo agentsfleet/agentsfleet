@@ -161,6 +161,30 @@ fn should_name_where_each_repository_is_checked_out_when_a_tool_runs_processes()
     );
 }
 
+/// The daemon sends a read binding with no base; the supervisor checks out
+/// the remote's default branch, and the prompt says so rather than naming
+/// an empty branch.
+#[test]
+fn should_name_the_default_branch_for_a_binding_with_no_base() {
+    let mut lease = offering(GIT.name());
+    lease.policy.repository_binding = Some(RepositoryBinding {
+        repositories: vec![REPOSITORY.into()],
+        access: RepositoryAccess::Read,
+        base_branch: "".into(),
+    });
+
+    let prompt = Prompt::new(&lease);
+
+    assert!(
+        prompt.instructions.ends_with(
+            "\n\n## Workspace\nagentsfleet/linkwarden is checked out at ./linkwarden on its \
+             default branch, with origin set"
+        ),
+        "{}",
+        prompt.instructions
+    );
+}
+
 #[test]
 fn should_name_no_checkout_when_no_tool_runs_processes() {
     let prompt = Prompt::new(&offering(FILE_READ.name()));
