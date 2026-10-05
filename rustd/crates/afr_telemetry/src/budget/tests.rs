@@ -5,8 +5,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Barrier};
 
 use opentelemetry::Context;
 use opentelemetry::trace::{
@@ -252,4 +252,110 @@ fn the_production_clock_starts_at_zero_and_the_sampler_renders() {
     let sampler = LeaseSampler::new(Limits::default(), Monotonic::start(), || {});
     let rendered = format!("{sampler:?} {:?}", sampler.reaper());
     assert!(rendered.contains("per_lease"), "{rendered}");
+}
+
+/// Workers released together onto one lease, as a burst of tool calls lands.
+const WORKERS: usize = 128;
+
+/// Calls each worker makes.
+const CALLS_PER_WORKER: u32 = 4;
+
+/// Runs `CALLS_PER_WORKER` children on each of `WORKERS` threads, all released
+/// off one barrier, under one lease of `pipeline`; ends the lease after.
+fn contend(pipeline: &Pipeline) {
+    let lease = pipeline.lease();
+    let barrier = Barrier::new(WORKERS);
+    std::thread::scope(|scope| {
+        for _worker in 0..WORKERS {
+            scope.spawn(|| {
+                barrier.wait();
+                pipeline.children(&lease, CALLS_PER_WORKER);
+            });
+        }
+    });
+    lease.span().end();
+}
+
+/// Every span started, the root included.
+fn started() -> u64 {
+    u64::try_from(WORKERS).unwrap_or(u64::MAX) * u64::from(CALLS_PER_WORKER) + 1
+}
+
+/// A lease under real contention keeps exactly its budget and counts every
+/// other span: no reservation lost to a race, none counted twice.
+///
+/// Repeated, because a lost compare-and-swap shows up as an off-by-some only
+/// on the run where two workers collide.
+#[test]
+fn contended_children_never_overrun_a_lease() {
+    for _run in 0..5 {
+        let pipeline = Pipeline::new(Limits {
+            per_lease: 64,
+            per_second: u32::MAX,
+        });
+
+        contend(&pipeline);
+
+        assert_eq!(pipeline.kept(), 64, "exactly the lease's budget left");
+        assert_eq!(
+            u64::try_from(pipeline.kept()).unwrap_or(u64::MAX) + pipeline.shed(),
+            started(),
+            "every span is either kept or counted"
+        );
+        assert_eq!(pipeline.held(), 0);
+    }
+}
+
+/// The per-second window under the same contention admits exactly its
+/// budget, and a shed child hands its lease reservation back.
+#[test]
+fn contended_children_never_overrun_the_second() {
+    for _run in 0..5 {
+        let pipeline = Pipeline::new(Limits {
+            per_lease: u32::MAX,
+            per_second: 100,
+        });
+
+        contend(&pipeline);
+
+        assert_eq!(
+            pipeline.kept(),
+            100 + 1,
+            "the second's budget, and the root"
+        );
+        assert_eq!(
+            u64::try_from(pipeline.kept()).unwrap_or(u64::MAX) + pipeline.shed(),
+            started()
+        );
+    }
+}
+
+/// Every lease a runner at its worker ceiling holds at once is tracked, so
+/// none of their children is shed as untracked.
+#[test]
+fn every_lease_a_full_runner_holds_is_tracked() {
+    let pipeline = Pipeline::new(Limits::default());
+    let workers = usize::try_from(afd_core::limits::MAX_WORKERS).unwrap_or(usize::MAX);
+    let leases: Vec<Context> = (0..workers).map(|_lease| pipeline.lease()).collect();
+
+    for lease in &leases {
+        pipeline.children(lease, 1);
+    }
+
+    assert_eq!(pipeline.shed(), 0, "a full runner's every lease has a slot");
+    assert!(TRACKED_LEASES >= workers);
+    for lease in leases {
+        lease.span().end();
+    }
+}
+
+/// Two traces sharing their low half get different keys: the key folds both
+/// halves, so two leases never share a slot by sharing half an id.
+#[test]
+fn traces_differing_only_in_their_high_half_get_different_keys() {
+    let low = 5_u128;
+    let first = TraceId::from((1_u128 << 64) | low);
+    let second = TraceId::from((2_u128 << 64) | low);
+
+    assert_ne!(key(first), key(second));
 }

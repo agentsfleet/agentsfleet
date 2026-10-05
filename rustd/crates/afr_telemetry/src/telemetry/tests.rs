@@ -12,6 +12,7 @@ use afd_otlp::OTEL_ENDPOINT_KNOB;
 use tracing_subscriber::layer::SubscriberExt as _;
 
 use super::{EVENT_DISABLED, EVENT_STARTED, Telemetry, announce_disabled};
+use crate::budget::{MAX_LEASE_SPANS, RUNNER_SPANS_PER_SECOND};
 use crate::endpoint::Endpoint;
 
 /// A collector that refuses every connection, promptly: what it loses, the
@@ -72,5 +73,40 @@ fn the_export_lines_name_the_knob_and_never_the_endpoint() {
     assert!(
         !rendered.contains(REFUSING),
         "the endpoint's value never reaches a log: {rendered}"
+    );
+}
+
+/// The production pipeline carries the span budget: a lease far past it
+/// hands the exporter no more than one lease's worth.
+///
+/// Read through the loss count against a collector that refuses everything,
+/// so the count is exactly what the sampler let through. One second admits
+/// at least its own budget; no lease, however many seconds it spans, passes
+/// its per-lease cap.
+#[test]
+fn the_pipeline_sheds_a_lease_past_its_budget() {
+    let endpoint = Endpoint::from_env(&MapEnv::from_pairs([(OTEL_ENDPOINT_KNOB, REFUSING)]))
+        .expect("every knob reads")
+        .expect("an endpoint is configured");
+    let telemetry = Telemetry::install(&endpoint).expect("the pipeline builds");
+    let subscriber = tracing_subscriber::registry().with(telemetry.layer());
+    let calls = MAX_LEASE_SPANS * 2;
+
+    tracing::subscriber::with_default(subscriber, || {
+        let lease = tracing::info_span!(target: RUNNER_SCOPE_NAME, "runner.lease");
+        let _entered = lease.enter();
+        for _call in 0..calls {
+            tracing::info_span!(target: RUNNER_SCOPE_NAME, "execute_tool").in_scope(|| {});
+        }
+    });
+    telemetry.flush();
+
+    let sent = telemetry.exports().spans_lost().count();
+    let floor = RUNNER_SPANS_PER_SECOND as usize + 1;
+    let cap = MAX_LEASE_SPANS as usize;
+    assert!(
+        (floor..=cap).contains(&sent),
+        "{sent} of {} spans reached the exporter; the budget admits {floor} to {cap}",
+        calls + 1
     );
 }
