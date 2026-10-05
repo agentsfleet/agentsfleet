@@ -8,8 +8,11 @@
 //! over the line and the one before it, so a tag names a line by its text and
 //! its neighbour, not its number alone. An edit names a line, or a range, by
 //! tag. The tag is looked for within a radius of the line it was read at, so
-//! an edit lands after lines moved above it, and is refused when the line
-//! changed or the tag matches twice. A stale read never lands.
+//! an edit lands after lines moved above it, and is refused when no line in
+//! reach carries the tag or two do. Twelve bits name a line well, not
+//! uniquely: a line that changed can still match another line in reach whose
+//! text hashes alike, about one stale edit in forty, and that line is edited.
+//! The width is nullclaw's, so the tags stay the same under either runner.
 
 use std::fmt::Write as _;
 
@@ -337,3 +340,11 @@ impl<'tag> Target<'tag> {
 #[cfg(test)]
 #[path = "hashed/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "hashed/tag_tests.rs"]
+mod tag_tests;
+
+#[cfg(test)]
+#[path = "hashed/range_tests.rs"]
+mod range_tests;

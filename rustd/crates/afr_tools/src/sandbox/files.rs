@@ -39,18 +39,22 @@ pub(super) fn settled(answer: Answer) -> ToolOutput {
     answer.unwrap_or_else(identity)
 }
 
-/// `path` relative to the workspace, or the refusal: an absolute path must be
-/// under `/workspace`, and no path may climb out by name. A link out is the
-/// executor's to catch, through the one handle it opens everything under.
+/// `path` relative to the workspace, or the refusal: it must name something
+/// below the workspace root, an absolute path must be under `/workspace`, and
+/// no path may climb out by name. A link out is the executor's to catch,
+/// through the one handle it opens everything under.
 pub(super) fn inside(path: &str) -> Result<&str, ToolOutput> {
-    if path.is_empty() {
+    let given = Path::new(path);
+    let relative = given.strip_prefix(WORKSPACE_ROOT).unwrap_or(given);
+    if !relative
+        .components()
+        .any(|part| matches!(part, Component::Normal(_)))
+    {
         return Err(ToolOutput::failed(
             ToolErrorCode::InvalidArguments,
             "path must name a file in the workspace",
         ));
     }
-    let given = Path::new(path);
-    let relative = given.strip_prefix(WORKSPACE_ROOT).unwrap_or(given);
     let escapes = relative.is_absolute()
         || relative
             .components()
@@ -293,3 +297,11 @@ async fn edit(context: &ToolContext<'_, '_>, arguments: &Replacement) -> Answer 
 #[cfg(test)]
 #[path = "files/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "files/gate_tests.rs"]
+mod gate_tests;
+
+#[cfg(test)]
+#[path = "files/limits_tests.rs"]
+mod limits_tests;

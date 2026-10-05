@@ -35,6 +35,18 @@ pub(crate) enum ErrorKind {
         /// The repository, as the policy spells it.
         name: String,
     },
+
+    /// The policy binds two repositories that would land in one directory.
+    #[error(
+        "the policy binds two repositories this runner would check out in one directory: \
+         {first} and {second}"
+    )]
+    SharedDirectory {
+        /// The first of the two, as the policy spells it.
+        first: String,
+        /// The second.
+        second: String,
+    },
 }
 
 /// The one alias every signature in this crate spells.
@@ -45,9 +57,9 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Unhosted { .. } | ErrorKind::InvalidRepository { .. } => {
-                error_code::AGENTSFLEET_INVALID_CONFIG
-            }
+            ErrorKind::Unhosted { .. }
+            | ErrorKind::InvalidRepository { .. }
+            | ErrorKind::SharedDirectory { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
         }
     }
 
@@ -56,7 +68,7 @@ impl Error {
     pub fn unhosted_tool(&self) -> Option<&str> {
         match self.kind() {
             ErrorKind::Unhosted { name } => Some(name),
-            ErrorKind::InvalidRepository { .. } => None,
+            ErrorKind::InvalidRepository { .. } | ErrorKind::SharedDirectory { .. } => None,
         }
     }
 }
@@ -66,6 +78,14 @@ impl Error {
 pub(crate) fn invalid_repository(name: &str) -> Error {
     Error::from(ErrorKind::InvalidRepository {
         name: name.to_owned(),
+    })
+}
+
+/// A policy binding `first` and `second`, which would land in one directory.
+pub(crate) fn shared_directory(first: &str, second: &str) -> Error {
+    Error::from(ErrorKind::SharedDirectory {
+        first: first.to_owned(),
+        second: second.to_owned(),
     })
 }
 

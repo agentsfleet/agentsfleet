@@ -5,20 +5,19 @@
 
 use std::os::unix::fs::symlink;
 
-use afr_executor::MAX_READ_BYTES;
 use serde_json::{Value, json};
 
 use crate::catalog::{Entry, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_READ, FILE_WRITE};
 use crate::lease::Lease;
-use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::runtime::ToolErrorCode;
 use crate::sandbox::ScriptedExecutor;
-use crate::testing::{Live, call, call_in, hosted, offered};
+use crate::testing::{Live, call_in, hosted, offered};
 
 /// The argument names the calls spell.
-const PATH: &str = "path";
+pub(super) const PATH: &str = "path";
 const CONTENT: &str = "content";
-const OLD_TEXT: &str = "old_text";
-const NEW_TEXT: &str = "new_text";
+pub(super) const OLD_TEXT: &str = "old_text";
+pub(super) const NEW_TEXT: &str = "new_text";
 
 /// The file the round trip works on, and what lands in it.
 const TODO: &str = "notes/todo.txt";
@@ -28,7 +27,7 @@ const TWO: &str = "two\n";
 const PATH_LEAVES: &str = "leaves the workspace";
 
 /// The five plain file tools' names.
-const FILE_TOOLS: [&Entry; 5] = [
+pub(super) const FILE_TOOLS: [&Entry; 5] = [
     &FILE_READ,
     &FILE_WRITE,
     &FILE_APPEND,
@@ -37,7 +36,7 @@ const FILE_TOOLS: [&Entry; 5] = [
 ];
 
 /// Arguments for `entry` on `path`, with whatever else it takes.
-fn on(entry: &Entry, path: &str) -> Value {
+pub(super) fn on(entry: &Entry, path: &str) -> Value {
     match entry.name() {
         name if name == FILE_WRITE.name() || name == FILE_APPEND.name() => {
             json!({PATH: path, CONTENT: "x"})
@@ -273,111 +272,6 @@ async fn an_edit_replaces_the_first_occurrence_only() {
     live.stop().await;
 }
 
-/// A file longer than one read carries is read cut and says so, and is
-/// refused for an edit, which would write it back cut.
-#[tokio::test]
-async fn a_file_past_one_read_is_cut_for_reading_and_refused_for_editing() {
-    let live = Live::start().await;
-    let length = usize::try_from(MAX_READ_BYTES).unwrap() + 1;
-    std::fs::write(live.root.join("big.txt"), vec![b'x'; length]).unwrap();
-    let (catalog, _sent) = hosted();
-    let selection = catalog
-        .select(&[FILE_READ.name(), FILE_EDIT.name()])
-        .unwrap();
-    let mut lease = Lease::default();
-
-    let read = call_in(
-        offered(&selection, &FILE_READ),
-        &live.client,
-        &mut lease,
-        json!({PATH: "big.txt"}),
-    )
-    .await;
-    let edit = call_in(
-        offered(&selection, &FILE_EDIT),
-        &live.client,
-        &mut lease,
-        json!({PATH: "big.txt", OLD_TEXT: "x", NEW_TEXT: "y"}),
-    )
-    .await;
-
-    assert!(
-        read.text.ends_with(&format!(
-            "... the file continues past {MAX_READ_BYTES} bytes ..."
-        )),
-        "{}",
-        read.text.len()
-    );
-    assert_eq!(read.error_code, None);
-    assert_eq!(
-        edit.error_code,
-        Some(ToolErrorCode::FileTooLarge),
-        "{edit:?}"
-    );
-    live.stop().await;
-}
-
-#[tokio::test]
-async fn a_file_that_is_not_text_is_read_lossily_and_refused_for_editing() {
-    let live = Live::start().await;
-    std::fs::write(live.root.join("blob"), [0xff, 0xfe, b'a']).unwrap();
-    let (catalog, _sent) = hosted();
-    let selection = catalog
-        .select(&[FILE_READ.name(), FILE_EDIT.name()])
-        .unwrap();
-    let mut lease = Lease::default();
-
-    let read = call_in(
-        offered(&selection, &FILE_READ),
-        &live.client,
-        &mut lease,
-        json!({PATH: "blob"}),
-    )
-    .await;
-    let edit = call_in(
-        offered(&selection, &FILE_EDIT),
-        &live.client,
-        &mut lease,
-        json!({PATH: "blob", OLD_TEXT: "a", NEW_TEXT: "b"}),
-    )
-    .await;
-
-    assert_eq!(read.text, "\u{fffd}\u{fffd}a");
-    assert_eq!(
-        edit.error_code,
-        Some(ToolErrorCode::InvalidArguments),
-        "{edit:?}"
-    );
-    assert!(edit.text.contains("is not text"), "{}", edit.text);
-    live.stop().await;
-}
-
-#[tokio::test]
-async fn an_empty_path_is_invalid_and_a_call_without_a_sandbox_is_refused() {
-    let executor = ScriptedExecutor::default();
-    let (catalog, _sent) = hosted();
-    let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
-    let selection = catalog.select(&names).unwrap();
-    let mut lease = Lease::default();
-
-    for entry in FILE_TOOLS {
-        let tool = offered(&selection, entry);
-        let empty: ToolOutput = call_in(tool, &executor, &mut lease, on(entry, "")).await;
-        let unsandboxed = call(tool, &mut lease, on(entry, "a.txt")).await;
-
-        assert_eq!(
-            empty.error_code,
-            Some(ToolErrorCode::InvalidArguments),
-            "{empty:?}"
-        );
-        assert_eq!(
-            unsandboxed.error_code,
-            Some(ToolErrorCode::SandboxUnavailable),
-            "{unsandboxed:?}"
-        );
-    }
-}
-
 /// A refusal that is neither a path out nor a missing name reads back as the
 /// sandbox being unavailable, in the executor's own words.
 #[tokio::test]
@@ -407,51 +301,4 @@ async fn a_directory_given_as_a_file_reads_the_executors_own_sentence() {
         refused.text
     );
     live.stop().await;
-}
-
-/// Over every path built from these parts, what the gate lets through is
-/// relative and never climbs, and what it refuses carries the code.
-#[test]
-fn every_accepted_path_is_relative_and_never_climbs() {
-    const PARTS: [&str; 7] = ["", ".", "..", "a", "a b", "/workspace", "/etc"];
-    let mut accepted = 0;
-    let mut refused = 0;
-    for first in PARTS {
-        for second in PARTS {
-            for third in PARTS {
-                let path = [first, second, third].join("/");
-                match super::inside(&path) {
-                    Ok(relative) => {
-                        accepted += 1;
-                        let relative = std::path::Path::new(relative);
-                        assert!(!relative.is_absolute(), "{path:?} -> {relative:?}");
-                        assert!(
-                            !relative
-                                .components()
-                                .any(|part| part == std::path::Component::ParentDir),
-                            "{path:?} -> {relative:?}"
-                        );
-                    }
-                    Err(output) => {
-                        refused += 1;
-                        assert!(
-                            matches!(
-                                output.error_code,
-                                Some(
-                                    ToolErrorCode::PathNotAllowed | ToolErrorCode::InvalidArguments
-                                )
-                            ),
-                            "{path:?} -> {output:?}"
-                        );
-                    }
-                }
-            }
-        }
-    }
-    assert!(
-        accepted > 0 && refused > 0,
-        "{accepted} accepted, {refused} refused"
-    );
-    assert_eq!(super::inside("/workspace/a/b").unwrap(), "a/b");
-    assert_eq!(super::inside("a/./b").unwrap(), "a/./b");
 }

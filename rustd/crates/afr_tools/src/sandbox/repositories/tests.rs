@@ -80,3 +80,29 @@ fn should_refuse_a_bound_name_that_is_not_owner_and_name() {
         );
     }
 }
+
+/// Two bound repositories of one name would land in one directory; the lease
+/// is refused naming both, rather than failing its checkout part way.
+#[test]
+fn should_refuse_two_bound_repositories_that_share_a_directory() {
+    let mut policy = offering(&[SHELL.name()]);
+    if let Some(binding) = policy.repository_binding.as_mut() {
+        binding.repositories = vec![
+            Cow::Borrowed("acme/widgets"),
+            Cow::Borrowed("acme/gadgets"),
+            Cow::Borrowed("beta/widgets"),
+        ];
+    }
+
+    let refused = checkouts(&policy).unwrap_err();
+
+    let said = refused.to_string();
+    assert!(
+        said.contains("acme/widgets") && said.contains("beta/widgets"),
+        "{said}"
+    );
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::AGENTSFLEET_INVALID_CONFIG
+    );
+}

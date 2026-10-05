@@ -83,8 +83,6 @@ pub enum ToolErrorCode {
     /// The process's ending never reached the caller: its sandbox or the
     /// executor went away.
     Interrupted,
-    /// The run already keeps as many sessions open as it may.
-    SessionCapReached,
     /// The session named is not open: it never was, or its process ended.
     SessionNotFound,
     /// The subcommand reaches a remote, and the sandbox has no network.
@@ -136,7 +134,6 @@ impl ToolErrorCode {
             Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
             Self::TimedOut => "timed_out",
             Self::Interrupted => "interrupted",
-            Self::SessionCapReached => "session_cap_reached",
             Self::SessionNotFound => "session_not_found",
             Self::SubcommandNotAllowed => "subcommand_not_allowed",
             Self::PathNotAllowed => "path_not_allowed",

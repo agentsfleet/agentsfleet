@@ -16,8 +16,8 @@ use serde_json::json;
 
 use crate::catalog::{Catalog, EXEC_COMMAND, WRITE_STDIN};
 use crate::lease::Lease;
-use crate::runtime::ToolOutput;
-use crate::testing::call_in;
+use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::testing::{Live, call_in, hosted, offered};
 
 /// How long the suite waits on the executor before failing.
 const PATIENCE: Duration = Duration::from_secs(20);
@@ -86,4 +86,44 @@ async fn test_exec_session_survives_across_calls() {
         .expect("the executor stops once its client hangs up")
         .unwrap()
         .unwrap();
+}
+
+/// A working directory the workspace does not have is the model's mistake,
+/// and reads back as one: `file_not_found`, never the sandbox being gone. A
+/// link out of the workspace reads as the path refused.
+#[tokio::test]
+async fn a_missing_or_escaping_workdir_reads_as_the_callers_mistake() {
+    let live = Live::start().await;
+    std::os::unix::fs::symlink(live.outside(), live.root.join("out")).unwrap();
+    let (catalog, _sent) = hosted();
+    let selection = catalog.select(&[EXEC_COMMAND.name()]).unwrap();
+    let exec = offered(&selection, &EXEC_COMMAND);
+    let mut lease = Lease::default();
+
+    let missing = call_in(
+        exec,
+        &live.client,
+        &mut lease,
+        json!({"cmd": "true", "workdir": "gone"}),
+    )
+    .await;
+    let escaping = call_in(
+        exec,
+        &live.client,
+        &mut lease,
+        json!({"cmd": "true", "workdir": "out"}),
+    )
+    .await;
+
+    assert_eq!(
+        missing.error_code,
+        Some(ToolErrorCode::FileNotFound),
+        "{missing:?}"
+    );
+    assert_eq!(
+        escaping.error_code,
+        Some(ToolErrorCode::PathNotAllowed),
+        "{escaping:?}"
+    );
+    live.stop().await;
 }

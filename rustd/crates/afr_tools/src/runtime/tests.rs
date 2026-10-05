@@ -41,7 +41,6 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
         ),
         (ToolErrorCode::TimedOut, "timed_out"),
         (ToolErrorCode::Interrupted, "interrupted"),
-        (ToolErrorCode::SessionCapReached, "session_cap_reached"),
         (ToolErrorCode::SessionNotFound, "session_not_found"),
         (
             ToolErrorCode::SubcommandNotAllowed,

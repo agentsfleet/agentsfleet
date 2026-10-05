@@ -38,8 +38,9 @@ pub struct Checkout<'p> {
 /// when an offered tool runs processes, none otherwise.
 ///
 /// # Errors
-/// A bound name that is not `owner/name` of plain path segments: the lease is
-/// refused rather than cloned somewhere else.
+/// A bound name that is not `owner/name` of plain path segments, or two bound
+/// names that would land in one directory: the lease is refused rather than
+/// cloned somewhere else.
 pub fn checkouts<'p>(policy: &'p ExecutionPolicy<'_>) -> Result<Vec<Checkout<'p>>> {
     let runs_processes = policy
         .tools
@@ -52,11 +53,26 @@ pub fn checkouts<'p>(policy: &'p ExecutionPolicy<'_>) -> Result<Vec<Checkout<'p>
     else {
         return Ok(Vec::new());
     };
-    binding
+    let found: Vec<Checkout<'p>> = binding
         .repositories
         .iter()
         .map(|repository| checkout(repository, &binding.base_branch))
-        .collect()
+        .collect::<Result<_>>()?;
+    match sharing_a_directory(&found) {
+        Some((first, second)) => Err(error::shared_directory(first, second)),
+        None => Ok(found),
+    }
+}
+
+/// The first two of `found` that would land in one directory, if any do.
+fn sharing_a_directory<'p>(found: &[Checkout<'p>]) -> Option<(&'p str, &'p str)> {
+    found.iter().enumerate().find_map(|(index, first)| {
+        found
+            .get(index + 1..)?
+            .iter()
+            .find(|second| second.name == first.name)
+            .map(|second| (first.repository, second.repository))
+    })
 }
 
 /// `repository` at `base`, split into its owner and name.
