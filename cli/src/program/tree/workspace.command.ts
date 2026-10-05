@@ -4,7 +4,7 @@
 // tenant owns and offers the verbs that read or set it.
 
 import { Option } from "effect";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
   workspaceAddEffect,

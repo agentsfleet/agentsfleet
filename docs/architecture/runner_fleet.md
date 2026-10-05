@@ -590,6 +590,8 @@ A dedicated low-latency cancel channel can come later; heartbeat-carried revocat
 
 A lease runs in a fresh sandbox or a warm slot. A lease that fails, is interrupted or is superseded tears its sandbox down.
 
+The Rust runner's per-lease sandbox, its measured cold start and where its bytes live are in [Runner execution](./runner_execution.md) §"A lease's sandbox today"; a lease whose tools all run in the supervisor starts no sandbox at all.
+
 A lease that ends **processed** leaves its sandbox **held** for the same fleet: frozen, `/run/creds` emptied, its workspace files and running processes kept for an idle window ([Runner Execution](./runner_execution.md) §"Workspace between leases"). The fleet's next lease continues in it. Two guards keep that safe. First, every lease still carries fresh config and secrets (config is never cached, see below), and a hold whose limits, toolbox or network policy changed is destroyed rather than reused. Second, sticky routing stays a *hint*: the holder claims the fleet first only while it heartbeats and the hold is unexpired (§Datastore topology), and otherwise any eligible runner takes the event in a fresh sandbox. A Fleet is never stuck waiting for one runner.
 
 ## Config

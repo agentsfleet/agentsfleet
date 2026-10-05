@@ -15,6 +15,7 @@ import {
   backfillFleetEventsUrl,
   backfillWorkspaceEventsUrl,
   fleetEventDetailUrl,
+  fleetToolCallUrl,
   streamFleetEventsUrl,
   streamWorkspaceEventsUrl,
 } from "@/lib/api/events-types";
@@ -24,6 +25,7 @@ const APP_DIR = path.join(__dirname, "..", "app");
 const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "z_1";
 const EVENT_ID = "1790573387481-566";
+const CALL_ID = "7:3";
 
 // Every browser-facing URL whose request MUST be intercepted by a Route
 // Handler that injects the api-audience Bearer server-side.
@@ -33,6 +35,7 @@ const PROXY_URLS = [
   backfillWorkspaceEventsUrl(WORKSPACE_ID),
   backfillFleetEventsUrl(WORKSPACE_ID, FLEET_ID),
   fleetEventDetailUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID),
+  fleetToolCallUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID, CALL_ID),
   steerMessagesUrl(WORKSPACE_ID, FLEET_ID),
 ];
 
@@ -87,7 +90,8 @@ describe("token-minting proxy routes stay out of rewrite prefixes", () => {
         .split("?")[0]!
         .replace(WORKSPACE_ID, "PARAM")
         .replace(FLEET_ID, "PARAM")
-        .replace(EVENT_ID, "PARAM");
+        .replace(EVENT_ID, "PARAM")
+        .replace(encodeURIComponent(CALL_ID), "PARAM");
       expect(handlers, `no route handler backs ${url}`).toContain(shape);
     }
   });

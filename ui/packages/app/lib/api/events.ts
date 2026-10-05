@@ -77,6 +77,32 @@ export type EventDetail = EventRow & {
    * failed before producing one.
    */
   response_text: string | null;
+  /**
+   * The run's tool calls as the runner reported them at settle, so a reload
+   * shows the same rows the live tail did. `null` when none were recorded;
+   * absent from a daemon that predates the column.
+   */
+  tool_calls?: SavedToolTrace | null;
+};
+
+/** `afd_wire::tool_trace::ToolTrace`: the calls in order, and how many the
+ * runner dropped to stay inside the trace's bounds. */
+export type SavedToolTrace = {
+  calls: SavedToolCall[];
+  omitted_call_count: number;
+};
+
+export type SavedToolCall = {
+  /** Fenced, `{fence}:{n}` — the id the full-call read takes. */
+  call_id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  status: string;
+  output_head?: string;
+  output_tail?: string;
+  output_line_count?: number;
+  exit_code?: number;
+  duration_ms: number;
 };
 
 export async function listFleetEvents(
@@ -221,12 +247,18 @@ export type ActivityLiveFrame =
 
   | { kind: typeof FRAME_KIND.CHUNK; event_id: string; text: string; text_kind?: StreamTextKind; stream_start?: boolean; stream_contiguous?: boolean; stream_seq?: number }
 
+  // The outcome fields are absent from a runner that reports none.
   | {
       kind: typeof FRAME_KIND.TOOL_CALL_COMPLETED;
       event_id: string;
       name: string;
       ms: number;
       call_id?: string;
+      status?: string;
+      output_head?: string;
+      output_tail?: string;
+      output_line_count?: number;
+      exit_code?: number;
     }
 
   // The terminal row as the events list serves it, less the two scope columns

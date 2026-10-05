@@ -11,7 +11,7 @@
 // cannot configure the thing that is about to execute it.
 
 import { Option } from "effect";
-import { Command, Flag } from "effect/unstable/cli";
+import { Command, Flag } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import { doctorEffect } from "../../commands/core-ops.ts";
 import { withManagedExitCode } from "../../runtime/exit-code.service.ts";

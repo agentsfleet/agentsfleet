@@ -1,25 +1,26 @@
 "use client";
 
 import { createContext, memo, useCallback, useContext, useDeferredValue, useEffect, useRef, useState, type ReactNode } from "react";
-import { BrailleSpinner, CopyButton } from "@agentsfleet/design-system";
+import { CopyButton } from "@agentsfleet/design-system";
 import { MessagePrimitive, groupPartByType, type MessageState } from "@assistant-ui/react";
 
-import { loadingPhrase, loadingVerbFor } from "@/components/layout/loading-verbs";
 import { truncate } from "@/lib/utils";
 import { FLEET_OUTCOME_CLASS, FleetFailedOutcome } from "./FleetFailedOutcome";
 import { FleetMarkdown, FleetStreamingMarkdown } from "./FleetMarkdown";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
+import { FleetExplored } from "./FleetExplored";
+import { FleetReplyFigures, OmittedCalls, Waiting } from "./FleetReplyFigures";
 import { FleetThought } from "./FleetThought";
 import { ToolCallList, ToolCallRow } from "./FleetToolCalls";
 import { messageOutcome } from "./fleetFailureCopy";
-import { readQueued, readReasoningSpan, readReplyRecovering, readSubmittedAtMs, readText } from "./fleetMessageReaders";
+import { readOmittedCallCount, readQueued, readReasoningSpan, readReplyFigures, readReplyRecovering, readSubmittedAtMs, readText } from "./fleetMessageReaders";
 import { STATUS_AGENT_ERROR } from "./fleetMessageStatus";
+import { EXPLORE_TOOLS } from "./tool-call-explore";
+import { STATUS_RUNNING } from "./fleetReplyMessage";
 import { REPLY_ID_SUFFIX } from "./useFleetThreadEntries";
 import { useFirstVisiblePaint } from "./useFirstVisiblePaint";
 
 const STREAM_CURSOR = "▍";
-const WORKING_LABEL = "Working";
-const QUEUED_LABEL = "Queued";
 const COPY_REPLY_LABEL = "Copy reply";
 const RECOVERING_LABEL = "Loading final reply; retrying if needed…";
 const DEFAULT_SENDER = "Fleet";
@@ -42,15 +43,18 @@ const MARKDOWN_TO_SPOKEN: ReadonlyArray<readonly [RegExp, string]> = [
   [/\|/g, " "],
   [/\s+/g, " "],
 ];
-// The library groups the parts: the reasoning becomes one Thought chip, and
-// adjacent tool calls one list. Module scope keeps the grouping's memo
-// fingerprint stable across renders.
+// The library groups the parts: the reasoning becomes one Thought chip,
+// adjacent reads one Explored cell, and other adjacent tool calls one list. A
+// `tool-call:<name>` key outranks the plain one. Module scope keeps the
+// grouping's memo fingerprint stable across renders.
 const GROUP = {
   REASONING: "group-reasoning",
+  EXPLORE: "group-explore",
   TOOL: "group-tool",
 } as const;
 const REPLY_GROUP_BY = groupPartByType({
   reasoning: [GROUP.REASONING],
+  ...Object.fromEntries(EXPLORE_TOOLS.map((name) => [`tool-call:${name}`, [GROUP.EXPLORE]])),
   "tool-call": [GROUP.TOOL],
 });
 
@@ -69,7 +73,7 @@ export function FleetReply({
   status: string;
 }) {
   const errored = status === STATUS_AGENT_ERROR;
-  const running = message.status?.type === "running";
+  const running = message.status?.type === STATUS_RUNNING;
   const recovering = readReplyRecovering(message);
   const answer = readText(message).trim();
   const span = readReasoningSpan(message);
@@ -87,12 +91,17 @@ export function FleetReply({
       failed={errored}
     >
       <MessagePrimitive.GroupedParts groupBy={REPLY_GROUP_BY}>
-        {(info) => renderReplyPart(info, { errored, running, queued, eventId, reasoning: reasoningText(message), span, answered: answer.length > 0 })}
+        {(info) => renderReplyPart(info, {
+          errored, running, queued, eventId, reasoning: reasoningText(message), span, answered: answer.length > 0,
+          content: message.content, startedAtMs: message.createdAt.getTime(),
+        })}
       </MessagePrimitive.GroupedParts>
+      <OmittedCalls count={readOmittedCallCount(message)} />
       {answer.length === 0 && !running ? (
         errored ? <FleetFailedOutcome>{messageOutcome(message)}</FleetFailedOutcome> : <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p>
       ) : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
+      {running || recovering ? null : <FleetReplyFigures figures={readReplyFigures(message)} />}
       <ReplyActions answer={answer} settled={!running && !errored && !recovering} />
     </FleetMessageRow>
   );
@@ -107,6 +116,10 @@ export type ReplyContext = {
   span: ReturnType<typeof readReasoningSpan>;
   /** The answer has started, so a thought that resumes stays folded. */
   answered: boolean;
+  /** The message's parts, which a group reads by index. */
+  content: MessageState["content"];
+  /** When the turn began, for the waiting clock. */
+  startedAtMs: number;
 };
 
 /** One switch over every node the library hands back: groups, leaves, the indicator. */
@@ -118,7 +131,7 @@ export function renderReplyPart(
     case GROUP.REASONING:
       return (
         <FleetThought
-          live={part.status.type === "running"}
+          live={part.status.type === STATUS_RUNNING}
           answered={reply.answered}
           reasoning={reply.reasoning}
           startedAtMs={reply.span.startedAtMs}
@@ -127,16 +140,29 @@ export function renderReplyPart(
           {children}
         </FleetThought>
       );
+    case GROUP.EXPLORE:
+      // The group draws its own lines; its leaves stay unmounted.
+      return <FleetExplored content={reply.content} indices={part.indices} running={part.counts.running > 0} />;
     case GROUP.TOOL:
       return <ToolCallList>{children}</ToolCallList>;
     case "reasoning":
       return <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-dim">{part.text}</p>;
     case "tool-call":
-      return <ToolCallRow name={part.toolName} done={part.result !== undefined} />;
+      return (
+        <ToolCallRow
+          name={part.toolName}
+          args={part.args}
+          argsText={part.argsText}
+          result={part.result}
+          running={part.status.type === STATUS_RUNNING}
+          settled={!reply.running}
+          eventId={reply.eventId}
+        />
+      );
     case "text":
       return <ReplyText text={part.text} errored={reply.errored} streaming={reply.running} />;
     case "indicator":
-      return <Waiting queued={reply.queued} eventId={reply.eventId} />;
+      return <Waiting queued={reply.queued} eventId={reply.eventId} startedAtMs={reply.startedAtMs} />;
     default:
       // A leaf that returns null gets the library's fallback UI; an empty
       // fragment keeps parts this reply never carries invisible.
@@ -263,23 +289,4 @@ export function spokenSummary(text: string): string {
   let spoken = text;
   for (const [syntax, replacement] of MARKDOWN_TO_SPOKEN) spoken = spoken.replace(syntax, replacement);
   return truncate(spoken.trim(), SPOKEN_REPLY_MAX_CHARS);
-}
-
-/** The library's `indicator` part: the reply is running and has nothing to show yet.
- * The status is named "Working" or "Queued"; the visible verb is whimsy, and a
- * live region reads its content, not its name, so the verb is hidden from
- * assistive tech and the name is its spoken text. */
-function Waiting({ queued, eventId }: { queued: boolean; eventId: string }) {
-  const label = queued ? QUEUED_LABEL : WORKING_LABEL;
-  return (
-    <output
-      className="inline-flex items-center gap-sm text-body-sm text-text-subtle"
-      aria-label={label}
-      data-testid="fleet-working"
-    >
-      <BrailleSpinner className="text-pulse" />
-      <span className="sr-only">{label}</span>
-      <span aria-hidden="true">{loadingPhrase(queued ? QUEUED_LABEL : loadingVerbFor(eventId))}</span>
-    </output>
-  );
 }

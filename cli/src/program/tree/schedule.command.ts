@@ -5,7 +5,7 @@
 // the argument order says the same thing the paths do.
 
 import { Effect, Option } from "effect";
-import { Command } from "effect/unstable/cli";
+import { Command } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
 import {
   scheduleAddEffectFromArgs,

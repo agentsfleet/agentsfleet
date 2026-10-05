@@ -3,7 +3,7 @@
 // test here names a reader-visible property, not an implementation detail.
 
 import { describe, expect, test } from "bun:test";
-import { CliError } from "effect/unstable/cli";
+import { CliError } from "effect/cli";
 
 import { helpFormatter, helpTail } from "../src/program/entry/help-formatter.ts";
 

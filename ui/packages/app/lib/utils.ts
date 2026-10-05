@@ -13,10 +13,10 @@ export function truncate(str: string, max: number): string {
 // calls, the chat's clocks). Two surfaces grew identical private
 // copies in one branch — this is the single home so the next tweak cannot
 // drift them apart, and the platform's unit formatter does the spelling.
-const MS_PER_SECOND = 1_000;
+export const MS_PER_SECOND = 1_000;
 const MS_PER_TENTH = 100;
 const TENTHS_PER_SECOND = 10;
-const SECONDS_PER_MINUTE = 60;
+export const SECONDS_PER_MINUTE = 60;
 const TENTHS_PER_MINUTE = SECONDS_PER_MINUTE * TENTHS_PER_SECOND;
 // Seconds beside minutes always take two digits: "2m 05s".
 const SECONDS_DIGITS = 2;

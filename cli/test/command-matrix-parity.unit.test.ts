@@ -7,7 +7,7 @@
 // <fleet_id> while the fixture listed neither, and nothing failed.
 
 import { describe, expect, test } from "bun:test";
-import { Param } from "effect/unstable/cli";
+import { Param } from "effect/cli";
 
 import { rootCommand } from "../src/program/tree/root.command.ts";
 import { childrenOf, type CommandNode } from "../src/program/tree/resolve-path.ts";

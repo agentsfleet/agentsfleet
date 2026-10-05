@@ -18,7 +18,7 @@
 // variants carry one — `MissingArgument` names the argument and nothing else,
 // and a usage line without the command is no use to anybody.
 
-import { CliError } from "effect/unstable/cli";
+import { CliError } from "effect/cli";
 import {
   CLI_NAME,
   HELP_FLAG,

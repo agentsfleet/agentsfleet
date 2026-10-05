@@ -94,6 +94,7 @@ function FleetMessage({ message }: { message: MessageState }) {
           messageRole={message.role}
           dimmed={optimistic}
           showSender={sender.shown}
+          createdAt={message.createdAt}
         >
           <span>{trigger}</span>
         </FleetMessageRow>
