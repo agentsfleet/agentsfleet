@@ -11,9 +11,10 @@ use rustix::fs::FileType;
 use rustix::mount::MountFlags;
 use sha2::{Digest as _, Sha256};
 
-use super::adopt::{self, EROFS};
+use super::adopt;
 use super::{Manifest, Toolbox, loop_device};
 use crate::error::{Result, ToolboxRefusal, toolbox_refused};
+use crate::probe::MECHANISM_TOOLBOX_FILESYSTEM as EROFS;
 
 /// How much of an image one read takes while it is hashed: images run to
 /// gigabytes, and the hash reads through this buffer rather than its own.
@@ -37,13 +38,18 @@ impl Toolbox {
     /// A refusal naming the check the image failed, or a mount the kernel
     /// would not make; nothing stays mounted then.
     pub async fn admit(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
-        let digest = manifest.sha256().to_owned();
+        let (manifest, image, mounts) = (manifest.clone(), image.to_owned(), mounts.to_owned());
+        tokio::task::spawn_blocking(move || Self::admit_now(&manifest, &image, &mounts)).await?
+    }
+
+    /// [`Self::admit`], on the calling thread: it reads the whole image. The
+    /// admission's start and its end are logged here, so the registry's path
+    /// logs them as the async one does.
+    pub(crate) fn admit_now(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
+        let digest = manifest.sha256();
         let event = EVENT_ADMISSION_STARTED;
         tracing::info!(digest, event);
-        let (manifest, image, mounts) = (manifest.clone(), image.to_owned(), mounts.to_owned());
-        let admitted =
-            tokio::task::spawn_blocking(move || Self::admit_now(&manifest, &image, &mounts))
-                .await?;
+        let admitted = Self::mount_verified(manifest, image, mounts);
         match &admitted {
             Ok(_) => {
                 let event = EVENT_ADMISSION_COMPLETED;
@@ -60,8 +66,8 @@ impl Toolbox {
         admitted
     }
 
-    /// [`Self::admit`], on the calling thread: it reads the whole image.
-    pub(crate) fn admit_now(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
+    /// The checks, the attach and the mount [`Self::admit_now`] logs around.
+    fn mount_verified(manifest: &Manifest, image: &Path, mounts: &Path) -> Result<Self> {
         let file = open_image(image)?;
         let stat = rustix::fs::fstat(&file)?;
         if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {

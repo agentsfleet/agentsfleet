@@ -107,6 +107,46 @@ fn should_sweep_the_partial_copies_a_killed_run_left() {
     assert_eq!(sweep(dir.path()).unwrap(), 0);
 }
 
+/// Two admissions of one release copy into files of their own: a copy in
+/// flight under the digest is neither cut short nor removed by another.
+#[test]
+fn should_stage_beside_another_copy_of_the_same_release() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("download");
+    fs::write(&source, image()).unwrap();
+    let manifest = Signer::new().manifest(&image());
+    fs::create_dir(dir.path().join(STAGE_DIR)).unwrap();
+    let in_flight = dir
+        .path()
+        .join(STAGE_DIR)
+        .join(format!("{}.partial", manifest.sha256()));
+    fs::write(&in_flight, b"another admission's copy so far").unwrap();
+
+    stage(&manifest, &source, dir.path()).unwrap();
+
+    assert_eq!(
+        fs::read(&in_flight).unwrap(),
+        b"another admission's copy so far"
+    );
+    assert_eq!(staged(dir.path()).len(), 1, "only the other copy is left");
+}
+
+/// The sweep takes partial copies only: a directory or a file it did not
+/// name is left where it is, and does not stop the runner from starting.
+#[test]
+fn should_sweep_partial_copies_and_leave_anything_else() {
+    let dir = tempfile::tempdir().unwrap();
+    let staging = dir.path().join(STAGE_DIR);
+    fs::create_dir_all(staging.join("a-directory")).unwrap();
+    fs::write(staging.join("notes.txt"), b"kept").unwrap();
+    fs::write(staging.join("c.partial"), b"half").unwrap();
+
+    assert_eq!(sweep(dir.path()).unwrap(), 1);
+    let mut left = staged(dir.path());
+    left.sort();
+    assert_eq!(left, ["a-directory", "notes.txt"]);
+}
+
 #[test]
 fn should_refuse_to_sweep_a_staging_path_it_cannot_read() {
     let dir = tempfile::tempdir().unwrap();

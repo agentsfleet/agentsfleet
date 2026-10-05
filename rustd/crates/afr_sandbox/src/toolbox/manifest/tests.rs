@@ -98,6 +98,12 @@ fn should_refuse_a_signed_manifest_it_cannot_read() {
         |facts: &mut serde_json::Value| facts["length"] = json!(0),
         |facts: &mut serde_json::Value| facts["arch"] = json!(""),
         |facts: &mut serde_json::Value| facts["sha256"] = json!(7),
+        // The digest names files under the toolbox directory before the
+        // image is hashed, so it is held to sixty-four lowercase hex digits.
+        |facts: &mut serde_json::Value| facts["sha256"] = json!("../../etc/passwd"),
+        |facts: &mut serde_json::Value| facts["sha256"] = json!("a".repeat(63)),
+        |facts: &mut serde_json::Value| facts["sha256"] = json!("A".repeat(64)),
+        |facts: &mut serde_json::Value| facts["sha256"] = json!("g".repeat(64)),
         |facts: &mut serde_json::Value| facts["erofs_features"] = json!(["x".repeat(200)]),
     ] {
         let mut changed = facts(IMAGE);
@@ -223,18 +229,12 @@ fn should_read_up_to_the_size_cap_and_refuse_past_it() {
 /// records it.
 #[test]
 fn the_host_is_named_as_debian_names_it() {
-    let expected = match std::env::consts::ARCH {
-        "aarch64" => "arm64",
-        "x86_64" => "amd64",
-        other => other,
-    };
-
-    assert_eq!(host_arch(), expected);
-    assert_ne!(
-        host_arch(),
-        std::env::consts::ARCH,
-        "a Debian name, not Rust's"
-    );
+    // pin test: literal is the contract — Debian's name, not Rust's.
+    #[cfg(target_arch = "aarch64")]
+    assert_eq!(host_arch(), "arm64");
+    // pin test: literal is the contract — Debian's name, not Rust's.
+    #[cfg(target_arch = "x86_64")]
+    assert_eq!(host_arch(), "amd64");
 }
 
 /// A manifest that will not parse is refused with the parser's own reason

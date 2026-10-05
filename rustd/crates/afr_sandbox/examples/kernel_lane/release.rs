@@ -27,6 +27,9 @@ const JSON: &str = "json";
 const FEATURES: [&str; 3] = ["sb_csum", "mtime", "0padding"];
 /// The file each image the lane makes carries, saying which image it is.
 pub(crate) const MARKER: &str = "marker";
+/// The empty directory each image the lane makes carries, for a trial to
+/// bind or mount over.
+pub(crate) const INNER: &str = "inner";
 
 /// The key the lane signs its releases with.
 #[derive(Debug)]
@@ -86,10 +89,10 @@ pub(crate) fn sha256_file(path: &Path) -> Result<String, Failed> {
 }
 
 /// A small EROFS image at `<dir>/<name>.erofs` holding one [`MARKER`] file
-/// that says `name`.
+/// that says `name`, and the empty [`INNER`] directory.
 pub(crate) fn small_image(dir: &Path, name: &str) -> Result<PathBuf, Failed> {
     let tree = dir.join(format!("{name}-tree"));
-    fs::create_dir_all(&tree)?;
+    fs::create_dir_all(tree.join(INNER))?;
     fs::write(tree.join(MARKER), name)?;
     let image = dir.join(format!("{name}.erofs"));
     let made = Command::new("mkfs.erofs")

@@ -1064,6 +1064,7 @@ name = "afr_sandbox"
 version = "0.56.0"
 dependencies = [
  "afd_core",
+ "afd_validate",
  "afr_egress",
  "afr_executor",
  "afr_supervisor",

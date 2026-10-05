@@ -2,12 +2,15 @@
 //! private staging directory, copied and hashed in one pass, synced, and
 //! published with one rename. A reader never sees a half-written image under a
 //! digest's name, and a runner killed mid-copy leaves only a partial file the
-//! next start sweeps away.
+//! next start sweeps away. Each copy has a file of its own, so two admissions
+//! of one release never write into the same one; the directory is one
+//! runner's, so the start's sweep takes no other runner's copy.
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read as _, Write as _};
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use sha2::{Digest as _, Sha256};
 
@@ -20,8 +23,10 @@ const STAGE_DIR: &str = ".stage";
 const STAGE_MODE: u32 = 0o700;
 /// A published image: anyone may read it, nobody may write it.
 const IMAGE_MODE: u32 = 0o444;
-/// What a copy in progress is named after its digest.
+/// What a copy in progress is named after its digest and its own number.
 const PARTIAL_SUFFIX: &str = ".partial";
+/// The number the next copy this process makes is named by.
+static COPIES: AtomicU64 = AtomicU64::new(0);
 /// How much of an image one read takes: images run to gigabytes.
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 /// The event a partial file a previous run left is logged under.
@@ -46,7 +51,12 @@ pub(super) fn stage(manifest: &Manifest, source: &Path, dir: &Path) -> Result<Pa
         .recursive(true)
         .mode(STAGE_MODE)
         .create(&staging)?;
-    let partial = staging.join(format!("{}{PARTIAL_SUFFIX}", manifest.sha256()));
+    let copy = COPIES.fetch_add(1, Ordering::Relaxed);
+    let partial = staging.join(format!(
+        "{}.{}.{copy}{PARTIAL_SUFFIX}",
+        manifest.sha256(),
+        std::process::id()
+    ));
     if let Err(refused) = copy_verified(manifest, source, &partial) {
         // The refusal is what the caller needs; a partial the removal leaves
         // is the next start's sweep.
@@ -65,8 +75,7 @@ fn copy_verified(manifest: &Manifest, source: &Path, partial: &Path) -> Result<(
     let mut input = File::open(source)?.take(manifest.length().saturating_add(1));
     let mut output = OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .mode(IMAGE_MODE)
         .open(partial)?;
     let mut hasher = Sha256::new();
@@ -87,6 +96,7 @@ fn copy_verified(manifest: &Manifest, source: &Path, partial: &Path) -> Result<(
 }
 
 /// Removes every partial copy a previous run left in staging; how many.
+/// Anything else there, which no runner put there, is left for whoever did.
 ///
 /// # Errors
 /// The staging directory cannot be read, or a partial file removed.
@@ -98,7 +108,16 @@ pub(super) fn sweep(dir: &Path) -> Result<usize> {
     };
     let mut swept = 0;
     for entry in entries {
-        let path = entry?.path();
+        let entry = entry?;
+        let partial_copy = entry.file_type()?.is_file()
+            && entry
+                .file_name()
+                .to_string_lossy()
+                .ends_with(PARTIAL_SUFFIX);
+        if !partial_copy {
+            continue;
+        }
+        let path = entry.path();
         fs::remove_file(&path)?;
         let partial = path.display().to_string();
         let event = EVENT_PARTIAL_SWEPT;
