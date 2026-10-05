@@ -1,5 +1,6 @@
 use afd_wire::policy::ExecutionPolicy;
-use afr_providers::Message;
+use afr_providers::{ImageInput, ImageKind, Message};
+use bytes::Bytes;
 
 use super::{Budget, Checkpoints, EVICTED};
 use crate::fixture::{budget, lease};
@@ -41,6 +42,30 @@ fn should_keep_only_the_newest_results_in_the_window() {
 
     assert_eq!(outputs(&messages), [EVICTED, "2", "3"]);
     assert_eq!(messages.first(), Some(&Message::User("ask".to_owned())));
+}
+
+/// An image leaves the window with its result's text: kept, it would ride
+/// every later request, megabytes each, until the provider refused them all.
+#[test]
+fn should_evict_a_results_image_with_its_text() {
+    let seen = |output: &str| Message::ToolResult {
+        call_id: "c".to_owned(),
+        output: output.to_owned(),
+        image: Some(ImageInput {
+            kind: ImageKind::Png,
+            data: Bytes::from_static(b"png"),
+        }),
+    };
+    let mut messages = vec![seen("1"), seen("2")];
+
+    budget_of(1, 0).evict(&mut messages);
+
+    let images: Vec<bool> = messages
+        .iter()
+        .map(|message| matches!(message, Message::ToolResult { image: Some(_), .. }))
+        .collect();
+    assert_eq!(outputs(&messages), [EVICTED, "2"]);
+    assert_eq!(images, [false, true]);
 }
 
 #[test]
