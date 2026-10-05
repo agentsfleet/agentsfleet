@@ -89,26 +89,29 @@ The manual `/v1/webhooks/{fleet_id}/github` route remains available for an opera
 
 ## 4. The run — SKILL.md drives the review
 
-A runner leases the event (one active lease per fleet). The lease carries `instructions` (the fleet's stored `SKILL.md`, resolved fresh from `core.fleets`), the raw PR payload as the event, and `bundle:{content_hash}`. The runner pulls the support tar from R2 into the sandbox, then NullClaw runs the SKILL.md prose against the payload:
+A runner leases the event (one active lease per fleet). The lease carries `instructions` (the fleet's stored `SKILL.md`, resolved fresh from `core.fleets`), the PR as a twelve-field digest rather than GitHub's payload (`rustd/crates/afd_api_ingress/src/handler/webhook/github.rs`), and `bundle:{content_hash}`. The runner pulls the support tar from R2 into the sandbox, then NullClaw runs the SKILL.md prose against the digest:
 
 - `http_request GET api.github.com/repos/{owner}/{repo}/pulls/{n}/files` with `Authorization: Bearer ${secrets.github.token}` (substituted at the tool bridge inside the sandbox).
-- forms findings, then `http_request POST …/pulls/{n}/reviews` with the comments. ✅ The bundle uses the generic `http_request` tool. Zig has no GitHub-specific review tool.
+- forms findings, then `http_request POST …/pulls/{n}/reviews` with the comments. ❌ Refused at egress with `RequestPolicyNotAllowed`. The write rules admit git objects, one ref on the repair branch and a draft `/pulls` (`rustd/crates/afd_gate/src/policy/egress/write.rs`); none admits a review or an issue comment, and an origin with scoped rules denies every request no rule matches, on both runners. `rustd/crates/agentsfleetd/tests/integration_rust_runner_reviews.rs` asserts that zero POSTs reach GitHub. The bundle uses the generic `http_request` tool; there is no GitHub-specific review tool.
 
 The gate + billing path is identical to every other event — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) for the credit-pool deductions and the gate.
 
 ## 5. What John sees after the integration test proves the path
 
-- The pull request carries the fleet's review comments.
+- Not yet: the pull request carries no review, because the review POST is refused at egress (§4).
 - `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `core.fleet_events`.
 
 ## 6. Proof status
 
 Everything but the external proof is green: bundle install, App callback and
 reconnect, ingress filtering by installation / repository / event / grant,
-`SKILL.md` delivery per lease, diff read and comment post, and the local
+`SKILL.md` delivery per lease, the diff read, and the local
 repository-bound `pull_request` suite against real Postgres and Dragonfly.
 
-Two remain open, and the scenario is not fixed until the first passes:
+Three remain open, and the scenario is not fixed until the first two pass:
+
+- **The review post.** No egress write rule admits `/pulls/{n}/reviews` or an
+  issue comment, so the run reads the diff and cannot answer (§4).
 
 - **External `github-pr-reviewer` repository test.** Needs the App installed on
   a dedicated development repository and a real Pull Request. Fixture coverage
