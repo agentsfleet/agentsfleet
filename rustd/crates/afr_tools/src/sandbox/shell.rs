@@ -1,30 +1,16 @@
 //! `shell`: one command, run to its end inside the sandbox.
 //!
 //! `sh -c command` on pipes, in the workspace, under the executor's own
-//! timeout: the executor kills the process group when it elapses, TERM then
-//! KILL, and reports `timed_out`, so no timer runs here. The exit status rides
-//! the output, and the ledger marks a non-zero one failed.
+//! timeout (`oneshot`).
 
-use std::time::Duration;
-
-use afd_core::clock::saturating_millis;
-use afr_executor::Ending;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::output::{self, Collected};
-use super::{command, executor_of, unavailable};
+use super::oneshot::{run_to_end, timeout_of};
+use super::{command, executor_of};
 use crate::catalog::{Entry, SHELL};
 use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
-
-/// How long a command runs when the model names no timeout: Codex's
-/// `DEFAULT_EXEC_COMMAND_TIMEOUT_MS`.
-const TIMEOUT_MS_DEFAULT: u64 = 10_000;
-/// The longest a command runs, whatever the model asks: ten minutes.
-const TIMEOUT_MS_MAX: u64 = 600_000;
-/// The event a command killed at its timeout logs under.
-const EVENT_TIMED_OUT: &str = "process_timed_out";
+use crate::runtime::{ToolContext, ToolOutput};
 
 /// `shell`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -55,46 +41,10 @@ impl Handler for Shell {
             Ok(executor) => executor,
             Err(refused) => return refused,
         };
-        let timeout = Duration::from_millis(
-            arguments
-                .timeout_ms
-                .unwrap_or(TIMEOUT_MS_DEFAULT)
-                .min(TIMEOUT_MS_MAX),
-        );
-        let spawn = command(&arguments.command).timeout(timeout);
-        let mut process = match executor.spawn(&spawn).await {
-            Ok(process) => process,
-            Err(failure) => return unavailable(&failure),
-        };
-        let mut collected = Collected::default();
-        let ending = collected.read_to_end(&mut process).await;
-        let text = collected.text(output::budget(None));
-        let text = match ending {
-            Ending::Exited(0) => text,
-            Ending::TimedOut => {
-                timed_out(context.lease.egress.lease_id(), timeout);
-                let after = saturating_millis(timeout);
-                output::with_line(text, &format!("{} after {after} ms", output::TIMED_OUT))
-            }
-            Ending::Exited(_) | Ending::Signaled(_) | Ending::Interrupted => {
-                output::with_line(text, &output::status(ending))
-            }
-        };
-        ToolOutput {
-            text,
-            exit_code: output::exit_code(ending),
-            error_code: output::error_code(ending),
-        }
+        let timeout = timeout_of(arguments.timeout_ms);
+        let lease_id = context.lease.egress.lease_id();
+        run_to_end(executor, command(&arguments.command), timeout, lease_id).await
     }
-}
-
-/// Logs a command the executor killed at its timeout: the model reads the
-/// code, the operator reads the lease and how long the command was given.
-fn timed_out(lease_id: &str, timeout: Duration) {
-    let error_code = ToolErrorCode::TimedOut.as_str();
-    let timeout_ms = saturating_millis(timeout);
-    let event = EVENT_TIMED_OUT;
-    tracing::warn!(lease_id, error_code, timeout_ms, event);
 }
 
 #[cfg(test)]

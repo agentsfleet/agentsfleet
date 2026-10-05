@@ -9,10 +9,11 @@ use afd_core::test_util::trace::Capture;
 use afr_executor::{Ending, Spawn};
 use serde_json::json;
 
-use super::{EVENT_TIMED_OUT, Shell, TIMEOUT_MS_DEFAULT, TIMEOUT_MS_MAX};
+use super::Shell;
 use crate::handler::Typed;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
+use crate::sandbox::oneshot::{EVENT_TIMED_OUT, TIMEOUT_MS_DEFAULT, TIMEOUT_MS_MAX};
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
 
@@ -55,7 +56,7 @@ async fn test_shell_runs_through_the_executor_and_reports_its_exit_code() {
     assert!(!spawn.on_terminal(), "a command runs on pipes");
     assert_eq!(spawn.working_directory(), None, "in the workspace root");
     let environment = spawn.environment();
-    assert_eq!(environment.len(), 9, "{environment:?}");
+    assert_eq!(environment.len(), 13, "{environment:?}");
     assert_eq!(
         environment.get("GIT_PAGER").map(String::as_str),
         Some("cat")
@@ -64,6 +65,11 @@ async fn test_shell_runs_through_the_executor_and_reports_its_exit_code() {
     assert_eq!(
         environment.get("LC_ALL").map(String::as_str),
         Some("C.UTF-8")
+    );
+    assert_eq!(
+        environment.get("GIT_AUTHOR_EMAIL").map(String::as_str),
+        Some("noreply@agentsfleet.net"),
+        "a commit made in the sandbox has an author with no HOME to read one from"
     );
 }
 

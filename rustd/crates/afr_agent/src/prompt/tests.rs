@@ -7,6 +7,8 @@ use afd_wire::policy::{
     RepositoryAccess, RepositoryBinding,
 };
 
+use afr_tools::catalog::{FILE_READ, GIT};
+
 use super::Prompt;
 use crate::fixture::{lease, unbounded};
 
@@ -136,4 +138,44 @@ fn should_render_no_repair_context_for_a_write_binding_not_naming_one_repository
 
         assert!(!Prompt::new(&lease).instructions.contains(REPAIR_HEADING));
     }
+}
+
+/// A lease offering `tool`, bound to [`REPOSITORY`] for reading.
+fn offering(tool: &str) -> LeasePayload<'static> {
+    let mut lease = bound(RepositoryAccess::Read, Vec::new());
+    lease.policy.tools = vec![tool.to_owned().into()];
+    lease
+}
+
+#[test]
+fn should_name_where_each_repository_is_checked_out_when_a_tool_runs_processes() {
+    let prompt = Prompt::new(&offering(GIT.name()));
+
+    assert!(
+        prompt.instructions.ends_with(
+            "\n\n## Workspace\nagentsfleet/linkwarden is checked out at ./linkwarden on dev, \
+             with origin set"
+        ),
+        "{}",
+        prompt.instructions
+    );
+}
+
+#[test]
+fn should_name_no_checkout_when_no_tool_runs_processes() {
+    let prompt = Prompt::new(&offering(FILE_READ.name()));
+
+    assert!(!prompt.instructions.contains("## Workspace"));
+}
+
+#[test]
+fn should_name_no_checkout_for_a_binding_that_does_not_parse() {
+    let mut lease = offering(GIT.name());
+    lease.policy.repository_binding = Some(RepositoryBinding {
+        repositories: vec!["../escape".into()],
+        access: RepositoryAccess::Read,
+        base_branch: BASE.into(),
+    });
+
+    assert!(!Prompt::new(&lease).instructions.contains("## Workspace"));
 }

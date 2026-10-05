@@ -1,11 +1,13 @@
 //! A sandbox engine for the lease tests: sandboxes that count their teardowns
 //! and an executor that reports what is written into the workspace.
 
+use std::os::unix::fs::MetadataExt as _;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_sandbox::{Engine, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine, HostWorkspace, Sandbox, SandboxRequest};
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
@@ -35,6 +37,9 @@ pub(crate) struct FakeEngine {
     pub(crate) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
     /// How those executors answer a file write.
     pub(crate) writes: Writes,
+    /// The host directory each sandbox offers as its workspace, owned by
+    /// whoever owns it; none keeps the workspace out of the host's reach.
+    pub(crate) workspace: Option<PathBuf>,
 }
 
 #[async_trait::async_trait]
@@ -48,8 +53,13 @@ impl Engine for FakeEngine {
             !(self.panic_once && prepared == 0),
             "the fake engine panics on its first prepare"
         );
+        let workspace = self.workspace.clone().map(|root| {
+            let metadata = std::fs::metadata(&root).unwrap();
+            (root, (metadata.uid(), metadata.gid()))
+        });
         Ok(Box::new(FakeSandbox {
             fail_teardown: self.fail_teardown,
+            workspace,
             destroyed: Arc::clone(&self.destroyed),
             executor: FakeExecutor {
                 written: self.written.clone(),
@@ -62,6 +72,7 @@ impl Engine for FakeEngine {
 #[derive(Debug)]
 struct FakeSandbox {
     fail_teardown: bool,
+    workspace: Option<(PathBuf, (u32, u32))>,
     destroyed: Arc<AtomicUsize>,
     executor: FakeExecutor,
 }
@@ -70,6 +81,13 @@ struct FakeSandbox {
 impl Sandbox for FakeSandbox {
     fn executor(&self) -> &dyn Executor {
         &self.executor
+    }
+
+    fn workspace(&self) -> Option<HostWorkspace<'_>> {
+        self.workspace.as_ref().map(|(root, owner)| HostWorkspace {
+            root,
+            owner: *owner,
+        })
     }
 
     async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {

@@ -1,6 +1,7 @@
 //! The prompt: the installed instructions as the system prompt, the trusted
-//! repair context beneath them on a write-bound lease, and the event's message
-//! as the first user turn.
+//! repair context beneath them on a write-bound lease, where the workspace's
+//! repositories are checked out, and the event's message as the first user
+//! turn.
 //!
 //! The message is the event's `message` field when the request carries one as
 //! a string, and the whole request otherwise, the fallback
@@ -11,11 +12,14 @@ use std::fmt;
 use afd_wire::lease::LeasePayload;
 use afd_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
 use afd_wire::policy::{ExecutionPolicy, HttpMethod, RepositoryAccess};
+use afr_tools::sandbox::{Checkout, checkouts};
 
 /// The heading the installed instructions render under.
 const INSTALLED_INSTRUCTIONS: &str = "## Installed instructions\n\n";
 /// The heading the trusted repair context renders under.
 const TRUSTED_REPAIR_CONTEXT: &str = "## Trusted repair context";
+/// The heading the workspace's checkouts render under.
+const WORKSPACE: &str = "## Workspace";
 /// What separates two blocks of the system prompt.
 const BLOCK_BREAK: &str = "\n\n";
 /// The request field holding the event's message.
@@ -46,9 +50,11 @@ impl Prompt {
         let installed = (!lease.instructions.is_empty())
             .then(|| format!("{INSTALLED_INSTRUCTIONS}{}", lease.instructions));
         let repair = RepairContext::of(&lease.policy).map(|context| context.to_string());
+        let workspace = Workspace::of(&lease.policy).map(|workspace| workspace.to_string());
         let instructions = installed
             .into_iter()
             .chain(repair)
+            .chain(workspace)
             .collect::<Vec<_>>()
             .join(BLOCK_BREAK);
         Self {
@@ -109,6 +115,36 @@ impl fmt::Display for RepairContext<'_> {
             "{TRUSTED_REPAIR_CONTEXT}\nrepository: {}\nrepair branch: {}\ntrusted base: {}",
             self.repository, self.branch, self.base
         )
+    }
+}
+
+/// Where the supervisor checked the lease's repositories out, so the model
+/// starts in them instead of looking for them.
+struct Workspace<'p>(Vec<Checkout<'p>>);
+
+impl<'p> Workspace<'p> {
+    /// The checkouts `policy` gets; `None` when it gets none, and for a
+    /// binding that does not parse, which the supervisor refused before the
+    /// turn began.
+    fn of(policy: &'p ExecutionPolicy<'_>) -> Option<Self> {
+        checkouts(policy)
+            .ok()
+            .filter(|checkouts| !checkouts.is_empty())
+            .map(Self)
+    }
+}
+
+impl fmt::Display for Workspace<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{WORKSPACE}")?;
+        for checkout in &self.0 {
+            write!(
+                f,
+                "\n{} is checked out at ./{} on {}, with origin set",
+                checkout.repository, checkout.name, checkout.base
+            )?;
+        }
+        Ok(())
     }
 }
 

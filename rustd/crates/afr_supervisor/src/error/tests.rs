@@ -132,6 +132,7 @@ fn local_failures_log_as_internal() {
         std::io::Error::other("disk").into(),
         persist.into(),
         afd_core::id::Uuid7::parse("nope").unwrap_err().into(),
+        raise::git("acme/widget", "fetched")(Box::new(std::io::Error::other("refused"))),
     ];
 
     for failure in &failures {
@@ -150,4 +151,19 @@ fn local_failures_log_as_internal() {
         raise::tampered("abc").kind(),
         ErrorKind::BundleTampered { .. }
     ));
+}
+
+#[test]
+fn a_git_failure_names_the_repository_and_keeps_the_librarys_reason() {
+    let failure =
+        raise::git("acme/widget", "checked out")(Box::new(std::io::Error::other("no branch")));
+
+    assert!(
+        failure
+            .to_string()
+            .ends_with("repository acme/widget could not be checked out"),
+        "{failure}"
+    );
+    let cause = std::error::Error::source(&failure).unwrap();
+    assert_eq!(cause.to_string(), "no branch");
 }

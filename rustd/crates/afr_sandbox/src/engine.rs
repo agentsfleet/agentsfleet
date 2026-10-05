@@ -40,6 +40,17 @@ impl Default for Limits {
     }
 }
 
+/// A sandbox's workspace as the host sees it: where it is mounted, and the
+/// host user and group a file written into it must belong to so the
+/// sandbox's processes own it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HostWorkspace<'a> {
+    /// The workspace's root on the host.
+    pub root: &'a Path,
+    /// The host user and group the sandbox's processes run as.
+    pub owner: (u32, u32),
+}
+
 /// What a sandbox is built for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SandboxRequest<'a> {
@@ -120,6 +131,13 @@ pub trait Engine: Send + Sync + fmt::Debug {
 pub trait Sandbox: Send + Sync + fmt::Debug {
     /// The executor running inside it.
     fn executor(&self) -> &dyn Executor;
+
+    /// The workspace as the host sees it, so the supervisor can fill it
+    /// before the turn runs; none for an engine whose workspace the host
+    /// cannot reach, such as a microVM's disk.
+    fn workspace(&self) -> Option<HostWorkspace<'_>> {
+        None
+    }
 
     /// Whether the sandbox is still up. A warm slot whose sandbox died while
     /// it waited is discarded on claim rather than handed to a lease; an

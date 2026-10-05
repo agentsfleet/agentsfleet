@@ -100,7 +100,7 @@ async fn test_exec_command_keeps_a_running_process_as_a_session() {
     assert!(!spawn.on_terminal(), "pipes unless the model asks");
     assert_eq!(spawn.time_limit(), None, "a session runs until it ends");
     assert_eq!(spawn.working_directory(), None);
-    assert_eq!(spawn.environment().len(), 9);
+    assert_eq!(spawn.environment().len(), 13);
 }
 
 #[tokio::test(start_paused = true)]

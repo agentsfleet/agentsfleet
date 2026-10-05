@@ -28,6 +28,13 @@ pub(crate) enum ErrorKind {
         /// The tool's name, as the policy spells it.
         name: String,
     },
+
+    /// The policy binds a repository whose name is not `owner/name`.
+    #[error("the policy binds a repository this runner cannot check out: {name}")]
+    InvalidRepository {
+        /// The repository, as the policy spells it.
+        name: String,
+    },
 }
 
 /// The one alias every signature in this crate spells.
@@ -38,7 +45,9 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Unhosted { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
+            ErrorKind::Unhosted { .. } | ErrorKind::InvalidRepository { .. } => {
+                error_code::AGENTSFLEET_INVALID_CONFIG
+            }
         }
     }
 
@@ -47,8 +56,17 @@ impl Error {
     pub fn unhosted_tool(&self) -> Option<&str> {
         match self.kind() {
             ErrorKind::Unhosted { name } => Some(name),
+            ErrorKind::InvalidRepository { .. } => None,
         }
     }
+}
+
+/// A policy binding `name`, which is not a repository this runner can check
+/// out.
+pub(crate) fn invalid_repository(name: &str) -> Error {
+    Error::from(ErrorKind::InvalidRepository {
+        name: name.to_owned(),
+    })
 }
 
 /// A policy naming `name`, which this runner cannot host.

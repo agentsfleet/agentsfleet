@@ -8,7 +8,7 @@
 use afr_egress::Egress;
 use afr_memory::MemoryBackend;
 
-use crate::sandbox::Sessions;
+use crate::sandbox::{Checkout, Sessions};
 
 /// One lease's state, as its calls see it.
 #[derive(Debug)]
@@ -21,6 +21,8 @@ pub struct Lease<'run> {
     /// The processes the lease's calls keep open across calls; the run's end
     /// closes whatever is left.
     pub sessions: Sessions,
+    /// The repositories checked out in the lease's workspace.
+    pub checkouts: Vec<Checkout<'run>>,
 }
 
 impl<'run> Lease<'run> {
@@ -32,7 +34,15 @@ impl<'run> Lease<'run> {
             memory,
             egress,
             sessions: Sessions::default(),
+            checkouts: Vec::new(),
         }
+    }
+
+    /// The same lease, whose workspace holds `checkouts`.
+    #[must_use]
+    pub fn with_checkouts(mut self, checkouts: Vec<Checkout<'run>>) -> Self {
+        self.checkouts = checkouts;
+        self
     }
 }
 

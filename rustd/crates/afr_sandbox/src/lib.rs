@@ -37,8 +37,8 @@ mod bubblewrap_engine;
 pub use self::bubblewrap_engine::{BubblewrapConfig, BubblewrapEngine};
 pub use self::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup, SUBTREE_CONTROL};
 pub use self::engine::{
-    DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine, Limits,
-    Sandbox, SandboxRequest,
+    DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine,
+    HostWorkspace, Limits, Sandbox, SandboxRequest,
 };
 pub use self::error::{Error, Result};
 #[cfg(target_os = "linux")]

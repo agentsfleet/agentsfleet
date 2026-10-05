@@ -61,6 +61,45 @@ async fn test_an_unsandboxed_lease_runs_a_process_and_is_removed() {
 }
 
 #[tokio::test]
+async fn should_show_the_host_the_workspace_its_executor_serves() {
+    let base = tempfile::Builder::new()
+        .prefix("afr")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
+    let sandbox = engine
+        .prepare(SandboxRequest {
+            lease_id: "host-view",
+            limits: Limits::default(),
+        })
+        .await
+        .unwrap();
+
+    let workspace = sandbox.workspace().unwrap();
+    std::fs::write(workspace.root.join("planted.txt"), "from the host").unwrap();
+    let owner = workspace.owner;
+    let read = sandbox
+        .executor()
+        .read_file("planted.txt", 64)
+        .await
+        .unwrap();
+    sandbox.destroy().await.unwrap();
+
+    assert_eq!(
+        read.data, "from the host",
+        "the executor reads what the host wrote"
+    );
+    assert_eq!(
+        owner,
+        (
+            rustix::process::getuid().as_raw(),
+            rustix::process::getgid().as_raw()
+        ),
+        "the files belong to whoever runs the engine"
+    );
+}
+
+#[tokio::test]
 async fn test_a_lease_directory_that_cannot_be_made_is_refused() {
     let base = tempfile::Builder::new()
         .prefix("afr")
@@ -126,6 +165,7 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
     let abort = server.abort_handle();
     let sandbox = Box::new(super::Unconfined {
         dir: dir.clone(),
+        workspace: dir.join(super::WORKSPACE_DIR),
         client,
         server,
     });

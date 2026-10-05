@@ -425,6 +425,12 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 # changes the SHAPE of the form at the token endpoint. That is not a place to
 # carry our own encoder.
 reqwest = { version = "0.13.5", default-features = false, features = ["form", "rustls", "stream"] }
+# Git on the runner host: the supervisor fetches a fleet's repository into a
+# per-workspace mirror and checks it out into the lease's workspace, so the
+# token never enters the sandbox. A native library, not a spawned `git`,
+# per the operating model's native-SDK rule; Codex reads repositories with it
+# too. Network and checkout features are chosen by the crate that uses them.
+gix = { version = "0.88.0", default-features = false, features = ["sha1"] }
 # The credential placeholder grammar, `${secrets.NAME.FIELD}`, matched and
 # substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }

@@ -13,7 +13,7 @@ use afr_executor::{Client, Executor};
 use tokio::task::JoinHandle;
 
 use crate::bubblewrap::SOCKET_NAME;
-use crate::engine::{Engine, Sandbox, SandboxRequest};
+use crate::engine::{Engine, HostWorkspace, Sandbox, SandboxRequest};
 use crate::error::{ErrorKind, Result};
 
 /// The workspace directory inside each lease's scratch directory.
@@ -56,6 +56,7 @@ impl Engine for UnsandboxedEngine {
         let dir = request.name()?.dir_in(&self.base);
         let workspace = dir.join(WORKSPACE_DIR);
         fs::create_dir_all(&workspace)?;
+        let workspace_root = workspace.clone();
         let socket = dir.join(SOCKET_NAME);
         let server = tokio::spawn({
             let socket = socket.clone();
@@ -64,6 +65,7 @@ impl Engine for UnsandboxedEngine {
         match connect(&socket).await {
             Ok(client) => Ok(Box::new(Unconfined {
                 dir,
+                workspace: workspace_root,
                 client,
                 server,
             })),
@@ -85,6 +87,8 @@ async fn connect(socket: &Path) -> Result<Client> {
 #[derive(Debug)]
 struct Unconfined {
     dir: PathBuf,
+    /// The directory the executor serves as its workspace.
+    workspace: PathBuf,
     client: Client,
     server: JoinHandle<afr_executor::Result<()>>,
 }
@@ -93,6 +97,16 @@ struct Unconfined {
 impl Sandbox for Unconfined {
     fn executor(&self) -> &dyn Executor {
         &self.client
+    }
+
+    fn workspace(&self) -> Option<HostWorkspace<'_>> {
+        Some(HostWorkspace {
+            root: &self.workspace,
+            owner: (
+                rustix::process::getuid().as_raw(),
+                rustix::process::getgid().as_raw(),
+            ),
+        })
     }
 
     fn is_running(&mut self) -> bool {
@@ -104,6 +118,7 @@ impl Sandbox for Unconfined {
             dir,
             client,
             mut server,
+            ..
         } = *self;
         // Closing the connection is what ends the executor's session, which
         // ends every process it started; a session that outlives the grace
