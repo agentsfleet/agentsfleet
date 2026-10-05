@@ -1,10 +1,18 @@
 import type { ReactNode } from "react";
 import { Button, cn } from "@agentsfleet/design-system";
 
-import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { ToolResult } from "./fleetReplyMessage";
 import { moreLinesLabel, outputPreview } from "./tool-call-copy";
-import { PLAN_STATUS, TOOL_BODY, type PlanStatus, type PlanStep, type ToolCopy } from "./tool-call-shape";
+import {
+  PLAN_STATUS,
+  TOOL_BODY,
+  showsOutput,
+  type PlanStatus,
+  type PlanStep,
+  type ToolBodyKind,
+  type ToolBodyOf,
+  type ToolCopy,
+} from "./tool-call-shape";
 import { DIFF_ROW, type DiffRow, type LineDiff } from "./tool-call-diff";
 
 // What sits under a tool cell's header, as Codex lays it out: a command's
@@ -60,29 +68,41 @@ const PLAN_TONE: Record<PlanStatus, string> = {
   [PLAN_STATUS.COMPLETED]: "line-through",
 };
 
+/** Opens the full call; absent when there is nothing to read it by. */
+type OnShowAll = (() => void) | undefined;
+
 type ToolCallBodyProps = {
   copy: ToolCopy;
-  diff: LineDiff | null;
   outcome: ToolResult | undefined;
-  /** Opens the full call; absent when there is nothing to read it by. */
-  onShowAll: (() => void) | undefined;
+  onShowAll: OnShowAll;
 };
 
-/** A settled cell's body. An edit that worked shows its diff alone, as Codex's
- * does; anything that did not shows what came back. */
-export function ToolCallBody({ copy, diff, outcome, onShowAll }: ToolCallBodyProps) {
+// The rows each body kind owns, one entry per kind: a kind with no entry here
+// does not compile. What came back follows them, when `showsOutput` says so.
+const ROWS_FOR: { [K in ToolBodyKind]: (body: ToolBodyOf<K>, onShowAll: OnShowAll) => ReactNode } = {
+  [TOOL_BODY.OUTPUT]: () => null,
+  [TOOL_BODY.COMMAND]: (body) => <CommandRail rail={body.rail} hiddenLines={body.hiddenLines} />,
+  [TOOL_BODY.DIFF]: (body) => <DiffRows diff={body.diff} />,
+  [TOOL_BODY.CLIPPED_EDIT]: (_body, onShowAll) => (
+    <RailRow glyph={OUTPUT_RAIL}>{CLIPPED_EDIT_NOTE}<ShowAll onShowAll={onShowAll} /></RailRow>
+  ),
+  [TOOL_BODY.PLAN]: (body) => <PlanSteps explanation={body.explanation} steps={body.steps} />,
+};
+
+// The kind travels as its own argument: that is how TypeScript ties a table
+// entry to the body it draws.
+function rowsFor<K extends ToolBodyKind>(kind: K, body: ToolBodyOf<K>, onShowAll: OnShowAll): ReactNode {
+  return ROWS_FOR[kind](body, onShowAll);
+}
+
+/** A settled cell's body: the rows its kind owns, then what came back when
+ * the kind or the outcome asks for it. */
+export function ToolCallBody({ copy, outcome, onShowAll }: ToolCallBodyProps) {
   const { body } = copy;
-  const showsOutput = body.kind === TOOL_BODY.OUTPUT || body.kind === TOOL_BODY.COMMAND
-    || outcome?.status !== TOOL_CALL_STATUS.SUCCEEDED;
   return (
     <div className="flex min-w-0 flex-col pl-md">
-      {body.kind === TOOL_BODY.COMMAND ? <CommandRail rail={body.rail} hiddenLines={body.hiddenLines} /> : null}
-      {body.kind === TOOL_BODY.PLAN ? <PlanSteps explanation={body.explanation} steps={body.steps} /> : null}
-      {diff === null ? null : <DiffRows diff={diff} />}
-      {body.kind === TOOL_BODY.CLIPPED_EDIT ? (
-        <RailRow glyph={OUTPUT_RAIL}>{CLIPPED_EDIT_NOTE}<ShowAll onShowAll={onShowAll} /></RailRow>
-      ) : null}
-      {showsOutput ? <OutputPreview outcome={outcome} onShowAll={onShowAll} /> : null}
+      {rowsFor(body.kind, body, onShowAll)}
+      {showsOutput(body, outcome?.status) ? <OutputPreview outcome={outcome} onShowAll={onShowAll} /> : null}
     </div>
   );
 }
@@ -130,7 +150,7 @@ function CommandRail({ rail, hiddenLines }: { rail: readonly string[]; hiddenLin
   );
 }
 
-function OutputPreview({ outcome, onShowAll }: { outcome: ToolResult | undefined; onShowAll: (() => void) | undefined }) {
+function OutputPreview({ outcome, onShowAll }: { outcome: ToolResult | undefined; onShowAll: OnShowAll }) {
   const preview = outputPreview(outcome?.outputHead, outcome?.outputLineCount, outcome?.status, outcome?.outputTail);
   return (
     <>
@@ -155,7 +175,7 @@ export function RailRow({ glyph, children }: { glyph: string | null; children: R
   );
 }
 
-function ShowAll({ onShowAll }: { onShowAll: (() => void) | undefined }) {
+function ShowAll({ onShowAll }: { onShowAll: OnShowAll }) {
   if (onShowAll === undefined) return null;
   return (
     <>

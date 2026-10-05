@@ -13,6 +13,7 @@ import {
   toolCopy,
   verbFor,
 } from "./tool-call-copy";
+import { DIFF_ROW } from "./tool-call-diff";
 import { ARGS_NOT_RECORDED, TOOL_BODY, TOOL_NAME } from "./tool-call-shape";
 import { ARGS_LEAF_MAX_BYTES, CLIP_MARK } from "./tool-call-text";
 
@@ -110,7 +111,7 @@ describe("toolCopy", () => {
 
   it("diffs an edit whole, and refuses to diff one the runner may have cut", () => {
     expect(toolCopy(TOOL_NAME.FILE_EDIT_HASHED, { path: PATH, old_text: "a", new_text: "b" }).body)
-      .toEqual({ kind: TOOL_BODY.EDIT, before: "a", after: "b" });
+      .toEqual({ kind: TOOL_BODY.DIFF, diff: { rows: [{ kind: DIFF_ROW.REMOVED, text: "a" }, { kind: DIFF_ROW.ADDED, text: "b" }], added: 1, removed: 1 } });
     expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH, old_text: CLIPPED, new_text: "b" }).body).toEqual({ kind: TOOL_BODY.CLIPPED_EDIT });
     // No old text: nothing to diff against, so no diff drawn as all-new lines.
     expect(toolCopy(TOOL_NAME.FILE_EDIT, { path: PATH }).body).toEqual({ kind: TOOL_BODY.OUTPUT });

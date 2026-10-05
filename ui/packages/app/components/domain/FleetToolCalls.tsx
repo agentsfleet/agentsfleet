@@ -14,7 +14,6 @@ import { readToolResult } from "./fleetReplyMessage";
 import { CELL_STATE, FAILED_MARK, cellState, toolCopy, verbFor, type CellState } from "./tool-call-copy";
 import { TOOL_BODY, type ToolCopy } from "./tool-call-shape";
 import type { ToolResult } from "./fleetReplyMessage";
-import { lineDiff, type LineDiff } from "./tool-call-diff";
 
 // A tool call as Codex's transcript draws one: a status bullet, a bold verb
 // and its target, dim figures, and what came back under a rail. The words come
@@ -66,13 +65,6 @@ export const ToolCallRow = memo(function ToolCallRow({ name, args, argsText, res
   const copy = useMemo(() => toolCopy(name, named), [name, named]);
   const outcome = readToolResult(result);
   const state = cellState(outcome !== undefined, outcome?.status, running);
-  const diff = useMemo(
-    () => {
-      if (copy.body.kind === TOOL_BODY.EDIT) return lineDiff(copy.body.before, copy.body.after);
-      return copy.body.kind === TOOL_BODY.PATCH ? copy.body.diff : null;
-    },
-    [copy],
-  );
   // A row is keyed by its call's own id (`toolCallPart`), so a saved trace that
   // puts another call in this place mounts a new row, and an open dialog goes.
   const [shown, setShown] = useState(false);
@@ -92,9 +84,9 @@ export const ToolCallRow = memo(function ToolCallRow({ name, args, argsText, res
       data-state={state}
       className="flex min-w-0 flex-col gap-xs font-mono text-label leading-mono text-text-subtle"
     >
-      <ToolCallHeader verb={verb} copy={copy} diff={diff} outcome={outcome} state={state} />
+      <ToolCallHeader verb={verb} copy={copy} outcome={outcome} state={state} />
       {state === CELL_STATE.RUNNING ? null : (
-        <ToolCallBody copy={copy} diff={diff} outcome={outcome} onShowAll={canShowAll ? () => setShown(true) : undefined} />
+        <ToolCallBody copy={copy} outcome={outcome} onShowAll={canShowAll ? () => setShown(true) : undefined} />
       )}
       {named === undefined ? null : <FleetPayloadDisclosure json={argsText} />}
       {shown && canShowAll ? (
@@ -115,13 +107,13 @@ export const ToolCallRow = memo(function ToolCallRow({ name, args, argsText, res
 
 /** The bullet, the verb and what it touched, the line counts, how it ended,
  * and how long it took. */
-function ToolCallHeader({ verb, copy, diff, outcome, state }: {
+function ToolCallHeader({ verb, copy, outcome, state }: {
   verb: string;
   copy: ToolCopy;
-  diff: LineDiff | null;
   outcome: ToolResult | undefined;
   state: CellState;
 }) {
+  const diff = copy.body.kind === TOOL_BODY.DIFF ? copy.body.diff : null;
   return (
     <span className="flex min-w-0 items-baseline gap-xs">
       <span aria-hidden="true" data-tool-bullet="" data-tool-shimmer={state === CELL_STATE.RUNNING} className={cn("transition-colors duration-snap ease-snap", BULLET_TONE[state])}>
