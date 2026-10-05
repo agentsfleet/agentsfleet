@@ -280,6 +280,9 @@ fn an_unusable_knob_is_a_fault_that_names_itself() {
         // renders the whole endpoint — read from the same place as the
         // credential beside it.
         (OTEL_ENDPOINT_KNOB, "not a url"),
+        // A host and port with no scheme parses as a URI, and builds no
+        // exporter once a signal path is appended to it.
+        (OTEL_ENDPOINT_KNOB, "collector:4318"),
     ] {
         let mut faults = Vec::new();
         // The endpoint case replaces the good one rather than sitting beside
@@ -336,5 +339,46 @@ fn a_resolved_configuration_renders_no_credential() {
     assert!(
         rendered.contains(AUTHORIZATION),
         "the header NAME is what a reader needs, and it stays: {rendered}"
+    );
+}
+
+/// Every bad knob faults in one pass, so one restart fixes all of them: the
+/// endpoint is graded last, after every other knob was read.
+#[test]
+fn every_bad_knob_faults_in_one_pass() {
+    let mut faults = Vec::new();
+
+    let config = otlp(
+        &MapEnv::from_pairs([
+            (OTEL_ENDPOINT_KNOB, "not a url"),
+            (OTEL_PROTOCOL_KNOB, "grpc"),
+            (OTEL_TIMEOUT_KNOB, "0"),
+        ]),
+        &mut faults,
+    );
+
+    assert!(config.is_none());
+    let mut knobs: Vec<&str> = faults.iter().map(super::Fault::knob).collect();
+    knobs.sort_unstable();
+    let mut expected = vec![OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB];
+    expected.sort_unstable();
+    assert_eq!(knobs, expected);
+}
+
+/// A malformed vendor endpoint faults naming the vendor knob, which is the
+/// one an operator on the vendor spelling has to fix.
+#[test]
+fn a_malformed_vendor_endpoint_faults_naming_the_vendor_knob() {
+    let mut faults = Vec::new();
+
+    let config = otlp(
+        &MapEnv::from_pairs([(GRAFANA_ENDPOINT_KNOB, "collector:4318")]),
+        &mut faults,
+    );
+
+    assert!(config.is_none());
+    assert_eq!(
+        faults.iter().map(super::Fault::knob).collect::<Vec<_>>(),
+        vec![GRAFANA_ENDPOINT_KNOB]
     );
 }

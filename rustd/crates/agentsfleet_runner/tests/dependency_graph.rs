@@ -32,8 +32,13 @@ const DATASTORE_CRATES: [&str; 2] = ["sqlx", "redis"];
 /// This crate, whose normal graph is walked.
 const RUNNER: &str = env!("CARGO_PKG_NAME");
 
-/// Every package the runner binary links in a normal build.
-fn linked() -> BTreeSet<String> {
+/// The runner crate allowed to build a pipeline: the one whose endpoint type
+/// cannot carry a credential. `afd_otlp` will take a header from anyone.
+const CREDENTIAL_GATE: &str = "afr_telemetry";
+
+/// Every normal dependency edge the runner binary's build walks, by package
+/// name: who depends on whom.
+fn edges() -> BTreeSet<(String, String)> {
     let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
     let metadata = MetadataCommand::new()
         .manifest_path(manifest)
@@ -47,12 +52,21 @@ fn linked() -> BTreeSet<String> {
             .find(|node| &node.id == id)
             .expect("every resolved id has a node")
     };
+    let name = |id: &PackageId| -> String {
+        metadata
+            .packages
+            .iter()
+            .find(|package| &package.id == id)
+            .map(|package| package.name.to_string())
+            .expect("every resolved id is a package")
+    };
     let root = metadata
         .packages
         .iter()
         .find(|package| package.name.as_str() == RUNNER)
         .expect("the runner is a workspace member");
     let mut seen = BTreeSet::new();
+    let mut edges = BTreeSet::new();
     let mut pending = VecDeque::from([root.id.clone()]);
     while let Some(id) = pending.pop_front() {
         for dependency in &node(&id).deps {
@@ -60,17 +74,38 @@ fn linked() -> BTreeSet<String> {
                 .dep_kinds
                 .iter()
                 .any(|kind| kind.kind == DependencyKind::Normal);
-            if normal && seen.insert(dependency.pkg.clone()) {
-                pending.push_back(dependency.pkg.clone());
+            if normal {
+                edges.insert((name(&id), name(&dependency.pkg)));
+                if seen.insert(dependency.pkg.clone()) {
+                    pending.push_back(dependency.pkg.clone());
+                }
             }
         }
     }
-    metadata
-        .packages
-        .iter()
-        .filter(|package| seen.contains(&package.id))
-        .map(|package| package.name.to_string())
+    edges
+}
+
+/// Every package the runner binary links in a normal build.
+fn linked() -> BTreeSet<String> {
+    edges()
+        .into_iter()
+        .map(|(_dependent, dependency)| dependency)
         .collect()
+}
+
+/// Only the crate that refuses a credential reaches the transport: any other
+/// runner crate depending on `afd_otlp` could build a pipeline that carries a
+/// header, and the rule that the runner holds no credential would be a
+/// convention rather than the dependency graph.
+#[test]
+fn only_the_credential_gate_reaches_the_transport() {
+    let dependents: BTreeSet<String> = edges()
+        .into_iter()
+        .filter(|(_dependent, dependency)| dependency == TRANSPORT)
+        .map(|(dependent, _dependency)| dependent)
+        .collect();
+
+    assert_eq!(dependents, BTreeSet::from([CREDENTIAL_GATE.to_owned()]));
 }
 
 #[test]

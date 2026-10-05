@@ -1,6 +1,6 @@
 //! What the HTTP surface and the exporter record about themselves.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::Counter;
@@ -106,7 +106,27 @@ pub fn export_discarded(signal: Signal, reason: DiscardReason, count: u64) {
                 KeyValue::new(semconv::LABEL_REASON, reason.as_str()),
             ],
         );
+    } else if let Some(route) = LOSS_ROUTE.get() {
+        route(signal, reason, count);
     }
+}
+
+/// Where a process that installs no producer set records its export losses.
+///
+/// The runner exports through the same counting wrappers as the daemon but
+/// declares its own census, so the daemon's producer set is never installed
+/// there and the wrappers' losses would reach no family. A plain function
+/// rather than a trait object: it is set once, called on a failed export, and
+/// carries nothing.
+static LOSS_ROUTE: OnceLock<fn(Signal, DiscardReason, u64)> = OnceLock::new();
+
+/// Records export losses through `route` whenever no producer set is
+/// installed in this process.
+///
+/// Answers whether it took: the first route wins, as the first producer set
+/// does. A process with a producer set never reaches its route.
+pub fn route_export_discarded(route: fn(Signal, DiscardReason, u64)) -> bool {
+    LOSS_ROUTE.set(route).is_ok()
 }
 
 /// Records an attribute this process declined to put on a data point.

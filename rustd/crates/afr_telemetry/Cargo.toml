@@ -32,6 +32,10 @@ afd_otlp.workspace = true
 afr_tools.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
+# The provider table's names, read from the file `afr_providers` routes from,
+# so a provider label is a registered name or `_other`.
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 # The bridge that turns the runner's four span kinds into OTLP spans.
@@ -41,4 +45,6 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 afd_core = { workspace = true, features = ["test-util"] }
+# An exporter build failure, lifted to prove it stays a transport failure.
+opentelemetry-otlp.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }

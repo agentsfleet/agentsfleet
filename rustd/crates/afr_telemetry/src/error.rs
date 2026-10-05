@@ -34,9 +34,10 @@ pub(crate) enum ErrorKind {
         source: afd_otlp::Error,
     },
 
-    /// The runner's census and its producers disagree.
-    #[error("the runner's metric contract was refused")]
-    Contract {
+    /// The runner's census and its producers disagree, or the SDK refused a
+    /// series ceiling the census declares.
+    #[error("the runner's metric census was refused")]
+    Census {
         /// The instrument layer's reason.
         #[source]
         source: afd_observability::Error,
@@ -45,16 +46,20 @@ pub(crate) enum ErrorKind {
 
 afd_core::error_lifts!(Error, ErrorKind:
     afd_otlp::Refused => Knob,
-    afd_observability::Error => Contract,
+    afd_observability::Error => Census,
 );
 
 impl From<afd_otlp::Error> for Error {
-    /// A knob the transport refused stays a knob, so the runner names it the
-    /// same way whichever layer read it; anything else is the transport's.
+    /// A knob the transport refused stays a knob, and a census it refused
+    /// stays a census, so the runner names each the same way whichever layer
+    /// read it; anything else is the transport's.
     fn from(source: afd_otlp::Error) -> Self {
-        match source.refused() {
-            Some(refused) => ErrorKind::Knob { source: refused }.into(),
-            None => ErrorKind::Transport { source }.into(),
+        if let Some(refused) = source.refused() {
+            return ErrorKind::Knob { source: refused }.into();
+        }
+        match source.into_census() {
+            Ok(census) => ErrorKind::Census { source: census }.into(),
+            Err(source) => ErrorKind::Transport { source }.into(),
         }
     }
 }
@@ -66,7 +71,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Knob { .. } => error_code::STARTUP_ENV_CHECK,
             ErrorKind::Transport { source } => source.code(),
-            ErrorKind::Contract { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Census { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 

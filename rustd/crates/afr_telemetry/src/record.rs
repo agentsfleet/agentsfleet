@@ -3,7 +3,7 @@
 //!
 //! # Why a trait object in a slot
 //!
-//! The producers live in four crates and none of them should know whether
+//! The producers live in three crates and none of them should know whether
 //! telemetry is on. They call [`turn`], [`retry`] and the rest; each reaches
 //! the [`Recorder`] `run` installed, or nothing. That is the daemon's shape
 //! (`afd_observability::producers`) with one change: the slot holds a trait
@@ -19,6 +19,8 @@
 
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+
+use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::{
     FrameDrop, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome, TurnOutcome,
@@ -43,6 +45,9 @@ pub trait Recorder: Send + Sync + core::fmt::Debug {
     fn tool_call(&self, tool: Tool, outcome: ToolOutcome, elapsed: Duration);
     /// The span budget shed `spans`.
     fn spans_suppressed(&self, spans: u64);
+    /// The export lost `count` entries of `signal` before the collector took
+    /// them.
+    fn export_discarded(&self, signal: Signal, reason: DiscardReason, count: u64);
 }
 
 /// The recorder `run` installed, once per process.
@@ -104,9 +109,28 @@ pub fn spans_suppressed(spans: u64) {
     with(|recorder| recorder.spans_suppressed(spans));
 }
 
+/// Records telemetry the export lost before the collector took it.
+///
+/// Reached through [`route_export_losses`]: the counting wrappers that see a
+/// failed export are `afd_observability`'s, shared with the daemon.
+pub fn export_discarded(signal: Signal, reason: DiscardReason, count: u64) {
+    with(|recorder| recorder.export_discarded(signal, reason, count));
+}
+
+/// Sends the shared counting wrappers' losses to [`export_discarded`], for a
+/// process with no daemon producer set installed.
+///
+/// Answers whether it took; every caller routes to the same function, so a
+/// second call changes nothing.
+pub fn route_export_losses() -> bool {
+    afd_observability::producers::http::route_export_discarded(export_discarded)
+}
+
 #[cfg(all(test, feature = "test-util"))]
 mod tests {
     use std::time::Duration;
+
+    use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
     use crate::labels::{
         FrameDrop, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome, TurnOutcome,
@@ -130,6 +154,7 @@ mod tests {
             super::push_failed(PushFailure::Refused);
             super::tool_call(tool, ToolOutcome::Interrupted, elapsed);
             super::spans_suppressed(2);
+            super::export_discarded(Signal::Traces, DiscardReason::ExportRejected, 5);
         })
         .await;
         super::push_failed(PushFailure::Internal);
@@ -145,8 +170,39 @@ mod tests {
                 Recorded::PushFailed(PushFailure::Refused),
                 Recorded::ToolCall(tool, ToolOutcome::Interrupted, elapsed),
                 Recorded::SpansSuppressed(2),
+                Recorded::ExportDiscarded(Signal::Traces, DiscardReason::ExportRejected, 5),
             ],
             "everything inside the scope, and the push after it went elsewhere"
+        );
+    }
+
+    /// A loss the shared counting wrappers report reaches this crate's
+    /// recorder once the route is set, and every route call agrees.
+    #[tokio::test]
+    async fn a_shared_wrappers_loss_reaches_the_runner_recorder() {
+        let _first = super::route_export_losses();
+        assert!(
+            !super::route_export_losses(),
+            "the route is set once; a second call changes nothing"
+        );
+        let (tally, received) = Tally::new();
+
+        scoped(tally, async {
+            afd_observability::producers::http::export_discarded(
+                Signal::Metrics,
+                DiscardReason::ExportUncertain,
+                3,
+            );
+        })
+        .await;
+
+        assert_eq!(
+            received.try_iter().collect::<Vec<_>>(),
+            vec![Recorded::ExportDiscarded(
+                Signal::Metrics,
+                DiscardReason::ExportUncertain,
+                3
+            )]
         );
     }
 }

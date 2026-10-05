@@ -2,15 +2,16 @@
 //! from it once, recorded through the [`Recorder`] they implement.
 //!
 //! The census is `docs/metrics.runner.census.tsv`, compiled in and read by the
-//! daemon's own registry reader, so the two binaries' contracts are one format
+//! daemon's own registry reader, so the two binaries' censuses are one format
 //! graded one way. Neither census declares the other's families.
 
 use std::time::Duration;
 
 use afd_observability::metrics::family::{CounterKind, Declared, HistogramKind};
 use afd_observability::metrics::instrument::Instruments;
+use afd_observability::metrics::label::http::{DiscardReason, Signal};
 use afd_observability::metrics::registry::Registry;
-use afd_observability::semconv::{LABEL_OUTCOME, LABEL_REASON};
+use afd_observability::semconv::{LABEL_OUTCOME, LABEL_REASON, LABEL_SIGNAL};
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
 
@@ -55,6 +56,11 @@ pub const TOOL_CALL_DURATION: Declared<HistogramKind> =
 pub const SPANS_SUPPRESSED: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_spans_suppressed_total");
 
+/// Telemetry the export lost before the collector took it, by signal and
+/// reason.
+pub const OTLP_ENTRIES_DISCARDED: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_otlp_entries_discarded_total");
+
 /// Reads the runner's census.
 ///
 /// # Errors
@@ -73,6 +79,7 @@ pub struct Families {
     push_failures: Counter<u64>,
     tool_calls: Histogram<f64>,
     spans_suppressed: Counter<u64>,
+    entries_discarded: Counter<u64>,
 }
 
 impl Families {
@@ -80,7 +87,7 @@ impl Families {
     ///
     /// # Errors
     /// A family the census does not declare, or declares as another kind or
-    /// number: the code and the contract were edited apart.
+    /// number: the code and the census were edited apart.
     pub fn claim(instruments: &Instruments) -> afd_observability::Result<Self> {
         Ok(Self {
             turns: instruments.histogram_f64(&PROVIDER_TURN_DURATION)?,
@@ -90,6 +97,7 @@ impl Families {
             push_failures: instruments.counter_u64(&MEMORY_PUSH_FAILURES)?,
             tool_calls: instruments.histogram_f64(&TOOL_CALL_DURATION)?,
             spans_suppressed: instruments.counter_u64(&SPANS_SUPPRESSED)?,
+            entries_discarded: instruments.counter_u64(&OTLP_ENTRIES_DISCARDED)?,
         })
     }
 }
@@ -144,5 +152,15 @@ impl Recorder for Families {
 
     fn spans_suppressed(&self, spans: u64) {
         self.spans_suppressed.add(spans, &[]);
+    }
+
+    fn export_discarded(&self, signal: Signal, reason: DiscardReason, count: u64) {
+        self.entries_discarded.add(
+            count,
+            &[
+                KeyValue::new(LABEL_SIGNAL, signal.as_str()),
+                KeyValue::new(LABEL_REASON, reason.as_str()),
+            ],
+        );
     }
 }

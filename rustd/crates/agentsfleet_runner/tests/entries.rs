@@ -123,6 +123,10 @@ const ENDPOINT_KNOB: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
 /// The knob that would hand a runner a credential.
 const HEADERS_KNOB: &str = "OTEL_EXPORTER_OTLP_HEADERS";
 
+/// The traces signal's own header knob, which the exporter reads itself and
+/// prefers to the general one.
+const TRACES_HEADERS_KNOB: &str = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
+
 /// A collector that refuses every connection, promptly.
 const REFUSING_COLLECTOR: &str = "http://127.0.0.1:1";
 
@@ -185,38 +189,48 @@ fn run_exports_naming_only_the_knob() {
 }
 
 /// A header knob refuses `run` before it boots, naming the knob: the runner
-/// carries no credential.
+/// carries no credential. A signal's own header knob refuses the same way,
+/// since the exporter would read it from the environment itself.
 #[test]
 fn run_refuses_a_credential_naming_the_knob() {
-    let home = tempfile::tempdir().expect("a storage home");
+    for knob in [HEADERS_KNOB, TRACES_HEADERS_KNOB] {
+        let home = tempfile::tempdir().expect("a storage home");
 
-    let ran = run_with(
-        home.path(),
-        &[
-            (ENDPOINT_KNOB, REFUSING_COLLECTOR),
-            (HEADERS_KNOB, "authorization=Bearer x"),
-        ],
-    );
+        let ran = run_with(
+            home.path(),
+            &[
+                (ENDPOINT_KNOB, REFUSING_COLLECTOR),
+                (knob, "authorization=Bearer x"),
+            ],
+        );
 
-    let stderr = String::from_utf8_lossy(&ran.stderr);
-    assert_eq!(ran.status.code(), Some(1), "{stderr}");
-    assert!(
-        stderr.contains(RUN_FAILED) && stderr.contains(HEADERS_KNOB),
-        "{stderr}"
-    );
-    assert!(
-        !stderr.contains("Bearer"),
-        "the refused value is never echoed: {stderr}"
-    );
-    assert!(
-        !home.path().join("sandboxes").is_dir(),
-        "refused before boot opened the storage home"
-    );
+        let stderr = String::from_utf8_lossy(&ran.stderr);
+        assert_eq!(ran.status.code(), Some(1), "{knob}: {stderr}");
+        assert!(
+            stderr.contains(RUN_FAILED) && stderr.contains(knob),
+            "{stderr}"
+        );
+        assert!(
+            !stderr.contains("Bearer"),
+            "the refused value is never echoed: {stderr}"
+        );
+        assert!(
+            !home.path().join("sandboxes").is_dir(),
+            "refused before boot opened the storage home"
+        );
+    }
 }
 
-/// `sandbox` with the endpoint set behaves exactly as without it: it reads no
-/// telemetry knob and starts no export thread before hardening, so whatever
-/// it refuses, it refuses the same way and never for a second thread.
+/// `sandbox` with the endpoint set behaves exactly as without it, and never
+/// reaches the export decision: `run` logs one of two export lines whichever
+/// way it decides, and `sandbox` logs neither.
+///
+/// What this binary-level test can prove outside a sandbox. The entry binds
+/// its executor socket at a fixed path before it hardens, and outside a
+/// sandbox that bind refuses first, so both runs stop there. That the
+/// sequence hardens once bound is `afr_sandbox`'s own proof
+/// (`tests/confine.rs`, a child process confining itself); this one proves the
+/// entry never builds the export that would start a thread before it.
 #[test]
 fn test_sandbox_hardens_with_telemetry_configured() {
     let sandbox = |extra: &[(&str, &str)]| {
@@ -238,5 +252,8 @@ fn test_sandbox_hardens_with_telemetry_configured() {
         "the endpoint changes nothing the sandbox entry does"
     );
     let stderr = String::from_utf8_lossy(&exporting.stderr);
-    assert!(!stderr.contains("second thread"), "{stderr}");
+    assert!(
+        !stderr.contains(EXPORT_STARTED) && !stderr.contains(EXPORT_DISABLED),
+        "the sandbox entry never reached the export decision: {stderr}"
+    );
 }

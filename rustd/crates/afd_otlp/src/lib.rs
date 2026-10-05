@@ -33,9 +33,11 @@ pub mod pipelines;
 pub mod resource;
 
 pub use self::config::{
-    DEFAULT_TIMEOUT, Encoding, OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB,
-    OTEL_TIMEOUT_KNOB, OtlpConfig, optional,
+    COMPRESSION_KNOBS, DEFAULT_TIMEOUT, Encoding, HEADER_KNOBS, OTEL_ENDPOINT_KNOB,
+    OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, OtlpConfig, optional,
 };
 pub use self::error::{Error, Refused, Result};
-pub use self::pipelines::{Builder, COLLECT_INTERVAL, Exports};
+pub use self::pipelines::{
+    Builder, COLLECT_INTERVAL, Exports, SPAN_BATCH, SPAN_QUEUE, SPAN_SEND_EVERY, SpanEnd,
+};
 pub use self::resource::Service;

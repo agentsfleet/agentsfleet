@@ -13,6 +13,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
+use afd_observability::metrics::label::http::{DiscardReason, Signal};
+
 use crate::labels::{
     FrameDrop, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome, TurnOutcome,
 };
@@ -35,6 +37,8 @@ pub enum Recorded {
     ToolCall(Tool, ToolOutcome, Duration),
     /// [`Recorder::spans_suppressed`].
     SpansSuppressed(u64),
+    /// [`Recorder::export_discarded`].
+    ExportDiscarded(Signal, DiscardReason, u64),
 }
 
 /// A recorder that hands every measurement to its receiver.
@@ -82,6 +86,10 @@ impl Recorder for Tally {
 
     fn spans_suppressed(&self, spans: u64) {
         self.send(Recorded::SpansSuppressed(spans));
+    }
+
+    fn export_discarded(&self, signal: Signal, reason: DiscardReason, count: u64) {
+        self.send(Recorded::ExportDiscarded(signal, reason, count));
     }
 }
 

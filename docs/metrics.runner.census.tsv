@@ -10,14 +10,17 @@
 # fleet, lease, event or runner identifier: a label is a series that outlives
 # the lease, and those identities belong on spans.
 #
-# Label sets: provider = OpenTelemetry's well-known `gen_ai.provider.name`
-# values plus `_other` (16); tool = the published tool catalog plus `_other`
-# (36); every outcome and reason is a closed enum in `afr_telemetry::labels`.
+# Label sets: provider = the provider registry's names
+# (`afr_providers/assets/providers.json`) plus `_other` (40); tool = the
+# published tool catalog plus `_other` (36); signal and reason on the loss
+# family are the daemon's own closed sets (3 x 6); every outcome and reason is
+# a closed enum in `afr_telemetry::labels`.
 name	kind	number	unit	temporality	labels	bounds	policy	live_read	category	watch_for
-agentsfleet_runner_provider_turn_duration_seconds	histogram	f64	s	delta	provider,outcome	0.25,0.5,1,2,4,8,16,32,64,128	fixed:48	no	latency	model turn wall time by provider; one provider slow this hour stands out
-agentsfleet_runner_provider_retries_total	counter	u64	1	cumulative	provider,reason	-	fixed:64	no	errors	turn sends retried; growth means a provider is rate limiting or failing
+agentsfleet_runner_provider_turn_duration_seconds	histogram	f64	s	delta	provider,outcome	0.25,0.5,1,2,4,8,16,32,64,128	fixed:120	no	latency	model turn wall time by provider; one provider slow this hour stands out
+agentsfleet_runner_provider_retries_total	counter	u64	1	cumulative	provider,reason	-	fixed:160	no	errors	turn sends retried; growth means a provider is rate limiting or failing
 agentsfleet_runner_sandbox_start_duration_seconds	histogram	f64	s	delta	outcome	0.05,0.1,0.25,0.5,1,2,4,8,16,32	fixed:2	no	latency	time to a sandbox whose executor answers; cold starts sit in the tail
-agentsfleet_runner_activity_frames_dropped_total	counter	u64	{frame}	cumulative	reason	-	fixed:2	no	errors	live-tail frames lost on the runner; the run and its report are unaffected
-agentsfleet_runner_memory_push_failures_total	counter	u64	1	cumulative	reason	-	fixed:4	no	errors	memory writes that did not land; the fleet's next run starts without them
+agentsfleet_runner_activity_frames_dropped_total	counter	u64	{frame}	cumulative	reason	-	fixed:3	no	errors	live-tail frames lost on the runner; the run and its report are unaffected
+agentsfleet_runner_memory_push_failures_total	counter	u64	1	cumulative	reason	-	fixed:4	no	errors	memory pushes the daemon did not take, a mid-run checkpoint's included; the final push carries every entry again, so only one that fails there leaves the next run without them
 agentsfleet_runner_tool_call_duration_seconds	histogram	f64	s	delta	tool,outcome	0.01,0.05,0.1,0.25,0.5,1,2.5,5,10,30,60,120,300	fixed:108	no	latency	tool call wall time by tool
 agentsfleet_runner_spans_suppressed_total	counter	u64	{span}	cumulative	-	-	fixed:1	no	health	spans the runner's span budget shed; a storm stays visible
+agentsfleet_runner_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:18	no	errors	telemetry the runner lost before its collector took it, counted at the source; a down collector shows here and nowhere else

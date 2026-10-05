@@ -115,6 +115,41 @@ fn an_unusable_knob_is_refused_naming_itself() {
     }
 }
 
+/// An endpoint the exporter cannot post to is refused naming its knob, and one
+/// it can is kept.
+///
+/// `http::Uri` alone accepts the first three refused values: a host and port
+/// with no scheme, a bare host, and a bare path. Each would build an exporter
+/// that posts nothing, or one whose refusal echoes the whole value.
+#[test]
+fn an_endpoint_the_exporter_cannot_post_to_is_refused() {
+    for refused in [
+        "collector:4318",
+        "localhost",
+        "/v1/traces",
+        "ftp://collector:4318",
+        "http://collector:4318?token=x",
+        "http://collector:4318/#signals",
+        "user:secret@collector:4318",
+    ] {
+        assert_eq!(
+            OtlpConfig::new(refused, OTEL_ENDPOINT_KNOB).map_err(|refused| refused.knob),
+            Err(OTEL_ENDPOINT_KNOB),
+            "`{refused}` cannot carry a signal path"
+        );
+    }
+    for kept in [
+        ENDPOINT,
+        "https://collector.example:4318/otlp",
+        "http://user:secret@collector:4318",
+    ] {
+        assert!(
+            OtlpConfig::new(kept, OTEL_ENDPOINT_KNOB).is_ok(),
+            "`{kept}` is an endpoint the exporter posts to"
+        );
+    }
+}
+
 /// The parsers are usable one knob at a time, which is how a caller that
 /// aggregates faults reads them.
 #[test]
