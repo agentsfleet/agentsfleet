@@ -1,0 +1,31 @@
+Codex apply_patch, a vendored copy
+
+Source: https://github.com/openai/codex at commit
+2e5fea64eefcaa19f48458b2386011b619f69c70, directory codex-rs/apply-patch/src/.
+Licence: Apache License 2.0 (the repository's LICENSE). Copyright 2025 OpenAI
+(the repository's NOTICE).
+
+Files copied: parser.rs, streaming_parser.rs, seek_sequence.rs, text_file.rs.
+Derived: file_update.rs carries compute_replacements and the line counting from
+upstream file_update.rs, in its PreserveLineEndings mode only; mod.rs is this
+crate's glue.
+
+Changes to the copied files, as the Apache License 2.0 section 4(b) asks:
+- `pub` narrowed to `pub(crate)`: the parser is this crate's own, not an API.
+- parser.rs: `Hunk::resolve_path`, `Hunk::path` and the `codex_utils_path_uri`
+  types removed (the handler reads each variant's paths itself); `parse_patch`
+  returns the hunks rather than `ApplyPatchArgs`; the two tests on absolute
+  and path-URI paths removed with them.
+- streaming_parser.rs: the `*** Environment ID:` preamble removed, with its
+  test; this runner has one environment per lease. Tests assert with the
+  standard library's `assert_eq`, not `pretty_assertions`. The five error
+  messages the parser repeats are bound to constants and helper functions,
+  for this repository's literal audit; their text is unchanged.
+- seek_sequence.rs: the `ApplyPatchFileUpdateMode` parameter removed; the
+  PreserveLineEndings arm is the one kept.
+- The workspace's lints are allowed over this directory rather than met, so
+  a later pull from upstream diffs cleanly.
+
+Not copied: invocation.rs (shell heredoc parsing over tree-sitter), lib.rs's
+filesystem application (this crate applies hunks through the sandbox's
+executor), standalone_executable.rs, main.rs, file_update_tests.rs.

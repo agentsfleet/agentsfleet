@@ -70,3 +70,14 @@ fn a_non_string_bytes_field_explains_the_expected_encoding() {
         "{refused}"
     );
 }
+
+use super::{MAX_FRAME_BYTES, MAX_READ_BYTES};
+
+/// The read cap is the contract a handler reads a whole file under, and as
+/// base64 it fits one frame.
+#[test]
+fn the_read_cap_is_eight_mebibytes_and_fits_one_frame_as_base64() {
+    // pin test: literal is the contract
+    assert_eq!(MAX_READ_BYTES, 8 * 1024 * 1024);
+    assert!(usize::try_from(MAX_READ_BYTES).unwrap() / 3 * 4 < MAX_FRAME_BYTES);
+}

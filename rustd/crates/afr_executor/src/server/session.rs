@@ -23,9 +23,9 @@ use super::launch::Plan;
 use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
-    DELIMITER, KillParams, ListParams, MAX_FRAME_BYTES, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, SpawnParams,
-    SpawnResult, WriteFileParams, WriteParams, decoded, line,
+    DELIMITER, KillParams, MAX_FRAME_BYTES, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL,
+    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
+    ReadParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams, decoded, line,
 };
 
 /// A line that is not JSON-RPC at all.
@@ -160,10 +160,22 @@ impl Session {
                     workspace.write(&write.path, &write.content)
                 },
             ),
+            METHOD_APPEND_FILE => self.on_files(
+                id,
+                params(request),
+                |workspace, append: WriteFileParams<'static>| {
+                    workspace.append(&append.path, &append.content)
+                },
+            ),
+            METHOD_DELETE_FILE => self.on_files(
+                id,
+                params(request),
+                |workspace, delete: PathParams<'static>| workspace.delete(&delete.path),
+            ),
             METHOD_LIST_DIR => self.on_files(
                 id,
                 params(request),
-                |workspace, list: ListParams<'static>| workspace.list(&list.path),
+                |workspace, list: PathParams<'static>| workspace.list(&list.path),
             ),
             _unknown => self.refuse(id, METHOD_NOT_FOUND_CODE, DETAIL_NO_METHOD),
         }

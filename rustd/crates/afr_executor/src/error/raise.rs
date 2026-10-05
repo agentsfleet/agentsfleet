@@ -40,6 +40,12 @@ pub(crate) fn not_a_file() -> Error {
     ErrorKind::NotAFile.into()
 }
 
+/// A file call named something the workspace does not have; `source` is the
+/// operating system saying so.
+pub(crate) fn not_found(source: std::io::Error) -> Error {
+    ErrorKind::NotFound { source }.into()
+}
+
 /// No such process.
 pub(crate) fn unknown_process() -> Error {
     ErrorKind::UnknownProcess.into()

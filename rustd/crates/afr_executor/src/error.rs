@@ -27,7 +27,7 @@ use jsonrpsee_types::error::{
     CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
 };
 
-use crate::protocol::{PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
+use crate::protocol::{FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
 
 mod raise;
 
@@ -37,7 +37,8 @@ mod tests;
 
 pub(crate) use self::raise::{
     connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
-    not_a_file, path_refused, program_unavailable, refused, unknown_process, unresponsive,
+    not_a_file, not_found, path_refused, program_unavailable, refused, unknown_process,
+    unresponsive,
 };
 
 afd_core::error_shell!(
@@ -101,6 +102,15 @@ pub(crate) enum ErrorKind {
     #[error("the path is not a regular file")]
     NotAFile,
 
+    /// A file call named a file or directory the workspace does not have:
+    /// the one mistake of the caller's a handler names to the model.
+    #[error("the workspace has no such file or directory")]
+    NotFound {
+        /// The operating system's reason.
+        #[source]
+        source: io::Error,
+    },
+
     /// No such process on this executor.
     #[error("no process with that identifier")]
     UnknownProcess,
@@ -155,11 +165,41 @@ impl Error {
             .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"))
     }
 
+    /// Whether the path left the workspace, by name or through a link. True
+    /// of the refusal where it is raised and of the answer the client reads,
+    /// so a handler on either end tells it from every other failure.
+    #[must_use]
+    pub fn is_path_refused(&self) -> bool {
+        matches!(
+            self.kind(),
+            ErrorKind::PathRefused
+                | ErrorKind::Refused {
+                    code: PATH_REFUSED_CODE,
+                    ..
+                }
+        )
+    }
+
+    /// Whether a file call named something the workspace does not have, on
+    /// either end of the socket.
+    #[must_use]
+    pub fn is_not_found(&self) -> bool {
+        matches!(
+            self.kind(),
+            ErrorKind::NotFound { .. }
+                | ErrorKind::Refused {
+                    code: FILE_NOT_FOUND_CODE,
+                    ..
+                }
+        )
+    }
+
     /// The JSON-RPC code a refusal of this kind is answered with.
     pub(crate) fn rpc_code(&self) -> i32 {
         match self.kind() {
             ErrorKind::PathRefused => PATH_REFUSED_CODE,
             ErrorKind::UnknownProcess => UNKNOWN_PROCESS_CODE,
+            ErrorKind::NotFound { .. } => FILE_NOT_FOUND_CODE,
             ErrorKind::InputBacklogFull | ErrorKind::InputClosed => CALL_EXECUTION_FAILED_CODE,
             ErrorKind::InvalidParams { .. }
             | ErrorKind::Malformed { .. }

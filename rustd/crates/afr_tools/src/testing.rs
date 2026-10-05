@@ -1,17 +1,27 @@
 //! What the handler suites share: one call, made the way the router makes it,
-//! and a lease that sends through a fake.
+//! a lease that sends through a fake, and an executor served in-process for
+//! the file tools to cross.
 
+#![expect(
+    clippy::expect_used,
+    reason = "test support: a harness that cannot start should fail the test loudly"
+)]
+
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
+use std::time::Duration;
 
 use afd_core::clock::{FixedClock, UnixMillis};
 use afd_wire::policy::ExecutionPolicy;
 use afr_egress::Egress;
 use afr_egress::fixture::{LEASE_ID, policy};
 use afr_egress::testing::{CountingMint, RecordingTransport, Sent};
-use afr_executor::Executor;
+use afr_executor::{Client, Executor};
 use afr_memory::Hydrated;
+use tokio::task::JoinHandle;
 
+use crate::catalog::{Catalog, Entry, Selection};
 use crate::egress::SharedTransport;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolContext, ToolOutput};
@@ -22,6 +32,72 @@ pub(crate) const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
 pub(crate) const MINTED: &str = "ghs_minted_token";
 /// A minted token's lifetime: one hour.
 pub(crate) const HOUR: i64 = 3_600_000;
+/// How long a suite waits on the executor before failing.
+const PATIENCE: Duration = Duration::from_secs(20);
+
+/// The catalog the runner hosts, its egress tools sending into a recorder
+/// that answers everything 200; the receiver keeps the recorder answering.
+pub(crate) fn hosted() -> (Catalog, Receiver<Sent>) {
+    let (transport, sent) = RecordingTransport::replying(200, "");
+    (Catalog::hosted(Arc::new(transport)), sent)
+}
+
+/// The handler `selection` offers for `entry`.
+pub(crate) fn offered<'c>(selection: &Selection<'c>, entry: &Entry) -> &'c dyn Tool {
+    selection
+        .tool(entry.name())
+        .expect("the runner hosts every sandbox-side tool")
+}
+
+/// The real executor, served in-process on a scratch socket over a scratch
+/// workspace, and a client on it: a file call crosses what a sandbox's does.
+pub(crate) struct Live {
+    pub(crate) client: Client,
+    /// The workspace on the host, for a suite to plant and inspect files.
+    pub(crate) root: PathBuf,
+    server: JoinHandle<afr_executor::Result<()>>,
+    scratch: tempfile::TempDir,
+}
+
+impl Live {
+    /// Serves an executor and connects to it.
+    pub(crate) async fn start() -> Self {
+        let scratch = tempfile::tempdir().expect("a scratch directory");
+        let socket = scratch.path().join("executor.sock");
+        let root = scratch.path().join("workspace");
+        std::fs::create_dir(&root).expect("the workspace directory");
+        let server = tokio::spawn({
+            let (socket, root) = (socket.clone(), root.clone());
+            async move { afr_executor::serve(&socket, &root).await }
+        });
+        let client = Client::connect_within(&socket, PATIENCE)
+            .await
+            .expect("the executor answers on its socket");
+        Self {
+            client,
+            root,
+            server,
+            scratch,
+        }
+    }
+
+    /// A directory beside the workspace, outside it, for a link to point at.
+    pub(crate) fn outside(&self) -> PathBuf {
+        let outside = self.scratch.path().join("outside");
+        std::fs::create_dir_all(&outside).expect("the outside directory");
+        outside
+    }
+
+    /// Hangs up and waits for the executor to stop.
+    pub(crate) async fn stop(self) {
+        drop(self.client);
+        tokio::time::timeout(PATIENCE, self.server)
+            .await
+            .expect("the executor stops once its client hangs up")
+            .expect("the server task finishes")
+            .expect("the executor served without failing");
+    }
+}
 
 /// Calls `tool` with `arguments` from the supervisor, with `lease`'s state.
 pub(crate) async fn call(

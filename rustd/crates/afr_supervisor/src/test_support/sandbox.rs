@@ -99,6 +99,9 @@ impl Sandbox for FakeSandbox {
     }
 }
 
+/// What a refused write or delete says.
+const READ_ONLY: &str = "read-only workspace";
+
 /// An executor that refuses to spawn, reports the files written into it, and
 /// answers everything else emptily.
 #[derive(Debug)]
@@ -131,13 +134,25 @@ impl Executor for FakeExecutor {
     async fn write_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
         match self.writes {
             Writes::Accept => {}
-            Writes::Refuse => return Err(std::io::Error::other("read-only workspace").into()),
+            Writes::Refuse => return Err(std::io::Error::other(READ_ONLY).into()),
             Writes::Stall => std::future::pending::<()>().await,
         }
         if let Some(written) = &self.written {
             let _reader_gone = written.send((path.to_owned(), data));
         }
         Ok(())
+    }
+
+    async fn append_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
+        self.write_file(path, data).await
+    }
+
+    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
+        match self.writes {
+            Writes::Accept => Ok(()),
+            Writes::Refuse => Err(std::io::Error::other(READ_ONLY).into()),
+            Writes::Stall => std::future::pending().await,
+        }
     }
 
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {

@@ -24,6 +24,8 @@ pub(crate) const PATIENCE: Duration = Duration::from_secs(20);
 pub(crate) const PATH_REFUSED: i32 = -32_010;
 /// The executor's answer to a process it does not have.
 pub(crate) const UNKNOWN_PROCESS: i32 = -32_011;
+/// The executor's answer to a file or directory the workspace does not have.
+pub(crate) const FILE_NOT_FOUND: i32 = -32_012;
 /// The executor's answer to the caller's own mistake.
 pub(crate) const INVALID_PARAMS: i32 = -32_602;
 /// The executor's answer to a write past a process's input queue.

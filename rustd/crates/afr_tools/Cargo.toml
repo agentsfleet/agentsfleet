@@ -61,3 +61,5 @@ url.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 # The live session suite serves a real executor on a scratch socket.
 tempfile.workspace = true
+# The landing-failure suite skips under root, which writes through mode bits.
+rustix = { workspace = true, features = ["process"] }

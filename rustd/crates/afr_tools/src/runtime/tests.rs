@@ -47,6 +47,12 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
             ToolErrorCode::SubcommandNotAllowed,
             "subcommand_not_allowed",
         ),
+        (ToolErrorCode::PathNotAllowed, "path_not_allowed"),
+        (ToolErrorCode::FileNotFound, "file_not_found"),
+        (ToolErrorCode::FileTooLarge, "file_too_large"),
+        (ToolErrorCode::TextNotFound, "text_not_found"),
+        (ToolErrorCode::HashMismatch, "hash_mismatch"),
+        (ToolErrorCode::PatchInvalid, "patch_invalid"),
     ];
 
     for (code, spelling) in spelled {

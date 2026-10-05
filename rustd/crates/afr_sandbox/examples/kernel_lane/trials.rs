@@ -14,6 +14,7 @@ use afr_sandbox::{
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
+use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::lane::{Lane, missing};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, runtime};
@@ -48,7 +49,7 @@ type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: [(&str, Body); 18] = [
+    let rows: [(&str, Body); 20] = [
         ("test_sandbox_process_has_no_capabilities", no_capabilities),
         (
             "test_sandbox_cannot_plant_files_on_the_host",
@@ -85,6 +86,14 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         (
             "test_read_token_never_enters_the_sandbox",
             token_never_enters,
+        ),
+        (
+            "test_file_tools_run_inside_the_sandbox",
+            file_tools_run_inside,
+        ),
+        (
+            "test_file_tools_refuse_a_link_out_of_the_sandbox",
+            file_tools_refuse_link_out,
         ),
         ("test_warm_start_beats_cold_start", warm_beats_cold),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),

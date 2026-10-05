@@ -17,7 +17,10 @@ use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
 use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
-use crate::sandbox::{ExecCommand, Git, Shell, WriteStdin};
+use crate::sandbox::{
+    ApplyPatch, ExecCommand, FileAppend, FileDelete, FileEdit, FileEditHashed, FileRead,
+    FileReadHashed, FileWrite, Git, Shell, WriteStdin,
+};
 use crate::web_fetch::WebFetch;
 
 /// One published tool: its name and the runtime it executes in.
@@ -193,6 +196,14 @@ impl Catalog {
             Typed::boxed(ExecCommand),
             Typed::boxed(WriteStdin),
             Typed::boxed(Git),
+            Typed::boxed(FileRead),
+            Typed::boxed(FileReadHashed),
+            Typed::boxed(FileWrite),
+            Typed::boxed(FileAppend),
+            Typed::boxed(FileDelete),
+            Typed::boxed(FileEdit),
+            Typed::boxed(FileEditHashed),
+            Typed::boxed(ApplyPatch),
         ])
     }
 

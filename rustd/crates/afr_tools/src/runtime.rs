@@ -89,6 +89,18 @@ pub enum ToolErrorCode {
     SessionNotFound,
     /// The subcommand reaches a remote, and the sandbox has no network.
     SubcommandNotAllowed,
+    /// The path leaves the workspace, by name or through a link.
+    PathNotAllowed,
+    /// The path names no file or directory in the workspace.
+    FileNotFound,
+    /// The file is longer than one read carries, so it cannot be edited whole.
+    FileTooLarge,
+    /// The text to replace is not in the file.
+    TextNotFound,
+    /// A line tag no longer matches the file, or matches it more than once.
+    HashMismatch,
+    /// The patch does not parse, or a hunk's lines are not in the file.
+    PatchInvalid,
 }
 
 impl ToolErrorCode {
@@ -119,6 +131,12 @@ impl ToolErrorCode {
             Self::SessionCapReached => "session_cap_reached",
             Self::SessionNotFound => "session_not_found",
             Self::SubcommandNotAllowed => "subcommand_not_allowed",
+            Self::PathNotAllowed => "path_not_allowed",
+            Self::FileNotFound => "file_not_found",
+            Self::FileTooLarge => "file_too_large",
+            Self::TextNotFound => "text_not_found",
+            Self::HashMismatch => "hash_mismatch",
+            Self::PatchInvalid => "patch_invalid",
         }
     }
 }

@@ -242,6 +242,14 @@ impl Executor for ScriptedExecutor {
         Err(refused(PROCESSES_ONLY))
     }
 
+    async fn append_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
+        Err(refused(PROCESSES_ONLY))
+    }
+
+    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
+        Err(refused(PROCESSES_ONLY))
+    }
+
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
         Err(refused(PROCESSES_ONLY))
     }

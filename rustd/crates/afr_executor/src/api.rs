@@ -298,6 +298,12 @@ pub trait Executor: Send + Sync + fmt::Debug {
     /// Writes a regular file, replacing what was there.
     async fn write_file(&self, path: &str, data: Bytes) -> Result<()>;
 
+    /// Adds to the end of a regular file, making it when absent.
+    async fn append_file(&self, path: &str, data: Bytes) -> Result<()>;
+
+    /// Removes a regular file; a link, a directory or a device is refused.
+    async fn delete_file(&self, path: &str) -> Result<()>;
+
     /// Lists a directory, up to the most one answer carries.
     async fn list_dir(&self, path: &str) -> Result<Listing>;
 }
