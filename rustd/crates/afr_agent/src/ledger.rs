@@ -19,6 +19,8 @@ use afd_wire::activity::{ActivityFrame, ToolCallCompleted, ToolCallStarted};
 use afd_wire::tool_detail::{DETAIL_EVENT_MAX_BYTES, ToolCallRecord};
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_providers::Call;
+use afr_telemetry::labels::{Tool, ToolOutcome};
+use afr_telemetry::record;
 use afr_tools::ToolOutput;
 use serde_json::{Map, Value};
 use tracing::Instrument as _;
@@ -168,6 +170,7 @@ impl Opened<'_, '_> {
         let duration_ms = saturating_millis(outcome.elapsed);
         let event = EVENT_CALL_COMPLETED;
         tracing::debug!(lease_id, call_id, tool, ?status, duration_ms, event);
+        record::tool_call(Tool::of(tool), tool_outcome(status), outcome.elapsed);
         self.ledger
             .sink
             .emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
@@ -183,6 +186,15 @@ impl Opened<'_, '_> {
         self.ledger
             .trace
             .push(self.number, self.name, bounded, outcome);
+    }
+}
+
+/// How a call ended, as the tool-duration family labels it.
+const fn tool_outcome(status: ToolCallStatus) -> ToolOutcome {
+    match status {
+        ToolCallStatus::Succeeded => ToolOutcome::Succeeded,
+        ToolCallStatus::Failed => ToolOutcome::Failed,
+        ToolCallStatus::Interrupted => ToolOutcome::Interrupted,
     }
 }
 

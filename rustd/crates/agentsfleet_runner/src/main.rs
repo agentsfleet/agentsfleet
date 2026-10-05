@@ -2,7 +2,9 @@
 //!
 //! Three entries, each only composing library crates:
 //!
-//! - `run` supervises this host's leases, as the systemd unit.
+//! - `run` supervises this host's leases, as the systemd unit. It exports its
+//!   spans and its own metric families to the runner collector when
+//!   `OTEL_EXPORTER_OTLP_ENDPOINT` names one, and holds no credential to do it.
 //! - `probe` prints what this host's kernel can enforce, as a heartbeat would
 //!   carry it.
 //! - `sandbox` is started by the engine inside each sandbox: it hardens itself
@@ -11,11 +13,13 @@
 
 use std::process::ExitCode;
 
-use afd_core::env::ProcessEnv;
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_core::error_code;
+use afr_telemetry::{Endpoint, SpanLayer, Telemetry};
 
 use clap::{Parser, Subcommand};
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::Layer as _;
 use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
@@ -104,6 +108,50 @@ fn probe() -> ExitCode {
     }
 }
 
+/// Starts the export when an endpoint is configured, boots, and delivers what
+/// the export holds on the way out.
+fn run() -> ExitCode {
+    let telemetry = match exporting(&ProcessEnv) {
+        Ok(telemetry) => telemetry,
+        Err(refused) => return refused,
+    };
+    let ended = supervise();
+    if let Some(telemetry) = telemetry {
+        telemetry.flush();
+    }
+    ended
+}
+
+/// Installs the subscriber, with the span export when the endpoint names a
+/// collector, and says which.
+///
+/// Read before boot so a misconfigured export refuses the start rather than a
+/// lease, and before the subscriber so the subscriber carries the export's
+/// layer from its first record. A refusal is logged through a subscriber
+/// without it, naming the knob and never its value.
+fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
+    let resolved = Endpoint::from_env(env)
+        .and_then(|endpoint| endpoint.as_ref().map(Telemetry::install).transpose());
+    let telemetry = match resolved {
+        Ok(telemetry) => telemetry,
+        Err(refused) => {
+            install_logs(env, None);
+            let error_code = refused.code().as_str();
+            let knob = refused.knob();
+            let reason = refused.to_string();
+            let event = EVENT_RUN_FAILED;
+            tracing::error!(error_code, knob, reason, event);
+            return Err(ExitCode::FAILURE);
+        }
+    };
+    install_logs(env, telemetry.as_ref().map(Telemetry::layer));
+    match &telemetry {
+        Some(exporting) => exporting.announce(),
+        None => afr_telemetry::announce_disabled(),
+    }
+    Ok(telemetry)
+}
+
 /// Boots as far as an agent engine is needed, then refuses.
 ///
 /// Every check a real start makes runs first — the environment and token, the
@@ -111,8 +159,7 @@ fn probe() -> ExitCode {
 /// at boot. Only the agent engine is missing, and the workstream that builds
 /// one composes `afr_supervisor::run` here, with the engine whose boot sweep
 /// clears what a crashed runner left.
-fn run() -> ExitCode {
-    install_logs(&ProcessEnv);
+fn supervise() -> ExitCode {
     if let Err(error) = afr_supervisor::boot(&ProcessEnv) {
         let error_code = error.code().as_str();
         let reason = error.to_string();
@@ -136,18 +183,25 @@ fn run() -> ExitCode {
     ExitCode::from(REFUSED)
 }
 
-/// Sends structured records to stderr through [`log_filter`].
-fn install_logs(env: &impl afd_core::env::EnvSource) {
-    let records = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+/// Sends structured records to stderr through [`log_filter`], and the
+/// runner's spans to `spans` when it exports.
+///
+/// The level filter sits on the stderr layer alone, so an operator quieting
+/// the journal does not quiet the traces: the span layer carries a filter of
+/// its own, admitting the runner's four span kinds and nothing else.
+fn install_logs(env: &impl EnvSource, spans: Option<SpanLayer>) {
+    let records = tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_filter(log_filter(env));
     tracing_subscriber::registry()
-        .with(log_filter(env))
+        .with(spans)
         .with(records)
         .init();
 }
 
 /// The level the environment names, with the model library's own lines held
 /// to its warnings, so no level puts a model's raw reply in the journal.
-fn log_filter(env: &impl afd_core::env::EnvSource) -> Targets {
+fn log_filter(env: &impl EnvSource) -> Targets {
     afr_providers::log_filter(afd_core::env::log_level(env, DEFAULT_LEVEL))
 }
 

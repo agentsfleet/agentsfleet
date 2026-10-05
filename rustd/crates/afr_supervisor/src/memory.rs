@@ -9,6 +9,7 @@ use afd_wire::memory::{
     MemoryDelta, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse, SharedMemory,
 };
 use afr_agent::Checkpoint;
+use afr_telemetry::record;
 
 use crate::client::{Body, ControlPlane, retrying};
 use crate::error::Result;
@@ -36,7 +37,14 @@ pub(crate) async fn capture(
     memory: Vec<MemoryDelta<'static>>,
 ) -> Result<()> {
     let request = push_request(lease, memory);
-    retrying(|| plane.capture(fleet_id, &request)).await
+    retrying(|| plane.capture(fleet_id, &request))
+        .await
+        .inspect_err(counted)
+}
+
+/// Counts a memory push that did not land, by why.
+fn counted(failure: &crate::Error) {
+    record::push_failed(failure.push_failure());
 }
 
 /// `memory`, fenced by `lease`'s token.
@@ -80,7 +88,9 @@ impl Checkpoint for LeaseCheckpoint<'_> {
     /// every entry again.
     async fn push(&self, memory: Vec<MemoryDelta<'static>>) -> afr_agent::Result<()> {
         let request = push_request(self.lease, memory);
-        (self.plane.capture(self.fleet_id, &request).await).map_err(afr_agent::Error::checkpoint)
+        (self.plane.capture(self.fleet_id, &request).await)
+            .inspect_err(counted)
+            .map_err(afr_agent::Error::checkpoint)
     }
 }
 

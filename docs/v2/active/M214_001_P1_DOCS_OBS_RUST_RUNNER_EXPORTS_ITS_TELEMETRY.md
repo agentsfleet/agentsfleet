@@ -59,7 +59,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/agentsfleetd/src/telemetry.rs`, `src/preflight/otlp.rs`, `Cargo.toml` | EDIT | Call `afd_otlp`; daemon behaviour unchanged |
 | `rustd/crates/agentsfleet_runner/` (`src/main.rs`, `Cargo.toml`, `tests/dependency_graph.rs`, `tests/runner_suite.rs`) | EDIT | `run` installs the exporter; `afd_otlp` joins the allowed crates |
 | `rustd/crates/afr_telemetry/` | CREATE | The credential-free endpoint config, the span sampler, the runner instruments, the runner census reader |
-| `rustd/crates/afr_agent/src/` (`spans.rs`, `loop*`), `afr_providers/src/retry.rs`, `afr_sandbox/src/`, `afr_supervisor/src/` (`activity.rs`, `memory.rs`) | EDIT | Record the six families where each fact is known |
+| `rustd/crates/afr_agent/src/` (`loop.rs`, `ledger.rs`), `afr_providers/src/` (`transport.rs`, `turn.rs`), `afr_supervisor/src/` (`activity.rs`, `memory.rs`, `error.rs`, `identity.rs`, `lease_loop/workspace.rs`), their `Cargo.toml` and tests | EDIT | Record the six families where each fact is known; the lease span carries `agentsfleet.event.id` |
+| `rustd/crates/afd_observability/src/metrics/label.rs`, `src/semconv.rs` | EDIT | `closed_set!` exported so the runner's label sets use the daemon's macro rather than a copy; `RUNNER_SPAN_KEYS` gains the event id |
 | `docs/metrics.runner.census.tsv` | CREATE | The runner families, graded both directions |
 | `docs/architecture/observability.md`, `docs/architecture/runner_fleet.md` | EDIT | The runner side moves from "decided" to "built"; the collector stays "built later" |
 | `~/Projects/docs` (self-hosting runner page, changelog) | EDIT | The runner's three knobs, on a `chore/m214-runner-telemetry-changelog` branch |
@@ -93,33 +94,33 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `afd_otlp` owns `OtlpConfig`, the knob reading and `install`, moved from `agentsfleetd`. The daemon calls it unchanged; the runner's dependency guard allows it. Unset `OTEL_EXPORTER_OTLP_ENDPOINT` means nothing is built.
 
-- **Dimension 1.1** — The daemon builds the same providers from the same knobs after the move → Test `test_daemon_otlp_install_is_unchanged`
-- **Dimension 1.2** — The runner links `afd_otlp` and still no datastore or control-plane crate → Test `test_runner_links_no_datastore_crate`
+- **Dimension 1.1** — The daemon builds the same providers from the same knobs after the move → Test `test_daemon_otlp_install_is_unchanged` — DONE (`rustd/crates/agentsfleetd/src/telemetry/tests.rs`)
+- **Dimension 1.2** — The runner links `afd_otlp` and still no datastore or control-plane crate → Test `test_runner_links_no_datastore_crate` — DONE (`rustd/crates/agentsfleet_runner/tests/dependency_graph.rs`)
 
 ### §2 — `run` exports with no credential; `sandbox` and `probe` never do
 
 `run` parses `OTEL_EXPORTER_OTLP_ENDPOINT` after its configuration into a type that refuses user information in the URL, refuses any `OTEL_EXPORTER_OTLP_HEADERS`, installs the trace and meter providers, logs `telemetry_export_started` with the knob name, and flushes on shutdown. Logs stay on stderr. `sandbox` and `probe` construct no provider, so hardening still sees one thread.
 
-- **Dimension 2.1** — `run` with the endpoint set exports a lease's spans and families to an in-process receiver, with no header → Test `test_runner_exports_spans_and_metrics_when_configured`
-- **Dimension 2.2** — A header knob, or user information in the endpoint, refuses `run` naming the knob → Test `test_runner_refuses_a_credential`
-- **Dimension 2.3** — `run` without the endpoint builds nothing and logs `telemetry_export_disabled` once → Test `test_runner_exports_nothing_when_unconfigured`
-- **Dimension 2.4** — `sandbox` hardens with the endpoint set → Test `test_sandbox_hardens_with_telemetry_configured`
+- **Dimension 2.1** — `run` with the endpoint set exports a lease's spans and families to an in-process receiver, with no header → Test `test_runner_exports_spans_and_metrics_when_configured` — DONE (`rustd/crates/afr_supervisor/src/lease_telemetry_tests.rs`: the real lease loop and agent loop over a scripted model, since `run` refuses every lease until M213_001)
+- **Dimension 2.2** — A header knob, or user information in the endpoint, refuses `run` naming the knob → Test `test_runner_refuses_a_credential` — DONE (`rustd/crates/afr_telemetry/src/endpoint/tests.rs`; the binary: `run_refuses_a_credential_naming_the_knob` in `rustd/crates/agentsfleet_runner/tests/entries.rs`)
+- **Dimension 2.3** — `run` without the endpoint builds nothing and logs `telemetry_export_disabled` once → Test `test_runner_exports_nothing_when_unconfigured` — DONE (`rustd/crates/agentsfleet_runner/tests/entries.rs`)
+- **Dimension 2.4** — `sandbox` hardens with the endpoint set → Test `test_sandbox_hardens_with_telemetry_configured` — DONE (`rustd/crates/agentsfleet_runner/tests/entries.rs`)
 
 ### §3 — A fixed span budget
 
 A `ShouldSample` implementation admits at most `MAX_LEASE_SPANS` spans per lease and `RUNNER_SPANS_PER_SECOND` per monotonic second, counted with atomics; a shed span increments `agentsfleet_runner_spans_suppressed_total`. Each lease is its own root trace carrying `agentsfleet.lease.id` and `agentsfleet.event.id`, joining the daemon's `fleet.delivery` span by attribute; no trace context crosses the runner protocol.
 
-- **Dimension 3.1** — A lease past `MAX_LEASE_SPANS` exports exactly that many and counts the rest → Test `test_lease_spans_stop_at_the_budget`
-- **Dimension 3.2** — A burst past the per-second budget is shed and counted, and the next second admits again → Test `test_span_budget_refills_each_second`
+- **Dimension 3.1** — A lease past `MAX_LEASE_SPANS` exports exactly that many and counts the rest → Test `test_lease_spans_stop_at_the_budget` — DONE (`rustd/crates/afr_telemetry/src/budget/tests.rs`)
+- **Dimension 3.2** — A burst past the per-second budget is shed and counted, and the next second admits again → Test `test_span_budget_refills_each_second` — DONE (`rustd/crates/afr_telemetry/src/budget/tests.rs`)
 
 ### §4 — Six runner metric families
 
 `provider_turn_duration_seconds` (provider, outcome), `provider_retries_total` (provider, reason), `sandbox_start_duration_seconds` (outcome), `activity_frames_dropped_total` (reason), `memory_push_failures_total` (reason) and `tool_call_duration_seconds` (tool, outcome), each `agentsfleet_runner_`-prefixed. Every label value comes from a closed set: providers from the registry, tools from the catalog, outcomes and reasons from enums. They are declared in `docs/metrics.runner.census.tsv` and read with `Registry::read`; the daemon census is untouched.
 
-- **Dimension 4.1** — Every runner census family has a producer, and every producer a row → Test `test_every_runner_census_family_has_a_producer`
-- **Dimension 4.2** — A provider retry records `provider_retries_total` with the registry's provider name → Test `test_provider_retry_is_counted`
-- **Dimension 4.3** — A failed memory push records `memory_push_failures_total` with its reason → Test `test_memory_push_failure_is_counted`
-- **Dimension 4.4** — Each family's declared ceiling admits its label product → Test `test_runner_ceilings_admit_their_label_product`
+- **Dimension 4.1** — Every runner census family has a producer, and every producer a row → Test `test_every_runner_census_family_has_a_producer` — DONE (`rustd/crates/afr_telemetry/src/families/tests.rs`)
+- **Dimension 4.2** — A provider retry records `provider_retries_total` with the registry's provider name → Test `test_provider_retry_is_counted` — DONE (`rustd/crates/afr_providers/tests/providers/retries.rs`)
+- **Dimension 4.3** — A failed memory push records `memory_push_failures_total` with its reason → Test `test_memory_push_failure_is_counted` — DONE (`rustd/crates/afr_supervisor/src/memory/tests.rs`)
+- **Dimension 4.4** — Each family's declared ceiling admits its label product → Test `test_runner_ceilings_admit_their_label_product` — DONE (`rustd/crates/afr_telemetry/src/families/tests.rs`)
 
 ### §5 — The architecture says the runner side is built
 

@@ -49,6 +49,10 @@ mod worker_pool;
 #[cfg(test)]
 mod test_support;
 
+#[cfg(test)]
+#[path = "lease_telemetry_tests.rs"]
+mod lease_telemetry_tests;
+
 use std::sync::Arc;
 
 use afd_core::clock::{Clock, SystemClock};

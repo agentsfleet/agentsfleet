@@ -24,6 +24,8 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_wire::activity::{ActivityFrame, ActivityRequest};
 use afr_agent::EventSink;
+use afr_telemetry::labels::FrameDrop;
+use afr_telemetry::record;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
@@ -128,8 +130,8 @@ impl ActivityPump<'_> {
                     if !batch.is_empty() && bytes + size > MAX_BATCH_BYTES {
                         // Full. Sent, or dropped when every slot is still
                         // held: a full batch is the only kind this pump drops.
-                        if posts.try_send(std::mem::take(&mut batch)).is_err() {
-                            self.count_drop();
+                        if let Err(full) = posts.try_send(std::mem::take(&mut batch)) {
+                            self.count_drop(full.into_inner().len());
                         }
                         bytes = 0;
                     }
@@ -158,8 +160,10 @@ impl ActivityPump<'_> {
         }
     }
 
-    /// Counts and logs a full batch dropped because every slot was held.
-    fn count_drop(&mut self) {
+    /// Counts and logs a full batch of `frames` dropped because every slot
+    /// was held.
+    fn count_drop(&mut self, frames: usize) {
+        record::frames_dropped(FrameDrop::Backpressure, frame_count(frames));
         self.dropped += 1;
         let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
         let lease_id = self.lease_id.as_str();
@@ -177,7 +181,9 @@ impl ActivityPump<'_> {
 
 /// Posts one batch. Activity is best-effort: a failure is logged, not retried.
 async fn post(plane: &ControlPlane, lease_id: &Uuid7, frames: Batch) {
+    let lost = frame_count(frames.len());
     if let Err(failure) = plane.activity(lease_id, &ActivityRequest { frames }).await {
+        record::frames_dropped(FrameDrop::PostFailed, lost);
         let code = failure.code().as_str();
         let lease_id = lease_id.as_str();
         let event = EVENT_POST_FAILED;
@@ -188,6 +194,11 @@ async fn post(plane: &ControlPlane, lease_id: &Uuid7, frames: Batch) {
             "a live-tail batch was not delivered"
         );
     }
+}
+
+/// `frames` as the count a family adds; a batch is far below `u64::MAX`.
+fn frame_count(frames: usize) -> u64 {
+    u64::try_from(frames).unwrap_or(u64::MAX)
 }
 
 /// A frame's encoded size, measured without allocating its encoding.

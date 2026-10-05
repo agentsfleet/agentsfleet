@@ -29,6 +29,9 @@ afr_supervisor.workspace = true
 afr_sandbox.workspace = true
 # The log filter that holds the model library's own lines to its warnings.
 afr_providers.workspace = true
+# `run`'s export: the credential-free endpoint, the span budget, the runner's
+# own families and the layer its subscriber carries.
+afr_telemetry.workspace = true
 clap.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

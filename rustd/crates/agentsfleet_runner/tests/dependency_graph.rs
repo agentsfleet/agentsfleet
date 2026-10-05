@@ -10,10 +10,18 @@ use cargo_metadata::{DependencyKind, MetadataCommand, Node, PackageId};
 
 /// The daemon crates a runner may link: the wire, the value layer, the
 /// bounds the wire's types declare (`afd_validate`, which depends on garde
-/// alone), and the telemetry vocabulary. Anything else from the daemon is the
-/// control plane.
-const ALLOWED_DAEMON_CRATES: [&str; 4] =
-    ["afd_wire", "afd_core", "afd_validate", "afd_observability"];
+/// alone), the telemetry vocabulary, and the OTLP transport both binaries
+/// export through. Anything else from the daemon is the control plane.
+const ALLOWED_DAEMON_CRATES: [&str; 5] = [
+    "afd_wire",
+    "afd_core",
+    "afd_validate",
+    "afd_observability",
+    "afd_otlp",
+];
+
+/// The transport the runner exports through, which the walk must reach.
+const TRANSPORT: &str = "afd_otlp";
 
 /// The prefix every daemon crate carries.
 const DAEMON_PREFIX: &str = "afd_";
@@ -73,6 +81,10 @@ fn test_runner_links_no_datastore_crate() {
     assert!(
         linked.contains("afd_wire"),
         "the walk reached the wire: {linked:?}"
+    );
+    assert!(
+        linked.contains(TRANSPORT),
+        "the runner exports through the shared transport: {linked:?}"
     );
 
     let datastores: Vec<_> = linked
