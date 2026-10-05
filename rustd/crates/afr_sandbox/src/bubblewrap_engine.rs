@@ -151,6 +151,7 @@ impl BubblewrapEngine {
                 client,
                 parts,
                 owner: self.owner,
+                _toolbox: Arc::clone(&self.config.toolbox),
             }),
             Err(error) => {
                 // Released off the runtime; what it could not remove it logs.
@@ -247,6 +248,9 @@ struct Bubblewrapped {
     parts: Parts,
     /// Who owns the workspace disk's files, as the host names them.
     owner: (u32, u32),
+    /// The toolbox it runs on, held until it is destroyed so retention never
+    /// unmounts it from under a lease or a warm slot.
+    _toolbox: Arc<Toolbox>,
 }
 
 #[async_trait::async_trait]

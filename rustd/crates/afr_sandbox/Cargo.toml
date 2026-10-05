@@ -28,6 +28,16 @@ futures-util.workspace = true
 # The toolbox image is named by its SHA-256, streamed through the hasher.
 digest-io.workspace = true
 hex.workspace = true
+# A toolbox release: its manifest's signature checked against the key the
+# runner is built with (ECDSA P-256 over SHA-256, as `cosign` signs), the key
+# read from its PEM, the signature from its base64, and the manifest's fields
+# parsed and bounded before admission reads one.
+aws-lc-rs.workspace = true
+base64.workspace = true
+garde.workspace = true
+rustls-pki-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 # The process status a sandbox reads before it serves.
 procfs-core.workspace = true
