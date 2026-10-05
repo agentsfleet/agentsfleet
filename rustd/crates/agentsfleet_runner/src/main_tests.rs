@@ -50,14 +50,21 @@ fn every_entry_parses_and_nothing_else_does() {
 
 /// An unreadable level falls back rather than refusing: a typo in a debugging
 /// aid must not stop a runner starting.
+///
+/// Read off the filter the subscriber is built with, never off
+/// `LevelFilter::current()`: that is a process-wide hint over every live
+/// subscriber, and another test's scoped subscriber raises it while it runs.
 #[test]
 fn the_log_level_comes_from_the_environment_or_the_default() {
     let unreadable = MapEnv::from_pairs([(afd_core::env::LOG_LEVEL_VAR, "loud")]);
 
+    let filter = log_filter(&unreadable);
     super::install_logs(&unreadable, None);
 
-    assert_eq!(
-        tracing::level_filters::LevelFilter::current(),
+    assert!(filter.would_enable("agentsfleet_runner", &Level::INFO));
+    assert!(
+        !filter.would_enable("agentsfleet_runner", &Level::DEBUG),
+        "the default, {}, and nothing below it",
         super::DEFAULT_LEVEL
     );
 }
