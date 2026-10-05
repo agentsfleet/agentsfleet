@@ -257,12 +257,19 @@ Until M213_001 switches the agent engine on, `run` refuses every lease, so the
 export is built and configured but carries no lease yet.
 
 **What the runner reads.** The endpoint, protocol and timeout knobs the daemon
-reads, and not the fourth: `OTEL_EXPORTER_OTLP_HEADERS`, or a user in the
-endpoint (`http://user:secret@…`), stops `run` naming the knob. A header is
+reads, and no header knob: `OTEL_EXPORTER_OTLP_HEADERS`, any signal's own
+header knob (`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_HEADERS`, which the
+exporter reads from the environment itself and prefers), or a user in the
+endpoint (`http://user:secret@…`) stops `run` naming the knob. A header is
 how an OTLP exporter carries a credential, and the runner holds none; the
 credential belongs to the runner collector on the host, which a lease cannot
-read. `sandbox` and `probe` read no telemetry knob, so hardening still sees a
-single thread. `run` logs `telemetry_export_started` with the knob's name and
+read. Only `afr_telemetry` may depend on the transport in the runner's build,
+so no other runner crate can build a pipeline that carries one
+(`agentsfleet_runner/tests/dependency_graph.rs`). A compression knob stops
+`run` too, naming it: this build compresses nothing, and the exporter's own
+refusal would name no knob. The endpoint must be an `http` or `https` URL with
+a host and no query. `sandbox` and `probe` read no telemetry knob, so
+hardening still sees a single thread. `run` logs `telemetry_export_started` with the knob's name and
 the protocol, or `telemetry_export_disabled` once, and never the endpoint.
 
 **What it exports.**
@@ -271,22 +278,44 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   nothing else. The layer admits only spans under the `agentsfleet-runner`
   target, so no library's span leaves the host and no log record rides a span
   as an event. Each lease is its own root trace carrying
-  `agentsfleet.lease.id` and `agentsfleet.event.id`.
-- **A fixed span budget** (`rustd/crates/afr_telemetry/src/budget.rs`): every
-  lease's root span is kept, and its children are held to `MAX_LEASE_SPANS`
-  (256) per lease and `RUNNER_SPANS_PER_SECOND` (128) per monotonic second.
-  The budget is a fixed table of lease slots claimed by compare-and-swap and
-  one packed word for the second, so admitting a span never waits on another
-  worker. A shed span counts in `agentsfleet_runner_spans_suppressed_total`.
-  128 a second fills at most 640 of the batch exporter's 2048-span queue
-  between its five-second sends.
+  `agentsfleet.lease.id` and `agentsfleet.event.id`. The tool span names its
+  tool by the published catalog, `_other` for anything else, so a name the
+  model made up never leaves the host.
+- **A fixed span budget** (`rustd/crates/afr_telemetry/src/budget.rs`): at
+  most `MAX_LEASE_SPANS` (256) spans per lease, its root included, and
+  `RUNNER_SPANS_PER_SECOND` (128) per monotonic second across the runner, roots
+  included. A lease's root is never refused: a full second keeps it and charges
+  it all the same. A span started under a shed span is shed too, so no
+  exported span points at a parent the collector never received. The budget is
+  a fixed table of lease slots claimed by compare-and-swap and one packed word
+  for the second, so admitting a span never waits on another worker. A shed
+  span counts in `agentsfleet_runner_spans_suppressed_total`. The batch
+  processor's queue (2048 spans) and send interval (five seconds) are pinned in
+  `afd_otlp` rather than read from `OTEL_BSP_*`, so 128 a second fills at most
+  640 of the queue against a collector that keeps up. A collector slower than
+  that fills the queue, and the SDK drops past it without counting; the failed
+  exports themselves are counted (below).
 - **Six metric families of its own**, declared in
   `docs/metrics.runner.census.tsv` and graded both ways against their
   producers: provider turn duration and retries (by provider and outcome or
-  reason), sandbox start duration, live-tail frames dropped, failed memory
-  pushes, and tool call duration (by tool and outcome). A provider label is
-  OpenTelemetry's well-known name or `_other`; a tool label is a published
-  catalog name or `_other`; every outcome and reason is a closed enum.
+  reason), sandbox start duration, live-tail frames dropped (backpressure, a
+  failed post, or abandoned when a lease stopped waiting for a slow daemon),
+  failed memory pushes, and tool call duration (by tool and outcome). A
+  provider label is the provider registry's name
+  (`afr_providers/assets/providers.json`), or `_other` for a `custom:`
+  endpoint. OpenTelemetry's well-known names cover six of the registry's
+  providers, so a metric labelled by them would fold the rest into one series;
+  the `invoke_agent` span keeps the well-known `gen_ai.provider.name`. A tool
+  label is a published catalog name or `_other`; every outcome and reason is a
+  closed enum.
+- **Its own losses:** spans suppressed by the budget, and
+  `agentsfleet_runner_otlp_entries_discarded_total{signal,reason}` for what an
+  export lost before the collector took it — the daemon's loss family, under
+  the runner's name. The shared counting wrappers route a process's losses
+  there when no daemon producer set is installed, so a down or misaddressed
+  runner collector shows as a series and not only as a stderr line.
+- **On the way out:** `run` shuts the pipelines down, delivering what they
+  hold, and waits no longer than one export's timeout.
 - **Never:** logs (stderr, read by the collector from the host's log store),
   prompts, replies, tool output, credentials, and no tenant, fleet, lease or
   event identifier on a metric.
@@ -349,7 +378,7 @@ the allowlist proof.
 | runner semantic metrics | `agentsfleetd`, from accepted fleet verbs | OTLP push (streamed per-runner families) | 4096 runner slots; overflow → `_other` |
 | runner own metrics | the runner (`afr_telemetry`), for facts no verb carries | OTLP → runner collector → backends | closed label sets in `docs/metrics.runner.census.tsv`; no tenant, fleet, lease or event identifier |
 | runner host metrics | node exporter, if operators want it | direct to metrics backend | outside the runner API |
-| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per lease and 128 per second, every lease root kept, the rest counted; joins `fleet.delivery` by `lease_id` and `event_id` attributes |
+| runner traces | the runner's four span kinds | OTLP → runner collector → backends | 256 spans per lease and 128 per second, roots included and never refused, the rest counted; joins `fleet.delivery` by the `event_id` attribute, and the lease identifier tells a redelivered event's runs apart |
 | control-plane logs | structured logger | stderr + OTLP to Loki | 2047 queued records; enqueue never blocks |
 | control-plane metrics | runtime + cost families | one OTLP push; no pull endpoint | fixed labels or explicit caps |
 | control-plane traces | HTTP ingress + settled delivery | OTLP to Tempo | route policy keeps output under the budget |
