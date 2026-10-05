@@ -15,7 +15,8 @@ use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
 use crate::lane::{Lane, missing};
-use crate::run::{expect, in_sandbox, runtime};
+use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, runtime};
+use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 
 /// Workspace disk a limit trial fills past.
 const SMALL_DISK: u64 = 64 * 1024 * 1024;
@@ -46,7 +47,7 @@ type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: [(&str, Body); 13] = [
+    let rows: [(&str, Body); 16] = [
         ("test_sandbox_process_has_no_capabilities", no_capabilities),
         (
             "test_sandbox_cannot_plant_files_on_the_host",
@@ -70,6 +71,15 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         ("test_unbuildable_sandbox_refuses_lease", unbuildable),
         ("test_toolbox_build_is_reproducible", reproducible),
         ("test_lease_sees_toolbox_read_only", toolbox_read_only),
+        (
+            "test_shell_runs_inside_the_sandbox_with_exit_code",
+            shell_exit_code,
+        ),
+        ("test_shell_timeout_kills_the_group", shell_timeout),
+        (
+            "test_shell_process_inherits_the_sandbox",
+            shell_inherits_sandbox,
+        ),
         ("test_warm_start_beats_cold_start", warm_beats_cold),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];
@@ -145,11 +155,9 @@ fn runaway(lane: &Lane) -> Result<(), Failed> {
 }
 
 fn no_network(lane: &Lane) -> Result<(), Failed> {
-    let script = "python3 -c 'import socket; socket.create_connection((\"1.1.1.1\", 443), 3)' \
-                  2>/dev/null && echo reached || echo unreachable";
-    let said = in_sandbox(lane, "network", Limits::default(), script)?.output;
+    let said = in_sandbox(lane, "network", Limits::default(), REACH_OUT)?.output;
     expect(
-        said.contains("unreachable"),
+        said.contains(UNREACHABLE),
         format!("no route out, got {said:?}"),
     )
 }

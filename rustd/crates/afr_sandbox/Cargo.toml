@@ -54,8 +54,13 @@ seccompiler.workspace = true
 
 [dev-dependencies]
 afd_core = { workspace = true, features = ["test-util"] }
+# The kernel lane drives the runner's real sandbox-side tools through its
+# catalog, with a lease whose egress sends nothing.
+afr_egress = { workspace = true, features = ["test-util"] }
+afr_tools = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
 libtest-mimic.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
 

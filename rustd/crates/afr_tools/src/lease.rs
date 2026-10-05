@@ -8,6 +8,8 @@
 use afr_egress::Egress;
 use afr_memory::MemoryBackend;
 
+use crate::sandbox::Sessions;
+
 /// One lease's state, as its calls see it.
 #[derive(Debug)]
 pub struct Lease<'run> {
@@ -16,13 +18,21 @@ pub struct Lease<'run> {
     /// The outbound guard every egress tool sends through: the lease's policy,
     /// and the credentials it has minted.
     pub egress: Egress<'run>,
+    /// The processes the lease's calls keep open across calls; the run's end
+    /// closes whatever is left.
+    pub sessions: Sessions,
 }
 
 impl<'run> Lease<'run> {
-    /// A lease whose calls read and write `memory` and send through `egress`.
+    /// A lease whose calls read and write `memory` and send through `egress`,
+    /// with no session open yet.
     #[must_use]
     pub fn new(memory: Box<dyn MemoryBackend + 'run>, egress: Egress<'run>) -> Self {
-        Self { memory, egress }
+        Self {
+            memory,
+            egress,
+            sessions: Sessions::default(),
+        }
     }
 }
 

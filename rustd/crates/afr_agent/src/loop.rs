@@ -169,7 +169,7 @@ impl<'run> Harness<'run> {
                 self.cap_reached(turns, turn.usage.prompt());
             }
         };
-        self.finish(ending)
+        self.finish(ending).await
     }
 
     /// Writes the memory stored so far back, when any is; a stopped lease
@@ -321,3 +321,7 @@ mod end_tests;
 #[cfg(test)]
 #[path = "loop/memory_tests.rs"]
 mod memory_tests;
+
+#[cfg(test)]
+#[path = "loop/session_tests.rs"]
+mod session_tests;

@@ -9,6 +9,7 @@ use afd_wire::policy::ExecutionPolicy;
 use afr_egress::Egress;
 use afr_egress::fixture::{LEASE_ID, policy};
 use afr_egress::testing::{CountingMint, RecordingTransport, Sent};
+use afr_executor::Executor;
 use afr_memory::Hydrated;
 
 use crate::egress::SharedTransport;
@@ -32,6 +33,24 @@ pub(crate) async fn call(
         &arguments,
         ToolContext {
             executor: None,
+            lease,
+        },
+    )
+    .await
+}
+
+/// Calls `tool` with `arguments` as the router calls a sandbox-side tool:
+/// with `executor`, and `lease`'s state.
+pub(crate) async fn call_in(
+    tool: &dyn Tool,
+    executor: &dyn Executor,
+    lease: &mut Lease<'_>,
+    arguments: serde_json::Value,
+) -> ToolOutput {
+    tool.call(
+        &arguments,
+        ToolContext {
+            executor: Some(executor),
             lease,
         },
     )

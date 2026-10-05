@@ -17,6 +17,7 @@ use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
 use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
+use crate::sandbox::{ExecCommand, Shell, WriteStdin};
 use crate::web_fetch::WebFetch;
 
 /// One published tool: its name and the runtime it executes in.
@@ -84,7 +85,7 @@ pub const CRON_RUNS: Entry = Entry::new("cron_runs", Runtime::Supervisor);
 pub const DELEGATE: Entry = Entry::new("delegate", Runtime::Supervisor);
 /// A nested loop that runs alongside.
 pub const SPAWN: Entry = Entry::new("spawn", Runtime::Supervisor);
-/// A shell command on a pseudo-terminal.
+/// One shell command, run to its end.
 pub const SHELL: Entry = Entry::new("shell", Runtime::Sandbox);
 /// A process the model drives across calls.
 pub const EXEC_COMMAND: Entry = Entry::new("exec_command", Runtime::Sandbox);
@@ -188,6 +189,9 @@ impl Catalog {
             Typed::boxed(MemoryList),
             Typed::boxed(MemoryForget),
             Typed::boxed(UpdatePlan),
+            Typed::boxed(Shell),
+            Typed::boxed(ExecCommand),
+            Typed::boxed(WriteStdin),
         ])
     }
 

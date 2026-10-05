@@ -78,6 +78,15 @@ pub enum ToolErrorCode {
     UpstreamStatus,
     /// A store asked the workspace to read it, and this fleet may not publish.
     WorkspaceMemoryNotGranted,
+    /// The command ran past its timeout, and its process group was killed.
+    TimedOut,
+    /// The process's ending never reached the caller: its sandbox or the
+    /// executor went away.
+    Interrupted,
+    /// The run already keeps as many sessions open as it may.
+    SessionCapReached,
+    /// The session named is not open: it never was, or its process ended.
+    SessionNotFound,
 }
 
 impl ToolErrorCode {
@@ -103,6 +112,10 @@ impl ToolErrorCode {
             Self::UpstreamUnreachable => "upstream_unreachable",
             Self::UpstreamStatus => "upstream_status",
             Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
+            Self::TimedOut => "timed_out",
+            Self::Interrupted => "interrupted",
+            Self::SessionCapReached => "session_cap_reached",
+            Self::SessionNotFound => "session_not_found",
         }
     }
 }

@@ -17,6 +17,8 @@ mod lane;
 #[cfg(target_os = "linux")]
 mod run;
 #[cfg(target_os = "linux")]
+mod tools;
+#[cfg(target_os = "linux")]
 mod trials;
 
 use std::process::ExitCode;

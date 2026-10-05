@@ -62,7 +62,7 @@ agentsfleet-runner (one binary; a VM or a bare-metal host)
 
 **The executor is small and ours.** One process per lease inside the sandbox serves spawn, write, read and kill for processes on pseudo-terminals, file reads and writes, and `apply_patch`. Its methods mirror Codex's `exec-server` (`~/Projects/oss/rs/codex/codex-rs/exec-server/README.md`), so the Codex engine and our loop drive the same shapes.
 
-**Every call ends exactly once.** When a run ends for any reason — answer, crash, kill, timeout — the supervisor closes each call still open as `interrupted`, live and in the trace ([Runner Fleet](./runner_fleet.md) §Live activity).
+**Every call ends exactly once.** When a run ends for any reason — answer, crash, kill, timeout — the supervisor closes each call still open as `interrupted`, live and in the trace ([Runner Fleet](./runner_fleet.md) §Live activity). A session's process outlives the call that started it, so the run's end also kills every session still open, and none reaches whatever the sandbox serves next.
 
 ## Crates
 
@@ -105,7 +105,7 @@ The runner is the harness, in Codex's shape: the catalog holds every tool the pu
 | `message` | supervisor, through a runner verb, to the event's thread | the messages verb |
 | `schedule`, `cron_add`, `cron_list`, `cron_remove`, `cron_update`, `cron_run`, `cron_runs` | supervisor, through a runner verb onto the daemon's plane that QStash fires | the verb; QStash keeps the clock and the runner owns no timer |
 | `delegate`, `spawn` | supervisor: a nested loop sharing the lease's sandbox and budget | Codex's `spawn_agent`, `wait_agent` and `send_input` shape |
-| `shell`, `exec_command`, `write_stdin` | sandbox, through the executor | a process on a pseudo-terminal under the cgroup, output edges |
+| `shell`, `exec_command`, `write_stdin` | sandbox, through the executor | `shell`: one process on pipes, its group killed at its timeout; `exec_command` and `write_stdin`: a session per process, on a pseudo-terminal when asked, at most 64 per lease; output edges under the cgroup |
 | `git` | sandbox, on a clone the supervisor made on the host side | the read token stays in the supervisor; the push is `propose_change` |
 | `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch` | sandbox, through the executor's file calls | `/workspace` |
 | `image` | supervisor reads the file through the executor and attaches it to the next model turn | a provider that takes images |

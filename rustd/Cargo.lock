@@ -1061,7 +1061,9 @@ name = "afr_sandbox"
 version = "0.55.0"
 dependencies = [
  "afd_core",
+ "afr_egress",
  "afr_executor",
+ "afr_tools",
  "async-trait",
  "backon",
  "bytes",
@@ -1074,6 +1076,7 @@ dependencies = [
  "procfs-core",
  "rustix",
  "seccompiler",
+ "serde_json",
  "sha2 0.11.0",
  "tempfile",
  "thiserror 2.0.20",
@@ -1147,6 +1150,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
