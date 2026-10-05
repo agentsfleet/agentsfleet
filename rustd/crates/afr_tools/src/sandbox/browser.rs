@@ -26,7 +26,8 @@ macro_rules! until_firecracker {
          a code and the run continues."
     };
 }
-/// Refuses `entry`'s call for `lease_id`, naming the engine it waits for.
+/// Refuses `entry`'s call, naming the engine it waits for, and logs the
+/// refusal under the lease it came from.
 fn refused(entry: &Entry, context: &ToolContext<'_, '_>) -> ToolOutput {
     let lease_id = context.lease.egress.lease_id();
     let tool = entry.name();

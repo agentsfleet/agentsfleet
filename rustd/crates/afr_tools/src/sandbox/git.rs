@@ -21,13 +21,14 @@ const GIT_PROGRAM: &str = "git";
 pub(crate) const GIT_REFUSED_SUBCOMMANDS: [&str; 5] = ["push", "fetch", "pull", "remote", "clone"];
 /// git's global options that take their value as the next argument, so the
 /// subcommand is found after them.
-const VALUED_OPTIONS: [&str; 6] = [
+const VALUED_OPTIONS: [&str; 7] = [
     "-C",
     "-c",
     "--git-dir",
     "--work-tree",
     "--namespace",
     "--config-env",
+    "--attr-source",
 ];
 /// The event a refused subcommand logs under.
 const EVENT_REFUSED: &str = "git_subcommand_refused";

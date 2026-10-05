@@ -13,7 +13,7 @@ use crate::handler::Typed;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
 use crate::sandbox::{Checkout, ScriptedExecutor, ScriptedProcess};
-use crate::testing::{call, call_in};
+use crate::testing::{Live, call, call_in};
 
 /// The directory the fixture repository is checked out in.
 const WIDGETS: &str = "widgets";
@@ -170,6 +170,24 @@ fn should_name_no_subcommand_when_only_options_are_given() {
     assert_eq!(subcommand(&none), None);
 }
 
+/// Every global option git reads a separate value for is skipped with its
+/// value, so the subcommand after it is the one judged.
+#[test]
+fn should_skip_each_valued_global_option_with_its_value() {
+    for option in [
+        "-C",
+        "-c",
+        "--git-dir",
+        "--work-tree",
+        "--namespace",
+        "--config-env",
+        "--attr-source",
+    ] {
+        let args: Vec<String> = [option, "push", "fetch"].map(str::to_owned).into();
+        assert_eq!(subcommand(&args), Some("fetch"), "{option}");
+    }
+}
+
 #[tokio::test]
 async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
     let mut lease = holding(vec![widgets()]);
@@ -208,4 +226,21 @@ async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
 
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
     assert!(executor.spawned().is_empty());
+}
+
+/// git runs in the checkout's directory; one the model removed is its own
+/// mistake and reads `file_not_found`, never the sandbox being gone.
+#[tokio::test]
+async fn should_read_file_not_found_when_the_checkout_is_gone() {
+    let live = Live::start().await;
+    let mut lease = holding(vec![widgets()]);
+
+    let missing = call_in(&*git(), &live.client, &mut lease, running(&["status"])).await;
+
+    assert_eq!(
+        missing.error_code,
+        Some(ToolErrorCode::FileNotFound),
+        "{missing:?}"
+    );
+    live.stop().await;
 }

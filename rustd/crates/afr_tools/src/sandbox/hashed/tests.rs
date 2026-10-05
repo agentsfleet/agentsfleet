@@ -5,24 +5,24 @@
 
 use serde_json::json;
 
-use super::{Line, Located, Target, lines, tag, tagged};
+use super::{Target, tag};
 use crate::catalog::{FILE_EDIT_HASHED, FILE_READ_HASHED};
 use crate::lease::Lease;
 use crate::runtime::{ToolErrorCode, ToolOutput};
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// The argument names the calls spell.
-const PATH: &str = "path";
-const TARGET: &str = "target";
-const END_TARGET: &str = "end_target";
-const NEW_TEXT: &str = "new_text";
+pub(super) const PATH: &str = "path";
+pub(super) const TARGET: &str = "target";
+pub(super) const END_TARGET: &str = "end_target";
+pub(super) const NEW_TEXT: &str = "new_text";
 
 /// The file the edits work on, and what it starts as.
-const GREEK: &str = "greek.txt";
-const THREE_LINES: &str = "alpha\nbeta\ngamma\n";
+pub(super) const GREEK: &str = "greek.txt";
+pub(super) const THREE_LINES: &str = "alpha\nbeta\ngamma\n";
 
 /// The tag of line `number` in a `file_read_hashed` answer.
-fn tag_of(read: &ToolOutput, number: usize) -> String {
+pub(super) fn tag_of(read: &ToolOutput, number: usize) -> String {
     read.text
         .lines()
         .nth(number - 1)
@@ -220,70 +220,6 @@ async fn a_tag_that_does_not_parse_or_names_line_zero_is_invalid() {
     assert_eq!((parsed.line, parsed.hash), (12, "abc"));
 }
 
-/// The tag is nullclaw's: Fowler–Noll–Vo 1a over the trimmed line before,
-/// a bar, and the trimmed line, keeping twelve bits as three hex digits.
-#[test]
-fn a_tag_is_the_low_twelve_bits_of_fnv1a_over_parent_bar_line() {
-    // pin test: literal is the contract
-    assert_eq!(tag("parent", "child"), "6eb");
-    // pin test: literal is the contract
-    assert_eq!(tag("one", "two"), "0cd");
-    // pin test: literal is the contract
-    assert_eq!(tag("", ""), "a3b");
-    assert_ne!(
-        tag("a", "same"),
-        tag("b", "same"),
-        "the line before is in the tag"
-    );
-    assert_eq!(
-        tag("  a\t", "same \r\n"),
-        tag("a", "same"),
-        "edges are trimmed"
-    );
-}
-
-#[test]
-fn lines_keep_their_starts_and_a_trailing_empty_segment() {
-    let text = "ab\n\ncd\n";
-
-    let collected: Vec<(usize, &str)> = lines(text)
-        .iter()
-        .map(|line| (line.start, line.text))
-        .collect();
-
-    assert_eq!(collected, [(0, "ab"), (3, ""), (4, "cd"), (7, "")]);
-    assert_eq!(
-        tagged("").lines().count(),
-        1,
-        "an empty file is one empty line"
-    );
-}
-
-#[test]
-fn a_tag_is_looked_for_within_the_radius_only() {
-    let text = (0..200)
-        .map(|number| format!("line {number}\n"))
-        .collect::<Vec<String>>()
-        .concat();
-    let lines: Vec<Line<'_>> = lines(&text);
-    let wanted = Target {
-        line: 150,
-        hash: &tag("line 148", "line 149"),
-    };
-
-    assert_eq!(wanted.found_near(&lines, 149), Located::At(149));
-    assert_eq!(
-        wanted.found_near(&lines, 100),
-        Located::At(149),
-        "fifty away is found"
-    );
-    assert_eq!(
-        wanted.found_near(&lines, 98),
-        Located::Missing,
-        "fifty-one away is not"
-    );
-}
-
 #[tokio::test]
 async fn a_target_past_the_end_of_the_file_is_a_mismatch() {
     let live = Live::start().await;
@@ -344,97 +280,6 @@ async fn an_empty_new_text_removes_the_line() {
     assert_eq!(
         std::fs::read_to_string(live.root.join(GREEK)).unwrap(),
         "alpha\ngamma\n"
-    );
-    live.stop().await;
-}
-
-/// `given` with every `{L<n>}` replaced by line n's tag in `read`.
-fn with_tags(given: &str, read: &ToolOutput) -> String {
-    (1..=read.text.lines().count()).fold(given.to_owned(), |text, number| {
-        text.replace(&format!("{{L{number}}}"), &tag_of(read, number))
-    })
-}
-
-/// Reads `GREEK` tagged, then edits it; `{L<n>}` in a target stands for
-/// line n's tag as read.
-async fn edit_by_tags(
-    live: &Live,
-    target: &str,
-    end_target: Option<&str>,
-    new_text: &str,
-) -> ToolOutput {
-    let (catalog, _sent) = hosted();
-    let selection = catalog
-        .select(&[FILE_READ_HASHED.name(), FILE_EDIT_HASHED.name()])
-        .unwrap();
-    let mut lease = Lease::default();
-    let read = call_in(
-        offered(&selection, &FILE_READ_HASHED),
-        &live.client,
-        &mut lease,
-        json!({PATH: GREEK}),
-    )
-    .await;
-    let target = with_tags(target, &read);
-    let end_target = end_target.map(|end| with_tags(end, &read));
-    call_in(
-        offered(&selection, &FILE_EDIT_HASHED),
-        &live.client,
-        &mut lease,
-        json!({PATH: GREEK, TARGET: target, END_TARGET: end_target, NEW_TEXT: new_text}),
-    )
-    .await
-}
-
-#[tokio::test]
-async fn a_range_whose_end_is_its_start_replaces_that_one_line() {
-    let live = Live::start().await;
-    std::fs::write(live.root.join(GREEK), THREE_LINES).unwrap();
-
-    let edit = edit_by_tags(&live, "{L2}", Some("{L2}"), "BETA").await;
-
-    assert_eq!(edit.error_code, None, "{edit:?}");
-    assert!(edit.text.contains("1 lines replaced"), "{}", edit.text);
-    assert_eq!(
-        std::fs::read_to_string(live.root.join(GREEK)).unwrap(),
-        "alpha\nBETA\ngamma\n"
-    );
-    live.stop().await;
-}
-
-/// The end tag is looked for near where the start landed, so a range deep
-/// in a long file is found at its own lines and nowhere else.
-#[tokio::test]
-async fn a_range_deep_in_a_long_file_is_found_at_its_own_lines() {
-    let live = Live::start().await;
-    let long = (1..=200)
-        .map(|number| format!("line {number}\n"))
-        .collect::<Vec<String>>()
-        .concat();
-    std::fs::write(live.root.join(GREEK), &long).unwrap();
-
-    let edit = edit_by_tags(&live, "{L60}", Some("{L62}"), "mid").await;
-
-    assert_eq!(edit.error_code, None, "{edit:?}");
-    assert!(edit.text.contains("3 lines replaced"), "{}", edit.text);
-    let edited = std::fs::read_to_string(live.root.join(GREEK)).unwrap();
-    assert_eq!(edited.lines().count(), 198);
-    assert_eq!(edited.lines().nth(59), Some("mid"));
-    assert_eq!(edited.lines().nth(60), Some("line 63"));
-    live.stop().await;
-}
-
-#[tokio::test]
-async fn the_last_tagged_line_can_be_edited() {
-    let live = Live::start().await;
-    std::fs::write(live.root.join(GREEK), THREE_LINES).unwrap();
-
-    let edit = edit_by_tags(&live, "{L4}", None, "delta").await;
-
-    assert_eq!(edit.error_code, None, "{edit:?}");
-    assert_eq!(
-        std::fs::read_to_string(live.root.join(GREEK)).unwrap(),
-        "alpha\nbeta\ngamma\ndelta"
     );
     live.stop().await;
 }

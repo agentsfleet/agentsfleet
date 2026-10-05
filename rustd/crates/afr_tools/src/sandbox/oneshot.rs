@@ -10,8 +10,8 @@ use std::time::Duration;
 use afd_core::clock::saturating_millis;
 use afr_executor::{Ending, Executor, Spawn};
 
+use super::files::failed;
 use super::output::{self, Collected};
-use super::unavailable;
 use crate::runtime::{ToolErrorCode, ToolOutput};
 
 /// How long a command runs when the model names no timeout: Codex's
@@ -38,7 +38,7 @@ pub(super) async fn run_to_end(
 ) -> ToolOutput {
     let mut process = match executor.spawn(&spawn.timeout(timeout)).await {
         Ok(process) => process,
-        Err(failure) => return unavailable(&failure),
+        Err(failure) => return failed(&failure),
     };
     let mut collected = Collected::default();
     let ending = collected.read_to_end(&mut process).await;

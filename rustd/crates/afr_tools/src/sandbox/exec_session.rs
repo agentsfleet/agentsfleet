@@ -16,8 +16,9 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::time::Instant;
 
+use super::files::failed;
 use super::output::{self, Collected};
-use super::sessions::{SESSIONS_PER_LEASE_MAX, Sessions};
+use super::sessions::Sessions;
 use super::{command, executor_of, unavailable};
 use crate::catalog::{EXEC_COMMAND, Entry, WRITE_STDIN};
 use crate::handler::Handler;
@@ -95,12 +96,10 @@ impl Handler for ExecCommand {
             Err(refused) => return refused,
         };
         let sessions = &mut context.lease.sessions;
-        if !sessions.has_room() {
-            return cap_reached();
-        }
+        sessions.make_room(executor).await;
         let process = match executor.spawn(&spawn_of(&arguments)).await {
             Ok(process) => process,
-            Err(failure) => return unavailable(&failure),
+            Err(failure) => return failed(&failure),
         };
         let id = process.id;
         // Registered before it is read, so a call the lease stops mid-wait
@@ -198,17 +197,6 @@ fn reply(
     }
 }
 
-/// What a call past the per-lease cap reads back.
-fn cap_reached() -> ToolOutput {
-    ToolOutput::failed(
-        ToolErrorCode::SessionCapReached,
-        &format!(
-            "this run already keeps {SESSIONS_PER_LEASE_MAX} sessions open; end one, or wait \
-             for one to exit"
-        ),
-    )
-}
-
 /// What a call naming session `id`, which is not open, reads back.
 fn not_open(id: ProcessId) -> ToolOutput {
     ToolOutput::failed(
@@ -220,6 +208,10 @@ fn not_open(id: ProcessId) -> ToolOutput {
 #[cfg(test)]
 #[path = "exec_session/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "exec_session/refusal_tests.rs"]
+mod refusal_tests;
 
 #[cfg(test)]
 #[path = "exec_session/live_tests.rs"]

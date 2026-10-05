@@ -20,22 +20,22 @@ use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
 use crate::sandbox::sessions::SESSIONS_PER_LEASE_MAX;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
-use crate::testing::{call, call_in};
+use crate::testing::call_in;
 
 /// The id the scripted executor gives its first process.
-const FIRST: ProcessId = ProcessId::new(1);
+pub(super) const FIRST: ProcessId = ProcessId::new(1);
 /// The argument naming a session's command.
 const CMD: &str = "cmd";
 /// The argument naming the session a write goes to.
-const SESSION_ID: &str = "session_id";
+pub(super) const SESSION_ID: &str = "session_id";
 /// The argument carrying what a write sends.
-const CHARS: &str = "chars";
+pub(super) const CHARS: &str = "chars";
 /// The argument naming how long a call waits for output.
 const YIELD_TIME_MS: &str = "yield_time_ms";
 /// A command a session keeps running.
 const DEV_SERVER: &str = "npm run dev";
 /// The command that prints back what it is written.
-const CAT: &str = "cat";
+pub(super) const CAT: &str = "cat";
 /// An interactive program a session keeps open.
 const REPL: &str = "python3";
 /// The directory a session asks to start in.
@@ -47,22 +47,22 @@ const TWO: &str = "two\n";
 /// How the first process's session reads while it runs.
 const FIRST_RUNNING: &str = "Process running with session ID 1";
 
-fn exec() -> Box<dyn Tool> {
+pub(super) fn exec() -> Box<dyn Tool> {
     Typed::boxed(ExecCommand)
 }
 
-fn write() -> Box<dyn Tool> {
+pub(super) fn write() -> Box<dyn Tool> {
     Typed::boxed(WriteStdin)
 }
 
 /// `exec_command`'s arguments for `cmd`, waiting `yield_ms` when given.
-fn opening(cmd: &str, yield_ms: Option<u64>) -> Value {
+pub(super) fn opening(cmd: &str, yield_ms: Option<u64>) -> Value {
     json!({CMD: cmd, YIELD_TIME_MS: yield_ms})
 }
 
 /// `write_stdin`'s arguments: `chars` to session `id`, waiting `yield_ms`
 /// when given.
-fn writing(id: u64, chars: &str, yield_ms: Option<u64>) -> Value {
+pub(super) fn writing(id: u64, chars: &str, yield_ms: Option<u64>) -> Value {
     json!({SESSION_ID: id, CHARS: chars, YIELD_TIME_MS: yield_ms})
 }
 
@@ -75,7 +75,7 @@ fn only_spawn(executor: &ScriptedExecutor) -> Spawn {
 }
 
 /// Opens one session on `executor` that yields as briefly as it may.
-async fn open(executor: &ScriptedExecutor, lease: &mut Lease<'_>, cmd: &str) {
+pub(super) async fn open(executor: &ScriptedExecutor, lease: &mut Lease<'_>, cmd: &str) {
     call_in(&*exec(), executor, lease, opening(cmd, Some(YIELD_MS_MIN))).await;
 }
 
@@ -157,8 +157,10 @@ async fn should_hold_a_yield_between_the_shortest_and_the_longest() {
     assert_eq!(longest, Duration::from_millis(YIELD_MS_MAX));
 }
 
+/// Past the cap a new session opens, and the least recently used one is
+/// killed to make room, as Codex does.
 #[tokio::test(start_paused = true)]
-async fn test_exec_command_refuses_past_the_session_cap() {
+async fn test_exec_command_makes_room_past_the_session_cap() {
     let executor = ScriptedExecutor::new(
         (0..=SESSIONS_PER_LEASE_MAX).map(|_| ScriptedProcess::stays_open("")),
     );
@@ -167,21 +169,11 @@ async fn test_exec_command_refuses_past_the_session_cap() {
         open(&executor, &mut lease, "sleep 600").await;
     }
 
-    let refused = call_in(&*exec(), &executor, &mut lease, opening("one more", None)).await;
+    let opened = call_in(&*exec(), &executor, &mut lease, opening("one more", None)).await;
 
-    assert_eq!(refused.error_code, Some(ToolErrorCode::SessionCapReached));
-    assert!(
-        refused
-            .text
-            .starts_with("[session_cap_reached] this run already keeps 64 sessions open"),
-        "the cap is named, got {:?}",
-        refused.text
-    );
-    assert_eq!(
-        executor.spawned().len(),
-        SESSIONS_PER_LEASE_MAX,
-        "nothing started"
-    );
+    assert_eq!(opened.error_code, None, "{opened:?}");
+    assert_eq!(executor.spawned().len(), SESSIONS_PER_LEASE_MAX + 1);
+    assert_eq!(executor.killed(), [FIRST], "the least recently used goes");
 }
 
 #[tokio::test(start_paused = true)]
@@ -283,86 +275,4 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
         lease.sessions.get_mut(FIRST).is_none(),
         "an ended session leaves"
     );
-}
-
-#[tokio::test]
-async fn should_refuse_a_session_id_that_is_not_a_whole_number() {
-    let executor = ScriptedExecutor::new([]);
-    let mut lease = Lease::default();
-
-    for session_id in [json!("1"), json!(-1), json!(1.5)] {
-        let arguments = json!({SESSION_ID: session_id, CHARS: "x"});
-        let output = call_in(&*write(), &executor, &mut lease, arguments).await;
-
-        assert_eq!(
-            output.error_code,
-            Some(ToolErrorCode::InvalidArguments),
-            "{session_id}"
-        );
-    }
-    assert!(executor.written().is_empty(), "nothing reached a process");
-}
-
-#[tokio::test]
-async fn should_refuse_a_session_that_is_not_open() {
-    let executor = ScriptedExecutor::new([]);
-
-    let output = call_in(
-        &*write(),
-        &executor,
-        &mut Lease::default(),
-        writing(99, "x", None),
-    )
-    .await;
-
-    assert_eq!(
-        output.text,
-        "[session_not_found] session 99 is not an open session"
-    );
-    assert!(executor.written().is_empty());
-}
-
-#[tokio::test(start_paused = true)]
-async fn should_answer_a_write_the_executor_refused_and_keep_the_session() {
-    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
-    let mut lease = Lease::default();
-    open(&executor, &mut lease, CAT).await;
-    assert!(executor.forget(FIRST));
-
-    let output = call_in(&*write(), &executor, &mut lease, writing(1, "x", None)).await;
-
-    assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
-    assert!(
-        output.text.ends_with(": no process with that identifier"),
-        "the executor's own words, got {:?}",
-        output.text
-    );
-    assert!(
-        lease.sessions.get_mut(FIRST).is_some(),
-        "left for the run's end to close"
-    );
-}
-
-#[tokio::test]
-async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
-    let mut lease = Lease::default();
-
-    let opened = call(&*exec(), &mut lease, opening(CAT, None)).await;
-    let written = call(&*write(), &mut lease, writing(1, "", None)).await;
-    let refused = call_in(
-        &*exec(),
-        &ScriptedExecutor::new([]),
-        &mut lease,
-        opening(CAT, None),
-    )
-    .await;
-
-    assert_eq!(opened.error_code, Some(ToolErrorCode::SandboxUnavailable));
-    assert_eq!(written.error_code, Some(ToolErrorCode::SandboxUnavailable));
-    assert!(
-        refused.text.ends_with(": no scripted process left"),
-        "a refused spawn reads the executor's reason, got {:?}",
-        refused.text
-    );
-    assert!(lease.sessions.get_mut(FIRST).is_none());
 }

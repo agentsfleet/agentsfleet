@@ -6,7 +6,10 @@
 use afd_core::test_util::trace::Capture;
 use afr_executor::{Ending, Executor, ProcessId, Spawn};
 
-use super::{EVENT_COMPLETED, EVENT_KILL_REFUSED, EVENT_STARTED, SESSIONS_PER_LEASE_MAX, Sessions};
+use super::{
+    EVENT_COMPLETED, EVENT_KILL_REFUSED, EVENT_STARTED, SESSIONS_PER_LEASE_MAX, SESSIONS_PROTECTED,
+    Sessions,
+};
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 
 /// Starts the next scripted process and keeps it as a session.
@@ -91,16 +94,80 @@ async fn should_log_a_session_opening_and_closing_with_its_ending() {
     assert_eq!(endings(&capture), ["exited"]);
 }
 
-#[tokio::test]
-async fn should_have_room_for_exactly_the_cap() {
-    let executor =
-        ScriptedExecutor::new((0..SESSIONS_PER_LEASE_MAX).map(|_| ScriptedProcess::stays_open("")));
+/// `count` running sessions, oldest first.
+async fn full(count: usize) -> (ScriptedExecutor, Sessions, Vec<ProcessId>) {
+    let executor = ScriptedExecutor::new((0..count).map(|_| ScriptedProcess::stays_open("")));
     let mut sessions = Sessions::default();
-
-    for _ in 0..SESSIONS_PER_LEASE_MAX {
-        assert!(sessions.has_room());
-        opened(&executor, &mut sessions).await;
+    let mut ids = Vec::new();
+    for _ in 0..count {
+        ids.push(opened(&executor, &mut sessions).await);
     }
+    (executor, sessions, ids)
+}
 
-    assert!(!sessions.has_room());
+/// The sessions still open, by id.
+fn still_open(sessions: &mut Sessions, ids: &[ProcessId]) -> usize {
+    ids.iter()
+        .filter(|id| sessions.get_mut(**id).is_some())
+        .count()
+}
+
+#[tokio::test]
+async fn should_leave_every_session_open_under_the_cap() {
+    let (executor, mut sessions, ids) = full(SESSIONS_PER_LEASE_MAX - 1).await;
+
+    sessions.make_room(&executor).await;
+
+    assert_eq!(still_open(&mut sessions, &ids), SESSIONS_PER_LEASE_MAX - 1);
+    assert!(executor.killed().is_empty());
+}
+
+/// At the cap, Codex's choice: the least recently used session that already
+/// ended goes first, ahead of an older one still running, and is not killed.
+#[tokio::test]
+async fn should_make_room_by_forgetting_the_oldest_ended_session() {
+    let (executor, mut sessions, ids) = full(SESSIONS_PER_LEASE_MAX).await;
+    let ended = *ids.get(2).unwrap();
+    assert!(executor.end(ended, Ending::Exited(0)));
+
+    sessions.make_room(&executor).await;
+
+    assert!(sessions.get_mut(ended).is_none());
+    assert_eq!(still_open(&mut sessions, &ids), SESSIONS_PER_LEASE_MAX - 1);
+    assert!(
+        executor.killed().is_empty(),
+        "an ended session is not killed"
+    );
+}
+
+/// With none ended, the least recently used running session is killed; a
+/// session read since it opened counts as used then.
+#[tokio::test]
+async fn should_make_room_by_killing_the_least_recently_used_session() {
+    let capture = Capture::install();
+    let (executor, mut sessions, ids) = full(SESSIONS_PER_LEASE_MAX).await;
+    let (first, second) = (*ids.first().unwrap(), *ids.get(1).unwrap());
+    sessions.get_mut(first).unwrap();
+
+    sessions.make_room(&executor).await;
+
+    assert_eq!(executor.killed(), [second]);
+    assert!(sessions.get_mut(first).is_some());
+    assert_eq!(endings(&capture), ["interrupted"]);
+}
+
+/// The most recently used sessions are never the ones pruned, even when one
+/// of them already ended and every older one still runs.
+#[tokio::test]
+async fn should_never_prune_the_most_recently_used_sessions() {
+    let (executor, mut sessions, ids) = full(SESSIONS_PER_LEASE_MAX).await;
+    let recent = *ids
+        .get(SESSIONS_PER_LEASE_MAX - SESSIONS_PROTECTED)
+        .unwrap();
+    assert!(executor.end(recent, Ending::Exited(0)));
+
+    sessions.make_room(&executor).await;
+
+    assert!(sessions.get_mut(recent).is_some(), "a recent session stays");
+    assert_eq!(executor.killed(), [*ids.first().unwrap()]);
 }
