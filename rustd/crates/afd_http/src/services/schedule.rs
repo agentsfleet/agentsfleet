@@ -20,6 +20,7 @@ use afd_cron::{
     Result as CronResult, Schedule, ScheduleService, Schedules,
 };
 use afd_crypto::entropy::Entropy;
+use afd_db::Precondition;
 
 /// Everything the schedules surface and the fire ingress act through.
 pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
@@ -67,6 +68,35 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         change: Change<'_>,
         now: UnixMillis,
     ) -> impl Future<Output = CronResult<Option<Reconciled>>> + Send;
+
+    /// [`Self::create`] for a fleet, under the lease `guard` proves on the
+    /// write's own transaction.
+    ///
+    /// # Errors
+    /// As [`Self::create`]. A lease that no longer holds is
+    /// `Ok(Err(Refused::Unheld))`, and nothing is written.
+    fn create_guarded(
+        &self,
+        workspace: &Uuid7,
+        new: NewSchedule<'_>,
+        now: UnixMillis,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send;
+
+    /// [`Self::change`] for a fleet, under the lease `guard` proves on the
+    /// write's own transaction.
+    ///
+    /// # Errors
+    /// As [`Self::change`]. A lease that no longer holds is
+    /// `Ok(Err(Refused::Unheld))`, and nothing is written.
+    fn change_guarded(
+        &self,
+        fleet: &Uuid7,
+        schedule: &Uuid7,
+        change: Change<'_>,
+        now: UnixMillis,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = CronResult<Result<Option<Reconciled>, Refused>>> + Send;
 
     /// Pushes what the row already says, changing nothing.
     ///
@@ -124,6 +154,8 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         now: UnixMillis,
     ) -> impl Future<Output = CronResult<()>> + Send;
 }
+
+mod guarded;
 
 /// A `once` schedule retired after its fire.
 const EVENT_RETIRED: &str = "schedule_once_retired";
@@ -218,6 +250,27 @@ impl FleetSchedules for SchedulePlane {
             return Ok(None);
         };
         Ok(Some(self.service.reconcile(&held, &token, now).await?))
+    }
+
+    fn create_guarded(
+        &self,
+        workspace: &Uuid7,
+        new: NewSchedule<'_>,
+        now: UnixMillis,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send {
+        self.create_under(workspace, new, now, guard)
+    }
+
+    fn change_guarded(
+        &self,
+        fleet: &Uuid7,
+        schedule: &Uuid7,
+        change: Change<'_>,
+        now: UnixMillis,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = CronResult<Result<Option<Reconciled>, Refused>>> + Send {
+        self.change_under(fleet, schedule, change, now, guard)
     }
 
     async fn sync(

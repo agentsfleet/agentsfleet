@@ -94,6 +94,8 @@ mod integration_runner_messages_fence;
 mod integration_runner_schedules;
 #[path = "integration_runner_schedules_edit.rs"]
 mod integration_runner_schedules_edit;
+#[path = "integration_runner_schedules_fence.rs"]
+mod integration_runner_schedules_fence;
 #[path = "integration_runner_schedules_refusals.rs"]
 mod integration_runner_schedules_refusals;
 #[path = "integration_runner_schedules_runs.rs"]

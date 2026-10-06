@@ -50,6 +50,9 @@ const COL_CREATED_AT: &str = "created_at";
 /// See [`COL_ID`].
 const COL_UPDATED_AT: &str = "updated_at";
 
+/// See [`COL_ID`].
+const COL_FIRE_AT: &str = "fire_at";
+
 /// What sqlx reports for a column this build cannot make sense of.
 ///
 /// A stored `desired_status` a newer daemon wrote, or an id that is not
@@ -89,6 +92,7 @@ impl FromRow<'_, PgRow> for Schedule {
             last_error: row.try_get(COL_LAST_ERROR)?,
             created_at: row.try_get(COL_CREATED_AT)?,
             updated_at: row.try_get(COL_UPDATED_AT)?,
+            fire_at: row.try_get(COL_FIRE_AT)?,
         })
     }
 }

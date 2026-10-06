@@ -91,11 +91,17 @@ impl Schedules {
         token: &Uuid7,
         now: UnixMillis,
     ) -> Result<Reconciled> {
+        let missed = missed(held, now);
         let pushed = match held.desired_status {
             // A paused schedule is REMOVED upstream rather than left registered
             // and ignored here. Leaving it would keep the scheduler calling a
             // fire this daemon then drops — real traffic, real cost, no effect.
             DesiredStatus::Paused | DesiredStatus::Deleting => {
+                self.upstream.remove(&held.source_key).await.map(|()| None)
+            }
+            // A one-off past its moment is removed rather than registered a
+            // year late; see `missed`.
+            DesiredStatus::Active if missed => {
                 self.upstream.remove(&held.source_key).await.map(|()| None)
             }
             DesiredStatus::Active => self
@@ -106,7 +112,10 @@ impl Schedules {
         };
 
         match pushed {
-            Ok(_registered) if held.desired_status == DesiredStatus::Deleting => {
+            Ok(_registered) if held.desired_status == DesiredStatus::Deleting || missed => {
+                if missed {
+                    log_missed(held);
+                }
                 // The row goes only now, with the scheduler already agreeing —
                 // see `DesiredStatus::Deleting` on why it cannot go first.
                 if self.store.delete_claimed(held, token).await? {
@@ -144,3 +153,22 @@ impl Schedules {
         }
     }
 }
+
+/// A `once` schedule synced after the instant it was set for.
+///
+/// Its expression has no year, so registering it now would fire it a year
+/// late. A row with no instant, from before slot 931, keeps registering.
+fn missed(held: &Schedule, now: UnixMillis) -> bool {
+    held.once && held.fire_at.is_some_and(|at| at <= now.as_millis())
+}
+
+/// Logs a one-off retired because its moment passed before it was registered.
+fn log_missed(held: &Schedule) {
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let fleet_id = held.fleet_id.as_str();
+    let schedule_id = held.schedule_id.as_str();
+    tracing::warn!(fleet_id, schedule_id, event = EVENT_ONCE_MISSED);
+}
+
+/// A one-off removed because it was not registered before its moment.
+const EVENT_ONCE_MISSED: &str = "schedule_once_missed";

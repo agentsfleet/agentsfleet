@@ -19,7 +19,7 @@ use http::StatusCode;
 
 use super::schedule::{
     DETAIL_MALFORMED, EVENT_FAILED, checked_for, fence, fleet_owned, log_written, masked,
-    schedule_id, standing,
+    refused_for, schedule_id, standing, write_fence,
 };
 use crate::auth::RunnerIdentity;
 use crate::services::{FleetSchedules as _, Services};
@@ -87,9 +87,10 @@ pub(crate) async fn update<D: Services>(
         Some(text) => Some(masked(&*services, &lease, text).await?),
         None => None,
     };
+    let guard = write_fence(runner.id(), &lease_id, request.fencing_token, now)?;
     let changed = services
         .schedules()
-        .change(
+        .change_guarded(
             &lease.fleet_id,
             &schedule,
             Change {
@@ -99,9 +100,11 @@ pub(crate) async fn update<D: Services>(
                 desired_status: request.paused.map(DesiredStatus::of_paused),
             },
             now,
+            &guard,
         )
         .await
-        .map_err(Refusal::at(EVENT_FAILED))?;
+        .map_err(Refusal::at(EVENT_FAILED))?
+        .map_err(refused_for(&lease))?;
     held_or(changed, StatusCode::OK)
 }
 
@@ -142,9 +145,10 @@ pub(crate) async fn remove<D: Services>(
     let now = services.now();
     let lease = standing(&*services, runner.id(), &lease_id, token, now).await?;
     fleet_owned(&*services, &lease, &schedule).await?;
+    let guard = write_fence(runner.id(), &lease_id, token, now)?;
     let removed = services
         .schedules()
-        .change(
+        .change_guarded(
             &lease.fleet_id,
             &schedule,
             Change {
@@ -152,9 +156,11 @@ pub(crate) async fn remove<D: Services>(
                 ..Change::default()
             },
             now,
+            &guard,
         )
         .await
-        .map_err(Refusal::at(EVENT_FAILED))?;
+        .map_err(Refusal::at(EVENT_FAILED))?
+        .map_err(refused_for(&lease))?;
     // Logged once the row is gone: a delete QStash has not yet agreed to
     // answers the row, and a superseded one a conflict.
     if matches!(removed, Some(Reconciled::Removed)) {

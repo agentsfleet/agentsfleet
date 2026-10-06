@@ -23,7 +23,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_db::Db;
+use afd_db::{Db, Precondition};
 use sqlx::{Acquire as _, FromRow as _, Row as _};
 
 use crate::error::{self, COLUMN_DESIRED_STATUS, COLUMN_FLEET, COLUMN_WORKSPACE, Result};
@@ -33,6 +33,7 @@ use crate::sql;
 mod admit;
 mod decode;
 mod fence;
+mod guarded;
 pub(crate) mod refused;
 
 pub use self::refused::Refused;
@@ -207,6 +208,19 @@ impl Schedules {
         token: &Uuid7,
         now: UnixMillis,
     ) -> Result<core::result::Result<Schedule, Refused>> {
+        self.insert(workspace, new, token, now, None).await
+    }
+
+    /// [`Self::create`], proving `guard` after the fleet's row is taken and
+    /// before the insert, so a guard that no longer holds writes nothing.
+    async fn insert(
+        &self,
+        workspace: &Uuid7,
+        new: NewSchedule<'_>,
+        token: &Uuid7,
+        now: UnixMillis,
+        guard: Option<&dyn Precondition>,
+    ) -> Result<core::result::Result<Schedule, Refused>> {
         let schedule_id = self.mint(now)?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection
@@ -216,6 +230,14 @@ impl Schedules {
 
         if let Some(refused) = admit::refusal(&mut transaction, workspace, &new).await? {
             return Ok(Err(refused));
+        }
+        if let Some(guard) = guard
+            && !guard
+                .holds(&mut transaction)
+                .await
+                .map_err(error::query(CONTEXT_WRITE))?
+        {
+            return Ok(Err(Refused::Unheld));
         }
 
         let row = sqlx::query(sql::INSERT)
@@ -236,6 +258,11 @@ impl Schedules {
             .bind(now.as_millis() + SYNC_LEASE_MS)
             .bind(now.as_millis())
             .bind(new.once)
+            .bind(
+                new.once
+                    .then(|| crate::next::next_fire(new.cron, new.timezone, now))
+                    .flatten(),
+            )
             .fetch_one(transaction.as_mut())
             .await
             .map_err(error::query(CONTEXT_WRITE))?;

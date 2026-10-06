@@ -38,6 +38,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 mod fire;
+mod next;
 mod service;
 mod store;
 

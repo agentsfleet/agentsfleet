@@ -31,8 +31,9 @@ use afd_core::clock::UnixMillis;
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
 use afd_cron::model::DEFAULT_TIMEZONE;
-use afd_cron::{NewSchedule, Reconciled, Source, validate};
+use afd_cron::{NewSchedule, Reconciled, Refused, Source, validate};
 use afd_fleet::lease::Standing;
+use afd_fleet::lease::write_fence::WriteFence;
 use afd_http::handler::schedule::{checked, not_fleet_owned, not_found, refused, rendered};
 use afd_http::handler::{Refusal, parameter, parse_id, read_strict_body};
 use afd_wire::schedule::Page;
@@ -137,9 +138,10 @@ pub(crate) async fn create<D: Services>(
         },
     )?;
     let message = masked(&*services, &lease, &request.message).await?;
+    let guard = write_fence(runner.id(), &lease_id, request.fencing_token, now)?;
     let created = services
         .schedules()
-        .create(
+        .create_guarded(
             &lease.workspace_id,
             NewSchedule {
                 fleet: &lease.fleet_id,
@@ -151,13 +153,11 @@ pub(crate) async fn create<D: Services>(
                 once: request.once,
             },
             now,
+            &guard,
         )
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
-    let reconciled = created.map_err(|refusal| {
-        log_refused(&lease, refusal.code());
-        refused(refusal)
-    })?;
+    let reconciled = created.map_err(refused_for(&lease))?;
     if let Reconciled::Synced(schedule) | Reconciled::Failed(schedule) = &reconciled {
         log_written(&lease, &schedule.schedule_id, EVENT_CREATED);
     }
@@ -223,6 +223,30 @@ pub(super) async fn standing<D: Services>(
         .standing(runner, lease(lease_id)?, token, now)
         .await
         .map_err(Refusal::at(EVENT_FAILED))
+}
+
+/// The lease a write under `lease_id` proves again, on the write's own
+/// transaction: [`standing`] lets go, and a reclaim can land before the write.
+pub(super) fn write_fence(
+    runner: &Uuid7,
+    lease_id: &str,
+    token: u64,
+    now: UnixMillis,
+) -> Result<WriteFence, Refusal> {
+    Ok(WriteFence::new(
+        runner.clone(),
+        lease(lease_id)?,
+        token,
+        now,
+    ))
+}
+
+/// A refusal of a write the fleet asked for, logged against its lease.
+pub(super) fn refused_for(lease: &Standing) -> impl FnOnce(Refused) -> Refusal + '_ {
+    move |refusal| {
+        log_refused(lease, refusal.code());
+        refused(refusal)
+    }
 }
 
 /// The lease a path names.
