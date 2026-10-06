@@ -1,5 +1,6 @@
-//! The plain file tools, over the executor's file calls: `file_read`,
-//! `file_write`, `file_append`, `file_delete` and `file_edit`.
+//! The plain file tools, over the executor's file calls: `file_write`,
+//! `file_append`, `file_delete` and `file_edit`; `file_read` pages in
+//! `read.rs`.
 //!
 //! Every path is checked here before any call: `..` and an absolute path
 //! outside `/workspace` are refused with a code, and nothing is read or
@@ -16,16 +17,14 @@ use bytes::Bytes;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use super::{executor_of, output, unavailable};
-use crate::catalog::{Entry, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_READ, FILE_WRITE};
+use super::{executor_of, unavailable};
+use crate::catalog::{Entry, FILE_APPEND, FILE_DELETE, FILE_EDIT, FILE_WRITE};
 use crate::handler::Handler;
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 
 /// What a path with `..` in it, or an absolute one outside the workspace,
 /// reads back after the path.
 const LEAVES_WORKSPACE: &str = "leaves the workspace";
-/// How a read the executor cut ends, before the byte count.
-const CONTINUES_PAST: &str = "... the file continues past";
 /// What a file longer than one read carries reads back, between its path
 /// and the byte count.
 const LONGER_THAN: &str = "is longer than";
@@ -102,7 +101,7 @@ pub(super) async fn whole(executor: &dyn Executor, path: &str) -> Result<String,
     })
 }
 
-/// `file_read`'s and `file_delete`'s arguments.
+/// `file_delete`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Named {
@@ -130,40 +129,6 @@ pub(crate) struct Replacement {
     old_text: String,
     /// What replaces it.
     new_text: String,
-}
-
-/// Reads a file.
-#[derive(Debug)]
-pub(crate) struct FileRead;
-
-#[async_trait::async_trait]
-impl Handler for FileRead {
-    const ENTRY: &'static Entry = &FILE_READ;
-    const DESCRIPTION: &'static str = "Read a file in the workspace and read back its text. \
-        A file longer than one read carries is cut, and the answer says so on its last line.";
-    type Arguments = Named;
-
-    async fn run(&self, arguments: Named, context: ToolContext<'_, '_>) -> ToolOutput {
-        settled(read(&context, &arguments.path).await)
-    }
-}
-
-async fn read(context: &ToolContext<'_, '_>, path: &str) -> Answer {
-    let executor = executor_of(context)?;
-    let path = inside(path)?;
-    let fetched = executor
-        .read_file(path, MAX_READ_BYTES)
-        .await
-        .map_err(|failure| failed(&failure))?;
-    let text = String::from_utf8_lossy(&fetched.data).into_owned();
-    Ok(ToolOutput::succeeded(if fetched.truncated {
-        output::with_line(
-            text,
-            &format!("{CONTINUES_PAST} {MAX_READ_BYTES} bytes ..."),
-        )
-    } else {
-        text
-    }))
 }
 
 /// Writes a file, replacing what was there.
