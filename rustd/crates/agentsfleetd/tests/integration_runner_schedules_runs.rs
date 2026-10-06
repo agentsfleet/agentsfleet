@@ -23,6 +23,7 @@ use sqlx::Row as _;
 use crate::e2e::Scenario;
 use crate::schedules::{Leased, Seeded};
 use crate::verbs::FakeQStash;
+use crate::wire::poll_for_lease;
 
 /// Dimension 1.6. Running now admits one event under the schedule's actor, and
 /// a retried post answers the same run.
@@ -57,6 +58,39 @@ async fn test_schedule_run_now_admits_one_event() {
     let admitted: i64 = row.try_get(0).expect("a count");
     let event_type: String = row.try_get(1).expect("a type");
     assert_eq!((admitted, event_type.as_str()), (1, "cron"));
+    drop(connection);
+    leased.finish(supervisor).await;
+}
+
+/// A run a schedule starts reaches the runner with the schedule's message as
+/// its body: the lease records the fired event, which it can only do when the
+/// fire stored JSON, as every other producer does.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_scheduled_run_is_leased_with_its_message() {
+    let mut supervisor = Supervisor::new();
+    let qstash = FakeQStash::start().await;
+    let leased = Leased::boot(&mut supervisor, &qstash).await;
+    let (_status, created) = leased.create(false).await;
+    let schedule = created["schedule_id"].as_str().expect("an id").to_owned();
+    let (status, fired) = leased.run_now(&schedule).await;
+    assert_eq!(status, 201, "{fired}");
+    let event = fired["event_id"].as_str().expect("an event id").to_owned();
+
+    leased.settle().await;
+    let _woken = poll_for_lease(&leased.http, &leased.run, &event).await;
+
+    let mut connection = leased.connection().await;
+    let message: String = sqlx::query_scalar(
+        "SELECT request_json->>'message' FROM core.fleet_events \
+         WHERE fleet_id = $1::uuid AND event_id = $2",
+    )
+    .bind(&leased.run.fleet)
+    .bind(&event)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the leased run is recorded");
+    assert_eq!(json!(message), created["message"]);
     drop(connection);
     leased.finish(supervisor).await;
 }
