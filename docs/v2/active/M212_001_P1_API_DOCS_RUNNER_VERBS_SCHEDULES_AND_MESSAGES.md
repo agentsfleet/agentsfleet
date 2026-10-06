@@ -122,6 +122,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.11** — Run-now for a fleet that takes no work is refused with `UZ-AGT-012` → Test `test_run_now_refuses_a_fleet_that_takes_no_work` → **DONE**
 - **Dimension 1.12** — A run a schedule started cannot run a schedule now → Test `test_run_now_from_a_scheduled_run_is_refused` → **DONE**
 - **Dimension 1.13** — One schedule's runs read through the actor index, never the fleet's whole history → Test `test_event_list_plans_use_the_index` → **DONE**
+- **Dimension 1.14** — A run a schedule starts is leased, its body `{"message": …}` as every producer stores → Test `test_scheduled_run_is_leased_with_its_message` → **DONE**
 
 ### §2 — A fleet posts to its thread mid-run
 
@@ -179,6 +180,7 @@ Every 409 body names current_state
 | No channel | Steer or webhook event | `MESSAGE_NO_CHANNEL`; the fleet says it in the report instead (Dimension 2.4) |
 | Channel delivery fails | Slack fault | Retried as a reply is; the tool returns `delivered: false` |
 | Slack stalls | Posts held open | Answered `delivered: false` at the 12 s deadline, before the runner's call times out (Dimension 2.9) |
+| Fired run never leased | A schedule's plain-text message cast to `jsonb` at lease | Stored as `{"message": …}`; the lease records it (Dimension 1.14) |
 | Run-now loops or wakes a stopped fleet | A scheduled run calls run-now; a paused schedule or fleet | 409 `SCHEDULE_NOT_RUNNABLE` or `UZ-AGT-012` with `current_state` (Dimensions 1.10–1.12) |
 | Secret in a message | Fleet echoes a token | Masked before delivery (Dimension 2.5) |
 | Steered fleet pages the channel | Thread content tells the model to write `<!channel>` | `&`, `<`, `>` posted as Slack entities; the line shows as typed (Dimension 2.10) |
@@ -215,6 +217,7 @@ Every 409 body names current_state
 | 1.11 | integration | `test_run_now_refuses_a_fleet_that_takes_no_work` | fleet paused → 409 `UZ-AGT-012`, `current_state` = fleet status, 0 events |
 | 1.12 | integration | `test_run_now_from_a_scheduled_run_is_refused` | lease on a `cron:` event → 409 `UZ-SCHED-011`, `current_state` `scheduled_run` |
 | 1.13 | integration | `test_event_list_plans_use_the_index` | generic plan of the exact-actor page → index scan on slot 930, no sort |
+| 1.14 | integration | `test_scheduled_run_is_leased_with_its_message` | run-now, settle, poll → leased; `request_json->>'message'` = the schedule's message |
 | 2.1 | integration | `test_fleet_posts_a_message_mid_run` | post → Slack fake receives text in `thread_ts` before report |
 | 2.2 | integration | `test_stale_fence_message_refused` | stale token → 0 posts |
 | 2.3 | integration | `test_message_caps_refuse` | 9th post → refused; 5 KiB text → refused |
@@ -297,6 +300,7 @@ N/A — no files deleted.
   - A fleet-made schedule is keyed by its minted id, so two creates in one millisecond cannot collide; `schedule` rounds `at` up to the next minute and needs a minute of lead; `SLACK_API_URL` must be https or loopback http.
   - A dropped `once` fire for a fleet that takes no work retires the schedule; a held retirement claim answers `UZ-SCHED-006`, so the caller repeats it.
   - Interim lines post `&`, `<` and `>` as Slack entities, so a steered fleet cannot page the channel up to eight times a run (Dimension 2.10; agent call while Indy was away, Oct 06, 2026, revertible).
+  - Found by the integration lane, already on `main`: a fire stored the schedule's plain-text message as the event body, and the lease's `$6::jsonb` cast refused it, so no scheduled run could be leased (`UZ-INTERNAL-002` on every poll that reached it). `afd_cron::fire` now stores `{"message": …}`, the shape every producer stores and `afr_agent::prompt` reads (Dimension 1.14). Folded in: run-now is this spec's, and without it no schedule wakes its fleet.
   - Splits and helpers for over-long files and functions; cross-fleet negative tests on run-now, PATCH, DELETE and runs.
 - **Review: answer-path escaping** — Slack mention escaping on the answer path, exposed since M206, is deferred with no follow-up spec; Indy tests and fixes it himself (quote under Deferrals).
 - **Deferrals** — ten review items, shipped as recorded:

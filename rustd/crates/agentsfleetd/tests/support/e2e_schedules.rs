@@ -24,6 +24,7 @@ use crate::e2e::{Scenario, scenario_with};
 use crate::e2e_seed::{FLEET_CONFIG_JSON, seed_fleet};
 use crate::tail::lease;
 use crate::verbs::{FakeQStash, QSTASH_TOKEN, send};
+use crate::wire::{post, report_body};
 
 /// The expression and zone every created schedule here fires on.
 pub(crate) const WEEKLY: &str = "0 9 * * 1";
@@ -62,6 +63,9 @@ pub(crate) struct Leased {
 /// The second fleet's name: one name per workspace, and the scenario's own
 /// fleet holds [`crate::e2e_seed::FLEET_NAME`].
 const OTHER_FLEET_NAME: &str = "e2e-other-fleet";
+
+/// Where a runner reports a lease's end.
+const REPORTS: &str = "/v1/runners/me/reports";
 
 impl Leased {
     pub(crate) async fn boot(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Self {
@@ -114,6 +118,13 @@ impl Leased {
         let body = json!({"fencing_token": self.fence, "cron": WEEKLY, "timezone": KOLKATA,
                           "message": "weekly check", "once": once});
         self.call(Method::POST, &self.path(""), Some(&body)).await
+    }
+
+    /// Settles the held lease, so the fleet takes its next event.
+    pub(crate) async fn settle(&self) {
+        let report = report_body(&self.lease_id, &self.run.event_id, self.fence);
+        let reported = post(&self.http, &self.run, REPORTS, &report).await;
+        assert_eq!(reported.status().as_u16(), 200, "the held lease settles");
     }
 
     /// Runs `schedule` now under this lease's fence.

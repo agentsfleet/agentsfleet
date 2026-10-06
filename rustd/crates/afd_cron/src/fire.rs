@@ -48,6 +48,26 @@ pub fn schedule_actor(schedule: &Uuid7) -> String {
     format!("{ACTOR_PREFIX}{}", schedule.as_str())
 }
 
+/// The body field a fired run's words travel in.
+///
+/// The field every producer's body uses and the runner reads its first turn
+/// from (`afr_agent::prompt`); see [`body`].
+const FIELD_MESSAGE: &str = "message";
+
+/// The event body a fire of a schedule whose message is `message` stores.
+///
+/// The schedule's message is the author's plain text, and the lease records
+/// every event's body into a `jsonb` column (`afd_events::sql`). Stored as it
+/// was, a message that is not itself JSON failed that cast, so the fired run
+/// was admitted and could never be leased. Wrapped as `{"message": …}`, the
+/// shape a steer and a mention store, the runner reads the schedule's words as
+/// the run's first turn.
+pub(crate) fn body(message: &str) -> String {
+    let mut fields = serde_json::Map::new();
+    fields.insert(FIELD_MESSAGE.to_owned(), message.into());
+    serde_json::Value::Object(fields).to_string()
+}
+
 /// What one fire put on the stream.
 #[derive(Debug, Clone)]
 pub struct Fired {
@@ -91,6 +111,7 @@ impl Fire {
         // schedules firing on the same tick silence each other.
         let key = format!("{fleet}:{schedule}:{message_id}");
         let actor = schedule_actor(schedule);
+        let request_json = body(&target.message);
 
         let admitted = self
             .admissions
@@ -101,7 +122,7 @@ impl Fire {
                 workspace: target.workspace.as_str(),
                 actor: &actor,
                 event_type: EventType::Cron,
-                request_json: &target.message,
+                request_json: &request_json,
                 // A schedule has no one to answer.
                 reply: Reply::None,
             })
@@ -129,3 +150,6 @@ impl Fire {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;
