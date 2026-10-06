@@ -286,7 +286,7 @@ Slack is the contrast and the reason this page cannot generalise: its retry sema
 
 ### Credential use remains separate from event receipt
 
-Receiving a signed event does not hand GitHub credentials to a fleet. When a leased fleet later calls the GitHub API through `${secrets.github.token}`, the runner-token plane asks `agentsfleetd` to mint. The daemon derives the fleet and workspace from the lease, rechecks the approved integration grant, loads the workspace installation handle, signs with the platform private key, exchanges for a short-lived installation token, and returns that token for the tool call. The App private key and webhook secret never enter the lease, runner environment, sandboxed child, logs, or response frames.
+Receiving a signed event does not hand GitHub credentials to a fleet. When a leased fleet later calls the GitHub API through `${secrets.github.token}`, the runner-token plane asks `agentsfleetd` to mint. The daemon derives the fleet and workspace from the lease, rechecks the approved integration grant, loads the workspace installation handle, signs with the platform private key, exchanges for a short-lived installation token, and returns that token for the tool call. The runner keeps the token for the lease, mints again 30 s before it expires, and masks it out of every response a tool returns (`rustd/crates/afr_egress/src/vault.rs`). The App private key and webhook secret never enter the lease, runner environment, sandboxed child, logs, or response frames.
 
 ### Provider impact
 
