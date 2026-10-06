@@ -2,6 +2,7 @@
 //! that bind data.
 
 use super::{Error, ErrorKind};
+use crate::protocol::REFUSAL_MESSAGE_MAX_BYTES;
 
 // Every lift is a `From`, so `?` does the conversion and no `map_err` appears
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2).
@@ -21,11 +22,14 @@ pub(crate) fn unresponsive(method: &'static str) -> Error {
     ErrorKind::Unresponsive { method }.into()
 }
 
-/// The executor answered with a JSON-RPC error.
+/// The executor answered with a JSON-RPC error. Its message is kept up to
+/// `REFUSAL_MESSAGE_MAX_BYTES`, cut on a character boundary: the other end of
+/// the socket is not trusted with the length of what a model reads.
 pub(crate) fn refused(code: i32, message: &str) -> Error {
+    let kept = message.floor_char_boundary(REFUSAL_MESSAGE_MAX_BYTES);
     ErrorKind::Refused {
         code,
-        message: message.to_owned(),
+        message: message.get(..kept).unwrap_or_default().to_owned(),
     }
     .into()
 }

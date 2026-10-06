@@ -58,6 +58,13 @@ pub(crate) const UNKNOWN_PROCESS_CODE: i32 = -32_011;
 /// A file or directory the workspace does not have: the one caller's mistake
 /// a handler names to the model, so it is told from the rest.
 pub(crate) const FILE_NOT_FOUND_CODE: i32 = -32_012;
+/// The most of a refusal's message the client keeps once it decodes it. The
+/// executor shares its sandbox with tenant code, so what the socket answers
+/// is not trusted, and `Error::wire_message` reaches a model's context
+/// through every handler's failure path (`afr_tools::sandbox::unavailable`):
+/// one cap here bounds all of them. Four kibibytes is one `PATH_MAX`, so a
+/// sentence quoting a path is kept whole.
+pub(crate) const REFUSAL_MESSAGE_MAX_BYTES: usize = 4096;
 
 /// `process/spawn` parameters: borrowed where the client sends them, owned
 /// where the executor reads them.
