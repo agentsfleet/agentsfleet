@@ -1,11 +1,14 @@
 //! One process, from start to its single `process/exited`.
 //!
-//! The task that drives a process owns everything about it — its exit, its
-//! output channel, its edges — and is reached only through its stop token;
-//! its input goes straight from the session to the launcher's writer. Nothing
-//! it waits on can stall it: output is drained for a bounded grace once the
-//! leader ends. When the token is cancelled, by a kill or because the session
-//! ended, the process is stopped the same way.
+//! The task that drives a process owns everything about it — its exit and its
+//! output channel — and is reached only through its stop token; its input
+//! goes straight from the session to the launcher's writer. Every byte of
+//! output is forwarded, as it arrives; the supervisor's side bounds what its
+//! reader has not read. The one thing it waits on is the connection's
+//! bounded output queue, when a process writes faster than the supervisor
+//! reads: the process then waits on its own full pipe. Output is drained for
+//! a bounded grace once the leader ends. When the token is cancelled, by a
+//! kill or because the session ended, the process is stopped the same way.
 
 use std::time::Duration;
 
@@ -15,9 +18,8 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::launch::{Exit, Plan, Spawned, launcher};
-use super::session::post;
 use crate::api::Ending;
-use crate::edges::{Chunk, EDGE_BYTES, OutputEdges};
+use crate::edges::Chunk;
 use crate::error::Result;
 use crate::protocol::{ExitedParams, NOTIFY_EXITED, NOTIFY_OUTPUT, OutputParams, line};
 
@@ -59,14 +61,14 @@ impl ProcessRun {
         Ok((run, input))
     }
 
-    /// Forwards output, enforces the timeout, stops the process when `stop`
-    /// is cancelled, and sends the one `process/exited`; answers with the
-    /// process's number.
+    /// Forwards output to `lines`, enforces the timeout, stops the process
+    /// when `stop` is cancelled, and sends the one `process/exited` after the
+    /// last output; answers with the process's number.
     pub(super) async fn drive(
         self,
         process: u64,
         stop: CancellationToken,
-        outbound: mpsc::UnboundedSender<Bytes>,
+        lines: mpsc::Sender<Bytes>,
     ) -> u64 {
         let Spawned {
             pid,
@@ -77,13 +79,11 @@ impl ProcessRun {
         let group = Group { process, pid };
         let event = EVENT_PROCESS_STARTED;
         tracing::debug!(event, process_id = process, "a process started");
-        let mut edges = OutputEdges::new(EDGE_BYTES);
-        let mut emit = |chunk: Chunk| post(&outbound, output_line(process, chunk));
         let deadline = deadline(self.timeout);
         tokio::pin!(deadline);
         let ending = loop {
             tokio::select! {
-                Some(chunk) = output.recv() => edges.feed(chunk, &mut emit),
+                Some(chunk) = output.recv() => forward(&lines, process, chunk).await,
                 () = stop.cancelled() => break group.stop(&mut exit).await,
                 () = &mut deadline => {
                     group.stop(&mut exit).await;
@@ -101,7 +101,7 @@ impl ProcessRun {
         group.signal(Signal::KILL);
         let drained = tokio::time::timeout(DRAIN_GRACE, async {
             while let Some(chunk) = output.recv().await {
-                edges.feed(chunk, &mut emit);
+                forward(&lines, process, chunk).await;
             }
         })
         .await;
@@ -114,16 +114,20 @@ impl ProcessRun {
             );
         }
         drop(tasks);
-        let omitted_bytes = edges.finish(&mut emit);
         let exited = ExitedParams {
             process_id: process,
             ending,
-            omitted_bytes,
         };
-        post(&outbound, line(&notification(NOTIFY_EXITED, exited)));
-        report(process, ending, omitted_bytes);
+        let _writer_gone = lines.send(line(&notification(NOTIFY_EXITED, exited))).await;
+        report(process, ending);
         process
     }
+}
+
+/// Hands one chunk to the writer, waiting while it is behind. A writer that
+/// has ended means the supervisor is gone, and there is no one left to tell.
+async fn forward(lines: &mpsc::Sender<Bytes>, process: u64, chunk: Chunk) {
+    let _writer_gone = lines.send(output_line(process, chunk)).await;
 }
 
 /// A process's group, named by its leader, and the number the session knows
@@ -161,7 +165,7 @@ impl Group {
 }
 
 /// Logs how a process ended: completed with a status, or failed without one.
-fn report(process: u64, ending: Ending, omitted_bytes: u64) {
+fn report(process: u64, ending: Ending) {
     if ending == Ending::Interrupted {
         let event = EVENT_PROCESS_FAILED;
         let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
@@ -174,14 +178,7 @@ fn report(process: u64, ending: Ending, omitted_bytes: u64) {
     } else {
         let event = EVENT_PROCESS_COMPLETED;
         let (ending, code) = (ending.kind(), ending.code());
-        tracing::debug!(
-            event,
-            process_id = process,
-            ending,
-            code,
-            omitted_bytes,
-            "a process ended"
-        );
+        tracing::debug!(event, process_id = process, ending, code, "a process ended");
     }
 }
 

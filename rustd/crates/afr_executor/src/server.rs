@@ -2,10 +2,13 @@
 //!
 //! The session task owns the socket's read half, the table of running
 //! processes and the tasks serving calls; the socket's write half belongs to a
-//! writer task fed by one channel, so a response and a process's output reach
-//! the supervisor in the order they were queued. Nothing here is shared behind
-//! a lock: a process is reached through its input queue and its stop token,
-//! and the workspace handle is read-only.
+//! writer task fed by two queues. Answers go unbounded and first, so a spawn's
+//! answer reaches the supervisor before the process's first output. Output
+//! and each process's exit go through one bounded queue, so they arrive in the
+//! order they were said, and a process that writes faster than the supervisor
+//! reads waits on its own full pipe. Nothing here is shared behind a lock: a
+//! process is reached through its input queue and its stop token, and the
+//! workspace handle is read-only.
 //!
 //! Binding is split from serving. [`bind`] needs no runtime and no workspace,
 //! so the sandbox claims its socket first and then drops the right to create
@@ -31,6 +34,11 @@ use crate::error::Result;
 
 /// Where the workspace disk is mounted inside every sandbox.
 pub const WORKSPACE_ROOT: &str = "/workspace";
+/// Output lines that may wait for the writer, across every process on the
+/// connection: 64 pipe reads, about 1 MiB of output. Past it a process's
+/// output waits, as Codex's exec-server waits on its bounded notification
+/// queue (`exec-server/src/local_process.rs`, `NOTIFICATION_CHANNEL_CAPACITY`).
+const OUTPUT_LINES_IN_FLIGHT: usize = 64;
 
 /// The executor took its socket and waits for the supervisor.
 const EVENT_SERVE_STARTED: &str = "executor_serve_started";
@@ -101,19 +109,35 @@ async fn accept(socket: std::os::unix::net::UnixListener, root: &Path) -> Result
     let workspace = Arc::new(Workspace::open(root)?);
     let (stream, _peer) = listener.accept().await?;
     let (read, write) = stream.into_split();
-    let (outbound, queued) = mpsc::unbounded_channel();
-    let writer = tokio::spawn(write_lines(write, queued));
-    Session::new(workspace, outbound).run(read).await;
-    // The session dropped the last sender, so the writer drains and ends.
+    let (answers, answered) = mpsc::unbounded_channel();
+    let (output, said) = mpsc::channel(OUTPUT_LINES_IN_FLIGHT);
+    let writer = tokio::spawn(write_lines(write, answered, said));
+    Session::new(workspace, answers, output).run(read).await;
+    // The session dropped the last senders, so the writer drains and ends.
     Ok(writer.await?)
 }
 
-/// Writes every queued line until the queue closes or the socket does. Each
-/// line is already delimited, so it goes to the socket as it is.
-async fn write_lines(mut write: OwnedWriteHalf, mut queued: mpsc::UnboundedReceiver<Bytes>) {
-    while let Some(line) = queued.recv().await {
+/// Writes every queued line until both queues close or the socket does.
+/// Answers go first: one queued before a line of output is written before it.
+/// Each line is already delimited, so it goes to the socket as it is.
+async fn write_lines(
+    mut write: OwnedWriteHalf,
+    mut answers: mpsc::UnboundedReceiver<Bytes>,
+    mut output: mpsc::Receiver<Bytes>,
+) {
+    loop {
+        let line = tokio::select! {
+            biased;
+            Some(line) = answers.recv() => line,
+            Some(line) = output.recv() => line,
+            else => break,
+        };
         if write.write_all(&line).await.is_err() {
             break;
         }
     }
 }
+
+#[cfg(test)]
+#[path = "server/tests.rs"]
+mod tests;

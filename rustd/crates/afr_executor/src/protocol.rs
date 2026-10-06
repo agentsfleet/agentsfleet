@@ -156,8 +156,6 @@ pub(crate) struct ExitedParams {
     pub(crate) process_id: u64,
     /// How it ended.
     pub(crate) ending: Ending,
-    /// Output dropped between the kept head and tail.
-    pub(crate) omitted_bytes: u64,
 }
 
 /// One message as a line, ready to write. The wire types serialize

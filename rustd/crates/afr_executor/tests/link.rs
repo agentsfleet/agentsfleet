@@ -79,10 +79,10 @@ async fn answers_and_notifications_reach_their_callers_past_noise() {
         r#"{"jsonrpc":"2.0","result":null,"id":99}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stdout","data":"%%%"}}"#,
         r#"{"jsonrpc":"2.0","method":"process/exited","params":[7]}"#,
-        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"vanished"},"omitted_bytes":0}}"#,
+        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"vanished"}}}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stdout","data":"aGk="}}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stderr","data":"IQ=="}}"#,
-        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":2},"omitted_bytes":5}}"#,
+        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":2}}}"#,
     ] {
         fake.say(noise).await;
     }
@@ -90,7 +90,7 @@ async fn answers_and_notifications_reach_their_callers_past_noise() {
 
     assert_eq!(finished.stdout, b"hi");
     assert_eq!(finished.stderr, b"!");
-    assert_eq!(finished.endings, [(Ending::Exited(2), 5)]);
+    assert_eq!(finished.endings, [Ending::Exited(2)]);
 }
 
 /// The decoder's sentence can quote the value it refused, and the executor
@@ -107,7 +107,7 @@ async fn a_message_that_does_not_decode_is_logged_without_what_it_carried() {
     let process = process.unwrap();
 
     fake.say(r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":"sk-live-secret","stream":"stdout","data":""}}"#).await;
-    fake.say(r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":0},"omitted_bytes":0}}"#).await;
+    fake.say(r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":0}}}"#).await;
     finish(process).await;
 
     let unreadable = capture.only("executor_message_unreadable");
@@ -136,7 +136,7 @@ async fn every_ending_the_wire_spells_reaches_the_caller_as_itself() {
         started(&mut fake, process).await;
         let started = spawning.await.unwrap().unwrap();
         fake.say(&format!(
-            r#"{{"jsonrpc":"2.0","method":"process/exited","params":{{"process_id":{process},"ending":{ending},"omitted_bytes":0}}}}"#
+            r#"{{"jsonrpc":"2.0","method":"process/exited","params":{{"process_id":{process},"ending":{ending}}}}}"#
         ))
         .await;
         endings.push(finish(started).await.endings);
@@ -145,9 +145,9 @@ async fn every_ending_the_wire_spells_reaches_the_caller_as_itself() {
     assert_eq!(
         endings,
         [
-            [(Ending::TimedOut, 0)],
-            [(Ending::Signaled(9), 0)],
-            [(Ending::Interrupted, 0)],
+            [Ending::TimedOut],
+            [Ending::Signaled(9)],
+            [Ending::Interrupted],
         ]
     );
 }

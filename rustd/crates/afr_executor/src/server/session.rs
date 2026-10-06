@@ -64,6 +64,8 @@ impl Running {
 pub(super) struct Session {
     workspace: Arc<Workspace>,
     outbound: mpsc::UnboundedSender<Bytes>,
+    /// Where each process's output and exit go, bounded.
+    output: mpsc::Sender<Bytes>,
     processes: HashMap<u64, Running>,
     running: JoinSet<u64>,
     calls: JoinSet<()>,
@@ -71,11 +73,17 @@ pub(super) struct Session {
 }
 
 impl Session {
-    /// A session answering through `outbound`.
-    pub(super) fn new(workspace: Arc<Workspace>, outbound: mpsc::UnboundedSender<Bytes>) -> Self {
+    /// A session answering through `outbound`, its processes speaking
+    /// through `output`.
+    pub(super) fn new(
+        workspace: Arc<Workspace>,
+        outbound: mpsc::UnboundedSender<Bytes>,
+        output: mpsc::Sender<Bytes>,
+    ) -> Self {
         Self {
             workspace,
             outbound,
+            output,
             processes: HashMap::new(),
             running: JoinSet::new(),
             calls: JoinSet::new(),
@@ -200,7 +208,7 @@ impl Session {
                 self.processes
                     .insert(process, Running::new(input, stop.clone()));
                 self.running
-                    .spawn(run.drive(process, stop, self.outbound.clone()));
+                    .spawn(run.drive(process, stop, self.output.clone()));
             }
             Err(failure) => self.answer::<SpawnResult>(id, Err(failure)),
         }
@@ -306,6 +314,6 @@ fn refusal(id: Id<'static>, code: i32, message: impl Into<String>) -> Bytes {
 ///
 /// A send fails only once the writer has ended, which means the supervisor
 /// is gone and there is no one left to tell.
-pub(super) fn post(outbound: &mpsc::UnboundedSender<Bytes>, line: Bytes) {
+fn post(outbound: &mpsc::UnboundedSender<Bytes>, line: Bytes) {
     let _writer_gone = outbound.send(line);
 }

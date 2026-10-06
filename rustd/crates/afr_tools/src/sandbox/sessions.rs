@@ -63,7 +63,7 @@ impl Sessions {
         let mut by_use: Vec<(u64, ProcessId, bool)> = self
             .open
             .iter()
-            .map(|(id, session)| (session.used, *id, session.process.events.is_closed()))
+            .map(|(id, session)| (session.used, *id, session.process.events.is_finished()))
             .collect();
         by_use.sort_unstable();
         let unprotected = by_use.len().saturating_sub(SESSIONS_PROTECTED);

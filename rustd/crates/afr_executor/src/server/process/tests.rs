@@ -16,8 +16,8 @@ use crate::api::Ending;
 fn an_ending_with_no_status_is_logged_failed_and_any_other_completed() {
     let capture = Capture::install();
 
-    report(3, Ending::Interrupted, 0);
-    report(4, Ending::Exited(0), 9);
+    report(3, Ending::Interrupted);
+    report(4, Ending::Exited(0));
 
     let failed = capture.only(EVENT_PROCESS_FAILED);
     let completed = capture.only(EVENT_PROCESS_COMPLETED);
@@ -27,7 +27,6 @@ fn an_ending_with_no_status_is_logged_failed_and_any_other_completed() {
     assert_eq!(completed.level, Level::DEBUG);
     assert_eq!(completed.field("ending"), Some("exited"));
     assert_eq!(completed.field("code"), Some("0"));
-    assert_eq!(completed.field("omitted_bytes"), Some("9"));
 }
 
 #[test]

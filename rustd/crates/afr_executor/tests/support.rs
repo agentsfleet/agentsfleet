@@ -92,7 +92,9 @@ pub(crate) struct Finished {
     pub(crate) stdout: Vec<u8>,
     pub(crate) stderr: Vec<u8>,
     pub(crate) terminal: Vec<u8>,
-    pub(crate) endings: Vec<(Ending, u64)>,
+    pub(crate) endings: Vec<Ending>,
+    /// Bytes dropped unread between the edges.
+    pub(crate) omitted: u64,
 }
 
 /// Reads a process until its channel closes.
@@ -113,10 +115,8 @@ pub(crate) async fn finish(mut process: Process) -> Finished {
                     stream: Stream::Terminal,
                     data,
                 } => finished.terminal.extend_from_slice(&data),
-                ProcessEvent::Ended {
-                    ending,
-                    omitted_bytes,
-                } => finished.endings.push((ending, omitted_bytes)),
+                ProcessEvent::Omitted { bytes } => finished.omitted += bytes,
+                ProcessEvent::Ended { ending } => finished.endings.push(ending),
             }
         }
         finished

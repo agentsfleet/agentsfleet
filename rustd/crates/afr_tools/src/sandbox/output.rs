@@ -1,10 +1,12 @@
 //! What a process said, as the model reads it: output in the order it
 //! arrived, cut in the middle to a budget, and a status line last.
 //!
-//! The executor already keeps only a head and a tail of a process's output
-//! (`afr_executor`'s edges); this budget is the model's, and smaller. The
-//! marker counts the bytes both cuts dropped, so the model knows how much it
-//! did not see. The status line comes last so the thread's `output_head`
+//! What a call has not read yet is kept as a head and a tail
+//! (`afr_executor`'s edges), and a call reads only once it is done waiting,
+//! so it holds those edges at most, whatever the process said meanwhile; the
+//! next call starts from where this one stopped. This budget is the model's,
+//! and smaller. The marker counts the bytes both cuts dropped, so the model
+//! knows how much it did not see. The status line comes last so the thread's `output_head`
 //! stays the command's own first lines, and it is worded as Codex words it,
 //! so a model trained on Codex's harness reads it unprompted.
 
@@ -33,7 +35,7 @@ pub(super) const TIMED_OUT: &str = "Process timed out";
 const INTERRUPTED: &str = "Process interrupted before its ending arrived";
 
 /// A process's output as it arrived, whichever stream carried it, and the
-/// bytes the executor dropped between its head and tail.
+/// bytes dropped unread between its head and tail.
 #[derive(Debug, Default)]
 pub(super) struct Collected {
     bytes: Vec<u8>,
@@ -41,39 +43,26 @@ pub(super) struct Collected {
 }
 
 impl Collected {
-    /// Reads `process` to its end: `Interrupted` when its channel closed with
-    /// no ending, as it does when the executor goes away.
+    /// Waits for `process` to end, then reads it: `Interrupted` when its
+    /// events finished with no ending, as they do when the executor goes away.
     pub(super) async fn read_to_end(&mut self, process: &mut Process) -> Ending {
-        while let Some(event) = process.events.recv().await {
-            if let Some(ending) = self.take(event) {
-                return ending;
-            }
-        }
-        Ending::Interrupted
+        process.events.finished().await;
+        self.arrived(process).unwrap_or(Ending::Interrupted)
     }
 
-    /// Reads `process` until it ends or `deadline` passes; `None` while it
-    /// still runs.
+    /// Waits until `process` ends or `deadline` passes, then reads what
+    /// arrived; `None` while it still runs.
     pub(super) async fn until(
         &mut self,
         process: &mut Process,
         deadline: Instant,
     ) -> Option<Ending> {
-        loop {
-            let received = tokio::time::timeout_at(deadline, process.events.recv())
-                .await
-                .ok()?;
-            let Some(event) = received else {
-                return Some(Ending::Interrupted);
-            };
-            if let Some(ending) = self.take(event) {
-                return Some(ending);
-            }
-        }
+        let _still_running = tokio::time::timeout_at(deadline, process.events.finished()).await;
+        self.arrived(process)
     }
 
     /// Takes what already arrived, without waiting: the ending when it was
-    /// among it, and `Interrupted` for a channel the executor closed.
+    /// among it, and `Interrupted` for events that finished with none.
     pub(super) fn arrived(&mut self, process: &mut Process) -> Option<Ending> {
         loop {
             match process.events.try_recv() {
@@ -95,19 +84,17 @@ impl Collected {
                 self.bytes.extend_from_slice(&data);
                 None
             }
-            ProcessEvent::Ended {
-                ending,
-                omitted_bytes,
-            } => {
-                self.omitted = self.omitted.saturating_add(omitted_bytes);
-                Some(ending)
+            ProcessEvent::Omitted { bytes } => {
+                self.omitted = self.omitted.saturating_add(bytes);
+                None
             }
+            ProcessEvent::Ended { ending } => Some(ending),
         }
     }
 
     /// The output as text, at most `budget` bytes of it: its first and last
-    /// halves around a marker counting every byte not shown. Output the
-    /// executor cut that still fits carries the marker last.
+    /// halves around a marker counting every byte not shown. Output with a
+    /// gap that still fits carries the marker last.
     pub(super) fn text(&self, budget: usize) -> String {
         let whole = String::from_utf8_lossy(&self.bytes);
         let (head, tail) = edges(&whole, budget);

@@ -1,12 +1,11 @@
 #![expect(
-    clippy::unwrap_used,
     clippy::indexing_slicing,
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
 use bytes::Bytes;
 
-use super::{Chunk, EDGE_BYTES, OutputEdges};
+use super::{Chunk, EDGE_BYTES, Next, Unread};
 use crate::api::Stream;
 
 /// One kibibyte.
@@ -14,21 +13,35 @@ const KIB: usize = 1024;
 /// One mebibyte.
 const MIB: usize = KIB * KIB;
 
-/// Feeds `input` in `piece`-sized chunks and returns what was emitted live,
-/// what the tail held, and the omitted count.
-fn run(edge: usize, input: &[u8], piece: usize) -> (Vec<u8>, Vec<u8>, u64) {
-    let mut edges = OutputEdges::new(edge);
-    let mut head = Vec::new();
-    let mut tail = Vec::new();
-    for slice in input.chunks(piece) {
-        let chunk = Chunk {
-            stream: Stream::Stdout,
-            data: Bytes::copy_from_slice(slice),
-        };
-        edges.feed(chunk, &mut |kept| head.extend_from_slice(&kept.data));
+/// A stdout chunk of `data`.
+pub(super) fn stdout(data: &[u8]) -> Chunk {
+    Chunk {
+        stream: Stream::Stdout,
+        data: Bytes::copy_from_slice(data),
     }
-    let omitted = edges.finish(&mut |kept| tail.extend_from_slice(&kept.data));
-    (head, tail, omitted)
+}
+
+/// Everything a reader takes from `unread`, in order.
+pub(super) fn drain(unread: &mut Unread) -> Vec<Next> {
+    std::iter::from_fn(|| unread.pop()).collect()
+}
+
+/// Feeds `input` in `piece`-sized chunks with no read between, then reads it
+/// all: the bytes before the gap, the bytes after it, and the gap.
+fn run(edge: usize, input: &[u8], piece: usize) -> (Vec<u8>, Vec<u8>, u64) {
+    let mut unread = Unread::new(edge);
+    for slice in input.chunks(piece) {
+        unread.push(stdout(slice));
+    }
+    let (mut before, mut after, mut omitted) = (Vec::new(), Vec::new(), 0);
+    for next in drain(&mut unread) {
+        match next {
+            Next::Output(chunk) if omitted == 0 => before.extend_from_slice(&chunk.data),
+            Next::Output(chunk) => after.extend_from_slice(&chunk.data),
+            Next::Omitted(bytes) => omitted = bytes,
+        }
+    }
+    (before, after, omitted)
 }
 
 #[test]
@@ -63,7 +76,7 @@ fn test_executor_output_keeps_head_and_tail() {
 }
 
 #[test]
-fn output_under_the_head_is_forwarded_whole_and_nothing_is_omitted() {
+fn output_under_the_head_is_read_whole_and_nothing_is_omitted() {
     let (head, tail, omitted) = run(16, b"short", 2);
 
     assert_eq!(head, b"short");
@@ -74,34 +87,34 @@ fn output_under_the_head_is_forwarded_whole_and_nothing_is_omitted() {
 #[test]
 fn output_between_the_edges_keeps_every_byte() {
     let input: Vec<u8> = (0..24).collect();
-    let (head, tail, omitted) = run(16, &input, 5);
+    let (read, after, omitted) = run(16, &input, 5);
 
-    assert_eq!(head, &input[..16]);
-    assert_eq!(tail, &input[16..]);
+    assert_eq!(read, input);
+    assert!(after.is_empty());
     assert_eq!(omitted, 0);
 }
 
 #[test]
-fn a_chunk_that_starts_inside_a_character_is_never_emitted_empty() {
+fn a_chunk_that_starts_inside_a_character_never_queues_an_empty_head() {
     // The head has one byte left and the chunk opens with a two-byte
-    // character, so the cut moves back to zero and nothing is sent live.
-    let mut edges = OutputEdges::new(1);
-    let mut live = Vec::new();
-    edges.feed(
-        Chunk {
-            stream: Stream::Terminal,
-            data: Bytes::from_static("é!".as_bytes()),
-        },
-        &mut |chunk| live.push(chunk),
-    );
-    let mut tail = Vec::new();
-    let omitted = edges.finish(&mut |chunk| tail.push(chunk));
+    // character, so the cut moves back to zero and the head stays empty.
+    let mut unread = Unread::new(1);
+    unread.push(Chunk {
+        stream: Stream::Terminal,
+        data: Bytes::from_static("é!".as_bytes()),
+    });
 
-    assert!(live.is_empty());
-    assert_eq!(tail.len(), 1);
-    assert_eq!(tail.first().unwrap().data.as_ref(), "!".as_bytes());
-    assert_eq!(tail.first().unwrap().stream, Stream::Terminal);
-    assert_eq!(omitted, 2, "the character that no longer fits either edge");
+    assert_eq!(
+        drain(&mut unread),
+        [
+            Next::Omitted(2),
+            Next::Output(Chunk {
+                stream: Stream::Terminal,
+                data: Bytes::from_static(b"!"),
+            }),
+        ],
+        "the character that no longer fits either edge is counted"
+    );
 }
 
 #[test]
@@ -117,12 +130,29 @@ fn a_tail_chunk_dropped_whole_leaves_the_next_one_first() {
 fn a_head_filled_by_a_whole_chunk_still_ends_on_a_character() {
     // The first four-byte chunk fills the head exactly and ends two bytes into
     // a euro sign, so the cut moves back to the sign's first byte.
-    let input = "aa€b".as_bytes();
-    let (head, tail, omitted) = run(4, input, 4);
+    let mut unread = Unread::new(4);
+    for slice in "aa€b".as_bytes().chunks(4) {
+        unread.push(stdout(slice));
+    }
 
-    assert_eq!(head, b"aa");
-    assert_eq!(tail, "€b".as_bytes());
-    assert_eq!(omitted, 0);
+    let read = drain(&mut unread);
+
+    assert_eq!(read.first(), Some(&Next::Output(stdout(b"aa"))));
+    let rest: Vec<u8> = read
+        .iter()
+        .skip(1)
+        .filter_map(|next| match next {
+            Next::Output(chunk) => Some(chunk.data.to_vec()),
+            Next::Omitted(_) => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(rest, "€b".as_bytes());
+    assert_eq!(
+        read.len(),
+        3,
+        "the head, then the tail, and nothing fell between"
+    );
 }
 
 #[test]
@@ -147,18 +177,13 @@ fn binary_output_is_cut_where_the_cap_falls() {
 
 #[test]
 fn a_two_byte_and_a_four_byte_character_cut_at_a_chunk_end_go_whole_to_the_tail() {
-    for (input, kept) in [("aé".as_bytes(), 1_usize), ("a😀".as_bytes(), 1)] {
+    for input in ["aé".as_bytes(), "a😀".as_bytes()] {
         // One byte past the head is enough to cut each character's first byte.
         let head_cap = 2;
-        let mut edges = OutputEdges::new(head_cap);
-        let mut head = Vec::new();
-        let chunk = Chunk {
-            stream: Stream::Stdout,
-            data: Bytes::copy_from_slice(&input[..head_cap]),
-        };
-        edges.feed(chunk, &mut |live| head.extend_from_slice(&live.data));
+        let mut unread = Unread::new(head_cap);
+        unread.push(stdout(&input[..head_cap]));
 
-        assert_eq!(head.len(), kept, "{input:?}");
+        assert_eq!(unread.pop(), Some(Next::Output(stdout(b"a"))), "{input:?}");
     }
 }
 
@@ -166,28 +191,23 @@ fn a_two_byte_and_a_four_byte_character_cut_at_a_chunk_end_go_whole_to_the_tail(
 fn continuation_bytes_meeting_a_nearly_spent_head_are_cut_without_underflow() {
     // Three bytes of head left, then bytes that continue no character: the
     // old walk counted four continuations back from a cut at three.
-    let mut edges = OutputEdges::new(EDGE_BYTES);
-    let mut head = Vec::new();
-    let filler = Chunk {
-        stream: Stream::Stdout,
-        data: Bytes::from(vec![b'a'; EDGE_BYTES - 3]),
-    };
-    edges.feed(filler, &mut |live| head.extend_from_slice(&live.data));
-    let stray = Chunk {
-        stream: Stream::Stdout,
-        data: Bytes::from_static(b"\x80\x80\x80\x80"),
-    };
-    edges.feed(stray, &mut |live| head.extend_from_slice(&live.data));
-    let mut tail = Vec::new();
-    let omitted = edges.finish(&mut |kept| tail.extend_from_slice(&kept.data));
+    let mut unread = Unread::new(EDGE_BYTES);
+    unread.push(stdout(&vec![b'a'; EDGE_BYTES - 3]));
+    unread.push(stdout(b"\x80\x80\x80\x80"));
+
+    let read = drain(&mut unread);
 
     assert_eq!(
-        head.len(),
-        EDGE_BYTES,
+        read.get(1),
+        Some(&Next::Output(stdout(b"\x80\x80\x80"))),
         "not text, so cut where the cap falls"
     );
-    assert_eq!(tail, b"\x80", "nothing was dropped, so nothing is trimmed");
-    assert_eq!(omitted, 0);
+    assert_eq!(
+        read.last(),
+        Some(&Next::Output(stdout(b"\x80"))),
+        "nothing was dropped, so nothing is trimmed"
+    );
+    assert_eq!(read.len(), 3);
 }
 
 #[test]
@@ -196,10 +216,10 @@ fn every_short_head_against_stray_continuations_is_cut_in_range() {
         let input = [vec![b'a'; 8 - left], vec![0x80; 8]].concat();
         let (head, tail, omitted) = run(8, &input, 8 - left);
 
-        assert_eq!(head.len(), 8, "head of {left}");
         assert_eq!(
             head.len() as u64 + tail.len() as u64 + omitted,
-            input.len() as u64
+            input.len() as u64,
+            "head of {left}"
         );
     }
 }
@@ -220,20 +240,19 @@ fn a_tail_opening_with_bytes_that_are_not_text_keeps_them() {
 fn a_cut_character_spread_over_short_tail_chunks_is_dropped_whole() {
     // The tail's cap drops the euro sign's first two bytes; its last byte is
     // a chunk of its own, ahead of the text that follows.
-    let mut edges = OutputEdges::new(4);
-    let mut head = Vec::new();
+    let mut unread = Unread::new(4);
     let pieces: [&[u8]; 4] = [b"aaaa", b"\xe2\x82", b"\xac", b"zzz"];
     for piece in pieces {
-        let chunk = Chunk {
-            stream: Stream::Stdout,
-            data: Bytes::copy_from_slice(piece),
-        };
-        edges.feed(chunk, &mut |live| head.extend_from_slice(&live.data));
+        unread.push(stdout(piece));
     }
-    let mut tail = Vec::new();
-    let omitted = edges.finish(&mut |kept| tail.extend_from_slice(&kept.data));
 
-    assert_eq!(head, b"aaaa");
-    assert_eq!(tail, b"zzz", "the stray byte goes, and the tail is text");
-    assert_eq!(omitted, 3);
+    assert_eq!(
+        drain(&mut unread),
+        [
+            Next::Output(stdout(b"aaaa")),
+            Next::Omitted(3),
+            Next::Output(stdout(b"zzz")),
+        ],
+        "the stray byte goes, and the tail is text"
+    );
 }
