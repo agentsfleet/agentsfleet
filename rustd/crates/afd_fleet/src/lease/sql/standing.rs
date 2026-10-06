@@ -35,6 +35,14 @@ pub(crate) use live_lease;
 /// itself, so neither holds a lock across the read.
 pub const SELECT_STANDING: &str = live_lease!();
 
+/// [`live_lease`], holding the lease row shared until the caller's transaction
+/// ends.
+///
+/// What a schedule write proves its lease with: a reclaim, a renew and a
+/// settle each update this row, so none of them can land between the check
+/// and the write it guards (`crate::lease::write_fence`).
+pub const SELECT_STANDING_SHARED: &str = concat!(live_lease!(), "\nFOR SHARE OF l");
+
 /// Counts one interim message against a lease that still holds its fleet.
 ///
 /// Answers the new count while it is under the cap; a lease a reclaim

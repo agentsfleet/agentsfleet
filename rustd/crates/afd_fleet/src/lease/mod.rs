@@ -49,6 +49,7 @@ mod test_dead;
 mod tool_detail;
 mod tool_trace;
 pub mod verdict;
+pub mod write_fence;
 
 pub use self::activity::Target;
 pub use self::affinity::{Claimed, Fence};

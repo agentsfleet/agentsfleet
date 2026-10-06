@@ -22,13 +22,13 @@
 ///
 /// A macro expanding to a LITERAL rather than a `const`, because `concat!`
 /// takes literals only — the shape `afd_fleet_lifecycle::sql` already uses next
-/// door. What it buys is one edit site for fifteen columns (RULE UFS); what it
+/// door. What it buys is one edit site for every column (RULE UFS); what it
 /// no longer has to buy is a stable ORDER, because the decoder reads by name.
 macro_rules! row_columns {
     () => {
         "id::text, fleet_id::text, source, source_key, cron_expression, \
          timezone, message, once, desired_status, sync_status, generation, \
-         sync_token::text, sync_lease_until, last_error, created_at, updated_at"
+         sync_token::text, sync_lease_until, last_error, created_at, updated_at, fire_at"
     };
 }
 
@@ -103,9 +103,9 @@ pub const INSERT: &str = concat!(
     "INSERT INTO core.fleet_schedules \
      (id, fleet_id, source, source_key, cron_expression, timezone, message, \
      desired_status, sync_status, generation, sync_token, sync_lease_until, \
-     last_error, created_at, updated_at, once) \
+     last_error, created_at, updated_at, once, fire_at) \
      VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, \
-     $11::uuid, $12, NULL, $13, $13, $14) RETURNING ",
+     $11::uuid, $12, NULL, $13, $13, $14, $15) RETURNING ",
     row_columns!()
 );
 
@@ -124,6 +124,18 @@ pub const CLAIM_MUTATION: &str = concat!(
      sync_lease_until = $9, last_error = NULL, updated_at = $10 \
      WHERE id = $1::uuid AND fleet_id = $2::uuid AND \
      (sync_token IS NULL OR sync_lease_until IS NULL OR sync_lease_until <= $10) RETURNING ",
+    row_columns!()
+);
+
+/// Sets the instant a claimed `once` schedule's new expression is for.
+///
+/// Its own statement, after [`CLAIM_MUTATION`]: an edit may name the
+/// expression or the zone alone, and the instant is read from both as the
+/// claim left them. Conditioned on the claim's token, so only its holder
+/// writes it.
+pub const SET_FIRE_AT: &str = concat!(
+    "UPDATE core.fleet_schedules SET fire_at = $3 \
+     WHERE id = $1::uuid AND sync_token = $2::uuid RETURNING ",
     row_columns!()
 );
 

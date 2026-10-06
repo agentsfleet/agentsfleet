@@ -85,8 +85,14 @@ impl LiveLease {
     /// records read it under a row lock, the schedules and messages verbs
     /// without.
     pub(crate) fn holds(&self, presented: u64) -> bool {
-        self.fence >= self.live_seq && u64::try_from(self.fence).is_ok_and(|own| own == presented)
+        fence_holds(self.fence, self.live_seq, presented)
     }
+}
+
+/// The fence rule itself: the lease's own token is the fleet's live one, and
+/// it is the token `presented`.
+pub(crate) fn fence_holds(fence: i64, live_seq: i64, presented: u64) -> bool {
+    fence >= live_seq && u64::try_from(fence).is_ok_and(|own| own == presented)
 }
 
 impl Plane {

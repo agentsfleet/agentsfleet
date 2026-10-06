@@ -37,6 +37,7 @@ fn schedule() -> Schedule {
         last_error: None,
         created_at: 1_700_000_000_000,
         updated_at: 1_700_000_000_000,
+        fire_at: None,
     }
 }
 
@@ -108,11 +109,11 @@ async fn no_row_is_not_found() {
     assert_eq!(removed.status(), StatusCode::NO_CONTENT);
 }
 
-/// Each refused create answers the code its own table names, and every
+/// Each refused write answers the code its own table names, and every
 /// conflict among them names the state that forbade it.
 #[tokio::test]
 async fn every_refused_create_answers_its_code() {
-    let cases: [(Refused, ErrorCode, StatusCode, Option<&str>); 4] = [
+    let cases: [(Refused, ErrorCode, StatusCode, Option<&str>); 5] = [
         (
             Refused::NoSuchFleet,
             error_code::SCHEDULE_NOT_FOUND,
@@ -136,6 +137,12 @@ async fn every_refused_create_answers_its_code() {
             error_code::SCHEDULE_KEY_TAKEN,
             StatusCode::CONFLICT,
             Some("key_held"),
+        ),
+        (
+            Refused::Unheld,
+            error_code::RUN_STALE_FENCING_TOKEN,
+            StatusCode::CONFLICT,
+            Some("superseded"),
         ),
     ];
     for (refusal, code, status, state) in cases {

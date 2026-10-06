@@ -1,4 +1,5 @@
-//! Why a create was refused, and what each refusal tells a caller.
+//! Why a create or a fleet's edit was refused, and what each refusal tells a
+//! caller.
 //!
 //! Refusals rather than errors, for the reason [`crate::error`] gives: an
 //! operator or a fleet hit a bound, and nothing in this daemon failed. The code
@@ -20,10 +21,16 @@ pub(crate) const DETAIL_FLEET_CAP: &str =
 /// The sentence a duplicate upstream key earns.
 pub(crate) const DETAIL_DUPLICATE: &str = "This fleet already has a schedule under that key.";
 
+/// The sentence a lease that no longer holds its fleet earns.
+pub(crate) const DETAIL_UNHELD: &str =
+    "This lease no longer holds the fleet, so nothing was written.";
+
 /// The `current_state` a refusal at a ceiling names.
 pub(crate) const STATE_AT_CAPACITY: &str = "at_capacity";
 /// The `current_state` a refusal of a key already held names.
 pub(crate) const STATE_KEY_HELD: &str = "key_held";
+/// The `current_state` a write from a superseded lease names.
+pub(crate) const STATE_SUPERSEDED: &str = "superseded";
 
 /// Why a create was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +51,12 @@ pub enum Refused {
     FleetCapReached,
     /// This fleet already registered that upstream key.
     DuplicateKey,
+    /// The lease a fleet's write came under no longer holds the fleet: a
+    /// reclaim took it between the caller's check and the write.
+    ///
+    /// Only a guarded write answers it (`store::guarded`); a person's
+    /// schedule edit holds no lease.
+    Unheld,
 }
 
 impl Refused {
@@ -55,6 +68,7 @@ impl Refused {
             Self::TooMany => error_code::SCHEDULE_LIMIT_REACHED,
             Self::FleetCapReached => error_code::SCHEDULE_CAP_REACHED,
             Self::DuplicateKey => error_code::SCHEDULE_KEY_TAKEN,
+            Self::Unheld => error_code::RUN_STALE_FENCING_TOKEN,
         }
     }
 
@@ -66,6 +80,7 @@ impl Refused {
             Self::NoSuchFleet => None,
             Self::TooMany | Self::FleetCapReached => Some(STATE_AT_CAPACITY),
             Self::DuplicateKey => Some(STATE_KEY_HELD),
+            Self::Unheld => Some(STATE_SUPERSEDED),
         }
     }
 
@@ -77,6 +92,7 @@ impl Refused {
             Self::TooMany => DETAIL_TOO_MANY,
             Self::FleetCapReached => DETAIL_FLEET_CAP,
             Self::DuplicateKey => DETAIL_DUPLICATE,
+            Self::Unheld => DETAIL_UNHELD,
         }
     }
 }

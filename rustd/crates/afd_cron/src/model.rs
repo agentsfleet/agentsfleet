@@ -225,6 +225,12 @@ pub struct Schedule {
     pub created_at: i64,
     /// When it was last changed.
     pub updated_at: i64,
+    /// The instant a `once` schedule was set for, in milliseconds since the
+    /// epoch; `None` for a recurring one or a row written before slot 931.
+    ///
+    /// Its expression has no year, so a sync after this instant would
+    /// register a match a year out; the reconciler retires it instead.
+    pub fire_at: Option<i64>,
 }
 
 impl Schedule {

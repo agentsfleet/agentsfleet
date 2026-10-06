@@ -13,9 +13,10 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
-use sqlx::FromRow as _;
+use afd_db::Precondition;
+use sqlx::{Acquire as _, FromRow as _, PgConnection};
 
-use super::{Change, SYNC_LEASE_MS, Schedules};
+use super::{Change, Refused, SYNC_LEASE_MS, Schedules};
 use crate::error::{self, Result};
 use crate::model::{DesiredStatus, Schedule, SyncStatus};
 use crate::sql;
@@ -43,7 +44,37 @@ impl Schedules {
         token: &Uuid7,
         now: UnixMillis,
     ) -> Result<Option<Schedule>> {
+        let claimed = self
+            .claim(fleet, schedule, change, token, now, None)
+            .await?;
+        // With no guard there is nothing to refuse.
+        Ok(claimed.unwrap_or(None))
+    }
+
+    /// [`Self::claim_change`] on one transaction, proving `guard` first when
+    /// there is one, so a guard that no longer holds writes nothing.
+    pub(super) async fn claim(
+        &self,
+        fleet: &Uuid7,
+        schedule: &Uuid7,
+        change: Change<'_>,
+        token: &Uuid7,
+        now: UnixMillis,
+        guard: Option<&dyn Precondition>,
+    ) -> Result<core::result::Result<Option<Schedule>, Refused>> {
         let mut connection = self.database.acquire().await?;
+        let mut transaction = connection
+            .begin()
+            .await
+            .map_err(error::query(CONTEXT_CLAIM))?;
+        if let Some(guard) = guard
+            && !guard
+                .holds(&mut transaction)
+                .await
+                .map_err(error::query(CONTEXT_CLAIM))?
+        {
+            return Ok(Err(Refused::Unheld));
+        }
         let row = sqlx::query(sql::CLAIM_MUTATION)
             .bind(schedule.as_str())
             .bind(fleet.as_str())
@@ -55,14 +86,20 @@ impl Schedules {
             .bind(token.as_str())
             .bind(now.as_millis() + SYNC_LEASE_MS)
             .bind(now.as_millis())
-            .fetch_optional(connection.as_mut())
+            .fetch_optional(transaction.as_mut())
             .await
             .map_err(error::query(CONTEXT_CLAIM))?;
-
-        row.as_ref()
-            .map(Schedule::from_row)
-            .transpose()
-            .map_err(error::query(CONTEXT_CLAIM))
+        let claimed = match row.as_ref().map(Schedule::from_row).transpose() {
+            Ok(Some(claimed)) if claimed.once && moved(&change) => {
+                Some(set_fire_at(&mut transaction, &claimed, token, now).await?)
+            }
+            claimed => claimed.map_err(error::query(CONTEXT_CLAIM))?,
+        };
+        transaction
+            .commit()
+            .await
+            .map_err(error::query(CONTEXT_CLAIM))?;
+        Ok(Ok(claimed))
     }
 
     /// Takes the fence over the row's current state, changing nothing.
@@ -182,4 +219,30 @@ impl Schedules {
 
         Ok(row.is_some())
     }
+}
+
+/// Whether `change` moves the moment a schedule fires at.
+const fn moved(change: &Change<'_>) -> bool {
+    change.cron.is_some() || change.timezone.is_some()
+}
+
+/// Sets a claimed one-off for the moment its new expression and zone name.
+///
+/// Read from the row as the claim left it: an edit may name the expression
+/// or the zone alone.
+async fn set_fire_at(
+    connection: &mut PgConnection,
+    claimed: &Schedule,
+    token: &Uuid7,
+    now: UnixMillis,
+) -> Result<Schedule> {
+    let fire_at = crate::next::next_fire(&claimed.cron, &claimed.timezone, now);
+    let row = sqlx::query(sql::SET_FIRE_AT)
+        .bind(claimed.schedule_id.as_str())
+        .bind(token.as_str())
+        .bind(fire_at)
+        .fetch_one(connection)
+        .await
+        .map_err(error::query(CONTEXT_CLAIM))?;
+    Schedule::from_row(&row).map_err(error::query(CONTEXT_CLAIM))
 }
