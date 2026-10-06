@@ -36,12 +36,10 @@ mod raise;
 mod tests;
 
 pub(crate) use self::raise::{
-    connection_lost, input_backlog_full, invalid_params, launch_incomplete, not_a_file, not_found,
-    path_refused, program_unavailable, refused, unresponsive,
+    connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
+    not_a_file, not_found, path_refused, program_unavailable, refused, unknown_process,
+    unresponsive,
 };
-/// The two refusals a process answers a write with, public so a stand-in
-/// executor in a sibling crate's suite raises what the real one does.
-pub use self::raise::{input_closed, unknown_process};
 
 afd_core::error_shell!(
     /// An executor failure, with the backtrace of where it was raised.
@@ -172,42 +170,21 @@ impl Error {
     /// so a handler on either end tells it from every other failure.
     #[must_use]
     pub fn is_path_refused(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::PathRefused
-                | ErrorKind::Refused {
-                    code: PATH_REFUSED_CODE,
-                    ..
-                }
-        )
+        self.rpc_code() == PATH_REFUSED_CODE
     }
 
     /// Whether a file call named something the workspace does not have, on
     /// either end of the socket.
     #[must_use]
     pub fn is_not_found(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::NotFound { .. }
-                | ErrorKind::Refused {
-                    code: FILE_NOT_FOUND_CODE,
-                    ..
-                }
-        )
+        self.rpc_code() == FILE_NOT_FOUND_CODE
     }
 
     /// Whether a process call named a process the executor no longer holds,
     /// on either end of the socket: one that ended, or never was.
     #[must_use]
     pub fn is_unknown_process(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::UnknownProcess
-                | ErrorKind::Refused {
-                    code: UNKNOWN_PROCESS_CODE,
-                    ..
-                }
-        )
+        self.rpc_code() == UNKNOWN_PROCESS_CODE
     }
 
     /// Whether a process would not take what was written to it, on either
@@ -215,20 +192,14 @@ impl Error {
     /// sent. The process runs on; the sandbox is not gone.
     #[must_use]
     pub fn is_input_refused(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::InputClosed
-                | ErrorKind::InputBacklogFull
-                | ErrorKind::Refused {
-                    code: CALL_EXECUTION_FAILED_CODE,
-                    ..
-                }
-        )
+        self.rpc_code() == CALL_EXECUTION_FAILED_CODE
     }
 
-    /// The JSON-RPC code a refusal of this kind is answered with.
+    /// The JSON-RPC code a refusal of this kind is answered with, or carries
+    /// once the client decoded it: what both ends compare on.
     pub(crate) fn rpc_code(&self) -> i32 {
         match self.kind() {
+            ErrorKind::Refused { code, .. } => *code,
             ErrorKind::PathRefused => PATH_REFUSED_CODE,
             ErrorKind::UnknownProcess => UNKNOWN_PROCESS_CODE,
             ErrorKind::NotFound { .. } => FILE_NOT_FOUND_CODE,
@@ -257,5 +228,22 @@ fn is_caller_mistake(failure: &io::Error) -> bool {
             | io::ErrorKind::PermissionDenied
             | io::ErrorKind::InvalidInput
             | io::ErrorKind::InvalidFilename
+    )
+}
+
+/// The refusal the client decodes for a process the executor no longer
+/// holds, as a stand-in executor in a sibling crate's suite answers a write.
+#[must_use]
+pub fn unknown_process_refused() -> Error {
+    refused(UNKNOWN_PROCESS_CODE, &ErrorKind::UnknownProcess.to_string())
+}
+
+/// The refusal the client decodes for a process that closed its input, as a
+/// stand-in executor answers a write.
+#[must_use]
+pub fn input_closed_refused() -> Error {
+    refused(
+        CALL_EXECUTION_FAILED_CODE,
+        &ErrorKind::InputClosed.to_string(),
     )
 }

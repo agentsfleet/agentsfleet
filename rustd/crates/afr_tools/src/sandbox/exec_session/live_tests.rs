@@ -163,3 +163,51 @@ async fn test_a_session_is_heard_past_its_first_half_mebibyte() {
     assert_eq!(lease.sessions.close_all(&live.client).await, 1);
     live.stop().await;
 }
+
+/// A write the real executor refuses, because the process closed its input,
+/// reads as the fixed sentence and the session running on: the executor's
+/// words stay on the host.
+#[tokio::test]
+async fn test_a_write_the_process_will_not_take_says_so_and_runs_on() {
+    let live = Live::start().await;
+    let (catalog, _sent) = hosted();
+    let selection = catalog
+        .select(&[EXEC_COMMAND.name(), WRITE_STDIN.name()])
+        .unwrap();
+    let (exec, write) = (
+        offered(&selection, &EXEC_COMMAND),
+        offered(&selection, &WRITE_STDIN),
+    );
+    let mut lease = Lease::default();
+    let opened = call_in(
+        exec,
+        &live.client,
+        &mut lease,
+        json!({"cmd": "exec 0<&-; sleep 30", "yield_time_ms": 250}),
+    )
+    .await;
+    let id = session_id(&opened);
+
+    // The first writes may land before the shell closes its input.
+    let mut refused = None;
+    for _ in 0..50 {
+        let arguments = json!({"session_id": id, "chars": "x\n", "yield_time_ms": 250});
+        let output = call_in(write, &live.client, &mut lease, arguments).await;
+        if output.text.starts_with(super::INPUT_REFUSED) {
+            refused = Some(output);
+            break;
+        }
+    }
+
+    let output = refused.expect("the closed input refuses a write");
+    assert_eq!(output.error_code, None);
+    assert_eq!(
+        output.text,
+        format!(
+            "{}\nProcess running with session ID {id}",
+            super::INPUT_REFUSED
+        )
+    );
+    assert_eq!(lease.sessions.close_all(&live.client).await, 1);
+    live.stop().await;
+}

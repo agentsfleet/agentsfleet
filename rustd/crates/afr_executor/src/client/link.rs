@@ -109,9 +109,10 @@ pub(super) struct Link {
     lost: CancellationToken,
     pending: HashMap<u64, Reply>,
     processes: HashMap<ProcessId, Feed>,
-    /// Chunks past one read dropped so far: the first is worth a warning,
-    /// the rest a debug line, so a hostile sandbox cannot flood the journal.
-    oversized: u64,
+    /// Whether a chunk past one read was warned about: the first is worth a
+    /// warning, the rest a debug line, so a hostile sandbox cannot flood the
+    /// journal.
+    oversized_warned: bool,
 }
 
 impl Link {
@@ -137,7 +138,7 @@ impl Link {
             lost,
             pending: HashMap::new(),
             processes: HashMap::new(),
-            oversized: 0,
+            oversized_warned: false,
         }
     }
 
@@ -262,22 +263,21 @@ impl Link {
     /// at warn, the rest at debug.
     fn oversized(&mut self, process: u64, bytes: usize) {
         let event = EVENT_OUTPUT_OVERSIZED;
-        let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-        self.oversized += 1;
-        if self.oversized == 1 {
+        if std::mem::replace(&mut self.oversized_warned, true) {
+            tracing::debug!(
+                event,
+                process_id = process,
+                bytes,
+                "another oversized chunk"
+            );
+        } else {
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
             tracing::warn!(
                 event,
                 error_code,
                 process_id = process,
                 bytes,
                 "a chunk of output is longer than one read"
-            );
-        } else {
-            tracing::debug!(
-                event,
-                process_id = process,
-                bytes,
-                "another oversized chunk"
             );
         }
     }

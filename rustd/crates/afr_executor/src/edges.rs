@@ -21,7 +21,7 @@ use crate::api::Stream;
 /// How much of each edge a process keeps unread: 512 KiB of head and of
 /// tail, the 1 MiB Codex keeps per process
 /// (`exec-server/src/client.rs`, `PROCESS_EVENT_RETAINED_BYTES`).
-pub(crate) const EDGE_BYTES: usize = 512 * 1024;
+pub const EDGE_BYTES: usize = 512 * 1024;
 
 /// The most bytes before the tail's first character that can belong to one
 /// cut off ahead of them: a character is at most four bytes.

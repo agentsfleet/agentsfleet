@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use afr_executor::{Ending, Events, Feed, Process, ProcessId, Stream};
+use afr_executor::{EDGE_BYTES, Ending, Events, Feed, Process, ProcessId, Stream};
 use bytes::Bytes;
 use tokio::time::Instant;
 
@@ -13,8 +13,6 @@ const STILL_GOING: &str = "still going";
 const DONE: &str = "done";
 /// One kibibyte.
 const KIB: usize = 1024;
-/// Half a mebibyte: one edge of what a reader keeps unread.
-const EDGE_BYTES: usize = 512 * KIB;
 
 /// A process that already said `output`, and the feed that keeps it open.
 fn process(output: &[&str]) -> (Process, Feed) {

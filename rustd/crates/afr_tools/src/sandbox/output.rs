@@ -12,7 +12,7 @@
 //! stays the command's own first lines, and it is worded as Codex words it,
 //! so a model trained on Codex's harness reads it unprompted.
 
-use afr_executor::{Ending, Process, ProcessEvent};
+use afr_executor::{EDGE_BYTES, Ending, Process, ProcessEvent};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::time::Instant;
 
@@ -42,7 +42,7 @@ const ABANDONED: &str =
 /// The most tokens a call reads back, whatever the model asks: the two edges
 /// a call can hold, at four bytes a token; Codex's
 /// `UNIFIED_EXEC_OUTPUT_MAX_TOKENS`.
-const OUTPUT_TOKENS_MAX: usize = (2 * 512 * 1024) / BYTES_PER_TOKEN;
+const OUTPUT_TOKENS_MAX: usize = 2 * EDGE_BYTES / BYTES_PER_TOKEN;
 
 /// A process's output as it arrived, whichever stream carried it, and the
 /// bytes dropped unread between its head and tail.
@@ -133,7 +133,7 @@ impl Collected {
 
     /// The whole output, a marker on a line of its own where each gap fell.
     fn with_gaps(&self) -> String {
-        let mut shown = String::with_capacity(self.bytes.len() + self.gaps.len() * MARKER_ROOM);
+        let mut shown = String::new();
         let mut from = 0;
         for (at, bytes) in &self.gaps {
             let run = self.bytes.get(from..*at).unwrap_or_default();
@@ -169,9 +169,6 @@ impl Collected {
 fn marker(omitted: u64) -> String {
     format!("... {omitted} bytes omitted ...")
 }
-
-/// The room one marker and its line breaks take, at most.
-const MARKER_ROOM: usize = 48;
 
 /// `text`'s first and last halves of `budget` bytes, cut on character
 /// boundaries: all of it, and no tail, when it fits.

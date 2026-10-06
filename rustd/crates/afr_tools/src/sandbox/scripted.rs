@@ -271,7 +271,7 @@ impl Executor for ScriptedExecutor {
         let open = held
             .iter()
             .find(|open| open.id == process)
-            .ok_or_else(afr_executor::error::unknown_process)?;
+            .ok_or_else(afr_executor::error::unknown_process_refused)?;
         let on_write = open.on_write;
         match on_write {
             OnWrite::Takes { echo } => {
@@ -280,7 +280,7 @@ impl Executor for ScriptedExecutor {
                 }
                 Ok(())
             }
-            OnWrite::ClosedItsInput => Err(afr_executor::error::input_closed()),
+            OnWrite::ClosedItsInput => Err(afr_executor::error::input_closed_refused()),
             OnWrite::Refuses => Err(refused(WRITE_REFUSED)),
             OnWrite::Gone(ending) => {
                 // `end` takes the lock this holds.
@@ -288,7 +288,7 @@ impl Executor for ScriptedExecutor {
                 if let Some(ending) = ending {
                     self.end(process, ending);
                 }
-                Err(afr_executor::error::unknown_process())
+                Err(afr_executor::error::unknown_process_refused())
             }
         }
     }
@@ -297,7 +297,7 @@ impl Executor for ScriptedExecutor {
         locked(&self.killed).push(process);
         self.end(process, Ending::Signaled(KILLED))
             .then_some(())
-            .ok_or_else(afr_executor::error::unknown_process)
+            .ok_or_else(afr_executor::error::unknown_process_refused)
     }
 
     async fn read_file(&self, _path: &str, _max_bytes: u64) -> afr_executor::Result<FileContent> {

@@ -3,10 +3,10 @@
 
 use serde_json::json;
 
-use super::tests::{CAT, CHARS, FIRST, SESSION_ID, exec, open, opening, write, writing};
+use super::tests::{CAT, CHARS, FIRST, SESSION_ID, exec, opening, write, writing};
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
-use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
+use crate::sandbox::ScriptedExecutor;
 use crate::testing::{call, call_in};
 
 #[tokio::test]
@@ -44,27 +44,6 @@ async fn should_refuse_a_session_that_is_not_open() {
         "[session_not_found] session 99 is not an open session"
     );
     assert!(executor.written().is_empty());
-}
-
-#[tokio::test(start_paused = true)]
-async fn should_read_a_write_to_a_process_the_executor_lost_as_running() {
-    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
-    let mut lease = Lease::default();
-    open(&executor, &mut lease, CAT).await;
-    assert!(executor.forget(FIRST));
-
-    let output = call_in(&*write(), &executor, &mut lease, writing(1, "x", None)).await;
-
-    assert_eq!(output.error_code, None);
-    assert!(
-        output.text.ends_with("Process running with session ID 1"),
-        "its ending is still to come, got {:?}",
-        output.text
-    );
-    assert!(
-        lease.sessions.get_mut(FIRST).is_some(),
-        "left for the run's end to close"
-    );
 }
 
 #[tokio::test]

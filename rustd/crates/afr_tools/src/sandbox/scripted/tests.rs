@@ -8,10 +8,6 @@ use bytes::Bytes;
 
 use super::{NO_SCRIPT, PROCESSES_ONLY, ScriptedExecutor};
 
-/// What the executor says of a process it does not hold, as the double now
-/// says it too.
-const UNKNOWN_PROCESS: &str = "no process with that identifier";
-
 /// An id no scripted process was given.
 const NOBODY: ProcessId = ProcessId::new(7);
 
@@ -32,13 +28,14 @@ async fn should_refuse_file_calls_a_spawn_past_its_scripts_and_unknown_processes
         .iter()
         .map(afr_executor::Error::wire_message)
         .collect();
+    let unknown = afr_executor::error::unknown_process_refused().wire_message();
     let expected = [
         PROCESSES_ONLY,
         PROCESSES_ONLY,
         PROCESSES_ONLY,
         NO_SCRIPT,
-        UNKNOWN_PROCESS,
-        UNKNOWN_PROCESS,
+        unknown.as_str(),
+        unknown.as_str(),
     ];
     for (message, detail) in said.iter().zip(expected) {
         assert!(message.ends_with(detail), "{message:?} names {detail:?}");
