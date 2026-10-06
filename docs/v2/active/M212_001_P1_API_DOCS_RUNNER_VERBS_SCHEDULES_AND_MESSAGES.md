@@ -79,7 +79,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_tools/src/verbs.rs`, `rustd/crates/afr_tools/src/verbs/**`, `rustd/crates/afr_tools/src/lease.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/catalog.rs`, `rustd/crates/afr_tools/src/lib.rs`, `rustd/crates/afr_tools/src/testing.rs`, `rustd/crates/afr_tools/src/memory/shared_tests.rs`, `rustd/crates/afr_tools/Cargo.toml` | CREATE / EDIT | The lease-verb seam and the eight handlers onto it, masking what they send |
 | `rustd/crates/afr_supervisor/src/**`, `rustd/crates/afr_agent/src/**`, `rustd/Cargo.lock` | CREATE / EDIT | The seam over the daemon's HTTP verbs, with `PATCH` and `DELETE`; handed to each run |
 | `rustd/crates/agentsfleetd/tests/support/*.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_messages.rs`, `rustd/crates/*/tests/**`, `rustd/crates/**/tests.rs` | EDIT / CREATE | Runner-shaped posts, fake QStash and Slack, live-datastore proofs (`#[ignore]`d, run by `make test-integration-rustd`); unit proofs beside each change |
-| `docs/v2/pending/M212_002_P2_API_FLEET_SCHEDULE_WRITE_BUDGET.md` | CREATE | The follow-up spec the deferred write budget moved into |
 | `docs/architecture/capabilities.md`, `docs/architecture/runner_execution.md`, `docs/architecture/data_flow.md` | EDIT | The fleet as a third schedule author; the interim post; the fire actor |
 
 ## Applicable Rules
@@ -260,7 +259,7 @@ N/A — no files deleted.
 - Schedules that wake a different fleet — a fleet schedules only itself.
 - The changelog entry (owner direction, Oct 05, 2026). The published pages are in scope on their own branch in `~/Projects/docs`, never edited through this worktree.
 - The Zig runner keeps refusing these tools until the cutover.
-- A per-lease budget on schedule writes — M212_002.
+- A per-lease budget on schedule writes — deferred with no follow-up spec (Discovery).
 
 ---
 
@@ -302,7 +301,9 @@ N/A — no files deleted.
 - **Review: recorded, not changed** — Slack mention escaping on the answer path, which has had the exposure since M206 and would lose `<url|label>` links, awaits Indy's call before CHORE(close).
 - **Deferrals** — ten review items, shipped as recorded:
 
-> Indy (2026-10-06 07:58): "Ship the other 10 open review items as recorded yes" — context: the per-lease schedule-write budget, now `docs/v2/pending/M212_002_P2_API_FLEET_SCHEDULE_WRITE_BUDGET.md`; a distinct actor for fleet-made fires; `installed()` over-fetch on the mask path; `once` retirement on the request path; a `lock_timeout` on slot 929 (no precedent); list envelope and DELETE idempotency parity with the tenant routes; PATCH reviving a `deleting` row (the tenant PATCH does the same); the dashboard's `cron:*` filter now matching every fire; four functions already over the length cap grew a few lines; the `afr_secrets` scrub-failure lift no test reaches without a test-only constructor.
+> Indy (2026-10-06 07:58): "Ship the other 10 open review items as recorded yes" — context: the per-lease schedule-write budget, with no follow-up spec (quote below); a distinct actor for fleet-made fires; `installed()` over-fetch on the mask path; `once` retirement on the request path; a `lock_timeout` on slot 929 (no precedent); list envelope and DELETE idempotency parity with the tenant routes; PATCH reviving a `deleting` row (the tenant PATCH does the same); the dashboard's `cron:*` filter now matching every fire; four functions already over the length cap grew a few lines; the `afr_secrets` scrub-failure lift no test reaches without a test-only constructor.
+
+> Indy (2026-10-06 08:00): "I donot need this spec for now, so nuke it?" — context: the M212_002 write-budget spec was removed before it left `pending/`; the budget stays an open finding with no spec.
 
 - **PLAN decisions** (agent, Oct 05, 2026, from source on `main`): the seven assumptions under the handshake. The ones that change the spec as authored: the fence rides the query on `GET` and `DELETE`; run-now is `POST …/runs`, a run created, not a `/run` verb in the path; a patch names `paused` as the tenant route does, so `deleting` cannot be set by a patch; the fire actor becomes `cron:<schedule_id>`; slots 928 and 929; the daemon reuses `afr_secrets::Scrub`; a fourth code for the per-run message cap; `source_key` gains a millisecond suffix, because one run may create two schedules and the key is unique per fleet.
 - **Owner direction** (Indy, in-session, Oct 05, 2026): "If there is api docs to be updated do so, and update docs, but skip changelog" — the docs pages move into this stream on their own branch in `~/Projects/docs`; no changelog entry. "the rust patch diff must be 99%, all typescript must be 100%".
