@@ -144,7 +144,12 @@ if [ -f "$ARCH_DIR/data_flow.md" ] && [ -f "$ARCH_DIR/user_flow.md" ] && [ -f "$
   if ! grep -q "Upstash QStash" "$ARCH_DIR/README.md"; then
     err "architecture_schedule_ownership: README.md must define cron trigger ownership"
   fi
-  stale_schedule_hits=$(grep -rEn "NullClaw-managed schedule|cron_add.*schedule" "$ARCH_DIR" 2>/dev/null || true)
+  # The two sentences that shipped when the NullClaw child kept its own timer,
+  # matched exactly. A looser pattern cannot tell them from the true design:
+  # `cron_add` is a schedule tool on the daemon's plane, and data_flow.md says in
+  # the same words that no NullClaw child owns a schedule timer. The four
+  # assertions above pin what IS true; this list names only what was false.
+  stale_schedule_hits=$(grep -rnF -e "NullClaw-managed schedule" -e "NullClaw's \`cron_add\`" "$ARCH_DIR" 2>/dev/null || true)
   if [ -n "$stale_schedule_hits" ]; then
     err "architecture_schedule_ownership: stale local-scheduler ownership text found:"
     printf "%s\n" "$stale_schedule_hits" >&2

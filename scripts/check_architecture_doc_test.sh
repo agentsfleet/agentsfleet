@@ -535,8 +535,54 @@ test_arch_doc_published_links_resolve() {
     'User-facing: [the memory page](https://docs.agentsfleet.net/concepts/memory-internals).'
 }
 
+# ── The schedule-ownership check bans the stale sentences, not the topic ────
+#
+# The four pages the check reads carry their required QStash sentences, so only
+# the fifth page decides. The true line names `cron_add` and a schedule on one
+# line, as capabilities.md does; the two stale lines are the ones that shipped
+# when the NullClaw child kept its own timer.
+
+build_schedule_arch_dir() {
+  local dir="$1" body="$2"
+  mkdir -p "$dir"
+  printf '# Fixture\n\nQStash owns the clock.\n' >"$dir/data_flow.md"
+  printf '# Fixture\n\nQStash owns the clock.\n' >"$dir/user_flow.md"
+  printf '# Fixture\n\nA cron is synchronously registered with Upstash QStash.\n' >"$dir/high_level.md"
+  printf '# Fixture\n\nCron triggers belong to Upstash QStash.\n' >"$dir/README.md"
+  printf '# Fixture\n\n%s\n' "$body" >"$dir/capabilities.md"
+  printf '%s' "$dir"
+}
+
+test_arch_doc_schedule_ownership_bans_only_stale_sentences() {
+  local name="test_arch_doc_schedule_ownership_bans_only_stale_sentences"
+  local spec_root="$WORK_DIR/specs"
+  build_spec_root "$spec_root"
+
+  local dir
+  dir="$(build_schedule_arch_dir "$WORK_DIR/sched_true" \
+    '| `cron_add` / `schedule` | The fleet'"'"'s own schedules, through the lease'"'"'s schedules verb. |')"
+  if ! run_gate_from_root "$dir" "$spec_root"; then
+    bad "$name" "a true line naming cron_add and a schedule was rejected"
+    return
+  fi
+  local n=0 body
+  for body in \
+    'A periodic health check, scheduled by NullClaw'"'"'s `cron_add` tool.' \
+    'A NullClaw-managed schedule firing on time.'
+  do
+    n=$((n + 1))
+    dir="$(build_schedule_arch_dir "$WORK_DIR/sched_stale_$n" "$body")"
+    if run_gate_from_root "$dir" "$spec_root"; then
+      bad "$name" "a stale sentence passed: $body"
+      return
+    fi
+  done
+  ok "$name"
+}
+
 test_arch_doc_cited_paths_resolve
 test_arch_doc_cited_tables_exist
+test_arch_doc_schedule_ownership_bans_only_stale_sentences
 test_arch_doc_cited_make_targets_exist
 test_arch_doc_section_anchors_resolve
 test_arch_doc_no_retired_slot_numbers
