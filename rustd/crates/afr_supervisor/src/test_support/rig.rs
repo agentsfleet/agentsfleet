@@ -93,12 +93,6 @@ impl Rig {
     }
 }
 
-/// The schedule a healthy daemon's schedule replies name.
-pub(crate) const SCHEDULE_ID: &str = "0199a0b0-0000-7000-8000-0000000000aa";
-
-/// The event a healthy daemon's run-now reply names.
-pub(crate) const RUN_EVENT_ID: &str = "1700000000000-0";
-
 /// The sandbox tier the fake daemon assigns and reports.
 const SANDBOX_TIER: &str = "landlock_full";
 
@@ -141,32 +135,20 @@ pub(crate) fn daemon(
                 degraded: false,
                 degraded_reason: None,
             }),
-            Verb::Activity | Verb::Report | Verb::Bundle | Verb::Mint => {
-                json(&ReportResponse { ok: true })
-            }
-            Verb::ScheduleList
+            // No suite routes a schedule or message verb through this rig;
+            // `verbs::tests` answers those with its own replies.
+            Verb::Activity
+            | Verb::Report
+            | Verb::Bundle
+            | Verb::Mint
+            | Verb::ScheduleList
             | Verb::ScheduleCreate
             | Verb::ScheduleUpdate
             | Verb::ScheduleDelete
             | Verb::ScheduleRun
             | Verb::ScheduleRuns
-            | Verb::Message => lease_verb_reply(call.verb),
+            | Verb::Message => json(&ReportResponse { ok: true }),
         })
-    }
-}
-
-/// What a healthy daemon answers a lease verb with.
-fn lease_verb_reply(verb: Verb) -> Answer {
-    match verb {
-        Verb::ScheduleList => json(&serde_json::json!({"schedules": []})),
-        Verb::ScheduleCreate | Verb::ScheduleUpdate => json(&serde_json::json!({
-            "schedule_id": SCHEDULE_ID, "source": "fleet", "once": false,
-        })),
-        Verb::ScheduleDelete => Answer::Reply(bytes::Bytes::new()),
-        Verb::ScheduleRun => json(&serde_json::json!({"event_id": RUN_EVENT_ID})),
-        Verb::ScheduleRuns => json(&serde_json::json!({"items": [], "next_cursor": null})),
-        // `Message`: `daemon` routes only lease verbs here, and it is the last.
-        _message => json(&serde_json::json!({"delivered": true})),
     }
 }
 
