@@ -100,7 +100,7 @@ async fn answer_of(run: &Scenario, event_id: &str) -> Option<String> {
 }
 
 /// The event's status once it settles, or `None` past the deadline.
-async fn settled(run: &Scenario, event_id: &str) -> Option<String> {
+pub(crate) async fn settled(run: &Scenario, event_id: &str) -> Option<String> {
     let deadline = tokio::time::Instant::now() + SETTLE_DEADLINE;
     while tokio::time::Instant::now() < deadline {
         let status = event_column(run, event_id, "status").await;
@@ -117,7 +117,7 @@ async fn settled(run: &Scenario, event_id: &str) -> Option<String> {
 
 /// The Rust runner's supervisor, pointed at the scenario's daemon, hosting
 /// the real loop.
-fn runner(
+pub(crate) fn runner(
     run: &Scenario,
     home: &std::path::Path,
     sandboxes: &std::path::Path,

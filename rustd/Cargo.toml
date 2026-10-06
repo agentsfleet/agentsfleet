@@ -15,7 +15,7 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_otlp", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_telemetry", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
 
 [workspace.package]
 version = "0.56.0"
@@ -116,6 +116,9 @@ afd_mail = { path = "crates/afd_mail" }
 # is a new implementation rather than an edit to the runner plane.
 afd_memory = { path = "crates/afd_memory" }
 afd_observability = { path = "crates/afd_observability" }
+# The OTLP transport both binaries build their pipelines through: the knobs,
+# the exporters inside `afd_observability`'s counting wrappers, the globals.
+afd_otlp = { path = "crates/afd_otlp" }
 afd_outbound = { path = "crates/afd_outbound" }
 afd_dragonfly = { path = "crates/afd_dragonfly" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
@@ -160,6 +163,10 @@ afr_providers = { path = "crates/afr_providers" }
 afr_sandbox = { path = "crates/afr_sandbox" }
 afr_secrets = { path = "crates/afr_secrets" }
 afr_supervisor = { path = "crates/afr_supervisor" }
+# The runner's telemetry: the credential-free endpoint, the span budget and
+# the runner's own metric families. Every runner crate that measures records
+# through it; it depends on none of them but the tool catalog.
+afr_telemetry = { path = "crates/afr_telemetry" }
 afr_tools = { path = "crates/afr_tools" }
 
 # `default-features = false` throughout, features named explicitly, so a member

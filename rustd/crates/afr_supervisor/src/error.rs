@@ -207,6 +207,19 @@ impl Error {
         )
     }
 
+    /// Why a memory push that ended in this failure did not land, as the
+    /// push-failure family labels it.
+    #[must_use]
+    pub const fn push_failure(&self) -> afr_telemetry::labels::PushFailure {
+        use afr_telemetry::labels::PushFailure;
+        match self.kind() {
+            ErrorKind::Unavailable { .. } => PushFailure::Upstream,
+            ErrorKind::Refused { .. } | ErrorKind::TokenRefused => PushFailure::Refused,
+            ErrorKind::Transport { .. } => PushFailure::Transport,
+            _local => PushFailure::Internal,
+        }
+    }
+
     /// Whether the daemon has nothing under the name asked for.
     #[must_use]
     pub const fn is_not_found(&self) -> bool {

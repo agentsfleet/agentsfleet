@@ -33,11 +33,11 @@ use opentelemetry::logs::{LogRecord as _, Logger as _, LoggerProvider as _};
 use opentelemetry::trace::{Tracer as _, TracerProvider as _};
 
 /// What the collector saw: the path, and the body it was sent.
-type Received = Arc<Mutex<Vec<(String, String)>>>;
+pub(crate) type Received = Arc<Mutex<Vec<(String, String)>>>;
 
 /// A signal path the fixture accepts.
-const TRACES: &str = "/v1/traces";
-const METRICS: &str = "/v1/metrics";
+pub(crate) const TRACES: &str = "/v1/traces";
+pub(crate) const METRICS: &str = "/v1/metrics";
 const LOGS: &str = "/v1/logs";
 
 /// An event name the Zig daemon emits, and this one must keep.
@@ -51,7 +51,7 @@ const PORTED_EVENT: &str = "supervised_task_started";
 const DELIVERY_GRACE: Duration = Duration::from_millis(500);
 
 /// A collector that keeps what it is posted.
-async fn collector() -> (String, Received) {
+pub(crate) async fn collector() -> (String, Received) {
     let received: Received = Arc::new(Mutex::new(Vec::new()));
     let app = Router::new()
         .route(TRACES, post(accept))
@@ -83,15 +83,12 @@ async fn accept(State(received): State<Received>, request: axum::extract::Reques
 
 /// The configuration a test points at `endpoint`.
 fn configured(endpoint: &str) -> OtlpConfig {
-    OtlpConfig {
-        endpoint: endpoint.into(),
-        source: OTEL_ENDPOINT_KNOB,
-        headers: Vec::new(),
+    OtlpConfig::new(endpoint, OTEL_ENDPOINT_KNOB)
+        .expect("the fixture endpoint is an absolute URL")
         // See the module note: JSON so the assertions read the body rather
         // than decoding it through a second protobuf implementation.
-        protocol: "http/json".into(),
-        timeout: Duration::from_secs(2),
-    }
+        .with_encoding(afd_otlp::Encoding::HttpJson)
+        .with_timeout(Duration::from_secs(2))
 }
 
 /// Emits one of each signal through `exports`.
@@ -102,7 +99,10 @@ fn emit_every_signal(exports: &Exports) {
         .start("unit-of-work");
     drop(span);
 
-    let logger = exports.logger().logger(semconv::SCOPE_NAME);
+    let logger = exports
+        .logger()
+        .expect("the daemon builds its log pipeline")
+        .logger(semconv::SCOPE_NAME);
     let mut record = logger.create_log_record();
     record.set_event_name(PORTED_EVENT);
     record.set_body(PORTED_EVENT.into());
