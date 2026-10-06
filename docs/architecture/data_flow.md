@@ -771,7 +771,11 @@ A schedule has one of three authors, recorded as its `source`: `trigger` for
 the fleet's `TRIGGER.md`, `api` for a person, and `fleet` for the fleet itself,
 through its lease's schedules verb. The fleet is the lease's, so a body cannot
 name another; a fleet holds at most 16 schedules it made, and it can change or
-delete only those. A run-now admits through the same `schedule_fire` producer a
+delete only those. A create, change or delete proves the lease again on the
+write's own transaction (`afd_fleet::lease::write_fence`), holding the lease row
+shared until the write commits, so a reclaim, renew or settle waits for it and
+an old holder resumed after a reclaim writes nothing: `UZ-RUN-005`, `current_state`
+`superseded`. A run-now admits through the same `schedule_fire` producer a
 QStash fire does, keyed `run:<event_id>` by the leased event so a reclaimed
 lease replays the run, and both record `actor=cron:<schedule_id>`. A run-now
 applies the fire's gates in the callback's order: a fleet that takes no work
@@ -782,9 +786,13 @@ history rows under that actor, read through slot 930's
 `(fleet_id, actor, created_at, event_id)` index, so a page never walks the
 fleet's whole history. A `once` schedule (slot 928) retires inside that one
 fire seam: the fire is admitted, then the schedule is claimed `deleting` and
-removed from QStash. A QStash fire dropped because the fleet takes no work also
-retires a `once` schedule, since its moment has passed; a retirement whose
-claim is held answers `UZ-SCHED-006`, so QStash repeats the fire.
+removed from QStash. A `once` fire is keyed by the schedule alone, so a run-now
+racing its QStash fire replays it rather than admitting a second run. A QStash
+fire dropped because the fleet takes no work also retires a `once` schedule,
+since its moment has passed; a retirement whose claim is held answers
+`UZ-SCHED-006`, so QStash repeats the fire. A `once` row keeps the instant it
+was set for (slot 931, `fire_at`), and a sync after that instant removes it
+rather than registering an expression whose next match is a year away.
 
 #### The webhook auth taxonomy
 
