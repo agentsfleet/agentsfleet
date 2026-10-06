@@ -261,6 +261,28 @@ async fn a_binding_with_no_base_checks_out_the_default_branch() {
     );
 }
 
+/// A tag on the remote, annotated or not, reaches the working copy, so a
+/// build that reads its version from `git describe` finds it.
+#[tokio::test]
+async fn a_tag_on_the_remote_reaches_the_working_copy() {
+    let fixture = Fixture::new();
+    let remote = fixture.remote();
+    git(&remote, &["tag", "-a", "v1.2.3", "-m", "release 1.2.3"]);
+    git(&remote, &["tag", "lightweight"]);
+    let workspace = fixture.workspace("lease_1");
+
+    fixture.check_out(&workspace, BASE).await.unwrap();
+
+    let copy = workspace.join(NAME);
+    let head = git(&remote, &["rev-parse", BASE]);
+    assert_eq!(git(&copy, &["rev-parse", "v1.2.3^{}"]), head);
+    assert_eq!(git(&copy, &["rev-parse", "lightweight"]), head);
+    assert_eq!(
+        git(&copy, &["describe", "--tags", "--exact-match"]),
+        "v1.2.3"
+    );
+}
+
 #[tokio::test]
 async fn every_file_is_handed_to_the_owner() {
     let fixture = Fixture::new();
