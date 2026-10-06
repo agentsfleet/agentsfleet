@@ -29,6 +29,21 @@ fn fleet_store(database: &Db, queue: &Dragonfly, kek: &Arc<Kek>) -> Fleets {
     )
 }
 
+/// The interim message poster, over a grant store that is not there and a
+/// Slack nothing resolves: every line it is handed is refused at the first
+/// acquire, which is all a router suite reaches.
+fn interjector(database: &Db, kek: &Arc<Kek>) -> afd_outbound::Interjector {
+    afd_outbound::Interjector::new(afd_outbound::SlackPoster::new(
+        Grants::new(
+            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+            database.clone(),
+            Entropy::new(),
+        ),
+        reqwest::Client::new(),
+        NOWHERE_SLACK.to_owned(),
+    ))
+}
+
 /// The device-flow login store both constructors build, over `queue`.
 fn login_store(queue: &Dragonfly) -> Logins {
     Logins::new(
@@ -131,6 +146,7 @@ impl Fleet {
                 queue.clone(),
                 Entropy::new(),
             ),
+            interjector: interjector(&database, &kek),
             // The production ingress, over stores that are not there. A suite
             // proving what happens PAST the first acquire swaps this arm out
             // with `Fleet::with_ingress`.
@@ -262,6 +278,7 @@ impl Fleet {
                 queue.clone(),
                 Entropy::new(),
             ),
+            interjector: interjector(&database, &kek),
             // The production ingress, over stores that are not there. A suite
             // proving what happens PAST the first acquire swaps this arm out
             // with `Fleet::with_ingress`.

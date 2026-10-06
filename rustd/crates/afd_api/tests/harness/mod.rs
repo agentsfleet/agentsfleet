@@ -97,7 +97,7 @@ mod stubs_ingress;
 mod stubs_provider;
 
 pub(crate) use self::readiness::unreachable_queue;
-use self::readiness::{NOWHERE_GITHUB, unreachable_pool};
+use self::readiness::{NOWHERE_GITHUB, NOWHERE_SLACK, unreachable_pool};
 mod stubs_runner;
 mod stubs_tenant;
 mod support;
@@ -251,6 +251,7 @@ pub(crate) struct Fleet {
     events: History,
     live: Live,
     analytics: Analytics,
+    interjector: afd_outbound::Interjector,
     steering: Steer,
     memories: Memories,
     billing: Billing,

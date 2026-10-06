@@ -36,6 +36,7 @@ async fn test_workspace_store_needs_publish() {
             ..Seed::default()
         })),
         afr_egress::testing::closed(),
+        &crate::verbs::CLOSED,
     );
 
     let refused = call(
@@ -65,6 +66,7 @@ async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
             ..Seed::default()
         })),
         afr_egress::testing::closed(),
+        &crate::verbs::CLOSED,
     );
 
     let stored = call(
@@ -88,6 +90,7 @@ async fn test_recall_names_the_writer_of_a_shared_entry() {
             ..Seed::default()
         })),
         afr_egress::testing::closed(),
+        &crate::verbs::CLOSED,
     );
 
     let recalled = call(
@@ -112,6 +115,7 @@ async fn test_forget_leaves_another_fleets_entry() {
             ..Seed::default()
         })),
         afr_egress::testing::closed(),
+        &crate::verbs::CLOSED,
     );
 
     let forgot = call(
@@ -143,6 +147,7 @@ async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
             ..Seed::default()
         })),
         afr_egress::testing::closed(),
+        &crate::verbs::CLOSED,
     );
 
     let stored = call(

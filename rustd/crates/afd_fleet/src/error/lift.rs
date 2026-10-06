@@ -137,3 +137,12 @@ impl From<afd_crypto::error::Error> for Error {
         Self::new(ErrorKind::Entropy { source })
     }
 }
+
+/// The mask an interim message is scrubbed with could not be built over the
+/// fleet's secret values. Lifted whole, so the matcher's own reason survives in
+/// the chain; the message it guarded is not sent.
+impl From<afr_secrets::Error> for Error {
+    fn from(source: afr_secrets::Error) -> Self {
+        Self::new(ErrorKind::Scrub { source })
+    }
+}

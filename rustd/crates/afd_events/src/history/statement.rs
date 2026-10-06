@@ -281,6 +281,10 @@ pub(super) const SELECT_THREAD_PAGE_AFTER: &str = concat!(
     newest_first!(5)
 );
 
+// One actor's texts expand from the column list above, beside this file.
+mod actor;
+pub(super) use self::actor::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
+
 // The waiting read is the ledger's, not `core.fleet_events`', so its texts
 // share nothing above and live beside this file.
 mod queued;
@@ -291,7 +295,7 @@ pub(super) use self::queued::{SELECT_THREAD_QUEUED, SELECT_THREAD_QUEUED_AFTER};
 /// Every listing and thread text, named, for the suite that asks Postgres how
 /// it plans each one.
 #[cfg(feature = "test-util")]
-pub const READ_TEXTS: [(&str, &str); 10] = [
+pub const READ_TEXTS: [(&str, &str); 12] = [
     ("fleet page", SELECT_FLEET_PAGE),
     ("fleet page by actor", SELECT_FLEET_PAGE_BY_ACTOR),
     ("fleet page after", SELECT_FLEET_PAGE_AFTER),
@@ -308,6 +312,11 @@ pub const READ_TEXTS: [(&str, &str); 10] = [
     ),
     ("thread page", SELECT_THREAD_PAGE),
     ("thread page after", SELECT_THREAD_PAGE_AFTER),
+    ("fleet page of actor", SELECT_FLEET_PAGE_OF_ACTOR),
+    (
+        "fleet page of actor after",
+        SELECT_FLEET_PAGE_OF_ACTOR_AFTER,
+    ),
 ];
 
 #[cfg(test)]

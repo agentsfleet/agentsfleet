@@ -51,6 +51,15 @@ impl<'p> StaticSecrets<'p> {
         }
     }
 
+    /// The credentials of a map already read as one, such as the declared
+    /// half of a vault read: the same view, with no `Value` built around it.
+    #[must_use]
+    pub const fn of_map(credentials: &'p Map<String, Value>) -> Self {
+        Self {
+            credentials: Some(credentials),
+        }
+    }
+
     /// Whether a credential named `name` exists.
     #[must_use]
     pub fn contains(self, name: &str) -> bool {

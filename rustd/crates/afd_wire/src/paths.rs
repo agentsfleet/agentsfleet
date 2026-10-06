@@ -57,3 +57,16 @@ pub const LEASE_RENEW_SUFFIX: &str = "renew";
 /// Trailing segment of the per-lease tool-call records sub-resource. See
 /// [`LEASE_ACTIVITY_SUFFIX`] for why it is a bare segment.
 pub const LEASE_TOOL_CALLS_SUFFIX: &str = "tool-calls";
+
+/// Trailing segment of the per-lease schedules sub-resource: the schedules of
+/// the fleet the lease runs. See [`LEASE_ACTIVITY_SUFFIX`] for why it is a
+/// bare segment.
+pub const LEASE_SCHEDULES_SUFFIX: &str = "schedules";
+
+/// Trailing segment of one schedule's runs: its history, and where a run is
+/// created to fire it now. Bare, beneath `{LEASE_SCHEDULES_SUFFIX}/{schedule_id}`.
+pub const SCHEDULE_RUNS_SUFFIX: &str = "runs";
+
+/// Trailing segment of the per-lease messages sub-resource: a line said to
+/// the event's thread before the answer. See [`LEASE_ACTIVITY_SUFFIX`].
+pub const LEASE_MESSAGES_SUFFIX: &str = "messages";

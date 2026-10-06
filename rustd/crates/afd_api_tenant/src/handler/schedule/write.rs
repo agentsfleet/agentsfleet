@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_cron::{Change, DesiredStatus, NewSchedule, Refused, validate};
+use afd_cron::{Change, DesiredStatus, NewSchedule, validate};
+use afd_http::handler::schedule::{checked, held_or, refused, rendered};
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::response::Response;
@@ -19,10 +20,8 @@ use crate::handler::Refusal;
 use crate::handler::fleet::detail::parse_fleet_id;
 use crate::services::{FleetSchedules as _, Services};
 
-use super::support::{Create, Patch, checked, held_or, rendered};
-use super::{
-    DETAIL_DUPLICATE, DETAIL_INVALID_BODY, DETAIL_NOT_FOUND, DETAIL_TOO_MANY, EVENT_WRITE,
-};
+use super::support::{Create, Patch};
+use super::{DETAIL_INVALID_BODY, EVENT_WRITE};
 
 /// What a create and an update both answer: the row as the scheduler now holds it.
 // Read only by the two annotations, which the default build compiles away.
@@ -92,31 +91,18 @@ pub(crate) async fn create<D: Services>(
                 // until the scheduler answers with its id. It has to be unique
                 // per fleet, which the fleet's own identifier plus the instant
                 // already is.
-                source_key: &format!("{fleet_id}-{}", services.now().as_millis()),
+                source_key: Some(&format!("{fleet_id}-{}", services.now().as_millis())),
                 cron: &input.cron,
                 timezone: &timezone,
                 message: &input.message,
+                once: false,
             },
             services.now(),
         )
         .await
         .map_err(Refusal::at(EVENT_WRITE))?;
 
-    match created {
-        Err(Refused::NoSuchFleet) => Err(Refusal::coded(
-            error_code::SCHEDULE_NOT_FOUND,
-            DETAIL_NOT_FOUND,
-        )),
-        Err(Refused::TooMany) => Err(Refusal::coded(
-            error_code::SCHEDULE_LIMIT_REACHED,
-            DETAIL_TOO_MANY,
-        )),
-        Err(Refused::DuplicateKey) => Err(Refusal::coded(
-            error_code::SCHEDULE_KEY_TAKEN,
-            DETAIL_DUPLICATE,
-        )),
-        Ok(reconciled) => rendered(reconciled, StatusCode::CREATED),
-    }
+    rendered(created.map_err(refused)?, StatusCode::CREATED)
 }
 
 /// `PATCH …/schedules/{schedule_id}`.
@@ -177,13 +163,7 @@ pub(crate) async fn patch<D: Services>(
                 cron: input.cron.as_deref(),
                 timezone: input.timezone.as_deref(),
                 message: input.message.as_deref(),
-                desired_status: input.paused.map(|paused| {
-                    if paused {
-                        DesiredStatus::Paused
-                    } else {
-                        DesiredStatus::Active
-                    }
-                }),
+                desired_status: input.paused.map(DesiredStatus::of_paused),
             },
             services.now(),
         )

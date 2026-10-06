@@ -17,6 +17,9 @@ use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
 use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
+use crate::verbs::{
+    CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, Message, ScheduleOnce,
+};
 use crate::web_fetch::WebFetch;
 
 /// One published tool: its name and the runtime it executes in.
@@ -188,6 +191,14 @@ impl Catalog {
             Typed::boxed(MemoryList),
             Typed::boxed(MemoryForget),
             Typed::boxed(UpdatePlan),
+            Typed::boxed(Message),
+            Typed::boxed(ScheduleOnce),
+            Typed::boxed(CronAdd),
+            Typed::boxed(CronList),
+            Typed::boxed(CronRemove),
+            Typed::boxed(CronUpdate),
+            Typed::boxed(CronRun),
+            Typed::boxed(CronRuns),
         ])
     }
 

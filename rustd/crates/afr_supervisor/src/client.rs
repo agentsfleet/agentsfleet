@@ -11,7 +11,6 @@ use std::borrow::Cow;
 use std::fmt;
 use std::time::Duration;
 
-use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
 use afd_wire::activity::ActivityRequest;
 use afd_wire::credentials::MintCredentialRequest;
@@ -26,8 +25,13 @@ use serde::{Deserialize, Serialize};
 use crate::error::{self, Result};
 
 mod http;
+mod lease_verbs;
+mod verb;
 
 pub(crate) use self::http::HttpRunnerApi;
+#[cfg(test)]
+pub(crate) use self::verb::Method;
+pub(crate) use self::verb::Verb;
 
 /// Attempts a retryable call gets before its caller decides what a failure
 /// means: keep the report spooled, fail the lease's start.
@@ -39,82 +43,6 @@ const RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
 const EVENT_STARTED: &str = "daemon_call_started";
 const EVENT_COMPLETED: &str = "daemon_call_completed";
 const EVENT_FAILED: &str = "daemon_call_failed";
-
-/// One runner verb.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum Verb {
-    /// Liveness, capability, assignment.
-    Heartbeat,
-    /// The next event to run.
-    Lease,
-    /// More time on a held lease.
-    Renew,
-    /// Live-tail frames for a held lease.
-    Activity,
-    /// A lease's terminal result.
-    Report,
-    /// A fleet's memory at lease start.
-    Hydrate,
-    /// A fleet's memory written back.
-    Capture,
-    /// A search of a fleet's memory past the window.
-    Recall,
-    /// A fleet bundle by content hash.
-    Bundle,
-    /// A scoped credential for a held lease.
-    Mint,
-    /// Finished calls' full records for a held lease.
-    Records,
-    /// The runner's own row: which runner this is, as the daemon names it.
-    Me,
-}
-
-impl Verb {
-    /// Whether this verb reads (`GET`) rather than reports (`POST`).
-    pub(crate) const fn reads(self) -> bool {
-        matches!(self, Self::Hydrate | Self::Bundle | Self::Me)
-    }
-
-    /// The verb as a log line and an error name it.
-    pub(crate) const fn as_str(self) -> &'static str {
-        match self {
-            Self::Heartbeat => "heartbeat",
-            Self::Lease => "lease",
-            Self::Renew => "renew",
-            Self::Activity => "activity",
-            Self::Report => "report",
-            Self::Hydrate => "hydrate",
-            Self::Capture => "capture",
-            Self::Recall => "recall",
-            Self::Bundle => "bundle",
-            Self::Mint => "mint",
-            Self::Records => "records",
-            Self::Me => "me",
-        }
-    }
-
-    /// The registry code a failure of this verb is logged under.
-    pub(crate) const fn code(self) -> ErrorCode {
-        match self {
-            Self::Bundle => error_code::FLEET_BUNDLE_FETCH_FAILED,
-            Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
-            Self::Heartbeat
-            | Self::Lease
-            | Self::Renew
-            | Self::Activity
-            | Self::Report
-            | Self::Mint
-            | Self::Records
-            | Self::Me => error_code::INTERNAL_OPERATION_FAILED,
-        }
-    }
-}
-
-impl fmt::Display for Verb {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
 
 /// One request: the verb, the path it goes to, and its body if it has one.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -146,6 +74,13 @@ pub(crate) struct Body {
 }
 
 impl Body {
+    /// The reply as text, for a caller that hands it on whole — a tool whose
+    /// model reads `agentsfleetd`'s answer as it came. A byte that is not
+    /// UTF-8 reads as U+FFFD rather than failing the call.
+    pub(crate) fn text(&self) -> String {
+        String::from_utf8_lossy(&self.bytes).into_owned()
+    }
+
     /// Decodes the reply into `T`, borrowing every text field from it, through
     /// the gate that refuses a JSON array read into a struct's fields in order.
     pub(crate) fn decode<'a, T: Deserialize<'a>>(&'a self) -> Result<T> {
@@ -171,7 +106,7 @@ impl ControlPlane {
     /// Beats, carrying the capability report and any self-test.
     pub(crate) async fn heartbeat(&self, request: &HeartbeatRequest<'_>) -> Result<Body> {
         let path = Cow::Borrowed(paths::RUNNER_HEARTBEATS);
-        self.post(Verb::Heartbeat, path, request).await
+        self.send_json(Verb::Heartbeat, path, request).await
     }
 
     /// Polls for the next lease.
@@ -184,7 +119,7 @@ impl ControlPlane {
     /// new expiry, in Unix milliseconds.
     pub(crate) async fn renew(&self, lease_id: &Uuid7, spent: &RenewRequest) -> Result<i64> {
         let path = lease_path(lease_id, paths::LEASE_RENEW_SUFFIX);
-        let body = self.post(Verb::Renew, path, spent).await?;
+        let body = self.send_json(Verb::Renew, path, spent).await?;
         body.decode::<RenewResponse>()
             .map(|renewed| renewed.lease_expires_at)
     }
@@ -196,7 +131,9 @@ impl ControlPlane {
         request: &ActivityRequest<'_>,
     ) -> Result<()> {
         let path = lease_path(lease_id, paths::LEASE_ACTIVITY_SUFFIX);
-        self.post(Verb::Activity, path, request).await.map(drop)
+        self.send_json(Verb::Activity, path, request)
+            .await
+            .map(drop)
     }
 
     /// Posts a report, byte for byte as it was spooled.
@@ -222,7 +159,7 @@ impl ControlPlane {
         fleet_id: &Uuid7,
         request: &MemoryPushRequest<'_>,
     ) -> Result<()> {
-        self.post(Verb::Capture, memory_path(fleet_id), request)
+        self.send_json(Verb::Capture, memory_path(fleet_id), request)
             .await
             .map(drop)
     }
@@ -238,13 +175,13 @@ impl ControlPlane {
             memory_path(fleet_id),
             paths::RUNNER_MEMORY_RECALL_SUFFIX
         ));
-        self.post(Verb::Recall, path, request).await
+        self.send_json(Verb::Recall, path, request).await
     }
 
     /// Mints a scoped credential for a held lease.
     pub(crate) async fn mint(&self, request: &MintCredentialRequest<'_>) -> Result<Body> {
         let path = Cow::Borrowed(paths::RUNNER_CREDENTIALS_MINT);
-        self.post(Verb::Mint, path, request).await
+        self.send_json(Verb::Mint, path, request).await
     }
 
     /// Reads this runner's own row.
@@ -261,7 +198,8 @@ impl ControlPlane {
             .map(|body| body.bytes)
     }
 
-    async fn post<T: Serialize + Sync>(
+    /// Sends `body` as JSON, with the method `verb` is sent with.
+    async fn send_json<T: Serialize + Sync>(
         &self,
         verb: Verb,
         path: Cow<'static, str>,

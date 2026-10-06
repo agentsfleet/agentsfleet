@@ -135,9 +135,19 @@ pub(crate) fn daemon(
                 degraded: false,
                 degraded_reason: None,
             }),
-            Verb::Activity | Verb::Report | Verb::Bundle | Verb::Mint => {
-                json(&ReportResponse { ok: true })
-            }
+            // No suite routes a schedule or message verb through this rig;
+            // `verbs::tests` answers those with its own replies.
+            Verb::Activity
+            | Verb::Report
+            | Verb::Bundle
+            | Verb::Mint
+            | Verb::ScheduleList
+            | Verb::ScheduleCreate
+            | Verb::ScheduleUpdate
+            | Verb::ScheduleDelete
+            | Verb::ScheduleRun
+            | Verb::ScheduleRuns
+            | Verb::Message => json(&ReportResponse { ok: true }),
         })
     }
 }

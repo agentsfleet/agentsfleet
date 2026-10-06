@@ -11,6 +11,7 @@ pub mod lease;
 pub mod renew;
 pub mod report;
 pub mod session;
+pub mod standing;
 pub mod tool_detail;
 
 pub use afd_state::sql::{

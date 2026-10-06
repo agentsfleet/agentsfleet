@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
+use afd_http::handler::schedule::not_found;
 use afd_wire::schedule::Page;
 /// Named only by the `body =` clause of this module's `utoipa::path`
 /// annotations, which the default build compiles away — so the import has to
@@ -23,8 +23,7 @@ use crate::handler::Refusal;
 use crate::handler::fleet::detail::parse_fleet_id;
 use crate::services::{FleetSchedules as _, Services};
 
-use super::support::view_of;
-use super::{DETAIL_NOT_FOUND, EVENT_READ};
+use super::EVENT_READ;
 
 /// `GET …/schedules`.
 ///
@@ -65,7 +64,7 @@ pub(crate) async fn list<D: Services>(
         .map_err(Refusal::at(EVENT_READ))?;
 
     Ok(Json(Page {
-        schedules: schedules.iter().map(view_of).collect(),
+        schedules: schedules.iter().map(afd_cron::Schedule::view).collect(),
     })
     .into_response())
 }
@@ -123,12 +122,7 @@ pub(crate) async fn one<D: Services>(
         .map_err(Refusal::at(EVENT_READ))?;
 
     found.map_or_else(
-        || {
-            Err(Refusal::coded(
-                error_code::SCHEDULE_NOT_FOUND,
-                DETAIL_NOT_FOUND,
-            ))
-        },
-        |schedule| Ok(Json(view_of(&schedule)).into_response()),
+        || Err(not_found()),
+        |schedule| Ok(Json(schedule.view()).into_response()),
     )
 }

@@ -38,6 +38,7 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 mod fire;
+mod next;
 mod service;
 mod store;
 
@@ -49,10 +50,13 @@ pub mod validate;
 pub mod verifier;
 
 pub use self::error::{Error, Result};
-pub use self::fire::{Fire, Fired};
-pub use self::model::{DesiredStatus, MAX_SCHEDULES_PER_FLEET, Schedule, Source, SyncStatus};
+pub use self::fire::{ACTOR_PREFIX, Fire, Fired, schedule_actor};
+pub use self::model::{
+    DesiredStatus, FLEET_SCHEDULES_MAX, MAX_SCHEDULES_PER_FLEET, Schedule, Source, SyncStatus,
+};
 pub use self::qstash::QStash;
 pub use self::service::{Reconciled, Schedules as ScheduleService};
 pub use self::store::{Change, FireTarget, NewSchedule, Refused, SYNC_LEASE_MS, Schedules};
+
 pub use self::validate::Invalid;
 pub use self::verifier::{SigningKeys, Unverified, VerifiedFire};

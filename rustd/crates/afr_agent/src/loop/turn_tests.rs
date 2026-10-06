@@ -266,6 +266,7 @@ async fn a_credential_minted_during_a_run_is_logged_under_the_runs_lease() {
             memory: afr_memory::Seed::default(),
             executor: None,
             mint: &mint,
+            verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
             events: &sink,
             meter: &Meter::default(),

@@ -273,6 +273,14 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// takes, and for the same reason.
     fn live(&self) -> &Live;
 
+    /// What an interim message is posted through: the outbound worker's Slack
+    /// poster, under the line's own marker part.
+    ///
+    /// A concrete type for the reason [`Services::bundles`] is one: its seam is
+    /// inside it — the poster's API base — so a suite points it at a loopback
+    /// Slack rather than stubbing the trait.
+    fn interjector(&self) -> &afd_outbound::Interjector;
+
     /// What the event-history routes act through.
     ///
     /// A concrete type for the reason [`Services::Approvals`] is one: a

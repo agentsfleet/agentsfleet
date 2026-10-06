@@ -44,6 +44,7 @@ fn target(lane: &CronLane) -> FireTarget {
         fleet: lane.fleet_id(),
         workspace: lane.workspace_id(),
         message: MESSAGE.to_owned(),
+        once: false,
         desired_status: DesiredStatus::Active,
         fleet_status: "active".to_owned(),
     }
@@ -187,6 +188,36 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
         "suppressing this would skip a run the operator asked for"
     );
     assert_ne!(tonight.event_id, tomorrow.event_id);
+}
+
+/// A one-off fires once, whichever path asks: the scheduler's callback and a
+/// run-now under its own key admit one event between them.
+#[tokio::test]
+#[ignore = "needs the lane's Dragonfly"]
+async fn a_once_schedule_fires_once_whichever_path_asks() {
+    let lane = CronLane::open().await;
+    let fire = Fire::new(lane.admissions().await);
+    let once = FireTarget {
+        once: true,
+        ..target(&lane)
+    };
+    let schedule = CronLane::token();
+
+    let scheduled = fire
+        .deliver(&schedule, &once, MESSAGE_ID)
+        .await
+        .expect("the lane's Dragonfly takes the append");
+    let run_now = fire
+        .deliver(&schedule, &once, "run:1700000000000-0")
+        .await
+        .expect("the lane's Dragonfly answers the second path");
+
+    assert!(!scheduled.replayed);
+    assert!(
+        run_now.replayed,
+        "a one-off's second fire is its first's replay"
+    );
+    assert_eq!(run_now.event_id, scheduled.event_id);
 }
 
 /// Two fleets cannot claim over each other, even on one schedule id.

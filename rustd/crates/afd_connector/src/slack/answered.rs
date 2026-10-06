@@ -36,6 +36,13 @@ use super::{Thread, Unavailable};
 /// The metadata event type every answer this daemon posts carries.
 pub const ANSWER_EVENT_TYPE: &str = "agentsfleet_answer";
 
+/// The metadata event type every interim line carries.
+///
+/// Its own type rather than the answer's with a field beside it: a reader that
+/// predates interim lines checks the type first, so it can never take a line
+/// for the answer and skip the answer it still owes.
+pub const INTERIM_EVENT_TYPE: &str = "agentsfleet_interim";
+
 /// How long the whole check may take, every page included.
 ///
 /// Its own bound rather than the mention reader's, which is sized to Slack's
@@ -58,15 +65,46 @@ pub struct AnswerMarker {
     pub fleet_id: String,
     /// The event it answers.
     pub event_id: String,
+    /// Which interim line of the run this is, or `None` for the answer.
+    ///
+    /// A run may speak before it answers, and every line it says lands in the
+    /// same thread under the same fleet and event. A line is stamped with
+    /// [`INTERIM_EVENT_TYPE`], so a repeat of the answer never finds one, and
+    /// its part tells two lines apart. Absent on the wire for the answer, so
+    /// every marker posted before interim lines existed still reads as one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<Part>,
+}
+
+/// One interim line's place: the lease that said it, and its number there.
+///
+/// The lease is part of it because the count is the lease's: a reclaimed
+/// lease numbers its lines from one again, and its first line must not read
+/// as the dead lease's first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Part {
+    /// The lease that posted the line.
+    pub lease_id: String,
+    /// Which line of that lease it is, from one.
+    pub line: u32,
 }
 
 impl AnswerMarker {
-    /// The `metadata` argument `chat.postMessage` takes for this answer.
+    /// The `metadata` argument `chat.postMessage` takes for this message.
     #[must_use]
     pub const fn metadata(&self) -> Stamp<'_> {
         Stamp {
-            event_type: ANSWER_EVENT_TYPE,
+            event_type: self.event_type(),
             event_payload: self,
+        }
+    }
+
+    /// The stamp's type: an interim line's, or the answer's.
+    const fn event_type(&self) -> &'static str {
+        if self.part.is_some() {
+            INTERIM_EVENT_TYPE
+        } else {
+            ANSWER_EVENT_TYPE
         }
     }
 }
@@ -97,7 +135,7 @@ impl Posted {
     pub(super) fn carries(&self, marker: &AnswerMarker, author: &str) -> bool {
         self.user.as_deref() == Some(author)
             && self.metadata.as_ref().is_some_and(|metadata| {
-                metadata.event_type == ANSWER_EVENT_TYPE
+                metadata.event_type == marker.event_type()
                     && serde_json::from_value::<AnswerMarker>(metadata.event_payload.clone())
                         .is_ok_and(|posted| posted == *marker)
             })

@@ -253,3 +253,13 @@ fn test_raw_bytes_round_trip_through_the_canonical_spelling() {
         assert_eq!(uuid::Uuid::from_bytes(raw).to_string(), text);
     }
 }
+
+/// An identifier given up as text is its canonical spelling, byte for byte:
+/// the wire field it lands in reads exactly what `as_str` would have.
+#[test]
+fn should_give_up_its_canonical_text_when_converted_to_a_string() {
+    let text = "0197a4ba-8d3a-7f13-8abc-123456789abc";
+    let id = Uuid7::parse(text).expect("the fixture is a v7 spelling");
+    let given: String = id.into();
+    assert_eq!(given, text);
+}

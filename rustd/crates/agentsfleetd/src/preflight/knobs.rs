@@ -60,6 +60,22 @@ pub const QSTASH_TOKEN_KNOB: &str = "QSTASH_TOKEN";
 /// found it ignored was configuring something the daemon never read.
 pub const QSTASH_URL_KNOB: &str = "QSTASH_URL";
 
+/// Which Slack API the answer and interim posts go to.
+///
+/// Optional, and its absence resolves to `afd_connector::slack::SLACK_API_BASE`.
+/// A Slack that is not `slack.com` — a government tenancy, a regional
+/// deployment, a local stand-in — is a different base, and the outbound worker
+/// and the interim message poster must post to the same one.
+pub const SLACK_API_URL_KNOB: &str = "SLACK_API_URL";
+
+/// Why a Slack base that could leak a bot token, or lose the method path, refuses boot.
+///
+/// Every workspace's bot token rides to this base as a bearer, from the answer
+/// worker and the interim poster alike, so plain http is accepted only for a
+/// loopback host. The value itself is never echoed.
+pub(super) const WHY_SLACK_API_URL: &str = "an https URL, or http only on a loopback host for a \
+     local stand-in, with no query or fragment; every workspace's Slack bot token is sent to it";
+
 /// What a signup event from the identity provider is verified against.
 ///
 /// Optional, and its absence is FAIL-CLOSED rather than a degradation: the

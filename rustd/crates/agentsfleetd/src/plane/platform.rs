@@ -60,3 +60,26 @@ pub(super) fn invite_mailer(database: &Db, kek: &Arc<Kek>) -> InviteMailer {
         Entropy::new(),
     ))
 }
+
+/// The interim message poster: a Slack poster over its own grant store, posting
+/// to the base the outbound worker posts answers to.
+///
+/// Its own grant store for the reason the worker has one: it opens a
+/// workspace's bot token and nothing else, and sharing the connect flow's
+/// would hand a sealing surface to a path that only ever reads.
+pub(super) fn interjector(
+    database: &Db,
+    kek: &Arc<Kek>,
+    vendor_client: reqwest::Client,
+    slack_api_base: String,
+) -> afd_outbound::Interjector {
+    afd_outbound::Interjector::new(afd_outbound::SlackPoster::new(
+        afd_connector::Grants::new(
+            SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+            database.clone(),
+            Entropy::new(),
+        ),
+        vendor_client,
+        slack_api_base,
+    ))
+}
