@@ -163,7 +163,7 @@ Speed comes from what the lease path never does: no image pull, no layer unpacki
 
 ## A lease's sandbox today
 
-This section records what the code on `main` builds, against the design above. The engine is built and tested but not wired in: `agentsfleet-runner run` refuses every lease (`rustd/crates/agentsfleet_runner/src/main.rs:27`), and only the kernel lane and the engine's own tests construct a `BubblewrapConfig` (`afr_sandbox/examples/kernel_lane/lane.rs:154`). Paths below are under `rustd/crates/`.
+This section records what the code on `main` builds, against the design above. The engine is built and tested but not wired in: `agentsfleet-runner run` refuses every lease (`rustd/crates/agentsfleet_runner/src/main.rs:32`), and only the kernel lane and the engine's own tests construct a `BubblewrapConfig` (`afr_sandbox/examples/kernel_lane/lane.rs:154`). Paths below are under `rustd/crates/`.
 
 **Only a lease that needs a sandbox gets one.** A lease whose tools all run in the supervisor starts none (`afr_agent/src/engine.rs:139-141`, `afr_supervisor/src/lease_loop.rs:286-290`). `http_request` and the memory tools run in the supervisor, so a Pull Request reviewer built from them never builds a sandbox. Shell, git and file tools would need one, and until the sandbox-side tools land, a policy listing any of them refuses the lease.
 
@@ -199,7 +199,7 @@ Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/worksp
 | Workspace disk, with `/tmp` | `<state>/<lease_id>/workspace.img`, sparse; `/tmp` is its `tmp/` directory | the lease's `disk_bytes`, 4 GiB by default; a full disk answers `ENOSPC` | one lease, or until its hold ends | `afr_sandbox/src/workspace_disk.rs`, `afr_sandbox/src/engine.rs:17` |
 | `/run`, `/dev/shm` | tmpfs in RAM, charged to the lease's memory cgroup | the cgroup's 2 GiB | one lease | `afr_sandbox/src/bubblewrap.rs` |
 | Processes | the lease's memory cgroup, no swap | 2 GiB | one command, unless it leaves the shell's process group; exec sessions close at run end | `afr_sandbox/src/cgroup.rs`, `afr_executor/src/server/process.rs`, `afr_agent/src/loop/finish.rs` |
-| Report spool, bundle cache | the storage home, `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | across leases | `afr_supervisor/src/config.rs:21-24` |
+| Report spool, bundle cache, lease sandboxes | the storage home's `spool/`, `bundles/` and `sandboxes/`, under `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | across leases | `afr_supervisor/src/config.rs:21-24`, `afr_supervisor/src/storage_home.rs` |
 
 **What bounds a runner host.** The image does not: its blocks sit in shared page cache, which memory pressure evicts. Memory is bounded by the lease limits: 2 GiB per sandbox by default and up to 64 GiB for a lease that names its size, summed over the host's workers. The worker count defaults to 1 and caps at 64 (`afd_core/src/limits.rs:14-20`), so 128 GiB of default limits at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per lease by default and up to 256 GiB for a sized one, sparse, with no headroom reserved.
 
@@ -209,7 +209,7 @@ Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/worksp
 - A held sandbox keeps its disk's bytes, and nothing reserves host disk for it: holds are bounded only by the runner's worker count.
 - No workspace restore exists yet, so the first model call waits for the sandbox and the bundle's files.
 - No runner crate builds the per-lease network allowlist. The sandbox has loopback only, and every outbound call leaves through the supervisor's `afr_egress`.
-- The production state directory is not chosen. The kernel lane keeps its state under `/var/tmp` (`afr_sandbox/examples/kernel_lane/lane.rs:47`), on a disk as a host's would be: on its host `/tmp` is a tmpfs, where workspace images would sit in RAM. The bare-metal unit `deploy/baremetal/agentsfleet-runner.service` was written for the Zig runner: it allows writes only under `/run/agentsfleet` and `/tmp` (`:76`) and delegates `cpu memory pids` (`:71`), while the Rust host probe requires `io` as well (`afr_sandbox/src/probe.rs:37`). Wired as it stands, workspace images would land on tmpfs.
+- The production state directory is not chosen. The kernel lane keeps its state under `/var/tmp` (`afr_sandbox/examples/kernel_lane/lane.rs:47`), on a disk as a host's would be: on its host `/tmp` is a tmpfs, where workspace images would sit in RAM. The bare-metal unit `deploy/baremetal/agentsfleet-runner.service` was written for the Zig runner: it allows writes only under `/run/agentsfleet` and `/tmp` (`:76`) and delegates `cpu memory pids` (`:71`), while the Rust host probe requires `io` as well (`afr_sandbox/src/probe.rs:37`). Wired as it stands, the default storage home is read-only under the unit's `ProtectSystem=strict`, so the runner fails at boot; pointed at `/tmp` instead, workspace images land wherever the host keeps `/tmp`, and the missing `io` controller refuses every sandbox.
 
 ## Workspace between leases
 

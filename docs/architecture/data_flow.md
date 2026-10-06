@@ -27,7 +27,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | SSE sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
 | Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
-| Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §KILL |
+| Cancel latency | none: a running lease is never cancelled | kill and pause write only `core.fleets.status`; the run ends on its own or at `MAX_RUNTIME_MS` | §KILL |
 | Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
 | Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §"C. EXECUTE" step 4 |
 | Tenant isolation | application-enforced + namespacing | every workspace route passes an ownership check before its handler runs; Dragonfly keys namespaced by unguessable fleet UUID. This repository declares no `ROW LEVEL SECURITY` policy | §Multi-tenancy boundary |
@@ -1132,23 +1132,19 @@ and [`daemon connection builder`](../../rustd/crates/afd_api/src/server.rs).
 
 ```
    user
-    │  POST /v1/.../fleets/{id}/kill
+    │  PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}  {status: "killed"}
     ▼
   agentsfleetd
-    ├─► UPDATE core.fleets SET status='killed' (PG)
-    ├─► mark the in-flight fleet.runner_leases row revoked
-    └─► 202 to user
+    ├─► UPDATE core.fleets SET status='killed' (PG)   ← the only write
+    └─► 200 to user
 
-  agentsfleet-runner  (next heartbeat)
-    ├─► POST /v1/runners/me/heartbeats  → reply carries the revoked lease id
-    ├─► kill the sandboxed child (cgroup tree-kill)
-    └─► POST /v1/runners/me/reports { outcome: cancelled }
-            → claimReport finalizes 'cancelled'; a late report from the
-              killed child is fenced out by fencing_token.
+  the next lease poll     → the fleet is not active: no lease is issued
+  a lease already running → renewals still succeed (a non-active fleet
+                            has no budget left to enforce); the run ends
+                            on its own or at MAX_RUNTIME_MS, and its
+                            report settles as any other
 
-   Cancel latency is bounded by the heartbeat interval. A dedicated
-   low-latency cancel channel can come later; heartbeat-carried
-   revocation is the S0 mechanism.
+   No heartbeat carries a revocation and no cancel channel exists.
 ```
 
 ## Multi-tenancy boundary
