@@ -16,12 +16,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M211
 **Workstream:** 005
 **Date:** Oct 05, 2026
-**Status:** IN_PROGRESS
+**Status:** PENDING
 **Priority:** P1 — a fleet answers every chat message as if it were the first: the model never sees the question before it, or its own answer
 **Categories:** API, INFRA
-**Batch:** B1 — folded into M211_001 and shipped in its Pull Request; its Sections run after M211_004's
-**Branch:** `feat/m211-sandbox-tools-and-nested-loops`
-**Folded-into:** `M211_001`
+**Batch:** B2 — folds into M211_002 at that stream's CHORE(open); its Sections run after M211_004's
+**Branch:** pending — set at CHORE(open)
 **Baseline revision:** `b0138d7b3124b871668f07e2361dba923bc774d2`
 **Test Baseline:** pending — measured before the Pull Request; shared with M211_001
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment

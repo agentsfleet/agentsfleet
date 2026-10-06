@@ -16,12 +16,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M211
 **Workstream:** 002
 **Date:** Oct 02, 2026
-**Status:** IN_PROGRESS
+**Status:** PENDING
 **Priority:** P1 — the last published tools without a Rust home; a fleet that splits an incident into parallel reads cannot move until they exist
 **Categories:** API, INFRA
-**Batch:** B1 — folded into M211_001 and shipped in its Pull Request; its Sections run after M211_001's, on those tools
-**Branch:** `feat/m211-sandbox-tools-and-nested-loops`
-**Folded-into:** `M211_001`
+**Batch:** B2 — the milestone's follow-up Pull Request, after M211_001 merged; M211_003 to M211_005 fold into this spec at its CHORE(open), and its Sections run on M211_001's tools
+**Branch:** pending — set at CHORE(open)
 **Baseline revision:** `b0138d7b3124b871668f07e2361dba923bc774d2`
 **Test Baseline:** pending — measured before the Pull Request; shared with M211_001
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
