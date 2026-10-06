@@ -40,7 +40,7 @@ mod streaming_parser;
 mod text_file;
 
 pub(crate) use self::file_update::updated;
-pub(crate) use self::parser::{Hunk, ParseError, parse_patch};
+pub(crate) use self::parser::{Hunk, ParseError, UpdateFileChunk, parse_patch};
 
 /// Why a patch could not be applied: upstream's `ApplyPatchError`, less the
 /// input/output arms, because the sandbox's executor reports those itself.

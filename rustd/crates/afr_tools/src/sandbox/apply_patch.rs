@@ -6,9 +6,13 @@
 //! every hunk, the reads and writes through the sandbox, and the count the
 //! thread's cell shows. Every hunk is read and computed before the first
 //! write, each from what the hunks before it leave, as Codex applies them one
-//! after another: a patch with a hunk that does not apply changes nothing. A
-//! write the executor refuses partway is reported, and the hunks before it
-//! stay landed.
+//! after another: a patch with a hunk that does not apply changes nothing.
+//! That check knows a file by the path a hunk spells, and a link inside the
+//! workspace gives one file a second spelling, so an update lands by reading
+//! its file again and applying its chunks to what is there, as Codex lands
+//! each hunk. A write the executor refuses partway, or an update that no
+//! longer applies to the file it lands on, is reported, and the hunks before
+//! it stay landed.
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
@@ -27,7 +31,7 @@ use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 #[path = "../../vendor/apply_patch/mod.rs"]
 mod codex;
 
-use self::codex::Hunk;
+use self::codex::{Hunk, UpdateFileChunk};
 
 /// How the answer starts: Codex's words, so a model trained on its harness
 /// reads them unprompted.
@@ -68,7 +72,8 @@ enum Planned<'hunk> {
     Update {
         path: &'hunk str,
         moved_to: Option<&'hunk str>,
-        contents: String,
+        /// Applied again as the hunk lands, to the file as it is then.
+        chunks: &'hunk [UpdateFileChunk],
         added: usize,
         removed: usize,
     },
@@ -219,7 +224,7 @@ async fn plan<'hunk>(
             Ok(Planned::Update {
                 path,
                 moved_to,
-                contents: updated.contents,
+                chunks,
                 added: updated.added,
                 removed: updated.removed,
             })
@@ -232,34 +237,46 @@ fn named(path: &Path) -> &str {
     path.to_str().unwrap_or_default()
 }
 
-/// Lands one planned hunk.
+/// Lands one planned hunk. An update applies its chunks to its file as it is
+/// now rather than writing the text planned for it: hunks through a link and
+/// through its target were each planned from the file before either landed,
+/// so the second's planned text would undo the first.
 async fn land(executor: &dyn Executor, planned: &Planned<'_>) -> Result<(), ToolOutput> {
-    let landed = match planned {
-        Planned::Add { path, contents } => {
-            executor
-                .write_file(path, Bytes::copy_from_slice(contents.as_bytes()))
-                .await
-        }
-        Planned::Delete { path, .. } => executor.delete_file(path).await,
+    match planned {
+        Planned::Add { path, contents } => write(executor, path, contents).await,
+        Planned::Delete { path, .. } => delete(executor, path).await,
         Planned::Update {
             path,
             moved_to,
-            contents,
+            chunks,
             ..
         } => {
-            let written = executor
-                .write_file(
-                    moved_to.unwrap_or(path),
-                    Bytes::copy_from_slice(contents.as_bytes()),
-                )
-                .await;
-            match (written, moved_to) {
-                (Ok(()), Some(_moved)) => executor.delete_file(path).await,
-                (outcome, _stayed) => outcome,
+            let now = whole(executor, path).await?;
+            let updated = codex::updated(path, &now, chunks).map_err(invalid)?;
+            write(executor, moved_to.unwrap_or(path), &updated.contents).await?;
+            if moved_to.is_some() {
+                delete(executor, path).await
+            } else {
+                Ok(())
             }
         }
-    };
-    landed.map_err(|failure| failed(&failure))
+    }
+}
+
+/// Writes `text` to `path`; a refusal reads in the executor's words.
+async fn write(executor: &dyn Executor, path: &str, text: &str) -> Result<(), ToolOutput> {
+    executor
+        .write_file(path, Bytes::copy_from_slice(text.as_bytes()))
+        .await
+        .map_err(|failure| failed(&failure))
+}
+
+/// Removes `path`; a refusal reads in the executor's words.
+async fn delete(executor: &dyn Executor, path: &str) -> Result<(), ToolOutput> {
+    executor
+        .delete_file(path)
+        .await
+        .map_err(|failure| failed(&failure))
 }
 
 /// What the model reads back: Codex's summary, then the count the thread's
@@ -298,3 +315,7 @@ mod landing_tests;
 #[cfg(test)]
 #[path = "apply_patch/chunk_tests.rs"]
 mod chunk_tests;
+
+#[cfg(test)]
+#[path = "apply_patch/link_tests.rs"]
+mod link_tests;
