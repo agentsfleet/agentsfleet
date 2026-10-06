@@ -1,8 +1,7 @@
 //! How a failure becomes an [`Error`](super::Error): the lifts, and the raisers
 //! that bind data.
 
-use super::{Error, ErrorKind};
-use crate::protocol::REFUSAL_MESSAGE_MAX_BYTES;
+use super::{Error, ErrorKind, kept_to_the_wire};
 
 // Every lift is a `From`, so `?` does the conversion and no `map_err` appears
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2).
@@ -22,14 +21,13 @@ pub(crate) fn unresponsive(method: &'static str) -> Error {
     ErrorKind::Unresponsive { method }.into()
 }
 
-/// The executor answered with a JSON-RPC error. Its message is kept up to
-/// `REFUSAL_MESSAGE_MAX_BYTES`, cut on a character boundary: the other end of
-/// the socket is not trusted with the length of what a model reads.
+/// The executor answered with a JSON-RPC error. Its message is kept to the
+/// wire cap as it is stored, so the error's own rendering in a log is bounded
+/// as `wire_message` is.
 pub(crate) fn refused(code: i32, message: &str) -> Error {
-    let kept = message.floor_char_boundary(REFUSAL_MESSAGE_MAX_BYTES);
     ErrorKind::Refused {
         code,
-        message: message.get(..kept).unwrap_or_default().to_owned(),
+        message: kept_to_the_wire(message.to_owned()),
     }
     .into()
 }

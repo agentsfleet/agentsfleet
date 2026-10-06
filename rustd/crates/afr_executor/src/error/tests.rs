@@ -11,7 +11,7 @@ use super::{
     unresponsive,
 };
 use crate::protocol::{
-    FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, REFUSAL_MESSAGE_MAX_BYTES, UNKNOWN_PROCESS_CODE,
+    FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE, WIRE_MESSAGE_MAX_BYTES,
 };
 
 #[test]
@@ -174,29 +174,37 @@ fn a_program_that_will_not_start_keeps_the_launchers_reason_as_its_cause() {
     );
 }
 
-/// A refusal's message is kept to the cap, cut on a character boundary, and a
-/// short one is kept whole: what the socket says about a failed call is read
-/// by a model, and the socket is not trusted with its length.
+/// `wire_message` renders at most the cap, whole when it fits, cut on a
+/// character boundary otherwise, from whatever the socket sent: a refusal's
+/// own message, or a value a result could not decode, which serde echoes.
 #[test]
-fn a_refusals_message_is_kept_to_the_cap_on_a_character_boundary() {
-    // Three bytes a character, so the cap falls inside one.
-    let long = "€".repeat(REFUSAL_MESSAGE_MAX_BYTES);
+fn a_wire_message_is_kept_to_the_cap_whatever_carried_it() {
     let prefix = format!("the executor refused the call ({INTERNAL_ERROR_CODE}): ");
+    let room = WIRE_MESSAGE_MAX_BYTES - prefix.len();
+    let at_cap = "x".repeat(room);
+    let over = "x".repeat(room + 1);
+    // The cap falls one byte into a three-byte character, whatever its value.
+    let straddle = format!("{}€", "a".repeat(room - 1));
+    let flood = format!("\"{}\"", "x".repeat(2 * WIRE_MESSAGE_MAX_BYTES));
+    let echoed =
+        serde_json::from_str::<bool>(&flood).map_or_else(Error::from, |_| unknown_process());
 
-    let cut = refused(INTERNAL_ERROR_CODE, &long).wire_message();
-    let whole = refused(INTERNAL_ERROR_CODE, "fell over").wire_message();
-
-    let kept = cut.strip_prefix(&prefix).unwrap_or_default();
-    assert!(!kept.is_empty(), "{cut}");
-    assert!(kept.len() <= REFUSAL_MESSAGE_MAX_BYTES, "{}", kept.len());
-    assert!(
-        kept.len() > REFUSAL_MESSAGE_MAX_BYTES - '€'.len_utf8(),
-        "{}",
-        kept.len()
+    assert_eq!(
+        refused(INTERNAL_ERROR_CODE, &at_cap).wire_message(),
+        format!("{prefix}{at_cap}")
     );
-    assert!(
-        kept.chars().all(|c| c == '€'),
-        "no character is cut in half"
+    assert_eq!(
+        refused(INTERNAL_ERROR_CODE, &over).wire_message(),
+        format!("{prefix}{at_cap}")
     );
-    assert_eq!(whole, format!("{prefix}fell over"));
+    assert_eq!(
+        refused(INTERNAL_ERROR_CODE, &straddle).wire_message(),
+        format!("{prefix}{}", "a".repeat(room - 1))
+    );
+    let said = echoed.wire_message();
+    assert!(
+        said.starts_with("a message did not decode: invalid type: string"),
+        "{said}"
+    );
+    assert_eq!(said.len(), WIRE_MESSAGE_MAX_BYTES);
 }

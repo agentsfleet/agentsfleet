@@ -27,7 +27,9 @@ use jsonrpsee_types::error::{
     CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
 };
 
-use crate::protocol::{FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
+use crate::protocol::{
+    FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE, WIRE_MESSAGE_MAX_BYTES,
+};
 
 mod raise;
 
@@ -157,12 +159,17 @@ impl Error {
     /// What anyone past this host is told: the failure and, when it has one,
     /// its cause, never the registry code or a backtrace, which are this
     /// host's. The other end of the socket reads it, and so does a model
-    /// reading why its tool call failed.
+    /// reading why its tool call failed, so it is at most
+    /// `WIRE_MESSAGE_MAX_BYTES`: a refusal's message and a decoder's echo of
+    /// the value it refused both come from a socket the executor shares with
+    /// tenant code.
     #[must_use]
     pub fn wire_message(&self) -> String {
         let kind = self.kind();
-        std::error::Error::source(kind)
-            .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"))
+        kept_to_the_wire(
+            std::error::Error::source(kind)
+                .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}")),
+        )
     }
 
     /// Whether the path left the workspace, by name or through a link. True
@@ -212,6 +219,13 @@ impl Error {
             _internal => INTERNAL_ERROR_CODE,
         }
     }
+}
+
+/// `text` cut to `WIRE_MESSAGE_MAX_BYTES` on a character boundary; whole
+/// when it fits.
+pub(crate) fn kept_to_the_wire(mut text: String) -> String {
+    text.truncate(text.floor_char_boundary(WIRE_MESSAGE_MAX_BYTES));
+    text
 }
 
 /// Whether an operating-system refusal is about what the caller asked for —
