@@ -791,8 +791,9 @@ racing its QStash fire replays it rather than admitting a second run. A QStash
 fire dropped because the fleet takes no work also retires a `once` schedule,
 since its moment has passed; a retirement whose claim is held answers
 `UZ-SCHED-006`, so QStash repeats the fire. A `once` row keeps the instant it
-was set for (slot 931, `fire_at`), and a sync after that instant removes it
-rather than registering an expression whose next match is a year away.
+was set for (slot 931, `fire_at`), and a sync after that instant removes one
+QStash never registered rather than registering an expression whose next match
+is a year away; one QStash already holds stays, so a delayed callback finds it.
 
 #### The webhook auth taxonomy
 
