@@ -25,6 +25,9 @@ const ORIGIN_BRANCHES: &str = "refs/remotes/origin/";
 const ORIGIN_HEAD: &str = "refs/remotes/origin/HEAD";
 /// The working copy's own branches.
 const LOCAL_BRANCHES: &str = "refs/heads/";
+/// The tags the mirror fetched, copied as they are: a build that reads its
+/// version from `git describe` finds them.
+const TAGS: &str = "refs/tags/";
 /// The reference naming what is checked out.
 const HEAD: &str = "HEAD";
 /// What every reference written here logs as its reason.
@@ -93,9 +96,9 @@ fn branch_of(source: &gix::Repository, base: &str) -> GitResult<String> {
     Ok(head.shorten().to_str()?.to_owned())
 }
 
-/// Records every branch the mirror fetched as `origin`'s, then `base` as the
-/// one local branch with `HEAD` pointing at it: one transaction, so a failure
-/// leaves no half.
+/// Records every branch the mirror fetched as `origin`'s and every tag it
+/// holds, then `base` as the one local branch with `HEAD` pointing at it: one
+/// transaction, so a failure leaves no half.
 fn record_branches(
     source: &gix::Repository,
     repository: &gix::Repository,
@@ -114,6 +117,13 @@ fn record_branches(
             base_tip = target.try_id().map(ToOwned::to_owned);
         }
         edits.push(update(reference.name().to_owned(), target));
+    }
+    for reference in source.references()?.prefixed(TAGS)? {
+        let reference = reference?;
+        edits.push(update(
+            reference.name().to_owned(),
+            reference.target().into_owned(),
+        ));
     }
     let tip = base_tip.ok_or_else(|| format!("the repository has no branch {base}"))?;
     let local: FullName = format!("{LOCAL_BRANCHES}{base}").try_into()?;
