@@ -306,6 +306,7 @@ N/A — no files deleted.
   - Interim lines post `&`, `<` and `>` as Slack entities, so a steered fleet cannot page the channel up to eight times a run (Dimension 2.10; agent call while Indy was away, Oct 06, 2026, revertible).
   - Found by the integration lane, already on `main`: a fire stored the schedule's plain-text message as the event body, and the lease's `$6::jsonb` cast refused it, so no scheduled run could be leased (`UZ-INTERNAL-002` on every poll that reached it). `afd_cron::fire` now stores `{"message": …}`, the shape every producer stores and `afr_agent::prompt` reads (Dimension 1.14). Folded in: run-now is this spec's, and without it no schedule wakes its fleet.
   - Splits and helpers for over-long files and functions; cross-fleet negative tests on run-now, PATCH, DELETE and runs.
+- **Greptile on #731** (agent, Oct 06, 2026): fixed — a `once` schedule's fire is keyed by the schedule alone, so a run-now racing its scheduled fire replays it; a retired one-off's runs stay listed; `SLACK_API_URL` refuses a query or fragment; patch coverage back over 99%. Open for Indy's call, not deferred: a lease that expires mid-request can still write one schedule; a one-off whose QStash registration fails past its minute registers a year late (a fix needs its intended minute stored, a new slot).
 - **Review: answer-path escaping** — Slack mention escaping on the answer path, exposed since M206, is deferred with no follow-up spec; Indy tests and fixes it himself (quote under Deferrals).
 - **Deferrals** — ten review items, shipped as recorded:
 
