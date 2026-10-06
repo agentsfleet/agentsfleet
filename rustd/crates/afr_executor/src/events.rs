@@ -32,6 +32,8 @@ struct State {
     unread: Unread,
     /// How the process ended, until the reader takes it.
     ending: Option<Ending>,
+    /// Whether output was left behind when it ended.
+    output_abandoned: bool,
     /// Whether anything more can arrive: not once the ending was fed or the
     /// feed went away.
     finished: bool,
@@ -68,6 +70,7 @@ impl Events {
             state: Mutex::new(State {
                 unread: Unread::new(EDGE_BYTES),
                 ending: None,
+                output_abandoned: false,
                 finished: false,
             }),
             changed: Notify::new(),
@@ -104,7 +107,10 @@ impl Events {
             });
         }
         match state.ending.take() {
-            Some(ending) => Ok(ProcessEvent::Ended { ending }),
+            Some(ending) => Ok(ProcessEvent::Ended {
+                ending,
+                output_abandoned: state.output_abandoned,
+            }),
             None if state.finished => Err(TryRecvError::Disconnected),
             None => Err(TryRecvError::Empty),
         }
@@ -136,8 +142,10 @@ impl Feed {
 
     /// Hands on how the process ended, the last thing it says. Dropping the
     /// feed then finishes the events and wakes the reader.
-    pub fn end(self, ending: Ending) {
-        self.shared.state().ending = Some(ending);
+    pub fn end(self, ending: Ending, output_abandoned: bool) {
+        let mut state = self.shared.state();
+        state.ending = Some(ending);
+        state.output_abandoned = output_abandoned;
     }
 }
 

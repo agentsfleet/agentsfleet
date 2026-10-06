@@ -24,7 +24,7 @@ use crate::error::{self, Error, Result};
 use crate::events::{Events, Feed};
 use crate::protocol::{
     DELIMITER, ExitedParams, KillParams, MAX_FRAME_BYTES, METHOD_KILL, NOTIFY_EXITED,
-    NOTIFY_OUTPUT, OutputParams, SpawnResult, decoded, request,
+    NOTIFY_OUTPUT, OutputParams, READ_CHUNK_BYTES, SpawnResult, decoded, request,
 };
 
 /// The link took its socket.
@@ -35,6 +35,9 @@ const EVENT_LINK_COMPLETED: &str = "executor_link_completed";
 const EVENT_LINK_FAILED: &str = "executor_link_failed";
 /// A message from the executor did not decode.
 const EVENT_MESSAGE_UNREADABLE: &str = "executor_message_unreadable";
+/// A chunk of output longer than one read, which no executor sends: dropped,
+/// since a view of it would pin the whole allocation.
+const EVENT_OUTPUT_OVERSIZED: &str = "executor_output_oversized";
 /// What a message that is neither a notification nor an answer lacks.
 const FIELD_METHOD_OR_ID: &str = "method or id";
 
@@ -234,14 +237,16 @@ impl Link {
         match method {
             NOTIFY_OUTPUT => {
                 let output: OutputParams = decoded(params)?;
-                if let Some(feed) = self.processes.get(&ProcessId::new(output.process_id)) {
+                if output.data.len() > READ_CHUNK_BYTES {
+                    oversized(output.process_id, output.data.len());
+                } else if let Some(feed) = self.processes.get(&ProcessId::new(output.process_id)) {
                     feed.output(output.stream, output.data);
                 }
             }
             NOTIFY_EXITED => {
                 let exited: ExitedParams = decoded(params)?;
                 if let Some(feed) = self.processes.remove(&ProcessId::new(exited.process_id)) {
-                    feed.end(exited.ending);
+                    feed.end(exited.ending, exited.output_abandoned);
                 }
             }
             _unknown => {}
@@ -273,7 +278,7 @@ impl Link {
             .into_values()
             .for_each(|reply| reply.fail(error::connection_lost()));
         for feed in self.processes.into_values() {
-            feed.end(Ending::Interrupted);
+            feed.end(Ending::Interrupted, false);
         }
         if calls + processes == 0 {
             let event = EVENT_LINK_COMPLETED;
@@ -290,6 +295,19 @@ impl Link {
             );
         }
     }
+}
+
+/// Logs a chunk of output longer than one read, dropped unread.
+fn oversized(process: u64, bytes: usize) {
+    let event = EVENT_OUTPUT_OVERSIZED;
+    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    tracing::warn!(
+        event,
+        error_code,
+        process_id = process,
+        bytes,
+        "a chunk of output is longer than one read"
+    );
 }
 
 /// Logs a message that did not decode: where it failed, never the decoder's

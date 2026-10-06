@@ -33,6 +33,8 @@ const SIGNALED: &str = "Process killed by signal";
 pub(super) const TIMED_OUT: &str = "Process timed out";
 /// How a process whose ending never reached the caller reads.
 const INTERRUPTED: &str = "Process interrupted before its ending arrived";
+/// What a call whose process left output behind at its end reads last.
+const ABANDONED: &str = "... output still arriving when the process ended was left behind ...";
 
 /// A process's output as it arrived, whichever stream carried it, and the
 /// bytes dropped unread between its head and tail.
@@ -40,6 +42,10 @@ const INTERRUPTED: &str = "Process interrupted before its ending arrived";
 pub(super) struct Collected {
     bytes: Vec<u8>,
     omitted: u64,
+    /// Where in `bytes` each gap fell, and the bytes it dropped.
+    gaps: Vec<(usize, u64)>,
+    /// Whether output still arriving when the process ended was left behind.
+    abandoned: bool,
 }
 
 impl Collected {
@@ -86,32 +92,73 @@ impl Collected {
             }
             ProcessEvent::Omitted { bytes } => {
                 self.omitted = self.omitted.saturating_add(bytes);
+                self.gaps.push((self.bytes.len(), bytes));
                 None
             }
-            ProcessEvent::Ended { ending } => Some(ending),
+            ProcessEvent::Ended {
+                ending,
+                output_abandoned,
+            } => {
+                self.abandoned = output_abandoned;
+                Some(ending)
+            }
         }
     }
 
-    /// The output as text, at most `budget` bytes of it: its first and last
-    /// halves around a marker counting every byte not shown. Output with a
-    /// gap that still fits carries the marker last.
+    /// The output as text, at most `budget` bytes of it. What fits is shown
+    /// whole, a marker where each gap fell; what does not is its first and
+    /// last halves around one marker counting every byte not shown. Output
+    /// left behind at the process's end is said last.
     pub(super) fn text(&self, budget: usize) -> String {
         let whole = String::from_utf8_lossy(&self.bytes);
-        let (head, tail) = edges(&whole, budget);
+        let shown = if whole.len() <= budget {
+            self.with_gaps()
+        } else {
+            self.cut(&whole, budget)
+        };
+        if self.abandoned {
+            with_line(shown, ABANDONED)
+        } else {
+            shown
+        }
+    }
+
+    /// The whole output, a marker on a line of its own where each gap fell.
+    fn with_gaps(&self) -> String {
+        let mut shown = String::new();
+        let mut from = 0;
+        for (at, bytes) in &self.gaps {
+            let run = self.bytes.get(from..*at).unwrap_or_default();
+            shown.push_str(&String::from_utf8_lossy(run));
+            shown = with_line(shown, &marker(*bytes));
+            shown.push('\n');
+            from = *at;
+        }
+        let rest = self.bytes.get(from..).unwrap_or_default();
+        shown.push_str(&String::from_utf8_lossy(rest));
+        shown
+    }
+
+    /// The first and last halves of `whole` around one marker, which counts
+    /// the bytes cut between them and every gap.
+    fn cut(&self, whole: &str, budget: usize) -> String {
+        let (head, tail) = edges(whole, budget);
         let cut = whole.len() - head.len() - tail.len();
         let omitted = self
             .omitted
             .saturating_add(u64::try_from(cut).unwrap_or(u64::MAX));
-        if omitted == 0 {
-            return whole.into_owned();
-        }
-        let marked = with_line(head.to_owned(), &format!("... {omitted} bytes omitted ..."));
+        let marked = with_line(head.to_owned(), &marker(omitted));
         if tail.is_empty() {
             marked
         } else {
             format!("{marked}\n{tail}")
         }
     }
+}
+
+/// How `omitted` bytes not shown read.
+fn marker(omitted: u64) -> String {
+    format!("... {omitted} bytes omitted ...")
 }
 
 /// `text`'s first and last halves of `budget` bytes, cut on character

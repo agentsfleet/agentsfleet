@@ -40,6 +40,9 @@ enum Then {
     /// Runs until the suite ends it or a kill does, printing back what is
     /// written to it when it echoes.
     StaysOpen { echo: bool },
+    /// Runs until written to, which finds it gone, and ends as this: a
+    /// process that ended between the caller's look and its write.
+    EndsWhenWritten(Ending),
     /// Its events finish with no ending, as a lost executor's do.
     Vanishes,
 }
@@ -78,6 +81,16 @@ impl ScriptedProcess {
         }
     }
 
+    /// Prints `output`, stays open, and ends as `ending` at the first write,
+    /// which is refused as naming a process the executor no longer holds.
+    #[must_use]
+    pub fn ends_when_written(output: &str, ending: Ending) -> Self {
+        Self {
+            output: said(output),
+            then: Then::EndsWhenWritten(ending),
+        }
+    }
+
     /// Prints `output`, then its events finish with no ending, as a lost
     /// executor's do.
     #[must_use]
@@ -100,6 +113,8 @@ struct Held {
     id: ProcessId,
     feed: Feed,
     echo: bool,
+    /// The ending a write brings on, for a process scripted to be gone by then.
+    ends_when_written: Option<Ending>,
 }
 
 /// An executor that runs scripted processes and records what it was asked.
@@ -149,7 +164,7 @@ impl ScriptedExecutor {
         let Some(held) = self.release(id) else {
             return false;
         };
-        held.feed.end(ending);
+        held.feed.end(ending, false);
         true
     }
 
@@ -194,8 +209,19 @@ impl Executor for ScriptedExecutor {
             feed.output(Stream::Stdout, data);
         }
         match script.then {
-            Then::Ends(ending) => feed.end(ending),
-            Then::StaysOpen { echo } => locked(&self.held).push(Held { id, feed, echo }),
+            Then::Ends(ending) => feed.end(ending, false),
+            Then::StaysOpen { echo } => locked(&self.held).push(Held {
+                id,
+                feed,
+                echo,
+                ends_when_written: None,
+            }),
+            Then::EndsWhenWritten(ending) => locked(&self.held).push(Held {
+                id,
+                feed,
+                echo: false,
+                ends_when_written: Some(ending),
+            }),
             Then::Vanishes => drop(feed),
         }
         Ok(Process { id, events })
@@ -203,6 +229,17 @@ impl Executor for ScriptedExecutor {
 
     async fn write(&self, process: ProcessId, data: Bytes) -> afr_executor::Result<()> {
         locked(&self.written).push((process, data.clone()));
+        let gone_by_now = locked(&self.held)
+            .iter()
+            .find(|open| open.id == process)
+            .ok_or_else(|| refused(UNKNOWN_PROCESS))?
+            .ends_when_written;
+        if let Some(ending) = gone_by_now {
+            // Ended between the caller's look and its write: the write finds
+            // no process, and the ending follows it.
+            self.end(process, ending);
+            return Err(afr_executor::error::unknown_process_refused());
+        }
         let held = locked(&self.held);
         let open = held
             .iter()

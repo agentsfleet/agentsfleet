@@ -8,6 +8,7 @@
 
 use afd_core::test_util::trace::Capture;
 use afr_executor::{Client, Ending, Executor as _, Spawn};
+use base64::prelude::{BASE64_STANDARD, Engine as _};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
@@ -79,10 +80,10 @@ async fn answers_and_notifications_reach_their_callers_past_noise() {
         r#"{"jsonrpc":"2.0","result":null,"id":99}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stdout","data":"%%%"}}"#,
         r#"{"jsonrpc":"2.0","method":"process/exited","params":[7]}"#,
-        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"vanished"}}}"#,
+        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"vanished"},"output_abandoned":false}}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stdout","data":"aGk="}}"#,
         r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":7,"stream":"stderr","data":"IQ=="}}"#,
-        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":2}}}"#,
+        r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":2},"output_abandoned":false}}"#,
     ] {
         fake.say(noise).await;
     }
@@ -107,7 +108,7 @@ async fn a_message_that_does_not_decode_is_logged_without_what_it_carried() {
     let process = process.unwrap();
 
     fake.say(r#"{"jsonrpc":"2.0","method":"process/output","params":{"process_id":"sk-live-secret","stream":"stdout","data":""}}"#).await;
-    fake.say(r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":0}}}"#).await;
+    fake.say(r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":0},"output_abandoned":false}}"#).await;
     finish(process).await;
 
     let unreadable = capture.only("executor_message_unreadable");
@@ -136,7 +137,7 @@ async fn every_ending_the_wire_spells_reaches_the_caller_as_itself() {
         started(&mut fake, process).await;
         let started = spawning.await.unwrap().unwrap();
         fake.say(&format!(
-            r#"{{"jsonrpc":"2.0","method":"process/exited","params":{{"process_id":{process},"ending":{ending}}}}}"#
+            r#"{{"jsonrpc":"2.0","method":"process/exited","params":{{"process_id":{process},"ending":{ending},"output_abandoned":false}}}}"#
         ))
         .await;
         endings.push(finish(started).await.endings);
@@ -220,4 +221,34 @@ async fn a_process_whose_caller_left_before_it_started_is_killed() {
 
     assert_eq!(follow_up["method"], "process/kill");
     assert_eq!(follow_up["params"]["process_id"], 4);
+}
+
+/// The most one read of output takes, as the executor reads it.
+const ONE_READ: usize = 16 * 1024;
+
+/// A chunk longer than one read is not something this executor sends: it is
+/// dropped where it would otherwise pin its whole allocation, and the
+/// process's other output and its ending still arrive.
+#[tokio::test]
+async fn a_chunk_longer_than_one_read_is_dropped_and_the_rest_still_arrives() {
+    let (_scratch, client, mut fake) = connect().await;
+    let spawning =
+        tokio::spawn(async move { (client.spawn(&Spawn::program("anything")).await, client) });
+    started(&mut fake, 7).await;
+    let (process, _client) = spawning.await.unwrap();
+    let process = process.unwrap();
+    let oversized = BASE64_STANDARD.encode(vec![b'x'; ONE_READ + 1]);
+    let whole = BASE64_STANDARD.encode(vec![b'y'; ONE_READ]);
+
+    for data in [&oversized, &whole] {
+        fake.say(&format!(
+            r#"{{"jsonrpc":"2.0","method":"process/output","params":{{"process_id":7,"stream":"stdout","data":"{data}"}}}}"#
+        ))
+        .await;
+    }
+    fake.say(r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":0},"output_abandoned":false}}"#).await;
+    let finished = finish(process).await;
+
+    assert_eq!(finished.stdout, vec![b'y'; ONE_READ]);
+    assert_eq!(finished.endings, [Ending::Exited(0)]);
 }

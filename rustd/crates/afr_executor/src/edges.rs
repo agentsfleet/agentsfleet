@@ -101,7 +101,22 @@ impl Unread {
                 return Some(Next::Omitted(gap));
             }
         }
-        self.head.pop_front().map(Next::Output)
+        let mut chunk = self.head.pop_front()?;
+        if self.head.is_empty() && self.gap > 0 {
+            // A gap follows this chunk, so a character it starts and never
+            // finishes would read as noise ahead of the gap: those bytes join
+            // it. A gap that opens once the chunk is read is past help.
+            let whole = boundary(&chunk.data, chunk.data.len());
+            let unfinished = chunk.data.len() - whole;
+            if unfinished > 0 {
+                chunk.data.truncate(whole);
+                self.gap += unfinished as u64;
+            }
+            if chunk.data.is_empty() {
+                return self.pop();
+            }
+        }
+        Some(Next::Output(chunk))
     }
 
     /// Makes the tail the head, once the head is read, and answers how many

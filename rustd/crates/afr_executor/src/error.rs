@@ -194,6 +194,20 @@ impl Error {
         )
     }
 
+    /// Whether a process call named a process the executor no longer holds,
+    /// on either end of the socket: one that ended, or never was.
+    #[must_use]
+    pub fn is_unknown_process(&self) -> bool {
+        matches!(
+            self.kind(),
+            ErrorKind::UnknownProcess
+                | ErrorKind::Refused {
+                    code: UNKNOWN_PROCESS_CODE,
+                    ..
+                }
+        )
+    }
+
     /// The JSON-RPC code a refusal of this kind is answered with.
     pub(crate) fn rpc_code(&self) -> i32 {
         match self.kind() {
@@ -226,4 +240,12 @@ fn is_caller_mistake(failure: &io::Error) -> bool {
             | io::ErrorKind::InvalidInput
             | io::ErrorKind::InvalidFilename
     )
+}
+
+/// The refusal a client reads for a process the executor no longer holds, as
+/// a stand-in executor raises it.
+#[cfg(any(test, feature = "test-util"))]
+#[must_use]
+pub fn unknown_process_refused() -> Error {
+    refused(UNKNOWN_PROCESS_CODE, &ErrorKind::UnknownProcess.to_string())
 }

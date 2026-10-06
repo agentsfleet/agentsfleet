@@ -107,7 +107,8 @@ impl ProcessRun {
         // closes and the drain below ends; a descendant outside the group is
         // waited for only as far as the grace and the cap.
         group.signal(Signal::KILL);
-        if !drain(&mut output, &lines, process).await {
+        let output_abandoned = !drain(&mut output, &lines, process).await;
+        if output_abandoned {
             let event = EVENT_OUTPUT_ABANDONED;
             tracing::debug!(
                 event,
@@ -119,6 +120,7 @@ impl ProcessRun {
         let exited = ExitedParams {
             process_id: process,
             ending,
+            output_abandoned,
         };
         let _writer_gone = lines.send(line(&notification(NOTIFY_EXITED, exited))).await;
         report(process, ending);

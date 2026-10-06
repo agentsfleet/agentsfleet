@@ -34,7 +34,7 @@ fn process(output: &[&str]) -> (Process, Feed) {
 async fn read(output: &[&str], ending: Option<Ending>) -> (Collected, Ending) {
     let (mut process, feed) = process(output);
     match ending {
-        Some(ending) => feed.end(ending),
+        Some(ending) => feed.end(ending, false),
         None => drop(feed),
     }
     let mut collected = Collected::default();
@@ -113,7 +113,7 @@ async fn should_answer_none_once_the_deadline_passes_while_the_process_runs() {
 #[tokio::test(start_paused = true)]
 async fn should_answer_an_ending_before_the_deadline_without_waiting_it_out() {
     let (mut process, feed) = process(&[DONE]);
-    feed.end(Ending::Exited(2));
+    feed.end(Ending::Exited(2), false);
     let mut collected = Collected::default();
     let started = Instant::now();
 
@@ -173,7 +173,7 @@ fn should_take_only_what_already_arrived() {
     let mut collected = Collected::default();
 
     assert_eq!(collected.arrived(&mut process), None, "still running");
-    feed.end(Ending::Exited(0));
+    feed.end(Ending::Exited(0), false);
     assert_eq!(collected.arrived(&mut process), Some(Ending::Exited(0)));
     assert_eq!(collected.text(100), "a");
     assert_eq!(
@@ -234,5 +234,35 @@ fn should_fail_only_a_process_that_did_not_end_by_itself() {
     assert_eq!(
         error_code(Ending::Interrupted),
         Some(ToolErrorCode::Interrupted)
+    );
+}
+
+/// Output that fits shows a marker where each gap fell; output that does not
+/// joins every gap into the one marker between its halves.
+#[test]
+fn should_put_a_marker_where_each_gap_fell_when_the_output_fits() {
+    let collected = Collected {
+        bytes: b"headtail".to_vec(),
+        omitted: 7,
+        gaps: vec![(4, 7)],
+        abandoned: false,
+    };
+
+    assert_eq!(collected.text(100), "head\n... 7 bytes omitted ...\ntail");
+    assert_eq!(collected.text(4), "he\n... 11 bytes omitted ...\nil");
+}
+
+#[test]
+fn should_say_last_that_output_was_left_behind() {
+    let collected = Collected {
+        bytes: b"out\n".to_vec(),
+        omitted: 0,
+        gaps: Vec::new(),
+        abandoned: true,
+    };
+
+    assert_eq!(
+        collected.text(100),
+        "out\n... output still arriving when the process ended was left behind ..."
     );
 }

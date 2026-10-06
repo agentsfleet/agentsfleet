@@ -112,9 +112,12 @@ impl Page {
         let mut page = String::new();
         let mut taken = 0;
         let mut cut = None;
-        while let Some(line) =
-            lines.next_if(|line| taken < limit && (page.len() + line.len() <= budget || taken == 0))
-        {
+        // A cut line ends its page: the cut may have moved back to a
+        // character boundary, and the room that leaves is not for the next
+        // line, which would read as the cut line's end.
+        while let Some(line) = lines.next_if(|line| {
+            taken < limit && cut.is_none() && (page.len() + line.len() <= budget || taken == 0)
+        }) {
             if line.len() > budget {
                 let kept = line.floor_char_boundary(budget);
                 page.push_str(line.get(..kept).unwrap_or_default());

@@ -95,6 +95,8 @@ pub(crate) struct Finished {
     pub(crate) endings: Vec<Ending>,
     /// Bytes dropped unread between the edges.
     pub(crate) omitted: u64,
+    /// Whether output still arriving at the end was left behind.
+    pub(crate) abandoned: bool,
 }
 
 /// Reads a process until its channel closes.
@@ -116,7 +118,13 @@ pub(crate) async fn finish(mut process: Process) -> Finished {
                     data,
                 } => finished.terminal.extend_from_slice(&data),
                 ProcessEvent::Omitted { bytes } => finished.omitted += bytes,
-                ProcessEvent::Ended { ending } => finished.endings.push(ending),
+                ProcessEvent::Ended {
+                    ending,
+                    output_abandoned,
+                } => {
+                    finished.abandoned |= output_abandoned;
+                    finished.endings.push(ending);
+                }
             }
         }
         finished
