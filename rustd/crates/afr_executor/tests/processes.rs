@@ -208,3 +208,37 @@ async fn a_process_that_already_ended_is_unknown_to_kill_and_write() {
     assert!(refused_with(&killed, UNKNOWN_PROCESS), "{killed}");
     assert!(refused_with(&written, UNKNOWN_PROCESS), "{written}");
 }
+
+/// One connection carries a hundred processes speaking at once: each caller
+/// hears exactly its own output, all of it, and exactly one ending. An
+/// output line routed to the wrong process, or one that arrived before its
+/// spawn's answer, shows here as a short or foreign transcript.
+#[tokio::test]
+async fn test_a_hundred_processes_on_one_connection_each_hear_only_their_own_output() {
+    const PROCESSES: usize = 100;
+    const SAID: usize = 100_000;
+    let harness = start().await;
+    let client = &harness.client;
+
+    let finished = futures_util::future::join_all((0..PROCESSES).map(|process| async move {
+        let script = format!("yes p{process:03} | head -c {SAID}");
+        let spawn = Spawn::program("sh").args(["-c", script.as_str()]);
+        (process, finish(client.spawn(&spawn).await.unwrap()).await)
+    }))
+    .await;
+
+    for (process, finished) in finished {
+        let expected: Vec<u8> = format!("p{process:03}\n")
+            .into_bytes()
+            .into_iter()
+            .cycle()
+            .take(SAID)
+            .collect();
+        assert_eq!(finished.endings, [Ending::Exited(0)], "process {process}");
+        assert_eq!(finished.omitted, 0, "process {process}");
+        assert!(
+            finished.stdout == expected,
+            "process {process} heard another's output"
+        );
+    }
+}

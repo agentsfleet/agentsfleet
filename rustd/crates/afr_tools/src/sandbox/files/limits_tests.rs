@@ -42,6 +42,13 @@ async fn a_file_past_one_read_is_cut_for_reading_and_refused_for_editing() {
         json!({PATH: "big.txt", OLD_TEXT: "x", NEW_TEXT: "y"}),
     )
     .await;
+    let past = call_in(
+        offered(&selection, &FILE_READ),
+        &live.client,
+        &mut lease,
+        json!({PATH: "big.txt", "offset": 2}),
+    )
+    .await;
 
     assert!(
         read.text.ends_with(&format!(
@@ -60,6 +67,14 @@ async fn a_file_past_one_read_is_cut_for_reading_and_refused_for_editing() {
         edit.error_code,
         Some(ToolErrorCode::FileTooLarge),
         "{edit:?}"
+    );
+    assert_eq!(past.error_code, Some(ToolErrorCode::InvalidArguments));
+    assert!(
+        past.text.ends_with(&format!(
+            "of the first {MAX_READ_BYTES} bytes of big.txt; read the rest with shell"
+        )),
+        "an offset past one read points at shell: {}",
+        past.text
     );
     live.stop().await;
 }

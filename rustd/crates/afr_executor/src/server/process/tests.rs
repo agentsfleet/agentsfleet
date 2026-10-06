@@ -4,13 +4,68 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::time::Duration;
+
 use afd_core::test_util::trace::Capture;
 use rustix::process::{Pid, Signal};
 use serde_json::Value;
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::Level;
 
-use super::{EVENT_PROCESS_COMPLETED, EVENT_PROCESS_FAILED, EVENT_SIGNAL_MISSED, Group, report};
+use super::super::files::Workspace;
+use super::super::launch::Plan;
+use super::{
+    EVENT_PROCESS_COMPLETED, EVENT_PROCESS_FAILED, EVENT_SIGNAL_MISSED, Group, ProcessRun, report,
+};
 use crate::api::Ending;
+use crate::protocol::SpawnParams;
+
+/// A program that writes for as long as its output is taken.
+const YES: &str = "/usr/bin/yes";
+/// The lines the writer's queue holds in the backpressure test.
+const QUEUED: usize = 2;
+/// Longer than any wait below takes when it works.
+const PATIENCE: Duration = Duration::from_secs(10);
+/// Long enough for a driver that should stay blocked to show that it has.
+const GLANCE: Duration = Duration::from_millis(200);
+
+/// A driver no one takes output from waits on the writer, never dropping a
+/// line and never queueing past the bound, and the process waits on its full
+/// pipe; once the writer goes, the driver stops the process and ends.
+#[tokio::test]
+async fn output_no_one_takes_holds_the_process_until_the_writer_goes() {
+    let root = tempfile::tempdir().unwrap();
+    let workspace = Workspace::open(root.path()).unwrap();
+    let params = SpawnParams {
+        argv: Cow::Owned(vec![YES.to_owned()]),
+        cwd: None,
+        env: Cow::Owned(BTreeMap::new()),
+        pty: false,
+        timeout_ms: None,
+    };
+    let (run, _input) = ProcessRun::start(&Plan::new(params, &workspace).unwrap()).unwrap();
+    let (lines, untaken) = mpsc::channel(QUEUED);
+    let stop = CancellationToken::new();
+    let driving = tokio::spawn(run.drive(7, stop.clone(), lines));
+
+    tokio::time::timeout(PATIENCE, async {
+        while untaken.len() < QUEUED {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(GLANCE).await;
+
+    assert!(!driving.is_finished(), "the driver waits on the writer");
+    stop.cancel();
+    drop(untaken);
+    let ended = tokio::time::timeout(PATIENCE, driving).await.unwrap();
+    assert_eq!(ended.unwrap(), 7, "the writer gone, the stop lands");
+}
 
 #[test]
 fn an_ending_with_no_status_is_logged_failed_and_any_other_completed() {
