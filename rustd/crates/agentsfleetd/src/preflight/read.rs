@@ -228,7 +228,9 @@ pub(super) fn slack_api_url<E: EnvSource + ?Sized>(
     faults: &mut Vec<Fault>,
 ) -> Option<Box<str>> {
     let raw = super::optional(env, SLACK_API_URL_KNOB)?;
-    if carries_a_token_safely(&raw) {
+    if reqwest::Url::parse(&raw)
+        .is_ok_and(|url| carries_a_token_safely(&url) && takes_a_method(&url))
+    {
         return Some(raw);
     }
     faults.push(Fault::Invalid {
@@ -238,11 +240,8 @@ pub(super) fn slack_api_url<E: EnvSource + ?Sized>(
     None
 }
 
-/// Whether `raw` is an https URL, or an http one on a loopback host.
-fn carries_a_token_safely(raw: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(raw) else {
-        return false;
-    };
+/// Whether `url` is https, or http on a loopback host.
+fn carries_a_token_safely(url: &reqwest::Url) -> bool {
     let loopback = url.host_str().is_some_and(|host| {
         host == "localhost"
             || host
@@ -256,6 +255,13 @@ fn carries_a_token_safely(raw: &str) -> bool {
         "http" => loopback,
         _other => false,
     }
+}
+
+/// Whether a method path appended to `url` still names that method: the
+/// poster joins `/chat.postMessage` onto the raw string, so a query or a
+/// fragment would swallow it.
+fn takes_a_method(url: &reqwest::Url) -> bool {
+    url.query().is_none() && url.fragment().is_none()
 }
 
 /// The platform admin workspace `PLATFORM_ADMIN_WORKSPACE` names, or `None`
