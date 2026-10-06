@@ -20,8 +20,8 @@ use bytes::Bytes;
 const KILLED: i32 = 9;
 /// What a spawn past the last script fails with.
 const NO_SCRIPT: &str = "no scripted process left";
-/// What a write or a kill naming a process it does not hold fails with.
-const UNKNOWN_PROCESS: &str = "no process with that identifier";
+/// What a write a process refuses for no reason of its own fails with.
+const WRITE_REFUSED: &str = "the write was refused";
 /// What a file call fails with.
 const PROCESSES_ONLY: &str = "a scripted executor runs processes only";
 
@@ -35,16 +35,29 @@ pub struct ScriptedProcess {
 /// What a scripted process does once it has printed.
 #[derive(Debug)]
 enum Then {
-    /// Ends as this.
-    Ends(Ending),
-    /// Runs until the suite ends it or a kill does, printing back what is
-    /// written to it when it echoes.
-    StaysOpen { echo: bool },
-    /// Runs until written to, which finds it gone, and ends as this: a
-    /// process that ended between the caller's look and its write.
-    EndsWhenWritten(Ending),
+    /// Ends as this, its output still open when the drain gave it up when
+    /// `abandoned`.
+    Ends { ending: Ending, abandoned: bool },
+    /// Runs until the suite ends it or a kill does, answering writes as
+    /// `on_write` says.
+    StaysOpen { on_write: OnWrite },
     /// Its events finish with no ending, as a lost executor's do.
     Vanishes,
+}
+
+/// What a held process does with a write.
+#[derive(Debug, Clone, Copy)]
+enum OnWrite {
+    /// Takes it, printing it back when it echoes.
+    Takes { echo: bool },
+    /// Is gone by then, as a process that ended between the caller's look
+    /// and its write: the write finds no process, and the ending, when there
+    /// is one, follows it.
+    Gone(Option<Ending>),
+    /// Has closed its input, and runs on.
+    ClosedItsInput,
+    /// Refuses for a reason that is not the process's own.
+    Refuses,
 }
 
 impl ScriptedProcess {
@@ -53,7 +66,10 @@ impl ScriptedProcess {
     pub fn ends(output: &str, ending: Ending) -> Self {
         Self {
             output: said(output),
-            then: Then::Ends(ending),
+            then: Then::Ends {
+                ending,
+                abandoned: false,
+            },
         }
     }
 
@@ -63,32 +79,57 @@ impl ScriptedProcess {
         Self::ends(output, Ending::Exited(code))
     }
 
+    /// Prints `output` and ends as `ending` with its output still open, as a
+    /// process whose descendant held the pipe past the drain's grace.
+    #[must_use]
+    pub fn ends_abandoned(output: &str, ending: Ending) -> Self {
+        Self {
+            output: said(output),
+            then: Then::Ends {
+                ending,
+                abandoned: true,
+            },
+        }
+    }
+
     /// Prints `output` and stays open until the suite ends it or a kill does.
     #[must_use]
     pub fn stays_open(output: &str) -> Self {
-        Self {
-            output: said(output),
-            then: Then::StaysOpen { echo: false },
-        }
+        Self::open(output, OnWrite::Takes { echo: false })
     }
 
     /// Stays open and prints back whatever is written to it.
     #[must_use]
     pub fn echoes() -> Self {
-        Self {
-            output: None,
-            then: Then::StaysOpen { echo: true },
-        }
+        Self::open("", OnWrite::Takes { echo: true })
     }
 
     /// Prints `output`, stays open, and ends as `ending` at the first write,
-    /// which is refused as naming a process the executor no longer holds.
+    /// which finds it gone.
     #[must_use]
     pub fn ends_when_written(output: &str, ending: Ending) -> Self {
-        Self {
-            output: said(output),
-            then: Then::EndsWhenWritten(ending),
-        }
+        Self::open(output, OnWrite::Gone(Some(ending)))
+    }
+
+    /// Prints `output`, stays open, and is gone at the first write, with no
+    /// ending following until the suite ends it.
+    #[must_use]
+    pub fn gone_when_written(output: &str) -> Self {
+        Self::open(output, OnWrite::Gone(None))
+    }
+
+    /// Prints `output`, stays open, and has closed its input: a write is
+    /// refused as such, and the process runs on.
+    #[must_use]
+    pub fn closes_its_input(output: &str) -> Self {
+        Self::open(output, OnWrite::ClosedItsInput)
+    }
+
+    /// Prints `output`, stays open, and refuses writes for a reason that is
+    /// not the process's own.
+    #[must_use]
+    pub fn refuses_writes(output: &str) -> Self {
+        Self::open(output, OnWrite::Refuses)
     }
 
     /// Prints `output`, then its events finish with no ending, as a lost
@@ -100,6 +141,13 @@ impl ScriptedProcess {
             then: Then::Vanishes,
         }
     }
+
+    fn open(output: &str, on_write: OnWrite) -> Self {
+        Self {
+            output: said(output),
+            then: Then::StaysOpen { on_write },
+        }
+    }
 }
 
 /// `output` as one chunk; nothing for no output.
@@ -107,14 +155,13 @@ fn said(output: &str) -> Option<Bytes> {
     (!output.is_empty()).then(|| Bytes::copy_from_slice(output.as_bytes()))
 }
 
-/// A process the executor holds: where its events go, and whether it echoes.
+/// A process the executor holds: where its events go, and what it does with
+/// a write.
 #[derive(Debug)]
 struct Held {
     id: ProcessId,
     feed: Feed,
-    echo: bool,
-    /// The ending a write brings on, for a process scripted to be gone by then.
-    ends_when_written: Option<Ending>,
+    on_write: OnWrite,
 }
 
 /// An executor that runs scripted processes and records what it was asked.
@@ -209,19 +256,10 @@ impl Executor for ScriptedExecutor {
             feed.output(Stream::Stdout, data);
         }
         match script.then {
-            Then::Ends(ending) => feed.end(ending, false),
-            Then::StaysOpen { echo } => locked(&self.held).push(Held {
-                id,
-                feed,
-                echo,
-                ends_when_written: None,
-            }),
-            Then::EndsWhenWritten(ending) => locked(&self.held).push(Held {
-                id,
-                feed,
-                echo: false,
-                ends_when_written: Some(ending),
-            }),
+            Then::Ends { ending, abandoned } => feed.end(ending, abandoned),
+            Then::StaysOpen { on_write } => {
+                locked(&self.held).push(Held { id, feed, on_write });
+            }
             Then::Vanishes => drop(feed),
         }
         Ok(Process { id, events })
@@ -229,33 +267,37 @@ impl Executor for ScriptedExecutor {
 
     async fn write(&self, process: ProcessId, data: Bytes) -> afr_executor::Result<()> {
         locked(&self.written).push((process, data.clone()));
-        let gone_by_now = locked(&self.held)
-            .iter()
-            .find(|open| open.id == process)
-            .ok_or_else(|| refused(UNKNOWN_PROCESS))?
-            .ends_when_written;
-        if let Some(ending) = gone_by_now {
-            // Ended between the caller's look and its write: the write finds
-            // no process, and the ending follows it.
-            self.end(process, ending);
-            return Err(afr_executor::error::unknown_process_refused());
-        }
         let held = locked(&self.held);
         let open = held
             .iter()
             .find(|open| open.id == process)
-            .ok_or_else(|| refused(UNKNOWN_PROCESS))?;
-        if open.echo {
-            open.feed.output(Stream::Stdout, data);
+            .ok_or_else(afr_executor::error::unknown_process)?;
+        let on_write = open.on_write;
+        match on_write {
+            OnWrite::Takes { echo } => {
+                if echo {
+                    open.feed.output(Stream::Stdout, data);
+                }
+                Ok(())
+            }
+            OnWrite::ClosedItsInput => Err(afr_executor::error::input_closed()),
+            OnWrite::Refuses => Err(refused(WRITE_REFUSED)),
+            OnWrite::Gone(ending) => {
+                // `end` takes the lock this holds.
+                drop(held);
+                if let Some(ending) = ending {
+                    self.end(process, ending);
+                }
+                Err(afr_executor::error::unknown_process())
+            }
         }
-        Ok(())
     }
 
     async fn kill(&self, process: ProcessId) -> afr_executor::Result<()> {
         locked(&self.killed).push(process);
         self.end(process, Ending::Signaled(KILLED))
             .then_some(())
-            .ok_or_else(|| refused(UNKNOWN_PROCESS))
+            .ok_or_else(afr_executor::error::unknown_process)
     }
 
     async fn read_file(&self, _path: &str, _max_bytes: u64) -> afr_executor::Result<FileContent> {

@@ -172,7 +172,7 @@ apply_patch   { patch }                                          → Codex's A/M
 image         { path }                                           → image content on the next turn
 browser_open / browser / screenshot                              → refused with the engine code
 
-Executor additions: fs/append · fs/delete · a not-found code, and `is_path_refused` / `is_not_found` on its error for the handlers
+Executor additions: fs/append · fs/delete · a not-found code · `process/exited.output_abandoned` (lenient, `false` when absent), and `is_path_refused` / `is_not_found` / `is_unknown_process` / `is_input_refused` on its error for the handlers, with `unknown_process` and `input_closed` public for a stand-in
 Constants: SESSIONS_PER_LEASE_MAX · SHELL_TIMEOUT_MS_DEFAULT · IMAGE_MAX_BYTES · GIT_REFUSED_SUBCOMMANDS · TOOLBOX_KEEP_RELEASES (2) · TOOLBOX_RELEASE_PUBLIC_KEY
 Toolbox manifest: { arch, length, sha256, erofs_features, runner_versions, packages, vendored, snapshot, archives, builder } + signature
 Admission: verify manifest → stage → fsync → rename → open(O_NOFOLLOW) → fstat → SHA-256(fd) → LOOP_CONFIGURE(fd, read-only) → mount ro,nosuid,nodev → ready

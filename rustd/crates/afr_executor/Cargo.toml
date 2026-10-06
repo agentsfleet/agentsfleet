@@ -41,11 +41,6 @@ tokio = { workspace = true, features = ["fs", "io-util", "net", "process", "rt",
 tokio-util = { workspace = true, features = ["codec", "io", "rt"] }
 tracing.workspace = true
 
-[features]
-# M-TEST-UTIL. The one refusal a sibling suite raises from a stand-in
-# executor to prove a handler tells it from the sandbox being gone.
-test-util = []
-
 [dev-dependencies]
 # The log capture a test reads a process's end back through.
 afd_core = { workspace = true, features = ["test-util"] }

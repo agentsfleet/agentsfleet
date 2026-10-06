@@ -7,7 +7,7 @@
 )]
 
 use afd_core::test_util::trace::Capture;
-use afr_executor::{Client, Ending, Executor as _, Spawn};
+use afr_executor::{Client, Ending, Executor as _, READ_CHUNK_BYTES, Spawn};
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
@@ -223,9 +223,6 @@ async fn a_process_whose_caller_left_before_it_started_is_killed() {
     assert_eq!(follow_up["params"]["process_id"], 4);
 }
 
-/// The most one read of output takes, as the executor reads it.
-const ONE_READ: usize = 16 * 1024;
-
 /// A chunk longer than one read is not something this executor sends: it is
 /// dropped where it would otherwise pin its whole allocation, and the
 /// process's other output and its ending still arrive.
@@ -237,8 +234,8 @@ async fn a_chunk_longer_than_one_read_is_dropped_and_the_rest_still_arrives() {
     started(&mut fake, 7).await;
     let (process, _client) = spawning.await.unwrap();
     let process = process.unwrap();
-    let oversized = BASE64_STANDARD.encode(vec![b'x'; ONE_READ + 1]);
-    let whole = BASE64_STANDARD.encode(vec![b'y'; ONE_READ]);
+    let oversized = BASE64_STANDARD.encode(vec![b'x'; READ_CHUNK_BYTES + 1]);
+    let whole = BASE64_STANDARD.encode(vec![b'y'; READ_CHUNK_BYTES]);
 
     for data in [&oversized, &whole] {
         fake.say(&format!(
@@ -249,6 +246,6 @@ async fn a_chunk_longer_than_one_read_is_dropped_and_the_rest_still_arrives() {
     fake.say(r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":0},"output_abandoned":false}}"#).await;
     let finished = finish(process).await;
 
-    assert_eq!(finished.stdout, vec![b'y'; ONE_READ]);
+    assert_eq!(finished.stdout, vec![b'y'; READ_CHUNK_BYTES]);
     assert_eq!(finished.endings, [Ending::Exited(0)]);
 }

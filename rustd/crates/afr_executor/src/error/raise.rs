@@ -47,7 +47,8 @@ pub(crate) fn not_found(source: std::io::Error) -> Error {
 }
 
 /// No such process.
-pub(crate) fn unknown_process() -> Error {
+#[must_use]
+pub fn unknown_process() -> Error {
     ErrorKind::UnknownProcess.into()
 }
 
@@ -57,7 +58,8 @@ pub(crate) fn input_backlog_full() -> Error {
 }
 
 /// A process's input is closed.
-pub(crate) fn input_closed() -> Error {
+#[must_use]
+pub fn input_closed() -> Error {
     ErrorKind::InputClosed.into()
 }
 

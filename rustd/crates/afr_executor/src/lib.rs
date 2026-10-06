@@ -38,5 +38,5 @@ pub use self::api::{
 pub use self::client::Client;
 pub use self::error::{Error, Result};
 pub use self::events::{Events, Feed};
-pub use self::protocol::MAX_READ_BYTES;
+pub use self::protocol::{MAX_READ_BYTES, READ_CHUNK_BYTES};
 pub use self::server::{Listener, WORKSPACE_ROOT, bind, serve};

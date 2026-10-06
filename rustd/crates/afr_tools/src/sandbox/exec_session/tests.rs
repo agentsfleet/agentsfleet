@@ -37,17 +37,17 @@ const DEV_SERVER: &str = "npm run dev";
 /// The command that prints back what it is written.
 pub(super) const CAT: &str = "cat";
 /// An interactive program a session keeps open.
-const REPL: &str = "python3";
+pub(super) const REPL: &str = "python3";
 /// The directory a session asks to start in.
 const WORKDIR: &str = "src";
-/// The first line written to a session.
 /// What a REPL is told to leave by.
-const EXIT: &str = "exit()\n";
-const ONE: &str = "one\n";
+pub(super) const EXIT: &str = "exit()\n";
+/// The first line written to a session.
+pub(super) const ONE: &str = "one\n";
 /// The second line written to a session.
 const TWO: &str = "two\n";
 /// How the first process's session reads while it runs.
-const FIRST_RUNNING: &str = "Process running with session ID 1";
+pub(super) const FIRST_RUNNING: &str = "Process running with session ID 1";
 
 pub(super) fn exec() -> Box<dyn Tool> {
     Typed::boxed(ExecCommand)
@@ -273,27 +273,24 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     );
 }
 
-/// A process that ended between the look before a write and the write
-/// itself: the write finds no process, and the call answers its ending,
-/// never the sandbox gone.
+/// A process whose output was still open when it ended says so after its
+/// output and before its status.
 #[tokio::test(start_paused = true)]
-async fn should_answer_the_ending_of_a_process_gone_by_the_time_of_a_write() {
+async fn should_say_the_output_was_still_open_before_the_status_line() {
     let executor =
-        ScriptedExecutor::new([ScriptedProcess::ends_when_written("", Ending::Exited(3))]);
-    let mut lease = Lease::default();
-    open(&executor, &mut lease, REPL).await;
+        ScriptedExecutor::new([ScriptedProcess::ends_abandoned("out\n", Ending::Exited(0))]);
 
-    let output = call_in(&*write(), &executor, &mut lease, writing(1, EXIT, None)).await;
+    let output = call_in(
+        &*exec(),
+        &executor,
+        &mut Lease::default(),
+        opening(DEV_SERVER, None),
+    )
+    .await;
 
-    assert_eq!(output.text, "Process exited with code 3");
-    assert_eq!(output.exit_code, Some(3));
-    assert_eq!(output.error_code, None);
     assert_eq!(
-        executor.written(),
-        [(FIRST, Bytes::from_static(EXIT.as_bytes()))]
+        output.text,
+        "out\n... the process ended with its output still open; what was written after is not shown ...\nProcess exited with code 0"
     );
-    assert!(
-        lease.sessions.get_mut(FIRST).is_none(),
-        "the session is closed"
-    );
+    assert_eq!((output.exit_code, output.error_code), (Some(0), None));
 }

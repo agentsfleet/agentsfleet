@@ -55,7 +55,8 @@ pub(crate) struct Unread {
     head_left: usize,
     tail: VecDeque<Chunk>,
     tail_len: usize,
-    /// Dropped from the tail's front since the reader last crossed it.
+    /// Bytes dropped unread since the reader last crossed: the tail's front,
+    /// and a character the head's last chunk started but never finished.
     gap: u64,
 }
 
@@ -113,7 +114,7 @@ impl Unread {
                 self.gap += unfinished as u64;
             }
             if chunk.data.is_empty() {
-                return self.pop();
+                return Some(Next::Omitted(self.cross()));
             }
         }
         Some(Next::Output(chunk))

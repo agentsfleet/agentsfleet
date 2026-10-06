@@ -6,7 +6,11 @@
 use afr_executor::{Ending, Executor, ProcessId, Spawn};
 use bytes::Bytes;
 
-use super::{NO_SCRIPT, PROCESSES_ONLY, ScriptedExecutor, UNKNOWN_PROCESS};
+use super::{NO_SCRIPT, PROCESSES_ONLY, ScriptedExecutor};
+
+/// What the executor says of a process it does not hold, as the double now
+/// says it too.
+const UNKNOWN_PROCESS: &str = "no process with that identifier";
 
 /// An id no scripted process was given.
 const NOBODY: ProcessId = ProcessId::new(7);
