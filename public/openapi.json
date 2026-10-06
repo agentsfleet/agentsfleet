@@ -5688,7 +5688,7 @@
           "Schedules"
         ],
         "summary": "List a schedule's runs",
-        "description": "Lists the events a schedule of the running fleet fired, newest first: every event with actor `cron:<schedule_id>` that a runner has taken. Page with `starting_after` and `limit`. ",
+        "description": "Lists the events a schedule of the running fleet fired, newest first: every event with actor `cron:<schedule_id>` that a runner has taken. A `once` schedule's runs stay listed after it retires. Page with `starting_after` and `limit`. ",
         "operationId": "runner_list_schedule_runs",
         "parameters": [
           {
@@ -5842,7 +5842,7 @@
           "Schedules"
         ],
         "summary": "Run a schedule now",
-        "description": "Creates a run of a schedule of the running fleet now, as if QStash had fired it. The run is one event with actor `cron:<schedule_id>`, queued for the fleet. Posting again for the same leased event answers the same run. A paused schedule, or one being removed, answers `UZ-SCHED-011` with its `current_state`. A run a schedule started answers the same with `scheduled_run`, so no schedule wakes its fleet in a loop. A fleet that is not taking work answers `UZ-AGT-012`. A `once` schedule retires after this run, so a repeat after that answers 404. ",
+        "description": "Creates a run of a schedule of the running fleet now, as if QStash had fired it. The run is one event with actor `cron:<schedule_id>`, queued for the fleet. Posting again for the same leased event answers the same run. A paused schedule, or one being removed, answers `UZ-SCHED-011` with its `current_state`. A run a schedule started answers the same with `scheduled_run`, so no schedule wakes its fleet in a loop. A fleet that is not taking work answers `UZ-AGT-012`. A `once` schedule fires once: a run-now that races its scheduled fire answers that same run, and a repeat after it retires answers 404. ",
         "operationId": "runner_run_schedule",
         "parameters": [
           {
