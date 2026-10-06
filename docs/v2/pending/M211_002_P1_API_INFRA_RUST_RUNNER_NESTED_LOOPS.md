@@ -225,3 +225,5 @@ N/A — no files deleted.
 - **Metrics review** — No analytics or funnel playbook update required: no user surface; three operator log events added.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
+- **Carried from M211_001** — three greptile findings on PR #732, taken up at this spec's PLAN:
+  > Indy (2026-10-06, before 23:33): "Okay so fix the apply_path.rs:92 issue only, and reply to others on deferral. upon fix push the PR" — context: `afr_tools/src/sandbox/apply_patch.rs:257`, a move drops the execute bit; `afr_tools/src/sandbox/output.rs:89`, the drain outlasts its yield under a flood; `afr_sandbox/src/toolbox/holds.rs:71`, a crash leaves the rollback release mounted. `apply_patch.rs:92` was fixed on that PR in `1000de460`; PR #732 Session notes 4 and the three threads carry the detail.
