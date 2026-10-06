@@ -298,12 +298,14 @@ N/A — no files deleted.
   - A dropped `once` fire for a fleet that takes no work retires the schedule; a held retirement claim answers `UZ-SCHED-006`, so the caller repeats it.
   - Interim lines post `&`, `<` and `>` as Slack entities, so a steered fleet cannot page the channel up to eight times a run (Dimension 2.10; agent call while Indy was away, Oct 06, 2026, revertible).
   - Splits and helpers for over-long files and functions; cross-fleet negative tests on run-now, PATCH, DELETE and runs.
-- **Review: recorded, not changed** — Slack mention escaping on the answer path, which has had the exposure since M206 and would lose `<url|label>` links, awaits Indy's call before CHORE(close).
+- **Review: answer-path escaping** — Slack mention escaping on the answer path, exposed since M206, is deferred with no follow-up spec; Indy tests and fixes it himself (quote under Deferrals).
 - **Deferrals** — ten review items, shipped as recorded:
 
 > Indy (2026-10-06 07:58): "Ship the other 10 open review items as recorded yes" — context: the per-lease schedule-write budget, with no follow-up spec (quote below); a distinct actor for fleet-made fires; `installed()` over-fetch on the mask path; `once` retirement on the request path; a `lock_timeout` on slot 929 (no precedent); list envelope and DELETE idempotency parity with the tenant routes; PATCH reviving a `deleting` row (the tenant PATCH does the same); the dashboard's `cron:*` filter now matching every fire; four functions already over the length cap grew a few lines; the `afr_secrets` scrub-failure lift no test reaches without a test-only constructor.
 
 > Indy (2026-10-06 08:00): "I donot need this spec for now, so nuke it?" — context: the M212_002 write-budget spec was removed before it left `pending/`; the budget stays an open finding with no spec.
+
+> Indy (2026-10-06 08:19): "slack escaping skip follow up spec, let me test and fix it later." — context: escaping `&`, `<` and `>` on the answer path; interim lines already escape them (Dimension 2.10).
 
 - **PLAN decisions** (agent, Oct 05, 2026, from source on `main`): the seven assumptions under the handshake. The ones that change the spec as authored: the fence rides the query on `GET` and `DELETE`; run-now is `POST …/runs`, a run created, not a `/run` verb in the path; a patch names `paused` as the tenant route does, so `deleting` cannot be set by a patch; the fire actor becomes `cron:<schedule_id>`; slots 928 and 929; the daemon reuses `afr_secrets::Scrub`; a fourth code for the per-run message cap; `source_key` gains a millisecond suffix, because one run may create two schedules and the key is unique per fleet.
 - **Owner direction** (Indy, in-session, Oct 05, 2026): "If there is api docs to be updated do so, and update docs, but skip changelog" — the docs pages move into this stream on their own branch in `~/Projects/docs`; no changelog entry. "the rust patch diff must be 99%, all typescript must be 100%".
