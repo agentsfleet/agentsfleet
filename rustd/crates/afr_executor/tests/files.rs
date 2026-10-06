@@ -8,7 +8,8 @@ use afr_executor::{EntryKind, Executor as _};
 use bytes::Bytes;
 
 use crate::support::{
-    INVALID_PARAMS, MIB, PATH_REFUSED, PATIENCE, UNKNOWN_PROCESS, is_lost, refused_with, start,
+    FILE_NOT_FOUND, INVALID_PARAMS, MIB, PATH_REFUSED, PATIENCE, UNKNOWN_PROCESS, is_lost,
+    refused_with, start,
 };
 
 #[tokio::test]
@@ -52,6 +53,7 @@ async fn a_path_outside_the_workspace_is_refused_by_name() {
     for refused in [read, written, listed] {
         assert!(refused_with(&refused, PATH_REFUSED), "{refused}");
         assert!(!refused_with(&refused, UNKNOWN_PROCESS));
+        assert!(refused.is_path_refused(), "{refused}");
     }
 }
 
@@ -62,14 +64,36 @@ async fn a_missing_file_is_a_failure_the_caller_can_tell_from_a_refusal() {
     let missing = harness.client.read_file("absent", 8).await.unwrap_err();
 
     assert!(
-        refused_with(&missing, INVALID_PARAMS),
+        refused_with(&missing, FILE_NOT_FOUND),
         "a missing name is the caller's to fix: {missing}"
     );
+    assert!(missing.is_not_found(), "{missing}");
     assert!(
         std::error::Error::source(&missing).is_none(),
         "the executor's reason travels as text, not as a cause"
     );
     assert!(missing.to_string().contains("No such file"), "{missing}");
+}
+
+#[tokio::test]
+async fn an_append_grows_a_file_and_a_delete_removes_it() {
+    let harness = start().await;
+
+    for line in [b"one\n", b"two\n"] {
+        harness
+            .client
+            .append_file("log", Bytes::from_static(line))
+            .await
+            .unwrap();
+    }
+    let grown = harness.client.read_file("log", 64).await.unwrap();
+    harness.client.delete_file("log").await.unwrap();
+    let gone = harness.client.read_file("log", 64).await.unwrap_err();
+    let again = harness.client.delete_file("log").await.unwrap_err();
+
+    assert_eq!(grown.data.as_ref(), b"one\ntwo\n");
+    assert!(gone.is_not_found(), "{gone}");
+    assert!(refused_with(&again, FILE_NOT_FOUND), "{again}");
 }
 
 #[tokio::test]
@@ -146,9 +170,10 @@ async fn a_directory_given_as_a_file_is_the_callers_mistake() {
         .unwrap_err();
     let listed = harness.client.list_dir("absent").await.unwrap_err();
 
-    for refused in [read, written, listed] {
+    for refused in [read, written] {
         assert!(refused_with(&refused, INVALID_PARAMS), "{refused}");
     }
+    assert!(refused_with(&listed, FILE_NOT_FOUND), "{listed}");
 }
 
 #[tokio::test]

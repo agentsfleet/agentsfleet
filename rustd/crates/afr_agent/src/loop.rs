@@ -15,6 +15,7 @@ use afr_providers::{Call, Connect, Hosted, Message, Provider, Replay, Request, T
 use afr_secrets::Scrub;
 use afr_telemetry::labels::{Provider as ProviderLabel, TurnOutcome};
 use afr_telemetry::record;
+use afr_tools::sandbox::checkouts;
 use afr_tools::{Catalog, Lease, Selection};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
@@ -123,11 +124,14 @@ impl<'run> Harness<'run> {
             specs: offer::specs(selection),
             hosted: offer::hosted(selection),
             scrub,
+            // The supervisor refused a lease whose binding does not parse
+            // before this turn began, so none reaches here.
             lease: Lease::new(
                 Box::new(Hydrated::new(run.memory)),
                 Egress::new(&run.lease.lease_id, policy, run.mint, &SystemClock),
                 run.verbs,
-            ),
+            )
+            .with_checkouts(checkouts(policy).unwrap_or_default()),
             live: Live::new(run.events, scrub, started),
             ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
             budget: Budget::new(&policy.context),
@@ -139,6 +143,7 @@ impl<'run> Harness<'run> {
     }
 
     async fn drive(mut self, provider: &dyn Provider) -> RunOutput {
+        self.lease.image_input = provider.accepts_images();
         let mut capped = false;
         let mut turns: u64 = 0;
         let ending = loop {
@@ -175,7 +180,7 @@ impl<'run> Harness<'run> {
                 self.cap_reached(turns, turn.usage.prompt());
             }
         };
-        self.finish(ending)
+        self.finish(ending).await
     }
 
     /// Writes the memory stored so far back, when any is; a stopped lease
@@ -293,9 +298,13 @@ impl<'run> Harness<'run> {
             () = self.stop.cancelled() => return None,
             text = self.ledger.call(call, handler) => text,
         };
+        // The image a call read rides its result alone; the ledger, the trace
+        // and the frames saw the text.
+        let image = self.lease.attachment.take().map(attach::image_input);
         Some(Message::ToolResult {
             call_id: call.id.clone(),
             output: text.into_inner(),
+            image,
         })
     }
 
@@ -316,12 +325,18 @@ const fn turn_outcome(taken: Option<&afr_providers::Result<Turn>>) -> TurnOutcom
     }
 }
 
+#[path = "loop/attach.rs"]
+mod attach;
 #[path = "loop/finish.rs"]
 mod finish;
 
 #[cfg(test)]
 #[path = "loop/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "loop/image_tests.rs"]
+mod image_tests;
 
 #[cfg(test)]
 #[path = "loop/budget_tests.rs"]
@@ -342,3 +357,11 @@ mod end_tests;
 #[cfg(test)]
 #[path = "loop/memory_tests.rs"]
 mod memory_tests;
+
+#[cfg(test)]
+#[path = "loop/session_tests.rs"]
+mod session_tests;
+
+#[cfg(test)]
+#[path = "loop/checkout_tests.rs"]
+mod checkout_tests;

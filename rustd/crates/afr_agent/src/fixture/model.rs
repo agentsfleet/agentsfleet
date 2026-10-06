@@ -79,6 +79,12 @@ impl Script {
         }])
     }
 
+    /// The same model, whose wire takes no image with a call's result.
+    pub(crate) fn text_only(mut self) -> Self {
+        self.replay.images = false;
+        self
+    }
+
     fn playing(turns: Vec<Turn>) -> Self {
         let (sent, received) = mpsc::channel();
         let turns = Arc::new(Turns {
@@ -86,7 +92,11 @@ impl Script {
             next: AtomicUsize::new(0),
         });
         Self {
-            replay: Replay { turns, sent },
+            replay: Replay {
+                turns,
+                sent,
+                images: true,
+            },
             received,
             seen: RefCell::default(),
         }
@@ -109,6 +119,8 @@ impl Script {
 pub(crate) struct Replay {
     turns: Arc<Turns>,
     sent: mpsc::Sender<Sent>,
+    /// Whether its wire takes an image with a call's result.
+    images: bool,
 }
 
 impl Connect for Replay {
@@ -154,6 +166,10 @@ impl Provider for Replay {
         let index = self.turns.next.fetch_add(1, Ordering::Relaxed);
         let turn = self.turns.turns.get(index).map(Turn::replay);
         futures_util::stream::iter(turn.unwrap_or_default()).boxed()
+    }
+
+    fn accepts_images(&self) -> bool {
+        self.images
     }
 }
 

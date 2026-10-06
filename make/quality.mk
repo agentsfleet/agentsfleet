@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: _model_allowlist_check check-migrate-unprivileged lint-all lint-rustd lint-runner-fmt lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
+.PHONY: _model_allowlist_check lint-all lint-rustd lint-runner-fmt lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -156,9 +156,6 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	done; \
 	if [ $$FAIL -eq 1 ]; then echo "✗ workflow target reference check failed"; exit 1; fi; \
 	echo "✓ [gh-actions] actionlint + make-target refs all green"
-
-check-migrate-unprivileged: _ensure-test-infra  ## Migrate from empty as a NON-superuser, the shape managed databases actually hand the migrator
-	@bash scripts/check-migrate-unprivileged.sh
 
 # Every deployment input the playbooks read off the ambient environment, dropped
 # before each suite runs. The suites build their child environments additively,

@@ -21,12 +21,6 @@ pub(crate) fn is_mount_root(path: &Path) -> bool {
     })
 }
 
-/// No mount this crate makes exists off Linux.
-#[cfg(not(target_os = "linux"))]
-pub(crate) fn is_mount_root(_path: &Path) -> bool {
-    false
-}
-
 /// Unmounts `path`. `detach` lets processes still using it keep it until
 /// they let go, which is how a replaced toolbox stays under running sandboxes.
 #[cfg(target_os = "linux")]

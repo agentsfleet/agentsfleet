@@ -17,6 +17,10 @@ use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
 use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
+use crate::sandbox::{
+    ApplyPatch, Browser, BrowserOpen, ExecCommand, FileAppend, FileDelete, FileEdit,
+    FileEditHashed, FileRead, FileReadHashed, FileWrite, Git, Image, Screenshot, Shell, WriteStdin,
+};
 use crate::verbs::{
     CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, Message, ScheduleOnce,
 };
@@ -87,7 +91,7 @@ pub const CRON_RUNS: Entry = Entry::new("cron_runs", Runtime::Supervisor);
 pub const DELEGATE: Entry = Entry::new("delegate", Runtime::Supervisor);
 /// A nested loop that runs alongside.
 pub const SPAWN: Entry = Entry::new("spawn", Runtime::Supervisor);
-/// A shell command on a pseudo-terminal.
+/// One shell command, run to its end.
 pub const SHELL: Entry = Entry::new("shell", Runtime::Sandbox);
 /// A process the model drives across calls.
 pub const EXEC_COMMAND: Entry = Entry::new("exec_command", Runtime::Sandbox);
@@ -191,6 +195,22 @@ impl Catalog {
             Typed::boxed(MemoryList),
             Typed::boxed(MemoryForget),
             Typed::boxed(UpdatePlan),
+            Typed::boxed(Shell),
+            Typed::boxed(ExecCommand),
+            Typed::boxed(WriteStdin),
+            Typed::boxed(Git),
+            Typed::boxed(FileRead),
+            Typed::boxed(FileReadHashed),
+            Typed::boxed(FileWrite),
+            Typed::boxed(FileAppend),
+            Typed::boxed(FileDelete),
+            Typed::boxed(FileEdit),
+            Typed::boxed(FileEditHashed),
+            Typed::boxed(ApplyPatch),
+            Typed::boxed(Image),
+            Typed::boxed(BrowserOpen),
+            Typed::boxed(Browser),
+            Typed::boxed(Screenshot),
             Typed::boxed(Message),
             Typed::boxed(ScheduleOnce),
             Typed::boxed(CronAdd),

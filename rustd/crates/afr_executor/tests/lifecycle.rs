@@ -28,10 +28,10 @@ async fn test_sandbox_death_interrupts_open_calls() {
 
     assert_eq!(
         quiet.endings,
-        [(Ending::Interrupted, 0)],
+        [Ending::Interrupted],
         "exactly one end, and it says why"
     );
-    assert_eq!(loud.endings, [(Ending::Interrupted, 0)]);
+    assert_eq!(loud.endings, [Ending::Interrupted]);
     let after = harness
         .client
         .spawn(&Spawn::program("true"))
@@ -56,7 +56,7 @@ async fn dropping_the_client_ends_its_processes_and_the_executor() {
         .expect("the executor ended");
 
     served.expect("the serve task ran to its end").unwrap();
-    assert_eq!(finish(loud).await.endings, [(Ending::Interrupted, 0)]);
+    assert_eq!(finish(loud).await.endings, [Ending::Interrupted]);
     drop(harness.scratch);
 }
 

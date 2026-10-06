@@ -28,6 +28,18 @@ futures-util.workspace = true
 # The toolbox image is named by its SHA-256, streamed through the hasher.
 digest-io.workspace = true
 hex.workspace = true
+# A toolbox release: its manifest's signature checked against the key the
+# runner is built with (ECDSA P-256 over SHA-256, as `cosign` signs), the key
+# read from its PEM, the signature from its base64, and the manifest's fields
+# parsed and bounded before admission reads one.
+aws-lc-rs.workspace = true
+base64.workspace = true
+garde.workspace = true
+# The digest's charset, a rule garde does not ship.
+afd_validate.workspace = true
+rustls-pki-types.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 # The process status a sandbox reads before it serves.
 procfs-core.workspace = true
@@ -54,9 +66,20 @@ seccompiler.workspace = true
 
 [dev-dependencies]
 afd_core = { workspace = true, features = ["test-util"] }
+# The kernel lane drives the runner's real sandbox-side tools through its
+# catalog, with a lease whose egress sends nothing.
+afr_egress = { workspace = true, features = ["test-util"] }
+afr_tools = { workspace = true, features = ["test-util"] }
+# The supervisor's own host-side checkout, so the kernel lane proves the clone
+# that ships rather than a copy of it. A dev-dependency cycle: the example links
+# the one `afr_sandbox` library the supervisor does.
+afr_supervisor.workspace = true
 bytes.workspace = true
 libtest-mimic.workspace = true
+serde_json.workspace = true
 tempfile.workspace = true
+# The checkout's interrupt in the kernel lane.
+tokio-util.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
 
 # Confines a child process and reads back what it said; it has its own `main`

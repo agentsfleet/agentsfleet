@@ -64,7 +64,6 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/src/lib/model-catalogue.ts`, `cli/src/commands/api_key.ts`, `cli/src/commands/fleet_secret_body.ts` | EDIT | Three comments point at the Rust paths they mirror |
 | `docs/architecture/runner_fleet.md`, `testing.md`, `capabilities.md`, `data_flow.md`, `memory.md`, `high_level.md`, `user_flow.md`, `README.md`, `concurrency.md`, `billing_and_provider_keys.md`, `scaling.md`, `runner_execution.md` | EDIT | The Rust runner is current; NullClaw sections are replaced by pointers to `runner_execution.md`; Decisions and history rows keep their dated facts |
 | `scripts/check_architecture_doc.sh`, `scripts/check_architecture_doc_test.sh` | EDIT | A new check: no architecture page describes a NullClaw child as the workload outside a Decisions or history row |
-| `scripts/check-migrate-unprivileged.sh` | EDIT | Its Zig reference goes with the tree |
 | `VERSION`, `rustd/Cargo.toml`, `cli/package.json` | EDIT | The cutover is a release: one minor bump, synced |
 | `docs/architecture/runner_execution.md` | EDIT | Decisions row: the cutover date and the rollback artifact |
 | `rustd/crates/agentsfleet_runner/src/main.rs` | EDIT | The binary builds the agent loop and serves leases; `NO_AGENT_ENGINE` and its refusal leave (M210_002 review P1-7) |

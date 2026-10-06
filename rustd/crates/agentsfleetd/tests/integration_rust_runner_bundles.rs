@@ -1,6 +1,7 @@
 //! The read-bound bundles, end to end: each installed from the corpus into a
-//! real daemon, leased by the Rust runner's real loop, its calls sent through
-//! the production egress to HTTPS fakes, and the model a script.
+//! real daemon, leased by the Rust runner's real loop, the model a script, and
+//! its calls sent through the production egress to HTTPS fakes or run in the
+//! unsandboxed engine's workspace, on a repository the runner checked out.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
@@ -12,150 +13,27 @@
               indexes the JSON it just read"
 )]
 
-use afr_providers::Chunk;
 use afr_tools::ToolErrorCode;
 use agentsfleetd::supervisor::Supervisor;
-use hyper::Method;
-use serde_json::json;
 
-use crate::bundle_install::{Secret, install_bundle};
-use crate::bundle_repair::{GITHUB, github_auth};
-use crate::bundle_run::{assert_token_stayed_on_the_wire, run_event};
+use crate::bundle_code::{
+    ANSWER, BUNDLE, FAILED, FIX, PASSED, REPOSITORY, SUBJECT, fixer_turns, greeter_origin,
+};
+use crate::bundle_install::install_bundle;
+use crate::bundle_responder::{
+    DIAGNOSIS, FAILED_STEP, GRAFANA, GRAFANA_TOKEN, LOG_SIGNATURE, LOG_STORE, LOKI_LINE,
+    MEMORY_KEY, RUN, RUN_URL, github_get, grafana, responder_turns, responder_upstream,
+};
+use crate::bundle_run::{assert_token_stayed_on_the_wire, run_event, run_event_from};
 use crate::e2e_seed_keys::seed_tenant_key;
-use crate::fake_model::{FakeModel, call, http, say};
-use crate::https::{Reply, Route, Upstream};
+use crate::fake_model::{FakeModel, say};
+use crate::https::Upstream;
 use crate::integration_tenant_registry::{mint_tenant_token, provider_listener};
 use crate::integration_tool_trace::{stored_trace, tenant_get};
 
-/// The run, jobs and commits the responder reads, under its one repository.
-const RUN: &str = "/repos/agentsfleet/linkwarden/actions/runs/101";
-const JOBS: &str = "/repos/agentsfleet/linkwarden/actions/runs/101/jobs";
-const JOB_LOG: &str = "/repos/agentsfleet/linkwarden/actions/jobs/202/logs";
-const COMMITS: &str = "/repos/agentsfleet/linkwarden/commits";
-const RUN_URL: &str = "https://github.com/agentsfleet/linkwarden/actions/runs/101";
-const FAILED_STEP: &str = "Run unit tests";
-/// Where GitHub's 302 sends a job log, signature and all; the model reads the
-/// origin alone.
-const LOG_STORE: &str = "https://pipelines.actions.githubusercontent.com";
-const LOG_SIGNATURE: &str = "sig=fixture-signature";
-/// The bundle's Grafana stack, as its install binding names it, and the
-/// Viewer token sealed for it.
-const GRAFANA: &str = "grafana.example.net";
-const GRAFANA_TOKEN: &str = "glsa_fixture_viewer";
-const LOKI: &str = "/api/datasources/proxy/uid/loki-uid/loki/api/v1/query_range";
-const LOKI_LINE: &str = "linkwarden-api TypeError: cannot read properties of undefined";
-const ANNOTATIONS: &str = "/api/annotations";
-/// What the responder answers and remembers.
-const DIAGNOSIS: &str = "Run 101 failed at Run unit tests; job log unavailable (302); \
-                         Loki shows the TypeError; annotations unreadable.";
-const MEMORY_KEY: &str = "ci:linkwarden:101";
 /// The memory row a run's push writes.
 const REMEMBERED: &str =
     "SELECT content FROM memory.memory_entries WHERE fleet_id = $1::uuid AND key = $2";
-
-/// The Grafana credential the responder declares.
-fn grafana() -> Secret {
-    Secret {
-        name: "grafana",
-        body: json!({"host": GRAFANA, "token": GRAFANA_TOKEN}),
-    }
-}
-
-/// A GET to `path` on GitHub with the minted credential.
-fn github_get(id: &str, path: &str) -> Chunk {
-    http(
-        id,
-        json!({"url": format!("https://{GITHUB}{path}"), "headers": github_auth()}),
-    )
-}
-
-/// A GET to `path_and_query` on the sealed Grafana host, its token in place.
-fn grafana_get(id: &str, path_and_query: &str) -> Chunk {
-    http(
-        id,
-        json!({"url": format!("https://${{secrets.grafana.host}}{path_and_query}"),
-                    "headers": {"Authorization": "Bearer ${secrets.grafana.token}"}}),
-    )
-}
-
-/// GitHub and Grafana as a failed linkwarden run left them.
-fn responder_upstream() -> Vec<Route> {
-    let ok = |body: serde_json::Value| vec![Reply::json(200, &body)];
-    vec![
-        Route::new(
-            GITHUB,
-            Method::GET,
-            RUN,
-            ok(json!({"id": 101, "html_url": RUN_URL,
-            "conclusion": "failure", "head_sha": "c0ffee1"})),
-        ),
-        Route::new(
-            GITHUB,
-            Method::GET,
-            JOBS,
-            ok(json!({"jobs": [{"id": 202, "name": "test",
-            "conclusion": "failure", "steps": [{"name": FAILED_STEP, "conclusion": "failure"}]}]})),
-        ),
-        Route::new(
-            GITHUB,
-            Method::GET,
-            JOB_LOG,
-            vec![Reply::found(&format!(
-                "{LOG_STORE}/logs/202?{LOG_SIGNATURE}"
-            ))],
-        ),
-        Route::new(
-            GITHUB,
-            Method::GET,
-            COMMITS,
-            ok(json!([{"sha": "c0ffee1"}])),
-        ),
-        Route::new(
-            GRAFANA,
-            Method::GET,
-            "/api/datasources",
-            ok(json!([{"uid": "loki-uid", "type": "loki"}])),
-        ),
-        Route::new(
-            GRAFANA,
-            Method::GET,
-            LOKI,
-            ok(json!({"data": {"result": [{"values": [["1", LOKI_LINE]]}]}})),
-        ),
-        Route::new(
-            GRAFANA,
-            Method::GET,
-            ANNOTATIONS,
-            vec![Reply::cut(r#"[{"id": 1, "text""#)],
-        ),
-    ]
-}
-
-/// The responder's investigation, as `ci-responder/SKILL.md` orders it.
-fn responder_turns() -> Vec<Vec<Chunk>> {
-    vec![
-        vec![
-            call("recall", "memory_recall", json!({"query": "linkwarden"})),
-            github_get("run", RUN),
-            github_get("jobs", JOBS),
-        ],
-        vec![github_get("log", JOB_LOG), github_get("commits", COMMITS)],
-        vec![
-            grafana_get("datasources", "/api/datasources"),
-            grafana_get(
-                "loki",
-                &format!("{LOKI}?query=%7Bapp%3D%22linkwarden%22%7D&direction=backward"),
-            ),
-            grafana_get("annotations", ANNOTATIONS),
-        ],
-        vec![call(
-            "store",
-            "memory_store",
-            json!({"key": MEMORY_KEY, "content": DIAGNOSIS, "category": "core"}),
-        )],
-        vec![say(DIAGNOSIS)],
-    ]
-}
 
 /// Dimension 6.1. The responder is offered exactly its policy's tools, reads
 /// GitHub with a minted token and Grafana with its sealed one, reads the 302's
@@ -304,6 +182,87 @@ async fn test_bundle_run_trace_is_readable() {
             .as_str()
             .is_some_and(|url| url.ends_with(RUN)),
         "{record}"
+    );
+
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+/// Dimension 7.1. The code-running bundle's repository, bound for reading, is
+/// checked out at its default branch before the turn; the fleet runs the
+/// suite, fixes the script with a patch, runs the suite again and commits,
+/// and the trace holds what the thread shows: each call's status and exit
+/// code, the patch, and its `+N −M`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn test_code_running_bundle_roundtrip() {
+    let mut supervisor = Supervisor::new();
+    let run = install_bundle(&mut supervisor, BUNDLE, &[], None).await;
+    let origins = tempfile::tempdir().expect("an origin directory");
+    let origin = greeter_origin(origins.path());
+    let upstream = Upstream::serve(Vec::new()).await;
+    let (model, transcript) = FakeModel::new(fixer_turns());
+
+    let settled = run_event_from(&run, &run.event_id, &upstream, model, Some(origin)).await;
+
+    assert_eq!(
+        (settled.status.as_str(), settled.answer.as_str()),
+        ("processed", ANSWER)
+    );
+    let asked = transcript.asked();
+    let mut offered = asked[0].tools.clone();
+    offered.sort_unstable();
+    assert_eq!(offered, ["apply_patch", "git", "shell"]);
+    let checked_out = format!("{REPOSITORY} is checked out at ./greeter on its default branch");
+    assert!(
+        asked[0].instructions.contains(&checked_out),
+        "{}",
+        asked[0].instructions
+    );
+    let results = &asked.last().expect("the model was asked").results;
+    assert_eq!(results.len(), 4, "{results:#?}");
+    assert!(
+        results[0].starts_with(FAILED) && results[0].ends_with("Process exited with code 1"),
+        "{results:#?}"
+    );
+    assert!(results[1].ends_with("\n+1 \u{2212}1"), "{results:#?}");
+    assert_eq!(
+        results[2].trim_end(),
+        PASSED,
+        "a command that succeeds answers its output alone"
+    );
+    assert!(results[3].contains(SUBJECT), "{results:#?}");
+
+    let trace = stored_trace(&run)
+        .await
+        .expect("the report carried a trace");
+    let calls = trace["calls"]
+        .as_array()
+        .expect("the trace lists its calls");
+    let ended: Vec<_> = calls
+        .iter()
+        .map(|call| {
+            (
+                call["name"].as_str(),
+                call["status"].as_str(),
+                call["exit_code"].as_i64(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        ended,
+        [
+            (Some("shell"), Some("failed"), Some(1)),
+            (Some("apply_patch"), Some("succeeded"), None),
+            (Some("shell"), Some("succeeded"), Some(0)),
+            (Some("git"), Some("succeeded"), Some(0)),
+        ],
+        "{trace}"
+    );
+    assert_eq!(
+        calls[1]["arguments"]["patch"].as_str(),
+        Some(FIX),
+        "{trace}"
     );
 
     supervisor.shutdown().await;

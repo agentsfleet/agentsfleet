@@ -18,13 +18,13 @@
 use std::time::Duration;
 
 use afd_core::clock::Clock;
-use afd_core::error_code::{self, Coded};
+use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::spelling::to_spelling;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
-use afr_agent::{AgentEngine, Meter, Unhosted};
+use afr_agent::{AgentEngine, Meter};
 use afr_memory::Seed;
 use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
@@ -43,10 +43,15 @@ use crate::renew::Renewal;
 use crate::report::Ending;
 use crate::report_spool::ReportSpool;
 use crate::turns::FleetTurns;
+use crate::workspace_clone::Mirrors;
 
+mod checkout;
 mod drive;
+mod refusal;
 mod settle;
 mod workspace;
+
+use self::refusal::failed;
 
 /// How long a settled lease waits for its live tail to finish posting.
 pub(crate) const ACTIVITY_DRAIN_WAIT: Duration = Duration::from_secs(5);
@@ -83,6 +88,8 @@ pub(crate) struct Lessee {
     pub(crate) spool: ReportSpool,
     /// Verified fleet bundles.
     pub(crate) bundles: BundleCache,
+    /// Bound repositories' mirrors, fetched outside every sandbox.
+    pub(crate) mirrors: Mirrors,
     /// What every sandbox enforces.
     pub(crate) limits: Limits,
     /// The wall clock the daemon's lease deadlines are written in.
@@ -289,52 +296,6 @@ impl LeaseRun<'_> {
             self.drive(seed, None, sink).await
         }
     }
-
-    /// Logs a lease whose policy names a tool or a model provider the
-    /// engine cannot host, and ends it before anything was prepared for it.
-    fn unhosted(&self, refusal: &afr_agent::Error) -> Ending {
-        let (event, detail, name) = match refusal.unhosted() {
-            Some(Unhosted::Provider(name)) => (
-                EVENT_UNHOSTED_PROVIDER,
-                DETAIL_UNHOSTED_PROVIDER,
-                Some(name),
-            ),
-            Some(Unhosted::Endpoint(name)) => {
-                (EVENT_UNHOSTED_PROVIDER, DETAIL_BLOCKED_ENDPOINT, Some(name))
-            }
-            Some(Unhosted::Tool(name)) => (EVENT_UNHOSTED, DETAIL_UNHOSTED, Some(name)),
-            None => (EVENT_UNHOSTED, DETAIL_UNHOSTED, None),
-        };
-        let code = refusal.code().as_str();
-        let lease_id = self.ids.lease.as_str();
-        tracing::error!(error_code = code, lease_id, name, event);
-        failed(FailureClass::StartupPosture, detail)
-    }
-
-    /// Logs why a lease could not start, and ends it at startup.
-    fn refuse(&self, failure: &impl Coded, event: &'static str, detail: &'static str) -> Ending {
-        self.fail(failure, FailureClass::StartupPosture, event, detail)
-    }
-
-    /// Logs a failure from any crate the lease runs through, and ends the
-    /// lease as `class`.
-    fn fail(
-        &self,
-        failure: &impl Coded,
-        class: FailureClass,
-        event: &'static str,
-        detail: &'static str,
-    ) -> Ending {
-        let code = failure.code().as_str();
-        let lease_id = self.ids.lease.as_str();
-        tracing::warn!(error_code = code, lease_id, event, detail);
-        failed(class, detail)
-    }
-}
-
-/// An ending that never ran the turn to its end.
-const fn failed(class: FailureClass, detail: &'static str) -> Ending {
-    Ending::Failed { class, detail }
 }
 
 #[cfg(test)]

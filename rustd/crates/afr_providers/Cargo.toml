@@ -29,6 +29,8 @@ afr_egress.workspace = true
 # retry through.
 backon.workspace = true
 # A turn's request body, shared by every retry without a copy.
+# A tool result's image rides the wire as base64.
+base64.workspace = true
 bytes.workspace = true
 # A turn streams as a `futures` stream of chunks.
 futures-util.workspace = true
@@ -68,6 +70,10 @@ afr_memory.workspace = true
 afr_tools = { workspace = true, features = ["test-util"] }
 # The mint a suite's run carries, which mints nothing.
 afr_egress = { workspace = true, features = ["test-util"] }
+# The real executor the image suite reads a workspace through, served on a
+# scratch socket.
+afr_executor.workspace = true
+tempfile.workspace = true
 # The fake provider: a real listener, so a status, a header and a streamed
 # body are proven on the socket rather than assumed by a mock.
 axum.workspace = true

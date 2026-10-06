@@ -2,7 +2,8 @@
 //! by the real loop: a tool turn each, bounded retry, the key kept to its one
 //! header, `web_search` as a hosted spec, and a stream cut before its turn
 //! ended, opened again within the same bound. How a turn ends is `ends`; which
-//! host it reaches is `hosts`; one turn read below the loop is `turns`.
+//! host it reaches is `hosts`; one turn read below the loop is `turns`; an
+//! image a tool read riding the next turn is `images`.
 
 #![expect(
     clippy::unwrap_used,
@@ -17,6 +18,8 @@ mod support;
 mod ends;
 #[path = "providers/hosts.rs"]
 mod hosts;
+#[path = "providers/images.rs"]
+mod images;
 #[path = "providers/retries.rs"]
 mod retries;
 #[path = "providers/turns.rs"]

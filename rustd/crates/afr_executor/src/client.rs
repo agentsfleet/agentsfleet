@@ -29,9 +29,9 @@ use tokio_util::sync::CancellationToken;
 use crate::api::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use crate::error::{self, Result};
 use crate::protocol::{
-    KillParams, ListParams, MAX_FRAME_BYTES, METHOD_KILL, METHOD_LIST_DIR, METHOD_READ_FILE,
-    METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, ReadResult, SpawnParams,
-    WriteFileParams, WriteParams, decoded, request,
+    KillParams, MAX_FRAME_BYTES, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL,
+    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
+    ReadParams, ReadResult, SpawnParams, WriteFileParams, WriteParams, decoded, request,
 };
 
 mod link;
@@ -208,8 +208,23 @@ impl Executor for Client {
         self.order(METHOD_WRITE_FILE, &params).await
     }
 
+    async fn append_file(&self, path: &str, data: Bytes) -> Result<()> {
+        let params = WriteFileParams {
+            path: Cow::Borrowed(path),
+            content: data,
+        };
+        self.order(METHOD_APPEND_FILE, &params).await
+    }
+
+    async fn delete_file(&self, path: &str) -> Result<()> {
+        let params = PathParams {
+            path: Cow::Borrowed(path),
+        };
+        self.order(METHOD_DELETE_FILE, &params).await
+    }
+
     async fn list_dir(&self, path: &str) -> Result<Listing> {
-        let params = ListParams {
+        let params = PathParams {
             path: Cow::Borrowed(path),
         };
         self.fetch(METHOD_LIST_DIR, &params).await

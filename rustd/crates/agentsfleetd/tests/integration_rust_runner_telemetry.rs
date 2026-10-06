@@ -156,7 +156,7 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
         home.path(),
         sandboxes.path(),
         network,
-        model,
+        (model, None),
         shutdown.clone(),
     );
     let thread = std::thread::spawn(move || {

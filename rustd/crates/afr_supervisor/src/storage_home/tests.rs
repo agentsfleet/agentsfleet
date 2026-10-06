@@ -13,7 +13,12 @@ fn opening_a_home_makes_its_directories_and_opening_it_again_keeps_them() {
     let home = StorageHome::open(root.path()).unwrap();
     let again = StorageHome::open(root.path()).unwrap();
 
-    for directory in [home.sandboxes(), home.spool(), home.bundles()] {
+    for directory in [
+        home.sandboxes(),
+        home.spool(),
+        home.bundles(),
+        home.mirrors(),
+    ] {
         assert!(directory.is_dir(), "{}", directory.display());
     }
     assert_eq!(home, again);

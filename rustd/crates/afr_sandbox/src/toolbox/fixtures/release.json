@@ -1,0 +1,52 @@
+{
+  "arch": "arm64",
+  "archives": [
+    "debian trixie",
+    "debian trixie-updates",
+    "debian-security trixie-security"
+  ],
+  "builder": {
+    "apt": "2.8.3",
+    "dpkg": "1.22.6ubuntu6.6",
+    "erofs-utils": "1.7.1-1build2",
+    "liblz4-1": "1.9.4-1build1.1",
+    "mmdebstrap": "1.4.3-6"
+  },
+  "erofs_features": [
+    "sb_csum",
+    "mtime",
+    "0padding"
+  ],
+  "length": 258277376,
+  "packages": [
+    {
+      "architecture": "arm64",
+      "package": "git",
+      "sha256": "8c6b1e96b226211260d7814472215a8a1ed38ee37400c421d454391c1807cb5a",
+      "version": "1:2.47.3-0+deb13u1"
+    },
+    {
+      "architecture": "arm64",
+      "package": "nodejs",
+      "sha256": "0d8c7a76e091b8bcc2485b3e757e550743c93445d89209d15764f8f71ffcc3df",
+      "version": "20.19.2+dfsg-1+deb13u2"
+    },
+    {
+      "architecture": "arm64",
+      "package": "python3",
+      "sha256": "8d5be256bf3bb4f07afce1aa86f0595c6939e1a6c2ea939bdcb7b36351cbe021",
+      "version": "3.13.5-1"
+    }
+  ],
+  "runner_versions": [
+    "0.56.0"
+  ],
+  "sha256": "377a14f4401c17acc47c6d90f621b550b9e07b49039cb7831eb48a5a55416402",
+  "snapshot": "20260901T000000Z",
+  "vendored": [
+    {
+      "sha256": "030b69227b40af8c1981b7301793dc66e71ed3c796ea8688209dd268bd91ec51",
+      "url": "https://github.com/astral-sh/uv/releases/download/0.12.21/uv-aarch64-unknown-linux-gnu.tar.gz"
+    }
+  ]
+}

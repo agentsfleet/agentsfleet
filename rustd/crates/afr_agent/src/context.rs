@@ -43,8 +43,9 @@ impl Budget {
     }
 
     /// Replaces the output of every tool result older than the newest
-    /// `tool_window`. The result stays, since a provider wants an answer for
-    /// every call it made; only its text leaves the window.
+    /// `tool_window`, and drops its image. The result stays, since a provider
+    /// wants an answer for every call it made; its text and image leave the
+    /// window, so an image is not sent again with every later turn.
     pub(crate) fn evict(self, messages: &mut [Message]) {
         if self.tool_window == 0 {
             return;
@@ -53,12 +54,15 @@ impl Budget {
             .iter_mut()
             .rev()
             .filter_map(|message| match message {
-                Message::ToolResult { output, .. } => Some(output),
+                Message::ToolResult { output, image, .. } => Some((output, image)),
                 Message::User(_) | Message::Assistant { .. } => None,
             })
             .skip(self.tool_window)
-            .take_while(|output| output.as_str() != EVICTED)
-            .for_each(|output| EVICTED.clone_into(output));
+            .take_while(|(output, _image)| output.as_str() != EVICTED)
+            .for_each(|(output, image)| {
+                EVICTED.clone_into(output);
+                *image = None;
+            });
     }
 }
 

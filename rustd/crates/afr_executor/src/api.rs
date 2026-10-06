@@ -6,9 +6,9 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
 
 use crate::error::Result;
+use crate::events::Events;
 
 /// A process the executor started, unique for the life of one executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -93,12 +93,19 @@ pub enum ProcessEvent {
         /// The bytes, unmodified; output need not be text.
         data: Bytes,
     },
+    /// Output that fell between the head and the tail of what its reader had
+    /// not read, dropped unread.
+    Omitted {
+        /// How many bytes.
+        bytes: u64,
+    },
     /// The last event a process produces.
     Ended {
         /// How it ended.
         ending: Ending,
-        /// Output bytes dropped between the kept head and tail.
-        omitted_bytes: u64,
+        /// Whether output still arriving when it ended was left behind, so
+        /// what was read is not all it said.
+        output_abandoned: bool,
     },
 }
 
@@ -202,18 +209,18 @@ impl Spawn {
     }
 }
 
-/// A started process: its identifier and the channel its events arrive on.
+/// A started process: its identifier and the events it says.
 ///
-/// The channel is unbounded so that one caller slow to drain it never stalls
-/// the connection every other process's events share. What it can hold is
-/// bounded where the output is produced: the executor forwards at most a head
-/// and a tail of each process's output.
+/// The connection hands each process's output on without waiting for its
+/// caller, so one caller slow to read never stalls the processes it shares
+/// the connection with; what that caller has not read is bounded to a head
+/// and a tail, and the rest is counted ([`Events`]).
 #[derive(Debug)]
 pub struct Process {
     /// What to name it in [`Executor::write`] and [`Executor::kill`].
     pub id: ProcessId,
     /// Output, then exactly one [`ProcessEvent::Ended`].
-    pub events: mpsc::UnboundedReceiver<ProcessEvent>,
+    pub events: Events,
 }
 
 impl Process {
@@ -223,6 +230,7 @@ impl Process {
         while let Some(event) = self.events.recv().await {
             match event {
                 ProcessEvent::Output { stream, data } => output(stream, data),
+                ProcessEvent::Omitted { .. } => {}
                 ProcessEvent::Ended { ending, .. } => return Some(ending),
             }
         }
@@ -297,6 +305,12 @@ pub trait Executor: Send + Sync + fmt::Debug {
 
     /// Writes a regular file, replacing what was there.
     async fn write_file(&self, path: &str, data: Bytes) -> Result<()>;
+
+    /// Adds to the end of a regular file, making it when absent.
+    async fn append_file(&self, path: &str, data: Bytes) -> Result<()>;
+
+    /// Removes a regular file; a link, a directory or a device is refused.
+    async fn delete_file(&self, path: &str) -> Result<()>;
 
     /// Lists a directory, up to the most one answer carries.
     async fn list_dir(&self, path: &str) -> Result<Listing>;

@@ -135,6 +135,10 @@ impl Provider for Turns {
     fn stream<'a>(&'a self, request: Request<'a>) -> BoxStream<'a, Result<Chunk>> {
         stream::unfold(Pass::Opening(1), move |pass| pass.next(self, request)).boxed()
     }
+
+    fn accepts_images(&self) -> bool {
+        self.wire.carries_images()
+    }
 }
 
 /// The chunks a turn that ended still has to send: what it spent, then its

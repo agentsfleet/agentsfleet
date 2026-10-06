@@ -19,10 +19,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** PENDING
 **Priority:** P1 — the last published tools without a Rust home; a fleet that splits an incident into parallel reads cannot move until they exist
 **Categories:** API, INFRA
-**Batch:** B2 — the milestone's follow-up Pull Request, after M211_001
+**Batch:** B2 — the milestone's follow-up Pull Request, after M211_001 merged; M211_003 to M211_005 fold into this spec at its CHORE(open), and its Sections run on M211_001's tools
 **Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Baseline revision:** `b0138d7b3124b871668f07e2361dba923bc774d2`
+**Test Baseline:** pending — measured before the Pull Request; shared with M211_001
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M210_002 (the loop, the catalog, the router, the run-wide call counter and trace) · M211_001 (children share the sandbox-side tools)
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from `docs/architecture/runner_execution.md` §"Tool catalog" and Indy's decision that the runner carries every published tool; Codex at `~/Projects/oss/rs/codex` `2e5fea64e`
@@ -225,3 +225,5 @@ N/A — no files deleted.
 - **Metrics review** — No analytics or funnel playbook update required: no user surface; three operator log events added.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
+- **Carried from M211_001** — three greptile findings on PR #732, taken up at this spec's PLAN:
+  > Indy (2026-10-06, before 23:33): "Okay so fix the apply_path.rs:92 issue only, and reply to others on deferral. upon fix push the PR" — context: `afr_tools/src/sandbox/apply_patch.rs:257`, a move drops the execute bit; `afr_tools/src/sandbox/output.rs:89`, the drain outlasts its yield under a flood; `afr_sandbox/src/toolbox/holds.rs:71`, a crash leaves the rollback release mounted. `apply_patch.rs:92` was fixed on that PR in `1000de460`; PR #732 Session notes 4 and the three threads carry the detail.

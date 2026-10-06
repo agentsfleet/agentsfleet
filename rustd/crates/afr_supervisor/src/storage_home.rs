@@ -4,6 +4,8 @@
 //!   <home>/sandboxes/<lease_id>/  each lease's sandbox; the engine's base
 //!   <home>/spool/<lease_id>.json  a report written before it is posted
 //!   <home>/bundles/<hash>.tar     fleet bundles, verified before they are kept
+//!   <home>/git/<workspace>/<owner>/<name>.git
+//!                                 a bare mirror per bound repository
 //! ```
 //!
 //! What a crashed runner left under `sandboxes` is swept by the engine built on
@@ -19,6 +21,7 @@ use crate::error::Result;
 const SANDBOXES: &str = "sandboxes";
 const SPOOL: &str = "spool";
 const BUNDLES: &str = "bundles";
+const MIRRORS: &str = "git";
 
 /// The storage root, with its directories made.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,7 +36,12 @@ impl StorageHome {
     /// A directory that cannot be made.
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let home = Self { root: root.into() };
-        for directory in [home.sandboxes(), home.spool(), home.bundles()] {
+        for directory in [
+            home.sandboxes(),
+            home.spool(),
+            home.bundles(),
+            home.mirrors(),
+        ] {
             fs::create_dir_all(directory)?;
         }
         Ok(home)
@@ -54,6 +62,11 @@ impl StorageHome {
     /// Where verified bundles are kept.
     pub(crate) fn bundles(&self) -> PathBuf {
         self.root.join(BUNDLES)
+    }
+
+    /// Where bound repositories are mirrored, outside every sandbox.
+    pub(crate) fn mirrors(&self) -> PathBuf {
+        self.root.join(MIRRORS)
     }
 }
 

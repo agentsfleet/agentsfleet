@@ -9,10 +9,10 @@ use jsonrpsee_types::error::INVALID_PARAMS_CODE;
 
 use super::{MAX_LIST_ENTRIES, Workspace};
 use crate::api::EntryKind;
-use crate::protocol::PATH_REFUSED_CODE;
+use crate::protocol::{FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE};
 
 /// A workspace beside a directory outside it, with a secret in the outside one.
-fn fixture() -> (tempfile::TempDir, Workspace) {
+pub(super) fn fixture() -> (tempfile::TempDir, Workspace) {
     let scratch = tempfile::tempdir().unwrap();
     let root = scratch.path().join("workspace");
     std::fs::create_dir(&root).unwrap();
@@ -146,7 +146,8 @@ fn a_missing_name_is_the_callers_mistake_not_a_refused_path() {
     let no_directory = workspace.directory(Some("absent")).unwrap_err();
 
     for refused in [&missing, &no_directory] {
-        assert_eq!(refused.rpc_code(), INVALID_PARAMS_CODE, "{refused}");
+        assert_eq!(refused.rpc_code(), FILE_NOT_FOUND_CODE, "{refused}");
+        assert!(refused.is_not_found() && !refused.is_path_refused());
     }
     assert!(
         missing.wire_message().contains(": "),

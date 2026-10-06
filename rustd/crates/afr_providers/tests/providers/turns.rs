@@ -58,6 +58,7 @@ async fn a_conversation_that_cannot_be_sent_fails_the_turn_and_nothing_follows()
         Message::ToolResult {
             call_id: CALL_ID.to_owned(),
             output: ANSWER.to_owned(),
+            image: None,
         },
     ];
 

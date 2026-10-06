@@ -145,6 +145,10 @@ impl afr_providers::Provider for Silent {
         use futures_util::StreamExt as _;
         futures_util::stream::pending().boxed()
     }
+
+    fn accepts_images(&self) -> bool {
+        false
+    }
 }
 
 /// A turn the lease stops before the provider answers is counted as

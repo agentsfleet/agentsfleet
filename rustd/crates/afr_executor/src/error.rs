@@ -27,7 +27,9 @@ use jsonrpsee_types::error::{
     CALL_EXECUTION_FAILED_CODE, INTERNAL_ERROR_CODE, INVALID_PARAMS_CODE,
 };
 
-use crate::protocol::{PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
+use crate::protocol::{
+    FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE, WIRE_MESSAGE_MAX_BYTES,
+};
 
 mod raise;
 
@@ -37,7 +39,8 @@ mod tests;
 
 pub(crate) use self::raise::{
     connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
-    not_a_file, path_refused, program_unavailable, refused, unknown_process, unresponsive,
+    not_a_file, not_found, path_refused, program_unavailable, refused, unknown_process,
+    unresponsive,
 };
 
 afd_core::error_shell!(
@@ -101,6 +104,15 @@ pub(crate) enum ErrorKind {
     #[error("the path is not a regular file")]
     NotAFile,
 
+    /// A file call named a file or directory the workspace does not have:
+    /// the one mistake of the caller's a handler names to the model.
+    #[error("the workspace has no such file or directory")]
+    NotFound {
+        /// The operating system's reason.
+        #[source]
+        source: io::Error,
+    },
+
     /// No such process on this executor.
     #[error("no process with that identifier")]
     UnknownProcess,
@@ -144,19 +156,60 @@ impl Error {
         error_code::INTERNAL_OPERATION_FAILED
     }
 
-    /// What the other end is told: the failure and, when it has one, its
-    /// cause — never the registry code or a backtrace, which are this host's.
-    pub(crate) fn wire_message(&self) -> String {
+    /// What anyone past this host is told: the failure and, when it has one,
+    /// its cause, never the registry code or a backtrace, which are this
+    /// host's. The other end of the socket reads it, and so does a model
+    /// reading why its tool call failed, so it is at most
+    /// `WIRE_MESSAGE_MAX_BYTES`: a refusal's message and a decoder's echo of
+    /// the value it refused both come from a socket the executor shares with
+    /// tenant code.
+    #[must_use]
+    pub fn wire_message(&self) -> String {
         let kind = self.kind();
-        std::error::Error::source(kind)
-            .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"))
+        let mut said = std::error::Error::source(kind)
+            .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"));
+        said.truncate(wire_end(&said));
+        said
     }
 
-    /// The JSON-RPC code a refusal of this kind is answered with.
+    /// Whether the path left the workspace, by name or through a link. True
+    /// of the refusal where it is raised and of the answer the client reads,
+    /// so a handler on either end tells it from every other failure.
+    #[must_use]
+    pub fn is_path_refused(&self) -> bool {
+        self.rpc_code() == PATH_REFUSED_CODE
+    }
+
+    /// Whether a file call named something the workspace does not have, on
+    /// either end of the socket.
+    #[must_use]
+    pub fn is_not_found(&self) -> bool {
+        self.rpc_code() == FILE_NOT_FOUND_CODE
+    }
+
+    /// Whether a process call named a process the executor no longer holds,
+    /// on either end of the socket: one that ended, or never was.
+    #[must_use]
+    pub fn is_unknown_process(&self) -> bool {
+        self.rpc_code() == UNKNOWN_PROCESS_CODE
+    }
+
+    /// Whether a process would not take what was written to it, on either
+    /// end of the socket: it closed its input, or has not read what it was
+    /// sent. The process runs on; the sandbox is not gone.
+    #[must_use]
+    pub fn is_input_refused(&self) -> bool {
+        self.rpc_code() == CALL_EXECUTION_FAILED_CODE
+    }
+
+    /// The JSON-RPC code a refusal of this kind is answered with, or carries
+    /// once the client decoded it: what both ends compare on.
     pub(crate) fn rpc_code(&self) -> i32 {
         match self.kind() {
+            ErrorKind::Refused { code, .. } => *code,
             ErrorKind::PathRefused => PATH_REFUSED_CODE,
             ErrorKind::UnknownProcess => UNKNOWN_PROCESS_CODE,
+            ErrorKind::NotFound { .. } => FILE_NOT_FOUND_CODE,
             ErrorKind::InputBacklogFull | ErrorKind::InputClosed => CALL_EXECUTION_FAILED_CODE,
             ErrorKind::InvalidParams { .. }
             | ErrorKind::Malformed { .. }
@@ -166,6 +219,14 @@ impl Error {
             _internal => INTERNAL_ERROR_CODE,
         }
     }
+}
+
+/// Where `text` ends once kept to `WIRE_MESSAGE_MAX_BYTES`: a character
+/// boundary, so a cut there halves no character, and `text.len()` when it
+/// fits. A boundary rather than a cut, so a borrowed flood is sliced before
+/// it is ever copied.
+fn wire_end(text: &str) -> usize {
+    text.floor_char_boundary(WIRE_MESSAGE_MAX_BYTES)
 }
 
 /// Whether an operating-system refusal is about what the caller asked for —
@@ -182,5 +243,22 @@ fn is_caller_mistake(failure: &io::Error) -> bool {
             | io::ErrorKind::PermissionDenied
             | io::ErrorKind::InvalidInput
             | io::ErrorKind::InvalidFilename
+    )
+}
+
+/// The refusal the client decodes for a process the executor no longer
+/// holds, as a stand-in executor in a sibling crate's suite answers a write.
+#[must_use]
+pub fn unknown_process_refused() -> Error {
+    refused(UNKNOWN_PROCESS_CODE, &ErrorKind::UnknownProcess.to_string())
+}
+
+/// The refusal the client decodes for a process that closed its input, as a
+/// stand-in executor answers a write.
+#[must_use]
+pub fn input_closed_refused() -> Error {
+    refused(
+        CALL_EXECUTION_FAILED_CODE,
+        &ErrorKind::InputClosed.to_string(),
     )
 }

@@ -19,11 +19,12 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::codec::{AnyDelimiterCodec, FramedRead};
 use tokio_util::sync::CancellationToken;
 
-use crate::api::{Ending, Process, ProcessEvent, ProcessId};
+use crate::api::{Ending, Process, ProcessId};
 use crate::error::{self, Error, Result};
+use crate::events::{Events, Feed};
 use crate::protocol::{
     DELIMITER, ExitedParams, KillParams, MAX_FRAME_BYTES, METHOD_KILL, NOTIFY_EXITED,
-    NOTIFY_OUTPUT, OutputParams, SpawnResult, decoded, request,
+    NOTIFY_OUTPUT, OutputParams, READ_CHUNK_BYTES, SpawnResult, decoded, request,
 };
 
 /// The link took its socket.
@@ -34,6 +35,9 @@ const EVENT_LINK_COMPLETED: &str = "executor_link_completed";
 const EVENT_LINK_FAILED: &str = "executor_link_failed";
 /// A message from the executor did not decode.
 const EVENT_MESSAGE_UNREADABLE: &str = "executor_message_unreadable";
+/// A chunk of output longer than one read, which no executor sends: dropped,
+/// since a view of it would pin the whole allocation.
+const EVENT_OUTPUT_OVERSIZED: &str = "executor_output_oversized";
 /// What a message that is neither a notification nor an answer lacks.
 const FIELD_METHOD_OR_ID: &str = "method or id";
 
@@ -104,7 +108,11 @@ pub(super) struct Link {
     ids: Arc<CallIds>,
     lost: CancellationToken,
     pending: HashMap<u64, Reply>,
-    processes: HashMap<ProcessId, mpsc::UnboundedSender<ProcessEvent>>,
+    processes: HashMap<ProcessId, Feed>,
+    /// Whether a chunk past one read was warned about: the first is worth a
+    /// warning, the rest a debug line, so a hostile sandbox cannot flood the
+    /// journal.
+    oversized_warned: bool,
 }
 
 impl Link {
@@ -130,6 +138,7 @@ impl Link {
             lost,
             pending: HashMap::new(),
             processes: HashMap::new(),
+            oversized_warned: false,
         }
     }
 
@@ -218,42 +227,59 @@ impl Link {
         }
     }
 
-    /// Opens the event channel of a process the executor just started.
+    /// Opens the events of a process the executor just started.
     fn register(&mut self, raw: &RawValue) -> Result<Process> {
         let started: SpawnResult = decoded(raw)?;
         let id = ProcessId::new(started.process_id);
-        let (sender, events) = mpsc::unbounded_channel();
-        self.processes.insert(id, sender);
+        let (feed, events) = Events::channel();
+        self.processes.insert(id, feed);
         Ok(Process { id, events })
     }
 
-    /// Delivers a process's output or its end.
+    /// Delivers a process's output or its end, never waiting on its reader.
     fn notified(&mut self, method: &str, params: Option<&RawValue>) -> serde_json::Result<()> {
         let params = params.unwrap_or(RawValue::NULL);
         match method {
             NOTIFY_OUTPUT => {
                 let output: OutputParams = decoded(params)?;
-                let event = ProcessEvent::Output {
-                    stream: output.stream,
-                    data: output.data,
-                };
-                if let Some(sender) = self.processes.get(&ProcessId::new(output.process_id)) {
-                    let _caller_gone = sender.send(event);
+                if output.data.len() > READ_CHUNK_BYTES {
+                    self.oversized(output.process_id, output.data.len());
+                } else if let Some(feed) = self.processes.get(&ProcessId::new(output.process_id)) {
+                    feed.output(output.stream, output.data);
                 }
             }
             NOTIFY_EXITED => {
                 let exited: ExitedParams = decoded(params)?;
-                let event = ProcessEvent::Ended {
-                    ending: exited.ending,
-                    omitted_bytes: exited.omitted_bytes,
-                };
-                if let Some(sender) = self.processes.remove(&ProcessId::new(exited.process_id)) {
-                    let _caller_gone = sender.send(event);
+                if let Some(feed) = self.processes.remove(&ProcessId::new(exited.process_id)) {
+                    feed.end(exited.ending, exited.output_abandoned);
                 }
             }
             _unknown => {}
         }
         Ok(())
+    }
+
+    /// Logs a chunk of output longer than one read, dropped unread: the first
+    /// at warn, the rest at debug.
+    fn oversized(&mut self, process: u64, bytes: usize) {
+        let event = EVENT_OUTPUT_OVERSIZED;
+        if std::mem::replace(&mut self.oversized_warned, true) {
+            tracing::debug!(
+                event,
+                process_id = process,
+                bytes,
+                "another oversized chunk"
+            );
+        } else {
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+            tracing::warn!(
+                event,
+                error_code,
+                process_id = process,
+                bytes,
+                "a chunk of output is longer than one read"
+            );
+        }
     }
 
     /// The kill that ends a process no caller is waiting for; its answer is
@@ -279,11 +305,8 @@ impl Link {
         self.pending
             .into_values()
             .for_each(|reply| reply.fail(error::connection_lost()));
-        for sender in self.processes.into_values() {
-            let _caller_gone = sender.send(ProcessEvent::Ended {
-                ending: Ending::Interrupted,
-                omitted_bytes: 0,
-            });
+        for feed in self.processes.into_values() {
+            feed.end(Ending::Interrupted, false);
         }
         if calls + processes == 0 {
             let event = EVENT_LINK_COMPLETED;

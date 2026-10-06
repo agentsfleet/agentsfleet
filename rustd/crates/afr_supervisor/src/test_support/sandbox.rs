@@ -1,11 +1,13 @@
 //! A sandbox engine for the lease tests: sandboxes that count their teardowns
 //! and an executor that reports what is written into the workspace.
 
+use std::os::unix::fs::MetadataExt as _;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_sandbox::{Engine, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine, HostWorkspace, Sandbox, SandboxRequest};
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
@@ -35,6 +37,9 @@ pub(crate) struct FakeEngine {
     pub(crate) written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
     /// How those executors answer a file write.
     pub(crate) writes: Writes,
+    /// The host directory each sandbox offers as its workspace, owned by
+    /// whoever owns it; none keeps the workspace out of the host's reach.
+    pub(crate) workspace: Option<PathBuf>,
 }
 
 #[async_trait::async_trait]
@@ -48,8 +53,13 @@ impl Engine for FakeEngine {
             !(self.panic_once && prepared == 0),
             "the fake engine panics on its first prepare"
         );
+        let workspace = self.workspace.clone().map(|root| {
+            let metadata = std::fs::metadata(&root).unwrap();
+            (root, (metadata.uid(), metadata.gid()))
+        });
         Ok(Box::new(FakeSandbox {
             fail_teardown: self.fail_teardown,
+            workspace,
             destroyed: Arc::clone(&self.destroyed),
             executor: FakeExecutor {
                 written: self.written.clone(),
@@ -62,6 +72,7 @@ impl Engine for FakeEngine {
 #[derive(Debug)]
 struct FakeSandbox {
     fail_teardown: bool,
+    workspace: Option<(PathBuf, (u32, u32))>,
     destroyed: Arc<AtomicUsize>,
     executor: FakeExecutor,
 }
@@ -72,6 +83,13 @@ impl Sandbox for FakeSandbox {
         &self.executor
     }
 
+    fn workspace(&self) -> Option<HostWorkspace<'_>> {
+        self.workspace.as_ref().map(|(root, owner)| HostWorkspace {
+            root,
+            owner: *owner,
+        })
+    }
+
     async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
         self.destroyed.fetch_add(1, Ordering::SeqCst);
         if self.fail_teardown {
@@ -80,6 +98,9 @@ impl Sandbox for FakeSandbox {
         Ok(())
     }
 }
+
+/// What a refused write or delete says.
+const READ_ONLY: &str = "read-only workspace";
 
 /// An executor that refuses to spawn, reports the files written into it, and
 /// answers everything else emptily.
@@ -113,13 +134,25 @@ impl Executor for FakeExecutor {
     async fn write_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
         match self.writes {
             Writes::Accept => {}
-            Writes::Refuse => return Err(std::io::Error::other("read-only workspace").into()),
+            Writes::Refuse => return Err(std::io::Error::other(READ_ONLY).into()),
             Writes::Stall => std::future::pending::<()>().await,
         }
         if let Some(written) = &self.written {
             let _reader_gone = written.send((path.to_owned(), data));
         }
         Ok(())
+    }
+
+    async fn append_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
+        self.write_file(path, data).await
+    }
+
+    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
+        match self.writes {
+            Writes::Accept => Ok(()),
+            Writes::Refuse => Err(std::io::Error::other(READ_ONLY).into()),
+            Writes::Stall => std::future::pending().await,
+        }
     }
 
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
@@ -129,3 +162,7 @@ impl Executor for FakeExecutor {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "sandbox_tests.rs"]
+mod tests;

@@ -8,6 +8,7 @@
 use afr_egress::Egress;
 use afr_memory::MemoryBackend;
 
+use crate::sandbox::{Checkout, ImageAttachment, Sessions};
 use crate::verbs::LeaseVerbs;
 
 /// One lease's state, as its calls see it.
@@ -18,6 +19,17 @@ pub struct Lease<'run> {
     /// The outbound guard every egress tool sends through: the lease's policy,
     /// and the credentials it has minted.
     pub egress: Egress<'run>,
+    /// The processes the lease's calls keep open across calls; the run's end
+    /// closes whatever is left.
+    pub sessions: Sessions,
+    /// The repositories checked out in the lease's workspace.
+    pub checkouts: Vec<Checkout<'run>>,
+    /// Whether the model's wire takes an image with a call's result; `image`
+    /// refuses before any read when it does not.
+    pub image_input: bool,
+    /// The image the last call read, until the loop attaches it to that
+    /// call's result.
+    pub attachment: Option<ImageAttachment>,
     /// The `agentsfleetd` verbs the schedule and message tools reach, fenced
     /// by this lease.
     pub verbs: &'run dyn LeaseVerbs,
@@ -25,7 +37,8 @@ pub struct Lease<'run> {
 
 impl<'run> Lease<'run> {
     /// A lease whose calls read and write `memory`, send through `egress`, and
-    /// reach `agentsfleetd` through `verbs`.
+    /// reach `agentsfleetd` through `verbs`, with no session open yet and a
+    /// wire that takes no image until told.
     #[must_use]
     pub fn new(
         memory: Box<dyn MemoryBackend + 'run>,
@@ -35,8 +48,27 @@ impl<'run> Lease<'run> {
         Self {
             memory,
             egress,
+            sessions: Sessions::default(),
+            checkouts: Vec::new(),
+            image_input: false,
+            attachment: None,
             verbs,
         }
+    }
+
+    /// The same lease, whose workspace holds `checkouts`.
+    #[must_use]
+    pub fn with_checkouts(mut self, checkouts: Vec<Checkout<'run>>) -> Self {
+        self.checkouts = checkouts;
+        self
+    }
+
+    /// The same lease, whose wire takes an image with a call's result, or
+    /// not.
+    #[must_use]
+    pub fn with_image_input(mut self, image_input: bool) -> Self {
+        self.image_input = image_input;
+        self
     }
 }
 
