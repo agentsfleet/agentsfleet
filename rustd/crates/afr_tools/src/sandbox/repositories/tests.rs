@@ -9,7 +9,8 @@ use afd_wire::policy::ExecutionPolicy;
 use afr_egress::fixture::{BASE, REPOSITORY, policy};
 
 use super::{Checkout, checkouts};
-use crate::catalog::{EXEC_COMMAND, GIT, HTTP_REQUEST, SHELL};
+use crate::catalog::{HTTP_REQUEST, PUBLISHED, SHELL};
+use crate::runtime::Runtime;
 
 /// The fixture policy offering `tools`.
 fn offering(tools: &[&'static str]) -> ExecutionPolicy<'static> {
@@ -18,9 +19,16 @@ fn offering(tools: &[&'static str]) -> ExecutionPolicy<'static> {
     policy
 }
 
+/// Every tool that runs in the sandbox works in the workspace, so each one
+/// gets the bound repositories checked out: a lease of file tools alone reads
+/// the repository, not an empty directory.
 #[test]
-fn should_check_out_every_bound_repository_when_a_tool_runs_processes() {
-    for tool in [SHELL.name(), EXEC_COMMAND.name(), GIT.name()] {
+fn should_check_out_every_bound_repository_for_any_tool_in_the_sandbox() {
+    let in_sandbox = PUBLISHED
+        .iter()
+        .filter(|entry| entry.runtime() == Runtime::Sandbox)
+        .map(|entry| entry.name());
+    for tool in in_sandbox {
         let policy = offering(&[HTTP_REQUEST.name(), tool]);
 
         let found = checkouts(&policy).unwrap();
@@ -39,9 +47,15 @@ fn should_check_out_every_bound_repository_when_a_tool_runs_processes() {
 }
 
 #[test]
-fn should_check_out_nothing_for_a_lease_that_runs_no_process() {
-    let policy = offering(&[HTTP_REQUEST.name()]);
+fn should_check_out_nothing_for_a_lease_with_no_tool_in_the_sandbox() {
+    let in_the_supervisor_or_at_the_provider: Vec<&'static str> = PUBLISHED
+        .iter()
+        .filter(|entry| entry.runtime() != Runtime::Sandbox)
+        .map(|entry| entry.name())
+        .collect();
+    let policy = offering(&in_the_supervisor_or_at_the_provider);
 
+    assert!(!in_the_supervisor_or_at_the_provider.is_empty());
     assert!(checkouts(&policy).unwrap().is_empty());
 }
 

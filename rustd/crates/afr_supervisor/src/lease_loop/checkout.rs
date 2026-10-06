@@ -26,7 +26,7 @@ const EVENT_CHECKOUT_FAILED: &str = "repository_checkout_failed";
 
 impl LeaseRun<'_> {
     /// Checks out every repository the lease's policy binds into `sandbox`'s
-    /// workspace when an offered tool runs processes, and nothing otherwise.
+    /// workspace when an offered tool runs in the sandbox, and nothing otherwise.
     /// Anything that stops a checkout ends the lease at startup, before any
     /// tool runs. The ending is boxed: it is large, and only a failure
     /// allocates one.

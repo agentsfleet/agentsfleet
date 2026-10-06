@@ -7,7 +7,7 @@ use afd_wire::policy::{
     RepositoryAccess, RepositoryBinding,
 };
 
-use afr_tools::catalog::{FILE_READ, GIT};
+use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST};
 
 use super::Prompt;
 use crate::fixture::{lease, unbounded};
@@ -185,11 +185,15 @@ fn should_name_the_default_branch_for_a_binding_with_no_base() {
     );
 }
 
+/// A lease of file tools alone works in the workspace too, so it is told
+/// where the repository is; one with no tool in the sandbox is not.
 #[test]
-fn should_name_no_checkout_when_no_tool_runs_processes() {
-    let prompt = Prompt::new(&offering(FILE_READ.name()));
+fn should_name_the_checkout_for_any_sandbox_tool_and_none_without_one() {
+    let file_tools = Prompt::new(&offering(FILE_READ.name()));
+    let supervisor_only = Prompt::new(&offering(HTTP_REQUEST.name()));
 
-    assert!(!prompt.instructions.contains("## Workspace"));
+    assert!(file_tools.instructions.contains("## Workspace"));
+    assert!(!supervisor_only.instructions.contains("## Workspace"));
 }
 
 #[test]
