@@ -82,3 +82,54 @@ async fn records_past_the_event_budget_are_not_held_and_a_smaller_one_after_stil
         "the first drop is the first call past the budget"
     );
 }
+
+/// Every call's end is counted under its catalog name and its trace row's
+/// status: one that succeeded, one that exited non-zero, one whose run ended
+/// before it did, and one to a tool the catalog does not publish.
+#[tokio::test]
+async fn every_call_is_counted_by_tool_and_how_it_ended() {
+    use afr_telemetry::labels::{Tool, ToolOutcome};
+    use afr_telemetry::testing::{Recorded, Tally, scoped};
+
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let scrub = scrub();
+    let (tally, recorded) = Tally::new();
+
+    scoped(tally, async {
+        let mut ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+        call(&mut ledger, "planned".to_owned()).await;
+        let made_up = Call {
+            id: String::new(),
+            name: "made_up_tool".to_owned(),
+            arguments: serde_json::json!({}),
+        };
+        let exited = ToolOutput {
+            exit_code: Some(2),
+            ..ToolOutput::succeeded("ran".to_owned())
+        };
+        ledger.call(&made_up, async { exited }).await;
+        let stalled = ledger.call(&made_up, std::future::pending());
+        // Polled once and dropped: the run ended before the call did.
+        let _interrupted = futures_util::poll!(Box::pin(stalled));
+    })
+    .await;
+    frames.taken();
+
+    let ended: Vec<(Tool, ToolOutcome)> = recorded
+        .try_iter()
+        .filter_map(|recorded| match recorded {
+            Recorded::ToolCall(tool, outcome, _elapsed) => Some((tool, outcome)),
+            _other => None,
+        })
+        .collect();
+    assert_eq!(
+        ended,
+        vec![
+            (Tool::of(UPDATE_PLAN.name()), ToolOutcome::Succeeded),
+            (Tool::of("made_up_tool"), ToolOutcome::Failed),
+            (Tool::of("made_up_tool"), ToolOutcome::Interrupted),
+        ]
+    );
+    assert_eq!(Tool::of("made_up_tool").as_str(), "_other");
+}

@@ -1,0 +1,40 @@
+[package]
+name = "afd_otlp"
+description = "The OTLP transport both binaries export through: the knobs, the three signal pipelines, and the counting wrappers around them."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# The environment seam the knobs are read through, the error hull, and the
+# registry codes a refused knob is logged under.
+afd_core.workspace = true
+# The counting wrappers, the census registry and the instrument set every
+# pipeline is built around. This crate adds the endpoint; that one has the
+# design.
+afd_observability.workspace = true
+# The endpoint is graded as a URI here, so the refusal names the knob rather
+# than echoing the value the exporter would have printed.
+http.workspace = true
+# The API types the providers are installed as.
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+# The transport itself: the encoder and the client that make a signal leave.
+opentelemetry-otlp.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# `MapEnv`, so the knobs resolve without touching the process environment.
+afd_core = { workspace = true, features = ["test-util"] }
+# The flush is driven on the blocking pool, as both binaries drive it.
+tokio = { workspace = true, features = ["rt", "macros"] }

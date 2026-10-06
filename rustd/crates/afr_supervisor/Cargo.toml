@@ -20,6 +20,8 @@ workspace = true
 test-util = []
 
 [dependencies]
+# The runner's own families: sandbox start, dropped frames, failed pushes.
+afr_telemetry.workspace = true
 # The span vocabulary every runner span is written in, beside the daemon's.
 afd_observability.workspace = true
 # Identifiers, the lease clock, worker-count clamps, the environment seam and
@@ -75,6 +77,8 @@ tracing.workspace = true
 futures-util.workspace = true
 
 [dev-dependencies]
+# The recorder a suite reads its own measurements back through.
+afr_telemetry = { workspace = true, features = ["test-util"] }
 # The production connector the fake agent admits through, so a lease naming a
 # provider no wire speaks is refused by the real check.
 afr_providers.workspace = true
@@ -93,4 +97,6 @@ sha2.workspace = true
 # and a header are proven on the socket rather than assumed by a mock.
 axum.workspace = true
 afd_core = { workspace = true, features = ["test-util"] }
+# The subscriber a lease's spans are exported through in the telemetry suite.
+tracing-subscriber.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "test-util"] }

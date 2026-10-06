@@ -14,6 +14,8 @@ use std::sync::Arc;
 
 use afd_core::clock::saturating_millis;
 use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
+use afr_telemetry::labels::{Provider, RetryReason};
+use afr_telemetry::record;
 use bytes::{Bytes, BytesMut};
 use futures_util::{Stream, StreamExt as _, TryStreamExt as _};
 use reqwest::Url;
@@ -54,10 +56,12 @@ pub(crate) struct Transport {
     whose: Arc<Whose>,
 }
 
-/// Whose sends a transport makes, for its retry line.
+/// Whose sends a transport makes, for its retry line and its retry count.
 struct Whose {
     lease_id: Box<str>,
     provider: Box<str>,
+    /// The provider as the retry family labels it.
+    label: Provider,
 }
 
 /// What a log line names for `provider`: a registry name as it is, a `custom:`
@@ -89,6 +93,7 @@ impl Transport {
         let whose = Whose {
             lease_id: lease_id.into(),
             provider: logged(provider),
+            label: Provider::of(provider),
         };
         Self {
             client,
@@ -112,8 +117,9 @@ impl Transport {
         retry::send(build, |retry| self.retrying(retry)).await
     }
 
-    /// Logs a send about to be retried.
+    /// Logs and counts a send about to be retried.
     fn retrying(&self, retry: Retrying) {
+        record::retry(self.whose.label, RetryReason::of_status(retry.status));
         let lease_id = &*self.whose.lease_id;
         let provider = &*self.whose.provider;
         let status = retry.status;

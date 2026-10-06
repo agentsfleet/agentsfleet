@@ -2,10 +2,14 @@
 //! support files land where the fleet's instructions find them, the turn runs,
 //! and the sandbox is destroyed exactly once.
 
+use std::time::Instant;
+
 use afd_wire::report::FailureClass;
 use afr_executor::Executor;
 use afr_memory::Seed;
 use afr_sandbox::{Sandbox, SandboxRequest};
+use afr_telemetry::labels::SandboxStart;
+use afr_telemetry::record;
 
 use super::{DETAIL_RENEWAL, LeaseRun, failed};
 use crate::activity::ActivitySink;
@@ -35,7 +39,15 @@ impl LeaseRun<'_> {
             lease_id: self.ids.lease.as_str(),
             limits: lessee.limits,
         };
-        let sandbox = match lessee.engine.prepare(request).await {
+        let started = Instant::now();
+        let prepared = lessee.engine.prepare(request).await;
+        let outcome = if prepared.is_ok() {
+            SandboxStart::Ready
+        } else {
+            SandboxStart::Failed
+        };
+        record::sandbox_start(outcome, started.elapsed());
+        let sandbox = match prepared {
             Ok(sandbox) => sandbox,
             Err(failure) => return self.refuse(&failure, EVENT_SANDBOX_REFUSED, DETAIL_SANDBOX),
         };
