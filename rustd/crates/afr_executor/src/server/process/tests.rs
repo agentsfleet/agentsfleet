@@ -74,7 +74,7 @@ async fn lines_written(lines: mpsc::Sender<Bytes>, mut written: mpsc::Receiver<B
 
 /// A driver no one takes output from waits on the writer, never dropping a
 /// line and never queueing past the bound, and the process waits on its full
-/// pipe; once the writer goes, the driver stops the process and ends.
+/// pipe; once the writer goes, the driver ends.
 #[tokio::test]
 async fn output_no_one_takes_holds_the_process_until_the_writer_goes() {
     let (run, _root) = started(&[YES]);
@@ -96,6 +96,53 @@ async fn output_no_one_takes_holds_the_process_until_the_writer_goes() {
     drop(untaken);
     let ended = tokio::time::timeout(PATIENCE, driving).await.unwrap();
     assert_eq!(ended.unwrap(), 7, "the writer gone, the stop lands");
+}
+
+/// A stop told to a driver whose writer is behind lands at once: the process
+/// is killed while the writer still has not read, and the chunk the driver
+/// was holding for it is forwarded by the drain, before the ending, not lost.
+#[tokio::test]
+async fn a_stop_lands_while_the_writer_is_behind() {
+    let (run, _root) = started(&[YES]);
+    let pid = run.spawned.pid;
+    let (lines, mut untaken) = mpsc::channel(QUEUED);
+    let stop = CancellationToken::new();
+    let driving = tokio::spawn(run.drive(7, stop.clone(), lines));
+    tokio::time::timeout(PATIENCE, async {
+        while untaken.len() < QUEUED {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+
+    stop.cancel();
+
+    tokio::time::timeout(PATIENCE, async {
+        while rustix::process::test_kill_process(pid).is_ok() {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(
+        !driving.is_finished(),
+        "the drain still waits on the writer"
+    );
+    let mut methods = Vec::new();
+    while let Some(line) = untaken.recv().await {
+        let message: Value = serde_json::from_slice(&line).unwrap();
+        methods.push(message["method"].as_str().unwrap().to_owned());
+    }
+    assert!(methods.len() > QUEUED, "the held chunk reached the writer");
+    assert_eq!(methods.last().map(String::as_str), Some("process/exited"));
+    assert_eq!(
+        tokio::time::timeout(PATIENCE, driving)
+            .await
+            .unwrap()
+            .unwrap(),
+        7
+    );
 }
 
 #[test]
@@ -195,7 +242,7 @@ async fn the_drain_stops_at_its_cap_while_output_keeps_coming() {
     }
     let (lines, written) = mpsc::channel(pieces + 2);
 
-    let closed = drain(&mut output, &lines, 1).await;
+    let closed = drain(&mut output, &lines, 1, None).await;
 
     assert!(!closed, "still writing at the cap, so given up on");
     assert_eq!(lines_written(lines, written).await, pieces);
@@ -211,7 +258,7 @@ async fn the_drain_ends_closed_once_the_output_closes() {
     drop(said);
     let (lines, written) = mpsc::channel(4);
 
-    assert!(drain(&mut output, &lines, 1).await);
+    assert!(drain(&mut output, &lines, 1, None).await);
     assert_eq!(lines_written(lines, written).await, 2);
 }
 
@@ -223,7 +270,7 @@ async fn the_drain_gives_up_on_silent_output_held_open_past_its_grace() {
     let (lines, _written) = mpsc::channel(1);
     let started = tokio::time::Instant::now();
 
-    assert!(!drain(&mut output, &lines, 1).await);
+    assert!(!drain(&mut output, &lines, 1, None).await);
     assert!(started.elapsed() >= DRAIN_GRACE, "{:?}", started.elapsed());
     drop(said);
 }

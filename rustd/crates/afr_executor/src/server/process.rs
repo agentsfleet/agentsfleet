@@ -11,6 +11,7 @@
 //! byte cap. When the token is cancelled, by a
 //! kill or because the session ended, the process is stopped the same way.
 
+use std::pin::Pin;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -91,9 +92,23 @@ impl ProcessRun {
         tracing::debug!(event, process_id = process, "a process started");
         let deadline = deadline(self.timeout);
         tokio::pin!(deadline);
+        let mut unsent = None;
         let ending = loop {
             tokio::select! {
-                Some(chunk) = output.recv() => forward(&lines, process, chunk).await,
+                Some(chunk) = output.recv() => {
+                    match forward_unless(&lines, process, chunk, &stop, deadline.as_mut()).await {
+                        Forwarded::Sent => {}
+                        Forwarded::Stopped(chunk) => {
+                            unsent = Some(chunk);
+                            break group.stop(&mut exit).await;
+                        }
+                        Forwarded::TimedOut(chunk) => {
+                            unsent = Some(chunk);
+                            group.stop(&mut exit).await;
+                            break Ending::TimedOut;
+                        }
+                    }
+                }
                 () = stop.cancelled() => break group.stop(&mut exit).await,
                 () = &mut deadline => {
                     group.stop(&mut exit).await;
@@ -109,7 +124,7 @@ impl ProcessRun {
         // closes and the drain below ends; a descendant outside the group is
         // waited for only as far as the grace and the cap.
         group.signal(Signal::KILL);
-        let output_abandoned = !drain(&mut output, &lines, process).await;
+        let output_abandoned = !drain(&mut output, &lines, process, unsent).await;
         if output_abandoned {
             let event = EVENT_OUTPUT_ABANDONED;
             tracing::debug!(
@@ -130,16 +145,22 @@ impl ProcessRun {
     }
 }
 
-/// Forwards what is left in `output` once the leader has ended, until it
+/// Forwards `unsent`, the chunk a stop or a deadline caught the driver
+/// holding, then what is left in `output` once the leader has ended, until it
 /// closes; `false` when it was given up on, past the grace spent waiting on
 /// the pipe or past the byte cap.
 async fn drain(
     output: &mut mpsc::Receiver<Chunk>,
     lines: &mpsc::Sender<Bytes>,
     process: u64,
+    unsent: Option<Chunk>,
 ) -> bool {
     let mut grace = DRAIN_GRACE;
     let mut forwarded = 0;
+    if let Some(chunk) = unsent {
+        forwarded += chunk.data.len();
+        forward(lines, process, chunk).await;
+    }
     while forwarded < DRAIN_BYTES_MAX {
         let waiting = Instant::now();
         let Ok(next) = tokio::time::timeout(grace, output.recv()).await else {
@@ -159,6 +180,40 @@ async fn drain(
 /// has ended means the supervisor is gone, and there is no one left to tell.
 async fn forward(lines: &mpsc::Sender<Bytes>, process: u64, chunk: Chunk) {
     let _writer_gone = lines.send(output_line(process, chunk)).await;
+}
+
+/// What became of a chunk handed to the writer while a stop or a deadline
+/// could land.
+enum Forwarded {
+    /// The writer took it, or has ended.
+    Sent,
+    /// A stop landed first; the chunk is handed back for the drain.
+    Stopped(Chunk),
+    /// The deadline landed first; the chunk is handed back for the drain.
+    TimedOut(Chunk),
+}
+
+/// Hands one chunk to the writer unless `stop` or `deadline` fires while the
+/// writer is behind: a kill or a timeout lands while the supervisor is not
+/// reading, and the chunk goes to the drain instead of being lost. The slot is
+/// reserved before the line is built, so a race lost keeps the chunk whole.
+async fn forward_unless(
+    lines: &mpsc::Sender<Bytes>,
+    process: u64,
+    chunk: Chunk,
+    stop: &CancellationToken,
+    deadline: Pin<&mut impl Future<Output = ()>>,
+) -> Forwarded {
+    tokio::select! {
+        permit = lines.reserve() => {
+            if let Ok(permit) = permit {
+                permit.send(output_line(process, chunk));
+            }
+            Forwarded::Sent
+        }
+        () = stop.cancelled() => Forwarded::Stopped(chunk),
+        () = deadline => Forwarded::TimedOut(chunk),
+    }
 }
 
 /// A process's group, named by its leader, and the number the session knows
