@@ -17,6 +17,8 @@ mod support;
 mod ends;
 #[path = "providers/hosts.rs"]
 mod hosts;
+#[path = "providers/retries.rs"]
+mod retries;
 #[path = "providers/turns.rs"]
 mod turns;
 

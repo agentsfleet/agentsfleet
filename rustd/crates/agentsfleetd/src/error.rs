@@ -154,11 +154,11 @@ pub enum BootFailure {
     /// The telemetry transport would not build from the resolved knobs.
     ///
     /// Refuses boot, and that is not over-strictness: preflight already
-    /// accepted every knob, so a failure here is an endpoint the exporter
-    /// cannot parse. A daemon that served on through it would export nothing
-    /// and look exactly like a collector that is down.
+    /// accepted every knob, so a failure here is a defect in the build. A
+    /// daemon that served on through it would export nothing and look exactly
+    /// like a collector that is down.
     #[error("agentsfleetd cannot boot: the telemetry exporter would not build")]
-    Exporter(#[from] opentelemetry_otlp::ExporterBuildError),
+    Exporter(#[source] afd_otlp::Error),
     /// The metric contract and the code disagree.
     ///
     /// A family a producer names and the census does not declare, a kind or a
@@ -166,6 +166,19 @@ pub enum BootFailure {
     /// one is a defect in this build rather than a condition to serve through.
     #[error("agentsfleetd cannot boot: the metric contract was refused")]
     Contract(#[from] afd_observability::Error),
+}
+
+impl From<afd_otlp::Error> for BootFailure {
+    /// A census refusal raised inside the transport's install is still the
+    /// census's: it reports as [`BootFailure::Contract`], as it did before the
+    /// transport moved into `afd_otlp`, and every other failure as the
+    /// exporter's.
+    fn from(failure: afd_otlp::Error) -> Self {
+        match failure.into_census() {
+            Ok(census) => Self::Contract(census),
+            Err(failure) => Self::Exporter(failure),
+        }
+    }
 }
 
 impl BootFailure {
@@ -258,4 +271,40 @@ mod tests {
         );
         Ok(())
     }
+
+    /// A census refusal raised inside the transport's install reports as the
+    /// census's own variant, as it did before the transport moved crates;
+    /// any other transport failure stays the exporter's.
+    #[tokio::test]
+    async fn a_ceiling_refused_at_install_is_still_a_census_refusal() -> Result<(), &'static str> {
+        let config = afd_otlp::OtlpConfig::new("http://127.0.0.1:1", afd_otlp::OTEL_ENDPOINT_KNOB)
+            .map_err(|_refused| "an absolute URL")?;
+        let zero = Registry::read(ZERO_CEILING).map_err(|_refused| "a zero ceiling reads")?;
+        let refused =
+            afd_otlp::Builder::new(&config, afd_otlp::Service::new("a-test", "0.0.0"), zero)
+                .install()
+                .err()
+                .ok_or("the SDK refuses a zero ceiling")?;
+
+        assert!(matches!(
+            BootFailure::from(refused),
+            BootFailure::Contract(_)
+        ));
+
+        let knob = afd_otlp::Error::from(afd_otlp::Refused {
+            knob: afd_otlp::OTEL_ENDPOINT_KNOB,
+            why: "a sentence",
+        });
+        let exporter = BootFailure::from(knob);
+        assert!(matches!(exporter, BootFailure::Exporter(_)));
+        assert!(
+            std::error::Error::source(&exporter).is_some(),
+            "the transport's reason is the cause a boot log walks to"
+        );
+        Ok(())
+    }
+
+    /// A census of one counter whose ceiling the SDK refuses.
+    const ZERO_CEILING: &str = "name\tkind\tnumber\tunit\ttemporality\tlabels\tbounds\tpolicy\tlive_read\tcategory\twatch_for\n\
+                                a.family\tcounter\tu64\t1\tcumulative\t-\t-\tfixed:0\tno\ttraffic\tnothing\n";
 }

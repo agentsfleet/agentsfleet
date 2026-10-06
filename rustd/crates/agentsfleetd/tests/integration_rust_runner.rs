@@ -173,7 +173,7 @@ async fn assert_memory_pushed(run: &crate::e2e::Scenario) {
 /// Reassigns the seeded runner a policy with no egress control: this runner
 /// reports none yet, and the daemon rightly withholds leases from a host that
 /// cannot enforce what its assignment demands.
-async fn allow_all_egress(run: &crate::e2e::Scenario) {
+pub(crate) async fn allow_all_egress(run: &crate::e2e::Scenario) {
     use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
     let policy = AssignedPolicy {
         sandbox_tier: SandboxTier::LandlockFull,

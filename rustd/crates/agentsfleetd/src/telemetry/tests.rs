@@ -1,4 +1,5 @@
-//! Dimension 3.1 — boot builds the transport and supervises its flush.
+//! Boot builds the transport and supervises its flush, from the same knobs the
+//! moved builder reads.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -9,10 +10,13 @@
 use afd_core::env::MapEnv;
 use afd_observability::producers::GaugeSources;
 
-use opentelemetry_otlp::Protocol;
+use afd_otlp::Encoding;
 
 use crate::inventory::OTLP_EXPORT;
-use crate::preflight::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB, preflight};
+use crate::preflight::{
+    GRAFANA_API_KEY_KNOB, GRAFANA_INSTANCE_KNOB, OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB,
+    OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, preflight,
+};
 use crate::serve::{attach_exports, open_telemetry};
 use crate::supervisor::Supervisor;
 
@@ -141,77 +145,56 @@ async fn the_json_protocol_builds_a_transport() {
     let _report = supervisor.shutdown().await;
 }
 
-/// A trailing slash on the endpoint does not double the separator.
+/// The daemon builds the same pipelines from the same knobs after the move.
 ///
-/// The signal path is appended programmatically, so the endpoint's own last
-/// character decides the URL. `https://host//v1/traces` is a path a collector
-/// does not route, and the daemon that posted it would report success at
-/// every layer it owns while nothing arrived.
-#[test]
-fn a_trailing_slash_does_not_double_the_signal_path() {
-    let config = configured(&[(OTEL_ENDPOINT_KNOB, "https://collector.example.test/")]);
-    let otlp = config.otlp().expect("an endpoint is configured");
-
-    assert_eq!(
-        super::signal_endpoint(otlp, super::TRACES_PATH),
-        "https://collector.example.test/v1/traces"
-    );
-}
-
-/// Every signal carries its `/v1/` path, and the base origin alone is not it.
-///
-/// The exporter is handed a COMPLETE url, because a programmatically-set
-/// endpoint is used verbatim (`resolve_http_endpoint` in
-/// `opentelemetry-otlp`). The crate's own example documents the opposite and
-/// is wrong, so this asserts the property a reader trusting that example would
-/// delete: post to the bare origin and a collector answers 404 while the
-/// daemon's own counters report a successful export.
-#[test]
-fn each_signal_posts_under_its_versioned_path() {
-    let config = configured(&[(OTEL_ENDPOINT_KNOB, "http://otelcol-dev.internal:4318")]);
+/// The builder left this crate for `afd_otlp`, and the risk of a move is a
+/// knob that stops reaching the exporter on the way: a vendor credential that
+/// no longer becomes a header, a JSON request that posts protobuf, a timeout
+/// read in the wrong unit. So every knob the daemon reads is set at once, and
+/// what reaches the transport is read back — endpoint per signal, encoding,
+/// timeout, header names — then the transport is built, log pipeline
+/// included, because the daemon is the binary that bridges its records.
+#[tokio::test]
+async fn test_daemon_otlp_install_is_unchanged() {
+    let config = configured(&[
+        (OTEL_ENDPOINT_KNOB, "http://otelcol-dev.internal:4318/"),
+        (OTEL_PROTOCOL_KNOB, "http/json"),
+        (OTEL_TIMEOUT_KNOB, "1500"),
+        (OTEL_HEADERS_KNOB, "x-scope-orgid=tenant-a"),
+        (GRAFANA_INSTANCE_KNOB, "123456"),
+        (GRAFANA_API_KEY_KNOB, "fixture-token-not-a-credential"),
+    ]);
     let otlp = config.otlp().expect("an endpoint is configured");
 
     for (path, expected) in [
-        (
-            super::TRACES_PATH,
-            "http://otelcol-dev.internal:4318/v1/traces",
-        ),
-        (
-            super::METRICS_PATH,
-            "http://otelcol-dev.internal:4318/v1/metrics",
-        ),
-        (super::LOGS_PATH, "http://otelcol-dev.internal:4318/v1/logs"),
+        ("/v1/traces", "http://otelcol-dev.internal:4318/v1/traces"),
+        ("/v1/metrics", "http://otelcol-dev.internal:4318/v1/metrics"),
+        ("/v1/logs", "http://otelcol-dev.internal:4318/v1/logs"),
     ] {
-        let built = super::signal_endpoint(otlp, path);
-        assert_eq!(built, expected);
-        assert_ne!(
-            built, "http://otelcol-dev.internal:4318",
-            "the bare origin is not a signal endpoint"
-        );
+        assert_eq!(otlp.signal_endpoint(path), expected);
     }
-}
+    assert_eq!(otlp.encoding(), Encoding::HttpJson);
+    assert_eq!(otlp.timeout(), std::time::Duration::from_millis(1500));
+    let names: Vec<&str> = otlp
+        .headers()
+        .iter()
+        .map(|(name, _value)| name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        vec!["Authorization", "x-scope-orgid"],
+        "the vendor pair still becomes a credential header beside the standard ones"
+    );
+    assert_eq!(otlp.source(), OTEL_ENDPOINT_KNOB);
 
-/// The two accepted spellings reach the exporter's own two encodings.
-///
-/// The knob's vocabulary and the SDK's are different types, and the mapping
-/// between them is the only place they meet. A default that answered for both
-/// would accept `http/json` at preflight and post protobuf.
-#[test]
-fn each_accepted_protocol_maps_to_its_own_encoding() {
-    let json = configured(&[
-        (OTEL_ENDPOINT_KNOB, UNREACHABLE),
-        (OTEL_PROTOCOL_KNOB, "http/json"),
-    ]);
-    let default = configured(&[(OTEL_ENDPOINT_KNOB, UNREACHABLE)]);
-
-    assert!(matches!(
-        super::protocol_of(json.otlp().expect("configured")),
-        Protocol::HttpJson
-    ));
-    assert!(matches!(
-        super::protocol_of(default.otlp().expect("configured")),
-        Protocol::HttpBinary
-    ));
+    let (exports, _instruments) = super::install(otlp).expect("the knobs build every pipeline");
+    assert!(
+        exports.logger().is_some(),
+        "the daemon still bridges its log records, so it still builds a log pipeline"
+    );
+    tokio::task::spawn_blocking(move || exports.flush())
+        .await
+        .expect("the flush runs to completion");
 }
 
 /// The resident reading is a real measurement or nothing, never a guess.

@@ -23,6 +23,12 @@ use crate::test_support::{
 };
 use crate::turns::FleetTurns;
 
+/// The metered fields a renewal and a report carry, by their wire names.
+const TOKENS: &str = "tokens";
+const INPUT_TOKENS: &str = "input_tokens";
+const CACHED_INPUT_TOKENS: &str = "cached_input_tokens";
+const OUTPUT_TOKENS: &str = "output_tokens";
+
 /// One answer the test daemon gives before its defaults.
 type Special = fn(&Call) -> Option<Answer>;
 
@@ -119,6 +125,58 @@ async fn the_report_settles_before_a_stalled_live_tail_and_the_wait_is_bounded()
     );
 }
 
+/// The frames a run emitted that `recorded` counts as abandoned.
+fn abandoned(recorded: &std::sync::mpsc::Receiver<afr_telemetry::testing::Recorded>) -> Vec<u64> {
+    use afr_telemetry::labels::FrameDrop;
+    use afr_telemetry::testing::Recorded;
+
+    recorded
+        .try_iter()
+        .filter_map(|recorded| match recorded {
+            Recorded::FramesDropped(FrameDrop::Abandoned, frames) => Some(frames),
+            _other => None,
+        })
+        .collect()
+}
+
+/// A live tail the lease stopped waiting for counts the frames it still held
+/// as abandoned: the fake engine's one chunk, stalled in its post.
+#[tokio::test(start_paused = true)]
+async fn a_live_tail_abandoned_at_the_drain_wait_counts_what_it_held() {
+    use afr_telemetry::testing::{Tally, scoped};
+
+    let stalled: Special = |call| (call.verb == Verb::Activity).then_some(Answer::Stall);
+    let mut rig = rig(stalled, FakeEngine::default(), Behaviour::Answer);
+    let (tally, recorded) = Tally::new();
+
+    scoped(tally, rig.run(&lease(LEASE_ID, FLEET_ID, None)))
+        .await
+        .unwrap();
+
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
+    assert_eq!(
+        abandoned(&recorded),
+        vec![1],
+        "the one frame the run emitted"
+    );
+}
+
+/// A live tail that drained abandons nothing.
+#[tokio::test(start_paused = true)]
+async fn a_drained_live_tail_abandons_nothing() {
+    use afr_telemetry::testing::{Tally, scoped};
+
+    let mut rig = rig(healthy, FakeEngine::default(), Behaviour::Answer);
+    let (tally, recorded) = Tally::new();
+
+    scoped(tally, rig.run(&lease(LEASE_ID, FLEET_ID, None)))
+        .await
+        .unwrap();
+
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
+    assert!(abandoned(&recorded).is_empty());
+}
+
 #[tokio::test(start_paused = true)]
 async fn a_skill_only_bundle_runs_without_one() {
     let absent: Special = |call| {
@@ -186,9 +244,9 @@ async fn a_run_cut_by_its_renewal_still_reports_its_tokens_and_pushes_its_memory
     let calls = rig.calls();
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
-    assert_eq!(report["tokens"], 8, "the run's tokens are billed");
-    assert_eq!(report["input_tokens"], 3);
-    assert_eq!(report["output_tokens"], 4);
+    assert_eq!(report[TOKENS], 8, "the run's tokens are billed");
+    assert_eq!(report[INPUT_TOKENS], 3);
+    assert_eq!(report[OUTPUT_TOKENS], 4);
     assert!(
         position(&calls, Verb::Capture).is_some(),
         "the run's memory is pushed"
@@ -208,15 +266,15 @@ async fn a_run_cut_before_it_answered_bills_the_meter_at_renewal_and_in_its_repo
     let renewal = position(&calls, Verb::Renew).unwrap();
     let renewed: serde_json::Value =
         serde_json::from_slice(calls[renewal].body.as_ref().unwrap()).unwrap();
-    assert_eq!(renewed["input_tokens"], 3, "the renewal carried the meter");
-    assert_eq!(renewed["cached_input_tokens"], 1);
-    assert_eq!(renewed["output_tokens"], 4);
+    assert_eq!(renewed[INPUT_TOKENS], 3, "the renewal carried the meter");
+    assert_eq!(renewed[CACHED_INPUT_TOKENS], 1);
+    assert_eq!(renewed[OUTPUT_TOKENS], 4);
     let report = reported(&calls);
     assert_eq!(report[FAILURE_REASON], RENEWAL_TERMINATE);
-    assert_eq!(report["tokens"], 8, "the failed report bills the meter");
-    assert_eq!(report["input_tokens"], 3);
-    assert_eq!(report["cached_input_tokens"], 1);
-    assert_eq!(report["output_tokens"], 4);
+    assert_eq!(report[TOKENS], 8, "the failed report bills the meter");
+    assert_eq!(report[INPUT_TOKENS], 3);
+    assert_eq!(report[CACHED_INPUT_TOKENS], 1);
+    assert_eq!(report[OUTPUT_TOKENS], 4);
 }
 
 #[tokio::test(start_paused = true)]
