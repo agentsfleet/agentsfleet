@@ -35,14 +35,15 @@ async fn output_reads_in_order_then_the_ending_then_nothing() {
     let (feed, mut events) = Events::channel();
     feed.output(Stream::Stdout, Bytes::from_static(b"a"));
     feed.output(Stream::Stdout, Bytes::from_static(b"b"));
-    feed.end(Ending::Exited(0));
+    feed.end(Ending::Exited(0), false);
 
     assert_eq!(events.recv().await, Some(said(b"a")));
     assert_eq!(events.recv().await, Some(said(b"b")));
     assert_eq!(
         events.recv().await,
         Some(ProcessEvent::Ended {
-            ending: Ending::Exited(0)
+            ending: Ending::Exited(0),
+            output_abandoned: false
         })
     );
     assert_eq!(events.recv().await, None);
@@ -100,7 +101,7 @@ async fn finished_waits_through_output_without_reading_it() {
     tokio::time::sleep(GLANCE).await;
 
     assert!(!waiter.is_finished(), "output alone does not finish it");
-    feed.end(Ending::Signaled(9));
+    feed.end(Ending::Signaled(9), false);
     let mut events = tokio::time::timeout(PATIENCE, waiter)
         .await
         .unwrap()
@@ -115,7 +116,7 @@ async fn test_a_caller_that_reads_only_at_the_end_holds_the_edges_and_a_count() 
     for _ in 0..total / CHUNK_BYTES {
         feed.output(Stream::Stdout, Bytes::from(vec![b'y'; CHUNK_BYTES]));
     }
-    feed.end(Ending::Exited(0));
+    feed.end(Ending::Exited(0), false);
     tokio::time::timeout(PATIENCE, events.finished())
         .await
         .unwrap();
@@ -125,7 +126,7 @@ async fn test_a_caller_that_reads_only_at_the_end_holds_the_edges_and_a_count() 
         match event {
             ProcessEvent::Output { data, .. } => kept += data.len(),
             ProcessEvent::Omitted { bytes } => omitted += bytes,
-            ProcessEvent::Ended { ending: ended } => ending = Some(ended),
+            ProcessEvent::Ended { ending: ended, .. } => ending = Some(ended),
         }
     }
 
@@ -146,7 +147,7 @@ async fn a_feed_on_another_thread_loses_no_wakeup_and_no_byte() {
         for _ in 0..PIECES {
             feed.output(Stream::Stdout, Bytes::from_static(PIECE));
         }
-        feed.end(Ending::Exited(0));
+        feed.end(Ending::Exited(0), false);
     });
 
     let (read, omitted, ending) = tokio::time::timeout(PATIENCE, async {
@@ -155,7 +156,7 @@ async fn a_feed_on_another_thread_loses_no_wakeup_and_no_byte() {
             match events.recv().await {
                 Some(ProcessEvent::Output { data, .. }) => read += data.len(),
                 Some(ProcessEvent::Omitted { bytes }) => omitted += bytes,
-                Some(ProcessEvent::Ended { ending }) => return (read, omitted, ending),
+                Some(ProcessEvent::Ended { ending, .. }) => return (read, omitted, ending),
                 None => panic!("the events finished with no ending"),
             }
         }
@@ -180,7 +181,7 @@ async fn a_process_read_to_its_end_passes_over_what_was_dropped() {
     for _ in 0..(6 * EDGE_BYTES) / CHUNK_BYTES {
         feed.output(Stream::Stdout, Bytes::from(vec![b'y'; CHUNK_BYTES]));
     }
-    feed.end(Ending::Exited(3));
+    feed.end(Ending::Exited(3), false);
     let process = Process {
         id: ProcessId::new(1),
         events,
@@ -212,4 +213,18 @@ async fn a_process_whose_events_finish_with_no_ending_reads_to_none() {
 
     assert_eq!(ending, None);
     assert_eq!(handed, b"partial");
+}
+
+#[tokio::test]
+async fn an_ending_carries_whether_output_was_left_behind() {
+    let (feed, mut events) = Events::channel();
+    feed.end(Ending::Exited(0), true);
+
+    assert_eq!(
+        events.recv().await,
+        Some(ProcessEvent::Ended {
+            ending: Ending::Exited(0),
+            output_abandoned: true,
+        })
+    );
 }

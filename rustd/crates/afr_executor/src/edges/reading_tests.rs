@@ -112,3 +112,34 @@ fn nothing_unread_reads_as_none() {
     assert_eq!(unread.pop(), Some(Next::Output(stdout(b"a"))));
     assert_eq!(unread.pop(), None);
 }
+
+/// A character the head starts and a gap cuts off joins the gap, so the
+/// reader never gets a lead byte with nothing after it.
+#[test]
+fn a_character_the_head_starts_before_a_gap_joins_the_gap() {
+    let mut unread = Unread::new(4);
+    unread.push(stdout(b"aaaa"));
+    unread.push(stdout(b"cc"));
+    unread.push(stdout(b"b\xe2\x82"));
+    assert_eq!(unread.pop(), Some(Next::Output(stdout(b"aaaa"))));
+    assert_eq!(
+        unread.pop(),
+        Some(Next::Omitted(1)),
+        "the tail made room once"
+    );
+    // The old tail is the head now, full, and ends two bytes into a euro
+    // sign; the sign's last byte lands in the tail and is dropped from it.
+    unread.push(stdout(b"\xac"));
+    unread.push(stdout(b"dddd"));
+
+    assert_eq!(
+        drain(&mut unread),
+        [
+            Next::Output(stdout(b"c")),
+            Next::Output(stdout(b"b")),
+            Next::Omitted(3),
+            Next::Output(stdout(b"dddd")),
+        ],
+        "the two bytes the sign started with join the gap"
+    );
+}

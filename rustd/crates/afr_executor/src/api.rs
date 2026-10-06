@@ -103,6 +103,9 @@ pub enum ProcessEvent {
     Ended {
         /// How it ended.
         ending: Ending,
+        /// Whether output still arriving when it ended was left behind, so
+        /// what was read is not all it said.
+        output_abandoned: bool,
     },
 }
 
@@ -228,7 +231,7 @@ impl Process {
             match event {
                 ProcessEvent::Output { stream, data } => output(stream, data),
                 ProcessEvent::Omitted { .. } => {}
-                ProcessEvent::Ended { ending } => return Some(ending),
+                ProcessEvent::Ended { ending, .. } => return Some(ending),
             }
         }
         None

@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use afr_executor::{Ending, Executor as _, Spawn};
 use rustix::process::{Pid, Signal, kill_process};
 
-use crate::support::{finish, start};
+use crate::support::{Finished, finish, start};
 
 /// The leader forks and exits; the child starts a session of its own, says
 /// its pid, and sleeps holding the output. `setsid sleep 600 &` without the
@@ -28,19 +28,19 @@ const PROMPTLY: Duration = Duration::from_secs(10);
 
 /// Runs the orphan maker and answers how it ended, how long that took, and
 /// the orphan's pid from whatever output arrived.
-async fn orphaned(spawn: Spawn) -> (Vec<Ending>, Duration, Option<Pid>) {
+async fn orphaned(spawn: Spawn) -> (Finished, Duration, Option<Pid>) {
     let harness = start().await;
     let started = Instant::now();
 
     let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
-    let said = [finished.stdout, finished.terminal].concat();
+    let said = [finished.stdout.as_slice(), finished.terminal.as_slice()].concat();
     let pid = String::from_utf8_lossy(&said)
         .trim()
         .parse()
         .ok()
         .and_then(Pid::from_raw);
-    (finished.endings, started.elapsed(), pid)
+    (finished, started.elapsed(), pid)
 }
 
 /// Ends the orphan the test left behind.
@@ -52,24 +52,30 @@ fn reap(pid: Option<Pid>) {
 
 #[tokio::test]
 async fn a_descendant_in_its_own_session_does_not_hold_the_end_of_a_pipe_process() {
-    let (endings, took, pid) = orphaned(Spawn::program("perl").args(["-e", ORPHAN])).await;
+    let (finished, took, pid) = orphaned(Spawn::program("perl").args(["-e", ORPHAN])).await;
     reap(pid);
 
-    assert_eq!(endings, [Ending::Exited(0)]);
+    assert_eq!(finished.endings, [Ending::Exited(0)]);
     assert!(took < PROMPTLY, "reported ended after {took:?}");
     assert!(
         pid.is_some(),
         "the orphan said its pid before the drain ended"
+    );
+    assert!(
+        finished.abandoned,
+        "the orphan held the output open past the grace, and the ending says so"
     );
 }
 
 #[tokio::test]
 async fn a_descendant_in_its_own_session_does_not_hold_the_end_of_a_terminal_process() {
     let spawn = Spawn::program("perl").args(["-e", ORPHAN]).terminal();
-    let (endings, took, pid) = orphaned(spawn).await;
+    let (finished, took, pid) = orphaned(spawn).await;
     reap(pid);
 
-    assert_eq!(endings, [Ending::Exited(0)]);
+    assert_eq!(finished.endings, [Ending::Exited(0)]);
+    // Whether the terminal's output closes with its leader or stays held by
+    // the orphan is the platform's call, so nothing is asserted of it here.
     assert!(took < PROMPTLY, "reported ended after {took:?}");
 }
 

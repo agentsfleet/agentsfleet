@@ -118,6 +118,21 @@ fn a_line_exactly_the_budget_is_kept_whole_and_says_nothing_of_a_cut() {
     assert_eq!(page.next, Some(2));
 }
 
+/// A cut line is alone on its page: a character straddling the budget moves
+/// the cut back a few bytes, and no short next line may take that room, or
+/// the model would read line 2 as the end of line 1 and the next offset
+/// would skip it.
+#[test]
+fn a_cut_line_is_alone_on_its_page() {
+    let wide = format!("{}😀\n}}\nnext\n", "x".repeat(7));
+
+    let page = Page::of(&wide, 1, LINES_DEFAULT, 10).unwrap();
+
+    assert_eq!(page.text, "x".repeat(7));
+    assert_eq!(page.cut, Some((1, 7, 12)));
+    assert_eq!(page.next, Some(2), "line 2 is read on its own page");
+}
+
 #[test]
 fn an_offset_past_the_last_line_is_none_and_an_empty_file_reads_empty() {
     assert_eq!(Page::of("a\n", 2, 1, 100), None);

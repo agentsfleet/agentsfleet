@@ -43,7 +43,7 @@ impl Executor for Canned {
         feed.output(Stream::Stdout, Bytes::from_static(b"out"));
         // With no ending, the feed goes here, as a lost executor's does.
         if let Some(ending) = self.ending {
-            feed.end(ending);
+            feed.end(ending, false);
         }
         Ok(Process {
             id: ProcessId::new(1),

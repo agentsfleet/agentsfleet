@@ -41,6 +41,8 @@ const REPL: &str = "python3";
 /// The directory a session asks to start in.
 const WORKDIR: &str = "src";
 /// The first line written to a session.
+/// What a REPL is told to leave by.
+const EXIT: &str = "exit()\n";
 const ONE: &str = "one\n";
 /// The second line written to a session.
 const TWO: &str = "two\n";
@@ -255,16 +257,10 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     });
     let started = Instant::now();
 
-    let output = call_in(
-        &*write(),
-        &*executor,
-        &mut lease,
-        writing(1, "exit()\n", None),
-    )
-    .await;
+    let output = call_in(&*write(), &*executor, &mut lease, writing(1, EXIT, None)).await;
 
     assert!(exit.await.unwrap(), "the process was open to end");
-    assert_eq!(output.text, "exit()\nProcess exited with code 0");
+    assert_eq!(output.text, format!("{EXIT}Process exited with code 0"));
     assert_eq!(output.exit_code, Some(0));
     assert_eq!(
         started.elapsed(),
@@ -274,5 +270,30 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     assert!(
         lease.sessions.get_mut(FIRST).is_none(),
         "an ended session leaves"
+    );
+}
+
+/// A process that ended between the look before a write and the write
+/// itself: the write finds no process, and the call answers its ending,
+/// never the sandbox gone.
+#[tokio::test(start_paused = true)]
+async fn should_answer_the_ending_of_a_process_gone_by_the_time_of_a_write() {
+    let executor =
+        ScriptedExecutor::new([ScriptedProcess::ends_when_written("", Ending::Exited(3))]);
+    let mut lease = Lease::default();
+    open(&executor, &mut lease, REPL).await;
+
+    let output = call_in(&*write(), &executor, &mut lease, writing(1, EXIT, None)).await;
+
+    assert_eq!(output.text, "Process exited with code 3");
+    assert_eq!(output.exit_code, Some(3));
+    assert_eq!(output.error_code, None);
+    assert_eq!(
+        executor.written(),
+        [(FIRST, Bytes::from_static(EXIT.as_bytes()))]
+    );
+    assert!(
+        lease.sessions.get_mut(FIRST).is_none(),
+        "the session is closed"
     );
 }

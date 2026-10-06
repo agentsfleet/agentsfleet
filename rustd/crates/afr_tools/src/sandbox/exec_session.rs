@@ -141,17 +141,30 @@ impl Handler for WriteStdin {
         let ended = if let Some(ending) = collected.arrived(process) {
             Some(ending)
         } else {
+            let mut gone = None;
             let floor = if arguments.chars.is_empty() {
                 EMPTY_WRITE_YIELD_MS_MIN
             } else {
-                let chars = Bytes::from(arguments.chars);
-                if let Err(failure) = executor.write(id, chars).await {
-                    return unavailable(&failure);
+                match executor.write(id, Bytes::from(arguments.chars)).await {
+                    Ok(()) => YIELD_MS_MIN,
+                    // Ended between the look above and the write: its ending
+                    // is on its way, behind whatever it left to say, so the
+                    // call waits its yield for it.
+                    Err(failure) if failure.is_unknown_process() => {
+                        gone = Some(failure);
+                        YIELD_MS_MIN
+                    }
+                    Err(failure) => return unavailable(&failure),
                 }
-                YIELD_MS_MIN
             };
             let deadline = Instant::now() + yield_of(arguments.yield_time_ms, floor);
-            collected.until(process, deadline).await
+            let ended = collected.until(process, deadline).await;
+            // No ending within the yield after a write found no process: the
+            // sandbox is gone, not the process.
+            if let (None, Some(failure)) = (ended, &gone) {
+                return unavailable(failure);
+            }
+            ended
         };
         let budget = output::budget(arguments.max_output_tokens);
         reply(sessions, id, &collected, ended, budget)
