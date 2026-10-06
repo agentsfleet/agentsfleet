@@ -12,7 +12,7 @@ use afd_core::test_util::trace::Capture;
 use afd_wire::credentials::MintCredentialResponse;
 use afd_wire::lease::LeasePayload;
 use afd_wire::policy::{RepositoryAccess, RepositoryBinding};
-use afr_tools::catalog::{FILE_READ, GIT};
+use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST};
 use afr_tools::sandbox::CREDENTIAL_GITHUB;
 
 use super::{
@@ -132,13 +132,34 @@ async fn a_lease_offering_git_has_its_repository_checked_out_before_the_turn() {
     );
 }
 
+/// A lease of file tools alone works in the workspace, so it reads the
+/// repository there, not an empty directory.
 #[tokio::test]
-async fn a_lease_without_a_process_tool_checks_nothing_out() {
+async fn a_lease_offering_only_file_tools_has_its_repository_checked_out() {
     let workspace = tempfile::tempdir().unwrap();
     let mut rig = rig(Some(workspace.path().to_owned()), |_| None);
     served(&rig);
 
     rig.run(&bound(&[FILE_READ.name()], WORKSPACE_ID))
+        .await
+        .unwrap();
+
+    let calls = rig.calls();
+    assert_eq!(mints(&calls), 1);
+    assert_eq!(
+        fs::read_to_string(workspace.path().join(NAME).join("README.md")).unwrap(),
+        FIRST_README
+    );
+    assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
+}
+
+#[tokio::test]
+async fn a_lease_with_no_tool_in_the_sandbox_checks_nothing_out() {
+    let workspace = tempfile::tempdir().unwrap();
+    let mut rig = rig(Some(workspace.path().to_owned()), |_| None);
+    served(&rig);
+
+    rig.run(&bound(&[HTTP_REQUEST.name()], WORKSPACE_ID))
         .await
         .unwrap();
 

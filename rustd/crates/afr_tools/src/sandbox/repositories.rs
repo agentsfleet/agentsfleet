@@ -6,15 +6,13 @@
 
 use afd_wire::policy::ExecutionPolicy;
 
-use crate::catalog::{EXEC_COMMAND, GIT, SHELL};
+use crate::catalog;
 use crate::error::{self, Result};
+use crate::runtime::Runtime;
 
 /// The integration a repository's token is minted from; the daemon's
 /// `afd_gate` spells its own constant alike.
 pub const CREDENTIAL_GITHUB: &str = "github";
-/// The tools that run processes in the workspace: a lease offering one gets
-/// its bound repositories checked out.
-const PROCESS_TOOLS: [&str; 3] = [SHELL.name(), EXEC_COMMAND.name(), GIT.name()];
 /// The one character between a repository's owner and its name.
 const OWNER_SEPARATOR: char = '/';
 /// Path segments that would climb out of the workspace or stand still.
@@ -35,22 +33,18 @@ pub struct Checkout<'p> {
 }
 
 /// The repositories a lease under `policy` gets checked out: every bound one
-/// when an offered tool runs processes, none otherwise.
+/// when an offered tool runs in the sandbox, where it works in the workspace,
+/// and none for a lease that starts no sandbox.
 ///
 /// # Errors
 /// A bound name that is not `owner/name` of plain path segments, or two bound
 /// names that would land in one directory: the lease is refused rather than
 /// cloned somewhere else.
 pub fn checkouts<'p>(policy: &'p ExecutionPolicy<'_>) -> Result<Vec<Checkout<'p>>> {
-    let runs_processes = policy
-        .tools
-        .iter()
-        .any(|tool| PROCESS_TOOLS.contains(&tool.as_ref()));
-    let Some(binding) = policy
-        .repository_binding
-        .as_ref()
-        .filter(|_| runs_processes)
-    else {
+    let in_sandbox = policy.tools.iter().any(|tool| {
+        catalog::published(tool).is_some_and(|entry| entry.runtime() == Runtime::Sandbox)
+    });
+    let Some(binding) = policy.repository_binding.as_ref().filter(|_| in_sandbox) else {
         return Ok(Vec::new());
     };
     let found: Vec<Checkout<'p>> = binding
