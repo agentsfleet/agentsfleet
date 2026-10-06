@@ -166,10 +166,10 @@ impl Error {
     #[must_use]
     pub fn wire_message(&self) -> String {
         let kind = self.kind();
-        kept_to_the_wire(
-            std::error::Error::source(kind)
-                .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}")),
-        )
+        let mut said = std::error::Error::source(kind)
+            .map_or_else(|| kind.to_string(), |cause| format!("{kind}: {cause}"));
+        said.truncate(wire_end(&said));
+        said
     }
 
     /// Whether the path left the workspace, by name or through a link. True
@@ -221,11 +221,12 @@ impl Error {
     }
 }
 
-/// `text` cut to `WIRE_MESSAGE_MAX_BYTES` on a character boundary; whole
-/// when it fits.
-pub(crate) fn kept_to_the_wire(mut text: String) -> String {
-    text.truncate(text.floor_char_boundary(WIRE_MESSAGE_MAX_BYTES));
-    text
+/// Where `text` ends once kept to `WIRE_MESSAGE_MAX_BYTES`: a character
+/// boundary, so a cut there halves no character, and `text.len()` when it
+/// fits. A boundary rather than a cut, so a borrowed flood is sliced before
+/// it is ever copied.
+fn wire_end(text: &str) -> usize {
+    text.floor_char_boundary(WIRE_MESSAGE_MAX_BYTES)
 }
 
 /// Whether an operating-system refusal is about what the caller asked for —
