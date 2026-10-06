@@ -13,7 +13,7 @@ use afd_wire::memory::MemoryDelta;
 use afd_wire::report::ResultOutcome;
 use afr_egress::testing::CountingMint;
 use afr_executor::{
-    Ending, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
+    Ending, Events, Executor, FileContent, Listing, Process, ProcessId, Spawn, Stream,
 };
 use bytes::Bytes;
 use tokio_util::sync::CancellationToken;
@@ -39,19 +39,11 @@ impl Executor for Canned {
         if self.refuse {
             return Err(std::io::Error::other("the socket is gone").into());
         }
-        let (sender, events) = tokio::sync::mpsc::unbounded_channel();
-        let output = ProcessEvent::Output {
-            stream: Stream::Stdout,
-            data: Bytes::from_static(b"out"),
-        };
-        sender.send(output).unwrap();
+        let (feed, events) = Events::channel();
+        feed.output(Stream::Stdout, Bytes::from_static(b"out"));
+        // With no ending, the feed goes here, as a lost executor's does.
         if let Some(ending) = self.ending {
-            sender
-                .send(ProcessEvent::Ended {
-                    ending,
-                    omitted_bytes: 0,
-                })
-                .unwrap();
+            feed.end(ending);
         }
         Ok(Process {
             id: ProcessId::new(1),

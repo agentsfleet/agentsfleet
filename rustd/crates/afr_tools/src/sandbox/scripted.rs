@@ -1,8 +1,8 @@
 //! An executor whose processes are scripted, for the suites that prove the
 //! sandbox-side handlers and a run's end without a sandbox.
 //!
-//! Each spawn runs the next script on a fresh channel and records what it was
-//! asked. A script that stays open keeps its sender, so its process runs
+//! Each spawn runs the next script on fresh events and records what it was
+//! asked. A script that stays open keeps its feed, so its process runs
 //! until the suite ends it or a kill does; one that echoes answers each write
 //! with the same bytes, as `cat` does. Like the real executor, it refuses a
 //! write or a kill naming a process it does not hold.
@@ -12,10 +12,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use afr_executor::{
-    Ending, Executor, FileContent, Listing, Process, ProcessEvent, ProcessId, Spawn, Stream,
+    Ending, Events, Executor, Feed, FileContent, Listing, Process, ProcessId, Spawn, Stream,
 };
 use bytes::Bytes;
-use tokio::sync::mpsc::{self, UnboundedSender};
 
 /// The signal a kill ends a scripted process with.
 const KILLED: i32 = 9;
@@ -26,27 +25,32 @@ const UNKNOWN_PROCESS: &str = "no process with that identifier";
 /// What a file call fails with.
 const PROCESSES_ONLY: &str = "a scripted executor runs processes only";
 
-/// One scripted process: what it prints, and how it ends.
+/// One scripted process: what it prints, and what happens after.
 #[derive(Debug)]
 pub struct ScriptedProcess {
-    events: Vec<ProcessEvent>,
-    open: bool,
-    echo: bool,
+    output: Option<Bytes>,
+    then: Then,
+}
+
+/// What a scripted process does once it has printed.
+#[derive(Debug)]
+enum Then {
+    /// Ends as this.
+    Ends(Ending),
+    /// Runs until the suite ends it or a kill does, printing back what is
+    /// written to it when it echoes.
+    StaysOpen { echo: bool },
+    /// Its events finish with no ending, as a lost executor's do.
+    Vanishes,
 }
 
 impl ScriptedProcess {
     /// Prints `output` and ends as `ending`.
     #[must_use]
     pub fn ends(output: &str, ending: Ending) -> Self {
-        let mut events = said(output);
-        events.push(ProcessEvent::Ended {
-            ending,
-            omitted_bytes: 0,
-        });
         Self {
-            events,
-            open: false,
-            echo: false,
+            output: said(output),
+            then: Then::Ends(ending),
         }
     }
 
@@ -60,9 +64,8 @@ impl ScriptedProcess {
     #[must_use]
     pub fn stays_open(output: &str) -> Self {
         Self {
-            events: said(output),
-            open: true,
-            echo: false,
+            output: said(output),
+            then: Then::StaysOpen { echo: false },
         }
     }
 
@@ -70,40 +73,32 @@ impl ScriptedProcess {
     #[must_use]
     pub fn echoes() -> Self {
         Self {
-            events: Vec::new(),
-            open: true,
-            echo: true,
+            output: None,
+            then: Then::StaysOpen { echo: true },
         }
     }
 
-    /// Prints `output`, then its channel closes with no ending, as a lost
-    /// executor's does.
+    /// Prints `output`, then its events finish with no ending, as a lost
+    /// executor's do.
     #[must_use]
     pub fn vanishes(output: &str) -> Self {
         Self {
-            events: said(output),
-            open: false,
-            echo: false,
+            output: said(output),
+            then: Then::Vanishes,
         }
     }
 }
 
-/// `output` on standard output as one chunk; nothing for no output.
-fn said(output: &str) -> Vec<ProcessEvent> {
-    (!output.is_empty())
-        .then(|| ProcessEvent::Output {
-            stream: Stream::Stdout,
-            data: Bytes::copy_from_slice(output.as_bytes()),
-        })
-        .into_iter()
-        .collect()
+/// `output` as one chunk; nothing for no output.
+fn said(output: &str) -> Option<Bytes> {
+    (!output.is_empty()).then(|| Bytes::copy_from_slice(output.as_bytes()))
 }
 
 /// A process the executor holds: where its events go, and whether it echoes.
 #[derive(Debug)]
 struct Held {
     id: ProcessId,
-    events: UnboundedSender<ProcessEvent>,
+    feed: Feed,
     echo: bool,
 }
 
@@ -116,7 +111,7 @@ pub struct ScriptedExecutor {
     written: Mutex<Vec<(ProcessId, Bytes)>>,
     killed: Mutex<Vec<ProcessId>>,
     held: Mutex<Vec<Held>>,
-    /// Processes it no longer holds whose channels stay open, as when an
+    /// Processes it no longer holds whose events stay open, as when an
     /// executor lost a process before its ending reached the caller.
     forgotten: Mutex<Vec<Held>>,
 }
@@ -154,14 +149,11 @@ impl ScriptedExecutor {
         let Some(held) = self.release(id) else {
             return false;
         };
-        let _reader_gone = held.events.send(ProcessEvent::Ended {
-            ending,
-            omitted_bytes: 0,
-        });
+        held.feed.end(ending);
         true
     }
 
-    /// Stops holding process `id` while its channel stays open; whether it
+    /// Stops holding process `id` while its events stay open; whether it
     /// held one.
     pub fn forget(&self, id: ProcessId) -> bool {
         let Some(held) = self.release(id) else {
@@ -197,16 +189,14 @@ impl Executor for ScriptedExecutor {
             .pop_front()
             .ok_or_else(|| refused(NO_SCRIPT))?;
         let id = ProcessId::new(self.ids.fetch_add(1, Ordering::SeqCst) + 1);
-        let (sender, events) = mpsc::unbounded_channel();
-        for event in script.events {
-            let _reader_held = sender.send(event);
+        let (feed, events) = Events::channel();
+        if let Some(data) = script.output {
+            feed.output(Stream::Stdout, data);
         }
-        if script.open {
-            locked(&self.held).push(Held {
-                id,
-                events: sender,
-                echo: script.echo,
-            });
+        match script.then {
+            Then::Ends(ending) => feed.end(ending),
+            Then::StaysOpen { echo } => locked(&self.held).push(Held { id, feed, echo }),
+            Then::Vanishes => drop(feed),
         }
         Ok(Process { id, events })
     }
@@ -219,10 +209,7 @@ impl Executor for ScriptedExecutor {
             .find(|open| open.id == process)
             .ok_or_else(|| refused(UNKNOWN_PROCESS))?;
         if open.echo {
-            let _reader_held = open.events.send(ProcessEvent::Output {
-                stream: Stream::Stdout,
-                data,
-            });
+            open.feed.output(Stream::Stdout, data);
         }
         Ok(())
     }

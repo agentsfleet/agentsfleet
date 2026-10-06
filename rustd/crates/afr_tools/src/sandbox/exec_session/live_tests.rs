@@ -127,3 +127,39 @@ async fn a_missing_or_escaping_workdir_reads_as_the_callers_mistake() {
     );
     live.stop().await;
 }
+
+/// A session that has printed past the half mebibyte the executor once sent
+/// live is still heard: what it says next reaches the next call, not only
+/// its end.
+#[tokio::test]
+async fn test_a_session_is_heard_past_its_first_half_mebibyte() {
+    let live = Live::start().await;
+    let (catalog, _sent) = hosted();
+    let selection = catalog
+        .select(&[EXEC_COMMAND.name(), WRITE_STDIN.name()])
+        .unwrap();
+    let (exec, write) = (
+        offered(&selection, &EXEC_COMMAND),
+        offered(&selection, &WRITE_STDIN),
+    );
+    let mut lease = Lease::default();
+    let cmd = "yes | head -c 700000; read word; echo said-$word; sleep 30";
+
+    let opened = call_in(
+        exec,
+        &live.client,
+        &mut lease,
+        json!({"cmd": cmd, "yield_time_ms": ECHO_YIELD_MS}),
+    )
+    .await;
+    let arguments = json!({
+        "session_id": session_id(&opened),
+        "chars": "go\n",
+        "yield_time_ms": ECHO_YIELD_MS,
+    });
+    let answered = call_in(write, &live.client, &mut lease, arguments).await;
+
+    assert!(answered.text.contains("said-go\n"), "{}", answered.text);
+    assert_eq!(lease.sessions.close_all(&live.client).await, 1);
+    live.stop().await;
+}

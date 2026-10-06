@@ -8,10 +8,10 @@ use std::fmt::Write as _;
 use serde_json::{Value, json};
 
 use super::{LINES_DEFAULT, Page};
-use crate::sandbox::output;
 use crate::catalog::FILE_READ;
 use crate::lease::Lease;
 use crate::runtime::{ToolErrorCode, ToolOutput};
+use crate::sandbox::output;
 use crate::testing::{Live, call_in, hosted, offered};
 
 /// The file the live reads page through.
@@ -66,8 +66,8 @@ fn paging_from_where_each_page_says_reads_the_whole_file_once() {
     let file = numbered(300);
     // Every line fits the smallest budget, so none is cut; under the real
     // one, the limit is what stops each page.
-    let real = output::budget(None);
-    for (budget, limit) in [(64, LINES_DEFAULT), (real, 7), (9, 3), (4096, 1)] {
+    let in_use = output::budget(None);
+    for (budget, limit) in [(64, LINES_DEFAULT), (in_use, 7), (9, 3), (4096, 1)] {
         let mut read = String::new();
         let mut first = 1;
         loop {

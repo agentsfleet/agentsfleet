@@ -30,7 +30,7 @@ async fn a_large_write_to_a_process_that_never_reads_does_not_hold_its_timeout()
     harness.client.write(process.id, flood()).await.unwrap();
     let finished = finish(process).await;
 
-    assert_eq!(finished.endings, [(Ending::TimedOut, 0)]);
+    assert_eq!(finished.endings, [Ending::TimedOut]);
     assert!(
         started.elapsed() < Duration::from_secs(10),
         "{:?}",
@@ -93,7 +93,7 @@ async fn writes_past_the_queue_are_refused_and_a_kill_still_lands() {
     let refused = refused.unwrap();
     assert!(refused_with(&refused, BACKLOG_FULL), "{refused}");
     killed.unwrap().unwrap();
-    assert_eq!(finished.endings, [(Ending::Signaled(15), 0)]);
+    assert_eq!(finished.endings, [Ending::Signaled(15)]);
 }
 
 #[tokio::test]
@@ -108,5 +108,5 @@ async fn a_terminal_process_that_never_reads_is_still_stopped_by_its_timeout() {
     harness.client.write(process.id, flood()).await.unwrap();
     let finished = finish(process).await;
 
-    assert_eq!(finished.endings, [(Ending::TimedOut, 0)]);
+    assert_eq!(finished.endings, [Ending::TimedOut]);
 }

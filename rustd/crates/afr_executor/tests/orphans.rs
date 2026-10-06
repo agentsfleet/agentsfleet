@@ -28,7 +28,7 @@ const PROMPTLY: Duration = Duration::from_secs(10);
 
 /// Runs the orphan maker and answers how it ended, how long that took, and
 /// the orphan's pid from whatever output arrived.
-async fn orphaned(spawn: Spawn) -> (Vec<(Ending, u64)>, Duration, Option<Pid>) {
+async fn orphaned(spawn: Spawn) -> (Vec<Ending>, Duration, Option<Pid>) {
     let harness = start().await;
     let started = Instant::now();
 
@@ -55,7 +55,7 @@ async fn a_descendant_in_its_own_session_does_not_hold_the_end_of_a_pipe_process
     let (endings, took, pid) = orphaned(Spawn::program("perl").args(["-e", ORPHAN])).await;
     reap(pid);
 
-    assert_eq!(endings, [(Ending::Exited(0), 0)]);
+    assert_eq!(endings, [Ending::Exited(0)]);
     assert!(took < PROMPTLY, "reported ended after {took:?}");
     assert!(
         pid.is_some(),
@@ -69,7 +69,7 @@ async fn a_descendant_in_its_own_session_does_not_hold_the_end_of_a_terminal_pro
     let (endings, took, pid) = orphaned(spawn).await;
     reap(pid);
 
-    assert_eq!(endings, [(Ending::Exited(0), 0)]);
+    assert_eq!(endings, [Ending::Exited(0)]);
     assert!(took < PROMPTLY, "reported ended after {took:?}");
 }
 
@@ -90,7 +90,7 @@ async fn a_timeout_still_ends_a_process_whose_descendant_left_the_group() {
         .ok()
         .and_then(Pid::from_raw);
     reap(pid);
-    assert_eq!(finished.endings, [(Ending::TimedOut, 0)]);
+    assert_eq!(finished.endings, [Ending::TimedOut]);
     assert!(started.elapsed() < PROMPTLY, "{:?}", started.elapsed());
 }
 

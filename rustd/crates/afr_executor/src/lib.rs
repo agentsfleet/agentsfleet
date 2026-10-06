@@ -27,6 +27,7 @@ pub mod error;
 mod api;
 mod client;
 mod edges;
+mod events;
 mod protocol;
 mod server;
 
@@ -36,5 +37,6 @@ pub use self::api::{
 };
 pub use self::client::Client;
 pub use self::error::{Error, Result};
+pub use self::events::{Events, Feed};
 pub use self::protocol::MAX_READ_BYTES;
 pub use self::server::{Listener, WORKSPACE_ROOT, bind, serve};

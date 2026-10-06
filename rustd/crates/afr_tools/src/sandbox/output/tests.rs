@@ -1,13 +1,7 @@
-#![expect(
-    clippy::unwrap_used,
-    reason = "test module: a channel the test holds both ends of cannot be closed"
-)]
-
 use std::time::Duration;
 
-use afr_executor::{Ending, Process, ProcessEvent, ProcessId, Stream};
+use afr_executor::{Ending, Events, Feed, Process, ProcessId, Stream};
 use bytes::Bytes;
-use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::time::Instant;
 
 use super::{Collected, budget, error_code, exit_code, status, with_line};
@@ -15,39 +9,34 @@ use crate::runtime::ToolErrorCode;
 
 /// Output a process prints and keeps running after.
 const STILL_GOING: &str = "still going";
+/// Output a process prints and then ends.
+const DONE: &str = "done";
+/// One kibibyte.
+const KIB: usize = 1024;
+/// Half a mebibyte: one edge of what a reader keeps unread.
+const EDGE_BYTES: usize = 512 * KIB;
 
-/// A process whose channel already carries `events`, and the sender that
-/// keeps the channel open.
-fn process(events: Vec<ProcessEvent>) -> (Process, UnboundedSender<ProcessEvent>) {
-    let (sender, receiver) = mpsc::unbounded_channel();
-    for event in events {
-        sender.send(event).unwrap();
+/// A process that already said `output`, and the feed that keeps it open.
+fn process(output: &[&str]) -> (Process, Feed) {
+    let (feed, events) = Events::channel();
+    for text in output {
+        feed.output(Stream::Stdout, Bytes::copy_from_slice(text.as_bytes()));
     }
     let process = Process {
         id: ProcessId::new(1),
-        events: receiver,
+        events,
     };
-    (process, sender)
+    (process, feed)
 }
 
-fn said(text: &str) -> ProcessEvent {
-    ProcessEvent::Output {
-        stream: Stream::Stdout,
-        data: Bytes::copy_from_slice(text.as_bytes()),
+/// What `output` leaves collected once read to its end, which is `ending`
+/// or, for none, events that finished without one.
+async fn read(output: &[&str], ending: Option<Ending>) -> (Collected, Ending) {
+    let (mut process, feed) = process(output);
+    match ending {
+        Some(ending) => feed.end(ending),
+        None => drop(feed),
     }
-}
-
-fn ended(ending: Ending, omitted_bytes: u64) -> ProcessEvent {
-    ProcessEvent::Ended {
-        ending,
-        omitted_bytes,
-    }
-}
-
-/// What `events`, read to their end, leave collected, and how they ended.
-async fn read(events: Vec<ProcessEvent>) -> (Collected, Ending) {
-    let (mut process, sender) = process(events);
-    drop(sender);
     let mut collected = Collected::default();
     let ending = collected.read_to_end(&mut process).await;
     (collected, ending)
@@ -55,12 +44,7 @@ async fn read(events: Vec<ProcessEvent>) -> (Collected, Ending) {
 
 #[tokio::test]
 async fn should_keep_output_whole_and_in_order_when_it_fits() {
-    let (collected, ending) = read(vec![
-        said("one\n"),
-        said("two\n"),
-        ended(Ending::Exited(0), 0),
-    ])
-    .await;
+    let (collected, ending) = read(&["one\n", "two\n"], Some(Ending::Exited(0))).await;
 
     assert_eq!(ending, Ending::Exited(0));
     assert_eq!(collected.text(8), "one\ntwo\n");
@@ -68,7 +52,7 @@ async fn should_keep_output_whole_and_in_order_when_it_fits() {
 
 #[tokio::test]
 async fn should_cut_the_middle_and_count_what_it_dropped() {
-    let (collected, _ending) = read(vec![said("abcdefghij"), ended(Ending::Exited(0), 0)]).await;
+    let (collected, _ending) = read(&["abcdefghij"], Some(Ending::Exited(0))).await;
 
     assert_eq!(collected.text(4), "ab\n... 6 bytes omitted ...\nij");
 }
@@ -76,42 +60,36 @@ async fn should_cut_the_middle_and_count_what_it_dropped() {
 #[tokio::test]
 async fn should_cut_on_character_boundaries() {
     // Five two-byte characters: no budget may split one.
-    let (collected, _ending) = read(vec![said("ééééé"), ended(Ending::Exited(0), 0)]).await;
+    let (collected, _ending) = read(&["ééééé"], Some(Ending::Exited(0))).await;
 
     assert_eq!(collected.text(5), "é\n... 6 bytes omitted ...\né");
 }
 
 #[tokio::test]
-async fn should_count_the_bytes_the_executor_dropped_with_its_own() {
-    let (collected, _ending) = read(vec![
-        said("head"),
-        said("tail"),
-        ended(Ending::Exited(0), 7),
-    ])
-    .await;
+async fn should_count_the_bytes_dropped_unread_with_its_own() {
+    // Read only at the end, so the middle of three edges is dropped before
+    // the call sees it.
+    let (a, b) = ("a".repeat(EDGE_BYTES), "b".repeat(2 * EDGE_BYTES));
+    let (collected, _ending) = read(&[&a, &b], Some(Ending::Exited(0))).await;
 
-    assert_eq!(
-        collected.text(100),
-        "headtail\n... 7 bytes omitted ...",
-        "output that fits carries the executor's count last"
-    );
+    let hidden = a.len() + b.len() - 4;
     assert_eq!(
         collected.text(4),
-        "he\n... 11 bytes omitted ...\nil",
-        "both cuts are counted"
+        format!("aa\n... {hidden} bytes omitted ...\nbb"),
+        "every byte is shown or counted"
     );
 }
 
 #[tokio::test]
 async fn should_leave_only_the_marker_for_a_zero_budget() {
-    let (collected, _ending) = read(vec![said("abc"), ended(Ending::Exited(0), 0)]).await;
+    let (collected, _ending) = read(&["abc"], Some(Ending::Exited(0))).await;
 
     assert_eq!(collected.text(0), "... 3 bytes omitted ...");
 }
 
 #[tokio::test]
-async fn should_end_interrupted_when_the_channel_closes_without_an_ending() {
-    let (collected, ending) = read(vec![said("partial")]).await;
+async fn should_end_interrupted_when_the_events_finish_without_an_ending() {
+    let (collected, ending) = read(&["partial"], None).await;
 
     assert_eq!(ending, Ending::Interrupted);
     assert_eq!(collected.text(100), "partial");
@@ -119,7 +97,7 @@ async fn should_end_interrupted_when_the_channel_closes_without_an_ending() {
 
 #[tokio::test(start_paused = true)]
 async fn should_answer_none_once_the_deadline_passes_while_the_process_runs() {
-    let (mut process, _sender) = process(vec![said(STILL_GOING)]);
+    let (mut process, _feed) = process(&[STILL_GOING]);
     let mut collected = Collected::default();
     let started = Instant::now();
 
@@ -134,7 +112,8 @@ async fn should_answer_none_once_the_deadline_passes_while_the_process_runs() {
 
 #[tokio::test(start_paused = true)]
 async fn should_answer_an_ending_before_the_deadline_without_waiting_it_out() {
-    let (mut process, _sender) = process(vec![said("done"), ended(Ending::Exited(2), 0)]);
+    let (mut process, feed) = process(&[DONE]);
+    feed.end(Ending::Exited(2));
     let mut collected = Collected::default();
     let started = Instant::now();
 
@@ -144,12 +123,13 @@ async fn should_answer_an_ending_before_the_deadline_without_waiting_it_out() {
 
     assert_eq!(ended, Some(Ending::Exited(2)));
     assert_eq!(started.elapsed(), Duration::ZERO);
+    assert_eq!(collected.text(100), DONE);
 }
 
 #[tokio::test(start_paused = true)]
-async fn should_answer_interrupted_when_the_channel_closes_before_the_deadline() {
-    let (mut process, sender) = process(Vec::new());
-    drop(sender);
+async fn should_answer_interrupted_when_the_events_finish_before_the_deadline() {
+    let (mut process, feed) = process(&[]);
+    drop(feed);
 
     let ended = Collected::default()
         .until(&mut process, Instant::now() + Duration::from_secs(1))
@@ -158,20 +138,48 @@ async fn should_answer_interrupted_when_the_channel_closes_before_the_deadline()
     assert_eq!(ended, Some(Ending::Interrupted));
 }
 
+#[tokio::test(start_paused = true)]
+async fn should_hold_at_most_the_edges_of_what_arrived_while_it_waited() {
+    let (mut process, feed) = process(&[]);
+    let mut collected = Collected::default();
+    let deadline = Instant::now() + Duration::from_millis(250);
+    let flood = tokio::spawn(async move {
+        for _ in 0..64 {
+            feed.output(Stream::Stdout, Bytes::from(vec![b'y'; 64 * KIB]));
+            tokio::task::yield_now().await;
+        }
+        feed
+    });
+
+    let ended = collected.until(&mut process, deadline).await;
+
+    assert_eq!(ended, None);
+    assert_eq!(
+        collected.bytes.len(),
+        2 * EDGE_BYTES,
+        "four MiB said, one kept"
+    );
+    assert_eq!(
+        collected.omitted,
+        (6 * EDGE_BYTES) as u64,
+        "the six edges between"
+    );
+    drop(flood.await);
+}
+
 #[test]
 fn should_take_only_what_already_arrived() {
-    let (mut process, sender) = process(vec![said("a")]);
+    let (mut process, feed) = process(&["a"]);
     let mut collected = Collected::default();
 
     assert_eq!(collected.arrived(&mut process), None, "still running");
-    sender.send(ended(Ending::Exited(0), 0)).unwrap();
+    feed.end(Ending::Exited(0));
     assert_eq!(collected.arrived(&mut process), Some(Ending::Exited(0)));
     assert_eq!(collected.text(100), "a");
-    drop(sender);
     assert_eq!(
         Collected::default().arrived(&mut process),
         Some(Ending::Interrupted),
-        "a channel the executor closed"
+        "events that finished, their ending read"
     );
 }
 

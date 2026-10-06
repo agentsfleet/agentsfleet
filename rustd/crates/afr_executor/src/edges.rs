@@ -1,10 +1,16 @@
-//! What survives of a process's output: its first and last edge.
+//! What a process said that its reader has not read yet: its first and last
+//! edge.
 //!
-//! A build or a test run can print megabytes. The head is forwarded live, as it
-//! arrives; once it is spent, output lands in a bounded tail that keeps only
-//! the most recent bytes, and the tail is forwarded when the process ends,
-//! with a count of what fell between. Cuts are moved to character boundaries,
-//! so text output stays valid UTF-8 on both sides of the gap.
+//! The executor forwards every byte a process writes, and a build, a test run
+//! or `yes` writes them faster than a model reads. So the reading side keeps
+//! what is unread in two edges, Codex's split
+//! (`core/src/unified_exec/head_tail_buffer.rs`): the head keeps the oldest
+//! unread bytes, the tail the newest, and what falls between is counted, never
+//! held. A reader that keeps up never loses a byte. Once the head is read, the
+//! count of what fell between comes next, then the tail, which becomes the new
+//! head; a reader that has read everything starts a fresh one. Cuts are moved
+//! to character boundaries, so text output stays valid UTF-8 on both sides of
+//! a gap.
 
 use std::collections::VecDeque;
 
@@ -12,7 +18,9 @@ use bytes::{Buf as _, Bytes};
 
 use crate::api::Stream;
 
-/// How much of each edge a process keeps: 512 KiB of head and of tail.
+/// How much of each edge a process keeps unread: 512 KiB of head and of
+/// tail, the 1 MiB Codex keeps per process
+/// (`exec-server/src/client.rs`, `PROCESS_EVENT_RETAINED_BYTES`).
 pub(crate) const EDGE_BYTES: usize = 512 * 1024;
 
 /// The most bytes before the tail's first character that can belong to one
@@ -28,42 +36,56 @@ pub(crate) struct Chunk {
     pub(crate) data: Bytes,
 }
 
-/// A process's output, cut to its head and tail.
+/// What a reader takes next.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Next {
+    /// A chunk of output, in the order it was written.
+    Output(Chunk),
+    /// The bytes that fell between the head and the tail, dropped unread.
+    Omitted(u64),
+}
+
+/// A process's unread output, cut to its head and tail.
 #[derive(Debug)]
-pub(crate) struct OutputEdges {
+pub(crate) struct Unread {
+    edge: usize,
+    head: VecDeque<Chunk>,
+    head_len: usize,
+    /// What the head may still take before output goes to the tail.
     head_left: usize,
     tail: VecDeque<Chunk>,
     tail_len: usize,
-    tail_cap: usize,
-    omitted: u64,
+    /// Dropped from the tail's front since the reader last crossed it.
+    gap: u64,
 }
 
-impl OutputEdges {
-    /// Keeps `edge` bytes at each end.
+impl Unread {
+    /// Keeps at most `edge` unread bytes at each end.
     pub(crate) const fn new(edge: usize) -> Self {
         Self {
+            edge,
+            head: VecDeque::new(),
+            head_len: 0,
             head_left: edge,
             tail: VecDeque::new(),
             tail_len: 0,
-            tail_cap: edge,
-            omitted: 0,
+            gap: 0,
         }
     }
 
-    /// Takes one chunk: what fits the head goes to `emit` now, the rest waits
-    /// in the tail.
-    pub(crate) fn feed(&mut self, chunk: Chunk, emit: &mut impl FnMut(Chunk)) {
+    /// Takes one chunk: what fits the head waits there, the rest in the tail.
+    pub(crate) fn push(&mut self, chunk: Chunk) {
         if self.head_left == 0 {
             self.keep(chunk);
         } else if chunk.data.len() < self.head_left {
             self.head_left -= chunk.data.len();
-            emit(chunk);
+            self.queue(chunk);
         } else {
             let Chunk { stream, mut data } = chunk;
             let rest = data.split_off(boundary(&data, self.head_left));
             self.head_left = 0;
             if !data.is_empty() {
-                emit(Chunk { stream, data });
+                self.queue(Chunk { stream, data });
             }
             if !rest.is_empty() {
                 self.keep(Chunk { stream, data: rest });
@@ -71,15 +93,30 @@ impl OutputEdges {
         }
     }
 
-    /// Hands the tail to `emit` and answers how many bytes fell between the
-    /// head and the tail.
-    pub(crate) fn finish(mut self, emit: &mut impl FnMut(Chunk)) -> u64 {
+    /// The next thing to read: the head's chunks, then the count of what fell
+    /// between, then the tail's chunks; `None` once everything is read.
+    pub(crate) fn pop(&mut self) -> Option<Next> {
+        if self.head.is_empty() {
+            let gap = self.cross();
+            if gap > 0 {
+                return Some(Next::Omitted(gap));
+            }
+        }
+        let chunk = self.head.pop_front()?;
+        self.head_len -= chunk.data.len();
+        Some(Next::Output(chunk))
+    }
+
+    /// Makes the tail the head, once the head is read, and answers how many
+    /// bytes fell between them. The moved tail counts against the new head;
+    /// an empty one leaves a whole head for what comes next.
+    fn cross(&mut self) -> u64 {
         // Only dropping bytes off the tail's front can cut a character; the
         // head is cut on a boundary. So a tail that never dropped a byte is
         // kept whole, which keeps binary output that merely looks like a
         // character's remains. The remains of a cut character may span the
         // tail's first chunks, so they are counted across them.
-        if self.omitted > 0 {
+        if self.gap > 0 {
             let remains = self
                 .tail
                 .iter()
@@ -89,24 +126,32 @@ impl OutputEdges {
                 .count();
             self.drop_front(remains);
         }
-        self.tail.into_iter().for_each(emit);
-        self.omitted
+        self.head = std::mem::take(&mut self.tail);
+        self.head_len = std::mem::take(&mut self.tail_len);
+        self.head_left = self.edge - self.head_len;
+        std::mem::take(&mut self.gap)
     }
 
-    /// Appends to the tail, dropping its oldest bytes past the cap.
+    /// Appends to the head, to be read in order.
+    fn queue(&mut self, chunk: Chunk) {
+        self.head_len += chunk.data.len();
+        self.head.push_back(chunk);
+    }
+
+    /// Appends to the tail, dropping its oldest bytes past the edge.
     fn keep(&mut self, chunk: Chunk) {
         self.tail_len += chunk.data.len();
         self.tail.push_back(chunk);
-        self.drop_front(self.tail_len.saturating_sub(self.tail_cap));
+        self.drop_front(self.tail_len.saturating_sub(self.edge));
     }
 
-    /// Drops `count` bytes from the tail's oldest end, counting them omitted.
+    /// Drops `count` bytes from the tail's oldest end, counting them.
     fn drop_front(&mut self, mut count: usize) {
         while let Some(front) = self.tail.front_mut().filter(|_| count > 0) {
             let drop = count.min(front.data.len());
             front.data.advance(drop);
             self.tail_len -= drop;
-            self.omitted += drop as u64;
+            self.gap += drop as u64;
             count -= drop;
             if front.data.is_empty() {
                 self.tail.pop_front();
@@ -143,3 +188,7 @@ const fn continues_a_character(byte: u8) -> bool {
 #[cfg(test)]
 #[path = "edges/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "edges/reading_tests.rs"]
+mod reading_tests;
