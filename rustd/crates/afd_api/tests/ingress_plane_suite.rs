@@ -26,6 +26,8 @@ mod integration_connector_events;
 mod integration_ingress_live;
 #[path = "integration_qstash_fire.rs"]
 mod integration_qstash_fire;
+#[path = "integration_qstash_fire_once.rs"]
+mod integration_qstash_fire_once;
 #[path = "integration_slack_mention.rs"]
 mod integration_slack_mention;
 #[path = "webhook_approval_wall.rs"]

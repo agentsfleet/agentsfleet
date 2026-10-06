@@ -32,6 +32,7 @@
 //! a passed validation constructs.
 
 use afd_validate::PathTable;
+use const_format::concatcp;
 use garde::{Unvalidated, Valid};
 use jiff::tz::TimeZone;
 use philiprehberger_cron_parser::CronExpr;
@@ -63,6 +64,38 @@ pub enum Invalid {
     Message,
     /// The message is longer than [`MAX_MESSAGE_LEN`].
     MessageTooLong,
+}
+
+/// The sentence an expression this daemon will not register earns.
+pub const DETAIL_INVALID_CRON: &str =
+    "The cron expression must be five numeric fields this daemon accepts.";
+
+/// The sentence a zone this daemon will not pass upstream earns.
+pub const DETAIL_INVALID_TIMEZONE: &str = "The timezone is not a name this daemon will register.";
+
+/// The sentence a message that would wake a fleet with nothing earns.
+pub const DETAIL_INVALID_MESSAGE: &str = "The message must not be empty.";
+
+/// The sentence a message past [`MAX_MESSAGE_LEN`] earns.
+///
+/// Its own sentence: an oversized message is not an empty one, and telling a
+/// caller who sent eight kilobytes that they sent nothing sends them to fix
+/// the wrong thing.
+pub const DETAIL_MESSAGE_TOO_LONG: &str =
+    concatcp!("The message must be at most ", MAX_MESSAGE_LEN, " bytes.");
+
+impl Invalid {
+    /// The sentence a caller is told: one per repair, so a person and a fleet
+    /// fixing a schedule read the same words from either surface.
+    #[must_use]
+    pub const fn detail(self) -> &'static str {
+        match self {
+            Self::Cron => DETAIL_INVALID_CRON,
+            Self::Timezone => DETAIL_INVALID_TIMEZONE,
+            Self::Message => DETAIL_INVALID_MESSAGE,
+            Self::MessageTooLong => DETAIL_MESSAGE_TOO_LONG,
+        }
+    }
 }
 
 /// A schedule's three authored fields, with the bound each must hold.

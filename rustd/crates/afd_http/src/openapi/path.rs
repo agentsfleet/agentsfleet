@@ -115,6 +115,16 @@ pub struct Lease {
     pub lease_id: String,
 }
 
+/// One schedule of the fleet a held lease runs.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Path)]
+pub struct LeaseSchedule {
+    /// `UUIDv7` of the lease.
+    pub lease_id: String,
+    /// `UUIDv7` of the schedule.
+    pub schedule_id: String,
+}
+
 /// One hosted schedule.
 #[derive(Debug, IntoParams)]
 #[into_params(parameter_in = Path)]

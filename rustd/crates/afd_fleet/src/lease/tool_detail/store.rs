@@ -7,13 +7,14 @@ use std::collections::BTreeMap;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use serde_json::Value;
-use sqlx::{Acquire as _, PgConnection, Row as _};
+use sqlx::{Acquire as _, PgConnection};
 
-use super::{Admissible, DetailTarget, Kept, within_budget};
+use super::{Admissible, Kept, within_budget};
 use crate::error::{Result, query};
 use crate::lease::settle::Reported;
 use crate::lease::sql;
 use crate::lease::sql::tool_detail as statement;
+use crate::lease::standing::LiveLease;
 use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
@@ -73,7 +74,7 @@ impl Leases {
     async fn upsert(
         &self,
         connection: &mut PgConnection,
-        target: &DetailTarget,
+        target: &LiveLease,
         kept: Vec<Admissible<'_>>,
         now: UnixMillis,
     ) -> Result<()> {
@@ -143,7 +144,7 @@ async fn locked_target(
     lease_id: &str,
     runner_id: &Uuid7,
     now: UnixMillis,
-) -> Result<Option<DetailTarget>> {
+) -> Result<Option<LiveLease>> {
     let found = sqlx::query(statement::SELECT_LIVE_LEASE)
         .bind(lease_id)
         .bind(runner_id.as_str())
@@ -155,19 +156,13 @@ async fn locked_target(
     let Some(row) = found else {
         return Ok(None);
     };
-    Ok(Some(DetailTarget {
-        fleet_id: row.try_get(0).map_err(query(CONTEXT_KEEP))?,
-        workspace_id: row.try_get(1).map_err(query(CONTEXT_KEEP))?,
-        event_id: row.try_get(2).map_err(query(CONTEXT_KEEP))?,
-        fence: row.try_get(3).map_err(query(CONTEXT_KEEP))?,
-        live_seq: row.try_get(4).map_err(query(CONTEXT_KEEP))?,
-    }))
+    LiveLease::read(&row, CONTEXT_KEEP).map(Some)
 }
 
 /// What the lease already keeps, and what each posted call's record spends.
 async fn spend(
     connection: &mut PgConnection,
-    target: &DetailTarget,
+    target: &LiveLease,
     numbers: &[i64],
 ) -> Result<(usize, BTreeMap<u64, usize>)> {
     let spent: i64 = sqlx::query_scalar(statement::SELECT_KEPT_BYTES)

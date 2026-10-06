@@ -32,7 +32,7 @@
 )]
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use axum::Router;
@@ -120,6 +120,9 @@ struct Shared {
     in_order: Mutex<Option<VecDeque<Reply>>>,
     /// What every post answers.
     post: Mutex<(u16, String)>,
+    /// Whether every post is held open past any poster's deadline, for
+    /// [`FakeSlack::post_stalls`].
+    post_stalls: AtomicBool,
     requests: Mutex<Vec<Request>>,
     reads: AtomicUsize,
     /// Signalled when a stalled read has arrived, so a test can act while it
@@ -164,6 +167,7 @@ impl FakeSlack {
             by_thread: Mutex::default(),
             in_order: Mutex::new(in_order),
             post: Mutex::new((StatusCode::OK.as_u16(), POST_ACCEPTED.to_owned())),
+            post_stalls: AtomicBool::new(false),
             requests: Mutex::default(),
             reads: AtomicUsize::new(0),
             stalled: Notify::new(),
@@ -184,7 +188,7 @@ impl FakeSlack {
                 POST_MESSAGE_PATH,
                 post(move |headers: HeaderMap, sent: String| {
                     let shared = Arc::clone(&posting);
-                    async move { posted(&shared, &headers, &sent) }
+                    async move { posted(&shared, &headers, &sent).await }
                 }),
             );
         let handle = tokio::spawn(async move {
@@ -225,6 +229,12 @@ impl FakeSlack {
     /// Every post from now on answers `status` with `body`.
     pub fn post_answers(&self, status: u16, body: &str) {
         *locked(&self.shared.post) = (status, body.to_owned());
+    }
+
+    /// Holds every post open past any poster's deadline, as a Slack that
+    /// accepted the connection and never answered does.
+    pub fn post_stalls(&self) {
+        self.shared.post_stalls.store(true, Ordering::SeqCst);
     }
 
     /// Resolves once a read of a stalled thread has arrived.
@@ -288,7 +298,7 @@ async fn read(shared: &Shared, headers: &HeaderMap, fields: HashMap<String, Stri
 }
 
 /// Records a post and answers what the suite set.
-fn posted(shared: &Shared, headers: &HeaderMap, sent: &str) -> Response {
+async fn posted(shared: &Shared, headers: &HeaderMap, sent: &str) -> Response {
     let body = serde_json::from_str::<Value>(sent).unwrap_or(Value::Null);
     let fields = body
         .as_object()
@@ -297,6 +307,9 @@ fn posted(shared: &Shared, headers: &HeaderMap, sent: &str) -> Response {
         .filter_map(|(name, value)| value.as_str().map(|text| (name.clone(), text.to_owned())))
         .collect();
     record(shared, POST_MESSAGE_PATH, headers, fields, body);
+    if shared.post_stalls.load(Ordering::SeqCst) {
+        tokio::time::sleep(READ_DEADLINE * 4).await;
+    }
     let (status, body) = locked(&shared.post).clone();
     json(status, body)
 }

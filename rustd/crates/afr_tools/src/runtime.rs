@@ -78,6 +78,21 @@ pub enum ToolErrorCode {
     UpstreamStatus,
     /// A store asked the workspace to read it, and this fleet may not publish.
     WorkspaceMemoryNotGranted,
+    /// The fleet already holds as many schedules as it may create itself.
+    ScheduleCapReached,
+    /// The schedule is a person's, so the fleet may read it and not change it.
+    ScheduleNotFleetOwned,
+    /// The schedule is paused or being removed, or a schedule started this
+    /// run, so it does not run now.
+    ScheduleNotRunnable,
+    /// The event came from no thread, so a message has nowhere to go.
+    MessageNoChannel,
+    /// The run already posted as many messages as one run may.
+    MessageLimitReached,
+    /// `agentsfleetd` refused the call, for the reason its code names.
+    AgentsfleetdRefused,
+    /// `agentsfleetd` could not be reached.
+    AgentsfleetdUnreachable,
 }
 
 impl ToolErrorCode {
@@ -103,6 +118,13 @@ impl ToolErrorCode {
             Self::UpstreamUnreachable => "upstream_unreachable",
             Self::UpstreamStatus => "upstream_status",
             Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
+            Self::ScheduleCapReached => "schedule_cap_reached",
+            Self::ScheduleNotFleetOwned => "schedule_not_fleet_owned",
+            Self::ScheduleNotRunnable => "schedule_not_runnable",
+            Self::MessageNoChannel => "message_no_channel",
+            Self::MessageLimitReached => "message_limit_reached",
+            Self::AgentsfleetdRefused => "agentsfleetd_refused",
+            Self::AgentsfleetdUnreachable => "agentsfleetd_unreachable",
         }
     }
 }

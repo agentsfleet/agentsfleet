@@ -7,6 +7,7 @@ pub use self::encoding::BrokenEscape;
 pub use self::id_path::{IdPath, IdSegment};
 mod refusable;
 mod refusal;
+pub mod schedule;
 
 use afd_observability::metrics::label::library::ReadOutcome;
 use http::StatusCode;

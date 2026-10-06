@@ -6,7 +6,7 @@
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
-use afd_cron::DesiredStatus;
+use afd_cron::{DesiredStatus, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -28,11 +28,8 @@ const NIGHTLY: &str = "0 3 * * *";
 /// What the seeded schedule asks its fleet to do.
 const MESSAGE: &str = "run the nightly sweep";
 
-/// The scheduler this daemon registered the schedule with.
-const SOURCE: &str = "qstash";
-
 /// A workspace holding one fleet and one schedule that fires at it.
-pub(super) struct Fixture {
+pub(crate) struct Fixture {
     lane: TestDatabase,
     database: Db,
     queue: Dragonfly,
@@ -42,11 +39,11 @@ pub(super) struct Fixture {
     user: String,
     fleet: Uuid7,
     /// The schedule a fire names in its header.
-    pub(super) schedule: Uuid7,
+    pub(crate) schedule: Uuid7,
 }
 
 impl Fixture {
-    pub(super) async fn create() -> Self {
+    pub(crate) async fn create() -> Self {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
@@ -62,7 +59,7 @@ impl Fixture {
     }
 
     /// The production router, resolving through Postgres AND the queue.
-    pub(super) fn router(&self) -> axum::Router {
+    pub(crate) fn router(&self) -> axum::Router {
         harness::Fleet::live(
             self.database.clone(),
             &self.subject,
@@ -80,7 +77,7 @@ impl Fixture {
     ///
     /// Both states a fire turns on are arguments, because the three drop arms
     /// differ only in which of them the row holds.
-    pub(super) async fn seed(&self, fleet: FleetStatus, desired: DesiredStatus) {
+    pub(crate) async fn seed(&self, fleet: FleetStatus, desired: DesiredStatus) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "WITH tenant AS ( \
@@ -112,7 +109,9 @@ impl Fixture {
         .bind(self.fleet.as_str())
         .bind(fleet.as_str())
         .bind(self.schedule.as_str())
-        .bind(SOURCE)
+        // A person's schedule: `source` names who wrote it, and a retirement
+        // decodes the whole row, so it must hold a value the store reads back.
+        .bind(Source::Api.as_str())
         .bind(NIGHTLY)
         .bind(MESSAGE)
         .bind(desired.as_str())
@@ -121,8 +120,29 @@ impl Fixture {
         .expect("the tenant, workspace, person, fleet and schedule seed");
     }
 
+    /// Makes the seeded schedule a `once` schedule, which retires on its
+    /// moment.
+    pub(crate) async fn mark_once(&self) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query("UPDATE core.fleet_schedules SET once = true WHERE id = $1::uuid")
+            .bind(self.schedule.as_str())
+            .execute(&mut *connection)
+            .await
+            .expect("the schedule becomes a one-off");
+    }
+
+    /// The seeded schedule's desired status, or `None` once its row is gone.
+    pub(crate) async fn desired_status(&self) -> Option<String> {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query_scalar("SELECT desired_status FROM core.fleet_schedules WHERE id = $1::uuid")
+            .bind(self.schedule.as_str())
+            .fetch_optional(&mut *connection)
+            .await
+            .expect("the schedule row reads")
+    }
+
     /// Removes this run's rows — the schedule cascades with its fleet.
-    pub(super) async fn cleanup(self) {
+    pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
             .bind(&self.tenant)

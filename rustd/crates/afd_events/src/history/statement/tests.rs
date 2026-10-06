@@ -11,8 +11,14 @@ use std::collections::BTreeSet;
 
 use super::*;
 
-/// The two thread texts, with how many values `History` binds to each.
-const THREADS: [(&str, usize); 2] = [(SELECT_THREAD_PAGE, 3), (SELECT_THREAD_PAGE_AFTER, 5)];
+/// The texts outside the listing grid, with how many values `History` binds
+/// to each: the thread's two, and one actor's two (`statement/actor.rs`).
+const THREADS: [(&str, usize); 4] = [
+    (SELECT_THREAD_PAGE, 3),
+    (SELECT_THREAD_PAGE_AFTER, 5),
+    (SELECT_FLEET_PAGE_OF_ACTOR, 4),
+    (SELECT_FLEET_PAGE_OF_ACTOR_AFTER, 6),
+];
 
 /// Every `(fleet_scoped, resumes, by_actor)` a listing can be asked for.
 fn listing_shapes() -> impl Iterator<Item = (bool, bool, bool)> {

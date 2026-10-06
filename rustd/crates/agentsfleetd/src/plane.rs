@@ -110,6 +110,7 @@ pub struct ServingPlane {
     ingress: Ingress,
     schedules: SchedulePlane,
     connectors: afd_connector::Connectors,
+    interjector: afd_outbound::Interjector,
     schedule_keys: Option<SigningKeys>,
     schedule_destination: String,
     /// What a signup event from the identity provider is verified against.
@@ -166,6 +167,7 @@ impl ServingPlane {
             analytics,
             login,
             mut schedule,
+            slack_api_base,
         } = parts;
         // One object-store owner, split into the half that READS a snapshot and
         // the half that WRITES one. A deployment with no upload handle still
@@ -241,6 +243,12 @@ impl ServingPlane {
             signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
             schedule_keys: schedule.keys.take(),
             schedules: config::schedule_plane(&database, schedule, admissions),
+            interjector: platform::interjector(
+                &database,
+                &kek,
+                vendor_client.clone(),
+                slack_api_base,
+            ),
             connectors: platform::connect_flow(&database, &kek, &queue, vendor_client),
             live,
             analytics,

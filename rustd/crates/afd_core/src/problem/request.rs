@@ -184,6 +184,27 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::SCHEDULE_CAP_REACHED,
+        status: 409,
+        title: "Fleet schedule cap reached",
+        hint: "A fleet can create at most 16 schedules itself. Remove one of its own schedules before creating another.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::SCHEDULE_NOT_FLEET_OWNED,
+        status: 403,
+        title: "Schedule not created by the fleet",
+        hint: "A fleet can change or delete only the schedules it created. A person created this one; change it from the schedules surface.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::SCHEDULE_NOT_RUNNABLE,
+        status: 409,
+        title: "Schedule cannot run now",
+        hint: "The schedule is paused or being deleted, or this run was started by a schedule. Run it from a run a person or a webhook started, or ask a person to resume it.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::APPROVAL_NOT_FOUND,
         status: 404,
         title: "Approval not found",

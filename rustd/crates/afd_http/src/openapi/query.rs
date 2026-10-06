@@ -122,3 +122,23 @@ pub struct ConnectorCallback {
     /// Provider data-center location supplied by multi-region providers such as Zoho.
     pub location: Option<String>,
 }
+
+/// The fence a lease-addressed read or delete carries, having no body.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct Fence {
+    /// The lease's fencing token. A holder the fleet has moved past is refused.
+    pub fencing_token: u64,
+}
+
+/// One schedule's runs, newest first, as a keyset page under the lease's fence.
+#[derive(Debug, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ScheduleRunsPage {
+    /// The lease's fencing token. A holder the fleet has moved past is refused.
+    pub fencing_token: u64,
+    /// The `next_cursor` of the previous page. Omit it for the first page.
+    pub starting_after: Option<String>,
+    /// Number of runs to return. The default is 50. Valid values are 1 through 100.
+    pub limit: Option<String>,
+}

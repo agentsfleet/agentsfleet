@@ -12,7 +12,8 @@ mod answered;
 mod replies;
 
 pub use self::answered::{
-    ANSWER_CHECK_DEADLINE, ANSWER_EVENT_TYPE, AnswerMarker, Stamp, holds_answer,
+    ANSWER_CHECK_DEADLINE, ANSWER_EVENT_TYPE, AnswerMarker, INTERIM_EVENT_TYPE, Part, Stamp,
+    holds_answer,
 };
 pub use self::replies::{MAX_MESSAGES, Message, READ_DEADLINE, Replies, Unavailable, replies};
 

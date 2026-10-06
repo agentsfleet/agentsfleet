@@ -51,6 +51,20 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         limit: i64,
     ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
 
+    /// One page of `actor`'s events in a single fleet, newest first, matched
+    /// exactly: a schedule's runs, under `cron:<schedule_id>`.
+    ///
+    /// # Errors
+    /// As [`Self::page_for_workspace`].
+    fn page_of_actor(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        actor: &str,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
+
     /// One page of a fleet's chat thread, newest first, bodies included.
     ///
     /// The caller asks for one row more than it will serve — see
@@ -121,6 +135,17 @@ impl WorkspaceEvents for History {
         limit: i64,
     ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
         Self::page_for_fleet(self, workspace, fleet, filter, cursor, limit)
+    }
+
+    fn page_of_actor(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        actor: &str,
+        cursor: Option<&Cursor>,
+        limit: i64,
+    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
+        Self::page_of_actor(self, workspace, fleet, actor, cursor, limit)
     }
 
     fn thread_for_fleet(

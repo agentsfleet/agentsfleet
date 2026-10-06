@@ -189,3 +189,27 @@ async fn runner_tool_call_records_validate_and_render() {
         serde_json::json!({"stored_count": 2, "skipped_count": 0})
     );
 }
+
+/// A plane holding no lease refuses every schedule and message verb as a lease
+/// this runner does not hold, before any body field is acted on.
+#[tokio::test]
+async fn runner_schedule_and_message_verbs_refuse_a_lease_not_held() {
+    let router = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .router();
+    let schedules = format!("/v1/runners/me/leases/{LEASE_ID}/schedules");
+    let messages = format!("/v1/runners/me/leases/{LEASE_ID}/messages");
+    let listed = format!("{schedules}?fencing_token=1");
+    let created = r#"{"fencing_token":1,"cron":"0 9 * * 1","message":"weekly check"}"#;
+    let posted = r#"{"fencing_token":1,"text":"halfway there"}"#;
+
+    for (method, path, body) in [
+        (Method::GET, &listed, ""),
+        (Method::POST, &schedules, created),
+        (Method::POST, &messages, posted),
+    ] {
+        let refused = send(&router, method.clone(), path, Some(RUNNER_TOKEN), body).await;
+        assert_eq!(refused.status(), StatusCode::NOT_FOUND, "{method} {path}");
+        assert_eq!(code_of(refused).await, "UZ-RUN-006", "{method} {path}");
+    }
+}

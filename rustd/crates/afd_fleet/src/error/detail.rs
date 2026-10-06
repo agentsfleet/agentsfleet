@@ -201,6 +201,20 @@ pub const DETAIL_CONNECTOR_RECONNECT: &str =
 /// `credentials_mint.zig`'s `S_CONNECTOR_MINT_FAILED`.
 pub const DETAIL_CONNECTOR_MINT_FAILED: &str = "Connector token refresh failed";
 
+/// The refusal a message earns when its event came from no thread.
+///
+/// Written for the model that reads it through the `message` tool: it says
+/// where the line should go instead.
+pub const DETAIL_MESSAGE_NO_CHANNEL: &str =
+    "This event came from no thread, so there is nowhere to post; say it in the answer instead";
+
+/// The refusal a message past the per-run count earns.
+pub const DETAIL_MESSAGE_LIMIT: &str = const_format::concatcp!(
+    "This run already posted ",
+    afd_wire::message_verb::MESSAGES_PER_RUN_MAX,
+    " messages; put the rest in the answer"
+);
+
 /// `credentials_mint.zig`'s `S_GRANT_REQUIRED`.
 pub const DETAIL_GRANT_REQUIRED: &str =
     "No approved integration grant for this fleet and integration";

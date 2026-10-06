@@ -22,13 +22,13 @@
 ///
 /// A macro expanding to a LITERAL rather than a `const`, because `concat!`
 /// takes literals only — the shape `afd_fleet_lifecycle::sql` already uses next
-/// door. What it buys is one edit site for fifteen columns (RULE UFS); what it
+/// door. What it buys is one edit site for every column (RULE UFS); what it
 /// no longer has to buy is a stable ORDER, because the decoder reads by name.
 macro_rules! row_columns {
     () => {
         "id::text, fleet_id::text, source, source_key, cron_expression, \
-         timezone, message, desired_status, sync_status, generation, \
-         sync_token::text, sync_lease_until, last_error, created_at, updated_at"
+         timezone, message, once, desired_status, sync_status, generation, \
+         sync_token::text, sync_lease_until, last_error, created_at, updated_at, fire_at"
     };
 }
 
@@ -66,6 +66,14 @@ pub const LOCK_FLEET: &str = "SELECT f.id::text FROM core.fleets f \
 pub const COUNT_FOR_FLEET: &str =
     "SELECT COUNT(*) FROM core.fleet_schedules WHERE fleet_id = $1::uuid";
 
+/// How many schedules of one source this fleet holds.
+///
+/// Read under the same fleet lock as [`COUNT_FOR_FLEET`], for a create whose
+/// source carries a cap of its own: a fleet's own schedules are bounded below
+/// the fleet's whole complement.
+pub const COUNT_FOR_SOURCE: &str =
+    "SELECT COUNT(*) FROM core.fleet_schedules WHERE fleet_id = $1::uuid AND source = $2";
+
 /// Whether this fleet already registered that upstream key.
 pub const SOURCE_KEY_EXISTS: &str = "SELECT 1::bigint FROM core.fleet_schedules \
      WHERE fleet_id = $1::uuid AND source_key = $2 LIMIT 1";
@@ -95,9 +103,9 @@ pub const INSERT: &str = concat!(
     "INSERT INTO core.fleet_schedules \
      (id, fleet_id, source, source_key, cron_expression, timezone, message, \
      desired_status, sync_status, generation, sync_token, sync_lease_until, \
-     last_error, created_at, updated_at) \
+     last_error, created_at, updated_at, once, fire_at) \
      VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, \
-     $11::uuid, $12, NULL, $13, $13) RETURNING ",
+     $11::uuid, $12, NULL, $13, $13, $14, $15) RETURNING ",
     row_columns!()
 );
 
@@ -116,6 +124,18 @@ pub const CLAIM_MUTATION: &str = concat!(
      sync_lease_until = $9, last_error = NULL, updated_at = $10 \
      WHERE id = $1::uuid AND fleet_id = $2::uuid AND \
      (sync_token IS NULL OR sync_lease_until IS NULL OR sync_lease_until <= $10) RETURNING ",
+    row_columns!()
+);
+
+/// Sets the instant a claimed `once` schedule's new expression is for.
+///
+/// Its own statement, after [`CLAIM_MUTATION`]: an edit may name the
+/// expression or the zone alone, and the instant is read from both as the
+/// claim left them. Conditioned on the claim's token, so only its holder
+/// writes it.
+pub const SET_FIRE_AT: &str = concat!(
+    "UPDATE core.fleet_schedules SET fire_at = $3 \
+     WHERE id = $1::uuid AND sync_token = $2::uuid RETURNING ",
     row_columns!()
 );
 
@@ -179,6 +199,6 @@ pub const DELETE_CLAIMED: &str = "DELETE FROM core.fleet_schedules \
 /// scheduler not yet knowing it was paused, and a paused FLEET is an operator
 /// who stopped the whole thing.
 pub const FIRE_TARGET: &str = "SELECT s.fleet_id::text, f.workspace_id::text, s.message, \
-     s.desired_status, f.status \
+     s.once, s.desired_status, f.status \
      FROM core.fleet_schedules s JOIN core.fleets f ON f.id = s.fleet_id \
      WHERE s.id = $1::uuid";

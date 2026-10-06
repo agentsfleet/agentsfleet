@@ -37,10 +37,10 @@ pub use self::detail::{
     DETAIL_BUNDLE_STORAGE_UNAVAILABLE, DETAIL_CONFIG_UNREADABLE, DETAIL_CREDENTIAL_MISSING,
     DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE, DETAIL_EVENT_MALFORMED,
     DETAIL_GATE_BINDING_UNWRITABLE, DETAIL_GATE_REFERENCE_UNWRITABLE, DETAIL_HOST_ID_BOUNDS,
-    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND,
-    DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED,
-    DETAIL_REGISTRY_ALLOWLIST, DETAIL_RENEWAL_NO_CREDITS, DETAIL_RUNNER_NOT_FOUND,
-    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
+    DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MESSAGE_LIMIT,
+    DETAIL_MESSAGE_NO_CHANNEL, DETAIL_PROVIDER_UNRESOLVED, DETAIL_QUEUE_UNAVAILABLE,
+    DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST, DETAIL_RENEWAL_NO_CREDITS,
+    DETAIL_RUNNER_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
 };
 // The mint family's sentences, listed apart from the block above only because
 // they arrived together and are read together — `credentials_mint.zig` writes
@@ -59,7 +59,8 @@ pub use self::detail::{
 pub(crate) use self::refuse::{
     budget_exhausted, connector_mint_failed, connector_reconnect_required, github_mint_failed,
     github_reconnect_required, grant_required, integration_not_connected, lease_lost,
-    lease_max_runtime, lease_not_found, mint_unconfigured, renewal_no_credits, stale_fence,
+    lease_max_runtime, lease_not_found, message_limit_reached, message_no_channel,
+    mint_unconfigured, renewal_no_credits, stale_fence,
 };
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.
@@ -214,6 +215,18 @@ pub(crate) enum ErrorKind {
     #[error("the fleet reached a spend ceiling its own author declared")]
     BudgetExhausted,
 
+    #[error("the leased event recorded no thread a message can go to")]
+    MessageNoChannel,
+
+    #[error("the lease already posted as many messages as one run may")]
+    MessageLimitReached,
+
+    #[error("the fleet's secret values could not be gathered into a mask")]
+    Scrub {
+        #[source]
+        source: afr_secrets::Error,
+    },
+
     #[error("no Fleet Bundle snapshot is stored under that content hash")]
     BundleMissing,
 
@@ -271,6 +284,13 @@ impl Error {
     #[must_use]
     pub fn mint_unconfigured() -> Self {
         super::error::mint_unconfigured()
+    }
+
+    /// The refusal a lease this runner does not hold answers: what a stub
+    /// plane with no lease rows says to every lease-addressed verb.
+    #[must_use]
+    pub fn lease_not_found() -> Self {
+        super::error::lease_not_found()
     }
 }
 
