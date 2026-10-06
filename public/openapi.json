@@ -5137,7 +5137,7 @@
           "Schedules"
         ],
         "summary": "List the running fleet's schedules",
-        "description": "Lists every schedule of the fleet the lease runs, oldest first, each naming its `source`: `api` for a person, `trigger` for the fleet's own document, `fleet` for one the fleet made. Only a `fleet` schedule can be changed through the lease. ",
+        "description": "Lists every schedule of the fleet the lease runs, oldest first. Each names its `source`: `api` for a person, `trigger` for the fleet's own document, `fleet` for the fleet itself. Only a `fleet` schedule can be changed through the lease. ",
         "operationId": "runner_list_schedules",
         "parameters": [
           {
@@ -5402,7 +5402,7 @@
           "Schedules"
         ],
         "summary": "Delete a schedule the fleet made",
-        "description": "Removes a schedule the running fleet created from QStash, then removes the row: 204 once QStash agrees, or 200 with the schedule while it has not. A schedule a person made answers `UZ-SCHED-010`. ",
+        "description": "Removes a schedule the running fleet created from QStash, then deletes the row. It answers 204 once QStash agrees, or 200 with the schedule until then. A schedule a person made answers `UZ-SCHED-010`. ",
         "operationId": "runner_delete_schedule",
         "parameters": [
           {
@@ -5842,7 +5842,7 @@
           "Schedules"
         ],
         "summary": "Run a schedule now",
-        "description": "Creates a run of a schedule of the running fleet now, as if QStash had fired it: one event with actor `cron:<schedule_id>`, queued for the fleet. Posting again for the same leased event answers the same run. A schedule that is paused or being removed answers `UZ-SCHED-011` with its `current_state`, as does a run a schedule started (`scheduled_run`), so no schedule wakes its fleet in a loop. A fleet that is not taking work answers `UZ-AGT-012`. A `once` schedule retires after this run, so a repeat after that answers 404. ",
+        "description": "Creates a run of a schedule of the running fleet now, as if QStash had fired it. The run is one event with actor `cron:<schedule_id>`, queued for the fleet. Posting again for the same leased event answers the same run. A paused schedule, or one being removed, answers `UZ-SCHED-011` with its `current_state`. A run a schedule started answers the same with `scheduled_run`, so no schedule wakes its fleet in a loop. A fleet that is not taking work answers `UZ-AGT-012`. A `once` schedule retires after this run, so a repeat after that answers 404. ",
         "operationId": "runner_run_schedule",
         "parameters": [
           {
@@ -19962,7 +19962,7 @@
         "properties": {
           "event_id": {
             "type": "string",
-            "description": "The event the run will execute as. Beta: this field may change shape before it is stable.",
+            "description": "The event that is the new run. Beta: this field may change shape before it is stable.",
             "x-stability": "beta"
           }
         }

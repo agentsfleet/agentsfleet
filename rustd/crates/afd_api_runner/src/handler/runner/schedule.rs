@@ -172,10 +172,10 @@ pub(crate) async fn create<D: Services>(
     operation_id = "runner_list_schedules",
     summary = "List the running fleet's schedules",
     description = concat!(
-        "Lists every schedule of the fleet the lease runs, oldest first, each ",
-        "naming its `source`: `api` for a person, `trigger` for the fleet's ",
-        "own document, `fleet` for one the fleet made. Only a `fleet` schedule ",
-        "can be changed through the lease. ",
+        "Lists every schedule of the fleet the lease runs, oldest first. Each ",
+        "names its `source`: `api` for a person, `trigger` for the fleet's own ",
+        "document, `fleet` for the fleet itself. Only a `fleet` schedule can be ",
+        "changed through the lease. ",
     ),
     params(afd_http::openapi::path::Lease, afd_http::openapi::query::Fence),
     responses(
