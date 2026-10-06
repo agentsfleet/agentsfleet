@@ -1,23 +1,26 @@
+// No Vite-only syntax here (?url, CSS imports, import.meta.env):
+// tests/e2e/*.spec.ts load this through Playwright's transform and
+// scripts/prebuild.mjs through Bun, and neither runs Vite plugins.
 export const PRODUCT_NAME = "agentsfleet";
 
-export const HERO_HEADLINE = "AI teammates for incident response.";
+export const HERO_HEADLINE = "AI agents that wake when production breaks.";
 
 // Tokens that must survive in the hero copy (marketing-spec.test.ts pins
 // presence). They double as the "Pillars" bullets in llms-full.txt, so keep
 // them phrase-shaped and meaningful, not single words.
 export const PILLAR_TOKENS = [
-  "AI incident teammate",
+  "wakes on a production event",
   "logs, metrics, and code",
   "You control access and decide what ships.",
 ] as const;
 
-// Lead with the work a visitor can delegate, then explain the control boundary.
+// Lead with what starts the agent, then its sources, then the control boundary.
 export const HERO_LEDE_PARTS = {
-  intro: "Your",
-  teammates: "AI incident teammate",
-  middle: "investigates failures using your",
-  recurringWork: "logs, metrics, and code",
-  outro: "to explain what went wrong and help prepare a fix. You control access and decide what ships.",
+  intro: "An",
+  agent: "agentsfleet agent",
+  middle: "wakes on a production event and investigates with your",
+  sources: "logs, metrics, and code",
+  outro: "to explain what went wrong and prepare a fix, on the platform’s model or a key you bring. You control access and decide what ships.",
 } as const;
 
 export const HERO_PRIMARY_LABEL = "Request early access";
@@ -151,7 +154,7 @@ export type FleetPillar = {
 
 // The three behavioral capabilities. Moved out of the prebuilt-fleets wall and
 // into Core Capabilities (design-consultation decision) — they describe what
-// every teammate is, not which prebuilts exist.
+// every agent is, not which prebuilts exist.
 export const FLEET_PILLARS: readonly FleetPillar[] = [
   {
     id: "sandbox",
@@ -206,7 +209,7 @@ export const LOOP_STEPS = [
   },
 ] as const;
 
-export const CAPABILITY_HEADING = "Helpful teammates. You stay in control.";
+export const CAPABILITY_HEADING = "Agents on your terms. You stay in control.";
 
 export const RUNTIME_GUARANTEES_LABEL =
   "Controls for every job";

@@ -38,7 +38,7 @@ describe("Footer", () => {
   it("describes incident investigation and user approval", () => {
     renderFooter();
     expect(
-      screen.getByText(/AI teammates that investigate incidents and help prepare fixes/i),
+      screen.getByText(/AI agents that wake on production events/i),
     ).toBeInTheDocument();
     // "Self-managed. Open source." was pulled from the footer tagline.
     expect(screen.queryByText(/Self-managed\. Open source\./)).not.toBeInTheDocument();

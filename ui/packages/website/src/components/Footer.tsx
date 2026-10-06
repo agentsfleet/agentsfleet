@@ -17,7 +17,7 @@ const FOOTER_SURFACE = "footer";
 // Read once when the page loads: a render must not read the clock.
 const COPYRIGHT_YEAR = new Date().getFullYear();
 const FOOTER_TAGLINE =
-  "AI teammates that investigate incidents and help prepare fixes. You control access and decide what ships.";
+  "AI agents that wake on production events, investigate with your logs, metrics, and code, and prepare fixes. You control access and decide what ships.";
 
 export default function Footer() {
   return (

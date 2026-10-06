@@ -91,7 +91,7 @@ function TypographyButtonsGallery() {
       <Section className="grid-cols-1 md:grid-cols-3">
         <Card>
           <p className="text-label text-text-muted">Display · Bricolage Grotesque</p>
-          <p className="font-display text-display-md">A fleet, ready to run.</p>
+          <p className="font-display text-display-md">Agents that wake when production breaks.</p>
         </Card>
         <Card>
           <p className="text-label text-text-muted">Interface · Instrument Sans</p>

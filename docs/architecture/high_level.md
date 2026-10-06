@@ -10,19 +10,19 @@ Every row is extracted from the numbered sections below; the owner column names 
 
 | Claim | Value | Owner section |
 |---|---|---|
-| The product | a durable runtime for one operational outcome — shipped as "AI teammates, ready to run" | §1 |
+| The product | a durable runtime for one operational outcome — shipped as AI agents that wake on production events | §1 |
 | The pillars | open source · self-managed provider keys · markdown-defined | §1 |
 | Deployment | hosted-only in v2; self-host deferred to v3 | §1 |
 | The wedge | `platform-ops`: GitHub Actions deploy-failure responder + manual operator steer | §1, §2 |
 | The MVP promise | "Operational outcomes do not fall into limbo" | §4 |
 | The existence bar | if local Claude answers "what should I do next?" as well, v2 has not earned its existence | §1 |
-| The Slack bot | acquisition on-ramp, reactive only — agency, not memory, is the line to the durable teammate | §5.2 |
+| The Slack bot | acquisition on-ramp, reactive only — agency, not memory, is the line to the durable agent | §5.2 |
 
 ## Traps
 
 - v2 is not a chat UI over tools, a general assistant, or an automate-anything platform (§1).
 - The §3 counterarguments are live risks, not strawmen — the MVP bar exists because the thesis can still fail (§3).
-- The reactive Slack bot converts to the durable teammate; it is never a second product (§5.2).
+- The reactive Slack bot converts to the durable agent; it is never a second product (§5.2).
 
 ---
 
@@ -32,7 +32,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 
 agentsfleet v2 is a durable runtime for one operational outcome.
 
-On the product surface, that runtime ships as a fleet of prebuilt AI teammates — each one wakes on an event (a pull request, a deploy, an incident), does the recurring engineering work, and holds at human approval before anything merges or ships. The marketing framing and this technical thesis describe the same thing from two ends: "AI teammates, ready to run" is what the operator buys; "a durable runtime for one operational outcome" is what we build.
+On the product surface, that runtime ships as AI agents that wake on production events — each one starts on an event (a pull request, a deploy, an incident), does the recurring engineering work, and holds at human approval before anything merges or ships. The marketing framing and this technical thesis describe the same thing from two ends: "AI agents that wake when production breaks" is what the operator buys; "a durable runtime for one operational outcome" is what we build.
 
 It is meant for work that:
 
@@ -58,7 +58,7 @@ If a user can get the same value by opening Claude locally and asking "what shou
 Three structural pillars carry v2:
 
 - **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
-- **Self-managed provider keys.** Operators bring their own large-language-model provider key. The control plane resolves it and the runner's supervisor uses it for the inference call only; it never enters a sandbox. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
+- **Self-managed provider keys.** Operators can bring their own large-language-model provider key; new tenants start on the platform-managed default ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1). The control plane resolves it and the runner's supervisor uses it for the inference call only; it never enters a sandbox. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
 - **Markdown-defined.** Operational behaviour lives in `SKILL.md`, optional `TRIGGER.md`, and optional support files carried by a Fleet Bundle, not in a typed workflow engine. Iteration is editing prose and policy, not redeploying code.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
@@ -193,7 +193,7 @@ All three flow through the same reasoning loop. The fleet does not branch on act
 
 ### 5.2 Slack-resident channel bot — the on-ramp (M106)
 
-The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired teammate (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable teammate, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. The hired-teammate Rung 1 is the follow-on, and M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
+The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired agent (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable agent, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. The hired-agent Rung 1 is the follow-on, and M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
 
 ## 6. Where this points after v2
 
@@ -215,15 +215,15 @@ Structural changes from MVP to bastion:
 
 What does not change: the runtime architecture, the sandbox boundary, the trigger model, and the secret vault / network policy / budget caps / context lifecycle. Bastion audience routing applies to work-events only — worker-emitted `system:*` rows stay on the internal operator timeline. The bastion is a `SKILL.md` authoring pattern plus a few tool primitives plus a rendering surface — not a different product.
 
-### 6.2 Slack Rung 1 — hired durable teammates
+### 6.2 Slack Rung 1 — hired durable agents
 
-Where the human front door points after the CLI/dashboard wedge. Rung 0 is specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. M206 specs the first hired-teammate slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
+Where the human front door points after the CLI/dashboard wedge. Rung 0 is specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. M206 specs the first hired-agent slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
 
 The ladder's boundary is **agency, not memory**. Rung 0 is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
-- **Rung 1 — hired durable teammates (follow-on).** From the same Slack surface, a recurring need converts into a durable teammate that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds library-install + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
+- **Rung 1 — hired durable agents (follow-on).** From the same Slack surface, a recurring need converts into a durable agent that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds library-install + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
 
-**Why this is not "a chat UI over tools"** ([`high_level.md`](./high_level.md) §1): Rung 0 is the acquisition on-ramp, deliberately reactive — its job is to be useful enough to convert to the durable teammate. The durable runtime is still the product; agency (acting unattended) is what the operator hires and what a reactive channel bot structurally cannot do. Memory is free at both rungs.
+**Why this is not "a chat UI over tools"** ([`high_level.md`](./high_level.md) §1): Rung 0 is the acquisition on-ramp, deliberately reactive — its job is to be useful enough to convert to the durable agent. The durable runtime is still the product; agency (acting unattended) is what the operator hires and what a reactive channel bot structurally cannot do. Memory is free at both rungs.
 
 ### 6.3 Security Reviewer — a prebuilt fleet
 

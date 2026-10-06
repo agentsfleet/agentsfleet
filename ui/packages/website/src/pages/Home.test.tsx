@@ -6,6 +6,7 @@ import {
   FLEET_PILLARS,
   CAPABILITY_ITEMS,
   HERO_HEADLINE,
+  HERO_LEDE_PARTS,
   HOW_IT_WORKS_HEADING,
   PREBUILT_FLEETS,
   PRICING_COPY,
@@ -33,11 +34,11 @@ describe("Home", () => {
     expect(h1).toHaveTextContent(HERO_HEADLINE);
   });
 
-  it("renders the hero lede in the warm teammates voice", () => {
+  it("renders the hero lede naming the agent and its sources", () => {
     renderHome();
     const hero = screen.getByTestId("hero");
-    expect(within(hero).getByText("AI incident teammate")).toBeInTheDocument();
-    expect(within(hero).getByText("logs, metrics, and code")).toBeInTheDocument();
+    expect(within(hero).getByText(HERO_LEDE_PARTS.agent)).toBeInTheDocument();
+    expect(within(hero).getByText(HERO_LEDE_PARTS.sources)).toBeInTheDocument();
     expect(hero.textContent).toMatch(/you control access and decide what ships/i);
   });
 

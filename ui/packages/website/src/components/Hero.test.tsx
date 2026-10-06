@@ -12,6 +12,7 @@ vi.mock("../analytics/posthog", () => analytics);
 import Hero from "./Hero";
 import {
   HERO_HEADLINE,
+  HERO_LEDE_PARTS,
   HERO_PRIMARY_LABEL,
   HERO_SECONDARY_LABEL,
   HOW_IT_WORKS_ANCHOR_ID,
@@ -50,10 +51,10 @@ describe("Hero", () => {
     expect(container.querySelector("[data-live=\"true\"]")).toBeNull();
   });
 
-  it("renders the lede paragraph in the warm teammates voice", () => {
+  it("renders the lede paragraph naming the agent and its sources", () => {
     renderHero();
-    expect(screen.getByText("AI incident teammate")).toBeInTheDocument();
-    expect(screen.getByText("logs, metrics, and code")).toBeInTheDocument();
+    expect(screen.getByText(HERO_LEDE_PARTS.agent)).toBeInTheDocument();
+    expect(screen.getByText(HERO_LEDE_PARTS.sources)).toBeInTheDocument();
     expect(screen.getByTestId("hero").textContent).toMatch(
       /you control access and decide what ships/i,
     );

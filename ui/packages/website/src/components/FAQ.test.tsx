@@ -83,7 +83,7 @@ describe("FAQ", { timeout: FAQ_TEST_TIMEOUT_MS }, () => {
     render(<FAQ />);
     await user.click(screen.getByText("What is agentsfleet?"));
     expect(
-      screen.getByText(/AI teammates for code review, incident investigation, and preparing fixes/i),
+      screen.getByText(/open-source runtime for AI agents that wake on production events/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/You choose what it can access and review the results/i)).toBeInTheDocument();
   });

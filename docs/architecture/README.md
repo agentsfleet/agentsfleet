@@ -140,7 +140,7 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 
 | Term | Meaning |
 |---|---|
-| **Fleet** | The customer-created runtime instance: a durable AI teammate defined by `SKILL.md` plus optional `TRIGGER.md` and source metadata; owns one operational outcome. `/fleets`, `core.fleets`, and `fleet_id` are canonical. [(more)](./high_level.md#1-product-thesis) |
+| **Fleet** | The customer-created runtime instance: a durable AI agent defined by `SKILL.md` plus optional `TRIGGER.md` and source metadata; owns one operational outcome. `/fleets`, `core.fleets`, and `fleet_id` are canonical. [(more)](./high_level.md#1-product-thesis) |
 | **Fleet Bundle** | A validated template or imported folder/archive that contains required `SKILL.md` plus optional support files; creating from it still creates a runtime Fleet. [(more)](./user_flow.md#81-authoring-the-fleet) |
 | **Agent loop** | The language-model fleet loop in the runner's supervisor, outside the lease's sandbox; it routes each tool call to where that tool runs — this is "the fleet" (host) at runtime. [(more)](./runner_execution.md#process-model) |
 | **`agentsfleetd` (control plane)** | Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment / fencing / reclaim. Host runners reach it only over the `/v1/runners` protocol. Implemented at the M80_002 cutover. [(more)](./runner_fleet.md) |
