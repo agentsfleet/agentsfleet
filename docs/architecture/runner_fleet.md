@@ -135,7 +135,7 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 
 ### Per-lease renewal — how a long fleet keeps its lease
 
-A renewal pushes the kill-deadline forward *only while the child is genuinely working*. The runner's supervisor wakes on a fixed tick; once inside the renewal window it calls `/renew`, which atomically extends **both** the lease row and the affinity slot under a fence + the hard cap:
+A renewal pushes the kill-deadline forward while the runner's lease task lives. The Rust supervisor calls `/renew` on every `RENEWAL_TICK_MS` tick from the lease's start, carrying the run's cumulative tokens, and gives the lease up at the last granted deadline less two seconds (`rustd/crates/afr_supervisor/src/renew.rs`). The call atomically extends **both** the lease row and the affinity slot under a fence + the hard cap:
 
 ```
  lease issued                                renewal window
@@ -155,9 +155,9 @@ A renewal pushes the kill-deadline forward *only while the child is genuinely wo
    │ The tick on a live-but-quiet child IS the synthetic keepalive — a long     │
    │ model call with no progress frames still renews. A truly dead/dormant      │
    │ child emits nothing, is never renewed, and is reclaimed at the deadline.   │
-   │ The renewal doubles as the runner's heartbeat (it is single-threaded and   │
-   │ does not heartbeat mid-run), so §2 lapse-detection never reassigns a live  │
-   │ long-runner's own lease.                                                   │
+   │ The Rust runner heartbeats beside its leases (heartbeat, drainer and       │
+   │ worker pool run joined), so a busy host still beats and §2                 │
+   │ lapse-detection never reassigns a live long-runner's own lease.            │
    └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -215,7 +215,7 @@ Five verbs. `agentsfleetd` translates them into the Postgres writes and Dragonfl
 | Verb | Path | Auth | Handler | Purpose |
 |---|---|---|---|---|
 | `register` | `POST /v1/runners` | `Bearer` JWT carrying the `runner:enroll` scope | `afd_api_runner`'s enrolment handler | platform admin mints a durable `runner_token` (`agt_r`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `agt_t` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `agt_r` (M84_001) |
-| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `afd_api_runner`'s heartbeat handler | liveness; reply carries `status` (`ok` / `drain` / `stop`), any revoked lease IDs, and `heartbeat_interval_ms` — the cadence the host beats at, **required** on every reply (M205) |
+| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `afd_api_runner`'s heartbeat handler | liveness; reply carries `status` (`ok` / `drain` / `stop` on the wire, and always `ok` from this daemon, because a cordoned, drained or revoked runner is refused before the handler with `UZ-RUN-009`), the assigned policy, the `degraded` verdict, and `heartbeat_interval_ms` — the cadence the host beats at, **required** on every reply (M205). No lease list rides it |
 | `lease` | `POST /v1/runners/me/leases` | `Bearer agt_r` | `afd_api_runner`'s lease handler | non-blocking poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
 | `report` | `POST /v1/runners/me/reports` | `Bearer agt_r` | `afd_api_runner`'s report handler | terminal result for a lease; `agentsfleetd` persists + `XACK`s after a fencing check |
 | `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer agt_r` | `afd_api_runner`'s activity handler | write-only progress stream for the live tail; best-effort, no ack |
@@ -264,7 +264,7 @@ Capability flows **up**. At startup and on every heartbeat tick, the daemon prob
 
 The heartbeat handler reconciles assigned against achievable through a pure verdict function (`afd_runner`'s reconcile module), writing the row's `degraded` flag and `degraded_reason`. The reason names the one missing mechanism in operator vocabulary — "cgroup controllers not delegated" maps to a bootstrap playbook step.
 
-The verdict gates work on **both sides, and fails closed**. The control plane's lease handler issues nothing to a degraded row, and an unreadable verdict also issues nothing. The runner's workers refuse to lease while the reply says degraded, or while no decodable assignment is held — `AppliedPolicy` holds nothing on a malformed policy, never the previous value and never a permissive default.
+The verdict gates work on **both sides, and fails closed**. The control plane's lease handler issues nothing to a degraded row, and an unreadable verdict also issues nothing. The Rust runner's workers take no work while no decodable assignment is held: a null policy sets the worker count to zero, never the previous value and never a permissive default (`rustd/crates/afr_supervisor/src/heartbeat.rs`). They do not read `degraded`; the lease handler's refusal is the one gate a degraded row meets.
 
 A policy re-assignment re-reconciles the verdict **inside the PATCH request**, against the stored report. A tightening the host provably cannot meet degrades the row and closes the lease gate immediately.
 
@@ -578,13 +578,13 @@ The daemon serves asynchronous response bodies through the shared hub, with a se
 
 ## Steer, kill, pause
 
-All three are decided by `agentsfleetd`, which owns both `core.fleets.status` and lease issuance. A runner learns of an in-flight change on its next `heartbeat`, so cancel latency is bounded by the heartbeat interval.
+All three are decided by `agentsfleetd`, which owns both `core.fleets.status` and lease issuance. None reaches a lease already running: the heartbeat answers `ok` and names no lease, and renewal admits a fleet that is no longer active (`rustd/crates/afd_fleet/src/lease/coverage.rs`).
 
 - **Steer** — a human message. `agentsfleetd` enqueues a `steer` event; it is leased like any other. The current run finishes first; the steer runs next. Not an interrupt.
 - **Pause** — `agentsfleetd` sets `status=paused` and stops issuing leases for the fleet. Any in-flight lease runs to completion.
-- **Kill** — `agentsfleetd` sets `status=killed` and marks the in-flight lease revoked. The runner sees the revocation in its next heartbeat reply, kills the sandboxed child, and reports `cancelled`. A late report from a killed runner is rejected by the fencing token.
+- **Kill** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: killed` sets `status=killed` and stops issuing leases for the fleet. It writes nothing to `fleet.runner_leases` (`rustd/crates/afd_fleet_lifecycle/src/sql.rs`), so a lease in flight runs to its own end or to `MAX_RUNTIME_MS`, and its report settles like any other.
 
-A dedicated low-latency cancel channel can come later; heartbeat-carried revocation is the S0 mechanism.
+No cancel channel exists: a revocation carried on the heartbeat, or a dedicated low-latency channel, is unbuilt.
 
 ## Cold and warm execution
 
