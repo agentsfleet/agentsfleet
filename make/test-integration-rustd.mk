@@ -247,7 +247,20 @@ RUSTD_COVERAGE_FLOOR ?= 97.5
 # the crate's five `main`s and their shared preamble were 111 of the 167 unhit
 # lines behind a 90.8% patch grade against the 97 floor. codecov.yml ignores
 # the same path, so the two gates read one denominator.
-RUSTD_COVERAGE_IGNORE ?= (/src/test_util\.rs$$|/crates/afd_bench/)
+#
+# The toolbox's four kernel-lane files are proven by `make test-runner-kernel`
+# (make/test-unit.mk): root on a real Linux kernel with loop devices and
+# mounts, and it fails rather than skips. The runner behind THIS lane has
+# neither, so the report it grades never hits them. On Pull Request (PR) #732
+# at 669fc1d41 they were 154 of the 172 unhit changed lines (adopt.rs 70,
+# loop_device.rs 51, admit.rs 24, kernel_mounter.rs 9) behind a 93.19% patch
+# grade against the 99 floor; the rest of the diff graded 99.24%.
+# `kernel_mounter.rs` was split out of holds.rs so a file-level ignore takes
+# exactly it. Their tests still RUN in the kernel lane; their lines are no
+# longer graded by a lane that cannot execute them. Excused on Indy's call
+# (2026-10-06, PR #732 Session notes 2). codecov.yml ignores the same four
+# paths, so the two gates read one denominator.
+RUSTD_COVERAGE_IGNORE ?= (/src/test_util\.rs$$|/crates/afd_bench/|/crates/afr_sandbox/src/toolbox/(adopt|loop_device|admit|kernel_mounter)\.rs$$)
 
 # The floor's verdict, carrying the number that decided it, decided ONCE.
 #

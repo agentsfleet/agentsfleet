@@ -146,6 +146,16 @@ ignore:
   # grade excludes the same path through RUSTD_COVERAGE_IGNORE in
   # make/test-integration-rustd.mk, so the two gates read one denominator.
   - "rustd/crates/afd_bench/**"
+  # The toolbox's four kernel-lane files are proven by `make test-runner-kernel`
+  # (root on a real Linux kernel with loop devices and mounts); the integration
+  # lane's runner cannot execute them, so the report it uploads never hits them.
+  # Excused on Indy's call (2026-10-06, Pull Request #732 Session notes 2).
+  # RUSTD_COVERAGE_IGNORE in make/test-integration-rustd.mk excludes the same
+  # four files, so the two gates read one denominator.
+  - "rustd/crates/afr_sandbox/src/toolbox/adopt.rs"
+  - "rustd/crates/afr_sandbox/src/toolbox/loop_device.rs"
+  - "rustd/crates/afr_sandbox/src/toolbox/admit.rs"
+  - "rustd/crates/afr_sandbox/src/toolbox/kernel_mounter.rs"
   - "**/*.test.ts"
   - "**/*.test.tsx"
   - "**/*.spec.ts"
