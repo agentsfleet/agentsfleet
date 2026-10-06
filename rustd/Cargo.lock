@@ -808,7 +808,7 @@ dependencies = [
 
 [[package]]
 name = "afd_otlp"
-version = "0.56.0"
+version = "0.57.0"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "afr_telemetry"
-version = "0.56.0"
+version = "0.57.0"
 dependencies = [
  "afd_core",
  "afd_observability",
