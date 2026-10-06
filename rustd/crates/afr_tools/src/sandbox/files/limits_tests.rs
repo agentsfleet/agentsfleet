@@ -14,8 +14,9 @@ use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
 use crate::testing::{Live, call_in, hosted, offered};
 
-/// A file longer than one read carries is read cut and says so, and is
-/// refused for an edit, which would write it back cut.
+/// A file longer than one read carries is read cut to the budget and says
+/// where the rest is, and is refused for an edit, which would write it back
+/// cut.
 #[tokio::test]
 async fn a_file_past_one_read_is_cut_for_reading_and_refused_for_editing() {
     let live = Live::start().await;
@@ -44,9 +45,14 @@ async fn a_file_past_one_read_is_cut_for_reading_and_refused_for_editing() {
 
     assert!(
         read.text.ends_with(&format!(
-            "... the file continues past {MAX_READ_BYTES} bytes ..."
+            "... the file continues past {MAX_READ_BYTES} bytes; read the rest with shell"
         )),
         "{}",
+        read.text.len()
+    );
+    assert!(
+        read.text.len() < 41_000,
+        "one line past the budget is cut to it: {} bytes",
         read.text.len()
     );
     assert_eq!(read.error_code, None);

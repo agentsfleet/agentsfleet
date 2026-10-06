@@ -24,6 +24,7 @@ mod hashed;
 mod image;
 mod oneshot;
 mod output;
+mod read;
 mod repositories;
 #[cfg(any(test, feature = "test-util"))]
 mod scripted;
@@ -33,11 +34,12 @@ mod shell;
 pub(crate) use self::apply_patch::ApplyPatch;
 pub(crate) use self::browser::{Browser, BrowserOpen, Screenshot};
 pub(crate) use self::exec_session::{ExecCommand, WriteStdin};
-pub(crate) use self::files::{FileAppend, FileDelete, FileEdit, FileRead, FileWrite};
+pub(crate) use self::files::{FileAppend, FileDelete, FileEdit, FileWrite};
 pub(crate) use self::git::Git;
 pub(crate) use self::hashed::{FileEditHashed, FileReadHashed};
 pub(crate) use self::image::Image;
 pub use self::image::{IMAGE_MAX_BYTES, ImageAttachment, ImageKind};
+pub(crate) use self::read::FileRead;
 pub use self::repositories::{CREDENTIAL_GITHUB, Checkout, checkouts};
 #[cfg(any(test, feature = "test-util"))]
 pub use self::scripted::{ScriptedExecutor, ScriptedProcess};
