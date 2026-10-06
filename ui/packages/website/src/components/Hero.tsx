@@ -25,10 +25,10 @@ function HeroHeading() {
     <>
       {/*
        * FINDING-M05. A kicker read "AI incident response for engineering
-       * teams" directly above a headline reading "AI teammates for incident
-       * response." — the same words rearranged, and the second of two
-       * pre-headline elements. The hero budget is brand, one headline, one
-       * supporting sentence, one CTA group, one image; the promo pill stays
+       * teams" directly above a headline that said the same thing in other
+       * words, making it the second of two pre-headline elements. The hero
+       * budget is brand, one headline, one supporting sentence, one CTA group,
+       * one image; the promo pill stays
        * because it says something the headline does not (early access, and an
        * invitation), while the kicker only said it again. Its decorative pulse
        * dot went with it.
@@ -43,8 +43,8 @@ function HeroHeading() {
       </a>
       <DisplayXL data-testid="hero-headline" className="max-w-tagline">{HERO_HEADLINE}</DisplayXL>
       <p className="font-sans text-body-lg leading-body-lg text-text-muted max-w-narrow">
-        {HERO_LEDE_PARTS.intro} <strong className="font-medium text-text">{HERO_LEDE_PARTS.teammates}</strong>{" "}
-        {HERO_LEDE_PARTS.middle} <strong className="font-medium text-text">{HERO_LEDE_PARTS.recurringWork}</strong>{" "}
+        {HERO_LEDE_PARTS.intro} <strong className="font-medium text-text">{HERO_LEDE_PARTS.agent}</strong>{" "}
+        {HERO_LEDE_PARTS.middle} <strong className="font-medium text-text">{HERO_LEDE_PARTS.sources}</strong>{" "}
         {HERO_LEDE_PARTS.outro}
       </p>
     </>

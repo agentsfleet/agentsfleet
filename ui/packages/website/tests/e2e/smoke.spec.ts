@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { LLMS_FULL_INTRO } from "../../src/lib/llms-text";
 
 /**
  * Smoke tests — fast subset for CI pre-deploy gate.
@@ -46,7 +47,9 @@ test.describe("Smoke", () => {
 
     const llmsFull = await page.request.get("/llms-full.txt");
     expect(llmsFull.status()).toBe(200);
-    expect(await llmsFull.text()).toContain("AI teammates");
+    const llmsFullBody = await llmsFull.text();
+    expect(llmsFullBody).toContain("## Pillars");
+    expect(llmsFullBody).toContain(LLMS_FULL_INTRO);
   });
 
   test("fleets page loads", async ({ page }) => {

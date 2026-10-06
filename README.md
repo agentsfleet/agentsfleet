@@ -1,6 +1,6 @@
 <div align="center"><img src="branding/agentsfleet-mark-glow.png" width="180" alt="agentsfleet" />
 
-# A fleet of prebuilt AI teammates for recurring engineering work.
+# AI agents that wake when production breaks.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/agentsfleet/agentsfleet/test.yml?branch=main&label=CI&logo=github&logoColor=white)](https://github.com/agentsfleet/agentsfleet/actions/workflows/test.yml?query=branch%3Amain)
 [![rust-afd coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=rust-afd&label=rust-afd&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=rust-afd)
@@ -14,14 +14,14 @@
 
 </div>
 
-**[agentsfleet](https://agentsfleet.net)** is a fleet of prebuilt AI teammates for recurring engineering work. Each one wakes on an event — a pull request, an incident, a deploy — reads your code, telemetry, internal docs, and live control-plane state, finds the root cause, and opens a scenario-backed fix. A human approves, then it ships the fix or drafts the customer reply. Every step is a replayable log.
+**[agentsfleet](https://agentsfleet.net)** is an open-source runtime for AI agents that wake on production events. An agent starts on an event — a pull request, an incident, a deploy — reads your code, telemetry, internal docs, and live control-plane state, finds the root cause, and opens a scenario-backed fix, on the platform's model or a key you bring. A human approves, then it ships the fix or drafts the customer reply. Every step is a replayable log.
 
 - **Human approval, by design** — the agent investigates and proposes; a person approves before anything ships
 - **Replayable event logs** — audit every action and decision
 - **Bring your own provider keys** — no vendor lock-in on inference
 - **Runs locally or against production** — same agent, same evidence
 
-Agents are defined in Markdown playbooks with tools, triggers, and investigation steps. Open-source runtime, hosted control plane — the teammate, not a wrapper around someone else's.
+Agents are defined in Markdown playbooks with tools, triggers, and investigation steps. Open-source runtime, hosted control plane; bring your own model key or run on the platform's.
 
 ---
 
