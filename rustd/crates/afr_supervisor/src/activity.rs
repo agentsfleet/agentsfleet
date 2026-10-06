@@ -15,15 +15,24 @@
 //! being dropped piecemeal; only a batch that has filled while it waited is
 //! dropped, counted and logged. The last batch of a run waits for room
 //! instead.
+//!
+//! A lease that stops waiting for the drain drops the pump with frames still
+//! held — in the batch, the queue, a post in flight, or the channel from the
+//! sink. The pump counts what it holds as it goes and records that remainder
+//! as `abandoned` when it is dropped, so the frames a slow daemon cost are
+//! counted on every path that loses them.
 
 use std::io;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_wire::activity::{ActivityFrame, ActivityRequest};
 use afr_agent::EventSink;
+use afr_telemetry::labels::FrameDrop;
+use afr_telemetry::record;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
@@ -73,6 +82,22 @@ pub(crate) struct ActivityPump<'a> {
     frames: mpsc::UnboundedReceiver<ActivityFrame<'static>>,
     /// Batches dropped because [`MAX_BATCHES_HELD`] were already held.
     dropped: u64,
+    /// Frames taken from the sink and not yet posted, failed or dropped: what
+    /// a pump dropped mid-drain abandons. Shared with the poster, which runs
+    /// beside the batcher, and lock-free like everything on this path.
+    held: Arc<AtomicU64>,
+}
+
+impl Drop for ActivityPump<'_> {
+    /// Records the frames a pump still holds as abandoned: zero for a pump
+    /// that drained, everything left for one the lease stopped waiting for.
+    fn drop(&mut self) {
+        let queued = frame_count(self.frames.len());
+        let abandoned = self.held.load(Ordering::Relaxed).saturating_add(queued);
+        if abandoned > 0 {
+            record::frames_dropped(FrameDrop::Abandoned, abandoned);
+        }
+    }
 }
 
 /// A sink for the run and the pump that posts what it emits.
@@ -86,6 +111,7 @@ pub(crate) fn channel<'a>(
         lease_id,
         frames: receiver,
         dropped: 0,
+        held: Arc::default(),
     };
     let sink = ActivitySink {
         frames: sender,
@@ -106,9 +132,12 @@ impl ActivityPump<'_> {
         let (posts, mut queued) = mpsc::channel::<Batch>(MAX_BATCHES_HELD - 1);
         let plane = self.plane;
         let lease_id = self.lease_id;
+        let held = Arc::clone(&self.held);
         let poster = async move {
             while let Some(frames) = queued.recv().await {
+                let posted = frame_count(frames.len());
                 post(plane, lease_id, frames).await;
+                held.fetch_sub(posted, Ordering::Relaxed);
             }
         };
         tokio::join!(self.batch(posts), poster);
@@ -128,8 +157,8 @@ impl ActivityPump<'_> {
                     if !batch.is_empty() && bytes + size > MAX_BATCH_BYTES {
                         // Full. Sent, or dropped when every slot is still
                         // held: a full batch is the only kind this pump drops.
-                        if posts.try_send(std::mem::take(&mut batch)).is_err() {
-                            self.count_drop();
+                        if let Err(full) = posts.try_send(std::mem::take(&mut batch)) {
+                            self.count_drop(full.into_inner().len());
                         }
                         bytes = 0;
                     }
@@ -139,6 +168,7 @@ impl ActivityPump<'_> {
                         flush.reset();
                     }
                     batch.push(frame);
+                    self.held.fetch_add(1, Ordering::Relaxed);
                     bytes += size;
                 }
                 _ = flush.tick(), if !batch.is_empty() => {
@@ -158,8 +188,12 @@ impl ActivityPump<'_> {
         }
     }
 
-    /// Counts and logs a full batch dropped because every slot was held.
-    fn count_drop(&mut self) {
+    /// Counts and logs a full batch of `frames` dropped because every slot
+    /// was held.
+    fn count_drop(&mut self, frames: usize) {
+        let lost = frame_count(frames);
+        self.held.fetch_sub(lost, Ordering::Relaxed);
+        record::frames_dropped(FrameDrop::Backpressure, lost);
         self.dropped += 1;
         let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
         let lease_id = self.lease_id.as_str();
@@ -177,7 +211,9 @@ impl ActivityPump<'_> {
 
 /// Posts one batch. Activity is best-effort: a failure is logged, not retried.
 async fn post(plane: &ControlPlane, lease_id: &Uuid7, frames: Batch) {
+    let lost = frame_count(frames.len());
     if let Err(failure) = plane.activity(lease_id, &ActivityRequest { frames }).await {
+        record::frames_dropped(FrameDrop::PostFailed, lost);
         let code = failure.code().as_str();
         let lease_id = lease_id.as_str();
         let event = EVENT_POST_FAILED;
@@ -188,6 +224,11 @@ async fn post(plane: &ControlPlane, lease_id: &Uuid7, frames: Batch) {
             "a live-tail batch was not delivered"
         );
     }
+}
+
+/// `frames` as the count a family adds; a batch is far below `u64::MAX`.
+fn frame_count(frames: usize) -> u64 {
+    u64::try_from(frames).unwrap_or(u64::MAX)
 }
 
 /// A frame's encoded size, measured without allocating its encoding.

@@ -20,6 +20,8 @@ mod ends;
 mod hosts;
 #[path = "providers/images.rs"]
 mod images;
+#[path = "providers/retries.rs"]
+mod retries;
 #[path = "providers/turns.rs"]
 mod turns;
 

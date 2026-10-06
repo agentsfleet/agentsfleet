@@ -22,20 +22,12 @@
 use std::time::Duration;
 
 use afd_core::env::EnvSource;
+use afd_otlp::{
+    DEFAULT_TIMEOUT, Encoding, OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB,
+    OTEL_TIMEOUT_KNOB, OtlpConfig, Refused,
+};
 
 use crate::error::Fault;
-
-/// Where signals are sent, as the specification spells it.
-pub const OTEL_ENDPOINT_KNOB: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
-
-/// Headers every export carries, as `key=value` pairs joined by commas.
-pub const OTEL_HEADERS_KNOB: &str = "OTEL_EXPORTER_OTLP_HEADERS";
-
-/// Which encoding goes on the wire.
-pub const OTEL_PROTOCOL_KNOB: &str = "OTEL_EXPORTER_OTLP_PROTOCOL";
-
-/// How long one export may take.
-pub const OTEL_TIMEOUT_KNOB: &str = "OTEL_EXPORTER_OTLP_TIMEOUT";
 
 /// The vendor endpoint, accepted through the cutover.
 pub const GRAFANA_ENDPOINT_KNOB: &str = "GRAFANA_OTLP_ENDPOINT";
@@ -46,110 +38,47 @@ pub const GRAFANA_INSTANCE_KNOB: &str = "GRAFANA_OTLP_INSTANCE_ID";
 /// The vendor's token, which is the basic-auth password.
 pub const GRAFANA_API_KEY_KNOB: &str = "GRAFANA_OTLP_API_KEY";
 
-/// The protocol this build sends, and the only other one it accepts.
-const PROTOCOL_PROTOBUF: &str = "http/protobuf";
-
-/// The JSON encoding, accepted because a collector may prefer it.
-///
-/// `pub(crate)` because two modules must agree on it byte for byte: this one
-/// decides what the knob ACCEPTS and `telemetry` decides what it maps to. A
-/// second copy renamed alone posts protobuf to a deployment that asked for
-/// JSON, and nothing would say so.
-pub const PROTOCOL_JSON: &str = "http/json";
-
-/// What an export waits before giving up, when nothing says otherwise.
-///
-/// The specification's own default. Stated rather than inherited so a reader
-/// of this file knows the number without going to the exporter's source.
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
-
 /// The header a basic credential is presented in.
 const AUTHORIZATION: &str = "Authorization";
-
-/// Why a protocol this build does not carry refuses boot.
-const WHY_PROTOCOL: &str = "http/protobuf or http/json; this build carries no gRPC transport, and a \
-     deployment asking for one would export nothing at all";
-
-/// Why a timeout that will not parse refuses boot.
-const WHY_TIMEOUT: &str = "how long one export may take, in whole milliseconds";
-
-/// Why an endpoint no exporter could build refuses boot.
-///
-/// Graded HERE so the refusal names the knob. Left to the exporter it comes
-/// back as `invalid URI <the whole value>`, and that value is read from the
-/// same place as the credential beside it — a rejection that echoed it would
-/// print to stderr and to whatever ships stderr.
-const WHY_ENDPOINT: &str = "an absolute URL the exporter can post to, such as \
-                            https://collector.example:4318";
 
 /// Why a malformed header list refuses boot.
 const WHY_HEADERS: &str = "comma-joined `key=value` pairs; a pair with no `=` \
                            would be sent as a header with no name";
-
-/// What this deployment exports to, when it exports at all.
-#[derive(Clone, PartialEq, Eq)]
-pub struct OtlpConfig {
-    /// The base URL every signal is posted under.
-    pub endpoint: Box<str>,
-    /// The knob the endpoint came from, for the line that reports it.
-    ///
-    /// The NAME, never the value: an endpoint is read from the same place as
-    /// the credential beside it, and a log line carrying one is a log line a
-    /// reader will assume carries neither.
-    pub source: &'static str,
-    /// Every header an export carries, credential included.
-    pub headers: Vec<(String, String)>,
-    /// The encoding, as the exporter's own vocabulary spells it.
-    pub protocol: Box<str>,
-    /// How long one export may take.
-    pub timeout: Duration,
-}
-
-impl core::fmt::Debug for OtlpConfig {
-    /// Header NAMES only, and the endpoint by its knob rather than its value.
-    ///
-    /// Derived, this renders a live credential: the first header is the
-    /// vendor pair as `Basic <base64>`, and base64 is an encoding rather than
-    /// a protection. The master key and the session pepper are redacted the
-    /// same way one module over, and for the same reason — a `{:?}` somebody
-    /// adds later must not be the thing that ships a token to a log.
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_struct("OtlpConfig")
-            .field("source", &self.source)
-            .field("protocol", &self.protocol)
-            .field("timeout", &self.timeout)
-            .field(
-                "headers",
-                &self
-                    .headers
-                    .iter()
-                    .map(|(name, _value)| name.as_str())
-                    .collect::<Vec<_>>(),
-            )
-            .finish_non_exhaustive()
-    }
-}
 
 /// Resolves where telemetry goes, or nothing when this deployment sends none.
 ///
 /// Absent is the ordinary case — every developer's environment, every test —
 /// and it is not a fault: a daemon that refused to boot without a collector
 /// would make a telemetry backend a prerequisite for running the product.
+///
+/// Every knob is read even when an earlier one faulted, so one restart can fix
+/// all of them; the endpoint itself is graded by `afd_otlp`, the one place an
+/// endpoint becomes a configuration.
 pub(super) fn otlp<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<OtlpConfig> {
     let (endpoint, source) = endpoint(env)?;
-    if endpoint.parse::<http::Uri>().is_err() {
-        faults.push(Fault::Invalid {
-            knob: source,
-            why: WHY_ENDPOINT.to_owned(),
-        });
+    let headers = headers(env, faults);
+    let encoding = encoding(env, faults);
+    let timeout = timeout(env, faults);
+    match OtlpConfig::new(&endpoint, source) {
+        Ok(config) => Some(
+            config
+                .with_headers(headers)
+                .with_encoding(encoding)
+                .with_timeout(timeout),
+        ),
+        Err(refused) => {
+            faults.push(fault(refused));
+            None
+        }
     }
-    Some(OtlpConfig {
-        endpoint,
-        source,
-        headers: headers(env, faults),
-        protocol: protocol(env, faults),
-        timeout: timeout(env, faults),
-    })
+}
+
+/// A knob `afd_otlp` refused, as the fault preflight reports beside the rest.
+fn fault(refused: Refused) -> Fault {
+    Fault::Invalid {
+        knob: refused.knob,
+        why: refused.why.to_owned(),
+    }
 }
 
 /// The endpoint and the knob it came from.
@@ -210,26 +139,15 @@ fn vendor_credential<E: EnvSource + ?Sized>(env: &E) -> Option<String> {
     Some(format!("Basic {encoded}"))
 }
 
-/// The wire encoding, defaulting to the one the Zig daemon already posts.
-fn protocol<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Box<str> {
+/// The wire encoding, defaulting to the one the retired daemon posted.
+fn encoding<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Encoding {
     let Some(requested) = super::optional(env, OTEL_PROTOCOL_KNOB) else {
-        return PROTOCOL_PROTOBUF.into();
+        return Encoding::default();
     };
-    match &*requested {
-        PROTOCOL_PROTOBUF | PROTOCOL_JSON => requested,
-        // Every other spelling, `grpc` included. Refused HERE rather than at
-        // the first export, which is the whole point of reading knobs before
-        // anything opens: a deployment that asked for gRPC and got a daemon
-        // exporting nothing would look like a collector fault for as long as
-        // nobody checked.
-        _unsupported => {
-            faults.push(Fault::Invalid {
-                knob: OTEL_PROTOCOL_KNOB,
-                why: WHY_PROTOCOL.to_owned(),
-            });
-            PROTOCOL_PROTOBUF.into()
-        }
-    }
+    requested.parse().unwrap_or_else(|refused| {
+        faults.push(fault(refused));
+        Encoding::default()
+    })
 }
 
 /// How long one export may take.
@@ -237,19 +155,10 @@ fn timeout<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Duration 
     let Some(raw) = super::optional(env, OTEL_TIMEOUT_KNOB) else {
         return DEFAULT_TIMEOUT;
     };
-    match raw.parse::<u64>() {
-        Ok(millis) if millis > 0 => Duration::from_millis(millis),
-        // Zero and unreadable alike. A zero timeout is not "no limit", it is
-        // an export that is over before it starts, which is indistinguishable
-        // from a collector refusing everything.
-        _unusable => {
-            faults.push(Fault::Invalid {
-                knob: OTEL_TIMEOUT_KNOB,
-                why: WHY_TIMEOUT.to_owned(),
-            });
-            DEFAULT_TIMEOUT
-        }
-    }
+    afd_otlp::config::timeout_from(&raw).unwrap_or_else(|refused| {
+        faults.push(fault(refused));
+        DEFAULT_TIMEOUT
+    })
 }
 
 /// `input` in standard base64, which is what a basic credential is.

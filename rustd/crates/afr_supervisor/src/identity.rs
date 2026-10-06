@@ -8,8 +8,8 @@
 //! on telemetry, and the next lease asks again.
 
 use afd_observability::semconv::{
-    ATTR_AGENT_ID, ATTR_LEASE_ID, ATTR_RUNNER_HOST, ATTR_RUNNER_ID, RUNNER_SCOPE_NAME,
-    SPAN_RUNNER_LEASE,
+    ATTR_AGENT_ID, ATTR_EVENT_ID, ATTR_LEASE_ID, ATTR_RUNNER_HOST, ATTR_RUNNER_ID,
+    RUNNER_SCOPE_NAME, SPAN_RUNNER_LEASE,
 };
 use afd_wire::lease::LeasePayload;
 use afd_wire::runner::SelfResponse;
@@ -62,10 +62,17 @@ async fn read(plane: &ControlPlane) -> Result<Identity> {
 }
 
 /// The span `lease`'s work runs under, naming `identity`'s runner when known.
+///
+/// The root of the lease's own trace: no trace context crosses the runner
+/// protocol, so the event identifier is what joins it to the daemon's
+/// `fleet.delivery` span for the same event. That span carries no lease
+/// identifier, so a redelivered event joins every lease that ran it; the
+/// lease identifier on this span tells those runs apart.
 pub(crate) fn lease_span(identity: Option<&Identity>, lease: &LeasePayload<'_>) -> Span {
     let runner_id = identity.map(|known| &*known.runner_id);
     let host = identity.map(|known| &*known.host);
     let lease_id = lease.lease_id.as_ref();
+    let event_id = lease.event.event_id.as_ref();
     let fleet_id = lease.event.fleet_id.as_ref();
     tracing::info_span!(
         target: RUNNER_SCOPE_NAME,
@@ -73,6 +80,7 @@ pub(crate) fn lease_span(identity: Option<&Identity>, lease: &LeasePayload<'_>) 
         { ATTR_RUNNER_ID } = runner_id,
         { ATTR_RUNNER_HOST } = host,
         { ATTR_LEASE_ID } = lease_id,
+        { ATTR_EVENT_ID } = event_id,
         { ATTR_AGENT_ID } = fleet_id,
     )
 }
