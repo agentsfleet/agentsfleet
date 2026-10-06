@@ -1166,7 +1166,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 
 - `fleet.runner_affinity` holds one slot per fleet. `assign.select` claims it atomically — a runner wins iff the slot is free or the prior lease has expired — and bumps a monotonic `fencing_seq`. So **at most one lease is active per fleet at any time**, regardless of how many runners poll concurrently. The claim is the only writer of `fencing_seq`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it and tries the next eligible fleet (or backs off).
-- Continuity across runs is the checkpoint in `agentsfleetd`, not runner-local state — so any runner can pick up the next run. Sticky routing (prefer `last_runner_id`) is a hint for warm-sandbox reuse, never ownership.
+- Continuity across runs lives in `agentsfleetd`, never in runner-local state, so any runner can pick up the next run. Today only fleet memory reaches the next lease; the session checkpoint is saved to `core.fleet_sessions` and handed to no lease ([`runner_execution.md`](./runner_execution.md) §"Workspace between leases"). Sticky routing (prefer `last_runner_id`, random among the rest, `rustd/crates/afd_fleet/src/lease/sql/lease.rs`) is a hint for warm-sandbox reuse, never ownership.
 
 Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency = TTL plus poll density (the S0 lazy-reclaim SLA). Tightening it is M80_006.
 
@@ -1246,6 +1246,8 @@ The fleet receives the digest, not GitHub's payload: action, repository, number,
 | `FLEET_BACKLOG_BUDGET` | 10,000 unacknowledged events per fleet | `afd_admission/src/budget.rs:40` |
 
 **How the fleet replies.** `SKILL.md` decides, in prose. The reply is ordinary `http_request` calls, with `Authorization: Bearer ${secrets.github.token}` substituted at egress from a token minted per lease and narrowed to the binding's repositories. The egress write rules admit git blobs, trees and commits, one ref on the fleet's repair branch, and a draft `/pulls` with head and base locked (`afd_gate/src/policy/egress/write.rs:32`). No rule admits `/pulls/{n}/reviews` or an issue comment, and an origin carrying scoped rules denies every request none of them matches: `src/runner/engine/runtime/http_request_policy.zig:22-30` on the Zig runner, `afr_egress/src/admission.rs` on the Rust one. So a reviewer reads the diff, and its review POST comes back `RequestPolicyNotAllowed`. `rustd/crates/agentsfleetd/tests/integration_rust_runner_reviews.rs:87-104` asserts that zero POSTs reach GitHub. A fleet can push a fix to its repair branch and open a draft PR; it cannot comment.
+
+There is no daemon-side reply either. The App delivery is admitted with no reply destination (`rustd/crates/afd_ingress/src/deliver.rs`), so the report owes no `core.fleet_obligations` row, and the outbound worker has no GitHub poster: a GitHub job is dropped as `no_poster_for_provider` (`rustd/crates/afd_outbound/src/poster.rs`). The review post is parked: `docs/v2/done/M210_002_P1_API_INFRA_RUST_RUNNER_AGENT_LOOP_AND_HOSTED_TOOLS.md`, Dimension 6.3.
 
 **A steer from the chat** is admitted through the same ledger as its own event and waits behind the running lease (`afd_events/src/steer.rs`). Nothing is injected into a run in progress, and no route cancels one.
 
