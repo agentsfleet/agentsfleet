@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M212
 **Workstream:** 001
 **Date:** Oct 02, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the tools the published page lists that the Zig runner refuses; without them a fleet cannot plan a follow-up or speak before it finishes
 **Categories:** API, DOCS
 **Batch:** B1 — the daemon half depends on nothing and can start beside M210_002; the runner half plugs into M210_002's catalog. One Pull Request
@@ -79,6 +79,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_tools/src/verbs.rs`, `rustd/crates/afr_tools/src/verbs/**`, `rustd/crates/afr_tools/src/lease.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/catalog.rs`, `rustd/crates/afr_tools/src/lib.rs`, `rustd/crates/afr_tools/src/testing.rs`, `rustd/crates/afr_tools/src/memory/shared_tests.rs`, `rustd/crates/afr_tools/Cargo.toml` | CREATE / EDIT | The lease-verb seam and the eight handlers onto it, masking what they send |
 | `rustd/crates/afr_supervisor/src/**`, `rustd/crates/afr_agent/src/**`, `rustd/Cargo.lock` | CREATE / EDIT | The seam over the daemon's HTTP verbs, with `PATCH` and `DELETE`; handed to each run |
 | `rustd/crates/agentsfleetd/tests/support/*.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs`, `rustd/crates/agentsfleetd/tests/integration_runner_messages.rs`, `rustd/crates/*/tests/**`, `rustd/crates/**/tests.rs` | EDIT / CREATE | Runner-shaped posts, fake QStash and Slack, live-datastore proofs (`#[ignore]`d, run by `make test-integration-rustd`); unit proofs beside each change |
+| `scripts/check_architecture_doc.sh`, `scripts/check_architecture_doc_citations.sh`, `scripts/check_architecture_doc_test.sh`, `scripts/check_architecture_doc_test_citations.sh` | EDIT / CREATE | The schedule-ownership check bans the stale sentences, not `cron_add` near a schedule (Indy-approved); split at the length cap |
+| `docs/v2/*/M212_001_P1_API_DOCS_RUNNER_VERBS_SCHEDULES_AND_MESSAGES.md` | MOVE | This spec, `pending/` → `active/` → `done/` |
+| `VERSION`, `build.zig.zon`, `cli/package.json`, `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | 0.56.0 → 0.57.0 at close |
 | `docs/architecture/capabilities.md`, `docs/architecture/runner_execution.md`, `docs/architecture/data_flow.md` | EDIT | The fleet as a third schedule author; the interim post; the fire actor |
 
 ## Applicable Rules
@@ -236,17 +239,17 @@ Every 409 body names current_state
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A fleet schedules and posts through the daemon (§1, §2) | `make test-integration-rustd && grep -cE "fn test_(fleet_creates_its_own_schedule\|fleet_posts_a_message_mid_run)\(" rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs rustd/crates/agentsfleetd/tests/integration_runner_messages.rs` | 2 | P0 | |
-| R2 | The eight handlers map onto the verbs (§3) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools verbs` | exit 0 | P0 | |
-| R3 | The five codes are declared | `grep -rhcE "^pub const (SCHEDULE_CAP_REACHED\|SCHEDULE_NOT_FLEET_OWNED\|SCHEDULE_NOT_RUNNABLE\|MESSAGE_NO_CHANNEL\|MESSAGE_LIMIT_REACHED):" rustd/crates/afd_core/src/error_code/ \| paste -sd+ - \| bc` | 5 | P0 | |
-| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
-| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -v '\.md$' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | |
+| R1 | A fleet schedules and posts through the daemon (§1, §2) | `make test-integration-rustd && grep -cE "fn test_(fleet_creates_its_own_schedule\|fleet_posts_a_message_mid_run)\(" rustd/crates/agentsfleetd/tests/integration_runner_schedules.rs rustd/crates/agentsfleetd/tests/integration_runner_messages.rs` | 2 | P0 | ✅ `✓ [rustd] integration suite — 841 passed`, exclusive `— 2 passed`; grep count 2 |
+| R2 | The eight handlers map onto the verbs (§3) | `cargo test --manifest-path rustd/Cargo.toml -p afr_tools verbs` | exit 0 | P0 | ✅ exit 0, `test result: ok. 22 passed; 0 failed` |
+| R3 | The five codes are declared | `grep -rhcE "^pub const (SCHEDULE_CAP_REACHED\|SCHEDULE_NOT_FLEET_OWNED\|SCHEDULE_NOT_RUNNABLE\|MESSAGE_NO_CHANNEL\|MESSAGE_LIMIT_REACHED):" rustd/crates/afd_core/src/error_code/ \| paste -sd+ - \| bc` | 5 | P0 | ✅ 5 |
+| R4 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 0 paths missing (Files Changed glob check over `git diff --name-only origin/main...HEAD`) |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | → `orly gate pr`, PR Session Notes |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | → `orly gate pr`, PR Session Notes |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | → `orly gate pr`, PR Session Notes |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | → `orly gate pr`, PR Session Notes |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | → `orly gate pr`, PR Session Notes |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
+| S7 | No oversize source file | `git diff --name-only origin/main...HEAD \| grep -E '\.(zig\|js\|jsx\|ts\|tsx\|py\|rs\|go\|sh\|sql)$' \| grep -vE '^(docs\|vendor\|third_party)/\|/fixtures?/' \| xargs wc -l 2>/dev/null \| awk '$1>350 && $2!="total"'` | no output | P0 | ✅ no output |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. See `dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 
@@ -289,8 +292,9 @@ N/A — no files deleted.
 
 - **Consults** — Indy (in-session, Oct 02, 2026): "i need all the tools, since cron has a scheduler i think"; chose "Yes, runner verb onto daemon schedules" when asked whether to reverse "Scheduled wakes are not a child tool". The reversal is recorded in `docs/architecture/capabilities.md` §2 and `runner_execution.md` Decisions.
 - **Agent defaults** — the cap of 16 schedules per fleet; 4 KiB and 8 messages per run; `source_key` as the creating event id; `schedule` as a once schedule.
+- **S7 amended at close** (agent, Oct 06, 2026): the authored command counted `public/openapi.json` and `rustd/Cargo.lock`, which RULE FLL exempts; it now runs the rule's own self-audit (`dispatch/write_any.md` §LENGTH GATE). Three files already over the cap on `main` that this branch touched were split: `afd_cron/tests/integration_store.rs`, `scripts/check_architecture_doc.sh`, `scripts/check_architecture_doc_test.sh`.
 - **Metrics review** — No analytics or funnel playbook update required: no user action; four operator log events added.
-- **Skill-chain outcomes** — `/orly-write-unit-test` audit closed its gaps in `bc09ef632`. gstack `/review` (Oct 06, 2026) ran six specialists: security, API design, performance, testing, maintainability, adversarial.
+- **Skill-chain outcomes** — `/orly-write-unit-test` audit closed its gaps in `bc09ef632`; the boundary pass added the fire-body unit tests and the scheduled-run lease case (Dimension 1.14). `/orly-write-integration-test`: the live cases under `agentsfleetd/tests/integration_runner_*` and `afd_api/tests/integration_qstash_fire_once.rs` cross the real Postgres, Dragonfly and HTTP boundaries. `orly-babysit-prs`: pending, after the push. gstack `/review` (Oct 06, 2026) ran six specialists: security, API design, performance, testing, maintainability, adversarial.
 - **Review: fixed** (agent, Oct 06, 2026):
   - Run-now skipped the callback's gates; it now refuses a fleet that takes no work, a paused or deleting schedule, and a run a schedule started (Dimensions 1.10–1.12, new `SCHEDULE_NOT_RUNNABLE`), keyed `run:<event_id>`.
   - A schedule's runs scanned the fleet's history; exact-actor statements read slot 930 (Dimension 1.13).
