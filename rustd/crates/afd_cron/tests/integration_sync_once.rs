@@ -18,7 +18,7 @@ mod support;
 mod live_qstash;
 
 use afd_core::clock::UnixMillis;
-use afd_cron::{NewSchedule, Reconciled, Schedule, Source};
+use afd_cron::{Change, NewSchedule, Reconciled, Schedule, Source};
 
 use self::live_qstash::{against_live, live};
 use self::support::CronLane;
@@ -113,4 +113,75 @@ async fn a_one_off_synced_before_its_moment_is_registered() {
         matches!(reconciled, Reconciled::Synced(_)),
         "a one-off still ahead of its moment registers, got {reconciled:?}"
     );
+}
+
+/// Greptile on #731: a one-off `QStash` already holds keeps its row past its
+/// moment, so a delayed callback still finds it.
+#[tokio::test]
+#[ignore = "needs the lane's Postgres and the compose qstash service"]
+async fn a_registered_one_off_synced_after_its_moment_is_kept() {
+    let Some((url, token)) = live() else {
+        return;
+    };
+    let lane = CronLane::open().await;
+    let claim = CronLane::token();
+    let created = one_off(&lane, &claim).await;
+    let asked = UnixMillis::from_millis(ASKED_AT);
+    lane.store
+        .finalize_synced(&created, &claim, Some("qstash-issued-key"), asked)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the creator's own finalize must land");
+    let past_moment = UnixMillis::from_millis(SET_FOR + MINUTE_MS);
+    let resync = CronLane::token();
+    let held = lane
+        .store
+        .claim_current(&lane.fleet_id(), &created.schedule_id, &resync, past_moment)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("a settled schedule is claimable");
+
+    let reconciled = against_live(&lane, url, token)
+        .reconcile(&held, &resync, past_moment)
+        .await
+        .expect("a reachable scheduler is not a datastore failure");
+
+    assert!(
+        matches!(reconciled, Reconciled::Synced(_)),
+        "a registered one-off is not retired, got {reconciled:?}"
+    );
+}
+
+/// An edit that moves a one-off sets it for the new moment.
+#[tokio::test]
+#[ignore = "needs the lane's Postgres"]
+async fn a_one_off_moved_by_an_edit_is_set_for_its_new_moment() {
+    let lane = CronLane::open().await;
+    let claim = CronLane::token();
+    let created = one_off(&lane, &claim).await;
+    let asked = UnixMillis::from_millis(ASKED_AT);
+    lane.store
+        .finalize_synced(&created, &claim, None, asked)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the creator's own finalize must land");
+
+    // Five minutes later the same day: 09:10 rather than 09:05.
+    let moved = lane
+        .store
+        .claim_change(
+            &lane.fleet_id(),
+            &created.schedule_id,
+            Change {
+                cron: Some("10 9 15 3 *"),
+                ..Change::default()
+            },
+            &CronLane::token(),
+            asked,
+        )
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("a settled schedule is claimable");
+
+    assert_eq!(moved.fire_at, Some(SET_FOR + 5 * MINUTE_MS));
 }

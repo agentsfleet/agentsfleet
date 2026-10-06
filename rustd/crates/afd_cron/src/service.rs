@@ -154,12 +154,24 @@ impl Schedules {
     }
 }
 
-/// A `once` schedule synced after the instant it was set for.
+/// A `once` schedule never registered upstream, synced after the instant it
+/// was set for.
 ///
 /// Its expression has no year, so registering it now would fire it a year
-/// late. A row with no instant, from before slot 931, keeps registering.
+/// late. One `QStash` already holds is left alone: its callback may still be on
+/// the way, and retiring the row would drop that run. A row with no instant,
+/// from before slot 931, keeps registering.
 fn missed(held: &Schedule, now: UnixMillis) -> bool {
-    held.once && held.fire_at.is_some_and(|at| at <= now.as_millis())
+    held.once && never_registered(held) && held.fire_at.is_some_and(|at| at <= now.as_millis())
+}
+
+/// Whether `QStash` has never issued this schedule a key.
+///
+/// A fleet's schedule is keyed by its own id until its first successful sync
+/// adopts the key `QStash` files it under (see [`Schedules::reconcile`]); a
+/// `once` schedule is only ever a fleet's.
+fn never_registered(held: &Schedule) -> bool {
+    held.source_key == held.schedule_id.as_str()
 }
 
 /// Logs a one-off retired because its moment passed before it was registered.
