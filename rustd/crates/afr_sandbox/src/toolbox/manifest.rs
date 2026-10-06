@@ -210,7 +210,13 @@ impl Manifest {
 
 /// This host's architecture, as Debian names it and a release records it.
 fn host_arch() -> &'static str {
-    match std::env::consts::ARCH {
+    debian_arch(std::env::consts::ARCH)
+}
+
+/// `arch`, a Rust target architecture, as Debian names it: the two the
+/// toolbox is built for are renamed, any other passes through unchanged.
+fn debian_arch(arch: &'static str) -> &'static str {
+    match arch {
         "x86_64" => "amd64",
         "aarch64" => "arm64",
         other => other,

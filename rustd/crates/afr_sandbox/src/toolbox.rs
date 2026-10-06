@@ -17,15 +17,17 @@ use std::path::{Path, PathBuf};
 mod adopt;
 mod holds;
 #[cfg(target_os = "linux")]
+mod kernel_mounter;
+#[cfg(target_os = "linux")]
 mod loop_device;
 mod manifest;
 mod stage;
 #[cfg(test)]
 mod testing;
 
-#[cfg(target_os = "linux")]
-pub use self::holds::KernelMounter;
 pub use self::holds::{Mounter, TOOLBOX_KEEP_RELEASES, Toolboxes};
+#[cfg(target_os = "linux")]
+pub use self::kernel_mounter::KernelMounter;
 pub use self::manifest::{Manifest, Release, TOOLBOX_RELEASE_PUBLIC_KEY};
 
 /// Every image's file name starts with this.

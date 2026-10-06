@@ -28,19 +28,27 @@ use crate::edges::Chunk;
 use crate::protocol::{READ_CHUNK_BYTES, SpawnParams};
 
 /// A program that writes for as long as its output is taken.
-const YES: &str = "/usr/bin/yes";
+pub(super) const YES: &str = "/usr/bin/yes";
 /// The shell the scripted processes run under.
 const SH: &str = "/bin/sh";
 /// The lines the writer's queue holds in the backpressure test.
-const QUEUED: usize = 2;
+pub(super) const QUEUED: usize = 2;
 /// Longer than any wait below takes when it works.
-const PATIENCE: Duration = Duration::from_secs(10);
+pub(super) const PATIENCE: Duration = Duration::from_secs(10);
 /// Long enough for a driver that should stay blocked to show that it has.
 const GLANCE: Duration = Duration::from_millis(200);
 
 /// A started process running `argv` with no environment, and the workspace
 /// it runs in, kept for as long as the test holds it.
 fn started(argv: &[&str]) -> (ProcessRun, tempfile::TempDir) {
+    started_within(argv, None)
+}
+
+/// [`started`], with the command deadline `timeout_ms` names.
+pub(super) fn started_within(
+    argv: &[&str],
+    timeout_ms: Option<u64>,
+) -> (ProcessRun, tempfile::TempDir) {
     let root = tempfile::tempdir().unwrap();
     let workspace = Workspace::open(root.path()).unwrap();
     let params = SpawnParams {
@@ -48,7 +56,7 @@ fn started(argv: &[&str]) -> (ProcessRun, tempfile::TempDir) {
         cwd: None,
         env: Cow::Owned(BTreeMap::new()),
         pty: false,
-        timeout_ms: None,
+        timeout_ms,
     };
     let (run, _input) = ProcessRun::start(&Plan::new(params, &workspace).unwrap()).unwrap();
     (run, root)
@@ -96,53 +104,6 @@ async fn output_no_one_takes_holds_the_process_until_the_writer_goes() {
     drop(untaken);
     let ended = tokio::time::timeout(PATIENCE, driving).await.unwrap();
     assert_eq!(ended.unwrap(), 7, "the writer gone, the stop lands");
-}
-
-/// A stop told to a driver whose writer is behind lands at once: the process
-/// is killed while the writer still has not read, and the chunk the driver
-/// was holding for it is forwarded by the drain, before the ending, not lost.
-#[tokio::test]
-async fn a_stop_lands_while_the_writer_is_behind() {
-    let (run, _root) = started(&[YES]);
-    let pid = run.spawned.pid;
-    let (lines, mut untaken) = mpsc::channel(QUEUED);
-    let stop = CancellationToken::new();
-    let driving = tokio::spawn(run.drive(7, stop.clone(), lines));
-    tokio::time::timeout(PATIENCE, async {
-        while untaken.len() < QUEUED {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .unwrap();
-
-    stop.cancel();
-
-    tokio::time::timeout(PATIENCE, async {
-        while rustix::process::test_kill_process(pid).is_ok() {
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .unwrap();
-    assert!(
-        !driving.is_finished(),
-        "the drain still waits on the writer"
-    );
-    let mut methods = Vec::new();
-    while let Some(line) = untaken.recv().await {
-        let message: Value = serde_json::from_slice(&line).unwrap();
-        methods.push(message["method"].as_str().unwrap().to_owned());
-    }
-    assert!(methods.len() > QUEUED, "the held chunk reached the writer");
-    assert_eq!(methods.last().map(String::as_str), Some("process/exited"));
-    assert_eq!(
-        tokio::time::timeout(PATIENCE, driving)
-            .await
-            .unwrap()
-            .unwrap(),
-        7
-    );
 }
 
 #[test]

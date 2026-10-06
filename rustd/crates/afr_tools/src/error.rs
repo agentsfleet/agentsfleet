@@ -95,3 +95,7 @@ pub(crate) fn unhosted(name: &str) -> Error {
         name: name.to_owned(),
     })
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

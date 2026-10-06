@@ -162,3 +162,7 @@ impl Executor for FakeExecutor {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "sandbox_tests.rs"]
+mod tests;
