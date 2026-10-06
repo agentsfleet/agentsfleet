@@ -105,6 +105,19 @@ fn a_line_longer_than_the_budget_is_cut_and_says_so() {
     );
 }
 
+/// A line exactly as long as the budget fits it: kept whole, with no note
+/// that it was cut.
+#[test]
+fn a_line_exactly_the_budget_is_kept_whole_and_says_nothing_of_a_cut() {
+    let exact = format!("{}\nnext\n", "x".repeat(9));
+
+    let page = Page::of(&exact, 1, LINES_DEFAULT, 10).unwrap();
+
+    assert_eq!(page.text, format!("{}\n", "x".repeat(9)));
+    assert_eq!(page.cut, None);
+    assert_eq!(page.next, Some(2));
+}
+
 #[test]
 fn an_offset_past_the_last_line_is_none_and_an_empty_file_reads_empty() {
     assert_eq!(Page::of("a\n", 2, 1, 100), None);

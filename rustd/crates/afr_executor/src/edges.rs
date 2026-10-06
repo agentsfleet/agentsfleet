@@ -50,8 +50,8 @@ pub(crate) enum Next {
 pub(crate) struct Unread {
     edge: usize,
     head: VecDeque<Chunk>,
-    head_len: usize,
-    /// What the head may still take before output goes to the tail.
+    /// What the head may still take before output goes to the tail; reading
+    /// the head never gives any back, only crossing to the tail does.
     head_left: usize,
     tail: VecDeque<Chunk>,
     tail_len: usize,
@@ -65,7 +65,6 @@ impl Unread {
         Self {
             edge,
             head: VecDeque::new(),
-            head_len: 0,
             head_left: edge,
             tail: VecDeque::new(),
             tail_len: 0,
@@ -79,13 +78,13 @@ impl Unread {
             self.keep(chunk);
         } else if chunk.data.len() < self.head_left {
             self.head_left -= chunk.data.len();
-            self.queue(chunk);
+            self.head.push_back(chunk);
         } else {
             let Chunk { stream, mut data } = chunk;
             let rest = data.split_off(boundary(&data, self.head_left));
             self.head_left = 0;
             if !data.is_empty() {
-                self.queue(Chunk { stream, data });
+                self.head.push_back(Chunk { stream, data });
             }
             if !rest.is_empty() {
                 self.keep(Chunk { stream, data: rest });
@@ -102,9 +101,7 @@ impl Unread {
                 return Some(Next::Omitted(gap));
             }
         }
-        let chunk = self.head.pop_front()?;
-        self.head_len -= chunk.data.len();
-        Some(Next::Output(chunk))
+        self.head.pop_front().map(Next::Output)
     }
 
     /// Makes the tail the head, once the head is read, and answers how many
@@ -127,15 +124,8 @@ impl Unread {
             self.drop_front(remains);
         }
         self.head = std::mem::take(&mut self.tail);
-        self.head_len = std::mem::take(&mut self.tail_len);
-        self.head_left = self.edge - self.head_len;
+        self.head_left = self.edge - std::mem::take(&mut self.tail_len);
         std::mem::take(&mut self.gap)
-    }
-
-    /// Appends to the head, to be read in order.
-    fn queue(&mut self, chunk: Chunk) {
-        self.head_len += chunk.data.len();
-        self.head.push_back(chunk);
     }
 
     /// Appends to the tail, dropping its oldest bytes past the edge.
