@@ -114,8 +114,8 @@ pub(crate) async fn update<D: Services>(
     summary = "Delete a schedule the fleet made",
     description = concat!(
         "Removes a schedule the running fleet created from QStash, then ",
-        "removes the row: 204 once QStash agrees, or 200 with the schedule ",
-        "while it has not. A schedule a person made answers `UZ-SCHED-010`. ",
+        "deletes the row. It answers 204 once QStash agrees, or 200 with the ",
+        "schedule until then. A schedule a person made answers `UZ-SCHED-010`. ",
     ),
     params(afd_http::openapi::path::LeaseSchedule, afd_http::openapi::query::Fence),
     responses(

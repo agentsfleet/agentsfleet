@@ -73,7 +73,7 @@ pub struct ScheduleRunRequest {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScheduleRun<'a> {
-    /// The event the run will execute as.
+    /// The event that is the new run.
     #[serde(borrow)]
     pub event_id: Cow<'a, str>,
 }
