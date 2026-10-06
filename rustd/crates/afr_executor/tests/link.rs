@@ -307,9 +307,25 @@ async fn a_refusals_message_longer_than_the_cap_is_cut() {
     let refused = reading.await.unwrap().unwrap_err();
 
     assert!(refused_with(&refused, INTERNAL_ERROR), "{refused}");
-    let said = refused.wire_message().len();
-    assert!(
-        (4 * KIB..5 * KIB).contains(&said),
-        "{said} bytes reach the caller"
-    );
+    assert_eq!(refused.wire_message().len(), 4 * KIB);
+}
+
+/// A result that puts a mebibyte where a boolean belongs reaches the caller
+/// as a decode failure cut to the cap: the decoder echoes the value it
+/// refused, and that value is the sandbox's.
+#[tokio::test]
+async fn a_result_that_does_not_decode_echoes_at_most_the_cap() {
+    let (_scratch, client, mut fake) = connect().await;
+    let reading = tokio::spawn(async move { client.read_file("x", 1).await });
+    let id = fake.request().await["id"].clone();
+    let flood = "x".repeat(MIB);
+    fake.say(&format!(
+        r#"{{"jsonrpc":"2.0","result":{{"content":"","truncated":"{flood}"}},"id":{id}}}"#
+    ))
+    .await;
+
+    let refused = reading.await.unwrap().unwrap_err();
+
+    assert!(refused.to_string().contains("did not decode"), "{refused}");
+    assert_eq!(refused.wire_message().len(), 4 * KIB);
 }
