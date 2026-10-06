@@ -101,7 +101,14 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
     }
 }
 
-/// The tenant, workspace and fleet rows a lease joins against.
+/// The name the scenario's own fleet row carries.
+///
+/// `core.fleets` holds one name per workspace, so a second fleet seeded into
+/// the same workspace passes a name of its own.
+pub(crate) const FLEET_NAME: &str = "e2e-fleet";
+
+/// The tenant, workspace and fleet rows a lease joins against, the fleet
+/// named `name`.
 ///
 /// Written directly because no store verb in this workspace creates a fleet —
 /// that is the tenant plane's (M178) — and inventing one to serve a test would
@@ -109,6 +116,7 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
 pub(crate) async fn seed_fleet(
     booted: &Booted,
     fleet: &str,
+    name: &str,
     workspace: &str,
     tenant: &str,
     config: &str,
@@ -155,7 +163,7 @@ pub(crate) async fn seed_fleet(
     .bind(fleet)
     .bind(workspace)
     .bind(tenant)
-    .bind("e2e-fleet")
+    .bind(name)
     .bind("# fixture")
     .bind(config)
     .bind("active")
