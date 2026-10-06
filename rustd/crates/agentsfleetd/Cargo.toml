@@ -51,7 +51,6 @@ afd_admission.workspace = true
 # The schedules plane the composition root assembles: the store, the scheduler
 # client, and the verifier the fire ingress crosses.
 afd_cron.workspace = true
-http.workspace = true
 reqwest.workspace = true
 afd_api.workspace = true
 afd_billing.workspace = true
@@ -73,12 +72,12 @@ afd_auth.workspace = true
 # `crate::outbound`.
 afd_outbound.workspace = true
 afd_observability.workspace = true
-# The transport, and the two bridges that feed it this daemon's existing spans
-# and log records. Named HERE and nowhere else: an endpoint is configuration,
-# and the composition root is the one place that reads configuration.
+# The transport both binaries build through, and the two bridges that feed it
+# this daemon's existing spans and log records. The pipelines are `afd_otlp`'s;
+# which knobs this daemon reads and that it bridges its log records are
+# decided here, at the composition root.
+afd_otlp.workspace = true
 opentelemetry.workspace = true
-opentelemetry_sdk.workspace = true
-opentelemetry-otlp.workspace = true
 opentelemetry-appender-tracing.workspace = true
 tracing-opentelemetry.workspace = true
 afd_sse.workspace = true
@@ -198,6 +197,9 @@ rustls.workspace = true
 tokio-rustls.workspace = true
 # A storage home and a sandbox base the run leaves behind for the test to read.
 tempfile.workspace = true
+# The runner's export, driven end to end against this daemon on a thread of
+# its own.
+afr_telemetry.workspace = true
 
 [lints]
 workspace = true

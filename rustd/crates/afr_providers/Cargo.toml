@@ -15,6 +15,8 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# The runner's own families: a provider send retried.
+afr_telemetry.workspace = true
 # `error_shell!` and the registry code a provider failure is logged under.
 afd_core.workspace = true
 # The stream text kinds the live tail carries, and the failure classes a
@@ -52,6 +54,8 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+# The recorder a suite reads its own measurements back through.
+afr_telemetry = { workspace = true, features = ["test-util"] }
 # The log capture the retry and key suites read their lines through.
 afd_core = { workspace = true, features = ["test-util"] }
 # The real loop drives each wire in `tests/`, so a turn is proven end to end:
