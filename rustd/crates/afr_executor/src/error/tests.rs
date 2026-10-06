@@ -208,3 +208,20 @@ fn a_wire_message_is_kept_to_the_cap_whatever_carried_it() {
     );
     assert_eq!(said.len(), WIRE_MESSAGE_MAX_BYTES);
 }
+
+/// The stored message of a refusal is cut as it is raised, apart from the
+/// cut at the wire: a log line rendering the error is bounded too.
+#[test]
+fn a_refusals_stored_message_is_cut_as_it_is_raised() {
+    let prefix = format!("the executor refused the call ({INTERNAL_ERROR_CODE}): ");
+    let flood = "x".repeat(2 * WIRE_MESSAGE_MAX_BYTES);
+
+    let logged = refused(INTERNAL_ERROR_CODE, &flood).to_string();
+
+    let first_line = logged.lines().next().unwrap_or_default();
+    assert_eq!(
+        first_line.len(),
+        "[UZ-INTERNAL-003] ".len() + prefix.len() + WIRE_MESSAGE_MAX_BYTES,
+        "{first_line:.80}"
+    );
+}
