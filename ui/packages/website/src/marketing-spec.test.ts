@@ -7,9 +7,10 @@ import {
 } from "./lib/marketing-copy";
 
 /*
- * Hero.tsx surfaces the approved website refresh language: the LIVE pulse
- * eyebrow, the resident-engineer wedge, and the replayable-log architecture
- * pillar.
+ * Guards the approved positioning copy: every PILLAR_TOKENS entry appears in
+ * the hero (Hero.tsx source, HERO_HEADLINE and HERO_LEDE_PARTS), the canonical
+ * npm install path exists somewhere in src/, and no FORBIDDEN_MARKETING_CLAIMS
+ * or retired brand nouns survive in source copy.
  *
  * Test names follow RULE TST-NAM (no milestone IDs in test names).
  * Uses Vite import.meta.glob to stay browser-friendly in jsdom.
@@ -39,6 +40,15 @@ describe("marketing hero — compounding operational knowledge pillars present",
     for (const token of PILLAR_TOKENS) {
       expect(body, `hero copy missing pillar token: ${token}`).toContain(token);
     }
+  });
+});
+
+// The literal pin of the headline and the wake-on-event lede phrase: the
+// other suites import those constants, so a revert of either would pass them.
+describe("marketing hero — approved wording pinned once", () => {
+  it("pins the approved headline and the wake-on-event lede phrase", () => {
+    expect(HERO_HEADLINE).toBe("AI agents that wake when production breaks.");
+    expect(HERO_LEDE_PARTS.middle).toContain("wakes on a production event");
   });
 });
 

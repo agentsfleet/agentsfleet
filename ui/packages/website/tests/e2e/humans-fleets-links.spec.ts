@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { HERO_HEADLINE } from "../../src/lib/marketing-copy";
 
 type InternalLinkCase = {
   label: RegExp;
@@ -35,9 +36,7 @@ async function assertFooterLinks(page: Page) {
 test.describe("Cross-page link coverage", () => {
   test("Home page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "AI teammates for incident response.",
-    );
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(HERO_HEADLINE);
 
     const nav = page.getByRole("navigation", { name: /primary/i });
     await nav.getByRole("link", { name: /^how it works$/i }).click();
