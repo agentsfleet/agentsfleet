@@ -14,7 +14,9 @@ use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{UnixListener, UnixStream};
 
-use crate::support::{PATH_REFUSED, PATIENCE, finish, is_lost, refused_with, scratch};
+use crate::support::{
+    INTERNAL_ERROR, KIB, MIB, PATH_REFUSED, PATIENCE, finish, is_lost, refused_with, scratch,
+};
 
 /// The executor's side of the socket, driven line by line.
 struct Fake {
@@ -285,5 +287,29 @@ async fn oversized_chunks_warn_once_per_connection_then_whisper() {
             .count(),
         1,
         "one warning per connection"
+    );
+}
+
+/// A refusal whose message runs to a mebibyte reaches the caller cut to the
+/// cap: the executor shares its sandbox with tenant code, and what it says
+/// about a failed call is read by a model.
+#[tokio::test]
+async fn a_refusals_message_longer_than_the_cap_is_cut() {
+    let (_scratch, client, mut fake) = connect().await;
+    let reading = tokio::spawn(async move { client.read_file("x", 1).await });
+    let id = fake.request().await["id"].clone();
+    let flood = "x".repeat(MIB);
+    fake.say(&format!(
+        r#"{{"jsonrpc":"2.0","error":{{"code":{INTERNAL_ERROR},"message":"{flood}"}},"id":{id}}}"#
+    ))
+    .await;
+
+    let refused = reading.await.unwrap().unwrap_err();
+
+    assert!(refused_with(&refused, INTERNAL_ERROR), "{refused}");
+    let said = refused.wire_message().len();
+    assert!(
+        (4 * KIB..5 * KIB).contains(&said),
+        "{said} bytes reach the caller"
     );
 }

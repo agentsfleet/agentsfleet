@@ -10,7 +10,9 @@ use super::{
     not_a_file, not_found, path_refused, program_unavailable, refused, unknown_process,
     unresponsive,
 };
-use crate::protocol::{FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, UNKNOWN_PROCESS_CODE};
+use crate::protocol::{
+    FILE_NOT_FOUND_CODE, PATH_REFUSED_CODE, REFUSAL_MESSAGE_MAX_BYTES, UNKNOWN_PROCESS_CODE,
+};
 
 #[test]
 fn every_failure_without_a_cause_renders_and_reports_none() {
@@ -170,4 +172,31 @@ fn a_program_that_will_not_start_keeps_the_launchers_reason_as_its_cause() {
         failure.wire_message(),
         "the program could not be started: not on the search path"
     );
+}
+
+/// A refusal's message is kept to the cap, cut on a character boundary, and a
+/// short one is kept whole: what the socket says about a failed call is read
+/// by a model, and the socket is not trusted with its length.
+#[test]
+fn a_refusals_message_is_kept_to_the_cap_on_a_character_boundary() {
+    // Three bytes a character, so the cap falls inside one.
+    let long = "€".repeat(REFUSAL_MESSAGE_MAX_BYTES);
+    let prefix = format!("the executor refused the call ({INTERNAL_ERROR_CODE}): ");
+
+    let cut = refused(INTERNAL_ERROR_CODE, &long).wire_message();
+    let whole = refused(INTERNAL_ERROR_CODE, "fell over").wire_message();
+
+    let kept = cut.strip_prefix(&prefix).unwrap_or_default();
+    assert!(!kept.is_empty(), "{cut}");
+    assert!(kept.len() <= REFUSAL_MESSAGE_MAX_BYTES, "{}", kept.len());
+    assert!(
+        kept.len() > REFUSAL_MESSAGE_MAX_BYTES - '€'.len_utf8(),
+        "{}",
+        kept.len()
+    );
+    assert!(
+        kept.chars().all(|c| c == '€'),
+        "no character is cut in half"
+    );
+    assert_eq!(whole, format!("{prefix}fell over"));
 }

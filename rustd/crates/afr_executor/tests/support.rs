@@ -30,6 +30,8 @@ pub(crate) const FILE_NOT_FOUND: i32 = -32_012;
 pub(crate) const INVALID_PARAMS: i32 = -32_602;
 /// The executor's answer to a write past a process's input queue.
 pub(crate) const BACKLOG_FULL: i32 = -32_000;
+/// The executor's own failure: `jsonrpsee`'s internal error.
+pub(crate) const INTERNAL_ERROR: i32 = -32_603;
 
 /// Whether `error` is the executor refusing a call with `code`.
 pub(crate) fn refused_with(error: &afr_executor::Error, code: i32) -> bool {
