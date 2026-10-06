@@ -217,6 +217,7 @@ async fn test_meter_holds_what_the_report_sums() {
             memory: afr_memory::Seed::default(),
             executor: None,
             mint: &CountingMint::never(),
+            verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
             events: &sink,
             meter: &meter,

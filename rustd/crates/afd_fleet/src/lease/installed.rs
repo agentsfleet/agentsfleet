@@ -53,6 +53,18 @@ pub struct Installed {
     pub bundle_content_hash: Option<String>,
 }
 
+impl Installed {
+    /// The credential names the fleet declared, as a vault read wants them.
+    #[must_use]
+    pub fn credential_names(&self) -> Vec<&str> {
+        self.config
+            .credentials()
+            .iter()
+            .map(afd_fleet_runtime::CredentialName::as_str)
+            .collect()
+    }
+}
+
 impl Leases {
     /// The installed fleet behind `fleet_id`, if it is still runnable.
     ///

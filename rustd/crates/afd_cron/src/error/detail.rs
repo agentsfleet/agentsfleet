@@ -23,3 +23,11 @@ pub use afd_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
 /// and the reconcile will retry it.
 pub const UPSTREAM_UNAVAILABLE: &str =
     "The schedule was saved but is not yet registered with the scheduler. It will be retried.";
+
+/// What a caller is told when a `once` schedule fired and could not yet be
+/// retired, because another syncer held its row.
+///
+/// Names the retry, because a repeat is what heals it: the fire replays as the
+/// same event and the retirement runs again.
+pub const RETIRE_HELD: &str = "The schedule ran, and is being synchronised, so it is not yet \
+     removed. Repeat the request in a moment to finish removing it.";

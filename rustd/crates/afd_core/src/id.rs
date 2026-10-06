@@ -186,6 +186,14 @@ impl Display for Uuid7 {
     }
 }
 
+/// The canonical text, moved out rather than copied: a caller that owes a
+/// `String` to a wire type gives the identifier up and allocates nothing.
+impl From<Uuid7> for String {
+    fn from(id: Uuid7) -> Self {
+        id.0.into_string()
+    }
+}
+
 impl<'de> Deserialize<'de> for Uuid7 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         // Through `String` rather than `&str`: a JSON encoder is free to escape

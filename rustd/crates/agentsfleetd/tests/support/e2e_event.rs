@@ -184,7 +184,7 @@ async fn insert_admission(
 }
 
 /// The consumer group the daemon reads the fleet under.
-async fn ensure_group(booted: &Booted, fleet: &str) {
+pub(crate) async fn ensure_group(booted: &Booted, fleet: &str) {
     FleetStreams::new(booted.queue.clone())
         .ensure_group(fleet)
         .await

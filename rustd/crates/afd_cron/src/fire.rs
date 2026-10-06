@@ -29,12 +29,51 @@ use afd_wire::event::EventType;
 use crate::error::Result;
 use crate::store::FireTarget;
 
-/// What a schedule-driven wake records as the actor.
+/// What every schedule-driven wake's actor begins with.
 ///
-/// Names the SCHEDULER and no person. A schedule was created by somebody, but
-/// the fire was not — recording its author would let an actor-shaped assertion
-/// certify that a human woke this fleet at 3am when a cron did.
-const ACTOR_SCHEDULE: &str = "schedule:qstash";
+/// The actor names the SCHEDULE and no person. A schedule was created by
+/// somebody, but the fire was not — recording its author would let an
+/// actor-shaped assertion certify that a human woke this fleet at 3am when a
+/// cron did. Naming the schedule rather than the scheduler is what lets a
+/// fleet list one schedule's runs, and it is the `cron:*` the dashboard
+/// already filters cron runs by.
+pub const ACTOR_PREFIX: &str = "cron:";
+
+/// The actor a fire of `schedule` records: [`ACTOR_PREFIX`], then its id.
+///
+/// The one place the two are joined, so the fire that writes the actor and the
+/// listing that reads a schedule's runs by it cannot spell it differently.
+#[must_use]
+pub fn schedule_actor(schedule: &Uuid7) -> String {
+    format!("{ACTOR_PREFIX}{}", schedule.as_str())
+}
+
+/// The fire identity of a `once` schedule, in place of the caller's id.
+///
+/// A one-off fires once, whichever path asks: the scheduler's callback and a
+/// run-now carry different ids, and both can read the row before either
+/// retires it. Keyed by the schedule alone, the second is the first's replay.
+const ONCE_FIRE: &str = "once";
+
+/// The body field a fired run's words travel in.
+///
+/// The field every producer's body uses and the runner reads its first turn
+/// from (`afr_agent::prompt`); see [`body`].
+const FIELD_MESSAGE: &str = "message";
+
+/// The event body a fire of a schedule whose message is `message` stores.
+///
+/// The schedule's message is the author's plain text, and the lease records
+/// every event's body into a `jsonb` column (`afd_events::sql`). Stored as it
+/// was, a message that is not itself JSON failed that cast, so the fired run
+/// was admitted and could never be leased. Wrapped as `{"message": …}`, the
+/// shape a steer and a mention store, the runner reads the schedule's words as
+/// the run's first turn.
+pub(crate) fn body(message: &str) -> String {
+    let mut fields = serde_json::Map::new();
+    fields.insert(FIELD_MESSAGE.to_owned(), message.into());
+    serde_json::Value::Object(fields).to_string()
+}
 
 /// What one fire put on the stream.
 #[derive(Debug, Clone)]
@@ -61,7 +100,8 @@ impl Fire {
         Self { admissions }
     }
 
-    /// Admits one verified fire, at most once however often it arrives.
+    /// Admits one verified fire, at most once however often it arrives. A
+    /// `once` target is admitted at most once at all, under [`ONCE_FIRE`].
     ///
     /// # Errors
     /// Reports a database that would not record the acceptance. A queue that
@@ -77,7 +117,10 @@ impl Fire {
         // Scoped by SCHEDULE as well as by fleet: one fleet may hold many
         // schedules, and a key that was the message id alone would let two
         // schedules firing on the same tick silence each other.
-        let key = format!("{fleet}:{schedule}:{message_id}");
+        let fire_id = if target.once { ONCE_FIRE } else { message_id };
+        let key = format!("{fleet}:{schedule}:{fire_id}");
+        let actor = schedule_actor(schedule);
+        let request_json = body(&target.message);
 
         let admitted = self
             .admissions
@@ -86,9 +129,9 @@ impl Fire {
                 key: Key::Repeated(&key),
                 fleet,
                 workspace: target.workspace.as_str(),
-                actor: ACTOR_SCHEDULE,
+                actor: &actor,
                 event_type: EventType::Cron,
-                request_json: &target.message,
+                request_json: &request_json,
                 // A schedule has no one to answer.
                 reply: Reply::None,
             })
@@ -116,3 +159,6 @@ impl Fire {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

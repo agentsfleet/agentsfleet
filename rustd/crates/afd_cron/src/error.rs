@@ -31,6 +31,7 @@ mod raise;
 #[cfg(feature = "test-util")]
 pub use self::raise::one_of_each_kind;
 
+pub use self::raise::retire_held;
 pub(crate) use self::raise::{query, row_unreadable, upstream_refused, upstream_unreadable};
 
 /// The result every fallible function in this crate returns.
@@ -117,6 +118,16 @@ pub(crate) enum ErrorKind {
         /// The column, so an operator knows which one to go and look at.
         column: &'static str,
     },
+
+    /// A `once` schedule fired, and another syncer held its row, so it could
+    /// not yet be retired.
+    ///
+    /// An error rather than a logged shrug: the fire is admitted, but a row
+    /// left active would match its moment again next year. The caller answers
+    /// non-2xx, the sender repeats the fire, the ledger replays the same
+    /// event, and the retirement is tried again once the holder lets go.
+    #[error("the fired once-schedule is held by another syncer and is not yet retired")]
+    RetireHeld,
 }
 
 /// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
@@ -172,6 +183,7 @@ impl Error {
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),
+            ErrorKind::RetireHeld => (error_code::SCHEDULE_SYNCING, detail::RETIRE_HELD),
         }
     }
 

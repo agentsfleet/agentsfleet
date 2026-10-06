@@ -21,6 +21,9 @@ use crate::sandbox::{
     ApplyPatch, Browser, BrowserOpen, ExecCommand, FileAppend, FileDelete, FileEdit,
     FileEditHashed, FileRead, FileReadHashed, FileWrite, Git, Image, Screenshot, Shell, WriteStdin,
 };
+use crate::verbs::{
+    CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, Message, ScheduleOnce,
+};
 use crate::web_fetch::WebFetch;
 
 /// One published tool: its name and the runtime it executes in.
@@ -208,6 +211,14 @@ impl Catalog {
             Typed::boxed(BrowserOpen),
             Typed::boxed(Browser),
             Typed::boxed(Screenshot),
+            Typed::boxed(Message),
+            Typed::boxed(ScheduleOnce),
+            Typed::boxed(CronAdd),
+            Typed::boxed(CronList),
+            Typed::boxed(CronRemove),
+            Typed::boxed(CronUpdate),
+            Typed::boxed(CronRun),
+            Typed::boxed(CronRuns),
         ])
     }
 

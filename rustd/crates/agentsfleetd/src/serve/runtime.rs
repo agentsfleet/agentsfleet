@@ -106,6 +106,9 @@ pub(super) async fn open_runtime(
         broker,
         live,
         analytics: analytics.clone(),
+        // The same base the outbound worker posts answers to, so an interim
+        // line and the answer it precedes land in the same Slack.
+        slack_api_base: config.slack_api_base().to_owned(),
         // A destination that will not build is a deployment that cannot
         // register schedules, and it fails CLOSED rather than registering a
         // truncated callback: the empty string matches no token's subject, so
@@ -174,6 +177,7 @@ pub(super) async fn spawn_background(
             Entropy::new(),
         ),
         crate::credentials::vendor_exchange_client(),
+        config.slack_api_base().to_owned(),
     )
     .await;
 }

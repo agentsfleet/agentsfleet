@@ -111,6 +111,7 @@ fn every_sentence_is_one_of_the_declared_details() {
         detail::DATABASE_ERROR,
         detail::OPERATION_FAILED,
         detail::UPSTREAM_UNAVAILABLE,
+        detail::RETIRE_HELD,
     ];
     for (label, error) in one_of_each_kind() {
         assert!(

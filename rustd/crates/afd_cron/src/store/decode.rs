@@ -32,6 +32,8 @@ const COL_TIMEZONE: &str = "timezone";
 /// See [`COL_ID`].
 const COL_MESSAGE: &str = "message";
 /// See [`COL_ID`].
+const COL_ONCE: &str = "once";
+/// See [`COL_ID`].
 const COL_DESIRED_STATUS: &str = "desired_status";
 /// See [`COL_ID`].
 const COL_SYNC_STATUS: &str = "sync_status";
@@ -47,6 +49,9 @@ const COL_LAST_ERROR: &str = "last_error";
 const COL_CREATED_AT: &str = "created_at";
 /// See [`COL_ID`].
 const COL_UPDATED_AT: &str = "updated_at";
+
+/// See [`COL_ID`].
+const COL_FIRE_AT: &str = "fire_at";
 
 /// What sqlx reports for a column this build cannot make sense of.
 ///
@@ -76,6 +81,7 @@ impl FromRow<'_, PgRow> for Schedule {
             cron: row.try_get(COL_CRON)?,
             timezone: row.try_get(COL_TIMEZONE)?,
             message: row.try_get(COL_MESSAGE)?,
+            once: row.try_get(COL_ONCE)?,
             desired_status: DesiredStatus::parse(&desired_status)
                 .ok_or_else(|| unreadable(COL_DESIRED_STATUS))?,
             sync_status: SyncStatus::parse(&sync_status)
@@ -86,6 +92,7 @@ impl FromRow<'_, PgRow> for Schedule {
             last_error: row.try_get(COL_LAST_ERROR)?,
             created_at: row.try_get(COL_CREATED_AT)?,
             updated_at: row.try_get(COL_UPDATED_AT)?,
+            fire_at: row.try_get(COL_FIRE_AT)?,
         })
     }
 }

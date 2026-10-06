@@ -37,6 +37,10 @@ use crate::wire::{
 };
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
+///
+/// `messages_posted` joined the list at schema/929. It is `NOT NULL DEFAULT 0`,
+/// so every lease carries it from the moment it is written, and the messages
+/// verb counts against it under the lease's fence.
 const LEASE_SHAPE: &[&str] = &[
     "id",
     "runner_id",
@@ -60,6 +64,7 @@ const LEASE_SHAPE: &[&str] = &[
     "created_at",
     "updated_at",
     "receipt",
+    "messages_posted",
 ];
 
 /// The columns the narrative log's rows carry.

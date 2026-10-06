@@ -20,9 +20,9 @@ use super::{
     DETAIL_CONNECTOR_RECONNECT, DETAIL_DATABASE_ERROR, DETAIL_DATABASE_UNAVAILABLE,
     DETAIL_EVENT_MALFORMED, DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED,
     DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME,
-    DETAIL_LEASE_NOT_FOUND, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED, DETAIL_QUEUE_UNAVAILABLE,
-    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
-    DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
+    DETAIL_LEASE_NOT_FOUND, DETAIL_MESSAGE_LIMIT, DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED,
+    DETAIL_MINT_UNCONFIGURED, DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED,
+    DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
 };
 
 impl Error {
@@ -111,7 +111,10 @@ impl Error {
             // would fire the ERROR REGISTRY gate over a registry this family
             // does not own. The parser's own error says which rule the
             // document broke, and it survives in the source chain.
-            | ErrorKind::ConfigUnreadable { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::ConfigUnreadable { .. }
+            // A mask that cannot be built is this process failing, and the
+            // message it would have guarded is not sent.
+            | ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             // Two vault failures, two codes, matching the two the Zig logs:
             // `crypto_store.decrypt_failed` answers the internal code above
             // because which check failed is an oracle, while `vault.zig`'s
@@ -134,6 +137,11 @@ impl Error {
             ErrorKind::LeaseMaxRuntime => error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
             ErrorKind::RenewalNoCredits => error_code::RUN_LEASE_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => error_code::RUN_BUDGET_EXCEEDED,
+            // The two message refusals: the event has no thread, or the run
+            // has spoken its fill. Neither is a fault, and the model acts on
+            // each differently — one says it in the answer, the other stops.
+            ErrorKind::MessageNoChannel => error_code::MESSAGE_NO_CHANNEL,
+            ErrorKind::MessageLimitReached => error_code::MESSAGE_LIMIT_REACHED,
             // A corrupt row, so the same code a column that will not parse
             // answers — this IS that, found by range rather than by shape.
             ErrorKind::SequenceCorrupt => error_code::INTERNAL_DB_QUERY,
@@ -224,6 +232,7 @@ impl Error {
                 DETAIL_EVENT_MALFORMED
             }
             ErrorKind::Mint { .. } | ErrorKind::Entropy { .. } => DETAIL_REGISTRATION_FAILED,
+            ErrorKind::Scrub { .. } => afd_core::error::DETAIL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => DETAIL_VAULT_DATA_INVALID,
             ErrorKind::ConfigUnreadable { .. } => DETAIL_CONFIG_UNREADABLE,
             ErrorKind::StaleFence => DETAIL_STALE_FENCE,
@@ -232,6 +241,8 @@ impl Error {
             ErrorKind::LeaseMaxRuntime => DETAIL_LEASE_MAX_RUNTIME,
             ErrorKind::RenewalNoCredits => DETAIL_RENEWAL_NO_CREDITS,
             ErrorKind::BudgetExhausted => DETAIL_BUDGET_EXHAUSTED,
+            ErrorKind::MessageNoChannel => DETAIL_MESSAGE_NO_CHANNEL,
+            ErrorKind::MessageLimitReached => DETAIL_MESSAGE_LIMIT,
             ErrorKind::BundleMissing => DETAIL_BUNDLE_NOT_FOUND,
             ErrorKind::BundleUnconfigured => DETAIL_BUNDLE_STORAGE_UNAVAILABLE,
             // An oversized object joins the store failure rather than getting a

@@ -148,6 +148,10 @@ impl Services for ServingPlane {
         &self.live
     }
 
+    fn interjector(&self) -> &afd_outbound::Interjector {
+        &self.interjector
+    }
+
     fn analytics(&self) -> &Analytics {
         &self.analytics
     }

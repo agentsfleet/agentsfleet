@@ -14,6 +14,7 @@ fn marker(fixture: &Fixture) -> AnswerMarker {
     AnswerMarker {
         fleet_id: job.fleet_id,
         event_id: job.event_id,
+        part: None,
     }
 }
 

@@ -76,6 +76,7 @@ pub(super) async fn drive_in(
         checkpoint: &Discard,
         events: &sink,
         meter: &Meter::default(),
+        verbs: &afr_tools::CLOSED,
         stop,
     };
     let output = engine.run(run).await.unwrap();

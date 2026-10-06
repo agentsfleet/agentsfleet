@@ -8,17 +8,20 @@
 //! half of one.
 
 use std::fmt;
+use std::net::IpAddr;
 
 use afd_connector::Dashboard;
 use afd_core::env::EnvSource;
+use afd_core::id::Uuid7;
 use afd_crypto::secret::Kek;
 use afd_identity::ProviderSecret;
 
 use super::knobs::{
     APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB,
-    OIDC_JWKS_URL_KNOB, PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, R2_KNOBS,
-    SSE_MAX_STREAMS_DEFAULT, SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_APP_URL, WHY_AUDIENCE,
-    WHY_ISSUER, WHY_KEK, WHY_R2, WHY_SECRET, WHY_SSE_MAX_STREAMS,
+    OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB, PROVIDER_API_BASE_KNOB,
+    PROVIDER_SECRET_KNOB, R2_KNOBS, SLACK_API_URL_KNOB, SSE_MAX_STREAMS_DEFAULT,
+    SSE_MAX_STREAMS_KNOB, WHY_API_BASE, WHY_APP_URL, WHY_AUDIENCE, WHY_ISSUER, WHY_KEK,
+    WHY_PLATFORM_ADMIN, WHY_R2, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
 };
 use super::{BundleStoreConfig, Fault, IdentityConfig};
 
@@ -215,4 +218,68 @@ pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<F
             )
         })
         .unwrap_or(SSE_MAX_STREAMS_DEFAULT)
+}
+
+/// The Slack base `SLACK_API_URL` names, or `None` when it is unset.
+///
+/// Set and unsafe pushes a fault: see [`WHY_SLACK_API_URL`].
+pub(super) fn slack_api_url<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<Box<str>> {
+    let raw = super::optional(env, SLACK_API_URL_KNOB)?;
+    if reqwest::Url::parse(&raw)
+        .is_ok_and(|url| carries_a_token_safely(&url) && takes_a_method(&url))
+    {
+        return Some(raw);
+    }
+    faults.push(Fault::Invalid {
+        knob: SLACK_API_URL_KNOB,
+        why: WHY_SLACK_API_URL.to_owned(),
+    });
+    None
+}
+
+/// Whether `url` is https, or http on a loopback host.
+fn carries_a_token_safely(url: &reqwest::Url) -> bool {
+    let loopback = url.host_str().is_some_and(|host| {
+        host == "localhost"
+            || host
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .parse::<IpAddr>()
+                .is_ok_and(|address| address.is_loopback())
+    });
+    match url.scheme() {
+        "https" => url.host_str().is_some(),
+        "http" => loopback,
+        _other => false,
+    }
+}
+
+/// Whether a method path appended to `url` still names that method: the
+/// poster joins `/chat.postMessage` onto the raw string, so a query or a
+/// fragment would swallow it.
+fn takes_a_method(url: &reqwest::Url) -> bool {
+    url.query().is_none() && url.fragment().is_none()
+}
+
+/// The platform admin workspace `PLATFORM_ADMIN_WORKSPACE` names, or `None`
+/// when it is unset.
+///
+/// Unset is a deployment that mints nothing; SET and unparseable is a typo
+/// that would otherwise surface as "not connected" at the first mint, which
+/// is the furthest possible point from the mistake.
+pub(super) fn platform_admin_workspace<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<Uuid7> {
+    let raw = super::optional(env, PLATFORM_ADMIN_WORKSPACE_KNOB)?;
+    classify(
+        faults,
+        true,
+        PLATFORM_ADMIN_WORKSPACE_KNOB,
+        WHY_PLATFORM_ADMIN,
+        Uuid7::parse(&raw),
+    )
 }

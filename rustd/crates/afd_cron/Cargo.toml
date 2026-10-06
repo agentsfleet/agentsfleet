@@ -32,6 +32,8 @@ afd_db.workspace = true
 afd_crypto.workspace = true
 # The event type and stream field names a fire is appended under.
 afd_wire.workspace = true
+# A refusal sentence names the bound it enforces, derived from the constant.
+const_format.workspace = true
 # Resolving a zone name against the system timezone database, so a schedule
 # carrying one the scheduler would reject is refused here instead.
 jiff.workspace = true

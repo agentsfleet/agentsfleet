@@ -40,6 +40,8 @@ test-util = [
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+# The message-cap sentence spells the cap from its constant.
+const_format.workspace = true
 # The families this crate produces. The dependency points this way and not the
 # other: telemetry knows nothing about leases or memory, and the counts below exist only
 # where the work happens.
@@ -66,6 +68,10 @@ afd_dragonfly.workspace = true
 # Owns `core.fleet_obligations`: the report path commits an obligation through
 # it. The edge runs fleet -> outbound and never back.
 afd_outbound.workspace = true
+# The one masker the product carries: an interim message is scrubbed of the
+# fleet's secret values with the same `Scrub` the runner applies, so the two
+# can never disagree on what a masked value reads as.
+afr_secrets.workspace = true
 # The admission ledger, asked two questions: where a fleet's lost consumer
 # group resumes, and where a settled event's answer goes. Each is a read only
 # the ledger's owner may write.

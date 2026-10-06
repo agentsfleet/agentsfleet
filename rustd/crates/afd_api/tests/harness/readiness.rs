@@ -36,6 +36,10 @@ const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 /// the route reaches its pipeline, and a refused connect proves exactly that.
 pub(super) const NOWHERE_GITHUB: &str = "http://127.0.0.1:1";
 
+/// The Slack an interim message is posted to in a router suite: nowhere, for
+/// the reason [`NOWHERE_GITHUB`] is.
+pub(super) const NOWHERE_SLACK: &str = NOWHERE_GITHUB;
+
 /// The pool knob naming how long an acquire may spend before it reports.
 const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
 

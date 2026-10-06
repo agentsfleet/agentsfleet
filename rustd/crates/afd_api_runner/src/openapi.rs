@@ -34,8 +34,15 @@ use utoipa::OpenApi as _;
     crate::handler::runner::tool_call::handle,
     crate::handler::runner::memory::hydrate,
     crate::handler::runner::memory::recall,
+    crate::handler::runner::message::handle,
     crate::handler::runner::renew::handle,
     crate::handler::runner::report::handle,
+    crate::handler::runner::schedule::create,
+    crate::handler::runner::schedule::list,
+    crate::handler::runner::schedule_edit::remove,
+    crate::handler::runner::schedule_edit::update,
+    crate::handler::runner::schedule_run::run,
+    crate::handler::runner::schedule_run::runs,
     crate::handler::runner::self_record::handle,
 ))]
 struct Plane;

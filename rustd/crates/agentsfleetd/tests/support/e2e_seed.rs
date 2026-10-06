@@ -81,7 +81,7 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 15_000_000_000;
 /// a budget. The budget is a dollar because the run below charges under a
 /// thousandth of one — large enough that the ceiling never decides this test,
 /// small enough that a runaway charge would still trip it.
-const FLEET_CONFIG_JSON: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0}}}"#;
+pub(crate) const FLEET_CONFIG_JSON: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1.0}}}"#;
 
 /// The context window a seeded catalogue row advertises. Unread; `NOT NULL`.
 const CONTEXT_CAP_TOKENS: i32 = 200_000;
@@ -101,7 +101,14 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
     }
 }
 
-/// The tenant, workspace and fleet rows a lease joins against.
+/// The name the scenario's own fleet row carries.
+///
+/// `core.fleets` holds one name per workspace, so a second fleet seeded into
+/// the same workspace passes a name of its own.
+pub(crate) const FLEET_NAME: &str = "e2e-fleet";
+
+/// The tenant, workspace and fleet rows a lease joins against, the fleet
+/// named `name`.
 ///
 /// Written directly because no store verb in this workspace creates a fleet —
 /// that is the tenant plane's (M178) — and inventing one to serve a test would
@@ -109,8 +116,10 @@ pub(crate) fn enrolment() -> RegisterRequest<'static> {
 pub(crate) async fn seed_fleet(
     booted: &Booted,
     fleet: &str,
+    name: &str,
     workspace: &str,
     tenant: &str,
+    config: &str,
     now: UnixMillis,
 ) {
     let at = now.as_millis();
@@ -154,9 +163,9 @@ pub(crate) async fn seed_fleet(
     .bind(fleet)
     .bind(workspace)
     .bind(tenant)
-    .bind("e2e-fleet")
+    .bind(name)
     .bind("# fixture")
-    .bind(FLEET_CONFIG_JSON)
+    .bind(config)
     .bind("active")
     .bind(at)
     .execute(&mut *connection)
