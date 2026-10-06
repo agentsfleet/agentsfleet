@@ -1,48 +1,45 @@
 #![expect(
     clippy::unwrap_used,
-    clippy::indexing_slicing,
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
 use afd_core::error_code;
 
 use super::{Error, ErrorKind, raise};
-use crate::client::Verb;
-
-const VERBS: [Verb; 10] = [
-    Verb::Heartbeat,
-    Verb::Lease,
-    Verb::Renew,
-    Verb::Activity,
-    Verb::Report,
-    Verb::Hydrate,
-    Verb::Capture,
-    Verb::Bundle,
-    Verb::Mint,
-    Verb::Records,
-];
+use crate::client::{Method, Verb};
 
 #[test]
 fn every_verb_logs_under_its_own_family() {
-    let codes: Vec<_> = VERBS.iter().map(|verb| verb.code()).collect();
-
-    assert_eq!(codes[7], error_code::FLEET_BUNDLE_FETCH_FAILED);
-    assert_eq!(codes[5], error_code::MEM_UNAVAILABLE);
-    assert_eq!(codes[6], error_code::MEM_UNAVAILABLE);
-    let internal = codes
+    for verb in [Verb::Hydrate, Verb::Capture, Verb::Recall] {
+        assert_eq!(verb.code(), error_code::MEM_UNAVAILABLE, "{verb:?}");
+    }
+    assert_eq!(Verb::Bundle.code(), error_code::FLEET_BUNDLE_FETCH_FAILED);
+    let internal = Verb::ALL
         .iter()
-        .filter(|code| **code == error_code::INTERNAL_OPERATION_FAILED)
+        .filter(|verb| verb.code() == error_code::INTERNAL_OPERATION_FAILED)
         .count();
-    assert_eq!(internal, 7);
+    assert_eq!(
+        internal,
+        Verb::ALL.len() - 4,
+        "every other verb is internal"
+    );
     assert_eq!(Verb::Renew.to_string(), "renew");
-    for verb in VERBS {
+    assert_eq!(Verb::ScheduleCreate.to_string(), "schedule_create");
+    // Lower snake case, the shape every `event` name in the log already has.
+    for verb in Verb::ALL {
         assert_eq!(verb.to_string(), verb.as_str());
         assert!(
-            verb.as_str().bytes().all(|byte| byte.is_ascii_lowercase()),
-            "{verb:?} logs in lower case"
+            verb.as_str()
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte == b'_'),
+            "{verb:?} logs in lower snake case"
         );
     }
-    assert!(Verb::Bundle.reads() && Verb::Hydrate.reads() && !Verb::Report.reads());
+    assert!(
+        Verb::Bundle.method() == Method::Get
+            && Verb::Hydrate.method() == Method::Get
+            && Verb::Report.method() == Method::Post
+    );
 }
 
 #[test]

@@ -3,7 +3,8 @@
 //! Each one names `core.fleet_tool_call_details` (`schema/925`).
 
 /// The lease a record post names, if this runner holds it live, locked for
-/// the length of the post's transaction.
+/// the length of the post's transaction: [`super::standing::SELECT_STANDING`]
+/// with the row lock.
 ///
 /// Answers the lease's own fencing token beside the fleet's live sequence, so
 /// the caller can refuse a holder a reclaim has superseded. `LEFT JOIN`, as the
@@ -20,14 +21,8 @@
 /// a post while holding the wallet.
 ///
 /// `$1` lease, `$2` runner, `$3` the active status, `$4` now.
-pub const SELECT_LIVE_LEASE: &str = "\
-SELECT l.fleet_id::text, l.workspace_id::text, l.event_id, l.fencing_token,
-       COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
-FROM fleet.runner_leases l
-LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
-WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
-  AND l.status = $3 AND l.lease_expires_at > $4
-FOR NO KEY UPDATE OF l";
+pub const SELECT_LIVE_LEASE: &str =
+    concat!(super::standing::live_lease!(), "\nFOR NO KEY UPDATE OF l");
 
 /// The record bytes one lease of an event keeps.
 ///

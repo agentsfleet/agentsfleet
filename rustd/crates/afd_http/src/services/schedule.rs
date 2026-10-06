@@ -16,10 +16,11 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_cron::{
-    Change, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused, Result as CronResult,
-    Schedule, ScheduleService, Schedules,
+    Change, DesiredStatus, Fire, FireTarget, Fired, NewSchedule, Reconciled, Refused,
+    Result as CronResult, Schedule, ScheduleService, Schedules,
 };
 use afd_crypto::entropy::Entropy;
+use afd_db::Precondition;
 
 /// Everything the schedules surface and the fire ingress act through.
 pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
@@ -68,6 +69,35 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         now: UnixMillis,
     ) -> impl Future<Output = CronResult<Option<Reconciled>>> + Send;
 
+    /// [`Self::create`] for a fleet, under the lease `guard` proves on the
+    /// write's own transaction.
+    ///
+    /// # Errors
+    /// As [`Self::create`]. A lease that no longer holds is
+    /// `Ok(Err(Refused::Unheld))`, and nothing is written.
+    fn create_guarded(
+        &self,
+        workspace: &Uuid7,
+        new: NewSchedule<'_>,
+        now: UnixMillis,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send;
+
+    /// [`Self::change`] for a fleet, under the lease `guard` proves on the
+    /// write's own transaction.
+    ///
+    /// # Errors
+    /// As [`Self::change`]. A lease that no longer holds is
+    /// `Ok(Err(Refused::Unheld))`, and nothing is written.
+    fn change_guarded(
+        &self,
+        fleet: &Uuid7,
+        schedule: &Uuid7,
+        change: Change<'_>,
+        now: UnixMillis,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = CronResult<Result<Option<Reconciled>, Refused>>> + Send;
+
     /// Pushes what the row already says, changing nothing.
     ///
     /// # Errors
@@ -88,17 +118,50 @@ pub trait FleetSchedules: Send + Sync + std::fmt::Debug + 'static {
         schedule: &Uuid7,
     ) -> impl Future<Output = CronResult<Option<FireTarget>>> + Send;
 
-    /// Appends one verified fire, at most once however often it arrives.
+    /// Appends one fire, at most once however often it arrives, and retires
+    /// a `once` schedule once its fire is admitted.
+    ///
+    /// The retirement is here rather than in either caller because the
+    /// `QStash` callback and a fleet's run-now are both fires, and a `once`
+    /// schedule run now must not fire again on its own expression.
     ///
     /// # Errors
-    /// Reports a queue that would not take the append.
+    /// Reports a ledger that would not record the fire, and what
+    /// [`Self::retire`] reports. Either is retried safely: a repeated fire
+    /// replays the admitted event, and a repeated retirement claims a row
+    /// already on its way out.
     fn fire(
         &self,
         schedule: &Uuid7,
         target: &FireTarget,
         message_id: &str,
+        now: UnixMillis,
     ) -> impl Future<Output = CronResult<Fired>> + Send;
+
+    /// Marks `fleet`'s `schedule` for deletion and removes it from `QStash`: a
+    /// `once` schedule whose moment has come, fired or not.
+    ///
+    /// A schedule already gone is retired.
+    ///
+    /// # Errors
+    /// `UZ-SCHED-006` while another syncer holds the row, so the caller answers
+    /// non-2xx and the fire is repeated rather than the schedule matching its
+    /// moment again next year. Reports a store that would not take the change.
+    fn retire(
+        &self,
+        fleet: &Uuid7,
+        schedule: &Uuid7,
+        now: UnixMillis,
+    ) -> impl Future<Output = CronResult<()>> + Send;
 }
+
+mod guarded;
+
+/// A `once` schedule retired after its fire.
+const EVENT_RETIRED: &str = "schedule_once_retired";
+
+/// A `once` schedule's moment came while another syncer held its row.
+const EVENT_RETIRE_HELD: &str = "schedule_once_retire_held";
 
 /// The store, the reconciler and the appender, as one value.
 ///
@@ -189,6 +252,27 @@ impl FleetSchedules for SchedulePlane {
         Ok(Some(self.service.reconcile(&held, &token, now).await?))
     }
 
+    fn create_guarded(
+        &self,
+        workspace: &Uuid7,
+        new: NewSchedule<'_>,
+        now: UnixMillis,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = CronResult<Result<Reconciled, Refused>>> + Send {
+        self.create_under(workspace, new, now, guard)
+    }
+
+    fn change_guarded(
+        &self,
+        fleet: &Uuid7,
+        schedule: &Uuid7,
+        change: Change<'_>,
+        now: UnixMillis,
+        guard: &dyn Precondition,
+    ) -> impl Future<Output = CronResult<Result<Option<Reconciled>, Refused>>> + Send {
+        self.change_under(fleet, schedule, change, now, guard)
+    }
+
     async fn sync(
         &self,
         fleet: &Uuid7,
@@ -213,12 +297,40 @@ impl FleetSchedules for SchedulePlane {
         self.store().fire_target(schedule)
     }
 
-    fn fire(
+    async fn fire(
         &self,
         schedule: &Uuid7,
         target: &FireTarget,
         message_id: &str,
-    ) -> impl Future<Output = CronResult<Fired>> + Send {
-        self.fire.deliver(schedule, target, message_id)
+        now: UnixMillis,
+    ) -> CronResult<Fired> {
+        let fired = self.fire.deliver(schedule, target, message_id).await?;
+        if target.once {
+            self.retire(&target.fleet, schedule, now).await?;
+        }
+        Ok(fired)
+    }
+
+    async fn retire(&self, fleet: &Uuid7, schedule: &Uuid7, now: UnixMillis) -> CronResult<()> {
+        let retiring = Change {
+            desired_status: Some(DesiredStatus::Deleting),
+            ..Change::default()
+        };
+        let claimed = self.change(fleet, schedule, retiring, now).await?.is_some();
+        // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+        let fleet_id = fleet.as_str();
+        let schedule_id = schedule.as_str();
+        if claimed {
+            tracing::info!(fleet_id, schedule_id, event = EVENT_RETIRED);
+            return Ok(());
+        }
+        // Nothing claimed: the row is gone, which is retired, or another
+        // syncer holds it, which is not yet.
+        if self.store().one(fleet, schedule).await?.is_none() {
+            return Ok(());
+        }
+        let error_code = afd_core::error_code::SCHEDULE_SYNCING.as_str();
+        tracing::warn!(error_code, fleet_id, schedule_id, event = EVENT_RETIRE_HELD);
+        Err(afd_cron::error::retire_held())
     }
 }

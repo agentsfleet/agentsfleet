@@ -44,6 +44,15 @@ pub enum RunnerRoute {
     Bundle,
     /// Keeping each finished tool call's full arguments and output.
     ToolCalls,
+    /// The schedules of the fleet a held lease runs: listing them, and a
+    /// fleet creating its own.
+    Schedules,
+    /// One schedule the fleet created: changing it, and deleting it.
+    Schedule,
+    /// One schedule's runs: reading them, and creating one to fire it now.
+    ScheduleRuns,
+    /// A line said to the event's thread before the answer.
+    Messages,
 }
 
 impl RunnerRoute {
@@ -61,17 +70,24 @@ impl RunnerRoute {
         Self::MemoryRecall,
         Self::Bundle,
         Self::ToolCalls,
+        Self::Schedules,
+        Self::Schedule,
+        Self::ScheduleRuns,
+        Self::Messages,
     ];
 
     /// The verbs this route identity serves.
     ///
     /// Reads are the runner asking what it has been given — its own record, a
-    /// fleet's memory, a bundle by content hash. Everything else is the runner
-    /// reporting, and reporting is a `POST` because each one appends a fact
-    /// rather than replacing a resource.
+    /// fleet's memory, a bundle by content hash. Reporting is a `POST` because
+    /// each one appends a fact rather than replacing a resource. The schedules
+    /// are the one resource a runner manages: a collection it lists and adds
+    /// to, members it edits and removes, and runs it reads and creates.
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
+            Self::Schedules | Self::ScheduleRuns => &[Verb::Get, Verb::Post],
+            Self::Schedule => &[Verb::Patch, Verb::Delete],
             Self::SelfRecord | Self::MemoryHydrate | Self::Bundle => &[Verb::Get],
             Self::Heartbeat
             | Self::Lease
@@ -81,7 +97,8 @@ impl RunnerRoute {
             | Self::Renew
             | Self::MemoryCapture
             | Self::MemoryRecall
-            | Self::ToolCalls => &[Verb::Post],
+            | Self::ToolCalls
+            | Self::Messages => &[Verb::Post],
         }
     }
 
@@ -103,6 +120,12 @@ impl RunnerRoute {
             Self::MemoryRecall => runner_path!("/me/memory/{fleet_id}/recall"),
             Self::Bundle => runner_path!("/me/bundles/{content_hash}"),
             Self::ToolCalls => runner_path!("/me/leases/{lease_id}/tool-calls"),
+            Self::Schedules => runner_path!("/me/leases/{lease_id}/schedules"),
+            Self::Schedule => runner_path!("/me/leases/{lease_id}/schedules/{schedule_id}"),
+            Self::ScheduleRuns => {
+                runner_path!("/me/leases/{lease_id}/schedules/{schedule_id}/runs")
+            }
+            Self::Messages => runner_path!("/me/leases/{lease_id}/messages"),
         };
         RouteMeta::new(
             Guard::RunnerBearer,

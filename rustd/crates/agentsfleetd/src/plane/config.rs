@@ -93,6 +93,9 @@ pub struct PlaneParts {
     pub identity_webhook_secret: Option<SecretBytes>,
     /// What the schedules surface and the fire ingress need from configuration.
     pub schedule: ScheduleConfig,
+    /// Which Slack API an interim message is posted to — the outbound
+    /// worker's, resolved once by `preflight`.
+    pub slack_api_base: String,
 }
 
 /// What the schedules surface needs from configuration.

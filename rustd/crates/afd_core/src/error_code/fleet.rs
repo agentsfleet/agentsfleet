@@ -116,6 +116,21 @@ pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
 /// conflict rather than a malformed action.
 pub const RUN_SELFTEST_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-018");
 
+/// The event a run is answering came from nowhere a message can go.
+///
+/// A 409: an API steer, a webhook or a schedule fire records no thread, so a
+/// line said before the answer has no place to land. The runner's `message`
+/// tool hands the code to the model, which says it in the report instead.
+pub const MESSAGE_NO_CHANNEL: ErrorCode = ErrorCode::declare("UZ-RUN-019");
+
+/// The lease already posted as many messages as one run may.
+///
+/// A 409 carrying `current_state`, and per lease rather than per window: the
+/// bound is on how much one run says to a person's thread, so waiting does not
+/// lift it and a 429 would tell a client to retry into the same refusal. A
+/// reclaimed lease starts its own count.
+pub const MESSAGE_LIMIT_REACHED: ErrorCode = ErrorCode::declare("UZ-RUN-020");
+
 /// A fleet declared a credential the vault does not hold.
 ///
 /// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it

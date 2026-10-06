@@ -189,3 +189,24 @@ fn an_entry_reads_back_the_name_and_runtime_it_was_built_with() {
     assert_eq!(entry.name(), UNPUBLISHED);
     assert_eq!(entry.runtime(), Runtime::Sandbox);
 }
+
+/// The schedule and message tools are hosted, so a lease naming any of them
+/// runs rather than being refused; none needs a sandbox.
+#[test]
+fn the_hosted_catalog_offers_every_schedule_and_message_tool() {
+    let (transport, _sent) = crate::testing::replying(200, "");
+    let catalog = Catalog::hosted(transport);
+    let eight = [
+        MESSAGE.name(),
+        SCHEDULE.name(),
+        CRON_ADD.name(),
+        CRON_LIST.name(),
+        CRON_REMOVE.name(),
+        CRON_UPDATE.name(),
+        CRON_RUN.name(),
+        CRON_RUNS.name(),
+    ];
+    let selection = catalog.select(&eight).unwrap();
+    assert_eq!(names(&selection), eight);
+    assert!(!selection.needs_sandbox());
+}

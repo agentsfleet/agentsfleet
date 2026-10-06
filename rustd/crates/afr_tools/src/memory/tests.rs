@@ -32,6 +32,7 @@ async fn the_four_tools_share_one_lease_memory() {
     let mut lease = Lease::new(
         Box::new(Hydrated::new(Seed::window(&window))),
         afr_egress::testing::closed(),
+        &crate::verbs::CLOSED,
     );
     let (store, recall, list, forget) = (
         Typed::boxed(MemoryStore),

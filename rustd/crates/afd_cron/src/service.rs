@@ -91,11 +91,17 @@ impl Schedules {
         token: &Uuid7,
         now: UnixMillis,
     ) -> Result<Reconciled> {
+        let missed = missed(held, now);
         let pushed = match held.desired_status {
             // A paused schedule is REMOVED upstream rather than left registered
             // and ignored here. Leaving it would keep the scheduler calling a
             // fire this daemon then drops — real traffic, real cost, no effect.
             DesiredStatus::Paused | DesiredStatus::Deleting => {
+                self.upstream.remove(&held.source_key).await.map(|()| None)
+            }
+            // A one-off past its moment is removed rather than registered a
+            // year late; see `missed`.
+            DesiredStatus::Active if missed => {
                 self.upstream.remove(&held.source_key).await.map(|()| None)
             }
             DesiredStatus::Active => self
@@ -106,7 +112,10 @@ impl Schedules {
         };
 
         match pushed {
-            Ok(_registered) if held.desired_status == DesiredStatus::Deleting => {
+            Ok(_registered) if held.desired_status == DesiredStatus::Deleting || missed => {
+                if missed {
+                    log_missed(held);
+                }
                 // The row goes only now, with the scheduler already agreeing —
                 // see `DesiredStatus::Deleting` on why it cannot go first.
                 if self.store.delete_claimed(held, token).await? {
@@ -128,7 +137,10 @@ impl Schedules {
                 .finalize_synced(
                     held,
                     token,
-                    registered.as_ref().map(|key| key.schedule_id.as_str()),
+                    registered
+                        .as_ref()
+                        .map(|key| key.schedule_id.as_str())
+                        .or_else(|| unregistered_key(held)),
                     now,
                 )
                 .await?
@@ -144,3 +156,43 @@ impl Schedules {
         }
     }
 }
+
+/// A `once` schedule not registered upstream, synced after the instant it
+/// was set for.
+///
+/// Its expression has no year, so registering it now would fire it a year
+/// late. One `QStash` already holds is left alone: its callback may still be on
+/// the way, and retiring the row would drop that run. A row with no instant,
+/// from before slot 931, keeps registering.
+fn missed(held: &Schedule, now: UnixMillis) -> bool {
+    held.once && never_registered(held) && held.fire_at.is_some_and(|at| at <= now.as_millis())
+}
+
+/// Whether `QStash` holds no registration of this schedule.
+///
+/// A fleet's schedule is keyed by its own id until its first successful sync
+/// adopts the key `QStash` files it under (see [`Schedules::reconcile`]), and
+/// a one-off goes back to its own id when a pause removes it
+/// ([`unregistered_key`]); a `once` schedule is only ever a fleet's.
+fn never_registered(held: &Schedule) -> bool {
+    held.source_key == held.schedule_id.as_str()
+}
+
+/// The key a one-off goes back to once a pause has removed it upstream: its
+/// own id, so [`never_registered`] reads true again and a resume after its
+/// moment retires it rather than registering it a year late. `None` keeps
+/// the row's key, as every other push without one does.
+fn unregistered_key(held: &Schedule) -> Option<&str> {
+    (held.once && held.desired_status == DesiredStatus::Paused).then(|| held.schedule_id.as_str())
+}
+
+/// Logs a one-off retired because its moment passed before it was registered.
+fn log_missed(held: &Schedule) {
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let fleet_id = held.fleet_id.as_str();
+    let schedule_id = held.schedule_id.as_str();
+    tracing::warn!(fleet_id, schedule_id, event = EVENT_ONCE_MISSED);
+}
+
+/// A one-off removed because it was not registered before its moment.
+const EVENT_ONCE_MISSED: &str = "schedule_once_missed";

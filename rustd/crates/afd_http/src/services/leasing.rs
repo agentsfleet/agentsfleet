@@ -3,14 +3,16 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_credential::credential::Minted;
-use afd_fleet::lease::Plane;
 use afd_fleet::lease::report::Reconciled;
+use afd_fleet::lease::{Plane, Standing};
 use afd_memory::Captured;
+use afd_outbound::Interim;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::credentials::MintCredentialRequest;
 use afd_wire::memory::{
     MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
 };
+use afd_wire::message_verb::MessageRequest;
 use afd_wire::report::{RenewRequest, ReportRequest};
 use afd_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 
@@ -163,6 +165,49 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         request: &ToolCallRecordsRequest<'_>,
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<ToolCallRecordsStored>> + Send;
+
+    /// Proves `lease_id` is this runner's live lease and the fleet's current
+    /// holder, and answers the fleet, workspace and event it runs.
+    ///
+    /// What the schedules verb acts through before it touches a schedule: the
+    /// fleet is the lease's, never the request's.
+    ///
+    /// # Errors
+    /// Refuses a lease that is not this runner's or not live, and a holder the
+    /// fleet has superseded.
+    fn standing(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: Uuid7,
+        fencing_token: u64,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Standing>> + Send;
+
+    /// One line for the lease's thread: fenced, counted against the run's
+    /// cap, and scrubbed of the fleet's secret values, ready to post.
+    ///
+    /// # Errors
+    /// Refuses as [`Leasing::standing`] does, an event that recorded no
+    /// thread, and a run that already said its fill.
+    fn message(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: Uuid7,
+        request: &MessageRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send;
+
+    /// `text` with the lease's fleet's declared static secrets masked: what a
+    /// schedule the fleet writes stores and hands the scheduler.
+    ///
+    /// # Errors
+    /// Refuses a fleet no longer installed; reports a vault that would not
+    /// answer and a mask that could not be built.
+    fn masked(
+        &self,
+        standing: &Standing,
+        text: &str,
+    ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
 }
 
 /// The production plane answers it directly.
@@ -249,6 +294,34 @@ impl Leasing for Plane {
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<ToolCallRecordsStored>> + Send {
         Self::record_tool_calls(self, runner_id, lease_id, request, now)
+    }
+
+    fn standing(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: Uuid7,
+        fencing_token: u64,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Standing>> + Send {
+        Self::standing(self, runner_id, lease_id, fencing_token, now)
+    }
+
+    fn message(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: Uuid7,
+        request: &MessageRequest<'_>,
+        now: UnixMillis,
+    ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send {
+        Self::message(self, runner_id, lease_id, request, now)
+    }
+
+    fn masked(
+        &self,
+        standing: &Standing,
+        text: &str,
+    ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
+        Self::masked(self, standing, text)
     }
 
     async fn renew(

@@ -23,21 +23,28 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
-use afd_db::Db;
+use afd_db::{Db, Precondition};
 use sqlx::{Acquire as _, FromRow as _, Row as _};
 
 use crate::error::{self, COLUMN_DESIRED_STATUS, COLUMN_FLEET, COLUMN_WORKSPACE, Result};
-use crate::model::{DesiredStatus, MAX_SCHEDULES_PER_FLEET, Schedule, Source, SyncStatus};
+use crate::model::{DesiredStatus, Schedule, Source, SyncStatus};
 use crate::sql;
 
+mod admit;
 mod decode;
 mod fence;
+mod guarded;
+pub(crate) mod refused;
+
+pub use self::refused::Refused;
 
 /// The columns [`Schedules::fire_target`] reads its answer from.
 ///
 /// Named, not positional — see [`decode`] on why an index makes the statement's
 /// column order load-bearing.
 const COLUMN_MESSAGE: &str = "message";
+/// See [`COLUMN_MESSAGE`].
+const COLUMN_ONCE: &str = "once";
 /// See [`COLUMN_MESSAGE`].
 const COLUMN_FLEET_STATUS: &str = "status";
 
@@ -54,26 +61,9 @@ const CONTEXT_WRITE: &str = "write a schedule";
 /// list. `FireStore.zig` uses the same window.
 pub const SYNC_LEASE_MS: i64 = 30_000;
 
-/// Why a create was refused.
-///
-/// Refusals rather than errors, for the reason [`crate::error`] gives: an
-/// operator hit a bound, and nothing in this daemon failed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Refused {
-    /// The fleet is not in the workspace the caller was proven in.
-    ///
-    /// Answered identically to a fleet that does not exist — telling them apart
-    /// would confirm a fleet id across a workspace boundary.
-    NoSuchFleet,
-    /// The fleet already holds [`MAX_SCHEDULES_PER_FLEET`].
-    TooMany,
-    /// This fleet already registered that upstream key.
-    DuplicateKey,
-}
-
 /// What a schedule is created from.
 ///
-/// A struct rather than seven positional arguments because four of them are
+/// A struct rather than eight positional arguments because four of them are
 /// `&str` a call site could transpose without the compiler noticing.
 #[derive(Debug, Clone, Copy)]
 pub struct NewSchedule<'a> {
@@ -81,14 +71,21 @@ pub struct NewSchedule<'a> {
     pub fleet: &'a Uuid7,
     /// Who asked for it.
     pub source: Source,
-    /// The key the external scheduler will know it by.
-    pub source_key: &'a str,
+    /// The key the external scheduler will know it by, or `None` for the
+    /// schedule's own identifier.
+    ///
+    /// `None` is unique by construction, which a fleet needs: one run may
+    /// create two schedules in the same instant, and the key is unique per
+    /// fleet.
+    pub source_key: Option<&'a str>,
     /// The expression, already through [`crate::validate::cron`].
     pub cron: &'a str,
     /// The zone, already through [`crate::validate::timezone`].
     pub timezone: &'a str,
     /// The message, already through [`crate::validate::message`].
     pub message: &'a str,
+    /// Whether it retires after its first fire.
+    pub once: bool,
 }
 
 /// What an edit changes, field by field.
@@ -118,6 +115,8 @@ pub struct FireTarget {
     pub workspace: Uuid7,
     /// What the fleet is asked to do.
     pub message: String,
+    /// Whether the schedule retires once this fire is admitted.
+    pub once: bool,
     /// What the operator wants this schedule to be doing.
     pub desired_status: DesiredStatus,
     /// What the fleet's own row says it is doing.
@@ -195,9 +194,9 @@ impl Schedules {
 
     /// Creates a schedule, already claimed by the caller that will register it.
     ///
-    /// The count, the duplicate check and the insert run inside ONE transaction
-    /// that has taken the fleet's row — see [`sql::LOCK_FLEET`] on why a lock
-    /// on the parent is what makes a count-then-insert atomic.
+    /// The counts, the duplicate check and the insert run inside ONE
+    /// transaction that has taken the fleet's row — see [`sql::LOCK_FLEET`] on
+    /// why a lock on the parent is what makes a count-then-insert atomic.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a statement that failed, and
@@ -209,6 +208,19 @@ impl Schedules {
         token: &Uuid7,
         now: UnixMillis,
     ) -> Result<core::result::Result<Schedule, Refused>> {
+        self.insert(workspace, new, token, now, None).await
+    }
+
+    /// [`Self::create`], proving `guard` after the fleet's row is taken and
+    /// before the insert, so a guard that no longer holds writes nothing.
+    async fn insert(
+        &self,
+        workspace: &Uuid7,
+        new: NewSchedule<'_>,
+        token: &Uuid7,
+        now: UnixMillis,
+        guard: Option<&dyn Precondition>,
+    ) -> Result<core::result::Result<Schedule, Refused>> {
         let schedule_id = self.mint(now)?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection
@@ -216,48 +228,23 @@ impl Schedules {
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
 
-        let in_workspace = sqlx::query(sql::FLEET_IN_WORKSPACE)
-            .bind(new.fleet.as_str())
-            .bind(workspace.as_str())
-            .fetch_optional(transaction.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_WRITE))?;
-        if in_workspace.is_none() {
-            return Ok(Err(Refused::NoSuchFleet));
+        if let Some(refused) = admit::refusal(&mut transaction, workspace, &new).await? {
+            return Ok(Err(refused));
         }
-
-        let _locked = sqlx::query(sql::LOCK_FLEET)
-            .bind(new.fleet.as_str())
-            .fetch_optional(transaction.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_WRITE))?;
-
-        let count: i64 = sqlx::query(sql::COUNT_FOR_FLEET)
-            .bind(new.fleet.as_str())
-            .fetch_one(transaction.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_WRITE))?
-            .try_get(0)
-            .map_err(error::query(CONTEXT_WRITE))?;
-        if usize::try_from(count).unwrap_or(usize::MAX) >= MAX_SCHEDULES_PER_FLEET {
-            return Ok(Err(Refused::TooMany));
-        }
-
-        let duplicate = sqlx::query(sql::SOURCE_KEY_EXISTS)
-            .bind(new.fleet.as_str())
-            .bind(new.source_key)
-            .fetch_optional(transaction.as_mut())
-            .await
-            .map_err(error::query(CONTEXT_WRITE))?;
-        if duplicate.is_some() {
-            return Ok(Err(Refused::DuplicateKey));
+        if let Some(guard) = guard
+            && !guard
+                .holds(&mut transaction)
+                .await
+                .map_err(error::query(CONTEXT_WRITE))?
+        {
+            return Ok(Err(Refused::Unheld));
         }
 
         let row = sqlx::query(sql::INSERT)
             .bind(schedule_id.as_str())
             .bind(new.fleet.as_str())
             .bind(new.source.as_str())
-            .bind(new.source_key)
+            .bind(new.source_key.unwrap_or_else(|| schedule_id.as_str()))
             .bind(new.cron)
             .bind(new.timezone)
             .bind(new.message)
@@ -270,6 +257,12 @@ impl Schedules {
             .bind(token.as_str())
             .bind(now.as_millis() + SYNC_LEASE_MS)
             .bind(now.as_millis())
+            .bind(new.once)
+            .bind(
+                new.once
+                    .then(|| crate::next::next_fire(new.cron, new.timezone, now))
+                    .flatten(),
+            )
             .fetch_one(transaction.as_mut())
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
@@ -307,6 +300,7 @@ impl Schedules {
         let fleet: String = row.try_get(COLUMN_FLEET).map_err(&unreadable)?;
         let workspace: String = row.try_get(COLUMN_WORKSPACE).map_err(&unreadable)?;
         let message: String = row.try_get(COLUMN_MESSAGE).map_err(&unreadable)?;
+        let once: bool = row.try_get(COLUMN_ONCE).map_err(&unreadable)?;
         let desired: String = row.try_get(COLUMN_DESIRED_STATUS).map_err(&unreadable)?;
         let fleet_status: String = row.try_get(COLUMN_FLEET_STATUS).map_err(&unreadable)?;
 
@@ -315,6 +309,7 @@ impl Schedules {
             workspace: Uuid7::parse(&workspace)
                 .map_err(|_shape| error::row_unreadable(COLUMN_WORKSPACE))?,
             message,
+            once,
             desired_status: DesiredStatus::parse(&desired)
                 .ok_or_else(|| error::row_unreadable(COLUMN_DESIRED_STATUS))?,
             fleet_status,

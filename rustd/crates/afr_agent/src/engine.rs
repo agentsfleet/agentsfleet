@@ -14,6 +14,7 @@ use afr_egress::Mint;
 use afr_executor::Executor;
 use afr_memory::Seed;
 use afr_providers::Usage;
+use afr_tools::LeaseVerbs;
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
@@ -64,6 +65,9 @@ pub struct AgentRun<'run> {
     pub executor: Option<&'run dyn Executor>,
     /// Mints the credentials the lease's policy names, under the held lease.
     pub mint: &'run dyn Mint,
+    /// The `agentsfleetd` verbs the schedule and message tools reach, fenced
+    /// by the held lease.
+    pub verbs: &'run dyn LeaseVerbs,
     /// Writes the run's memory back every `memory_checkpoint_every` calls.
     pub checkpoint: &'run dyn Checkpoint,
     /// Where activity frames go.

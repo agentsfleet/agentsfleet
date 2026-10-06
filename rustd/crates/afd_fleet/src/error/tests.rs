@@ -101,6 +101,16 @@ fn credential_and_bundle_refusals_have_stable_wire_classification() {
             DETAIL_GRANT_REQUIRED,
         ),
         expected(
+            super::message_no_channel(),
+            error_code::MESSAGE_NO_CHANNEL,
+            super::DETAIL_MESSAGE_NO_CHANNEL,
+        ),
+        expected(
+            super::message_limit_reached(),
+            error_code::MESSAGE_LIMIT_REACHED,
+            super::DETAIL_MESSAGE_LIMIT,
+        ),
+        expected(
             super::sequence_corrupt(),
             error_code::INTERNAL_DB_QUERY,
             DETAIL_DATABASE_ERROR,

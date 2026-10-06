@@ -61,6 +61,7 @@ pub async fn spawn(
     queue: &Dragonfly,
     grants: Grants,
     vendor_client: reqwest::Client,
+    slack_api_base: String,
 ) {
     let connection = match Dedicated::connect(config, LONGEST_PARK).await {
         Ok(connection) => connection,
@@ -78,11 +79,7 @@ pub async fn spawn(
         OutboundQueue::new(queue.clone()),
         database.clone(),
         Posters {
-            slack: SlackPoster::new(
-                grants,
-                vendor_client,
-                afd_connector::slack::SLACK_API_BASE.to_owned(),
-            ),
+            slack: SlackPoster::new(grants, vendor_client, slack_api_base),
         },
     );
     supervisor.spawn(OUTBOUND_WORKER, move |token| worker.run(token));

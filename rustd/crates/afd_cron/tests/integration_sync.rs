@@ -37,22 +37,14 @@
 #[path = "support/cron_lane.rs"]
 mod support;
 
+#[path = "support/live_qstash.rs"]
+mod live_qstash;
+
 use afd_cron::qstash::QStash;
 use afd_cron::{DesiredStatus, Reconciled, ScheduleService as Reconciler, SyncStatus};
 
+use self::live_qstash::{LIVE_DESTINATION, against_live, live};
 use self::support::CronLane;
-
-/// Where the lane's scheduler listens.
-const LIVE_URL_KNOB: &str = "AGENTSFLEET_QSTASH_LIVE_URL";
-
-/// The credential it authenticates that lane against.
-const LIVE_TOKEN_KNOB: &str = "AGENTSFLEET_QSTASH_LIVE_TOKEN";
-
-/// A destination the dev server will accept.
-///
-/// It resolves the destination for real at create time, so a `.test` host is
-/// refused before any of this suite's actual subject is reached.
-const LIVE_DESTINATION: &str = "https://example.com";
 
 /// A base no scheduler listens on, for the outage half.
 ///
@@ -60,42 +52,6 @@ const LIVE_DESTINATION: &str = "https://example.com";
 /// failure — the case Dimension 3.3 is about — rather than as a refusal from
 /// something that answered.
 const UNREACHABLE_BASE: &str = "https://qstash.unreachable.test/v2";
-
-/// The scheduler this lane talks to, or `None` outside the lane.
-///
-/// Says so on the way out. A silent `return` reports `ok` in the same words a
-/// real pass does, so a lane that stopped exporting these knobs would go on
-/// reporting four passes over two tests that never ran — which is how this
-/// suite's own base URL stayed wrong long enough to be found by accident.
-fn live() -> Option<(String, String)> {
-    let url = std::env::var(LIVE_URL_KNOB).ok().filter(|v| !v.is_empty());
-    let token = std::env::var(LIVE_TOKEN_KNOB)
-        .ok()
-        .filter(|v| !v.is_empty());
-    match (url, token) {
-        (Some(url), Some(token)) => Some((url, token)),
-        _unset => {
-            eprintln!(
-                "SKIPPED: no live scheduler — {LIVE_URL_KNOB} and {LIVE_TOKEN_KNOB} are what \
-                 `make test-integration-rustd` exports"
-            );
-            None
-        }
-    }
-}
-
-/// A reconciler bound to the real scheduler.
-fn against_live(lane: &CronLane, url: String, token: String) -> Reconciler {
-    Reconciler::new(
-        lane.store.clone(),
-        QStash::new(
-            reqwest::Client::new(),
-            afd_crypto::secret::SecretString::new(token),
-            LIVE_DESTINATION.to_owned(),
-            url,
-        ),
-    )
-}
 
 #[tokio::test]
 #[ignore = "needs the lane's Postgres and the compose qstash service"]

@@ -52,6 +52,12 @@ pub(crate) fn upstream_refused(status: u16) -> Error {
     ErrorKind::UpstreamRefused { status }.into()
 }
 
+/// Reports a fired `once` schedule another syncer still holds.
+#[must_use]
+pub fn retire_held() -> Error {
+    ErrorKind::RetireHeld.into()
+}
+
 /// One error of every kind, for tests that walk the whole surface.
 ///
 /// The M-TEST-UTIL seam, and the same argument `afd_db::error` makes for its
@@ -131,6 +137,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             "row unreadable",
             row_unreadable(super::COLUMN_DESIRED_STATUS),
         ),
+        ("retire held", retire_held()),
     ]
 }
 

@@ -89,6 +89,11 @@ impl Error {
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted
+            // A message refusal answers one post against one lease, and the
+            // mask failing is this process; neither is a document to fix.
+            | ErrorKind::MessageNoChannel
+            | ErrorKind::MessageLimitReached
+            | ErrorKind::Scrub { .. }
             // Infrastructure, not configuration: nobody edits a fleet
             // document to fix a corrupt sequence.
             | ErrorKind::SequenceCorrupt

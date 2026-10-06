@@ -46,6 +46,7 @@ pub mod error;
 pub mod migrate;
 pub mod migration;
 pub mod pool;
+pub mod precondition;
 
 // The per-test database creator four integration suites each carry their own
 // copy of, in the home every one of their headers names. Behind `test-util` so
@@ -60,6 +61,7 @@ pub use crate::error::{Error, Result};
 pub use crate::migrate::{Applied, Migrator};
 pub use crate::migration::{MIGRATIONS, Migration};
 pub use crate::pool::{Db, Pools};
+pub use crate::precondition::Precondition;
 
 /// The knob that decides whether `serve` migrates before it listens.
 ///

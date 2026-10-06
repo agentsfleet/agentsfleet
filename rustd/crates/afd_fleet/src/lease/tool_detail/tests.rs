@@ -12,7 +12,8 @@ use afd_wire::tool_detail::{
 };
 use serde_json::json;
 
-use super::{DetailTarget, EVENT_SKIPPED, Skip, log_skip, narrow_all, within_budget};
+use super::{EVENT_SKIPPED, Skip, log_skip, narrow_all, within_budget};
+use crate::lease::standing::LiveLease;
 
 /// A post's body: `records` as given, under fence 7.
 fn post(records: &[String]) -> String {
@@ -26,11 +27,12 @@ fn record(call_number: u64, output_bytes: usize) -> String {
     .to_string()
 }
 
-fn target(fence: i64, live_seq: i64) -> DetailTarget {
-    DetailTarget {
+fn target(fence: i64, live_seq: i64) -> LiveLease {
+    LiveLease {
         fleet_id: "01924f4e-0000-7000-8000-00000000fee7".to_owned(),
         workspace_id: "01924f4e-0000-7000-8000-000000000001".to_owned(),
         event_id: "1700000000000-0".to_owned(),
+        actor: "steer:api".to_owned(),
         fence,
         live_seq,
     }

@@ -32,6 +32,7 @@ fn marker() -> AnswerMarker {
     AnswerMarker {
         fleet_id: "0195b4ba-8d3a-7a11-8abc-000000000003".to_owned(),
         event_id: "1760000000001-0".to_owned(),
+        part: None,
     }
 }
 

@@ -27,6 +27,8 @@ use afd_outbound::{Deliver as _, Verdict};
 
 #[path = "integration_slack_poster/fixture.rs"]
 mod fixture;
+#[path = "integration_slack_poster/interim.rs"]
+mod interim;
 #[path = "integration_slack_poster/repeat.rs"]
 mod repeat;
 

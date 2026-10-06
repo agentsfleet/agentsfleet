@@ -31,6 +31,8 @@ afr_secrets.workspace = true
 bytes.workspace = true
 # `web_fetch` reads a page's text, never its markup.
 html2text.workspace = true
+# `schedule` reads an RFC 3339 moment and writes its UTC minute as a cron.
+jiff.workspace = true
 # `Tool` is `dyn`: the catalog holds production handlers, tests hold stubs.
 async-trait.workspace = true
 # A tool's parameters are the JSON Schema of the type its arguments parse into.

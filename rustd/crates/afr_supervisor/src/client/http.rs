@@ -20,6 +20,15 @@ const BEARER: &str = "Bearer ";
 /// failure. Long enough for a bundle download; renewal races its own deadline
 /// rather than relying on this.
 const CALL_TIMEOUT: Duration = Duration::from_secs(20);
+
+// The daemon bounds a message post by its own deadline and answers
+// `delivered: false` past it; a call timeout shorter than that would read a
+// slow channel as a daemon that never answered, and the model would post the
+// line again.
+const _: () = assert!(
+    afd_wire::message_verb::MESSAGE_DELIVERY_DEADLINE.as_secs() < CALL_TIMEOUT.as_secs(),
+    "the runner's call timeout must outlast the daemon's message deadline"
+);
 /// Why a token was refused before any call.
 const DETAIL_TOKEN_UNPRINTABLE: &str =
     "AGENTSFLEET_RUNNER_TOKEN holds a byte a header cannot carry";
@@ -56,14 +65,10 @@ impl RunnerApi for HttpRunnerApi {
     async fn send(&self, call: Call) -> Result<Bytes> {
         // Relative, so a base carrying a path prefix keeps it.
         let url = self.base.join(call.path.trim_start_matches('/'))?;
+        let request = self.client.request(call.verb.method().http(), url);
         let request = match call.body {
-            Some(body) => self
-                .client
-                .post(url)
-                .header(CONTENT_TYPE, APPLICATION_JSON)
-                .body(body),
-            None if call.verb.reads() => self.client.get(url),
-            None => self.client.post(url),
+            Some(body) => request.header(CONTENT_TYPE, APPLICATION_JSON).body(body),
+            None => request,
         };
         let response = request.send().await.map_err(error::transport(call.verb))?;
         let status = response.status();

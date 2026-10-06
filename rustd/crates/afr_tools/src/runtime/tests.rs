@@ -58,6 +58,19 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
             "image_input_unavailable",
         ),
         (ToolErrorCode::BrowserUnavailable, "browser_unavailable"),
+        (ToolErrorCode::ScheduleCapReached, "schedule_cap_reached"),
+        (
+            ToolErrorCode::ScheduleNotFleetOwned,
+            "schedule_not_fleet_owned",
+        ),
+        (ToolErrorCode::ScheduleNotRunnable, "schedule_not_runnable"),
+        (ToolErrorCode::MessageNoChannel, "message_no_channel"),
+        (ToolErrorCode::MessageLimitReached, "message_limit_reached"),
+        (ToolErrorCode::AgentsfleetdRefused, "agentsfleetd_refused"),
+        (
+            ToolErrorCode::AgentsfleetdUnreachable,
+            "agentsfleetd_unreachable",
+        ),
     ];
 
     for (code, spelling) in spelled {

@@ -273,6 +273,7 @@ pub(crate) async fn run_with(
         memory: afr_memory::Seed::default(),
         executor,
         mint: &CountingMint::never(),
+        verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
         events: &sink,
         meter: &Meter::default(),

@@ -40,18 +40,17 @@ pub use self::knobs::{
     OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB, OIDC_JWKS_URL_KNOB, PLATFORM_ADMIN_WORKSPACE_KNOB,
     PROVIDER_API_BASE_KNOB, PROVIDER_SECRET_KNOB, QSTASH_CURRENT_KEY_KNOB, QSTASH_NEXT_KEY_KNOB,
     QSTASH_TOKEN_KNOB, QSTASH_URL_KNOB, R2_ACCESS_KEY_ID_KNOB, R2_ACCOUNT_ID_KNOB, R2_BUCKET_KNOB,
-    R2_SECRET_ACCESS_KEY_KNOB, SESSION_CODE_PEPPER_KNOB,
+    R2_SECRET_ACCESS_KEY_KNOB, SESSION_CODE_PEPPER_KNOB, SLACK_API_URL_KNOB,
 };
 
 use self::knobs::{
     API_URL_DEFAULT, APP_URL_DEFAULT, POSTHOG_HOST_KNOB, POSTHOG_KEY_KNOB, WHY_DATABASE,
-    WHY_DRAGONFLY, WHY_PLATFORM_ADMIN, WHY_SESSION_PEPPER,
+    WHY_DRAGONFLY, WHY_SESSION_PEPPER,
 };
 
 use self::read::{bundle_store, classify, identity, is_set, read_kek, required};
 
 use afd_core::env::EnvSource;
-use afd_core::id::Uuid7;
 use afd_cron::SigningKeys;
 use afd_crypto::secret::SecretBytes;
 use afd_db::config::{DbRole, PoolConfig};
@@ -129,6 +128,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     // or header list this build cannot use — those are typos that would
     // otherwise surface as a collector that never receives anything.
     let otlp = self::otlp::otlp(env, &mut faults);
+    let slack_api_url = read::slack_api_url(env, &mut faults);
     let dashboard = read::dashboard(&optional_url(APP_URL_KNOB, APP_URL_DEFAULT), &mut faults);
     let deployment = optional_url(API_URL_KNOB, API_URL_DEFAULT);
     let identity = identity(env, &mut faults);
@@ -136,22 +136,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     // only the second pushed a fault — which is why the match below reads the
     // fault list rather than this value to decide whether boot proceeds.
     let bundles = bundle_store(env, &mut faults);
-    // Unset is a deployment that mints nothing; SET and unparseable is a typo
-    // that would otherwise surface as "not connected" at the first mint, which
-    // is the furthest possible point from the mistake.
-    let platform_admin_workspace = env
-        .get(PLATFORM_ADMIN_WORKSPACE_KNOB)
-        .map(|raw| raw.trim().to_owned())
-        .filter(|raw| !raw.is_empty())
-        .and_then(|raw| {
-            classify(
-                &mut faults,
-                true,
-                PLATFORM_ADMIN_WORKSPACE_KNOB,
-                WHY_PLATFORM_ADMIN,
-                Uuid7::parse(&raw),
-            )
-        });
+    let platform_admin_workspace = read::platform_admin_workspace(env, &mut faults);
 
     match (
         api_pool,
@@ -180,6 +165,7 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
             platform_admin_workspace,
             qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
             qstash_url: optional(env, QSTASH_URL_KNOB),
+            slack_api_url,
             identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
             qstash_keys: signing_keys(env),
             sse_max_streams,

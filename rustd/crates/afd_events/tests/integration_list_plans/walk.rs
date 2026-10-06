@@ -22,6 +22,8 @@ const STEP_MS: i64 = 1_000;
 /// and one none of them does.
 const SEEDED_ACTOR: &str = "steer:";
 const OTHER_ACTOR: &str = "webhook:";
+/// The whole actor every walked event carries, for the exact-actor read.
+const SEEDED_ACTOR_EXACT: &str = "steer:api";
 
 /// The lane's workspace and fleet, as `History` takes them.
 struct Scope {
@@ -109,6 +111,23 @@ async fn walk_listing(
     }
 }
 
+/// Every event id `actor` has in the fleet, walked page by page to the end.
+async fn walk_actor(history: &History, scope: &Scope, actor: &str) -> Vec<String> {
+    let mut seen = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = history
+            .page_of_actor(&scope.workspace, &scope.fleet, actor, cursor.as_ref(), PAGE)
+            .await
+            .expect("an actor page must read");
+        seen.extend(page.iter().map(|row| row.event_id.clone()));
+        match next_cursor(&page, PAGE) {
+            Some(next) => cursor = Some(next),
+            None => return seen,
+        }
+    }
+}
+
 /// Every event id the fleet's thread serves, walked page by page to the end.
 async fn walk_thread(history: &History, scope: &Scope) -> Vec<String> {
     let mut seen = Vec::new();
@@ -170,6 +189,15 @@ pub(super) async fn assert_walks(lane: &EventsLane, seeded: &[(i64, String)]) {
             assert_eq!(&walked, expected, "{listing:?} under {filter:?}");
         }
     }
+    assert_eq!(
+        walk_actor(&history, &scope, SEEDED_ACTOR_EXACT).await,
+        everything,
+        "the exact-actor walk"
+    );
+    assert!(
+        walk_actor(&history, &scope, SEEDED_ACTOR).await.is_empty(),
+        "an exact read never matches a prefix"
+    );
     assert_eq!(
         walk_thread(&history, &scope).await,
         everything,
