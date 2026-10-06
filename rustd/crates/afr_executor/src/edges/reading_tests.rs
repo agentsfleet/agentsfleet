@@ -90,7 +90,8 @@ fn unread_output_never_exceeds_two_edges_and_every_byte_is_read_or_counted() {
             read.extend((0..step % 5).map_while(|_| unread.pop()));
         }
 
-        assert!(unread.head_len + unread.tail_len <= 2 * edge, "step {step}");
+        let head: usize = unread.head.iter().map(|chunk| chunk.data.len()).sum();
+        assert!(head + unread.tail_len <= 2 * edge, "step {step}");
     }
     read.extend(drain(&mut unread));
 
