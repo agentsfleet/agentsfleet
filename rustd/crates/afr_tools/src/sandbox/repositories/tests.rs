@@ -120,3 +120,13 @@ fn should_refuse_two_bound_repositories_that_share_a_directory() {
         afd_core::error_code::AGENTSFLEET_INVALID_CONFIG
     );
 }
+
+/// A name the catalog does not publish runs nowhere, so it alone checks
+/// nothing out; the daemon refuses such a policy before a lease, and this is
+/// the runner not guessing past it.
+#[test]
+fn should_check_out_nothing_for_a_name_the_catalog_does_not_publish() {
+    let policy = offering(&["shell_but_misspelled"]);
+
+    assert!(checkouts(&policy).unwrap().is_empty());
+}

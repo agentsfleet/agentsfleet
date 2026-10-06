@@ -1,5 +1,6 @@
 #![expect(
     clippy::unwrap_used,
+    clippy::panic,
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
@@ -9,7 +10,7 @@ use bytes::Bytes;
 use tokio::sync::mpsc::error::TryRecvError;
 
 use super::Events;
-use crate::api::{Ending, ProcessEvent, Stream};
+use crate::api::{Ending, Process, ProcessEvent, ProcessId, Stream};
 use crate::edges::EDGE_BYTES;
 
 /// Longer than any wait below takes when it works.
@@ -131,4 +132,84 @@ async fn test_a_caller_that_reads_only_at_the_end_holds_the_edges_and_a_count() 
     assert_eq!(kept, 2 * EDGE_BYTES);
     assert_eq!(omitted, u64::try_from(total - 2 * EDGE_BYTES).unwrap());
     assert_eq!(ending, Some(Ending::Exited(0)));
+}
+
+/// A feed on another thread wakes a reader that is waiting, every time: the
+/// reader ends with every byte it was fed either read or counted, and the
+/// ending, never stuck on a wakeup that came between its look and its wait.
+#[tokio::test]
+async fn a_feed_on_another_thread_loses_no_wakeup_and_no_byte() {
+    const PIECES: usize = 20_000;
+    const PIECE: &[u8] = b"0123456789abcdef";
+    let (feed, mut events) = Events::channel();
+    let feeding = std::thread::spawn(move || {
+        for _ in 0..PIECES {
+            feed.output(Stream::Stdout, Bytes::from_static(PIECE));
+        }
+        feed.end(Ending::Exited(0));
+    });
+
+    let (read, omitted, ending) = tokio::time::timeout(PATIENCE, async {
+        let (mut read, mut omitted) = (0, 0);
+        loop {
+            match events.recv().await {
+                Some(ProcessEvent::Output { data, .. }) => read += data.len(),
+                Some(ProcessEvent::Omitted { bytes }) => omitted += bytes,
+                Some(ProcessEvent::Ended { ending }) => return (read, omitted, ending),
+                None => panic!("the events finished with no ending"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    feeding.join().unwrap();
+
+    assert_eq!(ending, Ending::Exited(0));
+    assert_eq!(
+        read as u64 + omitted,
+        (PIECES * PIECE.len()) as u64,
+        "every byte read or counted"
+    );
+}
+
+/// A caller reading a process to its end hands each chunk on and passes over
+/// a gap: it is told the ending, never the count, and holds only the edges.
+#[tokio::test]
+async fn a_process_read_to_its_end_passes_over_what_was_dropped() {
+    let (feed, events) = Events::channel();
+    for _ in 0..(6 * EDGE_BYTES) / CHUNK_BYTES {
+        feed.output(Stream::Stdout, Bytes::from(vec![b'y'; CHUNK_BYTES]));
+    }
+    feed.end(Ending::Exited(3));
+    let process = Process {
+        id: ProcessId::new(1),
+        events,
+    };
+
+    let mut handed = 0;
+    let ending = process.ended(|_stream, data| handed += data.len()).await;
+
+    assert_eq!(ending, Some(Ending::Exited(3)));
+    assert_eq!(handed, 2 * EDGE_BYTES);
+}
+
+/// Events that finish with no ending, as a lost connection's do, read to
+/// their end as none, after the output they carried.
+#[tokio::test]
+async fn a_process_whose_events_finish_with_no_ending_reads_to_none() {
+    let (feed, events) = Events::channel();
+    feed.output(Stream::Stdout, Bytes::from_static(b"partial"));
+    drop(feed);
+    let process = Process {
+        id: ProcessId::new(2),
+        events,
+    };
+
+    let mut handed = Vec::new();
+    let ending = process
+        .ended(|_stream, data| handed.extend_from_slice(&data))
+        .await;
+
+    assert_eq!(ending, None);
+    assert_eq!(handed, b"partial");
 }
