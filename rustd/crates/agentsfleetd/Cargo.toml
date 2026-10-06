@@ -185,7 +185,9 @@ afd_wire.workspace = true
 afr_agent = { workspace = true, features = ["test-util"] }
 afr_executor.workspace = true
 afr_sandbox.workspace = true
-afr_supervisor.workspace = true
+# The code-running bundle's runner fetches its bound repository from a
+# fixture origin over `file://`, not from GitHub.
+afr_supervisor = { workspace = true, features = ["test-util"] }
 # Section 6's bundle suite: the real loop over the hosted catalog, a scripted
 # model behind the provider seam, and the egress client routed to HTTPS fakes
 # that rcgen's test CA signs and hyper serves.

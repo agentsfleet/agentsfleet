@@ -129,11 +129,13 @@ async fn test_loop_runs_tool_calls_until_answer() {
         [
             Message::ToolResult {
                 call_id: "p1".to_owned(),
-                output: "4".to_owned()
+                output: "4".to_owned(),
+                image: None,
             },
             Message::ToolResult {
                 call_id: "p2".to_owned(),
-                output: "4".to_owned()
+                output: "4".to_owned(),
+                image: None,
             },
         ]
     );

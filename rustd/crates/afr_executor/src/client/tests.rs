@@ -69,7 +69,7 @@ async fn a_call_the_executor_never_answers_times_out_and_gives_up_the_link() {
         ended,
         Some(ProcessEvent::Ended {
             ending: Ending::Interrupted,
-            omitted_bytes: 0
+            output_abandoned: false
         })
     );
     assert_eq!(process.events.recv().await, None, "ended exactly once");
@@ -105,7 +105,7 @@ async fn a_send_into_an_executor_that_stopped_reading_is_given_up_too() {
         ended,
         Some(ProcessEvent::Ended {
             ending: Ending::Interrupted,
-            omitted_bytes: 0
+            output_abandoned: false
         })
     );
     drop(executor);

@@ -9,13 +9,19 @@ use std::time::{Duration, Instant};
 use afr_executor::Ending;
 use afr_sandbox::{
     BubblewrapEngine, Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, ProbePaths, SandboxRequest,
-    WarmSlots, probe,
+    Toolbox, WarmSlots, probe,
 };
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
+use crate::admission::{adoption, path_swap};
+use crate::budgets::start_budgets;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
+use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
+use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::lane::{Lane, missing};
-use crate::run::{expect, in_sandbox, runtime};
+use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
+use crate::toolbox::toolbox_carries_the_tools;
+use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 
 /// Workspace disk a limit trial fills past.
 const SMALL_DISK: u64 = 64 * 1024 * 1024;
@@ -46,7 +52,7 @@ type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: [(&str, Body); 13] = [
+    let rows: [(&str, Body); 24] = [
         ("test_sandbox_process_has_no_capabilities", no_capabilities),
         (
             "test_sandbox_cannot_plant_files_on_the_host",
@@ -70,7 +76,33 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         ("test_unbuildable_sandbox_refuses_lease", unbuildable),
         ("test_toolbox_build_is_reproducible", reproducible),
         ("test_lease_sees_toolbox_read_only", toolbox_read_only),
+        ("test_toolbox_carries_the_tools", toolbox_carries_the_tools),
+        ("test_toolbox_admission_survives_path_swap", path_swap),
+        ("test_toolbox_adoption_checks_identity", adoption),
+        (
+            "test_shell_runs_inside_the_sandbox_with_exit_code",
+            shell_exit_code,
+        ),
+        ("test_shell_timeout_kills_the_group", shell_timeout),
+        (
+            "test_shell_process_inherits_the_sandbox",
+            shell_inherits_sandbox,
+        ),
+        ("test_git_tool_runs_local_commands", git_runs_local_commands),
+        (
+            "test_read_token_never_enters_the_sandbox",
+            token_never_enters,
+        ),
+        (
+            "test_file_tools_run_inside_the_sandbox",
+            file_tools_run_inside,
+        ),
+        (
+            "test_file_tools_refuse_a_link_out_of_the_sandbox",
+            file_tools_refuse_link_out,
+        ),
         ("test_warm_start_beats_cold_start", warm_beats_cold),
+        ("test_start_budgets_with_four_leases", start_budgets),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];
     let trials = rows
@@ -145,11 +177,9 @@ fn runaway(lane: &Lane) -> Result<(), Failed> {
 }
 
 fn no_network(lane: &Lane) -> Result<(), Failed> {
-    let script = "python3 -c 'import socket; socket.create_connection((\"1.1.1.1\", 443), 3)' \
-                  2>/dev/null && echo reached || echo unreachable";
-    let said = in_sandbox(lane, "network", Limits::default(), script)?.output;
+    let said = in_sandbox(lane, "network", Limits::default(), REACH_OUT)?.output;
     expect(
-        said.contains("unreachable"),
+        said.contains(UNREACHABLE),
         format!("no route out, got {said:?}"),
     )
 }
@@ -197,21 +227,48 @@ fn reproducible(lane: &Lane) -> Result<(), Failed> {
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../scripts/toolbox/build.sh");
     let built = Command::new("bash").arg(script).arg(out.path()).output()?;
     let path = String::from_utf8_lossy(&built.stdout).trim().to_owned();
-    let second = afr_sandbox::ToolboxImage::verify(Path::new(&path))?;
+    let second = crate::release::sha256_file(Path::new(&path))?;
     expect(
-        second.digest() == lane.image.digest(),
-        format!("{} != {}", second.digest(), lane.image.digest()),
+        second == lane.image.digest(),
+        format!("{second} != {}", lane.image.digest()),
     )
 }
 
+/// `/usr` is the toolbox, read-only; a sandbox holds the toolbox it runs on
+/// until it is destroyed, so retention never unmounts one under a lease. The
+/// trial counts holds on a toolbox handle of its own, since trials run at once.
 fn toolbox_read_only(lane: &Lane) -> Result<(), Failed> {
-    let said = in_sandbox(
-        lane,
-        "toolbox",
-        Limits::default(),
-        "git --version && (touch /usr/x 2>/dev/null && echo usr-leaked || echo usr-denied)",
-    )?
-    .output;
+    let mut config = lane.config.clone();
+    let shared = &lane.config.toolbox;
+    config.toolbox = Arc::new(Toolbox::at(
+        shared.root().to_owned(),
+        shared.digest().to_owned(),
+    ));
+    let toolbox = Arc::clone(&config.toolbox);
+    let (said, unheld, held) = runtime().block_on(async {
+        let engine = BubblewrapEngine::new(config, &probe(&lane.config.probe_paths()))?;
+        let unheld = Arc::strong_count(&toolbox);
+        let request = SandboxRequest {
+            lease_id: "toolbox",
+            limits: Limits::default(),
+        };
+        let sandbox = engine.prepare(request).await?;
+        let held = Arc::strong_count(&toolbox);
+        let script =
+            "git --version && (touch /usr/x 2>/dev/null && echo usr-leaked || echo usr-denied)";
+        let outcome = run_in(sandbox.executor(), shell(script)).await;
+        sandbox.destroy().await?;
+        let after = Arc::strong_count(&toolbox);
+        expect(
+            after == unheld,
+            format!("destroyed, the sandbox let go: {after} != {unheld}"),
+        )?;
+        Ok::<_, Failed>((outcome?.output, unheld, held))
+    })?;
+    expect(
+        held == unheld + 1,
+        format!("the sandbox holds its toolbox: {held} != {unheld} + 1"),
+    )?;
     expect(
         said.contains("git version") && said.contains("usr-denied"),
         format!("git runs, /usr is read-only, got {said:?}"),

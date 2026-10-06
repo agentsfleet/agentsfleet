@@ -78,6 +78,35 @@ pub enum ToolErrorCode {
     UpstreamStatus,
     /// A store asked the workspace to read it, and this fleet may not publish.
     WorkspaceMemoryNotGranted,
+    /// The command ran past its timeout, and its process group was killed.
+    TimedOut,
+    /// The process's ending never reached the caller: its sandbox or the
+    /// executor went away.
+    Interrupted,
+    /// The session named is not open: it never was, or its process ended.
+    SessionNotFound,
+    /// The subcommand reaches a remote, and the sandbox has no network.
+    SubcommandNotAllowed,
+    /// The path leaves the workspace, by name or through a link.
+    PathNotAllowed,
+    /// The path names no file or directory in the workspace.
+    FileNotFound,
+    /// The file is longer than the call carries: one read, for an edit; the
+    /// image cap, for an image.
+    FileTooLarge,
+    /// The text to replace is not in the file.
+    TextNotFound,
+    /// A line tag no longer matches the file, or matches it more than once.
+    HashMismatch,
+    /// The patch does not parse, or a hunk's lines are not in the file.
+    PatchInvalid,
+    /// The file is not an image the wires take.
+    NotAnImage,
+    /// The model's wire takes no image with a call's result.
+    ImageInputUnavailable,
+    /// The browser tools wait for the Firecracker engine; this sandbox cannot
+    /// start Chromium.
+    BrowserUnavailable,
     /// The fleet already holds as many schedules as it may create itself.
     ScheduleCapReached,
     /// The schedule is a person's, so the fleet may read it and not change it.
@@ -118,6 +147,19 @@ impl ToolErrorCode {
             Self::UpstreamUnreachable => "upstream_unreachable",
             Self::UpstreamStatus => "upstream_status",
             Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
+            Self::TimedOut => "timed_out",
+            Self::Interrupted => "interrupted",
+            Self::SessionNotFound => "session_not_found",
+            Self::SubcommandNotAllowed => "subcommand_not_allowed",
+            Self::PathNotAllowed => "path_not_allowed",
+            Self::FileNotFound => "file_not_found",
+            Self::FileTooLarge => "file_too_large",
+            Self::TextNotFound => "text_not_found",
+            Self::HashMismatch => "hash_mismatch",
+            Self::PatchInvalid => "patch_invalid",
+            Self::NotAnImage => "not_an_image",
+            Self::ImageInputUnavailable => "image_input_unavailable",
+            Self::BrowserUnavailable => "browser_unavailable",
             Self::ScheduleCapReached => "schedule_cap_reached",
             Self::ScheduleNotFleetOwned => "schedule_not_fleet_owned",
             Self::ScheduleNotRunnable => "schedule_not_runnable",

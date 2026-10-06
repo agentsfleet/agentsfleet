@@ -28,6 +28,25 @@ pub(crate) enum ErrorKind {
         /// The tool's name, as the policy spells it.
         name: String,
     },
+
+    /// The policy binds a repository whose name is not `owner/name`.
+    #[error("the policy binds a repository this runner cannot check out: {name}")]
+    InvalidRepository {
+        /// The repository, as the policy spells it.
+        name: String,
+    },
+
+    /// The policy binds two repositories that would land in one directory.
+    #[error(
+        "the policy binds two repositories this runner would check out in one directory: \
+         {first} and {second}"
+    )]
+    SharedDirectory {
+        /// The first of the two, as the policy spells it.
+        first: String,
+        /// The second.
+        second: String,
+    },
 }
 
 /// The one alias every signature in this crate spells.
@@ -38,7 +57,9 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Unhosted { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
+            ErrorKind::Unhosted { .. }
+            | ErrorKind::InvalidRepository { .. }
+            | ErrorKind::SharedDirectory { .. } => error_code::AGENTSFLEET_INVALID_CONFIG,
         }
     }
 
@@ -47,8 +68,25 @@ impl Error {
     pub fn unhosted_tool(&self) -> Option<&str> {
         match self.kind() {
             ErrorKind::Unhosted { name } => Some(name),
+            ErrorKind::InvalidRepository { .. } | ErrorKind::SharedDirectory { .. } => None,
         }
     }
+}
+
+/// A policy binding `name`, which is not a repository this runner can check
+/// out.
+pub(crate) fn invalid_repository(name: &str) -> Error {
+    Error::from(ErrorKind::InvalidRepository {
+        name: name.to_owned(),
+    })
+}
+
+/// A policy binding `first` and `second`, which would land in one directory.
+pub(crate) fn shared_directory(first: &str, second: &str) -> Error {
+    Error::from(ErrorKind::SharedDirectory {
+        first: first.to_owned(),
+        second: second.to_owned(),
+    })
 }
 
 /// A policy naming `name`, which this runner cannot host.
@@ -57,3 +95,7 @@ pub(crate) fn unhosted(name: &str) -> Error {
         name: name.to_owned(),
     })
 }
+
+#[cfg(test)]
+#[path = "error/tests.rs"]
+mod tests;

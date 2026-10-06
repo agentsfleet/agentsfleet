@@ -31,7 +31,7 @@ mod raise;
 #[cfg(test)]
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
-    client, config, encode, malformed, refused_with_body, tampered, token_refused, transport,
+    client, config, encode, git, malformed, refused_with_body, tampered, token_refused, transport,
     unavailable,
 };
 
@@ -154,6 +154,19 @@ pub(crate) enum ErrorKind {
         source: tokio::task::JoinError,
     },
 
+    /// A repository would not fetch into its mirror, or would not check out
+    /// into the workspace.
+    #[error("repository {repository} could not be {step}")]
+    Git {
+        /// The repository, as `owner/name`.
+        repository: String,
+        /// What was being done when it failed.
+        step: &'static str,
+        /// The git library's reason.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
     /// An identifier the daemon sent is not in canonical form.
     #[error("the daemon sent an identifier this runner cannot read")]
     Identifier {
@@ -259,6 +272,7 @@ impl Error {
             | ErrorKind::Client { .. }
             | ErrorKind::Encode { .. }
             | ErrorKind::Task { .. }
+            | ErrorKind::Git { .. }
             | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }

@@ -39,6 +39,7 @@ use crate::test_support::{
     Behaviour, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, Rig, clock, daemon, lease, plane,
 };
 use crate::turns::FleetTurns;
+use crate::workspace_clone::{GITHUB_ORIGIN, Mirrors};
 
 /// The knobs a runner reads, as the test sets them.
 const ENDPOINT_KNOB: &str = "OTEL_EXPORTER_OTLP_ENDPOINT";
@@ -128,6 +129,10 @@ impl Provider for Scripted {
     fn stream<'a>(&'a self, _request: Request<'a>) -> BoxStream<'a, afr_providers::Result<Chunk>> {
         let index = self.0.fetch_add(1, Ordering::SeqCst);
         futures_util::stream::iter(Self::turn(index).into_iter().map(Ok)).boxed()
+    }
+
+    fn accepts_images(&self) -> bool {
+        false
     }
 }
 
@@ -276,6 +281,7 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
         agent,
         spool: ReportSpool::new(&home),
         bundles: BundleCache::new(&home),
+        mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
         limits: Limits::default(),
         clock: clock(),
         halt: Halt::new(CancellationToken::new()),

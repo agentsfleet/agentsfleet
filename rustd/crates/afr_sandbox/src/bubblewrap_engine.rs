@@ -13,7 +13,7 @@ use rustix::fs::{Gid, Uid};
 
 use crate::bubblewrap::{self, Layout, SOCKET_NAME};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup};
-use crate::engine::{Engine, LeaseName, Limits, Sandbox, SandboxRequest};
+use crate::engine::{Engine, HostWorkspace, LeaseName, Limits, Sandbox, SandboxRequest};
 use crate::error::{Result, not_ready, refused, toolbox_unexpected};
 use crate::host::HostTools;
 use crate::probe::{HostProbe, ProbePaths};
@@ -147,7 +147,12 @@ impl BubblewrapEngine {
         DirBuilder::new().mode(LEASE_DIR_MODE).create(&dir)?;
         let mut parts = Parts::new(name.as_str(), dir);
         match self.build(&mut parts, name, request.limits).await {
-            Ok(client) => Ok(Bubblewrapped { client, parts }),
+            Ok(client) => Ok(Bubblewrapped {
+                client,
+                parts,
+                owner: self.owner,
+                _toolbox: Arc::clone(&self.config.toolbox),
+            }),
             Err(error) => {
                 // Released off the runtime; what it could not remove it logs.
                 let _logged = parts.teardown().await;
@@ -241,6 +246,11 @@ impl Engine for BubblewrapEngine {
 struct Bubblewrapped {
     client: Client,
     parts: Parts,
+    /// Who owns the workspace disk's files, as the host names them.
+    owner: (u32, u32),
+    /// The toolbox it runs on, held until it is destroyed so retention never
+    /// unmounts it from under a lease or a warm slot.
+    _toolbox: Arc<Toolbox>,
 }
 
 #[async_trait::async_trait]
@@ -249,12 +259,19 @@ impl Sandbox for Bubblewrapped {
         &self.client
     }
 
+    fn workspace(&self) -> Option<HostWorkspace<'_>> {
+        Some(HostWorkspace {
+            root: self.parts.workspace(),
+            owner: self.owner,
+        })
+    }
+
     fn is_running(&mut self) -> bool {
         self.parts.is_running()
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {
-        let Self { client, parts } = *self;
+        let Self { client, parts, .. } = *self;
         drop(client);
         parts.teardown().await
     }

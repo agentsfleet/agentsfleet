@@ -93,6 +93,32 @@ impl Workspace {
             .write_all(content)?)
     }
 
+    /// Adds to the end of a regular file, making it and any missing parent
+    /// directories when absent, all inside the workspace.
+    pub(super) fn append(&self, path: &str, content: &[u8]) -> Result<()> {
+        let mut options = OpenOptions::new();
+        options.append(true).create(true);
+        Ok(self
+            .regular(path, &mut options, Parents::Make)?
+            .write_all(content)?)
+    }
+
+    /// Removes a regular file. What the name is, is read through the handle
+    /// without following it, so a link is refused rather than unlinked and a
+    /// directory is refused rather than emptied.
+    pub(super) fn delete(&self, path: &str) -> Result<()> {
+        let inside = self.inside(path)?;
+        if !self
+            .dir
+            .symlink_metadata(inside)
+            .map_err(confined)?
+            .is_file()
+        {
+            return Err(error::not_a_file());
+        }
+        self.dir.remove_file(inside).map_err(confined)
+    }
+
     /// Lists a directory, up to [`MAX_LIST_ENTRIES`] of it.
     pub(super) fn list(&self, path: &str) -> Result<Listing> {
         let mut entries = self.dir.read_dir(self.inside(path)?).map_err(confined)?;
@@ -186,15 +212,20 @@ enum Parents {
 /// Sorts a failed open. `cap_std` reports an escape as a permission refusal
 /// that no system call produced, which is how it is told from a real `EACCES`;
 /// a pipe with no reader refuses a non-blocking open for writing with
-/// `ENXIO`, and that is a file that is not a regular one.
+/// `ENXIO`, and that is a file that is not a regular one; a name that is not
+/// there is the caller's, and gets the code a handler names to the model.
 fn confined(failure: io::Error) -> Error {
     match failure.raw_os_error() {
         None if failure.kind() == io::ErrorKind::PermissionDenied => error::path_refused(),
         Some(code) if code == Errno::NXIO.raw_os_error() => error::not_a_file(),
+        _other if failure.kind() == io::ErrorKind::NotFound => error::not_found(failure),
         _other => failure.into(),
     }
 }
 
+#[cfg(test)]
+#[path = "files/append_delete_tests.rs"]
+mod append_delete_tests;
 #[cfg(test)]
 #[path = "files/tests.rs"]
 mod tests;

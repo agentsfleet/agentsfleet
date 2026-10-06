@@ -23,9 +23,9 @@ use super::launch::Plan;
 use super::process::ProcessRun;
 use crate::error::{self, Result};
 use crate::protocol::{
-    DELIMITER, KillParams, ListParams, MAX_FRAME_BYTES, METHOD_KILL, METHOD_LIST_DIR,
-    METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, ReadParams, SpawnParams,
-    SpawnResult, WriteFileParams, WriteParams, decoded, line,
+    DELIMITER, KillParams, MAX_FRAME_BYTES, METHOD_APPEND_FILE, METHOD_DELETE_FILE, METHOD_KILL,
+    METHOD_LIST_DIR, METHOD_READ_FILE, METHOD_SPAWN, METHOD_WRITE, METHOD_WRITE_FILE, PathParams,
+    ReadParams, SpawnParams, SpawnResult, WriteFileParams, WriteParams, decoded, line,
 };
 
 /// A line that is not JSON-RPC at all.
@@ -64,6 +64,8 @@ impl Running {
 pub(super) struct Session {
     workspace: Arc<Workspace>,
     outbound: mpsc::UnboundedSender<Bytes>,
+    /// Where each process's output and exit go, bounded.
+    output: mpsc::Sender<Bytes>,
     processes: HashMap<u64, Running>,
     running: JoinSet<u64>,
     calls: JoinSet<()>,
@@ -71,11 +73,17 @@ pub(super) struct Session {
 }
 
 impl Session {
-    /// A session answering through `outbound`.
-    pub(super) fn new(workspace: Arc<Workspace>, outbound: mpsc::UnboundedSender<Bytes>) -> Self {
+    /// A session answering through `outbound`, its processes speaking
+    /// through `output`.
+    pub(super) fn new(
+        workspace: Arc<Workspace>,
+        outbound: mpsc::UnboundedSender<Bytes>,
+        output: mpsc::Sender<Bytes>,
+    ) -> Self {
         Self {
             workspace,
             outbound,
+            output,
             processes: HashMap::new(),
             running: JoinSet::new(),
             calls: JoinSet::new(),
@@ -160,10 +168,22 @@ impl Session {
                     workspace.write(&write.path, &write.content)
                 },
             ),
+            METHOD_APPEND_FILE => self.on_files(
+                id,
+                params(request),
+                |workspace, append: WriteFileParams<'static>| {
+                    workspace.append(&append.path, &append.content)
+                },
+            ),
+            METHOD_DELETE_FILE => self.on_files(
+                id,
+                params(request),
+                |workspace, delete: PathParams<'static>| workspace.delete(&delete.path),
+            ),
             METHOD_LIST_DIR => self.on_files(
                 id,
                 params(request),
-                |workspace, list: ListParams<'static>| workspace.list(&list.path),
+                |workspace, list: PathParams<'static>| workspace.list(&list.path),
             ),
             _unknown => self.refuse(id, METHOD_NOT_FOUND_CODE, DETAIL_NO_METHOD),
         }
@@ -188,7 +208,7 @@ impl Session {
                 self.processes
                     .insert(process, Running::new(input, stop.clone()));
                 self.running
-                    .spawn(run.drive(process, stop, self.outbound.clone()));
+                    .spawn(run.drive(process, stop, self.output.clone()));
             }
             Err(failure) => self.answer::<SpawnResult>(id, Err(failure)),
         }
@@ -294,6 +314,6 @@ fn refusal(id: Id<'static>, code: i32, message: impl Into<String>) -> Bytes {
 ///
 /// A send fails only once the writer has ended, which means the supervisor
 /// is gone and there is no one left to tell.
-pub(super) fn post(outbound: &mpsc::UnboundedSender<Bytes>, line: Bytes) {
+fn post(outbound: &mpsc::UnboundedSender<Bytes>, line: Bytes) {
     let _writer_gone = outbound.send(line);
 }

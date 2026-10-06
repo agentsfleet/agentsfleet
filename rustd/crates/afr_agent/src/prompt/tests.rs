@@ -7,6 +7,8 @@ use afd_wire::policy::{
     RepositoryAccess, RepositoryBinding,
 };
 
+use afr_tools::catalog::{FILE_READ, GIT, HTTP_REQUEST};
+
 use super::Prompt;
 use crate::fixture::{lease, unbounded};
 
@@ -136,4 +138,72 @@ fn should_render_no_repair_context_for_a_write_binding_not_naming_one_repository
 
         assert!(!Prompt::new(&lease).instructions.contains(REPAIR_HEADING));
     }
+}
+
+/// A lease offering `tool`, bound to [`REPOSITORY`] for reading.
+fn offering(tool: &str) -> LeasePayload<'static> {
+    let mut lease = bound(RepositoryAccess::Read, Vec::new());
+    lease.policy.tools = vec![tool.to_owned().into()];
+    lease
+}
+
+#[test]
+fn should_name_where_each_repository_is_checked_out_when_a_tool_runs_processes() {
+    let prompt = Prompt::new(&offering(GIT.name()));
+
+    assert!(
+        prompt.instructions.ends_with(
+            "\n\n## Workspace\nagentsfleet/linkwarden is checked out at ./linkwarden on dev, \
+             with origin set"
+        ),
+        "{}",
+        prompt.instructions
+    );
+}
+
+/// The daemon sends a read binding with no base; the supervisor checks out
+/// the remote's default branch, and the prompt says so rather than naming
+/// an empty branch.
+#[test]
+fn should_name_the_default_branch_for_a_binding_with_no_base() {
+    let mut lease = offering(GIT.name());
+    lease.policy.repository_binding = Some(RepositoryBinding {
+        repositories: vec![REPOSITORY.into()],
+        access: RepositoryAccess::Read,
+        base_branch: "".into(),
+    });
+
+    let prompt = Prompt::new(&lease);
+
+    assert!(
+        prompt.instructions.ends_with(
+            "\n\n## Workspace\nagentsfleet/linkwarden is checked out at ./linkwarden on its \
+             default branch, with origin set"
+        ),
+        "{}",
+        prompt.instructions
+    );
+}
+
+/// A lease of file tools alone works in the workspace too, so it is told
+/// where the repository is; one with no tool in the sandbox is not.
+#[test]
+fn should_name_the_checkout_for_any_sandbox_tool_and_none_without_one() {
+    let file_tools = Prompt::new(&offering(FILE_READ.name()));
+    let supervisor_only = Prompt::new(&offering(HTTP_REQUEST.name()));
+
+    assert!(file_tools.instructions.contains("## Workspace"));
+    assert!(!supervisor_only.instructions.contains("## Workspace"));
+}
+
+#[test]
+fn should_name_no_checkout_for_a_binding_that_does_not_parse() {
+    let mut lease = offering(GIT.name());
+    lease.policy.repository_binding = Some(RepositoryBinding {
+        repositories: vec!["../escape".into()],
+        access: RepositoryAccess::Read,
+        base_branch: BASE.into(),
+    });
+
+    assert!(!Prompt::new(&lease).instructions.contains("## Workspace"));
 }

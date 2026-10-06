@@ -12,6 +12,10 @@ use bytes::Bytes;
 
 use crate::support::{BACKLOG_FULL, MIB, PATIENCE, finish, refused_with, start};
 
+/// A timeout long enough for a mebibyte to reach the executor on a loaded
+/// machine before the process is killed, and far short of its own run.
+const BRIEF: Duration = Duration::from_secs(2);
+
 /// Far more than a pipe or a terminal buffers, so a write of it blocks until
 /// the process reads.
 fn flood() -> Bytes {
@@ -21,16 +25,14 @@ fn flood() -> Bytes {
 #[tokio::test]
 async fn a_large_write_to_a_process_that_never_reads_does_not_hold_its_timeout() {
     let harness = start().await;
-    let spawn = Spawn::program("sleep")
-        .arg("30")
-        .timeout(Duration::from_millis(300));
+    let spawn = Spawn::program("sleep").arg("30").timeout(BRIEF);
     let process = harness.client.spawn(&spawn).await.unwrap();
     let started = Instant::now();
 
     harness.client.write(process.id, flood()).await.unwrap();
     let finished = finish(process).await;
 
-    assert_eq!(finished.endings, [(Ending::TimedOut, 0)]);
+    assert_eq!(finished.endings, [Ending::TimedOut]);
     assert!(
         started.elapsed() < Duration::from_secs(10),
         "{:?}",
@@ -93,20 +95,17 @@ async fn writes_past_the_queue_are_refused_and_a_kill_still_lands() {
     let refused = refused.unwrap();
     assert!(refused_with(&refused, BACKLOG_FULL), "{refused}");
     killed.unwrap().unwrap();
-    assert_eq!(finished.endings, [(Ending::Signaled(15), 0)]);
+    assert_eq!(finished.endings, [Ending::Signaled(15)]);
 }
 
 #[tokio::test]
 async fn a_terminal_process_that_never_reads_is_still_stopped_by_its_timeout() {
     let harness = start().await;
-    let spawn = Spawn::program("sleep")
-        .arg("30")
-        .terminal()
-        .timeout(Duration::from_millis(300));
+    let spawn = Spawn::program("sleep").arg("30").terminal().timeout(BRIEF);
     let process = harness.client.spawn(&spawn).await.unwrap();
 
     harness.client.write(process.id, flood()).await.unwrap();
     let finished = finish(process).await;
 
-    assert_eq!(finished.endings, [(Ending::TimedOut, 0)]);
+    assert_eq!(finished.endings, [Ending::TimedOut]);
 }

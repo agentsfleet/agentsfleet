@@ -25,8 +25,9 @@ const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
 const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
 
 impl LeaseRun<'_> {
-    /// Builds the lease's sandbox, runs the turn in it, and destroys it. A
-    /// sandbox that cannot be built ends the lease at startup.
+    /// Builds the lease's sandbox, checks the bound repositories out into it,
+    /// runs the turn in it, and destroys it. A sandbox that cannot be built,
+    /// or a repository that will not check out, ends the lease at startup.
     pub(super) async fn sandboxed(
         &self,
         memory: Seed<'_>,
@@ -50,9 +51,13 @@ impl LeaseRun<'_> {
             Ok(sandbox) => sandbox,
             Err(failure) => return self.refuse(&failure, EVENT_SANDBOX_REFUSED, DETAIL_SANDBOX),
         };
-        let ending = self
-            .in_sandbox(memory, bundle, sandbox.as_ref(), sink)
-            .await;
+        let ending = match self.check_out(sandbox.as_ref()).await {
+            Ok(()) => {
+                self.in_sandbox(memory, bundle, sandbox.as_ref(), sink)
+                    .await
+            }
+            Err(refused) => *refused,
+        };
         if let Err(failure) = sandbox.destroy().await {
             let code = failure.code().as_str();
             let lease_id = self.ids.lease.as_str();

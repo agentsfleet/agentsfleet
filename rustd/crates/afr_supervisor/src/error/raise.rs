@@ -87,3 +87,18 @@ pub(crate) fn tampered(content_hash: &str) -> Error {
     }
     .into()
 }
+
+/// Reports `repository` failing at `step`, with the git library's reason.
+pub(crate) fn git(
+    repository: &str,
+    step: &'static str,
+) -> impl FnOnce(Box<dyn std::error::Error + Send + Sync>) -> Error {
+    move |source| {
+        ErrorKind::Git {
+            repository: repository.to_owned(),
+            step,
+            source,
+        }
+        .into()
+    }
+}

@@ -14,6 +14,11 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The daemon's integration lane runs the supervisor against fixture
+# repositories served over `file://` (`run_fetching_from`).
+test-util = []
+
 [dependencies]
 # The runner's own families: sandbox start, dropped frames, failed pushes.
 afr_telemetry.workspace = true
@@ -29,6 +34,8 @@ afr_executor.workspace = true
 # The memory seed a run starts from, and the recall seam past its window.
 afr_memory.workspace = true
 afr_sandbox.workspace = true
+# Which bound repositories a lease checks out, read from its tool policy.
+afr_tools.workspace = true
 # The runner token and every minted credential are held as one `Secret`.
 afr_secrets.workspace = true
 # The mint seam a lease's egress guard mints through, which the supervisor
@@ -39,7 +46,12 @@ async-trait.workspace = true
 # Bounded exponential retry for the calls that may be retried, with a predicate
 # that refuses to retry a 4xx.
 backon.workspace = true
+# The basic credentials a repository fetch presents its token in.
+base64.workspace = true
 bytes.workspace = true
+# The fleet's repository, fetched into a host-side mirror over HTTPS and
+# checked out into the lease's workspace.
+gix = { workspace = true, features = ["blocking-network-client", "blocking-http-transport-reqwest-rust-tls", "worktree-mutation"] }
 # A bundle's entries, read so `afd_core::bundle::BundleDigest` can name them.
 tar.workspace = true
 reqwest.workspace = true

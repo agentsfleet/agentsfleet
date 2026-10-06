@@ -7,10 +7,11 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use rustix::process::{Pid, Signal, kill_process_group};
 use tokio::sync::mpsc;
 
-use super::{Launcher, OUTPUT_BACKLOG, Plan, READ_CHUNK_BYTES, Spawned, ending_of, leader};
+use super::{Launcher, OUTPUT_BACKLOG, Plan, Spawned, ending_of, leader};
 use crate::api::Stream;
 use crate::edges::Chunk;
 use crate::error::{self, Error, Result};
+use crate::protocol::READ_CHUNK_BYTES;
 
 /// The name a terminal's reader thread carries in a stack dump.
 const READER_THREAD: &str = "executor-terminal-reader";

@@ -73,8 +73,14 @@ async fn every_refusal_carries_its_code_and_the_connection_survives_it() {
         ),
         (call("fs/write", r#"{"path":"a","content":"%%%"}"#), -32_602),
         (call("fs/read", r#"{"path":"../a","max_bytes":1}"#), -32_010),
-        (call("fs/list", r#"{"path":"absent"}"#), -32_602),
+        (call("fs/list", r#"{"path":"absent"}"#), -32_012),
         (call("fs/list", "7"), -32_602),
+        (
+            call("fs/append", r#"{"path":"a","content":"%%%"}"#),
+            -32_602,
+        ),
+        (call("fs/delete", r#"{"path":"../a"}"#), -32_010),
+        (call("fs/delete", r#"{"path":"absent"}"#), -32_012),
     ];
     let lines: Vec<String> = cases.iter().map(|(line, _code)| line.clone()).collect();
 

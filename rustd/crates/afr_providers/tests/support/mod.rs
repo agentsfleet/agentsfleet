@@ -27,6 +27,7 @@ use afd_wire::lease::LeasePayload;
 use afr_agent::testing::Discard;
 use afr_agent::{AgentEngine as _, AgentRun, Loop, Meter, RunOutput};
 use afr_egress::testing::CountingMint;
+use afr_executor::Executor;
 use afr_providers::{Connector, ProviderSpec, Registry, Wire};
 use afr_tools::Catalog;
 use afr_tools::catalog::UPDATE_PLAN;
@@ -244,10 +245,25 @@ pub(crate) fn connector(fake: &Fake) -> Connector {
     Connector::new(registry).unwrap()
 }
 
+/// The loop hosting `catalog`, with each wire's provider served by `fake`.
+pub(crate) fn engine_hosting(fake: &Fake, catalog: Catalog) -> Loop {
+    Loop::new(catalog, connector(fake))
+}
+
 /// Runs `lease` on `engine` to its end, with every frame it sent.
 pub(crate) async fn run(
     engine: &Loop,
     lease: &LeasePayload<'_>,
+) -> (RunOutput, Vec<ActivityFrame<'static>>) {
+    run_with(engine, lease, None).await
+}
+
+/// Runs `lease` on `engine` to its end, its sandbox-side calls served by
+/// `executor`, with every frame it sent.
+pub(crate) async fn run_with(
+    engine: &Loop,
+    lease: &LeasePayload<'_>,
+    executor: Option<&dyn Executor>,
 ) -> (RunOutput, Vec<ActivityFrame<'static>>) {
     let (sent, frames) = std::sync::mpsc::channel();
     let sink = move |frame| sent.send(frame).expect("the suite holds the receiver");
@@ -255,7 +271,7 @@ pub(crate) async fn run(
     let run = AgentRun {
         lease,
         memory: afr_memory::Seed::default(),
-        executor: None,
+        executor,
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,

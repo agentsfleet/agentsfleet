@@ -1,7 +1,7 @@
 //! How a failure becomes an [`Error`](super::Error): the lifts, and the raisers
 //! that bind data.
 
-use super::{Error, ErrorKind};
+use super::{Error, ErrorKind, wire_end};
 
 // Every lift is a `From`, so `?` does the conversion and no `map_err` appears
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2).
@@ -21,11 +21,15 @@ pub(crate) fn unresponsive(method: &'static str) -> Error {
     ErrorKind::Unresponsive { method }.into()
 }
 
-/// The executor answered with a JSON-RPC error.
+/// The executor answered with a JSON-RPC error. Its message is kept to the
+/// wire cap as it is stored, sliced before it is copied, so a flood is never
+/// owned and the error's own rendering in a log is bounded as `wire_message`
+/// is.
 pub(crate) fn refused(code: i32, message: &str) -> Error {
+    let (kept, _past_the_wire) = message.split_at(wire_end(message));
     ErrorKind::Refused {
         code,
-        message: message.to_owned(),
+        message: kept.to_owned(),
     }
     .into()
 }
@@ -38,6 +42,12 @@ pub(crate) fn path_refused() -> Error {
 /// A file call named something other than a regular file.
 pub(crate) fn not_a_file() -> Error {
     ErrorKind::NotAFile.into()
+}
+
+/// A file call named something the workspace does not have; `source` is the
+/// operating system saying so.
+pub(crate) fn not_found(source: std::io::Error) -> Error {
+    ErrorKind::NotFound { source }.into()
 }
 
 /// No such process.

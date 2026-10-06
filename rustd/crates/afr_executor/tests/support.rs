@@ -24,10 +24,14 @@ pub(crate) const PATIENCE: Duration = Duration::from_secs(20);
 pub(crate) const PATH_REFUSED: i32 = -32_010;
 /// The executor's answer to a process it does not have.
 pub(crate) const UNKNOWN_PROCESS: i32 = -32_011;
+/// The executor's answer to a file or directory the workspace does not have.
+pub(crate) const FILE_NOT_FOUND: i32 = -32_012;
 /// The executor's answer to the caller's own mistake.
 pub(crate) const INVALID_PARAMS: i32 = -32_602;
 /// The executor's answer to a write past a process's input queue.
 pub(crate) const BACKLOG_FULL: i32 = -32_000;
+/// The executor's own failure: `jsonrpsee`'s internal error.
+pub(crate) const INTERNAL_ERROR: i32 = -32_603;
 
 /// Whether `error` is the executor refusing a call with `code`.
 pub(crate) fn refused_with(error: &afr_executor::Error, code: i32) -> bool {
@@ -90,7 +94,11 @@ pub(crate) struct Finished {
     pub(crate) stdout: Vec<u8>,
     pub(crate) stderr: Vec<u8>,
     pub(crate) terminal: Vec<u8>,
-    pub(crate) endings: Vec<(Ending, u64)>,
+    pub(crate) endings: Vec<Ending>,
+    /// Bytes dropped unread between the edges.
+    pub(crate) omitted: u64,
+    /// Whether output still arriving at the end was left behind.
+    pub(crate) abandoned: bool,
 }
 
 /// Reads a process until its channel closes.
@@ -111,10 +119,14 @@ pub(crate) async fn finish(mut process: Process) -> Finished {
                     stream: Stream::Terminal,
                     data,
                 } => finished.terminal.extend_from_slice(&data),
+                ProcessEvent::Omitted { bytes } => finished.omitted += bytes,
                 ProcessEvent::Ended {
                     ending,
-                    omitted_bytes,
-                } => finished.endings.push((ending, omitted_bytes)),
+                    output_abandoned,
+                } => {
+                    finished.abandoned |= output_abandoned;
+                    finished.endings.push(ending);
+                }
             }
         }
         finished

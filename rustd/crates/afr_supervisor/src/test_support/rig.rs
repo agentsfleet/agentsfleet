@@ -1,5 +1,6 @@
 //! A lessee over the fakes, for every suite that runs a lease.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
@@ -23,10 +24,15 @@ use crate::lease_loop::Lessee;
 use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
 use crate::turns::FleetTurns;
+use crate::workspace_clone::Mirrors;
+
+/// Where a rig's repositories are served from, under its root, so no lease
+/// test ever reaches the network.
+const ORIGINS: &str = "origins";
 
 /// A lessee, its storage, the daemon's call log, and the fakes' counters.
 pub(crate) struct Rig {
-    _root: tempfile::TempDir,
+    root: tempfile::TempDir,
     pub(crate) home: StorageHome,
     pub(crate) lessee: Arc<Lessee>,
     pub(crate) calls: mpsc::UnboundedReceiver<Call>,
@@ -60,6 +66,10 @@ impl Rig {
             agent: Box::new(agent),
             spool: ReportSpool::new(&home),
             bundles: BundleCache::new(&home),
+            mirrors: Mirrors::new(
+                home.mirrors(),
+                format!("file://{}/", root.path().join(ORIGINS).display()),
+            ),
             limits: Limits::default(),
             clock: clock(),
             halt: Halt::new(shutdown.clone()),
@@ -68,7 +78,7 @@ impl Rig {
         });
         let (runs, peak, prepared, destroyed) = counters;
         Self {
-            _root: root,
+            root,
             home,
             lessee,
             calls,
@@ -85,6 +95,11 @@ impl Rig {
         let (turns, coordinator) = FleetTurns::start();
         tokio::spawn(coordinator);
         self.lessee.run(&turns, lease).await
+    }
+
+    /// Where the repository `owner/name` is served from: `<origins>/owner/name.git`.
+    pub(crate) fn origins(&self) -> PathBuf {
+        self.root.path().join(ORIGINS)
     }
 
     /// Every call the daemon received since the last look.

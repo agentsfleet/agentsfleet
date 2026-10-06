@@ -27,16 +27,12 @@ use super::files::Workspace;
 use crate::api::{Ending, Stream};
 use crate::edges::Chunk;
 use crate::error::{self, Result};
-use crate::protocol::SpawnParams;
+use crate::protocol::{READ_CHUNK_BYTES, SpawnParams};
 
 /// Chunks of output that may wait for the task forwarding them; past this the
-/// reader stops reading and the process blocks on its own writes.
-const OUTPUT_BACKLOG: usize = 64;
-/// The most one read of output takes, on pipes and on a terminal alike, so a
-/// noisy process costs the same number of messages either way. With the
-/// backlog above, a process that outruns its forwarder holds at most a
-/// mebibyte.
-const READ_CHUNK_BYTES: usize = 16 * 1024;
+/// reader stops reading and the process blocks on its own writes. At one
+/// read each, a process that outruns its forwarder holds at most a mebibyte.
+pub(super) const OUTPUT_BACKLOG: usize = 64;
 /// The variable a program is looked up through.
 const PATH_VARIABLE: &str = "PATH";
 /// The search path a process gets when its environment names none.

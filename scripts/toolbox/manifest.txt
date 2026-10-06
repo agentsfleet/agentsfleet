@@ -4,10 +4,24 @@
 # One `key value...` per line; `#` starts a comment. `build.sh` reads it.
 #
 # suite      — the Debian release the root is built from
-# snapshot   — the snapshot.debian.org timestamp every package is fetched at
+# snapshot   — the snapshot.debian.org timestamp every archive is fetched at
+# archive    — `<archive> <suite>`: one snapshot.debian.org archive and suite,
+#              all at `snapshot`, so updates and security fixes are pinned too
 # uuid       — the file-system UUID, fixed so it never varies between builds
-# packages   — installed on top of the minimal base; later toolboxes add more
+# erofs      — mkfs.erofs's compressor, level and block size, pinned so a
+#              builder's page size or a newer default cannot change the
+#              image; the features it ends up with go in the release manifest
+# packages   — installed on top of the minimal base
+# vendor     — `<dpkg-arch> <url> <sha256> <member>=<name>...`: a binary
+#              Debian does not ship, fetched by URL, refused unless its
+#              SHA-256 matches, each member installed as /usr/local/bin/<name>
 suite trixie
 snapshot 20260901T000000Z
+archive debian trixie
+archive debian trixie-updates
+archive debian-security trixie-security
 uuid 6d2b1f0e-6a1c-4b8e-9f3a-2c7d5e8a9b10
-packages ca-certificates coreutils git python3
+erofs -zlz4hc,12 -b4096
+packages ca-certificates coreutils git python3 nodejs ripgrep jq curl gh
+vendor arm64 https://github.com/astral-sh/uv/releases/download/0.12.21/uv-aarch64-unknown-linux-gnu.tar.gz 030b69227b40af8c1981b7301793dc66e71ed3c796ea8688209dd268bd91ec51 uv-aarch64-unknown-linux-gnu/uv=uv uv-aarch64-unknown-linux-gnu/uvx=uvx
+vendor amd64 https://github.com/astral-sh/uv/releases/download/0.12.21/uv-x86_64-unknown-linux-gnu.tar.gz 23f02075b652bb1df64178cfae41b5caf160822e720e2663568f3f5d63bc52c0 uv-x86_64-unknown-linux-gnu/uv=uv uv-x86_64-unknown-linux-gnu/uvx=uvx

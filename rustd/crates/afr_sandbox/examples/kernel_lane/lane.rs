@@ -11,10 +11,12 @@ use std::time::Duration;
 use afd_core::env::LOG_LEVEL_VAR;
 use afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND;
 use afr_sandbox::{
-    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostTools, ProbePaths, REQUIRED_CONTROLLERS,
-    SUBTREE_CONTROL, Toolbox, ToolboxImage, probe,
+    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostTools, KernelMounter, Manifest,
+    ProbePaths, REQUIRED_CONTROLLERS, SUBTREE_CONTROL, Toolboxes, probe,
 };
 use libtest_mimic::Failed;
+
+use crate::release::Signer;
 
 /// The environment variable naming the toolbox image to run against.
 pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
@@ -31,8 +33,10 @@ const STATE_PREFIX: &str = "afr-lane-";
 /// Where, under the lane's state, each lease's directory is made; apart from
 /// the toolbox mount, so no lease name can land on it.
 const LEASES_DIR: &str = "leases";
-/// Where, under the lane's state, the toolbox is mounted.
+/// Where, under the lane's state, the toolbox image is staged and kept, and
+/// where it is mounted.
 const TOOLBOX_DIR: &str = "toolbox";
+const MOUNTS_DIR: &str = "mounts";
 /// The lane binary's name where the sandbox binds it from.
 const ENTRY_NAME: &str = "agentsfleet-runner";
 /// Readable and executable by everyone, writable by nobody but root.
@@ -45,8 +49,31 @@ const READY_TIMEOUT: Duration = Duration::from_secs(10);
 /// Everything a trial builds sandboxes with.
 pub(crate) struct Lane {
     pub(crate) config: BubblewrapConfig,
-    pub(crate) image: ToolboxImage,
+    pub(crate) image: LaneImage,
+    /// The key the lane's releases are signed with, and the manifest of the
+    /// image it runs on.
+    pub(crate) signer: Signer,
+    pub(crate) manifest: Manifest,
+    toolboxes: Toolboxes<KernelMounter>,
     state: tempfile::TempDir,
+}
+
+/// The toolbox image the lane was given, and its digest.
+pub(crate) struct LaneImage {
+    path: PathBuf,
+    digest: String,
+}
+
+impl LaneImage {
+    /// The image as the build published it.
+    pub(crate) fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Its SHA-256.
+    pub(crate) fn digest(&self) -> &str {
+        &self.digest
+    }
 }
 
 impl Lane {
@@ -124,37 +151,47 @@ pub(crate) fn main() -> ExitCode {
     // The toolbox is mounted inside the lane's state, which cannot be removed
     // while it is; a run that leaves nothing behind can run again. Every
     // trial has ended, so the lane and its toolbox have one owner again.
-    let Some(Lane { config, state, .. }) = Arc::into_inner(lane) else {
+    let Some(Lane {
+        config,
+        toolboxes,
+        state,
+        ..
+    }) = Arc::into_inner(lane)
+    else {
         eprintln!("a trial still holds the lane; its toolbox stays mounted");
         return ExitCode::FAILURE;
     };
-    let unmounted = Arc::into_inner(config.toolbox).map(afr_sandbox::Toolbox::unmount);
+    drop(config);
+    let closed = toolboxes.close();
     drop(state);
-    if !matches!(unmounted, Some(Ok(()))) {
-        eprintln!("the lane's toolbox stayed mounted: {unmounted:?}");
+    if let Err(stayed) = closed {
+        eprintln!("the lane's toolbox stayed mounted: {stayed}");
         return ExitCode::FAILURE;
     }
     conclusion.exit_code()
 }
 
+/// Admits the lane's image the way a host does: its manifest checked against
+/// the lane's key, the image staged, then admitted by descriptor.
 fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
-    let image = ToolboxImage::verify(image)?;
     let cgroup_root = paths.cgroup_root;
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
         .tempdir_in("/tmp")?;
-    let runtime = crate::run::runtime();
-    let tools = HostTools::default();
-    let toolbox = runtime.block_on(Toolbox::mount(
-        &image,
-        &tools,
-        &state.path().join(TOOLBOX_DIR),
-    ))?;
+    let signer = Signer::new()?;
+    let manifest = signer.manifest_beside(image)?;
+    let mounter = KernelMounter::new(state.path().join(MOUNTS_DIR));
+    let toolboxes = Toolboxes::open(state.path().join(TOOLBOX_DIR), mounter)?;
+    let toolbox = toolboxes.admit(&manifest, image)?;
+    let image = LaneImage {
+        path: image.to_owned(),
+        digest: toolbox.digest().to_owned(),
+    };
     let entry = install_entry(state.path())?;
     let config = BubblewrapConfig {
-        tools,
+        tools: HostTools::default(),
         toolbox_digest: image.digest().to_owned(),
-        toolbox: Arc::new(toolbox),
+        toolbox,
         cgroup_root,
         state_dir: state.path().join(LEASES_DIR),
         entry,
@@ -166,6 +203,9 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
     Ok(Lane {
         config,
         image,
+        signer,
+        manifest,
+        toolboxes,
         state,
     })
 }

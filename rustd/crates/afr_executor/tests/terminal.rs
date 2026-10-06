@@ -28,7 +28,7 @@ async fn test_executor_pty_accepts_input() {
 
     assert_eq!(echoed, "x", "the terminal echoes what was typed");
     let finished = finish(process).await;
-    assert_eq!(finished.endings, [(Ending::Signaled(15), 0)]);
+    assert_eq!(finished.endings, [Ending::Signaled(15)]);
 }
 
 #[tokio::test]
@@ -45,5 +45,6 @@ async fn a_terminal_process_that_exits_reports_its_output_and_status() {
         "a terminal ends lines with a carriage return"
     );
     assert!(finished.stdout.is_empty() && finished.stderr.is_empty());
-    assert_eq!(finished.endings, [(Ending::Exited(4), 0)]);
+    assert_eq!(finished.endings, [Ending::Exited(4)]);
+    assert!(!finished.abandoned, "its terminal closed with it");
 }
