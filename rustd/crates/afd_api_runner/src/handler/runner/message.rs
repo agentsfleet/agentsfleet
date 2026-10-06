@@ -12,8 +12,7 @@ use std::sync::Arc;
 use afd_core::error_code;
 use afd_http::handler::{Refusal, read_strict_body};
 use afd_wire::message_verb::{
-    MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MESSAGES_PER_RUN_MAX, MessagePosted,
-    MessageRequest,
+    MESSAGE_DELIVERY_DEADLINE, MESSAGE_MAX_BYTES, MessagePosted, MessageRequest,
 };
 use axum::Json;
 use axum::body::Bytes;
@@ -54,7 +53,7 @@ const DESCRIPTION: &str = const_format::concatcp!(
     "run answers, with the fleet's secret values masked. The daemon holds ",
     "the channel's credential and posts; the runner sends text. A run may ",
     "post at most ",
-    MESSAGES_PER_RUN_MAX,
+    afd_wire::message_verb::MESSAGES_PER_RUN_MAX,
     " messages, refused past that with `UZ-RUN-020`. An event from no ",
     "thread, such as an API steer, a webhook or a schedule, is refused with ",
     "`UZ-RUN-019`. Both are 409s naming their `current_state`. `delivered` ",
