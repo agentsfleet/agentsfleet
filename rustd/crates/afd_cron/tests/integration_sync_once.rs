@@ -8,6 +8,7 @@
 
 #![expect(
     clippy::expect_used,
+    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -18,7 +19,7 @@ mod support;
 mod live_qstash;
 
 use afd_core::clock::UnixMillis;
-use afd_cron::{Change, NewSchedule, Reconciled, Schedule, Source};
+use afd_cron::{Change, DesiredStatus, NewSchedule, Reconciled, Schedule, Source};
 
 use self::live_qstash::{against_live, live};
 use self::support::CronLane;
@@ -184,4 +185,75 @@ async fn a_one_off_moved_by_an_edit_is_set_for_its_new_moment() {
         .expect("a settled schedule is claimable");
 
     assert_eq!(moved.fire_at, Some(SET_FOR + 5 * MINUTE_MS));
+}
+
+/// Greptile on #731: a one-off paused before its moment and resumed after it
+/// is retired. The pause removed it upstream, so nothing holds its run.
+#[tokio::test]
+#[ignore = "needs the lane's Postgres and the compose qstash service"]
+async fn a_one_off_resumed_after_its_moment_is_retired() {
+    let Some((url, token)) = live() else {
+        return;
+    };
+    let lane = CronLane::open().await;
+    let scheduler = against_live(&lane, url, token);
+    let claim = CronLane::token();
+    let created = one_off(&lane, &claim).await;
+    let asked = UnixMillis::from_millis(ASKED_AT);
+    lane.store
+        .finalize_synced(&created, &claim, Some("qstash-issued-key"), asked)
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("the creator's own finalize must land");
+
+    let paused = edit(&lane, &created, DesiredStatus::Paused, asked).await;
+    let Reconciled::Synced(paused) = scheduler
+        .reconcile(&paused.0, &paused.1, asked)
+        .await
+        .expect("a reachable scheduler is not a datastore failure")
+    else {
+        panic!("a pause the scheduler agreed to is synced");
+    };
+    assert_eq!(
+        paused.source_key,
+        created.schedule_id.as_str(),
+        "a paused one-off holds no upstream key"
+    );
+
+    let past_moment = UnixMillis::from_millis(SET_FOR + MINUTE_MS);
+    let resumed = edit(&lane, &paused, DesiredStatus::Active, past_moment).await;
+    let reconciled = scheduler
+        .reconcile(&resumed.0, &resumed.1, past_moment)
+        .await
+        .expect("a reachable scheduler is not a datastore failure");
+    assert!(
+        matches!(reconciled, Reconciled::Removed),
+        "a one-off resumed after its moment is retired, got {reconciled:?}"
+    );
+}
+
+/// `schedule` set to `status` at `now`, claimed, with the claim's token.
+async fn edit(
+    lane: &CronLane,
+    schedule: &Schedule,
+    status: DesiredStatus,
+    now: UnixMillis,
+) -> (Schedule, afd_core::id::Uuid7) {
+    let claim = CronLane::token();
+    let held = lane
+        .store
+        .claim_change(
+            &lane.fleet_id(),
+            &schedule.schedule_id,
+            Change {
+                desired_status: Some(status),
+                ..Change::default()
+            },
+            &claim,
+            now,
+        )
+        .await
+        .expect("the lane's Postgres must answer")
+        .expect("a settled schedule is claimable");
+    (held, claim)
 }

@@ -137,7 +137,10 @@ impl Schedules {
                 .finalize_synced(
                     held,
                     token,
-                    registered.as_ref().map(|key| key.schedule_id.as_str()),
+                    registered
+                        .as_ref()
+                        .map(|key| key.schedule_id.as_str())
+                        .or_else(|| unregistered_key(held)),
                     now,
                 )
                 .await?
@@ -154,7 +157,7 @@ impl Schedules {
     }
 }
 
-/// A `once` schedule never registered upstream, synced after the instant it
+/// A `once` schedule not registered upstream, synced after the instant it
 /// was set for.
 ///
 /// Its expression has no year, so registering it now would fire it a year
@@ -165,13 +168,22 @@ fn missed(held: &Schedule, now: UnixMillis) -> bool {
     held.once && never_registered(held) && held.fire_at.is_some_and(|at| at <= now.as_millis())
 }
 
-/// Whether `QStash` has never issued this schedule a key.
+/// Whether `QStash` holds no registration of this schedule.
 ///
 /// A fleet's schedule is keyed by its own id until its first successful sync
-/// adopts the key `QStash` files it under (see [`Schedules::reconcile`]); a
-/// `once` schedule is only ever a fleet's.
+/// adopts the key `QStash` files it under (see [`Schedules::reconcile`]), and
+/// a one-off goes back to its own id when a pause removes it
+/// ([`unregistered_key`]); a `once` schedule is only ever a fleet's.
 fn never_registered(held: &Schedule) -> bool {
     held.source_key == held.schedule_id.as_str()
+}
+
+/// The key a one-off goes back to once a pause has removed it upstream: its
+/// own id, so [`never_registered`] reads true again and a resume after its
+/// moment retires it rather than registering it a year late. `None` keeps
+/// the row's key, as every other push without one does.
+fn unregistered_key(held: &Schedule) -> Option<&str> {
+    (held.once && held.desired_status == DesiredStatus::Paused).then(|| held.schedule_id.as_str())
 }
 
 /// Logs a one-off retired because its moment passed before it was registered.

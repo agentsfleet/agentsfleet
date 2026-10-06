@@ -794,6 +794,8 @@ since its moment has passed; a retirement whose claim is held answers
 was set for (slot 931, `fire_at`), and a sync after that instant removes one
 QStash never registered rather than registering an expression whose next match
 is a year away; one QStash already holds stays, so a delayed callback finds it.
+A pause that removes a one-off upstream puts its key back to its own id, so a
+resume after its moment retires it too.
 
 #### The webhook auth taxonomy
 
