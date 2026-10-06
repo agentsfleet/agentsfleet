@@ -4,6 +4,12 @@
 //! work here. It is refused with a code before anything runs, naming where a
 //! change leaves instead. The refusal is an answer, not the boundary: the
 //! boundary is the sandbox's missing network.
+//!
+//! git runs programs of its own accord: hooks, aliases that start with `!`,
+//! and commands named in configuration such as `core.fsmonitor`, set with
+//! `-c` or `git config`. So a lease offered `git` can run what a lease
+//! offered `shell` can, inside the same sandbox and under the same limits,
+//! and nothing here tries to refuse those routes one by one.
 
 use afr_executor::Spawn;
 use schemars::JsonSchema;

@@ -107,11 +107,11 @@ The runner is the harness, in Codex's shape: the catalog holds every tool the pu
 | `delegate`, `spawn` | supervisor: a nested loop sharing the lease's sandbox and budget | Codex's `spawn_agent`, `wait_agent` and `send_input` shape |
 | `shell`, `exec_command`, `write_stdin` | sandbox, through the executor | `shell`: one process on pipes, its group killed at its timeout; `exec_command` and `write_stdin`: a session per process, on a pseudo-terminal when asked, at most 64 per lease; output edges under the cgroup |
 | `git` | sandbox, on a clone the supervisor made on the host side | the token it was fetched with stays in the supervisor; the push is `propose_change` |
-| `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch` | sandbox, through the executor's file calls | `/workspace` |
+| `file_read`, `file_read_hashed`, `file_write`, `file_append`, `file_delete`, `file_edit`, `file_edit_hashed`, `apply_patch` | sandbox, through the executor's file calls | `/workspace`; `file_read` pages by line, `offset` and `limit`, and is cut to the same 10,000-token budget as a command's output |
 | `image` | supervisor reads the file through the executor and attaches it to the next model turn | a provider that takes images |
 | `browser`, `browser_open`, `screenshot` | sandbox under the Firecracker engine: Chromium from the toolbox, driven over the Chrome DevTools Protocol (CDP) through the process's pipes; the bubblewrap engine answers each with a code | the Firecracker engine; Chromium in the toolbox; the sandbox allowlist for any host beyond loopback |
 
-A lease whose tools are all supervisor-side starts no sandbox.
+A lease whose tools are all supervisor-side starts no sandbox. A lease offered any sandbox tool gets its bound repositories checked out before its turn, so a lease of file tools alone reads the repository rather than an empty workspace. git runs programs of its own accord, through hooks, `!` aliases and commands named in configuration, so a lease offered `git` can run what one offered `shell` can, inside the same sandbox; the sandbox is the boundary, and the `git` tool's refusal of remote subcommands is an answer to the model, not a wall.
 
 ## Sandbox engines
 
@@ -300,3 +300,7 @@ The costs are the rewrite, slower compiles, async complexity and larger binaries
 | Oct 05, 2026 | `/tmp` moves onto the workspace disk, the lease cgroup splits into a `sandbox` and a `tenant` leaf, the workspace disk attaches with direct I/O, and a worker leases only with a state-disk reserve (M211_003) | Spike S6: filling `/tmp` ended in the out-of-memory killer taking `bwrap` every time. Indy: "Fix all fixes in this PR" |
 | Oct 05, 2026 | A processed lease's sandbox is held, frozen, for its fleet's next lease, and its holder claims that fleet first; supersedes "one lease, then destroyed" (M211_004) | Indy: "I want to provide a seamless faster approach on chat?" (Oct 04), then "Fix all fixes in this PR, may be the 215_001 must be renamed to the next sequence in 211_00X and fix all that is needed" |
 | Oct 05, 2026 | A chat lease carries the thread's recent turns, sent ahead of the message; the stable prefix is cached at the five-minute default, and the trusted repair context stays in the system prompt (M211_005) | Indy chose "Add M211_005, cached (recommended)". The one-hour lifetime waits because the daemon bills a cache write at the input rate |
+| Oct 06, 2026 | `file_read` pages by line and is cut to the output budget, instead of reading back up to 8 MiB | Indy chose "Budget + paging (Recommended)" |
+| Oct 06, 2026 | Offering `git` offers what `shell` does inside the sandbox; the sandbox is the boundary | Indy chose "git counts as shell (Rec.)" |
+| Oct 06, 2026 | Every sandbox tool gets the bound repositories checked out, not only the process tools | Indy chose "Clone for file tools (Rec.)" |
+| Oct 06, 2026 | The host mirror's hygiene is deferred: refreshing the default branch, dropping deleted branches, size caps and eviction, purging force-pushed objects, redirects with a token header, and transient open errors | Indy chose "Defer all" |
