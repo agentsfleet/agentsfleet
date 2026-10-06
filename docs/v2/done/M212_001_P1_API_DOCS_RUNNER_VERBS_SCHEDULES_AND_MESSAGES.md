@@ -23,7 +23,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** `feat/m212-001-runner-schedules-messages`
 **Baseline revision:** `c5f7680f2ee4a475a9f6f6c8701c98262c6d5c8d`
 **Test Baseline:** unit=3776 integration=4442 — unit 3776 passed, 0 failed (daemon libraries 3033 · runner 613 · daemon 130); integration and coverage 4442 passed, 0 failed (substrate 3844 + 2 exclusive · runner crates 410 · runner against the daemon 2 · daemon 184); Rust line coverage 98.8644% (52670 of 53275)
-**Baseline evidence:** Continuous Integration (CI) on `a648ab96d`, the tree `c5f7680f2` merged unchanged: `make test-unit-rustd` shards in https://github.com/agentsfleet/agentsfleet/actions/runs/37314101696 and `make test-integration-rustd` coverage shards in https://github.com/agentsfleet/agentsfleet/actions/runs/37314101828, ubuntu runners with docker compose Postgres and Dragonfly; counts read from each shard's `✓ [rustd] … — N passed` line
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M212_001-c5f7680f2.md`
 **Depends on:** M210_002 (the catalog and router the three handlers plug into) — the daemon half (§1, §2) has no dependency and tests through `rustd/crates/agentsfleetd/tests/support/e2e_wire.rs`
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from a source trace on `main` (`rustd/crates/afd_cron`, `rustd/crates/afd_outbound`) and Indy's decision "Yes, runner verb onto daemon schedules"
 **Canonical architecture:** `docs/architecture/runner_execution.md` §"Tool catalog"; `docs/architecture/capabilities.md` §"2. The platform tools the fleet can call"; `docs/architecture/data_flow.md` §B. TRIGGER (QStash owns the clock)
