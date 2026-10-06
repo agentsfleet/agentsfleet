@@ -18,6 +18,8 @@ async fn should_refuse_file_calls_a_spawn_past_its_scripts_and_unknown_processes
     let refusals = [
         executor.read_file("a", 1).await.unwrap_err(),
         executor.write_file("a", Bytes::new()).await.unwrap_err(),
+        executor.append_file("a", Bytes::new()).await.unwrap_err(),
+        executor.delete_file("a").await.unwrap_err(),
         executor.list_dir("a").await.unwrap_err(),
         executor.spawn(&Spawn::program("sh")).await.unwrap_err(),
         executor.write(NOBODY, Bytes::new()).await.unwrap_err(),
@@ -30,6 +32,8 @@ async fn should_refuse_file_calls_a_spawn_past_its_scripts_and_unknown_processes
         .collect();
     let unknown = afr_executor::error::unknown_process_refused().wire_message();
     let expected = [
+        PROCESSES_ONLY,
+        PROCESSES_ONLY,
         PROCESSES_ONLY,
         PROCESSES_ONLY,
         PROCESSES_ONLY,

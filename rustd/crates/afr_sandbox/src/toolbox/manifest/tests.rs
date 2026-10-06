@@ -7,7 +7,7 @@
 
 use serde_json::json;
 
-use super::{MANIFEST_MAX_BYTES, Release, TOOLBOX_RELEASE_PUBLIC_KEY, host_arch};
+use super::{MANIFEST_MAX_BYTES, Release, TOOLBOX_RELEASE_PUBLIC_KEY, debian_arch, host_arch};
 use crate::error::ToolboxRefusal;
 use crate::toolbox::testing::{RUNNER, Signer, facts, manifest_bytes, sha256};
 
@@ -255,4 +255,14 @@ fn an_unreadable_manifest_keeps_the_parsers_reason() {
         .unwrap_or_default();
     assert!(cause.contains("EOF while parsing"), "{cause}");
     assert!(!refused.to_string().contains("EOF"), "{refused}");
+}
+
+/// Debian renames the two architectures the toolbox is built for and leaves
+/// any other as Rust names it; this host's name is one of the renamed pair.
+#[test]
+fn an_architecture_is_named_as_debian_names_it() {
+    assert_eq!(debian_arch("x86_64"), "amd64");
+    assert_eq!(debian_arch("aarch64"), "arm64");
+    assert_eq!(debian_arch("riscv64"), "riscv64");
+    assert!(matches!(host_arch(), "amd64" | "arm64"));
 }

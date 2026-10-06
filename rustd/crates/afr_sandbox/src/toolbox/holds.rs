@@ -49,33 +49,6 @@ pub trait Mounter: fmt::Debug + Send + Sync {
     fn unmount(&self, toolbox: &Toolbox) -> Result<()>;
 }
 
-/// The admission [`Toolbox::admit`] makes, mounting under `mounts`.
-#[cfg(target_os = "linux")]
-#[derive(Debug)]
-pub struct KernelMounter {
-    mounts: PathBuf,
-}
-
-#[cfg(target_os = "linux")]
-impl KernelMounter {
-    /// Mounts each admitted image at `<mounts>/<digest>`.
-    #[must_use]
-    pub fn new(mounts: PathBuf) -> Self {
-        Self { mounts }
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Mounter for KernelMounter {
-    fn mount(&self, manifest: &Manifest, image: &Path) -> Result<Toolbox> {
-        Toolbox::admit_now(manifest, image, &self.mounts)
-    }
-
-    fn unmount(&self, toolbox: &Toolbox) -> Result<()> {
-        toolbox.unmount()
-    }
-}
-
 /// The images one host has admitted, oldest first, under one directory.
 #[derive(Debug)]
 pub struct Toolboxes<M> {

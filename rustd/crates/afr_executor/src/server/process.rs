@@ -294,3 +294,6 @@ fn notification<T>(method: &'static str, params: T) -> jsonrpsee_types::Notifica
 #[cfg(test)]
 #[path = "process/tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "process/writer_behind_tests.rs"]
+mod writer_behind_tests;

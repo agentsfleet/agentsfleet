@@ -4,7 +4,7 @@ use afr_executor::{EDGE_BYTES, Ending, Events, Feed, Process, ProcessId, Stream}
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use super::{Collected, budget, error_code, exit_code, status, with_line};
+use super::{Collected, budget, edges, error_code, exit_code, status, with_line};
 use crate::runtime::ToolErrorCode;
 
 /// Output a process prints and keeps running after.
@@ -282,4 +282,11 @@ fn should_say_last_that_output_was_left_behind() {
         collected.text(100),
         "out\n... the process ended with its output still open; what was written after is not shown ..."
     );
+}
+
+/// A text within its budget is one edge, whole, and no tail.
+#[test]
+fn a_text_that_fits_its_budget_is_kept_whole() {
+    assert_eq!(edges("fits", 10), ("fits", ""));
+    assert_eq!(edges("", 0), ("", ""));
 }
