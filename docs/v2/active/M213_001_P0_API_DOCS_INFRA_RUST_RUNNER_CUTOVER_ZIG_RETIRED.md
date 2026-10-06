@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M213
 **Workstream:** 001
 **Date:** Oct 02, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — until this lands, two runners exist and only one is deployed; every fleet still runs on the Zig runner
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — one Pull Request; the dev lane deploys the Rust runner from the branch before merge, so the proof precedes the deletion
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** feat/m213-rust-runner-cutover
+**Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M210_002 · M211_001 · M211_002 · M212_001 · M214_001 — everything the Zig runner serves today runs on Rust first; the Rust runner exports its own spans and metrics (M214_001, Indy: "Own spec, before cutover"); M211_001's spikes S2–S4 are recorded, because their results fix the artifact layout this release freezes; M213_002 (the sandbox egress allowlist) ships in this Pull Request, because on `allow_all` today's Zig child shares the host network and the Rust sandbox reaches nothing until it lands (Indy, Oct 06, 2026: "create a new spec and make it depend on M213 and they must ship in 1 PR")
@@ -68,6 +68,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/runner_execution.md` | EDIT | Decisions row: the cutover date and the rollback artifact |
 | `rustd/crates/agentsfleet_runner/src/main.rs` | EDIT | The binary builds the agent loop and serves leases; `NO_AGENT_ENGINE` and its refusal leave (M210_002 review P1-7) |
 | `rustd/crates/afr_sandbox/src/toolbox/manifest.rs` | EDIT | `TOOLBOX_RELEASE_PUBLIC_KEY` becomes the release key's public half, replacing M211_001's fixture key |
+| `rustd/crates/agentsfleetd/tests/integration_rust_runner_telemetry.rs` | EDIT | `test_e2e_runner_lease_trace_reaches_a_collector` carries a real lease through the binary |
+| `deploy/baremetal/agentsfleet-runner.service` | EDIT | `ReadWritePaths` gains the storage home, `Delegate=` gains `io`, `OTEL_SERVICE_INSTANCE_ID=%H` (§6) |
+| `docs/architecture/lease_flow.md`, `docs/architecture/connectors.md`, `docs/architecture/scenarios/github-pr-reviewer.md`, every other `docs/architecture/**` page naming Zig | EDIT | The lease-flow trace reconciled claim by claim; no architecture page names Zig (§3) |
+| `rustd/crates/afr_tools/src/sandbox/apply_patch.rs`, `apply_patch/size_tests.rs`, `rustd/crates/afr_tools/src/sandbox/files.rs` | EDIT / CREATE | A patch that would grow a file past the executor's read cap is refused before anything lands (§7) |
 
 ## Applicable Rules
 
@@ -101,6 +105,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.2** — The dev lane deploys the Rust runner; it registers and its capability report names `/dev/kvm` and the toolbox filesystem → Test `test_dev_runner_registers_with_capabilities`
 - **Dimension 1.3** — The four reference bundles run on the dev runner from their channels and webhooks → Test `test_reference_bundles_run_on_dev`
 - **Dimension 1.4** — The binary takes leases through `afr_agent::Loop` over the provider registry; `NO_AGENT_ENGINE` and its refusal are gone, which 1.2 and 1.3 rely on → Test `test_runner_binary_runs_a_lease`
+- **Dimension 1.5** — `main.rs` composes `afr_supervisor::run` with the engine and its boot sweep, and M214_001's telemetry keeps working end to end: a real lease through the binary reaches the collector → Test `test_e2e_runner_lease_trace_reaches_a_collector`
 
 ### §2 — The Zig runner leaves, and the lanes do not miss it
 
@@ -118,10 +123,12 @@ Every Rust comment and test name that mirrors, ports or compares to Zig or NullC
 - **Dimension 3.1** — `rustd/crates` holds no line naming Zig or NullClaw → Test `test_rust_tree_names_no_zig`
 - **Dimension 3.2** — The architecture check passes, and fails on a fixture page that reintroduces the NullClaw child → Test `test_architecture_describes_the_rust_runner`
 - **Dimension 3.3** — The CLI's three comments name the Rust files they mirror → Test `test_cli_comments_point_at_rust`
+- **Dimension 3.4** — `lease_flow.md` is the end-to-end walk: every claim either links to the page that owns it or is narrative of the walk, its caveat is gone, and its gap list holds only gaps open after this Pull Request, each naming what would close it → Test `test_lease_flow_links_its_owners`
+- **Dimension 3.5** — No page under `docs/architecture/` names Zig, `zlint` or NullClaw; only `docs/v2/done/` and `docs/v2/pending/` keep them as history → Test `test_architecture_names_no_zig`
 
 ### §4 — The published docs and the changelog say what shipped
 
-On `chore/m213-rust-runner-changelog` in `~/Projects/docs`: the tools page carries the full catalog with the names the harness added (`exec_command`, `write_stdin`, `apply_patch`, `update_plan`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent`), drops `calculator`, which the Rust runner does not host (Indy, Oct 03: "Cut it now"), and drops none the runner still carries; the runner install page describes the binary, the signed toolbox and the offline bundle, the toolbox's admission and the `/dev/kvm` probe; `snippets/rates.mdx` stops naming a Zig file; a changelog `<Update>` states the cutover in the changelog's voice.
+On `chore/m213-rust-runner-changelog` in `~/Projects/docs`: the runner page carries the three telemetry knobs and the changelog entry M214_001 deferred to this cutover (draft at `~/.gstack/projects/agentsfleet-agentsfleet/reports/m214_docs_draft_Oct_06_2026.md`), with this cutover's own runner-page changes; the tools page carries the full catalog with the names the harness added (`exec_command`, `write_stdin`, `apply_patch`, `update_plan`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent`), drops `calculator`, which the Rust runner does not host (Indy, Oct 03: "Cut it now"), and drops none the runner still carries; the runner install page describes the binary, the signed toolbox and the offline bundle, the toolbox's admission and the `/dev/kvm` probe; `snippets/rates.mdx` stops naming a Zig file; a changelog `<Update>` states the cutover in the changelog's voice.
 
 - **Dimension 4.1** — The docs branch carries the four page changes and the entry, and their checks pass → Test `test_docs_branch_carries_cutover_pages`
 
@@ -130,6 +137,22 @@ On `chore/m213-rust-runner-changelog` in `~/Projects/docs`: the tools page carri
 The previous release's `agentsfleet-runner-linux-amd64` (Zig) stays on the release page; redeploying it through `deploy-dev-metal.yml` with that artifact is the rollback, and the daemon keeps accepting a runner that sends no outcome fields and no trace (M209_001 Dimension 1.2). A drill proves it once on dev.
 
 - **Dimension 5.1** — Redeploying the previous Zig artifact on dev runs a lease; redeploying the Rust artifact runs it again → Test `test_rollback_drill_on_dev`
+
+### §6 — The bare-metal unit can host the Rust runner
+
+`deploy/baremetal/agentsfleet-runner.service` was written for the Zig runner. Under `ProtectSystem=strict` its `ReadWritePaths` leaves the storage home `/var/lib/agentsfleet-runner` read-only, so the runner fails at boot; `Delegate=cpu memory pids` omits `io`, which the sandbox probe requires; and every host publishes metrics under one identity. The unit gains the storage home in `ReadWritePaths`, `io` in `Delegate=`, and `Environment=OTEL_SERVICE_INSTANCE_ID=%H`. The Pull Request states how an operator rolls the unit out on a host.
+
+- **Dimension 6.1** — The unit's `ReadWritePaths` holds the storage home and `Delegate=` holds `io`; `systemd-analyze verify` accepts it → Test `test_baremetal_unit_hosts_the_rust_runner`
+- **Dimension 6.2** — Each host publishes its own metric series: `OTEL_SERVICE_INSTANCE_ID=%H` reaches `service.instance.id` → Test `test_runner_instance_id_from_unit`
+
+### §7 — `apply_patch` never writes a file it cannot read back
+
+Carried from #732's review (greptile `discussion_r4198887936`). `apply_patch` plans every hunk over an in-memory overlay with no cap, then lands each update by re-reading its file through `whole()`, which refuses a file longer than `MAX_READ_BYTES` (8 MiB). A patch whose first update grows a near-cap file past 8 MiB and whose second edits it again lands only the first. `plan()` now refuses any Add or Update whose resulting text is longer than `MAX_READ_BYTES` with `ToolErrorCode::FileTooLarge`, before anything is written, worded as `whole()` words it through one shared constant. `MAX_READ_BYTES` stays the one bound. Out of scope: how `land()` re-reads, the summary's counts, partial-landing wording, moves between a link and its target.
+
+- **Dimension 7.1** — The greptile repro (a `MAX_READ_BYTES - 20` file, a 40-byte insert, then `tail` → `TAIL`) is refused and the file is byte-identical → Test `test_chained_patch_past_read_cap_is_refused_whole`
+- **Dimension 7.2** — One update that grows the file past the cap is refused and the file is unchanged → Test `test_update_past_read_cap_is_refused`
+- **Dimension 7.3** — A result of exactly `MAX_READ_BYTES` lands, and a later hunk on it in the same patch lands too → Test `test_update_to_exactly_read_cap_lands`
+- **Dimension 7.4** — Through a link: the first hunk grows `keep.txt` past the cap, the second edits `alias.txt` → `keep.txt`; refused, nothing landed → Test `test_link_alias_past_read_cap_is_refused`
 
 ## Interfaces
 
@@ -181,6 +204,15 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 | 3.2 | unit | `test_architecture_describes_the_rust_runner` | `scripts/check_architecture_doc_test.sh` → the new check passes on `main`, fails on its fixture |
 | 3.3 | unit | `test_cli_comments_point_at_rust` | grep `\.zig` over `cli/src` → 0 hits |
 | 4.1 | manual | `test_docs_branch_carries_cutover_pages` | docs Pull Request link; its checks green; pasted |
+| 1.5 | integration | `test_e2e_runner_lease_trace_reaches_a_collector` | the built binary leases from a fake daemon → the collector receives the lease's spans |
+| 3.4 | unit | `test_lease_flow_links_its_owners` | `scripts/check_architecture_doc.sh` exit 0; `grep -c 'not reconciled\|Read this first' docs/architecture/lease_flow.md` → 0 |
+| 3.5 | unit | `test_architecture_names_no_zig` | `grep -rliE 'zig\|zlint\|nullclaw' docs/architecture` → no file |
+| 6.1 | unit | `test_baremetal_unit_hosts_the_rust_runner` | `systemd-analyze verify` on the unit → exit 0; `ReadWritePaths` names `/var/lib/agentsfleet-runner`; `Delegate=` names `io` |
+| 6.2 | unit | `test_runner_instance_id_from_unit` | `OTEL_SERVICE_INSTANCE_ID=host-a` → the exported resource carries `service.instance.id=host-a` |
+| 7.1 | unit | `test_chained_patch_past_read_cap_is_refused_whole` | real executor (`crate::testing::Live`) → `FileTooLarge`, path in the text, file byte-identical |
+| 7.2 | unit | `test_update_past_read_cap_is_refused` | → `FileTooLarge`, file unchanged |
+| 7.3 | unit | `test_update_to_exactly_read_cap_lands` | result of exactly `MAX_READ_BYTES` → lands; a second hunk lands too |
+| 7.4 | unit | `test_link_alias_past_read_cap_is_refused` | `src/alias.txt` → `keep.txt` → `FileTooLarge`, nothing landed |
 | 5.1 | manual | `test_rollback_drill_on_dev` | Zig artifact redeployed → a lease settles; Rust redeployed → a lease settles; both thread links pasted |
 
 ## Acceptance Rubric (single scoring surface)
@@ -253,6 +285,7 @@ Architecture check: no page describes a NullClaw child as the workload outside a
 - **Credentials** — the toolbox release key pair: the private half a CI secret the signing step reads, the public half built into the runner as `TOOLBOX_RELEASE_PUBLIC_KEY`. Both exist and are named before §1 starts.
 - **Carried from M210_002** — review P1-7: `agentsfleet_runner/src/main.rs:134` refuses every lease, so M210_002's §1–§4 run nowhere in production until this spec switches the engine on. > Indy (2026-10-04 08:51): "Defer to M213 (Recommended)" — context: Dimension 1.4 here.
 - **Metrics review** — No analytics or funnel playbook update required.
+- **CHORE(open) amendments** — Indy (in-session, Oct 06, 2026) folded four items into this spec: the cutover composing `afr_supervisor::run` with telemetry end to end (Dimension 1.5); the bare-metal unit, "I approve these deploy-file edits for this workstream" (§6); the M214_001 docs deferred to the cutover (§4); and the lease-flow page review (Dimension 3.4). The `~/Projects/docs` write is approved for this workstream on its own `chore/m213-…` branch. The sandbox allowlist is M213_002, in this Pull Request. Indy (Oct 07, 2026), on the `apply_patch` read-cap regression from #732: "in your M213* fixes ensure this is done too" (§7). Indy (Oct 07, 2026): "ensure all zig, zlint, and other reminscent (so no zig must appear i think) including in @docs/architecture/, you can keep the zip in @docs/v2/done and in pending, since they are legacy" (Dimension 3.5); "Ensure the CI gates are updated for the deploy of the rust binary" (the workflow edits of §1 and §2, R4); "Ensure the make targets (memleak, lint-zig* or test-unittest-zig* are all nuked)" (§2); "ensure the rust standards for trait, Fn callables are used" (every new Rust signature).
 - **Skill-chain outcomes** — pending.
 - **Deferrals** —
   > Indy (2026-10-03 13:51): "I dont want to focus on revocation of a compromised toolbox, first is to get the toolbox working" — context: revoking a compromised toolbox digest, from Tarzy's review; left out of this spec and M211_001.
