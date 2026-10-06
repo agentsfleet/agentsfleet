@@ -149,10 +149,12 @@ pub(crate) struct OutputParams {
     pub(crate) data: Bytes,
 }
 
-/// The most one read of output takes, on pipes and on a terminal alike, so
-/// a noisy process costs the same number of messages either way; the client
-/// drops a `process/output` longer than this, which no executor sends.
-pub(crate) const READ_CHUNK_BYTES: usize = 16 * 1024;
+/// The most one read of output takes.
+///
+/// The same on pipes and on a terminal, so a noisy process costs the same
+/// number of messages either way; the client drops a `process/output` longer
+/// than this, which no executor sends.
+pub const READ_CHUNK_BYTES: usize = 16 * 1024;
 
 /// `process/exited` parameters.
 #[derive(Debug, Serialize, Deserialize)]
@@ -161,8 +163,11 @@ pub(crate) struct ExitedParams {
     pub(crate) process_id: u64,
     /// How it ended.
     pub(crate) ending: Ending,
-    /// Whether output still arriving when it ended was left behind, past the
-    /// drain's grace or its cap.
+    /// Whether its output was still open when the drain gave it up, past the
+    /// grace or the cap, so what was written after is not read. Absent from
+    /// an executor that never measured it, which is `false`: a type the
+    /// runner reads stays lenient (`afd_core::json`).
+    #[serde(default)]
     pub(crate) output_abandoned: bool,
 }
 

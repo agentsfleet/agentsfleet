@@ -109,6 +109,9 @@ pub(super) struct Link {
     lost: CancellationToken,
     pending: HashMap<u64, Reply>,
     processes: HashMap<ProcessId, Feed>,
+    /// Chunks past one read dropped so far: the first is worth a warning,
+    /// the rest a debug line, so a hostile sandbox cannot flood the journal.
+    oversized: u64,
 }
 
 impl Link {
@@ -134,6 +137,7 @@ impl Link {
             lost,
             pending: HashMap::new(),
             processes: HashMap::new(),
+            oversized: 0,
         }
     }
 
@@ -238,7 +242,7 @@ impl Link {
             NOTIFY_OUTPUT => {
                 let output: OutputParams = decoded(params)?;
                 if output.data.len() > READ_CHUNK_BYTES {
-                    oversized(output.process_id, output.data.len());
+                    self.oversized(output.process_id, output.data.len());
                 } else if let Some(feed) = self.processes.get(&ProcessId::new(output.process_id)) {
                     feed.output(output.stream, output.data);
                 }
@@ -252,6 +256,30 @@ impl Link {
             _unknown => {}
         }
         Ok(())
+    }
+
+    /// Logs a chunk of output longer than one read, dropped unread: the first
+    /// at warn, the rest at debug.
+    fn oversized(&mut self, process: u64, bytes: usize) {
+        let event = EVENT_OUTPUT_OVERSIZED;
+        let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+        self.oversized += 1;
+        if self.oversized == 1 {
+            tracing::warn!(
+                event,
+                error_code,
+                process_id = process,
+                bytes,
+                "a chunk of output is longer than one read"
+            );
+        } else {
+            tracing::debug!(
+                event,
+                process_id = process,
+                bytes,
+                "another oversized chunk"
+            );
+        }
     }
 
     /// The kill that ends a process no caller is waiting for; its answer is
@@ -295,19 +323,6 @@ impl Link {
             );
         }
     }
-}
-
-/// Logs a chunk of output longer than one read, dropped unread.
-fn oversized(process: u64, bytes: usize) {
-    let event = EVENT_OUTPUT_OVERSIZED;
-    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-    tracing::warn!(
-        event,
-        error_code,
-        process_id = process,
-        bytes,
-        "a chunk of output is longer than one read"
-    );
 }
 
 /// Logs a message that did not decode: where it failed, never the decoder's

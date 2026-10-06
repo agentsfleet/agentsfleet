@@ -140,8 +140,9 @@ impl Feed {
         self.shared.changed.notify_one();
     }
 
-    /// Hands on how the process ended, the last thing it says. Dropping the
-    /// feed then finishes the events and wakes the reader.
+    /// Hands on how the process ended and whether its output was still open
+    /// when the drain gave it up, the last thing it says. Dropping the feed
+    /// then finishes the events and wakes the reader.
     pub fn end(self, ending: Ending, output_abandoned: bool) {
         let mut state = self.shared.state();
         state.ending = Some(ending);

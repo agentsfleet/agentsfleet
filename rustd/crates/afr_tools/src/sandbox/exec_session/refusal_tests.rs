@@ -47,7 +47,7 @@ async fn should_refuse_a_session_that_is_not_open() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn should_answer_a_write_the_executor_refused_and_keep_the_session() {
+async fn should_read_a_write_to_a_process_the_executor_lost_as_running() {
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
     let mut lease = Lease::default();
     open(&executor, &mut lease, CAT).await;
@@ -55,10 +55,10 @@ async fn should_answer_a_write_the_executor_refused_and_keep_the_session() {
 
     let output = call_in(&*write(), &executor, &mut lease, writing(1, "x", None)).await;
 
-    assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
+    assert_eq!(output.error_code, None);
     assert!(
-        output.text.ends_with(": no process with that identifier"),
-        "the executor's own words, got {:?}",
+        output.text.ends_with("Process running with session ID 1"),
+        "its ending is still to come, got {:?}",
         output.text
     );
     assert!(

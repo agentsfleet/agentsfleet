@@ -129,6 +129,35 @@ fn a_refused_path_and_a_missing_name_read_the_same_on_both_ends_of_the_socket() 
     }
 }
 
+/// A write's two process-level refusals read the same on both ends, and
+/// nothing else reads as either.
+#[test]
+fn a_gone_process_and_a_refused_input_read_the_same_on_both_ends_of_the_socket() {
+    let gone_raised = unknown_process();
+    let gone_decoded = refused(UNKNOWN_PROCESS_CODE, "no process");
+    let closed_raised = input_closed();
+    let full_raised = input_backlog_full();
+    let input_decoded = refused(CALL_EXECUTION_FAILED_CODE, "not reading");
+
+    assert!(gone_raised.is_unknown_process() && gone_decoded.is_unknown_process());
+    assert!(closed_raised.is_input_refused() && full_raised.is_input_refused());
+    assert!(input_decoded.is_input_refused());
+    assert!(!gone_raised.is_input_refused() && !gone_decoded.is_input_refused());
+    assert!(!closed_raised.is_unknown_process() && !input_decoded.is_unknown_process());
+    for other in [
+        path_refused(),
+        not_found(io::Error::from(io::ErrorKind::NotFound)),
+        connection_lost(),
+        refused(PATH_REFUSED_CODE, "outside"),
+        Error::from(io::Error::from(io::ErrorKind::BrokenPipe)),
+    ] {
+        assert!(
+            !other.is_unknown_process() && !other.is_input_refused(),
+            "{other}"
+        );
+    }
+}
+
 #[test]
 fn a_program_that_will_not_start_keeps_the_launchers_reason_as_its_cause() {
     let failure = program_unavailable("not on the search path");

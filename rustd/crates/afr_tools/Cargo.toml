@@ -49,12 +49,11 @@ tracing.workspace = true
 # M-TEST-UTIL. Stub handlers for any published tool, so the agent's and the
 # supervisor's suites prove routing and admission before every real handler
 # exists, and a lease whose guard admits nothing.
-test-util = ["afr_egress/test-util", "afr_executor/test-util"]
+test-util = ["afr_egress/test-util"]
 
 [dev-dependencies]
 # The counting mint and the recording transport the egress suites send through.
 afr_egress = { workspace = true, features = ["test-util"] }
-afr_executor = { workspace = true, features = ["test-util"] }
 afd_core = { workspace = true, features = ["test-util"] }
 # The parse error a refused URL carries, built by the refusal-code suite.
 url.workspace = true

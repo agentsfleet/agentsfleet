@@ -109,7 +109,7 @@ impl Handler for ExecCommand {
         let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MS_MIN);
         let ended = collected.until(process, deadline).await;
         let budget = output::budget(arguments.max_output_tokens);
-        reply(sessions, id, &collected, ended, budget)
+        reply(sessions, id, &collected, ended, budget, None)
     }
 }
 
@@ -136,38 +136,37 @@ impl Handler for WriteStdin {
             return not_open(id);
         };
         let mut collected = Collected::default();
+        let mut refused = None;
         // A process that ended since the last call answers with its ending,
         // never with a write the executor would refuse.
         let ended = if let Some(ending) = collected.arrived(process) {
             Some(ending)
         } else {
-            let mut gone = None;
             let floor = if arguments.chars.is_empty() {
                 EMPTY_WRITE_YIELD_MS_MIN
             } else {
                 match executor.write(id, Bytes::from(arguments.chars)).await {
                     Ok(()) => YIELD_MS_MIN,
                     // Ended between the look above and the write: its ending
-                    // is on its way, behind whatever it left to say, so the
-                    // call waits its yield for it.
-                    Err(failure) if failure.is_unknown_process() => {
-                        gone = Some(failure);
+                    // is on its way, behind whatever it left to say. The call
+                    // waits its yield for it and reads the session as running
+                    // until it lands; a sandbox that is gone ends the events.
+                    Err(failure) if failure.is_unknown_process() => YIELD_MS_MIN,
+                    // The process would not take it: it closed its input, or
+                    // has not read what it was sent. It runs on, and the
+                    // model reads why.
+                    Err(failure) if failure.is_input_refused() => {
+                        refused = Some(failure.wire_message());
                         YIELD_MS_MIN
                     }
                     Err(failure) => return unavailable(&failure),
                 }
             };
             let deadline = Instant::now() + yield_of(arguments.yield_time_ms, floor);
-            let ended = collected.until(process, deadline).await;
-            // No ending within the yield after a write found no process: the
-            // sandbox is gone, not the process.
-            if let (None, Some(failure)) = (ended, &gone) {
-                return unavailable(failure);
-            }
-            ended
+            collected.until(process, deadline).await
         };
         let budget = output::budget(arguments.max_output_tokens);
-        reply(sessions, id, &collected, ended, budget)
+        reply(sessions, id, &collected, ended, budget, refused.as_deref())
     }
 }
 
@@ -187,14 +186,16 @@ fn yield_of(asked: Option<u64>, floor: u64) -> Duration {
     Duration::from_millis(asked.unwrap_or(YIELD_MS_DEFAULT).clamp(floor, YIELD_MS_MAX))
 }
 
-/// One call's answer on session `id`: what arrived, then the session's state.
-/// A process that ended leaves the registry here.
+/// One call's answer on session `id`: what arrived, why a write was refused
+/// when it was, then the session's state. A process that ended leaves the
+/// registry here.
 fn reply(
     sessions: &mut Sessions,
     id: ProcessId,
     collected: &Collected,
     ended: Option<Ending>,
     budget: usize,
+    refused: Option<&str>,
 ) -> ToolOutput {
     let state = match ended {
         Some(ending) => {
@@ -203,8 +204,10 @@ fn reply(
         }
         None => format!("{} {}", output::RUNNING, id.get()),
     };
+    let text = collected.text(budget);
+    let text = refused.map_or(text.clone(), |why| output::with_line(text, why));
     ToolOutput {
-        text: output::with_line(collected.text(budget), &state),
+        text: output::with_line(text, &state),
         exit_code: ended.and_then(output::exit_code),
         error_code: ended.and_then(output::error_code),
     }
@@ -225,6 +228,10 @@ mod tests;
 #[cfg(test)]
 #[path = "exec_session/refusal_tests.rs"]
 mod refusal_tests;
+
+#[cfg(test)]
+#[path = "exec_session/write_tests.rs"]
+mod write_tests;
 
 #[cfg(test)]
 #[path = "exec_session/live_tests.rs"]

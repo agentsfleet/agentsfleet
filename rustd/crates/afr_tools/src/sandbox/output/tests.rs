@@ -160,7 +160,7 @@ async fn should_hold_at_most_the_edges_of_what_arrived_while_it_waited() {
         "four MiB said, one kept"
     );
     assert_eq!(
-        collected.omitted,
+        collected.gaps.iter().map(|(_at, bytes)| bytes).sum::<u64>(),
         (6 * EDGE_BYTES) as u64,
         "the six edges between"
     );
@@ -196,8 +196,8 @@ fn should_budget_four_bytes_a_token() {
     assert_eq!(budget(Some(3)), 12);
     assert_eq!(
         budget(Some(usize::MAX)),
-        usize::MAX,
-        "saturates, never wraps"
+        2 * EDGE_BYTES,
+        "capped at the two edges a call can hold"
     );
 }
 
@@ -243,26 +243,45 @@ fn should_fail_only_a_process_that_did_not_end_by_itself() {
 fn should_put_a_marker_where_each_gap_fell_when_the_output_fits() {
     let collected = Collected {
         bytes: b"headtail".to_vec(),
-        omitted: 7,
         gaps: vec![(4, 7)],
         abandoned: false,
     };
 
     assert_eq!(collected.text(100), "head\n... 7 bytes omitted ...\ntail");
     assert_eq!(collected.text(4), "he\n... 11 bytes omitted ...\nil");
+    let opens_on_a_gap = Collected {
+        bytes: b"tail".to_vec(),
+        gaps: vec![(0, 7)],
+        abandoned: false,
+    };
+    assert_eq!(opens_on_a_gap.text(100), "... 7 bytes omitted ...\ntail");
+    let ends_on_a_gap = Collected {
+        bytes: b"head".to_vec(),
+        gaps: vec![(4, 7)],
+        abandoned: false,
+    };
+    assert_eq!(ends_on_a_gap.text(100), "head\n... 7 bytes omitted ...\n");
+    let two = Collected {
+        bytes: b"abc".to_vec(),
+        gaps: vec![(1, 2), (2, 3)],
+        abandoned: false,
+    };
+    assert_eq!(
+        two.text(100),
+        "a\n... 2 bytes omitted ...\nb\n... 3 bytes omitted ...\nc"
+    );
 }
 
 #[test]
 fn should_say_last_that_output_was_left_behind() {
     let collected = Collected {
         bytes: b"out\n".to_vec(),
-        omitted: 0,
         gaps: Vec::new(),
         abandoned: true,
     };
 
     assert_eq!(
         collected.text(100),
-        "out\n... output still arriving when the process ended was left behind ..."
+        "out\n... the process ended with its output still open; what was written after is not shown ..."
     );
 }

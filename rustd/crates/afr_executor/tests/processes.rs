@@ -28,6 +28,7 @@ async fn test_executor_spawn_streams_output() {
 
     assert_eq!(finished.stdout, b"hi\n");
     assert_eq!(finished.endings, [Ending::Exited(0)]);
+    assert!(!finished.abandoned, "its pipes closed with it");
 }
 
 #[tokio::test]

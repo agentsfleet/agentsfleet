@@ -46,4 +46,5 @@ async fn a_terminal_process_that_exits_reports_its_output_and_status() {
     );
     assert!(finished.stdout.is_empty() && finished.stderr.is_empty());
     assert_eq!(finished.endings, [Ending::Exited(4)]);
+    assert!(!finished.abandoned, "its terminal closed with it");
 }

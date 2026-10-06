@@ -228,3 +228,26 @@ async fn should_refuse_an_argument_it_does_not_take_and_run_nothing() {
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
     assert!(executor.spawned().is_empty());
 }
+
+/// A command whose output was still open when it ended says so, after its
+/// output, in place of the status a clean exit leaves out.
+#[tokio::test]
+async fn should_say_the_output_was_still_open_after_the_output() {
+    let executor =
+        ScriptedExecutor::new([ScriptedProcess::ends_abandoned("ok\n", Ending::Exited(0))]);
+
+    let output = call_in(
+        &*shell(),
+        &executor,
+        &mut Lease::default(),
+        json!({"command": "true"}),
+    )
+    .await;
+
+    assert_eq!(
+        output.text,
+        "ok\n... the process ended with its output still open; what was written after is not shown ..."
+    );
+    assert_eq!(output.exit_code, Some(0));
+    assert_eq!(output.error_code, None);
+}

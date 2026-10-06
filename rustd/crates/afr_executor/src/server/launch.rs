@@ -27,14 +27,12 @@ use super::files::Workspace;
 use crate::api::{Ending, Stream};
 use crate::edges::Chunk;
 use crate::error::{self, Result};
-use crate::protocol::SpawnParams;
+use crate::protocol::{READ_CHUNK_BYTES, SpawnParams};
 
 /// Chunks of output that may wait for the task forwarding them; past this the
-/// reader stops reading and the process blocks on its own writes.
+/// reader stops reading and the process blocks on its own writes. At one
+/// read each, a process that outruns its forwarder holds at most a mebibyte.
 pub(super) const OUTPUT_BACKLOG: usize = 64;
-// With the backlog above, a process that outruns its forwarder holds at most
-// a mebibyte.
-pub(super) use crate::protocol::READ_CHUNK_BYTES;
 /// The variable a program is looked up through.
 const PATH_VARIABLE: &str = "PATH";
 /// The search path a process gets when its environment names none.

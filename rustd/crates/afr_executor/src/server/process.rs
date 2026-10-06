@@ -19,11 +19,13 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use super::launch::{Exit, OUTPUT_BACKLOG, Plan, READ_CHUNK_BYTES, Spawned, launcher};
+use super::launch::{Exit, OUTPUT_BACKLOG, Plan, Spawned, launcher};
 use crate::api::Ending;
 use crate::edges::Chunk;
 use crate::error::Result;
-use crate::protocol::{ExitedParams, NOTIFY_EXITED, NOTIFY_OUTPUT, OutputParams, line};
+use crate::protocol::{
+    ExitedParams, NOTIFY_EXITED, NOTIFY_OUTPUT, OutputParams, READ_CHUNK_BYTES, line,
+};
 
 /// How long a process's group has between TERM and KILL.
 pub(crate) const KILL_GRACE: Duration = Duration::from_secs(2);

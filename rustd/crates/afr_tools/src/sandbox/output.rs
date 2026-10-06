@@ -5,8 +5,10 @@
 //! (`afr_executor`'s edges), and a call reads only once it is done waiting,
 //! so it holds those edges at most, whatever the process said meanwhile; the
 //! next call starts from where this one stopped. This budget is the model's,
-//! and smaller. The marker counts the bytes both cuts dropped, so the model
-//! knows how much it did not see. The status line comes last so the thread's `output_head`
+//! and smaller. Output that fits it carries a marker where each gap fell;
+//! output that does not carries one marker counting every byte not shown. A
+//! process whose output was still open when it ended says so before its
+//! status. The status line comes last so the thread's `output_head`
 //! stays the command's own first lines, and it is worded as Codex words it,
 //! so a model trained on Codex's harness reads it unprompted.
 
@@ -33,15 +35,20 @@ const SIGNALED: &str = "Process killed by signal";
 pub(super) const TIMED_OUT: &str = "Process timed out";
 /// How a process whose ending never reached the caller reads.
 const INTERRUPTED: &str = "Process interrupted before its ending arrived";
-/// What a call whose process left output behind at its end reads last.
-const ABANDONED: &str = "... output still arriving when the process ended was left behind ...";
+/// What a call whose process ended with its output still open reads last:
+/// nothing written after the drain gave it up is shown.
+const ABANDONED: &str =
+    "... the process ended with its output still open; what was written after is not shown ...";
+/// The most tokens a call reads back, whatever the model asks: the two edges
+/// a call can hold, at four bytes a token; Codex's
+/// `UNIFIED_EXEC_OUTPUT_MAX_TOKENS`.
+const OUTPUT_TOKENS_MAX: usize = (2 * 512 * 1024) / BYTES_PER_TOKEN;
 
 /// A process's output as it arrived, whichever stream carried it, and the
 /// bytes dropped unread between its head and tail.
 #[derive(Debug, Default)]
 pub(super) struct Collected {
     bytes: Vec<u8>,
-    omitted: u64,
     /// Where in `bytes` each gap fell, and the bytes it dropped.
     gaps: Vec<(usize, u64)>,
     /// Whether output still arriving when the process ended was left behind.
@@ -91,7 +98,6 @@ impl Collected {
                 None
             }
             ProcessEvent::Omitted { bytes } => {
-                self.omitted = self.omitted.saturating_add(bytes);
                 self.gaps.push((self.bytes.len(), bytes));
                 None
             }
@@ -111,10 +117,12 @@ impl Collected {
     /// left behind at the process's end is said last.
     pub(super) fn text(&self, budget: usize) -> String {
         let whole = String::from_utf8_lossy(&self.bytes);
-        let shown = if whole.len() <= budget {
-            self.with_gaps()
-        } else {
+        let shown = if whole.len() > budget {
             self.cut(&whole, budget)
+        } else if self.gaps.is_empty() {
+            whole.into_owned()
+        } else {
+            self.with_gaps()
         };
         if self.abandoned {
             with_line(shown, ABANDONED)
@@ -125,7 +133,7 @@ impl Collected {
 
     /// The whole output, a marker on a line of its own where each gap fell.
     fn with_gaps(&self) -> String {
-        let mut shown = String::new();
+        let mut shown = String::with_capacity(self.bytes.len() + self.gaps.len() * MARKER_ROOM);
         let mut from = 0;
         for (at, bytes) in &self.gaps {
             let run = self.bytes.get(from..*at).unwrap_or_default();
@@ -144,9 +152,10 @@ impl Collected {
     fn cut(&self, whole: &str, budget: usize) -> String {
         let (head, tail) = edges(whole, budget);
         let cut = whole.len() - head.len() - tail.len();
-        let omitted = self
-            .omitted
-            .saturating_add(u64::try_from(cut).unwrap_or(u64::MAX));
+        let omitted = self.gaps.iter().fold(
+            u64::try_from(cut).unwrap_or(u64::MAX),
+            |sum, (_at, bytes)| sum.saturating_add(*bytes),
+        );
         let marked = with_line(head.to_owned(), &marker(omitted));
         if tail.is_empty() {
             marked
@@ -160,6 +169,9 @@ impl Collected {
 fn marker(omitted: u64) -> String {
     format!("... {omitted} bytes omitted ...")
 }
+
+/// The room one marker and its line breaks take, at most.
+const MARKER_ROOM: usize = 48;
 
 /// `text`'s first and last halves of `budget` bytes, cut on character
 /// boundaries: all of it, and no tail, when it fits.
@@ -189,6 +201,7 @@ pub(super) fn with_line(mut text: String, line: &str) -> String {
 pub(super) fn budget(tokens: Option<usize>) -> usize {
     tokens
         .unwrap_or(OUTPUT_TOKENS_DEFAULT)
+        .min(OUTPUT_TOKENS_MAX)
         .saturating_mul(BYTES_PER_TOKEN)
 }
 

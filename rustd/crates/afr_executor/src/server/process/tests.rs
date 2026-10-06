@@ -18,14 +18,14 @@ use tokio_util::sync::CancellationToken;
 use tracing::Level;
 
 use super::super::files::Workspace;
-use super::super::launch::{Plan, READ_CHUNK_BYTES};
+use super::super::launch::Plan;
 use super::{
     DRAIN_BYTES_MAX, DRAIN_GRACE, EVENT_OUTPUT_ABANDONED, EVENT_PROCESS_COMPLETED,
     EVENT_PROCESS_FAILED, EVENT_SIGNAL_MISSED, Group, ProcessRun, drain, report,
 };
 use crate::api::{Ending, Stream};
 use crate::edges::Chunk;
-use crate::protocol::SpawnParams;
+use crate::protocol::{READ_CHUNK_BYTES, SpawnParams};
 
 /// A program that writes for as long as its output is taken.
 const YES: &str = "/usr/bin/yes";
