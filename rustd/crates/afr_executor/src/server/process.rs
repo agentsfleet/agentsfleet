@@ -6,8 +6,9 @@
 //! output is forwarded, as it arrives; the supervisor's side bounds what its
 //! reader has not read. The one thing it waits on is the connection's
 //! bounded output queue, when a process writes faster than the supervisor
-//! reads: the process then waits on its own full pipe. Output is drained for
-//! a bounded grace once the leader ends. When the token is cancelled, by a
+//! reads: the process then waits on its own full pipe. Once the leader ends,
+//! what it left is drained, bounded by a grace waiting on the pipe and a
+//! byte cap. When the token is cancelled, by a
 //! kill or because the session ended, the process is stopped the same way.
 
 use std::time::Duration;
@@ -15,9 +16,10 @@ use std::time::Duration;
 use bytes::Bytes;
 use rustix::process::{Pid, Signal, kill_process_group};
 use tokio::sync::mpsc;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use super::launch::{Exit, Plan, Spawned, launcher};
+use super::launch::{Exit, OUTPUT_BACKLOG, Plan, READ_CHUNK_BYTES, Spawned, launcher};
 use crate::api::Ending;
 use crate::edges::Chunk;
 use crate::error::Result;
@@ -25,10 +27,16 @@ use crate::protocol::{ExitedParams, NOTIFY_EXITED, NOTIFY_OUTPUT, OutputParams, 
 
 /// How long a process's group has between TERM and KILL.
 pub(crate) const KILL_GRACE: Duration = Duration::from_secs(2);
-/// How long output may keep arriving once the leader has ended. A descendant
-/// that left the group — `setsid cmd &`, a background job on a terminal —
-/// can hold the output open indefinitely; past this it is not waited for.
+/// How long the drain waits on the pipe once the leader has ended. A
+/// descendant that left the group — `setsid cmd &`, a background job on a
+/// terminal — can hold the output open indefinitely; past this it is not
+/// waited for. Time spent waiting on the writer does not count: that is the
+/// supervisor reading, not the process holding its output open.
 pub(crate) const DRAIN_GRACE: Duration = Duration::from_secs(2);
+/// The most output forwarded once the leader has ended: twice what the
+/// reader's backlog holds, room for that and a pipe's buffer. Past it, a
+/// descendant outside the group that keeps writing is not forwarded.
+const DRAIN_BYTES_MAX: usize = 2 * OUTPUT_BACKLOG * READ_CHUNK_BYTES;
 /// Writes that may wait for a process to read its input; past this a write
 /// is refused rather than held.
 pub(crate) const INPUT_BACKLOG: usize = 16;
@@ -97,20 +105,14 @@ impl ProcessRun {
         stop.cancel();
         // Whatever the leader left in its group goes with it, so the output
         // closes and the drain below ends; a descendant outside the group is
-        // waited for only as long as the grace.
+        // waited for only as far as the grace and the cap.
         group.signal(Signal::KILL);
-        let drained = tokio::time::timeout(DRAIN_GRACE, async {
-            while let Some(chunk) = output.recv().await {
-                forward(&lines, process, chunk).await;
-            }
-        })
-        .await;
-        if drained.is_err() {
+        if !drain(&mut output, &lines, process).await {
             let event = EVENT_OUTPUT_ABANDONED;
             tracing::debug!(
                 event,
                 process_id = process,
-                "output still open past the drain grace"
+                "output still open past the drain's grace or its cap"
             );
         }
         drop(tasks);
@@ -122,6 +124,31 @@ impl ProcessRun {
         report(process, ending);
         process
     }
+}
+
+/// Forwards what is left in `output` once the leader has ended, until it
+/// closes; `false` when it was given up on, past the grace spent waiting on
+/// the pipe or past the byte cap.
+async fn drain(
+    output: &mut mpsc::Receiver<Chunk>,
+    lines: &mpsc::Sender<Bytes>,
+    process: u64,
+) -> bool {
+    let mut grace = DRAIN_GRACE;
+    let mut forwarded = 0;
+    while forwarded < DRAIN_BYTES_MAX {
+        let waiting = Instant::now();
+        let Ok(next) = tokio::time::timeout(grace, output.recv()).await else {
+            return false;
+        };
+        let Some(chunk) = next else {
+            return true;
+        };
+        grace = grace.saturating_sub(waiting.elapsed());
+        forwarded += chunk.data.len();
+        forward(lines, process, chunk).await;
+    }
+    false
 }
 
 /// Hands one chunk to the writer, waiting while it is behind. A writer that
