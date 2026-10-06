@@ -180,7 +180,7 @@ triggers:
     repositories: [acme/payments]
 ```
 
-For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository.
+For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository. The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a trigger with no `events` list admits every event (`rustd/crates/afd_ingress/src/binding.rs`).
 
 ### What the event belongs to
 
@@ -218,24 +218,24 @@ This gives each layer one job:
 
 ### Where a grant comes from
 
-A grant is **originated at install**, from the bundle fields the catalogue already
-stores: installing a fleet that declares a required credential writes a `pending`
-`core.integration_grants` row and raises an approval gate carrying the bundle's
-stated reason. The seed runs synchronously in the create handler beside
-`INSERT core.fleets` — deliberately not in the install-step progression, whose
-every sub-step is best-effort by design, and where a failed seed would flip the
-fleet to `active` carrying no grant.
+A grant is **originated at install**: installing a fleet that declares a
+credential whose stored handle is mintable writes an `approved`
+`core.integration_grants` row and raises no approval card, because choosing the
+fleet is the answer (`rustd/crates/afd_fleet_lifecycle/src/install/grants.rs`).
+The write runs after the fleet is flipped `active` and is best-effort: a failed
+write is logged, the install stands, and the lease path asks for the grant the
+first time a delivery needs it (`rustd/crates/afd_fleet/src/lease/deliver.rs`).
 
-The decision then belongs to the approval-gate machine this codebase already
-ships: an inbox, a detail page with an evidence tree, resolve buttons, a webhook,
+When the lease path has to ask (a fleet installed before install-time grants, a
+credential added by a later edit, or an install-time write that failed), the
+decision belongs to the approval-gate machine this codebase already ships: an inbox, a detail page with an evidence tree, resolve buttons, a webhook,
 a timeout sweeper, and an append-only audit. **A gate is a per-event decision; a
 grant is the standing answer that outlives the run.** The gate asks; the grant
 remembers. Resolving the gate as approved flips the grant and the gate in one
 statement, so the two cannot disagree; any non-approval outcome drives the grant
 to `revoked` rather than back to `pending`, which nothing would re-raise.
 
-Origination sits inside the middleware chain, and that placement is
-load-bearing. The App ingress query inner-joins on `status = 'approved'`, so a
+Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`, so a
 fleet that cannot obtain a grant writes no event, takes no lease, and reports
 nothing — it goes silently inert rather than failing visibly. An origination
 path reachable only with a credential the fleet does not hold produces exactly
@@ -244,7 +244,8 @@ that silence.
 A lease is the last checkpoint: a credential that resolves to a mintable handle
 with no approved grant **parks the event** rather than dropping the credential
 and issuing a lease that can never mint. The delivery stays leasable, so the
-next poll re-evaluates it and an approval takes effect with no redeploy.
+next poll re-evaluates it and an approval takes effect with no redeploy. A
+grant a person revoked ends the event with `grant_denied` instead of parking it.
 
 An incoming delivery follows this order:
 
@@ -254,6 +255,7 @@ GitHub App delivery
         │
         ▼
 verify platform webhook signature BEFORE reading routing fields
+  (a `ping` answers `pong` only after the signature verifies)
         │
         ▼
 installation.id → core.connector_installs → workspace
@@ -269,7 +271,7 @@ active fleets in that workspace
 authenticated-body-digest/fleet replay slot → XADD fleet:{id}:events
 ```
 
-Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails, its slot is released and a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are appended again.
+Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails before its admission row commits, a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are appended again. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app.rs`).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries": a delivery fails when the receiver is down or takes longer than **ten seconds** to answer, and recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries. This page previously credited the recovery to "GitHub's retry", which does not exist, and the correction matters because it moves the boundary of what is recoverable:
 
