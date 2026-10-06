@@ -6,7 +6,7 @@
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
-use afd_cron::DesiredStatus;
+use afd_cron::{DesiredStatus, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -27,9 +27,6 @@ const NIGHTLY: &str = "0 3 * * *";
 
 /// What the seeded schedule asks its fleet to do.
 const MESSAGE: &str = "run the nightly sweep";
-
-/// The scheduler this daemon registered the schedule with.
-const SOURCE: &str = "qstash";
 
 /// A workspace holding one fleet and one schedule that fires at it.
 pub(crate) struct Fixture {
@@ -112,7 +109,9 @@ impl Fixture {
         .bind(self.fleet.as_str())
         .bind(fleet.as_str())
         .bind(self.schedule.as_str())
-        .bind(SOURCE)
+        // A person's schedule: `source` names who wrote it, and a retirement
+        // decodes the whole row, so it must hold a value the store reads back.
+        .bind(Source::Api.as_str())
         .bind(NIGHTLY)
         .bind(MESSAGE)
         .bind(desired.as_str())
