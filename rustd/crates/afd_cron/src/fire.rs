@@ -48,6 +48,13 @@ pub fn schedule_actor(schedule: &Uuid7) -> String {
     format!("{ACTOR_PREFIX}{}", schedule.as_str())
 }
 
+/// The fire identity of a `once` schedule, in place of the caller's id.
+///
+/// A one-off fires once, whichever path asks: the scheduler's callback and a
+/// run-now carry different ids, and both can read the row before either
+/// retires it. Keyed by the schedule alone, the second is the first's replay.
+const ONCE_FIRE: &str = "once";
+
 /// The body field a fired run's words travel in.
 ///
 /// The field every producer's body uses and the runner reads its first turn
@@ -93,7 +100,8 @@ impl Fire {
         Self { admissions }
     }
 
-    /// Admits one verified fire, at most once however often it arrives.
+    /// Admits one verified fire, at most once however often it arrives. A
+    /// `once` target is admitted at most once at all, under [`ONCE_FIRE`].
     ///
     /// # Errors
     /// Reports a database that would not record the acceptance. A queue that
@@ -109,7 +117,8 @@ impl Fire {
         // Scoped by SCHEDULE as well as by fleet: one fleet may hold many
         // schedules, and a key that was the message id alone would let two
         // schedules firing on the same tick silence each other.
-        let key = format!("{fleet}:{schedule}:{message_id}");
+        let fire_id = if target.once { ONCE_FIRE } else { message_id };
+        let key = format!("{fleet}:{schedule}:{fire_id}");
         let actor = schedule_actor(schedule);
         let request_json = body(&target.message);
 
