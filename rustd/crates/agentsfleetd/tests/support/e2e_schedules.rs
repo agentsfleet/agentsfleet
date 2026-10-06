@@ -59,6 +59,10 @@ pub(crate) struct Leased {
     pub(crate) fence: u64,
 }
 
+/// The second fleet's name: one name per workspace, and the scenario's own
+/// fleet holds [`crate::e2e_seed::FLEET_NAME`].
+const OTHER_FLEET_NAME: &str = "e2e-other-fleet";
+
 impl Leased {
     pub(crate) async fn boot(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Self {
         let extra = [
@@ -180,6 +184,7 @@ impl Leased {
         seed_fleet(
             &self.run.booted,
             fleet.as_str(),
+            OTHER_FLEET_NAME,
             &self.run.workspace,
             &self.run.tenant,
             FLEET_CONFIG_JSON,

@@ -54,8 +54,8 @@ use crate::e2e_db::scenario_database;
 use crate::e2e_event::{enqueue, enqueue_unsupported};
 use crate::e2e_retire::retire_fleet;
 use crate::e2e_seed::{
-    DEEP_POOL, FLEET_CONFIG_JSON, enrolment, seed_fleet, seed_model_rate, seed_platform_default,
-    seed_wallet,
+    DEEP_POOL, FLEET_CONFIG_JSON, FLEET_NAME, enrolment, seed_fleet, seed_model_rate,
+    seed_platform_default, seed_wallet,
 };
 use crate::e2e_seed_keys::seed_provider_key;
 
@@ -248,7 +248,10 @@ pub(crate) async fn scenario_with(
     let now = afd_core::clock::now();
 
     let (fleet, workspace, tenant) = unique_ids();
-    seed_fleet(&booted, &fleet, &workspace, &tenant, config, now).await;
+    seed_fleet(
+        &booted, &fleet, FLEET_NAME, &workspace, &tenant, config, now,
+    )
+    .await;
     seed_wallet(&booted, &tenant, DEEP_POOL, now).await;
     seed_model_rate(&booted, now).await;
     let default = seed_platform_default(&booted, &workspace, now).await;
