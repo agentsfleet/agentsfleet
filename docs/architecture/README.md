@@ -68,6 +68,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | How do I add a connector provider? | [`connectors.md`](./connectors.md) §Adding a provider |
 | How does a GitHub event find its fleet? | [`connectors.md`](./connectors.md) §GitHub App |
 | What is immutable in a bundle vs editable in a fleet? | [`fleet_bundles.md`](./fleet_bundles.md) §Two layers |
+| What does one lease write, end to end, and when is its sandbox destroyed? | [`lease_flow.md`](./lease_flow.md) — a dated source trace, not yet reconciled with `data_flow.md` |
 | How does a platform fleet become installable? | [`fleet_bundles.md`](./fleet_bundles.md) §The publish gate |
 | Which test root owns my component? | [`testing.md`](./testing.md) §Component ownership |
 | When should Rust code use a shared owner or a crate? | [`rust-ownership.md`](./rust-ownership.md) §Review rubric |

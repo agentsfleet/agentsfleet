@@ -10,6 +10,8 @@ use std::time::Duration;
 use afd_core::id::Uuid7;
 use afd_wire::activity::{ActivityAccepted, ActivityFrame, FleetResponseChunk, ToolCallStarted};
 use afr_agent::EventSink as _;
+use afr_telemetry::labels::FrameDrop;
+use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::{Counter, MAX_BATCH_BYTES, channel, encoded_len};
 use crate::client::Verb;
@@ -52,7 +54,12 @@ async fn test_activity_sender_drops_past_four_batches() {
     }
     drop(sink);
 
-    let stalled = tokio::time::timeout(Duration::from_secs(5), pump.run()).await;
+    let (tally, recorded) = Tally::new();
+    let stalled = scoped(
+        tally,
+        tokio::time::timeout(Duration::from_secs(5), pump.run()),
+    )
+    .await;
 
     assert!(
         stalled.is_err(),
@@ -61,6 +68,11 @@ async fn test_activity_sender_drops_past_four_batches() {
     assert_eq!(
         pump.dropped, 1,
         "only the full batch that waited is dropped"
+    );
+    assert_eq!(
+        recorded.try_iter().collect::<Vec<_>>(),
+        vec![Recorded::FramesDropped(FrameDrop::Backpressure, 1)],
+        "the dropped batch's one frame is counted"
     );
 }
 
@@ -159,9 +171,15 @@ async fn a_failed_post_is_only_logged() {
     sink.emit(tool(TOOL));
     drop(sink);
 
-    pump.run().await;
+    let (tally, recorded) = Tally::new();
+    scoped(tally, pump.run()).await;
 
     assert_eq!(drain(&mut calls).len(), 1, "posted once, not retried");
+    assert_eq!(
+        recorded.try_iter().collect::<Vec<_>>(),
+        vec![Recorded::FramesDropped(FrameDrop::PostFailed, 1)],
+        "the frame the daemon did not take is counted as lost"
+    );
 }
 
 #[test]

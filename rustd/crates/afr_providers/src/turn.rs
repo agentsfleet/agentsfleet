@@ -21,6 +21,8 @@ use std::ops::ControlFlow;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use afd_wire::activity::StreamTextKind;
+use afr_telemetry::labels::{Provider as ProviderLabel, RetryReason};
+use afr_telemetry::record;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 use rig_core::DynModel;
@@ -116,8 +118,12 @@ impl Turns {
             .map_err(|failure| self.failed(failure))
     }
 
-    /// Logs a turn opened again after `failure`.
+    /// Logs and counts a turn opened again after `failure`.
     fn reopened(&self, attempt: usize, failure: &ProviderError) {
+        record::retry(
+            ProviderLabel::of(&self.provider),
+            RetryReason::StreamReopened,
+        );
         let lease_id = &*self.lease_id;
         let reason = raise::code(failure);
         let event = EVENT_REOPENED;

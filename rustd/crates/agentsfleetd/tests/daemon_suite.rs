@@ -108,6 +108,8 @@ mod integration_rust_runner_bundles;
 mod integration_rust_runner_repairs;
 #[path = "integration_rust_runner_reviews.rs"]
 mod integration_rust_runner_reviews;
+#[path = "integration_rust_runner_telemetry.rs"]
+mod integration_rust_runner_telemetry;
 #[path = "integration_serve.rs"]
 mod integration_serve;
 #[path = "integration_telemetry.rs"]

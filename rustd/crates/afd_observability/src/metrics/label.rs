@@ -31,6 +31,10 @@ mod tests;
 /// them once by hand. `ALL` in particular is what the census ceiling is graded
 /// against, so a member added without it would silently understate the budget —
 /// the exact drift this whole module exists to prevent.
+///
+/// Exported so the runner's own census declares its label sets the same way,
+/// rather than through a second copy of this macro that could drift from it.
+#[macro_export]
 macro_rules! closed_set {
     (
         $(#[$outer:meta])*
@@ -62,4 +66,4 @@ macro_rules! closed_set {
     };
 }
 
-pub(crate) use closed_set;
+pub(crate) use crate::closed_set;

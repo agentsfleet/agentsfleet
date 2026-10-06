@@ -807,6 +807,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_otlp"
+version = "0.56.0"
+dependencies = [
+ "afd_core",
+ "afd_observability",
+ "http",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "afd_outbound"
 version = "0.57.0"
 dependencies = [
@@ -972,6 +987,7 @@ dependencies = [
  "afr_memory",
  "afr_providers",
  "afr_secrets",
+ "afr_telemetry",
  "afr_tools",
  "async-trait",
  "bytes",
@@ -1048,6 +1064,7 @@ dependencies = [
  "afr_agent",
  "afr_egress",
  "afr_memory",
+ "afr_telemetry",
  "afr_tools",
  "axum",
  "backon",
@@ -1121,6 +1138,7 @@ dependencies = [
  "afr_providers",
  "afr_sandbox",
  "afr_secrets",
+ "afr_telemetry",
  "afr_tools",
  "async-trait",
  "axum",
@@ -1138,8 +1156,29 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "afr_telemetry"
+version = "0.56.0"
+dependencies = [
+ "afd_core",
+ "afd_observability",
+ "afd_otlp",
+ "afr_tools",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1173,6 +1212,7 @@ dependencies = [
  "afr_providers",
  "afr_sandbox",
  "afr_supervisor",
+ "afr_telemetry",
  "cargo_metadata",
  "clap",
  "serde_json",
@@ -1209,6 +1249,7 @@ dependencies = [
  "afd_mail",
  "afd_memory",
  "afd_observability",
+ "afd_otlp",
  "afd_outbound",
  "afd_runner",
  "afd_sse",
@@ -1222,19 +1263,17 @@ dependencies = [
  "afr_providers",
  "afr_sandbox",
  "afr_supervisor",
+ "afr_telemetry",
  "afr_tools",
  "axum",
  "base64 0.23.1",
  "clap",
  "futures-util",
- "http",
  "hyper",
  "hyper-util",
  "object_store",
  "opentelemetry",
  "opentelemetry-appender-tracing",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
  "rcgen",
  "reqwest",
  "rustls",

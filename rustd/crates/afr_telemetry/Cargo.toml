@@ -1,0 +1,50 @@
+[package]
+name = "afr_telemetry"
+description = "The runner's telemetry: a credential-free endpoint, a fixed span budget, and the runner's own metric families."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# M-TEST-UTIL. A recorder that hands every measurement to the test, and the
+# scope that routes one future's measurements to it.
+test-util = []
+
+[dependencies]
+# The environment seam, the error hull, the registry codes, the worker clamp
+# the lease table is sized from.
+afd_core.workspace = true
+# The census reader, the instrument set, the family kinds, the span and label
+# vocabulary, and the closed-set macro the label enums are declared with.
+afd_observability.workspace = true
+# The transport the daemon builds through too: the knobs and the pipelines.
+afd_otlp.workspace = true
+# The published tool catalog, so a tool label is a catalog name or `_other`.
+afr_tools.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+# The provider table's names, read from the file `afr_providers` routes from,
+# so a provider label is a registered name or `_other`.
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# The bridge that turns the runner's four span kinds into OTLP spans.
+tracing-opentelemetry.workspace = true
+# The per-layer filter that admits only those span kinds, and no event.
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+afd_core = { workspace = true, features = ["test-util"] }
+# An exporter build failure, lifted to prove it stays a transport failure.
+opentelemetry-otlp.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }

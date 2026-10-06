@@ -47,13 +47,40 @@ pub(crate) fn spent(span: &Span, input: u64, output: u64) {
     span.record(ATTR_USAGE_OUTPUT_TOKENS, output);
 }
 
-/// The span one tool call is traced in.
+/// The span one tool call is traced in, naming the tool by the catalog's
+/// closed set.
+///
+/// The name a call carries is the model's own spelling: unbounded, unscrubbed,
+/// and steerable by whatever the model read. This span leaves the host, so an
+/// unpublished name goes out as `_other`, the value the tool family uses.
 pub(crate) fn execute_tool(name: &str, call_id: &str) -> Span {
+    let tool = afr_telemetry::labels::Tool::of(name).as_str();
     tracing::info_span!(
         target: RUNNER_SCOPE_NAME,
         OPERATION_EXECUTE_TOOL,
         { ATTR_OPERATION_NAME } = OPERATION_EXECUTE_TOOL,
-        { ATTR_TOOL_NAME } = name,
+        { ATTR_TOOL_NAME } = tool,
         { ATTR_TOOL_CALL_ID } = call_id,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use afd_core::test_util::trace;
+    use afd_observability::semconv::ATTR_TOOL_NAME;
+
+    /// A tool name the catalog does not publish leaves the host as `_other`,
+    /// so the model's own text never rides the span.
+    #[test]
+    fn an_unpublished_tool_name_is_exported_as_other() {
+        let capture = trace::Capture::install();
+
+        super::execute_tool("sk-live-not-a-tool", "1").in_scope(|| {});
+
+        let spans = capture.spans();
+        assert_eq!(
+            spans.first().and_then(|span| span.field(ATTR_TOOL_NAME)),
+            Some(afr_telemetry::labels::OTHER)
+        );
+    }
 }

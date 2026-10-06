@@ -13,6 +13,8 @@ use afr_egress::Egress;
 use afr_memory::Hydrated;
 use afr_providers::{Call, Connect, Hosted, Message, Provider, Replay, Request, ToolSpec};
 use afr_secrets::Scrub;
+use afr_telemetry::labels::{Provider as ProviderLabel, TurnOutcome};
+use afr_telemetry::record;
 use afr_tools::{Catalog, Lease, Selection};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
@@ -85,6 +87,8 @@ enum Ending {
 struct Harness<'run> {
     lease_id: &'run str,
     model: &'run str,
+    /// The provider, as the turn-duration family labels it.
+    provider: ProviderLabel,
     stop: &'run CancellationToken,
     checkpoint: &'run dyn Checkpoint,
     checkpoints: Checkpoints,
@@ -111,6 +115,7 @@ impl<'run> Harness<'run> {
         Self {
             lease_id: &run.lease.lease_id,
             model: &policy.context.model,
+            provider: ProviderLabel::of(&policy.provider),
             stop: run.stop,
             checkpoint: run.checkpoint,
             checkpoints: Checkpoints::new(&policy.context),
@@ -217,12 +222,18 @@ impl<'run> Harness<'run> {
             hosted: if capped { &[] } else { &self.hosted },
         };
         let span = spans::chat(self.model);
+        let started = Instant::now();
         let streamed = take(provider.stream(request), &mut self.live).instrument(span.clone());
         let taken = tokio::select! {
             biased;
             () = self.stop.cancelled() => None,
             taken = streamed => Some(taken),
         };
+        record::turn(
+            self.provider,
+            turn_outcome(taken.as_ref()),
+            started.elapsed(),
+        );
         match &taken {
             Some(Ok(done)) => {
                 let input_tokens = done.usage.prompt();
@@ -293,6 +304,15 @@ impl<'run> Harness<'run> {
         let event = EVENT_CAP_REACHED;
         tracing::info!(lease_id, turns, tokens, event);
         self.messages.push(Message::User(CAP_REACHED.to_owned()));
+    }
+}
+
+/// How a turn ended, as the turn-duration family labels it.
+const fn turn_outcome(taken: Option<&afr_providers::Result<Turn>>) -> TurnOutcome {
+    match taken {
+        Some(Ok(_answered)) => TurnOutcome::Completed,
+        Some(Err(_failed)) => TurnOutcome::Failed,
+        None => TurnOutcome::Stopped,
     }
 }
 

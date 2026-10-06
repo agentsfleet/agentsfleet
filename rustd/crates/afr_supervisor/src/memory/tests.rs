@@ -12,6 +12,8 @@ use afd_wire::memory::MemoryHydrateResponse;
 
 use afr_agent::Checkpoint as _;
 use afr_memory::Recall as _;
+use afr_telemetry::labels::PushFailure;
+use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::{LeaseCheckpoint, Recaller, capture, hydrate};
 use crate::client::Verb;
@@ -170,4 +172,63 @@ async fn a_recall_the_daemon_refuses_is_unanswered_under_its_code_and_never_retr
     );
     let daemons = error::unavailable(Verb::Recall, 503).code();
     assert_kept(&unanswered.code(), &daemons);
+}
+
+/// A push the daemon answers 500 past its retries is counted once, as an
+/// upstream failure; a refused checkpoint is counted the same way.
+#[tokio::test(start_paused = true)]
+async fn test_memory_push_failure_is_counted() {
+    let (plane, _calls) = plane(|_call| Answer::Fail(error::unavailable(Verb::Capture, 500)));
+    let fleet = Uuid7::parse(FLEET_ID).unwrap();
+    let lease = lease(LEASE_ID, FLEET_ID, None);
+    let (tally, recorded) = Tally::new();
+
+    let pushed = scoped(
+        Arc::<Tally>::clone(&tally),
+        capture(&plane, &fleet, &lease, answer().memory),
+    )
+    .await;
+    assert!(pushed.is_err(), "the push did not land");
+    let checkpoint = LeaseCheckpoint::new(&plane, &fleet, &lease);
+    let checkpointed = scoped(tally, checkpoint.push(answer().memory)).await;
+    assert!(checkpointed.is_err(), "nor did the checkpoint");
+
+    assert_eq!(
+        recorded.try_iter().collect::<Vec<_>>(),
+        vec![
+            Recorded::PushFailed(PushFailure::Upstream),
+            Recorded::PushFailed(PushFailure::Upstream),
+        ],
+        "one count per push that did not land, never one per retried attempt"
+    );
+}
+
+/// Every way a push fails names its reason: the daemon unwell, the daemon
+/// refusing, the push never arriving, and the runner's own fault.
+#[tokio::test]
+async fn every_push_failure_names_its_reason() {
+    // Port 1 is reserved and nothing listens on it, so the connect is refused.
+    let unreached = reqwest::Client::new()
+        .get("http://127.0.0.1:1/")
+        .send()
+        .await
+        .unwrap_err();
+    for (failure, reason) in [
+        (
+            error::unavailable(Verb::Capture, 503),
+            PushFailure::Upstream,
+        ),
+        (
+            error::refused(Verb::Capture, 409, None),
+            PushFailure::Refused,
+        ),
+        (error::token_refused(), PushFailure::Refused),
+        (
+            error::transport(Verb::Capture)(unreached),
+            PushFailure::Transport,
+        ),
+        (error::config("a setting is missing"), PushFailure::Internal),
+    ] {
+        assert_eq!(failure.push_failure(), reason, "{failure}");
+    }
 }
