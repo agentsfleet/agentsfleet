@@ -163,5 +163,14 @@ async fn test_fleet_schedule_patch_is_idempotent() {
         view.as_object_mut().expect("a view").remove("updated_at");
     }
     assert_eq!(first, second);
+
+    // A patch that names no message keeps the stored one.
+    let resume = json!({"fencing_token": leased.fence, "paused": false});
+    let (resumed_status, resumed) = leased
+        .call(Method::PATCH, &leased.path(&member), Some(&resume))
+        .await;
+    assert_eq!(resumed_status, 200, "{resumed}");
+    assert_eq!(resumed["status"], "active");
+    assert_eq!(resumed["message"], "daily check");
     leased.finish(supervisor).await;
 }
