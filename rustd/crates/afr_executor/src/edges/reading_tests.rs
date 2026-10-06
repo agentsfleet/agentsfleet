@@ -143,3 +143,19 @@ fn a_character_the_head_starts_before_a_gap_joins_the_gap() {
         "the two bytes the sign started with join the gap"
     );
 }
+
+/// A head whose last chunk is only the start of a character, cut off by a
+/// gap, reads as the gap alone: never an empty chunk, never a lead byte.
+#[test]
+fn a_head_chunk_that_is_only_a_started_character_reads_as_its_gap() {
+    let mut unread = Unread::new(4);
+    unread.push(stdout(b"\xe2\x82"));
+    unread.push(stdout(b"\xe2\x82\xac"));
+    unread.push(stdout(b"zzzz"));
+
+    assert_eq!(
+        drain(&mut unread),
+        [Next::Omitted(5), Next::Output(stdout(b"zzzz"))],
+        "the head's two bytes join the gap"
+    );
+}

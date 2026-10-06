@@ -249,3 +249,41 @@ async fn a_chunk_longer_than_one_read_is_dropped_and_the_rest_still_arrives() {
     assert_eq!(finished.stdout, vec![b'y'; READ_CHUNK_BYTES]);
     assert_eq!(finished.endings, [Ending::Exited(0)]);
 }
+
+/// A sandbox that keeps sending chunks past one read earns one warning per
+/// connection; the rest are a whisper, so it cannot flood the journal.
+#[tokio::test]
+async fn oversized_chunks_warn_once_per_connection_then_whisper() {
+    let capture = Capture::install();
+    let (_scratch, client, mut fake) = connect().await;
+    let spawning =
+        tokio::spawn(async move { (client.spawn(&Spawn::program("anything")).await, client) });
+    started(&mut fake, 7).await;
+    let (process, _client) = spawning.await.unwrap();
+    let process = process.unwrap();
+    let oversized = BASE64_STANDARD.encode(vec![b'x'; READ_CHUNK_BYTES + 1]);
+
+    for _ in 0..3 {
+        fake.say(&format!(
+            r#"{{"jsonrpc":"2.0","method":"process/output","params":{{"process_id":7,"stream":"stdout","data":"{oversized}"}}}}"#
+        ))
+        .await;
+    }
+    fake.say(r#"{"jsonrpc":"2.0","method":"process/exited","params":{"process_id":7,"ending":{"kind":"exited","code":0},"output_abandoned":false}}"#).await;
+    finish(process).await;
+
+    let logged: Vec<_> = capture
+        .events()
+        .into_iter()
+        .filter(|event| event.field("event") == Some("executor_output_oversized"))
+        .collect();
+    assert_eq!(logged.len(), 3, "{logged:?}");
+    assert_eq!(
+        logged
+            .iter()
+            .filter(|event| event.level == tracing::Level::WARN)
+            .count(),
+        1,
+        "one warning per connection"
+    );
+}

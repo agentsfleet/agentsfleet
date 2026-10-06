@@ -7,8 +7,8 @@ use afr_executor::Ending;
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use super::YIELD_MS_MIN;
 use super::tests::{CAT, EXIT, FIRST, FIRST_RUNNING, ONE, REPL, open, write, writing};
+use super::{INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_MS_MIN};
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
@@ -26,7 +26,10 @@ async fn should_answer_the_ending_of_a_process_gone_by_the_time_of_a_write() {
 
     let output = call_in(&*write(), &executor, &mut lease, writing(1, EXIT, None)).await;
 
-    assert_eq!(output.text, "Process exited with code 3");
+    assert_eq!(
+        output.text,
+        format!("{WRITE_UNDELIVERED}\nProcess exited with code 3")
+    );
     assert_eq!(output.exit_code, Some(3));
     assert_eq!(output.error_code, None);
     assert_eq!(
@@ -60,7 +63,7 @@ async fn should_read_a_process_gone_by_a_write_as_running_until_its_ending() {
     let next = call_in(&*write(), &executor, &mut lease, writing(1, "", None)).await;
 
     assert_eq!(started.elapsed(), Duration::from_millis(YIELD_MS_MIN));
-    assert_eq!(first.text, FIRST_RUNNING);
+    assert_eq!(first.text, format!("{WRITE_UNDELIVERED}\n{FIRST_RUNNING}"));
     assert_eq!(first.error_code, None);
     assert_eq!(next.text, "Process exited with code 0");
     assert!(
@@ -79,8 +82,7 @@ async fn should_say_why_a_write_was_refused_and_run_on() {
 
     let output = call_in(&*write(), &executor, &mut lease, writing(1, ONE, None)).await;
 
-    let why = afr_executor::error::input_closed().wire_message();
-    assert_eq!(output.text, format!("{why}\n{FIRST_RUNNING}"));
+    assert_eq!(output.text, format!("{INPUT_REFUSED}\n{FIRST_RUNNING}"));
     assert_eq!(output.error_code, None);
     assert!(lease.sessions.get_mut(FIRST).is_some(), "runs on");
 }
@@ -99,4 +101,25 @@ async fn should_answer_any_other_refusal_at_once_and_keep_the_session() {
     assert_eq!(started.elapsed(), Duration::ZERO, "nothing to wait for");
     assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
     assert!(lease.sessions.get_mut(FIRST).is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn should_read_a_write_to_a_process_the_executor_lost_as_running() {
+    let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
+    let mut lease = Lease::default();
+    open(&executor, &mut lease, CAT).await;
+    assert!(executor.forget(FIRST));
+
+    let output = call_in(&*write(), &executor, &mut lease, writing(1, "x", None)).await;
+
+    assert_eq!(output.error_code, None);
+    assert!(
+        output.text.ends_with(FIRST_RUNNING),
+        "its ending is still to come, got {:?}",
+        output.text
+    );
+    assert!(
+        lease.sessions.get_mut(FIRST).is_some(),
+        "left for the run's end to close"
+    );
 }

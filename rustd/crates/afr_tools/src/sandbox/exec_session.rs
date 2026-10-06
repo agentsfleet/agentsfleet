@@ -35,6 +35,17 @@ const YIELD_MS_DEFAULT: u64 = 10_000;
 const EMPTY_WRITE_YIELD_MS_MIN: u64 = 5_000;
 /// What a call naming no open session reads back after its id.
 const NOT_OPEN: &str = "is not an open session";
+/// What a write that found no process reads before the session's state: the
+/// process had ended, and its ending follows.
+pub(super) const WRITE_UNDELIVERED: &str =
+    "the write was not delivered: the process had already ended, and its ending follows";
+/// What a write the process would not take reads before the session's state.
+/// The executor's own sentence stays on the host: it is the executor's to
+/// write, and the model's budget does not cover it.
+pub(super) const INPUT_REFUSED: &str =
+    "the write was not taken: the process closed its input, or has not read what it was sent";
+/// The event a write the process would not take logs under.
+const EVENT_WRITE_REFUSED: &str = "exec_session_write_refused";
 
 /// `exec_command`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -54,7 +65,8 @@ pub(crate) struct Open {
     /// when absent, between 250 and 30000.
     #[serde(default)]
     yield_time_ms: Option<u64>,
-    /// The most output tokens to read back: 10000 when absent.
+    /// The most output tokens to read back: 10000 when absent, at most
+    /// 262144.
     #[serde(default)]
     max_output_tokens: Option<usize>,
 }
@@ -72,7 +84,8 @@ pub(crate) struct Input {
     /// when absent, between 250 and 30000; an empty write waits at least 5000.
     #[serde(default)]
     yield_time_ms: Option<u64>,
-    /// The most output tokens to read back: 10000 when absent.
+    /// The most output tokens to read back: 10000 when absent, at most
+    /// 262144.
     #[serde(default)]
     max_output_tokens: Option<usize>,
 }
@@ -136,7 +149,7 @@ impl Handler for WriteStdin {
             return not_open(id);
         };
         let mut collected = Collected::default();
-        let mut refused = None;
+        let mut refused: Option<&'static str> = None;
         // A process that ended since the last call answers with its ending,
         // never with a write the executor would refuse.
         let ended = if let Some(ending) = collected.arrived(process) {
@@ -151,12 +164,17 @@ impl Handler for WriteStdin {
                     // is on its way, behind whatever it left to say. The call
                     // waits its yield for it and reads the session as running
                     // until it lands; a sandbox that is gone ends the events.
-                    Err(failure) if failure.is_unknown_process() => YIELD_MS_MIN,
+                    Err(failure) if failure.is_unknown_process() => {
+                        refused = Some(WRITE_UNDELIVERED);
+                        YIELD_MS_MIN
+                    }
                     // The process would not take it: it closed its input, or
-                    // has not read what it was sent. It runs on, and the
-                    // model reads why.
+                    // has not read what it was sent. It runs on.
                     Err(failure) if failure.is_input_refused() => {
-                        refused = Some(failure.wire_message());
+                        let session_id = id.get();
+                        let event = EVENT_WRITE_REFUSED;
+                        tracing::debug!(session_id, event);
+                        refused = Some(INPUT_REFUSED);
                         YIELD_MS_MIN
                     }
                     Err(failure) => return unavailable(&failure),
@@ -166,7 +184,7 @@ impl Handler for WriteStdin {
             collected.until(process, deadline).await
         };
         let budget = output::budget(arguments.max_output_tokens);
-        reply(sessions, id, &collected, ended, budget, refused.as_deref())
+        reply(sessions, id, &collected, ended, budget, refused)
     }
 }
 
@@ -205,7 +223,10 @@ fn reply(
         None => format!("{} {}", output::RUNNING, id.get()),
     };
     let text = collected.text(budget);
-    let text = refused.map_or(text.clone(), |why| output::with_line(text, why));
+    let text = match refused {
+        Some(why) => output::with_line(text, why),
+        None => text,
+    };
     ToolOutput {
         text: output::with_line(text, &state),
         exit_code: ended.and_then(output::exit_code),
