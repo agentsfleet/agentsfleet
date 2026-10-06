@@ -241,6 +241,14 @@ async fn test_once_schedule_retires_after_fire() {
         (404, &json!("UZ-SCHED-002")),
         "{again}"
     );
+
+    // Its run outlives the row: the history still lists it.
+    let event = run["event_id"].as_str().expect("the run's event");
+    record_event(&leased.run, event, &format!("{ACTOR_PREFIX}{schedule}"), 1).await;
+    let runs = leased.fenced(&format!("/{schedule}/runs"));
+    let (status, page) = leased.call(Method::GET, &runs, None).await;
+    assert_eq!(status, 200, "{page}");
+    assert_eq!(event_ids(&page), [&json!(event)]);
     leased.finish(supervisor).await;
 }
 

@@ -85,8 +85,8 @@ const RUN_KEY_PREFIX: &str = "run:";
         "`UZ-SCHED-011` with its `current_state`. A run a schedule started ",
         "answers the same with `scheduled_run`, so no schedule wakes its fleet ",
         "in a loop. A fleet that is not taking work answers `UZ-AGT-012`. A ",
-        "`once` schedule retires after this run, so a repeat after that answers ",
-        "404. ",
+        "`once` schedule fires once: a run-now that races its scheduled fire ",
+        "answers that same run, and a repeat after it retires answers 404. ",
     ),
     request_body = ScheduleRunRequest,
     params(afd_http::openapi::path::LeaseSchedule),
@@ -156,7 +156,8 @@ pub(crate) async fn run<D: Services>(
     description = concat!(
         "Lists the events a schedule of the running fleet fired, newest first: ",
         "every event with actor `cron:<schedule_id>` that a runner has taken. ",
-        "Page with `starting_after` and `limit`. ",
+        "A `once` schedule's runs stay listed after it retires. Page with ",
+        "`starting_after` and `limit`. ",
     ),
     params(afd_http::openapi::path::LeaseSchedule, afd_http::openapi::query::ScheduleRunsPage),
     responses(
@@ -192,12 +193,6 @@ pub(crate) async fn runs<D: Services>(
         .map_err(|_unminted| Refusal::malformed(DETAIL_CURSOR))?;
     let now = services.now();
     let lease = standing(&*services, runner.id(), &lease_id, token, now).await?;
-    services
-        .schedules()
-        .one(&lease.fleet_id, &schedule)
-        .await
-        .map_err(Refusal::at(EVENT_FAILED))?
-        .ok_or_else(not_found)?;
     let rows = i64::from(limit);
     let page = services
         .events()
@@ -210,6 +205,17 @@ pub(crate) async fn runs<D: Services>(
         )
         .await
         .map_err(Refusal::at(EVENT_FAILED))?;
+    // History outlives the row: a `once` schedule retires when it fires, and
+    // its runs stay readable. Only an empty first page asks whether the
+    // schedule exists, so an unknown or foreign id still answers 404.
+    if page.is_empty() && cursor.is_none() {
+        services
+            .schedules()
+            .one(&lease.fleet_id, &schedule)
+            .await
+            .map_err(Refusal::at(EVENT_FAILED))?
+            .ok_or_else(not_found)?;
+    }
     Ok(Json(EventsResponse {
         items: page.iter().map(EventRow::summary).collect(),
         next_cursor: next_cursor(&page, rows).map(|after| Cow::Owned(after.encode())),
