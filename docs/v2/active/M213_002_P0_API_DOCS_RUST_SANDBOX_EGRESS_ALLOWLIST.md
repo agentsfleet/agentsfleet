@@ -16,15 +16,16 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M213
 **Workstream:** 002
 **Date:** Oct 06, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — M213_001 cannot cut over without it: on `allow_all` the Zig child shares the host network today and the Rust sandbox reaches nothing, so every package install inside a sandbox breaks on the day of the cutover
 **Categories:** API, DOCS
 **Batch:** B1 — ships in M213_001's Pull Request (Indy, Oct 06, 2026)
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** feat/m213-rust-runner-cutover
+**Folded-into:** `M213_001`
+**Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-**Depends on:** M213_001 — the same Pull Request; this spec's §1 lands before M213_001 deletes `src/runner/`, because the Zig egress code is the behaviour reference read from `origin/main` · M211_001 — reshapes `afr_sandbox` (`bubblewrap.rs`, `warm_slots`, `probe.rs`); this spec's paths are re-confirmed against its merged tree at PLAN
+**Depends on:** M213_001 — the same Pull Request; this spec's §1 lands before M213_001 deletes `src/runner/`, because the Zig egress code is the behaviour reference read from `origin/main` · M211_001 — merged in #732 (`bb0070015`); this spec's `afr_sandbox` paths are re-confirmed against that tree at PLAN
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 06, 2026) from `origin/main` at `8cb2318ec` and `feat/m211-sandbox-tools-and-nested-loops` at `74956c0f7`; every cite below was read from source
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §"Egress model — outbound is the only network surface"; `docs/architecture/runner_execution.md` (the per-lease network allowlist bullet and the "No runner crate builds the per-lease network allowlist" non-goal this spec retires)
 
