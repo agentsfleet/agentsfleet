@@ -36,6 +36,8 @@ pub(super) const NEVER: &str = "never";
 pub(super) const CHILD_ID: &str = "child_id";
 /// The argument bounding a wait.
 pub(super) const TIMEOUT_MS: &str = "timeout_ms";
+/// The argument naming a child's task.
+pub(super) const TASK_KEY: &str = "task";
 /// The fields the nested tools answer with.
 pub(super) const STATUS: &str = "status";
 pub(super) const ANSWER: &str = "answer";
@@ -125,4 +127,15 @@ pub(super) fn last_result(sent: &Sent) -> &str {
 /// `text`, which a nested tool answered, as the JSON it is.
 pub(super) fn parsed(text: &str) -> serde_json::Value {
     serde_json::from_str(text).unwrap()
+}
+
+/// The answer text the frames streamed, chunk by chunk.
+pub(super) fn streamed(frames: &[ActivityFrame<'_>]) -> Vec<String> {
+    frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ActivityFrame::FleetResponseChunk(chunk) => Some(chunk.text.to_string()),
+            _ => None,
+        })
+        .collect()
 }

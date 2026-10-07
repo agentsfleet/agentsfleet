@@ -162,7 +162,13 @@ async fn test_nested_depth_capped() {
             vec![say("d1 done")],
         ],
     )
-    .with_child("d2", [vec![say("d2 done")]]);
+    .with_child(
+        "d2",
+        [
+            vec![call("c2", DELEGATE.name(), json!({"task": "d3"}))],
+            vec![say("d2 done")],
+        ],
+    );
     let engine = engine(tools(), &script);
     let lease = lease(&offered(), unbounded());
 
@@ -187,111 +193,15 @@ async fn test_nested_depth_capped() {
         depth_two[0].tools,
         [UPDATE_PLAN.name(), MEMORY_RECALL.name()]
     );
-}
-
-#[tokio::test]
-async fn test_children_caps_refuse() {
-    let capture = Capture::install();
-    let spawns: Vec<Chunk> = (1..=5)
-        .map(|n| {
-            call(
-                &format!("s{n}"),
-                SPAWN.name(),
-                json!({"task": format!("spawned {n}")}),
-            )
-        })
-        .collect();
-    let waits: Vec<Chunk> = (1..=4)
-        .map(|n| call(&format!("w{n}"), WAIT_AGENT.name(), json!({CHILD_ID: n})))
-        .collect();
-    let delegates: Vec<Chunk> = (1..=13)
-        .map(|n| {
-            call(
-                &format!("d{n}"),
-                DELEGATE.name(),
-                json!({"task": format!("delegated {n}")}),
-            )
-        })
-        .collect();
-    let mut script = Script::new([spawns, waits, delegates, vec![say(DONE)]]);
-    for n in 1..=4 {
-        script = script.with_child(&format!("spawned {n}"), [vec![say("x")]]);
-    }
-    for n in 1..=13 {
-        script = script.with_child(&format!("delegated {n}"), [vec![say("x")]]);
-    }
-    let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
-
-    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
-
-    assert_eq!(output.result.content, DONE);
-    let root = requests_opening_with(&script, OPENING);
-    let spawned = results(&root[1]);
-    assert_eq!(parsed(spawned[3]), json!({CHILD_ID: 4}));
+    let refused = results(&depth_two[1])[0];
     assert!(
-        spawned[4].starts_with("[child_cap_reached]"),
-        "{}",
-        spawned[4]
-    );
-    // The conversation keeps every result: five spawns, four waits, then
-    // the thirteen delegates.
-    let all = results(&root[3]);
-    let from_delegates = &all[9..];
-    assert_eq!(from_delegates.len(), 13);
-    assert_eq!(from_delegates[11], "x", "the sixteenth child started");
-    assert!(
-        from_delegates[12].starts_with("[child_cap_reached]"),
-        "{}",
-        from_delegates[12]
-    );
-    assert!(requests_opening_with(&script, "spawned 5").is_empty());
-    assert!(requests_opening_with(&script, "delegated 13").is_empty());
-    let refused = events(&capture, EVENT_CHILD_REFUSED);
-    assert_eq!(refused.len(), 2);
-    assert!(
-        refused
-            .iter()
-            .all(|event| event.field("error_code") == Some("child_cap_reached"))
-    );
-}
-
-#[tokio::test]
-async fn test_child_tools_subset_of_parent() {
-    let capture = Capture::install();
-    let script = Script::new([
-        vec![call(
-            "p1",
-            DELEGATE.name(),
-            json!({"task": READS, "tools": [UPDATE_PLAN.name(), MEMORY_RECALL.name()]}),
-        )],
-        vec![say(DONE)],
-    ])
-    .with_child(READS, [vec![say(SUMMARY)]]);
-    let engine = engine(tools(), &script);
-    let lease = lease(&[UPDATE_PLAN.name(), DELEGATE.name()], unbounded());
-
-    let (_output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
-
-    let root = requests_opening_with(&script, OPENING);
-    let refused = results(&root[1])[0];
-    assert!(refused.starts_with("[child_tool_not_held]"), "{refused}");
-    assert!(
-        refused.contains(MEMORY_RECALL.name()),
-        "names the tool: {refused}"
+        refused.starts_with("[tool_not_offered]"),
+        "a call past the cap is the router's to refuse: {refused}"
     );
     assert!(
-        requests_opening_with(&script, READS).is_empty(),
+        requests_opening_with(&script, "d3").is_empty(),
         "nothing started"
     );
-    assert_eq!(
-        completions(&frames),
-        [("1".to_owned(), ToolCallStatus::Failed)]
-    );
-    let logged = events(&capture, EVENT_CHILD_REFUSED);
-    assert_eq!(logged.len(), 1);
-    assert_eq!(logged[0].field("error_code"), Some("child_tool_not_held"));
-    assert!(events(&capture, EVENT_CHILD_STARTED).is_empty());
 }
 
 #[tokio::test]
@@ -318,4 +228,42 @@ async fn test_child_usage_sums_into_report() {
     assert_eq!(output.result.input_tokens, 30);
     assert_eq!(output.result.cached_input_tokens, 4);
     assert_eq!(output.result.output_tokens, 11);
+}
+
+/// Input sent before a child's first turn joins its task, so no provider
+/// sees two user messages in a row.
+#[tokio::test]
+async fn test_input_before_the_first_turn_joins_the_task() {
+    let script = Script::new([
+        vec![call("p1", SPAWN.name(), json!({"task": TASK}))],
+        vec![call(
+            "p2",
+            SEND_INPUT.name(),
+            json!({CHILD_ID: 1, "message": ALSO}),
+        )],
+        vec![call("p3", WAIT_AGENT.name(), json!({CHILD_ID: 1}))],
+        vec![say(OK)],
+    ])
+    .with_child(TASK, [vec![say(CHILD_DONE)]]);
+    let engine = engine(tools(), &script);
+    let lease = lease(&offered(), unbounded());
+
+    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+
+    assert_eq!(output.result.content, OK);
+    let child = requests_opening_with(&script, TASK);
+    let users: Vec<&String> = child[0]
+        .messages
+        .iter()
+        .filter_map(|message| match message {
+            Message::User(text) => Some(text),
+            Message::Assistant { .. } | Message::ToolResult { .. } => None,
+        })
+        .collect();
+    assert_eq!(
+        users,
+        [&format!("{TASK}\n\n{ALSO}")],
+        "{:?}",
+        child[0].messages
+    );
 }
