@@ -1,7 +1,8 @@
 //! What a beat's holds list does to the slots: it reconciles the beating
 //! runner's holds and no one else's, an entry that is no identifier is dropped
 //! alone, a list past its bounds holds nothing, and a hold reported inside the
-//! last beat interval outlives the beat that raced it.
+//! last beat interval outlives the beat that raced it, unless that beat is a
+//! closing runner's final list.
 
 use afd_core::id::Uuid7;
 use afd_core::timing::{HEARTBEAT_INTERVAL_MS, SANDBOX_HOLD_IDLE_MS};
@@ -20,6 +21,9 @@ const UNTIL: i64 = ENROLLED_AT + SANDBOX_HOLD_IDLE_MS;
 /// The first beat that may clear a hold reported at enrolment: one full
 /// interval later.
 const SETTLED: i64 = ENROLLED_AT + HEARTBEAT_INTERVAL_MS;
+
+/// A beat inside the interval of a hold reported at enrolment.
+const RACED: i64 = ENROLLED_AT + 1;
 
 /// `runner` beats `request` once every hold made here has settled.
 async fn beats(fixtures: &Fixtures, runner: &Uuid7, request: &HeartbeatRequest<'_>) -> Beat {
@@ -117,7 +121,7 @@ async fn test_a_hold_reported_inside_the_beat_interval_survives_that_beat() {
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
 
-    beats_at(&fixtures, &holder, &beat(&[]), ENROLLED_AT + 1).await;
+    beats_at(&fixtures, &holder, &beat(&[]), RACED).await;
     let raced = slot(&fixtures, &fleet).await.0;
     beats(&fixtures, &holder, &beat(&[])).await;
 
@@ -127,5 +131,28 @@ async fn test_a_hold_reported_inside_the_beat_interval_survives_that_beat() {
         None,
         "a beat a full interval later clears a hold still unlisted"
     );
+    fixtures.cleanup().await;
+}
+
+/// A closing runner has ended every hold and parks no more, so its list is
+/// final: the first beat that leaves a hold out clears it, even one reported
+/// inside the interval, rather than leave the fleet bound to a stopping
+/// runner until it reads offline.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_closing_beat_clears_a_hold_reported_inside_the_interval() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
+    let leases = fixtures.leases();
+    live(&fixtures, &holder).await;
+    hold(&leases, &fixtures, &fleet, &holder, UNTIL).await;
+    let closing = HeartbeatRequest {
+        closing: true,
+        ..beat(&[])
+    };
+
+    beats_at(&fixtures, &holder, &closing, RACED).await;
+
+    assert_eq!(slot(&fixtures, &fleet).await.0, None);
     fixtures.cleanup().await;
 }

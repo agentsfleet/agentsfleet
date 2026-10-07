@@ -45,6 +45,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                     capability_report: Some(report),
                     selftest: None,
                     holds: afd_wire::runner::HeldFleets::default(),
+                    closing: false,
                 },
                 None,
                 UnixMillis::from_millis(ENROLLED_AT + offset),

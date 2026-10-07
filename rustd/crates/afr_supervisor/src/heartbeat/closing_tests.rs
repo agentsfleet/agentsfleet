@@ -27,6 +27,8 @@ use crate::test_support::{Answer, FakeEngine, drain, plane};
 
 /// The beat the daemon answers `stop`, once leasing stopped two beats in.
 const STOPPED_AT_BEAT: usize = 3;
+/// The beat's field saying the runner's holds list is final.
+pub(super) const CLOSING_FIELD: &str = "closing";
 
 /// Every hold the beat ended, by the reason it was logged under.
 fn reasons(capture: &Capture) -> Vec<String> {
@@ -57,6 +59,15 @@ async fn assert_closed(holds: &Holds, engine: &FakeEngine) {
         2,
         "the hold, then the late park"
     );
+}
+
+/// Whether each beat said its list was final, in the order the daemon
+/// received them.
+pub(super) fn closing(calls: &[Call]) -> Vec<bool> {
+    calls
+        .iter()
+        .map(|call| sent(call)[CLOSING_FIELD].as_bool().unwrap())
+        .collect()
 }
 
 /// The holds each beat listed, in the order the daemon received them.
@@ -98,9 +109,15 @@ async fn test_leasing_stopped_ends_every_hold_and_beats_at_once() {
         started.elapsed() < Duration::from_millis(u64::from(TICK_MS)),
         "the beat after leasing stopped did not wait out the tick"
     );
-    let listed = listed(&drain(&mut calls));
+    let calls = drain(&mut calls);
+    let listed = listed(&calls);
     assert_eq!(listed[0], serde_json::json!([FLEET]));
     assert_eq!(listed[1], serde_json::json!([]), "{listed:?}");
+    assert_eq!(
+        closing(&calls)[..2],
+        [false, true],
+        "the list is final once closed"
+    );
     let shutdown = Release::Shutdown.outcome().as_str();
     assert_eq!(reasons(&capture), [shutdown]);
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
@@ -130,11 +147,16 @@ async fn test_a_shutdown_ends_every_hold_and_says_so_in_a_last_beat() {
     holds.shutdown().await;
 
     none_left(&left);
-    let listed = listed(&drain(&mut calls));
+    let calls = drain(&mut calls);
     assert_eq!(
-        listed,
+        listed(&calls),
         [serde_json::json!([FLEET]), serde_json::json!([])],
         "the beat, then the last one listing nothing"
+    );
+    assert_eq!(
+        closing(&calls),
+        [false, true],
+        "the last beat's list is final"
     );
     let ended = Release::Shutdown.outcome().as_str();
     assert_eq!(reasons(&capture), [ended]);
@@ -171,7 +193,7 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let holds = holding(&engine, 2).await;
     let stamps = Arc::new(Mutex::new(Vec::new()));
     let stamped = Arc::clone(&stamps);
-    let (plane, _calls) = plane(move |_call| {
+    let (plane, mut calls) = plane(move |_call| {
         let mut beats = stamped.lock().unwrap();
         beats.push(tokio::time::Instant::now());
         let status = if beats.len() < STOPPED_AT_BEAT {
@@ -199,6 +221,11 @@ async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
     let early = beats.iter().filter(|at| **at - started < tick).count();
     assert_eq!(early, 2, "the first beat and the one brought forward");
     assert!(beats[2] - started >= tick, "the third waited out the tick");
+    assert_eq!(
+        closing(&drain(&mut calls)),
+        [false, true, true, true],
+        "every beat after the close, the last one too, says its list is final"
+    );
 }
 
 /// A token refused on another call stops serving while the beat waits: the

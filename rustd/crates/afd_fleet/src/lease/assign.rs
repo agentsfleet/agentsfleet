@@ -33,6 +33,7 @@ use afd_observability::producers;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
+use crate::lease::affinity;
 use crate::lease::envelope::{Acquired, Kind, from_fresh, from_reclaim};
 use crate::lease::sql;
 use crate::lease::store::Leases;
@@ -190,6 +191,7 @@ impl Leases {
             .inspect(|found| {
                 if let Some(acquired) = found {
                     producers::fleet::run_started(started(acquired.kind));
+                    affinity::count_resumed(acquired);
                 }
             })
     }

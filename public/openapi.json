@@ -16746,6 +16746,10 @@
               }
             ]
           },
+          "closing": {
+            "type": "boolean",
+            "description": "The runner holds nothing more and parks nothing more, so its `holds`\nlist is final. The daemon clears every hold that list leaves out at once.\nAbsent decodes as false."
+          },
           "holds": {
             "type": "array",
             "items": {

@@ -3,7 +3,8 @@
 //! A runner lists every fleet whose sandbox it holds frozen. Any hold its
 //! slots still record that the list leaves out is cleared, so that fleet is
 //! claimable everywhere again, and the reply names the listed fleets the
-//! runner should let go of. A list that is unreadable, out of bounds or empty
+//! runner should let go of. A closing runner's list is final, so even a hold
+//! reported inside the last beat interval is cleared at once. A list that is unreadable, out of bounds or empty
 //! holds nothing: a standing hold keeps the fleet from every other runner,
 //! while a hold cleared by mistake costs only a cold start.
 
@@ -42,11 +43,13 @@ pub fn fleets(holds: &Valid<HeldFleets<'_>>) -> Vec<Uuid7> {
 /// Clears every hold `runner`'s slots record that `holds` leaves out, and
 /// answers which listed fleets the runner should release: any that is no
 /// longer active, or that another runner has leased since. No proved list
-/// holds nothing.
+/// holds nothing. A `closing` runner's list is final: a hold written inside
+/// the last beat interval is cleared too, rather than left to a next beat.
 pub(super) async fn reconcile(
     connection: &mut PgConnection,
     runner: &Uuid7,
     holds: Option<&Valid<HeldFleets<'_>>>,
+    closing: bool,
     now: UnixMillis,
 ) -> Vec<String> {
     let held = holds.map(fleets).unwrap_or_default();
@@ -55,7 +58,8 @@ pub(super) async fn reconcile(
         .bind(runner.as_str())
         .bind(&listed)
         .bind(now.as_millis())
-        .bind(HEARTBEAT_INTERVAL_MS);
+        .bind(HEARTBEAT_INTERVAL_MS)
+        .bind(closing);
     best_effort(clear, connection, EVENT_HOLDS_RECONCILE, runner).await;
     if listed.is_empty() {
         return Vec::new();

@@ -41,6 +41,7 @@ fn test_hold_fields_are_optional_on_the_wire() {
 
     assert_eq!(report.held_until_ms, None);
     assert_eq!(beat.holds, HeldFleets::default());
+    assert!(!beat.closing, "a runner from before closing never closes");
     assert_eq!(answer.release_holds, [] as [Cow<'_, str>; 0]);
     assert_eq!(poll, LeaseRequest::default());
 }

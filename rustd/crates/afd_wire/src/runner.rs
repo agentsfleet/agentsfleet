@@ -266,6 +266,11 @@ pub struct HeartbeatRequest<'a> {
         schema(value_type = Vec<String>, max_items = 64, min_length = 36, max_length = 36)
     )]
     pub holds: HeldFleets<'a>,
+    /// The runner holds nothing more and parks nothing more, so its `holds`
+    /// list is final. The daemon clears every hold that list leaves out at once.
+    /// Absent decodes as false.
+    #[serde(default)]
+    pub closing: bool,
 }
 
 /// `POST /v1/runners/me/heartbeats` reply.
