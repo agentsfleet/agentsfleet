@@ -20,11 +20,11 @@ const FEW_PIDS: u32 = 64;
 // pin test: literal is the contract
 const HOG: &str = "exec python3 -c 'b = bytearray(2 * 1024 ** 3); print(len(b))'";
 /// What a command that should run after an exhaustion prints.
-const OK: &str = "ok";
+pub(crate) const OK: &str = "ok";
 /// A cgroup's count of what its memory limit did.
-const MEMORY_EVENTS: &str = "memory.events";
+pub(crate) const MEMORY_EVENTS: &str = "memory.events";
 /// The count of processes the kernel killed for memory, none yet.
-const NO_OOM_KILLS: &str = "oom_kill 0";
+pub(crate) const NO_OOM_KILLS: &str = "oom_kill 0";
 
 /// Where the kernel publishes a block device by number, and the file of a
 /// loop device's that says whether it bypasses the host's page cache.

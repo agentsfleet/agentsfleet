@@ -19,6 +19,8 @@ mod confinement;
 #[cfg(target_os = "linux")]
 mod exhaustion;
 #[cfg(target_os = "linux")]
+mod exhaustion_concurrent;
+#[cfg(target_os = "linux")]
 mod files;
 #[cfg(target_os = "linux")]
 mod git;
