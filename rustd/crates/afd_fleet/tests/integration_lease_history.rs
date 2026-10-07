@@ -1,9 +1,10 @@
 //! A chat lease's earlier turns, read from a live thread.
 //!
 //! The unit suite beside `lease/history.rs` proves the filter and the caps on
-//! rows it builds; this proves the read itself: the thread statement's
-//! cursor, its fleet scope, and that the rows a report leaves become the turns
-//! the next lease carries.
+//! rows it builds; this proves the read itself: the statement's cursor, its
+//! fleet scope, and its status predicate. The lease a runner is handed is
+//! proven through the plane in `integration_lease_gates/history.rs`, which
+//! owns the provider seed an issued lease needs.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing datastores, and `make test-integration-rustd` — which runs
@@ -138,11 +139,12 @@ impl Threads {
     }
 }
 
-/// A fleet's second chat message is leased with the first message and the
-/// fleet's answer to it; the second itself, and anything after, is not a turn.
+/// A read before a fleet's second chat message returns the first message and
+/// the fleet's answer to it; the second itself, and anything after, is not a
+/// turn.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_follow_up_lease_carries_the_previous_turn() {
+async fn test_history_read_carries_the_previous_turn() {
     let fixtures = Fixtures::create().await;
     let database = &fixtures.database;
     let threads = Threads::seed(database).await;
@@ -209,5 +211,41 @@ async fn test_history_stays_in_its_fleet() {
     let turns = threads.turns_at(database, &fleet, "e2", SEED_MS + 3).await;
 
     assert_eq!(turns, [("mine".to_owned(), "ours".to_owned())]);
+    fixtures.cleanup().await;
+}
+
+/// Rows still running or refused among the newest never take a turn's place:
+/// nine finished rows under three unfinished ones still carry the eight newest
+/// finished turns.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_unfinished_rows_never_shrink_the_window() {
+    let fixtures = Fixtures::create().await;
+    let database = &fixtures.database;
+    let threads = Threads::seed(database).await;
+    let fleet = threads.fleet.clone();
+    let unfinished = [status::RECEIVED, status::GATE_BLOCKED, status::RECEIVED];
+    let rows = (1..=9)
+        .map(|index| (index, status::PROCESSED, Some("a")))
+        .chain(
+            (10..)
+                .zip(unfinished)
+                .map(|(index, ended)| (index, ended, None)),
+        );
+    for (index, ended, answer) in rows {
+        let message = format!("m{index}");
+        let at = SEED_MS + index;
+        let event_id = format!("e{index}");
+        threads
+            .event(database, &fleet, &event_id, at, (&message, ended, answer))
+            .await;
+    }
+
+    let turns = threads
+        .turns_at(database, &fleet, "e13", SEED_MS + 13)
+        .await;
+
+    let messages: Vec<&str> = turns.iter().map(|(message, _)| message.as_str()).collect();
+    assert_eq!(messages, ["m2", "m3", "m4", "m5", "m6", "m7", "m8", "m9"]);
     fixtures.cleanup().await;
 }

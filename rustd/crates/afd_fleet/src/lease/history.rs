@@ -1,10 +1,10 @@
 //! The turns a chat lease carries: the fleet's thread before the event, the
 //! rows the dashboard shows, as the model will read them.
 //!
-//! Read through [`Thread`], which [`History`] implements with the thread's own
-//! keyset statement, so a read that fails is tested without a database. A read
-//! that fails issues the lease with no turns, because a follow-up answered
-//! without its context beats one refused.
+//! Read through [`Thread`], which [`History`] implements with a keyset
+//! statement over the thread's finished rows, so a read that fails is tested
+//! without a database. A read that fails issues the lease with no turns,
+//! because a follow-up answered without its context beats one refused.
 
 use std::borrow::Cow;
 use std::fmt::Debug;
@@ -29,11 +29,13 @@ pub(super) const EVENT_HISTORY_UNAVAILABLE: &str = "lease_history_unavailable";
 /// A fleet's chat thread, read before one event.
 #[async_trait::async_trait]
 pub trait Thread: Send + Sync + Debug {
-    /// Up to `limit` rows of `fleet`'s thread older than `at`, newest first.
+    /// Up to `limit` of `fleet`'s finished rows older than `at`, newest
+    /// first. Finished is the read's own predicate, so a running or refused
+    /// row never takes a place a turn could fill.
     ///
     /// # Errors
     /// A datastore that would not answer, or a row this build cannot read.
-    async fn before(
+    async fn finished_before(
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
@@ -44,14 +46,14 @@ pub trait Thread: Send + Sync + Debug {
 
 #[async_trait::async_trait]
 impl Thread for History {
-    async fn before(
+    async fn finished_before(
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
         at: &Cursor,
         limit: i64,
     ) -> afd_events::Result<Vec<EventDetailRow>> {
-        self.thread_page(workspace, fleet, Some(at), limit).await
+        History::finished_before(self, workspace, fleet, at, limit).await
     }
 }
 
@@ -88,9 +90,10 @@ pub async fn turns_before(
     if event_type != EventType::Chat {
         return Vec::new();
     }
-    // One row more than is kept, so a window the cap cut is known as one.
+    // One finished row more than is kept, so a window the cap cut is known
+    // as one.
     let limit = i64::try_from(HISTORY_TURNS_MAX + 1).unwrap_or(i64::MAX);
-    match thread.before(workspace, fleet, at, limit).await {
+    match thread.finished_before(workspace, fleet, at, limit).await {
         Ok(rows) => {
             let window = within_caps(rows);
             metrics::carried(window.turns.iter().map(size).sum());
@@ -122,11 +125,9 @@ pub(super) struct Window {
 /// most [`HISTORY_TURNS_MAX`], each text cut to [`TURN_TEXT_BYTES_MAX`], and
 /// the oldest dropped until the rest fit [`HISTORY_BYTES_MAX`].
 pub(super) fn within_caps(rows: Vec<EventDetailRow>) -> Window {
-    let mut text_cut = false;
-    let mut finished: Vec<Turn<'static>> = rows
-        .into_iter()
-        .filter_map(|row| turn(row, &mut text_cut))
-        .collect();
+    let (mut finished, text_cuts): (Vec<Turn<'static>>, Vec<bool>) =
+        rows.into_iter().filter_map(turn).unzip();
+    let text_cut = text_cuts.contains(&true);
     let turns_cut = finished.len() > HISTORY_TURNS_MAX;
     finished.truncate(HISTORY_TURNS_MAX);
     finished.reverse();
@@ -153,9 +154,9 @@ pub(super) fn within_caps(rows: Vec<EventDetailRow>) -> Window {
     Window { turns, cuts }
 }
 
-/// One finished row as a turn; a row still running, queued or refused at a
-/// gate is no turn.
-fn turn(row: EventDetailRow, text_cut: &mut bool) -> Option<Turn<'static>> {
+/// One finished row as a turn, and whether either text had to be cut; a row
+/// still running, queued or refused at a gate is no turn.
+fn turn(row: EventDetailRow) -> Option<(Turn<'static>, bool)> {
     let answer = match row.row.status.as_str() {
         status::PROCESSED => row.response_text.unwrap_or_else(|| ANSWER_NONE.to_owned()),
         status::FLEET_ERROR => {
@@ -168,18 +169,20 @@ fn turn(row: EventDetailRow, text_cut: &mut bool) -> Option<Turn<'static>> {
         }
         _unfinished => return None,
     };
-    Some(Turn {
-        message: Cow::Owned(cut(&message_of(&row.request_json), text_cut)),
-        answer: Cow::Owned(cut(&answer, text_cut)),
-    })
+    let (message, message_cut) = cut(&message_of(&row.request_json));
+    let (answer, answer_cut) = cut(&answer);
+    let turn = Turn {
+        message: Cow::Owned(message),
+        answer: Cow::Owned(answer),
+    };
+    Some((turn, message_cut || answer_cut))
 }
 
-/// `text` within [`TURN_TEXT_BYTES_MAX`], never splitting a character;
-/// `text_cut` is set when it had to be.
-fn cut(text: &str, text_cut: &mut bool) -> String {
+/// `text` within [`TURN_TEXT_BYTES_MAX`], never splitting a character, and
+/// whether it had to be cut.
+fn cut(text: &str) -> (String, bool) {
     let kept = truncate(text, TURN_TEXT_BYTES_MAX);
-    *text_cut |= kept.len() < text.len();
-    kept.to_owned()
+    (kept.to_owned(), kept.len() < text.len())
 }
 
 /// The bytes a turn spends of [`HISTORY_BYTES_MAX`].

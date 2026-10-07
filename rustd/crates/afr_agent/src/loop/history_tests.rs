@@ -10,7 +10,7 @@ use afr_providers::{Message, Replay};
 use tokio_util::sync::CancellationToken;
 
 use crate::context::{Budget, EVICTED};
-use crate::fixture::{GITHUB_TOKEN, Script, budget, lease, say, unbounded};
+use crate::fixture::{GITHUB_TOKEN, Script, budget, clean, lease, say, unbounded};
 use crate::harness::tests::{drive, engine};
 use crate::prompt::Prompt;
 
@@ -73,6 +73,18 @@ async fn test_history_is_scrubbed() {
 
     let rendered = format!("{:?}", sent.messages);
     assert!(!rendered.contains(GITHUB_TOKEN), "{rendered}");
+    assert_eq!(
+        sent.messages[..2],
+        [
+            Message::User(clean(&asked).into_inner()),
+            Message::Assistant {
+                text: clean(&answered).into_inner(),
+                calls: Vec::new(),
+                replay: Replay::default(),
+            },
+        ],
+        "the turn is sent, in its masked form"
+    );
 }
 
 /// A message reads the same as a turn as it read when it was current: both

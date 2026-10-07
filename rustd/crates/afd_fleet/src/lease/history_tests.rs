@@ -29,7 +29,8 @@ fn row(index: i64, status: &str, message: &str, answer: Option<&str>) -> EventDe
     row
 }
 
-/// A thread that answers `rows`, or fails, and counts how often it was read.
+/// A thread that answers up to the asked-for count of `rows`, as the
+/// statement's limit does, or fails, and counts how often it was read.
 #[derive(Debug)]
 struct Fake {
     rows: Option<Vec<EventDetailRow>>,
@@ -47,18 +48,19 @@ impl Fake {
 
 #[async_trait::async_trait]
 impl Thread for Fake {
-    async fn before(
+    async fn finished_before(
         &self,
         _workspace: &Uuid7,
         _fleet: &Uuid7,
         _at: &Cursor,
-        _limit: i64,
+        limit: i64,
     ) -> afd_events::Result<Vec<EventDetailRow>> {
         self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        match &self.rows {
-            Some(rows) => Ok(rows.clone()),
-            None => Err(afd_events::error::one_of_each_kind().remove(0).1),
-        }
+        let limit = usize::try_from(limit).unwrap();
+        self.rows
+            .as_ref()
+            .map(|rows| rows.iter().take(limit).cloned().collect())
+            .ok_or_else(|| afd_events::error::one_of_each_kind().remove(0).1)
     }
 }
 
@@ -119,24 +121,21 @@ fn test_history_caps_turns_and_bytes() {
     let cut = within_caps(vec![row(1, status::PROCESSED, &long, Some("a"))]).turns;
     assert_eq!(cut[0].message.len(), TURN_TEXT_BYTES_MAX - 1);
 
-    // Eight turns at the text cap each pass the budget; the oldest go first.
+    // Eight turns of 16,386 bytes are 131,088 against a 65,536 budget: the
+    // oldest five go, and the newest three, 49,158 bytes, fit.
     let full = "y".repeat(TURN_TEXT_BYTES_MAX);
     let heavy: Vec<EventDetailRow> = (1..=8)
         .rev()
         .map(|index| row(index, status::PROCESSED, &format!("m{index}"), Some(&full)))
         .collect();
     let fitted = within_caps(heavy).turns;
+    let messages: Vec<&str> = fitted.iter().map(|turn| turn.message.as_ref()).collect();
+    assert_eq!(messages, ["m6", "m7", "m8"]);
     let bytes: usize = fitted
         .iter()
         .map(|turn| turn.message.len() + turn.answer.len())
         .sum();
     assert!(bytes <= HISTORY_BYTES_MAX, "{bytes} bytes kept");
-    assert_eq!(
-        fitted.last().map(|turn| turn.message.as_ref()),
-        Some("m8"),
-        "the newest turn survives the budget"
-    );
-    assert!(fitted.len() < 8, "some oldest turns were dropped");
 }
 
 /// Webhook, cron and continuation leases carry no turns, and never read.
