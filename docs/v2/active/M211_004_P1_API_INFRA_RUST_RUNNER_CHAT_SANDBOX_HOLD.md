@@ -23,8 +23,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** feat/m211-nested-loops-and-chat-continuity
 **Folded-into:** `M211_002`
 **Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=4212 integration=4929 — Rust unit 4212 passed, 0 failed, 879 ignored (runner 982 · daemon 132 · daemon libraries 3098); integration through the coverage shards 4929 passed, 0 failed (substrate 4158 · runner 550 · daemon 221); TypeScript app 3642, design-system 647, website 142 passed, cli 1779 passed and 17 skipped, at `bb0070015` via PR #732's identical tree. The branch at `886733be6`: Rust unit 4312 passed, 0 failed, 895 ignored (+100); integration 868 + 2 exclusive passed, 0 failed; kernel lane 34 passed.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M211-bb0070015.md`
 **Depends on:** M211_001 (the sandbox-side tools; a lease with only supervisor tools builds no sandbox, `rustd/crates/afr_agent/src/engine.rs:139-141`) · M211_003 (its two cgroup leaves freeze together; its host disk reserve is deferred, so nothing reserves disk for a hold) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:184-185` refuses them until then)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from a source trace of the chat path at `b0138d7b3`, recorded in Discovery
 **Canonical architecture:** `docs/architecture/runner_execution.md` §"Workspace between leases", §Toolbox; `docs/architecture/runner_fleet.md` §"Per-lease renewal — how a long fleet keeps its lease", §"Memory continuity — durable fleet memory rides the trusted plane"
@@ -99,39 +99,39 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Hold the sandbox a processed lease leaves
+### §1 — Hold the sandbox a processed lease leaves — DONE
 
 `sandboxed()` takes the fleet's held sandbox before it prepares one, and parks the sandbox instead of destroying it when the lease ends processed. Park freezes the lease cgroup and waits for `frozen 1`, then records the key: fleet, workspace, limits, and the policy (network policy plus repository binding). No credential enters a sandbox (`afr_supervisor/src/lease_loop/checkout.rs:1-3`), so there is nothing to empty first, and the toolbox is fixed for the runner's process (`bubblewrap_engine.rs:52-56`), so it is not part of the key. Take requires the whole key to match, thaws, and checks that the executor answers; anything else destroys the hold and prepares fresh. Holds end at their deadline, when the runner's last free worker takes a lease (every hold but the one reused, because a busy runner cannot serve them), at the cap (`Capped`), at shutdown, and when the daemon names the fleet inactive (§2). At most `worker_count` holds; the oldest goes first. On reuse the host never touches the clone: a `.git` the tenant wrote, copied or created into by the privileged host, is a symlink escape, so the repository stays exactly as the last lease left it, uncommitted edits included. Exec sessions close at the end of every run (`afr_agent/src/loop/finish.rs:76`), so what a hold keeps is files; a process survives only if it left the shell's process group, which the executor kills when a command ends (`afr_executor/src/server/process.rs`). **Implementation default:** a ten-minute idle window because a chat follow-up usually lands within minutes, and the cap and the freeze bound what a hold costs; Indy may change it.
 
-- **Dimension 1.1** — A processed lease parks its sandbox frozen, and no renewal is sent → Test `test_processed_lease_parks_its_sandbox_frozen`
-- **Dimension 1.2** — The fleet's next lease takes the hold: the file reads back, and a detached process frozen with it made no progress and runs on once thawed → Test `test_next_lease_reuses_the_held_sandbox`
-- **Dimension 1.3** — Other limits or another policy destroys the hold and prepares fresh; another fleet's lease leaves it alone → Test `test_mismatch_destroys_the_hold`
-- **Dimension 1.4** — A hold past its deadline is destroyed → Test `test_expired_hold_is_destroyed`
-- **Dimension 1.5** — The last free worker's lease releases every other hold → Test `test_saturation_releases_holds`
-- **Dimension 1.6** — A failed, interrupted or superseded lease destroys its sandbox, as today → Test `test_failed_lease_never_parks`
-- **Dimension 1.7** — Holds never exceed `worker_count`; the oldest is released first, as `Capped` → Test `test_holds_capped_oldest_first`
-- **Dimension 1.8** — Reuse leaves the clone exactly as the last lease left it: no fetch, no copy, no host write into `.git` → Test `test_reuse_leaves_the_clone_untouched`
-- **Dimension 1.9** — A thaw that fails, or an executor silent after thaw, falls back to a fresh sandbox → Test `test_thaw_failure_falls_back_fresh`
+- **Dimension 1.1** DONE · PARKED for production (M213_001 Dimension 1.4) — A processed lease parks its sandbox frozen, and no renewal is sent → Test `test_processed_lease_parks_its_sandbox_frozen`
+- **Dimension 1.2** DONE · PARKED for production (M213_001 Dimension 1.4) — The fleet's next lease takes the hold: the file reads back, and a detached process frozen with it made no progress and runs on once thawed → Test `test_next_lease_reuses_the_held_sandbox`
+- **Dimension 1.3** DONE · PARKED for production (M213_001 Dimension 1.4) — Other limits or another policy destroys the hold and prepares fresh; another fleet's lease leaves it alone → Test `test_mismatch_destroys_the_hold`
+- **Dimension 1.4** DONE · PARKED for production (M213_001 Dimension 1.4) — A hold past its deadline is destroyed → Test `test_expired_hold_is_destroyed`
+- **Dimension 1.5** DONE · PARKED for production (M213_001 Dimension 1.4) — The last free worker's lease releases every other hold → Test `test_saturation_releases_holds`
+- **Dimension 1.6** DONE · PARKED for production (M213_001 Dimension 1.4) — A failed, interrupted or superseded lease destroys its sandbox, as today → Test `test_failed_lease_never_parks`
+- **Dimension 1.7** DONE · PARKED for production (M213_001 Dimension 1.4) — Holds never exceed `worker_count`; the oldest is released first, as `Capped` → Test `test_holds_capped_oldest_first`
+- **Dimension 1.8** DONE · PARKED for production (M213_001 Dimension 1.4) — Reuse leaves the clone exactly as the last lease left it: no fetch, no copy, no host write into `.git` → Test `test_reuse_leaves_the_clone_untouched`
+- **Dimension 1.9** DONE · PARKED for production (M213_001 Dimension 1.4) — A thaw that fails, or an executor silent after thaw, falls back to a fresh sandbox → Test `test_thaw_failure_falls_back_fresh`
 
-### §2 — Tell the daemon what the runner holds
+### §2 — Tell the daemon what the runner holds — DONE
 
 The report carries `held_until_ms` when its lease parked. The report's fencing-guarded release writes it to `fleet.runner_affinity.held_until` in the report's own transaction, so a superseded holder records nothing and destroys what it parked. The daemon clamps a reported `held_until_ms` to `now + SANDBOX_HOLD_IDLE_MS` and stores nothing for one already past. Every heartbeat carries the fleets the runner holds; the daemon clears `held_until` on that runner's rows the list omits, and answers with the listed fleets that are not both active and last held by this runner, which the runner destroys: a stranger's fleet answers exactly as a deleted one, so the answer leaks nothing across tenants. A runner that releases holds for saturation heartbeats at once rather than on its tick.
 
-- **Dimension 2.1** — A report with `held_until_ms` stores it, clamped, under the fencing guard; a stale token stores nothing → Test `test_report_stores_hold_under_fencing`
-- **Dimension 2.2** — A heartbeat that omits a held fleet clears its hold → Test `test_heartbeat_clears_dropped_holds`
-- **Dimension 2.3** — The answer names a held fleet that was halted or deleted, and the runner destroys that hold → Test `test_inactive_fleet_hold_destroyed`
-- **Dimension 2.4** — A report or heartbeat without the new fields decodes as today → Test `test_hold_fields_are_optional_on_the_wire`
+- **Dimension 2.1** DONE — A report with `held_until_ms` stores it, clamped, under the fencing guard; a stale token stores nothing → Test `test_report_stores_hold_under_fencing`
+- **Dimension 2.2** DONE — A heartbeat that omits a held fleet clears its hold → Test `test_heartbeat_clears_dropped_holds`
+- **Dimension 2.3** DONE · PARKED for production (M213_001 Dimension 1.4) — The answer names a held fleet that was halted or deleted, and the runner destroys that hold → Test `test_inactive_fleet_hold_destroyed`
+- **Dimension 2.4** DONE — A report or heartbeat without the new fields decodes as today → Test `test_hold_fields_are_optional_on_the_wire`
 
-### §3 — The holder claims first
+### §3 — The holder claims first — DONE
 
 `SELECT_READY_CANDIDATES` and `CLAIM_AFFINITY_SLOT` skip a fleet another runner holds while `held_until` is in the future and that runner is live: `fleet.runners.last_seen_at > now - RUNNER_OFFLINE_AFTER_MS` (`afd_core/src/timing.rs:55`). The lease poll carries the runner's holds, and the holder looks at those fleets first (`afd_fleet/src/lease/assign/offer.rs`, `held_first`, reading each fleet's readiness token from Dragonfly alone, so an idle poll still touches no Postgres), before its partition scan, so the next message does not wait for the round-robin. `RELEASE_UNLEASED_SLOT` keeps the hint while the fleet is held; its starvation guard still covers every fleet not held. Another runner's claim clears `held_until`; the holder's own claim keeps it, so an empty claim by the holder (Dimension 3.5) leaves the hold standing. A hold is a head start at the slot, never the slot: the holder claims through the same fencing-guarded statement, so the single live holder stays one.
 
-- **Dimension 3.1** — The holder claims its held fleet's next event → Test `test_holder_claims_its_held_fleet`
-- **Dimension 3.2** — Another runner skips a held fleet while the holder is live → Test `test_other_runner_skips_held_fleet`
-- **Dimension 3.3** — Another runner claims it once the holder misses `RUNNER_OFFLINE_AFTER_MS` or the hold lapses → Test `test_lapsed_hold_is_claimable`
-- **Dimension 3.4** — The holder finds its held fleet's event on its next poll, whatever the partition → Test `test_holder_polls_its_holds_first`
-- **Dimension 3.5** — An empty claim by the holder keeps the hint while held → Test `test_drained_claim_keeps_held_hint`
-- **Dimension 3.6** — A fleet nobody holds is claimed, released and unhinted exactly as before → Test `test_unheld_fleet_claims_as_before`
+- **Dimension 3.1** DONE — The holder claims its held fleet's next event → Test `test_holder_claims_its_held_fleet`
+- **Dimension 3.2** DONE — Another runner skips a held fleet while the holder is live → Test `test_other_runner_skips_held_fleet`
+- **Dimension 3.3** DONE — Another runner claims it once the holder misses `RUNNER_OFFLINE_AFTER_MS` or the hold lapses → Test `test_lapsed_hold_is_claimable`
+- **Dimension 3.4** DONE — The holder finds its held fleet's event on its next poll, whatever the partition → Test `test_holder_polls_its_holds_first`
+- **Dimension 3.5** DONE — An empty claim by the holder keeps the hint while held → Test `test_drained_claim_keeps_held_hint`
+- **Dimension 3.6** DONE — A fleet nobody holds is claimed, released and unhinted exactly as before → Test `test_unheld_fleet_claims_as_before`
 
 ## Interfaces
 

@@ -23,8 +23,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** feat/m211-nested-loops-and-chat-continuity
 **Folded-into:** `M211_002`
 **Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=4212 integration=4929 — Rust unit 4212 passed, 0 failed, 879 ignored (runner 982 · daemon 132 · daemon libraries 3098); integration through the coverage shards 4929 passed, 0 failed (substrate 4158 · runner 550 · daemon 221); TypeScript app 3642, design-system 647, website 142 passed, cli 1779 passed and 17 skipped, at `bb0070015` via PR #732's identical tree. The branch at `886733be6`: Rust unit 4312 passed, 0 failed, 895 ignored (+100); integration 868 + 2 exclusive passed, 0 failed; kernel lane 34 passed.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M211-bb0070015.md`
 **Depends on:** M211_001 (§1's processes and §8's `LOOP_CONFIGURE` attach, which the workspace disk reuses) · spike S6's evidence in `docs/v2/reviews/m211-toolbox-spikes.md`
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from spike S6's kernel log and runs
 **Canonical architecture:** `docs/architecture/runner_execution.md` §"Sandbox engines", §"Workspace between leases"
