@@ -168,11 +168,13 @@ closed_set! {
 }
 
 closed_set! {
-    /// Who won the claim on a fleet whose slot named a held sandbox.
+    /// Who won the claim on a fleet whose slot named a sandbox held live at
+    /// the claim. A hold past its deadline is no hold, and counts nothing.
     HeldClaim {
         /// The runner holding the fleet's sandbox, which continues in it.
         Holder => "holder",
-        /// Another runner, once the hold lapsed or its holder fell silent.
+        /// Another runner, once the holder fell silent or could no longer
+        /// lease: degraded, or no longer active.
         OtherAfterLapse => "other_after_lapse",
     }
 }

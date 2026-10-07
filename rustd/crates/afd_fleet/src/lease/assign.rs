@@ -46,8 +46,6 @@ use diagnostics::{EVENT_LEASE_RECLAIMED, EVENT_READY_PEEK_FAILED, drop_undecodab
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CANDIDATES: &str = "lease candidate scan";
 
-pub(crate) use afd_state::sql::FLEET_STATUS_ACTIVE;
-
 /// How many ready fleets one poll will consider.
 ///
 /// `constants.zig`'s `MAX_READY_CANDIDATES_PER_POLL`. The ceiling is what makes
@@ -157,12 +155,13 @@ impl Leases {
     ) -> Result<Vec<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
         let rows = sqlx::query(sql::lease::SELECT_READY_CANDIDATES)
-            .bind(FLEET_STATUS_ACTIVE)
+            .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(runner_id.as_str())
             .bind(ready)
             .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
             .bind(now.as_millis())
             .bind(RUNNER_OFFLINE_AFTER_MS)
+            .bind(sql::ADMIN_STATE_ACTIVE)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_CANDIDATES))?;

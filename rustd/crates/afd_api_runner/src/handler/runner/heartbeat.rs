@@ -17,7 +17,9 @@
 //! host that cannot beat is a host the fleet reads as dead. So the body is
 //! parsed LENIENTLY here — anything unreadable becomes
 //! [`afd_runner::NO_REPORT`] — and the bounds on what does parse are the
-//! service's (`afd_runner::bounds`).
+//! service's (`afd_runner::bounds`). The holds list is proved here, once: a
+//! list past its bounds is not proved and holds nothing, as an unreadable
+//! body does, and the beat still counts.
 //!
 //! That leniency stops at the size limit, which is enforced before this runs:
 //! `hyper` refuses an oversize head and axum's body limit refuses an oversize
@@ -27,12 +29,14 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_core::timing::HEARTBEAT_INTERVAL_MS;
+use afd_runner::heartbeat::holds::prove;
 use afd_runner::{Beat, NO_REPORT};
-use afd_wire::runner::{HeartbeatRequest, HeartbeatResponse, HeartbeatStatus};
+use afd_wire::runner::{HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
+use garde::Valid;
 
 use crate::auth::RunnerIdentity;
 use crate::handler::refuse;
@@ -75,10 +79,10 @@ pub(crate) async fn handle<D: Services>(
     // host sends on its first beat is re-serialised into the row, and copying
     // it twice on the path every host takes every ten seconds is the kind of
     // cost that only shows up at fleet scale.
-    let beat = read(&body);
+    let (beat, held) = read(&body);
     match services
         .runners()
-        .heartbeat(runner.id(), &beat, services.now())
+        .heartbeat(runner.id(), &beat, held.as_ref(), services.now())
         .await
     {
         Ok(beat) => Json(payload(&beat)).into_response(),
@@ -86,17 +90,21 @@ pub(crate) async fn handle<D: Services>(
     }
 }
 
-/// What the body carried, or nothing at all.
+/// What the body carried, or nothing at all, beside its holds list proved
+/// inside its bounds, or `None` when it is not.
 ///
 /// The one place the leniency in this module's documentation is spent. It is
 /// deliberately silent: a host sending a body this daemon cannot read is a host
 /// running a build that disagrees about the shape, which is worth a metric
 /// eventually and is worth nothing in a log line per beat per host.
-fn read(body: &[u8]) -> HeartbeatRequest<'_> {
-    if body.is_empty() {
-        return NO_REPORT;
-    }
-    afd_http::handler::read_body(body).unwrap_or(NO_REPORT)
+fn read(body: &[u8]) -> (HeartbeatRequest<'_>, Option<Valid<HeldFleets<'_>>>) {
+    let mut beat = if body.is_empty() {
+        NO_REPORT
+    } else {
+        afd_http::handler::read_body(body).unwrap_or(NO_REPORT)
+    };
+    let held = prove(std::mem::take(&mut beat.holds));
+    (beat, held)
 }
 
 /// The cadence as the wire carries it.
@@ -146,8 +154,46 @@ fn payload(beat: &Beat) -> HeartbeatResponse<'_> {
 #[cfg(test)]
 mod tests {
     use afd_core::timing::{HEARTBEAT_INTERVAL_MS, RUNNER_OFFLINE_AFTER_MS};
+    use afd_runner::heartbeat::holds::fleets;
+    use afd_wire::runner::HOLDS_MAX;
 
-    use super::WIRE_INTERVAL_MS;
+    use super::{WIRE_INTERVAL_MS, read};
+
+    /// A fleet in the canonical version-7 form a runner sends.
+    const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
+
+    /// A capability report, so a beat's other content is seen to survive.
+    const REPORT: &str = r#""capability_report":{"landlock":true,"seccomp":true,
+        "cgroup_controllers":[],"bubblewrap":true,"egress_enforcement":true}"#;
+
+    /// A body carrying [`REPORT`] and `fleets` as its holds.
+    fn body(fleets: &[&str]) -> String {
+        let quoted: Vec<String> = fleets.iter().map(|fleet| format!("\"{fleet}\"")).collect();
+        format!("{{{REPORT},\"holds\":[{}]}}", quoted.join(","))
+    }
+
+    /// Whether `body` reads with a report, and the fleets its proved list
+    /// holds, `None` when the list is not proved.
+    fn reads(body: &str) -> (bool, Option<usize>) {
+        let (beat, held) = read(body.as_bytes());
+        let listed = held.map(|proved| fleets(&proved).len());
+        (beat.capability_report.is_some(), listed)
+    }
+
+    /// A list past its bounds, by count or by an entry's length, is not
+    /// proved, and the report beside it still counts; an unreadable body
+    /// proves an empty list. Either way the beat holds nothing.
+    #[test]
+    fn test_a_holds_list_past_its_bounds_is_not_proved() {
+        assert_eq!(
+            reads(&body(&vec![FLEET; HOLDS_MAX])),
+            (true, Some(HOLDS_MAX))
+        );
+        assert_eq!(reads(&body(&vec![FLEET; HOLDS_MAX + 1])), (true, None));
+        assert_eq!(reads(&body(&[FLEET, "not-a-fleet"])), (true, None));
+        assert_eq!(reads("not-json"), (false, Some(0)));
+        assert_eq!(reads(""), (false, Some(0)));
+    }
 
     /// What the runner is told must be the number this daemon enforces, not a
     /// second one that happens to agree today.

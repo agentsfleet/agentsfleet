@@ -8,8 +8,9 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::Ready;
+use futures_util::future::join_all;
 
-use super::diagnostics::{EVENT_READY_PEEK_FAILED, warn_queue};
+use super::diagnostics::warn_held_read;
 use super::{PollCost, peeked};
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
@@ -30,23 +31,40 @@ impl Leases {
         now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        // One read per held fleet, and a runner holds at most one per worker.
-        let mut ready = Vec::new();
-        for fleet in held {
-            let token = self
-                .ready()
-                .token_for(fleet.as_str())
-                .await
-                .inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error))?;
-            if let Some(token) = token {
-                let fleet_id = fleet.as_str().to_owned();
-                ready.push(Ready { fleet_id, token });
-            }
-        }
+        let ready = self.held_ready(runner_id, held).await;
         if ready.is_empty() {
             return Ok(None);
         }
         self.first_offered(runner_id, &ready, now, cost).await
+    }
+
+    /// The held fleets with a readiness mark, each named once and all read at
+    /// once. A read that fails costs its own fleet and no other: it is logged
+    /// and skipped, and the poll goes on to the partition, because a held
+    /// fleet only reorders what the partition pass would offer anyway.
+    async fn held_ready(&self, runner_id: &Uuid7, held: &[Uuid7]) -> Vec<Ready> {
+        let mut fleets: Vec<&Uuid7> = held.iter().collect();
+        fleets.sort_unstable();
+        fleets.dedup();
+        let index = self.ready();
+        let reads = fleets.into_iter().map(|fleet| {
+            let index = &index;
+            async move { (fleet, index.token_for(fleet.as_str()).await) }
+        });
+        join_all(reads)
+            .await
+            .into_iter()
+            .filter_map(|(fleet, read)| match read {
+                Ok(token) => token.map(|token| Ready {
+                    fleet_id: fleet.as_str().to_owned(),
+                    token,
+                }),
+                Err(error) => {
+                    warn_held_read(runner_id, fleet, &error);
+                    None
+                }
+            })
+            .collect()
     }
 
     /// The first of `ready` the candidate scan offers and this runner wins,

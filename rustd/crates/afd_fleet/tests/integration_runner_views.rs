@@ -83,6 +83,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
         .heartbeat(
             live_runner,
             &heartbeat,
+            None,
             UnixMillis::from_millis(ENROLLED_AT + 1),
         )
         .await

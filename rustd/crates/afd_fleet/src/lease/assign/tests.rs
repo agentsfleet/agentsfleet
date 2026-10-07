@@ -57,26 +57,33 @@ fn a_fresh_grant_counts_as_fresh_and_a_reclaim_as_reclaimed() {
     assert_eq!(started(Kind::Reclaim), RunStart::Reclaimed);
 }
 
-/// A held fleet whose readiness cannot be read fails the poll there, before
-/// the partition pass turns the cursor: the runner backs off on a failed
-/// read rather than being handed some other partition's work.
+/// A held fleet whose readiness cannot be read costs the poll that fleet
+/// alone: a fleet named twice is read once, its failure is logged and
+/// skipped, and the partition pass still runs and turns the cursor. The
+/// partition's own read fails here too, and that is what fails this poll.
 #[tokio::test]
-async fn a_held_fleets_unreadable_readiness_fails_the_poll() -> Result<(), &'static str> {
+async fn a_held_fleets_unreadable_readiness_leaves_the_poll_its_partition()
+-> Result<(), &'static str> {
+    use afd_core::test_util::trace::Capture;
     use afd_dragonfly::ReadyCursor;
 
+    use super::diagnostics::EVENT_HELD_READ_FAILED;
     use crate::lease::test_dead::{AT, id, leases};
 
+    let log = Capture::install();
     let store = leases();
 
-    let polled = store.select(&id(9), &[id(1)], AT).await;
+    let polled = store.select(&id(9), &[id(1), id(1)], AT).await;
 
     polled
         .err()
-        .ok_or("a readiness read that failed answered the poll")?;
-    assert_eq!(
+        .ok_or("the partition's read failed, and so does the poll")?;
+    let skipped = log.only(EVENT_HELD_READ_FAILED);
+    assert_eq!(skipped.field("fleet_id"), Some(id(1).as_str()));
+    assert_ne!(
         store.cursor().advance(),
         ReadyCursor::new().advance(),
-        "the partition pass never ran"
+        "the partition pass ran"
     );
     Ok(())
 }

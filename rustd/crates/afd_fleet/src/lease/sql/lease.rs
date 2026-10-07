@@ -38,9 +38,12 @@ pub use self::row::{INSERT_LEASE_WITH_EVENT, LeaseRow};
 ///
 /// # A held fleet is its holder's first
 ///
-/// While `held_until` is in the future and its holder, `last_runner_id`, has
-/// beaten within `$5` (`RUNNER_OFFLINE_AFTER_MS`), only the holder wins: its
-/// sandbox carries the fleet's last run, and the next event should run there.
+/// While `held_until` is in the future and its holder, `last_runner_id`, can
+/// still lease — `$6` (active) and not degraded, and beaten within `$5`
+/// (`RUNNER_OFFLINE_AFTER_MS`) — only the holder wins: its sandbox carries the
+/// fleet's last run, and the next event should run there. A holder that
+/// cannot lease binds nobody: a degraded runner is answered no work, and one
+/// drained or revoked is refused before its poll or its beat reaches here.
 /// A hold is a head start at the slot, never the slot. The holder still claims
 /// through this statement and its fence, so one fleet still has one live
 /// holder. The holder's own claim keeps `held_until`, so a claim that finds no
@@ -74,7 +77,9 @@ ON CONFLICT (fleet_id) DO UPDATE
          OR NOT EXISTS (
               SELECT 1 FROM fleet.runners r
               WHERE r.id = fleet.runner_affinity.last_runner_id
-                AND r.last_seen_at > $4 - $5))
+                AND r.last_seen_at > $4 - $5
+                AND r.admin_state = $6
+                AND NOT r.degraded))
 RETURNING fencing_seq,
           (SELECT held_until FROM prior),
           (SELECT last_runner_id::text FROM prior)";
@@ -178,11 +183,12 @@ JOIN core.fleet_events e
 /// `required_tags` GIN index can serve — not a column-to-column join, which no
 /// index serves.
 ///
-/// A fleet another live runner holds is skipped the same way, by the claim's
-/// own hold condition (see [`CLAIM_AFFINITY_SLOT`]).
+/// A fleet another runner holds and can still lease is skipped the same way,
+/// by the claim's own hold condition (see [`CLAIM_AFFINITY_SLOT`]).
 ///
 /// `$1` active status, `$2` runner id, `$3` ready fleet ids, `$4` ceiling,
-/// `$5` now, `$6` how long a silent runner stays live.
+/// `$5` now, `$6` how long a silent runner stays live, `$7` the admin state
+/// that may lease.
 pub const SELECT_READY_CANDIDATES: &str = "\
 SELECT z.id::text
 FROM core.fleets z
@@ -195,7 +201,8 @@ WHERE z.status = $1
        OR a.last_runner_id = $2::uuid
        OR NOT EXISTS (
             SELECT 1 FROM fleet.runners r
-            WHERE r.id = a.last_runner_id AND r.last_seen_at > $5 - $6))
+            WHERE r.id = a.last_runner_id AND r.last_seen_at > $5 - $6
+              AND r.admin_state = $7 AND NOT r.degraded))
   AND z.required_tags <@ (
         SELECT COALESCE(array_agg(e), '{}'::text[])
         FROM jsonb_array_elements_text(

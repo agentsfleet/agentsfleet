@@ -154,6 +154,10 @@ pub(super) async fn postgres_at_population(
     // The instant the held-slot filter compares against, as the lease path
     // binds it: now, so the plan is the one a live poll gets.
     .bind(afd_core::clock::now().as_millis())
+    // How long a silent holder binds, and the admin state a holder must be in
+    // to bind at all: the lease path's own binds for the hold condition.
+    .bind(afd_core::timing::RUNNER_OFFLINE_AFTER_MS)
+    .bind(afd_fleet::lease::sql::ADMIN_STATE_ACTIVE)
     .fetch_all(&mut *connection)
     .await?
     .iter()
