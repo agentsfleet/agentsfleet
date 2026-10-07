@@ -55,7 +55,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afr_sandbox/src/workspace_disk.rs` | EDIT | The disk holds `workspace/` and `tmp/`; attached with `LOOP_CONFIGURE` and direct I/O |
+| `rustd/crates/afr_sandbox/src/workspace_disk.rs` | EDIT | The disk holds `workspace/` and `tmp/`; its loop device switched to direct I/O after the mount |
+| `rustd/crates/afr_sandbox/src/toolbox.rs`, `rustd/crates/afr_sandbox/src/toolbox/loop_device.rs`, `rustd/crates/afr_sandbox/src/toolbox/adopt.rs` | EDIT | `direct_io` and `node` join the loop-device module, which the workspace disk now shares with adoption |
+| `rustd/crates/afr_sandbox/src/probe.rs`, `rustd/crates/afr_sandbox/src/probe/tests.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/support.rs`, `rustd/crates/afr_supervisor/src/capability.rs`, `rustd/crates/afr_supervisor/src/capability/tests.rs`, `rustd/crates/afr_supervisor/src/lib_tests.rs`, `rustd/crates/afr_supervisor/src/heartbeat/tests.rs`, `rustd/crates/agentsfleetd/tests/integration_rust_runner.rs`, `rustd/crates/agentsfleetd/tests/support/bundle_run.rs` | EDIT | The probe's `state_dir` and `workspace_direct_io`; the `workspace_direct_io` self-test check; every stated probe names the new fact |
 | `rustd/crates/afr_sandbox/src/bubblewrap.rs` | EDIT | `/tmp` binds the disk's `tmp/` instead of a tmpfs |
 | `rustd/crates/afr_sandbox/src/cgroup.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine.rs`, `rustd/crates/afr_sandbox/src/cgroup/tests.rs` | EDIT | The `sandbox` and `tenant` leaves; `bwrap` enters `sandbox`; the tenant leaf's two descriptors are opened by the engine and let through bubblewrap's exec |
 | `rustd/crates/afr_sandbox/src/tenant.rs`, `rustd/crates/afr_sandbox/src/tenant/files.rs`, `rustd/crates/afr_sandbox/src/tenant/tests.rs` | CREATE | The descriptors from engine to entry: `TenantFiles` opens and lets them through; `TenantDescriptors` names them as `--tenant-procs`/`--tenant-events` and the entry adopts them |
@@ -113,12 +115,12 @@ The lease cgroup becomes an inner node with two leaves: `sandbox` (bubblewrap an
 - **Dimension 2.4** DONE — A move that fails refuses the spawn, and nothing runs in `sandbox` but bubblewrap and the executor → Test `test_failed_tenant_move_refuses_the_spawn`
 - **Dimension 2.5** DONE — Destroy and the boot sweep remove both leaves before the lease cgroup → Test `test_sweep_removes_both_leaves`
 
-### §3 — The workspace disk writes past one page cache
+### §3 — The workspace disk writes past one page cache — DONE
 
-The workspace image attaches through §8's `LOOP_CONFIGURE` with `LO_FLAGS_DIRECT_IO`, read-write, then mounts as today; the loop device reads and writes the image without caching it a second time on the host. A backing file system without direct I/O falls back to buffered, which the capability report states.
+The workspace image mounts through the host's `mount -o loop` as today, then `LOOP_SET_DIRECT_IO` switches the loop device the mount made, found by the mount point's device number through M211_001's `loop_device::node`; the device then reads and writes the image without caching it a second time on the host. A backing file system without direct I/O answers `EINVAL` and stays buffered. The probe, given the engine's state directory, opens an unnamed `O_DIRECT` file there and reports `workspace_direct_io`, a self-test check beside the toolbox file system's. **Implementation default:** switch after the mount rather than attach with `LOOP_CONFIGURE`, because the engine's unit tests stand a fake `mount` in for the real one and run without root.
 
-- **Dimension 3.1** — The workspace loop device reports direct I/O on → Test `test_workspace_disk_uses_direct_io`
-- **Dimension 3.2** — Writing 4 GiB to `/workspace` under the 2 GiB memory limit ends in `ENOSPC` with zero out-of-memory kills → Test `test_disk_fill_under_memory_limit_ends_in_enospc`
+- **Dimension 3.1** DONE — The workspace loop device reports direct I/O on → Test `test_workspace_disk_uses_direct_io`
+- **Dimension 3.2** DONE — Writing 4 GiB to `/workspace` under the 2 GiB memory limit ends in `ENOSPC` with zero out-of-memory kills → Test `test_disk_fill_under_memory_limit_ends_in_enospc`
 
 ### §4 — The host keeps a disk reserve
 
@@ -184,7 +186,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERV
 | 2.3 | kernel | `test_tenant_process_holds_no_cgroup_descriptor` | `ls /proc/$$/fd` from the tenant's shell → `0 1 2`; `/proc/$$/cgroup` → `0::/../tenant`, the leaf beside the namespace's `sandbox` root |
 | 2.4 | unit | `test_failed_tenant_move_refuses_the_spawn` | descriptor closed before spawn → refused with its cause; 0 processes started |
 | 2.5 | kernel | `test_sweep_removes_both_leaves` | runner killed after the split → restart sweeps `sandbox`, `tenant`, then the lease cgroup |
-| 3.1 | kernel | `test_workspace_disk_uses_direct_io` | `/sys/block/loopN/loop/dio` → `1` |
+| 3.1 | kernel | `test_workspace_disk_uses_direct_io` | `/sys/dev/block/<major>:<minor>/loop/dio` of the mounted disk, read before destroy → `1` |
 | 3.2 | kernel | `test_disk_fill_under_memory_limit_ends_in_enospc` | 4 GiB `dd` under 2 GiB memory → `ENOSPC`; `tenant` `oom_kill` 0 |
 | 4.1 | unit | `test_capacity_rule_counts_remaining_limits` | exact boundary → admit; one byte short → refuse; a held sandbox counts |
 | 4.2 | unit | `test_short_host_waits_and_resumes` | fake disk short then roomy → no poll, then a poll; two log lines |
@@ -240,7 +242,7 @@ N/A — no files deleted. The sandbox's `/tmp` tmpfs flag goes in place.
 
 ## Discovery (consult log)
 
-- **Consults** — Indy (in-session, Oct 05, 2026): "Fix all fixes in this PR", approving D3's four fixes in a new workstream of this Pull Request. Source and evidence: spike S6 (`docs/v2/reviews/m211-toolbox-spikes.md`); Landlock grants writes only beneath `WRITABLE` (`rustd/crates/afr_sandbox/src/harden/linux.rs:50-57`); bubblewrap enters its cgroup through an engine-opened descriptor (`bubblewrap_engine/parts.rs:89,282`).
+- **Consults** — §3 on the kernel lane (Oct 07, 2026): the lane made its state under `/tmp`, a tmpfs on `afr-kernel` (`findmnt`), so every workspace image was memory and the 4 GiB fill was killed whatever the loop device cached; on a disk (`/var/tmp`, btrfs) `losetup --direct-io=on` reads back `dio` 1 and 3.2 ends in `ENOSPC`. The lane's state now lives under `/var/tmp`, as a host's does on its disk. Indy (in-session, Oct 05, 2026): "Fix all fixes in this PR", approving D3's four fixes in a new workstream of this Pull Request. Source and evidence: spike S6 (`docs/v2/reviews/m211-toolbox-spikes.md`); Landlock grants writes only beneath `WRITABLE` (`rustd/crates/afr_sandbox/src/harden/linux.rs:50-57`); bubblewrap enters its cgroup through an engine-opened descriptor (`bubblewrap_engine/parts.rs:89,282`).
 - **Metrics review** — Two runner log events; no analytics or funnel playbook change.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

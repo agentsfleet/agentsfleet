@@ -18,6 +18,7 @@ use serde::Serialize;
 const CHECK_CGROUP: &str = "cgroup_controllers";
 const CHECK_KVM: &str = "kvm";
 const CHECK_TOOLBOX: &str = "toolbox_filesystem";
+const CHECK_DIRECT_IO: &str = "workspace_direct_io";
 
 const LANDLOCK_ON: &str = "Landlock is enabled, so file system access can be confined.";
 const LANDLOCK_OFF: &str =
@@ -33,6 +34,10 @@ const KVM_DENIED: &str = "The KVM device exists but this runner cannot open it."
 const KVM_ABSENT: &str = "There is no KVM device, so only the bubblewrap engine can run here.";
 const TOOLBOX_ON: &str = "The kernel can mount the toolbox's EROFS image.";
 const TOOLBOX_OFF: &str = "The kernel cannot mount EROFS, so no sandbox can be built here.";
+const DIRECT_IO_ON: &str =
+    "The state file system takes direct I/O, so a workspace disk is cached once.";
+const DIRECT_IO_OFF: &str = "The state file system refuses direct I/O, so a workspace disk falls \
+     back to buffered and is cached twice.";
 
 /// The capability report a heartbeat carries.
 ///
@@ -87,14 +92,15 @@ pub fn probe_answer(probe: &HostProbe) -> ProbeAnswer<'_> {
     }
 }
 
-/// Every fact the probe found, as a named check.
+/// Every fact the probe found, as a named check; direct I/O only when the
+/// probe was given a state directory to try it on.
 fn checks<'a>(probe: &HostProbe) -> Vec<SelftestCheck<'a>> {
     let kvm = match probe.kvm {
         Kvm::Usable => (true, KVM_USABLE),
         Kvm::Denied => (false, KVM_DENIED),
         Kvm::Absent => (false, KVM_ABSENT),
     };
-    vec![
+    let mut checks = vec![
         check(
             MECHANISM_LANDLOCK,
             verdict(probe.landlock, LANDLOCK_ON, LANDLOCK_OFF),
@@ -116,7 +122,13 @@ fn checks<'a>(probe: &HostProbe) -> Vec<SelftestCheck<'a>> {
             CHECK_TOOLBOX,
             verdict(probe.toolbox_filesystem, TOOLBOX_ON, TOOLBOX_OFF),
         ),
-    ]
+    ];
+    checks.extend(
+        probe
+            .workspace_direct_io
+            .map(|on| check(CHECK_DIRECT_IO, verdict(on, DIRECT_IO_ON, DIRECT_IO_OFF))),
+    );
+    checks
 }
 
 const fn verdict(ok: bool, on: &'static str, off: &'static str) -> (bool, &'static str) {

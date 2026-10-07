@@ -70,13 +70,14 @@ pub struct BubblewrapConfig {
 }
 
 impl BubblewrapConfig {
-    /// Where to probe the host this configuration builds on: its own launcher
-    /// and its own cgroup, so the probe checks what the engine will use.
+    /// Where to probe the host this configuration builds on: its own launcher,
+    /// cgroup and state directory, so the probe checks what the engine will use.
     #[must_use]
     pub fn probe_paths(&self) -> ProbePaths {
         ProbePaths {
             bwrap: self.tools.bwrap.clone(),
             cgroup_root: self.cgroup_root.clone(),
+            state_dir: Some(self.state_dir.clone()),
             ..ProbePaths::default()
         }
     }

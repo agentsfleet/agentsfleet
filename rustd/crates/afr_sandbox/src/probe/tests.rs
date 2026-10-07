@@ -18,6 +18,7 @@ fn host(dir: &Path) -> ProbePaths {
         seccomp_actions: dir.join("actions_avail"),
         cgroup_root: dir.join("cgroup"),
         bwrap: dir.join("bwrap"),
+        state_dir: None,
     };
     fs::write(&paths.kvm, "").unwrap();
     fs::write(&paths.filesystems, "nodev\tsysfs\n\text4\n\terofs\n").unwrap();
@@ -53,6 +54,7 @@ fn test_capability_probe_states_every_mechanism_it_finds() {
             bubblewrap: true,
             kvm: Kvm::Usable,
             toolbox_filesystem: true,
+            workspace_direct_io: None,
         }
     );
     assert_eq!(found.missing(), None);
@@ -129,6 +131,7 @@ fn test_unreadable_facts_read_as_absent_mechanisms() {
         seccomp_actions: nowhere.clone(),
         cgroup_root: nowhere.clone(),
         bwrap: nowhere,
+        state_dir: None,
     };
 
     let found = read(&paths, true);
@@ -158,4 +161,24 @@ fn test_a_kernel_too_old_for_the_ruleset_reads_as_without_landlock() {
 
     assert!(!found.landlock);
     assert_eq!(found.missing(), Some("landlock"));
+}
+
+#[test]
+fn test_direct_io_is_probed_only_in_a_named_state_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = tempfile::tempdir().unwrap();
+    let unnamed = host(dir.path());
+    let named = ProbePaths {
+        state_dir: Some(state.path().to_owned()),
+        ..unnamed.clone()
+    };
+
+    assert_eq!(read(&unnamed, true).workspace_direct_io, None);
+    let probed = read(&named, true).workspace_direct_io;
+    assert!(probed.is_some(), "a named directory is tried");
+    assert_eq!(
+        fs::read_dir(state.path()).unwrap().count(),
+        0,
+        "the probe leaves no file behind"
+    );
 }

@@ -6,7 +6,7 @@
 //! 5.8. The maintained loop-device crates build with `bindgen`, which would put
 //! libclang on every Linux build of this workspace.
 
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::fd::AsRawFd as _;
 use std::path::{Path, PathBuf};
@@ -23,6 +23,19 @@ const LOOP_CTL_GET_FREE: libc::Ioctl = 0x4C82;
 const LOOP_CONFIGURE: libc::Ioctl = 0x4C0A;
 /// `LOOP_GET_STATUS64`: what a device is attached to.
 const LOOP_GET_STATUS64: libc::Ioctl = 0x4C05;
+/// `LOOP_SET_DIRECT_IO`: read and write the backing file past the host's page
+/// cache, switched on a bound device; its argument is the value itself.
+const LOOP_SET_DIRECT_IO: libc::Ioctl = 0x4C08;
+/// The `LOOP_SET_DIRECT_IO` argument that turns direct I/O on.
+const DIRECT_IO_ON: libc::c_ulong = 1;
+/// The block-device major number every loop device has.
+pub(crate) const LOOP_MAJOR: u32 = 7;
+/// Where the kernel publishes every block device by number, and the file
+/// naming a device's node.
+const SYS_DEV_BLOCK: &str = "/sys/dev/block";
+const UEVENT: &str = "uevent";
+/// The line of a device's `uevent` that names its node under `/dev`.
+const DEVNAME: &str = "DEVNAME=";
 /// `LO_FLAGS_READ_ONLY`: the device refuses writes.
 pub(crate) const LO_FLAGS_READ_ONLY: u32 = 1;
 /// `LO_FLAGS_AUTOCLEAR`: the device detaches itself once nothing holds it.
@@ -171,4 +184,40 @@ pub(crate) fn backing(node: &Path) -> Result<Backing> {
         offset: info.offset,
         size_limit: info.sizelimit,
     })
+}
+
+/// Switches the bound loop device at `node` to direct I/O, so it reads and
+/// writes its file without caching it a second time on the host. A backing
+/// file system that refuses direct I/O leaves the device buffered, which is
+/// the fallback rather than a failure.
+pub(crate) fn direct_io(node: &Path) -> Result<()> {
+    let device = File::open(node)?;
+    // SAFETY: LOOP_SET_DIRECT_IO takes its on/off value as the argument
+    // itself; no memory is passed.
+    let set = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_SET_DIRECT_IO, DIRECT_IO_ON) };
+    if set == 0 {
+        return Ok(());
+    }
+    let refused = io::Error::last_os_error();
+    if refused.raw_os_error() == Some(libc::EINVAL) {
+        Ok(())
+    } else {
+        Err(refused.into())
+    }
+}
+
+/// The node of loop device `major:minor`, as the kernel names it.
+pub(crate) fn node(major: u32, minor: u32) -> Result<PathBuf> {
+    let uevent = fs::read_to_string(
+        Path::new(SYS_DEV_BLOCK)
+            .join(format!("{major}:{minor}"))
+            .join(UEVENT),
+    )?;
+    uevent
+        .lines()
+        .find_map(|line| line.strip_prefix(DEVNAME))
+        .map(|name| Path::new("/dev").join(name))
+        .ok_or_else(|| {
+            io::Error::other(format!("loop device {major}:{minor} names no node")).into()
+        })
 }

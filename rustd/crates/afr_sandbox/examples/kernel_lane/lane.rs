@@ -41,6 +41,10 @@ const MOUNTS_DIR: &str = "mounts";
 const ENTRY_NAME: &str = "agentsfleet-runner";
 /// Readable and executable by everyone, writable by nobody but root.
 const ENTRY_MODE: u32 = 0o755;
+/// Where the lane's state is made: on a disk, as a host's is. A tmpfs `/tmp`
+/// would make every workspace image memory, so a disk fill would be a
+/// memory fill whatever the loop device caches.
+const STATE_PARENT: &str = "/var/tmp";
 /// The state directory: traversable, but listable and writable by root only.
 const STATE_MODE: u32 = 0o711;
 /// How long a sandbox may take to answer.
@@ -177,7 +181,7 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
     let cgroup_root = paths.cgroup_root;
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
-        .tempdir_in("/tmp")?;
+        .tempdir_in(STATE_PARENT)?;
     let signer = Signer::new()?;
     let manifest = signer.manifest_beside(image)?;
     let mounter = KernelMounter::new(state.path().join(MOUNTS_DIR));

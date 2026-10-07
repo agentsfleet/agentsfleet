@@ -16,8 +16,10 @@ use crate::admission::{adoption, path_swap};
 use crate::budgets::start_budgets;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
 use crate::exhaustion::{
-    full_tmp_answers_enospc, oom_kills_only_the_tenant, runaway, sweep_removes_both_leaves,
+    disk_fill_under_memory_limit_ends_in_enospc, full_tmp_answers_enospc,
+    oom_kills_only_the_tenant, runaway, sweep_removes_both_leaves,
     tenant_holds_no_cgroup_descriptor, workspace_and_tmp_share_the_disk,
+    workspace_disk_uses_direct_io,
 };
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
@@ -107,6 +109,14 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
             tenant_holds_no_cgroup_descriptor,
         ),
         ("test_sweep_removes_both_leaves", sweep_removes_both_leaves),
+        (
+            "test_workspace_disk_uses_direct_io",
+            workspace_disk_uses_direct_io,
+        ),
+        (
+            "test_disk_fill_under_memory_limit_ends_in_enospc",
+            disk_fill_under_memory_limit_ends_in_enospc,
+        ),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];
     let trials = rows
