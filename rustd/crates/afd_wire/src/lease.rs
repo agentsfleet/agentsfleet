@@ -5,7 +5,6 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::event::EventEnvelope;
-use crate::memory::MemoryDelta;
 use crate::policy::ExecutionPolicy;
 
 /// How tenant secrets reach the runner.
@@ -80,19 +79,3 @@ pub struct LeaseResponse<'a> {
     pub retry_after_ms: Option<u32>,
 }
 
-/// What the runner parent pipes to the sandboxed child's standard input.
-///
-/// The parent hydrated the memory over the trusted plane because it holds the
-/// token; the child makes no network call of its own, so no credential, URL or
-/// connection string ever reaches the sandboxed fleet.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RunnerChildInput<'a> {
-    /// The lease to execute.
-    #[serde(borrow)]
-    pub lease: LeasePayload<'a>,
-    /// The fleet's prior memory, already hydrated by the parent.
-    #[serde(borrow)]
-    pub hydrated_memory: Vec<MemoryDelta<'a>>,
-}

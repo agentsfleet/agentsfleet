@@ -7,9 +7,9 @@
 
 use std::time::Duration;
 
+use crate::ResultOutcome;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
-use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_egress::testing::CountingMint;
 use afr_providers::Message;
@@ -105,7 +105,7 @@ async fn test_loop_runs_tool_calls_until_answer() {
 
     assert_eq!(
         output.result.outcome,
-        ResultOutcome::Completed(afd_wire::report::Completed {})
+        ResultOutcome::Completed(crate::Completed)
     );
     assert_eq!(output.result.content, "the sum is 4");
     let sent = script.sent();

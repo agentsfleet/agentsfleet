@@ -4,8 +4,8 @@
 //! run without being asked again.
 
 use afd_wire::activity::{ActivityFrame, StreamTextKind};
-use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
+use afr_agent::ResultOutcome;
 use afr_providers::REPLY_MAX_BYTES;
 use afr_tools::ToolErrorCode;
 use afr_tools::catalog::UPDATE_PLAN;

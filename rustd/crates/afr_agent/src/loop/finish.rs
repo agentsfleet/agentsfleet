@@ -1,8 +1,8 @@
 //! A run's end: the sessions its calls left open, the result the report
 //! carries, and what the run leaves behind.
 
+use crate::{Completed, ExecutionResult, Failure, ResultOutcome};
 use afd_wire::memory::MemoryDelta;
-use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
 
 use super::{Ending, Harness};
 use crate::engine::RunOutput;
@@ -22,7 +22,7 @@ impl Harness<'_, '_> {
         let shared = self.shared;
         let (outcome, content) = match ending {
             Ending::Answered(text) => (
-                ResultOutcome::Completed(Completed {}),
+                ResultOutcome::Completed(Completed),
                 shared.scrub.text(&text).into_owned(),
             ),
             Ending::Failed(failure) => {

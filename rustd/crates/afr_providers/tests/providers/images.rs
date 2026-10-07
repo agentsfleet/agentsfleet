@@ -4,9 +4,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_agent::Loop;
+use afr_agent::ResultOutcome;
 use afr_egress::testing::RecordingTransport;
 use afr_tools::Catalog;
 use afr_tools::catalog::IMAGE;

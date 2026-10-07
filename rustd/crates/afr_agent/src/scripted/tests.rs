@@ -7,10 +7,10 @@
 use std::borrow::Cow;
 use std::sync::mpsc;
 
+use crate::ResultOutcome;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
-use afd_wire::report::ResultOutcome;
 use afr_egress::testing::CountingMint;
 use afr_executor::{
     Ending, Events, Executor, FileContent, Listing, Process, ProcessId, Spawn, Stream,

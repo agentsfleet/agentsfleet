@@ -10,10 +10,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::ResultOutcome;
 use afd_core::test_util::trace::Capture;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
-use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_egress::testing::{CountingMint, RecordingTransport};
 use afr_executor::ProcessId;

@@ -17,10 +17,10 @@ use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 use afd_wire::lease::{BundleManifest, LeasePayload};
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
-use afd_wire::report::{Completed, ExecutionResult, ResultOutcome};
 use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
+use afr_agent::{Completed, ExecutionResult, ResultOutcome};
 use afr_executor::{Executor, ProcessId, Spawn};
 use afr_providers::{Connect as _, Connector, Registry, Usage};
 use afr_tools::Catalog;
@@ -279,7 +279,7 @@ pub(crate) const SPENT: Usage = Usage {
 pub(crate) fn answer() -> RunOutput {
     RunOutput {
         result: ExecutionResult {
-            outcome: ResultOutcome::Completed(Completed {}),
+            outcome: ResultOutcome::Completed(Completed),
             content: "done".into(),
             token_count: 8,
             wall_seconds: 1,
