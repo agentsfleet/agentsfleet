@@ -17186,7 +17186,7 @@
           },
           "resume_hold": {
             "type": "boolean",
-            "description": "True when the sandbox this runner holds for the fleet is the fleet's\nlatest and this event has not run before: the slot's last lease ran\nhere, its hold had not lapsed at the claim, and the event is not a\nreclaim. Anything else builds a fresh sandbox, because the held one may\npredate another runner's run or carry this event's own first attempt.\nAbsent decodes as false."
+            "description": "True when this runner's held sandbox is the fleet's latest and this\nevent has not run before. The slot's last lease ran here, its hold had\nnot lapsed at the claim, and the event is no reclaim. Anything else\nbuilds a fresh sandbox, since the held one may predate another runner's\nrun or hold this event's first attempt. Absent decodes as false."
           },
           "secret_delivery": {
             "$ref": "#/components/schemas/SecretDelivery",
