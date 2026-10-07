@@ -112,16 +112,16 @@ git config core.hooksPath .githooks
 
 Project facts live in [`AGENTS.md`](AGENTS.md). The operating model and the
 deterministic gate scripts are committed alongside them —
-[`AGENTS.orly.md`](AGENTS.orly.md), `dispatch/`, and `audits/` — materialised
+[`.orly/AGENTS.md`](.orly/AGENTS.md), `.orly/dispatch/`, and `.orly/audits/` — materialised
 by [orly](https://github.com/agentsfleet/orly) and recorded in
-`.oracle/orly.json`. A clone carries its own rules; nothing resolves out of a
+`.orly/orly.json`. A clone carries its own rules; nothing resolves out of a
 developer's home directory.
 
 Install orly at the version this repository records, so a local run and
 Continuous Integration grade against the same rules:
 
 ```bash
-npm install -g "@agentsfleet/orly@$(jq -r .orly_version .oracle/orly.json)"
+npm install -g "@agentsfleet/orly@$(jq -r .orly_version .orly/orly.json)"
 
 orly doctor                     # report drift between the lock and the tree
 orly update --no-hooks          # re-materialise at the installed version
@@ -132,7 +132,7 @@ orly gate work                  # what the pre-commit hook runs
 and `.githooks/pre-push`, and orly declines to overwrite hooks it did not
 write.
 
-`make harness-verify` runs the gates from `audits/` in this repository.
+`make harness-verify` runs shared gates from `.orly/audits/` and repository-owned checks from `audits/`.
 
 Read about [architecture](docs/architecture/), start with the
 [operator playbooks](playbooks/README.md), or jump into

@@ -1,10 +1,10 @@
 # `agentsfleet` repository instructions
 
 The operating model is committed here. `orly init` materialised it —
-`AGENTS.orly.md`, the `dispatch/` rule pages, and the `audits/` gate scripts —
-and `.oracle/orly.json` records the engine version and every file it wrote.
+`.orly/AGENTS.md`, the `.orly/dispatch/` rule pages, and the `.orly/audits/` gate scripts —
+and `.orly/orly.json` records the engine version and every file it wrote.
 Nothing resolves out of a developer's home directory, so a fresh clone reads
-its own rules and runs its own gates. `bunx @agentsfleet/orly update` re-
+its own rules and runs its own gates. `orly update --no-hooks` re-
 materialises them; `orly doctor` reports drift. This file carries only project
 facts.
 
@@ -23,7 +23,7 @@ facts.
   as a single server is refused at `serve/runtime.rs` before the daemon serves anything.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
-  `.oracle/orly.json` declares `conform`, `verify.lint`, `verify.unit`,
+  `.orly/orly.json` declares `conform`, `verify.lint`, `verify.unit`,
   `verify.integration`, and `verify.version`. `make harness-verify` satisfies
   CONFORM only; behavioral verification uses the profile's `verify.*` commands
   (`make lint-all`, `make test-unit-all`, `make test-integration-rustd`,
@@ -57,7 +57,7 @@ facts.
   guessing a backend.
 - **Rust errors follow [`docs/RUST_ERROR_STANDARD.md`](docs/RUST_ERROR_STANDARD.md)** —
   read it before adding or changing a fallible signature under `rustd/`. The
-  four rules and their examples are in `dispatch/write_rust.md`, which fires on
+  four rules and their examples are in `.orly/dispatch/write_rust.md`, which fires on
   every `*.rs` edit; the standard is what this repository does differently.
   Carry one fact in: **a crate never hand-writes its error type.** Declare a
   private `ErrorKind`, then `afd_core::error_shell!` generates the boxed
@@ -65,7 +65,7 @@ facts.
   `source()`, and `error_lifts!` generates the `From` impls. Only the `Result`
   alias is written by hand, so a reader can see it without expanding a macro.
 - **Bounds on untrusted input are declared with `garde`** on the type they
-  guard, per [the REST guide §8](docs/REST_API_DESIGN_GUIDELINES.md); never a
+  guard, per [the REST guide §8](.orly/docs/REST_API_DESIGN_GUIDELINES.md); never a
   hand-written length, range or charset check. Rules garde lacks, the route
   `?limit` (`Limit` + `Ceiling`) and the report-to-sentence table
   (`Sentences`) live in `afd_validate`. A parser a bound protects takes
@@ -74,12 +74,12 @@ facts.
   in `~/Projects/docs`; never edit that repository through this worktree.
 
 <!-- orly:begin -->
-**Engineering harness:** read [`AGENTS.orly.md`](AGENTS.orly.md) as well — it carries the safety rules,
+**Engineering harness:** read [`.orly/AGENTS.md`](.orly/AGENTS.md) as well — it carries the safety rules,
 the dispatch router that names which rule page to read before which edit, and the lifecycle
 this repository gates on. Where the two disagree, this file wins.
 
 The line below is an import, not decoration: a runtime that resolves it loads those rules
 with this file, and one that does not still has the link above.
 
-@AGENTS.orly.md
+@.orly/AGENTS.md
 <!-- orly:end -->

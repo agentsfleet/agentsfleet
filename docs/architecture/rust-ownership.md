@@ -80,8 +80,8 @@ preserve deployed history automatically. Keep that limitation explicit.
 
 A checksum upgrade needs these steps:
 
-1. Reconcile `dispatch/write_sql.md`'s pre-2.0 prohibition on `ALTER TABLE` with
-   `docs/SCHEMA_CONVENTIONS.md`'s post-rebuild additive-migration policy. This
+1. Reconcile `.orly/dispatch/write_sql.md`'s pre-2.0 prohibition on `ALTER TABLE` with
+   `.orly/docs/SCHEMA_CONVENTIONS.md`'s post-rebuild additive-migration policy. This
    implementation changes neither the schema nor those rules.
 2. Introduce a real new migration version for the ledger upgrade, so older
    binaries refuse the newer database through the existing schema-ahead check.

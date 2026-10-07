@@ -2,6 +2,6 @@
   "$schema": "https://opencode.ai/config.json",
   "instructions": [
     "AGENTS.md",
-    "AGENTS.orly.md"
+    ".orly/AGENTS.md"
   ]
 }
