@@ -91,7 +91,7 @@ const CREATE_DESCRIPTION: &str = const_format::concatcp!(
 /// Creates a schedule for the fleet the lease runs.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/leases/{lease_id}/schedules",
+    path = afd_wire::paths::LEASE_SCHEDULES,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_create_schedule",
     summary = "Create a schedule for the running fleet",
@@ -167,7 +167,7 @@ pub(crate) async fn create<D: Services>(
 /// Lists every schedule of the fleet the lease runs.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/runners/me/leases/{lease_id}/schedules",
+    path = afd_wire::paths::LEASE_SCHEDULES,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_list_schedules",
     summary = "List the running fleet's schedules",

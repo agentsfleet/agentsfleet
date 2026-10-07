@@ -74,8 +74,8 @@ pub enum CredentialKind {
 pub const TENANT_API_KEY_PREFIX: &str = "agt_t";
 /// the retired daemon's `auth/cli_credential.zig`'s `PREFIX`.
 pub const CLI_CREDENTIAL_PREFIX: &str = "afc_";
-/// `src/lib/contract/protocol.zig`'s `RUNNER_TOKEN_PREFIX`.
-pub const RUNNER_TOKEN_PREFIX: &str = "agt_r";
+/// The runner wire's token prefix, the one the runner presents.
+pub use afd_wire::paths::RUNNER_TOKEN_PREFIX;
 
 /// Marker → class.
 ///

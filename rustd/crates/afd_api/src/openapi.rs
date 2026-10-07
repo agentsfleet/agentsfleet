@@ -11,6 +11,7 @@
 //! coverage gate is what holds this document to it: a route mounted there and
 //! missing here fails, and so does the reverse.
 
+use afd_auth::credential::RUNNER_TOKEN_PREFIX;
 use afd_http::openapi::problem::ProblemBody;
 use http::StatusCode;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme};
@@ -21,7 +22,7 @@ mod stability;
 
 use crate::Route;
 use crate::envelope::CONTENT_TYPE_PROBLEM_JSON;
-use crate::route::{Guard, Verb};
+use crate::route::{Guard, RunnerOpsRoute, Verb};
 
 /// The scheme name every tenant-plane operation refers to.
 const BEARER_SCHEME: &str = "BearerAuth";
@@ -37,10 +38,6 @@ const BEARER_DESCRIPTION: &str =
 /// person signs in for, and a document that described it under the tenant
 /// scheme told a runner author to go through the CLI auth flow.
 const RUNNER_SCHEME: &str = "RunnerBearerAuth";
-
-/// How a runner obtains its bearer.
-const RUNNER_DESCRIPTION: &str =
-    "The opaque agt_r token minted when the runner enrols (POST /v1/runners)";
 
 /// The published base URL.
 const PRODUCTION_URL: &str = "https://api.agentsfleet.net";
@@ -97,8 +94,13 @@ pub fn document() -> utoipa::openapi::OpenApi {
         SecurityScheme::Http(
             HttpBuilder::new()
                 .scheme(HttpAuthScheme::Bearer)
-                .bearer_format("agt_r")
-                .description(Some(RUNNER_DESCRIPTION))
+                .bearer_format(RUNNER_TOKEN_PREFIX)
+                // How a runner obtains its bearer.
+                .description(Some(format!(
+                    "The opaque {RUNNER_TOKEN_PREFIX} token minted when the runner enrols \
+                     (POST {})",
+                    RunnerOpsRoute::Register.meta().template
+                )))
                 .build(),
         ),
     );

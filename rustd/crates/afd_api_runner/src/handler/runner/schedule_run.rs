@@ -73,7 +73,7 @@ const RUN_KEY_PREFIX: &str = "run:";
 /// Fires a schedule of the fleet's now.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/leases/{lease_id}/schedules/{schedule_id}/runs",
+    path = afd_wire::paths::LEASE_SCHEDULE_RUNS,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_run_schedule",
     summary = "Run a schedule now",
@@ -149,7 +149,7 @@ pub(crate) async fn run<D: Services>(
 /// Lists one schedule's runs, newest first.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/runners/me/leases/{lease_id}/schedules/{schedule_id}/runs",
+    path = afd_wire::paths::LEASE_SCHEDULE_RUNS,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_list_schedule_runs",
     summary = "List a schedule's runs",

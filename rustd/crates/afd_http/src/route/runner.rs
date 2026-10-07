@@ -9,8 +9,8 @@
 //! The operator's view over runners is [`super::runner_ops`].
 
 use afd_auth::Scope;
+use afd_wire::paths;
 
-use super::path::runner_path;
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 /// What a runner may do on its own behalf. One scope, because the plane IS the
@@ -109,23 +109,21 @@ impl RunnerRoute {
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let template = match self {
-            Self::SelfRecord => runner_path!("/me"),
-            Self::Heartbeat => runner_path!("/me/heartbeats"),
-            Self::Lease => runner_path!("/me/leases"),
-            Self::Report => runner_path!("/me/reports"),
-            Self::CredentialsMint => runner_path!("/me/credentials/mint"),
-            Self::Activity => runner_path!("/me/leases/{lease_id}/activity"),
-            Self::Renew => runner_path!("/me/leases/{lease_id}/renew"),
-            Self::MemoryHydrate | Self::MemoryCapture => runner_path!("/me/memory/{fleet_id}"),
-            Self::MemoryRecall => runner_path!("/me/memory/{fleet_id}/recall"),
-            Self::Bundle => runner_path!("/me/bundles/{content_hash}"),
-            Self::ToolCalls => runner_path!("/me/leases/{lease_id}/tool-calls"),
-            Self::Schedules => runner_path!("/me/leases/{lease_id}/schedules"),
-            Self::Schedule => runner_path!("/me/leases/{lease_id}/schedules/{schedule_id}"),
-            Self::ScheduleRuns => {
-                runner_path!("/me/leases/{lease_id}/schedules/{schedule_id}/runs")
-            }
-            Self::Messages => runner_path!("/me/leases/{lease_id}/messages"),
+            Self::SelfRecord => paths::RUNNER_SELF,
+            Self::Heartbeat => paths::RUNNER_HEARTBEATS,
+            Self::Lease => paths::RUNNER_LEASES,
+            Self::Report => paths::RUNNER_REPORTS,
+            Self::CredentialsMint => paths::RUNNER_CREDENTIALS_MINT,
+            Self::Activity => paths::LEASE_ACTIVITY,
+            Self::Renew => paths::LEASE_RENEW,
+            Self::MemoryHydrate | Self::MemoryCapture => paths::RUNNER_MEMORY_FLEET,
+            Self::MemoryRecall => paths::RUNNER_MEMORY_RECALL,
+            Self::Bundle => paths::RUNNER_BUNDLE,
+            Self::ToolCalls => paths::LEASE_TOOL_CALLS,
+            Self::Schedules => paths::LEASE_SCHEDULES,
+            Self::Schedule => paths::LEASE_SCHEDULE,
+            Self::ScheduleRuns => paths::LEASE_SCHEDULE_RUNS,
+            Self::Messages => paths::LEASE_MESSAGES,
         };
         RouteMeta::new(
             Guard::RunnerBearer,

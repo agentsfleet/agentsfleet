@@ -40,7 +40,7 @@ const DETAIL_MALFORMED: &str = "Malformed mint request body";
 /// Mints one short-lived credential for the child behind this runner.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/credentials/mint",
+    path = afd_wire::paths::RUNNER_CREDENTIALS_MINT,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_mint_credential",
     summary = "Mint a credential for a declared tool",

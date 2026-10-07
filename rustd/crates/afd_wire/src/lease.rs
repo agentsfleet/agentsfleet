@@ -78,4 +78,3 @@ pub struct LeaseResponse<'a> {
     /// How long to wait before asking again, when there is none.
     pub retry_after_ms: Option<u32>,
 }
-

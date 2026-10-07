@@ -30,7 +30,7 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
 /// Changes a schedule the fleet made.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
-    path = "/v1/runners/me/leases/{lease_id}/schedules/{schedule_id}",
+    path = afd_wire::paths::LEASE_SCHEDULE,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_update_schedule",
     summary = "Change a schedule the fleet made",
@@ -111,7 +111,7 @@ pub(crate) async fn update<D: Services>(
 /// Retires a schedule the fleet made.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
-    path = "/v1/runners/me/leases/{lease_id}/schedules/{schedule_id}",
+    path = afd_wire::paths::LEASE_SCHEDULE,
     tag = afd_http::openapi::tag::SCHEDULES,
     operation_id = "runner_delete_schedule",
     summary = "Delete a schedule the fleet made",
