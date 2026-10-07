@@ -166,6 +166,10 @@ pub struct ReportRequest<'a> {
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
     pub tool_calls: Option<RawToolTrace<'a>>,
+    /// Epoch milliseconds until which this runner holds the run's sandbox,
+    /// frozen, for the fleet's next event. Absent when it holds none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_until_ms: Option<i64>,
 }
 
 /// `POST /v1/runners/me/reports` reply.

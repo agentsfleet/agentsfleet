@@ -284,6 +284,7 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
         bundles: BundleCache::new(&home),
         mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
         limits: Limits::default(),
+        holds: crate::holds::Holds::start(clock()),
         clock: clock(),
         halt: Halt::new(CancellationToken::new()),
         held: Notify::new(),

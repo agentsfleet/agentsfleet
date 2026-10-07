@@ -68,6 +68,12 @@ impl Sandbox for Named {
     fn is_running(&mut self) -> bool {
         !self.dead
     }
+    async fn freeze(&self) -> Result<()> {
+        Ok(())
+    }
+    async fn thaw(&self) -> Result<()> {
+        Ok(())
+    }
     async fn destroy(self: Box<Self>) -> Result<()> {
         assert!(!self.panics, "a teardown that panics");
         self.destroyed.fetch_add(1, Ordering::SeqCst);

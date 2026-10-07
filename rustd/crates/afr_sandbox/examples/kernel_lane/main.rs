@@ -25,6 +25,8 @@ mod files;
 #[cfg(target_os = "linux")]
 mod git;
 #[cfg(target_os = "linux")]
+mod hold;
+#[cfg(target_os = "linux")]
 mod lane;
 #[cfg(target_os = "linux")]
 mod release;

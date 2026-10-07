@@ -190,6 +190,33 @@ afd_observability::closed_set! {
 }
 
 afd_observability::closed_set! {
+    /// What became of a sandbox held for its fleet between two leases: held,
+    /// reused, or released for the reason given.
+    SandboxHold {
+        /// A processed lease's sandbox was frozen and held.
+        Parked => "parked",
+        /// The fleet's next lease took it.
+        Reused => "reused",
+        /// Its idle window ran out.
+        Expired => "expired",
+        /// The runner's last free worker took a lease for another fleet.
+        Saturated => "saturated",
+        /// The runner held as many as it has workers, and this was the oldest.
+        Capped => "capped",
+        /// The next lease wanted another size or policy.
+        Mismatch => "mismatch",
+        /// The daemon named its fleet halted or deleted.
+        Inactive => "inactive",
+        /// The runner stopped.
+        Shutdown => "shutdown",
+        /// It would not thaw, or its executor did not answer once thawed.
+        ThawFailed => "thaw_failed",
+        /// The daemon refused the report of the lease that left it.
+        Superseded => "superseded",
+    }
+}
+
+afd_observability::closed_set! {
     /// Why live-tail frames never left the runner.
     FrameDrop {
         /// Every batch slot was held, so a full batch was dropped.

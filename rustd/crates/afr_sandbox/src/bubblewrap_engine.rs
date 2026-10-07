@@ -12,9 +12,9 @@ use afr_executor::{Client, Executor};
 use rustix::fs::{Gid, Uid};
 
 use crate::bubblewrap::{self, Layout, SOCKET_NAME};
-use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup};
+use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup};
 use crate::engine::{Engine, HostWorkspace, LeaseName, Limits, Sandbox, SandboxRequest};
-use crate::error::{Result, not_ready, refused, toolbox_unexpected};
+use crate::error::{Result, not_ready, refused, toolbox_unexpected, unconfined};
 use crate::host::HostTools;
 use crate::probe::{HostProbe, ProbePaths};
 use crate::tenant::TenantFiles;
@@ -45,6 +45,8 @@ const EVENT_PREPARE_FAILED: &str = "sandbox_prepare_failed";
 const EVENT_DISK_BUFFERED: &str = "sandbox_workspace_buffered";
 /// The event a host that can build no sandbox at all is logged under.
 const EVENT_HOST_REFUSED: &str = "sandbox_host_refused";
+/// Why a sandbox whose cgroup was never made cannot be frozen.
+const NO_CGROUP: &str = "it was never moved into a cgroup of its own";
 
 /// Everything the engine builds sandboxes from.
 #[derive(Debug, Clone)]
@@ -284,11 +286,26 @@ impl Sandbox for Bubblewrapped {
         self.parts.is_running()
     }
 
+    async fn freeze(&self) -> Result<()> {
+        settle(self.parts.freezer(), Freezer::freeze).await
+    }
+
+    async fn thaw(&self) -> Result<()> {
+        settle(self.parts.freezer(), Freezer::thaw).await
+    }
+
     async fn destroy(self: Box<Self>) -> Result<()> {
         let Self { client, parts, .. } = *self;
         drop(client);
         parts.teardown().await
     }
+}
+
+/// Runs a freeze or a thaw off the async runtime, since settling polls the
+/// kernel until the whole tree has stopped or started.
+async fn settle(freezer: Option<Freezer>, step: fn(&Freezer) -> Result<()>) -> Result<()> {
+    let freezer = freezer.ok_or_else(|| unconfined(NO_CGROUP))?;
+    tokio::task::spawn_blocking(move || step(&freezer)).await?
 }
 
 #[cfg(test)]

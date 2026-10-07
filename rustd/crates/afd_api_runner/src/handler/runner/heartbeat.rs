@@ -131,6 +131,11 @@ fn payload(beat: &Beat) -> HeartbeatResponse<'_> {
         degraded: beat.verdict.is_degraded(),
         degraded_reason: beat.verdict.reason().map(Cow::Borrowed),
         selftest_requested: beat.selftest_requested,
+        release_holds: beat
+            .release_holds
+            .iter()
+            .map(|fleet| Cow::Borrowed(fleet.as_str()))
+            .collect(),
         // The runner holds no cadence of its own: this daemon is what derives a
         // host offline, so it is what says how often to beat. `timing`'s
         // assertion keeps this under that threshold.

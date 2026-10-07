@@ -24,6 +24,7 @@ use crate::exhaustion::{
 use crate::exhaustion_concurrent::writable_state_exhaustion_spares_the_sandbox;
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
+use crate::hold::held_sandbox_resumes_where_it_stopped;
 use crate::lane::{Lane, missing};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
 use crate::shared_memory::full_shared_memory_spares_the_tenant;
@@ -126,6 +127,10 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         (
             "test_writable_state_exhaustion_spares_the_sandbox",
             writable_state_exhaustion_spares_the_sandbox,
+        ),
+        (
+            "test_next_lease_reuses_the_held_sandbox",
+            held_sandbox_resumes_where_it_stopped,
         ),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];

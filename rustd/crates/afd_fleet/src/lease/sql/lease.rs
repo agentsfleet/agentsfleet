@@ -35,7 +35,26 @@ pub use self::row::{INSERT_LEASE_WITH_EVENT, LeaseRow};
 ///
 /// Answers no row when a live runner still holds the slot — that absence is the
 /// `.taken` verdict, not an error.
+///
+/// # A held fleet is its holder's first
+///
+/// While `held_until` is in the future and its holder, `last_runner_id`, has
+/// beaten within `$5` (`RUNNER_OFFLINE_AFTER_MS`), only the holder wins: its
+/// sandbox carries the fleet's last run, and the next event should run there.
+/// A hold is a head start at the slot, never the slot. The holder still claims
+/// through this statement and its fence, so one fleet still has one live
+/// holder. The holder's own claim keeps `held_until`, so a claim that finds no
+/// event leaves the hold in place for the next one; its report then records
+/// the hold anew or clears it. Any other runner's claim clears it, since the
+/// sandbox it named no longer carries the fleet's latest run.
+///
+/// `prior` reads the slot before the statement changes it, so the caller can
+/// tell a claim on a held fleet from one on an unheld fleet. A CTE sees the
+/// statement's starting snapshot on every Postgres version.
 pub const CLAIM_AFFINITY_SLOT: &str = "\
+WITH prior AS (
+  SELECT held_until, last_runner_id FROM fleet.runner_affinity WHERE fleet_id = $1::uuid
+)
 INSERT INTO fleet.runner_affinity
   (fleet_id, last_runner_id, fencing_seq, leased_until,
    metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at,
@@ -45,26 +64,45 @@ ON CONFLICT (fleet_id) DO UPDATE
   SET last_runner_id = EXCLUDED.last_runner_id,
       fencing_seq    = fleet.runner_affinity.fencing_seq + 1,
       leased_until   = EXCLUDED.leased_until,
+      held_until     = CASE WHEN fleet.runner_affinity.last_runner_id = EXCLUDED.last_runner_id
+                            THEN fleet.runner_affinity.held_until END,
       updated_at     = EXCLUDED.updated_at
   WHERE fleet.runner_affinity.leased_until < $4
-RETURNING fencing_seq";
+    AND (fleet.runner_affinity.held_until IS NULL
+         OR fleet.runner_affinity.held_until <= $4
+         OR fleet.runner_affinity.last_runner_id = $2::uuid
+         OR NOT EXISTS (
+              SELECT 1 FROM fleet.runners r
+              WHERE r.id = fleet.runner_affinity.last_runner_id
+                AND r.last_seen_at > $4 - $5))
+RETURNING fencing_seq,
+          (SELECT held_until FROM prior),
+          (SELECT last_runner_id::text FROM prior)";
 
-/// Release the slot — fencing-guarded, so only the current holder can free it.
+/// Release the slot — fencing-guarded, so only the current holder can free it —
+/// and record whether that holder keeps the fleet's sandbox: `$4` is when the
+/// hold lapses, or null for none.
 ///
 /// The guard is load-bearing rather than defensive: a holder superseded by a
 /// reclaim would otherwise free the CURRENT holder's slot and hand one fleet to
-/// two runners. Idempotent — a no-op when the row is gone or the token has been
-/// bumped past this one.
+/// two runners, and would record a hold on a sandbox no lease will reach.
+/// Idempotent — a no-op when the row is gone or the token has been bumped past
+/// this one.
 pub const RELEASE_AFFINITY_SLOT: &str = "\
-UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2
+UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2, held_until = $4
 WHERE fleet_id = $1::uuid AND fencing_seq = $3";
 
 /// [`RELEASE_AFFINITY_SLOT`] for a claim that leased nothing.
 ///
 /// It drops the sticky hint too, or a fleet whose pass keeps stopping sorts
 /// first for that runner on every poll of its partition, starving the rest.
+/// A fleet still held keeps its hint: the hint names the holder, and the hold
+/// is what steers the fleet's next event there. Every fleet nobody holds is
+/// unhinted as before, so the starvation guard still covers it.
 pub const RELEASE_UNLEASED_SLOT: &str = "\
-UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2, last_runner_id = NULL
+UPDATE fleet.runner_affinity
+SET leased_until = $2, updated_at = $2,
+    last_runner_id = CASE WHEN held_until > $2 THEN last_runner_id END
 WHERE fleet_id = $1::uuid AND fencing_seq = $3";
 
 /// Reclaim the fleet's latest `active` lease: find it, expire it, and return
@@ -140,8 +178,11 @@ JOIN core.fleet_events e
 /// `required_tags` GIN index can serve — not a column-to-column join, which no
 /// index serves.
 ///
+/// A fleet another live runner holds is skipped the same way, by the claim's
+/// own hold condition (see [`CLAIM_AFFINITY_SLOT`]).
+///
 /// `$1` active status, `$2` runner id, `$3` ready fleet ids, `$4` ceiling,
-/// `$5` now.
+/// `$5` now, `$6` how long a silent runner stays live.
 pub const SELECT_READY_CANDIDATES: &str = "\
 SELECT z.id::text
 FROM core.fleets z
@@ -149,6 +190,12 @@ LEFT JOIN fleet.runner_affinity a ON a.fleet_id = z.id
 WHERE z.status = $1
   AND z.id = ANY(($3::text[])::uuid[])
   AND (a.leased_until IS NULL OR a.leased_until < $5)
+  AND (a.held_until IS NULL
+       OR a.held_until <= $5
+       OR a.last_runner_id = $2::uuid
+       OR NOT EXISTS (
+            SELECT 1 FROM fleet.runners r
+            WHERE r.id = a.last_runner_id AND r.last_seen_at > $5 - $6))
   AND z.required_tags <@ (
         SELECT COALESCE(array_agg(e), '{}'::text[])
         FROM jsonb_array_elements_text(

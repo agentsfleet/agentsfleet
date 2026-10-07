@@ -60,7 +60,7 @@ impl Drainer<'_> {
         let mut still_held = false;
         for spooled in pending {
             match spooled.deliver(self.plane).await {
-                Ok(Delivery::Settled | Delivery::Rejected) => {}
+                Ok(Delivery::Settled | Delivery::Superseded | Delivery::Rejected) => {}
                 Ok(Delivery::Kept(failure)) => {
                     if self.halt.stops_on(&failure) {
                         return true;

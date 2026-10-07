@@ -48,7 +48,7 @@ async fn every_verb_goes_to_its_own_path() {
                 "/v1/runners/me/heartbeats".to_owned(),
                 true
             ),
-            (Verb::Lease, "/v1/runners/me/leases".to_owned(), false),
+            (Verb::Lease, "/v1/runners/me/leases".to_owned(), true),
             (Verb::Renew, format!("{lease_root}/renew"), true),
             (Verb::Activity, format!("{lease_root}/activity"), true),
             (Verb::Report, "/v1/runners/me/reports".to_owned(), true),
@@ -75,6 +75,7 @@ async fn send_every_verb(plane: &super::ControlPlane) {
     let heartbeat = HeartbeatRequest {
         capability_report: None,
         selftest: None,
+        holds: afd_wire::runner::HeldFleets::default(),
     };
     let push = MemoryPushRequest {
         lease_id: LEASE_ID.into(),
@@ -82,7 +83,7 @@ async fn send_every_verb(plane: &super::ControlPlane) {
         memory: Vec::new(),
     };
     plane.heartbeat(&heartbeat).await.unwrap();
-    plane.lease().await.unwrap();
+    plane.lease(&[]).await.unwrap();
     assert_eq!(
         plane.renew(&lease, &RenewRequest::default()).await.unwrap(),
         7,
@@ -117,7 +118,7 @@ async fn a_reply_decodes_borrowing_or_refuses_as_malformed() {
         _other => Answer::Reply(Bytes::from_static(b"[")),
     });
 
-    let good = plane.lease().await.unwrap();
+    let good = plane.lease(&[]).await.unwrap();
     let bad = plane
         .hydrate(&Uuid7::parse(FLEET_ID).unwrap())
         .await

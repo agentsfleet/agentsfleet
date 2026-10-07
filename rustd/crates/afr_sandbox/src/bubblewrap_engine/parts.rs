@@ -18,7 +18,7 @@ use tokio::process::{Child, ChildStderr, Command};
 use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
-use crate::cgroup::{CGROUP_PROCS, LeaseCgroup};
+use crate::cgroup::{CGROUP_PROCS, Freezer, LeaseCgroup};
 use crate::error::{Error, Result, cgroup, program};
 use crate::host::tail;
 use crate::tenant::TenantFiles;
@@ -85,6 +85,11 @@ impl Parts {
     /// Takes ownership of the lease's workspace disk.
     pub(super) fn adopt_disk(&mut self, disk: WorkspaceDisk) -> &WorkspaceDisk {
         self.disk.insert(disk)
+    }
+
+    /// The freezer of the lease's cgroup, once it has one.
+    pub(super) fn freezer(&self) -> Option<Freezer> {
+        self.cgroup.as_ref().map(LeaseCgroup::freezer)
     }
 
     /// Takes ownership of the lease's cgroup.

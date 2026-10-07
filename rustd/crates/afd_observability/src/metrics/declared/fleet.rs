@@ -48,6 +48,10 @@ pub const LEASE_HISTORY_BYTES: Declared<HistogramKind> =
 pub const LEASE_HISTORY_CUTS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_history_cuts_total");
 
+/// Won claims on a fleet whose slot named a held sandbox, by who won.
+pub const LEASE_HELD_CLAIMS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_lease_held_claims_total");
+
 /// Chat leases issued without their turns because the thread read failed.
 pub const LEASE_HISTORY_READ_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_history_read_failures_total");

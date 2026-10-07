@@ -15,9 +15,11 @@ use std::borrow::Cow;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
+mod holds;
 mod rules;
 mod selftest;
 
+pub use self::holds::{FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeldFleets};
 pub use self::rules::{
     BIND_NOTE_MAX_BYTES, BIND_PATH_MAX_BYTES, BIND_PATH_MIN_BYTES, CONTROLLER_NAME_MAX_BYTES,
     EXTRA_BINDS_MAX, HOST_ID_MAX_BYTES, LABEL_MAX_BYTES, LABELS_MAX, REGISTRY_ENTRIES_MAX,
@@ -243,8 +245,8 @@ pub struct RegisterResponse<'a> {
 /// `POST /v1/runners/me/heartbeats` request.
 ///
 /// The capability report rides the first beat and any beat where the probe
-/// result changed. Both fields default to absent so an older runner's empty body
-/// still parses.
+/// result changed. Every field defaults to absent or empty, so an older
+/// runner's empty body still parses.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -255,6 +257,12 @@ pub struct HeartbeatRequest<'a> {
     /// A verdict produced since the last beat, by request or by startup probe.
     #[serde(borrow)]
     pub selftest: Option<SelftestReport<'a>>,
+    /// Every fleet this runner holds a frozen sandbox for, waiting for that
+    /// fleet's next event. A fleet missing here is held nowhere on this
+    /// runner. Absent decodes as empty.
+    #[serde(borrow, default)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>, max_items = 64))]
+    pub holds: HeldFleets<'a>,
 }
 
 /// `POST /v1/runners/me/heartbeats` reply.
@@ -278,6 +286,11 @@ pub struct HeartbeatResponse<'a> {
     /// An operator asked this runner to self-test. Rides the beat like the
     /// assignment does — one interval, no second endpoint, no host visit.
     pub selftest_requested: bool,
+    /// Fleets among the beat's `holds` the runner should let go of: no longer
+    /// active, or leased by another runner since. The runner destroys their
+    /// sandboxes. Absent decodes as empty.
+    #[serde(borrow, default)]
+    pub release_holds: Vec<Cow<'a, str>>,
     /// How long the runner waits before its next beat, in milliseconds.
     ///
     /// Required rather than optional. The daemon owns

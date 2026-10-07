@@ -22,7 +22,7 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_observability::producers;
-use afd_wire::runner::{CapabilityReport, HeartbeatRequest, SelftestReport};
+use afd_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, SelftestReport};
 use garde::Validate as _;
 use sqlx::{Executor as _, PgConnection, Row as _};
 
@@ -52,6 +52,7 @@ const EVENT_LIVENESS_WRITE: &str = "heartbeat_bump_failed";
 pub const NO_REPORT: HeartbeatRequest<'static> = HeartbeatRequest {
     capability_report: None,
     selftest: None,
+    holds: HeldFleets(Vec::new()),
 };
 
 /// What one beat resolved to, for the reply the host reads.
@@ -67,6 +68,8 @@ pub struct Beat {
     /// ask, so echoing it back would tell the host to immediately re-run the
     /// probe it has this second finished.
     pub selftest_requested: bool,
+    /// Fleets the beat listed as held that the runner should let go of.
+    pub release_holds: Vec<String>,
 }
 
 /// The policy row, as the reconciliation needs it.
@@ -105,6 +108,7 @@ impl Runners {
         // beat its reconciliation.
         let reported = persist_selftest(&mut connection, runner, beat.selftest.as_ref(), now).await;
         self.bump_liveness(&mut connection, runner, now).await;
+        let release_holds = holds::reconcile(&mut connection, runner, &beat.holds, now).await;
         // The gauge's only input. Liveness is a Postgres row a collection
         // callback cannot read — it is a network round trip, and the SDK
         // collects on a thread that must not make one — so the beat that
@@ -113,6 +117,7 @@ impl Runners {
 
         Ok(Beat {
             selftest_requested: row.selftest_requested && !reported,
+            release_holds,
             assignment: row.assignment,
             verdict,
         })
@@ -337,6 +342,8 @@ fn announce(runner: &Uuid7, stored: &StoredVerdict, verdict: Verdict) {
         _steady => {}
     }
 }
+
+mod holds;
 
 #[cfg(test)]
 #[path = "heartbeat/tests.rs"]

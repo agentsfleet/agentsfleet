@@ -38,7 +38,7 @@ mod bubblewrap_engine;
 #[cfg(target_os = "linux")]
 pub use self::bubblewrap_engine::{BubblewrapConfig, BubblewrapEngine};
 pub use self::cgroup::{
-    DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup, SANDBOX_LEAF, SANDBOX_MEMORY_RESERVE_BYTES,
+    DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup, SANDBOX_LEAF, SANDBOX_MEMORY_RESERVE_BYTES,
     SUBTREE_CONTROL, TENANT_LEAF,
 };
 pub use self::engine::{

@@ -52,6 +52,15 @@ pub(crate) fn cgroup_left(path: &std::path::Path) -> impl Fn(std::io::Error) -> 
     }
 }
 
+/// Reports a cgroup that never reached `state` after it was asked to.
+pub(crate) fn cgroup_unsettled(path: &std::path::Path, state: &'static str) -> Error {
+    ErrorKind::CgroupUnsettled {
+        path: path.to_owned(),
+        state,
+    }
+    .into()
+}
+
 /// Refuses a toolbox release whose `what` would not parse, failing admission's
 /// `refusal` check, and keeps the parser's reason as the cause.
 pub(crate) fn toolbox_unreadable<E>(

@@ -26,6 +26,8 @@ mod strictness;
 // seeded mutation corpus the parser must survive without panicking.
 #[path = "validation.rs"]
 mod validation;
+#[path = "validation_holds.rs"]
+mod validation_holds;
 #[path = "validation_lease.rs"]
 mod validation_lease;
 #[path = "validation_mutation.rs"]
