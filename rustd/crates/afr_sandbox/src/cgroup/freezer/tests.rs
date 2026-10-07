@@ -55,6 +55,20 @@ fn test_a_freeze_the_kernel_never_reports_is_refused_as_unsettled() {
     assert!(refused.contains("did not settle frozen"), "{refused}");
 }
 
+/// A freeze the kernel refuses to take is never waited out: the refusal
+/// names `cgroup.freeze`, the file that refused it.
+#[test]
+fn test_a_freeze_the_kernel_refuses_names_its_control_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let freezer = reporting(dir.path(), SETTLED_FROZEN);
+    // A directory where the control file goes refuses every write.
+    fs::create_dir(dir.path().join("cgroup.freeze")).unwrap();
+
+    let refused = freezer.freeze().unwrap_err().to_string();
+
+    assert!(refused.contains("cgroup.freeze"), "{refused}");
+}
+
 #[test]
 fn test_an_unreadable_events_file_ends_the_wait_at_once() {
     let dir = tempfile::tempdir().unwrap();

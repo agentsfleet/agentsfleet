@@ -10,6 +10,7 @@ use std::path::Path;
 use rustix::io::FdFlags;
 
 use super::{TenantDescriptors, TenantFiles};
+use crate::cgroup::{CGROUP_PROCS, MEMORY_EVENTS};
 
 /// `memory.events` as a kernel renders it for a leaf with no kills yet.
 const EVENTS: &str = "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n";
@@ -97,4 +98,25 @@ fn a_number_never_opened_is_refused() {
     let said = named.adopt().unwrap_err().to_string();
 
     assert!(said.contains(&NEVER_OPENED.to_string()), "{said}");
+}
+
+/// A leaf file the engine cannot open refuses the lease naming that file, so
+/// the operator reads which of the two the kernel would not give.
+#[test]
+fn a_leaf_file_the_engine_cannot_open_is_named() {
+    let leaf = tempfile::tempdir().unwrap();
+    let absent = leaf.path().join("absent");
+    let (procs, events) = (
+        leaf.path().join(CGROUP_PROCS),
+        leaf.path().join(MEMORY_EVENTS),
+    );
+
+    for (procs, events, named) in [
+        (absent.join(CGROUP_PROCS), events.clone(), CGROUP_PROCS),
+        (procs, absent.join(MEMORY_EVENTS), MEMORY_EVENTS),
+    ] {
+        let said = TenantFiles::open(&procs, &events).unwrap_err().to_string();
+
+        assert!(said.contains(named), "{named}: {said}");
+    }
 }

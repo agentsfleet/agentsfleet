@@ -6,11 +6,14 @@
 //! is frozen with everything else and answers nothing until the thaw.
 
 use std::fs;
-use std::path::Path;
-use std::time::Duration;
+use std::os::unix::process::ExitStatusExt as _;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, ExitStatus};
+use std::time::{Duration, Instant};
 
-use afr_sandbox::{Engine as _, Limits, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine as _, LeaseCgroup, Limits, SANDBOX_LEAF, Sandbox, SandboxRequest};
 use libtest_mimic::Failed;
+use rustix::process::Signal;
 
 use crate::lane::Lane;
 use crate::run::{Outcome, expect, run as run_in, runtime, shell};
@@ -33,6 +36,21 @@ const START_TICKER: &str = "echo 'written before the hold' > /workspace/note; \
 const WATCH: Duration = Duration::from_millis(500);
 /// What `cgroup.events` reads for a cgroup whose tree is all stopped.
 const FROZEN: &str = "frozen 1";
+/// A cgroup's own state, its `frozen` key among it.
+const CGROUP_EVENTS: &str = "cgroup.events";
+/// The file a process is moved into a cgroup through.
+const CGROUP_PROCS: &str = "cgroup.procs";
+/// The lease whose held sandbox is destroyed without a thaw.
+const DESTROYED_FROZEN: &str = "heldgone";
+/// The lease a runner died holding, frozen.
+const LEFT_FROZEN: &str = "heldleft";
+/// A process that outlives the trial unless something kills it.
+const SLEEPER: &str = "sleep";
+const SLEEP_SECONDS: &str = "60";
+/// How long a process the sweep killed may take to be reaped, and how often
+/// it is looked for.
+const REAP_WAIT: Duration = Duration::from_secs(1);
+const REAP_POLL: Duration = Duration::from_millis(10);
 
 /// What the host saw of the held sandbox.
 struct Seen {
@@ -97,7 +115,7 @@ async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Fai
     tokio::time::sleep(WATCH).await;
 
     sandbox.freeze().await?;
-    let frozen_events = fs::read_to_string(events(lane)).unwrap_or_default();
+    let frozen_events = fs::read_to_string(events(lane, LEASE)).unwrap_or_default();
     let frozen_at = size(&tick);
     tokio::time::sleep(WATCH).await;
     let ticks_while_frozen = (frozen_at, size(&tick));
@@ -117,10 +135,95 @@ async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Fai
 }
 
 /// The lease cgroup's own state, its `frozen` key among it.
-fn events(lane: &Lane) -> std::path::PathBuf {
-    lane.config.cgroup_root.join(LEASE).join("cgroup.events")
+fn events(lane: &Lane, lease_id: &str) -> PathBuf {
+    lane.config.cgroup_root.join(lease_id).join(CGROUP_EVENTS)
 }
 
 fn size(path: &Path) -> u64 {
     fs::metadata(path).map_or(0, |metadata| metadata.len())
+}
+
+/// A held sandbox its fleet never comes back for is destroyed as it stands,
+/// frozen: every process is killed where it stopped, and its cgroup and its
+/// directory go, with no thaw first.
+pub(crate) fn destroy_frozen(lane: &Lane) -> Result<(), Failed> {
+    let (frozen_events, destroyed) = runtime().block_on(async {
+        let request = SandboxRequest {
+            lease_id: DESTROYED_FROZEN,
+            limits: Limits::default(),
+        };
+        let sandbox = lane.engine().prepare(request).await?;
+        run_in(sandbox.executor(), shell(START_TICKER)).await?;
+        sandbox.freeze().await?;
+        let frozen_events = fs::read_to_string(events(lane, DESTROYED_FROZEN));
+        Ok::<_, Failed>((frozen_events.unwrap_or_default(), sandbox.destroy().await))
+    })?;
+    expect(
+        frozen_events.lines().any(|line| line == FROZEN),
+        format!("frozen before the destroy, got {frozen_events:?}"),
+    )?;
+    expect(
+        destroyed.is_ok(),
+        format!("destroyed without a thaw, got {destroyed:?}"),
+    )?;
+    expect(
+        !lane.config.cgroup_root.join(DESTROYED_FROZEN).exists(),
+        "its cgroup is gone",
+    )?;
+    expect(
+        !lane.lease_dir(DESTROYED_FROZEN).exists(),
+        "its directory is gone",
+    )
+}
+
+/// A runner that died holding a sandbox leaves its cgroup frozen with a
+/// process stopped inside; the next engine's boot sweep kills it where it
+/// stands and removes the cgroup and the lease's directory.
+pub(crate) fn sweep_frozen(lane: &Lane) -> Result<(), Failed> {
+    let cgroup = lane.config.cgroup_root.join(LEFT_FROZEN);
+    let made = LeaseCgroup::create(&lane.config.cgroup_root, LEFT_FROZEN, &Limits::default())?;
+    let mut stopped = Command::new(SLEEPER).arg(SLEEP_SECONDS).spawn()?;
+    fs::write(
+        cgroup.join(SANDBOX_LEAF).join(CGROUP_PROCS),
+        stopped.id().to_string(),
+    )?;
+    made.freezer().freeze()?;
+    let frozen_events = fs::read_to_string(events(lane, LEFT_FROZEN)).unwrap_or_default();
+    drop(made);
+    fs::create_dir_all(lane.lease_dir(LEFT_FROZEN))?;
+
+    drop(lane.engine());
+
+    // Reaped here if the sweep killed it; killed here, so nothing outlives
+    // the trial, if it did not.
+    let swept = ended_within(&mut stopped, REAP_WAIT)?;
+    if swept.is_none() {
+        stopped.kill()?;
+        stopped.wait()?;
+    }
+    expect(
+        frozen_events.lines().any(|line| line == FROZEN),
+        format!("the leftover was frozen, got {frozen_events:?}"),
+    )?;
+    expect(
+        swept.and_then(|status| status.signal()) == Some(Signal::KILL.as_raw()),
+        format!("the sweep killed the stopped process, got {swept:?}"),
+    )?;
+    expect(!cgroup.exists(), "the sweep removed the frozen cgroup")?;
+    expect(
+        !lane.lease_dir(LEFT_FROZEN).exists(),
+        "the sweep removed the lease's directory",
+    )
+}
+
+/// `child`'s status once it has ended, looked for until `limit` passes;
+/// `None` while it still runs.
+fn ended_within(child: &mut Child, limit: Duration) -> std::io::Result<Option<ExitStatus>> {
+    let deadline = Instant::now() + limit;
+    loop {
+        match child.try_wait()? {
+            None if Instant::now() < deadline => std::thread::sleep(REAP_POLL),
+            ended => return Ok(ended),
+        }
+    }
 }

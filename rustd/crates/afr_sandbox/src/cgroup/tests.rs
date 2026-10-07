@@ -107,6 +107,27 @@ fn test_a_crash_before_the_split_leaves_nothing_the_removal_trips_on() {
     assert!(!dir.exists(), "no leaves, the lease goes alone");
 }
 
+/// A split refused after it made the sandbox leaf, as `create` undoes it:
+/// the leaf goes with the refusal, so no half-split cgroup is left behind.
+#[test]
+fn test_a_split_refused_midway_is_undone_with_the_leaf_it_made() {
+    let root = tempfile::tempdir().unwrap();
+    let (made, dir) = plain(root.path(), "lease-13");
+    // A file where the tenant leaf goes: the sandbox leaf is made, then the
+    // tenant leaf is refused.
+    fs::write(dir.join("tenant"), "").unwrap();
+
+    let refused = made.split(&LIMITS).unwrap_err();
+    let midway = dir.join("sandbox").is_dir();
+    let handed_back = made.undo(refused);
+
+    assert!(midway, "the split got as far as the sandbox leaf");
+    assert!(
+        !dir.join("sandbox").exists(),
+        "the leaf the split made is removed: {handed_back}"
+    );
+}
+
 #[test]
 fn test_swap_is_zeroed_where_the_kernel_accounts_it() {
     let root = tempfile::tempdir().unwrap();

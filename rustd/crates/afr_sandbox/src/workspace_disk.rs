@@ -66,7 +66,9 @@ impl WorkspaceDisk {
     /// and mounts it; says how the host caches it.
     ///
     /// # Errors
-    /// Any step fails; whatever the earlier steps made is removed first.
+    /// Any step fails, and that step's failure is what returns. Before the
+    /// mount, whatever the earlier steps made is removed; after it, the disk
+    /// is undone as a release undoes one, unmounted before its files go.
     pub async fn create(
         tools: &HostTools,
         dir: &Path,
@@ -74,16 +76,19 @@ impl WorkspaceDisk {
         owner: (u32, u32),
     ) -> Result<(Self, Caching)> {
         let disk = Self::in_dir(dir);
-        match disk.build(tools, bytes, owner).await {
+        if let Err(error) = disk.make_and_mount(tools, bytes, owner).await {
+            disk.discard();
+            return Err(error);
+        }
+        match disk.ready(owner) {
             Ok(caching) => Ok((disk, caching)),
-            Err(error) => {
-                disk.discard();
-                Err(error)
-            }
+            Err(error) => Err(disk.unmount_after(error)),
         }
     }
 
-    async fn build(&self, tools: &HostTools, bytes: u64, owner: (u32, u32)) -> Result<Caching> {
+    /// Makes the sparse image, formats it and mounts it: nothing is mounted
+    /// unless this succeeds.
+    async fn make_and_mount(&self, tools: &HostTools, bytes: u64, owner: (u32, u32)) -> Result<()> {
         // Readable by root alone: the raw image is every file the lease wrote.
         fs::OpenOptions::new()
             .write(true)
@@ -95,13 +100,51 @@ impl WorkspaceDisk {
         fs::create_dir(&self.mount_point)?;
         tools
             .mount(EXT4, WORKSPACE_OPTIONS, &self.image, &self.mount_point)
-            .await?;
+            .await
+    }
+
+    /// Readies the mounted disk: direct I/O where the host allows it, then
+    /// `workspace/` and `tmp/`; says how the host caches it.
+    fn ready(&self, owner: (u32, u32)) -> Result<Caching> {
         #[cfg(target_os = "linux")]
         let caching = self.direct_io()?;
         #[cfg(not(target_os = "linux"))]
         let caching = Caching::Buffered;
         lay_out(&self.mount_point, owner)?;
         Ok(caching)
+    }
+
+    /// Undoes a disk whose build failed once it was mounted, the way a
+    /// leftover is released: unmounted, which frees its loop device, then
+    /// its files removed. An image is never unlinked while it is mounted;
+    /// what cannot be undone is logged and kept for the boot sweep. Hands
+    /// `failure`, the step's own, back unchanged.
+    #[cfg(target_os = "linux")]
+    fn unmount_after(self, failure: crate::Error) -> crate::Error {
+        let mount_point = self.mount_point.clone();
+        if let Err(leftover) = self.release_leftover() {
+            let error_code = leftover.code().as_str();
+            let path = mount_point.display();
+            let reason = leftover.to_string();
+            let event = EVENT_DISK_LEFT;
+            tracing::warn!(
+                error_code,
+                %path,
+                reason,
+                event,
+                "a failed workspace disk could not be unmounted and removed"
+            );
+        }
+        failure
+    }
+
+    /// No other kernel mounts a workspace disk, so a mount that succeeded
+    /// here is a test's fake that mounted nothing: removing what the build
+    /// made is the whole undo.
+    #[cfg(not(target_os = "linux"))]
+    fn unmount_after(self, failure: crate::Error) -> crate::Error {
+        self.discard();
+        failure
     }
 
     /// The disk's paths under `dir`, made or not.
@@ -206,9 +249,12 @@ impl WorkspaceDisk {
         self.remove_files()
     }
 
+    /// Removes the mount point, with whatever was written to it while nothing
+    /// was mounted there — nothing once a disk is unmounted, the layout where
+    /// a mount made no disk — then the image.
     #[cfg(target_os = "linux")]
     fn remove_files(&self) -> Result<()> {
-        fs::remove_dir(&self.mount_point).or_else(absent)?;
+        fs::remove_dir_all(&self.mount_point).or_else(absent)?;
         fs::remove_file(&self.image).or_else(absent)?;
         Ok(())
     }

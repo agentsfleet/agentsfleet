@@ -54,3 +54,34 @@ fn test_outside_a_sandbox_there_is_no_socket_to_bind() {
         "{refused:?}"
     );
 }
+
+/// A descriptor the entry was named but never inherited stops it once the
+/// socket is bound and before anything is hardened: the refusal names the
+/// number, never a confinement step, and the socket is already there.
+#[test]
+fn test_an_adoption_refused_after_the_bind_stops_before_hardening() {
+    // Past any descriptor this test process holds.
+    const NEVER_OPENED: i32 = 1_000_000;
+    let dir = tempfile::tempdir().ok();
+    let socket = dir.as_ref().map(|dir| dir.path().join("executor.sock"));
+    let tenant = crate::TenantDescriptors {
+        tenant_procs: NEVER_OPENED,
+        tenant_events: NEVER_OPENED + 1,
+    };
+
+    let refused = socket.as_deref().and_then(|socket| {
+        super::serve_placed(socket, socket, |listener| {
+            Ok(listener.with_tenant(tenant.adopt()?))
+        })
+        .err()
+        .map(|error| error.to_string())
+    });
+
+    assert!(
+        refused
+            .as_deref()
+            .is_some_and(|text| text.contains(&NEVER_OPENED.to_string())),
+        "{refused:?}"
+    );
+    assert!(socket.is_some_and(|socket| socket.exists()), "bound first");
+}

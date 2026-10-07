@@ -23,8 +23,10 @@ use crate::exhaustion::{
 };
 use crate::exhaustion_concurrent::writable_state_exhaustion_spares_the_sandbox;
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
+use crate::filesystems::{buffered_disk, probe_direct_io, short_disk};
+use crate::forked_kill::forked_oom;
 use crate::git::{git_runs_local_commands, token_never_enters};
-use crate::hold::held_sandbox_resumes_where_it_stopped;
+use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
 use crate::lane::{Lane, missing};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
 use crate::shared_memory::full_shared_memory_spares_the_tenant;
@@ -132,6 +134,12 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
             "test_next_lease_reuses_the_held_sandbox",
             held_sandbox_resumes_where_it_stopped,
         ),
+        ("test_frozen_sandbox_is_destroyed_whole", destroy_frozen),
+        ("test_sweep_removes_a_frozen_leftover", sweep_frozen),
+        ("test_shell_reported_kill_reads_as_oom", forked_oom),
+        ("test_disk_without_direct_io_runs_buffered", buffered_disk),
+        ("test_probe_reads_direct_io_per_filesystem", probe_direct_io),
+        ("test_lane_refuses_a_disk_short_of_room", short_disk),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];
     let trials = rows
