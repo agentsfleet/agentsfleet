@@ -38,6 +38,8 @@ pub(super) struct Keeper {
     held: Vec<Entry>,
     workers: usize,
     busy: usize,
+    /// Set once the runner takes no new lease; nothing is held after.
+    closed: bool,
     /// Every teardown in flight, so shutdown can wait for each one.
     destroying: JoinSet<()>,
     saturated: Arc<Notify>,
@@ -50,6 +52,7 @@ impl Keeper {
             held: Vec::new(),
             workers: 0,
             busy: 0,
+            closed: false,
             destroying: JoinSet::new(),
             saturated,
         }
@@ -93,14 +96,15 @@ impl Keeper {
                     let fleets = self.held.iter().map(|entry| entry.key.fleet.clone());
                     let _unasked = reply.send(fleets.collect());
                 }
+                Request::Close => self.close(),
                 Request::Shutdown { done } => {
-                    self.close().await;
+                    self.finish().await;
                     let _unasked = done.send(());
                     return;
                 }
             }
         }
-        self.close().await;
+        self.finish().await;
     }
 
     /// Hands out `key.fleet`'s hold when the rest of `key` matches it, and
@@ -113,7 +117,6 @@ impl Keeper {
             return None;
         }
         let held_ms = self.clock.now().as_millis() - entry.since.as_millis();
-        record::sandbox_hold(SandboxHold::Reused);
         Some(Taken {
             sandbox: entry.sandbox,
             held_ms,
@@ -122,13 +125,17 @@ impl Keeper {
 
     /// Holds `sandbox` for its fleet until the idle window lapses, after
     /// making room: an older hold of the same fleet goes, then the oldest
-    /// until one fewer than the cap remain.
+    /// until one fewer than the cap remain. A closed keeper holds nothing.
     fn park(
         &mut self,
         key: HoldKey,
         lease: Uuid7,
         sandbox: Box<dyn Sandbox>,
     ) -> Option<UnixMillis> {
+        if self.closed {
+            self.destroy(&key.fleet, sandbox, Release::Shutdown);
+            return None;
+        }
         if let Some(at) = self.position(&key.fleet) {
             let stale = self.held.remove(at);
             self.retire(stale, Release::Superseded);
@@ -225,8 +232,15 @@ impl Keeper {
         self.held.iter().position(|entry| entry.key.fleet == *fleet)
     }
 
-    async fn close(&mut self) {
+    /// Ends every hold, and holds nothing from here on.
+    fn close(&mut self) {
+        self.closed = true;
         self.retire_where(|_every| true, Release::Shutdown);
+    }
+
+    /// Ends every hold and waits for each teardown in flight.
+    async fn finish(&mut self) {
+        self.close();
         while self.destroying.join_next().await.is_some() {}
     }
 }

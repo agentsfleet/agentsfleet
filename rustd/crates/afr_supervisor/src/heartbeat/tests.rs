@@ -25,29 +25,29 @@ use crate::holds::{HoldKey, Holds, Release};
 use crate::test_support::{Answer, FakeEngine, INTERVAL_MS, drain, json, plane};
 
 /// The fleet whose sandbox the runner holds.
-const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
+pub(super) const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
 /// A fleet busy on the runner's only worker.
 const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
 const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
 /// A name in `release_holds` that is no fleet id.
 const NOT_AN_ID: &str = "not-a-fleet";
 /// A tick long enough that a beat inside it came early.
-const TICK_MS: u32 = 3_600_000;
+pub(super) const TICK_MS: u32 = 3_600_000;
 /// The event every release is logged under.
-const RELEASED: &str = "sandbox_hold_released";
+pub(super) const RELEASED: &str = "sandbox_hold_released";
 /// The status of a daemon that wants the runner to keep going.
-const KEEP_GOING: &str = "ok";
+pub(super) const KEEP_GOING: &str = "ok";
 /// The status of a daemon that wants the runner to stop.
-const STOP: &str = "stop";
+pub(super) const STOP: &str = "stop";
 /// The beat's field listing the fleets the runner holds.
-const HOLDS_FIELD: &str = "holds";
+pub(super) const HOLDS_FIELD: &str = "holds";
 
 /// A registry holding nothing, as a runner that has run no lease.
 fn idle_holds() -> Holds {
     Holds::start(Arc::new(SystemClock))
 }
 
-fn probe() -> HostProbe {
+pub(super) fn probe() -> HostProbe {
     HostProbe {
         landlock: true,
         seccomp: true,
@@ -74,7 +74,7 @@ fn reply(status: &str, policy: bool, selftest: bool, interval_ms: u32) -> Answer
 }
 
 /// An answer with no policy whose `release_holds` names `released`.
-fn releasing(status: &str, released: &[&str]) -> Answer {
+pub(super) fn releasing(status: &str, released: &[&str]) -> Answer {
     answer(status, &serde_json::Value::Null, false, TICK_MS, released)
 }
 
@@ -95,7 +95,7 @@ fn answer(
 
 /// A registry over a stopped clock with room for `workers`, holding a sandbox
 /// for [`FLEET`] that `engine` built.
-async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
+pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
     let holds = Holds::start(Arc::new(FixedClock::at(UnixMillis::from_millis(0))));
     holds.resize(workers);
     let request = SandboxRequest {
@@ -114,7 +114,7 @@ async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
     holds
 }
 
-fn sent(call: &Call) -> serde_json::Value {
+pub(super) fn sent(call: &Call) -> serde_json::Value {
     serde_json::from_slice(call.body.as_ref().unwrap()).unwrap()
 }
 
@@ -204,8 +204,8 @@ async fn a_failed_beat_retries_and_a_stop_ends_leases_in_flight() {
 
     assert_eq!(
         beats.load(Ordering::SeqCst),
-        4,
-        "a failed first beat retries"
+        5,
+        "a failed first beat retries; the stop is followed by the last beat"
     );
     assert!(
         started.elapsed() < Duration::from_secs(3),
@@ -294,7 +294,11 @@ async fn test_a_saturation_release_beats_at_once() {
     };
     let (_beaten, _busy) = tokio::join!(beating, saturating);
 
-    assert_eq!(beats.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        beats.load(Ordering::SeqCst),
+        3,
+        "the saturation beat, then the last one"
+    );
     assert!(
         started.elapsed() < Duration::from_millis(u64::from(TICK_MS)),
         "the second beat did not wait out the tick"

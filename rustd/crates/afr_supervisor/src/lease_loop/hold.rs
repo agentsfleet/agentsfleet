@@ -11,9 +11,10 @@
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
-use afd_core::error_code::ErrorCode;
 use afd_observability::semconv::ATTR_SANDBOX_REUSED;
 use afr_sandbox::{Limits, Sandbox};
+use afr_telemetry::labels::SandboxHold;
+use afr_telemetry::record;
 
 use super::LeaseRun;
 use crate::holds::{HoldKey, Release, Taken};
@@ -90,49 +91,64 @@ impl LeaseRun<'_> {
         })
     }
 
-    /// The fleet's held sandbox, thawed and answering, or none. One that will
-    /// not thaw, or whose executor stays silent, is destroyed, and the lease
-    /// builds a fresh one.
+    /// The fleet's held sandbox, thawed and answering, or none. A hold the
+    /// lease was not told to resume is ended, and so is one that will not
+    /// thaw or whose executor stays silent; the lease builds a fresh one.
     pub(super) async fn revive(&self, key: &HoldKey) -> Option<Box<dyn Sandbox>> {
-        let Taken { sandbox, held_ms } = self.lessee.holds.take(key).await?;
+        let holds = &self.lessee.holds;
+        if !self.lease.resume_hold {
+            // The daemon does not record this runner's hold as the fleet's
+            // latest run: another runner ran the fleet since, or this event
+            // is a redelivery whose first attempt the hold may carry.
+            holds.release(key.fleet.clone(), Release::Superseded);
+            return None;
+        }
+        let Taken { sandbox, held_ms } = holds.take(key).await?;
         let lease_id = self.ids.lease.as_str();
         let event = EVENT_THAW_STARTED;
         tracing::debug!(lease_id, event);
-        match thawed(sandbox.as_ref()).await {
-            Ok(()) => {
-                let event = EVENT_THAW_COMPLETED;
-                tracing::debug!(lease_id, event);
-                let fleet_id = key.fleet.as_str();
-                let event = EVENT_REUSED;
-                tracing::info!(lease_id, fleet_id, held_ms, event);
-                Some(sandbox)
-            }
-            Err(failure) => {
-                let error_code = failure.code().as_str();
-                let reason = failure.reason();
-                let event = EVENT_THAW_FAILED;
-                tracing::warn!(
-                    error_code,
-                    lease_id,
-                    reason,
-                    event,
-                    "a held sandbox would not resume; the lease gets a fresh one"
-                );
-                let fleet = key.fleet.clone();
-                let holds = &self.lessee.holds;
-                holds.discard(fleet, sandbox, Release::ThawFailed).await;
-                None
-            }
-        }
+        let given_up = match sandbox.thaw().await {
+            Ok(()) => answered(sandbox.as_ref())
+                .await
+                .err()
+                .map(|silent| (silent.code(), silent.wire_message())),
+            Err(refused) => Some((refused.code(), told(&refused))),
+        };
+        let Some((code, reason)) = given_up else {
+            let event = EVENT_THAW_COMPLETED;
+            tracing::debug!(lease_id, event);
+            let fleet_id = key.fleet.as_str();
+            let event = EVENT_REUSED;
+            tracing::info!(lease_id, fleet_id, held_ms, event);
+            record::sandbox_hold(SandboxHold::Reused);
+            return Some(sandbox);
+        };
+        let error_code = code.as_str();
+        let event = EVENT_THAW_FAILED;
+        tracing::warn!(
+            error_code,
+            lease_id,
+            reason,
+            event,
+            "a held sandbox would not resume; the lease gets a fresh one"
+        );
+        let fleet = key.fleet.clone();
+        holds.discard(fleet, sandbox, Release::ThawFailed).await;
+        None
     }
 
     /// Holds the lease's sandbox, frozen, for the fleet's next lease when the
-    /// lease ended processed and ran to its own end; destroys it otherwise.
-    /// Answers when the hold lapses, for the report to carry.
+    /// lease ended processed and ran to its own end, the runner still takes
+    /// leases and the sandbox still runs; destroys it otherwise. Answers when
+    /// the hold lapses, for the report to carry.
     pub(super) async fn keep(&self, kept: Option<Kept>, ending: &Ending) -> Option<UnixMillis> {
-        let Kept { sandbox, key } = kept?;
+        let Kept { mut sandbox, key } = kept?;
+        // Leasing is a child of serving, so a runner shutting down or stopped
+        // counts too: it takes no lease that could take the hold.
+        let leasing = !self.lessee.halt.leasing().is_cancelled();
+        let ran_out = ending.processed() && !self.interrupt.is_cancelled();
         let key = match key {
-            Some(key) if ending.processed() && !self.interrupt.is_cancelled() => key,
+            Some(key) if ran_out && leasing && sandbox.is_running() => key,
             _unheld => {
                 self.destroy(sandbox).await;
                 return None;
@@ -175,43 +191,20 @@ impl LeaseRun<'_> {
     }
 }
 
-/// Why a held sandbox did not come back: it would not thaw, or its executor
-/// did not answer once it had. Kept apart so the log names each one's cause.
-#[derive(Debug)]
-enum Unthawed {
-    /// The sandbox would not thaw.
-    Thaw(afr_sandbox::Error),
-    /// Its executor stayed silent past the wait, or answered with a failure.
-    Answer(afr_executor::Error),
-}
-
-impl Unthawed {
-    /// The registry code the failure is logged under.
-    fn code(&self) -> ErrorCode {
-        match self {
-            Self::Thaw(failure) => failure.code(),
-            Self::Answer(failure) => failure.code(),
-        }
-    }
-
-    /// The log's reason: an executor's failure with its cause, rendered as
-    /// the executor logs its own.
-    fn reason(&self) -> String {
-        match self {
-            Self::Thaw(failure) => failure.to_string(),
-            Self::Answer(failure) => failure.wire_message(),
-        }
-    }
-}
-
-/// Thaws `sandbox` and waits for its executor to answer.
-async fn thawed(sandbox: &dyn Sandbox) -> Result<(), Unthawed> {
-    sandbox.thaw().await.map_err(Unthawed::Thaw)?;
+/// Waits for a thawed sandbox's executor to answer.
+async fn answered(sandbox: &dyn Sandbox) -> afr_executor::Result<()> {
     let answer = sandbox.executor().list_dir(WORKSPACE_TOP);
-    let answered = tokio::time::timeout(THAW_ANSWER_WAIT, answer)
+    tokio::time::timeout(THAW_ANSWER_WAIT, answer)
         .await
-        .unwrap_or_else(|_late| Err(silent()));
-    answered.map(drop).map_err(Unthawed::Answer)
+        .unwrap_or_else(|_late| Err(silent()))
+        .map(drop)
+}
+
+/// A sandbox failure's own sentence, then each cause beneath it, as a chain
+/// walker reads them; the code is the log's `error_code` field already.
+fn told(failure: &afr_sandbox::Error) -> String {
+    std::iter::successors(std::error::Error::source(failure), |cause| cause.source())
+        .fold(failure.detail(), |told, cause| format!("{told}: {cause}"))
 }
 
 /// The failure a thawed executor that never answered is logged as.
@@ -231,3 +224,7 @@ mod tests;
 #[cfg(test)]
 #[path = "revive_tests.rs"]
 mod revive_tests;
+
+#[cfg(test)]
+#[path = "unheld_tests.rs"]
+mod unheld_tests;

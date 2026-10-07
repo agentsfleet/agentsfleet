@@ -14,13 +14,12 @@ use std::time::Duration;
 use afd_core::clock::{FixedClock, UnixMillis};
 use afd_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxHold;
-use afr_telemetry::testing::{Recorded, Tally, scoped};
+use afr_telemetry::testing::{Recorded, Tally};
 use futures_util::FutureExt as _;
-use tokio::sync::{Notify, mpsc};
 
-use super::{EVENT_DESTROY_FAILED, Keeper};
+use super::EVENT_DESTROY_FAILED;
 use crate::holds::tests::{
-    FLEET_A, FLEET_B, LEASE, fleets, holds, id, key, park, released, releases, sandbox,
+    FLEET_A, FLEET_B, fleets, holds, id, key, park, released, releases, sandbox,
 };
 use crate::holds::{Holds, Release};
 use crate::test_support::FakeEngine;
@@ -109,38 +108,49 @@ async fn test_after_shutdown_a_take_finds_nothing_and_a_discard_still_destroys()
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }
 
-/// A park and the take that reuses it are each counted once, in that order.
+/// A park is counted at once; a take is not, since whether the sandbox comes
+/// back is known only once it thaws and answers, which the lease counts.
 #[tokio::test]
-async fn test_a_park_and_its_reuse_are_counted() {
+async fn test_a_park_is_counted_and_a_take_is_not() {
     let engine = FakeEngine::default();
-    let (requests, received) = mpsc::unbounded_channel();
-    let saturated = Arc::new(Notify::new());
-    let holds = Holds {
-        requests,
-        saturated: Arc::clone(&saturated),
-    };
-    let clock = Arc::new(FixedClock::at(UnixMillis::from_millis(0)));
     let (tally, recorded) = Tally::new();
-    let keeper = scoped(tally, Keeper::new(clock, saturated).run(received));
+    let clock = Arc::new(FixedClock::at(UnixMillis::from_millis(0)));
+    let holds = Holds::recording(clock, tally);
     holds.resize(2);
-    let leasing = async {
-        let parked = sandbox(&engine).await;
-        holds.park(key(FLEET_A), id(LEASE), parked).await.unwrap();
-        let taken = holds.take(&key(FLEET_A)).await.unwrap();
-        holds.shutdown().await;
-        taken
-    };
 
-    let ((), _taken) = tokio::join!(keeper, leasing);
+    park(&holds, &engine, FLEET_A).await;
+    let taken = holds.take(&key(FLEET_A)).await;
+    holds.shutdown().await;
 
+    assert!(taken.is_some());
     let counted: Vec<Recorded> = recorded.try_iter().collect();
+    assert_eq!(counted, [Recorded::SandboxHold(SandboxHold::Parked)]);
+}
+
+/// Once the runner takes no new lease the task ends every hold, and a sandbox
+/// parked after that is destroyed at once rather than held.
+#[tokio::test]
+async fn test_closed_holds_end_every_hold_and_refuse_a_later_park() {
+    let capture = Capture::install();
+    let engine = FakeEngine::default();
+    let (holds, _clock) = holds(2);
+    park(&holds, &engine, FLEET_A).await;
+
+    holds.close();
+    let late = park(&holds, &engine, FLEET_B).await;
+    let left = fleets(&holds).await;
+    holds.shutdown().await;
+
+    assert_eq!(late, None, "not held");
+    assert!(left.is_empty(), "{left:?}");
     assert_eq!(
-        counted,
+        releases(&capture),
         [
-            Recorded::SandboxHold(SandboxHold::Parked),
-            Recorded::SandboxHold(SandboxHold::Reused)
+            released(FLEET_A, Release::Shutdown),
+            released(FLEET_B, Release::Shutdown)
         ]
     );
+    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 2);
 }
 
 /// A runner with no workers holds nothing: the sandbox is destroyed at once,

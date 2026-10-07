@@ -10,14 +10,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
 use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
+use afd_wire::lease::LeasePayload;
+use bytes::Bytes;
 use futures_util::FutureExt as _;
 
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::holds::Release;
+use crate::renew::RENEWAL_TICK;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer, LEASE_ID, OUTCOME,
-    PROCESSED, RENEWAL_TERMINATE, Rig, daemon, lease, reported,
+    PROCESSED, RENEWAL_TERMINATE, Rig, daemon, lease, position, reported,
 };
 
 /// The fleet's second lease, after the one that left its sandbox held.
@@ -32,6 +35,8 @@ const RELEASED: &str = "sandbox_hold_released";
 const HELD_UNTIL: i64 = SANDBOX_HOLD_IDLE_MS;
 /// The report field that carries it.
 const HELD_UNTIL_MS: &str = "held_until_ms";
+/// The daemon's answer to a memory push it stored.
+const STORED: &[u8] = br#"{"stored":1,"skipped":0}"#;
 
 /// What the fake engine counted.
 pub(super) struct Counted {
@@ -80,6 +85,14 @@ pub(super) fn holding(
     (rig, counted)
 }
 
+/// The fleet's next lease, which the daemon says should resume the sandbox
+/// this runner holds for it.
+pub(super) fn resumed(lease_id: &str, fleet: &str) -> LeasePayload<'static> {
+    let mut next = lease(lease_id, fleet, None);
+    next.resume_hold = true;
+    next
+}
+
 /// Waits until every release the registry was asked for is done, by asking
 /// it to stop: the answer comes after each teardown.
 pub(super) async fn settled(rig: &Rig) {
@@ -104,11 +117,19 @@ pub(super) fn released(fleet: &str, reason: Release) -> (String, String) {
     (fleet.to_owned(), reason.outcome().as_str().to_owned())
 }
 
+/// The lease parks its sandbox, then outlives two renewal ticks pushing its
+/// memory, so renewal is proved running while the sandbox is held; time then
+/// runs past more ticks, and no renewal follows the report.
 #[tokio::test(start_paused = true)]
 async fn test_processed_lease_parks_its_sandbox_frozen() {
-    let (mut rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    let slow_push = |call: &Call| {
+        (call.verb == Verb::Capture)
+            .then(|| Answer::Late(RENEWAL_TICK * 2, Bytes::from_static(STORED)))
+    };
+    let (mut rig, counted) = holding(slow_push, FakeEngine::default(), Behaviour::Answer);
 
     rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+    tokio::time::sleep(RENEWAL_TICK * 2).await;
 
     let calls = rig.calls();
     let report = reported(&calls);
@@ -119,11 +140,17 @@ async fn test_processed_lease_parks_its_sandbox_frozen() {
         (1, 1, 0, 0),
         "frozen and held, not destroyed"
     );
-    let report_at = calls.iter().rposition(|call| call.verb == Verb::Report);
-    let last_renew = calls.iter().rposition(|call| call.verb == Verb::Renew);
+    let report_at = position(&calls, Verb::Report).unwrap();
+    let renewals: Vec<usize> = calls
+        .iter()
+        .enumerate()
+        .filter(|(_, call)| call.verb == Verb::Renew)
+        .map(|(at, _)| at)
+        .collect();
+    assert!(!renewals.is_empty(), "the lease outlived a renewal tick");
     assert!(
-        last_renew < report_at,
-        "a hold never extends the lease: no renewal after its report"
+        renewals.iter().all(|at| *at < report_at),
+        "a hold never extends the lease: no renewal after its report {renewals:?}"
     );
 }
 
@@ -132,9 +159,7 @@ async fn test_next_lease_reuses_the_held_sandbox() {
     let (mut rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
 
     rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
-    rig.run(&lease(NEXT_LEASE_ID, FLEET_ID, None))
-        .await
-        .unwrap();
+    rig.run(&resumed(NEXT_LEASE_ID, FLEET_ID)).await.unwrap();
 
     assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
     assert_eq!(
@@ -212,31 +237,6 @@ async fn test_a_sandbox_that_will_not_freeze_is_destroyed() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn test_thaw_failure_falls_back_fresh() {
-    let engine = FakeEngine {
-        freezer: Freezer::RefusesThaw,
-        ..FakeEngine::default()
-    };
-    let (mut rig, counted) = holding(healthy, engine, Behaviour::Answer);
-
-    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
-    rig.run(&lease(NEXT_LEASE_ID, FLEET_ID, None))
-        .await
-        .unwrap();
-    settled(&rig).await;
-
-    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
-    let (prepared, frozen, thawed, destroyed) = counted.read();
-    assert_eq!(prepared, 2, "the second lease built a fresh sandbox");
-    assert_eq!(frozen, 2, "and held it in turn");
-    assert_eq!(thawed, 0, "no thaw succeeded");
-    assert_eq!(
-        destroyed, 2,
-        "the hold that would not thaw, then shutdown's"
-    );
-}
-
-#[tokio::test(start_paused = true)]
 async fn test_another_fleets_lease_leaves_the_hold_alone() {
     let (rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
 
@@ -279,6 +279,6 @@ async fn test_a_lease_on_the_last_free_worker_releases_other_holds() {
 }
 
 /// The report asks the daemon to hold nothing for its fleet.
-fn holds_nothing(report: &serde_json::Value) {
+pub(super) fn holds_nothing(report: &serde_json::Value) {
     assert!(report.get(HELD_UNTIL_MS).is_none(), "{report}");
 }

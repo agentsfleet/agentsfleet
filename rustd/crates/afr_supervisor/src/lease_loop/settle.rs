@@ -26,8 +26,9 @@ const EVENT_UNSPOOLED_LOST: &str = "report_failed";
 impl LeaseRun<'_> {
     /// Posts the run's full tool records, pushes its memory, then spools and
     /// posts its report, which carries when the sandbox the run left held
-    /// lapses. Answers whether the daemon refused the report because the lease
-    /// was settled without it, so a held sandbox serves no next lease.
+    /// lapses. Answers whether the daemon will never record the report, so
+    /// the sandbox the run left held carries a run it does not know and serves
+    /// no next lease.
     pub(super) async fn settle(
         &self,
         ending: &mut Ending,
@@ -128,12 +129,13 @@ impl LeaseRun<'_> {
     }
 
     /// Posts a spooled report once; one the daemon cannot take yet goes to the
-    /// drain. Answers whether the lease was settled without it.
+    /// drain. Answers whether the daemon will never record it: the lease was
+    /// settled without it, or the daemon cannot read it.
     async fn deliver(&self, spooled: &Spooled) -> bool {
         let lessee = self.lessee;
         let failure = match spooled.deliver(&lessee.plane).await {
-            Ok(Delivery::Settled | Delivery::Rejected) => return false,
-            Ok(Delivery::Superseded) => return true,
+            Ok(Delivery::Settled) => return false,
+            Ok(Delivery::Superseded | Delivery::Rejected) => return true,
             Ok(Delivery::Kept(failure)) | Err(failure) => failure,
         };
         if !lessee.halt.stops_on(&failure) {
@@ -153,7 +155,8 @@ impl LeaseRun<'_> {
 
     /// The spool would not take the report: post it directly, and take no new
     /// lease, since the next report would have nowhere durable to wait either.
-    /// Answers whether the lease was settled without it.
+    /// Answers whether the daemon will never record it: with no spool to wait
+    /// in, a report it did not take is lost.
     async fn post_unspooled(&self, bytes: Bytes, failure: &crate::Error) -> bool {
         let lessee = self.lessee;
         let code = failure.code().as_str();
@@ -169,10 +172,7 @@ impl LeaseRun<'_> {
         let Err(lost) = retrying(|| lessee.plane.report(bytes.clone())).await else {
             return false;
         };
-        if settles(&lost) {
-            return true;
-        }
-        if !lessee.halt.stops_on(&lost) {
+        if !settles(&lost) && !lessee.halt.stops_on(&lost) {
             let code = lost.code().as_str();
             let event = EVENT_UNSPOOLED_LOST;
             tracing::error!(
@@ -182,7 +182,7 @@ impl LeaseRun<'_> {
                 "an unspooled report was not delivered"
             );
         }
-        false
+        true
     }
 }
 

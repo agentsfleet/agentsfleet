@@ -302,6 +302,7 @@ async fn test_reuse_leaves_the_clone_untouched() {
     fs::write(&edited, UNCOMMITTED).unwrap();
     let mut next = bound(&[GIT.name()], WORKSPACE_ID);
     next.lease_id = NEXT_LEASE_ID.into();
+    next.resume_hold = true;
     rig.run(&next).await.unwrap();
 
     let calls = rig.calls();

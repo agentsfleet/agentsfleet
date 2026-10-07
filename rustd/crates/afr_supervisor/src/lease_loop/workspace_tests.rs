@@ -250,6 +250,7 @@ async fn test_a_lease_of_another_size_builds_fresh_and_ends_the_hold() {
     rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
     let mut resized = lease(NEXT_LEASE_ID, FLEET_ID, None);
     resized.limits = Some(ASKED);
+    resized.resume_hold = true;
 
     rig.run(&resized).await.unwrap();
     rig.lessee.holds.shutdown().await;

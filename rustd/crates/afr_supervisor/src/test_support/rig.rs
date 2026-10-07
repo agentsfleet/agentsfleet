@@ -51,6 +51,16 @@ impl Rig {
         engine: FakeEngine,
         agent: FakeAgent,
     ) -> Self {
+        Self::with_holds(answer, engine, agent, Holds::start(clock()))
+    }
+
+    /// [`Rig::new`], keeping its sandboxes in `holds`.
+    pub(crate) fn with_holds(
+        answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
+        engine: FakeEngine,
+        agent: FakeAgent,
+        holds: Holds,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let home = StorageHome::open(root.path()).unwrap();
         let (plane, calls) = plane(answer);
@@ -72,7 +82,7 @@ impl Rig {
                 format!("file://{}/", root.path().join(ORIGINS).display()),
             ),
             limits: Limits::default(),
-            holds: Holds::start(clock()),
+            holds,
             clock: clock(),
             halt: Halt::new(shutdown.clone()),
             held: Notify::new(),

@@ -141,13 +141,19 @@ fn report_superseded(call: &Call) -> Option<Answer> {
     })
 }
 
-/// A report with nowhere to wait, which the daemon answers as settled without
-/// it, destroys the sandbox its lease parked: that hold serves no next lease.
-#[tokio::test(start_paused = true)]
-async fn test_an_unspooled_superseded_report_destroys_what_it_parked() {
-    const RELEASED: &str = "sandbox_hold_released";
+/// The event every release of a held sandbox is logged under.
+const RELEASED: &str = "sandbox_hold_released";
+
+/// A report the daemon cannot read and never will.
+fn report_rejected(call: &Call) -> Option<Answer> {
+    (call.verb == Verb::Report).then(|| Answer::Fail(error::refused(Verb::Report, 400, None)))
+}
+
+/// Runs a lease on `rig` with room to hold its sandbox, and proves the
+/// daemon's answer to its report ended that hold as superseded: the daemon
+/// never recorded the run the sandbox carries, so it serves no next lease.
+async fn ends_what_it_parked(rig: Rig) {
     let capture = Capture::install();
-    let rig = unspoolable(report_superseded);
     rig.lessee.holds.resize(2);
 
     rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
@@ -160,4 +166,32 @@ async fn test_an_unspooled_superseded_report_destroys_what_it_parked() {
     let superseded = Release::Superseded.outcome().as_str();
     assert_eq!(released.field("reason"), Some(superseded));
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
+}
+
+/// A report with nowhere to wait, which the daemon answers as settled without
+/// it, destroys the sandbox its lease parked.
+#[tokio::test(start_paused = true)]
+async fn test_an_unspooled_superseded_report_destroys_what_it_parked() {
+    ends_what_it_parked(unspoolable(report_superseded)).await;
+}
+
+/// A spooled report the daemon will never take is set aside, and the sandbox
+/// its lease parked is destroyed.
+#[tokio::test(start_paused = true)]
+async fn test_a_rejected_report_destroys_what_it_parked() {
+    ends_what_it_parked(rig(report_rejected)).await;
+}
+
+/// A report with nowhere to wait that the daemon will never take destroys the
+/// sandbox its lease parked.
+#[tokio::test(start_paused = true)]
+async fn test_an_unspooled_rejected_report_destroys_what_it_parked() {
+    ends_what_it_parked(unspoolable(report_rejected)).await;
+}
+
+/// A report with nowhere to wait that never reached the daemon is lost, and
+/// the sandbox its lease parked is destroyed.
+#[tokio::test(start_paused = true)]
+async fn test_an_unspooled_report_lost_destroys_what_it_parked() {
+    ends_what_it_parked(unspoolable(report_busy)).await;
 }
