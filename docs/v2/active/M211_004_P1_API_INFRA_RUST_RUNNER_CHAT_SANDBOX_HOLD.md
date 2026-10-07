@@ -25,7 +25,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-**Depends on:** M211_001 (the sandbox-side tools; a lease with only supervisor tools builds no sandbox, `rustd/crates/afr_agent/src/engine.rs:139-141`) · M211_003 (its reserve counts every held sandbox at its full disk limit, and its two cgroup leaves freeze together) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:114-137` refuses them until then)
+**Depends on:** M211_001 (the sandbox-side tools; a lease with only supervisor tools builds no sandbox, `rustd/crates/afr_agent/src/engine.rs:139-141`) · M211_003 (its reserve counts every held sandbox at its full disk limit, and its two cgroup leaves freeze together) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:184-185` refuses them until then)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from a source trace of the chat path at `b0138d7b3`, recorded in Discovery
 **Canonical architecture:** `docs/architecture/runner_execution.md` §"Workspace between leases", §Toolbox; `docs/architecture/runner_fleet.md` §"Per-lease renewal — how a long fleet keeps its lease", §"Memory continuity — durable fleet memory rides the trusted plane"
 
