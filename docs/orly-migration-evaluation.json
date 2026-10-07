@@ -1,0 +1,159 @@
+{
+  "recorded_at": "Oct 07, 2026: 09:56 AM",
+  "scope": "Local 0.10.14 to 0.12.0 candidate migration in the authorized agentsfleet worktree; no publication or merge.",
+  "consumer": {
+    "branch": "chore/orly-012-migration",
+    "comparison_revision": "bb007001545cb97f4dc27c9325235a6a0ebb4fb9"
+  },
+  "package": {
+    "name": "@agentsfleet/orly",
+    "version": "0.12.0",
+    "filename": "agentsfleet-orly-0.12.0.tgz",
+    "integrity": "sha512-8mme2lu7i3fOAxle/IwDqEPomF1Lj4eUo65EKzZMUl8IGYV3cIma7K9IWc3t/4Mu8eAi8+1YeQe2Ont57zh4cQ==",
+    "entryCount": 200,
+    "sha256": "362c97f932b014e0aa62eeaae1c405d6a962e4870f4d96fff57a2a86cda4c9cf"
+  },
+  "package_source": {
+    "branch": "feat/m10-judgment-evaluation",
+    "revision": "c929156b31916af1be11ab06312ffe65960d9afe",
+    "working_tree": "Uncommitted 0.12.0 version change and unfinished comparison evaluator; tarball digest is authoritative for the tested artifact."
+  },
+  "migration": {
+    "command": "orly update --no-hooks --json",
+    "preservation": {
+      "install_ok": true,
+      "version": "0.12.0",
+      "written": 70,
+      "unexpected_owner_changes": [],
+      "commands_preserved": true,
+      "surfaces_preserved": true,
+      "hooks_preserved": true,
+      "journal_removed": true
+    },
+    "preservation_scope": "Compared tracked owner bytes captured after approved caller-path edits and before installation; later intentional owner-document edits excluded from that snapshot.",
+    "repeat": {
+      "ok": true,
+      "written": [],
+      "errors": [],
+      "setupErrors": []
+    }
+  },
+  "verification": [
+    {
+      "command": "make install-evals",
+      "repository": "orly",
+      "result": "25 passed, 0 failed; real Bun and Node paths plus network access required for disposable package installation."
+    },
+    {
+      "command": "bun run typecheck",
+      "repository": "orly",
+      "result": "tsc --noEmit exited 0."
+    },
+    {
+      "command": "bash scripts/check_orly_pin.sh",
+      "runtime": "packed 0.12.0",
+      "result": "Matched .orly/orly.json; exit 0."
+    },
+    {
+      "command": "bash scripts/check_orly_pin.sh",
+      "runtime": "existing global 0.10.14",
+      "result": "Rejected mismatch against 0.12.0 pin; exit 1."
+    },
+    {
+      "command": "orly doctor",
+      "result": "Installed rules match .orly/orly.json; work and verification commands declared; exit 0."
+    },
+    {
+      "command": "orly gate work",
+      "result": "Declared make harness-verify ran on staged migration; ALL GATES GREEN; exit 0."
+    },
+    {
+      "command": "make check-documentation-rules",
+      "result": "11 tests passed; documentation checks passed."
+    },
+    {
+      "command": "make check-gh-actions-valid",
+      "result": "18 distinct pins checked; 5 builder tag tests passed; actionlint and make references passed."
+    },
+    {
+      "command": "make lint-shell check-playbooks-refs",
+      "result": "Shellcheck passed at error level; playbook references and README inventory match."
+    },
+    {
+      "command": "gitleaks protect --staged --redact --no-banner",
+      "result": "No leaks found in staged migration."
+    }
+  ],
+  "judgment_input": {
+    "stage": "review",
+    "items": [
+      {
+        "id": "pin-mismatch",
+        "question": "review.failure_path",
+        "requirement": "When the installed orly version differs from .orly/orly.json, the pin check exits nonzero and names both versions.",
+        "evidence": [
+          {
+            "role": "implementation",
+            "path": "scripts/check_orly_pin.sh",
+            "selector": {
+              "kind": "file"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "judgment_probe": {
+    "command": "orly judge review --input <saved judgment_input> --json",
+    "exit_code": 2,
+    "report": {
+      "stage": "review",
+      "advisory": true,
+      "requests": 0,
+      "results": [
+        {
+          "status": "incomplete",
+          "id": "pin-mismatch",
+          "question": "review.failure_path",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.8321669999999983,
+          "usage": null
+        }
+      ]
+    },
+    "interpretation": "Expected offline refusal with no exact replay; does not measure model accuracy."
+  },
+  "comparison_preflight": {
+    "command": "bun evals/judgments/comparison/run.ts --check",
+    "exit_code": 0,
+    "baseline_questions": 6,
+    "candidates": 5,
+    "cases": 176,
+    "resolved_labels": 176,
+    "model_metrics": "Unavailable; no live calls.",
+    "adoption": "All candidates ineligible; runtime catalog unchanged."
+  },
+  "review": {
+    "method": "gstack native adversarial review",
+    "initial": "Found active owner-document references to relocated files.",
+    "resolution": "Replaced affected paths with .orly paths; fresh full migration review found no concrete defects.",
+    "managed_digest_mismatches": 0,
+    "managed_missing": 0,
+    "owner_hooks": "Byte-identical to comparison revision.",
+    "external_model_review": "Not run; excluded from this task."
+  },
+  "limits": [
+    "0.12.0 is an unpublished local candidate. Registry latest was 0.11.0 when queried; do not push this consumer pin until the matching package is published.",
+    "Full application lint, unit and integration suites were not run; this report proves the selected migration checks only.",
+    "No live model request or new model-assisted labeling was made. Judgment quality and candidate adoption remain unmeasured.",
+    "The original M10 evaluator implementation and release acceptance remain incomplete.",
+    "The optional exploratory review window expired after its doctor capture; no completed exploratory coverage is claimed.",
+    "The original agentsfleet main checkout and other worktrees were not migrated; this authorized dedicated worktree contains the migration."
+  ],
+  "local_artifacts": {
+    "root": "/private/tmp/orly-consumer-preflight-n34afvmd",
+    "tarball": "/private/tmp/orly-consumer-preflight-n34afvmd/package/agentsfleet-orly-0.12.0.tgz",
+    "installed_executable": "/private/tmp/orly-consumer-preflight-n34afvmd/runtime/node_modules/.bin/orly"
+  }
+}

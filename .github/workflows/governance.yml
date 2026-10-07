@@ -26,15 +26,15 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      # Pinned to the version .oracle/orly.json records, so CI proves the
+      # Pinned to the version .orly/orly.json records, so CI proves the
       # ruleset this repository actually installed, not whatever is latest.
       - name: Install orly at the pinned version
         run: |
-          version="$(jq -r '.orly_version' .oracle/orly.json)"
-          echo "orly_version from .oracle/orly.json: $version"
+          version="$(jq -r '.orly_version' .orly/orly.json)"
+          echo "orly_version from .orly/orly.json: $version"
           npm install --global "@agentsfleet/orly@${version}"
 
-      # `make harness-verify` — the command .oracle/orly.json declares for
+      # `make harness-verify` — the command .orly/orly.json declares for
       # `conform`, and therefore what `orly gate work` below invokes — runs
       # audits/gitleaks-config.sh, which refuses to guess and exits on a
       # missing binary. The runner image carries no gitleaks, and the

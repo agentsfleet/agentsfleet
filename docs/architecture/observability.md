@@ -526,7 +526,7 @@ control plane's records leave through a stderr subscriber installed at boot
 (`rustd/crates/agentsfleetd/src/logs.rs`, level from `AGENTSFLEET_LOG_LEVEL`);
 the runner's go to stderr, where the host supervisor keeps them and, once it is
 built, the runner collector reads them from the host's log store. Field rules:
-`docs/LOGGING_STANDARD.md`, committed in this repository.
+`.orly/docs/LOGGING_STANDARD.md`, committed in this repository.
 
 ## The export path — one endpoint, and the collector owns the fan-out
 

@@ -10,7 +10,7 @@ owns the thread/lock/shutdown layer on top of them.
 
 The concurrency rules `C1–C5` are the system's concrete invariants and bind both
 planes. Their statement beside the Allocator rules `A1–A6` lives in the Zig
-discipline façade (`dispatch/write_zig.md`); the control plane holds the same
+discipline façade (`.orly/dispatch/write_zig.md`); the control plane holds the same
 five in Rust, where the compiler carries three of them.
 
 ---

@@ -19849,7 +19849,7 @@
       },
       "SandboxLimits": {
         "type": "object",
-        "description": "The sandbox a lease asks for.\n\nBounded, because the runner builds exactly what it is told: a size past\nthese bounds is a daemon fault, and the runner refuses the lease rather\nthan build it. Whether this host has room for it is a separate question.",
+        "description": "The sandbox a lease asks for.\n\nBounded, because the runner builds exactly what it is told. A size past\nthese bounds is a daemon fault, so the runner refuses the lease. Whether\nthis host has room for it is a separate question.",
         "required": [
           "cpu_millis",
           "memory_bytes",

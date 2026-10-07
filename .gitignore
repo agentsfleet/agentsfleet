@@ -39,7 +39,7 @@ scratch_pad.md
 .context/
 # orly materialises four skills per host. .agents/ and .opencode/ commit
 # theirs; .claude/ ignored its own, so `orly doctor` failed in CI against a
-# checkout missing files .oracle/orly.json declares managed. Everything orly
+# checkout missing files .orly/orly.json declares managed. Everything orly
 # writes is meant to be committed. Locally-added Claude skills stay ignored.
 .claude/skills/*
 !.claude/skills/orly-babysit-prs/
@@ -68,3 +68,7 @@ bench/results/
 # Cargo writes here when it is invoked from the repository root rather than
 # from rustd/ — build output either way, and never committed.
 /target/
+
+# Local orly evidence; installed rules and configuration remain committed.
+.orly/evidence.json
+.orly/judgments/

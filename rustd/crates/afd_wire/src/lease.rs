@@ -49,9 +49,9 @@ pub const SANDBOX_DISK_BYTES_MAX: u64 = 256 * 1024 * 1024 * 1024;
 
 /// The sandbox a lease asks for.
 ///
-/// Bounded, because the runner builds exactly what it is told: a size past
-/// these bounds is a daemon fault, and the runner refuses the lease rather
-/// than build it. Whether this host has room for it is a separate question.
+/// Bounded, because the runner builds exactly what it is told. A size past
+/// these bounds is a daemon fault, so the runner refuses the lease. Whether
+/// this host has room for it is a separate question.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
 pub struct SandboxLimits {
