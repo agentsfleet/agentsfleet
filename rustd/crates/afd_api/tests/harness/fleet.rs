@@ -111,7 +111,7 @@ impl Fleet {
             libraries: Libraries::new(database.clone()),
             library_imports: LibraryImports::without_store(database.clone(), Entropy::new())
                 .with_github_api_base(NOWHERE_GITHUB),
-            leases: NoWork,
+            leases: NoWork::default(),
             // Unconfigured by default, so a suite that says nothing about
             // snapshots proves the refusal a deployment with no R2 knobs gives
             // — which is most of them.
@@ -246,7 +246,7 @@ impl Fleet {
             directory,
             capabilities,
             runners: Runners::new(database.clone(), Entropy::new()),
-            leases: NoWork,
+            leases: NoWork::default(),
             bundles: Bundles::unconfigured(),
             workspaces: Ownership::Stub(OneWorkspace::fixed()),
             workspace_directory: Workspaces::new(database.clone(), Entropy::new()),

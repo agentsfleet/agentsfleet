@@ -2,6 +2,8 @@
 
 mod harness;
 
+#[path = "integration_runner_heartbeat.rs"]
+mod integration_runner_heartbeat;
 #[path = "integration_runner_rotation.rs"]
 mod integration_runner_rotation;
 #[path = "runner_plane.rs"]

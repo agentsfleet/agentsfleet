@@ -29,6 +29,7 @@ use core::time::Duration;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use opentelemetry::KeyValue;
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry_sdk::error::{OTelSdkError, OTelSdkResult};
 use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData, ResourceMetrics};
@@ -46,10 +47,12 @@ const POISONED: &str = "the captured sums lock was poisoned";
 /// One series: a family and its label pairs, sorted so the spelling is one.
 type Series = (String, Vec<(String, String)>);
 
-/// The last export's `u64` sums and histogram counts, every series.
+/// The last export's `u64` sums and histogram counts, every series, and each
+/// histogram series' running total beside its count.
 #[derive(Debug, Default)]
 struct Captured {
     latest: Mutex<BTreeMap<Series, u64>>,
+    histogram_sums: Mutex<BTreeMap<Series, f64>>,
 }
 
 /// The exporter half, so the trait lands on a type this crate owns.
@@ -79,45 +82,60 @@ impl PushMetricExporter for CapturingExporter {
 }
 
 impl CapturingExporter {
-    /// Take every `u64` sum and `f64` histogram count out of one export batch.
+    /// Take every `u64` sum, and every `f64` histogram's count and total, out
+    /// of one export batch.
     fn capture(&self, metrics: &ResourceMetrics) -> OTelSdkResult {
         let mut captured = BTreeMap::new();
+        let mut histogram_sums = BTreeMap::new();
         for scope in metrics.scope_metrics() {
             for metric in scope.metrics() {
-                let points: Vec<_> = match metric.data() {
-                    AggregatedMetrics::U64(MetricData::Sum(sum)) => sum
-                        .data_points()
-                        .map(|point| (point.attributes().collect::<Vec<_>>(), point.value()))
-                        .collect(),
-                    AggregatedMetrics::F64(MetricData::Histogram(histogram)) => histogram
-                        .data_points()
-                        .map(|point| (point.attributes().collect::<Vec<_>>(), point.count()))
-                        .collect(),
-                    _ => continue,
-                };
-                for (attributes, value) in points {
-                    let mut labels: Vec<(String, String)> = attributes
-                        .into_iter()
-                        .map(|attribute| {
-                            (
-                                attribute.key.as_str().to_owned(),
-                                attribute.value.as_str().into_owned(),
-                            )
-                        })
-                        .collect();
-                    labels.sort();
-                    captured.insert((metric.name().to_owned(), labels), value);
+                match metric.data() {
+                    AggregatedMetrics::U64(MetricData::Sum(sum)) => {
+                        for point in sum.data_points() {
+                            let key = series(metric.name(), point.attributes());
+                            captured.insert(key, point.value());
+                        }
+                    }
+                    AggregatedMetrics::F64(MetricData::Histogram(histogram)) => {
+                        for point in histogram.data_points() {
+                            let key = series(metric.name(), point.attributes());
+                            histogram_sums.insert(key.clone(), point.sum());
+                            captured.insert(key, point.count());
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
-        let mut latest = self
-            .sink
-            .latest
-            .lock()
-            .map_err(|_poisoned| OTelSdkError::InternalFailure(POISONED.to_owned()))?;
-        *latest = captured;
+        *self.sink.latest.lock().map_err(poisoned)? = captured;
+        *self.sink.histogram_sums.lock().map_err(poisoned)? = histogram_sums;
         Ok(())
     }
+}
+
+/// One exported point's series: its family, and its labels sorted.
+fn series<'a>(family: &str, attributes: impl Iterator<Item = &'a KeyValue>) -> Series {
+    (
+        family.to_owned(),
+        labels_of(attributes.map(|attribute| {
+            (
+                attribute.key.as_str().to_owned(),
+                attribute.value.as_str().into_owned(),
+            )
+        })),
+    )
+}
+
+/// `pairs`, sorted, so a series has one spelling whatever order it came in.
+fn labels_of(pairs: impl Iterator<Item = (String, String)>) -> Vec<(String, String)> {
+    let mut labels: Vec<(String, String)> = pairs.collect();
+    labels.sort();
+    labels
+}
+
+/// What an export reports when a capture lock's holder panicked.
+fn poisoned<T>(_poisoned: T) -> OTelSdkError {
+    OTelSdkError::InternalFailure(POISONED.to_owned())
 }
 
 /// The installed producer set, and the sink its exports land in.
@@ -194,19 +212,12 @@ impl Capture {
     /// When the provider will not flush or the capture lock's holder panicked.
     #[must_use]
     pub fn sum(&self, family: &str, labels: &[(&str, &str)]) -> u64 {
-        self.provider
-            .force_flush()
-            .expect("an in-memory provider flushes");
-        let mut wanted: Vec<(String, String)> = labels
-            .iter()
-            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
-            .collect();
-        wanted.sort();
+        let wanted = self.flushed(family, labels);
         self.captured
             .latest
             .lock()
             .expect(POISONED)
-            .get(&(family.to_owned(), wanted))
+            .get(&wanted)
             .copied()
             .unwrap_or_default()
     }
@@ -215,5 +226,35 @@ impl Capture {
     #[must_use]
     pub fn histogram_count(&self, family: &str, labels: &[(&str, &str)]) -> u64 {
         self.sum(family, labels)
+    }
+
+    /// The running total of every value one histogram series observed, read
+    /// as [`Self::sum`] reads a counter. A series nothing has observed into
+    /// reads zero.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::sum`].
+    #[must_use]
+    pub fn histogram_sum(&self, family: &str, labels: &[(&str, &str)]) -> f64 {
+        let wanted = self.flushed(family, labels);
+        self.captured
+            .histogram_sums
+            .lock()
+            .expect(POISONED)
+            .get(&wanted)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Flushes the provider, and answers the series `family` and `labels` name.
+    fn flushed(&self, family: &str, labels: &[(&str, &str)]) -> Series {
+        self.provider
+            .force_flush()
+            .expect("an in-memory provider flushes");
+        let pairs = labels
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()));
+        (family.to_owned(), labels_of(pairs))
     }
 }

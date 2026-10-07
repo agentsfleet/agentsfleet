@@ -56,3 +56,27 @@ fn a_fresh_grant_counts_as_fresh_and_a_reclaim_as_reclaimed() {
     assert_eq!(started(Kind::Fresh), RunStart::Fresh);
     assert_eq!(started(Kind::Reclaim), RunStart::Reclaimed);
 }
+
+/// A held fleet whose readiness cannot be read fails the poll there, before
+/// the partition pass turns the cursor: the runner backs off on a failed
+/// read rather than being handed some other partition's work.
+#[tokio::test]
+async fn a_held_fleets_unreadable_readiness_fails_the_poll() -> Result<(), &'static str> {
+    use afd_dragonfly::ReadyCursor;
+
+    use crate::lease::test_dead::{AT, id, leases};
+
+    let store = leases();
+
+    let polled = store.select(&id(9), &[id(1)], AT).await;
+
+    polled
+        .err()
+        .ok_or("a readiness read that failed answered the poll")?;
+    assert_eq!(
+        store.cursor().advance(),
+        ReadyCursor::new().advance(),
+        "the partition pass never ran"
+    );
+    Ok(())
+}

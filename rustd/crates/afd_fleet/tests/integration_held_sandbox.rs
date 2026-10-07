@@ -17,8 +17,18 @@
 // Child of this suite, not a crate-root module: it reaches its parent's
 // helpers through `super::`, so it must stay nested here. The path is
 // relative to THIS file's directory, which the aggregator does not change.
+#[path = "integration_held_sandbox/beat.rs"]
+mod beat;
 #[path = "integration_held_sandbox/claim.rs"]
 mod claim;
+#[path = "integration_held_sandbox/counted.rs"]
+mod counted;
+#[path = "integration_held_sandbox/lapse.rs"]
+mod lapse;
+#[path = "integration_held_sandbox/poll.rs"]
+mod poll;
+#[path = "integration_held_sandbox/report.rs"]
+mod report;
 
 use std::borrow::Cow;
 
