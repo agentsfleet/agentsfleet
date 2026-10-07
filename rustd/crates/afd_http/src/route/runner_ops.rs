@@ -7,6 +7,7 @@
 //! the two planes it belonged to.
 
 use afd_auth::Scope;
+use afd_wire::paths;
 
 use super::path::fleet_runner_path;
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
@@ -72,7 +73,7 @@ impl RunnerOpsRoute {
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let (template, scopes) = match self {
-            Self::Register => ("/v1/runners", Scopes::Always(RUNNER_ENROLL)),
+            Self::Register => (paths::RUNNERS, Scopes::Always(RUNNER_ENROLL)),
             Self::List => ("/v1/fleets/runners", Scopes::Always(RUNNER_READ)),
             // These identities share one axum path. Both carry the same
             // method-sensitive metadata so merging them cannot retain a

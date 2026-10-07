@@ -1,6 +1,6 @@
 //! Every `afd_wire` test file, in one test binary.
 //!
-//! One binary rather than 7: cargo runs test BINARIES serially and the tests
+//! One binary rather than 8: cargo runs test BINARIES serially and the tests
 //! inside one binary in parallel, so each extra binary bought a serial stretch
 //! and re-paid its own process start and dynamic linking.
 //!
@@ -17,6 +17,9 @@ mod memory_shapes;
 mod policy_shapes;
 #[path = "redaction.rs"]
 mod redaction;
+// Every runner route template, pinned in one reviewed snapshot.
+#[path = "routes.rs"]
+mod routes;
 #[path = "strictness.rs"]
 mod strictness;
 // Declared bounds at their exact limits, the steer request's own rows, and a

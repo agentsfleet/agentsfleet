@@ -28,13 +28,6 @@ macro_rules! fleet_path {
     };
 }
 
-/// A path under the runner plane's self-service root.
-macro_rules! runner_path {
-    ($suffix:literal) => {
-        concat!("/v1/runners", $suffix)
-    };
-}
-
 /// A path under one operator-visible runner.
 macro_rules! fleet_runner_path {
     ($suffix:literal) => {
@@ -42,7 +35,7 @@ macro_rules! fleet_runner_path {
     };
 }
 
-pub(super) use {fleet_path, fleet_runner_path, runner_path, workspace_path};
+pub(super) use {fleet_path, fleet_runner_path, workspace_path};
 
 #[cfg(test)]
 mod tests {

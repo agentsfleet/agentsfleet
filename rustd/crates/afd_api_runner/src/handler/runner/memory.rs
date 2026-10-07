@@ -48,7 +48,7 @@ const DETAIL_RECALL_MALFORMED: &str = "Malformed memory recall body";
 /// Seeds a run with its fleet's memory window.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/runners/me/memory/{fleet_id}",
+    path = afd_wire::paths::RUNNER_MEMORY_FLEET,
     tag = afd_http::openapi::tag::MEMORY,
     operation_id = "runner_hydrate_memory",
     summary = "Load what a fleet remembers",
@@ -91,7 +91,7 @@ pub(crate) async fn hydrate<D: Services>(
 /// Searches a fleet's memory past the window a run was seeded with.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/memory/{fleet_id}/recall",
+    path = afd_wire::paths::RUNNER_MEMORY_RECALL,
     tag = afd_http::openapi::tag::MEMORY,
     operation_id = "runner_recall_memory",
     summary = "Search what a fleet remembers",
@@ -145,7 +145,7 @@ pub(crate) async fn recall<D: Services>(
 /// Persists what a run learned.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/memory/{fleet_id}",
+    path = afd_wire::paths::RUNNER_MEMORY_FLEET,
     tag = afd_http::openapi::tag::MEMORY,
     operation_id = "runner_capture_memory",
     summary = "Capture what a fleet learned",

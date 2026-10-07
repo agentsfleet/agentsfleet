@@ -20,6 +20,9 @@ test-util = ["afd_core/test-util"]
 
 [dependencies]
 afd_core.workspace = true
+# The runner token prefix is the wire's: the daemon mints and checks the same
+# spelling the runner presents, so it is read from `afd_wire::paths`.
+afd_wire.workspace = true
 # Entropy for the credential mint. `Minted` lives here because it is built from
 # this crate's own `CredentialKind` and `Digest`; the random bytes behind it are
 # the one part it does not own.

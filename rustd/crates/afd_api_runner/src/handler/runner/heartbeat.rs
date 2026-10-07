@@ -44,7 +44,7 @@ const EVENT: &str = "runner_heartbeat_failed";
 /// Records a beat and answers what the host must apply.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/heartbeats",
+    path = afd_wire::paths::RUNNER_HEARTBEATS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_heartbeat",
     summary = "Report liveness, receive assignment",

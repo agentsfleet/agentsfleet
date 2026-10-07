@@ -66,7 +66,7 @@ const DESCRIPTION: &str = const_format::concatcp!(
 /// Posts one line to the event's thread.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/leases/{lease_id}/messages",
+    path = afd_wire::paths::LEASE_MESSAGES,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_post_message",
     summary = "Post a message to the event's thread",
