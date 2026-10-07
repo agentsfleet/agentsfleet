@@ -82,14 +82,17 @@ impl Fence {
     }
 }
 
-/// A won claim: the new token, and the instant the slot — and the lease issued
-/// against it — stays valid until.
+/// A won claim: the new token, the instant the slot — and the lease issued
+/// against it — stays valid until, and whether the winner held the fleet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Claimed {
     /// The monotonic token this claim minted.
     pub fence: Fence,
     /// When the claim lapses and the slot becomes winnable again.
     pub leased_until: UnixMillis,
+    /// Whether the winner holds the sandbox the fleet's last lease left: that
+    /// lease ran on this runner and its hold had not lapsed at the claim.
+    pub resume_hold: bool,
 }
 
 impl Leases {
@@ -123,6 +126,7 @@ impl Leases {
             .bind(leased_until.as_millis())
             .bind(now.as_millis())
             .bind(RUNNER_OFFLINE_AFTER_MS)
+            .bind(sql::ADMIN_STATE_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_CLAIM))?;
@@ -135,17 +139,14 @@ impl Leases {
         let fence: i64 = row.try_get(0).map_err(query(CONTEXT_CLAIM))?;
         let held: Option<i64> = row.try_get(1).map_err(query(CONTEXT_CLAIM))?;
         let holder: Option<String> = row.try_get(2).map_err(query(CONTEXT_CLAIM))?;
-        if held.is_some() {
-            let outcome = if holder.as_deref() == Some(runner_id.as_str()) {
-                HeldClaim::Holder
-            } else {
-                HeldClaim::OtherAfterLapse
-            };
+        let outcome = held_claim(held, holder.as_deref(), runner_id, now);
+        if let Some(outcome) = outcome {
             producers::fleet::hold::claimed(outcome);
         }
         Ok(Some(Claimed {
             fence: Fence::from_i64(fence),
             leased_until,
+            resume_hold: outcome == Some(HeldClaim::Holder),
         }))
     }
 
@@ -236,29 +237,26 @@ impl Leases {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A fence only ever moves through the column's own type.
-    ///
-    /// Cheap, and it is the property that makes the newtype worth its weight:
-    /// what goes into the row is what came out of the claim.
-    #[test]
-    fn test_a_fence_round_trips_through_its_column_type() {
-        let fence = Fence::from_i64(7);
-        assert_eq!(fence.as_i64(), 7, "the token reaches the column unchanged");
-    }
-
-    /// Fences order, because that ordering IS the staleness test.
-    ///
-    /// §3 rejects a report whose token is behind the slot's current one, so an
-    /// ordering that did not hold would be a stale writer admitted.
-    #[test]
-    fn test_a_later_fence_outranks_an_earlier_one() {
-        assert!(
-            Fence::from_i64(2) > Fence::from_i64(1),
-            "a reclaim's token must outrank the holder it displaced"
-        );
-    }
+/// Who won a claim on a fleet whose slot held a sandbox live at `now`, from
+/// the slot's prior `held_until` and `last_runner_id`, or `None` when it held
+/// none. A hold at or past its deadline binds nobody at the claim's own
+/// predicate, so it is no hold here either.
+fn held_claim(
+    held_until: Option<i64>,
+    holder: Option<&str>,
+    runner_id: &Uuid7,
+    now: UnixMillis,
+) -> Option<HeldClaim> {
+    let live = held_until.is_some_and(|until| until > now.as_millis());
+    live.then(|| {
+        if holder == Some(runner_id.as_str()) {
+            HeldClaim::Holder
+        } else {
+            HeldClaim::OtherAfterLapse
+        }
+    })
 }
+
+#[cfg(test)]
+#[path = "affinity_tests.rs"]
+mod tests;

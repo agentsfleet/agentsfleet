@@ -8,9 +8,9 @@
 //!
 //! The encoding rules are `afd_wire`'s: borrowed `Cow<'a, str>` text,
 //! primitives rather than validated newtypes, and schemas behind the
-//! non-default `openapi` feature. `afd_wire`'s ban on `skip_serializing_if`
-//! does not carry over: several shapes here omit an absent optional rather
-//! than write `null`, marked by that attribute on the field.
+//! non-default `openapi` feature. `afd_wire` skips an absent optional only
+//! for a receiver that refuses unknown fields; several shapes here omit one
+//! regardless rather than write `null`, marked by that attribute on the field.
 
 // Same reason as `afd_wire`: an unused-but-linked dependency is a cost with no
 // benefit. Gated on `not(test)` because the test build links dev-dependencies.

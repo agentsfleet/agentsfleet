@@ -92,8 +92,9 @@ fn test_a_poll_naming_its_holds_reads_them_and_refuses_a_stranger() {
     let _ = serde_json::from_str::<LeaseRequest<'_>>(r#"{"future":1}"#).unwrap_err();
 }
 
-/// Both bodies that carry a runner's holds publish the bound garde enforces.
-/// utoipa takes only a literal for it, so this keeps the two spellings one.
+/// Both bodies that carry a runner's holds publish the bounds garde enforces:
+/// the list's length and each entry's. utoipa takes only a literal for them,
+/// so this keeps the two spellings one.
 #[cfg(feature = "openapi")]
 #[test]
 #[expect(
@@ -105,6 +106,7 @@ fn test_the_published_holds_bound_is_the_enforced_one() {
     let beat =
         serde_json::to_value(<HeartbeatRequest<'_> as utoipa::PartialSchema>::schema()).unwrap();
 
+    let entry = u64::try_from(FLEET_ID_TEXT_BYTES).ok();
     for schema in [poll, beat] {
         let holds = &schema["properties"]["holds"];
         assert_eq!(
@@ -112,5 +114,7 @@ fn test_the_published_holds_bound_is_the_enforced_one() {
             u64::try_from(HOLDS_MAX).ok(),
             "{schema}"
         );
+        assert_eq!(holds["items"]["minLength"].as_u64(), entry, "{schema}");
+        assert_eq!(holds["items"]["maxLength"].as_u64(), entry, "{schema}");
     }
 }

@@ -152,3 +152,18 @@ fn test_lease_history_defaults_empty() {
     let encoded = serde_json::to_value(&payload).unwrap();
     assert_eq!(encoded["history"], serde_json::json!([]));
 }
+
+/// A lease from a daemon that predates the field decodes as building fresh,
+/// so no runner resumes a sandbox the daemon never said was the fleet's
+/// latest; one that sets it round-trips.
+#[test]
+fn test_lease_resume_hold_defaults_false() {
+    let text = lease(None);
+    let absent: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
+    let resumed = text.replace(r#""lease_id""#, r#""resume_hold":true,"lease_id""#);
+    let present: LeasePayload<'_> = serde_json::from_str(&resumed).unwrap();
+
+    assert!(!absent.resume_hold);
+    assert!(present.resume_hold);
+    assert_eq!(serde_json::to_value(&present).unwrap()["resume_hold"], true);
+}

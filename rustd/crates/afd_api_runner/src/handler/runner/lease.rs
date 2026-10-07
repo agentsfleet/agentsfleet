@@ -27,12 +27,12 @@
 use std::sync::Arc;
 
 use afd_core::id::Uuid7;
+use afd_runner::heartbeat::holds::{fleets, prove};
 use afd_wire::lease::LeaseRequest;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse as _, Response};
-use garde::Validate as _;
 
 use crate::auth::RunnerIdentity;
 use crate::handler::refuse;
@@ -96,21 +96,15 @@ pub(crate) async fn handle<D: Services>(
 /// The fleets the poll says the runner holds, or none: an empty, unreadable or
 /// out-of-bounds body holds nothing, and the poll is answered all the same. An
 /// entry inside the bounds that still is not an identifier is dropped alone.
+/// The list is proved by the rule the heartbeat's is.
 fn holds(body: &[u8]) -> Vec<Uuid7> {
     if body.is_empty() {
         return Vec::new();
     }
     afd_http::handler::read_body::<LeaseRequest<'_>>(body)
         .ok()
-        .filter(|request| request.validate().is_ok())
-        .map(|request| {
-            request
-                .holds
-                .0
-                .iter()
-                .filter_map(|fleet| Uuid7::parse(fleet).ok())
-                .collect()
-        })
+        .and_then(|request| prove(request.holds))
+        .map(|proved| fleets(&proved))
         .unwrap_or_default()
 }
 

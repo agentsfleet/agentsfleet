@@ -10,7 +10,7 @@
 )]
 
 use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL_MS, SANDBOX_HOLD_IDLE_MS};
+use afd_core::timing::{LEASE_TTL_MS, RUNNER_OFFLINE_AFTER_MS, SANDBOX_HOLD_IDLE_MS};
 use afd_fleet::lease::Leases;
 use afd_observability::test_util::Capture;
 
@@ -70,6 +70,8 @@ async fn test_the_holders_claim_counts_as_the_holders() {
     fixtures.cleanup().await;
 }
 
+/// The lapse is the holder's: it fell silent while its hold stood. A hold
+/// past its own deadline is no hold, and a claim over it counts nothing.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() {
@@ -77,12 +79,24 @@ async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() 
     let fixtures = Fixtures::create_with_queue().await;
     let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let lapses = ENROLLED_AT + 10;
     live(&fixtures, &holder).await;
-    hold(&leases, &fixtures, &fleet, &holder, lapses).await;
+    hold(
+        &leases,
+        &fixtures,
+        &fleet,
+        &holder,
+        ENROLLED_AT + SANDBOX_HOLD_IDLE_MS,
+    )
+    .await;
     let before = claims(&capture, OTHER_AFTER_LAPSE);
 
-    wins(&leases, &fleet, &other, lapses + 1).await;
+    wins(
+        &leases,
+        &fleet,
+        &other,
+        ENROLLED_AT + RUNNER_OFFLINE_AFTER_MS + 1,
+    )
+    .await;
 
     let after = claims(&capture, OTHER_AFTER_LAPSE);
     assert!(after > before, "{before} -> {after}");

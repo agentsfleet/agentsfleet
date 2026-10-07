@@ -46,6 +46,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                     selftest: None,
                     holds: afd_wire::runner::HeldFleets::default(),
                 },
+                None,
                 UnixMillis::from_millis(ENROLLED_AT + offset),
             )
             .await
@@ -95,6 +96,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
         .heartbeat(
             &enrolled.runner_id,
             &NO_REPORT,
+            None,
             UnixMillis::from_millis(ENROLLED_AT + ONE_BEAT_MS),
         )
         .await
@@ -129,7 +131,12 @@ async fn test_a_vanished_runner_is_its_own_failure() {
     let read = fixtures.runners().self_record(&phantom).await;
     let beat = fixtures
         .runners()
-        .heartbeat(&phantom, &NO_REPORT, UnixMillis::from_millis(ENROLLED_AT))
+        .heartbeat(
+            &phantom,
+            &NO_REPORT,
+            None,
+            UnixMillis::from_millis(ENROLLED_AT),
+        )
         .await;
 
     for outcome in [read.err(), beat.err()] {

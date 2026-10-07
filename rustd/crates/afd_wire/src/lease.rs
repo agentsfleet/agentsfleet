@@ -139,6 +139,14 @@ pub struct LeasePayload<'a> {
     /// unless the event is a chat message. Absent decodes as empty.
     #[serde(default, borrow)]
     pub history: Vec<Turn<'a>>,
+    /// True when the sandbox this runner holds for the fleet is the fleet's
+    /// latest and this event has not run before: the slot's last lease ran
+    /// here, its hold had not lapsed at the claim, and the event is not a
+    /// reclaim. Anything else builds a fresh sandbox, because the held one may
+    /// predate another runner's run or carry this event's own first attempt.
+    /// Absent decodes as false.
+    #[serde(default)]
+    pub resume_hold: bool,
 }
 
 /// `POST /v1/runners/me/leases` request.
@@ -155,7 +163,10 @@ pub struct LeaseRequest<'a> {
     /// empty.
     #[serde(borrow, default)]
     #[garde(dive)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>, max_items = 64))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(value_type = Vec<String>, max_items = 64, min_length = 36, max_length = 36)
+    )]
     pub holds: HeldFleets<'a>,
 }
 

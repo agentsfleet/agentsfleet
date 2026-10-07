@@ -19,7 +19,6 @@ use afd_fleet_runtime::FleetConfig;
 use sqlx::Row as _;
 
 use crate::error::{Result, query, row_malformed};
-use crate::lease::assign::FLEET_STATUS_ACTIVE;
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -99,7 +98,7 @@ impl Leases {
         };
 
         let status: String = row.try_get(3).map_err(query(CONTEXT_INSTALLED))?;
-        if status != FLEET_STATUS_ACTIVE {
+        if status != sql::FLEET_STATUS_ACTIVE {
             return Ok(None);
         }
 

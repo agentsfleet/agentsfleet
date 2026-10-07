@@ -16749,7 +16749,9 @@
           "holds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 36,
+              "minLength": 36
             },
             "description": "Every fleet this runner holds a frozen sandbox for, waiting for that\nfleet's next event. A fleet missing here is held nowhere on this\nrunner. Absent decodes as empty.",
             "maxItems": 64
@@ -17182,6 +17184,10 @@
             "$ref": "#/components/schemas/ExecutionPolicy",
             "description": "What the run is permitted to do."
           },
+          "resume_hold": {
+            "type": "boolean",
+            "description": "True when the sandbox this runner holds for the fleet is the fleet's\nlatest and this event has not run before: the slot's last lease ran\nhere, its hold had not lapsed at the claim, and the event is not a\nreclaim. Anything else builds a fresh sandbox, because the held one may\npredate another runner's run or carry this event's own first attempt.\nAbsent decodes as false."
+          },
           "secret_delivery": {
             "$ref": "#/components/schemas/SecretDelivery",
             "description": "How secrets reached this run."
@@ -17195,7 +17201,9 @@
           "holds": {
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 36,
+              "minLength": 36
             },
             "description": "Every fleet this runner holds a frozen sandbox for. Absent decodes as\nempty.",
             "maxItems": 64

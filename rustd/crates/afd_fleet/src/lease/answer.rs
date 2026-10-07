@@ -101,5 +101,6 @@ pub(super) fn render<'a>(
         // No fleet carries a size yet, so every runner builds its defaults.
         limits: None,
         history,
+        resume_hold: acquired.resume_hold,
     }))
 }

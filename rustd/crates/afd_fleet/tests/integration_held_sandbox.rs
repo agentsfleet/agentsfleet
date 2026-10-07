@@ -29,17 +29,23 @@ mod lapse;
 mod poll;
 #[path = "integration_held_sandbox/report.rs"]
 mod report;
+#[path = "integration_held_sandbox/resume.rs"]
+mod resume;
+#[path = "integration_held_sandbox/unleasable.rs"]
+mod unleasable;
 
 use std::borrow::Cow;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL_MS, SANDBOX_HOLD_IDLE_MS};
+use afd_core::timing::{HEARTBEAT_INTERVAL_MS, LEASE_TTL_MS, SANDBOX_HOLD_IDLE_MS};
 use afd_fleet::lease::Leases;
+use afd_runner::Beat;
+use afd_runner::heartbeat::holds::prove;
 use afd_wire::runner::{HeartbeatRequest, HeldFleets};
 use sqlx::Row as _;
 
-use crate::requests::ENROLLED_AT;
+use crate::requests::{ENROLLED_AT, capable};
 use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
@@ -71,14 +77,32 @@ async fn slot(fixtures: &Fixtures, fleet: &str) -> (Option<i64>, Option<String>)
     )
 }
 
-/// `runner` beats once, holding nothing yet, which is what makes it live: a
-/// runner enrolled and never heard from is silent, and its holds bind nobody.
+/// `runner` beats once as a host proving its whole assignment, holding
+/// nothing yet, which is what makes its holds bind: a runner enrolled and
+/// never heard from is silent, and one that reported nothing reads degraded
+/// and leases nothing.
 async fn live(fixtures: &Fixtures, runner: &Uuid7) {
+    let request = HeartbeatRequest {
+        capability_report: Some(capable()),
+        ..beat(&[])
+    };
+    beats_at(fixtures, runner, &request, ENROLLED_AT).await;
+}
+
+/// `runner` beats `request` at `now`, its holds list proved as the handler
+/// proves it.
+async fn beats_at(
+    fixtures: &Fixtures,
+    runner: &Uuid7,
+    request: &HeartbeatRequest<'_>,
+    now: i64,
+) -> Beat {
+    let held = prove(request.holds.clone());
     fixtures
         .runners()
-        .heartbeat(runner, &beat(&[]), at(ENROLLED_AT))
+        .heartbeat(runner, request, held.as_ref(), at(now))
         .await
-        .expect("the runner beats");
+        .expect("a beat lands")
 }
 
 /// `runner` claims `fleet`, and its report releases the slot holding the
@@ -175,18 +199,11 @@ async fn test_heartbeat_clears_dropped_holds() {
     live(&fixtures, &runner).await;
     hold(&leases, &fixtures, &kept, &runner, until).await;
     hold(&leases, &fixtures, &dropped, &runner, until).await;
-    let now = at(ENROLLED_AT + 1);
+    // A full interval after the holds were reported, so the beat may clear.
+    let now = ENROLLED_AT + HEARTBEAT_INTERVAL_MS;
 
-    let both = fixtures
-        .runners()
-        .heartbeat(&runner, &beat(&[&kept, &dropped]), now)
-        .await
-        .expect("a beat lands");
-    let one = fixtures
-        .runners()
-        .heartbeat(&runner, &beat(&[&kept]), now)
-        .await
-        .expect("a beat lands");
+    let both = beats_at(&fixtures, &runner, &beat(&[&kept, &dropped]), now).await;
+    let one = beats_at(&fixtures, &runner, &beat(&[&kept]), now).await;
 
     assert!(both.release_holds.is_empty() && one.release_holds.is_empty());
     assert_eq!(slot(&fixtures, &kept).await.0, Some(until));
@@ -218,18 +235,10 @@ async fn test_inactive_fleet_hold_destroyed() {
         .await
         .expect("the owner stops the fleet");
     drop(connection);
-    let now = at(ENROLLED_AT + 1);
+    let now = ENROLLED_AT + 1;
 
-    let stopped = fixtures
-        .runners()
-        .heartbeat(&runner, &beat(&[&fleet]), now)
-        .await
-        .expect("a beat lands");
-    let stranger = fixtures
-        .runners()
-        .heartbeat(&other, &beat(&[&foreign]), now)
-        .await
-        .expect("a beat lands");
+    let stopped = beats_at(&fixtures, &runner, &beat(&[&fleet]), now).await;
+    let stranger = beats_at(&fixtures, &other, &beat(&[&foreign]), now).await;
 
     assert_eq!(stopped.release_holds, [fleet]);
     assert_eq!(

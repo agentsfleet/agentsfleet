@@ -38,7 +38,7 @@ use afd_billing::{Meter, Nanos};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_events::Closed;
-use sqlx::Acquire as _;
+use sqlx::{Acquire as _, PgConnection};
 
 use crate::error::{Result, query};
 use crate::lease::obligation::Owing;
@@ -137,16 +137,51 @@ impl Leases {
     /// would not answer at any of the five statements — in which case nothing
     /// at all was written, including the charge and the obligation.
     pub async fn commit_report(&self, report: TerminalReport<'_>) -> Result<Committed> {
+        let mut connection = self.pool().acquire().await?;
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
+
+        let charged = match self
+            .claim_and_settle(
+                &mut transaction,
+                report.lease_id,
+                report.runner_id,
+                report.meter,
+                report.outcome.verdict.succeeded(),
+                report.now,
+            )
+            .await?
+        {
+            Settled::Claimed(nanos) => nanos,
+            Settled::AlreadySettled => return Ok(Committed::AlreadySettled),
+            Settled::Fenced => return Ok(Committed::Fenced),
+        };
+        let (closed, owed) = self.record_settled(&mut transaction, report).await?;
+
+        transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
+        Ok(Committed::Settled {
+            charged,
+            closed,
+            owed,
+        })
+    }
+
+    /// The writes a settled report owes after its money, inside its
+    /// transaction: the result, the session cursor, the freed slot, and the
+    /// delivery the answer is owed. Answers the row the result closed and the
+    /// obligation newly owed.
+    async fn record_settled(
+        &self,
+        connection: &mut PgConnection,
+        report: TerminalReport<'_>,
+    ) -> Result<(Option<Box<Closed>>, Option<Owing>)> {
         let TerminalReport {
-            lease_id,
-            runner_id,
             lease,
-            meter,
             outcome,
             last_event_id,
             last_response,
             held_until,
             now,
+            ..
         } = report;
 
         // Read before `outcome` moves into the terminal write below. This is
@@ -156,54 +191,23 @@ impl Leases {
         // byte cap.
         let answer = outcome.response_text;
 
-        let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
-
-        let charged = match self
-            .claim_and_settle(
-                &mut transaction,
-                lease_id,
-                runner_id,
-                meter,
-                outcome.verdict.succeeded(),
-                now,
-            )
-            .await?
-        {
-            Settled::Claimed(nanos) => nanos,
-            Settled::AlreadySettled => return Ok(Committed::AlreadySettled),
-            Settled::Fenced => return Ok(Committed::Fenced),
-        };
-
         let closed = self
-            .mark_terminal(
-                &mut transaction,
-                &lease.fleet_id,
-                &lease.event_id,
-                outcome,
-                now,
-            )
+            .mark_terminal(connection, &lease.fleet_id, &lease.event_id, outcome, now)
             .await?
             .map(Box::new);
         // The settling fence's records describe the run whose answer stands;
         // a reclaimed lease's are of a run that did not, so they go with it.
-        self.drop_other_fences(&mut transaction, lease).await?;
+        self.drop_other_fences(connection, lease).await?;
         self.checkpoint(
-            &mut transaction,
+            connection,
             &lease.fleet_id,
             last_event_id,
             last_response,
             now,
         )
         .await?;
-        self.release_through(
-            &mut transaction,
-            &lease.fleet_id,
-            lease.fence,
-            held_until,
-            now,
-        )
-        .await?;
+        self.release_through(connection, &lease.fleet_id, lease.fence, held_until, now)
+            .await?;
         // The fifth write, and the one that closes 7.6's window: the answer is
         // owed before anything tries to send it, so a process that dies between
         // here and the queue append leaves a record rather than a charged run
@@ -215,21 +219,14 @@ impl Leases {
         // in here: `Delivery` takes a connector type, which only the event's
         // recorded destination supplies.
         let destination =
-            Leases::reply_destination(&mut transaction, lease.fleet_id.as_str(), &lease.event_id)
-                .await?;
+            Leases::reply_destination(connection, lease.fleet_id.as_str(), &lease.event_id).await?;
         let owed = match destination {
             Some(reply) => self
-                .owe_delivery(&mut transaction, reply.delivery(lease, answer), now)
+                .owe_delivery(connection, reply.delivery(lease, answer), now)
                 .await?
                 .map(|obligation| Owing { obligation, reply }),
             None => None,
         };
-
-        transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
-        Ok(Committed::Settled {
-            charged,
-            closed,
-            owed,
-        })
+        Ok((closed, owed))
     }
 }

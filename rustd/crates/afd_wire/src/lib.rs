@@ -28,12 +28,14 @@
 //! to `64` and re-serialize to `64` — a byte mismatch against a fixture the Zig
 //! daemon, which clamps at assignment rather than at parse, emits as `168`.
 //!
-//! # No `skip_serializing_if`, anywhere
+//! # `skip_serializing_if` is for receivers that refuse unknown fields
 //!
-//! The Zig emitter writes `null` for an absent optional, so serde must too. A
-//! `skip_serializing_if` would drop the key and break byte equality — which is
-//! why the round-trip test exists rather than a field-by-field comparison that
-//! would not notice.
+//! An absent optional writes `null`, except on a shape whose receiver is
+//! `#[serde(deny_unknown_fields)]`, such as the report and the activity
+//! frames. There a field added after release skips itself when absent, so a
+//! message that does not use it still decodes on a receiver that predates it.
+//! A shape that admits unknown fields, such as [`lease::LeasePayload`], never
+//! skips: its newer fields decode from absence through `#[serde(default)]`.
 //!
 //! # Version
 //!

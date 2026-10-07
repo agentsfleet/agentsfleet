@@ -261,7 +261,10 @@ pub struct HeartbeatRequest<'a> {
     /// fleet's next event. A fleet missing here is held nowhere on this
     /// runner. Absent decodes as empty.
     #[serde(borrow, default)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>, max_items = 64))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(value_type = Vec<String>, max_items = 64, min_length = 36, max_length = 36)
+    )]
     pub holds: HeldFleets<'a>,
 }
 
