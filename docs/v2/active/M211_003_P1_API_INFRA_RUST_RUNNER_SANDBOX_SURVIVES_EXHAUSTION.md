@@ -135,7 +135,7 @@ The workspace image mounts through the host's `mount -o loop` as today, then `LO
 - **Dimension 4.5** DONE — Each bound admits its limit and refuses one past it → Test `a_size_one_past_any_bound_is_refused`
 - **Dimension 4.6** DONE — The published bounds are the enforced ones → Test `the_published_bounds_are_the_enforced_ones`
 
-### §5 — S6, kept
+### §5 — S6, kept — DONE
 
 Spike S6's scenario becomes a kernel trial on one shared engine, with lease state on disk: four leases fill `/tmp` and then `/workspace` at once, in `examples/kernel_lane/exhaustion_concurrent.rs`. Each lease has 1 GiB of disk and 512 MiB of memory, so every fill writes twice the memory limit, the ratio that killed S6's sandboxes through a tmpfs `/tmp`. S6's own 4 GiB per lease would need 16 GiB free on a lane host; `afr-kernel` has 3.2 GiB (`df -h /`, Oct 07, 2026).
 
@@ -205,7 +205,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | Exhaustion ends in errors the tenant reads, never in a dead sandbox (§1–§3, §5) | `make test-runner-kernel 2>&1 \| grep -c "test_writable_state_exhaustion_spares_the_sandbox ... ok"` | 1 | P0 | |
+| R1 | Exhaustion ends in errors the tenant reads, never in a dead sandbox (§1–§3, §5) | `make test-runner-kernel 2>&1 \| grep -c "test_writable_state_exhaustion_spares_the_sandbox ... ok"` | 1 | P0 | ✅ 1 — `test_writable_state_exhaustion_spares_the_sandbox ... ok`; lane `32 passed; 0 failed` in 112.75s (Oct 07, 2026) |
 | R2 | A lease's size is built or refused as declared (§4) | `cd rustd && cargo test --all-features -p afr_supervisor -p afd_wire size` | exit 0 | P0 | ✅ 10 passed, 0 failed (§4) |
 | R3 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed tables | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
