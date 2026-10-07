@@ -35,6 +35,7 @@ impl Harness<'_, '_> {
             messages: &self.messages,
             tools: if capped { &[] } else { &self.specs },
             hosted: if capped { &[] } else { &self.hosted },
+            cache_key: shared.fleet_id,
         };
         let span = spans::chat(shared.model);
         let started = Instant::now();
@@ -54,7 +55,7 @@ impl Harness<'_, '_> {
             Some(Ok(done)) => {
                 let input_tokens = done.usage.prompt();
                 let output_tokens = done.usage.output;
-                spans::spent(&span, input_tokens, output_tokens);
+                spans::spent(&span, done.usage);
                 let calls = done.calls.len();
                 let event = EVENT_TURN_COMPLETED;
                 tracing::debug!(

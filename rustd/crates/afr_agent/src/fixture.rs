@@ -15,7 +15,7 @@ use afd_wire::lease::LeasePayload;
 use afr_tools::NoArguments;
 use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
 
-pub(crate) use self::model::{Script, Sent, Unreachable, call, ended, say, spent};
+pub(crate) use self::model::{Script, Sent, Unreachable, call, ended, say, spent, spent_caching};
 use afr_secrets::{Clean, Scrub};
 
 #[path = "fixture/model.rs"]

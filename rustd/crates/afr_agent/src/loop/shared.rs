@@ -27,6 +27,8 @@ use crate::nested::Registry;
 /// One run's state, as every loop of it sees it.
 pub(crate) struct Shared<'run> {
     pub(crate) lease_id: &'run str,
+    /// The fleet the lease runs, which keys the provider's prompt cache.
+    pub(crate) fleet_id: &'run str,
     pub(crate) model: &'run str,
     /// The provider, as the turn-duration family labels it.
     pub(crate) provider_label: ProviderLabel,
@@ -69,6 +71,7 @@ impl<'run> Shared<'run> {
         let started = Instant::now();
         Self {
             lease_id: &run.lease.lease_id,
+            fleet_id: &run.lease.event.fleet_id,
             model: &policy.context.model,
             provider_label: ProviderLabel::of(&policy.provider),
             provider,

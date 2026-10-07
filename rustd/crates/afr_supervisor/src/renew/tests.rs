@@ -170,6 +170,7 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     meter.add(Usage {
         input: 300,
         cached_input: 100,
+        cache_written: 0,
         output: 40,
     });
 

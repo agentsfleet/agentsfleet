@@ -259,6 +259,17 @@ pub(crate) fn spent(input: u64, cached_input: u64, output: u64) -> Chunk {
     Chunk::Usage(Usage {
         input,
         cached_input,
+        cache_written: 0,
+        output,
+    })
+}
+
+/// What a turn spent, `written` of its input going to the provider's cache.
+pub(crate) fn spent_caching(input: u64, cached_input: u64, written: u64, output: u64) -> Chunk {
+    Chunk::Usage(Usage {
+        input,
+        cached_input,
+        cache_written: written,
         output,
     })
 }

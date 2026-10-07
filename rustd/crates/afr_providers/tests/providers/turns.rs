@@ -18,6 +18,8 @@ use super::{ANSWER, CALL_ID};
 const MODEL: &str = "model-1";
 /// What the user asked.
 const QUESTION: &str = "what is 2+2?";
+/// The fleet whose conversation every request here belongs to.
+const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee7";
 /// More items than any turn here yields: a stream that reaches it never ends.
 const BOUND: usize = 16;
 
@@ -36,6 +38,7 @@ async fn streamed(
         messages,
         tools: &[],
         hosted: &[],
+        cache_key: FLEET,
     };
     provider.stream(request).take(BOUND).collect().await
 }

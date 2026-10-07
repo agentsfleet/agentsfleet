@@ -95,6 +95,12 @@ pub const ATTR_USAGE_INPUT_TOKENS: &str = "gen_ai.usage.input_tokens";
 /// Completion tokens for the whole run.
 pub const ATTR_USAGE_OUTPUT_TOKENS: &str = "gen_ai.usage.output_tokens";
 
+/// Prompt tokens a model turn read from the provider's cache.
+pub const ATTR_USAGE_CACHE_READ_TOKENS: &str = "gen_ai.usage.cache_read.input_tokens";
+
+/// Prompt tokens a model turn wrote to the provider's cache.
+pub const ATTR_USAGE_CACHE_CREATION_TOKENS: &str = "gen_ai.usage.cache_creation.input_tokens";
+
 /// Whether the sandbox was this platform's or the tenant's own.
 pub const ATTR_EXECUTION_POSTURE: &str = "agentsfleet.execution.posture";
 
@@ -184,6 +190,8 @@ pub const RUNNER_SPAN_KEYS: &[&str] = &[
     ATTR_REQUEST_MODEL,
     ATTR_USAGE_INPUT_TOKENS,
     ATTR_USAGE_OUTPUT_TOKENS,
+    ATTR_USAGE_CACHE_READ_TOKENS,
+    ATTR_USAGE_CACHE_CREATION_TOKENS,
     ATTR_TOOL_NAME,
     ATTR_TOOL_CALL_ID,
 ];

@@ -24,6 +24,8 @@ use crate::registry::Wire;
 const WEB_SEARCH_MESSAGES: &str = "web_search_20250305";
 /// The key a Messages server tool is named under.
 const FIELD_NAME: &str = "name";
+/// The Responses field naming a conversation's prompt cache.
+const FIELD_PROMPT_CACHE_KEY: &str = "prompt_cache_key";
 
 /// `request` as rig sends it over `wire`.
 ///
@@ -44,6 +46,12 @@ pub(crate) fn request(wire: Wire, request: &Request<'_>) -> Result<CompletionReq
         .filter_map(|tool| hosted(wire, tool));
     let mut built = CompletionRequest::new(RigMessage::user(String::new()));
     built.chat_history = history;
+    // Responses only: Messages caches by its markers, and the Chat wire's
+    // gateways refuse a field they do not know.
+    if wire == Wire::Responses {
+        built.additional_params =
+            Some(serde_json::json!({ FIELD_PROMPT_CACHE_KEY: request.cache_key }));
+    }
     Ok(built
         .model(request.model)
         .preamble(request.instructions)
