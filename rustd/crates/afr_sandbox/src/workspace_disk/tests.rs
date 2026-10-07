@@ -132,3 +132,51 @@ fn test_the_disk_is_laid_out_as_workspace_and_sticky_tmp() {
     assert!(disk.workspace().ends_with("workspace/workspace"));
     assert!(disk.tmp().ends_with("workspace/tmp"));
 }
+
+/// Switching a device to direct I/O falls back to buffered only when the
+/// backing file system refuses it; refused for any other reason, it is a
+/// failure. `/dev/null` is no loop device, so the kernel answers `ENOTTY`.
+#[cfg(target_os = "linux")]
+#[test]
+fn test_a_direct_io_switch_refused_for_another_reason_is_an_error() {
+    let switched = crate::toolbox::loop_device::direct_io(std::path::Path::new("/dev/null"));
+
+    assert!(switched.is_err(), "{switched:?}");
+}
+
+/// A disk whose layout is refused once it is mounted is undone as a release
+/// undoes one — unmounted where anything is mounted, then removed — so the
+/// build leaves nothing behind, and the caller sees the layout's own failure.
+/// The fake mount makes no disk, so the layout lands in the bare mount point.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn test_a_disk_that_cannot_be_laid_out_leaves_nothing_behind() {
+    let dir = tempfile::tempdir().unwrap();
+    let tools = HostTools {
+        mount: PathBuf::from("/usr/bin/true"),
+        ..broken("/usr/bin/true")
+    };
+
+    // Owned by a user this unprivileged test is not, so the layout's chown
+    // is refused once `workspace/` is made.
+    let refused = WorkspaceDisk::create(&tools, dir.path(), 4_096, (65_534, 65_534)).await;
+
+    let failure = refused.err().map(|error| {
+        std::error::Error::source(&error)
+            .and_then(|cause| cause.downcast_ref::<std::io::Error>())
+            .map(std::io::Error::kind)
+    });
+    assert_eq!(
+        failure,
+        Some(Some(std::io::ErrorKind::PermissionDenied)),
+        "the layout's own failure reaches the caller"
+    );
+    assert_eq!(
+        fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect::<Vec<_>>(),
+        Vec::<std::ffi::OsString>::new(),
+        "image and mount point removed"
+    );
+}

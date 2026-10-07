@@ -13,7 +13,7 @@ use crate::run::{expect, in_sandbox, in_sandbox_each, run as run_in, runtime, sh
 use crate::trials::{ENOSPC, SMALL_DISK, TENANT_CGROUP, TWO_OUTCOMES};
 
 /// Memory a runaway trial exceeds.
-const SMALL_MEMORY: u64 = 256 * 1024 * 1024;
+pub(crate) const SMALL_MEMORY: u64 = 256 * 1024 * 1024;
 /// Processes a fork-bomb trial exceeds.
 const FEW_PIDS: u32 = 64;
 /// A process that allocates, and touches, far more than [`SMALL_MEMORY`].
@@ -40,12 +40,15 @@ const FILL_PAST_THE_DISK: &str = "dd if=/dev/zero of=/workspace/fill bs=1M count
 
 /// More forks than any lane's process limit allows.
 const FORK_ATTEMPTS: u32 = 1000;
+/// How long each forked child sleeps: past the trial, so every child it got
+/// is still alive when the kernel refuses the next.
+const CHILD_SLEEP_SECS: u32 = 60;
 
 /// A fork bomb that counts how many children it got before the kernel refused.
 fn fork_bomb() -> String {
     format!(
         "import os, time\nmade = 0\nfor _ in range({FORK_ATTEMPTS}):\n    try:\n        \
-         if os.fork() == 0:\n            time.sleep(60)\n            os._exit(0)\n        \
+         if os.fork() == 0:\n            time.sleep({CHILD_SLEEP_SECS})\n            os._exit(0)\n        \
          made += 1\n    except OSError:\n        break\nprint(made)\n"
     )
 }

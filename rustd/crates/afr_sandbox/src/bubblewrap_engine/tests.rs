@@ -11,6 +11,25 @@ mod prepare;
 mod release;
 mod support;
 
+/// A sandbox never moved into a cgroup of its own has nothing to freeze or
+/// thaw: each is refused as unconfined, saying why, never taken as settled.
+#[tokio::test]
+async fn test_settling_a_sandbox_without_a_cgroup_is_refused_as_unconfined() {
+    use crate::cgroup::Freezer;
+    let steps: [fn(&Freezer) -> crate::Result<()>; 2] = [Freezer::freeze, Freezer::thaw];
+
+    for step in steps {
+        let refused = super::settle(None, step).await;
+
+        let said = refused.err().map(|error| error.to_string());
+        assert!(
+            said.as_deref()
+                .is_some_and(|said| said.contains(super::NO_CGROUP)),
+            "{said:?}"
+        );
+    }
+}
+
 #[test]
 fn test_probe_paths_use_the_configured_launcher_cgroup_and_state() {
     let host = support::FakeHost::new(support::SLEEPER);

@@ -29,7 +29,7 @@ const MAX_USER_NAMESPACES: &str = "/proc/sys/user/max_user_namespaces";
 /// Ubuntu's `AppArmor` switch that forbids unprivileged user namespaces.
 const APPARMOR_USERNS: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
 /// Where each run's leases and toolbox mount live; short, for socket paths.
-const STATE_PREFIX: &str = "afr-lane-";
+pub(crate) const STATE_PREFIX: &str = "afr-lane-";
 /// Where, under the lane's state, each lease's directory is made; apart from
 /// the toolbox mount, so no lease name can land on it.
 const LEASES_DIR: &str = "leases";
@@ -131,7 +131,7 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
 /// any lane state an earlier run left behind named so it can be cleared. This
 /// run's own state is made after the check, so every such directory is an
 /// earlier run's, or a concurrent one's, and is named rather than removed.
-fn short_of_disk(parent: &Path) -> Option<String> {
+pub(crate) fn short_of_disk(parent: &Path) -> Option<String> {
     let free = match rustix::fs::statvfs(parent) {
         Ok(stat) => stat.f_bavail.saturating_mul(stat.f_frsize),
         Err(error) => return Some(format!("disk: {} is unreadable: {error}", parent.display())),

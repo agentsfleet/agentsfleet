@@ -8,7 +8,7 @@
 use std::time::{Duration, Instant};
 
 use afr_executor::{Ending, Executor as _, Spawn};
-use rustix::process::{Pid, Signal, kill_process};
+use rustix::process::{Pid, Signal, kill_process, test_kill_process};
 
 use crate::support::{Finished, finish, start};
 
@@ -102,3 +102,49 @@ async fn a_timeout_still_ends_a_process_whose_descendant_left_the_group() {
 
 /// [`ORPHAN`], but the leader stays until it is killed.
 const ORPHAN_AND_WAIT: &str = r#"use POSIX (); if (my $child = fork) { sleep 600; exit 0 } POSIX::setsid(); $| = 1; print "$$\n"; exec "sleep", "600""#;
+
+/// A job `sh` puts in the background without job control stays in the
+/// command's process group; its output goes elsewhere, so only the group's
+/// kill can end it. It prints the job's pid.
+const BACKGROUNDED: &str = "sleep 600 >/dev/null 2>&1 & echo $!";
+/// How often a job that should be gone is looked for.
+const LOOK_AGAIN: Duration = Duration::from_millis(20);
+
+/// Whether `pid` names no process before `limit` passes. A killed job is
+/// reaped by whoever adopted it, so it may outlive its kill by a moment.
+async fn gone_within(pid: Pid, limit: Duration) -> bool {
+    let deadline = Instant::now() + limit;
+    while test_kill_process(pid).is_ok() {
+        if Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(LOOK_AGAIN).await;
+    }
+    true
+}
+
+/// A backgrounded job left in the group ends with its command: once the
+/// leader ends, the executor kills its group. A descendant in a session of
+/// its own outlives that kill, which the tests above prove by the output it
+/// holds open past the drain's grace.
+#[tokio::test]
+async fn a_backgrounded_job_in_the_group_ends_with_its_command() {
+    let harness = start().await;
+    let spawn = Spawn::program("sh").args(["-c", BACKGROUNDED]);
+
+    let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
+
+    let pid = String::from_utf8_lossy(&finished.stdout)
+        .trim()
+        .parse()
+        .ok()
+        .and_then(Pid::from_raw);
+    let gone = match pid {
+        Some(pid) => gone_within(pid, PROMPTLY).await,
+        None => false,
+    };
+    reap(pid);
+    assert_eq!(finished.endings, [Ending::Exited(0)]);
+    assert!(pid.is_some(), "the shell said its job's pid");
+    assert!(gone, "the job ended with its command's group");
+}
