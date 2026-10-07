@@ -92,29 +92,53 @@ fn test_a_poll_naming_its_holds_reads_them_and_refuses_a_stranger() {
     let _ = serde_json::from_str::<LeaseRequest<'_>>(r#"{"future":1}"#).unwrap_err();
 }
 
-/// Both bodies that carry a runner's holds publish the bounds garde enforces:
-/// the list's length and each entry's. utoipa takes only a literal for them,
-/// so this keeps the two spellings one.
+/// The bounds garde enforces on a runner's holds, as a schema publishes them:
+/// at most [`HOLDS_MAX`] entries, each exactly an identifier's length.
+fn assert_holds_bounded(body: &str, schema: &serde_json::Value) {
+    let bound = |pointer: &str| schema.pointer(pointer).and_then(serde_json::Value::as_u64);
+    let entry = u64::try_from(FLEET_ID_TEXT_BYTES).ok();
+    assert_eq!(
+        bound("/properties/holds/maxItems"),
+        u64::try_from(HOLDS_MAX).ok(),
+        "{body}: {schema}"
+    );
+    assert_eq!(
+        bound("/properties/holds/items/minLength"),
+        entry,
+        "{body}: {schema}"
+    );
+    assert_eq!(
+        bound("/properties/holds/items/maxLength"),
+        entry,
+        "{body}: {schema}"
+    );
+}
+
+/// Both bodies that carry a runner's holds derive the bounds garde enforces.
+/// utoipa takes only a literal for them, so this keeps the two spellings one.
 #[cfg(feature = "openapi")]
 #[test]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "a schema missing the property indexes to null, which the assertion then names"
-)]
 fn test_the_published_holds_bound_is_the_enforced_one() {
     let poll = serde_json::to_value(<LeaseRequest<'_> as utoipa::PartialSchema>::schema()).unwrap();
     let beat =
         serde_json::to_value(<HeartbeatRequest<'_> as utoipa::PartialSchema>::schema()).unwrap();
 
-    let entry = u64::try_from(FLEET_ID_TEXT_BYTES).ok();
-    for schema in [poll, beat] {
-        let holds = &schema["properties"]["holds"];
-        assert_eq!(
-            holds["maxItems"].as_u64(),
-            u64::try_from(HOLDS_MAX).ok(),
-            "{schema}"
-        );
-        assert_eq!(holds["items"]["minLength"].as_u64(), entry, "{schema}");
-        assert_eq!(holds["items"]["maxLength"].as_u64(), entry, "{schema}");
+    assert_holds_bounded("LeaseRequest", &poll);
+    assert_holds_bounded("HeartbeatRequest", &beat);
+}
+
+/// The document clients read carries the same bounds. The derive above can
+/// be right while a stale `public/openapi.json` still tells clients the old
+/// ones.
+#[test]
+fn test_the_published_document_bounds_holds_as_garde_does() {
+    let openapi = include_str!("../../../../public/openapi.json");
+    let document: serde_json::Value = serde_json::from_str(openapi).unwrap();
+
+    for body in ["LeaseRequest", "HeartbeatRequest"] {
+        let schema = document
+            .pointer(&format!("/components/schemas/{body}"))
+            .unwrap_or(&serde_json::Value::Null);
+        assert_holds_bounded(body, schema);
     }
 }
