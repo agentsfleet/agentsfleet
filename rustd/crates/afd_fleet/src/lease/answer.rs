@@ -104,3 +104,6 @@ pub(super) fn render<'a>(
         resume_hold: acquired.resume_hold,
     }))
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests;

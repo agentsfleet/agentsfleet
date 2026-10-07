@@ -7,23 +7,26 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use afd_core::test_util::trace::Capture;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-use super::Assignment;
-use super::Heartbeat;
 use super::tests::{
-    FLEET, HOLDS_FIELD, KEEP_GOING, RELEASED, STOP, TICK_MS, holding, probe, releasing, sent,
+    FLEET, HOLDS_FIELD, KEEP_GOING, RELEASED, STOP, TICK_MS, holding, park, probe, releasing, sent,
 };
-use crate::client::Call;
+use super::{Assignment, EVENT_LAST_FAILED, Heartbeat};
+use crate::client::{Call, Verb};
+use crate::error;
 use crate::halt::Halt;
-use crate::holds::Release;
+use crate::holds::{Holds, Release};
 use crate::test_support::{Answer, FakeEngine, drain, plane};
+
+/// The beat the daemon answers `stop`, once leasing stopped two beats in.
+const STOPPED_AT_BEAT: usize = 3;
 
 /// Every hold the beat ended, by the reason it was logged under.
 fn reasons(capture: &Capture) -> Vec<String> {
@@ -33,6 +36,27 @@ fn reasons(capture: &Capture) -> Vec<String> {
         .filter(|event| event.field("event") == Some(RELEASED))
         .map(|event| event.field("reason").unwrap().to_owned())
         .collect()
+}
+
+/// The daemon refusing this runner's token.
+fn token_refusal() -> crate::Error {
+    error::refused(Verb::Heartbeat, 401, None)
+}
+
+/// Every hold has ended and none can start: the registry lists nothing, and a
+/// sandbox parked now is destroyed rather than held.
+async fn assert_closed(holds: &Holds, engine: &FakeEngine) {
+    let left = holds.fleets().await;
+    let parked = park(holds, engine).await;
+    holds.shutdown().await;
+
+    none_left(&left);
+    assert!(!parked, "a park after the close is destroyed");
+    assert_eq!(
+        engine.destroyed.load(Ordering::SeqCst),
+        2,
+        "the hold, then the late park"
+    );
 }
 
 /// The holds each beat listed, in the order the daemon received them.
@@ -105,7 +129,7 @@ async fn test_a_shutdown_ends_every_hold_and_says_so_in_a_last_beat() {
     let left = holds.fleets().await;
     holds.shutdown().await;
 
-    assert!(left.is_empty(), "{left:?}");
+    none_left(&left);
     let listed = listed(&drain(&mut calls));
     assert_eq!(
         listed,
@@ -117,13 +141,14 @@ async fn test_a_shutdown_ends_every_hold_and_says_so_in_a_last_beat() {
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }
 
-/// A runner whose token was refused sends no last beat: no call can succeed.
+/// A beat refused for the token ends every hold at once, and sends no last
+/// beat: the runner stops, so no lease could take a hold, and no call can
+/// succeed to say so.
 #[tokio::test(start_paused = true)]
-async fn test_a_refused_runner_sends_no_last_beat() {
+async fn test_a_refused_runner_ends_its_holds_and_sends_no_last_beat() {
     let engine = FakeEngine::default();
     let holds = holding(&engine, 2).await;
-    let (plane, mut calls) =
-        plane(|call| Answer::Fail(crate::error::refused(call.verb, 401, None)));
+    let (plane, mut calls) = plane(|_call| Answer::Fail(token_refusal()));
     let probe = probe();
     let (published, _watching) = watch::channel(Assignment::initial());
     let halt = Halt::new(CancellationToken::new());
@@ -134,4 +159,105 @@ async fn test_a_refused_runner_sends_no_last_beat() {
 
     assert!(halt.token_refused());
     assert_eq!(drain(&mut calls).len(), 1, "the refused beat alone");
+    assert_closed(&holds, &engine).await;
+}
+
+/// Leasing stops once, so it brings one beat forward and no more: every beat
+/// after it waits out the interval again while the daemon keeps answering
+/// keep-going.
+#[tokio::test(start_paused = true)]
+async fn test_leasing_stopped_brings_one_beat_forward_and_no_more() {
+    let engine = FakeEngine::default();
+    let holds = holding(&engine, 2).await;
+    let stamps = Arc::new(Mutex::new(Vec::new()));
+    let stamped = Arc::clone(&stamps);
+    let (plane, _calls) = plane(move |_call| {
+        let mut beats = stamped.lock().unwrap();
+        beats.push(tokio::time::Instant::now());
+        let status = if beats.len() < STOPPED_AT_BEAT {
+            KEEP_GOING
+        } else {
+            STOP
+        };
+        releasing(status, &[])
+    });
+    let probe = probe();
+    let (published, mut watching) = watch::channel(Assignment::initial());
+    let halt = Halt::new(CancellationToken::new());
+    let started = tokio::time::Instant::now();
+
+    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let stopping = async {
+        watching.changed().await.unwrap();
+        halt.stop_leasing();
+    };
+    let ((), ()) = tokio::join!(beating, stopping);
+    holds.shutdown().await;
+
+    let tick = Duration::from_millis(u64::from(TICK_MS));
+    let beats = stamps.lock().unwrap().clone();
+    let early = beats.iter().filter(|at| **at - started < tick).count();
+    assert_eq!(early, 2, "the first beat and the one brought forward");
+    assert!(beats[2] - started >= tick, "the third waited out the tick");
+}
+
+/// A token refused on another call stops serving while the beat waits: the
+/// last beat ends every hold and sends nothing, since no call can succeed.
+#[tokio::test(start_paused = true)]
+async fn test_a_token_refused_elsewhere_ends_every_hold_without_a_last_beat() {
+    let engine = FakeEngine::default();
+    let holds = holding(&engine, 2).await;
+    let (plane, mut calls) = plane(|_call| releasing(KEEP_GOING, &[]));
+    let probe = probe();
+    let (published, mut watching) = watch::channel(Assignment::initial());
+    let halt = Halt::new(CancellationToken::new());
+
+    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let refusing = async {
+        watching.changed().await.unwrap();
+        assert!(halt.stops_on(&token_refusal()), "a refused token stops");
+    };
+    let ((), ()) = tokio::join!(beating, refusing);
+
+    assert_eq!(drain(&mut calls).len(), 1, "the beat alone, no last one");
+    assert_closed(&holds, &engine).await;
+}
+
+/// A last beat the daemon cannot take is logged under its code and not
+/// retried: the runner stops either way, and its holds lapse at the daemon.
+#[tokio::test(start_paused = true)]
+async fn test_a_failed_last_beat_is_logged_once_and_not_retried() {
+    let capture = Capture::install();
+    let engine = FakeEngine::default();
+    let holds = holding(&engine, 2).await;
+    let beats = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&beats);
+    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+        0 => releasing(KEEP_GOING, &[]),
+        _later => Answer::Fail(error::unavailable(Verb::Heartbeat, 503)),
+    });
+    let probe = probe();
+    let (published, mut watching) = watch::channel(Assignment::initial());
+    let shutdown = CancellationToken::new();
+    let halt = Halt::new(shutdown.clone());
+
+    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let stopping = async {
+        watching.changed().await.unwrap();
+        shutdown.cancel();
+    };
+    let ((), ()) = tokio::join!(beating, stopping);
+    let left = holds.fleets().await;
+    holds.shutdown().await;
+
+    assert_eq!(drain(&mut calls).len(), 2, "the beat, then one last beat");
+    let failed = capture.only(EVENT_LAST_FAILED);
+    let code = error::unavailable(Verb::Heartbeat, 503).code().as_str();
+    assert_eq!(failed.field("error_code"), Some(code));
+    none_left(&left);
+}
+
+/// Every hold ended: the keeper lists no fleet.
+fn none_left(left: &[afd_core::id::Uuid7]) {
+    assert!(left.is_empty(), "still holding {left:?}");
 }

@@ -98,6 +98,13 @@ fn answer(
 pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
     let holds = Holds::start(Arc::new(FixedClock::at(UnixMillis::from_millis(0))));
     holds.resize(workers);
+    assert!(park(&holds, engine).await, "parked");
+    holds
+}
+
+/// Parks a sandbox `engine` builds for [`FLEET`], and answers whether `holds`
+/// held it rather than destroying it.
+pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> bool {
     let request = SandboxRequest {
         lease_id: LEASE,
         limits: Limits::default(),
@@ -110,8 +117,7 @@ pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
     };
     let sandbox = engine.prepare(request).await.unwrap();
     let lease = Uuid7::parse(LEASE).unwrap();
-    assert!(holds.park(key, lease, sandbox).await.is_some(), "parked");
-    holds
+    holds.park(key, lease, sandbox).await.is_some()
 }
 
 pub(super) fn sent(call: &Call) -> serde_json::Value {

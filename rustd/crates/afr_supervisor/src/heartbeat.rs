@@ -165,7 +165,8 @@ impl<'a> Heartbeat<'a> {
                         halt.stop();
                     }
                 }
-                Err(failure) if halt.stops_on(&failure) => return,
+                // No last beat: with the token refused, no call can succeed.
+                Err(failure) if halt.stops_on(&failure) => return self.holds.close(),
                 Err(failure) => {
                     let code = failure.code().as_str();
                     let event = EVENT_FAILED;

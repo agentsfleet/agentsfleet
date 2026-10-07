@@ -66,7 +66,11 @@ impl LeaseRun<'_> {
                     event,
                     "the report would not serialize"
                 );
-                return false;
+                // Never posted, so never recorded: the hold ends as a rejected
+                // report's does. No test drives this arm: a `ReportRequest` is
+                // strings, integers, unit enums and parsed raw JSON, none of
+                // which `serde_json` refuses to write to a `Vec`.
+                return true;
             }
         };
         match self.lessee.spool.hold(&self.ids.lease, bytes.clone()).await {
