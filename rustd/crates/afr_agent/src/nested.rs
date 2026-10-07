@@ -63,6 +63,10 @@ mod fixture;
 mod tests;
 
 #[cfg(test)]
+#[path = "nested/refusal_tests.rs"]
+mod refusal_tests;
+
+#[cfg(test)]
 #[path = "nested/run_tests.rs"]
 mod run_tests;
 

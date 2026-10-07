@@ -245,3 +245,33 @@ fn a_selection_without_entries_keeps_the_rest() {
     assert!(without.hosted().is_empty());
     assert_eq!(names(&parent).len(), 2, "the parent is untouched");
 }
+
+/// Every published entry a handler serves is hosted, so a policy naming any
+/// of them is admitted; one left out of `hosted` would refuse every lease
+/// naming it at admission, which is how a tool goes dark.
+#[test]
+fn every_published_handler_entry_is_hosted() {
+    let (transport, _sent) = crate::testing::replying(200, "");
+    let catalog = Catalog::hosted(transport);
+    let served: Vec<&str> = PUBLISHED
+        .iter()
+        .filter(|entry| entry.runtime() != Runtime::Provider)
+        .map(|entry| entry.name())
+        .collect();
+
+    let unhosted: Vec<&str> = served
+        .iter()
+        .copied()
+        .filter(|name| catalog.select(&[*name]).is_err())
+        .collect();
+
+    assert_eq!(
+        served.len(),
+        PUBLISHED.len() - 1,
+        "one entry is the provider's"
+    );
+    assert!(
+        unhosted.is_empty(),
+        "published but not hosted: {unhosted:?}"
+    );
+}

@@ -10,13 +10,17 @@
 
 use std::time::Duration;
 
+use std::sync::Arc;
+
 use afd_core::test_util::trace::Capture;
 use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
+use afr_egress::testing::{CountingMint, RecordingTransport};
 use afr_providers::Chunk;
+use afr_tools::Catalog;
 use afr_tools::catalog::{
-    DELEGATE, HTTP_REQUEST, INTERRUPT_AGENT, LIST_AGENTS, MEMORY_RECALL, SPAWN, UPDATE_PLAN,
-    WAIT_AGENT,
+    DELEGATE, HTTP_REQUEST, INTERRUPT_AGENT, LIST_AGENTS, MEMORY_RECALL, MEMORY_STORE, SPAWN,
+    UPDATE_PLAN, WAIT_AGENT,
 };
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -24,10 +28,13 @@ use tokio_util::sync::CancellationToken;
 use super::child::EVENT_CHILD_ENDED;
 use super::fixture::{
     CALLS, CHILD_ID, DEPTH, DONE, INTERRUPTED, NEVER, OPENING, READS, RUNNING, STALLS, STATUS,
-    SUMMARY, events, offered, parsed, requests_opening_with, results, started_ids, tools,
+    SUMMARY, events, offered, parsed, requests_opening_with, results, started_ids, streamed, tools,
 };
-use crate::fixture::{Canned, Script, call, lease, say, unbounded};
+use crate::engine::{AgentEngine, AgentRun, Meter};
+use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
+use crate::harness::Loop;
 use crate::harness::tests::{completions, drive, engine};
+use crate::testing::Recording;
 
 /// Calls the parent makes beside one `delegate`, so the parent makes 150.
 const PARENT_CALLS: usize = 149;
@@ -56,6 +63,11 @@ async fn test_child_calls_share_the_run_trace() {
     let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
 
     assert_eq!(started_ids(&frames), ["1", "2", "3"], "one counter");
+    assert_eq!(
+        streamed(&frames),
+        [DONE],
+        "a child's answer is its parent's to read, never the thread's"
+    );
     let succeeded = ToolCallStatus::Succeeded;
     assert_eq!(
         completions(&frames),
@@ -183,4 +195,61 @@ async fn test_interrupt_and_list_agents() {
             {CHILD_ID: 2, STATUS: RUNNING, DEPTH: 1, CALLS: 0}
         ])
     );
+}
+
+/// A child writes no checkpoint of its own: what it stores rides the
+/// parent's next checkpoint, so a cadence of one call pushes once for the
+/// `delegate` call and never a second time for the child's store.
+#[tokio::test]
+async fn test_a_child_writes_no_checkpoint_of_its_own() {
+    let script = Script::new([
+        vec![call("p1", DELEGATE.name(), json!({"task": READS}))],
+        vec![say(DONE)],
+    ])
+    .with_child(
+        READS,
+        [
+            vec![call(
+                "c1",
+                MEMORY_STORE.name(),
+                json!({"key": "found", "content": "x"}),
+            )],
+            vec![say(SUMMARY)],
+        ],
+    );
+    let (transport, _sent) = RecordingTransport::replying(200, "");
+    let engine = Loop::new(Catalog::hosted(Arc::new(transport)), script.replay());
+    let every_call = json!({"tool_window": 0, "memory_checkpoint_every": 1,
+        "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 0});
+    let lease = lease(&[MEMORY_STORE.name(), DELEGATE.name()], every_call);
+    let (checkpoint, pushed) = Recording::new();
+    let frames = Frames::default();
+    let sink = frames.sink();
+
+    let output = engine
+        .run(AgentRun {
+            lease: &lease,
+            memory: afr_memory::Seed::default(),
+            executor: None,
+            mint: &CountingMint::never(),
+            verbs: &afr_tools::CLOSED,
+            checkpoint: &checkpoint,
+            events: &sink,
+            meter: &Meter::default(),
+            stop: &CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+
+    frames.taken();
+    let written: Vec<Vec<String>> = pushed
+        .try_iter()
+        .map(|push| push.iter().map(|delta| delta.key.to_string()).collect())
+        .collect();
+    assert_eq!(
+        written,
+        [vec!["found".to_owned()]],
+        "one push, after the delegate call"
+    );
+    assert_eq!(output.memory.len(), 1, "the final push carries it again");
 }
