@@ -12,6 +12,7 @@
 //! to be posted.
 
 use std::borrow::Cow;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 use afd_core::clock::{saturating_millis, saturating_millis_signed};
@@ -38,11 +39,23 @@ pub(crate) const EVENT_CALL_COMPLETED: &str = "tool_call_completed";
 /// still lists the call, so an operator's "show all" finds no record for it.
 const EVENT_RECORD_DROPPED: &str = "tool_record_dropped";
 
-/// Every call one run made.
+/// Every call one run made, its children's included.
+///
+/// Shared by the run's loop and every child loop it starts, so their calls
+/// take one counter and land in one trace. What a call changes sits behind
+/// one lock, taken to open the call and again to end it, never across its
+/// handler: a child's call opens and ends while its parent's `delegate` call
+/// is still open.
 pub(crate) struct Ledger<'run> {
     lease_id: &'run str,
     sink: &'run dyn EventSink,
     scrub: &'run Scrub,
+    book: Mutex<Book>,
+}
+
+/// What the run's calls have left so far.
+#[derive(Default)]
+struct Book {
     trace: Trace,
     records: Vec<ToolCallRecord<'static>>,
     /// What the held records spend of the event's budget.
@@ -58,17 +71,14 @@ impl<'run> Ledger<'run> {
             lease_id,
             sink,
             scrub,
-            trace: Trace::default(),
-            records: Vec::new(),
-            spent: 0,
-            calls: 0,
+            book: Mutex::default(),
         }
     }
 
     /// Runs `call` through `handler` and hands back the scrubbed text the
     /// model reads, and the image the call read, when it read one.
     pub(crate) async fn call(
-        &mut self,
+        &self,
         call: &Call,
         handler: impl Future<Output = ToolOutput>,
     ) -> (Clean<String>, Option<ImageAttachment>) {
@@ -79,9 +89,12 @@ impl<'run> Ledger<'run> {
 
     /// Opens the next call: numbers it, scrubs and bounds its arguments, and
     /// sends its start frame.
-    fn open<'a>(&'a mut self, call: &'a Call) -> Opened<'a, 'run> {
-        self.calls += 1;
-        let number = self.calls;
+    fn open<'a>(&'a self, call: &'a Call) -> Opened<'a, 'run> {
+        // Numbered and announced under the lock, so the start frames leave
+        // in the order the calls were numbered.
+        let mut book = self.book();
+        book.calls += 1;
+        let number = book.calls;
         let id = number.to_string();
         let shown = self.scrub.clean_json(call.arguments.clone());
         let bounded = bounded_arguments(&shown);
@@ -97,6 +110,7 @@ impl<'run> Ledger<'run> {
                 args_redacted: Cow::Owned(args_redacted),
                 call_id: Some(Cow::Owned(id.clone())),
             }));
+        drop(book);
         Opened {
             ledger: self,
             number,
@@ -110,11 +124,11 @@ impl<'run> Ledger<'run> {
     /// Holds `record` when it fits what is left of [`DETAIL_EVENT_MAX_BYTES`].
     /// A record past it is dropped and a later, smaller one may still fit, as
     /// the daemon keeps them.
-    fn hold(&mut self, record: ToolCallRecord<'static>) {
-        let after = self.spent.saturating_add(record.byte_count());
+    fn hold(&self, book: &mut Book, record: ToolCallRecord<'static>) {
+        let after = book.spent.saturating_add(record.byte_count());
         if after <= DETAIL_EVENT_MAX_BYTES {
-            self.spent = after;
-            self.records.push(record);
+            book.spent = after;
+            book.records.push(record);
         } else {
             let lease_id = self.lease_id;
             let call_number = record.call_number;
@@ -126,13 +140,23 @@ impl<'run> Ledger<'run> {
 
     /// The run's trace, none for a run that called no tool, and every record.
     pub(crate) fn finish(self) -> (Option<ToolTrace<'static>>, Vec<ToolCallRecord<'static>>) {
-        (self.trace.finish(), self.records)
+        let book = self
+            .book
+            .into_inner()
+            .unwrap_or_else(PoisonError::into_inner);
+        (book.trace.finish(), book.records)
+    }
+
+    /// The book, whatever a panicking holder left: a call's end is one row
+    /// pushed and one record held, so a panic leaves it whole.
+    fn book(&self) -> MutexGuard<'_, Book> {
+        self.book.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 /// One call between its start frame and its end.
 struct Opened<'a, 'run> {
-    ledger: &'a mut Ledger<'run>,
+    ledger: &'a Ledger<'run>,
     number: u64,
     id: String,
     name: &'a str,
@@ -155,15 +179,16 @@ impl Opened<'_, '_> {
         };
         let outcome = Outcome::ended(status, &text, output.exit_code, self.started.elapsed());
         if let Some((shown, bounded)) = self.arguments.take() {
-            self.end(bounded, outcome);
             let full = record(self.number, shown, &text);
-            self.ledger.hold(full);
+            let mut book = self.ledger.book();
+            self.end(&mut book, bounded, outcome);
+            self.ledger.hold(&mut book, full);
         }
         (text, output.image)
     }
 
     /// Logs the end, sends the end frame and adds the trace row.
-    fn end(&mut self, bounded: Map<String, Value>, outcome: Outcome) {
+    fn end(&mut self, book: &mut Book, bounded: Map<String, Value>, outcome: Outcome) {
         let lease_id = self.ledger.lease_id;
         let call_id = self.id.as_str();
         let tool = self.name;
@@ -184,9 +209,7 @@ impl Opened<'_, '_> {
                 output_line_count: outcome.line_count,
                 exit_code: outcome.exit_code,
             }));
-        self.ledger
-            .trace
-            .push(self.number, self.name, bounded, outcome);
+        book.trace.push(self.number, self.name, bounded, outcome);
     }
 }
 
@@ -202,7 +225,12 @@ const fn tool_outcome(status: ToolCallStatus) -> ToolOutcome {
 impl Drop for Opened<'_, '_> {
     fn drop(&mut self) {
         if let Some((_, bounded)) = self.arguments.take() {
-            self.end(bounded, Outcome::interrupted(self.started.elapsed()));
+            let ledger = self.ledger;
+            self.end(
+                &mut ledger.book(),
+                bounded,
+                Outcome::interrupted(self.started.elapsed()),
+            );
         }
     }
 }
