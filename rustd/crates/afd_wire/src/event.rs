@@ -72,7 +72,10 @@ impl EventType {
 
 mod entry;
 pub mod field;
+mod message;
 mod steer;
+
+pub use self::message::{MESSAGE, message_of};
 
 pub use self::entry::{ENTRY_FIELD_COUNT, Entry, QUEUED_FIELD_COUNT};
 

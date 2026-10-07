@@ -40,6 +40,9 @@ test-util = [
 # `afd_api`'s manifest states: `unused_crate_dependencies` is how the dependency
 # graph stays a fact rustc checks rather than a claim.
 [dependencies]
+# The thread a chat lease reads its turns from is a trait object, so a read
+# that fails is tested with a failing implementation.
+async-trait.workspace = true
 # The message-cap sentence spells the cap from its constant.
 const_format.workspace = true
 # The families this crate produces. The dependency points this way and not the
@@ -130,6 +133,8 @@ tracing.workspace = true
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
+# The thread row fixture the lease history's caps are proven against.
+afd_events = { workspace = true, features = ["test-util"] }
 # The credential plane moved out; its client and the zeroizing wrapper are
 # still what the lease suite constructs a stub broker with.
 reqwest.workspace = true
