@@ -67,6 +67,22 @@ fn test_a_lease_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
     assert_eq!(made.tenant_events(), tenant.join("memory.events"));
 }
 
+/// Without a throttle, a tenant writing past its disk fills its leaf with
+/// pages still being written back and is killed before it reads `ENOSPC`.
+#[test]
+fn test_the_tenant_leaf_throttles_an_eighth_below_its_limit() {
+    let root = tempfile::tempdir().unwrap();
+
+    LeaseCgroup::create(root.path(), "lease-11", &LIMITS).unwrap();
+
+    let tenant = root.path().join("lease-11/tenant");
+    let limit = LIMITS.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES;
+    assert_eq!(
+        read(&tenant, "memory.high"),
+        (limit - limit / 8).to_string()
+    );
+}
+
 #[test]
 fn test_a_limit_below_the_reserve_leaves_the_tenant_nothing_rather_than_wrapping() {
     let root = tempfile::tempdir().unwrap();
@@ -77,10 +93,9 @@ fn test_a_limit_below_the_reserve_leaves_the_tenant_nothing_rather_than_wrapping
 
     LeaseCgroup::create(root.path(), "lease-10", &tiny).unwrap();
 
-    assert_eq!(
-        read(&root.path().join("lease-10/tenant"), "memory.max"),
-        "0"
-    );
+    let tenant = root.path().join("lease-10/tenant");
+    assert_eq!(read(&tenant, "memory.max"), "0");
+    assert_eq!(read(&tenant, "memory.high"), "0");
 }
 
 #[test]

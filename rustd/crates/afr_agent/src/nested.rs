@@ -75,6 +75,10 @@ mod run_tests;
 mod end_tests;
 
 #[cfg(test)]
+#[path = "nested/interrupt_tests.rs"]
+mod interrupt_tests;
+
+#[cfg(test)]
 #[path = "nested/answer_tests.rs"]
 mod answer_tests;
 

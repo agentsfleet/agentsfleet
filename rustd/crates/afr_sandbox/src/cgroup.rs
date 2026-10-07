@@ -32,6 +32,13 @@ pub const SUBTREE_CONTROL: &str = "cgroup.subtree_control";
 pub(crate) const CGROUP_PROCS: &str = "cgroup.procs";
 /// Memory a cgroup may hold before the kernel reclaims or kills.
 const MEMORY_MAX: &str = "memory.max";
+/// Memory past which the kernel slows a cgroup's allocations and reclaims,
+/// rather than kills.
+const MEMORY_HIGH: &str = "memory.high";
+/// The tenant's throttle sits this share of its limit below it: room for
+/// pages already handed to the disk to finish writing, so a tenant writing
+/// past its disk is slowed until it reads `ENOSPC`, not killed first.
+const TENANT_HIGH_SHARE: u64 = 8;
 /// Swap a cgroup may use; zero, so a runaway is killed rather than paged out.
 const MEMORY_SWAP_MAX: &str = "memory.swap.max";
 /// Processor bandwidth: a quota per period, both in microseconds.
@@ -131,9 +138,9 @@ impl LeaseCgroup {
         Ok(())
     }
 
-    /// Hands the lease's controllers to its two leaves and caps the tenant
-    /// leaf's memory below the lease's. The lease's own swap limit already
-    /// covers both leaves.
+    /// Hands the lease's controllers to its two leaves, caps the tenant
+    /// leaf's memory below the lease's, and throttles it below that cap. The
+    /// lease's own swap limit already covers both leaves.
     fn split(&self, limits: &Limits) -> Result<()> {
         let enable = REQUIRED_CONTROLLERS.map(|controller| format!("+{controller}"));
         self.write(SUBTREE_CONTROL, &enable.join(" "))?;
@@ -143,7 +150,10 @@ impl LeaseCgroup {
         let tenant = limits
             .memory_bytes
             .saturating_sub(SANDBOX_MEMORY_RESERVE_BYTES);
-        fs::write(self.tenant().join(MEMORY_MAX), tenant.to_string()).map_err(cgroup(MEMORY_MAX))
+        let high = tenant - tenant / TENANT_HIGH_SHARE;
+        fs::write(self.tenant().join(MEMORY_MAX), tenant.to_string())
+            .map_err(cgroup(MEMORY_MAX))?;
+        fs::write(self.tenant().join(MEMORY_HIGH), high.to_string()).map_err(cgroup(MEMORY_HIGH))
     }
 
     /// Caps reads and writes to the block device `major:minor`.

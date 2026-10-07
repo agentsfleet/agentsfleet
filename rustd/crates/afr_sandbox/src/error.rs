@@ -24,8 +24,8 @@ use afd_core::error_code::{self, ErrorCode};
 mod raise;
 
 pub(crate) use self::raise::{
-    cgroup, cgroup_left, cgroup_unsettled, lease_id_unsafe, not_inherited, program, refused,
-    toolbox_refused, toolbox_unreadable, unconfined,
+    cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, lease_id_unsafe, not_inherited,
+    program, refused, toolbox_refused, toolbox_unreadable, unconfined,
 };
 #[cfg(target_os = "linux")]
 pub(crate) use self::raise::{not_ready, toolbox_unexpected};
@@ -90,6 +90,16 @@ pub(crate) enum ErrorKind {
     #[error("the cgroup refused a write to {file}")]
     Cgroup {
         /// Which control file.
+        file: &'static str,
+        /// The kernel's reason.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// A cgroup file the engine reads could not be opened or read.
+    #[error("the cgroup file {file} could not be read")]
+    CgroupUnreadable {
+        /// Which file.
         file: &'static str,
         /// The kernel's reason.
         #[source]
@@ -228,6 +238,12 @@ impl Error {
             ErrorKind::Executor { source } => source.code(),
             _local => error_code::INTERNAL_OPERATION_FAILED,
         }
+    }
+
+    /// The failure in its own sentence, without its code or backtrace.
+    #[must_use]
+    pub fn detail(&self) -> String {
+        self.kind().to_string()
     }
 
     /// The mechanism this host lacks, when the failure is that the host cannot

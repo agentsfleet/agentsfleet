@@ -143,7 +143,10 @@ async fn a_backgrounded_job_in_the_group_ends_with_its_command() {
         Some(pid) => gone_within(pid, PROMPTLY).await,
         None => false,
     };
-    reap(pid);
+    // A pid already gone may name another process by now: kill only the job.
+    if !gone {
+        reap(pid);
+    }
     assert_eq!(finished.endings, [Ending::Exited(0)]);
     assert!(pid.is_some(), "the shell said its job's pid");
     assert!(gone, "the job ended with its command's group");

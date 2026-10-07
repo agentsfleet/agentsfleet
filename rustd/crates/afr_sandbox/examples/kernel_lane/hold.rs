@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus};
 use std::time::{Duration, Instant};
 
+use afr_executor::WORKSPACE_ROOT;
 use afr_sandbox::{Engine as _, LeaseCgroup, Limits, SANDBOX_LEAF, Sandbox, SandboxRequest};
 use libtest_mimic::Failed;
 use rustix::process::Signal;
@@ -20,18 +21,14 @@ use crate::run::{Outcome, expect, run as run_in, runtime, shell};
 
 /// The lease whose sandbox is held.
 const LEASE: &str = "held";
-/// A file the first lease writes, for the next to read back.
+/// What the first lease writes, for the next to read back, and the file in
+/// the workspace it writes it to.
 const NOTE: &str = "written before the hold";
-/// Starts a ticker that appends to `tick` every 50 ms in a session of its
-/// own, as a fleet's long-running server would be, and prints its pid.
-///
-/// The shell waits for the first tick before it ends: the executor kills the
-/// shell's process group as it ends, and `setsid` is in that group until it
-/// has made its session, so a shell that ended at once would take it along.
-const START_TICKER: &str = "echo 'written before the hold' > /workspace/note; \
-     setsid sh -c 'while :; do echo x >> /workspace/tick; sleep 0.05; done' \
-     >/dev/null 2>&1 </dev/null & pid=$!; \
-     until [ -s /workspace/tick ]; do sleep 0.01; done; echo $pid";
+const NOTE_FILE: &str = "note";
+/// The workspace file the ticker appends to.
+const TICK_FILE: &str = "tick";
+/// What the check prints for a ticker still running.
+const ALIVE: &str = "alive";
 /// How long the frozen sandbox is watched for a tick it should not make.
 const WATCH: Duration = Duration::from_millis(500);
 /// What `cgroup.events` reads for a cgroup whose tree is all stopped.
@@ -90,7 +87,7 @@ pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), F
         format!("the next lease reads the note back, got {:?}", seen.after),
     )?;
     expect(
-        seen.after.output.lines().any(|line| line == "alive"),
+        seen.after.output.lines().any(|line| line == ALIVE),
         format!(
             "process {} is still running, got {:?}",
             seen.pid, seen.after
@@ -103,15 +100,32 @@ pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), F
     )
 }
 
+/// Writes the note, then starts a ticker that appends to the tick file every
+/// 50 ms in a session of its own, as a fleet's long-running server would be,
+/// and prints its pid.
+///
+/// The shell waits for the first tick before it ends: the executor kills the
+/// shell's process group as it ends, and `setsid` is in that group until it
+/// has made its session, so a shell that ended at once would take it along.
+fn start_ticker() -> String {
+    let tick = format!("{WORKSPACE_ROOT}/{TICK_FILE}");
+    format!(
+        "echo '{NOTE}' > {WORKSPACE_ROOT}/{NOTE_FILE}; \
+         setsid sh -c 'while :; do echo x >> {tick}; sleep 0.05; done' \
+         >/dev/null 2>&1 </dev/null & pid=$!; \
+         until [ -s {tick} ]; do sleep 0.01; done; echo $pid"
+    )
+}
+
 /// Starts the ticker, freezes, watches, thaws, and asks the executor what the
 /// first lease left.
 async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Failed> {
-    let started = run_in(sandbox.executor(), shell(START_TICKER)).await?;
+    let started = run_in(sandbox.executor(), shell(&start_ticker())).await?;
     let pid = started.output.trim().to_owned();
     let workspace = sandbox
         .workspace()
         .ok_or_else(|| Failed::from("the bubblewrap engine offers its workspace to the host"))?;
-    let tick = workspace.root.join("tick");
+    let tick = workspace.root.join(TICK_FILE);
     tokio::time::sleep(WATCH).await;
 
     sandbox.freeze().await?;
@@ -121,7 +135,7 @@ async fn hold_and_resume(lane: &Lane, sandbox: &dyn Sandbox) -> Result<Seen, Fai
     let ticks_while_frozen = (frozen_at, size(&tick));
     sandbox.thaw().await?;
 
-    let check = format!("cat /workspace/note; kill -0 {pid} && echo alive");
+    let check = format!("cat {WORKSPACE_ROOT}/{NOTE_FILE}; kill -0 {pid} && echo {ALIVE}");
     let after = run_in(sandbox.executor(), shell(&check)).await?;
     let thawed = size(&tick);
     tokio::time::sleep(WATCH).await;
@@ -153,7 +167,7 @@ pub(crate) fn destroy_frozen(lane: &Lane) -> Result<(), Failed> {
             limits: Limits::default(),
         };
         let sandbox = lane.engine().prepare(request).await?;
-        run_in(sandbox.executor(), shell(START_TICKER)).await?;
+        run_in(sandbox.executor(), shell(&start_ticker())).await?;
         sandbox.freeze().await?;
         let frozen_events = fs::read_to_string(events(lane, DESTROYED_FROZEN));
         Ok::<_, Failed>((frozen_events.unwrap_or_default(), sandbox.destroy().await))

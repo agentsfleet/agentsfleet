@@ -101,7 +101,8 @@ fn a_number_never_opened_is_refused() {
 }
 
 /// A leaf file the engine cannot open refuses the lease naming that file, so
-/// the operator reads which of the two the kernel would not give.
+/// the operator reads which of the two the kernel would not give, and how:
+/// `cgroup.procs` is opened to write, `memory.events` to read.
 #[test]
 fn a_leaf_file_the_engine_cannot_open_is_named() {
     let leaf = tempfile::tempdir().unwrap();
@@ -112,8 +113,16 @@ fn a_leaf_file_the_engine_cannot_open_is_named() {
     );
 
     for (procs, events, named) in [
-        (absent.join(CGROUP_PROCS), events.clone(), CGROUP_PROCS),
-        (procs, absent.join(MEMORY_EVENTS), MEMORY_EVENTS),
+        (
+            absent.join(CGROUP_PROCS),
+            events.clone(),
+            "the cgroup refused a write to cgroup.procs",
+        ),
+        (
+            procs,
+            absent.join(MEMORY_EVENTS),
+            "the cgroup file memory.events could not be read",
+        ),
     ] {
         let said = TenantFiles::open(&procs, &events).unwrap_err().to_string();
 

@@ -41,6 +41,11 @@ pub(crate) fn cgroup(file: &'static str) -> impl Fn(std::io::Error) -> Error {
     move |source| ErrorKind::Cgroup { file, source }.into()
 }
 
+/// Reports a cgroup file that could not be read, naming the file.
+pub(crate) fn cgroup_unreadable(file: &'static str) -> impl Fn(std::io::Error) -> Error {
+    move |source| ErrorKind::CgroupUnreadable { file, source }.into()
+}
+
 /// Reports a cgroup that would not go, naming it.
 pub(crate) fn cgroup_left(path: &std::path::Path) -> impl Fn(std::io::Error) -> Error {
     move |source| {

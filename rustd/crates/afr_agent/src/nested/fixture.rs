@@ -49,6 +49,10 @@ pub(super) const DETAIL: &str = "detail";
 pub(super) const RUNNING: &str = "running";
 pub(super) const FAILED: &str = "failed";
 pub(super) const INTERRUPTED: &str = "interrupted";
+/// The root's call ids, in the order its turns make them.
+pub(super) const FIRST_CALL: &str = "p1";
+pub(super) const SECOND_CALL: &str = "p2";
+pub(super) const THIRD_CALL: &str = "p3";
 /// A wait long enough for a child to reach its first call, in paused time.
 pub(super) const BRIEF_MS: u64 = 1000;
 /// How long a slow call stays open, in paused time.
@@ -98,6 +102,16 @@ pub(super) fn requests_opening_with(script: &Script, opening: &str) -> Vec<Sent>
             matches!(sent.messages.first(), Some(Message::User(text)) if text.starts_with(opening))
         })
         .collect()
+}
+
+/// The id of the call that spawns the `n`th child.
+pub(super) fn spawn_call(n: impl std::fmt::Display) -> String {
+    format!("s{n}")
+}
+
+/// The root's requests, in order.
+pub(super) fn root_requests(script: &Script) -> Vec<Sent> {
+    requests_opening_with(script, OPENING)
 }
 
 /// Every tool result `sent` carries, in order.

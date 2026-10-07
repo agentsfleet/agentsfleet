@@ -69,6 +69,7 @@ fn test_a_freeze_the_kernel_refuses_names_its_control_file() {
     assert!(refused.contains("cgroup.freeze"), "{refused}");
 }
 
+/// The refusal says the file could not be read: it was never written.
 #[test]
 fn test_an_unreadable_events_file_ends_the_wait_at_once() {
     let dir = tempfile::tempdir().unwrap();
@@ -76,7 +77,10 @@ fn test_an_unreadable_events_file_ends_the_wait_at_once() {
 
     let refused = freezer.freeze().unwrap_err().to_string();
 
-    assert!(refused.contains("cgroup.events"), "{refused}");
+    assert!(
+        refused.contains("the cgroup file cgroup.events could not be read"),
+        "{refused}"
+    );
 }
 
 #[test]
