@@ -1,5 +1,6 @@
 //! How a child's end reaches its parent: an unknown id, input after the
-//! end, a failure of the child's own, and an interrupt mid-call.
+//! end, a failure of the child's own, an interrupt mid-call, and one after
+//! the child had already ended.
 
 #![expect(
     clippy::indexing_slicing,
@@ -9,16 +10,18 @@
 use afd_core::test_util::trace::Capture;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::{Chunk, Error};
+use afr_tools::ToolErrorCode;
 use afr_tools::catalog::{DELEGATE, HTTP_REQUEST, INTERRUPT_AGENT, SEND_INPUT, SPAWN, WAIT_AGENT};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::child::EVENT_CHILD_ENDED;
 use super::fixture::{
-    ACCEPTED, ANSWER, BRIEF_MS, CHILD_ID, DETAIL, DONE, FAILED, INTERRUPTED, NEVER, OPENING,
-    RUNNING, STALLS, STATUS, TASK, TASK_KEY, TIMEOUT_MS, events, last_result, parsed,
-    requests_opening_with, stalling_offered, stalling_tools,
+    ACCEPTED, ANSWER, BRIEF_MS, CHILD_DONE, CHILD_ID, DETAIL, DONE, FAILED, INTERRUPTED, NEVER,
+    OPENING, RUNNING, STALLS, STATUS, TASK, TASK_KEY, TIMEOUT_MS, events, last_result, parsed,
+    requests_opening_with, stall, stalling_offered, stalling_tools,
 };
+use super::registry::CHILDREN_RUNNING_MAX;
 use crate::fixture::{Script, Sent, call, lease, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
@@ -26,6 +29,15 @@ use crate::harness::tests::{completions, drive, engine};
 const UNKNOWN: u64 = 9;
 /// The status a failing child's provider answers with.
 const UNAVAILABLE: u16 = 503;
+/// The root's call ids, in the order its turns make them.
+const FIRST_CALL: &str = "p1";
+const SECOND_CALL: &str = "p2";
+const THIRD_CALL: &str = "p3";
+
+/// The id of the call that spawns the `n`th stalling child.
+fn spawn_call(n: impl std::fmt::Display) -> String {
+    format!("s{n}")
+}
 
 /// The upstream fault a failing child's provider ends its turn on.
 fn unavailable() -> Error {
@@ -45,14 +57,18 @@ fn root_requests(script: &Script) -> Vec<Sent> {
 #[tokio::test]
 async fn test_unknown_child_reads_not_found() {
     let script = Script::new([
-        vec![call("p1", WAIT_AGENT.name(), json!({CHILD_ID: UNKNOWN}))],
         vec![call(
-            "p2",
+            FIRST_CALL,
+            WAIT_AGENT.name(),
+            json!({CHILD_ID: UNKNOWN}),
+        )],
+        vec![call(
+            SECOND_CALL,
             SEND_INPUT.name(),
             json!({CHILD_ID: UNKNOWN, "message": "m"}),
         )],
         vec![call(
-            "p3",
+            THIRD_CALL,
             INTERRUPT_AGENT.name(),
             json!({CHILD_ID: UNKNOWN}),
         )],
@@ -79,10 +95,10 @@ async fn test_unknown_child_reads_not_found() {
 #[tokio::test]
 async fn test_input_after_a_child_ended_is_not_accepted() {
     let script = Script::new([
-        vec![call("p1", SPAWN.name(), json!({TASK_KEY: TASK}))],
-        vec![call("p2", WAIT_AGENT.name(), json!({CHILD_ID: 1}))],
+        vec![call(FIRST_CALL, SPAWN.name(), json!({TASK_KEY: TASK}))],
+        vec![call(SECOND_CALL, WAIT_AGENT.name(), json!({CHILD_ID: 1}))],
         vec![call(
-            "p3",
+            THIRD_CALL,
             SEND_INPUT.name(),
             json!({CHILD_ID: 1, "message": "late"}),
         )],
@@ -105,7 +121,7 @@ async fn test_input_after_a_child_ended_is_not_accepted() {
 #[tokio::test]
 async fn test_a_delegated_childs_failure_is_the_calls_failure() {
     let script = Script::new([
-        vec![call("p1", DELEGATE.name(), json!({TASK_KEY: TASK}))],
+        vec![call(FIRST_CALL, DELEGATE.name(), json!({TASK_KEY: TASK}))],
         vec![say("the child failed, so I read the logs myself")],
     ])
     .with_failing_child(TASK, vec![say("partial ")], unavailable);
@@ -132,8 +148,8 @@ async fn test_a_delegated_childs_failure_is_the_calls_failure() {
 #[tokio::test]
 async fn test_wait_agent_returns_a_spawned_childs_failure() {
     let script = Script::new([
-        vec![call("p1", SPAWN.name(), json!({TASK_KEY: TASK}))],
-        vec![call("p2", WAIT_AGENT.name(), json!({CHILD_ID: 1}))],
+        vec![call(FIRST_CALL, SPAWN.name(), json!({TASK_KEY: TASK}))],
+        vec![call(SECOND_CALL, WAIT_AGENT.name(), json!({CHILD_ID: 1}))],
         vec![say(DONE)],
     ])
     .with_failing_child(TASK, vec![say("partial ")], unavailable);
@@ -162,13 +178,17 @@ async fn test_wait_agent_returns_a_spawned_childs_failure() {
 async fn test_interrupting_a_child_mid_call_ends_its_call_once() {
     let capture = Capture::install();
     let script = Script::new([
-        vec![call("p1", SPAWN.name(), json!({TASK_KEY: STALLS}))],
+        vec![call(FIRST_CALL, SPAWN.name(), json!({TASK_KEY: STALLS}))],
         vec![call(
-            "p2",
+            SECOND_CALL,
             WAIT_AGENT.name(),
             json!({CHILD_ID: 1, TIMEOUT_MS: BRIEF_MS}),
         )],
-        vec![call("p3", INTERRUPT_AGENT.name(), json!({CHILD_ID: 1}))],
+        vec![call(
+            THIRD_CALL,
+            INTERRUPT_AGENT.name(),
+            json!({CHILD_ID: 1}),
+        )],
         vec![say(DONE)],
     ])
     .with_child(
@@ -217,13 +237,7 @@ async fn test_interrupting_a_child_mid_call_ends_its_call_once() {
 async fn test_an_interrupted_childs_slot_is_freed_once() {
     let capture = Capture::install();
     let spawns: Vec<Chunk> = (1..=4)
-        .map(|n| {
-            call(
-                &format!("s{n}"),
-                SPAWN.name(),
-                json!({TASK_KEY: stalling(n)}),
-            )
-        })
+        .map(|n| call(&spawn_call(n), SPAWN.name(), json!({TASK_KEY: stalling(n)})))
         .collect();
     let mut script = Script::new([
         spawns,
@@ -286,4 +300,53 @@ async fn test_an_interrupted_childs_slot_is_freed_once() {
         1,
         "the interrupted child ends once in the log: {ended:?}"
     );
+}
+
+/// Interrupting a child that already answered keeps the end it had: the
+/// interrupt reads `done`, the child ends once in the log, and its slot,
+/// freed when it answered, is not freed again. With the cap filled after it,
+/// the interrupt admits no further child.
+#[tokio::test(start_paused = true)]
+async fn test_interrupting_a_finished_child_keeps_its_end() {
+    let capture = Capture::install();
+    let fill: Vec<Chunk> = (1..=CHILDREN_RUNNING_MAX)
+        .map(|n| call(&spawn_call(n), SPAWN.name(), json!({TASK_KEY: STALLS})))
+        .collect();
+    let script = Script::new([
+        vec![call(FIRST_CALL, DELEGATE.name(), json!({TASK_KEY: TASK}))],
+        fill,
+        vec![call(
+            SECOND_CALL,
+            INTERRUPT_AGENT.name(),
+            json!({CHILD_ID: 1}),
+        )],
+        vec![call(THIRD_CALL, SPAWN.name(), json!({TASK_KEY: STALLS}))],
+        vec![say(DONE)],
+    ])
+    .with_child(TASK, [vec![say(CHILD_DONE)]])
+    .with_child(
+        STALLS,
+        std::iter::repeat_with(stall).take(CHILDREN_RUNNING_MAX + 1),
+    );
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
+
+    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+
+    assert_eq!(output.result.content, DONE);
+    let root = root_requests(&script);
+    assert_eq!(
+        parsed(last_result(&root[3])),
+        json!({STATUS: DONE}),
+        "the end it had"
+    );
+    let refused = last_result(&root[4]);
+    let capped = format!("[{}]", ToolErrorCode::ChildCapReached.as_str());
+    assert!(refused.starts_with(&capped), "freed twice: {refused}");
+    let ended: Vec<_> = events(&capture, EVENT_CHILD_ENDED)
+        .iter()
+        .filter(|event| event.field(CHILD_ID) == Some("1"))
+        .map(|event| event.field(STATUS).map(str::to_owned))
+        .collect();
+    assert_eq!(ended, [Some(DONE.to_owned())], "it ends once in the log");
 }
