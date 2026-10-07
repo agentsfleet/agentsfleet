@@ -11,7 +11,7 @@ use rustix::io::FdFlags;
 
 use super::TenantDescriptors;
 use crate::cgroup::{CGROUP_PROCS, MEMORY_EVENTS};
-use crate::error::{Result, cgroup};
+use crate::error::{Result, cgroup, cgroup_unreadable};
 
 /// The mode a control file is created with where the leaf is a plain
 /// directory; a cgroup file system publishes its own and ignores it.
@@ -34,7 +34,7 @@ impl TenantFiles {
     pub(crate) fn open(procs: &Path, events: &Path) -> Result<Self> {
         Ok(Self {
             procs: open(procs, OFlags::WRONLY).map_err(cgroup(CGROUP_PROCS))?,
-            events: open(events, OFlags::RDONLY).map_err(cgroup(MEMORY_EVENTS))?,
+            events: open(events, OFlags::RDONLY).map_err(cgroup_unreadable(MEMORY_EVENTS))?,
         })
     }
 

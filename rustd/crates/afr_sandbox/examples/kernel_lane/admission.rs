@@ -26,7 +26,7 @@ const EXT4_BYTES: u64 = 8 * 1024 * 1024;
 /// Where, under a trial's directory, its images are mounted.
 const MOUNTS: &str = "mounts";
 /// Where the kernel lists this process's mounts.
-const MOUNTINFO: &str = "/proc/self/mountinfo";
+pub(crate) const MOUNTINFO: &str = "/proc/self/mountinfo";
 /// The mount program, and the arguments the trials pass it: options, a file
 /// system's type, and the options admission mounts a toolbox with.
 const MOUNT: &str = "mount";

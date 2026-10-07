@@ -12,7 +12,7 @@ use afr_sandbox::{
 };
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
-use crate::admission::{adoption, path_swap};
+use crate::admission::{MOUNTINFO, adoption, path_swap};
 use crate::budgets::start_budgets;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
 use crate::exhaustion::{
@@ -23,7 +23,7 @@ use crate::exhaustion::{
 };
 use crate::exhaustion_concurrent::writable_state_exhaustion_spares_the_sandbox;
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
-use crate::filesystems::{buffered_disk, probe_direct_io, short_disk};
+use crate::filesystems::{buffered_disk, failed_mount_is_unmounted, probe_direct_io, short_disk};
 use crate::forked_kill::forked_oom;
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
@@ -50,99 +50,105 @@ const LEASES: &str = "leases";
 
 type Body = fn(&Lane) -> Result<(), Failed>;
 
+/// Every trial, by the name the lane reports it under.
+const TRIALS: &[(&str, Body)] = &[
+    ("test_sandbox_process_has_no_capabilities", no_capabilities),
+    (
+        "test_sandbox_cannot_plant_files_on_the_host",
+        plants_nothing,
+    ),
+    ("test_seccomp_refuses_listed_syscalls", seccomp_refuses),
+    (
+        "test_landlock_denies_write_outside_workspace",
+        landlock_denies,
+    ),
+    (
+        "test_workspace_disk_enforces_limit_and_is_removed",
+        disk_limit,
+    ),
+    ("test_cgroup_limits_contain_runaway", runaway),
+    ("test_sandbox_has_no_network", no_network),
+    (
+        "test_sandbox_has_private_shared_memory_and_cgroup_view",
+        shared_memory_and_cgroup_view,
+    ),
+    ("test_unbuildable_sandbox_refuses_lease", unbuildable),
+    ("test_toolbox_build_is_reproducible", reproducible),
+    ("test_lease_sees_toolbox_read_only", toolbox_read_only),
+    ("test_toolbox_carries_the_tools", toolbox_carries_the_tools),
+    ("test_toolbox_admission_survives_path_swap", path_swap),
+    ("test_toolbox_adoption_checks_identity", adoption),
+    (
+        "test_shell_runs_inside_the_sandbox_with_exit_code",
+        shell_exit_code,
+    ),
+    ("test_shell_timeout_kills_the_group", shell_timeout),
+    (
+        "test_shell_process_inherits_the_sandbox",
+        shell_inherits_sandbox,
+    ),
+    ("test_git_tool_runs_local_commands", git_runs_local_commands),
+    (
+        "test_read_token_never_enters_the_sandbox",
+        token_never_enters,
+    ),
+    (
+        "test_file_tools_run_inside_the_sandbox",
+        file_tools_run_inside,
+    ),
+    (
+        "test_file_tools_refuse_a_link_out_of_the_sandbox",
+        file_tools_refuse_link_out,
+    ),
+    ("test_warm_start_beats_cold_start", warm_beats_cold),
+    ("test_start_budgets_with_four_leases", start_budgets),
+    ("test_full_tmp_answers_enospc", full_tmp_answers_enospc),
+    (
+        "test_full_shared_memory_spares_the_tenant",
+        full_shared_memory_spares_the_tenant,
+    ),
+    (
+        "test_workspace_and_tmp_share_the_disk",
+        workspace_and_tmp_share_the_disk,
+    ),
+    ("test_oom_kills_only_the_tenant", oom_kills_only_the_tenant),
+    (
+        "test_tenant_process_holds_no_cgroup_descriptor",
+        tenant_holds_no_cgroup_descriptor,
+    ),
+    ("test_sweep_removes_both_leaves", sweep_removes_both_leaves),
+    (
+        "test_workspace_disk_uses_direct_io",
+        workspace_disk_uses_direct_io,
+    ),
+    (
+        "test_disk_fill_under_memory_limit_ends_in_enospc",
+        disk_fill_under_memory_limit_ends_in_enospc,
+    ),
+    (
+        "test_writable_state_exhaustion_spares_the_sandbox",
+        writable_state_exhaustion_spares_the_sandbox,
+    ),
+    (
+        "test_frozen_sandbox_resumes_where_it_stopped",
+        held_sandbox_resumes_where_it_stopped,
+    ),
+    ("test_frozen_sandbox_is_destroyed_whole", destroy_frozen),
+    ("test_sweep_removes_a_frozen_leftover", sweep_frozen),
+    ("test_shell_reported_kill_reads_as_oom", forked_oom),
+    ("test_disk_without_direct_io_runs_buffered", buffered_disk),
+    (
+        "test_a_disk_whose_mount_helper_failed_is_unmounted",
+        failed_mount_is_unmounted,
+    ),
+    ("test_probe_reads_direct_io_per_filesystem", probe_direct_io),
+    ("test_lane_refuses_a_disk_short_of_room", short_disk),
+    ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
+];
+
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: &[(&str, Body)] = &[
-        ("test_sandbox_process_has_no_capabilities", no_capabilities),
-        (
-            "test_sandbox_cannot_plant_files_on_the_host",
-            plants_nothing,
-        ),
-        ("test_seccomp_refuses_listed_syscalls", seccomp_refuses),
-        (
-            "test_landlock_denies_write_outside_workspace",
-            landlock_denies,
-        ),
-        (
-            "test_workspace_disk_enforces_limit_and_is_removed",
-            disk_limit,
-        ),
-        ("test_cgroup_limits_contain_runaway", runaway),
-        ("test_sandbox_has_no_network", no_network),
-        (
-            "test_sandbox_has_private_shared_memory_and_cgroup_view",
-            shared_memory_and_cgroup_view,
-        ),
-        ("test_unbuildable_sandbox_refuses_lease", unbuildable),
-        ("test_toolbox_build_is_reproducible", reproducible),
-        ("test_lease_sees_toolbox_read_only", toolbox_read_only),
-        ("test_toolbox_carries_the_tools", toolbox_carries_the_tools),
-        ("test_toolbox_admission_survives_path_swap", path_swap),
-        ("test_toolbox_adoption_checks_identity", adoption),
-        (
-            "test_shell_runs_inside_the_sandbox_with_exit_code",
-            shell_exit_code,
-        ),
-        ("test_shell_timeout_kills_the_group", shell_timeout),
-        (
-            "test_shell_process_inherits_the_sandbox",
-            shell_inherits_sandbox,
-        ),
-        ("test_git_tool_runs_local_commands", git_runs_local_commands),
-        (
-            "test_read_token_never_enters_the_sandbox",
-            token_never_enters,
-        ),
-        (
-            "test_file_tools_run_inside_the_sandbox",
-            file_tools_run_inside,
-        ),
-        (
-            "test_file_tools_refuse_a_link_out_of_the_sandbox",
-            file_tools_refuse_link_out,
-        ),
-        ("test_warm_start_beats_cold_start", warm_beats_cold),
-        ("test_start_budgets_with_four_leases", start_budgets),
-        ("test_full_tmp_answers_enospc", full_tmp_answers_enospc),
-        (
-            "test_full_shared_memory_spares_the_tenant",
-            full_shared_memory_spares_the_tenant,
-        ),
-        (
-            "test_workspace_and_tmp_share_the_disk",
-            workspace_and_tmp_share_the_disk,
-        ),
-        ("test_oom_kills_only_the_tenant", oom_kills_only_the_tenant),
-        (
-            "test_tenant_process_holds_no_cgroup_descriptor",
-            tenant_holds_no_cgroup_descriptor,
-        ),
-        ("test_sweep_removes_both_leaves", sweep_removes_both_leaves),
-        (
-            "test_workspace_disk_uses_direct_io",
-            workspace_disk_uses_direct_io,
-        ),
-        (
-            "test_disk_fill_under_memory_limit_ends_in_enospc",
-            disk_fill_under_memory_limit_ends_in_enospc,
-        ),
-        (
-            "test_writable_state_exhaustion_spares_the_sandbox",
-            writable_state_exhaustion_spares_the_sandbox,
-        ),
-        (
-            "test_next_lease_reuses_the_held_sandbox",
-            held_sandbox_resumes_where_it_stopped,
-        ),
-        ("test_frozen_sandbox_is_destroyed_whole", destroy_frozen),
-        ("test_sweep_removes_a_frozen_leftover", sweep_frozen),
-        ("test_shell_reported_kill_reads_as_oom", forked_oom),
-        ("test_disk_without_direct_io_runs_buffered", buffered_disk),
-        ("test_probe_reads_direct_io_per_filesystem", probe_direct_io),
-        ("test_lane_refuses_a_disk_short_of_room", short_disk),
-        ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
-    ];
-    let trials = rows
+    let trials = TRIALS
         .iter()
         .map(|&(name, body)| {
             let lane = Arc::clone(lane);
@@ -168,7 +174,7 @@ fn disk_limit(lane: &Lane) -> Result<(), Failed> {
         format!("ENOSPC, got {:?}", filled.output),
     )?;
     let dir = lane.lease_dir(DISK);
-    let mounts = fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+    let mounts = fs::read_to_string(MOUNTINFO).unwrap_or_default();
     expect(!dir.exists(), "the lease's directory is removed")?;
     expect(
         !mounts.contains(&dir.display().to_string()),

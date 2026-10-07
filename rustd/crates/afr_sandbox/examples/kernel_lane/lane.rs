@@ -40,7 +40,7 @@ const MOUNTS_DIR: &str = "mounts";
 /// The lane binary's name where the sandbox binds it from.
 const ENTRY_NAME: &str = "agentsfleet-runner";
 /// Readable and executable by everyone, writable by nobody but root.
-const ENTRY_MODE: u32 = 0o755;
+pub(crate) const ENTRY_MODE: u32 = 0o755;
 /// Where the lane's state is made: on a disk, as a host's is. A tmpfs `/tmp`
 /// would make every workspace image memory, so a disk fill would be a
 /// memory fill whatever the loop device caches.
@@ -49,7 +49,7 @@ const STATE_PARENT: &str = "/var/tmp";
 /// exhaustion trial's four 1 GiB disks filled at once, the staged toolbox and
 /// the runner copy, with room to spare. Short of it, that trial's fills end in
 /// the host's I/O errors rather than each sandbox's own `ENOSPC`.
-const STATE_FREE_BYTES_MIN: u64 = 6 << 30;
+pub(crate) const STATE_FREE_BYTES_MIN: u64 = 6 << 30;
 /// Bytes in a mebibyte, for the free-space gap's numbers.
 const MIB: u64 = 1 << 20;
 /// The state directory: traversable, but listable and writable by root only.

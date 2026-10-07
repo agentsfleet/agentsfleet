@@ -3,13 +3,30 @@
     reason = "a test fails loudly on a fixture it cannot write"
 )]
 
+use std::ffi::OsString;
 use std::fs;
-use std::path::PathBuf;
-
 use std::os::unix::fs::PermissionsExt as _;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use tempfile::TempDir;
 
 use super::{TMP_DIR, WORKSPACE_DIR, WorkspaceDisk, absent, lay_out};
 use crate::host::HostTools;
+
+/// A program that does nothing and succeeds: a format or mount that made
+/// nothing.
+const SUCCEEDS: &str = "/usr/bin/true";
+/// A fake `mount` that writes into the mount point, its last argument, and
+/// then fails, as a helper that mounted before it failed leaves the disk.
+const MOUNTS_THEN_FAILS: &str = "mounts-then-fails";
+/// A fake `mount` that leaves a `workspace/` in the mount point and succeeds,
+/// so the layout's own is refused whoever runs the test.
+const LEAVES_WORKSPACE: &str = "leaves-workspace";
+/// A fake helper's mode: it runs.
+const HELPER_MODE: u32 = 0o755;
+/// Shell that sets `target` to a helper's last argument, the mount point.
+const LAST_ARGUMENT: &str = "for target; do :; done";
 
 /// Tools that cannot run, so every build stops at a known step.
 fn broken(mke2fs: &str) -> HostTools {
@@ -18,6 +35,55 @@ fn broken(mke2fs: &str) -> HostTools {
         mke2fs: PathBuf::from(mke2fs),
         mount: PathBuf::from("/nonexistent/mount"),
     }
+}
+
+/// Tools that format nothing and mount with the fake helper `name`.
+fn mounting_with(name: &str) -> HostTools {
+    HostTools {
+        mount: helpers().join(name),
+        ..broken(SUCCEEDS)
+    }
+}
+
+/// The fake mount helpers, written once per test process so no test
+/// executes a file another thread is still writing.
+fn helpers() -> &'static Path {
+    static DIR: OnceLock<TempDir> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, text) in [
+            (
+                MOUNTS_THEN_FAILS,
+                format!("#!/bin/sh\n{LAST_ARGUMENT}\nmkdir \"$target/lost+found\"\nexit 1\n"),
+            ),
+            (
+                LEAVES_WORKSPACE,
+                format!("#!/bin/sh\n{LAST_ARGUMENT}\nmkdir \"$target/{WORKSPACE_DIR}\"\n"),
+            ),
+        ] {
+            let path = dir.path().join(name);
+            fs::write(&path, text).unwrap();
+            fs::set_permissions(&path, fs::Permissions::from_mode(HELPER_MODE)).unwrap();
+        }
+        dir
+    })
+    .path()
+}
+
+/// The test's own user and group, whom every chown is granted to.
+fn me() -> (u32, u32) {
+    (
+        rustix::process::getuid().as_raw(),
+        rustix::process::getgid().as_raw(),
+    )
+}
+
+/// What `dir` holds, by name.
+fn entries(dir: &Path) -> Vec<OsString> {
+    fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect()
 }
 
 #[tokio::test]
@@ -40,7 +106,7 @@ async fn test_a_disk_that_cannot_be_mounted_leaves_nothing_behind() {
     let dir = tempfile::tempdir().unwrap();
 
     // `true` formats nothing and succeeds, so the build reaches the mount.
-    let refused = WorkspaceDisk::create(&broken("/usr/bin/true"), dir.path(), 4_096, (0, 0)).await;
+    let refused = WorkspaceDisk::create(&broken(SUCCEEDS), dir.path(), 4_096, (0, 0)).await;
 
     refused.unwrap_err();
     assert_eq!(
@@ -54,10 +120,11 @@ async fn test_a_disk_that_cannot_be_mounted_leaves_nothing_behind() {
 async fn test_a_leftover_that_cannot_be_removed_is_logged() {
     let dir = tempfile::tempdir().unwrap();
     let capture = afd_core::test_util::trace::Capture::install();
-    // A non-empty directory where the mount point goes cannot be removed.
-    fs::create_dir_all(dir.path().join("workspace").join("held")).unwrap();
+    // A file where the mount point goes is no directory to remove, whoever
+    // runs the test.
+    fs::write(dir.path().join(WORKSPACE_DIR), "").unwrap();
 
-    let refused = WorkspaceDisk::create(&broken("/usr/bin/true"), dir.path(), 4_096, (0, 0)).await;
+    let refused = WorkspaceDisk::create(&broken(SUCCEEDS), dir.path(), 4_096, (0, 0)).await;
 
     refused.unwrap_err();
     assert_eq!(
@@ -112,12 +179,8 @@ fn test_a_leftover_disk_with_nothing_mounted_is_removed() {
 #[test]
 fn test_the_disk_is_laid_out_as_workspace_and_sticky_tmp() {
     let root = tempfile::tempdir().unwrap();
-    let me = (
-        rustix::process::getuid().as_raw(),
-        rustix::process::getgid().as_raw(),
-    );
 
-    lay_out(root.path(), me).unwrap();
+    lay_out(root.path(), me()).unwrap();
 
     let mode = |name: &str| {
         fs::metadata(root.path().join(name))
@@ -144,22 +207,37 @@ fn test_a_direct_io_switch_refused_for_another_reason_is_an_error() {
     assert!(switched.is_err(), "{switched:?}");
 }
 
+/// A mount helper that mounted and then failed leaves a disk the undo must
+/// unmount before its files go, as a release does: the build leaves nothing
+/// behind. The fake mounts nothing, so what it wrote lands in the bare mount
+/// point, which goes with its contents.
+#[tokio::test]
+async fn test_a_mount_that_fails_after_mounting_leaves_nothing_behind() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let refused =
+        WorkspaceDisk::create(&mounting_with(MOUNTS_THEN_FAILS), dir.path(), 4_096, me()).await;
+
+    refused.unwrap_err();
+    assert_eq!(
+        entries(dir.path()),
+        Vec::<OsString>::new(),
+        "image and mount point removed"
+    );
+}
+
 /// A disk whose layout is refused once it is mounted is undone as a release
-/// undoes one — unmounted where anything is mounted, then removed — so the
-/// build leaves nothing behind, and the caller sees the layout's own failure.
-/// The fake mount makes no disk, so the layout lands in the bare mount point.
-#[cfg(target_os = "linux")]
+/// undoes one — unmounted where anything is mounted, then removed with what
+/// the layout made — so the build leaves nothing behind, and the caller sees
+/// the layout's own failure. The fake mount makes no disk and leaves a
+/// `workspace/` in the bare mount point, so the layout's is refused whoever
+/// runs the test.
 #[tokio::test]
 async fn test_a_disk_that_cannot_be_laid_out_leaves_nothing_behind() {
     let dir = tempfile::tempdir().unwrap();
-    let tools = HostTools {
-        mount: PathBuf::from("/usr/bin/true"),
-        ..broken("/usr/bin/true")
-    };
 
-    // Owned by a user this unprivileged test is not, so the layout's chown
-    // is refused once `workspace/` is made.
-    let refused = WorkspaceDisk::create(&tools, dir.path(), 4_096, (65_534, 65_534)).await;
+    let refused =
+        WorkspaceDisk::create(&mounting_with(LEAVES_WORKSPACE), dir.path(), 4_096, me()).await;
 
     let failure = refused.err().map(|error| {
         std::error::Error::source(&error)
@@ -168,15 +246,12 @@ async fn test_a_disk_that_cannot_be_laid_out_leaves_nothing_behind() {
     });
     assert_eq!(
         failure,
-        Some(Some(std::io::ErrorKind::PermissionDenied)),
+        Some(Some(std::io::ErrorKind::AlreadyExists)),
         "the layout's own failure reaches the caller"
     );
     assert_eq!(
-        fs::read_dir(dir.path())
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name())
-            .collect::<Vec<_>>(),
-        Vec::<std::ffi::OsString>::new(),
+        entries(dir.path()),
+        Vec::<OsString>::new(),
         "image and mount point removed"
     );
 }

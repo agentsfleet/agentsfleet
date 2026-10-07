@@ -1,17 +1,22 @@
 //! What the host's file systems make of a lease: whether the probe and the
-//! workspace disk find direct I/O, and whether the lane's own disk check
-//! finds room. Each trial mounts a file system of its own to stand for a host
-//! whose state lives somewhere else than the lane's.
+//! workspace disk find direct I/O, whether a disk its mount helper mounted
+//! and then failed is undone, and whether the lane's own disk check finds
+//! room. Each trial mounts a file system of its own to stand for a host whose
+//! state lives somewhere else than the lane's.
 
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
-use afr_sandbox::{Caching, HostTools, ProbePaths, WorkspaceDisk, probe};
+use afr_sandbox::{Caching, HostTools, MOUNT_PATH, ProbePaths, WorkspaceDisk, probe};
 use libtest_mimic::Failed;
 use rustix::mount::{MountFlags, UnmountFlags};
 
-use crate::lane::{Lane, SANDBOX_IDS, STATE_PREFIX, short_of_disk};
+use crate::admission::MOUNTINFO;
+use crate::lane::{
+    ENTRY_MODE, Lane, SANDBOX_IDS, STATE_FREE_BYTES_MIN, STATE_PREFIX, short_of_disk,
+};
 use crate::run::{expect, runtime};
 use crate::trials::SMALL_DISK;
 
@@ -20,7 +25,19 @@ use crate::trials::SMALL_DISK;
 const RAMFS: &str = "ramfs";
 /// A small memory file system, far short of what a lane run fills.
 const TMPFS: &str = "tmpfs";
-const SMALL_TMPFS: &CStr = c"size=16m";
+const SMALL_TMPFS_BYTES: u64 = 16 << 20;
+/// A tmpfs past the lane's free-space floor. Its size is a limit, not memory
+/// taken, so the check reads room whatever the host has left.
+const ROOMY_TMPFS_BYTES: u64 = 8 << 30;
+const _: () = assert!(
+    ROOMY_TMPFS_BYTES > STATE_FREE_BYTES_MIN,
+    "a roomy tmpfs must clear the lane's free-space floor"
+);
+/// A mount helper that mounts as the real one does, then fails: what the
+/// workspace disk's undo meets when a helper dies after its mount.
+const MOUNTS_THEN_FAILS: &str = "mounts-then-fails";
+/// The file the helper makes once its mount succeeded, beside the lease.
+const MOUNTED_MARK: &str = "mounted-then-failed";
 /// Where each trial's file system is mounted, under its own scratch directory.
 const MOUNTED: &str = "mounted";
 /// The lease directory a workspace disk is made in.
@@ -51,6 +68,11 @@ impl Drop for Mounted {
     fn drop(&mut self) {
         let _unmounted = rustix::mount::unmount(&self.point, UnmountFlags::DETACH);
     }
+}
+
+/// A tmpfs's mount data, limiting it to `bytes`.
+fn tmpfs_size(bytes: u64) -> Result<CString, Failed> {
+    Ok(CString::new(format!("size={bytes}"))?)
 }
 
 /// The lane's state directory, on the disk the lane runs on.
@@ -96,6 +118,51 @@ pub(crate) fn buffered_disk(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
+/// A disk whose mount helper mounted it and then failed is unmounted before
+/// its files go: the build fails, and leaves nothing in its directory and
+/// nothing mounted, so no loop device stays on a deleted image.
+pub(crate) fn failed_mount_is_unmounted(lane: &Lane) -> Result<(), Failed> {
+    let lease = tempfile::tempdir_in(on_disk(lane)?)?;
+    let helper = lease.path().join(MOUNTS_THEN_FAILS);
+    let mark = lease.path().join(MOUNTED_MARK);
+    fs::write(
+        &helper,
+        format!(
+            "#!/bin/sh\n{MOUNT_PATH} \"$@\" && : > '{}'\nexit 1\n",
+            mark.display()
+        ),
+    )?;
+    fs::set_permissions(&helper, fs::Permissions::from_mode(ENTRY_MODE))?;
+    let dir = lease.path().join(LEASE);
+    fs::create_dir(&dir)?;
+    let tools = HostTools {
+        mount: helper,
+        ..HostTools::default()
+    };
+
+    let built = runtime().block_on(WorkspaceDisk::create(&tools, &dir, SMALL_DISK, SANDBOX_IDS));
+
+    let refused = match built {
+        Ok((disk, _caching)) => disk.release().map(|()| false)?,
+        Err(_failed) => true,
+    };
+    let left: Vec<_> = fs::read_dir(&dir)?
+        .flatten()
+        .map(|entry| entry.file_name())
+        .collect();
+    let mounts = fs::read_to_string(MOUNTINFO).unwrap_or_default();
+    expect(mark.exists(), "the helper mounted before it failed")?;
+    expect(refused, "the helper's failure fails the build")?;
+    expect(
+        left.is_empty(),
+        format!("the lease's directory is left empty, got {left:?}"),
+    )?;
+    expect(
+        !mounts.contains(&dir.display().to_string()),
+        "nothing stays mounted",
+    )
+}
+
 /// The probe says whether a state directory's file system takes direct I/O:
 /// yes on the lane's disk, no on a file system that refuses it.
 pub(crate) fn probe_direct_io(lane: &Lane) -> Result<(), Failed> {
@@ -121,15 +188,17 @@ pub(crate) fn probe_direct_io(lane: &Lane) -> Result<(), Failed> {
 }
 
 /// The lane's disk check refuses a parent short of room, naming the lane
-/// state an earlier run left there; passes the disk the lane runs on; and
-/// names a parent it cannot read.
+/// state an earlier run left there; passes a parent with room; and names a
+/// parent it cannot read. Both sizes are tmpfs limits, so the trial never
+/// depends on what the host has free.
 pub(crate) fn short_disk(lane: &Lane) -> Result<(), Failed> {
-    let small = Mounted::new(on_disk(lane)?, TMPFS, Some(SMALL_TMPFS))?;
+    let small = Mounted::new(on_disk(lane)?, TMPFS, Some(&tmpfs_size(SMALL_TMPFS_BYTES)?))?;
     let earlier = format!("{STATE_PREFIX}earlier");
     fs::create_dir(small.point.join(&earlier))?;
 
     let short = short_of_disk(&small.point).unwrap_or_default();
-    let roomy = short_of_disk(on_disk(lane)?);
+    let roomy_fs = Mounted::new(on_disk(lane)?, TMPFS, Some(&tmpfs_size(ROOMY_TMPFS_BYTES)?))?;
+    let roomy = short_of_disk(&roomy_fs.point);
     let unreadable = short_of_disk(&small.point.join(LEASE)).unwrap_or_default();
 
     expect(
@@ -138,7 +207,7 @@ pub(crate) fn short_disk(lane: &Lane) -> Result<(), Failed> {
     )?;
     expect(
         roomy.is_none(),
-        format!("the lane's disk has room, got {roomy:?}"),
+        format!("a parent with room passes, got {roomy:?}"),
     )?;
     expect(
         unreadable.contains("is unreadable"),

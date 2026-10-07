@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use backon::{BlockingRetryable as _, ConstantBuilder};
 
-use crate::error::{Result, cgroup, cgroup_unsettled};
+use crate::error::{Result, cgroup, cgroup_unreadable, cgroup_unsettled};
 
 /// Writing `1` stops every process in the cgroup and its descendants; `0`
 /// lets them run on.
@@ -76,8 +76,8 @@ impl Freezer {
     /// # Errors
     /// `cgroup.events` cannot be read.
     pub fn is_frozen(&self) -> Result<bool> {
-        let events =
-            fs::read_to_string(self.dir.join(CGROUP_EVENTS)).map_err(cgroup(CGROUP_EVENTS))?;
+        let events = fs::read_to_string(self.dir.join(CGROUP_EVENTS))
+            .map_err(cgroup_unreadable(CGROUP_EVENTS))?;
         Ok(events
             .lines()
             .any(|line| line.split_once(' ') == Some((FROZEN_KEY, FROZEN))))

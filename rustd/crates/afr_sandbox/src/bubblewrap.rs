@@ -137,55 +137,83 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
         .chain(RESTRICTIONS)
         .map(OsString::from)
         .collect();
-    let mut flag = |parts: &[&OsStr]| argv.extend(parts.iter().map(|part| part.to_os_string()));
-    flag(&[RO_BIND.as_ref(), layout.toolbox.as_os_str(), "/".as_ref()]);
-    flag(&[PROC_FLAG.as_ref(), PROC.as_ref()]);
-    flag(&[DEV_FLAG.as_ref(), DEV.as_ref()]);
-    let shared_memory = layout.shared_memory_bytes.to_string();
-    flag(&[
-        PERMS_FLAG.as_ref(),
-        SHARED_MEMORY_MODE.as_ref(),
-        SIZE_FLAG.as_ref(),
-        shared_memory.as_ref(),
-        TMPFS_FLAG.as_ref(),
-        DEV_SHM.as_ref(),
-    ]);
-    flag(&[BIND.as_ref(), layout.tmp.as_os_str(), SANDBOX_TMP.as_ref()]);
-    // A private `/run`, so the socket directory's mount point exists whatever
-    // the image's own `/run` holds; image builders empty it.
-    flag(&[TMPFS_FLAG.as_ref(), RUN.as_ref()]);
-    flag(&[
-        BIND.as_ref(),
-        layout.workspace.as_os_str(),
-        SANDBOX_WORKSPACE.as_ref(),
-    ]);
-    flag(&[
-        BIND.as_ref(),
-        layout.run_dir.as_os_str(),
-        SANDBOX_RUN_DIR.as_ref(),
-    ]);
-    flag(&[
-        RO_BIND.as_ref(),
-        layout.entry.as_os_str(),
-        SANDBOX_ENTRY.as_ref(),
-    ]);
+    mount(&mut argv, layout);
     // The executor puts its own default `PATH` on every process it starts;
     // the sandbox's entry needs none.
     if let Some(level) = layout.log_level {
-        flag(&[SETENV_FLAG.as_ref(), LOG_LEVEL_VAR.as_ref(), level]);
+        flag(
+            &mut argv,
+            &[SETENV_FLAG.as_ref(), LOG_LEVEL_VAR.as_ref(), level],
+        );
     }
     let (uid, gid) = (SANDBOX_UID.to_string(), SANDBOX_GID.to_string());
-    flag(&[
-        UID_FLAG.as_ref(),
-        uid.as_ref(),
-        GID_FLAG.as_ref(),
-        gid.as_ref(),
-    ]);
-    flag(&[CHDIR_FLAG.as_ref(), SANDBOX_WORKSPACE.as_ref()]);
-    flag(&[END_OF_OPTIONS.as_ref(), SANDBOX_ENTRY.as_ref()]);
+    flag(
+        &mut argv,
+        &[
+            UID_FLAG.as_ref(),
+            uid.as_ref(),
+            GID_FLAG.as_ref(),
+            gid.as_ref(),
+        ],
+    );
+    flag(
+        &mut argv,
+        &[CHDIR_FLAG.as_ref(), SANDBOX_WORKSPACE.as_ref()],
+    );
+    flag(
+        &mut argv,
+        &[END_OF_OPTIONS.as_ref(), SANDBOX_ENTRY.as_ref()],
+    );
     argv.extend(layout.entry_args.iter().cloned());
     argv.extend(layout.tenant.arguments());
     argv
+}
+
+/// Appends what the sandbox sees, in the order bubblewrap stacks it: the
+/// read-only toolbox as `/`, fresh `/proc` and `/dev`, private shared memory,
+/// the disk's `tmp/`, a private `/run`, the disk's `workspace/`, the socket
+/// directory, and the entry.
+fn mount(argv: &mut Vec<OsString>, layout: &Layout<'_>) {
+    flag(
+        argv,
+        &[RO_BIND.as_ref(), layout.toolbox.as_os_str(), "/".as_ref()],
+    );
+    flag(argv, &[PROC_FLAG.as_ref(), PROC.as_ref()]);
+    flag(argv, &[DEV_FLAG.as_ref(), DEV.as_ref()]);
+    let shared_memory = layout.shared_memory_bytes.to_string();
+    flag(
+        argv,
+        &[
+            PERMS_FLAG.as_ref(),
+            SHARED_MEMORY_MODE.as_ref(),
+            SIZE_FLAG.as_ref(),
+            shared_memory.as_ref(),
+            TMPFS_FLAG.as_ref(),
+            DEV_SHM.as_ref(),
+        ],
+    );
+    flag(
+        argv,
+        &[BIND.as_ref(), layout.tmp.as_os_str(), SANDBOX_TMP.as_ref()],
+    );
+    // A private `/run`, so the socket directory's mount point exists whatever
+    // the image's own `/run` holds; image builders empty it.
+    flag(argv, &[TMPFS_FLAG.as_ref(), RUN.as_ref()]);
+    for (flag_name, host, inside) in [
+        (BIND, layout.workspace, SANDBOX_WORKSPACE),
+        (BIND, layout.run_dir, SANDBOX_RUN_DIR),
+        (RO_BIND, layout.entry, SANDBOX_ENTRY),
+    ] {
+        flag(
+            argv,
+            &[flag_name.as_ref(), host.as_os_str(), inside.as_ref()],
+        );
+    }
+}
+
+/// Appends one flag and its values.
+fn flag(argv: &mut Vec<OsString>, parts: &[&OsStr]) {
+    argv.extend(parts.iter().map(|part| part.to_os_string()));
 }
 
 #[cfg(test)]

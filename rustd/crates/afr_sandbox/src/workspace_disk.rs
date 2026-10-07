@@ -14,7 +14,6 @@ use std::io::ErrorKind;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
-use afd_core::error_code;
 use rustix::fs::{Gid, Uid};
 
 use crate::error::Result;
@@ -66,9 +65,9 @@ impl WorkspaceDisk {
     /// and mounts it; says how the host caches it.
     ///
     /// # Errors
-    /// Any step fails, and that step's failure is what returns. Before the
-    /// mount, whatever the earlier steps made is removed; after it, the disk
-    /// is undone as a release undoes one, unmounted before its files go.
+    /// Any step fails, and that step's failure is what returns. Whatever the
+    /// build made is undone as a leftover is released: unmounted first where
+    /// anything is mounted, then its files removed.
     pub async fn create(
         tools: &HostTools,
         dir: &Path,
@@ -76,18 +75,15 @@ impl WorkspaceDisk {
         owner: (u32, u32),
     ) -> Result<(Self, Caching)> {
         let disk = Self::in_dir(dir);
-        if let Err(error) = disk.make_and_mount(tools, bytes, owner).await {
-            disk.discard();
-            return Err(error);
-        }
-        match disk.ready(owner) {
+        let built = disk.make_and_mount(tools, bytes, owner).await;
+        match built.and_then(|()| disk.ready(owner)) {
             Ok(caching) => Ok((disk, caching)),
-            Err(error) => Err(disk.unmount_after(error)),
+            Err(error) => Err(disk.undo(error)),
         }
     }
 
-    /// Makes the sparse image, formats it and mounts it: nothing is mounted
-    /// unless this succeeds.
+    /// Makes the sparse image, formats it and mounts it. A failure can still
+    /// leave the disk mounted: a mount helper may mount and then fail.
     async fn make_and_mount(&self, tools: &HostTools, bytes: u64, owner: (u32, u32)) -> Result<()> {
         // Readable by root alone: the raw image is every file the lease wrote.
         fs::OpenOptions::new()
@@ -114,15 +110,20 @@ impl WorkspaceDisk {
         Ok(caching)
     }
 
-    /// Undoes a disk whose build failed once it was mounted, the way a
-    /// leftover is released: unmounted, which frees its loop device, then
+    /// Undoes a disk whose build failed, the way a leftover is released:
+    /// unmounted where anything is mounted, which frees its loop device, then
     /// its files removed. An image is never unlinked while it is mounted;
     /// what cannot be undone is logged and kept for the boot sweep. Hands
     /// `failure`, the step's own, back unchanged.
-    #[cfg(target_os = "linux")]
-    fn unmount_after(self, failure: crate::Error) -> crate::Error {
+    fn undo(self, failure: crate::Error) -> crate::Error {
         let mount_point = self.mount_point.clone();
-        if let Err(leftover) = self.release_leftover() {
+        #[cfg(target_os = "linux")]
+        let undone = self.release_leftover();
+        // No other kernel mounts a workspace disk: a mount that succeeded
+        // here is a test's fake, so removing the files is the whole undo.
+        #[cfg(not(target_os = "linux"))]
+        let undone = self.remove_files();
+        if let Err(leftover) = undone {
             let error_code = leftover.code().as_str();
             let path = mount_point.display();
             let reason = leftover.to_string();
@@ -135,15 +136,6 @@ impl WorkspaceDisk {
                 "a failed workspace disk could not be unmounted and removed"
             );
         }
-        failure
-    }
-
-    /// No other kernel mounts a workspace disk, so a mount that succeeded
-    /// here is a test's fake that mounted nothing: removing what the build
-    /// made is the whole undo.
-    #[cfg(not(target_os = "linux"))]
-    fn unmount_after(self, failure: crate::Error) -> crate::Error {
-        self.discard();
         failure
     }
 
@@ -168,27 +160,6 @@ impl WorkspaceDisk {
     #[must_use]
     pub fn tmp(&self) -> &Path {
         &self.tmp
-    }
-
-    /// Removes what a failed build left; nothing is mounted at this point.
-    fn discard(&self) {
-        for (path, leftover) in [
-            (&self.mount_point, fs::remove_dir(&self.mount_point)),
-            (&self.image, fs::remove_file(&self.image)),
-        ] {
-            if let Err(error) = leftover.or_else(absent) {
-                let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-                let path = path.display();
-                let event = EVENT_DISK_LEFT;
-                tracing::warn!(
-                    error_code,
-                    %path,
-                    reason = %error,
-                    event,
-                    "a failed workspace disk left a file behind"
-                );
-            }
-        }
     }
 
     /// Where the disk is mounted on the host.
@@ -252,7 +223,6 @@ impl WorkspaceDisk {
     /// Removes the mount point, with whatever was written to it while nothing
     /// was mounted there — nothing once a disk is unmounted, the layout where
     /// a mount made no disk — then the image.
-    #[cfg(target_os = "linux")]
     fn remove_files(&self) -> Result<()> {
         fs::remove_dir_all(&self.mount_point).or_else(absent)?;
         fs::remove_file(&self.image).or_else(absent)?;
