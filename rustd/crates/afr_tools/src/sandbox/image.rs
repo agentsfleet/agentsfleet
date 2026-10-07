@@ -78,8 +78,8 @@ impl ImageKind {
     }
 }
 
-/// An image a call read, waiting on the lease for the loop to attach to the
-/// call's result.
+/// An image a call read, riding the call's output for the loop to attach to
+/// the call's result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImageAttachment {
     /// What kind of image it is.
@@ -139,14 +139,14 @@ async fn view(context: ToolContext<'_, '_>, path: &str) -> Answer {
         )
     })?;
     let bytes = fetched.data.len();
-    context.lease.attachment = Some(ImageAttachment {
-        kind,
-        bytes: fetched.data,
-    });
-    Ok(ToolOutput::succeeded(format!(
+    let attached = ToolOutput::succeeded(format!(
         "Attached {path} ({bytes} bytes, {}) for your next turn",
         kind.mime()
-    )))
+    ));
+    Ok(attached.with_image(ImageAttachment {
+        kind,
+        bytes: fetched.data,
+    }))
 }
 
 #[cfg(test)]

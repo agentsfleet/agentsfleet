@@ -1,24 +1,32 @@
 //! What every call of one lease shares.
 //!
-//! Owned by the run and lent to one call at a time through [`ToolContext`],
-//! so the handlers stay shared across leases and hold no lease's state.
+//! Owned by the run and lent to every call through [`ToolContext`], so the
+//! handlers stay shared across leases and hold no lease's state. A run's child
+//! loops call tools while their parent does, so each part a call changes sits
+//! behind its own lock: one child's long call never waits on another's memory
+//! write or credential mint.
 //!
 //! [`ToolContext`]: crate::ToolContext
 
 use afr_egress::Egress;
 use afr_memory::MemoryBackend;
+use tokio::sync::Mutex;
 
-use crate::sandbox::{Checkout, ImageAttachment, Sessions};
+use crate::sandbox::{Checkout, Sessions};
 use crate::verbs::LeaseVerbs;
 
 /// One lease's state, as its calls see it.
 #[derive(Debug)]
 pub struct Lease<'run> {
-    /// The fleet's memory, behind the backend the fleet is bound to.
-    pub memory: Box<dyn MemoryBackend + 'run>,
+    /// The lease's id, as its guard was built for it.
+    pub lease_id: &'run str,
+    /// The fleet's memory, behind the backend the fleet is bound to; held
+    /// for one read or write, never across a call.
+    pub memory: Mutex<Box<dyn MemoryBackend + 'run>>,
     /// The outbound guard every egress tool sends through: the lease's policy,
-    /// and the credentials it has minted.
-    pub egress: Egress<'run>,
+    /// and the credentials it has minted; held to admit or mask, never across
+    /// a send.
+    pub egress: Mutex<Egress<'run>>,
     /// The processes the lease's calls keep open across calls; the run's end
     /// closes whatever is left.
     pub sessions: Sessions,
@@ -27,9 +35,6 @@ pub struct Lease<'run> {
     /// Whether the model's wire takes an image with a call's result; `image`
     /// refuses before any read when it does not.
     pub image_input: bool,
-    /// The image the last call read, until the loop attaches it to that
-    /// call's result.
-    pub attachment: Option<ImageAttachment>,
     /// The `agentsfleetd` verbs the schedule and message tools reach, fenced
     /// by this lease.
     pub verbs: &'run dyn LeaseVerbs,
@@ -46,12 +51,12 @@ impl<'run> Lease<'run> {
         verbs: &'run dyn LeaseVerbs,
     ) -> Self {
         Self {
-            memory,
-            egress,
+            lease_id: egress.lease_id(),
+            memory: Mutex::new(memory),
+            egress: Mutex::new(egress),
             sessions: Sessions::default(),
             checkouts: Vec::new(),
             image_input: false,
-            attachment: None,
             verbs,
         }
     }

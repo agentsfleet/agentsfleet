@@ -54,7 +54,7 @@ async fn test_file_tools_operate_under_workspace() {
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     let mut answers = Vec::with_capacity(6);
     for (entry, arguments) in [
         (&FILE_WRITE, json!({PATH: TODO, CONTENT: ONE})),
@@ -67,7 +67,7 @@ async fn test_file_tools_operate_under_workspace() {
         (&FILE_DELETE, json!({PATH: TODO})),
     ] {
         let tool = offered(&selection, entry);
-        answers.push(call_in(tool, &live.client, &mut lease, arguments).await);
+        answers.push(call_in(tool, &live.client, &lease, arguments).await);
         if entry.name() == FILE_EDIT.name() {
             let on_disk = std::fs::read_to_string(live.root.join(TODO)).unwrap();
             assert_eq!(on_disk, "one\nthree\n", "the edit landed on disk");
@@ -77,7 +77,7 @@ async fn test_file_tools_operate_under_workspace() {
     let gone = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: absolute}),
     )
     .await;
@@ -114,7 +114,7 @@ async fn test_file_tools_refuse_path_escape() {
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     for entry in FILE_TOOLS {
         for path in [
@@ -126,7 +126,7 @@ async fn test_file_tools_refuse_path_escape() {
             let refused = call_in(
                 offered(&selection, entry),
                 &executor,
-                &mut lease,
+                &lease,
                 on(entry, path),
             )
             .await;
@@ -156,12 +156,12 @@ async fn a_link_out_of_the_workspace_is_refused_by_the_executor_under_the_same_c
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let mut refusals = Vec::with_capacity(FILE_TOOLS.len());
     for entry in FILE_TOOLS {
         let tool = offered(&selection, entry);
-        refusals.push(call_in(tool, &live.client, &mut lease, on(entry, "link/secret")).await);
+        refusals.push(call_in(tool, &live.client, &lease, on(entry, "link/secret")).await);
     }
 
     for refused in &refusals {
@@ -187,12 +187,12 @@ async fn a_name_the_workspace_does_not_have_reads_file_not_found() {
     let selection = catalog
         .select(&[FILE_READ.name(), FILE_EDIT.name(), FILE_DELETE.name()])
         .unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let mut refusals = Vec::with_capacity(3);
     for entry in [&FILE_READ, &FILE_EDIT, &FILE_DELETE] {
         let tool = offered(&selection, entry);
-        refusals.push(call_in(tool, &live.client, &mut lease, on(entry, "absent.txt")).await);
+        refusals.push(call_in(tool, &live.client, &lease, on(entry, "absent.txt")).await);
     }
 
     for refused in &refusals {
@@ -213,19 +213,19 @@ async fn an_edit_needs_old_text_and_finds_it_or_changes_nothing() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_EDIT.name()]).unwrap();
     let tool = offered(&selection, &FILE_EDIT);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let empty = call_in(
         tool,
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "a.txt", OLD_TEXT: "", NEW_TEXT: "x"}),
     )
     .await;
     let absent = call_in(
         tool,
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "a.txt", OLD_TEXT: "omega", NEW_TEXT: "x"}),
     )
     .await;
@@ -254,12 +254,12 @@ async fn an_edit_replaces_the_first_occurrence_only() {
     std::fs::write(live.root.join("a.txt"), "x y x\n").unwrap();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_EDIT.name()]).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let edited = call_in(
         offered(&selection, &FILE_EDIT),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "a.txt", OLD_TEXT: "x", NEW_TEXT: "z"}),
     )
     .await;
@@ -280,12 +280,12 @@ async fn a_directory_given_as_a_file_reads_the_executors_own_sentence() {
     std::fs::create_dir(live.root.join("dir")).unwrap();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_READ.name()]).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let refused = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "dir"}),
     )
     .await;

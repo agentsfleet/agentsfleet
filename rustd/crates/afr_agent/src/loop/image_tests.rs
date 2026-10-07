@@ -55,13 +55,12 @@ impl Tool for Attaches {
     async fn call(
         &self,
         _arguments: &serde_json::Value,
-        context: ToolContext<'_, '_>,
+        _context: ToolContext<'_, '_>,
     ) -> ToolOutput {
-        context.lease.attachment = Some(ImageAttachment {
+        ToolOutput::succeeded(ATTACHED).with_image(ImageAttachment {
             kind: Attached::Png,
             bytes: Bytes::from_static(PNG),
-        });
-        ToolOutput::succeeded(ATTACHED)
+        })
     }
 }
 
@@ -101,7 +100,7 @@ impl Tool for Sees {
 /// The image a call attached goes back with that call's result and no
 /// other; the frames and the records carry the text alone.
 #[tokio::test]
-async fn an_attachment_rides_its_calls_result_alone_and_leaves_the_lease() {
+async fn an_attachment_rides_its_calls_result_alone() {
     let script = Script::new([
         vec![
             call("p1", MEMORY_RECALL.name(), json!({})),

@@ -51,7 +51,7 @@ impl Harness<'_> {
                 cached_input_tokens: usage.cached_input,
                 output_tokens: usage.output,
             },
-            memory: self.lease.memory.into_pending(),
+            memory: self.lease.memory.into_inner().into_pending(),
             trace,
             records,
         }

@@ -108,7 +108,7 @@ impl Handler for ExecCommand {
             Ok(executor) => executor,
             Err(refused) => return refused,
         };
-        let sessions = &mut context.lease.sessions;
+        let sessions = &context.lease.sessions;
         sessions.make_room(executor).await;
         let process = match executor.spawn(&spawn_of(&arguments)).await {
             Ok(process) => process,
@@ -117,10 +117,11 @@ impl Handler for ExecCommand {
         let id = process.id;
         // Registered before it is read, so a call the lease stops mid-wait
         // still leaves the process where the run's end finds it.
-        let process = sessions.open(process);
+        let shared = sessions.open(process);
+        let mut process = shared.lock().await;
         let mut collected = Collected::default();
         let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MS_MIN);
-        let ended = collected.until(process, deadline).await;
+        let ended = collected.until(&mut process, deadline).await;
         let budget = output::budget(arguments.max_output_tokens);
         reply(sessions, id, &collected, ended, budget, None)
     }
@@ -144,15 +145,18 @@ impl Handler for WriteStdin {
             Err(refused) => return refused,
         };
         let id = ProcessId::new(arguments.session_id);
-        let sessions = &mut context.lease.sessions;
-        let Some(process) = sessions.get_mut(id) else {
+        let sessions = &context.lease.sessions;
+        let Some(shared) = sessions.get(id) else {
             return not_open(id);
         };
+        // Held across the yield: a second call on this session waits its
+        // turn, and a call on another session never waits on this one.
+        let mut process = shared.lock().await;
         let mut collected = Collected::default();
         let mut refused: Option<&'static str> = None;
         // A process that ended since the last call answers with its ending,
         // never with a write the executor would refuse.
-        let ended = if let Some(ending) = collected.arrived(process) {
+        let ended = if let Some(ending) = collected.arrived(&mut process) {
             Some(ending)
         } else {
             let floor = if arguments.chars.is_empty() {
@@ -181,7 +185,7 @@ impl Handler for WriteStdin {
                 }
             };
             let deadline = Instant::now() + yield_of(arguments.yield_time_ms, floor);
-            collected.until(process, deadline).await
+            collected.until(&mut process, deadline).await
         };
         let budget = output::budget(arguments.max_output_tokens);
         reply(sessions, id, &collected, ended, budget, refused)
@@ -208,7 +212,7 @@ fn yield_of(asked: Option<u64>, floor: u64) -> Duration {
 /// when it was, then the session's state. A process that ended leaves the
 /// registry here.
 fn reply(
-    sessions: &mut Sessions,
+    sessions: &Sessions,
     id: ProcessId,
     collected: &Collected,
     ended: Option<Ending>,
@@ -231,6 +235,7 @@ fn reply(
         text: output::with_line(text, &state),
         exit_code: ended.and_then(output::exit_code),
         error_code: ended.and_then(output::error_code),
+        image: None,
     }
 }
 

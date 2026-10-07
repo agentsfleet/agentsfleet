@@ -80,7 +80,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
     let router = Router::new(&selection, Some(&executor));
 
     let supervised = router
-        .dispatch("update_plan", &serde_json::json!({}), &mut Lease::default())
+        .dispatch("update_plan", &serde_json::json!({}), &Lease::default())
         .await;
     assert_eq!(supervised.error_code, None);
     assert_eq!(
@@ -90,7 +90,7 @@ async fn test_router_sends_each_tool_to_its_runtime() {
     );
 
     let sandboxed = router
-        .dispatch("file_read", &serde_json::json!({}), &mut Lease::default())
+        .dispatch("file_read", &serde_json::json!({}), &Lease::default())
         .await;
     assert_eq!(sandboxed.error_code, None);
     assert_eq!(sandboxed.text, "file_read");
@@ -106,7 +106,7 @@ async fn a_name_the_lease_was_not_offered_is_a_tool_error() {
 
     for name in ["shell", "file_read", "teleport"] {
         let output = router
-            .dispatch(name, &serde_json::json!({}), &mut Lease::default())
+            .dispatch(name, &serde_json::json!({}), &Lease::default())
             .await;
 
         assert_eq!(output.error_code, Some(ToolErrorCode::NotOffered));
@@ -127,7 +127,7 @@ async fn a_provider_hosted_tool_reaching_the_router_names_its_code() {
     let router = Router::new(&selection, None);
 
     let output = router
-        .dispatch("web_search", &serde_json::json!({}), &mut Lease::default())
+        .dispatch("web_search", &serde_json::json!({}), &Lease::default())
         .await;
 
     assert_eq!(
@@ -148,7 +148,7 @@ async fn a_sandbox_side_call_without_a_sandbox_is_a_tool_error() {
     let router = Router::new(&selection, None);
 
     let output = router
-        .dispatch("file_read", &serde_json::json!({}), &mut Lease::default())
+        .dispatch("file_read", &serde_json::json!({}), &Lease::default())
         .await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::SandboxUnavailable));
@@ -202,7 +202,7 @@ async fn a_handler_claiming_the_providers_runtime_is_never_run() {
         .dispatch(
             UPDATE_PLAN.name(),
             &serde_json::json!({}),
-            &mut Lease::default(),
+            &Lease::default(),
         )
         .await;
 

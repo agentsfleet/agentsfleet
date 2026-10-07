@@ -22,6 +22,7 @@ use afr_providers::Call;
 use afr_telemetry::labels::{Tool, ToolOutcome};
 use afr_telemetry::record;
 use afr_tools::ToolOutput;
+use afr_tools::sandbox::ImageAttachment;
 use serde_json::{Map, Value};
 use tracing::Instrument as _;
 
@@ -65,12 +66,12 @@ impl<'run> Ledger<'run> {
     }
 
     /// Runs `call` through `handler` and hands back the scrubbed text the
-    /// model reads.
+    /// model reads, and the image the call read, when it read one.
     pub(crate) async fn call(
         &mut self,
         call: &Call,
         handler: impl Future<Output = ToolOutput>,
-    ) -> Clean<String> {
+    ) -> (Clean<String>, Option<ImageAttachment>) {
         let open = self.open(call);
         let span = spans::execute_tool(&call.name, &open.id);
         open.close(handler.instrument(span).await)
@@ -143,8 +144,8 @@ struct Opened<'a, 'run> {
 
 impl Opened<'_, '_> {
     /// Ends the call with what its handler returned, and hands back the
-    /// scrubbed text the model reads.
-    fn close(mut self, output: ToolOutput) -> Clean<String> {
+    /// scrubbed text the model reads and the image the call read.
+    fn close(mut self, output: ToolOutput) -> (Clean<String>, Option<ImageAttachment>) {
         let text = self.ledger.scrub.clean(output.text);
         let failed = output.error_code.is_some() || output.exit_code.is_some_and(|code| code != 0);
         let status = if failed {
@@ -158,7 +159,7 @@ impl Opened<'_, '_> {
             let full = record(self.number, shown, &text);
             self.ledger.hold(full);
         }
-        text
+        (text, output.image)
     }
 
     /// Logs the end, sends the end frame and adds the trace row.

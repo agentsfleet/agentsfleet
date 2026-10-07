@@ -10,8 +10,8 @@ use crate::testing::{Run, call, replying};
 async fn notify(run: &Run, arguments: Value) -> (ToolOutput, Vec<Sent>) {
     let (transport, sent) = replying(200, r#"{"status":1}"#);
     let tool = Typed::boxed(Pushover::new(transport));
-    let mut lease = run.lease();
-    let output = call(tool.as_ref(), &mut lease, arguments).await;
+    let lease = run.lease();
+    let output = call(tool.as_ref(), &lease, arguments).await;
     (output, sent.try_iter().collect())
 }
 

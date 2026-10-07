@@ -17,12 +17,12 @@ async fn an_empty_path_is_invalid_and_a_call_without_a_sandbox_is_refused() {
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     for entry in FILE_TOOLS {
         let tool = offered(&selection, entry);
-        let empty: ToolOutput = call_in(tool, &executor, &mut lease, on(entry, "")).await;
-        let unsandboxed = call(tool, &mut lease, on(entry, "a.txt")).await;
+        let empty: ToolOutput = call_in(tool, &executor, &lease, on(entry, "")).await;
+        let unsandboxed = call(tool, &lease, on(entry, "a.txt")).await;
 
         assert_eq!(
             empty.error_code,

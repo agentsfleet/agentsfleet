@@ -78,10 +78,10 @@ async fn test_schedule_tool_is_once() {
         .expect("tomorrow is an instant")
         .to_string();
     let verbs = RecordingVerbs::answering(Ok("{}".to_owned()), Ok(true));
-    let mut lease = lease_with(&verbs);
+    let lease = lease_with(&verbs);
     let output = call(
         Typed::boxed(ScheduleOnce).as_ref(),
-        &mut lease,
+        &lease,
         json!({"at": tomorrow, "message": "re-check the error rate"}),
     )
     .await;
@@ -106,10 +106,10 @@ async fn test_schedule_tool_is_once() {
 #[tokio::test]
 async fn a_refused_moment_sends_nothing() {
     let verbs = RecordingVerbs::answering(Ok("{}".to_owned()), Ok(true));
-    let mut lease = lease_with(&verbs);
+    let lease = lease_with(&verbs);
     let output = call(
         Typed::boxed(ScheduleOnce).as_ref(),
-        &mut lease,
+        &lease,
         json!({"at": "2000-01-01T00:00:00Z", "message": "too late"}),
     )
     .await;

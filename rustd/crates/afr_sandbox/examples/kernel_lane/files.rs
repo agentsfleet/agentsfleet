@@ -82,14 +82,14 @@ fn in_fresh_sandbox(
             limits: Limits::default(),
         };
         let sandbox = engine.prepare(request).await?;
-        let mut lease = Lease::default().with_image_input(true);
+        let lease = Lease::default().with_image_input(true);
         let mut outputs = Vec::with_capacity(steps.len());
         for step in steps {
             let (name, arguments) = step(&outputs);
             let tool = selection.tool(name).ok_or("the runner hosts it")?;
             let context = ToolContext {
                 executor: Some(sandbox.executor()),
-                lease: &mut lease,
+                lease: &lease,
             };
             outputs.push(tool.call(&arguments, context).await);
         }

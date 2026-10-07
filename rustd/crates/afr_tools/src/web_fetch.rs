@@ -70,7 +70,7 @@ impl Handler for WebFetch {
                 // Masked again once decoded: an entity-encoded echo of a minted
                 // token only reads as the token after the page becomes text.
                 let text = if page {
-                    egress::masked(context.lease, text_of(&inbound.body))
+                    egress::masked(context.lease, text_of(&inbound.body)).await
                 } else {
                     inbound.body
                 };

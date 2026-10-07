@@ -32,11 +32,11 @@ async fn edit_by_tags(
     let selection = catalog
         .select(&[FILE_READ_HASHED.name(), FILE_EDIT_HASHED.name()])
         .unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     let read = call_in(
         offered(&selection, &FILE_READ_HASHED),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: GREEK}),
     )
     .await;
@@ -45,7 +45,7 @@ async fn edit_by_tags(
     call_in(
         offered(&selection, &FILE_EDIT_HASHED),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: GREEK, TARGET: target, END_TARGET: end_target, NEW_TEXT: new_text}),
     )
     .await

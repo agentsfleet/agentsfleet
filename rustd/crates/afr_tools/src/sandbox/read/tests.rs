@@ -33,7 +33,7 @@ async fn read(live: &Live, arguments: Value) -> ToolOutput {
     call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &mut Lease::default(),
+        &Lease::default(),
         arguments,
     )
     .await
