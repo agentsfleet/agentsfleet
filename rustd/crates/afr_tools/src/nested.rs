@@ -7,7 +7,8 @@
 //! still hosts each as a `Supervisor` entry: a policy naming one is admitted,
 //! its schema is offered, and a call that reached a handler by mistake reads a
 //! refusal rather than running. The argument types are public, because the
-//! loop parses a call into them through [`parsed`](crate::parsed).
+//! loop parses a call into them through [`parsed`](crate::parsed), and
+//! [`Nested`] names which of the six a call is.
 
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -15,9 +16,9 @@ use serde::Deserialize;
 use crate::catalog::{
     DELEGATE, Entry, INTERRUPT_AGENT, LIST_AGENTS, SEND_INPUT, SPAWN, WAIT_AGENT,
 };
-use crate::handler::Handler;
-use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
-use crate::stub::NoArguments;
+use crate::handler::{Handler, Typed};
+use crate::runtime::{Tool, ToolContext, ToolErrorCode, ToolOutput};
+use crate::schema::NoArguments;
 
 /// The six, for a loop that offers none past the depth cap.
 pub const NESTED: [&Entry; 6] = [
@@ -32,10 +33,65 @@ pub const NESTED: [&Entry; 6] = [
 /// What a call that reached a handler reads, since the loop runs these.
 const RUN_BY_THE_LOOP: &str = "is run by the loop beside the turn, never by a handler";
 
-/// Whether `name` is one of the six.
+/// One of the six, by name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Nested {
+    /// A child run to its answer.
+    Delegate,
+    /// A child started alongside.
+    Spawn,
+    /// A spawned child's end, or that it still runs.
+    WaitAgent,
+    /// A message for a spawned child's next turn.
+    SendInput,
+    /// Every child and its state.
+    ListAgents,
+    /// One spawned child ended.
+    InterruptAgent,
+}
+
+impl Nested {
+    /// Which of the six `name` is, when it is one.
+    #[must_use]
+    pub fn of(name: &str) -> Option<Self> {
+        [
+            Self::Delegate,
+            Self::Spawn,
+            Self::WaitAgent,
+            Self::SendInput,
+            Self::ListAgents,
+            Self::InterruptAgent,
+        ]
+        .into_iter()
+        .find(|nested| nested.entry().name() == name)
+    }
+
+    /// The published entry.
+    #[must_use]
+    pub const fn entry(self) -> &'static Entry {
+        match self {
+            Self::Delegate => &DELEGATE,
+            Self::Spawn => &SPAWN,
+            Self::WaitAgent => &WAIT_AGENT,
+            Self::SendInput => &SEND_INPUT,
+            Self::ListAgents => &LIST_AGENTS,
+            Self::InterruptAgent => &INTERRUPT_AGENT,
+        }
+    }
+}
+
+/// The six, as a catalog hosts them: the schema each offers, and a handler
+/// that refuses, since the loop runs them.
 #[must_use]
-pub fn is_nested(name: &str) -> bool {
-    NESTED.iter().any(|entry| entry.name() == name)
+pub fn tools() -> Vec<Box<dyn Tool>> {
+    vec![
+        Typed::boxed(Delegate),
+        Typed::boxed(Spawn),
+        Typed::boxed(WaitAgent),
+        Typed::boxed(SendInput),
+        Typed::boxed(ListAgents),
+        Typed::boxed(InterruptAgent),
+    ]
 }
 
 /// A child's task and the tools it may hold.
@@ -90,7 +146,7 @@ fn run_by_the_loop(entry: &Entry) -> ToolOutput {
 
 /// Runs a child to its answer.
 #[derive(Debug)]
-pub(crate) struct Delegate;
+struct Delegate;
 
 #[async_trait::async_trait]
 impl Handler for Delegate {
@@ -107,7 +163,7 @@ impl Handler for Delegate {
 
 /// Starts a child that runs alongside.
 #[derive(Debug)]
-pub(crate) struct Spawn;
+struct Spawn;
 
 #[async_trait::async_trait]
 impl Handler for Spawn {
@@ -124,7 +180,7 @@ impl Handler for Spawn {
 
 /// A spawned child's answer, or that it still runs.
 #[derive(Debug)]
-pub(crate) struct WaitAgent;
+struct WaitAgent;
 
 #[async_trait::async_trait]
 impl Handler for WaitAgent {
@@ -141,7 +197,7 @@ impl Handler for WaitAgent {
 
 /// A message for a spawned child's next turn.
 #[derive(Debug)]
-pub(crate) struct SendInput;
+struct SendInput;
 
 #[async_trait::async_trait]
 impl Handler for SendInput {
@@ -157,7 +213,7 @@ impl Handler for SendInput {
 
 /// Every child of the run and its state.
 #[derive(Debug)]
-pub(crate) struct ListAgents;
+struct ListAgents;
 
 #[async_trait::async_trait]
 impl Handler for ListAgents {
@@ -173,7 +229,7 @@ impl Handler for ListAgents {
 
 /// Ends one spawned child.
 #[derive(Debug)]
-pub(crate) struct InterruptAgent;
+struct InterruptAgent;
 
 #[async_trait::async_trait]
 impl Handler for InterruptAgent {

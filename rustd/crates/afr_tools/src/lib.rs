@@ -11,6 +11,7 @@ pub mod catalog;
 pub mod error;
 pub mod nested;
 pub mod sandbox;
+mod selection;
 #[cfg(any(test, feature = "test-util"))]
 pub mod stub;
 
@@ -28,11 +29,12 @@ mod testing;
 pub mod verbs;
 mod web_fetch;
 
-pub use self::catalog::{Catalog, Entry, Selection};
+pub use self::catalog::{Catalog, Entry};
 pub use self::error::{Error, Result};
 pub use self::lease::Lease;
 pub use self::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput, parsed};
-pub use self::schema::Schema;
+pub use self::schema::{NoArguments, Schema};
+pub use self::selection::Selection;
 #[cfg(any(test, feature = "test-util"))]
 pub use self::verbs::{CLOSED, Closed};
 pub use self::verbs::{LeaseVerbs, ScheduleCall, Unanswered};

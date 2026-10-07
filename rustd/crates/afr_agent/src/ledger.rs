@@ -139,11 +139,8 @@ impl<'run> Ledger<'run> {
     }
 
     /// The run's trace, none for a run that called no tool, and every record.
-    pub(crate) fn finish(self) -> (Option<ToolTrace<'static>>, Vec<ToolCallRecord<'static>>) {
-        let book = self
-            .book
-            .into_inner()
-            .unwrap_or_else(PoisonError::into_inner);
+    pub(crate) fn finish(&self) -> (Option<ToolTrace<'static>>, Vec<ToolCallRecord<'static>>) {
+        let book = std::mem::take(&mut *self.book());
         (book.trace.finish(), book.records)
     }
 

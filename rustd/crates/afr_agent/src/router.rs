@@ -39,11 +39,6 @@ impl<'run> Router<'run> {
         }
     }
 
-    /// The lease's executor, when the lease has a sandbox.
-    pub(crate) const fn executor(&self) -> Option<&'run dyn Executor> {
-        self.executor
-    }
-
     /// Runs one call to `name` with `arguments`, lending it the lease's state.
     pub async fn dispatch(
         &self,

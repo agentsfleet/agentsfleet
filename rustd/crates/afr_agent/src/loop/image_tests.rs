@@ -8,9 +8,9 @@ use std::borrow::Cow;
 
 use afd_wire::activity::ActivityFrame;
 use afr_providers::{ImageInput, ImageKind, Message};
+use afr_tools::NoArguments;
 use afr_tools::catalog::{MEMORY_RECALL, UPDATE_PLAN};
 use afr_tools::sandbox::{ImageAttachment, ImageKind as Attached};
-use afr_tools::stub::NoArguments;
 use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
 use bytes::Bytes;
 use serde_json::json;
