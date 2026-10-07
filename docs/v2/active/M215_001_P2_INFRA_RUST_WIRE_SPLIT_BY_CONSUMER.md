@@ -23,8 +23,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** feat/m211-nested-loops-and-chat-continuity
 **Folded-into:** `M211_002`
 **Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=4212 integration=4929 — Rust unit 4212 passed, 0 failed, 879 ignored (runner 982 · daemon 132 · daemon libraries 3098); integration through the coverage shards 4929 passed, 0 failed (substrate 4158 · runner 550 · daemon 221); TypeScript app 3642, design-system 647, website 142 passed, cli 1779 passed and 17 skipped, at `bb0070015` via PR #732's identical tree. The branch at `886733be6`: Rust unit 4312 passed, 0 failed, 895 ignored (+100); integration 868 + 2 exclusive passed, 0 failed; kernel lane 34 passed.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M211-bb0070015.md`
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 07, 2026) from a consumer audit of every `afd_wire` item at `cc318b856`, recorded in Discovery
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Crates
@@ -107,11 +107,11 @@ The 22 daemon-only modules and `schedule` move to `afd_api_wire`, with their tes
 - **Dimension 2.2** DONE — The published document is byte-identical after the move → Test `regenerated_openapi_matches`
 - **Dimension 2.3** DONE — No runner crate depends on `afd_api_wire` → Test `runner_tree_has_no_api_wire`
 
-### §3 — The runner's own state lives in the runner
+### §3 — The runner's own state lives in the runner — DONE
 
 `ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` (`afd_wire/src/report.rs:85-118`) move to `afr_agent`, whose loop builds them and whose supervisor reads them. `RunnerChildInput` (`lease.rs:91`), `FAIL_CLOSED_DEFAULT` (`runner.rs:70`) and `paths::FLEET_RUNNERS` are deleted; nothing reads them. `paths::RUNNERS` stays: it is the enrolment constant §4 names, since `/v1/runners` is still spelled as a literal at `afd_api_runner/src/handler/runner/enrolment.rs:48` and `afd_http/src/route/runner_ops.rs:75`. The result types carry no serde or schema derive in `afr_agent`: `RunOutput` (`engine.rs:127`) is never serialized and `public/openapi.json` names none of them, so `Completed` becomes a unit struct.
 
-- **Dimension 3.1** — A finished run still reports through the moved types → Test `test_rust_runner_lease_roundtrip`
+- **Dimension 3.1** DONE — A finished run still reports through the moved types → Test `test_rust_runner_lease_roundtrip`
 - **Dimension 3.2** DONE — The three unused items are gone from the tree → Test `dead_items_absent`
 
 ### §4 — One source for every runner route — DONE

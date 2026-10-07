@@ -23,8 +23,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** feat/m211-nested-loops-and-chat-continuity
 **Folded-into:** `M211_002`
 **Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=4212 integration=4929 — Rust unit 4212 passed, 0 failed, 879 ignored (runner 982 · daemon 132 · daemon libraries 3098); integration through the coverage shards 4929 passed, 0 failed (substrate 4158 · runner 550 · daemon 221); TypeScript app 3642, design-system 647, website 142 passed, cli 1779 passed and 17 skipped, at `bb0070015` via PR #732's identical tree. The branch at `886733be6`: Rust unit 4312 passed, 0 failed, 895 ignored (+100); integration 868 + 2 exclusive passed, 0 failed; kernel lane 34 passed.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M211-bb0070015.md`
 **Depends on:** M211_002 (the nested child run, which starts without the turns) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:184-185` refuses them until then, and the Zig runner that serves them meanwhile drops the new field, `src/runner/daemon/control_plane_client_lease.zig:10-12`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from a source trace of the lease, prompt and provider paths at `b0138d7b3`, recorded in Discovery
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Crates (the provider and scrub paragraph, line 92)

@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B2 — the milestone's follow-up Pull Request, after M211_001 merged (#732, `bb0070015`); M211_003 to M211_005 are folded into this spec, and its Sections run on M211_001's tools
 **Branch:** feat/m211-nested-loops-and-chat-continuity
 **Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=4212 integration=4929 — Rust unit 4212 passed, 0 failed, 879 ignored (runner 982 · daemon 132 · daemon libraries 3098); integration through the coverage shards 4929 passed, 0 failed (substrate 4158 · runner 550 · daemon 221); TypeScript app 3642, design-system 647, website 142 passed, cli 1779 passed and 17 skipped, at `bb0070015` via PR #732's identical tree. The branch at `886733be6`: Rust unit 4312 passed, 0 failed, 895 ignored (+100); integration 868 + 2 exclusive passed, 0 failed; kernel lane 34 passed.
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M211-bb0070015.md`
 **Depends on:** M210_002 (the loop, the catalog, the router, the run-wide call counter and trace) · M211_001 (children share the sandbox-side tools)
 **Provenance:** LLM-drafted (Claude Fable 5.1, Oct 02, 2026) from `docs/architecture/runner_execution.md` §"Tool catalog" and Indy's decision that the runner carries every published tool; Codex at `~/Projects/oss/rs/codex` `2e5fea64e`
 **Canonical architecture:** `docs/architecture/runner_execution.md` §"Tool catalog" (`delegate`, `spawn`: a nested loop sharing the lease's sandbox and budget), §Process model; `docs/architecture/runner_fleet.md` §"Live activity (the SSE tail)"
