@@ -110,6 +110,8 @@ mod integration_runner_shapes;
 mod integration_rust_runner;
 #[path = "integration_rust_runner_bundles.rs"]
 mod integration_rust_runner_bundles;
+#[path = "integration_rust_runner_nested.rs"]
+mod integration_rust_runner_nested;
 #[path = "integration_rust_runner_repairs.rs"]
 mod integration_rust_runner_repairs;
 #[path = "integration_rust_runner_reviews.rs"]
