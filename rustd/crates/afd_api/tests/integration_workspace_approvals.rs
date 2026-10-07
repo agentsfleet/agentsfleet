@@ -124,9 +124,8 @@ async fn assert_approval_resolution(
         Some(SUBJECT)
     );
 
-    // The name reaches the WIRE, not just the row. `openapi_artifact.rs` pins
-    // that the key exists and is required; nothing pinned that `summary()` maps
-    // the right source field, so `resolved_by_name: &gate.resolved_by` would
+    // The name reaches the WIRE, not just the row. The schema declares the key
+    // required; nothing pinned that `summary()` maps the right source field, so `resolved_by_name: &gate.resolved_by` would
     // compile, serialize, and match the schema. This lane's `core.users` row
     // carries an address and no display name, so it also exercises the fallback
     // the deleted browser lookup had.

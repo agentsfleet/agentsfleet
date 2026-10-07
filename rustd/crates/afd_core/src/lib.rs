@@ -4,8 +4,7 @@
 //! rest of the daemon agrees on — canonical entity identifiers, the wire error
 //! codes, and the bounded numbers policy is expressed in — and nothing else. It
 //! opens no socket, reads no file, spawns no thread, and pulls in no
-//! asynchronous runtime; `test_core_dependency_freeze` asserts that against the
-//! real dependency graph rather than trusting this paragraph.
+//! asynchronous runtime.
 //!
 //! # Why the primitives live here rather than beside their users
 //!
