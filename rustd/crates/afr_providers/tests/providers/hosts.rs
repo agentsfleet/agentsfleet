@@ -5,7 +5,7 @@
 
 use afd_core::test_util::trace::Capture;
 use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
-use afd_wire::report::ResultOutcome;
+use afr_agent::ResultOutcome;
 
 use super::ANSWER;
 use super::support::wires::Wire;

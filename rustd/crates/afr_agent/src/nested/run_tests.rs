@@ -12,8 +12,8 @@ use std::time::Duration;
 
 use std::sync::Arc;
 
+use crate::ResultOutcome;
 use afd_core::test_util::trace::Capture;
-use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_egress::testing::{CountingMint, RecordingTransport};
 use afr_providers::Chunk;

@@ -57,7 +57,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_api_wire/` (`Cargo.toml`, `src/lib.rs`, the 22 daemon-only modules with their submodules, `schedule.rs`, `src/redact.rs`, `tests/`) | CREATE | The daemon's own API types, moved whole with their tests and schema derives |
 | `rustd/crates/afd_wire/src/` (`lib.rs`, `redact.rs`, `paths.rs`, `report.rs`, `lease.rs`, `runner.rs`), `rustd/crates/afd_wire/Cargo.toml`, `rustd/crates/afd_wire/tests/` | EDIT / DELETE | Keeps the shared 14; route templates; drops the runner-internal report types and the four unused items; moved modules and tests leave |
-| `rustd/crates/afr_agent/src/` (a `result.rs` module and its users), `rustd/crates/afr_supervisor/src/report.rs` | CREATE / EDIT | `ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` move into the runner |
+| `rustd/crates/afr_agent/src/` (a `result.rs` module and its users), `rustd/crates/afr_supervisor/src/` (`report.rs`, `report/tests.rs`, `test_support.rs`), `rustd/crates/afr_providers/tests/` | CREATE / EDIT | `ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` move into the runner |
 | `rustd/crates/afd_api_runner/src/handler/runner/*.rs`, `rustd/crates/afd_auth/src/credential.rs`, `rustd/crates/afd_api/src/openapi.rs` | EDIT | Routes and the token prefix named from `afd_wire::paths` |
 | Every daemon crate importing a moved module (`afd_admission`, `afd_api`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner`, `afd_api_tenant`, `afd_approval`, `afd_bench`, `afd_credential`, `afd_cron`, `afd_events`, `afd_fleet`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_gate`, `afd_http`, `afd_ingress`, `afd_memory`, `afd_observability`, `afd_runner`, `afd_sse`, `afd_state`, `agentsfleetd`): `Cargo.toml`, `src/`, `tests/` | EDIT | `afd_wire::<moved>` becomes `afd_api_wire::<moved>`; the `openapi` features name both crates |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | The new member and workspace dependency; `const_format` for `afd_wire` |
@@ -106,10 +106,10 @@ The 22 daemon-only modules and `schedule` move to `afd_api_wire`, with their tes
 
 ### §3 — The runner's own state lives in the runner
 
-`ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` (`afd_wire/src/report.rs:85-118`) move to `afr_agent`, whose loop builds them and whose supervisor reads them. `RunnerChildInput` (`lease.rs:91`), `FAIL_CLOSED_DEFAULT` (`runner.rs:70`), `paths::RUNNERS` and `paths::FLEET_RUNNERS` are deleted; nothing reads them.
+`ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` (`afd_wire/src/report.rs:85-118`) move to `afr_agent`, whose loop builds them and whose supervisor reads them. `RunnerChildInput` (`lease.rs:91`), `FAIL_CLOSED_DEFAULT` (`runner.rs:70`) and `paths::FLEET_RUNNERS` are deleted; nothing reads them. `paths::RUNNERS` stays: it is the enrolment constant §4 names, since `/v1/runners` is still spelled as a literal at `afd_api_runner/src/handler/runner/enrolment.rs:48` and `afd_http/src/route/runner_ops.rs:75`. The result types carry no serde or schema derive in `afr_agent`: `RunOutput` (`engine.rs:127`) is never serialized and `public/openapi.json` names none of them, so `Completed` becomes a unit struct.
 
 - **Dimension 3.1** — A finished run still reports through the moved types → Test `test_rust_runner_lease_roundtrip`
-- **Dimension 3.2** — The four unused items are gone from the tree → Test `dead_items_absent`
+- **Dimension 3.2** DONE — The three unused items are gone from the tree → Test `dead_items_absent`
 
 ### §4 — One source for every runner route
 
@@ -168,7 +168,7 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 | 2.2 | command | `regenerated_openapi_matches` | `cargo run -p agentsfleetd --features openapi --bin agentsfleetd -- --no-banner openapi` → identical to `public/openapi.json` |
 | 2.3 | command | `runner_tree_has_no_api_wire` | `cargo tree -p agentsfleet_runner -e normal` → no `afd_api_wire` line |
 | 3.1 | integration | `test_rust_runner_lease_roundtrip` | a lease served by the real daemon → the runner's report lands, built from `afr_agent`'s result types |
-| 3.2 | command | `dead_items_absent` | `git grep -wE 'RunnerChildInput\|FAIL_CLOSED_DEFAULT\|FLEET_RUNNERS' rustd` → no match; `paths::RUNNERS\b` → no match |
+| 3.2 | command | `dead_items_absent` | `git grep -wE 'RunnerChildInput\|FAIL_CLOSED_DEFAULT\|FLEET_RUNNERS' rustd` → no match |
 | 4.1 | unit | `test_route_templates_compose_from_their_segments` | every template, one per line → an `insta` snapshot reading `/v1/runners/me/leases/{lease_id}/activity` and the rest |
 | 4.2 | command | `route_literals_only_in_paths` | `git grep -n '"/v1/runners' rustd/crates -- ':!afd_wire'` → no match in `src/` |
 | 5.1 | manual | `measure_after_rebuilds` | scenario A at the head → 0 `Compiling` lines; B and C beside the baseline in Discovery |
@@ -237,6 +237,7 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 
 - **Consults** — Indy (in-session, Oct 07, 2026): "ensure that the afd_wire is split relevantly on what is used in which daemon(agentsfleetd, agentsfleet-runner, commong or shared)", then chose "Go as drawn" for two crates, the runner-only types into `afr_agent`, `paths` as the one route source, and the dead items deleted. Consumer audit at `cc318b856` (non-test uses): the runner names 12 modules and reaches `event` through `lease.rs:7`; `paths` has no daemon `src/` use (the daemon re-spells 22 routes in `afd_api_runner/src/handler/runner/*.rs` and the prefix at `afd_auth/src/credential.rs:78`); `ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` have no daemon reference; `RunnerChildInput`, `FAIL_CLOSED_DEFAULT`, `RUNNERS` and `FLEET_RUNNERS` have none anywhere; `schema` is used only in `afd_fleet_lifecycle/src/sql.rs:298`, under `#[cfg(test)]`; `activity` and `tool_trace` reference each other, both shared; `redact.rs:39,67,80,89` implement `Debug` for three shared types and one daemon type; only the daemon's `afd_api*` crates enable `openapi`; `agentsfleet_runner` itself does not depend on `afd_wire`. Architecture consult: `ARCH: grounded in runner_execution.md:91 | proposal: afd_wire holds what both sides speak; afd_api_wire is daemon-only | status: extends | landing: a`.
 - **Baseline, §1** (Oct 07, 2026: 11:00 AM) — revision `ce95ce655`, rustc 1.98.1, Apple M2, 8 CPUs, dev profile; median of runs 1–3 for (A) and (B). (A) `touch rustd/crates/afd_wire/src/admin.rs` then `cargo build -p agentsfleet_runner`: 12 `Compiling` lines, 7.33s / 4.42s / 4.41s, median **4.42s**. (B) the same touch then `cargo build -p agentsfleetd`: 29 `Compiling` lines, 13.59s / 11.46s / 12.53s, median **12.53s**. (C) `cargo build --workspace --timings` in a fresh target directory: 513 `Compiling` lines in 2m 27s; `afd_wire` lib unit 9.38s, starting at 31.38s. Produced by a scratch script that loops the commands above; the earlier run stopped silently because cargo prints `in 1m 02s` past a minute and the elapsed-time grep missed it.
+- **§3 amendment** (Oct 07, 2026: 11:30 AM) — `paths::RUNNERS` is kept, not deleted: §3's deletion list contradicted §4, whose enrolment route keeps its own constant and whose Dimension 4.2 forbids the `"/v1/runners"` literal outside `paths`. The audit's "no use anywhere" held at `cc318b856`; §4 gives it its reader.
 - **Metrics review** — no analytics or funnel playbook update required: no product or operator signal changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

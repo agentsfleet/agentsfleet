@@ -5,10 +5,8 @@ use std::time::Duration;
 
 use afd_core::clock::saturating_millis;
 use afd_wire::lease::LeasePayload;
-use afd_wire::report::{
-    ExecutionResult, Failure, FailureClass, Outcome, ReportCheckpoint, ReportRequest,
-    ReportTelemetry, ResultOutcome,
-};
+use afd_wire::report::{FailureClass, Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
+use afr_agent::{ExecutionResult, Failure, ResultOutcome};
 use afr_agent::{Meter, RunOutput};
 
 /// How a lease's run ended.

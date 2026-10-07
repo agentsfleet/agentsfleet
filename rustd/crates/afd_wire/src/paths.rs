@@ -41,9 +41,6 @@ pub const RUNNER_BUNDLES: &str = "/v1/runners/me/bundles";
 /// `POST /v1/runners/me/credentials/mint` — on-demand credential mint.
 pub const RUNNER_CREDENTIALS_MINT: &str = "/v1/runners/me/credentials/mint";
 
-/// `GET /v1/fleets/runners` — the platform-admin operator-plane read.
-pub const FLEET_RUNNERS: &str = "/v1/fleets/runners";
-
 /// Trailing segment of the per-lease activity sub-resource.
 ///
 /// A bare segment rather than a joined constant: `lease_id` is a path parameter,

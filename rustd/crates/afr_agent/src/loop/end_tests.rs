@@ -6,8 +6,8 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use crate::ResultOutcome;
 use afd_core::test_util::trace::Capture;
-use afd_wire::report::ResultOutcome;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::Message;
 use afr_tools::ToolErrorCode;

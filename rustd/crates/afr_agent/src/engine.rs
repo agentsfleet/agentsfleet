@@ -3,11 +3,11 @@
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::ExecutionResult;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
-use afd_wire::report::ExecutionResult;
 use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::ToolTrace;
 use afr_egress::Mint;

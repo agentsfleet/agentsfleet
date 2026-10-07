@@ -64,11 +64,6 @@ pub enum NetworkPolicy {
     AllowListEgress,
 }
 
-/// The posture an unset, missing or unrecognized policy resolves to.
-///
-/// Never `AllowAll`: a malformed policy must not silently open egress.
-pub const FAIL_CLOSED_DEFAULT: NetworkPolicy = NetworkPolicy::AllowListEgress;
-
 /// Whether an operator-added bind is writable.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
