@@ -39,6 +39,10 @@ const MEMORY_HIGH: &str = "memory.high";
 /// pages already handed to the disk to finish writing, so a tenant writing
 /// past its disk is slowed until it reads `ENOSPC`, not killed first.
 const TENANT_HIGH_SHARE: u64 = 8;
+/// The most headroom that share may take. Write-back needs only so much room,
+/// and with no swap every byte inside the band is throttled, so an eighth of a
+/// large lease would slow allocation-heavy work across a wide slow band.
+const TENANT_HIGH_HEADROOM_MAX_BYTES: u64 = 128 * 1024 * 1024;
 /// Swap a cgroup may use; zero, so a runaway is killed rather than paged out.
 const MEMORY_SWAP_MAX: &str = "memory.swap.max";
 /// Processor bandwidth: a quota per period, both in microseconds.
@@ -139,8 +143,8 @@ impl LeaseCgroup {
     }
 
     /// Hands the lease's controllers to its two leaves, caps the tenant
-    /// leaf's memory below the lease's, and throttles it below that cap. The
-    /// lease's own swap limit already covers both leaves.
+    /// leaf's memory below the lease's, and throttles it a bounded headroom
+    /// below that cap. The lease's own swap limit already covers both leaves.
     fn split(&self, limits: &Limits) -> Result<()> {
         let enable = REQUIRED_CONTROLLERS.map(|controller| format!("+{controller}"));
         self.write(SUBTREE_CONTROL, &enable.join(" "))?;
@@ -150,7 +154,7 @@ impl LeaseCgroup {
         let tenant = limits
             .memory_bytes
             .saturating_sub(SANDBOX_MEMORY_RESERVE_BYTES);
-        let high = tenant - tenant / TENANT_HIGH_SHARE;
+        let high = tenant - (tenant / TENANT_HIGH_SHARE).min(TENANT_HIGH_HEADROOM_MAX_BYTES);
         fs::write(self.tenant().join(MEMORY_MAX), tenant.to_string())
             .map_err(cgroup(MEMORY_MAX))?;
         fs::write(self.tenant().join(MEMORY_HIGH), high.to_string()).map_err(cgroup(MEMORY_HIGH))

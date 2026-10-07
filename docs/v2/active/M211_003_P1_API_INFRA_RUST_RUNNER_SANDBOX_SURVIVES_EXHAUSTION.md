@@ -153,7 +153,7 @@ Spike S6's scenario becomes a kernel trial on one shared engine, with lease stat
 
 ```
 workspace disk        <lease>/disk/{workspace (0755), tmp (1777)}   → /workspace, /tmp
-lease cgroup          <lease>/{sandbox, tenant}   tenant/memory.max = limit − SANDBOX_MEMORY_RESERVE_BYTES · tenant/memory.high = memory.max − memory.max / 8
+lease cgroup          <lease>/{sandbox, tenant}   tenant/memory.max = limit − SANDBOX_MEMORY_RESERVE_BYTES · tenant/memory.high = memory.max − min(memory.max / 8, TENANT_HIGH_HEADROOM_MAX_BYTES)
 tenant move           pre_exec: write(fd, "0")   fd = tenant/cgroup.procs, opened by the engine, close-on-exec
 ending                Exited | Signaled | OutOfMemory (Signaled(SIGKILL) or a shell's Exited(128+SIGKILL), when tenant memory.events oom_kill rose)
 shared memory         /dev/shm  tmpfs --size Limits::shared_memory_bytes() = memory_bytes / 4
@@ -174,7 +174,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 | Memory exhausted | A tenant allocates past the limit | The killer takes a tenant process; its call reads `out_of_memory` (Dimensions 2.1, 2.2) |
 | Tenant move refused | A kernel without open-time migration checks, or a lost descriptor | Spawn refused with a code; nothing runs unshielded (Dimension 2.4) |
 | Workspace writes outrun reclaim | Dirty pages under the memory limit | Direct I/O removes the second cache; the writer ends in `ENOSPC` (Dimension 3.2) |
-| Tenant writes past its disk faster than write-back drains | Pages under write-back fill the tenant leaf before the disk refuses the write | `memory.high`, an eighth below the leaf's `memory.max`, slows the writer while write-back drains; it reads `ENOSPC` and is not killed (Dimension 5.1, `test_the_tenant_leaf_throttles_an_eighth_below_its_limit`) |
+| Tenant writes past its disk faster than write-back drains | Pages under write-back fill the tenant leaf before the disk refuses the write | `memory.high`, an eighth below the leaf's `memory.max` and never more than 128 MiB below it, slows the writer while write-back drains; it reads `ENOSPC` and is not killed (Dimension 5.1, `test_the_tenant_leaf_throttles_an_eighth_below_its_limit`) |
 | Disk build fails after the mount | The mount helper mounts and then fails, or the layout is refused | Undone as a release is: unmounted, then removed; the lease sees the step's own failure, and no loop device stays on a deleted image (Dimension 3.1) |
 | Size past a bound | A daemon sends a size outside the declared bounds | The lease ends at startup, `startup_posture`, before any sandbox is prepared (Dimension 4.4) |
 | Crash mid-split | Runner dies between creating leaves and entering them | The boot sweep removes both leaves (Dimension 2.5) |
@@ -224,6 +224,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 | 4.6 | unit | `the_published_bounds_are_the_enforced_ones` | `SandboxLimits`'s schema minimum and maximum per field → the `SANDBOX_*` constants |
 | 5.1 | kernel | `test_writable_state_exhaustion_spares_the_sandbox` | four leases at 1 GiB disk and 512 MiB memory, `/tmp` then `/workspace` filled with 2 GiB each → eight `ENOSPC`, `oom_kill 0` in every `sandbox` leaf, four `ok` |
 | 5.1 | unit | `test_the_tenant_leaf_throttles_an_eighth_below_its_limit` | a new lease cgroup → the tenant leaf's `memory.high` reads its `memory.max` less an eighth |
+| 5.1 | unit | `test_a_large_tenant_leaf_throttles_a_capped_headroom_below_its_limit` | a 4 GiB lease cgroup → the tenant leaf's `memory.high` reads its `memory.max` less 128 MiB, not an eighth |
 
 ## Acceptance Rubric (single scoring surface)
 

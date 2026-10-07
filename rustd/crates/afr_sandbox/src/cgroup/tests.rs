@@ -9,6 +9,10 @@ use std::path::Path;
 use super::LeaseCgroup;
 use crate::engine::Limits;
 
+/// A mebibyte, and a gibibyte.
+const MIB: u64 = 1024 * 1024;
+const GIB: u64 = 1024 * MIB;
+
 const LIMITS: Limits = Limits {
     memory_bytes: 268_435_456,
     cpu_millis: 1_500,
@@ -80,6 +84,27 @@ fn test_the_tenant_leaf_throttles_an_eighth_below_its_limit() {
     assert_eq!(
         read(&tenant, "memory.high"),
         (limit - limit / 8).to_string()
+    );
+}
+
+/// A large lease keeps the headroom a mid-sized one gets and no more: with
+/// no swap, everything inside the band is throttled, so an eighth of a large
+/// limit would slow the allocation-heavy work it was sized for.
+#[test]
+fn test_a_large_tenant_leaf_throttles_a_capped_headroom_below_its_limit() {
+    let root = tempfile::tempdir().unwrap();
+    let large = Limits {
+        memory_bytes: 4 * GIB,
+        ..LIMITS
+    };
+
+    LeaseCgroup::create(root.path(), "lease-14", &large).unwrap();
+
+    let tenant = root.path().join("lease-14/tenant");
+    let limit = large.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES;
+    assert_eq!(
+        read(&tenant, "memory.high"),
+        (limit - 128 * MIB).to_string()
     );
 }
 
