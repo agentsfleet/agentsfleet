@@ -86,7 +86,7 @@ fn test_history_keeps_finished_turns_only() {
         row(1, status::PROCESSED, "first", Some("one")),
     ];
 
-    let turns = within_caps(newest_first);
+    let turns = within_caps(newest_first).turns;
 
     let read: Vec<(&str, &str)> = turns
         .iter()
@@ -110,13 +110,13 @@ fn test_history_caps_turns_and_bytes() {
         .rev()
         .map(|index| row(index, status::PROCESSED, &format!("m{index}"), Some("a")))
         .collect();
-    let kept = within_caps(rows);
+    let kept = within_caps(rows).turns;
     assert_eq!(kept.len(), HISTORY_TURNS_MAX);
     assert_eq!(kept[0].message, "m2", "the oldest of nine goes first");
 
     // A message one two-byte character past the cap is cut before it.
     let long = format!("{}é", "x".repeat(TURN_TEXT_BYTES_MAX - 1));
-    let cut = within_caps(vec![row(1, status::PROCESSED, &long, Some("a"))]);
+    let cut = within_caps(vec![row(1, status::PROCESSED, &long, Some("a"))]).turns;
     assert_eq!(cut[0].message.len(), TURN_TEXT_BYTES_MAX - 1);
 
     // Eight turns at the text cap each pass the budget; the oldest go first.
@@ -125,7 +125,7 @@ fn test_history_caps_turns_and_bytes() {
         .rev()
         .map(|index| row(index, status::PROCESSED, &format!("m{index}"), Some(&full)))
         .collect();
-    let fitted = within_caps(heavy);
+    let fitted = within_caps(heavy).turns;
     let bytes: usize = fitted
         .iter()
         .map(|turn| turn.message.len() + turn.answer.len())
@@ -165,4 +165,50 @@ async fn test_history_read_failure_fails_open() {
     let logged = capture.only(EVENT_HISTORY_UNAVAILABLE);
     assert_eq!(logged.field("fleet_id"), Some(FLEET));
     assert!(logged.field("error_code").is_some(), "{logged:?}");
+}
+
+/// Every chat lease's bytes are observed, each cap that cut counts once, and
+/// a failed read counts as one lease issued without its turns.
+#[tokio::test]
+async fn test_history_metrics_recorded() {
+    use afd_observability::test_util::Capture as Metrics;
+
+    const BYTES: &str = "agentsfleet_lease_history_bytes";
+    const CUTS: &str = "agentsfleet_lease_history_cuts_total";
+    const FAILURES: &str = "agentsfleet_lease_history_read_failures_total";
+    let metrics = Metrics::install();
+    let before = (
+        metrics.histogram_count(BYTES, &[]),
+        metrics.sum(CUTS, &[("reason", "turns")]),
+        metrics.sum(CUTS, &[("reason", "text")]),
+        metrics.sum(CUTS, &[("reason", "bytes")]),
+        metrics.sum(FAILURES, &[]),
+    );
+
+    // Nine finished turns, one of them past the text cap: two caps cut.
+    let long = "z".repeat(TURN_TEXT_BYTES_MAX + 1);
+    let rows: Vec<EventDetailRow> = (1..=9)
+        .rev()
+        .map(|index| row(index, status::PROCESSED, &long, Some("a")))
+        .collect();
+    turns_for(&Fake::new(Some(rows)), EventType::Chat).await;
+    turns_for(&Fake::new(None), EventType::Chat).await;
+
+    assert_eq!(
+        metrics.histogram_count(BYTES, &[]),
+        before.0 + 1,
+        "one observed lease"
+    );
+    assert_eq!(metrics.sum(CUTS, &[("reason", "turns")]), before.1 + 1);
+    assert_eq!(
+        metrics.sum(CUTS, &[("reason", "text")]),
+        before.2 + 1,
+        "counted once, not per text"
+    );
+    assert_eq!(
+        metrics.sum(CUTS, &[("reason", "bytes")]),
+        before.3 + 1,
+        "eight 16 KiB texts pass the budget"
+    );
+    assert_eq!(metrics.sum(FAILURES, &[]), before.4 + 1);
 }

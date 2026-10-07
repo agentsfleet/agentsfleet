@@ -12,6 +12,8 @@ use std::fmt::Debug;
 use afd_core::event::status;
 use afd_core::id::Uuid7;
 use afd_events::{Cursor, EventDetailRow, History};
+use afd_observability::metrics::label::fleet::HistoryCut;
+use afd_observability::producers::fleet::history as metrics;
 use afd_wire::event::{EventType, message_of};
 use afd_wire::lease::{
     ANSWER_FAILED, ANSWER_FAILED_END, ANSWER_NONE, HISTORY_BYTES_MAX, HISTORY_TURNS_MAX,
@@ -89,8 +91,14 @@ pub async fn turns_before(
     // One row more than is kept, so a window the cap cut is known as one.
     let limit = i64::try_from(HISTORY_TURNS_MAX + 1).unwrap_or(i64::MAX);
     match thread.before(workspace, fleet, at, limit).await {
-        Ok(rows) => within_caps(rows),
+        Ok(rows) => {
+            let window = within_caps(rows);
+            metrics::carried(window.turns.iter().map(size).sum());
+            window.cuts.into_iter().for_each(metrics::cut);
+            window.turns
+        }
         Err(failure) => {
+            metrics::read_failed();
             let error_code = failure.code().as_str();
             let fleet_id = fleet.as_str();
             let agentsfleet_event_id = at.event_id.as_str();
@@ -101,18 +109,30 @@ pub async fn turns_before(
     }
 }
 
+/// A chat lease's turns, and every cap that cut them.
+#[derive(Debug)]
+pub(super) struct Window {
+    /// The turns, oldest first.
+    pub(super) turns: Vec<Turn<'static>>,
+    /// Each cap that cut, once.
+    pub(super) cuts: Vec<HistoryCut>,
+}
+
 /// The finished rows among `rows`, newest first, as turns oldest first: at
 /// most [`HISTORY_TURNS_MAX`], each text cut to [`TURN_TEXT_BYTES_MAX`], and
 /// the oldest dropped until the rest fit [`HISTORY_BYTES_MAX`].
-pub(super) fn within_caps(rows: Vec<EventDetailRow>) -> Vec<Turn<'static>> {
-    let mut turns: Vec<Turn<'static>> = rows
+pub(super) fn within_caps(rows: Vec<EventDetailRow>) -> Window {
+    let mut text_cut = false;
+    let mut finished: Vec<Turn<'static>> = rows
         .into_iter()
-        .filter_map(turn)
-        .take(HISTORY_TURNS_MAX)
+        .filter_map(|row| turn(row, &mut text_cut))
         .collect();
-    turns.reverse();
-    let mut total: usize = turns.iter().map(size).sum();
-    turns
+    let turns_cut = finished.len() > HISTORY_TURNS_MAX;
+    finished.truncate(HISTORY_TURNS_MAX);
+    finished.reverse();
+    let mut total: usize = finished.iter().map(size).sum();
+    let bytes_cut = total > HISTORY_BYTES_MAX;
+    let turns = finished
         .into_iter()
         .skip_while(|turn| {
             let over = total > HISTORY_BYTES_MAX;
@@ -121,12 +141,21 @@ pub(super) fn within_caps(rows: Vec<EventDetailRow>) -> Vec<Turn<'static>> {
             }
             over
         })
-        .collect()
+        .collect();
+    let cuts = [
+        (turns_cut, HistoryCut::Turns),
+        (text_cut, HistoryCut::Text),
+        (bytes_cut, HistoryCut::Bytes),
+    ]
+    .into_iter()
+    .filter_map(|(cut, cap)| cut.then_some(cap))
+    .collect();
+    Window { turns, cuts }
 }
 
 /// One finished row as a turn; a row still running, queued or refused at a
 /// gate is no turn.
-fn turn(row: EventDetailRow) -> Option<Turn<'static>> {
+fn turn(row: EventDetailRow, text_cut: &mut bool) -> Option<Turn<'static>> {
     let answer = match row.row.status.as_str() {
         status::PROCESSED => row.response_text.unwrap_or_else(|| ANSWER_NONE.to_owned()),
         status::FLEET_ERROR => {
@@ -140,14 +169,17 @@ fn turn(row: EventDetailRow) -> Option<Turn<'static>> {
         _unfinished => return None,
     };
     Some(Turn {
-        message: Cow::Owned(cut(&message_of(&row.request_json))),
-        answer: Cow::Owned(cut(&answer)),
+        message: Cow::Owned(cut(&message_of(&row.request_json), text_cut)),
+        answer: Cow::Owned(cut(&answer, text_cut)),
     })
 }
 
-/// `text` within [`TURN_TEXT_BYTES_MAX`], never splitting a character.
-fn cut(text: &str) -> String {
-    truncate(text, TURN_TEXT_BYTES_MAX).to_owned()
+/// `text` within [`TURN_TEXT_BYTES_MAX`], never splitting a character;
+/// `text_cut` is set when it had to be.
+fn cut(text: &str, text_cut: &mut bool) -> String {
+    let kept = truncate(text, TURN_TEXT_BYTES_MAX);
+    *text_cut |= kept.len() < text.len();
+    kept.to_owned()
 }
 
 /// The bytes a turn spends of [`HISTORY_BYTES_MAX`].

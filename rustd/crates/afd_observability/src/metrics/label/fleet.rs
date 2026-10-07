@@ -156,6 +156,18 @@ closed_set! {
 }
 
 closed_set! {
+    /// Which cap cut a chat lease's earlier turns.
+    HistoryCut {
+        /// More finished turns than a lease carries; the oldest were left.
+        Turns => "turns",
+        /// A message or answer past its text cap was cut.
+        Text => "text",
+        /// The turns passed the byte budget; the oldest were dropped.
+        Bytes => "bytes",
+    }
+}
+
+closed_set! {
     /// Where a verification run got to.
     VerifierRun {
         /// Dispatched onto the fleet's stream.

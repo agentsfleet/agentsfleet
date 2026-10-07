@@ -65,7 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_agent/src/prompt.rs`, `rustd/crates/afr_agent/src/loop.rs` | EDIT | The turns lead the conversation, scrubbed; the message comes from `message_of` |
 | `rustd/crates/afr_agent/src/spans.rs` | EDIT | The `chat` span records cache read and cache write tokens |
 | `rustd/crates/afr_providers/src/provider.rs`, `rustd/crates/afr_providers/src/request.rs`, `rustd/crates/afr_providers/src/wire.rs`, `rustd/crates/afr_providers/src/turn.rs` | EDIT | Prompt caching markers on Messages; the cache key on Responses; cache-written tokens kept for the span |
-| `rustd/crates/afd_observability/src/semconv.rs`, `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet.rs` | EDIT | Two span attributes; three daemon families with their producer |
+| `rustd/crates/afd_observability/src/semconv.rs`, `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet/history.rs`, `rustd/crates/afd_observability/src/metrics/label/fleet.rs`, `rustd/crates/afd_observability/src/metrics/label/tests.rs`, `docs/metrics.census.tsv` | EDIT / CREATE | Two span attributes; three daemon families with their producer |
 | `rustd/crates/afd_fleet/tests/integration_lease_history.rs`, `rustd/crates/afr_providers/tests/providers/turns.rs` | CREATE / EDIT | The integration proofs and the request-body proofs |
 | `docs/architecture/runner_execution.md` | EDIT | §Crates: a chat lease carries the thread's recent turns, and the stable prefix is marked for caching |
 
@@ -97,7 +97,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — A chat lease carries the thread's recent turns
+### §1 — A chat lease carries the thread's recent turns — DONE
 
 When the claimed event is `chat`, `pull` reads the fleet's thread before the event through `Thread`, which `History::thread_page` implements with the event's `(created_at, event_id)` as the cursor and one row more than `HISTORY_TURNS_MAX`, so a cut is known. Rows that ended `processed` or `fleet_error` become turns, oldest first. A turn's message is `message_of(request_json)`. Its answer is `response_text`, `[no reply]` when a processed row has none, and `[the run failed: <failure_label>]` for `fleet_error`. Each text is cut to `TURN_TEXT_BYTES_MAX` on a character boundary, and the oldest turns drop until the total fits `HISTORY_BYTES_MAX`. Any other event type carries an empty list. A read that fails issues the lease with an empty list, logs `lease_history_unavailable` with its `error_code`, and counts it, because a follow-up answered without context beats one refused. **Implementation default:** eight turns, 65,536 bytes, 16,384 bytes per text, and chat events only, because a webhook delivery is self-contained and would otherwise carry up to 64 KiB of unrelated runs. Indy may change any of them.
 
@@ -108,7 +108,7 @@ When the claimed event is `chat`, `pull` reads the fleet's thread before the eve
 - **Dimension 1.5** DONE — Another fleet's rows never appear → Test `test_history_stays_in_its_fleet`
 - **Dimension 1.6** DONE — A failed read issues the lease with no turns, logged and counted → Test `test_history_read_failure_fails_open`
 - **Dimension 1.7** DONE — A lease without the field decodes with no turns → Test `test_lease_history_defaults_empty`
-- **Dimension 1.8** — The bytes histogram observes every chat lease, and each cap that cut counts once → Test `test_history_metrics_recorded`
+- **Dimension 1.8** DONE — The bytes histogram observes every chat lease, and each cap that cut counts once → Test `test_history_metrics_recorded`
 
 ### §2 — The model reads them as the conversation
 
