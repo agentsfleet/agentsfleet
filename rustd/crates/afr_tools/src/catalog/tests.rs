@@ -210,3 +210,38 @@ fn the_hosted_catalog_offers_every_schedule_and_message_tool() {
     assert_eq!(names(&selection), eight);
     assert!(!selection.needs_sandbox());
 }
+
+/// A child's selection is its parent's narrowed to the names it asked for,
+/// hosted entries included, and the first name the parent lacks refuses it.
+#[test]
+fn a_selection_narrows_to_names_it_offers_and_refuses_one_it_does_not() {
+    let catalog = catalog();
+    let parent = catalog
+        .select(&[FILE_READ.name(), WEB_SEARCH.name(), UPDATE_PLAN.name()])
+        .unwrap();
+
+    let narrowed = parent
+        .narrowed(&[WEB_SEARCH.name(), FILE_READ.name(), FILE_READ.name()])
+        .unwrap();
+    let asked = [FILE_READ.name(), SHELL.name(), HTTP_REQUEST.name()];
+    let refused = parent.narrowed(&asked);
+
+    assert_eq!(names(&narrowed), [FILE_READ.name()]);
+    assert_eq!(narrowed.hosted(), [&WEB_SEARCH]);
+    assert_eq!(refused.err(), Some(SHELL.name()), "the first name not held");
+}
+
+/// Dropping entries leaves the rest, handlers and hosted alike.
+#[test]
+fn a_selection_without_entries_keeps_the_rest() {
+    let catalog = catalog();
+    let parent = catalog
+        .select(&[FILE_READ.name(), WEB_SEARCH.name(), UPDATE_PLAN.name()])
+        .unwrap();
+
+    let without = parent.without(&[&UPDATE_PLAN, &WEB_SEARCH]);
+
+    assert_eq!(names(&without), [FILE_READ.name()]);
+    assert!(without.hosted().is_empty());
+    assert_eq!(names(&parent).len(), 2, "the parent is untouched");
+}

@@ -71,6 +71,10 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
             ToolErrorCode::AgentsfleetdUnreachable,
             "agentsfleetd_unreachable",
         ),
+        (ToolErrorCode::ChildCapReached, "child_cap_reached"),
+        (ToolErrorCode::ChildToolNotHeld, "child_tool_not_held"),
+        (ToolErrorCode::ChildNotFound, "child_not_found"),
+        (ToolErrorCode::ChildFailed, "child_failed"),
     ];
 
     for (code, spelling) in spelled {

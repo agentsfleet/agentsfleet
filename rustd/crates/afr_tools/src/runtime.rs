@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use serde::de::DeserializeOwned;
+
 use afr_executor::Executor;
 
 use crate::catalog::Entry;
@@ -124,6 +126,15 @@ pub enum ToolErrorCode {
     AgentsfleetdRefused,
     /// `agentsfleetd` could not be reached.
     AgentsfleetdUnreachable,
+    /// The run already has as many children running, or started, as one run
+    /// may.
+    ChildCapReached,
+    /// A child asked for a tool its parent was not offered.
+    ChildToolNotHeld,
+    /// No child of this run has the id named.
+    ChildNotFound,
+    /// The child ended on a failure of its own, which the output carries.
+    ChildFailed,
 }
 
 impl ToolErrorCode {
@@ -169,6 +180,10 @@ impl ToolErrorCode {
             Self::MessageLimitReached => "message_limit_reached",
             Self::AgentsfleetdRefused => "agentsfleetd_refused",
             Self::AgentsfleetdUnreachable => "agentsfleetd_unreachable",
+            Self::ChildCapReached => "child_cap_reached",
+            Self::ChildToolNotHeld => "child_tool_not_held",
+            Self::ChildNotFound => "child_not_found",
+            Self::ChildFailed => "child_failed",
         }
     }
 }
@@ -176,6 +191,24 @@ impl ToolErrorCode {
 impl fmt::Display for ToolErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+/// `arguments` as `A`, or the refusal the model reads when they do not parse
+/// as `A`'s schema. The one place a call's arguments are parsed, whether a
+/// handler runs them or the loop does.
+///
+/// # Errors
+/// The arguments break the schema: a field missing, mistyped, or not named.
+pub fn parsed<A: DeserializeOwned>(arguments: &serde_json::Value) -> Result<A, ToolOutput> {
+    match A::deserialize(arguments) {
+        Ok(arguments) => Ok(arguments),
+        // The refusal carries serde's sentence to the model; no error chain
+        // leaves here, since a parse the model got wrong is the model's to read.
+        Err(refused) => Err(ToolOutput::failed(
+            ToolErrorCode::InvalidArguments,
+            &refused.to_string(),
+        )),
     }
 }
 
