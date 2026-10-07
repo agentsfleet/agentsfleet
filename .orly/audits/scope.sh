@@ -37,7 +37,7 @@ audit_scope_init() {
 # the index copy and checked-out files belong to this invocation alone.
 audit_index_snapshot() {
   [ "$AUDIT_MODE" = --staged ] || return 0
-  local gitdir index
+  local gitdir index changed=0
   AUDIT_SNAPSHOT_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/orly-index.XXXXXX")" || return 1
   trap 'rm -rf -- "$AUDIT_SNAPSHOT_ROOT"' EXIT
   trap 'exit 130' INT
@@ -46,6 +46,14 @@ audit_index_snapshot() {
   index="$(git rev-parse --git-path index)" || exit 1
   cp "$index" "$AUDIT_SNAPSHOT_ROOT/index" || exit 1
   export GIT_DIR="$gitdir" GIT_INDEX_FILE="$AUDIT_SNAPSHOT_ROOT/index" GIT_OPTIONAL_LOCKS=0
+  if [ "$#" -gt 0 ]; then
+    git diff --cached --quiet --diff-filter=ACMRT -- "$@" || changed=$?
+    case "$changed" in
+      0) return 0 ;;
+      1) ;;
+      *) printf 'cannot select staged audit files (git exit %s)\n' "$changed" >&2; exit 2 ;;
+    esac
+  fi
   export GIT_WORK_TREE="$AUDIT_SNAPSHOT_ROOT/tree"
   mkdir "$GIT_WORK_TREE" || exit 1
   git checkout-index --all --prefix="$GIT_WORK_TREE/" || exit 1

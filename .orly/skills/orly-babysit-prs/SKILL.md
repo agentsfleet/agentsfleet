@@ -93,8 +93,17 @@ Each cycle, after the review-thread walk, poll CI and act by cause:
 
 ```bash
 set -euo pipefail
-CHECKS=$(gh pr checks "$PR_NUMBER" --json name,state,bucket,link) \
-  || { echo "BABYSIT: check fetch incomplete; reset quiet polls" >&2; exit 1; }
+CHECK_STATUS=0
+CHECKS=$(gh pr checks "$PR_NUMBER" --json name,state,bucket,link) || CHECK_STATUS=$?
+printf '%s' "$CHECKS" | jq -e 'type == "array" and length > 0 and all(.[];
+  (.name | type == "string") and (.state | type == "string") and
+  (.link | type == "string") and (.bucket | IN("pass", "fail", "pending", "skipping", "cancel")))' >/dev/null \
+  || { printf 'BABYSIT: invalid check response (exit %s); reset quiet polls\n%s\n' "$CHECK_STATUS" "$CHECKS" >&2; exit 1; }
+printf '%s' "$CHECKS" | jq -r '.[] | "\(.name) | \(.state) | \(.bucket) | \(.link)"'
+case "$CHECK_STATUS" in
+  0|1|8) ;; # GitHub reports failed and pending checks with nonzero statuses.
+  *) printf 'BABYSIT: check fetch incomplete (exit %s); reset quiet polls\n' "$CHECK_STATUS" >&2; exit 1 ;;
+esac
 printf '%s' "$CHECKS" | jq -e 'type == "array" and length > 0 and all(.[]; .bucket == "pass" or .bucket == "skipping")' >/dev/null \
   || { echo "BABYSIT: checks empty or not green; reset quiet polls" >&2; exit 1; }
 CHECK_HEAD=$(gh pr view "$PR_NUMBER" --json headRefOid --jq '.headRefOid')
@@ -107,8 +116,14 @@ echo "BABYSIT: ci=green revision=$CHECK_HEAD"
 
 ```bash
 set -euo pipefail
-PIPELINES=$(glab api "projects/$PROJ_ENC/merge_requests/$MR_IID/pipelines" --paginate | jq -sc 'add') \
-  || { echo "BABYSIT: pipeline fetch incomplete; reset quiet polls" >&2; exit 1; }
+PIPELINE_STATUS=0
+PIPELINES=$(glab api "projects/$PROJ_ENC/merge_requests/$MR_IID/pipelines" --paginate | jq -sc 'add') || PIPELINE_STATUS=$?
+printf '%s' "$PIPELINES" | jq -e 'type == "array" and length > 0 and all(.[];
+  (.id | type == "number") and (.sha | type == "string") and (.status | type == "string"))' >/dev/null \
+  || { printf 'BABYSIT: invalid pipeline response (exit %s); reset quiet polls\n%s\n' "$PIPELINE_STATUS" "$PIPELINES" >&2; exit 1; }
+printf '%s' "$PIPELINES" | jq -r '.[] | "pipeline \(.id) | \(.status) | \(.web_url // "URL not reported")"'
+[ "$PIPELINE_STATUS" -eq 0 ] \
+  || { printf 'BABYSIT: pipeline fetch incomplete (exit %s); reset quiet polls\n' "$PIPELINE_STATUS" >&2; exit 1; }
 printf '%s' "$PIPELINES" | jq -e --arg revision "$POLL_HEAD" \
   '[.[] | select(.sha == $revision)] | sort_by(.id) | last | .status == "success"' >/dev/null \
   || { echo "BABYSIT: current revision has no successful pipeline; reset quiet polls" >&2; exit 1; }
