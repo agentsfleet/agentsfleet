@@ -125,7 +125,7 @@ dispatch_managed_paths() {
 dispatch_resolve_files() {
   DISPATCH_FILES=()
   audit_scope_init --all "$@"
-  audit_index_snapshot "$@"
+  audit_index_snapshot
   DISPATCH_STAGED=0
   if [ "${1:-}" = "--staged" ]; then
     DISPATCH_STAGED=1
