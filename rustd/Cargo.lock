@@ -1230,7 +1230,6 @@ dependencies = [
  "afr_sandbox",
  "afr_supervisor",
  "afr_telemetry",
- "cargo_metadata",
  "clap",
  "serde_json",
  "tempfile",

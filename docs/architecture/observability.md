@@ -264,8 +264,7 @@ endpoint (`http://user:secret@…`) stops `run` naming the knob. A header is
 how an OTLP exporter carries a credential, and the runner holds none; the
 credential belongs to the runner collector on the host, which a lease cannot
 read. Only `afr_telemetry` may depend on the transport in the runner's build,
-so no other runner crate can build a pipeline that carries one
-(`agentsfleet_runner/tests/dependency_graph.rs`). A compression knob stops
+so no other runner crate can build a pipeline that carries one. A compression knob stops
 `run` too, naming it: this build compresses nothing, and the exporter's own
 refusal would name no knob. The endpoint must be an `http` or `https` URL with
 a host and no query. `sandbox` and `probe` read no telemetry knob, so
