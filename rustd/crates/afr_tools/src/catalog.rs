@@ -14,6 +14,7 @@ use crate::error::{self, Result};
 use crate::handler::Typed;
 use crate::http_request::HttpRequest;
 use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
+use crate::nested::{Delegate, InterruptAgent, ListAgents, SendInput, Spawn, WaitAgent};
 use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
@@ -91,6 +92,14 @@ pub const CRON_RUNS: Entry = Entry::new("cron_runs", Runtime::Supervisor);
 pub const DELEGATE: Entry = Entry::new("delegate", Runtime::Supervisor);
 /// A nested loop that runs alongside.
 pub const SPAWN: Entry = Entry::new("spawn", Runtime::Supervisor);
+/// A spawned loop's answer, or that it still runs.
+pub const WAIT_AGENT: Entry = Entry::new("wait_agent", Runtime::Supervisor);
+/// A message for a spawned loop's next turn.
+pub const SEND_INPUT: Entry = Entry::new("send_input", Runtime::Supervisor);
+/// Every child of the run and its state.
+pub const LIST_AGENTS: Entry = Entry::new("list_agents", Runtime::Supervisor);
+/// Ends one spawned loop.
+pub const INTERRUPT_AGENT: Entry = Entry::new("interrupt_agent", Runtime::Supervisor);
 /// One shell command, run to its end.
 pub const SHELL: Entry = Entry::new("shell", Runtime::Sandbox);
 /// A process the model drives across calls.
@@ -125,7 +134,7 @@ pub const BROWSER_OPEN: Entry = Entry::new("browser_open", Runtime::Sandbox);
 pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 
 /// Every published tool.
-pub const PUBLISHED: [&Entry; 35] = [
+pub const PUBLISHED: [&Entry; 39] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &PUSHOVER,
@@ -145,6 +154,10 @@ pub const PUBLISHED: [&Entry; 35] = [
     &CRON_RUNS,
     &DELEGATE,
     &SPAWN,
+    &WAIT_AGENT,
+    &SEND_INPUT,
+    &LIST_AGENTS,
+    &INTERRUPT_AGENT,
     &SHELL,
     &EXEC_COMMAND,
     &WRITE_STDIN,
@@ -219,6 +232,12 @@ impl Catalog {
             Typed::boxed(CronUpdate),
             Typed::boxed(CronRun),
             Typed::boxed(CronRuns),
+            Typed::boxed(Delegate),
+            Typed::boxed(Spawn),
+            Typed::boxed(WaitAgent),
+            Typed::boxed(SendInput),
+            Typed::boxed(ListAgents),
+            Typed::boxed(InterruptAgent),
         ])
     }
 
@@ -280,7 +299,7 @@ impl<'c> Selection<'c> {
     /// Whether `name` is one of the provider-hosted tools offered.
     #[must_use]
     pub fn hosts(&self, name: &str) -> bool {
-        self.hosted.iter().any(|entry| entry.name == name)
+        self.hosted_entry(name).is_some()
     }
 
     /// The handlers the lease was offered.
@@ -292,6 +311,48 @@ impl<'c> Selection<'c> {
     #[must_use]
     pub fn hosted(&self) -> &[&'static Entry] {
         &self.hosted
+    }
+
+    /// The same selection narrowed to `names`, for a child that may hold no
+    /// more than its parent.
+    ///
+    /// # Errors
+    /// The first name this selection does not offer; nothing is narrowed.
+    pub fn narrowed<'n, S: AsRef<str>>(&self, names: &'n [S]) -> Result<Self, &'n str> {
+        let mut narrowed = Self::default();
+        for name in names.iter().map(AsRef::as_ref) {
+            if narrowed.offers(name) {
+                continue;
+            }
+            match (self.tool(name), self.hosted_entry(name)) {
+                (Some(tool), _) => narrowed.tools.push(tool),
+                (None, Some(entry)) => narrowed.hosted.push(entry),
+                (None, None) => return Err(name),
+            }
+        }
+        Ok(narrowed)
+    }
+
+    /// The same selection without every tool `dropped` names.
+    #[must_use]
+    pub fn without(&self, dropped: &[&Entry]) -> Self {
+        let kept = |entry: &Entry| !dropped.iter().any(|gone| **gone == *entry);
+        Self {
+            tools: (self.tools.iter().copied())
+                .filter(|tool| kept(tool.entry()))
+                .collect(),
+            hosted: (self.hosted.iter().copied())
+                .filter(|entry| kept(entry))
+                .collect(),
+        }
+    }
+
+    /// The hosted entry named `name`, when it is one offered.
+    fn hosted_entry(&self, name: &str) -> Option<&'static Entry> {
+        self.hosted
+            .iter()
+            .copied()
+            .find(|entry| entry.name() == name)
     }
 
     fn offers(&self, name: &str) -> bool {

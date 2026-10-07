@@ -10,11 +10,10 @@
 use std::fmt;
 
 use schemars::JsonSchema;
-use serde::Deserialize as _;
 use serde::de::DeserializeOwned;
 
 use crate::catalog::Entry;
-use crate::runtime::{Tool, ToolContext, ToolErrorCode, ToolOutput};
+use crate::runtime::{Tool, ToolContext, ToolOutput, parsed};
 use crate::schema::Schema;
 
 /// One tool's behaviour, given arguments that parsed.
@@ -64,11 +63,9 @@ impl<H: Handler> Tool for Typed<H> {
         arguments: &serde_json::Value,
         context: ToolContext<'_, '_>,
     ) -> ToolOutput {
-        match H::Arguments::deserialize(arguments) {
-            Ok(parsed) => self.handler.run(parsed, context).await,
-            Err(refused) => {
-                ToolOutput::failed(ToolErrorCode::InvalidArguments, &refused.to_string())
-            }
+        match parsed(arguments) {
+            Ok(arguments) => self.handler.run(arguments, context).await,
+            Err(refused) => refused,
         }
     }
 }
