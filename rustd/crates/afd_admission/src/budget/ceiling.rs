@@ -201,7 +201,7 @@ impl Claim<'_> {
         let _ = self
             .ceiling
             .since
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |since| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |since| {
                 Some(since.saturating_sub(counted))
             });
         self.ceiling

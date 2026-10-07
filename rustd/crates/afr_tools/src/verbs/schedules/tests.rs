@@ -203,5 +203,5 @@ async fn naming_a_fleet_refuses_the_call() {
         json!({"cron": "0 9 * * 1", "message": "m", "fleet_id": "x"}),
     )
     .await;
-    assert!(asked.is_empty());
+    assert!(asked.is_empty(), "{asked:?}");
 }

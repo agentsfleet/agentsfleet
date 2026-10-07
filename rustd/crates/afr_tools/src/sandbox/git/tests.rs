@@ -213,7 +213,8 @@ async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
     .await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
-    assert!(executor.spawned().is_empty());
+    let spawned = executor.spawned();
+    assert!(spawned.is_empty(), "{spawned:?}");
 }
 
 /// git runs in the checkout's directory; one the model removed is its own

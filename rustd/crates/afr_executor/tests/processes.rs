@@ -15,6 +15,10 @@ use crate::support::{
     start,
 };
 
+/// A parent that ignores TERM and leaves a grandchild behind, which inherits the
+/// ignored disposition across its exec; it prints the grandchild's pid.
+const IGNORES_TERM: &str = "trap '' TERM; sleep 60 & echo $!; wait";
+
 #[tokio::test]
 async fn test_executor_spawn_streams_output() {
     let harness = start().await;
@@ -39,7 +43,7 @@ async fn standard_error_and_a_failing_status_are_reported_as_they_are() {
     let finished = finish(harness.client.spawn(&spawn).await.unwrap()).await;
 
     assert_eq!(finished.stderr, b"oops\n");
-    assert!(finished.stdout.is_empty());
+    assert_eq!(finished.stdout, [] as [u8; 0]);
     assert_eq!(finished.endings, [Ending::Exited(3)]);
 }
 
@@ -63,9 +67,7 @@ async fn a_process_reads_what_is_written_to_it() {
 #[tokio::test]
 async fn test_executor_kill_reaps_process_group() {
     let harness = start().await;
-    // The parent ignores TERM and so does the grandchild it leaves behind,
-    // which inherits the ignored disposition across its exec.
-    let script = "trap '' TERM; sleep 60 & echo $!; wait";
+    let script = IGNORES_TERM;
     let mut process = harness
         .client
         .spawn(&Spawn::program("sh").args(["-c", script]))

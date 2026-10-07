@@ -111,7 +111,8 @@ fn a_short_walk_retires_its_fleet() {
     let mut progress = Progress::with_capacity(CAPACITY);
     assert!(progress.walked("fleet-a", None));
     assert!(!progress.is_resuming(), "nothing left to carry on");
-    assert!(progress.resume_repairs(BUDGET).is_empty());
+    let to_repair = progress.resume_repairs(BUDGET);
+    assert!(to_repair.is_empty(), "{to_repair:?}");
 }
 
 /// A walk that filled its batch is resumed from where it stopped.

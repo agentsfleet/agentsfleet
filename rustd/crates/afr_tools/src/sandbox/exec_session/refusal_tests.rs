@@ -43,7 +43,8 @@ async fn should_refuse_a_session_that_is_not_open() {
         output.text,
         "[session_not_found] session 99 is not an open session"
     );
-    assert!(executor.written().is_empty());
+    let written = executor.written();
+    assert!(written.is_empty(), "{written:?}");
 }
 
 #[tokio::test]

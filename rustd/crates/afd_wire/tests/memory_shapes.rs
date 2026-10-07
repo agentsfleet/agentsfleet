@@ -94,7 +94,7 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
 
     let bare: MemoryHydrateResponse<'_> = serde_json::from_str(r#"{"memory": []}"#).unwrap();
     assert!(!bare.publish);
-    assert!(bare.shared.is_empty());
+    assert_eq!(bare.shared, [] as [afd_wire::memory::SharedMemory<'_>; 0]);
 }
 
 /// The published recall `limit` is the range the request type proves, so a

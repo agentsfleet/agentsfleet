@@ -91,7 +91,8 @@ async fn assert_memory_filters(router: &axum::Router, token: &str, collection: &
     )
     .await;
     assert_eq!(no_match.status(), StatusCode::OK);
-    assert!(items(&json_body(no_match).await).is_empty());
+    let body = json_body(no_match).await;
+    assert!(items(&body).is_empty(), "{body}");
 }
 
 async fn assert_memory_forget(router: &axum::Router, token: &str, collection: &str) {

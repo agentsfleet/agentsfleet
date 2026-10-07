@@ -188,7 +188,10 @@ mod tests {
         let policy = ready(&config, &resolved, &declared);
 
         assert!(policy.repository_binding.is_none());
-        assert!(policy.http_origin_policies.is_empty());
+        assert_eq!(
+            policy.http_origin_policies,
+            [] as [afd_wire::policy::HttpOriginPolicy<'_>; 0]
+        );
     }
 
     #[test]
@@ -219,7 +222,7 @@ mod tests {
         let policy = ready(&config, &resolved, &declared);
 
         assert!(policy.secrets_map.is_none());
-        assert!(policy.mintable.is_empty());
+        assert_eq!(policy.mintable, [] as [afd_wire::policy::Mintable<'_>; 0]);
     }
 
     #[test]

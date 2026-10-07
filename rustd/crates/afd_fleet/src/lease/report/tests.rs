@@ -91,7 +91,11 @@ fn a_failed_finalize_step_renders_every_refusal() -> Result<(), &'static str> {
             !failure.to_string().is_empty(),
             "the refusal renders to something an operator can act on"
         );
-        assert!(!failure.code().as_str().is_empty());
+        assert!(
+            !failure.code().as_str().is_empty(),
+            "{:?}",
+            failure.code().as_str()
+        );
         step("released", &lease, "lease-fixture", Err(failure));
     }
     Ok(())

@@ -64,6 +64,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `cli/src/commands/whoami.ts`, `cli/test/fleet-schedule.unit.test.ts`, `ui/packages/app/lib/api/events-types.ts`, `ui/packages/app/tests/e2e/acceptance/fixtures/cli-runner.ts`, `cli/test/acceptance/fixtures/grant-ops.ts`, `cli/test/fleetbundle-pr-reviewer.unit.test.ts`, `ui/packages/app/lib/api/approvals-types.ts`, `ui/packages/app/tests/e2e/acceptance/fixtures/grants.ts`, `docs/architecture/runner_fleet.md` | EDIT | Comments citing a moved module's path or item now cite `afd_api_wire`; no code changes. `schema/810_fleet_approval_gates.sql:65,79` still cite `afd_wire::approval`: an applied migration, left for Indy |
 | `rustd/crates/afd_http/src/route/` (`runner.rs`, `runner_ops.rs`, `path.rs`), `rustd/crates/afd_auth/Cargo.toml` | EDIT | The route table names the `paths` templates; `runner_path!` is deleted; `afd_auth` re-exports the wire's token prefix |
 | `docs/architecture/runner_execution.md` | EDIT | §Crates: `afd_api_wire` is daemon-only; `afd_wire` holds what both sides speak |
+| `rustd/rust-toolchain.toml`, `rustd/Cargo.toml` (`rust-version`), `playbooks/operations/ci_rust_images/versions.env`, `README.md`, `scripts/check_builder_pin_test.sh` | EDIT | The toolchain pin moves to 1.99.0 in every place the image playbook's checklist names |
+| Every `rustd/crates/*` file using `fetch_update`, asserting on `is_empty()`, or carrying a lint 1.99 retired (`afd_gate/src/policy/context.rs`, `afd_sse/src/live.rs`, `afd_observability/src/metrics/registry.rs`) | EDIT | `fetch_update` is renamed `try_update`; clippy 1.99's `assert_is_empty` wants the value printed; `double_must_use` and an unfulfilled `float_cmp` expectation are removed |
 
 ## Applicable Rules
 
@@ -125,6 +127,14 @@ The 22 daemon-only modules and `schedule` move to `afd_api_wire`, with their tes
 
 - **Dimension 5.1** DONE — Scenario A compiles no crate, and B and C are recorded beside the baseline → Test `measure_after_rebuilds`
 
+### §6 — The workspace builds on Rust 1.99.0 — DONE
+
+The pin moves from 1.98.1 to 1.99.0, the newest stable (`channel-rust-stable.toml` reads `1.99.0 (b940084d7 2026-09-28)`). The CI base image is rebuilt and pushed under the new tag, which the workflows derive from `versions.env`. 1.99 renames `fetch_update` to `try_update`. Its clippy adds `assert_is_empty`: string checks take `assert_ne!(x, "")` and every other check keeps `assert!` with the value in its message, which needs no `PartialEq` on the element type.
+
+- **Dimension 6.1** DONE — The workspace lints clean on 1.99.0 → Test `lint_on_pinned_toolchain`
+- **Dimension 6.2** DONE — The image playbook refuses a build when the three pins disagree, and agrees on 1.99.0 → Test `build_and_push_pin_check`
+- **Dimension 6.3** DONE — `ci-rust-alpine:1.99.0-alpine3.24` is published for both architectures → Test `ci_image_manifest_has_both_arches`
+
 ## Interfaces
 
 ```
@@ -173,6 +183,9 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 | 4.1 | unit | `test_route_templates_compose_from_their_segments` | every template, one per line → an `insta` snapshot reading `/v1/runners/me/leases/{lease_id}/activity` and the rest |
 | 4.2 | command | `route_literals_only_in_paths` | `git grep -n '"/v1/runners' -- 'rustd/crates/*/src/**' ':!rustd/crates/afd_wire/src/paths.rs' ':!rustd/crates/*/src/**/*tests.rs'` → no match |
 | 5.1 | manual | `measure_after_rebuilds` | scenario A at the head → 0 `Compiling` lines; B and C beside the baseline in Discovery |
+| 6.1 | command | `lint_on_pinned_toolchain` | `cd rustd && rustc --version` → `rustc 1.99.0`; `make lint-rustd` → `clippy -D warnings` and `rustfmt --check` both ✓ |
+| 6.2 | command | `build_and_push_pin_check` | `bash playbooks/operations/ci_rust_images/build_and_push_test.sh` → every case passes, the mismatch case refusing |
+| 6.3 | command | `ci_image_manifest_has_both_arches` | `docker manifest inspect ghcr.io/agentsfleet/ci-rust-alpine:1.99.0-alpine3.24` → `amd64` and `arm64` entries |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -182,6 +195,7 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 | R2 | The document is unchanged (§2) | `cd rustd && cargo run -q -p agentsfleetd --features openapi --bin agentsfleetd -- --no-banner openapi \| diff - ../public/openapi.json` | no output | P0 | ✅ `cmp` against `public/openapi.json` silent, 684620 bytes each (§2) |
 | R3 | The runner links no API crate (§2) | `cd rustd && cargo tree -p agentsfleet_runner -e normal \| grep -c afd_api_wire` | 0 | P0 | ✅ `cargo tree -e normal,build,dev --all-features` over `agentsfleet_runner` and all ten `afr_*` crates: 0 `afd_api_wire` lines (§2) |
 | R4 | Routes have one spelling and dead items are gone (§3, §4) | `git grep -nE '"/v1/runners\|RunnerChildInput\|FAIL_CLOSED_DEFAULT\|FLEET_RUNNERS' -- 'rustd/crates/*/src/**' ':!rustd/crates/afd_wire/src/paths.rs' ':!rustd/crates/*/src/**/*tests.rs'` | no output | P0 | ✅ exit 1, no output (§3, §4) |
+| R6 | The workspace and its CI image are on Rust 1.99.0 (§6) | `docker manifest inspect ghcr.io/agentsfleet/ci-rust-alpine:1.99.0-alpine3.24 \| grep -c '"architecture": "\(amd64\|arm64\)"'` | 2 | P0 | ✅ `amd64` and `arm64` at `sha256:8109325371efcc71b38381a60eb9ed96dbd2767e96259bdcd79fbc2fdb68fafd`; `build_and_push_test.sh` 19 passed, 0 failed (§6) |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -241,6 +255,7 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 - **After, §5** (Oct 07, 2026: 12:20 PM) — revision `c7226727b`, same machine, toolchain and script as §1; (A) and (B) now touch `rustd/crates/afd_api_wire/src/admin.rs`. (A) `cargo build -p agentsfleet_runner`: runs 2 and 3 compile **0** crates in 0.23s / 0.20s (was 12 crates, median 4.42s). Run 1 compiled 12 in 12.07s, because the warm-up builds the runner and the daemon together and a runner-only build resolves features differently; the §1 baseline's run 1 carried the same cost. (B) `cargo build -p agentsfleetd`: 19 crates, 8.95s / 9.00s after a first run of 33 crates in 34.97s, median **9.00s** (was 29 crates, 12.53s). (C) clean `cargo build --workspace --timings`: 514 `Compiling` lines in 2m 20s (was 513 in 2m 27s); `afd_wire` lib unit 5.50s (was 9.38s), `afd_api_wire` 3.86s.
 - **§3 amendment** (Oct 07, 2026: 11:30 AM) — `paths::RUNNERS` is kept, not deleted: §3's deletion list contradicted §4, whose enrolment route keeps its own constant and whose Dimension 4.2 forbids the `"/v1/runners"` literal outside `paths`. The audit's "no use anywhere" held at `cc318b856`; §4 gives it its reader.
 - **§4 amendment** (Oct 07, 2026: 12:05 PM) — Dimension 4.2 and R4 exclude `*tests.rs` under `src/`: the runner client's unit tests (`afr_supervisor/src/client/tests.rs`, `client/lease_verbs/tests.rs`) spell `/v1/runners/...` as the independent expected value the client must produce, and naming the constant there would compare it with itself. The route table in `afd_http/src/route/runner.rs` spelled every route a third time through `runner_path!`; it now names the templates and the macro is gone. The bearer description reads the enrolment path from `RunnerOpsRoute::Register`, since `afd_api` holds `afd_wire` only as a dev-dependency.
+- **§6 scope** (Oct 07, 2026: 3:10 PM) — Indy (in-session, Oct 07, 2026): "I think move rust to 1.99.0 or any thing latest in this repo and the CI jobs?", then "for CI jobs new images needs to built and pushed", then "Well i want the rust-1-00 in this branch/worktree not a new tree". Folded here because this spec is the Rust infrastructure workstream of this Pull Request. 1.99.0 is the newest stable at that date. The first 1.99 build failed on `afd_core/src/clock.rs:223`: "use of deprecated method `fetch_update`: renamed to `try_update` for consistency". Clippy then reported `assert_is_empty`, `double_must_use` and an unfulfilled `float_cmp` expectation. `cargo clippy --fix` rewrote collections as `assert_eq!(v, [] as [T; 0])`, which fails to compile wherever the element type lacks `PartialEq`, so those sites keep `assert!` with the value in the message.
 - **Metrics review** — no analytics or funnel playbook update required: no product or operator signal changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

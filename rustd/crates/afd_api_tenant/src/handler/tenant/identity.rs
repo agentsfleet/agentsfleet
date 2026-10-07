@@ -169,7 +169,10 @@ mod tests {
     /// them.
     #[test]
     fn a_person_holding_nothing_renders_an_empty_list() {
-        assert!(scopes_of(&person_holding(ScopeSet::from_scopes(&[]))).is_empty());
+        assert_eq!(
+            scopes_of(&person_holding(ScopeSet::from_scopes(&[]))),
+            [] as [std::borrow::Cow<'_, str>; 0]
+        );
     }
 
     /// Each class renders its own wire word, taken from the shared constants.

@@ -264,7 +264,8 @@ async fn exercise(executor: &dyn Executor) {
     assert!(executor.kill(id).await.is_ok());
     assert!(executor.read_file("a", 1).await.is_ok());
     assert!(executor.write_file("a", Bytes::new()).await.is_ok());
-    assert!(executor.list_dir("/").await.unwrap().entries.is_empty());
+    let entries = executor.list_dir("/").await.unwrap().entries;
+    assert!(entries.is_empty(), "{entries:?}");
 }
 
 /// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the lease

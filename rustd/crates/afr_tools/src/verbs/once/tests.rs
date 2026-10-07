@@ -114,5 +114,6 @@ async fn a_refused_moment_sends_nothing() {
     )
     .await;
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
-    assert!(verbs.asked().is_empty());
+    let asked = verbs.asked();
+    assert!(asked.is_empty(), "{asked:?}");
 }

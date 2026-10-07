@@ -205,7 +205,8 @@ async fn only_reports_are_pending() {
     let (_root, home) = home();
     fs::write(home.spool().join("notes.txt"), b"operator").unwrap();
 
-    assert!(ReportSpool::new(&home).pending().await.unwrap().is_empty());
+    let left_over = ReportSpool::new(&home).pending().await.unwrap();
+    assert!(left_over.is_empty(), "{left_over:?}");
 }
 
 #[tokio::test]

@@ -45,7 +45,10 @@ mod tests {
             assert_eq!(rule.path, "/repos/acme/widgets/");
             assert_eq!(rule.path_match, HttpPathMatch::Prefix);
             // No locked fields: a GET carries no body to lock.
-            assert!(rule.json_fields.is_empty());
+            assert_eq!(
+                rule.json_fields,
+                [] as [afd_wire::policy::HttpJsonFieldRule<'_>; 0]
+            );
         }
     }
 

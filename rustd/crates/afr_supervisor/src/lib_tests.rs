@@ -99,7 +99,8 @@ async fn a_runner_drains_beats_and_runs_until_shutdown() {
         "the left report and the new one"
     );
     assert!(verbs.contains(&Verb::Heartbeat));
-    assert!(ReportSpool::new(&home).pending().await.unwrap().is_empty());
+    let pending = ReportSpool::new(&home).pending().await.unwrap();
+    assert!(pending.is_empty(), "{pending:?}");
 }
 
 #[tokio::test(start_paused = true)]

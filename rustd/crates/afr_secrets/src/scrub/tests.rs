@@ -142,7 +142,7 @@ fn should_hand_back_the_held_buffer_unmasked_when_nothing_matched() {
     let ready = carry.push(&scrub(), "plain text with no secret");
 
     assert_eq!(ready, "plain text with no secret");
-    assert!(carry.held.is_empty());
+    assert_eq!(carry.held, "");
 }
 
 #[test]

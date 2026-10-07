@@ -155,8 +155,8 @@ mod tests {
         let site = first_site(&json!([{"id": "cloud-1"}])).expect("a listed site");
 
         assert_eq!(site.cloud_id, "cloud-1");
-        assert!(site.url.is_empty());
-        assert!(site.name.is_empty());
+        assert!(site.url.is_empty(), "{:?}", site.url);
+        assert!(site.name.is_empty(), "{:?}", site.name);
     }
 
     /// An answer naming no site is no site.

@@ -171,7 +171,8 @@ fn a_slack_team_without_a_name_still_yields_a_grant() {
     let grant = slack(&answer, slack_delimiter()).expect("a nameless team is a real install");
 
     assert_eq!(grant.handle["team_name"], json!(""));
-    assert!(grant.install.expect("routing row").scopes.is_empty());
+    let install_scopes = grant.install.expect("routing row").scopes;
+    assert!(install_scopes.is_empty(), "{install_scopes:?}");
 }
 
 /// The triple becomes a handle whose expiry is absolute rather than relative.

@@ -46,6 +46,6 @@ fn a_value_shorter_than_the_fragment_is_returned_whole() {
 fn a_non_collision_insert_failure_stays_a_query_fault() {
     let failure = classify_insert(sqlx::Error::PoolClosed);
 
-    assert!(!failure.to_string().is_empty());
-    assert!(!failure.code().as_str().is_empty());
+    assert_ne!(failure.to_string(), "");
+    assert_ne!(failure.code().as_str(), "");
 }

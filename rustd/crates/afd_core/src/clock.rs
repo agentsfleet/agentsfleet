@@ -219,7 +219,7 @@ impl FixedClock {
     pub fn advance_millis(&self, millis: i64) {
         let _previous = self
             .0
-            .fetch_update(
+            .try_update(
                 std::sync::atomic::Ordering::SeqCst,
                 std::sync::atomic::Ordering::SeqCst,
                 |current| Some(current.saturating_add(millis)),

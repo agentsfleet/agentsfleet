@@ -69,5 +69,5 @@ fn assert_database_error(error: &Error) {
     assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY);
     assert_eq!(error.detail(), super::DETAIL_DATABASE_ERROR);
     assert!(error.source().is_some());
-    assert!(!error.to_string().is_empty());
+    assert!(!error.to_string().is_empty(), "{error}");
 }

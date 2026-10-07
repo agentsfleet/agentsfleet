@@ -163,7 +163,7 @@ fn test_an_unregistered_code_degrades_to_the_unknown_entry() {
     assert_eq!(problem.status(), 500);
     assert_eq!(problem.title(), "Unknown error");
     assert!(problem.user_message().is_none());
-    assert!(!problem.hint().is_empty());
+    assert_ne!(problem.hint(), "");
 }
 
 /// A reused steer operation id answers 409 with prose that names the field.
@@ -176,7 +176,7 @@ fn test_operation_conflict_code_registered() {
     // pin test: literal is the contract
     assert_eq!(problem.code().as_str(), "UZ-AGT-016");
     assert_eq!(problem.status(), 409);
-    assert!(!problem.title().is_empty());
+    assert_ne!(problem.title(), "");
     assert!(
         problem.hint().contains("operation_id"),
         "{}",

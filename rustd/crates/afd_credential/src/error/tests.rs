@@ -41,7 +41,7 @@ fn a_query_failure_keeps_its_cause_and_internal_mapping() {
     let failure = super::query("coverage query")(sqlx::Error::PoolClosed);
 
     assert_eq!(failure.code(), error_code::INTERNAL_DB_QUERY);
-    assert!(!failure.detail().is_empty());
+    assert_ne!(failure.detail(), "");
     assert!(failure.source().is_some());
     assert!(!failure.is_config_permanent());
     assert!(!failure.is_credential_missing());
@@ -82,8 +82,8 @@ fn a_vault_envelope_that_will_not_open_keeps_its_cause() -> Result<(), &'static 
     let failure = super::vault_open(crypto_failure()?);
 
     assert!(failure.source().is_some(), "the crypto cause is preserved");
-    assert!(!failure.detail().is_empty());
-    assert!(!failure.to_string().is_empty());
+    assert_ne!(failure.detail(), "");
+    assert_ne!(failure.to_string(), "");
     assert!(!failure.is_credential_missing());
     Ok(())
 }
@@ -102,7 +102,7 @@ fn a_failed_mint_answers_the_internal_operation_code() -> Result<(), &'static st
         "a failed mint is this instance's problem, not the caller's"
     );
     assert!(drained.source().is_some(), "a failed mint keeps its cause");
-    assert!(!drained.detail().is_empty());
+    assert_ne!(drained.detail(), "");
     assert!(
         !drained.is_config_permanent(),
         "a failed mint is not a stored-configuration fault an operator edits"

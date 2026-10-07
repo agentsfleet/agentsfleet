@@ -56,7 +56,7 @@ async fn redirect_protocol_accepts_one_validated_hop_only() {
         .download_with(&repository, allow_fixture_redirect)
         .await
         .expect("one approved redirect downloads");
-    assert!(!compressed.is_empty());
+    assert_ne!(compressed, [] as [u8; 0]);
 
     let source = GithubSource::new("main")
         .expect("revision is valid")

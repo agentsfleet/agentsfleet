@@ -188,7 +188,6 @@ impl Registry {
     }
 
     /// Every declared family, in wire-name order.
-    #[must_use]
     pub fn families(&self) -> impl ExactSizeIterator<Item = &Family> {
         self.families.values()
     }

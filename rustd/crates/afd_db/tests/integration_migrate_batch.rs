@@ -42,7 +42,7 @@ async fn a_runtime_batch_failure_rolls_back_and_a_corrected_retry_applies_once()
         .await
         .expect("the corrected batch can create the rolled-back table");
     assert_eq!(recovered.applied, [VERSION]);
-    assert!(recovered.skipped.is_empty());
+    assert_eq!(recovered.skipped, [] as [i32; 0]);
     assert_recovered_state(&db).await;
 
     let repeated = Migrator::new()
@@ -50,7 +50,7 @@ async fn a_runtime_batch_failure_rolls_back_and_a_corrected_retry_applies_once()
         .run(&db)
         .await
         .expect("an applied migration is skipped, including its non-idempotent SQL");
-    assert!(repeated.applied.is_empty());
+    assert_eq!(repeated.applied, [] as [i32; 0]);
     assert_eq!(repeated.skipped, [VERSION]);
     assert_recovered_state(&db).await;
 

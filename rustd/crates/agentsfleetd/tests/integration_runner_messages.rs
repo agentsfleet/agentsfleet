@@ -127,7 +127,11 @@ async fn test_message_without_channel_refused() {
         (409, &json!("UZ-RUN-019"), &json!("no_thread")),
         "{refused}"
     );
-    assert!(posts(&speaking.slack).is_empty());
+    assert!(
+        posts(&speaking.slack).is_empty(),
+        "{:?}",
+        posts(&speaking.slack)
+    );
     assert_eq!(
         speaking.counted(&lease_id).await,
         0,

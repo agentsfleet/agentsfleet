@@ -220,7 +220,7 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
         .await
         .expect("the terminal event page loads");
     assert_eq!((first.total(), second.total(), third.total()), (4, 4, 4));
-    assert!(third.items().is_empty());
+    assert_eq!(third.items(), []);
     assert!(third.next_cursor().is_none());
     let event_types = first
         .into_items()

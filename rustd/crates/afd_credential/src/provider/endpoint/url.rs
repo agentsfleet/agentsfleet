@@ -231,7 +231,7 @@ mod tests {
         ]
         .map(Rejection::as_str);
         for (index, reason) in reasons.iter().enumerate() {
-            assert!(!reason.is_empty());
+            assert_ne!(*reason, "");
             assert!(
                 !reasons.iter().skip(index + 1).any(|other| other == reason),
                 "`{reason}` is spelled twice, so a log cannot say which fired"
