@@ -39,6 +39,8 @@ pub(crate) enum Freezer {
     ThawsSilent,
     /// Freezes and thaws, but its executor fails every listing after.
     ThawsBroken,
+    /// Its processes ended after the run, so it no longer reports running.
+    Dead,
 }
 
 /// An engine whose sandboxes count their teardowns.
@@ -130,6 +132,10 @@ impl Sandbox for FakeSandbox {
         })
     }
 
+    fn is_running(&mut self) -> bool {
+        self.freezer != Freezer::Dead
+    }
+
     async fn freeze(&self) -> afr_sandbox::Result<()> {
         if self.freezer == Freezer::RefusesFreeze {
             return Err(std::io::Error::other(NO_FREEZER).into());
@@ -162,7 +168,7 @@ impl Sandbox for FakeSandbox {
 /// What a refused write or delete says.
 const READ_ONLY: &str = "read-only workspace";
 /// What a refused freeze or thaw says.
-const NO_FREEZER: &str = "cgroup.freeze refused";
+pub(crate) const NO_FREEZER: &str = "cgroup.freeze refused";
 /// What a broken executor says once its sandbox is thawed.
 pub(crate) const EXECUTOR_GONE: &str = "the executor died while frozen";
 

@@ -65,8 +65,8 @@ impl Drainer<'_> {
         let mut still_held = false;
         for spooled in pending {
             match spooled.deliver(self.plane).await {
-                Ok(Delivery::Settled | Delivery::Rejected) => {}
-                Ok(Delivery::Superseded) => self.superseded(&spooled),
+                Ok(Delivery::Settled) => {}
+                Ok(Delivery::Superseded | Delivery::Rejected) => self.superseded(&spooled),
                 Ok(Delivery::Kept(failure)) => {
                     if self.halt.stops_on(&failure) {
                         return true;
@@ -83,8 +83,9 @@ impl Drainer<'_> {
     }
 
     /// Ends the hold `spooled`'s lease parked, as the lease's own post does
-    /// when the daemon settled the lease without the report: that sandbox
-    /// serves no next lease. A file no lease id names parked nothing.
+    /// when the daemon settled the lease without the report or cannot read
+    /// it: that sandbox carries a run the daemon never recorded, and serves no
+    /// next lease. A file no lease id names parked nothing.
     fn superseded(&self, spooled: &Spooled) {
         if let Ok(lease) = Uuid7::parse(spooled.lease_id()) {
             self.holds.supersede(lease);

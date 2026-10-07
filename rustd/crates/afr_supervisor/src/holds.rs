@@ -11,10 +11,11 @@
 //! A hold ends when its idle window runs out, when the runner's last free
 //! worker takes a lease for another fleet (a runner with no worker free could
 //! not serve it anyway), when the runner holds as many as it has workers and
-//! it is the oldest, when the daemon names its fleet inactive, and at
-//! shutdown. Expiry is checked on every message, and the heartbeat asks for
-//! the list every tick, so no timer runs here and a test moves time through
-//! the clock alone.
+//! it is the oldest, when the daemon names its fleet, when it no longer
+//! carries the fleet's latest run ([`Release::Superseded`]), and once the
+//! runner takes no new lease. Expiry is checked on every message, and the
+//! heartbeat asks for the list every tick, so no timer runs here and a test
+//! moves time through the clock alone.
 
 use std::sync::Arc;
 
@@ -54,14 +55,19 @@ pub(crate) enum Release {
     Capped,
     /// The next lease wanted another size or policy.
     Mismatch,
-    /// The daemon named its fleet halted or deleted.
+    /// The daemon named its fleet: halted, deleted, or leased by another
+    /// runner since.
     Inactive,
-    /// The runner stopped.
+    /// The runner takes no new lease, so no lease could take it: leasing
+    /// stopped, or the runner is shutting down or stopped.
     Shutdown,
     /// It would not thaw, or its executor did not answer once thawed.
     ThawFailed,
-    /// The daemon refused the report of the lease that left it, or the lease
-    /// that asked for it ended before taking it.
+    /// It no longer carries the fleet's latest run: the daemon refused the
+    /// report of the lease that left it, as settled without it or for good,
+    /// or never received it; the fleet's next lease was not told to resume
+    /// it; a newer park of the same fleet replaced it; or the lease that
+    /// asked for it stopped waiting before taking it.
     Superseded,
 }
 
@@ -126,6 +132,7 @@ enum Request {
     Fleets {
         reply: oneshot::Sender<Vec<Uuid7>>,
     },
+    Close,
     Shutdown {
         done: oneshot::Sender<()>,
     },
@@ -149,6 +156,30 @@ impl Holds {
             requests,
             saturated,
         }
+    }
+
+    /// [`Holds::start`], counting into `recorder` what the task counts: it is
+    /// spawned, so a test's own recording scope never reaches it.
+    #[cfg(test)]
+    pub(crate) fn recording(
+        clock: Arc<dyn Clock>,
+        recorder: Arc<dyn afr_telemetry::Recorder>,
+    ) -> Self {
+        let (requests, received) = mpsc::unbounded_channel();
+        let saturated = Arc::new(Notify::new());
+        let keeper = Keeper::new(clock, Arc::clone(&saturated)).run(received);
+        tokio::spawn(afr_telemetry::testing::scoped(recorder, keeper));
+        Self {
+            requests,
+            saturated,
+        }
+    }
+
+    /// Ends every hold and holds nothing more, for a runner that takes no new
+    /// lease: no lease could take one. A later park destroys its sandbox, and
+    /// the next list asked for is empty.
+    pub(crate) fn close(&self) {
+        let _stopped = self.requests.send(Request::Close);
     }
 
     /// The fleet's held sandbox when `key` matches it whole, still frozen. A

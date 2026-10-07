@@ -9,7 +9,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afd_core::id::Uuid7;
+use afd_core::test_util::trace::Capture;
 use afd_wire::report::ReportResponse;
+use afr_sandbox::{Engine as _, Limits, SandboxRequest};
 use bytes::Bytes;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
@@ -18,10 +20,10 @@ use super::Drainer;
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
-use crate::holds::Holds;
+use crate::holds::{HoldKey, Holds, Release};
 use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
-use crate::test_support::{Answer, LEASE_ID, clock, json, plane};
+use crate::test_support::{Answer, FLEET_ID, FakeEngine, LEASE_ID, clock, json, plane};
 
 /// A spooled report's bytes; the drainer never reads them.
 const EMPTY_REPORT: &[u8] = b"{}";
@@ -174,4 +176,68 @@ async fn a_spool_that_will_not_read_is_retried_rather_than_abandoned() {
 
     let posted = crate::test_support::drain(&mut calls).len();
     assert_eq!(posted, 1, "posted once the entry read");
+}
+
+/// A registry with room for two, holding a sandbox `engine` built that the
+/// lease [`LEASE_ID`] parked for [`FLEET_ID`].
+async fn parked(engine: &FakeEngine) -> Holds {
+    let holds = Holds::start(clock());
+    holds.resize(2);
+    let request = SandboxRequest {
+        lease_id: LEASE_ID,
+        limits: Limits::default(),
+    };
+    let key = HoldKey {
+        fleet: Uuid7::parse(FLEET_ID).unwrap(),
+        workspace: FLEET_ID.to_owned(),
+        limits: Limits::default(),
+        policy: String::new(),
+    };
+    let sandbox = engine.prepare(request).await.unwrap();
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    assert!(holds.park(key, lease, sandbox).await.is_some(), "parked");
+    holds
+}
+
+/// A spooled report the daemon will never take is set aside by the drain,
+/// and the sandbox its lease parked is destroyed: the daemon never recorded
+/// the run it carries.
+#[tokio::test(start_paused = true)]
+async fn test_a_drained_rejected_report_releases_what_its_lease_parked() {
+    const RELEASED: &str = "sandbox_hold_released";
+    let capture = Capture::install();
+    let root = tempfile::tempdir().unwrap();
+    let home = StorageHome::open(root.path()).unwrap();
+    let spool = ReportSpool::new(&home);
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    spool
+        .hold(&lease, Bytes::from_static(EMPTY_REPORT))
+        .await
+        .unwrap();
+    let (plane, _calls) = plane(|_call| Answer::Fail(error::refused(Verb::Report, 400, None)));
+    let shutdown = CancellationToken::new();
+    let halt = Halt::new(shutdown.clone());
+    let held = Notify::new();
+    let engine = FakeEngine::default();
+    let holds = parked(&engine).await;
+    let drainer = Drainer {
+        spool: &spool,
+        plane: &plane,
+        halt: &halt,
+        held: &held,
+        holds: &holds,
+    };
+
+    let ((), ()) = tokio::join!(drainer.run(), async {
+        until_empty(&spool).await;
+        shutdown.cancel();
+    });
+    let left = holds.fleets().await;
+    holds.shutdown().await;
+
+    assert!(left.is_empty(), "{left:?}");
+    let released = capture.only(RELEASED);
+    let superseded = Release::Superseded.outcome().as_str();
+    assert_eq!(released.field("reason"), Some(superseded));
+    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }

@@ -24,6 +24,9 @@ use crate::holds::{Holds, Release};
 /// zero must not turn the heartbeat into a busy loop.
 pub(crate) const MIN_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 const EVENT_FAILED: &str = "heartbeat_failed";
+/// The event a runner's last beat, which lists no holds, failing is logged
+/// under.
+const EVENT_LAST_FAILED: &str = "heartbeat_last_failed";
 /// The event a fleet the daemon named for release, that is no fleet id, is
 /// logged under.
 const EVENT_RELEASE_UNREADABLE: &str = "sandbox_hold_release_unreadable";
@@ -130,6 +133,10 @@ impl<'a> Heartbeat<'a> {
     /// again, sooner the first time and backing off after. Holds released
     /// because no worker was free beat at once, so the daemon stops routing
     /// those fleets here without waiting out the interval.
+    ///
+    /// Once leasing stops no lease could take a hold, so every hold ends and
+    /// the beat goes at once. Leasing is a child of serving, so a runner that
+    /// stops serving gets there too; it says so in [`Heartbeat::last_beat`].
     pub(crate) async fn keep_beating(
         mut self,
         assignment: &watch::Sender<Assignment>,
@@ -137,9 +144,15 @@ impl<'a> Heartbeat<'a> {
     ) {
         let mut retries = endless();
         let mut pause = Duration::ZERO;
+        let mut holding = true;
         loop {
             tokio::select! {
-                () = halt.serving().cancelled() => return,
+                biased;
+                () = halt.serving().cancelled() => return self.last_beat(halt).await,
+                () = halt.leasing().cancelled(), if holding => {
+                    holding = false;
+                    self.holds.close();
+                }
                 () = tokio::time::sleep(pause) => {}
                 () = self.holds.saturated().notified() => {}
             }
@@ -169,6 +182,28 @@ impl<'a> Heartbeat<'a> {
             }
         }
     }
+
+    /// Ends every hold and beats once more listing none, so the daemon routes
+    /// their fleets elsewhere now rather than once it finds this runner
+    /// silent. Best effort, and its answer is not acted on: the runner stops
+    /// either way, and a refused token means no call can succeed.
+    async fn last_beat(&mut self, halt: &Halt) {
+        self.holds.close();
+        if halt.token_refused() {
+            return;
+        }
+        if let Err(failure) = self.beat().await
+            && !halt.stops_on(&failure)
+        {
+            let code = failure.code().as_str();
+            let event = EVENT_LAST_FAILED;
+            tracing::warn!(
+                error_code = code,
+                event,
+                "the last beat failed; this runner's holds stand at the daemon until they lapse"
+            );
+        }
+    }
 }
 
 /// Logs a fleet the daemon named for release that is no fleet id, under the
@@ -185,3 +220,7 @@ fn unreadable_release(named: &str, failure: afd_core::error::Error) {
 #[cfg(test)]
 #[path = "heartbeat/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "heartbeat/closing_tests.rs"]
+mod closing_tests;
