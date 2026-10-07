@@ -2,14 +2,20 @@
 //!
 //! A block image rather than a quota on the host's file system, so it works on
 //! any host and a full disk answers `ENOSPC` inside the sandbox; a microVM
-//! engine attaches the same image as its data disk.
+//! engine attaches the same image as its data disk. The disk holds two
+//! directories, `workspace/` and `tmp/`, bound at `/workspace` and `/tmp`
+//! inside the sandbox: both draw on the one limit, so a full `/tmp` answers
+//! `ENOSPC` like a full workspace, where a tmpfs would hold its pages against
+//! the lease's memory until its last process is gone; and `mke2fs`'s
+//! `lost+found` stays out of `/workspace`.
 
-use std::fs;
+use std::fs::{self, DirBuilder, Permissions};
 use std::io::ErrorKind;
-use std::os::unix::fs::OpenOptionsExt as _;
+use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
 use afd_core::error_code;
+use rustix::fs::{Gid, Uid};
 
 use crate::error::Result;
 use crate::host::{EXT4, HostTools};
@@ -22,6 +28,14 @@ const MOUNT_DIR: &str = "workspace";
 const WORKSPACE_OPTIONS: &str = "loop,nosuid,nodev";
 /// The image's permissions: root reads and writes it, nobody else.
 const IMAGE_MODE: u32 = 0o600;
+/// The directory on the disk bound at `/workspace`.
+pub(crate) const WORKSPACE_DIR: &str = "workspace";
+/// The directory on the disk bound at `/tmp`.
+pub(crate) const TMP_DIR: &str = "tmp";
+/// The workspace's mode: the sandbox user's, readable by the rest.
+const WORKSPACE_MODE: u32 = 0o755;
+/// `/tmp`'s mode: every user writes, and only an owner removes.
+const TMP_MODE: u32 = 0o1777;
 /// The event a leftover from a failed build is logged under.
 const EVENT_DISK_LEFT: &str = "sandbox_workspace_left";
 
@@ -30,6 +44,8 @@ const EVENT_DISK_LEFT: &str = "sandbox_workspace_left";
 pub struct WorkspaceDisk {
     image: PathBuf,
     mount_point: PathBuf,
+    workspace: PathBuf,
+    tmp: PathBuf,
 }
 
 impl WorkspaceDisk {
@@ -44,10 +60,7 @@ impl WorkspaceDisk {
         bytes: u64,
         owner: (u32, u32),
     ) -> Result<Self> {
-        let disk = Self {
-            image: dir.join(IMAGE_NAME),
-            mount_point: dir.join(MOUNT_DIR),
-        };
+        let disk = Self::in_dir(dir);
         match disk.build(tools, bytes, owner).await {
             Ok(()) => Ok(disk),
             Err(error) => {
@@ -69,7 +82,31 @@ impl WorkspaceDisk {
         fs::create_dir(&self.mount_point)?;
         tools
             .mount(EXT4, WORKSPACE_OPTIONS, &self.image, &self.mount_point)
-            .await
+            .await?;
+        lay_out(&self.mount_point, owner)
+    }
+
+    /// The disk's paths under `dir`, made or not.
+    fn in_dir(dir: &Path) -> Self {
+        let mount_point = dir.join(MOUNT_DIR);
+        Self {
+            image: dir.join(IMAGE_NAME),
+            workspace: mount_point.join(WORKSPACE_DIR),
+            tmp: mount_point.join(TMP_DIR),
+            mount_point,
+        }
+    }
+
+    /// The directory on the disk the sandbox sees as `/workspace`.
+    #[must_use]
+    pub fn workspace(&self) -> &Path {
+        &self.workspace
+    }
+
+    /// The directory on the disk the sandbox sees as `/tmp`.
+    #[must_use]
+    pub fn tmp(&self) -> &Path {
+        &self.tmp
     }
 
     /// Removes what a failed build left; nothing is mounted at this point.
@@ -125,10 +162,7 @@ impl WorkspaceDisk {
     /// Adopts whatever disk a previous run left in `dir`, mounted or not.
     #[cfg(target_os = "linux")]
     pub(crate) fn leftover(dir: &Path) -> Self {
-        Self {
-            image: dir.join(IMAGE_NAME),
-            mount_point: dir.join(MOUNT_DIR),
-        }
+        Self::in_dir(dir)
     }
 
     /// Releases a leftover: unmounted first only if something is mounted, and
@@ -147,6 +181,22 @@ impl WorkspaceDisk {
         fs::remove_file(&self.image).or_else(absent)?;
         Ok(())
     }
+}
+
+/// Makes `workspace/` and `tmp/` on the disk mounted at `root`, each with its
+/// mode whatever the umask, owned by `owner` like the disk's root.
+///
+/// # Errors
+/// A directory cannot be made, given its mode, or given its owner.
+pub(crate) fn lay_out(root: &Path, owner: (u32, u32)) -> Result<()> {
+    let (uid, gid) = (Uid::from_raw(owner.0), Gid::from_raw(owner.1));
+    for (name, mode) in [(WORKSPACE_DIR, WORKSPACE_MODE), (TMP_DIR, TMP_MODE)] {
+        let dir = root.join(name);
+        DirBuilder::new().mode(mode).create(&dir)?;
+        fs::set_permissions(&dir, Permissions::from_mode(mode))?;
+        rustix::fs::chown(&dir, Some(uid), Some(gid)).map_err(std::io::Error::from)?;
+    }
+    Ok(())
 }
 
 /// A file that was never made needs no removing.

@@ -16,7 +16,8 @@ fn with_level(level: Option<&str>) -> Vec<String> {
     let entry_args = [OsString::from("sandbox")];
     arguments(&Layout {
         toolbox: Path::new("/srv/toolbox/abc"),
-        workspace: Path::new("/srv/leases/l1/workspace"),
+        workspace: Path::new("/srv/leases/l1/workspace/workspace"),
+        tmp: Path::new("/srv/leases/l1/workspace/tmp"),
         run_dir: Path::new("/srv/leases/l1/run"),
         entry: Path::new("/usr/local/bin/agentsfleet-runner"),
         entry_args: &entry_args,
@@ -83,8 +84,8 @@ fn test_the_toolbox_is_the_read_only_root_and_the_workspace_is_writable() {
         ["--ro-bind", "/srv/toolbox/abc", "/"]
     );
     assert_eq!(
-        after(&argv, "--bind", "/srv/leases/l1/workspace"),
-        ["--bind", "/srv/leases/l1/workspace", "/workspace"]
+        after(&argv, "--bind", "/srv/leases/l1/workspace/workspace"),
+        ["--bind", "/srv/leases/l1/workspace/workspace", "/workspace"]
     );
     assert_eq!(
         after(&argv, "--bind", "/srv/leases/l1/run"),
@@ -140,4 +141,21 @@ fn test_the_socket_lies_in_the_socket_directory() {
         super::sandbox_socket(),
         Path::new(super::SANDBOX_RUN_DIR).join(super::SOCKET_NAME)
     );
+}
+
+/// `/tmp` is the disk's `tmp/`, bound read-write, and no tmpfs stands there:
+/// a scratch file that fills the disk answers `ENOSPC`, never the memory
+/// limit.
+#[test]
+fn test_tmp_is_the_disks_tmp_directory_and_no_tmpfs() {
+    let argv = argv();
+
+    assert_eq!(
+        after(&argv, "--bind", "/srv/leases/l1/workspace/tmp"),
+        ["--bind", "/srv/leases/l1/workspace/tmp", "/tmp"]
+    );
+    let tmpfs_at_tmp = argv
+        .windows(2)
+        .any(|pair| pair[0] == "--tmpfs" && pair[1] == "/tmp");
+    assert!(!tmpfs_at_tmp, "{argv:?}");
 }

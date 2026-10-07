@@ -49,7 +49,9 @@ const DEV: &str = "/dev";
 pub(crate) const DEV_SHM: &str = "/dev/shm";
 /// Shared memory's mode: every user writes, and only an owner removes.
 const SHARED_MEMORY_MODE: &str = "1777";
-/// Where a private scratch file system is mounted.
+/// Where the workspace disk's `tmp/` is bound: scratch space that shares the
+/// disk's limit, so filling it answers `ENOSPC` rather than taking the
+/// lease's memory.
 pub(crate) const SANDBOX_TMP: &str = "/tmp";
 /// Where a private runtime directory is mounted, beneath which the executor's
 /// socket directory is bound.
@@ -102,8 +104,10 @@ const END_OF_OPTIONS: &str = "--";
 pub struct Layout<'a> {
     /// The mounted toolbox, which becomes the read-only root.
     pub toolbox: &'a Path,
-    /// The mounted workspace disk.
+    /// The workspace disk's `workspace/` directory.
     pub workspace: &'a Path,
+    /// The workspace disk's `tmp/` directory.
+    pub tmp: &'a Path,
     /// The directory the executor's socket is made in.
     pub run_dir: &'a Path,
     /// The binary that hardens and serves inside.
@@ -133,7 +137,7 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
         TMPFS_FLAG.as_ref(),
         DEV_SHM.as_ref(),
     ]);
-    flag(&[TMPFS_FLAG.as_ref(), SANDBOX_TMP.as_ref()]);
+    flag(&[BIND.as_ref(), layout.tmp.as_os_str(), SANDBOX_TMP.as_ref()]);
     // A private `/run`, so the socket directory's mount point exists whatever
     // the image's own `/run` holds; image builders empty it.
     flag(&[TMPFS_FLAG.as_ref(), RUN.as_ref()]);

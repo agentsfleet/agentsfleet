@@ -62,7 +62,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_executor/src/api.rs`, `rustd/crates/afr_tools/src/runtime.rs` | EDIT | An ending killed for memory is `out_of_memory`, a `ToolErrorCode` the model reads |
 | `rustd/crates/afr_sandbox/src/capacity.rs` | CREATE | The state-disk rule: live sandboxes' remaining limits plus one more plus the reserve |
 | `rustd/crates/afr_supervisor/src/worker_pool.rs`, `rustd/crates/afr_sandbox/src/warm_slots.rs` | EDIT | Poll and refill only with room |
-| `rustd/crates/afr_sandbox/examples/kernel_lane/trials.rs` | EDIT | The kernel proofs, S6 among them |
+| `rustd/crates/afr_sandbox/examples/kernel_lane/trials.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/run.rs` | EDIT | The kernel proofs, S6 among them; `in_sandbox_each` runs several scripts on one sandbox, since what the executor does after an exhaustion is only seen there |
+| `rustd/crates/afr_sandbox/src/bubblewrap/tests.rs`, `rustd/crates/afr_sandbox/src/workspace_disk/tests.rs` | EDIT | The argument builder binds `tmp/`; the disk's two directories and their modes |
 | `docs/architecture/runner_execution.md` | EDIT | §"Sandbox engines": the two leaves, `/tmp` on the disk, the reserve |
 | `docs/v2/pending/M214_001_P1_DOCS_OBS_RUST_RUNNER_EXPORTS_ITS_TELEMETRY.md` | EDIT | The runner census gains this workstream's two counters |
 

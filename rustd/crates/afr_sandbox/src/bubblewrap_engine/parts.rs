@@ -69,11 +69,16 @@ impl Parts {
         self.dir.as_deref().unwrap_or(Path::new(""))
     }
 
-    /// Where the lease's workspace disk is mounted, once it has one.
+    /// The lease's `workspace/` on its disk, once it has one.
     pub(super) fn workspace(&self) -> &Path {
         self.disk
             .as_ref()
-            .map_or(Path::new(""), WorkspaceDisk::mount_point)
+            .map_or(Path::new(""), WorkspaceDisk::workspace)
+    }
+
+    /// The lease's `tmp/` on its disk, once it has one.
+    pub(super) fn tmp(&self) -> &Path {
+        self.disk.as_ref().map_or(Path::new(""), WorkspaceDisk::tmp)
     }
 
     /// Takes ownership of the lease's workspace disk.

@@ -60,12 +60,35 @@ pub(crate) fn in_sandbox(
     limits: Limits,
     script: &str,
 ) -> Result<Outcome, Failed> {
+    in_sandbox_each(lane, lease_id, limits, &[script])?
+        .pop()
+        .ok_or_else(|| Failed::from("one script runs once"))
+}
+
+/// Runs each of `scripts` in turn in one fresh sandbox with `limits`, then
+/// destroys it: what the executor does after a command exhausted something
+/// is only seen on the same sandbox.
+pub(crate) fn in_sandbox_each(
+    lane: &Lane,
+    lease_id: &str,
+    limits: Limits,
+    scripts: &[&str],
+) -> Result<Vec<Outcome>, Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
         let sandbox = engine.prepare(SandboxRequest { lease_id, limits }).await?;
-        let outcome = run(sandbox.executor(), shell(script)).await;
+        let mut outcomes = Vec::with_capacity(scripts.len());
+        for script in scripts {
+            match run(sandbox.executor(), shell(script)).await {
+                Ok(outcome) => outcomes.push(outcome),
+                Err(failed) => {
+                    sandbox.destroy().await?;
+                    return Err(failed);
+                }
+            }
+        }
         sandbox.destroy().await?;
-        outcome
+        Ok(outcomes)
     })
 }
 

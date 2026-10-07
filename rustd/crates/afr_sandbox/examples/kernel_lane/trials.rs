@@ -19,7 +19,9 @@ use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, secco
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::lane::{Lane, missing};
-use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
+use crate::run::{
+    REACH_OUT, UNREACHABLE, expect, in_sandbox, in_sandbox_each, run as run_in, runtime, shell,
+};
 use crate::toolbox::toolbox_carries_the_tools;
 use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 
@@ -33,6 +35,10 @@ const FEW_PIDS: u32 = 64;
 const STARTS: usize = 5;
 /// The disk-limit trial's lease name.
 const DISK: &str = "disk";
+/// What the kernel says to a writer on a full disk.
+const ENOSPC: &str = "No space left on device";
+/// Why a trial that ran two scripts and got another count fails.
+const TWO_OUTCOMES: &str = "two outcomes";
 /// Where a refusal trial points the engine's state.
 const LEASES: &str = "leases";
 
@@ -103,6 +109,11 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         ),
         ("test_warm_start_beats_cold_start", warm_beats_cold),
         ("test_start_budgets_with_four_leases", start_budgets),
+        ("test_full_tmp_answers_enospc", full_tmp_answers_enospc),
+        (
+            "test_workspace_and_tmp_share_the_disk",
+            workspace_and_tmp_share_the_disk,
+        ),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];
     let trials = rows
@@ -127,7 +138,7 @@ fn disk_limit(lane: &Lane) -> Result<(), Failed> {
         "dd if=/dev/zero of=/workspace/fill bs=1M count=80 2>&1",
     )?;
     expect(
-        filled.output.contains("No space left on device"),
+        filled.output.contains(ENOSPC),
         format!("ENOSPC, got {:?}", filled.output),
     )?;
     let dir = lane.lease_dir(DISK);
@@ -136,6 +147,72 @@ fn disk_limit(lane: &Lane) -> Result<(), Failed> {
     expect(
         !mounts.contains(&dir.display().to_string()),
         "nothing stays mounted",
+    )
+}
+
+/// Filling `/tmp` ends in `ENOSPC`, the disk's answer, and the sandbox is
+/// still there to run the next command: a tmpfs would have taken the
+/// lease's memory and its first process with it.
+fn full_tmp_answers_enospc(lane: &Lane) -> Result<(), Failed> {
+    let limits = Limits {
+        disk_bytes: SMALL_DISK,
+        ..Limits::default()
+    };
+    let outcomes = in_sandbox_each(
+        lane,
+        "tmpfill",
+        limits,
+        &[
+            "dd if=/dev/zero of=/tmp/fill bs=1M count=80 2>&1",
+            "echo ok",
+        ],
+    )?;
+    let [filled, after] = outcomes.as_slice() else {
+        return Err(Failed::from(TWO_OUTCOMES));
+    };
+    expect(
+        filled.output.contains(ENOSPC),
+        format!("ENOSPC on /tmp, got {:?}", filled.output),
+    )?;
+    expect(
+        after.output.trim() == "ok" && after.ending == Ending::Exited(0),
+        format!("a command runs after the fill, got {after:?}"),
+    )
+}
+
+/// `/workspace` and `/tmp` draw on one disk: what the workspace took,
+/// `/tmp` no longer has; and `lost+found` is not in `/workspace`.
+fn workspace_and_tmp_share_the_disk(lane: &Lane) -> Result<(), Failed> {
+    let limits = Limits {
+        disk_bytes: SMALL_DISK,
+        ..Limits::default()
+    };
+    let outcomes = in_sandbox_each(
+        lane,
+        "shared",
+        limits,
+        &[
+            "dd if=/dev/zero of=/workspace/fill bs=1M count=40 2>&1; ls -a /workspace",
+            "dd if=/dev/zero of=/tmp/fill bs=1M count=40 2>&1",
+        ],
+    )?;
+    let [workspace, tmp] = outcomes.as_slice() else {
+        return Err(Failed::from(TWO_OUTCOMES));
+    };
+    expect(
+        !workspace.output.contains(ENOSPC),
+        format!("40 MiB fit the workspace, got {:?}", workspace.output),
+    )?;
+    expect(
+        !workspace.output.contains("lost+found"),
+        format!("no lost+found in /workspace, got {:?}", workspace.output),
+    )?;
+    expect(
+        tmp.output.contains(ENOSPC),
+        format!(
+            "the second 40 MiB find the disk shared, got {:?}",
+            tmp.output
+        ),
     )
 }
 
