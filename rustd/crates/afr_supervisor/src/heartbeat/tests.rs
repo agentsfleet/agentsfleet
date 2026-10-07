@@ -27,6 +27,7 @@ fn probe() -> HostProbe {
         bubblewrap: true,
         kvm: Kvm::Absent,
         toolbox_filesystem: true,
+        workspace_direct_io: None,
     }
 }
 

@@ -19,6 +19,8 @@ use rustix::fs::{Gid, Uid};
 
 use crate::error::Result;
 use crate::host::{EXT4, HostTools};
+#[cfg(target_os = "linux")]
+use crate::toolbox::loop_device::{self, LOOP_MAJOR};
 
 /// The image's file name inside the lease's directory.
 const IMAGE_NAME: &str = "workspace.img";
@@ -83,6 +85,8 @@ impl WorkspaceDisk {
         tools
             .mount(EXT4, WORKSPACE_OPTIONS, &self.image, &self.mount_point)
             .await?;
+        #[cfg(target_os = "linux")]
+        self.direct_io()?;
         lay_out(&self.mount_point, owner)
     }
 
@@ -144,6 +148,18 @@ impl WorkspaceDisk {
     pub fn device(&self) -> Result<(u32, u32)> {
         let device = rustix::fs::stat(&self.mount_point)?.st_dev;
         Ok((rustix::fs::major(device), rustix::fs::minor(device)))
+    }
+
+    /// Switches the loop device the mount made to direct I/O, so the image is
+    /// cached once, in the sandbox's own memory, rather than again on the
+    /// host. A mount helper that made no loop device has none to switch.
+    #[cfg(target_os = "linux")]
+    fn direct_io(&self) -> Result<()> {
+        let (major, minor) = self.device()?;
+        if major != LOOP_MAJOR {
+            return Ok(());
+        }
+        loop_device::direct_io(&loop_device::node(major, minor)?)
     }
 
     /// Unmounts the disk, which frees its loop device, then deletes the image.

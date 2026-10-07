@@ -2,6 +2,7 @@
 //! and memory, and what is left of the sandbox afterwards.
 
 use std::fs;
+use std::os::unix::fs::MetadataExt as _;
 
 use afr_executor::Ending;
 use afr_sandbox::{Engine as _, LeaseCgroup, Limits, SANDBOX_LEAF, SandboxRequest, TENANT_LEAF};
@@ -24,6 +25,18 @@ const OK: &str = "ok";
 const MEMORY_EVENTS: &str = "memory.events";
 /// The count of processes the kernel killed for memory, none yet.
 const NO_OOM_KILLS: &str = "oom_kill 0";
+
+/// Where the kernel publishes a block device by number, and the file of a
+/// loop device's that says whether it bypasses the host's page cache.
+const SYS_DEV_BLOCK: &str = "/sys/dev/block";
+const LOOP_DIO: &str = "loop/dio";
+/// What that file holds when direct I/O is on.
+const DIO_ON: &str = "1";
+/// Where a lease's workspace disk is mounted, under its directory.
+const DISK_MOUNT: &str = "workspace";
+/// Twice the default memory limit, written to `/workspace`, past its disk.
+// pin test: literal is the contract
+const FILL_PAST_THE_DISK: &str = "dd if=/dev/zero of=/workspace/fill bs=1M count=4096 2>&1";
 
 /// More forks than any lane's process limit allows.
 const FORK_ATTEMPTS: u32 = 1000;
@@ -219,6 +232,74 @@ pub(crate) fn sweep_removes_both_leaves(lane: &Lane) -> Result<(), Failed> {
     expect(
         !lane.lease_dir(lease_id).exists(),
         "the sweep removed the lease's directory",
+    )
+}
+
+/// The workspace disk's loop device reads and writes its image past the
+/// host's page cache.
+pub(crate) fn workspace_disk_uses_direct_io(lane: &Lane) -> Result<(), Failed> {
+    let lease_id = "directio";
+    let dio = runtime().block_on(async {
+        let sandbox = lane
+            .engine()
+            .prepare(SandboxRequest {
+                lease_id,
+                limits: Limits::default(),
+            })
+            .await?;
+        // Read while the sandbox holds the device: destroy detaches it.
+        let dio = fs::metadata(lane.lease_dir(lease_id).join(DISK_MOUNT)).and_then(|meta| {
+            let number = format!(
+                "{}:{}",
+                rustix::fs::major(meta.dev()),
+                rustix::fs::minor(meta.dev())
+            );
+            fs::read_to_string(
+                std::path::Path::new(SYS_DEV_BLOCK)
+                    .join(number)
+                    .join(LOOP_DIO),
+            )
+        });
+        sandbox.destroy().await?;
+        Ok::<_, Failed>(dio?)
+    })?;
+    expect(
+        dio.trim() == DIO_ON,
+        format!("the loop device reports direct I/O, got {dio:?}"),
+    )
+}
+
+/// Writing twice the memory limit to `/workspace` ends at the disk's limit,
+/// not in the out-of-memory killer: the image is cached once, in the
+/// sandbox, rather than again on the host.
+pub(crate) fn disk_fill_under_memory_limit_ends_in_enospc(lane: &Lane) -> Result<(), Failed> {
+    let lease_id = "diskfill";
+    let tenant_events = lane
+        .config
+        .cgroup_root
+        .join(lease_id)
+        .join(TENANT_LEAF)
+        .join(MEMORY_EVENTS);
+    let (filled, events) = runtime().block_on(async {
+        let sandbox = lane
+            .engine()
+            .prepare(SandboxRequest {
+                lease_id,
+                limits: Limits::default(),
+            })
+            .await?;
+        let filled = run_in(sandbox.executor(), shell(FILL_PAST_THE_DISK)).await;
+        let events = fs::read_to_string(&tenant_events).unwrap_or_default();
+        sandbox.destroy().await?;
+        Ok::<_, Failed>((filled?, events))
+    })?;
+    expect(
+        filled.output.contains(ENOSPC),
+        format!("the fill ends at the disk, got {:?}", filled.output),
+    )?;
+    expect(
+        events.lines().any(|line| line == NO_OOM_KILLS),
+        format!("the fill killed nothing for memory, got {events:?}"),
     )
 }
 
