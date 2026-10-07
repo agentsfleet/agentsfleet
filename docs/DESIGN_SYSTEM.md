@@ -183,7 +183,7 @@ to create a local theme. Add a shared variant when an actual product state requi
 Interface eyebrows use sans. Apply mono to the technical value itself, never its surrounding
 navigation, explanatory prose, or whole table. Keep route labels and recovery actions sans.
 
-`audits/design-tokens.sh` checks named utilities, flat fills, and consumer font ownership.
+`.orly/audits/design-tokens.sh` checks named utilities, flat fills, and consumer font ownership.
 Component tests verify defaults and state behavior.
 `ui/packages/app/tests/interface-typography.test.ts` checks every app page and component
 for font overrides on shared interface primitives, including aliased imports and named classes.
@@ -288,4 +288,4 @@ Historical decisions below record prior directions; the current sections above s
 | 2026-09-13 | 13px carries a sans role as well as a mono one | An audit measured every `DataTable` cell at 13px sans (`DataTableView.tsx:279` sets `font-sans text-mono`) while the scale gave 13px only to mono, making the smallest documented sans step 14px. Code and doc disagreed; the code was right. Table density was a deliberate choice — `Pagination.tsx` reasons about it — so the step is documented rather than removed, and no rendered size changed. |
 | 2026-09-13 | Larger labels, clearer status colors, and mobile table access | Labels use 13px; operational status uses 14px sans. Contrast checks cover both themes. Mobile layouts preserve the wordmark, actions, and runner rows. |
 
-The flat-fill rule is enforced by `audits/design-tokens.sh` across production app, website, and shared design-system CSS and TypeScript sources.
+The flat-fill rule is enforced by `.orly/audits/design-tokens.sh` across production app, website, and shared design-system CSS and TypeScript sources.

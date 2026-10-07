@@ -250,7 +250,7 @@ When a fleet requires approval, the push runs in the continuation lease after so
 
 ## Why Rust
 
-- **Memory safety is checked by the compiler.** The Zig runner relies on rules a reviewer enforces by hand: one owner per resource, init and deinit pairing, idempotent cleanup, draining before deinit (`docs/greptile-learnings/RULES.md`, OWN, ZIG, DEINIT, DIDEM, DRAIN). It once needed a memory-leak lane of its own.
+- **Memory safety is checked by the compiler.** The Zig runner relies on rules a reviewer enforces by hand: one owner per resource, init and deinit pairing, idempotent cleanup, draining before deinit (`.orly/docs/greptile-learnings/RULES.md`, OWN, ZIG, DEINIT, DIDEM, DRAIN). It once needed a memory-leak lane of its own.
 - **The language is stable.** Zig is pre-1.0: the rulebook carries a rule for the Zig 0.15 ArrayList change (ZAL), and the NullClaw fork patches around Zig 0.16's process I/O.
 - **One wire.** The runner speaks `afd_wire`, the daemon's own types, so a mismatch between the two sides fails to compile.
 - **The next work already exists in Rust.** Pseudo-terminals, patch application, the bubblewrap helper, Landlock and seccomp bindings, S3 presigning and Firecracker itself.

@@ -5,14 +5,14 @@ commit; an existing one is not exempt because it predates the rule.
 
 The rules themselves, their examples, the divergence from
 `M-ERRORS-CANONICAL-STRUCTS`, and the prior art they rest on are all in
-[`dispatch/write_rust.md`](../dispatch/write_rust.md). **This file is the local
+[`.orly/dispatch/write_rust.md`](../.orly/dispatch/write_rust.md). **This file is the local
 override:** what `rustd/` generates instead of hand-writing, which crates take
 the hull and which do not, and where a crate is deliberately off the rule.
 
 ## The four rules, and how this repository meets them
 
 The rules and their worked examples live in
-[`dispatch/write_rust.md`](../dispatch/write_rust.md), which fires on every
+[`.orly/dispatch/write_rust.md`](../.orly/dispatch/write_rust.md), which fires on every
 `*.rs` edit. They are not restated here. What IS here is the local shape, because
 the portable rule and the reference guideline both describe something this
 repository does not hand-write.
@@ -20,7 +20,7 @@ repository does not hand-write.
 > [!IMPORTANT]
 > **`afd_core::error_shell!` is the implementation. Do not hand-write the error
 > type.** `M-ERRORS-CANONICAL-STRUCTS` prescribes a situation-specific `struct`
-> carrying a `Backtrace`; `dispatch/write_rust.md` prescribes a `#[from]`-composed
+> carrying a `Backtrace`; `.orly/dispatch/write_rust.md` prescribes a `#[from]`-composed
 > flat enum behind one alias. Under `rustd/` a crate writes neither by hand: it
 > declares a private `ErrorKind`, calls `error_shell!` for the boxed `struct
 > Error` with its captured backtrace, its `[CODE] message` `Display` and its
@@ -30,9 +30,9 @@ repository does not hand-write.
 
 | # | Rule | Met here by | Decided by |
 |---|---|---|---|
-| 1 | One error type per crate, one `Result` alias beside it | `error_shell!` for the type; the alias is **hand-written**, always | `audits/rust-error.sh` |
+| 1 | One error type per crate, one `Result` alias beside it | `error_shell!` for the type; the alias is **hand-written**, always | `.orly/audits/rust-error.sh` |
 | 2 | Compose with `From`; `?` does the lifting | `error_lifts!`, or a hand-written `From` where a crate composes only a few sources | reviewer |
-| 3 | `map_err` only to ADD context the call site alone knows | unchanged — no macro involved | `audits/rust-error.sh`, which catches a `map_err` that stringifies its own cause |
+| 3 | `map_err` only to ADD context the call site alone knows | unchanged — no macro involved | `.orly/audits/rust-error.sh`, which catches a `map_err` that stringifies its own cause |
 | 4 | `source()` returns what caused you, never yourself | `error_shell!` generates the self-skipping `source()` | reviewer |
 
 **The alias is the one part that stays hand-written**, in every crate, including
