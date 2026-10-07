@@ -459,12 +459,13 @@ regeneration and fails a test before it gets that far.
      --bin agentsfleetd -- --no-banner openapi > ../public/openapi.json
    ```
 
-**Parity is mechanical, not reviewer-enforced.** Two tests grade it, and the
+**Parity is mechanical, not reviewer-enforced.** Three tests grade it, and the
 first is the one that used to be a review obligation:
 
 | Test | What it refuses |
 |---|---|
 | `test_coverage_gate_rust_source` | a served route with no annotation, or an annotation for a route nobody mounts — named with its method and direction |
+| `test_openapi_build_is_the_source` | a committed artifact that is not what the build emits |
 | `test_documented_codes_match_refusals` | an operation that omits a refusal its guard or scope rung guarantees |
 
 The prose is graded too: `scripts/check_documentation_rules.py` reads the
