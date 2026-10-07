@@ -153,16 +153,16 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
 | Schema name collision across crates | Two types in different crates publish one name | `no_two_schema_types_publish_under_one_name` reads both crates and fails |
-| Document drift | A moved derive loses a rename or an alias | `regenerated_openapi_matches` diffs the regenerated document; any byte fails |
-| Runner pulls the API crate | A runner crate adds `afd_api_wire` | `runner_tree_has_no_api_wire` fails |
+| Document drift | A moved derive loses a rename or an alias | Caught when VERIFY runs R2 (`regenerated_openapi_matches`, a command): any differing byte prints. No test guards it between runs; the committed-document comparison test was dropped on purpose (`900ee9e1d`) |
+| Runner pulls the API crate | A runner crate adds `afd_api_wire` | Caught when VERIFY runs R3 (`runner_tree_has_no_api_wire`, a command); the dependency-graph test was dropped on purpose (`cda82d6f4`) |
 | Route drift | A daemon route or runner segment changes alone | Both read one constant; the round trip `test_rust_runner_lease_roundtrip` fails on a mismatch |
 | Broken doc link | A moved module's intra-doc link points across crates | `cargo doc` warnings fail `make lint-all` |
 
 ## Invariants
 
 1. `afd_wire` never depends on `afd_api_wire` — Cargo refuses a cycle between them.
-2. A route has one spelling — the daemon's attributes and the runner's client read `afd_wire::paths`; `route_literals_only_in_paths`.
-3. The published document is unchanged — `regenerated_openapi_matches`.
+2. A route has one spelling — the daemon's attributes and the runner's client read `afd_wire::paths`; `test_route_templates_compose_from_their_segments` pins each template, and the `route_literals_only_in_paths` command (R4) is run at VERIFY.
+3. The move changes no byte of the published document — `regenerated_openapi_matches` (R2) at `c7226727b`. Later Sections of this branch change the document on purpose (M211_004's wire fields) and regenerate it.
 
 ## Metrics & Observability
 
