@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_sandbox::{Engine, HostWorkspace, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine, HostWorkspace, Limits, Sandbox, SandboxRequest};
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
@@ -40,11 +40,16 @@ pub(crate) struct FakeEngine {
     /// The host directory each sandbox offers as its workspace, owned by
     /// whoever owns it; none keeps the workspace out of the host's reach.
     pub(crate) workspace: Option<PathBuf>,
+    /// Where each prepare reports the limits it was asked to enforce.
+    pub(crate) asked: Option<mpsc::UnboundedSender<Limits>>,
 }
 
 #[async_trait::async_trait]
 impl Engine for FakeEngine {
-    async fn prepare(&self, _request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+        if let Some(asked) = &self.asked {
+            let _ = asked.send(request.limits);
+        }
         if self.refuse {
             return Err(std::io::Error::other("no landlock").into());
         }

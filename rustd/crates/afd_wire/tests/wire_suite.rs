@@ -1,6 +1,6 @@
 //! Every `afd_wire` test file, in one test binary.
 //!
-//! One binary rather than 8: cargo runs test BINARIES serially and the tests
+//! One binary rather than 9: cargo runs test BINARIES serially and the tests
 //! inside one binary in parallel, so each extra binary bought a serial stretch
 //! and re-paid its own process start and dynamic linking.
 //!
@@ -26,6 +26,8 @@ mod strictness;
 // seeded mutation corpus the parser must survive without panicking.
 #[path = "validation.rs"]
 mod validation;
+#[path = "validation_lease.rs"]
+mod validation_lease;
 #[path = "validation_mutation.rs"]
 mod validation_mutation;
 #[path = "validation_steer.rs"]

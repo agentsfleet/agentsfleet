@@ -7,6 +7,8 @@
 use std::sync::atomic::Ordering;
 
 use afd_core::bundle::BundleDigest;
+use afd_wire::lease::{SANDBOX_MEMORY_BYTES_MAX, SANDBOX_MEMORY_BYTES_MIN, SandboxLimits};
+use afr_sandbox::Limits;
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
@@ -128,5 +130,91 @@ async fn a_lease_that_ends_while_its_bundle_lands_stops_the_landing() {
         rig.destroyed.load(Ordering::SeqCst),
         1,
         "the sandbox is freed at once"
+    );
+}
+
+/// One gibibyte.
+const GIB: u64 = 1 << 30;
+
+/// A size a lease might ask for: four cores, 8 GiB of memory, a 20 GiB disk.
+const ASKED: SandboxLimits = SandboxLimits {
+    cpu_millis: 4_000,
+    memory_bytes: 8 * GIB,
+    disk_bytes: 20 * GIB,
+};
+
+/// Runs `lease` on a rig whose engine reports the limits it was asked for.
+async fn asked_for(limits: Option<SandboxLimits>) -> (Rig, Vec<Limits>) {
+    let (asked, mut received) = mpsc::unbounded_channel();
+    let (rig, _name) = rig(FakeEngine {
+        asked: Some(asked),
+        ..FakeEngine::default()
+    });
+    let mut payload = lease(LEASE_ID, FLEET_ID, None);
+    payload.limits = limits;
+    rig.run(&payload).await.unwrap();
+    let asked = std::iter::from_fn(|| received.try_recv().ok()).collect();
+    (rig, asked)
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_sized_lease_builds_the_size_it_asked_for() {
+    let (mut rig, asked) = asked_for(Some(ASKED)).await;
+
+    let host = Limits::default();
+    assert_eq!(
+        asked,
+        [Limits {
+            cpu_millis: ASKED.cpu_millis,
+            memory_bytes: ASKED.memory_bytes,
+            disk_bytes: ASKED.disk_bytes,
+            pids: host.pids,
+        }],
+        "the lease's size, with the host's process cap"
+    );
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_lease_without_a_size_builds_the_hosts_defaults() {
+    let (_rig, asked) = asked_for(None).await;
+
+    assert_eq!(asked, [Limits::default()]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_size_past_its_bounds_refuses_the_lease_before_any_sandbox() {
+    let past = SandboxLimits {
+        memory_bytes: SANDBOX_MEMORY_BYTES_MIN - 1,
+        ..ASKED
+    };
+    let (mut rig, asked) = asked_for(Some(past)).await;
+
+    assert!(asked.is_empty(), "no sandbox is built for it");
+    assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
+    assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
+    assert_eq!(reported(&rig.calls())[FAILURE_REASON], STARTUP_POSTURE);
+}
+
+#[test]
+fn the_size_at_its_bound_is_built_and_one_past_is_refused() {
+    let host = Limits::default();
+    let at = SandboxLimits {
+        memory_bytes: SANDBOX_MEMORY_BYTES_MAX,
+        ..ASKED
+    };
+    let past = SandboxLimits {
+        memory_bytes: SANDBOX_MEMORY_BYTES_MAX + 1,
+        ..ASKED
+    };
+
+    assert_eq!(
+        super::sized(Some(at), host).unwrap().memory_bytes,
+        SANDBOX_MEMORY_BYTES_MAX
+    );
+    let refused = super::sized(Some(past), host).unwrap_err();
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::INTERNAL_OPERATION_FAILED
     );
 }

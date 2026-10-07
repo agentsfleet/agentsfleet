@@ -167,6 +167,14 @@ pub(crate) enum ErrorKind {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    /// A lease asked for a sandbox size outside the wire's bounds.
+    #[error("the lease asked for a sandbox size this runner will not build")]
+    LeaseSize {
+        /// Which bound it broke.
+        #[source]
+        source: garde::Report,
+    },
+
     /// An identifier the daemon sent is not in canonical form.
     #[error("the daemon sent an identifier this runner cannot read")]
     Identifier {
@@ -273,6 +281,7 @@ impl Error {
             | ErrorKind::Encode { .. }
             | ErrorKind::Task { .. }
             | ErrorKind::Git { .. }
+            | ErrorKind::LeaseSize { .. }
             | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }

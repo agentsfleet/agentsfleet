@@ -97,5 +97,7 @@ pub(super) fn render<'a>(
             .map(|hash| BundleManifest {
                 content_hash: hash.into(),
             }),
+        // No fleet carries a size yet, so every runner builds its defaults.
+        limits: None,
     }))
 }
