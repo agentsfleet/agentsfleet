@@ -77,6 +77,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_runner/tests/integration_hold_plans.rs`, `rustd/crates/afd_runner/tests/runner_suite.rs` | CREATE / EDIT | The hold reconcile clears through the partial held index under a generic plan |
 | `rustd/crates/afd_runner/tests/integration_sweeps.rs` | EDIT | The sweep test drains the lane's backlog before its convergence check, since this branch's suites leave more than one liveness batch of runner rows |
 | `rustd/crates/afr_supervisor/src/heartbeat/unanswered_tests.rs` | CREATE | A stop abandons a beat in flight, and an unanswered last beat gives up after its bound |
+| `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/freeze.rs` | EDIT / CREATE | A prepared sandbox freezes and thaws through its own lease cgroup, on Linux, where the engine compiles |
 
 ## Applicable Rules
 

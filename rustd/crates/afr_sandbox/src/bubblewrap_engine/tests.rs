@@ -7,6 +7,7 @@
 //! Nothing on the fake host is really mounted, so every unmount is refused:
 //! which is how these tests prove a disk that will not unmount keeps its image.
 
+mod freeze;
 mod prepare;
 mod release;
 mod support;
