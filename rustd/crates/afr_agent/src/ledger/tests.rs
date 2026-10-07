@@ -268,7 +268,10 @@ async fn a_call_killed_for_memory_is_counted_and_typed_on_its_span() {
         .try_iter()
         .filter(|recorded| *recorded == Recorded::OutOfMemory)
         .count();
-    assert_eq!(kills, 1, "the killed call is counted, the exited one is not");
+    assert_eq!(
+        kills, 1,
+        "the killed call is counted, the exited one is not"
+    );
     let types: Vec<Option<String>> = capture
         .spans()
         .iter()

@@ -9,7 +9,7 @@
 //! `docs/architecture/runner_execution.md` §"Tool catalog" is the design.
 
 use afd_wire::policy::ExecutionPolicy;
-use afr_providers::{Call, Connect, Hosted, Message, ToolSpec};
+use afr_providers::{Call, Connect, Hosted, Message, Replay, ToolSpec};
 use afr_secrets::Scrub;
 use afr_tools::{Catalog, Selection};
 use tokio::sync::mpsc;
@@ -73,7 +73,23 @@ impl AgentEngine for Loop {
         let span = spans::invoke_agent(policy);
         let prompt = Prompt::new(run.lease);
         let instructions = scrub.clean(prompt.instructions).into_inner();
-        let opening = scrub.clean(prompt.message).into_inner();
+        // Every earlier turn passes the scrub the current message does: a
+        // secret said in an earlier message is still a secret.
+        let mut opening: Vec<Message> = prompt
+            .history
+            .into_iter()
+            .flat_map(|(asked, answered)| {
+                [
+                    Message::User(scrub.clean(asked).into_inner()),
+                    Message::Assistant {
+                        text: scrub.clean(answered).into_inner(),
+                        calls: Vec::new(),
+                        replay: Replay::default(),
+                    },
+                ]
+            })
+            .collect();
+        opening.push(Message::User(scrub.clean(prompt.message).into_inner()));
         let (registry, requests) = Registry::new();
         let shared = Shared::new(
             &run,
@@ -128,8 +144,8 @@ pub(crate) struct Harness<'s, 'run> {
 
 impl<'s, 'run> Harness<'s, 'run> {
     /// The run's root loop, over every tool the lease was offered, opening
-    /// with the event's message.
-    fn root(shared: &'s Shared<'run>, opening: String) -> Self {
+    /// with the fleet's earlier turns and then the event's message.
+    fn root(shared: &'s Shared<'run>, opening: Vec<Message>) -> Self {
         let selection = shared.selection;
         Self {
             shared,
@@ -142,7 +158,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             live: Live::new(shared.events, shared.scrub, shared.started),
             checkpoints: Checkpoints::new(shared.context),
             budget: Budget::new(shared.context),
-            messages: vec![Message::User(opening)],
+            messages: opening,
             input: None,
             child: None,
         }
@@ -276,6 +292,10 @@ mod image_tests;
 #[cfg(test)]
 #[path = "loop/budget_tests.rs"]
 mod budget_tests;
+
+#[cfg(test)]
+#[path = "loop/history_tests.rs"]
+mod history_tests;
 
 #[cfg(test)]
 #[path = "loop/provider_failure_tests.rs"]
