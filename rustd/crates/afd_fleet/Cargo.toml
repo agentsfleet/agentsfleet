@@ -101,6 +101,7 @@ afd_fleet_runtime.workspace = true
 afd_crypto.workspace = true
 # The wire shapes this plane answers with. Frozen by M175; consumed, never
 # authored here.
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 # Fleet memory. The lease plane fences the runner's two memory verbs and then
 # reaches memory only through the store trait this crate holds.

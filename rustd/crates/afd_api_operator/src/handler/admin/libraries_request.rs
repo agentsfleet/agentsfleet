@@ -8,12 +8,12 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::admin::{
+    AdminLibraryPatch, REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES, REASONS_MAX,
+};
 use afd_core::error_code;
 use afd_library::{LibraryPatch, Repository, valid_revision};
 use afd_validate::Sentences;
-use afd_wire::admin::{
-    AdminLibraryPatch, REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES, REASONS_MAX,
-};
 use const_format::concatcp;
 use garde::Validate as _;
 

@@ -25,8 +25,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::identity::{CurrentUserResponse, credential_class};
 use afd_auth::principal::{Person, PersonCredential};
-use afd_wire::identity::{CurrentUserResponse, credential_class};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};

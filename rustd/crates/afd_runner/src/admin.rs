@@ -1,8 +1,8 @@
 //! Operator-driven administrative state changes for runners.
 
+use afd_api_wire::admin::{AdminState, RunnerAdminAction};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_wire::admin::{AdminState, RunnerAdminAction};
 use afd_wire::runner::AssignedPolicy;
 use sqlx::{Acquire as _, Row as _};
 

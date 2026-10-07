@@ -26,10 +26,10 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::grant::{GrantSummary, GrantsResponse};
 use afd_approval::{GrantRow, Revocation};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_wire::grant::{GrantSummary, GrantsResponse};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};

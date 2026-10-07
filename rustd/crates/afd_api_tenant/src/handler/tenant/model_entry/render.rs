@@ -5,13 +5,13 @@
 //! and decides nothing, so a refusal can never be introduced by an edit in
 //! this file.
 
+use afd_api_wire::tenant_model_entry::{
+    ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow, StoredModelEntry,
+};
 use afd_core::id::Uuid7;
 use afd_core::paging::struct_cursor;
 use afd_credential::provider::{PricedDefault, RegistryPage, RegistryRow};
 use afd_vault::Descriptor;
-use afd_wire::tenant_model_entry::{
-    ModelEntriesResponse, ModelEntryRow, PlatformDefaultRow, StoredModelEntry,
-};
 
 use super::Cursor;
 

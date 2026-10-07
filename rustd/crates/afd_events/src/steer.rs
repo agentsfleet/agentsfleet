@@ -61,9 +61,9 @@
 //! else: the message is durable, and a reload reads it from the ledger.
 
 use afd_admission::{Admission, Admissions, Key, Producer, Repeated, Reply};
+use afd_api_wire::tail::TailFrame;
 use afd_core::error_code;
 use afd_wire::event::EventType;
-use afd_wire::tail::TailFrame;
 
 use crate::error::{Result, operation_conflict};
 

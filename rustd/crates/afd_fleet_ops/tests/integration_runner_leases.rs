@@ -5,13 +5,13 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use afd_api_wire::operator::{LeaseKind, LeaseOutcome};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
 use afd_fleet_ops::RunnerLeaseHistory;
-use afd_wire::operator::{LeaseKind, LeaseOutcome};
 
 const SEED: &str = r"
 WITH inserted_tenant AS (
@@ -152,7 +152,7 @@ fn id(raw: &str) -> Uuid7 {
     Uuid7::parse(raw).expect("the fixture id is UUIDv7")
 }
 
-fn ids<'a>(items: &'a [afd_wire::operator::RunnerLeaseItem<'_>]) -> Vec<&'a str> {
+fn ids<'a>(items: &'a [afd_api_wire::operator::RunnerLeaseItem<'_>]) -> Vec<&'a str> {
     items.iter().map(|item| item.id.as_ref()).collect()
 }
 

@@ -195,7 +195,7 @@ pub(crate) async fn relay<D: Services>(
         ("callback_source" = Option<String>, Query, description = "Fixed compatibility marker added by the legacy API relay. Browser callers omit it."),
     ),
     responses(
-        (status = 200, description = "The grant landed and no dashboard page could be named to send the person to", body = afd_wire::connector::Connected),
+        (status = 200, description = "The grant landed and no dashboard page could be named to send the person to", body = afd_api_wire::connector::Connected),
         (status = 302, description = afd_http::openapi::FOUND),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

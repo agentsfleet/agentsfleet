@@ -12,11 +12,11 @@ use afd_core::clock::UnixMillis;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use afd_api_wire::tail::FleetCounters;
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::{
     After, FleetDetail, FleetPage, FleetStatus, Install, Patch, Patched, Result as FleetResult,
 };
-use afd_wire::tail::FleetCounters;
 
 /// Everything the workspace fleets routes act through.
 ///

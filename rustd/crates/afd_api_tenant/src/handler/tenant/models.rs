@@ -14,12 +14,12 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
+use afd_api_wire::models::{CatalogueModel, CatalogueResponse};
 use afd_core::paging::QUERY_LIMIT;
 use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
 use afd_observability::producers::library;
 use afd_tenant::models::cursor::{self, Cursor};
 use afd_tenant::models::{LibraryPage, LibraryRow};
-use afd_wire::models::{CatalogueModel, CatalogueResponse};
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};
 use http::{HeaderMap, HeaderValue, StatusCode, header};
@@ -38,7 +38,7 @@ pub const DETAIL_CATALOGUE_LIMIT: &str = "limit must be an integer between 1 and
 
 /// The refusal an oversized or unreadable `provider` filter earns.
 ///
-/// The bound is the catalogue's own column, `afd_wire::admin::PROVIDER_MAX_BYTES`:
+/// The bound is the catalogue's own column, `afd_api_wire::admin::PROVIDER_MAX_BYTES`:
 /// a filter longer than any stored provider can match nothing.
 pub const DETAIL_PROVIDER_BOUNDS: &str =
     "provider must be at most 64 bytes once normalized, and valid UTF-8";

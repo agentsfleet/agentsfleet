@@ -52,7 +52,7 @@ use crate::handler::Refusal;
 use crate::services::{
     NewAccount, Services, SignupMetadata as _, Signups as _, personal_tenant_name,
 };
-use afd_wire::ingress::IdentityAnswer;
+use afd_api_wire::ingress::IdentityAnswer;
 
 use super::identity_event::IdentityEvent;
 use super::verify::{header, wall};
@@ -110,7 +110,7 @@ const DETAIL_UNVERIFIED_ADDRESS: &str =
         ("svix-signature" = String, Header, description = "Space-separated list of Svix v1 signatures."),
     ),
     responses(
-        (status = 200, description = "The account the event opened or found, or a delivery not acted on", body = afd_wire::ingress::IdentityAnswer),
+        (status = 200, description = "The account the event opened or found, or a delivery not acted on", body = afd_api_wire::ingress::IdentityAnswer),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNVERIFIED),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
@@ -221,11 +221,13 @@ pub(crate) async fn receive<D: Services>(
     // change into its retry queue forever.
     Ok((
         StatusCode::OK,
-        Json(IdentityAnswer::Opened(afd_wire::ingress::AccountOpened {
-            workspace_id: opened.workspace_id.into(),
-            workspace_name: opened.workspace_name.into(),
-            created: opened.created,
-        })),
+        Json(IdentityAnswer::Opened(
+            afd_api_wire::ingress::AccountOpened {
+                workspace_id: opened.workspace_id.into(),
+                workspace_name: opened.workspace_name.into(),
+                created: opened.created,
+            },
+        )),
     )
         .into_response())
 }

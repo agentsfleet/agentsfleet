@@ -3,7 +3,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::admin::{
+use afd_api_wire::admin::{
     AdminLibrariesResponse, AdminLibraryCreated, AdminLibraryItem, AdminLibraryRequirements,
     AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse, FleetBundleItem,
     FleetBundlesResponse, ModelRates, PlatformKeyDeactivateResponse, PlatformKeyItem,

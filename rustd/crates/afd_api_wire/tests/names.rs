@@ -1,4 +1,6 @@
-//! No two schema-bearing types in this crate publish under one name.
+//! No two schema-bearing types in `afd_wire` and `afd_api_wire` publish under
+//! one name. The daemon's document registers both crates' schemas, so a
+//! collision across them is as silent as one inside either.
 //!
 //! # Why a source scan and not the generator
 //!
@@ -7,7 +9,7 @@
 //! the lease's egress rules were published as the runner's three-word posture
 //! that way, and every reference still resolved. The generator cannot report
 //! what it silently merged, so the claim is made where the names are declared:
-//! every `ToSchema` derive in `src/` is read with the name it publishes under,
+//! every `ToSchema` derive in both crates' `src/` is read with the name it publishes under,
 //! an explicit `schema(as = …)` alias or the type's own, and the set must have
 //! no duplicates.
 #![expect(
@@ -20,6 +22,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use walkdir::WalkDir;
+
 /// The attribute that turns a derive into a published component.
 const DERIVE: &str = "derive(utoipa::ToSchema)";
 
@@ -29,19 +33,23 @@ const ALIAS: &str = "schema(as = ";
 /// A schema written by hand rather than derived; it publishes the type's name.
 const MANUAL: &str = "impl utoipa::ToSchema for ";
 
+/// The crates whose schemas the daemon's document registers together.
+const CRATES: [&str; 2] = ["afd_wire", "afd_api_wire"];
+
+/// The directory both crates sit in; paths in a failure read relative to it.
+fn crates_dir() -> &'static Path {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the crate sits in the workspace's crates directory")
+}
+
 fn sources() -> Vec<PathBuf> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in fs::read_dir(dir).expect("src is readable") {
-            let path = entry.expect("a directory entry is readable").path();
-            if path.is_dir() {
-                walk(&path, out);
-            } else if path.extension().is_some_and(|ext| ext == "rs") {
-                out.push(path);
-            }
-        }
-    }
-    let mut out = Vec::new();
-    walk(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut out);
+    let mut out: Vec<PathBuf> = CRATES
+        .iter()
+        .flat_map(|krate| WalkDir::new(crates_dir().join(krate).join("src")))
+        .map(|entry| entry.expect("src is readable").into_path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .collect();
     out.sort();
     out
 }
@@ -106,9 +114,7 @@ fn no_two_schema_types_publish_under_one_name() {
             };
             owners.entry(name).or_default().push(format!(
                 "{}:{}",
-                path.strip_prefix(env!("CARGO_MANIFEST_DIR"))
-                    .unwrap_or(&path)
-                    .display(),
+                path.strip_prefix(crates_dir()).unwrap_or(&path).display(),
                 at + 1
             ));
         }

@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::admin::AdminState;
-use crate::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
+use afd_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
 
 /// One runner in the newest-first operator list.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

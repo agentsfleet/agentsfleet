@@ -1,0 +1,42 @@
+[package]
+name = "afd_api_wire"
+# One aggregated test binary; see tests/api_wire_suite.rs for why.
+autotests = false
+description = "Serde types for the daemon's own API surface: the admin, tenant, operator and ingress planes no runner speaks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+# The shared protocol: the runner-facing types these API shapes embed
+# (`AssignedPolicy`, `CapabilityReport`, `RunnerLiveness`, `SelftestReport`,
+# `EventSummary`). `afd_wire` never names this crate, so a daemon-only edit
+# here rebuilds no runner crate.
+afd_wire.workspace = true
+# Bounds are declared on the request types they guard, as in `afd_wire`.
+garde.workspace = true
+# Same discipline as `afd_wire`: serde and serde_json at runtime, nothing else.
+serde.workspace = true
+serde_json.workspace = true
+# The schema compiler, off by default, exactly as in `afd_wire`.
+utoipa = { workspace = true, optional = true }
+
+[features]
+openapi = ["dep:utoipa", "afd_wire/openapi"]
+
+[dev-dependencies]
+serde_json.workspace = true
+walkdir.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "api_wire_suite"
+path = "tests/api_wire_suite.rs"

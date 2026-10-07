@@ -10,10 +10,10 @@
 //! where an event id would be, so a delivery that owed nothing new reads as
 //! replayed.
 
+use afd_api_wire::ingress::Accepted;
 use afd_connector::Provider;
 use afd_core::id::Uuid7;
 use afd_ingress::slack::{Notice, NoticeOwed, notice_key, notice_text};
-use afd_wire::ingress::Accepted;
 use std::borrow::Cow;
 
 use super::resident::resident;

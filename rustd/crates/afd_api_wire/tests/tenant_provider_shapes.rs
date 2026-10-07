@@ -6,7 +6,7 @@
 //! field-level equality would miss.
 #![expect(clippy::expect_used, reason = "tests inspect JSON documents")]
 
-use afd_wire::tenant_provider::{ProviderMode, TenantProviderRequest, TenantProviderResponse};
+use afd_api_wire::tenant_provider::{ProviderMode, TenantProviderRequest, TenantProviderResponse};
 
 /// The credential name used wherever a well-formed one is needed.
 const A_KEY: &str = "openai-primary";

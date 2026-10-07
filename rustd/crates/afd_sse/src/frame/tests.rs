@@ -9,8 +9,8 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use afd_api_wire::tail::FleetCounters;
 use afd_dragonfly::Message;
-use afd_wire::tail::FleetCounters;
 
 use super::{
     DEFAULT_KIND, Frame, KIND_ACCESS_REVOKED, KIND_ANCHOR, KIND_CATCHING_UP, KIND_HELLO, KIND_KEY,

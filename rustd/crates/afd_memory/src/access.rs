@@ -6,9 +6,9 @@
 
 use std::collections::HashMap;
 
+use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use afd_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use sqlx::Row as _;
 
 use crate::error::{Result, query};

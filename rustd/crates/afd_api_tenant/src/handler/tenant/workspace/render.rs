@@ -2,14 +2,14 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::workspace::{
+    CreatedWorkspaceResponse, WorkspaceAccount, WorkspaceSummary, WorkspacesResponse,
+};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::paging::Cursor;
 use afd_tenant::workspace::accounts::Accounts;
 use afd_tenant::workspace::directory::{Created, WorkspacePage, WorkspaceRow};
-use afd_wire::workspace::{
-    CreatedWorkspaceResponse, WorkspaceAccount, WorkspaceSummary, WorkspacesResponse,
-};
 
 use crate::handler::Refusal;
 use crate::request_id::RequestId;

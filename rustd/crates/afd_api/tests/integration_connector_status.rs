@@ -56,7 +56,7 @@ const UNHELD: Provider = Provider::Jira;
 /// What the stored handle calls itself.
 const LABEL: &str = "Acme Workspace";
 
-/// The wire spellings `afd_wire::connector` declares.
+/// The wire spellings `afd_api_wire::connector` declares.
 const STATUS_CONNECTED: &str = "connected";
 /// See [`STATUS_CONNECTED`].
 const STATUS_NOT_CONNECTED: &str = "not_connected";

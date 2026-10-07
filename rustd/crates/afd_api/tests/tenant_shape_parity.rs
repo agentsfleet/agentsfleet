@@ -34,7 +34,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::tenant::{
+use afd_api_wire::tenant::{
     ApiKeySummary, BillingResponse, MintedApiKeyResponse, MintedCliCredentialResponse,
     RevokedApiKeyResponse,
 };

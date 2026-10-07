@@ -9,10 +9,10 @@ use garde::Validate as _;
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::approval::{ResolveApprovalRequest, ResolvedResponse};
 use afd_approval::{Decision, Resolution};
 use afd_core::error_code;
 use afd_http::envelope;
-use afd_wire::approval::{ResolveApprovalRequest, ResolvedResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

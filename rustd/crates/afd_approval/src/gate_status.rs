@@ -11,12 +11,12 @@
 //! spellings and refused `auto_killed`, which the dashboard's own type
 //! declares.
 //!
-//! The spellings come from [`afd_wire::approval::status`], shared with the
+//! The spellings come from [`afd_api_wire::approval::status`], shared with the
 //! writer rather than copied, for the reason `Decision` gives about the same
 //! table: a drift between the two would make a row one plane wrote the other
 //! could not name.
 
-use afd_wire::approval::status;
+use afd_api_wire::approval::status;
 
 /// One state a gate row can be in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

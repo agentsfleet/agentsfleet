@@ -102,7 +102,7 @@ pub const ADMIN_STATE_DRAINED: &str = "drained";
 
 #[cfg(test)]
 mod tests {
-    use afd_wire::admin::AdminState;
+    use afd_api_wire::admin::AdminState;
 
     /// Every admin-state bind here spells a variant `AdminState` declares.
     ///

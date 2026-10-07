@@ -7,14 +7,14 @@
 
 use std::sync::Arc;
 
-use afd_core::error_code;
-use afd_credential::provider::{Added, Removed, Retargeted};
 /// Named only by the `body =` clause of this module's `utoipa::path`
 /// annotations, which the default build compiles away — so the import has to
 /// go with them or the feature-off build fails on an unused name.
 #[cfg(feature = "openapi")]
-use afd_wire::tenant_model_entry::StoredModelEntry;
-use afd_wire::tenant_model_entry::{CreateModelEntryRequest, UpdateModelEntryRequest};
+use afd_api_wire::tenant_model_entry::StoredModelEntry;
+use afd_api_wire::tenant_model_entry::{CreateModelEntryRequest, UpdateModelEntryRequest};
+use afd_core::error_code;
+use afd_credential::provider::{Added, Removed, Retargeted};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

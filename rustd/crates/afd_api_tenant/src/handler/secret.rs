@@ -24,10 +24,10 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_vault::{Deleted, SecretBody, SecretName};
-use afd_wire::secret::{
+use afd_api_wire::secret::{
     ReplaceSecretRequest, SecretsResponse, StoreSecretRequest, StoredSecretResponse,
 };
+use afd_vault::{Deleted, SecretBody, SecretName};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

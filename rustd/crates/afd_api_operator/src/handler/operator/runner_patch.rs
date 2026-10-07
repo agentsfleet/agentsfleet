@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_wire::admin::{
+use afd_api_wire::admin::{
     RunnerAdminAction, RunnerAdminPatchRequest, RunnerAdminPatchResponse,
     RunnerTokenRotatedResponse,
 };

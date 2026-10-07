@@ -4,13 +4,13 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_admin::{CreateModel, DeleteModel, Model, ModelInput};
-use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_validate::Sentences;
-use afd_wire::admin::{
+use afd_api_wire::admin::{
     AdminModelCreate, AdminModelCreated, AdminModelItem, AdminModelUpdated, AdminModelsResponse,
     ModelRates,
 };
+use afd_core::error_code;
+use afd_core::id::Uuid7;
+use afd_validate::Sentences;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

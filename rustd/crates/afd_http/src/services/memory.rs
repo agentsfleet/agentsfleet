@@ -17,10 +17,10 @@
 //! what it LEARNED, never what a caller asserted — so the mutations here are the
 //! operator's forget and the admin's grants.
 
+use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_core::id::Uuid7;
 use afd_memory::page::{After, View};
 use afd_memory::{Memories, Record, Result as MemoryResult};
-use afd_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 
 /// Everything the fleet memory routes act through.
 pub trait FleetMemories: Send + Sync + std::fmt::Debug + 'static {

@@ -32,7 +32,7 @@ export function buildQuery(opts?: EventsQuery): string {
 // frames. The four mid-run frames are the
 // `Published` enum in rustd/crates/afd_fleet/src/lease/activity.rs, where the
 // runner's wire vocabulary becomes this one. The two brackets and the two gate
-// frames are the daemon's own `TailFrame` in rustd/crates/afd_wire/src/tail.rs:
+// frames are the daemon's own `TailFrame` in rustd/crates/afd_api_wire/src/tail.rs:
 // `event_admitted` when a person's message is accepted, before any runner has
 // it, `event_received` when the lease opens the row, `event_complete` with the
 // whole row when a report or a refusal closes it, `gate_opened` and

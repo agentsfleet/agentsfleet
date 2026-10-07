@@ -115,7 +115,7 @@ pub struct FleetDetail {
     /// render the count, and the console that does opens on one fleet.
     pub pending_approvals: i64,
     /// Whether the fleet reads and publishes the workspace's shared memory.
-    pub memory_access: afd_wire::fleet::MemoryAccess,
+    pub memory_access: afd_api_wire::fleet::MemoryAccess,
 }
 
 impl FleetDetail {
@@ -237,7 +237,7 @@ impl Fleets {
         let found = sqlx::query(sql::SELECT_FLEET_DETAIL)
             .bind(fleet.as_str())
             .bind(workspace.as_str())
-            .bind(afd_wire::approval::status::PENDING)
+            .bind(afd_api_wire::approval::status::PENDING)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_DETAIL))?;
@@ -259,7 +259,7 @@ impl Fleets {
             trigger_markdown: row.try_get(4).map_err(&unreadable)?,
             bundle_content_hash: row.try_get(5).map_err(&unreadable)?,
             pending_approvals: row.try_get(11).map_err(&unreadable)?,
-            memory_access: afd_wire::fleet::MemoryAccess {
+            memory_access: afd_api_wire::fleet::MemoryAccess {
                 read: row.try_get(12).map_err(&unreadable)?,
                 publish: row.try_get(13).map_err(&unreadable)?,
             },

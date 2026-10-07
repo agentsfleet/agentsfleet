@@ -29,6 +29,7 @@ afd_db.workspace = true
 # The memory families a capture and a hydration window record.
 afd_observability.workspace = true
 # The entry shape, its bounds and every budget, declared once for daemon and runner.
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 # Which store each workspace's memory lives in, read on every call and swapped
 # only by a flip — without a lock.

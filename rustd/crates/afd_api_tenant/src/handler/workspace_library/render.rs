@@ -1,15 +1,15 @@
 //! The gallery page and the onboarded entry, rendered onto the wire.
 //!
 //! Split from the handlers by what changes together: a field added to a card
-//! lands here and in `afd_wire::workspace_library`, and touches nothing about
+//! lands here and in `afd_api_wire::workspace_library`, and touches nothing about
 //! who may read the page or how a cursor resumes it.
 
 use std::borrow::Cow;
 
+use afd_api_wire::admin::{AdminLibraryCreated, AdminLibraryRequirements};
+use afd_api_wire::workspace_library::{GalleryCard, GalleryResponse};
 use afd_core::paging::struct_cursor;
 use afd_library::{GalleryPage, Onboarded, SummaryEntry, Tier};
-use afd_wire::admin::{AdminLibraryCreated, AdminLibraryRequirements};
-use afd_wire::workspace_library::{GalleryCard, GalleryResponse};
 
 use super::Cursor;
 
@@ -39,7 +39,7 @@ pub(super) fn rendered<'p>(
 
 /// One card, rendered.
 ///
-/// `visibility` is the TIER's label — see [`afd_wire::workspace_library`] on why
+/// `visibility` is the TIER's label — see [`afd_api_wire::workspace_library`] on why
 /// that field name carries a different fact here than on the admin surface.
 fn card(entry: &SummaryEntry) -> GalleryCard<'_> {
     GalleryCard {

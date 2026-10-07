@@ -229,8 +229,8 @@ async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
 async fn test_a_closing_counts_the_fleets_pending_gates() {
     let run = held().await;
     let fleet = Uuid7::parse(&run.fleet).expect("the seeded fleet id is well formed");
-    seed_gate(&run, afd_wire::approval::status::PENDING).await;
-    seed_gate(&run, afd_wire::approval::status::DENIED).await;
+    seed_gate(&run, afd_api_wire::approval::status::PENDING).await;
+    seed_gate(&run, afd_api_wire::approval::status::DENIED).await;
 
     let ended = run
         .fixtures

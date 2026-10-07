@@ -6,11 +6,11 @@ pub(crate) mod dashboard;
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use afd_tenant::session::input::Opening;
-use afd_tenant::session::{Cancelled, SessionStatus};
-use afd_wire::auth::{
+use afd_api_wire::auth::{
     DeleteAllSessionsResponse, OpenSessionRequest, OpenSessionResponse, PollSessionResponse,
 };
+use afd_tenant::session::input::Opening;
+use afd_tenant::session::{Cancelled, SessionStatus};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

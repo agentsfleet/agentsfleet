@@ -7,10 +7,10 @@
 
 use std::sync::Arc;
 
+use afd_api_wire::workspace::CreateWorkspaceRequest;
 use afd_core::error_code;
 use afd_core::paging::{QUERY_LIMIT, QUERY_STARTING_AFTER};
 use afd_tenant::workspace::name::Chosen;
-use afd_wire::workspace::CreateWorkspaceRequest;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{RawQuery, State};
@@ -78,7 +78,7 @@ const EMPTY_OBJECT: &[u8] = b"{}";
         afd_http::openapi::query::WorkspaceFilter,
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_wire::workspace::WorkspacesResponse),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::workspace::WorkspacesResponse),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -137,7 +137,7 @@ pub(crate) async fn list<D: Services>(
     // generated document exists to stop repeating.
     request_body = Option<CreateWorkspaceRequest>,
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = afd_wire::workspace::CreatedWorkspaceResponse),
+        (status = 201, description = afd_http::openapi::CREATED, body = afd_api_wire::workspace::CreatedWorkspaceResponse),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

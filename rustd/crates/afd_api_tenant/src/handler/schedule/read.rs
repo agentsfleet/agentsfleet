@@ -8,13 +8,13 @@
 
 use std::sync::Arc;
 
-use afd_http::handler::schedule::not_found;
-use afd_wire::schedule::Page;
+use afd_api_wire::schedule::Page;
 /// Named only by the `body =` clause of this module's `utoipa::path`
 /// annotations, which the default build compiles away — so the import has to
 /// go with them or the feature-off build fails on an unused name.
 #[cfg(feature = "openapi")]
-use afd_wire::schedule::View;
+use afd_api_wire::schedule::View;
+use afd_http::handler::schedule::not_found;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};

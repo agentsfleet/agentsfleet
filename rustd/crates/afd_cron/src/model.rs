@@ -15,8 +15,8 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::schedule::View;
 use afd_core::id::Uuid7;
-use afd_wire::schedule::View;
 
 /// The most schedules one fleet may hold.
 ///

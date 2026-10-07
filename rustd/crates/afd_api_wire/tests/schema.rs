@@ -24,9 +24,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_wire::ingress::{AppIngressAnswer, IdentityAnswer};
-use afd_wire::preference::PreferencesResponse;
-use afd_wire::secret::{StoreSecretRequest, StoredSecretResponse};
+use afd_api_wire::ingress::{AppIngressAnswer, IdentityAnswer};
+use afd_api_wire::preference::PreferencesResponse;
+use afd_api_wire::secret::{StoreSecretRequest, StoredSecretResponse};
 use afd_wire::{policy, runner};
 use utoipa::{PartialSchema, ToSchema};
 
@@ -132,9 +132,9 @@ fn the_derived_one_of_answers_have_disjoint_required_keys() {
             .and_then(|target| target.rsplit('/').next())
             .expect("a branch is a reference to a component");
         let schema = match component {
-            "Pong" => schema_of::<afd_wire::ingress::Pong<'_>>(),
-            "Ignored" => schema_of::<afd_wire::ingress::Ignored<'_>>(),
-            "AccountOpened" => schema_of::<afd_wire::ingress::AccountOpened<'_>>(),
+            "Pong" => schema_of::<afd_api_wire::ingress::Pong<'_>>(),
+            "Ignored" => schema_of::<afd_api_wire::ingress::Ignored<'_>>(),
+            "AccountOpened" => schema_of::<afd_api_wire::ingress::AccountOpened<'_>>(),
             _unknown => serde_json::Value::Null,
         };
         schema["required"]

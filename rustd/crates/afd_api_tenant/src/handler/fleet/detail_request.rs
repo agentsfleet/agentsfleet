@@ -5,9 +5,9 @@
 //! refusal surface in front of the write is proven without driving HTTP. Every
 //! ambiguity is resolved here, once, into a type that cannot hold it.
 
+use afd_api_wire::fleet::PatchFleetRequest;
 use afd_fleet_lifecycle::{ConfigSource, Patch, Requested};
 use afd_validate::Sentences;
-use afd_wire::fleet::PatchFleetRequest;
 use axum::body::Bytes;
 
 use garde::Validate as _;
@@ -118,7 +118,7 @@ mod tests {
     // The cap is read from the type that DECLARES it, never copied: a local
     // number would let the bound move on `PatchFleetRequest` while these cases
     // asserted the old one and still passed.
-    use afd_wire::fleet::FLEET_MARKDOWN_MAX_BYTES as MAX_MARKDOWN_LEN;
+    use afd_api_wire::fleet::FLEET_MARKDOWN_MAX_BYTES as MAX_MARKDOWN_LEN;
 
     use super::{
         ConfigSource, DETAIL_CONFIG_REQUIRED, DETAIL_SOURCE_BOUNDS, DETAIL_STATUS_INVALID,

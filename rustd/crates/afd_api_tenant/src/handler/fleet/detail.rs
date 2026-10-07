@@ -15,9 +15,9 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::fleet::{FleetDetailResponse, PatchedFleetResponse};
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::{FleetDetail, Patch};
-use afd_wire::fleet::{FleetDetailResponse, PatchedFleetResponse};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -116,7 +116,7 @@ pub(crate) async fn read<D: Services>(
         "wins behavior. Status changes require an operator role. Config ",
         "changes require workspace membership. ",
     ),
-    request_body = Option<afd_wire::fleet::PatchFleetRequest>,
+    request_body = Option<afd_api_wire::fleet::PatchFleetRequest>,
     params(
         afd_http::openapi::path::Fleet,
         ("If-Match" = Option<String>, Header, description = "Optional source-version tag from GET. Stale values return 412 with the current `etag`."),

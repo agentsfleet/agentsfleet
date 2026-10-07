@@ -10,11 +10,11 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::approval::status;
+use afd_api_wire::grant::status as grant_status;
+use afd_api_wire::tail::TailFrame;
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::{FleetStreams, ReadyIndex};
-use afd_wire::approval::status;
-use afd_wire::grant::status as grant_status;
-use afd_wire::tail::TailFrame;
 use sqlx::Row as _;
 
 use super::announce::Answer;
