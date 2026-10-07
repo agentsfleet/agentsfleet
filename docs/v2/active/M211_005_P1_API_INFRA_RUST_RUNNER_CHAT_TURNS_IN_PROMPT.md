@@ -69,9 +69,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_observability/src/semconv.rs`, `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet/history.rs`, `rustd/crates/afd_observability/src/metrics/label/fleet.rs`, `rustd/crates/afd_observability/src/metrics/label/tests.rs`, `docs/metrics.census.tsv` | EDIT / CREATE | Two span attributes; three daemon families with their producer |
 | `rustd/crates/afd_events/src/history/mod.rs`, `rustd/crates/afd_events/src/history/statement.rs`, `rustd/crates/afd_events/src/history/statement/tests.rs`, `rustd/crates/afd_events/tests/integration_list_plans/expected.rs` | EDIT | `History::finished_before`: the read filters finished rows in SQL, so running or refused rows never take a window slot |
 | `rustd/crates/afd_fleet/tests/integration_lease_gates.rs`, `rustd/crates/afd_fleet/tests/integration_lease_gates/history.rs` | EDIT / CREATE | Turns through the real plane: lease, report, lease again |
-| `rustd/crates/afd_fleet/tests/integration_lease_history.rs`, `rustd/crates/afr_providers/tests/providers/turns.rs`, `rustd/crates/afr_providers/tests/providers/caching.rs`, `rustd/crates/afr_providers/tests/providers.rs`, `rustd/crates/afr_providers/src/request/tests.rs` | CREATE / EDIT |
-| `rustd/crates/afr_agent/src/loop/shared.rs`, `rustd/crates/afr_agent/src/loop/model_turn.rs`, `rustd/crates/afr_agent/src/engine.rs`, `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_agent/src/fixture/model.rs`, `rustd/crates/afr_supervisor/src/{renew/tests.rs,report/tests.rs,test_support.rs,lease_telemetry_tests.rs}`, `rustd/crates/agentsfleetd/tests/support/fake_model.rs` | EDIT | The fleet id reaches the request as its cache key; `Usage.cache_written` in every literal | The integration proofs and the request-body proofs |
-| `docs/architecture/runner_execution.md` | EDIT | §Crates: a chat lease carries the thread's recent turns, and the stable prefix is marked for caching |
+| `rustd/crates/afd_fleet/tests/integration_lease_history.rs`, `rustd/crates/afr_providers/tests/providers/turns.rs`, `rustd/crates/afr_providers/tests/providers/caching.rs`, `rustd/crates/afr_providers/tests/providers.rs`, `rustd/crates/afr_providers/tests/support/mod.rs`, `rustd/crates/afr_providers/src/request/tests.rs` | CREATE / EDIT | The integration proofs and the request-body proofs |
+| `rustd/crates/afr_agent/src/loop/shared.rs`, `rustd/crates/afr_agent/src/loop/model_turn.rs`, `rustd/crates/afr_agent/src/engine.rs`, `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_agent/src/fixture/model.rs`, `rustd/crates/afr_supervisor/src/{renew/tests.rs,report/tests.rs,test_support.rs,lease_telemetry_tests.rs}`, `rustd/crates/agentsfleetd/tests/support/fake_model.rs` | EDIT | The fleet id reaches the request as its cache key; `Usage.cache_written` in every literal |
+| `docs/architecture/runner_execution.md` | EDIT | §Crates: a chat lease carries the thread's recent turns, and the stable prefix is marked for caching. That text landed on `main` in `d47768ba9`, before this branch's base; this branch's edits to the file belong to M211_002 to M211_004 and M215_001 |
+| `rustd/crates/afd_observability/src/test_util.rs` | EDIT | The test capture reads a histogram's sum, which `test_history_metrics_recorded` asserts |
+| `docs/v2/active/M211_005_P1_API_INFRA_RUST_RUNNER_CHAT_TURNS_IN_PROMPT.md` | EDIT | This spec, moved from `pending/` at CHORE(open) |
 
 ## Applicable Rules
 
@@ -103,7 +105,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — A chat lease carries the thread's recent turns — DONE
 
-When the claimed event is `chat`, `pull` reads the fleet's thread before the event through `Thread`, which `History::thread_page` implements with the event's `(created_at, event_id)` as the cursor and one row more than `HISTORY_TURNS_MAX`, so a cut is known. Rows that ended `processed` or `fleet_error` become turns, oldest first. A turn's message is `message_of(request_json)`. Its answer is `response_text`, `[no reply]` when a processed row has none, and `[the run failed: <failure_label>]` for `fleet_error`. Each text is cut to `TURN_TEXT_BYTES_MAX` on a character boundary, and the oldest turns drop until the total fits `HISTORY_BYTES_MAX`. Any other event type carries an empty list. A read that fails issues the lease with an empty list, logs `lease_history_unavailable` with its `error_code`, and counts it, because a follow-up answered without context beats one refused. **Implementation default:** eight turns, 65,536 bytes, 16,384 bytes per text, and chat events only, because a webhook delivery is self-contained and would otherwise carry up to 64 KiB of unrelated runs. Indy may change any of them.
+When the claimed event is `chat`, `issue_ready` (`deliver.rs`) reads the fleet's thread before the event through `Thread`, once the lease is issued. `History::finished_before` implements it with the event's `(created_at, event_id)` as the cursor, the two finished statuses as its predicate, and one row more than `HISTORY_TURNS_MAX`, so a cut is known and a running or refused row never takes a turn's place. Rows that ended `processed` or `fleet_error` become turns, oldest first. A turn's message is `message_of(request_json)`. Its answer is `response_text`, `[no reply]` when a processed row has none, and `[the run failed: <failure_label>]` for `fleet_error`. Each text is cut to `TURN_TEXT_BYTES_MAX` on a character boundary, and the oldest turns drop until the total fits `HISTORY_BYTES_MAX`. Any other event type carries an empty list. A read that fails issues the lease with an empty list, logs `lease_history_unavailable` with its `error_code`, and counts it, because a follow-up answered without context beats one refused. **Implementation default:** eight turns, 65,536 bytes, 16,384 bytes per text, and chat events only, because a webhook delivery is self-contained and would otherwise carry up to 64 KiB of unrelated runs. Indy may change any of them.
 
 - **Dimension 1.1** DONE — A chat event's lease carries the finished turns before it, oldest first → Test `test_follow_up_lease_carries_the_previous_turn`
 - **Dimension 1.2** DONE — Only finished rows become turns; a failure answers with its label; a silent run answers `[no reply]` → Test `test_history_keeps_finished_turns_only`
@@ -112,7 +114,7 @@ When the claimed event is `chat`, `pull` reads the fleet's thread before the eve
 - **Dimension 1.5** DONE — Another fleet's rows never appear → Test `test_history_stays_in_its_fleet`
 - **Dimension 1.6** DONE — A failed read issues the lease with no turns, logged and counted → Test `test_history_read_failure_fails_open`
 - **Dimension 1.7** DONE — A lease without the field decodes with no turns → Test `test_lease_history_defaults_empty`
-- **Dimension 1.8** DONE — The bytes histogram observes every chat lease, and each cap that cut counts once → Test `test_history_metrics_recorded`
+- **Dimension 1.8** DONE — The bytes histogram observes every chat lease whose thread read answers, each cap that cut counts once, and a read that fails counts as a read failure instead → Test `test_history_metrics_recorded`
 
 ### §2 — The model reads them as the conversation — DONE
 
@@ -166,7 +168,7 @@ afd_observability::semconv           ATTR_USAGE_CACHE_READ_TOKENS · ATTR_USAGE_
 ## Invariants
 
 1. A lease carries only its own fleet's turns — the read is scoped by workspace and fleet; `test_history_stays_in_its_fleet`.
-2. Only a chat event carries turns — `pull` reads them for `EventType::Chat` alone; `test_non_chat_lease_carries_no_history`.
+2. Only a chat event carries turns — `issue_ready` reads them for `EventType::Chat` alone; `test_non_chat_lease_carries_no_history`.
 3. No turn reaches a provider unscrubbed — the harness builds every turn's messages from `Scrub::clean`; `test_history_is_scrubbed`.
 4. Tenant text never enters the system prompt — turns become user and assistant messages only; `test_history_leads_the_conversation`.
 5. A lease's turns fit `HISTORY_BYTES_MAX` — the cut runs before render; `test_history_caps_turns_and_bytes`.
@@ -176,10 +178,10 @@ afd_observability::semconv           ATTR_USAGE_CACHE_READ_TOKENS · ATTR_USAGE_
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `agentsfleet_lease_history_bytes` (daemon histogram, `afd_observability` declared + producer) | ops | A chat lease is issued | none | no ids or text in labels | `test_history_metrics_recorded` |
+| `agentsfleet_lease_history_bytes` (daemon histogram, `afd_observability` declared + producer) | ops | A chat lease is issued and its thread read answers | none | no ids or text in labels | `test_history_metrics_recorded` |
 | `agentsfleet_lease_history_cuts_total` (daemon counter) | ops | A cap cuts a chat lease's turns | `reason`: `turns`, `bytes` or `text` | closed label set | `test_history_metrics_recorded` |
 | `agentsfleet_lease_history_read_failures_total` (daemon counter) | ops | The thread read fails | none | none to guard | `test_history_read_failure_fails_open` |
-| `lease_history_unavailable` (daemon log, warn) | ops | The thread read fails | event id, fleet id, `error_code` (the read runs before the lease is minted, so no lease id exists yet) | no message or answer text | `test_history_read_failure_fails_open` |
+| `lease_history_unavailable` (daemon log, warn) | ops | The thread read fails | fleet id, `error_code` (the read runs after the lease is issued; the issue log just before it carries the lease id) | no message or answer text | `test_history_read_failure_fails_open` |
 | `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_creation.input_tokens` on the `chat` span | ops | Every model turn | token counts | counts only | `test_cache_tokens_recorded_on_the_chat_span` |
 
 ## Test Specification (tiered)
@@ -187,15 +189,18 @@ afd_observability::semconv           ATTR_USAGE_CACHE_READ_TOKENS · ATTR_USAGE_
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | integration | `test_follow_up_lease_carries_the_previous_turn` | chat event leased through the real plane, reported processed with an answer; a second chat event → its lease body's `history` holds message and answer |
-| 1.2 | unit | `test_history_keeps_finished_turns_only` | rows processed `a`, fleet_error `timeout`, processed with no text, and a queued row → turns `a`, `[the run failed: timeout]`, `[no reply]`; no queued row |
-| 1.2 | integration | `test_unfinished_rows_never_shrink_the_window` | newest rows running or refused, older ones finished → eight finished turns, the `turns` cut counted |
-| 1.3 | unit | `test_history_caps_turns_and_bytes` | nine finished rows → eight turns, oldest first; a 20,000-byte answer ending in a multi-byte character → at most 16,384 bytes, on a boundary; turns totalling 70,000 bytes → oldest dropped until at most 65,536 |
-| 1.4 | integration | `test_non_chat_lease_carries_no_history` | a webhook event after a finished chat turn → its lease has `history = []` |
+| 1.2 | unit | `test_history_keeps_finished_turns_only` | rows processed `first` answered `one`, processed `second` with no text, fleet_error `third` labelled `timeout_kill`, and a queued row → answers `one`, `[no reply]`, `[the run failed: timeout_kill]`, oldest first; no queued row |
+| 1.2 | integration | `test_unfinished_rows_never_shrink_the_window` | nine finished rows `m1` to `m9`, then three newer rows still `received` or `gate_blocked` → the eight newest finished turns, `m2` to `m9`; the unit test `test_history_metrics_recorded` counts the `turns` cut |
+| 1.3 | unit | `test_history_caps_turns_and_bytes` | nine finished rows → eight turns, oldest first; a long message ending in a multi-byte character → at most 16,384 bytes, on a boundary; turns totalling 70,000 bytes → oldest dropped until at most 65,536 |
+| 1.3 | unit | `test_a_long_answer_is_cut_on_a_character_boundary` | an answer of 16,383 bytes then a two-byte character → 16,383 bytes kept, the `text` cut counted |
+| 1.3 | unit | `test_a_window_at_its_caps_counts_no_cut` | eight short turns, and turns totalling exactly 65,536 bytes → every turn kept, no cut counted |
+| 1.4 | unit | `test_non_chat_lease_carries_no_history` | a webhook event after a finished chat turn → its lease has `history = []` and the thread is never read |
 | 1.4 | integration | `test_non_chat_lease_carries_no_history_through_the_plane` | a non-chat event leased through `Plane::issue_ready` → `history` empty in the lease body |
 | 1.5 | integration | `test_history_stays_in_its_fleet` | fleets `f1` and `f2` each with a finished turn → `f1`'s follow-up carries `f1`'s turn only |
-| 1.6 | unit | `test_history_read_failure_fails_open` | a `Thread` that errors → the lease renders with `history = []`, `lease_history_unavailable` logged with its `error_code`, the failure counter at 1 |
+| 1.6 | unit | `test_history_read_failure_fails_open` | a `Thread` that errors → no turns, `lease_history_unavailable` logged with its fleet id and `error_code` |
+| 1.6 | integration | `test_follow_up_lease_is_issued_when_its_thread_will_not_answer` | a `Plane` whose thread reads an unreachable database → the follow-up lease is issued with `history = []` |
 | 1.7 | unit | `test_lease_history_defaults_empty` | lease JSON without `history` → decodes with an empty list; with it → round-trips unchanged |
-| 1.8 | unit | `test_history_metrics_recorded` | a read cut by turns and by text → the histogram observes the total bytes, `cuts_total` reads 1 for `turns` and 1 for `text` |
+| 1.8 | unit | `test_history_metrics_recorded` | nine finished rows, each message past the text cap → `cuts_total` reads 1 each for `turns`, `text` and `bytes`, and the histogram observes one lease, its sum moving by the window's bytes; a failed read counts once and observes no bytes |
 | 2.1 | unit | `test_history_leads_the_conversation` | turn `(m1, a1)` and message `m2` → messages `User m1`, `Assistant a1` with no calls, `User m2`; instructions equal those of the same lease without turns |
 | 2.2 | unit | `test_history_is_scrubbed` | a turn whose answer holds the lease's secret value → the request carries the masked form |
 | 2.3 | unit | `test_history_message_matches_its_first_reading` | request `{"message":"m1"}` read as lease A's current message and as lease B's turn → identical strings |
@@ -205,7 +210,7 @@ afd_observability::semconv           ATTR_USAGE_CACHE_READ_TOKENS · ATTR_USAGE_
 | 3.2 | unit | `test_cache_key_rides_responses_only` | one request with cache key `f1` on each wire → the Responses body has `prompt_cache_key = "f1"`; the Messages and Chat bodies have none |
 | 3.3 | integration | `test_history_prefix_is_byte_identical_on_the_wire` | the real loop against the fake provider, one lease then its follow-up, on Messages and Responses → model, tools, system prompt and cache marker or `prompt_cache_key` byte-identical in the captured bodies; the follow-up's conversation opens with the first's exact bytes |
 | 3.3 | unit | `test_history_prefix_is_byte_identical_across_leases` | lease A with message `m1`; lease B with turn `(m1, a1)` and message `m2` → B's first request equals A's in instructions, tools and the first message |
-| 3.4 | unit | `test_cache_tokens_recorded_on_the_chat_span` | provider usage with 900 cache-read and 100 cache-write tokens → the `chat` span carries 900 and 100 |
+| 3.4 | unit | `test_cache_tokens_recorded_on_the_chat_span` | provider usage of 10 fresh, 40 cache-read and 6 cache-write input tokens and 2 output → the `chat` span carries input 50, cache read 40, cache creation 6, output 2 |
 | 3.5 | unit | `test_history_leaves_the_repair_context_in_the_system_prompt` | a write-bound lease with turns → the repair context is in the instructions and in no message |
 
 ## Acceptance Rubric (single scoring surface)

@@ -77,6 +77,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/runner_execution.md` | EDIT | §"Sandbox engines": the two leaves, `/tmp` on the disk, the lease's size |
 | `docs/metrics.runner.census.tsv`, `rustd/crates/afr_telemetry/src/{families.rs,record.rs,testing.rs}`, `rustd/crates/afr_telemetry/src/families/tests.rs` | EDIT | The runner census gains `agentsfleet_runner_tool_out_of_memory_total`; the tool family's ceiling follows the catalog's 40 labels (39 published plus `_other`, after the nested-loop tools) |
 | `rustd/crates/afr_agent/src/spans.rs`, `rustd/crates/afr_agent/src/ledger.rs`, `rustd/crates/afr_agent/src/ledger/tests.rs` | EDIT | `execute_tool` carries `error.type` from the call's closed code; a call killed for memory is counted |
+| `rustd/crates/afr_sandbox/src/{cgroup.rs,cgroup/tests.rs,error.rs,error/raise.rs,tenant/files.rs,tenant/tests.rs,workspace_disk.rs,workspace_disk/tests.rs,bubblewrap_engine/tests/prepare.rs,unsandboxed/tests.rs}`, `rustd/crates/afr_executor/tests/{orphans,terminal}.rs` | EDIT | The tenant leaf's `memory.high` sits an eighth below its `memory.max`; every failed workspace disk build unmounts before it removes files; a cgroup file that cannot be read is named as unread, and `Error::detail()` gives its sentence; the unit-test ledger's sandbox and executor gaps |
+| `rustd/crates/afr_sandbox/examples/kernel_lane/{filesystems,forked_kill}.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/{admission,confinement}.rs` | CREATE / EDIT | The failed-mount, buffered-disk, direct-I/O probe, short-disk and shell-reported-kill trials; `confinement.rs` finds `/workspace` under the disk's `workspace/` directory |
+| `rustd/crates/afr_tools/src/sandbox/exec_session/{tests,write_tests}.rs` | EDIT | A session killed for memory, in `exec_command` or `write_stdin`, logs the lease's own id |
+| `docs/v2/active/M211_003_P1_API_INFRA_RUST_RUNNER_SANDBOX_SURVIVES_EXHAUSTION.md`, `docs/v2/pending/M211_003_P1_API_INFRA_RUST_RUNNER_SANDBOX_SURVIVES_EXHAUSTION.md` | CREATE / DELETE | This spec, moved from `pending/` to `active/` |
 
 ## Applicable Rules
 
@@ -149,7 +153,7 @@ Spike S6's scenario becomes a kernel trial on one shared engine, with lease stat
 
 ```
 workspace disk        <lease>/disk/{workspace (0755), tmp (1777)}   → /workspace, /tmp
-lease cgroup          <lease>/{sandbox, tenant}   tenant/memory.max = limit − SANDBOX_MEMORY_RESERVE_BYTES
+lease cgroup          <lease>/{sandbox, tenant}   tenant/memory.max = limit − SANDBOX_MEMORY_RESERVE_BYTES · tenant/memory.high = memory.max − memory.max / 8
 tenant move           pre_exec: write(fd, "0")   fd = tenant/cgroup.procs, opened by the engine, close-on-exec
 ending                Exited | Signaled | OutOfMemory (Signaled(SIGKILL) or a shell's Exited(128+SIGKILL), when tenant memory.events oom_kill rose)
 shared memory         /dev/shm  tmpfs --size Limits::shared_memory_bytes() = memory_bytes / 4
@@ -170,6 +174,8 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 | Memory exhausted | A tenant allocates past the limit | The killer takes a tenant process; its call reads `out_of_memory` (Dimensions 2.1, 2.2) |
 | Tenant move refused | A kernel without open-time migration checks, or a lost descriptor | Spawn refused with a code; nothing runs unshielded (Dimension 2.4) |
 | Workspace writes outrun reclaim | Dirty pages under the memory limit | Direct I/O removes the second cache; the writer ends in `ENOSPC` (Dimension 3.2) |
+| Tenant writes past its disk faster than write-back drains | Pages under write-back fill the tenant leaf before the disk refuses the write | `memory.high`, an eighth below the leaf's `memory.max`, slows the writer while write-back drains; it reads `ENOSPC` and is not killed (Dimension 5.1, `test_the_tenant_leaf_throttles_an_eighth_below_its_limit`) |
+| Disk build fails after the mount | The mount helper mounts and then fails, or the layout is refused | Undone as a release is: unmounted, then removed; the lease sees the step's own failure, and no loop device stays on a deleted image (Dimension 3.1) |
 | Size past a bound | A daemon sends a size outside the declared bounds | The lease ends at startup, `startup_posture`, before any sandbox is prepared (Dimension 4.4) |
 | Crash mid-split | Runner dies between creating leaves and entering them | The boot sweep removes both leaves (Dimension 2.5) |
 
@@ -196,8 +202,8 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | kernel | `test_full_tmp_answers_enospc` | `dd` into `/tmp` → `No space left on device`; next `echo ok` → `ok` |
-| 1.2 | kernel | `test_workspace_and_tmp_share_the_disk` | 3 GiB in `/workspace` → `/tmp` takes under 1 GiB; `ls -a /workspace` → no `lost+found` |
-| 2.1 | kernel | `test_oom_kills_only_the_tenant` | a 3 GiB allocation → that process killed; `echo ok` → `ok`; `sandbox` leaf processes unchanged |
+| 1.2 | kernel | `test_workspace_and_tmp_share_the_disk` | 64 MiB disk: 40 MiB into `/workspace` fits, and `ls -a /workspace` → no `lost+found`; 40 MiB more into `/tmp` → `No space left on device` |
+| 2.1 | kernel | `test_oom_kills_only_the_tenant` | 256 MiB memory: a 2 GiB allocation → that process ends `OutOfMemory`; `echo ok` → `ok`; the `sandbox` leaf's `memory.events` reads `oom_kill 0` |
 | 2.2 | unit | `test_oom_ending_reads_out_of_memory` | an `OutOfMemory` ending through `shell` → code `out_of_memory`, exit 137, one `sandbox_out_of_memory` warn with no command text; the executor's own `OutOfMemory` on a real kernel is 2.1's |
 | 2.3 | kernel | `test_tenant_process_holds_no_cgroup_descriptor` | `ls /proc/$$/fd` from the tenant's shell → `0 1 2`; `/proc/$$/cgroup` → `0::/../tenant`, the leaf beside the namespace's `sandbox` root |
 | 1.3 | kernel | `test_full_shared_memory_spares_the_tenant` | 256 MiB memory; `dd` 128 MiB into `/dev/shm` → `No space left on device`; then a 64 MiB allocation → `ok` |
@@ -206,6 +212,9 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 | 2.4 | unit | `test_failed_tenant_move_refuses_the_spawn` | descriptor closed before spawn → refused with its cause; 0 processes started |
 | 2.5 | kernel | `test_sweep_removes_both_leaves` | runner killed after the split → restart sweeps `sandbox`, `tenant`, then the lease cgroup |
 | 3.1 | kernel | `test_workspace_disk_uses_direct_io` | `/sys/dev/block/<major>:<minor>/loop/dio` of the mounted disk, read before destroy → `1` |
+| 3.1 | kernel | `test_a_disk_whose_mount_helper_failed_is_unmounted` | a real mount helper that mounts, then exits 1 → the build fails, the lease's directory is empty, nothing stays mounted |
+| 3.1 | unit | `test_a_mount_that_fails_after_mounting_leaves_nothing_behind` | a fake mount that writes into the mount point, then fails → the build fails; image and mount point removed |
+| 3.1 | unit | `test_a_disk_that_cannot_be_laid_out_leaves_nothing_behind` | a fake mount that leaves `workspace/` in the mount point → the layout's `AlreadyExists` reaches the caller; image and mount point removed, whichever user runs the test |
 | 3.2 | kernel | `test_disk_fill_under_memory_limit_ends_in_enospc` | 4 GiB `dd` under 2 GiB memory → `ENOSPC`; `tenant` `oom_kill` 0 |
 | 4.1 | unit | `a_sized_lease_builds_the_size_it_asked_for` | 4 000 / 8 GiB / 20 GiB → the engine is asked for exactly that, with the default process cap |
 | 4.2 | unit | `a_lease_without_a_size_builds_the_hosts_defaults` | no `limits` → the engine is asked for `Limits::default()` |
@@ -214,6 +223,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 | 4.5 | unit | `a_size_one_past_any_bound_is_refused` | each bound's limit admitted, one past it refused, six rows |
 | 4.6 | unit | `the_published_bounds_are_the_enforced_ones` | `SandboxLimits`'s schema minimum and maximum per field → the `SANDBOX_*` constants |
 | 5.1 | kernel | `test_writable_state_exhaustion_spares_the_sandbox` | four leases at 1 GiB disk and 512 MiB memory, `/tmp` then `/workspace` filled with 2 GiB each → eight `ENOSPC`, `oom_kill 0` in every `sandbox` leaf, four `ok` |
+| 5.1 | unit | `test_the_tenant_leaf_throttles_an_eighth_below_its_limit` | a new lease cgroup → the tenant leaf's `memory.high` reads its `memory.max` less an eighth |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -271,6 +281,9 @@ N/A — no files deleted. The sandbox's `/tmp` tmpfs flag goes in place.
 - **Production run parked on M213_001** — > Indy (2026-10-07 ~16:08, AskUserQuestion): "Move them the dimenstions as parked and the spec as DONE. Mention in a prompt to me so i can ask the other agent in M213 to deploy and test this." — context: `agentsfleet_runner/src/main.rs:184-185` refuses every lease, and the production probe passes no `state_dir`, so the engine runs only in the kernel lane and tests until M213_001 Dimension 1.4. 4.3 and 4.6 are the wire the daemon already encodes.
 - **Gaps closed at REVIEW (Oct 07, 2026)** — an unsized, writable `/dev/shm` was S6's failure in another directory: now a quarter of memory (1.3). A forked child killed for memory read as a plain exit 137: now judged (2.6). The lane failed on a full host disk without saying so: it now refuses to start. Dimension 4.4's test now asserts the `sandbox_size_refused` warn it is cited for.
 - **Published docs** — sandbox defaults, bounds and what happens at each limit are on `runners.mdx` in the docs repo, branch `chore/m211-sandbox-tools-changelog`, commit `07a4cb1`.
+- **Unit-test ledger at the boundary (Oct 07, 2026)** — three findings. The Linux-only engine test `test_a_lease_runs_through_the_engine_and_keeps_a_disk_it_cannot_unmount` failed from `60b37efd9` on: it read the lease cgroup's own `cgroup.procs` after processes moved to the sandbox leaf. macOS lanes never compile `bubblewrap_engine`, so no local lane caught it. It now reads `sandbox/cgroup.procs`, and the Linux suites ran green on `afr-kernel` at the boundary: `afr_sandbox` 140, `afr_executor` 96 and 55. A workspace disk whose build failed after the mount (direct I/O or the layout) removed its files and unlinked its image while still mounted; it now unmounts first, as a release does (`test_a_disk_that_cannot_be_laid_out_leaves_nothing_behind`). The leaf's `oom_kill` count is shared by every tenant process: with two running at once, a shell that exits 137 for its own reason after the other's kill can claim that kill, and the other's ending reads as plain. Known and left as built: commands in one lease run one at a time unless the model opens concurrent `exec_command` sessions.
+- **Kernel trial S6 root cause (Oct 08, 2026)** — The S6 trial `test_writable_state_exhaustion_spares_the_sandbox` failed intermittently on base `886733be6` and head alike: S6 alone passed 0 of 3 runs on base and 2 of 3 on head. The kernel's out-of-memory report showed the tenant leaf full of pages under write-back, `file_writeback 468451328` against a 448 MiB limit, so `dd` was killed before it read `ENOSPC`. The tenant leaf now carries `memory.high` an eighth below its `memory.max` (`afr_sandbox/src/cgroup.rs`, unit test `test_the_tenant_leaf_throttles_an_eighth_below_its_limit`). S6 alone then passed 5 of 5 runs, and the full lane 40 of 40, on a scratch tree (`585f8c29f`).
+- **Review fixes (Oct 08, 2026)** — Every failed workspace disk build, before or after the mount, now goes through one undo that unmounts whatever is mounted before it removes files (`585f8c29f`). The kernel trial `test_a_disk_whose_mount_helper_failed_is_unmounted` fails a real mount helper after it mounts. The unit tests `test_a_mount_that_fails_after_mounting_leaves_nothing_behind` and `test_a_disk_that_cannot_be_laid_out_leaves_nothing_behind` prove the undo without root, and the second no longer depends on the user that runs it. A cgroup file that cannot be read is now named as unread, not as a refused write.
 - **Skill-chain outcomes** — pending.
 - **§5 sizes** (Oct 07, 2026: 1:10 PM) — the trial runs at 1 GiB of disk and 512 MiB of memory per lease, a quarter of S6's, because four default leases need 16 GiB the lane host does not have. Indy (in-session, Oct 07, 2026) approved the scaled sizes: "yes go ahead", answering the recommendation of 1 GiB / 512 MiB over S6's 4 GiB / 2 GiB.
 - **Deferrals** — §4's host disk reserve, as written at PLAN (`capacity.rs`, the worker's wait, `sandbox_capacity_short`, `agentsfleet_runner_capacity_short_total`), is not built. Indy (in-session, Oct 07, 2026): "for now the host disk size can get maxed, that is fine, its a separate think to solve disk pressure." §4 became the lease's size in its place, Indy choosing "Lease field": the size rides `LeasePayload`, the daemon sends null for now, and tests inject it.
