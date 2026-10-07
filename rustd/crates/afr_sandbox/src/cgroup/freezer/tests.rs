@@ -97,3 +97,15 @@ fn test_frozen_is_read_from_its_own_key_and_value_only() {
         assert_eq!(freezer.is_frozen().unwrap(), frozen, "{events:?}");
     }
 }
+
+/// A thaw the kernel never reports is refused, naming the state it never
+/// reached.
+#[test]
+fn test_a_thaw_the_kernel_never_reports_is_refused_as_unsettled() {
+    let dir = tempfile::tempdir().unwrap();
+    let freezer = reporting(dir.path(), SETTLED_FROZEN);
+
+    let refused = freezer.thaw().unwrap_err().to_string();
+
+    assert!(refused.contains("did not settle thawed"), "{refused}");
+}

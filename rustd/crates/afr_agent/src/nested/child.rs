@@ -10,7 +10,8 @@ use crate::harness::{Ending, Harness};
 pub(super) const EVENT_CHILD_STARTED: &str = "child_started";
 pub(super) const EVENT_CHILD_ENDED: &str = "child_ended";
 
-/// Runs the child `start` describes to its end, under `guard`. The root
+/// Runs the child `start` describes to its end, under `guard`, which this
+/// run holds so the end is recorded once the loop is done with it. The root
 /// loop polls it.
 pub(crate) async fn run<'s, 'run: 's>(
     shared: &'s Shared<'run>,
@@ -18,31 +19,25 @@ pub(crate) async fn run<'s, 'run: 's>(
     guard: Guard<'s, 'run>,
 ) {
     let selection = start.selection;
-    let mut child = Harness::child(shared, &selection, start.seat, guard);
+    let mut child = Harness::child(shared, &selection, start.seat, &guard);
     let ending = child.drive().await;
-    child.conclude(ending);
+    drop(child);
+    guard.ended(status(shared, ending));
 }
 
-impl Harness<'_, '_> {
-    /// Ends the child this loop is with how its turns ended; the root never
-    /// concludes, it finishes.
-    pub(crate) fn conclude(self, ending: Ending) {
-        let Some(Tether { guard, .. }) = self.child else {
-            return;
-        };
-        let status = match ending {
-            Ending::Answered(text) => Status::Done(self.shared.scrub.text(&text).into_owned()),
-            Ending::Failed(failure) => Status::Failed(failure.detail()),
-            Ending::Stopped => Status::Interrupted,
-        };
-        guard.ended(status);
+/// How a child's turns ended, as the status its parent reads.
+fn status(shared: &Shared<'_>, ending: Ending) -> Status {
+    match ending {
+        Ending::Answered(text) => Status::Done(shared.scrub.text(&text).into_owned()),
+        Ending::Failed(failure) => Status::Failed(failure.detail()),
+        Ending::Stopped => Status::Interrupted,
     }
 }
 
-/// What a child loop holds that the root does not: the guard that ends it
-/// once, and the inbox its parent's `send_input` writes to.
+/// What a child loop holds that the root does not: the guard counting its
+/// calls, and the inbox its parent's `send_input` writes to.
 pub(crate) struct Tether<'s, 'run> {
-    pub(crate) guard: Guard<'s, 'run>,
+    pub(crate) guard: &'s Guard<'s, 'run>,
     pub(crate) input: mpsc::UnboundedReceiver<String>,
 }
 

@@ -13,7 +13,7 @@ use afd_core::test_util::trace::Capture;
 use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
 use afr_sandbox::{Engine, Limits, Sandbox, SandboxRequest};
 
-use super::{HoldKey, Holds, Release};
+use super::{BuiltUnder, HoldKey, Holds, Release};
 use crate::test_support::FakeEngine;
 
 const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
@@ -23,7 +23,9 @@ const FLEET_C: &str = "01890a5d-ac96-774b-bcce-b302099a80a3";
 const FLEET_D: &str = "01890a5d-ac96-774b-bcce-b302099a80a4";
 pub(super) const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
 const WORKSPACE: &str = "01890a5d-ac96-774b-bcce-b302099a80c1";
-const POLICY: &str = r#"{"allow":["api.github.com"]}"#;
+/// The host the filed hold's policy reaches, and one it does not.
+const GITHUB: &str = "api.github.com";
+const GITLAB: &str = "gitlab.com";
 const RELEASED: &str = "sandbox_hold_released";
 /// How long a test waits for something that should already have happened.
 const PROMPT: Duration = Duration::from_secs(1);
@@ -37,7 +39,7 @@ pub(super) fn key(fleet: &str) -> HoldKey {
         fleet: id(fleet),
         workspace: WORKSPACE.to_owned(),
         limits: Limits::default(),
-        policy: POLICY.to_owned(),
+        policy: BuiltUnder::allowing(&[GITHUB]),
     }
 }
 
@@ -118,7 +120,7 @@ async fn test_mismatch_destroys_the_hold() {
     let changes: [fn(&mut HoldKey); 3] = [
         |key| key.workspace = FLEET_D.to_owned(),
         |key| key.limits.memory_bytes /= 2,
-        |key| key.policy = POLICY.replace("github", "gitlab"),
+        |key| key.policy = BuiltUnder::allowing(&[GITLAB]),
     ];
 
     for change in changes {

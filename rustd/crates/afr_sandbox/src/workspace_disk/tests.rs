@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 use tempfile::TempDir;
 
-use super::{TMP_DIR, WORKSPACE_DIR, WorkspaceDisk, absent, lay_out};
+use super::{Caching, IMAGE_MODE, TMP_DIR, WORKSPACE_DIR, WorkspaceDisk, absent, lay_out};
 use crate::host::HostTools;
 
 /// A program that does nothing and succeeds: a format or mount that made
@@ -25,6 +25,10 @@ const MOUNTS_THEN_FAILS: &str = "mounts-then-fails";
 const LEAVES_WORKSPACE: &str = "leaves-workspace";
 /// A fake helper's mode: it runs.
 const HELPER_MODE: u32 = 0o755;
+/// The permission bits of a file's mode.
+const PERMISSION_BITS: u32 = 0o7777;
+/// The size a test disk asks for.
+const DISK_BYTES: u64 = 4_096;
 /// Shell that sets `target` to a helper's last argument, the mount point.
 const LAST_ARGUMENT: &str = "for target; do :; done";
 
@@ -254,4 +258,31 @@ async fn test_a_disk_that_cannot_be_laid_out_leaves_nothing_behind() {
         Vec::<OsString>::new(),
         "image and mount point removed"
     );
+}
+
+/// A build whose format and mount succeed hands back the disk: its image is
+/// root's alone and sized to the limit, `workspace/` and `tmp/` are laid out
+/// on the mount, and a mount that made no loop device is cached buffered.
+/// The fakes format and mount nothing, so the layout lands in the bare mount
+/// point.
+#[tokio::test]
+async fn test_a_disk_that_builds_is_laid_out_and_cached_buffered() {
+    let dir = tempfile::tempdir().unwrap();
+    let tools = HostTools {
+        mount: PathBuf::from(SUCCEEDS),
+        ..broken(SUCCEEDS)
+    };
+
+    let (disk, caching) = WorkspaceDisk::create(&tools, dir.path(), DISK_BYTES, me())
+        .await
+        .unwrap();
+
+    assert_eq!(caching, Caching::Buffered);
+    let image = fs::metadata(dir.path().join(super::IMAGE_NAME)).unwrap();
+    assert_eq!(image.len(), DISK_BYTES);
+    assert_eq!(image.permissions().mode() & PERMISSION_BITS, IMAGE_MODE);
+    assert_eq!(disk.mount_point(), dir.path().join(super::MOUNT_DIR));
+    let tmp = fs::metadata(disk.tmp()).unwrap().permissions().mode();
+    assert_eq!(tmp & PERMISSION_BITS, super::TMP_MODE);
+    assert!(disk.workspace().is_dir());
 }

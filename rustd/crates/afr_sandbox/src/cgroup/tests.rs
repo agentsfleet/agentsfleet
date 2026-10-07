@@ -242,3 +242,19 @@ fn test_kill_writes_one_and_remove_names_the_cgroup_that_stayed() {
     assert!(left.to_string().contains("lease-8"), "{left}");
     assert!(left.to_string().contains("could not be removed"), "{left}");
 }
+
+/// Both leaves stop together because the freezer is the lease cgroup's own:
+/// it writes the request and reads the settled state beside the leaves,
+/// never inside one.
+#[test]
+fn test_the_freezer_acts_on_the_lease_cgroup_itself() {
+    let root = tempfile::tempdir().unwrap();
+    let (made, dir) = plain(root.path(), "lease-14");
+    fs::write(dir.join("cgroup.events"), "populated 1\nfrozen 1\n").unwrap();
+
+    let freezer = made.freezer();
+    freezer.freeze().unwrap();
+
+    assert_eq!(read(&dir, "cgroup.freeze"), "1");
+    assert!(freezer.is_frozen().unwrap());
+}
