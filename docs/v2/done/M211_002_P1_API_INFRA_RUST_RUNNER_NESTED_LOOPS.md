@@ -93,32 +93,32 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A child loop runs with the parent's provider and key, its task as the user turn, the parent's system prompt and trusted repair context, the same sandbox, workspace and memory store, and a tool set that is the requested subset of the parent's tools; a requested tool the parent lacks is refused. At `NESTED_DEPTH_MAX` the child is offered none of the six nested tools. At most `CHILDREN_RUNNING_MAX` children run at once and `CHILDREN_PER_RUN_MAX` are started per run; past either, `spawn` and `delegate` refuse with a code. The context cap and token accounting are the run's: a child's turns count against them, and its usage sums into the one report.
 
-- **Dimension 1.1** DONE · PARKED for production (M213_001 Dimension 1.4) — `delegate` runs a child to its answer and returns it as the call's output → Test `test_delegate_returns_child_answer`
-- **Dimension 1.2** DONE · PARKED for production (M213_001 Dimension 1.4) — `spawn` returns a child id; `wait_agent` reports running then done; `send_input` reaches the child's next turn → Test `test_spawn_wait_send_round_trip`
-- **Dimension 1.3** DONE · PARKED for production (M213_001 Dimension 1.4) — A child at the depth cap is offered no nested tool → Test `test_nested_depth_capped`
-- **Dimension 1.4** DONE · PARKED for production (M213_001 Dimension 1.4) — The running and per-run caps refuse with their codes → Test `test_children_caps_refuse`
-- **Dimension 1.5** DONE · PARKED for production (M213_001 Dimension 1.4) — A child never holds a tool its parent lacks → Test `test_child_tools_subset_of_parent`
-- **Dimension 1.6** DONE · PARKED for production (M213_001 Dimension 1.4) — Children's usage sums into the report's three counts → Test `test_child_usage_sums_into_report`
+- **Dimension 1.1** — DONE — PARKED for production (M213_001 Dimension 1.4) — `delegate` runs a child to its answer and returns it as the call's output → Test `test_delegate_returns_child_answer`
+- **Dimension 1.2** — DONE — PARKED for production (M213_001 Dimension 1.4) — `spawn` returns a child id; `wait_agent` reports running then done; `send_input` reaches the child's next turn → Test `test_spawn_wait_send_round_trip`
+- **Dimension 1.3** — DONE — PARKED for production (M213_001 Dimension 1.4) — A child at the depth cap is offered no nested tool → Test `test_nested_depth_capped`
+- **Dimension 1.4** — DONE — PARKED for production (M213_001 Dimension 1.4) — The running and per-run caps refuse with their codes → Test `test_children_caps_refuse`
+- **Dimension 1.5** — DONE — PARKED for production (M213_001 Dimension 1.4) — A child never holds a tool its parent lacks → Test `test_child_tools_subset_of_parent`
+- **Dimension 1.6** — DONE — PARKED for production (M213_001 Dimension 1.4) — Children's usage sums into the report's three counts → Test `test_child_usage_sums_into_report`
 
 ### §2 — Children are visible as the run's own calls — DONE
 
 A child's tool calls take ids from the run-wide counter and emit the same frames and trace rows as the parent's; the parent's `delegate` or `spawn` call is itself a call whose output is the child's answer or id. The trace caps count every call of the run. The thread therefore shows a child's reads as rows of the same turn.
 
-- **Dimension 2.1** DONE · PARKED for production (M213_001 Dimension 1.4) — Child calls carry run-wide ids and appear in the frames and the trace → Test `test_child_calls_share_the_run_trace`
-- **Dimension 2.2** DONE · PARKED for production (M213_001 Dimension 1.4) — The trace's 200-call cap counts child calls → Test `test_trace_cap_counts_child_calls`
+- **Dimension 2.1** — DONE — PARKED for production (M213_001 Dimension 1.4) — Child calls carry run-wide ids and appear in the frames and the trace → Test `test_child_calls_share_the_run_trace`
+- **Dimension 2.2** — DONE — PARKED for production (M213_001 Dimension 1.4) — The trace's 200-call cap counts child calls → Test `test_trace_cap_counts_child_calls`
 
 ### §3 — Every child ends with its parent, and every child call ends once — DONE
 
 When the parent's run ends for any reason — answer, kill, timeout, provider failure, context cap — the registry ends every running child, and each child's open calls close `interrupted` exactly once. `interrupt_agent` ends one child the same way; `list_agents` reports each child's state. A child that ends on its own leaves its answer for `wait_agent`.
 
-- **Dimension 3.1** DONE · PARKED for production (M213_001 Dimension 1.4) — Parent end interrupts every running child; open calls close once → Test `test_parent_end_interrupts_children`
-- **Dimension 3.2** DONE · PARKED for production (M213_001 Dimension 1.4) — `interrupt_agent` ends one child; `list_agents` shows running, done and interrupted → Test `test_interrupt_and_list_agents`
+- **Dimension 3.1** — DONE — PARKED for production (M213_001 Dimension 1.4) — Parent end interrupts every running child; open calls close once → Test `test_parent_end_interrupts_children`
+- **Dimension 3.2** — DONE — PARKED for production (M213_001 Dimension 1.4) — `interrupt_agent` ends one child; `list_agents` shows running, done and interrupted → Test `test_interrupt_and_list_agents`
 
 ### §4 — A bundle fans out against the real daemon — DONE
 
 The integration lane adds a support bundle that delegates two file reads to two children and summarises, driven by the fake model, and checks the thread's trace holds the parent's `delegate` calls and the children's reads under one counter.
 
-- **Dimension 4.1** DONE · PARKED for production (M213_001 Dimension 1.4) — The delegating bundle runs end to end and its trace holds parent and child calls → Test `test_delegating_bundle_roundtrip`
+- **Dimension 4.1** — DONE — PARKED for production (M213_001 Dimension 1.4) — The delegating bundle runs end to end and its trace holds parent and child calls → Test `test_delegating_bundle_roundtrip`
 
 ## Interfaces
 
