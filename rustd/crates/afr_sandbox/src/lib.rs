@@ -26,6 +26,7 @@ mod host;
 mod mounts;
 mod probe;
 mod serve;
+mod tenant;
 mod toolbox;
 mod unsandboxed;
 mod warm_slots;
@@ -36,7 +37,10 @@ mod bubblewrap_engine;
 
 #[cfg(target_os = "linux")]
 pub use self::bubblewrap_engine::{BubblewrapConfig, BubblewrapEngine};
-pub use self::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup, SUBTREE_CONTROL};
+pub use self::cgroup::{
+    DEFAULT_IO_BYTES_PER_SECOND, LeaseCgroup, SANDBOX_LEAF, SANDBOX_MEMORY_RESERVE_BYTES,
+    SUBTREE_CONTROL, TENANT_LEAF,
+};
 pub use self::engine::{
     DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine,
     HostWorkspace, Limits, Sandbox, SandboxRequest,
@@ -52,6 +56,7 @@ pub use self::probe::{
     ProbePaths, REQUIRED_CONTROLLERS, SECCOMP_ACTIONS_PATH, probe,
 };
 pub use self::serve::{serve_confined, serve_sandboxed};
+pub use self::tenant::{TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors};
 #[cfg(target_os = "linux")]
 pub use self::toolbox::KernelMounter;
 pub use self::toolbox::{

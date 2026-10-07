@@ -7,6 +7,13 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 use super::{Layout, arguments};
+use crate::tenant::TenantDescriptors;
+
+/// The numbers a test's tenant leaf is named under.
+const TENANT: TenantDescriptors = TenantDescriptors {
+    tenant_procs: 7,
+    tenant_events: 9,
+};
 
 fn argv() -> Vec<String> {
     with_level(Some("debug"))
@@ -22,6 +29,7 @@ fn with_level(level: Option<&str>) -> Vec<String> {
         entry: Path::new("/usr/local/bin/agentsfleet-runner"),
         entry_args: &entry_args,
         log_level: level.map(OsStr::new),
+        tenant: TENANT,
     })
     .into_iter()
     .map(|part| part.into_string().unwrap_or_default())
@@ -106,8 +114,16 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
     let argv = argv();
 
     assert_eq!(
-        argv[argv.len() - 3..],
-        ["--", "/opt/agentsfleet/agentsfleet-runner", "sandbox"]
+        argv[argv.len() - 7..],
+        [
+            "--",
+            "/opt/agentsfleet/agentsfleet-runner",
+            "sandbox",
+            "--tenant-procs",
+            "7",
+            "--tenant-events",
+            "9"
+        ]
     );
     // The executor owns `PATH`; the only variable passed in is the log level.
     assert_eq!(
@@ -158,4 +174,27 @@ fn test_tmp_is_the_disks_tmp_directory_and_no_tmpfs() {
         .windows(2)
         .any(|pair| pair[0] == "--tmpfs" && pair[1] == "/tmp");
     assert!(!tmpfs_at_tmp, "{argv:?}");
+}
+
+#[test]
+fn test_the_entry_reads_back_the_tenant_descriptors_it_was_named() {
+    let argv = arguments(&Layout {
+        toolbox: Path::new("/t"),
+        workspace: Path::new("/w"),
+        tmp: Path::new("/tmp"),
+        run_dir: Path::new("/r"),
+        entry: Path::new("/e"),
+        entry_args: &[],
+        log_level: None,
+        tenant: TENANT,
+    });
+    // The last mention: the first is the entry's own read-only bind.
+    let entry = argv
+        .iter()
+        .rposition(|part| part == "/opt/agentsfleet/agentsfleet-runner")
+        .unwrap_or_else(|| unreachable!("no entry in {argv:?}"));
+
+    let parsed = TenantDescriptors::parse_from(argv[entry..].iter().cloned());
+
+    assert_eq!(parsed.ok(), Some(TENANT), "the flags round-trip");
 }

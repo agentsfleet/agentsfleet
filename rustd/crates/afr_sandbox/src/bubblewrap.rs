@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 
 use afd_core::env::LOG_LEVEL_VAR;
 
+use crate::tenant::TenantDescriptors;
+
 /// Where the workspace disk appears inside the sandbox: the root the executor
 /// confines every path to.
 pub const SANDBOX_WORKSPACE: &str = afr_executor::WORKSPACE_ROOT;
@@ -114,12 +116,16 @@ pub struct Layout<'a> {
     pub entry: &'a Path,
     /// What it is told after its own name; `sandbox` for the runner.
     pub entry_args: &'a [OsString],
+    /// The tenant leaf's descriptors, named to the entry after its own
+    /// arguments.
+    pub tenant: TenantDescriptors,
     /// The log level the process inside logs at, passed through the cleared
     /// environment when the runner has one set.
     pub log_level: Option<&'a OsStr>,
 }
 
-/// Bubblewrap's arguments for `layout`, ending with the entry and its own.
+/// Bubblewrap's arguments for `layout`, ending with the entry, its own, and
+/// the tenant leaf's descriptors.
 #[must_use]
 pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     let mut argv: Vec<OsString> = NAMESPACES
@@ -171,6 +177,7 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     flag(&[CHDIR_FLAG.as_ref(), SANDBOX_WORKSPACE.as_ref()]);
     flag(&[END_OF_OPTIONS.as_ref(), SANDBOX_ENTRY.as_ref()]);
     argv.extend(layout.entry_args.iter().cloned());
+    argv.extend(layout.tenant.arguments());
     argv
 }
 

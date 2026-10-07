@@ -109,3 +109,8 @@ pub(crate) fn lease_id_unsafe(lease_id: &str) -> Error {
 pub(crate) fn unconfined(detail: &'static str) -> Error {
     ErrorKind::Unconfined { detail }.into()
 }
+
+/// Refuses a descriptor the sandbox entry was named but did not inherit.
+pub(crate) fn not_inherited(descriptor: i32) -> Error {
+    ErrorKind::NotInherited { descriptor }.into()
+}

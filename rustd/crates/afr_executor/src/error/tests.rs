@@ -7,7 +7,7 @@ use jsonrpsee_types::error::{
 
 use super::{
     Error, connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
-    not_a_file, not_found, path_refused, program_unavailable, refused, unknown_process,
+    not_a_file, not_found, path_refused, refused, tenant_unavailable, unknown_process,
     unresponsive,
 };
 use crate::protocol::{
@@ -52,8 +52,8 @@ fn each_refusal_answers_with_the_code_that_says_whose_it_is() {
         (launch_incomplete(), INTERNAL_ERROR_CODE),
         (not_a_file(), INVALID_PARAMS_CODE),
         (
-            program_unavailable("not on the search path"),
-            INVALID_PARAMS_CODE,
+            tenant_unavailable(io::Error::from(io::ErrorKind::PermissionDenied)),
+            INTERNAL_ERROR_CODE,
         ),
         (invalid_params("bad"), INVALID_PARAMS_CODE),
         (connection_lost(), INTERNAL_ERROR_CODE),
@@ -161,16 +161,16 @@ fn a_gone_process_and_a_refused_input_read_the_same_on_both_ends_of_the_socket()
 }
 
 #[test]
-fn a_program_that_will_not_start_keeps_the_launchers_reason_as_its_cause() {
-    let failure = program_unavailable("not on the search path");
+fn a_tenant_leaf_that_cannot_be_entered_keeps_the_kernels_reason_as_its_cause() {
+    let failure = tenant_unavailable(io::Error::other("descriptor lost"));
 
     assert_eq!(
         failure.source().map(ToString::to_string).as_deref(),
-        Some("not on the search path")
+        Some("descriptor lost")
     );
     assert_eq!(
         failure.wire_message(),
-        "the program could not be started: not on the search path"
+        "the tenant leaf cannot be entered: descriptor lost"
     );
 }
 

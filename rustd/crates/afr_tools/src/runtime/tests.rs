@@ -40,6 +40,7 @@ fn should_spell_each_error_code_as_the_thread_reads_it() {
             "workspace_memory_not_granted",
         ),
         (ToolErrorCode::TimedOut, "timed_out"),
+        (ToolErrorCode::OutOfMemory, "out_of_memory"),
         (ToolErrorCode::Interrupted, "interrupted"),
         (ToolErrorCode::SessionNotFound, "session_not_found"),
         (

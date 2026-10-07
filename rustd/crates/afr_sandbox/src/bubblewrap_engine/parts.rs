@@ -21,6 +21,7 @@ use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 use crate::cgroup::{CGROUP_PROCS, LeaseCgroup};
 use crate::error::{Error, Result, cgroup, program};
 use crate::host::tail;
+use crate::tenant::TenantFiles;
 use crate::workspace_disk::WorkspaceDisk;
 
 /// What a process writes to `cgroup.procs` to move itself.
@@ -93,12 +94,14 @@ impl Parts {
 
     /// Starts bubblewrap inside the cgroup whose `cgroup.procs` is `procs`,
     /// as host user `ids` when given — what a root runner passes, so nothing
-    /// the sandbox does happens as host root.
+    /// the sandbox does happens as host root — inheriting `tenant`, which
+    /// `argv` names to the entry.
     pub(super) fn spawn(
         &mut self,
         bwrap: &Path,
         argv: Vec<OsString>,
         procs: &Path,
+        tenant: TenantFiles,
         ids: Option<(u32, u32)>,
     ) -> Result<()> {
         // `create` is a no-op on a cgroup file system, which publishes the file
@@ -122,14 +125,19 @@ impl Parts {
             // root sets a user, so no host group survives either.
             command.uid(uid).gid(gid);
         }
+        let hook = move || {
+            enter(&join)?;
+            tenant.inherit()
+        };
         // SAFETY: the hook runs in the child between fork and exec, where only
         // async-signal-safe calls are sound. It makes one `write` system call on
-        // a file opened before the fork, which the hook owns, and allocates
-        // nothing, so every process bubblewrap starts is born inside the
-        // lease's cgroup. The kernel checks the write against the opener's
-        // credentials, so it holds after the user change above. The file
-        // closes with the command, after the spawn.
-        unsafe { command.pre_exec(move || enter(&join)) };
+        // a file opened before the fork, then two `fcntl` calls on the tenant
+        // leaf's files, all owned by the hook, and allocates nothing, so every
+        // process bubblewrap starts is born inside the sandbox leaf and the
+        // entry inherits the tenant leaf's two descriptors. The kernel checks
+        // the write against the opener's credentials, so it holds after the
+        // user change above. The files close with the command, after the spawn.
+        unsafe { command.pre_exec(hook) };
         let mut child = command.spawn()?;
         self.stderr = child
             .stderr

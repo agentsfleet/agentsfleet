@@ -24,8 +24,8 @@ use afd_core::error_code::{self, ErrorCode};
 mod raise;
 
 pub(crate) use self::raise::{
-    cgroup, cgroup_left, lease_id_unsafe, program, refused, toolbox_refused, toolbox_unreadable,
-    unconfined,
+    cgroup, cgroup_left, lease_id_unsafe, not_inherited, program, refused, toolbox_refused,
+    toolbox_unreadable, unconfined,
 };
 #[cfg(target_os = "linux")]
 pub(crate) use self::raise::{not_ready, toolbox_unexpected};
@@ -142,6 +142,14 @@ pub(crate) enum ErrorKind {
         /// The executor's failure.
         #[source]
         source: afr_executor::Error,
+    },
+
+    /// The sandbox entry was named a descriptor it did not inherit, or the
+    /// same one twice.
+    #[error("descriptor {descriptor} was not inherited from the engine")]
+    NotInherited {
+        /// The number the command line named.
+        descriptor: i32,
     },
 
     /// A hardened process still holds something it must not.

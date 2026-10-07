@@ -16,15 +16,37 @@ use tracing_subscriber::layer::{Context, Layer};
 use super::{Cli, Command, log_filter};
 
 /// The engine starts the binary inside each sandbox by the sandbox crate's
-/// spelling of the sub-command, so the two can never disagree.
+/// spelling of the sub-command and its tenant flags, so the two can never
+/// disagree.
 #[test]
 fn the_sandbox_entry_is_the_sub_command_the_engine_starts() {
+    let tenant = afr_sandbox::TenantDescriptors {
+        tenant_procs: 5,
+        tenant_events: 6,
+    };
+    let argv = [
+        "agentsfleet-runner",
+        afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND,
+    ]
+    .map(std::ffi::OsString::from)
+    .into_iter()
+    .chain(tenant.arguments());
+
+    let parsed = Cli::try_parse_from(argv);
+
+    assert_eq!(parsed.unwrap().command, Command::Sandbox(tenant));
+}
+
+/// A sandbox entry not told where its tenant leaf is refuses to start, so no
+/// tenant process ever runs beside the executor.
+#[test]
+fn a_sandbox_entry_without_its_tenant_leaf_does_not_parse() {
     let parsed = Cli::try_parse_from([
         "agentsfleet-runner",
         afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND,
     ]);
 
-    assert_eq!(parsed.unwrap().command, Command::Sandbox);
+    assert!(parsed.err().is_some(), "the tenant flags are required");
 }
 
 #[test]

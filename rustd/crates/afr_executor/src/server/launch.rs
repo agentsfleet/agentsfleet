@@ -4,7 +4,9 @@
 //! started, both are a [`Spawned`] — a group leader's pid, an exit, an output
 //! channel and the tasks feeding it — and the same task drives either. Each
 //! launcher takes the queue of writes for its process and drains it into the
-//! process's input itself, in order.
+//! process's input itself, in order. Both place the process through the
+//! session's [`Placement`] before it execs, so a sandbox's tenant processes
+//! never share the executor's cgroup.
 
 use std::collections::BTreeMap;
 use std::io;
@@ -12,6 +14,7 @@ use std::os::unix::process::ExitStatusExt as _;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::{ExitStatus, Stdio};
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -114,13 +117,22 @@ pub(super) struct Spawned {
 
 /// Starts processes one way.
 pub(super) trait Launcher: Send + Sync {
-    /// Starts `plan` as the leader of a new process group, writing what
-    /// arrives on `input` to it until the queue closes or a write fails.
-    fn launch(&self, plan: &Plan, input: mpsc::Receiver<Bytes>) -> Result<Spawned>;
+    /// Starts `plan` as the leader of a new process group, placed by
+    /// `placement` before it execs, writing what arrives on `input` to it
+    /// until the queue closes or a write fails.
+    fn launch(
+        &self,
+        plan: &Plan,
+        placement: &Arc<dyn Placement>,
+        input: mpsc::Receiver<Bytes>,
+    ) -> Result<Spawned>;
 }
 
+mod tenant;
 mod terminal;
 
+pub use self::tenant::Tenant;
+pub(crate) use self::tenant::{Inherit, Placement};
 use self::terminal::Terminal;
 
 /// The launcher for `terminal`.
@@ -132,8 +144,14 @@ pub(super) fn launcher(terminal: bool) -> &'static dyn Launcher {
 struct Pipes;
 
 impl Launcher for Pipes {
-    fn launch(&self, plan: &Plan, input: mpsc::Receiver<Bytes>) -> Result<Spawned> {
-        let mut child = tokio::process::Command::new(&plan.program)
+    fn launch(
+        &self,
+        plan: &Plan,
+        placement: &Arc<dyn Placement>,
+        input: mpsc::Receiver<Bytes>,
+    ) -> Result<Spawned> {
+        let mut command = tokio::process::Command::new(&plan.program);
+        command
             .args(&plan.arguments)
             .env_clear()
             .envs(&plan.env)
@@ -144,8 +162,9 @@ impl Launcher for Pipes {
             .process_group(0)
             // A session dropped without stopping its processes still ends
             // their leaders; a stop reaches the rest of the group.
-            .kill_on_drop(true)
-            .spawn()?;
+            .kill_on_drop(true);
+        tenant::place(command.as_std_mut(), placement)?;
+        let mut child = command.spawn()?;
         let pid = leader(child.id())?;
         let (sender, output) = mpsc::channel(OUTPUT_BACKLOG);
         let (stdin, stdout, stderr) =

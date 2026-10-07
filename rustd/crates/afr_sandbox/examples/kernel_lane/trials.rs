@@ -6,7 +6,6 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use afr_executor::Ending;
 use afr_sandbox::{
     BubblewrapEngine, Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, ProbePaths, SandboxRequest,
     Toolbox, WarmSlots, probe,
@@ -16,49 +15,37 @@ use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 use crate::admission::{adoption, path_swap};
 use crate::budgets::start_budgets;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
+use crate::exhaustion::{
+    full_tmp_answers_enospc, oom_kills_only_the_tenant, runaway, sweep_removes_both_leaves,
+    tenant_holds_no_cgroup_descriptor, workspace_and_tmp_share_the_disk,
+};
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::lane::{Lane, missing};
-use crate::run::{
-    REACH_OUT, UNREACHABLE, expect, in_sandbox, in_sandbox_each, run as run_in, runtime, shell,
-};
+use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
 use crate::toolbox::toolbox_carries_the_tools;
 use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 
 /// Workspace disk a limit trial fills past.
-const SMALL_DISK: u64 = 64 * 1024 * 1024;
-/// Memory a runaway trial exceeds.
-const SMALL_MEMORY: u64 = 256 * 1024 * 1024;
-/// Processes a fork-bomb trial exceeds.
-const FEW_PIDS: u32 = 64;
+pub(crate) const SMALL_DISK: u64 = 64 * 1024 * 1024;
 /// Starts measured each way for the start-budget trial.
 const STARTS: usize = 5;
 /// The disk-limit trial's lease name.
 const DISK: &str = "disk";
 /// What the kernel says to a writer on a full disk.
-const ENOSPC: &str = "No space left on device";
+pub(crate) const ENOSPC: &str = "No space left on device";
 /// Why a trial that ran two scripts and got another count fails.
-const TWO_OUTCOMES: &str = "two outcomes";
+pub(crate) const TWO_OUTCOMES: &str = "two outcomes";
+/// How a tenant process's cgroup reads from inside the sandbox's namespace.
+pub(crate) const TENANT_CGROUP: &str = "0::/../tenant";
 /// Where a refusal trial points the engine's state.
 const LEASES: &str = "leases";
-
-/// More forks than any lane's process limit allows.
-const FORK_ATTEMPTS: u32 = 1000;
-
-/// A fork bomb that counts how many children it got before the kernel refused.
-fn fork_bomb() -> String {
-    format!(
-        "import os, time\nmade = 0\nfor _ in range({FORK_ATTEMPTS}):\n    try:\n        \
-         if os.fork() == 0:\n            time.sleep(60)\n            os._exit(0)\n        \
-         made += 1\n    except OSError:\n        break\nprint(made)\n"
-    )
-}
 
 type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: [(&str, Body); 24] = [
+    let rows: &[(&str, Body)] = &[
         ("test_sandbox_process_has_no_capabilities", no_capabilities),
         (
             "test_sandbox_cannot_plant_files_on_the_host",
@@ -114,11 +101,17 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
             "test_workspace_and_tmp_share_the_disk",
             workspace_and_tmp_share_the_disk,
         ),
+        ("test_oom_kills_only_the_tenant", oom_kills_only_the_tenant),
+        (
+            "test_tenant_process_holds_no_cgroup_descriptor",
+            tenant_holds_no_cgroup_descriptor,
+        ),
+        ("test_sweep_removes_both_leaves", sweep_removes_both_leaves),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];
     let trials = rows
-        .into_iter()
-        .map(|(name, body)| {
+        .iter()
+        .map(|&(name, body)| {
             let lane = Arc::clone(lane);
             Trial::test(name, move || body(&lane))
         })
@@ -150,109 +143,6 @@ fn disk_limit(lane: &Lane) -> Result<(), Failed> {
     )
 }
 
-/// Filling `/tmp` ends in `ENOSPC`, the disk's answer, and the sandbox is
-/// still there to run the next command: a tmpfs would have taken the
-/// lease's memory and its first process with it.
-fn full_tmp_answers_enospc(lane: &Lane) -> Result<(), Failed> {
-    let limits = Limits {
-        disk_bytes: SMALL_DISK,
-        ..Limits::default()
-    };
-    let outcomes = in_sandbox_each(
-        lane,
-        "tmpfill",
-        limits,
-        &[
-            "dd if=/dev/zero of=/tmp/fill bs=1M count=80 2>&1",
-            "echo ok",
-        ],
-    )?;
-    let [filled, after] = outcomes.as_slice() else {
-        return Err(Failed::from(TWO_OUTCOMES));
-    };
-    expect(
-        filled.output.contains(ENOSPC),
-        format!("ENOSPC on /tmp, got {:?}", filled.output),
-    )?;
-    expect(
-        after.output.trim() == "ok" && after.ending == Ending::Exited(0),
-        format!("a command runs after the fill, got {after:?}"),
-    )
-}
-
-/// `/workspace` and `/tmp` draw on one disk: what the workspace took,
-/// `/tmp` no longer has; and `lost+found` is not in `/workspace`.
-fn workspace_and_tmp_share_the_disk(lane: &Lane) -> Result<(), Failed> {
-    let limits = Limits {
-        disk_bytes: SMALL_DISK,
-        ..Limits::default()
-    };
-    let outcomes = in_sandbox_each(
-        lane,
-        "shared",
-        limits,
-        &[
-            "dd if=/dev/zero of=/workspace/fill bs=1M count=40 2>&1; ls -a /workspace",
-            "dd if=/dev/zero of=/tmp/fill bs=1M count=40 2>&1",
-        ],
-    )?;
-    let [workspace, tmp] = outcomes.as_slice() else {
-        return Err(Failed::from(TWO_OUTCOMES));
-    };
-    expect(
-        !workspace.output.contains(ENOSPC),
-        format!("40 MiB fit the workspace, got {:?}", workspace.output),
-    )?;
-    expect(
-        !workspace.output.contains("lost+found"),
-        format!("no lost+found in /workspace, got {:?}", workspace.output),
-    )?;
-    expect(
-        tmp.output.contains(ENOSPC),
-        format!(
-            "the second 40 MiB find the disk shared, got {:?}",
-            tmp.output
-        ),
-    )
-}
-
-fn runaway(lane: &Lane) -> Result<(), Failed> {
-    let limits = Limits {
-        pids: FEW_PIDS,
-        memory_bytes: SMALL_MEMORY,
-        ..Limits::default()
-    };
-    let bomb = in_sandbox(
-        lane,
-        "forkbomb",
-        limits,
-        &format!("python3 -c '{}'", fork_bomb()),
-    )?;
-    let made: u32 = bomb
-        .output
-        .trim()
-        .parse()
-        .map_err(|_unparsed| format!("fork count, got {:?}", bomb.output))?;
-    expect(
-        made < FEW_PIDS,
-        format!("pids.max stops the bomb, it made {made}"),
-    )?;
-    let hog = in_sandbox(
-        lane,
-        "hog",
-        limits,
-        // pin test: literal is the contract
-        "exec python3 -c 'b = bytearray(2 * 1024 ** 3); print(len(b))'",
-    )?;
-    expect(
-        hog.ending == Ending::Signaled(libc::SIGKILL),
-        format!("the hog is killed, got {:?}", hog.ending),
-    )?;
-    // The supervisor's own process is this one, and it is still here to build
-    // another sandbox.
-    in_sandbox(lane, "after", Limits::default(), "true").map(drop)
-}
-
 fn no_network(lane: &Lane) -> Result<(), Failed> {
     let said = in_sandbox(lane, "network", Limits::default(), REACH_OUT)?.output;
     expect(
@@ -270,9 +160,11 @@ fn shared_memory_and_cgroup_view(lane: &Lane) -> Result<(), Failed> {
         said.contains("locked"),
         format!("shared memory is writable, got {said:?}"),
     )?;
+    // The namespace's root is the sandbox leaf, where bubblewrap entered it;
+    // a tenant process sits in the leaf beside it.
     expect(
-        said.lines().any(|line| line == "0::/"),
-        format!("the lease sees its cgroup as the root, got {said:?}"),
+        said.lines().any(|line| line == TENANT_CGROUP),
+        format!("the lease sees the tenant leaf beside its root, got {said:?}"),
     )
 }
 

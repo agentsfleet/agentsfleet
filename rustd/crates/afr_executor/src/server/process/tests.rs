@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Level;
 
 use super::super::files::Workspace;
-use super::super::launch::Plan;
+use super::super::launch::{Inherit, Placement, Plan};
 use super::{
     DRAIN_BYTES_MAX, DRAIN_GRACE, EVENT_OUTPUT_ABANDONED, EVENT_PROCESS_COMPLETED,
     EVENT_PROCESS_FAILED, EVENT_SIGNAL_MISSED, Group, ProcessRun, drain, report,
@@ -58,7 +58,9 @@ pub(super) fn started_within(
         pty: false,
         timeout_ms,
     };
-    let (run, _input) = ProcessRun::start(&Plan::new(params, &workspace).unwrap()).unwrap();
+    let placement: std::sync::Arc<dyn Placement> = std::sync::Arc::new(Inherit);
+    let (run, _input) =
+        ProcessRun::start(&Plan::new(params, &workspace).unwrap(), &placement).unwrap();
     (run, root)
 }
 

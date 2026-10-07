@@ -84,6 +84,9 @@ pub enum ToolErrorCode {
     WorkspaceMemoryNotGranted,
     /// The command ran past its timeout, and its process group was killed.
     TimedOut,
+    /// The kernel killed the command's process because its sandbox's tenant
+    /// processes ran out of memory.
+    OutOfMemory,
     /// The process's ending never reached the caller: its sandbox or the
     /// executor went away.
     Interrupted,
@@ -161,6 +164,7 @@ impl ToolErrorCode {
             Self::UpstreamStatus => "upstream_status",
             Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
             Self::TimedOut => "timed_out",
+            Self::OutOfMemory => "out_of_memory",
             Self::Interrupted => "interrupted",
             Self::SessionNotFound => "session_not_found",
             Self::SubcommandNotAllowed => "subcommand_not_allowed",

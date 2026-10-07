@@ -13,7 +13,9 @@ use super::Shell;
 use crate::handler::Typed;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
-use crate::sandbox::oneshot::{EVENT_TIMED_OUT, TIMEOUT_MS_DEFAULT, TIMEOUT_MS_MAX};
+use crate::sandbox::oneshot::{
+    EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_MS_DEFAULT, TIMEOUT_MS_MAX,
+};
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
 
@@ -132,6 +134,36 @@ async fn test_shell_timeout_reports_timed_out_and_logs_it() {
     assert_eq!(logged.field("timeout_ms"), Some("500"));
     assert_eq!(logged.field("error_code"), Some("timed_out"));
     assert!(logged.field("lease_id").is_some(), "{logged:?}");
+}
+
+#[tokio::test]
+async fn test_oom_ending_reads_out_of_memory() {
+    let capture = Capture::install();
+    let executor =
+        ScriptedExecutor::new([ScriptedProcess::ends("allocating\n", Ending::OutOfMemory)]);
+
+    let output = call_in(
+        &*shell(),
+        &executor,
+        &Lease::default(),
+        json!({"command": "python3 -c 'bytearray(8 << 30)'"}),
+    )
+    .await;
+
+    assert_eq!(output.text, "allocating\nProcess killed: out of memory");
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    assert_eq!(output.exit_code, Some(137));
+    let logged = capture.only(EVENT_OUT_OF_MEMORY);
+    assert_eq!(logged.level, tracing::Level::WARN);
+    assert_eq!(logged.field("error_code"), Some("out_of_memory"));
+    assert!(logged.field("lease_id").is_some(), "{logged:?}");
+    assert!(
+        logged
+            .fields
+            .values()
+            .all(|value| !value.contains("bytearray")),
+        "no command text: {logged:?}"
+    );
 }
 
 #[tokio::test]
