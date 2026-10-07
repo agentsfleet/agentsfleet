@@ -57,12 +57,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afr_sandbox/src/workspace_disk.rs` | EDIT | The disk holds `workspace/` and `tmp/`; attached with `LOOP_CONFIGURE` and direct I/O |
 | `rustd/crates/afr_sandbox/src/bubblewrap.rs` | EDIT | `/tmp` binds the disk's `tmp/` instead of a tmpfs |
-| `rustd/crates/afr_sandbox/src/cgroup.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` | EDIT | The `sandbox` and `tenant` leaves; `bwrap` enters `sandbox`; the tenant `cgroup.procs` descriptor is handed in, close-on-exec |
-| `rustd/crates/afr_executor/src/server/launch.rs`, `rustd/crates/afr_executor/src/server/launch/terminal.rs` | EDIT | Each tenant process moves itself into `tenant` before `exec`; a failed move refuses the spawn |
-| `rustd/crates/afr_executor/src/api.rs`, `rustd/crates/afr_tools/src/runtime.rs` | EDIT | An ending killed for memory is `out_of_memory`, a `ToolErrorCode` the model reads |
+| `rustd/crates/afr_sandbox/src/cgroup.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine.rs`, `rustd/crates/afr_sandbox/src/cgroup/tests.rs` | EDIT | The `sandbox` and `tenant` leaves; `bwrap` enters `sandbox`; the tenant leaf's two descriptors are opened by the engine and let through bubblewrap's exec |
+| `rustd/crates/afr_sandbox/src/tenant.rs`, `rustd/crates/afr_sandbox/src/tenant/files.rs`, `rustd/crates/afr_sandbox/src/tenant/tests.rs` | CREATE | The descriptors from engine to entry: `TenantFiles` opens and lets them through; `TenantDescriptors` names them as `--tenant-procs`/`--tenant-events` and the entry adopts them |
+| `rustd/crates/afr_sandbox/src/serve.rs`, `rustd/crates/afr_sandbox/src/serve/tests.rs`, `rustd/crates/afr_sandbox/src/bubblewrap.rs`, `rustd/crates/afr_sandbox/src/lib.rs`, `rustd/crates/afr_sandbox/src/error.rs`, `rustd/crates/afr_sandbox/src/error/raise.rs`, `rustd/crates/afr_sandbox/Cargo.toml` | EDIT | The entry adopts the tenant leaf before it hardens; bubblewrap names the descriptors; `NotInherited` refuses a number the entry does not hold |
+| `rustd/crates/agentsfleet_runner/src/main.rs`, `rustd/crates/agentsfleet_runner/src/main_tests.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/lane.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/main.rs` | EDIT | Both sandbox entries take the tenant flags; the runner's refuses to start without them |
+| `rustd/crates/afr_executor/src/server/launch.rs`, `rustd/crates/afr_executor/src/server/launch/terminal.rs`, `rustd/crates/afr_executor/src/server/process.rs`, `rustd/crates/afr_executor/src/server/session.rs`, `rustd/crates/afr_executor/src/server.rs`, `rustd/crates/afr_executor/src/lib.rs`, `rustd/crates/afr_executor/src/server/process/tests.rs` | EDIT | Each tenant process moves itself into `tenant` before `exec` through the session's `Placement`; a failed move refuses the spawn; the terminal opens its pair through `rustix::pty` so it takes the same hook |
+| `rustd/crates/afr_executor/src/server/launch/tenant.rs`, `rustd/crates/afr_executor/src/server/launch/tenant/tests.rs` | CREATE | `Placement` (`Tenant`, `Inherit`): the move, the descriptor check, and an ending judged `OutOfMemory` when the leaf's `oom_kill` rose |
+| `rustd/crates/afr_executor/src/error.rs`, `rustd/crates/afr_executor/src/error/raise.rs`, `rustd/crates/afr_executor/src/error/tests.rs`, `rustd/crates/afr_executor/Cargo.toml`, `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | `TenantUnavailable` keeps the kernel's reason; `ProgramUnavailable`, raised only by `portable_pty`'s lookup, leaves with it |
+| `rustd/crates/afr_executor/src/api.rs`, `rustd/crates/afr_executor/tests/link.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/runtime/tests.rs`, `rustd/crates/afr_tools/src/sandbox/output.rs`, `rustd/crates/afr_tools/src/sandbox/output/tests.rs`, `rustd/crates/afr_tools/src/sandbox/oneshot.rs`, `rustd/crates/afr_tools/src/sandbox/shell/tests.rs` | EDIT | An ending killed for memory is `out_of_memory`, a `ToolErrorCode` the model reads, exit code 137, logged `sandbox_out_of_memory` |
 | `rustd/crates/afr_sandbox/src/capacity.rs` | CREATE | The state-disk rule: live sandboxes' remaining limits plus one more plus the reserve |
 | `rustd/crates/afr_supervisor/src/worker_pool.rs`, `rustd/crates/afr_sandbox/src/warm_slots.rs` | EDIT | Poll and refill only with room |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/trials.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/run.rs` | EDIT | The kernel proofs, S6 among them; `in_sandbox_each` runs several scripts on one sandbox, since what the executor does after an exhaustion is only seen there |
+| `rustd/crates/afr_sandbox/examples/kernel_lane/exhaustion.rs` | CREATE | The exhaustion trials, apart from `trials.rs` so neither passes the length cap |
 | `rustd/crates/afr_sandbox/src/bubblewrap/tests.rs`, `rustd/crates/afr_sandbox/src/workspace_disk/tests.rs` | EDIT | The argument builder binds `tmp/`; the disk's two directories and their modes |
 | `docs/architecture/runner_execution.md` | EDIT | §"Sandbox engines": the two leaves, `/tmp` on the disk, the reserve |
 | `docs/v2/pending/M214_001_P1_DOCS_OBS_RUST_RUNNER_EXPORTS_ITS_TELEMETRY.md` | EDIT | The runner census gains this workstream's two counters |
@@ -90,22 +96,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — `/tmp` lives on the workspace disk
+### §1 — `/tmp` lives on the workspace disk — DONE
 
 A fresh workspace disk gets two directories, `workspace/` (mode 0755) and `tmp/` (mode 1777), owned by the sandbox user; bubblewrap binds them at `/workspace` and `/tmp`, so `mke2fs`'s `lost+found` leaves `/workspace` too. Both share the lease's disk limit, so a full `/tmp` answers `ENOSPC` like a full workspace. **Implementation default:** the disk, not a sized tmpfs, because tmpfs pages stay charged to the lease's memory until every process in its mount namespace is gone, which is how S6's sandboxes died.
 
-- **Dimension 1.1** — Filling `/tmp` ends in `ENOSPC`, and the executor runs a new command afterwards → Test `test_full_tmp_answers_enospc`
-- **Dimension 1.2** — `/workspace` and `/tmp` draw on one disk limit, and `/workspace` holds no `lost+found` → Test `test_workspace_and_tmp_share_the_disk`
+- **Dimension 1.1** DONE — Filling `/tmp` ends in `ENOSPC`, and the executor runs a new command afterwards → Test `test_full_tmp_answers_enospc`
+- **Dimension 1.2** DONE — `/workspace` and `/tmp` draw on one disk limit, and `/workspace` holds no `lost+found` → Test `test_workspace_and_tmp_share_the_disk`
 
-### §2 — Memory pressure kills the tenant's process, never the sandbox
+### §2 — Memory pressure kills the tenant's process, never the sandbox — DONE
 
 The lease cgroup becomes an inner node with two leaves: `sandbox` (bubblewrap and the executor, entered as today) and `tenant`, whose `memory.max` is the lease's limit minus `SANDBOX_MEMORY_RESERVE_BYTES`, so the tenant leaf runs out first and the killer chooses only inside it. The engine opens `tenant/cgroup.procs` write-only and passes the descriptor into the sandbox close-on-exec; each tenant process writes `0` to it in `pre_exec`, before `exec`, through the descriptor's open-time credentials, so no cgroup file system is mounted inside. A move that fails refuses the spawn: no tenant process ever runs in `sandbox`. An ending whose process the killer took, read from `tenant/memory.events`, completes the call `failed` with `out_of_memory`. **Implementation default:** a 64 MiB reserve, measured against the executor's resident memory on the kernel lane at PLAN.
 
-- **Dimension 2.1** — A process allocating past the limit is killed, and the executor runs a new command afterwards → Test `test_oom_kills_only_the_tenant`
-- **Dimension 2.2** — The killed call completes `failed` with `out_of_memory` → Test `test_oom_ending_reads_out_of_memory`
-- **Dimension 2.3** — A tenant process holds descriptors 0–2 and sits in `tenant` → Test `test_tenant_process_holds_no_cgroup_descriptor`
-- **Dimension 2.4** — A move that fails refuses the spawn, and nothing runs in `sandbox` but bubblewrap and the executor → Test `test_failed_tenant_move_refuses_the_spawn`
-- **Dimension 2.5** — Destroy and the boot sweep remove both leaves before the lease cgroup → Test `test_sweep_removes_both_leaves`
+- **Dimension 2.1** DONE — A process allocating past the limit is killed, and the executor runs a new command afterwards → Test `test_oom_kills_only_the_tenant`
+- **Dimension 2.2** DONE — The killed call completes `failed` with `out_of_memory` → Test `test_oom_ending_reads_out_of_memory`
+- **Dimension 2.3** DONE — A tenant process holds descriptors 0–2 and sits in `tenant` → Test `test_tenant_process_holds_no_cgroup_descriptor`
+- **Dimension 2.4** DONE — A move that fails refuses the spawn, and nothing runs in `sandbox` but bubblewrap and the executor → Test `test_failed_tenant_move_refuses_the_spawn`
+- **Dimension 2.5** DONE — Destroy and the boot sweep remove both leaves before the lease cgroup → Test `test_sweep_removes_both_leaves`
 
 ### §3 — The workspace disk writes past one page cache
 
@@ -163,7 +169,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERV
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
 | `error.type = out_of_memory` on the call's `execute_tool` span (`afd_observability::semconv::ATTR_ERROR_TYPE`) | ops | A tenant process is killed for memory | the span's existing ids | No command text | `test_oom_ending_reads_out_of_memory` |
-| `sandbox_out_of_memory` (runner log, warn) | ops | Same | lease id, call id, memory limit | No command text | `test_oom_ending_reads_out_of_memory` |
+| `sandbox_out_of_memory` (runner log, warn) | ops | Same | lease id, `error_code`; the call's ids ride its span | No command text | `test_oom_ending_reads_out_of_memory` |
 | `sandbox_capacity_short` (runner log, warn / info on recovery) | ops | The state disk goes short, and when it recovers | available, required, reserve bytes | No paths | `test_short_host_waits_and_resumes` |
 | `agentsfleet_runner_tool_out_of_memory_total`, `agentsfleet_runner_capacity_short_total` (runner census, M214_001) | ops | The two events above | none — closed label sets | — | M214_001's producer-coverage test |
 
@@ -174,8 +180,8 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERV
 | 1.1 | kernel | `test_full_tmp_answers_enospc` | `dd` into `/tmp` → `No space left on device`; next `echo ok` → `ok` |
 | 1.2 | kernel | `test_workspace_and_tmp_share_the_disk` | 3 GiB in `/workspace` → `/tmp` takes under 1 GiB; `ls -a /workspace` → no `lost+found` |
 | 2.1 | kernel | `test_oom_kills_only_the_tenant` | a 3 GiB allocation → that process killed; `echo ok` → `ok`; `sandbox` leaf processes unchanged |
-| 2.2 | kernel | `test_oom_ending_reads_out_of_memory` | same → call `failed`, code `out_of_memory` |
-| 2.3 | kernel | `test_tenant_process_holds_no_cgroup_descriptor` | `ls /proc/self/fd` → `0 1 2`; `/proc/self/cgroup` ends in `tenant` |
+| 2.2 | unit | `test_oom_ending_reads_out_of_memory` | an `OutOfMemory` ending through `shell` → code `out_of_memory`, exit 137, one `sandbox_out_of_memory` warn with no command text; the executor's own `OutOfMemory` on a real kernel is 2.1's |
+| 2.3 | kernel | `test_tenant_process_holds_no_cgroup_descriptor` | `ls /proc/$$/fd` from the tenant's shell → `0 1 2`; `/proc/$$/cgroup` → `0::/../tenant`, the leaf beside the namespace's `sandbox` root |
 | 2.4 | unit | `test_failed_tenant_move_refuses_the_spawn` | descriptor closed before spawn → refused with its cause; 0 processes started |
 | 2.5 | kernel | `test_sweep_removes_both_leaves` | runner killed after the split → restart sweeps `sandbox`, `tenant`, then the lease cgroup |
 | 3.1 | kernel | `test_workspace_disk_uses_direct_io` | `/sys/block/loopN/loop/dio` → `1` |

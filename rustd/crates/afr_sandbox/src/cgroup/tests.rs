@@ -42,7 +42,69 @@ fn test_lease_cgroup_writes_every_limit() {
         !dir.join("memory.swap.max").exists(),
         "no swap accounting, nothing written"
     );
-    assert_eq!(made.procs(), dir.join("cgroup.procs"));
+    assert_eq!(made.procs(), dir.join("sandbox").join("cgroup.procs"));
+}
+
+#[test]
+fn test_a_lease_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
+    let root = tempfile::tempdir().unwrap();
+
+    let made = LeaseCgroup::create(root.path(), "lease-9", &LIMITS).unwrap();
+
+    let dir = root.path().join("lease-9");
+    assert_eq!(
+        read(&dir, "cgroup.subtree_control"),
+        "+cpu +io +memory +pids"
+    );
+    assert!(dir.join("sandbox").is_dir(), "bubblewrap's leaf");
+    let tenant = dir.join("tenant");
+    assert_eq!(
+        read(&tenant, "memory.max"),
+        (LIMITS.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES).to_string(),
+        "the tenant runs out before the sandbox"
+    );
+    assert_eq!(made.tenant_procs(), tenant.join("cgroup.procs"));
+    assert_eq!(made.tenant_events(), tenant.join("memory.events"));
+}
+
+#[test]
+fn test_a_limit_below_the_reserve_leaves_the_tenant_nothing_rather_than_wrapping() {
+    let root = tempfile::tempdir().unwrap();
+    let tiny = Limits {
+        memory_bytes: 1_024,
+        ..LIMITS
+    };
+
+    LeaseCgroup::create(root.path(), "lease-10", &tiny).unwrap();
+
+    assert_eq!(
+        read(&root.path().join("lease-10/tenant"), "memory.max"),
+        "0"
+    );
+}
+
+#[test]
+fn test_removal_takes_both_leaves_before_the_lease_cgroup() {
+    let root = tempfile::tempdir().unwrap();
+    let (made, dir) = plain(root.path(), "lease-11");
+    fs::create_dir(dir.join("sandbox")).unwrap();
+    fs::create_dir(dir.join("tenant")).unwrap();
+
+    // A directory with children cannot go, so the lease going at all says
+    // its leaves went first.
+    made.remove_dirs().unwrap();
+
+    assert!(!dir.exists(), "leaves, then the lease");
+}
+
+#[test]
+fn test_a_crash_before_the_split_leaves_nothing_the_removal_trips_on() {
+    let root = tempfile::tempdir().unwrap();
+    let (made, dir) = plain(root.path(), "lease-12");
+
+    made.remove_dirs().unwrap();
+
+    assert!(!dir.exists(), "no leaves, the lease goes alone");
 }
 
 #[test]

@@ -241,9 +241,17 @@ fn delegate() -> std::io::Result<PathBuf> {
     Ok(root)
 }
 
-/// The sandbox side: harden, then serve the executor until the lane hangs up.
+/// The sandbox side: take the tenant leaf's descriptors the engine named,
+/// harden, then serve the executor until the lane hangs up.
 pub(crate) fn serve() -> ExitCode {
-    match afr_sandbox::serve_sandboxed() {
+    let tenant = match afr_sandbox::TenantDescriptors::parse_from(std::env::args_os().skip(1)) {
+        Ok(tenant) => tenant,
+        Err(refused) => {
+            eprintln!("the sandbox was not told its tenant leaf: {refused}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match afr_sandbox::serve_sandboxed(tenant) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("the sandbox stopped: {error}");

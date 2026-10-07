@@ -1,8 +1,16 @@
-//! One cgroup v2 per lease: its limits, and the kill that ends its whole tree.
+//! One cgroup v2 per lease: its limits, its two leaves, and the kill that ends
+//! its whole tree.
+//!
+//! The lease's cgroup holds the limits and no process. Bubblewrap and the
+//! executor run in its `sandbox` leaf; every process the executor starts runs
+//! in its `tenant` leaf, whose memory limit sits [`SANDBOX_MEMORY_RESERVE_BYTES`]
+//! below the lease's, so the kernel's out-of-memory killer chooses among
+//! tenant processes and never the sandbox's own — systemd's `Delegate=` shape,
+//! where a manager's processes and the subtree it hands out never share a leaf.
 //!
 //! Plain writes to the control files the kernel publishes. `cgroups-rs` does
 //! v2 and `cgroup.kill`, but carries a D-Bus client for its systemd manager;
-//! the five files a lease needs do not justify that.
+//! the few files a lease needs do not justify that.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -12,6 +20,7 @@ use backon::{BlockingRetryable as _, ConstantBuilder};
 
 use crate::engine::Limits;
 use crate::error::{Result, cgroup, cgroup_left};
+use crate::probe::REQUIRED_CONTROLLERS;
 
 /// The file that enables controllers for a cgroup's children.
 pub const SUBTREE_CONTROL: &str = "cgroup.subtree_control";
@@ -29,6 +38,14 @@ const PIDS_MAX: &str = "pids.max";
 const IO_MAX: &str = "io.max";
 /// Writing `1` kills every process in the cgroup and its descendants.
 const CGROUP_KILL: &str = "cgroup.kill";
+/// What a cgroup's memory limit did, its `oom_kill` count among it.
+pub(crate) const MEMORY_EVENTS: &str = "memory.events";
+/// The leaf bubblewrap and the executor run in.
+pub const SANDBOX_LEAF: &str = "sandbox";
+/// The leaf every process the executor starts runs in.
+pub const TENANT_LEAF: &str = "tenant";
+/// Both leaves, in the order they are made.
+const LEAVES: [&str; 2] = [SANDBOX_LEAF, TENANT_LEAF];
 /// What `cgroup.kill` and a zeroed `memory.swap.max` are written.
 const KILL: &str = "1";
 /// No swap at all.
@@ -46,6 +63,9 @@ const DRAIN_TRIES: usize = 1_000;
 
 /// Workspace-disk throughput, each way, in bytes per second.
 pub const DEFAULT_IO_BYTES_PER_SECOND: u64 = 200 * 1024 * 1024;
+/// Memory the sandbox's own processes keep when the tenant's are at their
+/// limit: room for the executor's resident set and bubblewrap's.
+pub const SANDBOX_MEMORY_RESERVE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// One lease's cgroup. Removing it is the only cleanup, and it consumes it.
 #[derive(Debug)]
@@ -54,17 +74,20 @@ pub struct LeaseCgroup {
 }
 
 impl LeaseCgroup {
-    /// Makes the cgroup `name` under the delegated `root` and writes `limits`.
+    /// Makes the cgroup `name` under the delegated `root`, writes `limits`,
+    /// and splits it into its two leaves.
     ///
     /// # Errors
-    /// The directory cannot be made, or a control file refuses its value; the
-    /// directory is removed again before the error returns.
+    /// A directory cannot be made, or a control file refuses its value; what
+    /// was made is removed again before the error returns.
     pub fn create(root: &Path, name: &str, limits: &Limits) -> Result<Self> {
         let made = Self {
             dir: root.join(name),
         };
         fs::create_dir(&made.dir)?;
-        made.limit(limits).map_err(|error| made.undo(error))?;
+        made.limit(limits)
+            .and_then(|()| made.split(limits))
+            .map_err(|error| made.undo(error))?;
         Ok(made)
     }
 
@@ -75,9 +98,9 @@ impl LeaseCgroup {
     }
 
     /// Removes a cgroup whose limits were refused, then hands the refusal back.
-    /// Nothing has joined it yet, so the directory is all there is.
+    /// Nothing has joined it yet, so its directories are all there is.
     fn undo(&self, refusal: crate::Error) -> crate::Error {
-        if let Err(leftover) = fs::remove_dir(&self.dir) {
+        if let Err(leftover) = self.remove_dirs() {
             let error_code = refusal.code().as_str();
             let reason = leftover.to_string();
             let event = EVENT_CGROUP_LEFT;
@@ -104,6 +127,21 @@ impl LeaseCgroup {
         Ok(())
     }
 
+    /// Hands the lease's controllers to its two leaves and caps the tenant
+    /// leaf's memory below the lease's. The lease's own swap limit already
+    /// covers both leaves.
+    fn split(&self, limits: &Limits) -> Result<()> {
+        let enable = REQUIRED_CONTROLLERS.map(|controller| format!("+{controller}"));
+        self.write(SUBTREE_CONTROL, &enable.join(" "))?;
+        LEAVES
+            .into_iter()
+            .try_for_each(|leaf| fs::create_dir(self.dir.join(leaf)))?;
+        let tenant = limits
+            .memory_bytes
+            .saturating_sub(SANDBOX_MEMORY_RESERVE_BYTES);
+        fs::write(self.tenant().join(MEMORY_MAX), tenant.to_string()).map_err(cgroup(MEMORY_MAX))
+    }
+
     /// Caps reads and writes to the block device `major:minor`.
     ///
     /// # Errors
@@ -117,10 +155,29 @@ impl LeaseCgroup {
         )
     }
 
-    /// The file a process writes its identifier to in order to join.
+    /// The file a process writes its identifier to in order to join the
+    /// sandbox leaf: bubblewrap's, and so the executor's.
     #[must_use]
     pub fn procs(&self) -> PathBuf {
-        self.dir.join(CGROUP_PROCS)
+        self.dir.join(SANDBOX_LEAF).join(CGROUP_PROCS)
+    }
+
+    /// The file a process writes its identifier to in order to join the
+    /// tenant leaf.
+    #[must_use]
+    pub fn tenant_procs(&self) -> PathBuf {
+        self.tenant().join(CGROUP_PROCS)
+    }
+
+    /// The tenant leaf's `memory.events`, whose `oom_kill` count rises with
+    /// each tenant process the kernel kills for memory.
+    #[must_use]
+    pub fn tenant_events(&self) -> PathBuf {
+        self.tenant().join(MEMORY_EVENTS)
+    }
+
+    fn tenant(&self) -> PathBuf {
+        self.dir.join(TENANT_LEAF)
     }
 
     /// Kills every process in the cgroup, descendants included.
@@ -131,8 +188,9 @@ impl LeaseCgroup {
         self.write(CGROUP_KILL, KILL)
     }
 
-    /// Kills what remains, then removes the cgroup once its last process has
-    /// gone. Blocks while the kernel reaps: call it off an async runtime.
+    /// Kills what remains, then removes the cgroup, leaves first, once its last
+    /// process has gone. Blocks while the kernel reaps: call it off an async
+    /// runtime.
     ///
     /// # Errors
     /// The kill is refused, or the cgroup is still busy after five seconds, or
@@ -142,7 +200,7 @@ impl LeaseCgroup {
         // `EBUSY` is the kernel saying a process has not finished dying; every
         // other refusal is final.
         let busy = |error: &std::io::Error| error.kind() == std::io::ErrorKind::ResourceBusy;
-        (|| fs::remove_dir(&self.dir))
+        (|| self.remove_dirs())
             .retry(
                 ConstantBuilder::default()
                     .with_delay(DRAIN_POLL)
@@ -152,6 +210,18 @@ impl LeaseCgroup {
             .when(busy)
             .call()
             .map_err(cgroup_left(&self.dir))
+    }
+
+    /// Removes whichever leaves exist, then the cgroup: a cgroup with
+    /// children cannot go, and a crash between making the leaves and using
+    /// them may have left either.
+    fn remove_dirs(&self) -> std::io::Result<()> {
+        LEAVES
+            .into_iter()
+            .map(|leaf| self.dir.join(leaf))
+            .filter(|leaf| leaf.is_dir())
+            .try_for_each(fs::remove_dir)?;
+        fs::remove_dir(&self.dir)
     }
 
     fn write(&self, file: &'static str, value: &str) -> Result<()> {

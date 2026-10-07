@@ -17,6 +17,7 @@ pub(crate) const REACH_OUT: &str = "python3 -c 'import socket; \
      socket.create_connection((\"1.1.1.1\", 443), 3)' 2>/dev/null && echo reached || echo unreachable";
 
 /// What one command produced.
+#[derive(Debug)]
 pub(crate) struct Outcome {
     pub(crate) ending: Ending,
     pub(crate) output: String,

@@ -6,17 +6,21 @@
 use std::path::Path;
 
 use afd_core::env::{ProcessEnv, log_level};
+use afr_executor::Listener;
 use tracing::level_filters::LevelFilter;
 
 use crate::bubblewrap::{SANDBOX_WORKSPACE, sandbox_socket};
 use crate::error::Result;
 use crate::harden::harden;
+use crate::tenant::TenantDescriptors;
 
 /// The level the process inside logs at when the runner passes none.
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
 
-/// Binds the executor's socket, hardens the calling process, then serves the
-/// executor until the supervisor hangs up.
+/// Binds, adopts the tenant leaf, hardens, then serves until hung up.
+///
+/// `tenant` names the leaf's descriptors the entry inherited; every process
+/// the executor starts moves into that leaf.
 ///
 /// The socket is bound first, while its directory is still writable: once
 /// hardened, nothing in the sandbox may write there again. Call this from
@@ -25,13 +29,19 @@ const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
 /// of which starts one.
 ///
 /// # Errors
-/// The socket cannot be bound, the process cannot be confined, the runtime
-/// will not build, or the executor stops with an error.
-pub fn serve_sandboxed() -> Result<()> {
-    serve_confined(&sandbox_socket(), Path::new(SANDBOX_WORKSPACE))
+/// The socket cannot be bound, a descriptor was not inherited, the process
+/// cannot be confined, the runtime will not build, or the executor stops with
+/// an error.
+pub fn serve_sandboxed(tenant: TenantDescriptors) -> Result<()> {
+    serve_placed(
+        &sandbox_socket(),
+        Path::new(SANDBOX_WORKSPACE),
+        |listener| Ok(listener.with_tenant(tenant.adopt()?)),
+    )
 }
 
-/// [`serve_sandboxed`] with the socket and the executor's root named.
+/// [`serve_sandboxed`] with the socket and the executor's root named, and no
+/// tenant leaf: its processes run where it does.
 ///
 /// For a caller proving the sequence outside a sandbox. The root must lie under
 /// one of [`crate::WRITABLE`], or the executor cannot write there once confined.
@@ -39,7 +49,17 @@ pub fn serve_sandboxed() -> Result<()> {
 /// # Errors
 /// As [`serve_sandboxed`].
 pub fn serve_confined(socket: &Path, root: &Path) -> Result<()> {
-    let listener = afr_executor::bind(socket)?;
+    serve_placed(socket, root, Ok)
+}
+
+/// Binds, lets `place` say where the executor's processes go, hardens, then
+/// serves.
+fn serve_placed(
+    socket: &Path,
+    root: &Path,
+    place: impl FnOnce(Listener) -> Result<Listener>,
+) -> Result<()> {
+    let listener = place(afr_executor::bind(socket)?)?;
     harden()?;
     log_to_stderr();
     let runtime = tokio::runtime::Builder::new_current_thread()

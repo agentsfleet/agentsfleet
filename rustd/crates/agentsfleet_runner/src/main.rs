@@ -57,23 +57,24 @@ enum Command {
     Run,
     /// Print what this host's kernel can enforce.
     Probe,
-    /// Harden this process and serve the executor; started inside each sandbox.
-    Sandbox,
+    /// Harden this process and serve the executor; started inside each sandbox,
+    /// told the tenant leaf's descriptors it inherited.
+    Sandbox(afr_sandbox::TenantDescriptors),
 }
 
 fn main() -> ExitCode {
     match Cli::parse().command {
         // First and alone: hardening refuses once a second thread exists, so
         // nothing may start one before it.
-        Command::Sandbox => sandbox(),
+        Command::Sandbox(tenant) => sandbox(tenant),
         Command::Probe => probe(),
         Command::Run => run(),
     }
 }
 
 /// Hardens and serves; any refusal goes to stderr, which the engine reads.
-fn sandbox() -> ExitCode {
-    match afr_sandbox::serve_sandboxed() {
+fn sandbox(tenant: afr_sandbox::TenantDescriptors) -> ExitCode {
+    match afr_sandbox::serve_sandboxed(tenant) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => refused(&error),
     }

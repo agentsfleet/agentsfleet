@@ -17,6 +17,7 @@ use crate::engine::{Engine, HostWorkspace, LeaseName, Limits, Sandbox, SandboxRe
 use crate::error::{Result, not_ready, refused, toolbox_unexpected};
 use crate::host::HostTools;
 use crate::probe::{HostProbe, ProbePaths};
+use crate::tenant::TenantFiles;
 use crate::toolbox::Toolbox;
 use crate::workspace_disk::WorkspaceDisk;
 
@@ -182,6 +183,7 @@ impl BubblewrapEngine {
         )?);
         cgroup.limit_io(device, DEFAULT_IO_BYTES_PER_SECOND)?;
         let procs = cgroup.procs();
+        let tenant = TenantFiles::open(&cgroup.tenant_procs(), &cgroup.tenant_events())?;
         let run_dir = self.run_dir(parts.dir())?;
         let argv = bubblewrap::arguments(&Layout {
             toolbox: self.config.toolbox.root(),
@@ -191,8 +193,9 @@ impl BubblewrapEngine {
             entry: &self.config.entry,
             entry_args: &self.config.entry_args,
             log_level: self.config.log_level.as_deref(),
+            tenant: tenant.descriptors(),
         });
-        parts.spawn(&self.config.tools.bwrap, argv, &procs, self.run_as)?;
+        parts.spawn(&self.config.tools.bwrap, argv, &procs, tenant, self.run_as)?;
         self.ready(parts, &run_dir.join(SOCKET_NAME)).await
     }
 

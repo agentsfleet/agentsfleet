@@ -39,7 +39,11 @@ fn test_a_process_that_cannot_be_confined_never_serves() {
 /// nothing is confined: the socket is bound before anything else.
 #[test]
 fn test_outside_a_sandbox_there_is_no_socket_to_bind() {
-    let refused = super::serve_sandboxed()
+    let tenant = crate::TenantDescriptors {
+        tenant_procs: 3,
+        tenant_events: 4,
+    };
+    let refused = super::serve_sandboxed(tenant)
         .err()
         .map(|error| error.to_string());
 

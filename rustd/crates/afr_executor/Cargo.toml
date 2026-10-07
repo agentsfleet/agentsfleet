@@ -32,8 +32,9 @@ bytes.workspace = true
 cap-std.workspace = true
 futures-util = { workspace = true, features = ["sink"] }
 jsonrpsee-types.workspace = true
-portable-pty.workspace = true
-rustix.workspace = true
+# The terminal launcher opens its pair here (`pty`, `termios`), so a terminal
+# process takes the same pre-exec placement hook a process on pipes does.
+rustix = { workspace = true, features = ["pty", "termios"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

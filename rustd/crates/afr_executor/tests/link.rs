@@ -133,6 +133,7 @@ async fn every_ending_the_wire_spells_reaches_the_caller_as_itself() {
         (1, r#"{"kind":"timed_out"}"#),
         (2, r#"{"kind":"signaled","code":9}"#),
         (3, r#"{"kind":"interrupted"}"#),
+        (4, r#"{"kind":"out_of_memory"}"#),
     ] {
         let spawner = std::sync::Arc::clone(&client);
         let spawning = tokio::spawn(async move { spawner.spawn(&Spawn::program("x")).await });
@@ -151,6 +152,7 @@ async fn every_ending_the_wire_spells_reaches_the_caller_as_itself() {
             [Ending::TimedOut],
             [Ending::Signaled(9)],
             [Ending::Interrupted],
+            [Ending::OutOfMemory],
         ]
     );
 }

@@ -23,6 +23,9 @@ async-trait.workspace = true
 # The executor's socket answers a few milliseconds after the sandbox starts;
 # a constant-delay retry waits for it without a hand-written loop.
 backon.workspace = true
+# The sandbox entry's two descriptor flags, parsed once here for the runner
+# binary and the kernel lane alike.
+clap.workspace = true
 # The bubblewrap launcher's error stream, read a line at a time with a cap.
 futures-util.workspace = true
 # The toolbox image is named by its SHA-256, streamed through the hasher.
