@@ -24,12 +24,12 @@ use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
 use crate::testing::Discard;
 
 /// A loop hosting `tools`, every lease driven by `script`.
-pub(super) fn engine(tools: Vec<Box<dyn Tool>>, script: &Script) -> Loop {
+pub(crate) fn engine(tools: Vec<Box<dyn Tool>>, script: &Script) -> Loop {
     Loop::new(Catalog::new(tools), script.replay())
 }
 
 /// Runs `lease` on `engine` until it ends or `stop` is cancelled.
-pub(super) async fn drive(
+pub(crate) async fn drive(
     engine: &Loop,
     lease: &LeasePayload<'_>,
     stop: &CancellationToken,
@@ -52,7 +52,7 @@ pub(super) async fn drive(
 }
 
 /// Each completion frame's call id and status, in order.
-pub(super) fn completions(frames: &[ActivityFrame<'_>]) -> Vec<(String, ToolCallStatus)> {
+pub(crate) fn completions(frames: &[ActivityFrame<'_>]) -> Vec<(String, ToolCallStatus)> {
     frames
         .iter()
         .filter_map(|frame| match frame {

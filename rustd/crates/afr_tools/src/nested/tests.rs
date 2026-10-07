@@ -5,19 +5,20 @@
 
 use serde_json::json;
 
-use super::{NESTED, is_nested};
+use super::{NESTED, Nested};
 use crate::catalog::{DELEGATE, FILE_READ, LIST_AGENTS, SPAWN};
 use crate::runtime::ToolErrorCode;
 use crate::testing::{call, hosted, offered};
 use crate::{Lease, parsed};
 
-/// Each of the six is nested and nothing else is.
+/// Each of the six is named by its entry, and a sandbox tool is none.
 #[test]
 fn the_six_are_nested_and_a_sandbox_tool_is_not() {
     for entry in NESTED {
-        assert!(is_nested(entry.name()), "{}", entry.name());
+        let nested = Nested::of(entry.name());
+        assert_eq!(nested.map(Nested::entry), Some(entry), "{}", entry.name());
     }
-    assert!(!is_nested(FILE_READ.name()));
+    assert_eq!(Nested::of(FILE_READ.name()), None);
 }
 
 /// A call that reaches a handler, which only the router could make, reads a

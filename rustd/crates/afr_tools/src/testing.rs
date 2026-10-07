@@ -21,10 +21,11 @@ use afr_executor::{Client, Executor};
 use afr_memory::Hydrated;
 use tokio::task::JoinHandle;
 
-use crate::catalog::{Catalog, Entry, Selection};
+use crate::catalog::{Catalog, Entry};
 use crate::egress::SharedTransport;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolContext, ToolOutput};
+use crate::selection::Selection;
 
 /// When every egress suite's clock starts.
 pub(crate) const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);

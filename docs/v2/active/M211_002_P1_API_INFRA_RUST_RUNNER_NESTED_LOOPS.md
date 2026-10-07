@@ -86,30 +86,30 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — A child shares the lease and can only have less
+### §1 — A child shares the lease and can only have less — DONE
 
 A child loop runs with the parent's provider and key, its task as the user turn, the parent's system prompt and trusted repair context, the same sandbox, workspace and memory store, and a tool set that is the requested subset of the parent's tools; a requested tool the parent lacks is refused. At `NESTED_DEPTH_MAX` the child is offered none of the six nested tools. At most `CHILDREN_RUNNING_MAX` children run at once and `CHILDREN_PER_RUN_MAX` are started per run; past either, `spawn` and `delegate` refuse with a code. The context cap and token accounting are the run's: a child's turns count against them, and its usage sums into the one report.
 
-- **Dimension 1.1** — `delegate` runs a child to its answer and returns it as the call's output → Test `test_delegate_returns_child_answer`
-- **Dimension 1.2** — `spawn` returns a child id; `wait_agent` reports running then done; `send_input` reaches the child's next turn → Test `test_spawn_wait_send_round_trip`
-- **Dimension 1.3** — A child at the depth cap is offered no nested tool → Test `test_nested_depth_capped`
-- **Dimension 1.4** — The running and per-run caps refuse with their codes → Test `test_children_caps_refuse`
-- **Dimension 1.5** — A child never holds a tool its parent lacks → Test `test_child_tools_subset_of_parent`
-- **Dimension 1.6** — Children's usage sums into the report's three counts → Test `test_child_usage_sums_into_report`
+- **Dimension 1.1** DONE — `delegate` runs a child to its answer and returns it as the call's output → Test `test_delegate_returns_child_answer`
+- **Dimension 1.2** DONE — `spawn` returns a child id; `wait_agent` reports running then done; `send_input` reaches the child's next turn → Test `test_spawn_wait_send_round_trip`
+- **Dimension 1.3** DONE — A child at the depth cap is offered no nested tool → Test `test_nested_depth_capped`
+- **Dimension 1.4** DONE — The running and per-run caps refuse with their codes → Test `test_children_caps_refuse`
+- **Dimension 1.5** DONE — A child never holds a tool its parent lacks → Test `test_child_tools_subset_of_parent`
+- **Dimension 1.6** DONE — Children's usage sums into the report's three counts → Test `test_child_usage_sums_into_report`
 
-### §2 — Children are visible as the run's own calls
+### §2 — Children are visible as the run's own calls — DONE
 
 A child's tool calls take ids from the run-wide counter and emit the same frames and trace rows as the parent's; the parent's `delegate` or `spawn` call is itself a call whose output is the child's answer or id. The trace caps count every call of the run. The thread therefore shows a child's reads as rows of the same turn.
 
-- **Dimension 2.1** — Child calls carry run-wide ids and appear in the frames and the trace → Test `test_child_calls_share_the_run_trace`
-- **Dimension 2.2** — The trace's 200-call cap counts child calls → Test `test_trace_cap_counts_child_calls`
+- **Dimension 2.1** DONE — Child calls carry run-wide ids and appear in the frames and the trace → Test `test_child_calls_share_the_run_trace`
+- **Dimension 2.2** DONE — The trace's 200-call cap counts child calls → Test `test_trace_cap_counts_child_calls`
 
-### §3 — Every child ends with its parent, and every child call ends once
+### §3 — Every child ends with its parent, and every child call ends once — DONE
 
 When the parent's run ends for any reason — answer, kill, timeout, provider failure, context cap — the registry ends every running child, and each child's open calls close `interrupted` exactly once. `interrupt_agent` ends one child the same way; `list_agents` reports each child's state. A child that ends on its own leaves its answer for `wait_agent`.
 
-- **Dimension 3.1** — Parent end interrupts every running child; open calls close once → Test `test_parent_end_interrupts_children`
-- **Dimension 3.2** — `interrupt_agent` ends one child; `list_agents` shows running, done and interrupted → Test `test_interrupt_and_list_agents`
+- **Dimension 3.1** DONE — Parent end interrupts every running child; open calls close once → Test `test_parent_end_interrupts_children`
+- **Dimension 3.2** DONE — `interrupt_agent` ends one child; `list_agents` shows running, done and interrupted → Test `test_interrupt_and_list_agents`
 
 ### §4 — A bundle fans out against the real daemon
 
@@ -122,13 +122,13 @@ The integration lane adds a support bundle that delegates two file reads to two 
 ```
 delegate        { task, tools? }              → { answer }                     (runs to completion)
 spawn           { task, tools? }              → { child_id }
-wait_agent      { child_id, timeout_ms? }     → { status: running|done|interrupted, answer? }
+wait_agent      { child_id, timeout_ms? }     → { status: running|done|failed|interrupted, answer?, detail? }
 send_input      { child_id, message }         → { accepted: bool }
 list_agents     {}                            → [{ child_id, status, depth, calls }]
 interrupt_agent { child_id }                  → { status }
 
 Constants: NESTED_DEPTH_MAX 2 · CHILDREN_RUNNING_MAX 4 · CHILDREN_PER_RUN_MAX 16
-Codes: CHILD_CAP_REACHED · CHILD_TOOL_NOT_HELD · CHILD_NOT_FOUND
+Codes: CHILD_CAP_REACHED · CHILD_TOOL_NOT_HELD · CHILD_NOT_FOUND · CHILD_FAILED
 ```
 
 ## Failure Modes
@@ -227,6 +227,7 @@ N/A — no files deleted.
 
 - **Consults** — Indy (in-session, Oct 02, 2026): "i need all the tools … the sandbox isnt just a sandbox but a harness that decide to operate like codex"; chose "Supervisor loop, sandbox tools". The Codex shape is `spawn_agent`/`wait_agent`/`send_input`; `delegate` and `spawn` keep the published names and the four Codex-shaped names are added.
 - **PLAN (Oct 07, 2026)** — Codex (`2e5fea64e`) runs each child as its own `tokio::spawn`ed session (`core/src/session/mod.rs:935`), cascades only on an explicit `close_agent` (`agent/control/legacy.rs:49-125`; a parent's interrupt leaves children running, `handlers.rs:57`), forwards no child tool call to the parent's stream, and rolls no usage up. This spec diverges on all three by its own Dimensions (3.1, 2.1, 1.6). **Lease sharing**, the PLAN's one design call: today a call holds `&mut Lease` for its whole run (`afr_tools/src/runtime.rs:33`), and concurrent children need it at once. Indy chose "Split the lease (Recommended)" over one lock around it: memory and egress each behind their own lock and each session behind its own, so one child's 30 s `exec_command` yield never stalls another child's file reads. Files Changed grew by the handler files that read the lease.
+- **§1–§3 build (Oct 07, 2026)** — A child's end has four states, not the three the Interfaces first listed: `failed` carries the child's own failure detail, so `wait_agent` can tell a provider fault from an interruption, and `delegate` answers it as a failed call under the fourth code, `child_failed`; a delegated child interrupted by a sibling answers under the existing `interrupted`. The six are a closed set, `afr_tools::nested::Nested`, matched once in the loop, and `afr_tools::parsed` is the one place a call's arguments become a type, for a handler and the loop alike. `send_input` to a child that has not had its first turn joins the message onto its task, so no provider sees two user messages in a row. A child writes no memory checkpoint; the push before the report carries what it stored. The `tools: null` case is the parent's whole selection, cloned as a vector of references. The unit tests drive supervisor-side tools (`update_plan`, `memory_recall`) where the Test Specification says `file_read`, because the unit lane has no sandbox; the delegating bundle (§4) is where the child's reads go through the executor.
 - **Agent defaults** — depth 2; four running and sixteen per run; a child inherits the parent's system prompt and trusted repair context; children's rows ride the run's counter with no parent link until the chat can fold them.
 - **Metrics review** — No analytics or funnel playbook update required: no user surface; three operator log events added.
 - **Skill-chain outcomes** — pending.

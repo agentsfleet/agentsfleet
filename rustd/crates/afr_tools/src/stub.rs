@@ -4,28 +4,12 @@
 //! name and never touches the executor; a sandbox-side one reads
 //! [`STUB_PATH`] through it, so a suite can count that the call crossed.
 
-use schemars::JsonSchema;
-use serde::Deserialize;
-
 use crate::catalog::Entry;
 use crate::runtime::{Runtime, Tool, ToolContext, ToolErrorCode, ToolOutput};
-use crate::schema::Schema;
+use crate::schema::{NoArguments, Schema};
 
 /// The file a sandbox-side stub reads.
 pub const STUB_PATH: &str = "stub.txt";
-
-// The arguments a stub, or any test tool that reads none, takes: its schema is
-// the empty object that refuses every key, derived like a real tool's rather
-// than written as JSON beside it. The doc line below is what schemars hands
-// the model as the schema's description, so it is written for the model.
-/// Takes no arguments.
-#[derive(Debug, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[expect(
-    clippy::empty_structs_with_brackets,
-    reason = "schemars renders a unit struct as `null`; the braces make it the empty object every provider's function wire expects"
-)]
-pub struct NoArguments {}
 
 /// A handler that proves where it ran.
 #[derive(Debug)]

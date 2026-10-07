@@ -79,6 +79,50 @@ impl Script {
         }])
     }
 
+    /// The same model, playing `turns` to a child whose task opens with
+    /// `task`, from the child's own first turn.
+    pub(crate) fn with_child(
+        self,
+        task: &str,
+        turns: impl IntoIterator<Item = Vec<Chunk>>,
+    ) -> Self {
+        let turns = turns.into_iter().map(|chunks| Turn {
+            chunks,
+            failure: None,
+        });
+        self.with_child_turns(task, turns.collect())
+    }
+
+    /// The same model, whose child on `task` streams `chunks` once, then
+    /// fails with `failure()`.
+    pub(crate) fn with_failing_child(
+        self,
+        task: &str,
+        chunks: Vec<Chunk>,
+        failure: fn() -> afr_providers::Error,
+    ) -> Self {
+        self.with_child_turns(
+            task,
+            vec![Turn {
+                chunks,
+                failure: Some(failure),
+            }],
+        )
+    }
+
+    fn with_child_turns(mut self, task: &str, turns: Vec<Turn>) -> Self {
+        let children = Arc::get_mut(&mut self.replay.children)
+            .expect("children are scripted before the model is handed out");
+        children.push((
+            task.to_owned(),
+            Turns {
+                turns,
+                next: AtomicUsize::new(0),
+            },
+        ));
+        self
+    }
+
     /// The same model, whose wire takes no image with a call's result.
     pub(crate) fn text_only(mut self) -> Self {
         self.replay.images = false;
@@ -94,6 +138,7 @@ impl Script {
         Self {
             replay: Replay {
                 turns,
+                children: Arc::default(),
                 sent,
                 images: true,
             },
@@ -118,6 +163,8 @@ impl Script {
 #[derive(Debug, Clone)]
 pub(crate) struct Replay {
     turns: Arc<Turns>,
+    /// A child's turns, by the task its conversation opens with.
+    children: Arc<Vec<(String, Turns)>>,
     sent: mpsc::Sender<Sent>,
     /// Whether its wire takes an image with a call's result.
     images: bool,
@@ -163,13 +210,30 @@ impl Provider for Replay {
             messages: request.messages.to_vec(),
         };
         self.sent.send(sent).expect(RECEIVER_HELD);
-        let index = self.turns.next.fetch_add(1, Ordering::Relaxed);
-        let turn = self.turns.turns.get(index).map(Turn::replay);
+        let turns = self.turns_for(request.messages.first());
+        let index = turns.next.fetch_add(1, Ordering::Relaxed);
+        let turn = turns.turns.get(index).map(Turn::replay);
         futures_util::stream::iter(turn.unwrap_or_default()).boxed()
     }
 
     fn accepts_images(&self) -> bool {
         self.images
+    }
+}
+
+impl Replay {
+    /// The turns for a conversation opening with `first`: a child's when
+    /// its task opens it, the main script's otherwise.
+    fn turns_for(&self, first: Option<&Message>) -> &Turns {
+        let opening = match first {
+            Some(Message::User(text)) => text.as_str(),
+            Some(Message::Assistant { .. } | Message::ToolResult { .. }) | None => "",
+        };
+        // The longest task wins, so `read 1` never plays for `read 12`.
+        (self.children.iter())
+            .filter(|(task, _turns)| !task.is_empty() && opening.starts_with(task.as_str()))
+            .max_by_key(|(task, _turns)| task.len())
+            .map_or(&*self.turns, |(_task, turns)| turns)
     }
 }
 
