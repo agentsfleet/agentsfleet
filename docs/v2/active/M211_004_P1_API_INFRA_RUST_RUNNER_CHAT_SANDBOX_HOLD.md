@@ -25,7 +25,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-**Depends on:** M211_001 (the sandbox-side tools; a lease with only supervisor tools builds no sandbox, `rustd/crates/afr_agent/src/engine.rs:139-141`) · M211_003 (its reserve counts every held sandbox at its full disk limit, and its two cgroup leaves freeze together) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:184-185` refuses them until then)
+**Depends on:** M211_001 (the sandbox-side tools; a lease with only supervisor tools builds no sandbox, `rustd/crates/afr_agent/src/engine.rs:139-141`) · M211_003 (its two cgroup leaves freeze together; its host disk reserve is deferred, so nothing reserves disk for a hold) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:184-185` refuses them until then)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from a source trace of the chat path at `b0138d7b3`, recorded in Discovery
 **Canonical architecture:** `docs/architecture/runner_execution.md` §"Workspace between leases", §Toolbox; `docs/architecture/runner_fleet.md` §"Per-lease renewal — how a long fleet keeps its lease", §"Memory continuity — durable fleet memory rides the trusted plane"
 
@@ -41,7 +41,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** folded into M211_001's Pull Request
 - **Intent (one sentence):** A fleet's follow-up message continues in the sandbox its last message left, files and processes intact, instead of starting over.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** (PLAN, Oct 07, 2026) — restated: after a fleet's lease ends cleanly, its runner keeps the sandbox frozen for that fleet's next message and the daemon steers that message back to it, so files and processes carry over; any doubt falls back to a fresh sandbox. Matches the Intent. `ASSUMPTIONS I'M MAKING:` (1) `held_until_ms` rides `afd_wire::report::ReportRequest` (`report.rs:130`): `ExecutionResult` moved into `afr_agent` and no longer crosses the wire (M215_001 §3). (2) The hold key is fleet, workspace, the lease's `Limits` (the size it named, or the runner's own, M211_003 §4), toolbox digest and network policy. (3) `VERSION` is 0.57.0, past the 0.30.0 anchor, so `held_until` lands as an additive migration, `schema/932_runner_affinity_held_until.sql`, never an edit to `630_runner_affinity.sql`. (4) The freeze writes `cgroup.freeze` on the lease cgroup, so both leaves stop, and waits for `frozen 1` in `cgroup.events`. (5) No host disk reserve exists (deferred in M211_003): holds are bounded by `worker_count` alone, and a host's disk may fill, as Indy accepted. (6) The runner's holds family is a row in `docs/metrics.runner.census.tsv` with an `afr_telemetry` producer; M214_001 is done. (7) This spec executes after M211_005, which needs neither the kernel lane nor a schema change. **Quality ceiling:** a microVM snapshot per conversation would keep processes across hosts too; the freezer is the bubblewrap-era answer, and the registry mirrors `WarmSlots` rather than adding a lock. **Surface checklist:** OpenAPI yes (report and heartbeat fields; regenerate) · the product CLI no · user docs yes (how long a sandbox is kept, docs repo branch) · release/version at close · schema yes (additive, SCHEMA GUARD) · spec vs rules: Interfaces, Failure Modes and Files Changed amended below.
 
 ## Implementing agent — read these first
 
@@ -61,14 +61,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_supervisor/src/heartbeat.rs`, `rustd/crates/afr_supervisor/src/report.rs` | EDIT | Send the hold list and `held_until_ms`; destroy what the answer releases |
 | `rustd/crates/afr_sandbox/src/engine.rs`, `rustd/crates/afr_sandbox/src/cgroup.rs`, `rustd/crates/afr_sandbox/src/bubblewrap_engine/` | EDIT | `freeze` and `thaw` on the `Sandbox` trait, over `cgroup.freeze` |
 | `rustd/crates/afd_core/src/timing.rs` | EDIT | `SANDBOX_HOLD_IDLE_MS` |
-| `rustd/crates/afd_wire/src/report.rs`, `rustd/crates/afd_wire/src/runner.rs` | EDIT | The three wire fields in Interfaces |
+| `rustd/crates/afd_wire/src/report.rs`, `rustd/crates/afd_wire/src/runner.rs`, `public/openapi.json` | EDIT | The three wire fields in Interfaces; the regenerated document |
 | `rustd/crates/afd_fleet/src/lease/sql/lease.rs`, `rustd/crates/afd_fleet/src/lease/assign.rs`, `rustd/crates/afd_fleet/src/lease/commit.rs` | EDIT | Scan, claim and unleased release honour a hold; the holder looks at its holds first; the report's release records one |
 | `rustd/crates/afd_runner/src/heartbeat.rs`, `rustd/crates/afd_api_runner/src/handler/runner/heartbeat.rs` | EDIT | Reconcile a runner's holds and answer the inactive ones |
-| `schema/630_runner_affinity.sql`, or the next numbered migration | EDIT / CREATE | `held_until`, per `docs/SCHEMA_CONVENTIONS.md` at CHORE(open) |
+| `schema/932_runner_affinity_held_until.sql`, `rustd/crates/afd_db/src/migration.rs` | CREATE / EDIT | `held_until`, additive, since `VERSION` is past the 0.30.0 anchor |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/trials.rs`, `rustd/crates/afd_fleet/tests/integration_held_sandbox.rs` | EDIT / CREATE | The kernel and integration proofs |
 | `docs/architecture/runner_execution.md`, `docs/architecture/runner_fleet.md` | EDIT | A sandbox may outlive its lease; holder-first claim; the stale `uq_runner_affinity_fleet_id` at lines 29 and 507 |
 | `rustd/crates/afd_observability/src/semconv.rs`, `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet.rs` | EDIT | The reuse span attribute and the held-claim counter with its producer |
-| `docs/v2/pending/M214_001_P1_DOCS_OBS_RUST_RUNNER_EXPORTS_ITS_TELEMETRY.md` | EDIT | The runner census gains the holds family |
+| `docs/metrics.runner.census.tsv`, `rustd/crates/afr_telemetry/src/` | EDIT | The runner census gains the holds family and its producer |
 
 ## Applicable Rules
 
@@ -134,7 +134,7 @@ The report carries `held_until_ms` when its lease parked. The report's fencing-g
 ## Interfaces
 
 ```
-afd_wire::report::ExecutionResult    + held_until_ms: Option<i64>    absent = nothing held; decoded leniently
+afd_wire::report::ReportRequest      + held_until_ms: Option<i64>    absent = nothing held; decoded leniently
 afd_wire::runner::HeartbeatRequest   + holds: Vec<fleet id>           every fleet the runner holds now
 afd_wire::runner::HeartbeatResponse  + release_holds: Vec<fleet id>   held fleets that are halted or deleted
 fleet.runner_affinity                + held_until BIGINT NULL         milliseconds since the epoch; NULL = not held
@@ -155,7 +155,7 @@ reason                               Expired | Saturated | Mismatch | Inactive |
 | Fleet halted or deleted | Owner action during the hold | Named in the next heartbeat answer; the runner destroys the hold and its tenant data |
 | Too many fleets | More holds than workers | The oldest hold is released |
 | Two events at once | Back-to-back messages | The affinity slot admits one holder, unchanged; the second waits for the first's report (`test_unheld_fleet_claims_as_before`) |
-| Host disk filling | Held workspace disks keep their bytes | M211_003 §4 counts a held sandbox as live, so the host keeps room for it at its full disk limit plus the reserve (`test_capacity_rule_counts_remaining_limits`); the cap bounds holds to `worker_count` (`test_holds_capped_oldest_first`) |
+| Host disk filling | Held workspace disks keep their bytes | Nothing reserves disk for a hold (M211_003 deferred its reserve); the cap bounds holds to `worker_count` (`test_holds_capped_oldest_first`), and a full host disk ends a writer in `ENOSPC` as it does today |
 
 ## Invariants
 
@@ -175,7 +175,7 @@ reason                               Expired | Saturated | Mismatch | Inactive |
 | `sandbox_hold_released` (runner log, info) | ops | A hold ends without reuse | fleet id, reason | as above | `test_expired_hold_is_destroyed` |
 | `agentsfleet.sandbox.reused` on the `runner.lease` span (a new `afd_observability::semconv` constant) | ops | Every lease that used a sandbox | `true` when taken from a hold | ids only | `test_next_lease_reuses_the_held_sandbox` |
 | `agentsfleet_lease_held_claims_total` (daemon, `afd_observability` declared counter + producer) | ops | A claim on a fleet that was held | `outcome`: `holder` or `other_after_lapse` | no ids in labels | `test_holder_claims_its_held_fleet`, `test_lapsed_hold_is_claimable` |
-| `agentsfleet_runner_sandbox_holds_total` (runner census, M214_001) | ops | A hold is parked, reused or released | `outcome`: `parked`, `reused`, or the release reason | closed label set | M214_001's producer-coverage test |
+| `agentsfleet_runner_sandbox_holds_total` (runner census) | ops | A hold is parked, reused or released | `outcome`: `parked`, `reused`, or the release reason | closed label set | `test_every_runner_census_family_has_a_producer` |
 
 ## Test Specification (tiered)
 
