@@ -12,6 +12,7 @@ use std::os::fd::AsRawFd as _;
 use std::path::{Path, PathBuf};
 
 use crate::error::Result;
+use crate::workspace_disk::Caching;
 
 /// The device that hands out free loop devices.
 const LOOP_CONTROL: &str = "/dev/loop-control";
@@ -188,21 +189,19 @@ pub(crate) fn backing(node: &Path) -> Result<Backing> {
 
 /// Switches the bound loop device at `node` to direct I/O, so it reads and
 /// writes its file without caching it a second time on the host. A backing
-/// file system that refuses direct I/O leaves the device buffered, which is
-/// the fallback rather than a failure.
-pub(crate) fn direct_io(node: &Path) -> Result<()> {
+/// file system that refuses direct I/O (`EINVAL`) leaves the device
+/// buffered: a fallback the caller is told of, not a failure.
+pub(crate) fn direct_io(node: &Path) -> Result<Caching> {
     let device = File::open(node)?;
     // SAFETY: LOOP_SET_DIRECT_IO takes its on/off value as the argument
     // itself; no memory is passed.
     let set = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_SET_DIRECT_IO, DIRECT_IO_ON) };
-    if set == 0 {
-        return Ok(());
-    }
-    let refused = io::Error::last_os_error();
-    if refused.raw_os_error() == Some(libc::EINVAL) {
-        Ok(())
-    } else {
-        Err(refused.into())
+    // The error is read at once, before any other call can overwrite it.
+    let refused = (set != 0).then(io::Error::last_os_error);
+    match refused {
+        None => Ok(Caching::Direct),
+        Some(error) if error.raw_os_error() == Some(libc::EINVAL) => Ok(Caching::Buffered),
+        Some(error) => Err(error.into()),
     }
 }
 

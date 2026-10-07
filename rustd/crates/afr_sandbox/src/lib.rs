@@ -65,4 +65,4 @@ pub use self::toolbox::{
 };
 pub use self::unsandboxed::UnsandboxedEngine;
 pub use self::warm_slots::WarmSlots;
-pub use self::workspace_disk::WorkspaceDisk;
+pub use self::workspace_disk::{Caching, WorkspaceDisk};

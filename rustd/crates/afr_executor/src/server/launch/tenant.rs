@@ -7,7 +7,10 @@
 //! open-time credentials and no cgroup file system is mounted inside. The
 //! leaf's memory limit sits below the sandbox's, so the kernel's out-of-memory
 //! killer picks a tenant process and never the executor; the leaf's `oom_kill`
-//! count rising is how such a kill is told from any other `SIGKILL`.
+//! count rising is how such a kill is told from any other `SIGKILL`. A tool's
+//! command runs under `/bin/sh -c`, so the process killed is often a child the
+//! shell forked, and the shell, still alive, exits with the status it reports
+//! that kill under; that exit is judged the same way.
 
 use std::fmt;
 use std::fs::File;
@@ -17,6 +20,7 @@ use std::os::unix::fs::FileExt as _;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use afd_core::error_code;
 use rustix::fs::OFlags;
 use rustix::io::{Errno, FdFlags};
 use rustix::process::Signal;
@@ -32,6 +36,13 @@ const OOM_KILL: &str = "oom_kill";
 const EVENTS_MAX_BYTES: usize = 256;
 /// The signal the out-of-memory killer sends.
 const SIGKILL: i32 = Signal::KILL.as_raw();
+/// What a POSIX shell adds to a signal's number to report a child that
+/// signal killed as its own exit status.
+const SHELL_SIGNAL_BASE: i32 = 128;
+/// The exit of a shell whose forked child was killed by `SIGKILL`.
+const SHELL_KILLED_EXIT: i32 = SHELL_SIGNAL_BASE + SIGKILL;
+/// A `memory.events` read failed, so a kill reads as the ending reported.
+const EVENT_EVENTS_UNREAD: &str = "executor_memory_events_unread";
 
 /// Where the processes a session starts are placed.
 pub(crate) trait Placement: Send + Sync + fmt::Debug {
@@ -110,14 +121,31 @@ impl Placement for Tenant {
     }
 
     fn judge(&self, ending: Ending) -> Ending {
-        let killed = ending == Ending::Signaled(SIGKILL);
+        // The process itself killed, or a child its shell forked.
+        let killed = matches!(
+            ending,
+            Ending::Signaled(SIGKILL) | Ending::Exited(SHELL_KILLED_EXIT)
+        );
         match killed.then(|| oom_kills(&self.events)) {
             Some(Ok(now)) if now > self.seen.fetch_max(now, Ordering::Relaxed) => {
                 Ending::OutOfMemory
             }
+            Some(Err(failure)) => {
+                unread(&failure);
+                ending
+            }
             _unchanged => ending,
         }
     }
+}
+
+/// Logs a `memory.events` read that failed: the kill it might have named
+/// reaches the caller as the ending reported.
+fn unread(failure: &io::Error) {
+    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let reason = failure.to_string();
+    let event = EVENT_EVENTS_UNREAD;
+    tracing::warn!(error_code, reason, event);
 }
 
 /// Refuses when `placement` cannot place a process, then has every process

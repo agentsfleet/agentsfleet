@@ -7,6 +7,7 @@
 use std::sync::atomic::Ordering;
 
 use afd_core::bundle::BundleDigest;
+use afd_core::test_util::trace::Capture;
 use afd_wire::lease::{SANDBOX_MEMORY_BYTES_MAX, SANDBOX_MEMORY_BYTES_MIN, SandboxLimits};
 use afr_sandbox::Limits;
 use bytes::Bytes;
@@ -188,12 +189,24 @@ async fn a_size_past_its_bounds_refuses_the_lease_before_any_sandbox() {
         memory_bytes: SANDBOX_MEMORY_BYTES_MIN - 1,
         ..ASKED
     };
+    let capture = Capture::install();
     let (mut rig, asked) = asked_for(Some(past)).await;
 
     assert!(asked.is_empty(), "no sandbox is built for it");
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
     assert_eq!(reported(&rig.calls())[FAILURE_REASON], STARTUP_POSTURE);
+    let refused = capture.only("sandbox_size_refused");
+    assert!(
+        refused
+            .field("error_code")
+            .is_some_and(|code| !code.is_empty()),
+        "the refusal names its code: {refused:?}"
+    );
+    assert!(
+        refused.field("lease_id").is_some_and(|id| !id.is_empty()),
+        "and its lease: {refused:?}"
+    );
 }
 
 #[test]

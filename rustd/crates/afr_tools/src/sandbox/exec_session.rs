@@ -19,7 +19,7 @@ use tokio::time::Instant;
 use super::files::failed;
 use super::output::{self, Collected};
 use super::sessions::Sessions;
-use super::{command, executor_of, unavailable};
+use super::{command, executor_of, oneshot, unavailable};
 use crate::catalog::{EXEC_COMMAND, Entry, WRITE_STDIN};
 use crate::handler::Handler;
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
@@ -123,7 +123,8 @@ impl Handler for ExecCommand {
         let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MS_MIN);
         let ended = collected.until(&mut process, deadline).await;
         let budget = output::budget(arguments.max_output_tokens);
-        reply(sessions, id, &collected, ended, budget, None)
+        let lease_id = context.lease.lease_id;
+        reply(sessions, lease_id, id, &collected, ended, budget, None)
     }
 }
 
@@ -188,7 +189,8 @@ impl Handler for WriteStdin {
             collected.until(&mut process, deadline).await
         };
         let budget = output::budget(arguments.max_output_tokens);
-        reply(sessions, id, &collected, ended, budget, refused)
+        let lease_id = context.lease.lease_id;
+        reply(sessions, lease_id, id, &collected, ended, budget, refused)
     }
 }
 
@@ -208,11 +210,13 @@ fn yield_of(asked: Option<u64>, floor: u64) -> Duration {
     Duration::from_millis(asked.unwrap_or(YIELD_MS_DEFAULT).clamp(floor, YIELD_MS_MAX))
 }
 
-/// One call's answer on session `id`: what arrived, why a write was refused
-/// when it was, then the session's state. A process that ended leaves the
-/// registry here.
+/// One call's answer on session `id` of lease `lease_id`: what arrived, why a
+/// write was refused when it was, then the session's state. A process that
+/// ended leaves the registry here, logged as a one-shot command is when the
+/// kernel killed it for memory.
 fn reply(
     sessions: &Sessions,
+    lease_id: &str,
     id: ProcessId,
     collected: &Collected,
     ended: Option<Ending>,
@@ -221,6 +225,9 @@ fn reply(
 ) -> ToolOutput {
     let state = match ended {
         Some(ending) => {
+            if ending == Ending::OutOfMemory {
+                oneshot::out_of_memory(lease_id);
+            }
             sessions.close(id, ending);
             output::status(ending)
         }

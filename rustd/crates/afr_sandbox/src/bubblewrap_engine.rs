@@ -19,7 +19,7 @@ use crate::host::HostTools;
 use crate::probe::{HostProbe, ProbePaths};
 use crate::tenant::TenantFiles;
 use crate::toolbox::Toolbox;
-use crate::workspace_disk::WorkspaceDisk;
+use crate::workspace_disk::{Caching, WorkspaceDisk};
 
 mod parts;
 mod sweep;
@@ -40,6 +40,9 @@ const EVENT_PREPARE_COMPLETED: &str = "sandbox_prepare_completed";
 /// The event a sandbox that could not be built is logged under; the
 /// supervisor, which knows what the lease was for, logs the refusal itself.
 const EVENT_PREPARE_FAILED: &str = "sandbox_prepare_failed";
+/// A lease whose workspace disk the host caches a second time. The host-wide
+/// answer is the boot probe's `workspace_direct_io` check; this names the lease.
+const EVENT_DISK_BUFFERED: &str = "sandbox_workspace_buffered";
 /// The event a host that can build no sandbox at all is logged under.
 const EVENT_HOST_REFUSED: &str = "sandbox_host_refused";
 
@@ -169,13 +172,18 @@ impl BubblewrapEngine {
         name: LeaseName<'_>,
         limits: Limits,
     ) -> Result<Client> {
-        let disk = WorkspaceDisk::create(
+        let (disk, caching) = WorkspaceDisk::create(
             &self.config.tools,
             parts.dir(),
             limits.disk_bytes,
             self.owner,
         )
         .await?;
+        if caching == Caching::Buffered {
+            let lease_id = name.as_str();
+            let event = EVENT_DISK_BUFFERED;
+            tracing::debug!(lease_id, event);
+        }
         let device = parts.adopt_disk(disk).device()?;
         let cgroup = parts.adopt_cgroup(LeaseCgroup::create(
             &self.config.cgroup_root,
@@ -195,6 +203,7 @@ impl BubblewrapEngine {
             entry_args: &self.config.entry_args,
             log_level: self.config.log_level.as_deref(),
             tenant: tenant.descriptors(),
+            shared_memory_bytes: limits.shared_memory_bytes(),
         });
         parts.spawn(&self.config.tools.bwrap, argv, &procs, tenant, self.run_as)?;
         self.ready(parts, &run_dir.join(SOCKET_NAME)).await

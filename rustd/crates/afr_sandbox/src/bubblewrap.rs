@@ -90,6 +90,8 @@ const DEV_FLAG: &str = "--dev";
 const TMPFS_FLAG: &str = "--tmpfs";
 /// Sets the mode of what the next flag creates.
 const PERMS_FLAG: &str = "--perms";
+/// Sets the size, in bytes, of the `tmpfs` the next flag mounts.
+const SIZE_FLAG: &str = "--size";
 /// Sets one environment variable.
 const SETENV_FLAG: &str = "--setenv";
 /// Sets the user the process runs as inside its namespace.
@@ -119,6 +121,8 @@ pub struct Layout<'a> {
     /// The tenant leaf's descriptors, named to the entry after its own
     /// arguments.
     pub tenant: TenantDescriptors,
+    /// What `/dev/shm` may hold, in bytes (`Limits::shared_memory_bytes`).
+    pub shared_memory_bytes: u64,
     /// The log level the process inside logs at, passed through the cleared
     /// environment when the runner has one set.
     pub log_level: Option<&'a OsStr>,
@@ -137,9 +141,12 @@ pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     flag(&[RO_BIND.as_ref(), layout.toolbox.as_os_str(), "/".as_ref()]);
     flag(&[PROC_FLAG.as_ref(), PROC.as_ref()]);
     flag(&[DEV_FLAG.as_ref(), DEV.as_ref()]);
+    let shared_memory = layout.shared_memory_bytes.to_string();
     flag(&[
         PERMS_FLAG.as_ref(),
         SHARED_MEMORY_MODE.as_ref(),
+        SIZE_FLAG.as_ref(),
+        shared_memory.as_ref(),
         TMPFS_FLAG.as_ref(),
         DEV_SHM.as_ref(),
     ]);

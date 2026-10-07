@@ -71,7 +71,7 @@ pub(super) async fn run_to_end(
 /// Logs a command the kernel killed because the sandbox's tenant processes
 /// ran out of memory: the model reads the code, the operator the lease. No
 /// command text, which is the tenant's.
-fn out_of_memory(lease_id: &str) {
+pub(super) fn out_of_memory(lease_id: &str) {
     let error_code = ToolErrorCode::OutOfMemory.as_str();
     let event = EVENT_OUT_OF_MEMORY;
     tracing::warn!(lease_id, error_code, event);

@@ -41,6 +41,17 @@ const TMP_MODE: u32 = 0o1777;
 /// The event a leftover from a failed build is logged under.
 const EVENT_DISK_LEFT: &str = "sandbox_workspace_left";
 
+/// How a workspace disk's blocks are cached on the host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Caching {
+    /// Its loop device reads and writes the image directly: the blocks are
+    /// cached once, in the sandbox's own memory.
+    Direct,
+    /// The host's page cache holds the image's blocks as well: the backing
+    /// file system refused direct I/O, or the mount made no loop device.
+    Buffered,
+}
+
 /// A mounted workspace disk. Releasing it is the only cleanup, and consumes it.
 #[derive(Debug)]
 pub struct WorkspaceDisk {
@@ -52,7 +63,7 @@ pub struct WorkspaceDisk {
 
 impl WorkspaceDisk {
     /// Makes a sparse `bytes`-byte image in `dir`, formats it owned by `owner`,
-    /// and mounts it.
+    /// and mounts it; says how the host caches it.
     ///
     /// # Errors
     /// Any step fails; whatever the earlier steps made is removed first.
@@ -61,10 +72,10 @@ impl WorkspaceDisk {
         dir: &Path,
         bytes: u64,
         owner: (u32, u32),
-    ) -> Result<Self> {
+    ) -> Result<(Self, Caching)> {
         let disk = Self::in_dir(dir);
         match disk.build(tools, bytes, owner).await {
-            Ok(()) => Ok(disk),
+            Ok(caching) => Ok((disk, caching)),
             Err(error) => {
                 disk.discard();
                 Err(error)
@@ -72,7 +83,7 @@ impl WorkspaceDisk {
         }
     }
 
-    async fn build(&self, tools: &HostTools, bytes: u64, owner: (u32, u32)) -> Result<()> {
+    async fn build(&self, tools: &HostTools, bytes: u64, owner: (u32, u32)) -> Result<Caching> {
         // Readable by root alone: the raw image is every file the lease wrote.
         fs::OpenOptions::new()
             .write(true)
@@ -86,8 +97,11 @@ impl WorkspaceDisk {
             .mount(EXT4, WORKSPACE_OPTIONS, &self.image, &self.mount_point)
             .await?;
         #[cfg(target_os = "linux")]
-        self.direct_io()?;
-        lay_out(&self.mount_point, owner)
+        let caching = self.direct_io()?;
+        #[cfg(not(target_os = "linux"))]
+        let caching = Caching::Buffered;
+        lay_out(&self.mount_point, owner)?;
+        Ok(caching)
     }
 
     /// The disk's paths under `dir`, made or not.
@@ -154,12 +168,13 @@ impl WorkspaceDisk {
     /// cached once, in the sandbox's own memory, rather than again on the
     /// host. A mount helper that made no loop device has none to switch.
     #[cfg(target_os = "linux")]
-    fn direct_io(&self) -> Result<()> {
-        let (major, minor) = self.device()?;
-        if major != LOOP_MAJOR {
-            return Ok(());
+    fn direct_io(&self) -> Result<Caching> {
+        match self.device()? {
+            (major, minor) if major == LOOP_MAJOR => {
+                loop_device::direct_io(&loop_device::node(major, minor)?)
+            }
+            _ => Ok(Caching::Buffered),
         }
-        loop_device::direct_io(&loop_device::node(major, minor)?)
     }
 
     /// Unmounts the disk, which frees its loop device, then deletes the image.
