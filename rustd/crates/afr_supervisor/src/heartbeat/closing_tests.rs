@@ -30,12 +30,15 @@ const STOPPED_AT_BEAT: usize = 3;
 /// The beat's field saying the runner's holds list is final.
 pub(super) const CLOSING_FIELD: &str = "closing";
 
+/// The field every logged event names itself under.
+const EVENT_FIELD: &str = "event";
+
 /// Every hold the beat ended, by the reason it was logged under.
 fn reasons(capture: &Capture) -> Vec<String> {
     capture
         .events()
         .iter()
-        .filter(|event| event.field("event") == Some(RELEASED))
+        .filter(|event| event.field(EVENT_FIELD) == Some(RELEASED))
         .map(|event| event.field("reason").unwrap().to_owned())
         .collect()
 }
@@ -250,18 +253,17 @@ async fn test_a_token_refused_elsewhere_ends_every_hold_without_a_last_beat() {
     assert_closed(&holds, &engine).await;
 }
 
-/// A last beat the daemon cannot take is logged under its code and not
-/// retried: the runner stops either way, and its holds lapse at the daemon.
-#[tokio::test(start_paused = true)]
-async fn test_a_failed_last_beat_is_logged_once_and_not_retried() {
-    let capture = Capture::install();
+/// Beats once, then shuts down with the daemon answering the last beat with
+/// `failure`, after exactly that beat and the last one: answers which holds
+/// are left.
+async fn last_beat_answered(failure: fn() -> crate::Error) -> Vec<afd_core::id::Uuid7> {
     let engine = FakeEngine::default();
     let holds = holding(&engine, 2).await;
     let beats = Arc::new(AtomicUsize::new(0));
     let counted = Arc::clone(&beats);
     let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
         0 => releasing(KEEP_GOING, &[]),
-        _later => Answer::Fail(error::unavailable(Verb::Heartbeat, 503)),
+        _later => Answer::Fail(failure()),
     });
     let probe = probe();
     let (published, mut watching) = watch::channel(Assignment::initial());
@@ -276,11 +278,46 @@ async fn test_a_failed_last_beat_is_logged_once_and_not_retried() {
     let ((), ()) = tokio::join!(beating, stopping);
     let left = holds.fleets().await;
     holds.shutdown().await;
-
     assert_eq!(drain(&mut calls).len(), 2, "the beat, then one last beat");
+    left
+}
+
+/// The daemon unable to take a beat.
+fn unavailable() -> crate::Error {
+    error::unavailable(Verb::Heartbeat, 503)
+}
+
+/// A last beat the daemon cannot take is logged under its code and not
+/// retried: the runner stops either way, and its holds lapse at the daemon.
+#[tokio::test(start_paused = true)]
+async fn test_a_failed_last_beat_is_logged_once_and_not_retried() {
+    let capture = Capture::install();
+
+    let left = last_beat_answered(unavailable).await;
+
     let failed = capture.only(EVENT_LAST_FAILED);
-    let code = error::unavailable(Verb::Heartbeat, 503).code().as_str();
-    assert_eq!(failed.field("error_code"), Some(code));
+    assert_eq!(
+        failed.field("error_code"),
+        Some(unavailable().code().as_str())
+    );
+    none_left(&left);
+}
+
+/// A last beat refused for its token is not logged as failed: with the token
+/// gone no call could have succeeded, which is no failure of the beat's.
+#[tokio::test(start_paused = true)]
+async fn test_a_last_beat_refused_for_its_token_is_not_logged_as_failed() {
+    let capture = Capture::install();
+
+    let left = last_beat_answered(token_refusal).await;
+
+    let logged = capture.events();
+    assert!(
+        !logged
+            .iter()
+            .any(|event| event.field(EVENT_FIELD) == Some(EVENT_LAST_FAILED)),
+        "a refused token logs no failed last beat"
+    );
     none_left(&left);
 }
 

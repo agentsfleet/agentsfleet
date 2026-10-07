@@ -154,7 +154,8 @@ fn report_rejected(call: &Call) -> Option<Answer> {
 /// Runs a lease on `rig` with room to hold its sandbox, and proves the
 /// daemon's answer to its report ended that hold as superseded: the daemon
 /// never recorded the run the sandbox carries, so it serves no next lease.
-async fn ends_what_it_parked(rig: &Rig) {
+/// Hands back what the run logged.
+async fn ends_what_it_parked(rig: &Rig) -> Capture {
     let capture = Capture::install();
     rig.lessee.holds.resize(2);
 
@@ -168,13 +169,28 @@ async fn ends_what_it_parked(rig: &Rig) {
     let superseded = Release::Superseded.outcome().as_str();
     assert_eq!(released.field("reason"), Some(superseded));
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
+    capture
+}
+
+/// How many times the run logged an unspooled report as lost.
+fn logged_lost(capture: &Capture) -> usize {
+    let events = capture.events();
+    events
+        .iter()
+        .filter(|event| event.field("event") == Some(super::EVENT_UNSPOOLED_LOST))
+        .count()
 }
 
 /// A report with nowhere to wait, which the daemon answers as settled without
 /// it, destroys the sandbox its lease parked.
 #[tokio::test(start_paused = true)]
 async fn test_an_unspooled_superseded_report_destroys_what_it_parked() {
-    ends_what_it_parked(&unspoolable(report_superseded)).await;
+    let capture = ends_what_it_parked(&unspoolable(report_superseded)).await;
+    assert_eq!(
+        logged_lost(&capture),
+        0,
+        "a report the daemon settled is not lost"
+    );
 }
 
 /// A spooled report the daemon will never take is set aside, and the sandbox
@@ -195,5 +211,10 @@ async fn test_an_unspooled_rejected_report_destroys_what_it_parked() {
 /// the sandbox its lease parked is destroyed.
 #[tokio::test(start_paused = true)]
 async fn test_an_unspooled_report_lost_destroys_what_it_parked() {
-    ends_what_it_parked(&unspoolable(report_busy)).await;
+    let capture = ends_what_it_parked(&unspoolable(report_busy)).await;
+    assert_eq!(
+        logged_lost(&capture),
+        1,
+        "a report that never arrived is logged lost"
+    );
 }

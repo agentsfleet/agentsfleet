@@ -312,3 +312,6 @@ impl fmt::Display for ToolboxRefusal {
         f.write_str(self.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests;
