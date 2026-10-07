@@ -14,7 +14,8 @@
 //! does: the least recently used session that already ended goes, else the
 //! least recently used one still running is killed, and the most recently
 //! used few are never chosen. A session a call is reading is never chosen
-//! either.
+//! either. A session's place is held from before its process starts, so two
+//! calls starting at once cannot both pass the cap.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -51,6 +52,8 @@ struct Session {
 #[derive(Debug, Default)]
 struct Book {
     open: BTreeMap<ProcessId, Session>,
+    /// Places held for sessions whose process is still starting.
+    reserved: usize,
     /// Counts every open and every lookup, so a larger `used` is more recent.
     uses: u64,
 }
@@ -61,29 +64,49 @@ pub struct Sessions {
     book: Mutex<Book>,
 }
 
+/// One session's place, held until its process opens in it. Dropped unopened
+/// — the spawn failed, or the call was cancelled — it frees the place.
+#[derive(Debug)]
+pub(super) struct Slot<'a>(Option<&'a Sessions>);
+
+impl Drop for Slot<'_> {
+    fn drop(&mut self) {
+        if let Some(sessions) = self.0.take() {
+            sessions.book().reserved -= 1;
+        }
+    }
+}
+
 impl Sessions {
-    /// Makes room for one more session when the lease already keeps the cap
-    /// open, ending one as the module documents.
-    pub(super) async fn make_room(&self, executor: &dyn Executor) {
+    /// Holds a place for one more session, making room first when the lease
+    /// already keeps the cap open or held, ending one as the module documents.
+    pub(super) async fn make_room(&self, executor: &dyn Executor) -> Slot<'_> {
         let pruned = {
             let mut book = self.book();
-            if book.open.len() < SESSIONS_PER_LEASE_MAX {
-                return;
-            }
-            book.pruned()
+            book.reserved += 1;
+            let full = book.open.len() + book.reserved > SESSIONS_PER_LEASE_MAX;
+            full.then(|| book.pruned()).flatten()
         };
+        let slot = Slot(Some(self));
         if let Some((id, process)) = pruned {
             end(executor, id, process).await;
         }
+        slot
     }
 
-    /// Keeps `process` as a session and hands it back to read. The executor
-    /// never names two processes alike, so nothing open is replaced.
-    pub(super) fn open(&self, process: Process) -> Shared {
+    /// Keeps `process` as a session in `slot`'s place and hands it back to
+    /// read. The executor never names two processes alike, so nothing open
+    /// is replaced.
+    pub(super) fn open(&self, mut slot: Slot<'_>, process: Process) -> Shared {
         let session_id = process.id.get();
         let event = EVENT_STARTED;
         tracing::debug!(session_id, event);
         let mut book = self.book();
+        // The place becomes the session under one lock, so the cap never
+        // counts it twice.
+        if slot.0.take().is_some() {
+            book.reserved -= 1;
+        }
         let used = book.used();
         let id = process.id;
         let shared = Arc::new(Held::new(process));
