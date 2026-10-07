@@ -241,4 +241,6 @@ impl Progress {
 }
 
 #[cfg(test)]
+mod duplicate_tests;
+#[cfg(test)]
 mod tests;

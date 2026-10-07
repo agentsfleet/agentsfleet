@@ -55,10 +55,10 @@ impl Schema {
 }
 
 // The arguments a tool that reads none takes, `list_agents` and every test
-// tool among them: its schema is
-// the empty object that refuses every key, derived like a real tool's rather
-// than written as JSON beside it. The doc line below is what schemars hands
-// the model as the schema's description, so it is written for the model.
+// tool among them: its schema is the empty object that refuses every key,
+// derived like a real tool's rather than written as JSON beside it. The doc
+// line below is what schemars hands the model as the schema's description,
+// so it is written for the model.
 /// Takes no arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

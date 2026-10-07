@@ -269,7 +269,6 @@ impl Catalog {
     }
 }
 
-/// The tools one lease is offered: handlers the router runs, and tools the
 #[cfg(test)]
 #[path = "catalog/tests.rs"]
 mod tests;

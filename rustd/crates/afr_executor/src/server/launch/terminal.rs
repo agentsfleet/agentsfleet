@@ -6,7 +6,7 @@
 //! session the terminal controls, which also makes it its group's leader.
 
 use std::fs::File;
-use std::io::{self, Read as _, Write as _};
+use std::io;
 use std::os::fd::OwnedFd;
 use std::os::unix::process::CommandExt as _;
 use std::process::{Child, Command, Stdio};
@@ -67,10 +67,10 @@ impl Launcher for Terminal {
         // reported ended — and a runtime waits for its pool when it stops.
         std::thread::Builder::new()
             .name(READER_THREAD.to_owned())
-            .spawn(move || read_terminal(Box::new(reader), &sender))?;
+            .spawn(move || read_terminal(reader, &sender))?;
         std::thread::Builder::new()
             .name(WRITER_THREAD.to_owned())
-            .spawn(move || write_terminal(Box::new(writer), input))?;
+            .spawn(move || write_terminal(writer, input))?;
         let exit = Box::pin(async move {
             // Dropped before the wait ends — its task aborted, its runtime
             // stopping — the leader's group goes with it, as a pipe leader's
@@ -172,7 +172,7 @@ impl Drop for KillOnDrop {
 }
 
 /// Reads the terminal until it closes or no one takes its output.
-pub(super) fn read_terminal(mut reader: Box<dyn io::Read + Send>, sender: &mpsc::Sender<Chunk>) {
+pub(super) fn read_terminal(mut reader: impl io::Read, sender: &mpsc::Sender<Chunk>) {
     let mut buffer = vec![0; READ_CHUNK_BYTES];
     while let Ok(read @ 1..) = reader.read(&mut buffer) {
         let data = Bytes::copy_from_slice(buffer.get(..read).unwrap_or_default());
@@ -191,10 +191,7 @@ pub(super) fn read_terminal(mut reader: Box<dyn io::Read + Send>, sender: &mpsc:
 /// Writes queued input to the terminal, in order, on a thread of its own —
 /// the write blocks while the terminal is full — until the queue closes or a
 /// write fails; then the queue closes, and later writes are refused.
-pub(super) fn write_terminal(
-    mut writer: Box<dyn io::Write + Send>,
-    mut queued: mpsc::Receiver<Bytes>,
-) {
+pub(super) fn write_terminal(mut writer: impl io::Write, mut queued: mpsc::Receiver<Bytes>) {
     while let Some(data) = queued.blocking_recv() {
         if writer
             .write_all(&data)
