@@ -62,7 +62,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/answer.rs`, `rustd/crates/afd_fleet/src/lease/deliver.rs`, `rustd/crates/afd_fleet/src/lease/pull.rs` | EDIT | `issue_ready` reads the turns for a chat event and `render` puts them on the lease; `Plane` holds the thread as `Arc<dyn Thread>` |
 | `rustd/crates/agentsfleetd/src/plane.rs`, `rustd/crates/afd_bench/src/lane/lease/drain/stage.rs`, `rustd/crates/afd_fleet/src/lease/test_dead.rs`, `rustd/crates/afd_fleet/tests/support/fleet_report_seed.rs` | EDIT | Every `Plane` gets a `History`-backed thread |
 | `rustd/crates/afd_wire/tests/validation_lease.rs`, `rustd/crates/afd_fleet/tests/fleet_suite.rs`, `public/openapi.json` | EDIT | The wire default proof, the suite registration, the regenerated document |
-| `rustd/crates/afr_agent/src/prompt.rs`, `rustd/crates/afr_agent/src/loop.rs` | EDIT | The turns lead the conversation, scrubbed; the message comes from `message_of` |
+| `rustd/crates/afr_agent/src/prompt.rs`, `rustd/crates/afr_agent/src/loop.rs`, `rustd/crates/afr_agent/src/loop/history_tests.rs`, `rustd/crates/afr_agent/src/nested/run_tests.rs` | EDIT / CREATE | The turns lead the conversation, scrubbed; the message comes from `message_of` |
 | `rustd/crates/afr_agent/src/spans.rs` | EDIT | The `chat` span records cache read and cache write tokens |
 | `rustd/crates/afr_providers/src/provider.rs`, `rustd/crates/afr_providers/src/request.rs`, `rustd/crates/afr_providers/src/wire.rs`, `rustd/crates/afr_providers/src/turn.rs` | EDIT | Prompt caching markers on Messages; the cache key on Responses; cache-written tokens kept for the span |
 | `rustd/crates/afd_observability/src/semconv.rs`, `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet/history.rs`, `rustd/crates/afd_observability/src/metrics/label/fleet.rs`, `rustd/crates/afd_observability/src/metrics/label/tests.rs`, `docs/metrics.census.tsv` | EDIT / CREATE | Two span attributes; three daemon families with their producer |
@@ -110,15 +110,15 @@ When the claimed event is `chat`, `pull` reads the fleet's thread before the eve
 - **Dimension 1.7** DONE — A lease without the field decodes with no turns → Test `test_lease_history_defaults_empty`
 - **Dimension 1.8** DONE — The bytes histogram observes every chat lease, and each cap that cut counts once → Test `test_history_metrics_recorded`
 
-### §2 — The model reads them as the conversation
+### §2 — The model reads them as the conversation — DONE
 
 `Prompt` gains the lease's turns. The harness opens the conversation with each turn as a user message and an assistant message with no calls, then the current message (`rustd/crates/afr_agent/src/loop.rs:128-129`); every text passes the lease's `Scrub` first, as the current message does. The current message and a turn's message both come from `message_of`, so a message reads the same as a turn as it read when it was current. The system prompt is unchanged by the turns. A nested child run starts from its task alone. `Budget::evict` rewrites tool results only (`rustd/crates/afr_agent/src/context.rs:48-61`), so turns are never evicted.
 
-- **Dimension 2.1** — The turns lead the conversation, ahead of the current message, and leave the system prompt unchanged → Test `test_history_leads_the_conversation`
-- **Dimension 2.2** — Every turn passes the lease's secret scrub → Test `test_history_is_scrubbed`
-- **Dimension 2.3** — A message reads the same as a turn as it read when it was current → Test `test_history_message_matches_its_first_reading`
-- **Dimension 2.4** — A nested child run's first request holds its task alone → Test `test_child_run_carries_no_history`
-- **Dimension 2.5** — Eviction leaves every turn intact → Test `test_eviction_leaves_history_intact`
+- **Dimension 2.1** DONE — The turns lead the conversation, ahead of the current message, and leave the system prompt unchanged → Test `test_history_leads_the_conversation`
+- **Dimension 2.2** DONE — Every turn passes the lease's secret scrub → Test `test_history_is_scrubbed`
+- **Dimension 2.3** DONE — A message reads the same as a turn as it read when it was current → Test `test_history_message_matches_its_first_reading`
+- **Dimension 2.4** DONE — A nested child run's first request holds its task alone → Test `test_child_run_carries_no_history`
+- **Dimension 2.5** DONE — Eviction leaves every turn intact → Test `test_eviction_leaves_history_intact`
 
 ### §3 — The prefix a conversation repeats is cached
 

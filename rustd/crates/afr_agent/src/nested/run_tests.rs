@@ -253,3 +253,33 @@ async fn test_a_child_writes_no_checkpoint_of_its_own() {
     );
     assert_eq!(output.memory.len(), 1, "the final push carries it again");
 }
+
+/// A nested child run opens with its task alone: the parent's earlier turns
+/// are the parent's conversation, never the child's.
+#[tokio::test]
+async fn test_child_run_carries_no_history() {
+    let script = Script::new([
+        vec![call("p1", DELEGATE.name(), json!({"task": READS}))],
+        vec![say(DONE)],
+    ])
+    .with_child(READS, [vec![say(SUMMARY)]]);
+    let engine = engine(tools(), &script);
+    let mut lease = lease(&offered(), unbounded());
+    lease.history = vec![afd_wire::lease::Turn {
+        message: "which tests failed?".into(),
+        answer: "two".into(),
+    }];
+
+    drive(&engine, &lease, &CancellationToken::new()).await;
+
+    let child_first = script
+        .sent()
+        .into_iter()
+        .find(|sent| sent.messages.first() == Some(&afr_providers::Message::User(READS.to_owned())))
+        .unwrap();
+    assert_eq!(
+        child_first.messages,
+        [afr_providers::Message::User(READS.to_owned())],
+        "the child's first request holds its task alone"
+    );
+}
