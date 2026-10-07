@@ -35,6 +35,8 @@ pub enum Recorded {
     PushFailed(PushFailure),
     /// [`Recorder::tool_call`].
     ToolCall(Tool, ToolOutcome, Duration),
+    /// [`Recorder::out_of_memory`].
+    OutOfMemory,
     /// [`Recorder::spans_suppressed`].
     SpansSuppressed(u64),
     /// [`Recorder::export_discarded`].
@@ -82,6 +84,10 @@ impl Recorder for Tally {
 
     fn tool_call(&self, tool: Tool, outcome: ToolOutcome, elapsed: Duration) {
         self.send(Recorded::ToolCall(tool, outcome, elapsed));
+    }
+
+    fn out_of_memory(&self) {
+        self.send(Recorded::OutOfMemory);
     }
 
     fn spans_suppressed(&self, spans: u64) {
