@@ -14,6 +14,8 @@
 
 mod support;
 
+#[path = "providers/caching.rs"]
+mod caching;
 #[path = "providers/ends.rs"]
 mod ends;
 #[path = "providers/hosts.rs"]

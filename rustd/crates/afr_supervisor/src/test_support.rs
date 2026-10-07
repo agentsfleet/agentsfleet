@@ -272,6 +272,7 @@ async fn exercise(executor: &dyn Executor) {
 pub(crate) const SPENT: Usage = Usage {
     input: 3,
     cached_input: 1,
+    cache_written: 0,
     output: 4,
 };
 

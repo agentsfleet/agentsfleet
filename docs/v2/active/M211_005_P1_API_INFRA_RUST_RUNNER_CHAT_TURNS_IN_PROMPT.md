@@ -66,7 +66,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_agent/src/spans.rs` | EDIT | The `chat` span records cache read and cache write tokens |
 | `rustd/crates/afr_providers/src/provider.rs`, `rustd/crates/afr_providers/src/request.rs`, `rustd/crates/afr_providers/src/wire.rs`, `rustd/crates/afr_providers/src/turn.rs` | EDIT | Prompt caching markers on Messages; the cache key on Responses; cache-written tokens kept for the span |
 | `rustd/crates/afd_observability/src/semconv.rs`, `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet/history.rs`, `rustd/crates/afd_observability/src/metrics/label/fleet.rs`, `rustd/crates/afd_observability/src/metrics/label/tests.rs`, `docs/metrics.census.tsv` | EDIT / CREATE | Two span attributes; three daemon families with their producer |
-| `rustd/crates/afd_fleet/tests/integration_lease_history.rs`, `rustd/crates/afr_providers/tests/providers/turns.rs` | CREATE / EDIT | The integration proofs and the request-body proofs |
+| `rustd/crates/afd_fleet/tests/integration_lease_history.rs`, `rustd/crates/afr_providers/tests/providers/turns.rs`, `rustd/crates/afr_providers/tests/providers/caching.rs`, `rustd/crates/afr_providers/tests/providers.rs`, `rustd/crates/afr_providers/src/request/tests.rs` | CREATE / EDIT |
+| `rustd/crates/afr_agent/src/loop/shared.rs`, `rustd/crates/afr_agent/src/loop/model_turn.rs`, `rustd/crates/afr_agent/src/engine.rs`, `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_agent/src/fixture/model.rs`, `rustd/crates/afr_supervisor/src/{renew/tests.rs,report/tests.rs,test_support.rs,lease_telemetry_tests.rs}`, `rustd/crates/agentsfleetd/tests/support/fake_model.rs` | EDIT | The fleet id reaches the request as its cache key; `Usage.cache_written` in every literal | The integration proofs and the request-body proofs |
 | `docs/architecture/runner_execution.md` | EDIT | §Crates: a chat lease carries the thread's recent turns, and the stable prefix is marked for caching |
 
 ## Applicable Rules
@@ -120,15 +121,15 @@ When the claimed event is `chat`, `pull` reads the fleet's thread before the eve
 - **Dimension 2.4** DONE — A nested child run's first request holds its task alone → Test `test_child_run_carries_no_history`
 - **Dimension 2.5** DONE — Eviction leaves every turn intact → Test `test_eviction_leaves_history_intact`
 
-### §3 — The prefix a conversation repeats is cached
+### §3 — The prefix a conversation repeats is cached — DONE
 
 The Messages wire adds rig's `with_prompt_caching()` beside `with_automatic_caching()` (`rustd/crates/afr_providers/src/wire.rs:40-44`): markers on the last tool and the system prompt, plus the provider's moving breakpoint on the conversation, all at the five-minute default. A follow-up within five minutes then reads the tools, the system prompt and every turn before its own message from the cache, and a webhook lease reads the tools and the system prompt. The Responses wire sends `prompt_cache_key` set to the fleet id through rig's `additional_params`, and a nested child run sends its fleet's key; the Chat wire sends none, because its gateways refuse fields they do not know. The trusted repair context stays in the system prompt. It names the event (`rustd/crates/afd_gate/src/policy/repair.rs:66`), so a write-bound lease writes its system prompt and turns to the cache each event and still reads its tools. The `chat` span records cache read and cache write tokens. Billing is unchanged, because rig counts writes inside input (`rustd/crates/afr_providers/src/turn.rs:262-272`).
 
-- **Dimension 3.1** — A Messages request marks the last tool and the system prompt, keeps the top-level breakpoint, and sets no lifetime → Test `test_messages_cache_marks_the_static_prefix`
-- **Dimension 3.2** — `prompt_cache_key` rides the Responses wire only → Test `test_cache_key_rides_responses_only`
-- **Dimension 3.3** — A follow-up's request equals the previous lease's through that lease's message → Test `test_history_prefix_is_byte_identical_across_leases`
-- **Dimension 3.4** — The `chat` span carries the turn's cache read and cache write tokens → Test `test_cache_tokens_recorded_on_the_chat_span`
-- **Dimension 3.5** — A write-bound lease keeps its repair context in the system prompt and out of every message → Test `test_history_leaves_the_repair_context_in_the_system_prompt`
+- **Dimension 3.1** DONE — A Messages request marks the last tool and the system prompt, keeps the top-level breakpoint, and sets no lifetime → Test `test_messages_cache_marks_the_static_prefix`
+- **Dimension 3.2** DONE — `prompt_cache_key` rides the Responses wire only → Test `test_cache_key_rides_responses_only`
+- **Dimension 3.3** DONE — A follow-up's request equals the previous lease's through that lease's message → Test `test_history_prefix_is_byte_identical_across_leases`
+- **Dimension 3.4** DONE — The `chat` span carries the turn's cache read and cache write tokens → Test `test_cache_tokens_recorded_on_the_chat_span`
+- **Dimension 3.5** DONE — A write-bound lease keeps its repair context in the system prompt and out of every message → Test `test_history_leaves_the_repair_context_in_the_system_prompt`
 
 ## Interfaces
 

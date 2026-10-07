@@ -21,6 +21,8 @@ use crate::registry::Wire;
 
 /// The model every turn here names.
 const MODEL: &str = "model-1";
+/// The conversation cache key every request here carries.
+const CACHE_KEY: &str = "01924f4e-0000-7000-8000-00000000fee7";
 /// The system prompt every turn here carries.
 const INSTRUCTIONS: &str = "Read the run.";
 /// The question the conversation opens with.
@@ -85,6 +87,7 @@ fn built(
         messages,
         tools,
         hosted,
+        cache_key: CACHE_KEY,
     };
     request(wire, &turn).unwrap()
 }
@@ -195,6 +198,7 @@ fn should_refuse_a_result_that_answers_no_call() {
         messages: &messages,
         tools: &[],
         hosted: &[],
+        cache_key: CACHE_KEY,
     };
 
     let refused = request(Wire::Chat, &turn).unwrap_err();
@@ -261,6 +265,7 @@ fn should_refuse_a_call_that_names_no_tool() {
         messages: &messages,
         tools: &[],
         hosted: &[],
+        cache_key: CACHE_KEY,
     };
 
     let refused = request(Wire::Chat, &turn).unwrap_err();

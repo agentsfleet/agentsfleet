@@ -278,6 +278,7 @@ fn ending(response: CompletionResponse) -> Ending {
     let spent = Usage {
         input: usage.input_tokens.unwrap_or(0).saturating_sub(cached_input),
         cached_input,
+        cache_written: usage.cache_creation_input_tokens.unwrap_or(0),
         output: usage.output_tokens.unwrap_or(0),
     };
     let cut = response.finish_reason() == Some(FinishReason::Length);

@@ -118,6 +118,8 @@ impl Meter {
         Usage {
             input: self.input.load(Ordering::Relaxed),
             cached_input: self.cached_input.load(Ordering::Relaxed),
+            // The meter bills; a write is already inside `input`.
+            cache_written: 0,
             output: self.output.load(Ordering::Relaxed),
         }
     }
