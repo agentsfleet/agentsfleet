@@ -12,7 +12,7 @@ use crate::lease::test_dead;
 #[tokio::test]
 async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
     let answer = test_dead::plane()
-        .lease(&test_dead::id(9), true, test_dead::AT)
+        .lease(&test_dead::id(9), &[], true, test_dead::AT)
         .await
         .expect("a degraded runner is a decision, not a datastore read");
 

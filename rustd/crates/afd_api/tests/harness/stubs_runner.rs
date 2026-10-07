@@ -20,6 +20,7 @@ impl Leasing for NoWork {
     fn lease(
         &self,
         _runner_id: &Uuid7,
+        _held: &[Uuid7],
         _degraded: bool,
         _now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {

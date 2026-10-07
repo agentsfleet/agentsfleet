@@ -26,7 +26,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::LEASE_TTL_MS;
+use afd_core::timing::{LEASE_TTL_MS, RUNNER_OFFLINE_AFTER_MS};
 use afd_dragonfly::{Ready, ReadyToken};
 use afd_observability::metrics::label::fleet::RunStart;
 use afd_observability::producers;
@@ -38,6 +38,7 @@ use crate::lease::sql;
 use crate::lease::store::Leases;
 
 mod diagnostics;
+mod offer;
 
 pub(crate) use diagnostics::warn_queue_fleet;
 use diagnostics::{EVENT_LEASE_RECLAIMED, EVENT_READY_PEEK_FAILED, drop_undecodable, warn_queue};
@@ -45,8 +46,7 @@ use diagnostics::{EVENT_LEASE_RECLAIMED, EVENT_READY_PEEK_FAILED, drop_undecodab
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CANDIDATES: &str = "lease candidate scan";
 
-/// The `core.fleets.status` value a leasable fleet carries.
-pub(crate) const FLEET_STATUS_ACTIVE: &str = "active";
+pub(crate) use afd_state::sql::FLEET_STATUS_ACTIVE;
 
 /// How many ready fleets one poll will consider.
 ///
@@ -76,8 +76,17 @@ impl Leases {
     /// # Errors
     /// Reports a datastore that would not answer. "Nothing to do" is
     /// `Ok(None)`, not an error — the runner backs off and re-polls.
-    pub async fn select(&self, runner_id: &Uuid7, now: UnixMillis) -> Result<Option<Acquired>> {
-        self.select_recording(runner_id, now).await.0
+    ///
+    /// `held` names the fleets whose sandboxes the runner says it holds; a
+    /// ready one among them is tried before the partition, whichever partition
+    /// it sits in.
+    pub async fn select(
+        &self,
+        runner_id: &Uuid7,
+        held: &[Uuid7],
+        now: UnixMillis,
+    ) -> Result<Option<Acquired>> {
+        self.select_recording(runner_id, held, now).await.0
     }
 
     /// The poll, its outcome, and what it cost.
@@ -89,10 +98,11 @@ impl Leases {
     async fn select_recording(
         &self,
         runner_id: &Uuid7,
+        held: &[Uuid7],
         now: UnixMillis,
     ) -> (Result<Option<Acquired>>, PollCost) {
         let mut cost = PollCost::default();
-        let selected = self.select_counted(runner_id, now, &mut cost).await;
+        let selected = self.select_counted(runner_id, held, now, &mut cost).await;
         // On EVERY exit path, including the one where the peek itself failed:
         // a poll that could not read the index is still a poll, and a total
         // that skipped it would make idle cost look lower than it is.
@@ -104,9 +114,13 @@ impl Leases {
     async fn select_counted(
         &self,
         runner_id: &Uuid7,
+        held: &[Uuid7],
         now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
+        if let Some(acquired) = self.held_first(runner_id, held, now, cost).await? {
+            return Ok(Some(acquired));
+        }
         // One partition per poll, the next in the rotation: the read stays one
         // bounded round trip, and the partitions this poll did not visit are
         // the next polls' — whichever runner makes them.
@@ -126,17 +140,7 @@ impl Leases {
         if ready.is_empty() {
             return Ok(None);
         }
-
-        let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
-        cost.database_roundtrips += 1;
-        let offered = self.candidates(runner_id, &ids, now).await?;
-        for (fleet_id, token) in peeked(offered, &ready) {
-            cost.database_roundtrips += 1;
-            if let Some(acquired) = self.try_candidate(&fleet_id, token, runner_id, now).await? {
-                return Ok(Some(acquired));
-            }
-        }
-        Ok(None)
+        self.first_offered(runner_id, &ready, now, cost).await
     }
 
     /// The eligible fleets among `ready`, in the query's own sticky order.
@@ -158,6 +162,7 @@ impl Leases {
             .bind(ready)
             .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
             .bind(now.as_millis())
+            .bind(RUNNER_OFFLINE_AFTER_MS)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_CANDIDATES))?;

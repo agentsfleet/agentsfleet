@@ -57,6 +57,7 @@ agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fix
 agentsfleet_lease_poll_db_roundtrips_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = DB cost per poll; idle polls must add zero
 agentsfleet_lease_history_bytes	histogram	f64	By	delta	-	0,1024,4096,8192,16384,32768,49152,65536	fixed:1	no	traffic	bytes of earlier turns each chat lease carries; a crowd at 65536 means conversations outgrow the window
 agentsfleet_lease_history_cuts_total	counter	u64	{lease}	cumulative	reason	-	fixed:3	no	traffic	chat leases whose turns a cap cut, by cap: turns means long conversations, text or bytes means large turns
+agentsfleet_lease_held_claims_total	counter	u64	{lease}	cumulative	outcome	-	fixed:2	no	traffic	won claims on a fleet whose runner held its sandbox frozen: holder means the follow-up continued where the last run stopped, other_after_lapse means the hold lapsed or its runner went silent first
 agentsfleet_lease_history_read_failures_total	counter	u64	{lease}	cumulative	-	-	fixed:1	no	errors	chat leases issued without their turns because the thread read failed
 agentsfleet_lease_claims_empty_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	won claims that found nothing deliverable; each clears one drained mark
 agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed share is runners dying mid-run

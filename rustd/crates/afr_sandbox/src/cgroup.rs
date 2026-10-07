@@ -22,6 +22,10 @@ use crate::engine::Limits;
 use crate::error::{Result, cgroup, cgroup_left};
 use crate::probe::REQUIRED_CONTROLLERS;
 
+mod freezer;
+
+pub use self::freezer::Freezer;
+
 /// The file that enables controllers for a cgroup's children.
 pub const SUBTREE_CONTROL: &str = "cgroup.subtree_control";
 /// Writing a process identifier moves that process in.
@@ -178,6 +182,12 @@ impl LeaseCgroup {
 
     fn tenant(&self) -> PathBuf {
         self.dir.join(TENANT_LEAF)
+    }
+
+    /// The handle that freezes and thaws this cgroup, both leaves at once.
+    #[must_use]
+    pub fn freezer(&self) -> Freezer {
+        Freezer::new(&self.dir)
     }
 
     /// Kills every process in the cgroup, descendants included.

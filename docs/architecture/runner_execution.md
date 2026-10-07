@@ -13,7 +13,7 @@
 | Toolbox | A signed, read-only Enhanced Read-Only File System (EROFS) root filesystem built once per release from pinned Debian snapshots, downloaded before any lease and admitted by descriptor. No container image is pulled or unpacked on the lease path |
 | Workspace disk | Per sandbox, a writable block image sized to the lease's disk limit, attached with direct I/O, holding both `/workspace` and `/tmp`, deleted when its sandbox is destroyed |
 | Warm slot | A sandbox already started before any lease arrives: cgroup made, workspace disk mounted, executor idle. It serves one lease |
-| Held sandbox | Planned (M211_004), not built: the sandbox of a lease that ended processed, frozen with `/run/creds` emptied and kept for its fleet's next lease for an idle window. Today every lease's sandbox is destroyed when the lease ends |
+| Held sandbox | The sandbox of a lease that ended processed, frozen through `cgroup.freeze` and kept for its fleet's next lease for an idle window of ten minutes (`afd_core::timing::SANDBOX_HOLD_IDLE_MS`). Every other lease's sandbox is destroyed when the lease ends |
 | Workspace | Per fleet, restored from and saved to R2 (or any S3-compatible store, such as a self-hosted RustFS). Only the supervisor moves bytes |
 | Model keys | Supervisor only; never inside a sandbox |
 | Coding engines | Codex first-class, split across the wall; Claude Code in the sandbox, its model calls through a supervisor relay |
@@ -30,8 +30,8 @@ alert fires
  → the fleet reads logs, runs command-line tools, writes Python, edits code, runs tests,
    or hands the coding to Codex on the user's own subscription
  → it proposes a fix → the supervisor pushes a pinned branch and opens a draft Pull Request
- → the runner saves the workspace, and the sandbox is destroyed
- → a follow-up ("also fix the retry") restores that same workspace on the next lease
+ → the runner holds the sandbox frozen for ten minutes, then destroys it
+ → a follow-up ("also fix the retry") within the window thaws that same sandbox on the same runner
 ```
 
 A lease's inputs are the trigger payload, input files (logs, traces, exports), the repository to fix, reference repositories read-only, the toolbox's command-line tools, and the fleet's durable memory. Its outputs are the answer, a proposed change, artifacts the user can download, memory updates, and the workspace snapshot the next lease starts from.
@@ -177,16 +177,18 @@ This section records what the code on `main` builds, against the design above. T
    ├─ bwrap: new user/pid/ipc/uts/net/cgroup ns, cap-drop ALL     │
    │     /           toolbox EROFS image, read-only, shared       │
    │     /workspace  the loop-mounted ext4                        │
-   │     /tmp /run /dev/shm   tmpfs: RAM, charged to the cgroup   │
+   │     /tmp        a directory on the same ext4 disk            │
+   │     /run /dev/shm        tmpfs: RAM, charged to the cgroup   │
    ├─ child: no_new_privs → Landlock → seccomp → executor         │
    │              … the turn runs …                               ▼
-   └─ destroyed before the report: cgroup.kill → kill → rm cgroup
-                                   → umount → rm image → rm dir
+   └─ processed: frozen and held for the fleet, else destroyed
+      before the report: cgroup.kill → kill → rm cgroup
+                       → umount → rm image → rm dir
 ```
 
-There is no idle timeout and no reuse. Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/workspace.rs:44`, `afr_sandbox/src/bubblewrap_engine/parts.rs`). Building the engine sweeps every leftover lease directory in its state directory (`afr_sandbox/src/bubblewrap_engine/sweep.rs`), so a host builds one engine per state directory: an engine per worker tears down its siblings' leases. Warm slots (`afr_sandbox/src/warm_slots.rs`) are sandboxes started ahead of a lease, one lease each; only the kernel lane uses them so far.
+Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/workspace.rs`, `afr_sandbox/src/bubblewrap_engine/parts.rs`), except for a processed lease's sandbox, which is frozen and held (§"Workspace between leases"). Building the engine sweeps every leftover lease directory in its state directory (`afr_sandbox/src/bubblewrap_engine/sweep.rs`), so a host builds one engine per state directory: an engine per worker tears down its siblings' leases. Warm slots (`afr_sandbox/src/warm_slots.rs`) are sandboxes started ahead of a lease, one lease each; only the kernel lane uses them so far.
 
-**Cold start is milliseconds; the waits are elsewhere.** Lease accept to executor ready, median of five, debug build, measured in the kernel lane: cold 23.6 ms, from a warm slot 0.66 ms ([M210_001](../v2/done/M210_001_P1_API_INFRA_RUST_RUNNER_SUPERVISOR_SANDBOX_FOUNDATION.md) Discovery). The lane keeps its state under `/tmp`, so a number for a workspace image on a disk is still to be measured. A run's first seconds go to the poll interval (up to 1 s), memory hydration and the first model call. The toolbox download never sits on a lease's path: a host fetches the image when it boots or reconciles.
+**Cold start is milliseconds; the waits are elsewhere.** Lease accept to executor ready, median of five, debug build, measured in the kernel lane: cold 23.6 ms, from a warm slot 0.66 ms ([M210_001](../v2/done/M210_001_P1_API_INFRA_RUST_RUNNER_SUPERVISOR_SANDBOX_FOUNDATION.md) Discovery). The lane now keeps its state under `/var/tmp`, on a disk; the cold number above was measured with it under a tmpfs `/tmp`, so a disk-backed number is still to be measured. A run's first seconds go to the poll interval (up to 1 s), memory hydration and the first model call. The toolbox download never sits on a lease's path: a host fetches the image when it boots or reconciles.
 
 **Where the bytes live.**
 
@@ -194,9 +196,9 @@ There is no idle timeout and no reuse. Teardown runs at lease end, before settle
 |---|---|---|---|---|
 | Toolbox image | a file on disk, loop-mounted read-only once per host, shared by every sandbox | the image's size | the host's | `afr_sandbox/src/toolbox.rs` |
 | Toolbox blocks in use | the kernel page cache in RAM, shared and evictable | none of its own; memory pressure evicts it | while hot | kernel |
-| Workspace disk, with `/tmp` | `<state>/<lease_id>/workspace.img`, sparse; `/tmp` is its `tmp/` directory | the lease's `disk_bytes`, 4 GiB by default; a full disk answers `ENOSPC` | one lease | `afr_sandbox/src/workspace_disk.rs`, `afr_sandbox/src/engine.rs:17` |
+| Workspace disk, with `/tmp` | `<state>/<lease_id>/workspace.img`, sparse; `/tmp` is its `tmp/` directory | the lease's `disk_bytes`, 4 GiB by default; a full disk answers `ENOSPC` | one lease, or until its hold ends | `afr_sandbox/src/workspace_disk.rs`, `afr_sandbox/src/engine.rs:17` |
 | `/run`, `/dev/shm` | tmpfs in RAM, charged to the lease's memory cgroup | the cgroup's 2 GiB | one lease | `afr_sandbox/src/bubblewrap.rs` |
-| Processes | the lease's memory cgroup, no swap | 2 GiB | one lease | `afr_sandbox/src/cgroup.rs` |
+| Processes | the lease's memory cgroup, no swap | 2 GiB | one command, unless it leaves the shell's process group; exec sessions close at run end | `afr_sandbox/src/cgroup.rs`, `afr_executor/src/server/process.rs`, `afr_agent/src/loop/finish.rs` |
 | Report spool, bundle cache | the storage home, `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | across leases | `afr_supervisor/src/config.rs:21-24` |
 
 **What bounds a runner host.** The image does not: its blocks sit in shared page cache, which memory pressure evicts. Memory is bounded by the lease limits: 2 GiB per sandbox by default and up to 64 GiB for a lease that names its size, summed over the host's workers. The worker count defaults to 1 and caps at 64 (`afd_core/src/limits.rs:14-20`), so 128 GiB of default limits at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per lease by default and up to 256 GiB for a sized one, sparse, with no headroom reserved.
@@ -204,7 +206,7 @@ There is no idle timeout and no reuse. Teardown runs at lease end, before settle
 **Where the code and this page differ today.**
 
 - Every lease gets the runner's defaults in practice: 2 GiB of memory, 2 cores, 512 processes and a 4 GiB disk (`afr_sandbox/src/engine.rs:10-17`, set at `afr_supervisor/src/lib.rs:166`). The runner builds the size a lease names (`afr_supervisor/src/lease_loop/workspace.rs:112`), but no fleet carries a size yet, so the daemon sends `limits: null` (`afd_fleet/src/lease/answer.rs:102`).
-- No sandbox is held between leases: every lease's sandbox is destroyed when the lease ends (`afr_supervisor/src/lease_loop/workspace.rs:68`), until M211_004 lands.
+- A held sandbox keeps its disk's bytes, and nothing reserves host disk for it: holds are bounded only by the runner's worker count.
 - No workspace restore exists yet, so the first model call waits for the sandbox and the bundle's files.
 - No runner crate builds the per-lease network allowlist. The sandbox has loopback only, and every outbound call leaves through the supervisor's `afr_egress`.
 - The production state directory is not chosen. The kernel lane keeps its state under `/var/tmp` (`afr_sandbox/examples/kernel_lane/lane.rs:47`), on a disk as a host's would be: on its host `/tmp` is a tmpfs, where workspace images would sit in RAM. The bare-metal unit `deploy/baremetal/agentsfleet-runner.service` was written for the Zig runner: it allows writes only under `/run/agentsfleet` and `/tmp` (`:76`) and delegates `cpu memory pids` (`:71`), while the Rust host probe requires `io` as well (`afr_sandbox/src/probe.rs:37`). Wired as it stands, workspace images would land on tmpfs.
@@ -219,7 +221,17 @@ The workspace is the fleet's, not the lease's. It survives the sandbox:
 - **Never saved.** `/run/creds` is memory-only, and every snapshot is leak-scanned before upload.
 - **Read as hostile.** The supervisor treats `/workspace` as the tenant's: restore and save never follow a symbolic link out of it, and no git command the supervisor runs, including when `propose_change` reads the fleet's commits, uses the workspace's configuration, hooks or helpers. A read-only toolbox does nothing against a privileged restore that follows a link.
 - **One writer.** The fleet's affinity slot and fencing token already make one lease the live holder; a stale holder's snapshot is refused.
-- **Held between messages (planned, M211_004).** A lease that ends processed will leave its sandbox held: `/run/creds` emptied, the cgroup frozen through `cgroup.freeze`, and the hold keyed by fleet, workspace, limits, toolbox digest and network policy. The fleet's next lease within the idle window thaws it and continues with the files and running processes the last lease left. A key mismatch, a failed thaw, the deadline, the runner's last free worker taking a lease, shutdown, or a halted or deleted fleet destroys the hold. The report and every heartbeat tell the daemon which fleets a runner holds, and the holder claims a held fleet first while it heartbeats ([Runner Fleet](./runner_fleet.md) §"Datastore topology").
+- **Held between messages.** A lease that ends processed leaves its sandbox held (`afr_supervisor/src/holds.rs`): the lease cgroup frozen through `cgroup.freeze` and settled on `frozen 1`, the hold keyed by fleet, workspace, limits and policy (network policy plus repository binding). No credential is in it to empty: none enters a sandbox. The fleet's next lease within ten minutes thaws it and continues with the files the last lease left; the host never writes into the held clone, because a tenant-written `.git` under a privileged copy is a symbolic-link escape. Processes are not promised: the executor kills a command's process group when the command ends and the run's end closes every exec session, so only a process that left the group with `setsid` resumes. A key mismatch, a failed thaw, the deadline, the cap of one hold per worker (oldest first), the runner's last free worker taking a lease, shutdown, a refused report, or a halted or deleted fleet destroys the hold. The report carries `held_until_ms`, clamped by the daemon to the window; the lease poll and every heartbeat carry the fleets the runner holds; the holder looks at those fleets first, and another runner skips them while the holder heartbeats ([Runner Fleet](./runner_fleet.md) §"Multi-lease isolation invariant").
+
+```
+lease ends processed ──► freeze ──► held (≤ 10 min, ≤ 1 per worker)
+                                      │
+   next lease, same fleet + key ──────┼──► thaw ──► runs in the same sandbox
+   other key / thaw fails ────────────┼──► destroy ──► fresh sandbox
+   deadline · cap · saturation ·      │
+   shutdown · refused report ·        └──► destroy
+   fleet halted or deleted
+```
 - **Retention.** The last three snapshots per fleet, a lifecycle rule on the prefix, and a purge when the fleet is deleted.
 - **Continuity.** The checkpoint a report writes reaches the next lease. Today it is saved to `core.fleet_sessions` and loaded with the fleet, but nothing hands it to a lease; a chat lease carries the thread's recent turns instead (§Crates).
 

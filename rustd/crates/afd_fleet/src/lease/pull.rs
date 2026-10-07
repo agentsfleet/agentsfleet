@@ -143,6 +143,9 @@ impl Plane {
     /// backoff hint. Never a 204, and never an error for "nothing to do": a
     /// runner polling an idle deployment is the common case, not a fault.
     ///
+    /// `held` names the fleets whose sandboxes the runner holds, for the pass
+    /// to try first.
+    ///
     /// `degraded` fails CLOSED. A runner whose verdict could not be read is
     /// treated as degraded and issued nothing, because its assignment names an
     /// isolation the host may not deliver and a lease would run outside the
@@ -154,13 +157,14 @@ impl Plane {
     pub async fn lease(
         &self,
         runner_id: &Uuid7,
+        held: &[Uuid7],
         degraded: bool,
         now: UnixMillis,
     ) -> Result<String> {
         if degraded {
             return no_work(runner_id, "the runner's verdict is degraded or unreadable");
         }
-        let Some(acquired) = self.leases.select(runner_id, now).await? else {
+        let Some(acquired) = self.leases.select(runner_id, held, now).await? else {
             return no_work(runner_id, "no leasable work");
         };
         self.run_claimed(acquired, runner_id, now).await

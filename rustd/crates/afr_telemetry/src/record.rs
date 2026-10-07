@@ -23,7 +23,8 @@ use std::time::Duration;
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
+    TurnOutcome,
 };
 
 /// What every runner measurement is recorded through.
@@ -45,6 +46,8 @@ pub trait Recorder: Send + Sync + core::fmt::Debug {
     fn tool_call(&self, tool: Tool, outcome: ToolOutcome, elapsed: Duration);
     /// The kernel killed a tenant process for memory.
     fn out_of_memory(&self);
+    /// A sandbox held between a fleet's leases was parked, reused or released.
+    fn sandbox_hold(&self, outcome: SandboxHold);
     /// The span budget shed `spans`.
     fn spans_suppressed(&self, spans: u64);
     /// The export lost `count` entries of `signal` before the collector took
@@ -111,6 +114,11 @@ pub fn out_of_memory() {
     with(|recorder| recorder.out_of_memory());
 }
 
+/// Records what became of a sandbox held between a fleet's leases.
+pub fn sandbox_hold(outcome: SandboxHold) {
+    with(|recorder| recorder.sandbox_hold(outcome));
+}
+
 /// Records spans the budget shed.
 pub fn spans_suppressed(spans: u64) {
     with(|recorder| recorder.spans_suppressed(spans));
@@ -140,7 +148,8 @@ mod tests {
     use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
     use crate::labels::{
-        FrameDrop, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome, TurnOutcome,
+        FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool,
+        ToolOutcome, TurnOutcome,
     };
     use crate::testing::{Recorded, Tally, scoped};
 
@@ -161,6 +170,7 @@ mod tests {
             super::push_failed(PushFailure::Refused);
             super::tool_call(tool, ToolOutcome::Interrupted, elapsed);
             super::out_of_memory();
+            super::sandbox_hold(SandboxHold::ThawFailed);
             super::spans_suppressed(2);
             super::export_discarded(Signal::Traces, DiscardReason::ExportRejected, 5);
         })
@@ -178,6 +188,7 @@ mod tests {
                 Recorded::PushFailed(PushFailure::Refused),
                 Recorded::ToolCall(tool, ToolOutcome::Interrupted, elapsed),
                 Recorded::OutOfMemory,
+                Recorded::SandboxHold(SandboxHold::ThawFailed),
                 Recorded::SpansSuppressed(2),
                 Recorded::ExportDiscarded(Signal::Traces, DiscardReason::ExportRejected, 5),
             ],

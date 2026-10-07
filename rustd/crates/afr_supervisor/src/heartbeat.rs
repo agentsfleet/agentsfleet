@@ -1,12 +1,15 @@
-//! Liveness: the beat that carries what this host can do and brings back what
-//! it is assigned.
+//! Liveness: the beat that carries what this host can do and which fleets'
+//! sandboxes it holds, and brings back what it is assigned and which holds to
+//! give up.
 
+use std::borrow::Cow;
 use std::time::Duration;
 
+use afd_core::id::Uuid7;
 use afd_core::limits::WorkerCount;
 use afd_core::timing::HEARTBEAT_INTERVAL_MS;
 use afd_wire::runner::{
-    HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, NetworkPolicy, SandboxTier,
+    HeartbeatRequest, HeartbeatResponse, HeartbeatStatus, HeldFleets, NetworkPolicy, SandboxTier,
 };
 use afr_sandbox::HostProbe;
 use tokio::sync::watch;
@@ -15,11 +18,15 @@ use crate::capability::{capability_report, selftest};
 use crate::client::{ControlPlane, endless};
 use crate::error::Result;
 use crate::halt::Halt;
+use crate::holds::{Holds, Release};
 
 /// The shortest pause between beats, whatever the daemon asks: a reply saying
 /// zero must not turn the heartbeat into a busy loop.
 pub(crate) const MIN_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
 const EVENT_FAILED: &str = "heartbeat_failed";
+/// The event a fleet the daemon named for release, that is no fleet id, is
+/// logged under.
+const EVENT_RELEASE_UNREADABLE: &str = "sandbox_hold_release_unreadable";
 
 /// What the daemon most recently told this runner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,17 +61,23 @@ impl Assignment {
 pub(crate) struct Heartbeat<'a> {
     plane: &'a ControlPlane,
     probe: &'a HostProbe,
+    holds: &'a Holds,
     label: Option<(SandboxTier, NetworkPolicy)>,
     selftest_due: bool,
     last: Assignment,
 }
 
 impl<'a> Heartbeat<'a> {
-    /// A beat over `plane`, reporting `probe`.
-    pub(crate) const fn new(plane: &'a ControlPlane, probe: &'a HostProbe) -> Self {
+    /// A beat over `plane`, reporting `probe` and what `holds` holds.
+    pub(crate) const fn new(
+        plane: &'a ControlPlane,
+        probe: &'a HostProbe,
+        holds: &'a Holds,
+    ) -> Self {
         Self {
             plane,
             probe,
+            holds,
             label: None,
             selftest_due: false,
             last: Assignment::initial(),
@@ -80,12 +93,24 @@ impl<'a> Heartbeat<'a> {
             .label
             .filter(|_| self.selftest_due)
             .map(|(tier, network)| selftest(self.probe, tier, network));
+        let held = self.holds.fleets().await;
         let request = HeartbeatRequest {
             capability_report: Some(capability_report(self.probe)),
             selftest,
+            holds: HeldFleets(
+                held.iter()
+                    .map(|fleet| Cow::Borrowed(fleet.as_str()))
+                    .collect(),
+            ),
         };
         let body = self.plane.heartbeat(&request).await?;
         let reply: HeartbeatResponse<'_> = body.decode()?;
+        for inactive in &reply.release_holds {
+            match Uuid7::parse(inactive) {
+                Ok(fleet) => self.holds.release(fleet, Release::Inactive),
+                Err(failure) => unreadable_release(inactive, failure),
+            }
+        }
         let policy = reply.assigned_policy.as_ref();
         self.selftest_due = reply.selftest_requested;
         self.label = policy.map(|policy| (policy.sandbox_tier, policy.network_policy));
@@ -102,7 +127,9 @@ impl<'a> Heartbeat<'a> {
     ///
     /// A `stop` ends the runner, leases in flight included, and so does a
     /// refused token. Any other failure keeps the last assignment and beats
-    /// again, sooner the first time and backing off after.
+    /// again, sooner the first time and backing off after. Holds released
+    /// because no worker was free beat at once, so the daemon stops routing
+    /// those fleets here without waiting out the interval.
     pub(crate) async fn keep_beating(
         mut self,
         assignment: &watch::Sender<Assignment>,
@@ -114,6 +141,7 @@ impl<'a> Heartbeat<'a> {
             tokio::select! {
                 () = halt.serving().cancelled() => return,
                 () = tokio::time::sleep(pause) => {}
+                () = self.holds.saturated().notified() => {}
             }
             match self.beat().await {
                 Ok(beat) => {
@@ -141,6 +169,17 @@ impl<'a> Heartbeat<'a> {
             }
         }
     }
+}
+
+/// Logs a fleet the daemon named for release that is no fleet id, under the
+/// code the runner gives any identifier it cannot read. No hold is released:
+/// nothing names one.
+fn unreadable_release(named: &str, failure: afd_core::error::Error) {
+    let reason = failure.to_string();
+    let error_code = crate::Error::from(failure).code().as_str();
+    let fleet_id = named;
+    let event = EVENT_RELEASE_UNREADABLE;
+    tracing::warn!(error_code, fleet_id, reason, event);
 }
 
 #[cfg(test)]

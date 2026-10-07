@@ -73,6 +73,9 @@ pub struct TerminalReport<'a> {
     pub last_event_id: &'a str,
     /// The answer that run resumes from.
     pub last_response: &'a str,
+    /// When the sandbox the run left held for the fleet's next event lapses;
+    /// none when the runner holds nothing.
+    pub held_until: Option<UnixMillis>,
     /// The instant every row this transaction writes is stamped with.
     pub now: UnixMillis,
 }
@@ -142,6 +145,7 @@ impl Leases {
             outcome,
             last_event_id,
             last_response,
+            held_until,
             now,
         } = report;
 
@@ -192,8 +196,14 @@ impl Leases {
             now,
         )
         .await?;
-        self.release_through(&mut transaction, &lease.fleet_id, lease.fence, now)
-            .await?;
+        self.release_through(
+            &mut transaction,
+            &lease.fleet_id,
+            lease.fence,
+            held_until,
+            now,
+        )
+        .await?;
         // The fifth write, and the one that closes 7.6's window: the answer is
         // owed before anything tries to send it, so a process that dies between
         // here and the queue append leaves a record rather than a charged run

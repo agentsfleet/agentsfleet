@@ -165,6 +165,10 @@ pub const ATTR_RUNNER_HOST: &str = "agentsfleet.runner.host";
 /// The lease a runner span belongs to.
 pub const ATTR_LEASE_ID: &str = "agentsfleet.lease.id";
 
+/// Whether a lease ran in the sandbox its fleet's previous lease left held,
+/// rather than a fresh one; absent from a lease that used no sandbox.
+pub const ATTR_SANDBOX_REUSED: &str = "agentsfleet.sandbox.reused";
+
 /// One model turn.
 pub const OPERATION_CHAT: &str = "chat";
 
@@ -183,6 +187,7 @@ pub const RUNNER_SPAN_KEYS: &[&str] = &[
     ATTR_RUNNER_ID,
     ATTR_RUNNER_HOST,
     ATTR_LEASE_ID,
+    ATTR_SANDBOX_REUSED,
     ATTR_EVENT_ID,
     ATTR_AGENT_ID,
     ATTR_OPERATION_NAME,

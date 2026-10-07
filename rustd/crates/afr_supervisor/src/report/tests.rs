@@ -35,6 +35,7 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
         &spent(3, 1, 4),
         Duration::from_secs(2),
         None,
+        None,
     );
 
     assert_eq!(report.outcome, Outcome::Processed);
@@ -73,7 +74,14 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
         first_chunk: None,
     };
 
-    let report = report(&lease, &ending, &Meter::default(), Duration::ZERO, None);
+    let report = report(
+        &lease,
+        &ending,
+        &Meter::default(),
+        Duration::ZERO,
+        None,
+        None,
+    );
 
     assert_eq!(report.outcome, Outcome::FleetError);
     assert_eq!(report.failure_reason, Some(FailureClass::PolicyDeny));
@@ -94,6 +102,7 @@ fn a_run_that_never_finished_still_reports_what_it_spent() {
         &ending,
         &spent(7, 2, 3),
         Duration::from_millis(5),
+        None,
         None,
     );
 
@@ -127,6 +136,7 @@ fn a_run_that_never_started_reports_zero_usage() {
         &Meter::default(),
         Duration::from_millis(5),
         None,
+        None,
     );
 
     assert_eq!(report.outcome, Outcome::FleetError);
@@ -149,7 +159,14 @@ fn a_finished_run_bills_its_result_not_the_meter() {
         first_chunk: None,
     };
 
-    let report = report(&lease, &ending, &spent(100, 50, 25), Duration::ZERO, None);
+    let report = report(
+        &lease,
+        &ending,
+        &spent(100, 50, 25),
+        Duration::ZERO,
+        None,
+        None,
+    );
 
     assert_eq!(
         (

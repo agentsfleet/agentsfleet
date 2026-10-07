@@ -161,6 +161,23 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
         true
     }
 
+    /// Stops every process inside where it stands, keeping its memory and its
+    /// workspace, until [`Sandbox::thaw`]; returns once nothing in it runs.
+    /// Between two leases of one fleet the runner holds its sandbox frozen.
+    ///
+    /// # Errors
+    /// The engine cannot stop the sandbox's processes, or cannot confirm they
+    /// stopped. A sandbox that will not freeze is destroyed, never held.
+    async fn freeze(&self) -> Result<()>;
+
+    /// Lets every process a [`Sandbox::freeze`] stopped run on; returns once
+    /// none is still stopped.
+    ///
+    /// # Errors
+    /// As [`Sandbox::freeze`]. A sandbox that will not thaw is destroyed, and
+    /// its lease gets a fresh one.
+    async fn thaw(&self) -> Result<()>;
+
     /// Ends every process inside, then removes what it held.
     ///
     /// Takes the sandbox by value: a destroyed sandbox cannot be used again,

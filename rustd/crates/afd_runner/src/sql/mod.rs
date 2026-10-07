@@ -7,10 +7,11 @@
 //! site is how a consumer's `metadata->>'lease_id'` silently stops matching.
 
 pub use afd_state::sql::{
-    ADMIN_STATE_ACTIVE, ADMIN_STATE_DRAINED, ADMIN_STATE_DRAINING, LAST_SEEN_NEVER,
-    LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
+    ADMIN_STATE_ACTIVE, ADMIN_STATE_DRAINED, ADMIN_STATE_DRAINING, FLEET_STATUS_ACTIVE,
+    LAST_SEEN_NEVER, LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
 };
 
+pub mod holds;
 pub mod runner;
 pub mod runner_admin;
 pub mod runner_view;

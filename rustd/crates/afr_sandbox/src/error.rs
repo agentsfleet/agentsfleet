@@ -24,8 +24,8 @@ use afd_core::error_code::{self, ErrorCode};
 mod raise;
 
 pub(crate) use self::raise::{
-    cgroup, cgroup_left, lease_id_unsafe, not_inherited, program, refused, toolbox_refused,
-    toolbox_unreadable, unconfined,
+    cgroup, cgroup_left, cgroup_unsettled, lease_id_unsafe, not_inherited, program, refused,
+    toolbox_refused, toolbox_unreadable, unconfined,
 };
 #[cfg(target_os = "linux")]
 pub(crate) use self::raise::{not_ready, toolbox_unexpected};
@@ -104,6 +104,16 @@ pub(crate) enum ErrorKind {
         /// The kernel's reason.
         #[source]
         source: std::io::Error,
+    },
+
+    /// A cgroup took its freeze or thaw but never reported reaching it, so
+    /// some process in it is still running or still stopped.
+    #[error("the cgroup {path} did not settle {state}")]
+    CgroupUnsettled {
+        /// The cgroup's directory.
+        path: PathBuf,
+        /// The state it was asked for: `frozen` or `thawed`.
+        state: &'static str,
     },
 
     /// The toolbox is not the image this runner was configured to run.

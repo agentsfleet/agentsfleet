@@ -54,6 +54,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
     let beat = HeartbeatRequest {
         capability_report: Some(capable()),
         selftest: None,
+        holds: afd_wire::runner::HeldFleets::default(),
     };
     let first = fixtures
         .runners()
@@ -179,6 +180,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let beat = HeartbeatRequest {
         capability_report: Some(flooded),
         selftest: None,
+        holds: afd_wire::runner::HeldFleets::default(),
     };
 
     let answered = fixtures
@@ -244,6 +246,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
             sandbox_tier: Cow::Borrowed("dev_none"),
             network_policy: Cow::Borrowed("allow_all"),
         }),
+        holds: afd_wire::runner::HeldFleets::default(),
     };
     let beat_at = ENROLLED_AT + ONE_BEAT_MS;
 

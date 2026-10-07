@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::event::EventEnvelope;
 use crate::policy::ExecutionPolicy;
+use crate::runner::HeldFleets;
 
 /// How tenant secrets reach the runner.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -138,6 +139,24 @@ pub struct LeasePayload<'a> {
     /// unless the event is a chat message. Absent decodes as empty.
     #[serde(default, borrow)]
     pub history: Vec<Turn<'a>>,
+}
+
+/// `POST /v1/runners/me/leases` request.
+///
+/// What a polling runner tells the daemon about itself: the fleets whose
+/// sandboxes it holds, so a held fleet's next event reaches it first. An empty
+/// or unreadable body reads as holding nothing, so a poll never fails over
+/// what it carries.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseRequest<'a> {
+    /// Every fleet this runner holds a frozen sandbox for. Absent decodes as
+    /// empty.
+    #[serde(borrow, default)]
+    #[garde(dive)]
+    #[cfg_attr(feature = "openapi", schema(value_type = Vec<String>, max_items = 64))]
+    pub holds: HeldFleets<'a>,
 }
 
 /// `POST /v1/runners/me/leases` reply. Always `200`.

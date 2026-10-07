@@ -43,6 +43,9 @@ pub(crate) async fn serve(lessee: Arc<Lessee>, mut assignment: watch::Receiver<A
     let mut spawned = 0;
     loop {
         let wanted = assignment.borrow_and_update().workers;
+        lessee
+            .holds
+            .resize(usize::try_from(wanted).unwrap_or(usize::MAX));
         for number in spawned..wanted {
             workers.spawn(
                 Worker {
@@ -125,9 +128,10 @@ impl Worker {
             () = leasing.cancelled() => return None,
             wanted = self.assignment.wait_for(|now| now.takes_work(number)) => wanted.ok()?,
         };
+        let held = self.lessee.holds.fleets().await;
         let polled = tokio::select! {
             () = leasing.cancelled() => return None,
-            polled = self.lessee.plane.lease() => polled,
+            polled = self.lessee.plane.lease(&held) => polled,
         };
         let body = match polled {
             Ok(body) => body,

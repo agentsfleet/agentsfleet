@@ -168,6 +168,16 @@ closed_set! {
 }
 
 closed_set! {
+    /// Who won the claim on a fleet whose slot named a held sandbox.
+    HeldClaim {
+        /// The runner holding the fleet's sandbox, which continues in it.
+        Holder => "holder",
+        /// Another runner, once the hold lapsed or its holder fell silent.
+        OtherAfterLapse => "other_after_lapse",
+    }
+}
+
+closed_set! {
     /// Where a verification run got to.
     VerifierRun {
         /// Dispatched onto the fleet's stream.

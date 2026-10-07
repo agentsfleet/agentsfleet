@@ -61,6 +61,14 @@ pub const RUNNER_OFFLINE_AFTER_MS: i64 = LEASE_TTL_MS * 3;
 /// host beats before a fleet read would derive it offline.
 pub const HEARTBEAT_INTERVAL_MS: i64 = 10_000;
 
+/// How long a runner holds a fleet's sandbox, frozen, after a lease that used
+/// it ends processed, for that fleet's next lease to continue in.
+///
+/// A chat follow-up usually lands within minutes. The runner holds at most as
+/// many as it has workers, and a frozen sandbox runs nothing, which is what
+/// bounds the cost of the wait.
+pub const SANDBOX_HOLD_IDLE_MS: i64 = 600_000;
+
 /// The backoff hint handed to a runner that found no work.
 ///
 /// The lease verb always answers 200 — never 204 — and this rides the reply as

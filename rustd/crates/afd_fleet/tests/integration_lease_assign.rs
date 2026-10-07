@@ -285,7 +285,7 @@ async fn test_a_fault_after_the_claim_frees_the_claim() {
 
     let mut faulted = false;
     for _poll in 0..(afd_dragonfly::ready::READY_PARTITIONS * ROTATIONS) {
-        if leases.select(&first, now).await.is_err() {
+        if leases.select(&first, &[], now).await.is_err() {
             faulted = true;
             break;
         }

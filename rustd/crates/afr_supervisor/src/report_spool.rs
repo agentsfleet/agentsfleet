@@ -63,9 +63,12 @@ pub(crate) struct Spooled {
 /// What became of one delivery attempt.
 #[derive(Debug)]
 pub(crate) enum Delivery {
-    /// The daemon settled the lease, or answered that it already was; the
-    /// entry is gone.
+    /// The daemon settled the lease with this report; the entry is gone.
     Settled,
+    /// The daemon answered that the lease was settled without it: another
+    /// report won, or the lease was lost or reclaimed. The entry is gone, and
+    /// whatever the run left for a next lease serves none.
+    Superseded,
     /// The answer could change on a later attempt; the entry stays.
     Kept(Error),
     /// The daemon cannot read this report and never will; the entry is moved
@@ -147,7 +150,7 @@ impl Spooled {
                     event,
                     "the daemon had already settled this lease"
                 );
-                Delivery::Settled
+                Delivery::Superseded
             }
             Err(refusal) => {
                 let code = refusal.code().as_str();
@@ -191,7 +194,7 @@ fn kept(failure: &Error) -> bool {
 }
 
 /// Whether a refusal means the lease is settled for good.
-fn settles(refusal: &Error) -> bool {
+pub(crate) fn settles(refusal: &Error) -> bool {
     refusal
         .refusal_code()
         .is_some_and(|code| SETTLED_BY.contains(&code))

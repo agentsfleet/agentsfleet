@@ -2,6 +2,7 @@
 
 use std::mem;
 
+use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_wire::memory::MemoryDelta;
 use afd_wire::tool_detail::ToolCallRecord;
@@ -13,7 +14,7 @@ use crate::client::retrying;
 use crate::memory;
 use crate::records;
 use crate::report::{Ending, report};
-use crate::report_spool::{Delivery, Spooled};
+use crate::report_spool::{Delivery, Spooled, settles};
 
 const EVENT_CAPTURE_FAILED: &str = "memory_capture_post_failed";
 const EVENT_RECORDS_FAILED: &str = "tool_records_post_failed";
@@ -24,8 +25,15 @@ const EVENT_UNSPOOLED_LOST: &str = "report_failed";
 
 impl LeaseRun<'_> {
     /// Posts the run's full tool records, pushes its memory, then spools and
-    /// posts its report.
-    pub(super) async fn settle(&self, ending: &mut Ending, started: Instant) {
+    /// posts its report, which carries when the sandbox the run left held
+    /// lapses. Answers whether the daemon refused the report because the lease
+    /// was settled without it, so a held sandbox serves no next lease.
+    pub(super) async fn settle(
+        &self,
+        ending: &mut Ending,
+        started: Instant,
+        held_until: Option<UnixMillis>,
+    ) -> bool {
         let mut trace = None;
         if let Ending::Ran { output, .. } = ending {
             self.post_records(&mem::take(&mut output.records)).await;
@@ -41,6 +49,7 @@ impl LeaseRun<'_> {
             &self.meter,
             started.elapsed(),
             trace.as_deref(),
+            held_until,
         );
         let bytes = match serde_json::to_vec(&report) {
             Ok(bytes) => Bytes::from(bytes),
@@ -56,7 +65,7 @@ impl LeaseRun<'_> {
                     event,
                     "the report would not serialize"
                 );
-                return;
+                return false;
             }
         };
         match self.lessee.spool.hold(&self.ids.lease, bytes.clone()).await {
@@ -119,11 +128,12 @@ impl LeaseRun<'_> {
     }
 
     /// Posts a spooled report once; one the daemon cannot take yet goes to the
-    /// drain.
-    async fn deliver(&self, spooled: &Spooled) {
+    /// drain. Answers whether the lease was settled without it.
+    async fn deliver(&self, spooled: &Spooled) -> bool {
         let lessee = self.lessee;
         let failure = match spooled.deliver(&lessee.plane).await {
-            Ok(Delivery::Settled | Delivery::Rejected) => return,
+            Ok(Delivery::Settled | Delivery::Rejected) => return false,
+            Ok(Delivery::Superseded) => return true,
             Ok(Delivery::Kept(failure)) | Err(failure) => failure,
         };
         if !lessee.halt.stops_on(&failure) {
@@ -138,11 +148,13 @@ impl LeaseRun<'_> {
             );
         }
         lessee.held.notify_one();
+        false
     }
 
     /// The spool would not take the report: post it directly, and take no new
     /// lease, since the next report would have nowhere durable to wait either.
-    async fn post_unspooled(&self, bytes: Bytes, failure: &crate::Error) {
+    /// Answers whether the lease was settled without it.
+    async fn post_unspooled(&self, bytes: Bytes, failure: &crate::Error) -> bool {
         let lessee = self.lessee;
         let code = failure.code().as_str();
         let lease_id = self.ids.lease.as_str();
@@ -154,9 +166,13 @@ impl LeaseRun<'_> {
             "the report goes out unspooled"
         );
         lessee.halt.stop_leasing();
-        if let Err(lost) = retrying(|| lessee.plane.report(bytes.clone())).await
-            && !lessee.halt.stops_on(&lost)
-        {
+        let Err(lost) = retrying(|| lessee.plane.report(bytes.clone())).await else {
+            return false;
+        };
+        if settles(&lost) {
+            return true;
+        }
+        if !lessee.halt.stops_on(&lost) {
             let code = lost.code().as_str();
             let event = EVENT_UNSPOOLED_LOST;
             tracing::error!(
@@ -166,6 +182,7 @@ impl LeaseRun<'_> {
                 "an unspooled report was not delivered"
             );
         }
+        false
     }
 }
 

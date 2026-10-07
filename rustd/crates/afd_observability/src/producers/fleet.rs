@@ -8,6 +8,7 @@
 pub mod admission;
 pub mod census;
 pub mod history;
+pub mod hold;
 pub mod repair;
 pub mod runner;
 
@@ -89,6 +90,7 @@ pub struct Handles {
     history_bytes: Histogram<f64>,
     history_cuts: Counter<u64>,
     history_read_failures: Counter<u64>,
+    held_claims: Counter<u64>,
     runs_started: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_write_failures: Counter<u64>,
@@ -134,6 +136,7 @@ impl Handles {
             history_cuts: instruments.counter_u64(&declared::LEASE_HISTORY_CUTS_TOTAL)?,
             history_read_failures: instruments
                 .counter_u64(&declared::LEASE_HISTORY_READ_FAILURES_TOTAL)?,
+            held_claims: instruments.counter_u64(&declared::LEASE_HELD_CLAIMS_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_write_failures: instruments

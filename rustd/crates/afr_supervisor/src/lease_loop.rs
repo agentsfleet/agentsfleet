@@ -1,20 +1,23 @@
 //! One lease, end to end.
 //!
 //! ```text
-//!   admit ─► turn ─► bundle ─► hydrate ─► [prepare sandbox ─► land] ─► run ─► [destroy]
-//!   ─► memory push (fenced) ─► report spooled ─► report posted ─► activity drained
+//!   admit ─► turn ─► bundle ─► hydrate ─► [take hold or prepare sandbox ─► land] ─► run
+//!   ─► [hold frozen, or destroy] ─► memory push (fenced) ─► report spooled ─► report posted
+//!   ─► activity drained
 //!   └──────────── renewal alongside, until the report is answered ─────────┘
 //! ```
 //!
 //! The engine admits the lease first: a policy naming a tool it cannot host is
 //! refused before anything is prepared. A lease whose tools all run in the
 //! supervisor starts no sandbox; any other runs in one, and one that cannot be
-//! built ends the lease with a failed report. A sandbox that was built is
-//! destroyed exactly once — the type consumes it — and an engine that panics is
-//! caught so the teardown still runs. The report settles before the live tail
+//! built ends the lease with a failed report. A sandbox that was built is held
+//! for the fleet's next lease when the run ended processed (`crate::holds`) and
+//! destroyed exactly once otherwise — the type consumes it — and an engine that
+//! panics is caught so the teardown still runs. The report settles before the live tail
 //! is waited on, and that wait is bounded: the tail is best-effort, the report
 //! is the record.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::clock::Clock;
@@ -37,6 +40,7 @@ use crate::bundles::BundleCache;
 use crate::client::ControlPlane;
 use crate::error::Result;
 use crate::halt::Halt;
+use crate::holds::Holds;
 use crate::identity::{Whoami, lease_span};
 use crate::memory;
 use crate::renew::Renewal;
@@ -47,10 +51,12 @@ use crate::workspace_clone::Mirrors;
 
 mod checkout;
 mod drive;
+mod hold;
 mod refusal;
 mod settle;
 mod workspace;
 
+use self::hold::Worked;
 use self::refusal::failed;
 
 /// How long a settled lease waits for its live tail to finish posting.
@@ -93,7 +99,9 @@ pub(crate) struct Lessee {
     /// What every sandbox enforces.
     pub(crate) limits: Limits,
     /// The wall clock the daemon's lease deadlines are written in.
-    pub(crate) clock: Box<dyn Clock>,
+    pub(crate) clock: Arc<dyn Clock>,
+    /// Sandboxes held for their fleets' next leases.
+    pub(crate) holds: Holds,
     /// How the runner stops.
     pub(crate) halt: Halt,
     /// Rung when a report stays spooled, so the drain takes it over.
@@ -150,6 +158,7 @@ impl Lessee {
             interrupt: CancellationToken::new(),
             meter: Meter::default(),
         };
+        let _busy = self.holds.occupy(run.ids.fleet.clone());
         let lease_id = run.ids.lease.as_str();
         let event = EVENT_ACQUIRED;
         tracing::info!(lease_id, event);
@@ -193,10 +202,10 @@ impl LeaseRun<'_> {
             pumping: true,
         };
         let mut cut = None;
-        let ran = loop {
+        let worked = loop {
             tokio::select! {
                 biased;
-                ending = &mut work => break ending,
+                worked = &mut work => break worked,
                 class = &mut renewal, if live.renewing => {
                     live.renewing = false;
                     self.interrupt.cancel();
@@ -211,12 +220,21 @@ impl LeaseRun<'_> {
         };
         // A cut keeps what the run handed back, its tokens and memory with it,
         // and reports the cut as the reason it ended.
+        let Worked { ending: ran, kept } = worked;
         let mut ending = match cut {
             Some((class, detail)) => ran.cut(class, detail),
             None => ran,
         };
         {
-            let settle = self.settle(&mut ending, started);
+            let settle = async {
+                let held_until = self.keep(kept, &ending).await;
+                let superseded = self.settle(&mut ending, started, held_until).await;
+                if superseded && held_until.is_some() {
+                    let fleet = self.ids.fleet.clone();
+                    let lease = self.ids.lease.clone();
+                    lessee.holds.supersede(fleet, lease);
+                }
+            };
             tokio::pin!(settle);
             loop {
                 tokio::select! {
@@ -245,24 +263,26 @@ impl LeaseRun<'_> {
         ending
     }
 
-    /// Everything that holds the fleet's turn: setup, the run, teardown.
+    /// Everything that holds the fleet's turn: setup and the run. The sandbox
+    /// the run used comes back with its ending, for the lease to hold or
+    /// destroy once the cut and the report decide.
     ///
-    /// The interrupt ends the run early; a sandbox is still destroyed, and
-    /// the caller's ending replaces whatever this returns.
-    async fn work(&self, turns: &FleetTurns, sink: ActivitySink) -> Ending {
+    /// The interrupt ends the run early, and the caller's ending replaces
+    /// whatever this returns.
+    async fn work(&self, turns: &FleetTurns, sink: ActivitySink) -> Worked {
         let lessee = self.lessee;
         let needs = match lessee.agent.admit(&self.lease.policy) {
             Ok(needs) => needs,
-            Err(refusal) => return self.unhosted(&refusal),
+            Err(refusal) => return self.unhosted(&refusal).into(),
         };
         let claimed = tokio::select! {
             turn = turns.claim(&self.ids.fleet) => turn,
             () = self.interrupt.cancelled() => {
-                return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL);
+                return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL).into();
             }
         };
         let Some(_turn) = claimed else {
-            return failed(FailureClass::StartupPosture, DETAIL_TURN);
+            return failed(FailureClass::StartupPosture, DETAIL_TURN).into();
         };
         let bundle = match &self.lease.bundle {
             Some(manifest) => match lessee
@@ -271,17 +291,29 @@ impl LeaseRun<'_> {
                 .await
             {
                 Ok(bundle) => bundle,
-                Err(failure) => return self.refuse(&failure, EVENT_BUNDLE_FAILED, DETAIL_BUNDLE),
+                Err(failure) => {
+                    return self
+                        .refuse(&failure, EVENT_BUNDLE_FAILED, DETAIL_BUNDLE)
+                        .into();
+                }
             },
             None => None,
         };
         let hydrated = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
             Ok(hydrated) => hydrated,
-            Err(failure) => return self.refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
+            Err(failure) => {
+                return self
+                    .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
+                    .into();
+            }
         };
         let memory = match hydrated.decode::<MemoryHydrateResponse<'_>>() {
             Ok(memory) => memory,
-            Err(failure) => return self.refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY),
+            Err(failure) => {
+                return self
+                    .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
+                    .into();
+            }
         };
         let recaller = memory::Recaller::new(&lessee.plane, &self.ids.fleet, self.lease);
         let seed = Seed {
@@ -293,7 +325,7 @@ impl LeaseRun<'_> {
         if needs.sandbox {
             self.sandboxed(seed, bundle.as_ref(), sink).await
         } else {
-            self.drive(seed, None, sink).await
+            self.drive(seed, None, sink).await.into()
         }
     }
 }

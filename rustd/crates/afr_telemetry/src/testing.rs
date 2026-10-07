@@ -16,7 +16,8 @@ use std::time::Duration;
 use afd_observability::metrics::label::http::{DiscardReason, Signal};
 
 use crate::labels::{
-    FrameDrop, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome, TurnOutcome,
+    FrameDrop, Provider, PushFailure, RetryReason, SandboxHold, SandboxStart, Tool, ToolOutcome,
+    TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -37,6 +38,8 @@ pub enum Recorded {
     ToolCall(Tool, ToolOutcome, Duration),
     /// [`Recorder::out_of_memory`].
     OutOfMemory,
+    /// [`Recorder::sandbox_hold`].
+    SandboxHold(SandboxHold),
     /// [`Recorder::spans_suppressed`].
     SpansSuppressed(u64),
     /// [`Recorder::export_discarded`].
@@ -88,6 +91,10 @@ impl Recorder for Tally {
 
     fn out_of_memory(&self) {
         self.send(Recorded::OutOfMemory);
+    }
+
+    fn sandbox_hold(&self, outcome: SandboxHold) {
+        self.send(Recorded::SandboxHold(outcome));
     }
 
     fn spans_suppressed(&self, spans: u64) {

@@ -39,7 +39,7 @@ mod sandbox;
 
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
-pub(crate) use self::sandbox::{FakeEngine, Writes};
+pub(crate) use self::sandbox::{FakeEngine, Freezer, Writes};
 
 /// A canonical lease identifier.
 pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
@@ -68,8 +68,8 @@ pub(crate) const RUNNER_CRASH: &str = "runner_crash";
 
 /// The wall clock every lease test reads: fixed at zero, so a lease's deadline
 /// is measured in the paused tokio time the tests advance.
-pub(crate) fn clock() -> Box<dyn afd_core::clock::Clock> {
-    Box::new(afd_core::clock::FixedClock::at(
+pub(crate) fn clock() -> std::sync::Arc<dyn afd_core::clock::Clock> {
+    std::sync::Arc::new(afd_core::clock::FixedClock::at(
         afd_core::clock::UnixMillis::from_millis(0),
     ))
 }

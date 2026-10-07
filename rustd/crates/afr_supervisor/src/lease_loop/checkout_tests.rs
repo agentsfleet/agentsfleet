@@ -283,3 +283,34 @@ async fn every_bound_repository_is_checked_out_with_one_token() {
     assert_eq!(mints(&calls), 1, "one token for every repository");
     assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
 }
+
+/// A held sandbox serves its fleet's next lease with the clone exactly as the
+/// last lease left it: no token is minted and nothing is fetched or written,
+/// so an edit the fleet has not committed is still there. The host never
+/// writes into a working copy a tenant has had write access to.
+#[tokio::test]
+async fn test_reuse_leaves_the_clone_untouched() {
+    const NEXT_LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
+    const UNCOMMITTED: &str = "an edit the fleet has not committed";
+    let workspace = tempfile::tempdir().unwrap();
+    let mut rig = rig(Some(workspace.path().to_owned()), |_| None);
+    served(&rig);
+    rig.lessee.holds.resize(2);
+
+    rig.run(&bound(&[GIT.name()], WORKSPACE_ID)).await.unwrap();
+    let edited = workspace.path().join(NAME).join("README.md");
+    fs::write(&edited, UNCOMMITTED).unwrap();
+    let mut next = bound(&[GIT.name()], WORKSPACE_ID);
+    next.lease_id = NEXT_LEASE_ID.into();
+    rig.run(&next).await.unwrap();
+
+    let calls = rig.calls();
+    assert_eq!(mints(&calls), 1, "only the first lease mints a token");
+    assert_eq!(fs::read_to_string(&edited).unwrap(), UNCOMMITTED);
+    assert_eq!(
+        rig.prepared.load(Ordering::SeqCst),
+        1,
+        "one sandbox for both"
+    );
+    assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
+}

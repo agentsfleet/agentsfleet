@@ -23,6 +23,9 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
+use afd_observability::metrics::label::fleet::HeldClaim;
+use afd_observability::producers;
 use sqlx::{PgConnection, Row as _};
 
 use crate::error::{Result, query};
@@ -93,10 +96,11 @@ impl Leases {
     /// Atomically claim `fleet_id`'s lease slot for `runner_id`, valid for
     /// `ttl_ms`.
     ///
-    /// Wins iff the slot is unclaimed or its prior claim has expired, bumping
-    /// the monotonic token and recording the sticky hint. Answers `None` when a
-    /// live runner still holds it — an ordinary outcome the caller reads as
-    /// "try the next candidate", not a failure.
+    /// Wins iff the slot is unclaimed or its prior claim has expired, and no
+    /// other live runner holds the fleet's sandbox, bumping the monotonic token
+    /// and recording the sticky hint. Answers `None` when a live runner still
+    /// holds it — an ordinary outcome the caller reads as "try the next
+    /// candidate", not a failure.
     ///
     /// The claim PRECEDES the event read by design: a loser has consumed no
     /// event, so nothing is orphaned by losing.
@@ -118,6 +122,7 @@ impl Leases {
             .bind(runner_id.as_str())
             .bind(leased_until.as_millis())
             .bind(now.as_millis())
+            .bind(RUNNER_OFFLINE_AFTER_MS)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_CLAIM))?;
@@ -128,6 +133,16 @@ impl Leases {
             return Ok(None);
         };
         let fence: i64 = row.try_get(0).map_err(query(CONTEXT_CLAIM))?;
+        let held: Option<i64> = row.try_get(1).map_err(query(CONTEXT_CLAIM))?;
+        let holder: Option<String> = row.try_get(2).map_err(query(CONTEXT_CLAIM))?;
+        if held.is_some() {
+            let outcome = if holder.as_deref() == Some(runner_id.as_str()) {
+                HeldClaim::Holder
+            } else {
+                HeldClaim::OtherAfterLapse
+            };
+            producers::fleet::hold::claimed(outcome);
+        }
         Ok(Some(Claimed {
             fence: Fence::from_i64(fence),
             leased_until,
@@ -186,7 +201,9 @@ impl Leases {
     }
 
     /// The release a finished run owes, on a connection the caller already
-    /// holds. Keeps the sticky hint: this runner did lease the fleet.
+    /// holds. Keeps the sticky hint: this runner did lease the fleet. Records
+    /// `held_until` too, the hold the run's sandbox is kept under, or clears
+    /// it: the fencing guard means a superseded holder records nothing.
     ///
     /// The report path needs it: freeing the slot makes the fleet's next event
     /// claimable, and doing that before the run's result is durable would let a
@@ -204,12 +221,14 @@ impl Leases {
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
         fence: Fence,
+        held_until: Option<UnixMillis>,
         now: UnixMillis,
     ) -> Result<()> {
         sqlx::query(sql::lease::RELEASE_AFFINITY_SLOT)
             .bind(fleet_id.as_str())
             .bind(now.as_millis())
             .bind(fence.as_i64())
+            .bind(held_until.map(UnixMillis::as_millis))
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RELEASE))?;
