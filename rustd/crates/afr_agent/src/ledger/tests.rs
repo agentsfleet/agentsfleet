@@ -13,7 +13,7 @@ use afr_tools::catalog::UPDATE_PLAN;
 use afd_core::test_util::trace::{Capture, CapturedEvent};
 
 use super::{EVENT_RECORD_DROPPED, Ledger};
-use crate::fixture::{Frames, scrub};
+use crate::fixture::{Frames, GITHUB_TOKEN, clean_json, scrub};
 
 /// The lease every call here belongs to.
 const LEASE_ID: &str = "lease-1";
@@ -162,6 +162,46 @@ fn opened_and_ended(frames: &[ActivityFrame<'_>]) -> (Vec<String>, Vec<(String, 
         }
     }
     (opened, ended)
+}
+
+/// A call's start frame carries its arguments as JSON, scrubbed and
+/// bounded, and arguments that are not an object as `{}`: never an empty
+/// string, which is not JSON.
+#[tokio::test]
+async fn test_a_calls_start_frame_carries_its_arguments_as_json() {
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let scrub = scrub();
+    let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+    let named = serde_json::json!({"path": "a.md", "token": GITHUB_TOKEN});
+
+    for arguments in [named.clone(), serde_json::json!("not an object")] {
+        let call = Call {
+            arguments,
+            ..planned()
+        };
+        ledger
+            .call(&call, async { ToolOutput::succeeded("") })
+            .await;
+    }
+
+    let shown: Vec<Option<serde_json::Value>> = frames
+        .taken()
+        .iter()
+        .filter_map(|frame| match frame {
+            ActivityFrame::ToolCallStarted(started) => {
+                Some(serde_json::from_str(&started.args_redacted).ok())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            Some(clean_json(named).into_inner()),
+            Some(serde_json::json!({}))
+        ]
+    );
 }
 
 /// A call opened while another call's handler runs, as a child's call opens

@@ -1,6 +1,6 @@
 //! Children share the lease and can only have less: a delegated answer, a
-//! spawned round trip, the depth cap, the run's caps, the tool subset, and
-//! usage summed into the one report.
+//! spawned round trip, the depth cap, the run's caps, the tool subset, the
+//! context cap, and usage summed into the one report.
 
 #![expect(
     clippy::indexing_slicing,
@@ -10,7 +10,7 @@
 use afd_core::test_util::trace::Capture;
 use afr_providers::Message;
 use afr_tools::catalog::{
-    DELEGATE, HTTP_REQUEST, MEMORY_RECALL, SEND_INPUT, SPAWN, UPDATE_PLAN, WAIT_AGENT,
+    DELEGATE, HTTP_REQUEST, MEMORY_RECALL, SEND_INPUT, SPAWN, UPDATE_PLAN, WAIT_AGENT, WEB_SEARCH,
 };
 use afr_tools::nested::NESTED;
 use serde_json::json;
@@ -22,8 +22,14 @@ use super::fixture::{
     SLOW_CALL, STATUS, SUMMARY, TASK, TIMEOUT_MS, events, offered, parsed, requests_opening_with,
     results, tools,
 };
-use crate::fixture::{Script, Slow, call, lease, say, spent, unbounded};
+use crate::context::CAP_REACHED;
+use crate::fixture::{Script, Slow, budget, call, lease, say, spent, unbounded};
 use crate::harness::tests::{drive, engine};
+
+/// The window a capped child runs in, and a prompt past its 0.75 stage
+/// fraction that is still inside it, as a provider would answer it.
+const CAP: u32 = 100;
+const FILLED: u64 = 80;
 
 #[tokio::test]
 async fn test_delegate_returns_child_answer() {
@@ -200,6 +206,50 @@ async fn test_nested_depth_capped() {
         requests_opening_with(&script, "d3").is_empty(),
         "nothing started"
     );
+}
+
+/// A child whose prompt reaches the run's context cap is asked for its
+/// answer with no tools, as its parent would be, and that answer is what the
+/// parent reads.
+#[tokio::test]
+async fn test_a_child_at_the_context_cap_answers_with_no_tools() {
+    let script = Script::new([
+        vec![call("p1", DELEGATE.name(), json!({"task": READS}))],
+        vec![say(DONE)],
+    ])
+    .with_child(
+        READS,
+        [
+            vec![
+                call("c1", UPDATE_PLAN.name(), json!({})),
+                spent(FILLED, 0, 1),
+            ],
+            vec![say(SUMMARY)],
+        ],
+    );
+    let engine = engine(tools(), &script);
+    let mut names = offered();
+    names.push(WEB_SEARCH.name());
+    let lease = lease(&names, budget(0, CAP));
+
+    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+
+    let child = requests_opening_with(&script, READS);
+    assert!(child[0].tools.contains(&UPDATE_PLAN.name().to_owned()));
+    assert_eq!(child[0].hosted, [WEB_SEARCH.name()]);
+    assert!(
+        child[1].tools.is_empty() && child[1].hosted.is_empty(),
+        "no tools once capped: {:?} {:?}",
+        child[1].tools,
+        child[1].hosted
+    );
+    assert_eq!(
+        child[1].messages.last(),
+        Some(&Message::User(CAP_REACHED.to_owned()))
+    );
+    let root = requests_opening_with(&script, OPENING);
+    assert_eq!(results(&root[1]), [SUMMARY], "the parent reads its answer");
+    assert_eq!(output.result.content, DONE);
 }
 
 #[tokio::test]

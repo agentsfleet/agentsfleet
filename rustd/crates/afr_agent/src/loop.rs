@@ -12,7 +12,6 @@ use afd_wire::policy::ExecutionPolicy;
 use afr_providers::{Call, Connect, Hosted, Message, Replay, ToolSpec};
 use afr_secrets::Scrub;
 use afr_tools::{Catalog, Selection};
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
@@ -22,7 +21,7 @@ use crate::context::{Budget, Checkpoints};
 use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
-use crate::nested::{self, Guard, Registry, Seat};
+use crate::nested::{self, Guard, Registry, Seat, Tether};
 use crate::offer;
 use crate::prompt::Prompt;
 use crate::router::{self, Router};
@@ -136,10 +135,9 @@ pub(crate) struct Harness<'s, 'run> {
     checkpoints: Checkpoints,
     budget: Budget,
     messages: Vec<Message>,
-    /// What a parent sent this child, read into its next turn.
-    input: Option<mpsc::UnboundedReceiver<String>>,
-    /// The child this loop is, when it is one.
-    pub(crate) child: Option<Guard<'s, 'run>>,
+    /// The child this loop is, when it is one: its guard, and what its
+    /// parent sent, read into its next turn.
+    pub(crate) child: Option<Tether<'s, 'run>>,
 }
 
 impl<'s, 'run> Harness<'s, 'run> {
@@ -159,7 +157,6 @@ impl<'s, 'run> Harness<'s, 'run> {
             checkpoints: Checkpoints::new(shared.context),
             budget: Budget::new(shared.context),
             messages: opening,
-            input: None,
             child: None,
         }
     }
@@ -186,8 +183,10 @@ impl<'s, 'run> Harness<'s, 'run> {
             checkpoints: Checkpoints::never(),
             budget: Budget::new(shared.context),
             messages: vec![Message::User(shared.scrub.clean(seat.task).into_inner())],
-            input: Some(seat.input),
-            child: Some(guard),
+            child: Some(Tether {
+                guard,
+                input: seat.input,
+            }),
         }
     }
 
@@ -255,7 +254,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             answered = self.shared.ledger.call(call, handler) => answered,
         };
         if let Some(child) = &self.child {
-            child.called();
+            child.guard.called();
         }
         // The image a call read rides its result alone; the ledger, the trace
         // and the frames saw the text.

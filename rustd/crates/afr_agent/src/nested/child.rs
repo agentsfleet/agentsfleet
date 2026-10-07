@@ -1,6 +1,8 @@
 //! A child's loop, from its first turn to its end, and the guard that ends
 //! it exactly once.
 
+use tokio::sync::mpsc;
+
 use super::registry::{Registry, Start, Status};
 use crate::harness::shared::Shared;
 use crate::harness::{Ending, Harness};
@@ -25,7 +27,7 @@ impl Harness<'_, '_> {
     /// Ends the child this loop is with how its turns ended; the root never
     /// concludes, it finishes.
     pub(crate) fn conclude(self, ending: Ending) {
-        let Some(guard) = self.child else {
+        let Some(Tether { guard, .. }) = self.child else {
             return;
         };
         let status = match ending {
@@ -35,6 +37,13 @@ impl Harness<'_, '_> {
         };
         guard.ended(status);
     }
+}
+
+/// What a child loop holds that the root does not: the guard that ends it
+/// once, and the inbox its parent's `send_input` writes to.
+pub(crate) struct Tether<'s, 'run> {
+    pub(crate) guard: Guard<'s, 'run>,
+    pub(crate) input: mpsc::UnboundedReceiver<String>,
 }
 
 /// One child's start and end, logged as a pair on every path: its end is

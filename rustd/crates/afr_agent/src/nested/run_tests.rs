@@ -27,8 +27,9 @@ use tokio_util::sync::CancellationToken;
 
 use super::child::EVENT_CHILD_ENDED;
 use super::fixture::{
-    CALLS, CHILD_ID, DEPTH, DONE, INTERRUPTED, NEVER, OPENING, READS, RUNNING, STALLS, STATUS,
-    SUMMARY, events, offered, parsed, requests_opening_with, results, started_ids, streamed, tools,
+    ANSWER, CALLS, CHILD_DONE, CHILD_ID, DEPTH, DONE, INTERRUPTED, NEVER, OPENING, READS, RUNNING,
+    STALLS, STATUS, SUMMARY, events, offered, parsed, requests_opening_with, results, stall,
+    stalling_offered, stalling_tools, started_ids, streamed, tools,
 };
 use crate::engine::{AgentEngine, AgentRun, Meter};
 use crate::fixture::{Canned, Frames, Script, call, lease, say, unbounded};
@@ -40,6 +41,12 @@ use crate::testing::Recording;
 const PARENT_CALLS: usize = 149;
 /// Calls the delegated child makes.
 const CHILD_CALLS: usize = 60;
+/// Two children that stall in a call, and one that answers at once.
+const FIRST: &str = "stall first";
+const SECOND: &str = "answer at once";
+const THIRD: &str = "stall third";
+/// The id the third child takes.
+const THIRD_ID: &str = "3";
 
 #[tokio::test]
 async fn test_child_calls_share_the_run_trace() {
@@ -165,35 +172,66 @@ async fn test_parent_end_interrupts_children() {
     assert_eq!(ended[0].field("status"), Some("interrupted"));
 }
 
+/// Three children: the first and the third stall in a call that never
+/// answers, the second answers at once. Waiting on the second leaves it
+/// `done` and interrupting the first leaves it `interrupted` before the list
+/// is read, in whatever order the children were polled; the third runs until
+/// the root answers, and then ends `interrupted` with it.
 #[tokio::test]
 async fn test_interrupt_and_list_agents() {
+    let capture = Capture::install();
     let script = Script::new([
         vec![
-            call("p1", SPAWN.name(), json!({"task": "a"})),
-            call("p2", SPAWN.name(), json!({"task": "b"})),
+            call("p1", SPAWN.name(), json!({"task": FIRST})),
+            call("p2", SPAWN.name(), json!({"task": SECOND})),
+            call("p3", SPAWN.name(), json!({"task": THIRD})),
         ],
-        vec![call("p3", INTERRUPT_AGENT.name(), json!({CHILD_ID: 1}))],
-        vec![call("p4", LIST_AGENTS.name(), json!({}))],
+        vec![call("p4", WAIT_AGENT.name(), json!({CHILD_ID: 2}))],
+        vec![call("p5", INTERRUPT_AGENT.name(), json!({CHILD_ID: 1}))],
+        vec![call("p6", LIST_AGENTS.name(), json!({}))],
         vec![say(DONE)],
     ])
-    .with_child("a", [vec![say("x")]])
-    .with_child("b", [vec![say("x")]]);
-    let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    .with_child(FIRST, [stall(), vec![say(NEVER)]])
+    .with_child(SECOND, [vec![say(CHILD_DONE)]])
+    .with_child(THIRD, [stall(), vec![say(NEVER)]]);
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
 
     let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
 
     assert_eq!(output.result.content, DONE);
     let root = requests_opening_with(&script, OPENING);
     let spawned: Vec<serde_json::Value> = results(&root[1]).into_iter().map(parsed).collect();
-    assert_eq!(spawned, [json!({CHILD_ID: 1}), json!({CHILD_ID: 2})]);
-    assert_eq!(parsed(results(&root[2])[2]), json!({STATUS: INTERRUPTED}));
     assert_eq!(
-        parsed(results(&root[3])[3]),
+        spawned,
+        [
+            json!({CHILD_ID: 1}),
+            json!({CHILD_ID: 2}),
+            json!({CHILD_ID: 3})
+        ]
+    );
+    assert_eq!(
+        parsed(results(&root[2])[3]),
+        json!({STATUS: DONE, ANSWER: CHILD_DONE})
+    );
+    assert_eq!(parsed(results(&root[3])[4]), json!({STATUS: INTERRUPTED}));
+    assert_eq!(
+        parsed(results(&root[4])[5]),
         json!([
             {CHILD_ID: 1, STATUS: INTERRUPTED, DEPTH: 1, CALLS: 0},
-            {CHILD_ID: 2, STATUS: RUNNING, DEPTH: 1, CALLS: 0}
+            {CHILD_ID: 2, STATUS: DONE, DEPTH: 1, CALLS: 0},
+            {CHILD_ID: 3, STATUS: RUNNING, DEPTH: 1, CALLS: 0}
         ])
+    );
+    let third: Vec<Option<String>> = events(&capture, EVENT_CHILD_ENDED)
+        .iter()
+        .filter(|event| event.field(CHILD_ID) == Some(THIRD_ID))
+        .map(|event| event.field(STATUS).map(str::to_owned))
+        .collect();
+    assert_eq!(
+        third,
+        [Some(INTERRUPTED.to_owned())],
+        "the child still running ends with the root's answer"
     );
 }
 

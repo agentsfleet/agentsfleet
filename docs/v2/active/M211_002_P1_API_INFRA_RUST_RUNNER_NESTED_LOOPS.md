@@ -53,16 +53,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afr_agent/src/nested/` (`child.rs`, `registry.rs`, `spawn.rs`, `delegate.rs`, `wait.rs`, `input.rs`, `interrupt.rs`, `error.rs`) | CREATE | The child loop, the per-run registry, the six handlers' logic |
-| `rustd/crates/afr_agent/src/loop.rs`, `rustd/crates/afr_agent/src/context.rs` | EDIT | A loop can be a child: depth, a shared counter, a shared budget |
-| `rustd/crates/afr_tools/src/catalog.rs`, `rustd/crates/afr_tools/src/nested.rs` | EDIT / CREATE | `delegate`, `spawn`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent` as `Supervisor` entries |
-| `rustd/crates/afr_agent/src/ledger.rs`, `rustd/crates/afr_agent/src/loop/finish.rs`, `rustd/crates/afr_agent/src/loop/attach.rs` | EDIT | One ledger for the run and its children: a call opens and closes under two short locks; the image a call read rides its output |
+| `rustd/crates/afr_agent/src/nested.rs`, `rustd/crates/afr_agent/src/nested/` (`answer.rs`, `child.rs`, `delegate.rs`, `fixture.rs`, `input.rs`, `interrupt.rs`, `list.rs`, `registry.rs`, `spawn.rs`, `start.rs`, `wait.rs`, and the `tests.rs`, `end_tests.rs`, `refusal_tests.rs`, `run_tests.rs` unit proofs beside them) | CREATE | The child loop, the per-run registry, the six handlers' logic, and their unit proofs with the scripted provider |
+| `rustd/crates/afr_agent/src/loop.rs`, `rustd/crates/afr_agent/src/loop/children.rs`, `rustd/crates/afr_agent/src/context.rs`, `rustd/crates/afr_agent/src/spans.rs` | EDIT / CREATE | A loop can be a child: depth, a shared counter, a shared budget; the root holds every descendant's future and ends them together |
+| `rustd/crates/afr_tools/src/catalog.rs`, `rustd/crates/afr_tools/src/catalog/tests.rs`, `rustd/crates/afr_tools/src/nested.rs`, `rustd/crates/afr_tools/src/nested/tests.rs` | EDIT / CREATE | `delegate`, `spawn`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent` as `Supervisor` entries |
+| `rustd/crates/afr_agent/src/ledger.rs`, `rustd/crates/afr_agent/src/ledger/tests.rs`, `rustd/crates/afr_agent/src/loop/finish.rs` | EDIT | One ledger for the run and its children: a call opens and closes under two short locks; the image a call read rides its output (`loop/attach.rs` needed no change) |
 | `rustd/crates/afr_tools/src/lease.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/sandbox/sessions.rs` | EDIT | The lease shared by concurrent calls: memory and egress each behind their own lock, every session behind its own, `ToolContext` lending `&Lease`; the image attachment moves onto `ToolOutput` |
 | `rustd/crates/afr_tools/src/{memory,egress,web_fetch,http_request,pushover}.rs`, `rustd/crates/afr_tools/src/sandbox/{shell,git,exec_session,image,browser,oneshot}.rs`, `rustd/crates/afr_tools/src/verbs/{schedules,message,once}.rs` | EDIT | Each handler reads the shared lease through its locks |
 | The test modules beside each edited file (`tests.rs`, `*_tests.rs`), `rustd/crates/afr_tools/src/testing.rs`, `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/{tools,git,files}.rs` | EDIT | Lend `&Lease`; read an image off the output; the new lock guarantees pinned |
 | `rustd/crates/afr_agent/src/loop/model_turn.rs` | CREATE | The model turn moves out of `loop.rs`, which stood at 367 lines against the 350 cap before the child loop adds to it |
-| `rustd/crates/afr_agent/tests/nested/` | CREATE | Unit proofs with the scripted provider |
-| `tests/fixtures/fleetbundle/delegating-triager/`, `rustd/crates/agentsfleetd/tests/integration_rust_runner_nested.rs`, `rustd/crates/agentsfleetd/tests/daemon_suite.rs` | CREATE / CREATE / EDIT | A bundle that fans two reads out to children, against the real daemon; its own suite module, since the bundles module sits at the length cap |
+| `tests/fixtures/fleetbundle/delegating-triager/`, `rustd/crates/agentsfleetd/tests/integration_rust_runner_nested.rs`, `rustd/crates/agentsfleetd/tests/support/bundle_run.rs`, `rustd/crates/agentsfleetd/tests/daemon_suite.rs` | CREATE / CREATE / EDIT / EDIT | A bundle that fans two reads out to children, against the real daemon; its own suite module, since the bundles module sits at the length cap |
 
 ## Applicable Rules
 
@@ -90,32 +89,32 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 A child loop runs with the parent's provider and key, its task as the user turn, the parent's system prompt and trusted repair context, the same sandbox, workspace and memory store, and a tool set that is the requested subset of the parent's tools; a requested tool the parent lacks is refused. At `NESTED_DEPTH_MAX` the child is offered none of the six nested tools. At most `CHILDREN_RUNNING_MAX` children run at once and `CHILDREN_PER_RUN_MAX` are started per run; past either, `spawn` and `delegate` refuse with a code. The context cap and token accounting are the run's: a child's turns count against them, and its usage sums into the one report.
 
-- **Dimension 1.1** DONE — `delegate` runs a child to its answer and returns it as the call's output → Test `test_delegate_returns_child_answer`
-- **Dimension 1.2** DONE — `spawn` returns a child id; `wait_agent` reports running then done; `send_input` reaches the child's next turn → Test `test_spawn_wait_send_round_trip`
-- **Dimension 1.3** DONE — A child at the depth cap is offered no nested tool → Test `test_nested_depth_capped`
-- **Dimension 1.4** DONE — The running and per-run caps refuse with their codes → Test `test_children_caps_refuse`
-- **Dimension 1.5** DONE — A child never holds a tool its parent lacks → Test `test_child_tools_subset_of_parent`
-- **Dimension 1.6** DONE — Children's usage sums into the report's three counts → Test `test_child_usage_sums_into_report`
+- **Dimension 1.1** DONE · PARKED for production (M213_001 Dimension 1.4) — `delegate` runs a child to its answer and returns it as the call's output → Test `test_delegate_returns_child_answer`
+- **Dimension 1.2** DONE · PARKED for production (M213_001 Dimension 1.4) — `spawn` returns a child id; `wait_agent` reports running then done; `send_input` reaches the child's next turn → Test `test_spawn_wait_send_round_trip`
+- **Dimension 1.3** DONE · PARKED for production (M213_001 Dimension 1.4) — A child at the depth cap is offered no nested tool → Test `test_nested_depth_capped`
+- **Dimension 1.4** DONE · PARKED for production (M213_001 Dimension 1.4) — The running and per-run caps refuse with their codes → Test `test_children_caps_refuse`
+- **Dimension 1.5** DONE · PARKED for production (M213_001 Dimension 1.4) — A child never holds a tool its parent lacks → Test `test_child_tools_subset_of_parent`
+- **Dimension 1.6** DONE · PARKED for production (M213_001 Dimension 1.4) — Children's usage sums into the report's three counts → Test `test_child_usage_sums_into_report`
 
 ### §2 — Children are visible as the run's own calls — DONE
 
 A child's tool calls take ids from the run-wide counter and emit the same frames and trace rows as the parent's; the parent's `delegate` or `spawn` call is itself a call whose output is the child's answer or id. The trace caps count every call of the run. The thread therefore shows a child's reads as rows of the same turn.
 
-- **Dimension 2.1** DONE — Child calls carry run-wide ids and appear in the frames and the trace → Test `test_child_calls_share_the_run_trace`
-- **Dimension 2.2** DONE — The trace's 200-call cap counts child calls → Test `test_trace_cap_counts_child_calls`
+- **Dimension 2.1** DONE · PARKED for production (M213_001 Dimension 1.4) — Child calls carry run-wide ids and appear in the frames and the trace → Test `test_child_calls_share_the_run_trace`
+- **Dimension 2.2** DONE · PARKED for production (M213_001 Dimension 1.4) — The trace's 200-call cap counts child calls → Test `test_trace_cap_counts_child_calls`
 
 ### §3 — Every child ends with its parent, and every child call ends once — DONE
 
 When the parent's run ends for any reason — answer, kill, timeout, provider failure, context cap — the registry ends every running child, and each child's open calls close `interrupted` exactly once. `interrupt_agent` ends one child the same way; `list_agents` reports each child's state. A child that ends on its own leaves its answer for `wait_agent`.
 
-- **Dimension 3.1** DONE — Parent end interrupts every running child; open calls close once → Test `test_parent_end_interrupts_children`
-- **Dimension 3.2** DONE — `interrupt_agent` ends one child; `list_agents` shows running, done and interrupted → Test `test_interrupt_and_list_agents`
+- **Dimension 3.1** DONE · PARKED for production (M213_001 Dimension 1.4) — Parent end interrupts every running child; open calls close once → Test `test_parent_end_interrupts_children`
+- **Dimension 3.2** DONE · PARKED for production (M213_001 Dimension 1.4) — `interrupt_agent` ends one child; `list_agents` shows running, done and interrupted → Test `test_interrupt_and_list_agents`
 
 ### §4 — A bundle fans out against the real daemon — DONE
 
 The integration lane adds a support bundle that delegates two file reads to two children and summarises, driven by the fake model, and checks the thread's trace holds the parent's `delegate` calls and the children's reads under one counter.
 
-- **Dimension 4.1** DONE — The delegating bundle runs end to end and its trace holds parent and child calls → Test `test_delegating_bundle_roundtrip`
+- **Dimension 4.1** DONE · PARKED for production (M213_001 Dimension 1.4) — The delegating bundle runs end to end and its trace holds parent and child calls → Test `test_delegating_bundle_roundtrip`
 
 ## Interfaces
 
@@ -177,7 +176,7 @@ Codes: CHILD_CAP_REACHED · CHILD_TOOL_NOT_HELD · CHILD_NOT_FOUND · CHILD_FAIL
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Children share the lease and end with it (§1–§3) | `cargo test --manifest-path rustd/Cargo.toml -p afr_agent nested` | exit 0 | P0 | |
-| R2 | A delegating bundle round-trips against the real daemon (§4) | `make test-integration-rustd && grep -c "fn test_delegating_bundle_roundtrip(" rustd/crates/agentsfleetd/tests/integration_rust_runner_bundles.rs` | 1 | P0 | |
+| R2 | A delegating bundle round-trips against the real daemon (§4) | `make test-integration-rustd && grep -c "fn test_delegating_bundle_roundtrip(" rustd/crates/agentsfleetd/tests/integration_rust_runner_nested.rs` | 1 | P0 | |
 | R3 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -232,6 +231,8 @@ N/A — no files deleted.
 - **Agent defaults** — depth 2; four running and sixteen per run; a child inherits the parent's system prompt and trusted repair context; children's rows ride the run's counter with no parent link until the chat can fold them.
 - **Metrics review** — No analytics or funnel playbook update required: no user surface; three operator log events added.
 - **Skill-chain outcomes** — `/orly-write-unit-test` over §1–§3 (`fe639e11d..28bda2d1e`, Oct 07, 2026), change-set mode. Diff ledger: 31 changed units, 25 pinned by the Section commits, 6 gaps found and closed, each red with its guard removed and green with it back: every published handler entry is hosted (`afr_tools` `catalog/tests.rs`; red when `hosted` skips five of the six); a child's text reaches no frame (`run_tests.rs`; red with `Live::new` in place of `Live::silent`); input before a child's first turn joins its task (`tests.rs`; red with the merge branch disabled); a nested call past the depth cap reads `tool_not_offered` and starts nothing (`tests.rs`; red with the offered check dropped); an interrupted child's slot is freed once, by `interrupt_agent` and not again by its own end (`end_tests.rs`; red with the final-status guard removed from `Book::end`); a child writes no checkpoint of its own (`run_tests.rs`; red with `Checkpoints::new` in place of `never`). Won't-test: `Kind::as_str` spellings ride every JSON assertion; `Selection: Clone` is a derive. Negative-path ratio on the nested suites: 11 of 20 tests end on a refusal, an interruption or a failure. `cargo test -p afr_tools -p afr_agent --all-features`: 237 and 123 passed. `/orly-write-integration-test`: §4's bundle is the boundary proof.
-- **Deferrals** — none.
+- **Production run parked on M213_001** — > Indy (2026-10-07 ~16:08, AskUserQuestion): "Move them the dimenstions as parked and the spec as DONE. Mention in a prompt to me so i can ask the other agent in M213 to deploy and test this." — context: `agentsfleet_runner/src/main.rs:184-185` refuses every lease with `NO_AGENT_ENGINE`, so the nested loop runs only under test wiring (`agentsfleetd/tests/support/bundle_run.rs:150`) until M213_001 Dimension 1.4 builds the engine into the binary. Every Dimension is tested and marked PARKED for production.
+- **Published docs** — the four Codex-shaped tools and their limits are on `fleets/tools.mdx` in the docs repo, branch `chore/m211-sandbox-tools-changelog`, commit `2eff222`, with the changelog entry in `3c51b93`; they publish with that branch.
+- **Deferrals** — the production run, to M213_001 (quote above); nothing else.
 - **Carried from M211_001** — three greptile findings on PR #732, taken up at this spec's PLAN:
   > Indy (2026-10-06, before 23:33): "Okay so fix the apply_path.rs:92 issue only, and reply to others on deferral. upon fix push the PR" — context: `afr_tools/src/sandbox/apply_patch.rs:257`, a move drops the execute bit; `afr_tools/src/sandbox/output.rs:89`, the drain outlasts its yield under a flood; `afr_sandbox/src/toolbox/holds.rs:71`, a crash leaves the rollback release mounted. `apply_patch.rs:92` was fixed on that PR in `1000de460`; PR #732 Session notes 4 and the three threads carry the detail.

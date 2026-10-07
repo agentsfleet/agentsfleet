@@ -12,10 +12,10 @@ impl Harness<'_, '_> {
     /// scrubbed like anything the model wrote, joined onto a user message
     /// already waiting so no provider sees two in a row.
     pub(super) fn read_input(&mut self) {
-        let Some(input) = self.input.as_mut() else {
+        let Some(child) = self.child.as_mut() else {
             return;
         };
-        while let Ok(text) = input.try_recv() {
+        while let Ok(text) = child.input.try_recv() {
             let text = self.shared.scrub.clean(text).into_inner();
             if let Some(Message::User(waiting)) = self.messages.last_mut() {
                 waiting.push_str(INPUT_JOIN);

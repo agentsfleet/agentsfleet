@@ -9,34 +9,27 @@
 use afd_core::test_util::trace::Capture;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::{Chunk, Error};
-use afr_tools::Tool;
 use afr_tools::catalog::{DELEGATE, HTTP_REQUEST, INTERRUPT_AGENT, SEND_INPUT, SPAWN, WAIT_AGENT};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::child::EVENT_CHILD_ENDED;
 use super::fixture::{
-    ACCEPTED, ANSWER, BRIEF_MS, CHILD_ID, DONE, INTERRUPTED, NEVER, OPENING, RUNNING, STALLS,
-    STATUS, TASK, TASK_KEY, TIMEOUT_MS, events, last_result, offered as shared_names, parsed,
-    requests_opening_with, tools as shared_tools,
+    ACCEPTED, ANSWER, BRIEF_MS, CHILD_ID, DETAIL, DONE, FAILED, INTERRUPTED, NEVER, OPENING,
+    RUNNING, STALLS, STATUS, TASK, TASK_KEY, TIMEOUT_MS, events, last_result, parsed,
+    requests_opening_with, stalling_offered, stalling_tools,
 };
-use crate::fixture::{Canned, Script, Sent, call, lease, say, unbounded};
+use crate::fixture::{Script, Sent, call, lease, say, unbounded};
 use crate::harness::tests::{completions, drive, engine};
 
 /// An id no child of a run has.
 const UNKNOWN: u64 = 9;
+/// The status a failing child's provider answers with.
+const UNAVAILABLE: u16 = 503;
 
-/// The six with the two, and a network tool that never answers.
-fn tools() -> Vec<Box<dyn Tool>> {
-    let mut tools = shared_tools();
-    tools.push(Canned::boxed(&HTTP_REQUEST, ""));
-    tools
-}
-
-fn offered() -> Vec<&'static str> {
-    let mut names = shared_names();
-    names.push(HTTP_REQUEST.name());
-    names
+/// The upstream fault a failing child's provider ends its turn on.
+fn unavailable() -> Error {
+    Error::refused(UNAVAILABLE)
 }
 
 /// The task of the `n`th stalling child.
@@ -65,8 +58,8 @@ async fn test_unknown_child_reads_not_found() {
         )],
         vec![say(DONE)],
     ]);
-    let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
 
     let (_output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
 
@@ -96,8 +89,8 @@ async fn test_input_after_a_child_ended_is_not_accepted() {
         vec![say(DONE)],
     ])
     .with_child(TASK, [vec![say("x")]]);
-    let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
 
     let (_output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
 
@@ -115,9 +108,9 @@ async fn test_a_delegated_childs_failure_is_the_calls_failure() {
         vec![call("p1", DELEGATE.name(), json!({TASK_KEY: TASK}))],
         vec![say("the child failed, so I read the logs myself")],
     ])
-    .with_failing_child(TASK, vec![say("partial ")], || Error::refused(503));
-    let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    .with_failing_child(TASK, vec![say("partial ")], unavailable);
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
 
     let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
 
@@ -132,6 +125,37 @@ async fn test_a_delegated_childs_failure_is_the_calls_failure() {
         output.result.content, "the child failed, so I read the logs myself",
         "the parent decides"
     );
+}
+
+/// A spawned child that fails leaves its failure for `wait_agent`, which
+/// answers the child's status and its detail; the parent decides.
+#[tokio::test]
+async fn test_wait_agent_returns_a_spawned_childs_failure() {
+    let script = Script::new([
+        vec![call("p1", SPAWN.name(), json!({TASK_KEY: TASK}))],
+        vec![call("p2", WAIT_AGENT.name(), json!({CHILD_ID: 1}))],
+        vec![say(DONE)],
+    ])
+    .with_failing_child(TASK, vec![say("partial ")], unavailable);
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
+
+    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+
+    let root = root_requests(&script);
+    assert_eq!(
+        parsed(last_result(&root[2])),
+        json!({STATUS: FAILED, DETAIL: unavailable().detail()})
+    );
+    assert_eq!(
+        completions(&frames),
+        [
+            ("1".to_owned(), ToolCallStatus::Succeeded),
+            ("2".to_owned(), ToolCallStatus::Succeeded)
+        ],
+        "the wait read the failure; it did not fail itself"
+    );
+    assert_eq!(output.result.content, DONE, "the parent decides");
 }
 
 #[tokio::test(start_paused = true)]
@@ -154,8 +178,8 @@ async fn test_interrupting_a_child_mid_call_ends_its_call_once() {
             vec![say(NEVER)],
         ],
     );
-    let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
 
     let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
 
@@ -222,8 +246,8 @@ async fn test_an_interrupted_childs_slot_is_freed_once() {
             ],
         );
     }
-    let engine = engine(tools(), &script);
-    let lease = lease(&offered(), unbounded());
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
 
     let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
 
