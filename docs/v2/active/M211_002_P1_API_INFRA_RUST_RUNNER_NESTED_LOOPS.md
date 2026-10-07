@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `test_delegate_returns_child_answer` — a run whose model calls `delegate { task: "read a.md and b.md and summarise" }` starts a child loop with the same provider and key, the task as its prompt and a subset of the parent's tools; the child's two `file_read` calls emit frames and trace rows under the run's own counter; the child's answer returns as the `delegate` call's output; the report's token counts include the child's; and when the parent is killed while a `spawn`ed child is mid-call, that child's call ends `interrupted` exactly once.
+**Goal (testable):** `test_delegate_returns_child_answer` — a run whose model calls `delegate { task: "read a.md and b.md and summarise" }` starts a child loop with the same provider and key, the task as its prompt and a subset of the parent's tools; the child's two tool calls emit frames and trace rows under the run's own counter; the child's answer returns as the `delegate` call's output; the report's token counts include the child's; and when the parent is killed while a `spawn`ed child is mid-call, that child's call ends `interrupted` exactly once.
 **Problem:** M210_002 refuses a lease that lists `delegate` or `spawn`, so a fleet that fans an investigation out, or hands a sub-task to a focused prompt, cannot run on Rust. Codex solves the same need with `spawn_agent`, `wait_agent`, `send_input`, `list_agents` and `interrupt_agent` (`core/src/tools/handlers/multi_agents_spec.rs`), and the published page promises `delegate` and `spawn`.
 **Solution summary:** A child is a nested `afr_agent::Loop` inside the parent's lease: same provider and key, same sandbox and workspace, same memory store, the run-wide call counter, a tool set that is a subset of the parent's, and depth and count caps. `delegate` runs a child to its answer and returns it; `spawn` returns a child id for `wait_agent`, `send_input`, `list_agents` and `interrupt_agent`. The parent's end, for any reason, ends every child, and every child call ends once. Usage sums into the one report.
 
@@ -53,15 +53,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afr_agent/src/nested.rs`, `rustd/crates/afr_agent/src/nested/` (`answer.rs`, `child.rs`, `delegate.rs`, `fixture.rs`, `input.rs`, `interrupt.rs`, `list.rs`, `registry.rs`, `spawn.rs`, `start.rs`, `wait.rs`, and the `tests.rs`, `end_tests.rs`, `refusal_tests.rs`, `run_tests.rs` unit proofs beside them) | CREATE | The child loop, the per-run registry, the six handlers' logic, and their unit proofs with the scripted provider |
-| `rustd/crates/afr_agent/src/loop.rs`, `rustd/crates/afr_agent/src/loop/children.rs`, `rustd/crates/afr_agent/src/context.rs`, `rustd/crates/afr_agent/src/spans.rs` | EDIT / CREATE | A loop can be a child: depth, a shared counter, a shared budget; the root holds every descendant's future and ends them together |
+| `rustd/crates/afr_agent/src/nested.rs`, `rustd/crates/afr_agent/src/nested/` (`answer.rs`, `child.rs`, `delegate.rs`, `fixture.rs`, `input.rs`, `interrupt.rs`, `list.rs`, `registry.rs`, `spawn.rs`, `start.rs`, `wait.rs`, and the `tests.rs`, `answer_tests.rs`, `end_tests.rs`, `interrupt_tests.rs`, `lifetime_tests.rs`, `refusal_tests.rs`, `run_tests.rs` unit proofs beside them) | CREATE | The child loop, the per-run registry, the six handlers' logic, and their unit proofs with the scripted provider |
+| `rustd/crates/afr_agent/src/loop.rs`, `rustd/crates/afr_agent/src/loop/children.rs`, `rustd/crates/afr_agent/src/context.rs` | EDIT / CREATE | A loop can be a child: depth, a shared counter, a shared budget; the root holds every descendant's future and ends them together |
 | `rustd/crates/afr_tools/src/catalog.rs`, `rustd/crates/afr_tools/src/catalog/tests.rs`, `rustd/crates/afr_tools/src/nested.rs`, `rustd/crates/afr_tools/src/nested/tests.rs` | EDIT / CREATE | `delegate`, `spawn`, `wait_agent`, `send_input`, `list_agents`, `interrupt_agent` as `Supervisor` entries |
 | `rustd/crates/afr_agent/src/ledger.rs`, `rustd/crates/afr_agent/src/ledger/tests.rs`, `rustd/crates/afr_agent/src/loop/finish.rs` | EDIT | One ledger for the run and its children: a call opens and closes under two short locks; the image a call read rides its output (`loop/attach.rs` needed no change) |
 | `rustd/crates/afr_tools/src/lease.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/sandbox/sessions.rs` | EDIT | The lease shared by concurrent calls: memory and egress each behind their own lock, every session behind its own, `ToolContext` lending `&Lease`; the image attachment moves onto `ToolOutput` |
-| `rustd/crates/afr_tools/src/{memory,egress,web_fetch,http_request,pushover}.rs`, `rustd/crates/afr_tools/src/sandbox/{shell,git,exec_session,image,browser,oneshot}.rs`, `rustd/crates/afr_tools/src/verbs/{schedules,message,once}.rs` | EDIT | Each handler reads the shared lease through its locks |
-| The test modules beside each edited file (`tests.rs`, `*_tests.rs`), `rustd/crates/afr_tools/src/testing.rs`, `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/{tools,git,files}.rs` | EDIT | Lend `&Lease`; read an image off the output; the new lock guarantees pinned |
+| `rustd/crates/afr_tools/src/{memory,egress,web_fetch,pushover}.rs`, `rustd/crates/afr_tools/src/sandbox/{shell,git,exec_session,image,browser,oneshot}.rs`, `rustd/crates/afr_tools/src/verbs/{schedules,message,once}.rs` | EDIT | Each handler reads the shared lease through its locks |
+| `rustd/crates/afr_tools/src/{handler/tests.rs,http_request/tests.rs,memory/{shared_tests,tests}.rs,plan/tests.rs,pushover/tests.rs,sandbox/{apply_patch/tests.rs,browser/tests.rs,exec_session/{live_tests,refusal_tests,tests,write_tests}.rs,files/{gate_tests,limits_tests,tests}.rs,git/tests.rs,hashed/{range_tests,tests}.rs,image/tests.rs,read/tests.rs,sessions/tests.rs,shell/tests.rs},verbs/{message/tests.rs,once/tests.rs,schedules/tests.rs},web_fetch/tests.rs}`, `rustd/crates/afr_agent/src/{loop/image_tests.rs,router/tests.rs}`, `rustd/crates/afr_tools/src/testing.rs`, `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/{tools,git,files}.rs` | EDIT | The test modules beside each edited file lend `&Lease` and read an image off the output; the new lock guarantees pinned |
+| `rustd/crates/afr_tools/src/{handler,lib,schema,selection,stub}.rs` | CREATE / EDIT | `Selection` narrows a parent's tools to the names a child asks for; `parsed` is the one place a call's arguments become a type; `NoArguments` moves from `stub` to `schema` |
+| `rustd/crates/afr_agent/src/{events,router}.rs`, `rustd/crates/afr_agent/src/loop/conversation.rs` | CREATE / EDIT | The three child log events; the router lends `&Lease`; between turns a loop reads what its parent sent into its next turn |
 | `rustd/crates/afr_agent/src/loop/model_turn.rs` | CREATE | The model turn moves out of `loop.rs`, which stood at 367 lines against the 350 cap before the child loop adds to it |
-| `tests/fixtures/fleetbundle/delegating-triager/`, `rustd/crates/agentsfleetd/tests/integration_rust_runner_nested.rs`, `rustd/crates/agentsfleetd/tests/support/bundle_run.rs`, `rustd/crates/agentsfleetd/tests/daemon_suite.rs` | CREATE / CREATE / EDIT / EDIT | A bundle that fans two reads out to children, against the real daemon; its own suite module, since the bundles module sits at the length cap |
+| `docs/v2/active/M211_002_P1_API_INFRA_RUST_RUNNER_NESTED_LOOPS.md`, `playbooks/operations/acceptance/baselines/M211-bb0070015.md` | CREATE / EDIT | This spec, moved from `pending/` at CHORE(open); the test baseline every M211 spec on this branch cites |
+| `tests/fixtures/fleetbundle/delegating-triager/`, `rustd/crates/agentsfleetd/tests/integration_rust_runner_nested.rs`, `rustd/crates/agentsfleetd/tests/daemon_suite.rs` | CREATE / CREATE / EDIT | A bundle that fans two reads out to children, against the real daemon; its own suite module, since the bundles module sits at the length cap |
 
 ## Applicable Rules
 
@@ -119,12 +122,12 @@ The integration lane adds a support bundle that delegates two file reads to two 
 ## Interfaces
 
 ```
-delegate        { task, tools? }              → { answer }                     (runs to completion)
+delegate        { task, tools? }              → the child's answer as plain text (runs to completion); a failed child → `child_failed` with its detail; an interrupted one → `interrupted`
 spawn           { task, tools? }              → { child_id }
 wait_agent      { child_id, timeout_ms? }     → { status: running|done|failed|interrupted, answer?, detail? }
 send_input      { child_id, message }         → { accepted: bool }
-list_agents     {}                            → [{ child_id, status, depth, calls }]
-interrupt_agent { child_id }                  → { status }
+list_agents     {}                            → [{ child_id, status: running|done|failed|interrupted, depth, calls }]
+interrupt_agent { child_id }                  → { status }                     interrupted, or the end the child already had
 
 Constants: NESTED_DEPTH_MAX 2 · CHILDREN_RUNNING_MAX 4 · CHILDREN_PER_RUN_MAX 16
 Codes: CHILD_CAP_REACHED · CHILD_TOOL_NOT_HELD · CHILD_NOT_FOUND · CHILD_FAILED
@@ -159,13 +162,13 @@ Codes: CHILD_CAP_REACHED · CHILD_TOOL_NOT_HELD · CHILD_NOT_FOUND · CHILD_FAIL
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | unit | `test_delegate_returns_child_answer` | scripted child: 2 reads then "summary" → `delegate` output `summary` |
+| 1.1 | unit | `test_delegate_returns_child_answer` | scripted child: `update_plan` and `memory_recall`, then "summary" → `delegate` output `summary`; the child's first request offers those two tools under the parent's system prompt |
 | 1.2 | unit | `test_spawn_wait_send_round_trip` | spawn → id; wait 0 ms → running; send "also c" → child's next turn holds it; wait → done |
 | 1.3 | unit | `test_nested_depth_capped` | child at depth 2 → catalog offered has none of the six |
 | 1.4 | unit | `test_children_caps_refuse` | 5th running → `CHILD_CAP_REACHED`; 17th total → same |
-| 1.5 | unit | `test_child_tools_subset_of_parent` | parent `[file_read]`, child asks `[file_read, shell]` → `CHILD_TOOL_NOT_HELD` |
+| 1.5 | unit | `test_child_tools_subset_of_parent` | parent holds `[update_plan, delegate]`, child asks `[update_plan, memory_recall]` → `CHILD_TOOL_NOT_HELD` naming `memory_recall`; no child started |
 | 1.6 | unit | `test_child_usage_sums_into_report` | parent (10,0,5) + child (20,4,6) → 30, 4, 11 |
-| 2.1 | unit | `test_child_calls_share_the_run_trace` | parent call 1, child calls 2 and 3 → frames and trace rows with ids 1..3 |
+| 2.1 | unit | `test_child_calls_share_the_run_trace` | parent `delegate` call 1, the child's `update_plan` and `memory_recall` calls 2 and 3 → frames and trace rows with ids 1..3, the child's calls ending inside the parent's |
 | 2.2 | unit | `test_trace_cap_counts_child_calls` | 150 parent + 60 child calls → `omitted_call_count` 10 |
 | 3.1 | unit | `test_parent_end_interrupts_children` | kill parent mid-child-call → one `interrupted` for that call, child `interrupted` |
 | 3.2 | unit | `test_interrupt_and_list_agents` | 2 spawned, interrupt one → list shows `running`, `interrupted` |
