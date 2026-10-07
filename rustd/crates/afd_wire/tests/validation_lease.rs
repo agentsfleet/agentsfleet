@@ -151,6 +151,11 @@ fn test_lease_history_defaults_empty() {
     assert_eq!(payload.history, [] as [afd_wire::lease::Turn<'_>; 0]);
     let encoded = serde_json::to_value(&payload).unwrap();
     assert_eq!(encoded["history"], serde_json::json!([]));
+
+    let turns = serde_json::json!([{"message": "m1", "answer": "a1"}]);
+    let carried = text.replace(r#""lease_id""#, &format!(r#""history":{turns},"lease_id""#));
+    let payload: LeasePayload<'_> = serde_json::from_str(&carried).unwrap();
+    assert_eq!(serde_json::to_value(&payload).unwrap()["history"], turns);
 }
 
 /// A lease from a daemon that predates the field decodes as building fresh,
