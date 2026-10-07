@@ -73,7 +73,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_sandbox/examples/kernel_lane/exhaustion.rs` | CREATE | The exhaustion trials, apart from `trials.rs` so neither passes the length cap |
 | `rustd/crates/afr_sandbox/src/bubblewrap/tests.rs`, `rustd/crates/afr_sandbox/src/workspace_disk/tests.rs` | EDIT | The argument builder binds `tmp/`; the disk's two directories and their modes |
 | `docs/architecture/runner_execution.md` | EDIT | §"Sandbox engines": the two leaves, `/tmp` on the disk, the lease's size |
-| `docs/v2/pending/M214_001_P1_DOCS_OBS_RUST_RUNNER_EXPORTS_ITS_TELEMETRY.md` | EDIT | The runner census gains this workstream's two counters |
+| `docs/metrics.runner.census.tsv`, `rustd/crates/afr_telemetry/src/{families.rs,record.rs,testing.rs}`, `rustd/crates/afr_telemetry/src/families/tests.rs` | EDIT | The runner census gains `agentsfleet_runner_tool_out_of_memory_total`; the tool family's ceiling follows the catalog's 40 labels (39 published plus `_other`, after the nested-loop tools) |
+| `rustd/crates/afr_agent/src/spans.rs`, `rustd/crates/afr_agent/src/ledger.rs`, `rustd/crates/afr_agent/src/ledger/tests.rs` | EDIT | `execute_tool` carries `error.type` from the call's closed code; a call killed for memory is counted |
 
 ## Applicable Rules
 
@@ -174,10 +175,10 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `error.type = out_of_memory` on the call's `execute_tool` span (`afd_observability::semconv::ATTR_ERROR_TYPE`) | ops | A tenant process is killed for memory | the span's existing ids | No command text | `test_oom_ending_reads_out_of_memory` |
+| `error.type = out_of_memory` on the call's `execute_tool` span (`afd_observability::semconv::ATTR_ERROR_TYPE`) | ops | A tenant process is killed for memory; any other closed code a call ends with rides it the same way | the span's existing ids | No command text | `a_call_killed_for_memory_is_counted_and_typed_on_its_span` |
 | `sandbox_out_of_memory` (runner log, warn) | ops | Same | lease id, `error_code`; the call's ids ride its span | No command text | `test_oom_ending_reads_out_of_memory` |
 | `sandbox_size_refused` (runner log, warn) | ops | A lease names a size past a bound | lease id, `error_code` | No paths | `a_size_past_its_bounds_refuses_the_lease_before_any_sandbox` |
-| `agentsfleet_runner_tool_out_of_memory_total` (runner census, M214_001) | ops | A tenant process is killed for memory | none — closed label set | — | M214_001's producer-coverage test |
+| `agentsfleet_runner_tool_out_of_memory_total` (runner census) | ops | A tenant process is killed for memory | none — closed label set | — | `a_call_killed_for_memory_is_counted_and_typed_on_its_span`, `test_every_runner_census_family_has_a_producer` |
 
 ## Test Specification (tiered)
 
@@ -254,5 +255,5 @@ N/A — no files deleted. The sandbox's `/tmp` tmpfs flag goes in place.
 - **Consults** — §3 on the kernel lane (Oct 07, 2026): the lane made its state under `/tmp`, a tmpfs on `afr-kernel` (`findmnt`), so every workspace image was memory and the 4 GiB fill was killed whatever the loop device cached; on a disk (`/var/tmp`, btrfs) `losetup --direct-io=on` reads back `dio` 1 and 3.2 ends in `ENOSPC`. The lane's state now lives under `/var/tmp`, as a host's does on its disk. Indy (in-session, Oct 05, 2026): "Fix all fixes in this PR", approving D3's four fixes in a new workstream of this Pull Request. Source and evidence: spike S6 (`docs/v2/reviews/m211-toolbox-spikes.md`); Landlock grants writes only beneath `WRITABLE` (`rustd/crates/afr_sandbox/src/harden/linux.rs:50-57`); bubblewrap enters its cgroup through an engine-opened descriptor (`bubblewrap_engine/parts.rs:89,282`).
 - **Metrics review** — Two runner log events; no analytics or funnel playbook change.
 - **Skill-chain outcomes** — pending.
-- **§5 sizes** (Oct 07, 2026: 1:10 PM) — the trial runs at 1 GiB of disk and 512 MiB of memory per lease, a quarter of S6's, because four default leases need 16 GiB the lane host does not have. Asked of Indy with the default as the other option; no answer yet, so the scaled sizes stand until he picks.
+- **§5 sizes** (Oct 07, 2026: 1:10 PM) — the trial runs at 1 GiB of disk and 512 MiB of memory per lease, a quarter of S6's, because four default leases need 16 GiB the lane host does not have. Indy (in-session, Oct 07, 2026) approved the scaled sizes: "yes go ahead", answering the recommendation of 1 GiB / 512 MiB over S6's 4 GiB / 2 GiB.
 - **Deferrals** — §4's host disk reserve, as written at PLAN (`capacity.rs`, the worker's wait, `sandbox_capacity_short`, `agentsfleet_runner_capacity_short_total`), is not built. Indy (in-session, Oct 07, 2026): "for now the host disk size can get maxed, that is fine, its a separate think to solve disk pressure." §4 became the lease's size in its place, Indy choosing "Lease field": the size rides `LeasePayload`, the daemon sends null for now, and tests inject it.

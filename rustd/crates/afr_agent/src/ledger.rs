@@ -22,8 +22,8 @@ use afd_wire::tool_trace::{ToolCallStatus, ToolTrace};
 use afr_providers::Call;
 use afr_telemetry::labels::{Tool, ToolOutcome};
 use afr_telemetry::record;
-use afr_tools::ToolOutput;
 use afr_tools::sandbox::ImageAttachment;
+use afr_tools::{ToolErrorCode, ToolOutput};
 use serde_json::{Map, Value};
 use tracing::Instrument as _;
 
@@ -84,7 +84,9 @@ impl<'run> Ledger<'run> {
     ) -> (Clean<String>, Option<ImageAttachment>) {
         let open = self.open(call);
         let span = spans::execute_tool(&call.name, &open.id);
-        open.close(handler.instrument(span).await)
+        let output = handler.instrument(span.clone()).await;
+        spans::failed(&span, output.error_code);
+        open.close(output)
     }
 
     /// Opens the next call: numbers it, scrubs and bounds its arguments, and
@@ -167,6 +169,9 @@ impl Opened<'_, '_> {
     /// Ends the call with what its handler returned, and hands back the
     /// scrubbed text the model reads and the image the call read.
     fn close(mut self, output: ToolOutput) -> (Clean<String>, Option<ImageAttachment>) {
+        if output.error_code == Some(ToolErrorCode::OutOfMemory) {
+            record::out_of_memory();
+        }
         let text = self.ledger.scrub.clean(output.text);
         let failed = output.error_code.is_some() || output.exit_code.is_some_and(|code| code != 0);
         let status = if failed {

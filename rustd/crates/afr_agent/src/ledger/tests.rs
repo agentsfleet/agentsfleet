@@ -231,3 +231,52 @@ async fn dropping_a_call_with_one_open_inside_it_interrupts_both_once() {
     );
     assert!(records.is_empty(), "an interrupted call posts no record");
 }
+
+/// A call the kernel killed for memory is counted once, and its span carries
+/// `error.type = out_of_memory`; a call that only exited non-zero is neither
+/// counted nor typed.
+#[tokio::test]
+async fn a_call_killed_for_memory_is_counted_and_typed_on_its_span() {
+    use afd_observability::semconv::{ATTR_ERROR_TYPE, OPERATION_EXECUTE_TOOL};
+    use afr_telemetry::testing::{Recorded, Tally, scoped};
+    use afr_tools::ToolErrorCode;
+
+    let capture = Capture::install();
+    let frames = Frames::default();
+    let sink = frames.sink();
+    let scrub = scrub();
+    let (tally, recorded) = Tally::new();
+
+    scoped(tally, async {
+        let ledger = Ledger::new(LEASE_ID, &sink, &scrub);
+        let killed = ToolOutput {
+            exit_code: Some(137),
+            error_code: Some(ToolErrorCode::OutOfMemory),
+            ..ToolOutput::succeeded(String::new())
+        };
+        ledger.call(&planned(), async { killed }).await;
+        let exited = ToolOutput {
+            exit_code: Some(2),
+            ..ToolOutput::succeeded(String::new())
+        };
+        ledger.call(&planned(), async { exited }).await;
+    })
+    .await;
+    frames.taken();
+
+    let kills = recorded
+        .try_iter()
+        .filter(|recorded| *recorded == Recorded::OutOfMemory)
+        .count();
+    assert_eq!(kills, 1, "the killed call is counted, the exited one is not");
+    let types: Vec<Option<String>> = capture
+        .spans()
+        .iter()
+        .filter(|span| span.name == OPERATION_EXECUTE_TOOL)
+        .map(|span| span.field(ATTR_ERROR_TYPE).map(str::to_owned))
+        .collect();
+    assert_eq!(
+        types,
+        [Some(ToolErrorCode::OutOfMemory.as_str().to_owned()), None]
+    );
+}

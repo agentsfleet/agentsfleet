@@ -22,7 +22,7 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider, Temporality};
 use super::{
     ACTIVITY_FRAMES_DROPPED, Families, MEMORY_PUSH_FAILURES, OTLP_ENTRIES_DISCARDED,
     PROVIDER_RETRIES, PROVIDER_TURN_DURATION, SANDBOX_START_DURATION, SPANS_SUPPRESSED,
-    TOOL_CALL_DURATION, registry,
+    TOOL_CALL_DURATION, TOOL_OUT_OF_MEMORY, registry,
 };
 use crate::labels::{
     FrameDrop, Provider, PushFailure, RetryReason, SandboxStart, Tool, ToolOutcome, TurnOutcome,
@@ -115,7 +115,7 @@ fn test_every_runner_census_family_has_a_producer() {
 }
 
 /// Each family, and how many series its closed sets can produce.
-fn label_products() -> [(&'static str, usize); 8] {
+fn label_products() -> [(&'static str, usize); 9] {
     [
         (
             PROVIDER_TURN_DURATION.wire_name(),
@@ -132,6 +132,7 @@ fn label_products() -> [(&'static str, usize); 8] {
             TOOL_CALL_DURATION.wire_name(),
             Tool::COUNT * ToolOutcome::ALL.len(),
         ),
+        (TOOL_OUT_OF_MEMORY.wire_name(), 1),
         (SPANS_SUPPRESSED.wire_name(), 1),
         (
             OTLP_ENTRIES_DISCARDED.wire_name(),
@@ -181,6 +182,7 @@ fn every_producer_writes_the_keys_its_census_row_declares() {
     families.frames_dropped(FrameDrop::Backpressure, 3);
     families.push_failed(PushFailure::Upstream);
     families.tool_call(Tool::of("file_read"), ToolOutcome::Succeeded, elapsed);
+    families.out_of_memory();
     families.spans_suppressed(2);
     families.export_discarded(Signal::Traces, DiscardReason::ExportRejected, 4);
     provider.force_flush().expect("the reader collects");
