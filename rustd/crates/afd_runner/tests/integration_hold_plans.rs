@@ -89,12 +89,14 @@ const ANALYZE_SLOTS: &str = "ANALYZE fleet.runner_affinity";
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
 
 /// The reconcile's text prepared with the types sqlx binds it with: the
-/// runner and the listed fleets as text, the instant and interval as `i64`.
-const PREPARE_CLEAR: &str = "PREPARE clear_dropped_holds (text, text[], bigint, bigint) AS ";
+/// runner and the listed fleets as text, the instant and interval as `i64`,
+/// and whether the beat is closing.
+const PREPARE_CLEAR: &str =
+    "PREPARE clear_dropped_holds (text, text[], bigint, bigint, boolean) AS ";
 
 /// Its plan. The values are placeholders a generic plan never reads.
 const EXPLAIN_CLEAR: &str = "EXPLAIN EXECUTE clear_dropped_holds \
-('01890a5d-ac96-774b-bcce-b302099a80a1', '{}', 0, 0)";
+('01890a5d-ac96-774b-bcce-b302099a80a1', '{}', 0, 0, false)";
 
 /// Drops the prepared text, which outlives the transaction.
 const DEALLOCATE_CLEAR: &str = "DEALLOCATE clear_dropped_holds";
