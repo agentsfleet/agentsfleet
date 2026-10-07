@@ -89,11 +89,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — Measure before the cut
+### §1 — Measure before the cut — DONE
 
 Three scenarios on this Mac at the branch head before the cut, (A) and (B) the median of three runs and (C) one: (A) `touch rustd/crates/afd_wire/src/admin.rs`, then `cargo build -p agentsfleet_runner`; (B) the same touch, then `cargo build -p agentsfleetd`; (C) a clean `cargo build --workspace --timings` in a fresh target directory, reading `afd_wire`'s unit time. Wall time and the count of `Compiling` lines go into Discovery. Indy has decided the split; the numbers are its record, not its gate.
 
-- **Dimension 1.1** — The three baseline scenarios are recorded with revision, machine and medians → Test `measure_baseline_rebuilds`
+- **Dimension 1.1** DONE — The three baseline scenarios are recorded with revision, machine and medians → Test `measure_baseline_rebuilds`
 
 ### §2 — The daemon's own types leave the shared crate
 
@@ -235,6 +235,7 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 ## Discovery (consult log)
 
 - **Consults** — Indy (in-session, Oct 07, 2026): "ensure that the afd_wire is split relevantly on what is used in which daemon(agentsfleetd, agentsfleet-runner, commong or shared)", then chose "Go as drawn" for two crates, the runner-only types into `afr_agent`, `paths` as the one route source, and the dead items deleted. Consumer audit at `cc318b856` (non-test uses): the runner names 12 modules and reaches `event` through `lease.rs:7`; `paths` has no daemon `src/` use (the daemon re-spells 22 routes in `afd_api_runner/src/handler/runner/*.rs` and the prefix at `afd_auth/src/credential.rs:78`); `ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` have no daemon reference; `RunnerChildInput`, `FAIL_CLOSED_DEFAULT`, `RUNNERS` and `FLEET_RUNNERS` have none anywhere; `schema` is used only in `afd_fleet_lifecycle/src/sql.rs:298`, under `#[cfg(test)]`; `activity` and `tool_trace` reference each other, both shared; `redact.rs:39,67,80,89` implement `Debug` for three shared types and one daemon type; only the daemon's `afd_api*` crates enable `openapi`; `agentsfleet_runner` itself does not depend on `afd_wire`. Architecture consult: `ARCH: grounded in runner_execution.md:91 | proposal: afd_wire holds what both sides speak; afd_api_wire is daemon-only | status: extends | landing: a`.
+- **Baseline, §1** (Oct 07, 2026: 11:20 AM) — revision `ce95ce655`, rustc 1.98.1, Apple M2, 8 CPUs, dev profile; median of runs 1–3 for (A) and (B). (A) `touch rustd/crates/afd_wire/src/admin.rs` then `cargo build -p agentsfleet_runner`: 12 `Compiling` lines, 7.33s / 4.42s / 4.41s, median **4.42s**. (B) the same touch then `cargo build -p agentsfleetd`: 29 `Compiling` lines, 13.59s / 11.46s / 12.53s, median **12.53s**. (C) `cargo build --workspace --timings` in a fresh target directory: 513 `Compiling` lines in 2m 27s; `afd_wire` lib unit 9.38s, starting at 31.38s. Produced by a scratch script that loops the commands above; the earlier run stopped silently because cargo prints `in 1m 02s` past a minute and the elapsed-time grep missed it.
 - **Metrics review** — no analytics or funnel playbook update required: no product or operator signal changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
