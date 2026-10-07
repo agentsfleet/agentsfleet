@@ -16,13 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M211
 **Workstream:** 003
 **Date:** Oct 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — spike S6: one command that fills `/tmp` or memory takes `bwrap` and the whole sandbox down, and nothing stops leases from filling the host's disk
 **Categories:** API, INFRA
 **Batch:** B2 — folds into M211_002 at that stream's CHORE(open), the milestone's follow-up Pull Request; its Sections run after M211_001's §8
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** `b0138d7b3124b871668f07e2361dba923bc774d2`
-**Test Baseline:** pending — measured before the Pull Request; shared with M211_001
+**Branch:** feat/m211-nested-loops-and-chat-continuity
+**Folded-into:** `M211_002`
+**Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
+**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M211_001 (§1's processes and §8's `LOOP_CONFIGURE` attach, which the workspace disk reuses) · spike S6's evidence in `docs/v2/reviews/m211-toolbox-spikes.md`
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from spike S6's kernel log and runs

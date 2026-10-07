@@ -16,13 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M211
 **Workstream:** 005
 **Date:** Oct 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a fleet answers every chat message as if it were the first: the model never sees the question before it, or its own answer
 **Categories:** API, INFRA
 **Batch:** B2 — folds into M211_002 at that stream's CHORE(open); its Sections run after M211_004's
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** `b0138d7b3124b871668f07e2361dba923bc774d2`
-**Test Baseline:** pending — measured before the Pull Request; shared with M211_001
+**Branch:** feat/m211-nested-loops-and-chat-continuity
+**Folded-into:** `M211_002`
+**Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
+**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M211_002 (the nested child run, which starts without the turns) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:114-137` refuses them until then, and the Zig runner that serves them meanwhile drops the new field, `src/runner/daemon/control_plane_client_lease.zig:10-12`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from a source trace of the lease, prompt and provider paths at `b0138d7b3`, recorded in Discovery

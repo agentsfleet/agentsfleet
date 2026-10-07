@@ -16,13 +16,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M211
 **Workstream:** 004
 **Date:** Oct 05, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — a follow-up chat message to a code-running fleet starts from an empty workspace in a new sandbox, so the files, processes and caches its last message made are gone
 **Categories:** API, INFRA
 **Batch:** B2 — folds into M211_002 at that stream's CHORE(open); its Sections run after M211_003's
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** `b0138d7b3124b871668f07e2361dba923bc774d2`
-**Test Baseline:** pending — measured before the Pull Request; shared with M211_001
+**Branch:** feat/m211-nested-loops-and-chat-continuity
+**Folded-into:** `M211_002`
+**Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
+**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M211_001 (the sandbox-side tools; a lease with only supervisor tools builds no sandbox, `rustd/crates/afr_agent/src/engine.rs:139-141`) · M211_003 (its reserve counts every held sandbox at its full disk limit, and its two cgroup leaves freeze together) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:114-137` refuses them until then)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from a source trace of the chat path at `b0138d7b3`, recorded in Discovery
