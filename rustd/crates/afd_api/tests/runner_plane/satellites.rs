@@ -236,3 +236,30 @@ async fn runner_lease_poll_is_answered_whatever_its_body_holds() {
         assert_eq!(polled.status(), StatusCode::OK, "{body}");
     }
 }
+
+/// The fleets a poll's body names reach the lease plane as the runner's holds,
+/// and a body naming none hands it none.
+#[tokio::test]
+async fn runner_lease_poll_hands_its_holds_to_the_plane() {
+    let fleet = Fleet::new().with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live);
+    let plane = fleet.lease_plane();
+    let router = fleet.router();
+    let held = format!(r#"{{"holds":["{FLEET_ID}"]}}"#);
+
+    for body in [held.as_str(), ""] {
+        let polled = send(
+            &router,
+            Method::POST,
+            afd_wire::paths::RUNNER_LEASES,
+            Some(RUNNER_TOKEN),
+            body,
+        )
+        .await;
+        assert_eq!(polled.status(), StatusCode::OK, "{body}");
+    }
+
+    assert_eq!(
+        plane.polled_holds(),
+        [vec![FLEET_ID.to_owned()], Vec::new()]
+    );
+}
