@@ -148,7 +148,7 @@ fn the_published_bounds_are_the_enforced_ones() {
 fn test_lease_history_defaults_empty() {
     let text = lease(None);
     let payload: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
-    assert!(payload.history.is_empty());
+    assert_eq!(payload.history, [] as [afd_wire::lease::Turn<'_>; 0]);
     let encoded = serde_json::to_value(&payload).unwrap();
     assert_eq!(encoded["history"], serde_json::json!([]));
 }

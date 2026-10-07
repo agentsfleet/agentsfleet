@@ -236,7 +236,10 @@ mod tests {
 
         let response = rendered(&page, &tenant(), 25);
 
-        assert!(response.models.is_empty());
+        assert_eq!(
+            response.models,
+            [] as [afd_api_wire::tenant_model_entry::ModelEntryRow<'_>; 0]
+        );
         assert_eq!(response.total, None);
         assert_eq!(response.next_cursor, None);
         assert!(!response.platform_default_available);

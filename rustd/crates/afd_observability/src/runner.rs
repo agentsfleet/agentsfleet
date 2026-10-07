@@ -351,7 +351,7 @@ impl RunnerMetrics {
     /// into any one of them can change underneath it.
     fn take_a_seat(&self) -> Option<()> {
         self.admitted
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |taken| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |taken| {
                 (taken < MAX_SERIES).then_some(taken + 1)
             })
             .ok()

@@ -192,6 +192,6 @@ async fn a_run_whose_sessions_all_ended_kills_nothing() {
         completions(&frames),
         [("1".to_owned(), ToolCallStatus::Succeeded)]
     );
-    assert!(executor.killed().is_empty());
+    assert_eq!(executor.killed(), [] as [afr_executor::ProcessId; 0]);
     assert!(!interrupted_any(&capture));
 }

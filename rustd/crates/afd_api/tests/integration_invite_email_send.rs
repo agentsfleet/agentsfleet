@@ -118,7 +118,7 @@ async fn test_send_again_refusals_leave_the_row_true() {
         counted,
         "nothing counted"
     );
-    assert!(relay.received().is_empty());
+    assert!(relay.received().is_empty(), "{:?}", relay.received());
     members.cleanup().await;
 }
 
@@ -226,7 +226,7 @@ async fn test_invite_store_failure_issues_nothing() {
     );
     let (_, listed) = call(&router, Method::GET, INVITES, &members.john, "").await;
     assert!(items(&listed).is_empty(), "{listed}");
-    assert!(relay.received().is_empty());
+    assert!(relay.received().is_empty(), "{:?}", relay.received());
     members.cleanup().await;
 }
 
@@ -243,7 +243,7 @@ async fn test_invite_gone_before_its_email_sends_nothing() {
         .with_team_fault(TeamStep::BeginEmailGone, 1);
     let (created, _address) = invite(&fleet.router(), &members).await;
     assert_eq!(failpoint.fired(), 1);
-    assert!(relay.received().is_empty());
+    assert!(relay.received().is_empty(), "{:?}", relay.received());
     assert_eq!(members.email_attempts(id_of(&created)).await, 0);
     members.cleanup().await;
 }

@@ -202,5 +202,5 @@ async fn should_fail_at_deadline_when_relay_never_greets() {
     let failed = the_one(&events, |event| field(event, "event") == Some(EVENT_FAILED));
     assert_eq!(field(failed, "reason"), Some(REASON_DEADLINE), "{failed:?}");
     assert_eq!(relay.connections(), 1);
-    assert!(relay.received().is_empty());
+    assert_eq!(relay.received(), [] as [String; 0]);
 }

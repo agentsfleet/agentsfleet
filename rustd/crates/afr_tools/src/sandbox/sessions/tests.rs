@@ -84,7 +84,8 @@ async fn should_not_kill_a_session_whose_executor_is_gone() {
     let killed = sessions.close_all(&executor).await;
 
     assert_eq!(killed, 0);
-    assert!(executor.killed().is_empty());
+    let killed = executor.killed();
+    assert!(killed.is_empty(), "{killed:?}");
 }
 
 #[tokio::test]
@@ -124,7 +125,8 @@ async fn should_leave_every_session_open_under_the_cap() {
     sessions.make_room(&executor).await;
 
     assert_eq!(still_open(&mut sessions, &ids), SESSIONS_PER_LEASE_MAX - 1);
-    assert!(executor.killed().is_empty());
+    let killed = executor.killed();
+    assert!(killed.is_empty(), "{killed:?}");
 }
 
 /// At the cap, Codex's choice: the least recently used session that already

@@ -294,7 +294,11 @@ async fn a_delivery_for_an_installation_no_workspace_claims_is_dropped_not_refus
         dropped_for(answered).await,
         code(error_code::WEBHOOK_INSTALL_NOT_MAPPED)
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -313,7 +317,11 @@ async fn a_delivery_no_fleet_subscribes_to_is_dropped() {
         dropped_for(answered).await,
         code(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND)
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -416,7 +424,11 @@ async fn a_delivery_that_is_not_the_event_its_header_claims_is_malformed() {
             .map(str::to_owned),
         Some(code(error_code::WEBHOOK_MALFORMED))
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 /// A `deployment_status` delivery is acknowledged and dropped, recording nothing.

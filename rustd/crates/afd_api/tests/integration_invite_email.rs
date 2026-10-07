@@ -174,7 +174,7 @@ async fn test_failed_email_keeps_invite() {
             EMAIL_STATUS_FAILED
         );
     }
-    assert!(relay.received().is_empty());
+    assert!(relay.received().is_empty(), "{:?}", relay.received());
     members.cleanup().await;
 }
 

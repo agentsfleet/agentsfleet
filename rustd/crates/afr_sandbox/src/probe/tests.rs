@@ -137,7 +137,7 @@ fn test_unreadable_facts_read_as_absent_mechanisms() {
     let found = read(&paths, true);
 
     assert_eq!(found.missing(), Some("landlock"));
-    assert!(found.cgroup_controllers.is_empty());
+    assert_eq!(found.cgroup_controllers, [] as [String; 0]);
     assert_eq!(found.kvm, Kvm::Absent);
 }
 

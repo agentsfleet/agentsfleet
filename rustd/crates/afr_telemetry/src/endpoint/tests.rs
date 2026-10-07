@@ -97,6 +97,6 @@ fn a_plain_endpoint_resolves_with_no_header() {
     let endpoint = Endpoint::from_env(&MapEnv::from_pairs([(OTEL_ENDPOINT_KNOB, COLLECTOR)]))
         .expect("every knob reads")
         .expect("an endpoint is configured");
-    assert!(endpoint.config().headers().is_empty());
+    assert_eq!(endpoint.config().headers(), []);
     assert_eq!(endpoint.config().source(), OTEL_ENDPOINT_KNOB);
 }

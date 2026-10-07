@@ -181,7 +181,7 @@ mod tests {
         );
         assert_eq!(decoded.worker_count, 4);
         // Absent binds are the normal state, not a reason to void the row.
-        assert!(decoded.extra_binds.is_empty());
+        assert!(decoded.extra_binds.is_empty(), "{:?}", decoded.extra_binds);
     }
 
     /// Any missing or unreadable policy column voids the whole assignment.
@@ -266,7 +266,7 @@ mod tests {
             .decode()
             .expect("a garbled bind list must not void the row");
 
-        assert!(decoded.extra_binds.is_empty());
+        assert!(decoded.extra_binds.is_empty(), "{:?}", decoded.extra_binds);
     }
 
     /// A steady verdict is recognised as steady; a moved one as moved.

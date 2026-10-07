@@ -271,7 +271,7 @@ fn responder_bundle_holds_no_write_reach() {
     assert_eq!(binding.base_branch(), None);
     let network = config.network().expect("a network policy");
     assert!(network.read_only());
-    assert!(network.read_post_paths().is_empty());
+    assert_eq!(network.read_post_paths(), []);
     assert_eq!(network.allow().len(), 2);
     assert!(
         network

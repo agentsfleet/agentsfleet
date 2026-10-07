@@ -60,13 +60,13 @@ async fn test_owner_manages_invites() {
         .revoke_invitation(&tenant, &invite, NOW)
         .await
         .expect("a second revoke is quiet");
-    assert!(
+    assert_eq!(
         fixture
             .team
             .invitations(&tenant, NOW)
             .await
-            .expect("the list reads")
-            .is_empty()
+            .expect("the list reads"),
+        [] as [afd_tenant::team::Invitation; 0]
     );
     fixture.cleanup().await;
 }

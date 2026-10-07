@@ -47,7 +47,7 @@ fn the_refusal_carries_the_stored_failure_label() {
     let expected = Refusal::labelled(afd_core::event::label::TENANT_RESOLVE_FAILED);
 
     assert_eq!(unowned_workspace(&workspace()), Declined::Refuse(expected));
-    assert!(!expected.label.is_empty());
+    assert!(!expected.label.is_empty(), "{:?}", expected.label);
     assert!(
         expected.detail.is_empty(),
         "this refusal carries no recovery instruction; an operator fixes the \

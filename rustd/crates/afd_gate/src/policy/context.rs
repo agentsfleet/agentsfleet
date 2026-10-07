@@ -127,12 +127,6 @@ const fn auto_tool_window(cap_tokens: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    #![expect(
-        clippy::float_cmp,
-        reason = "the threshold is COPIED, never computed, so bit equality is the \
-                  assertion — an epsilon comparison would pass on a value that was \
-                  subtly altered, which is the defect these tests exist to catch"
-    )]
     use super::{
         CAP_LARGE_TOKENS, CAP_SMALL_TOKENS, DEFAULT_MEMORY_CHECKPOINT_EVERY,
         DEFAULT_STAGE_CHUNK_THRESHOLD, DEFAULT_TOOL_WINDOW, Overlay, TOOL_WINDOW_LARGE,

@@ -19,6 +19,9 @@ use crate::sandbox::oneshot::{
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
 
+/// Two sleeps in one process group, the shell waiting on the second.
+const SLEEP_TWICE: &str = "sleep 60 & sleep 60";
+
 fn shell() -> Box<dyn Tool> {
     Typed::boxed(Shell)
 }
@@ -122,7 +125,7 @@ async fn test_shell_timeout_reports_timed_out_and_logs_it() {
         &*shell(),
         &executor,
         &Lease::default(),
-        json!({"command": "sleep 60 & sleep 60", "timeout_ms": 500}),
+        json!({"command": SLEEP_TWICE, "timeout_ms": 500}),
     )
     .await;
 
@@ -252,7 +255,8 @@ async fn should_refuse_an_argument_it_does_not_take_and_run_nothing() {
     .await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
-    assert!(executor.spawned().is_empty());
+    let spawned = executor.spawned();
+    assert!(spawned.is_empty(), "{spawned:?}");
 }
 
 /// A command whose output was still open when it ended says so, after its

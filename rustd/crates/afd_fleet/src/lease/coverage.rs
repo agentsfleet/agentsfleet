@@ -238,7 +238,11 @@ mod tests {
                 !fault.to_string().is_empty(),
                 "the refusal renders to something a reader can act on"
             );
-            assert!(!fault.code().as_str().is_empty());
+            assert!(
+                !fault.code().as_str().is_empty(),
+                "{:?}",
+                fault.code().as_str()
+            );
             admit_unreadable("balance", &lease, "lease-fixture", &fault);
             admit_unreadable("budget", &lease, "lease-fixture", &fault);
             admit_unreadable("spend", &lease, "lease-fixture", &fault);

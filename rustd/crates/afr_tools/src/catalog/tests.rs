@@ -242,7 +242,8 @@ fn a_selection_without_entries_keeps_the_rest() {
     let without = parent.without(&[&UPDATE_PLAN, &WEB_SEARCH]);
 
     assert_eq!(names(&without), [FILE_READ.name()]);
-    assert!(without.hosted().is_empty());
+    let hosted = without.hosted();
+    assert!(hosted.is_empty(), "{hosted:?}");
     assert_eq!(names(&parent).len(), 2, "the parent is untouched");
 }
 

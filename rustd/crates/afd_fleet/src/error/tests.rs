@@ -256,13 +256,21 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
     // obligation failure with no `map_err` at the call site.
     let outbound = afd_outbound::Error::from(first_db_error()?);
     let lifted_outbound = Error::from(outbound);
-    assert!(!lifted_outbound.code().as_str().is_empty());
+    assert!(
+        !lifted_outbound.code().as_str().is_empty(),
+        "{:?}",
+        lifted_outbound.code().as_str()
+    );
     let lifted_admission = Error::from(admission);
     // Read off the source, not restated here: a second copy of the admission
     // plane's mapping in this crate is exactly the drift the lift exists to
     // avoid.
     assert!(lifted_admission.is_datastore_unavailable());
-    assert!(!lifted_admission.detail().is_empty());
+    assert!(
+        !lifted_admission.detail().is_empty(),
+        "{:?}",
+        lifted_admission.detail()
+    );
     let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
     control.fail_next();
     let mut bytes = [0_u8; afd_core::id::ENTROPY_LEN];
@@ -285,8 +293,12 @@ fn foreign_datastore_queue_identifier_and_config_errors_lift_with_sources()
         lifted_outbound,
     ] {
         assert!(failure.source().is_some());
-        assert!(!failure.detail().is_empty());
-        assert!(!failure.code().as_str().is_empty());
+        assert!(!failure.detail().is_empty(), "{:?}", failure.detail());
+        assert!(
+            !failure.code().as_str().is_empty(),
+            "{:?}",
+            failure.code().as_str()
+        );
     }
     Ok(())
 }

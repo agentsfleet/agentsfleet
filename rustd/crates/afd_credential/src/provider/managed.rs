@@ -238,7 +238,7 @@ mod tests {
                 br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#,
             )
             .expect("a keyless gateway is the optional-key design");
-        assert!(keyless.api_key().expose().is_empty());
+        assert_eq!(keyless.api_key().expose(), "");
         assert_eq!(
             keyless.endpoint.as_ref().map(|e| e.base_url.as_ref()),
             Some("https://gw.example.com/v1")

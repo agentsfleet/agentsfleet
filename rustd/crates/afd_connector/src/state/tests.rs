@@ -232,7 +232,7 @@ fn every_rejection_carries_its_own_word_for_the_log() {
     ];
 
     for (index, one) in reasons.iter().enumerate() {
-        assert!(!one.is_empty());
+        assert!(!one.is_empty(), "{one:?}");
         let later = reasons.get(index + 1..).unwrap_or_default();
         assert!(!later.contains(one), "`{one}` is reused");
     }

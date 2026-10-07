@@ -65,7 +65,7 @@ async fn test_fleet_cannot_touch_human_schedules() {
         [&json!("seeded"), &json!("seeded")],
         "both rows unchanged"
     );
-    assert!(qstash.told().is_empty());
+    assert!(qstash.told().is_empty(), "{:?}", qstash.told());
     leased.finish(supervisor).await;
 }
 
@@ -104,7 +104,7 @@ async fn test_fleet_cannot_reach_another_fleets_schedule() {
         );
     }
     assert_eq!(leased.admitted(&foreign).await, 0, "no fire was admitted");
-    assert!(qstash.told().is_empty());
+    assert!(qstash.told().is_empty(), "{:?}", qstash.told());
     leased.finish_with(supervisor, &other).await;
 }
 

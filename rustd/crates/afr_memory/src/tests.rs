@@ -169,12 +169,14 @@ async fn a_forget_holds_for_the_run_and_leaves_the_push() {
         "a key past the wire bound was never stored, so none is held for it"
     );
 
-    assert!(memory.recall("owner", 5).await.unwrap().is_empty());
+    let recalled = memory.recall("owner", 5).await.unwrap();
+    assert!(recalled.is_empty(), "{recalled:?}");
     assert_eq!(
         keys(&memory.list(None).await.unwrap()),
         ["deploy_target", "incident:42"]
     );
-    assert!(memory.into_pending().is_empty());
+    let pending = memory.into_pending();
+    assert!(pending.is_empty(), "{pending:?}");
 }
 
 #[tokio::test]

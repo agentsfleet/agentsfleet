@@ -95,7 +95,7 @@ impl Engine for Counting {
     async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
         let refused = self
             .refusals
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
                 left.checked_sub(1)
             });
         if refused.is_ok() {

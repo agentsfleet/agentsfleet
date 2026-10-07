@@ -107,5 +107,5 @@ async fn an_image_call_on_the_chat_wire_is_refused_before_any_read() {
         results[0].starts_with("[image_input_unavailable] "),
         "the refusal goes back as the call's text: {results:?}"
     );
-    assert!(wire.images(&seen[1].body).is_empty());
+    assert_eq!(wire.images(&seen[1].body), [] as [String; 0]);
 }

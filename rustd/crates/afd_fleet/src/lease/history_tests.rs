@@ -144,7 +144,8 @@ fn test_history_caps_turns_and_bytes() {
 async fn test_non_chat_lease_carries_no_history() {
     for event_type in [EventType::Webhook, EventType::Cron, EventType::Continuation] {
         let thread = Fake::new(Some(vec![row(1, status::PROCESSED, "m", Some("a"))]));
-        assert!(turns_for(&thread, event_type).await.is_empty());
+        let found = turns_for(&thread, event_type).await;
+        assert!(found.is_empty(), "{found:?}");
         assert_eq!(
             thread.reads.load(std::sync::atomic::Ordering::SeqCst),
             0,
@@ -161,7 +162,7 @@ async fn test_history_read_failure_fails_open() {
 
     let turns = turns_for(&thread, EventType::Chat).await;
 
-    assert!(turns.is_empty());
+    assert!(turns.is_empty(), "{turns:?}");
     let logged = capture.only(EVENT_HISTORY_UNAVAILABLE);
     assert_eq!(logged.field("fleet_id"), Some(FLEET));
     assert!(logged.field("error_code").is_some(), "{logged:?}");
