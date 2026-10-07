@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use afd_core::test_util::trace::Capture;
 use afr_executor::{Ending, ProcessId, Spawn};
 use bytes::Bytes;
 use serde_json::{Value, json};
@@ -18,6 +19,7 @@ use super::{
 use crate::handler::Typed;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
+use crate::sandbox::oneshot::EVENT_OUT_OF_MEMORY;
 use crate::sandbox::sessions::SESSIONS_PER_LEASE_MAX;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
@@ -129,6 +131,22 @@ async fn should_answer_at_once_with_the_exit_of_a_process_that_ends_in_its_yield
     assert_eq!(output.exit_code, Some(2));
     assert_eq!(started.elapsed(), Duration::ZERO);
     assert!(lease.sessions.get(FIRST).is_none(), "no session is left");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_session_killed_for_memory_is_logged_as_a_one_shot_command_is() {
+    let capture = Capture::install();
+    let executor =
+        ScriptedExecutor::new([ScriptedProcess::ends("allocating\n", Ending::OutOfMemory)]);
+    let lease = Lease::default();
+
+    let output = call_in(&*exec(), &executor, &lease, opening(REPL, None)).await;
+
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    let logged = capture.only(EVENT_OUT_OF_MEMORY);
+    assert_eq!(logged.level, tracing::Level::WARN);
+    assert_eq!(logged.field("error_code"), Some("out_of_memory"));
+    assert_eq!(logged.field("lease_id"), Some(lease.lease_id));
 }
 
 #[tokio::test(start_paused = true)]

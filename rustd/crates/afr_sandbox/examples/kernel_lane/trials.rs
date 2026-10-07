@@ -26,6 +26,7 @@ use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::lane::{Lane, missing};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
+use crate::shared_memory::full_shared_memory_spares_the_tenant;
 use crate::toolbox::toolbox_carries_the_tools;
 use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 
@@ -100,6 +101,10 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         ("test_warm_start_beats_cold_start", warm_beats_cold),
         ("test_start_budgets_with_four_leases", start_budgets),
         ("test_full_tmp_answers_enospc", full_tmp_answers_enospc),
+        (
+            "test_full_shared_memory_spares_the_tenant",
+            full_shared_memory_spares_the_tenant,
+        ),
         (
             "test_workspace_and_tmp_share_the_disk",
             workspace_and_tmp_share_the_disk,

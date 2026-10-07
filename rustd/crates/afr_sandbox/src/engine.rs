@@ -15,6 +15,12 @@ pub const DEFAULT_CPU_MILLIS: u32 = 2_000;
 pub const DEFAULT_PIDS: u32 = 512;
 /// Size of the lease's workspace disk; a write past it answers `ENOSPC`.
 pub const DEFAULT_DISK_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+/// The share of a sandbox's memory its `/dev/shm` may fill: one part in this
+/// many. Shared memory is a `tmpfs`, so its pages stay charged to the tenant
+/// after the process that wrote them dies; uncapped, one full `/dev/shm`
+/// leaves every later command in the lease, and in a held sandbox the next
+/// lease too, killed for memory at its first allocation.
+const SHARED_MEMORY_SHARE: u64 = 4;
 
 /// What one lease's sandbox enforces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +43,15 @@ impl Default for Limits {
             pids: DEFAULT_PIDS,
             disk_bytes: DEFAULT_DISK_BYTES,
         }
+    }
+}
+
+impl Limits {
+    /// What the sandbox's `/dev/shm` may hold, in bytes: a full one answers
+    /// `ENOSPC` while the tenant keeps the rest of its memory.
+    #[must_use]
+    pub const fn shared_memory_bytes(&self) -> u64 {
+        self.memory_bytes / SHARED_MEMORY_SHARE
     }
 }
 

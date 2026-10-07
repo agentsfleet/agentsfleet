@@ -31,6 +31,8 @@ mod release;
 #[cfg(target_os = "linux")]
 mod run;
 #[cfg(target_os = "linux")]
+mod shared_memory;
+#[cfg(target_os = "linux")]
 mod toolbox;
 #[cfg(target_os = "linux")]
 mod tools;

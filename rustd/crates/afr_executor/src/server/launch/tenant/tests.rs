@@ -11,10 +11,14 @@ use std::os::fd::OwnedFd;
 use std::path::Path;
 use std::sync::Arc;
 
+use afd_core::test_util::trace::Capture;
 use rustix::io::FdFlags;
 use tokio::sync::mpsc;
+use tracing::Level;
 
-use super::{Inherit, Placement, SIGKILL, Tenant, oom_kill_count};
+use super::{
+    EVENT_EVENTS_UNREAD, Inherit, Placement, SHELL_KILLED_EXIT, SIGKILL, Tenant, oom_kill_count,
+};
 use crate::api::Ending;
 use crate::error::{Result, tenant_unavailable};
 use crate::protocol::SpawnParams;
@@ -169,13 +173,49 @@ fn a_kill_counted_by_the_leaf_reads_as_out_of_memory_once() {
 }
 
 #[test]
-fn only_a_sigkill_is_judged() {
+fn a_kill_whose_count_cannot_be_read_stays_a_sigkill_and_is_logged() {
+    let capture = Capture::install();
+    let leaf = Leaf::new(0);
+    let tenant = leaf.tenant();
+    fs::write(leaf.dir.path().join(Leaf::EVENTS), "not events").unwrap();
+    let killed = Ending::Signaled(SIGKILL);
+
+    assert_eq!(tenant.judge(killed), killed);
+
+    let unread = capture.only(EVENT_EVENTS_UNREAD);
+    assert_eq!(unread.level, Level::WARN);
+    assert_eq!(unread.field("error_code"), Some("UZ-INTERNAL-003"));
+}
+
+#[test]
+fn a_shell_reporting_its_childs_kill_reads_as_out_of_memory_when_the_leaf_counted_it() {
     let leaf = Leaf::new(0);
     let tenant = leaf.tenant();
     leaf.kill(1);
 
-    for ending in [Ending::Exited(137), Ending::Signaled(15), Ending::TimedOut] {
-        assert_eq!(tenant.judge(ending), ending);
+    assert_eq!(
+        tenant.judge(Ending::Exited(SHELL_KILLED_EXIT)),
+        Ending::OutOfMemory
+    );
+}
+
+#[test]
+fn a_shell_reporting_a_kill_the_leaf_never_counted_keeps_its_exit() {
+    let leaf = Leaf::new(2);
+    let tenant = leaf.tenant();
+    let reported = Ending::Exited(SHELL_KILLED_EXIT);
+
+    assert_eq!(tenant.judge(reported), reported);
+}
+
+#[test]
+fn only_a_kill_is_judged() {
+    let leaf = Leaf::new(0);
+    let tenant = leaf.tenant();
+    leaf.kill(1);
+
+    for ending in [Ending::Exited(1), Ending::Signaled(15), Ending::TimedOut] {
+        assert_eq!(tenant.judge(ending), ending, "the count rose all the same");
     }
     assert_eq!(
         tenant.judge(Ending::Signaled(SIGKILL)),
