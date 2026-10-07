@@ -20,6 +20,9 @@ workspace = true
 test-util = []
 
 [dependencies]
+# Proves a lease's sandbox size within the wire's declared bounds before the
+# engine builds it.
+garde.workspace = true
 # The runner's own families: sandbox start, dropped frames, failed pushes.
 afr_telemetry.workspace = true
 # The span vocabulary every runner span is written in, beside the daemon's.

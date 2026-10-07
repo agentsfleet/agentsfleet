@@ -17119,6 +17119,17 @@
             "type": "string",
             "description": "Identifier for this lease."
           },
+          "limits": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxLimits",
+                "description": "The sandbox to run in; null means the runner's own defaults. Absent\ndecodes as null, so a daemon that predates the field still leases."
+              }
+            ]
+          },
           "policy": {
             "$ref": "#/components/schemas/ExecutionPolicy",
             "description": "What the run is permitted to do."
@@ -19828,6 +19839,38 @@
           }
         },
         "additionalProperties": false
+      },
+      "SandboxLimits": {
+        "type": "object",
+        "description": "The sandbox a lease asks for.\n\nBounded, because the runner builds exactly what it is told: a size past\nthese bounds is a daemon fault, and the runner refuses the lease rather\nthan build it. Whether this host has room for it is a separate question.",
+        "required": [
+          "cpu_millis",
+          "memory_bytes",
+          "disk_bytes"
+        ],
+        "properties": {
+          "cpu_millis": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Processor share, in thousandths of one core.",
+            "maximum": 32000,
+            "minimum": 250
+          },
+          "disk_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The workspace disk's size, in bytes.",
+            "maximum": 274877906944,
+            "minimum": 1073741824
+          },
+          "memory_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Memory, in bytes.",
+            "maximum": 68719476736,
+            "minimum": 268435456
+          }
+        }
       },
       "SandboxTier": {
         "type": "string",

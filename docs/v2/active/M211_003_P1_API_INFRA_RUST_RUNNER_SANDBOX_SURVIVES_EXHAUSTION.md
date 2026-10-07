@@ -10,14 +10,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M211_003: A lease's sandbox survives its own exhaustion — `/tmp` fills to `ENOSPC` on the workspace disk, memory pressure kills only the tenant's process, the workspace disk writes without a second page cache, and a host keeps a disk reserve
+# M211_003: A lease's sandbox survives its own exhaustion — `/tmp` fills to `ENOSPC` on the workspace disk, memory pressure kills only the tenant's process, the workspace disk writes without a second page cache, and a lease names its sandbox's size
 
 **Prototype:** v2.0.0
 **Milestone:** M211
 **Workstream:** 003
 **Date:** Oct 05, 2026
 **Status:** IN_PROGRESS
-**Priority:** P1 — spike S6: one command that fills `/tmp` or memory takes `bwrap` and the whole sandbox down, and nothing stops leases from filling the host's disk
+**Priority:** P1 — spike S6: one command that fills `/tmp` or memory takes `bwrap` and the whole sandbox down, and every lease gets the same size of sandbox
 **Categories:** API, INFRA
 **Batch:** B2 — folds into M211_002 at that stream's CHORE(open), the milestone's follow-up Pull Request; its Sections run after M211_001's §8
 **Branch:** feat/m211-nested-loops-and-chat-continuity
@@ -35,7 +35,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** `test_writable_state_exhaustion_spares_the_sandbox` — four leases fill `/workspace` and `/tmp` at once under the default limits; each `dd` ends in `No space left on device`, no process of the sandbox's own leaf is killed, and each lease's executor runs a new command afterwards.
 **Problem:** Spike S6 ran four leases that filled their disks and `/tmp`. Filling `/tmp`, an in-memory tmpfs larger than the lease's 2 GiB memory limit, ended every time in the kernel's out-of-memory killer taking `bwrap`, the sandbox's first process, so the whole sandbox died. One lease was killed while writing to its workspace, before the disk filled. Nothing refused leases when four 4 GiB workspaces took the host's disk from 20 GB free to 5.9 GB.
-**Solution summary:** `/tmp` moves onto the workspace disk, so it fills to `ENOSPC` and shares the lease's disk limit. The lease cgroup splits into a leaf for `bwrap` and the executor and a leaf for every tenant process, whose memory limit sits just below the lease's, so the killer can only pick a tenant process; the call it killed says `out_of_memory`. The workspace disk attaches with direct I/O, so its writes are not cached twice. A worker takes a lease only while the runner's state disk can hold every live sandbox at its full disk limit plus a reserve.
+**Solution summary:** `/tmp` moves onto the workspace disk, so it fills to `ENOSPC` and shares the lease's disk limit. The lease cgroup splits into a leaf for `bwrap` and the executor and a leaf for every tenant process, whose memory limit sits just below the lease's, so the killer can only pick a tenant process; the call it killed says `out_of_memory`. The workspace disk attaches with direct I/O, so its writes are not cached twice. A lease names its sandbox's size (processor, memory, disk) within declared bounds, and a lease that names none gets the runner's defaults.
 
 ## PR Intent & comprehension handshake
 
@@ -67,28 +67,29 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_executor/src/server/launch/tenant.rs`, `rustd/crates/afr_executor/src/server/launch/tenant/tests.rs` | CREATE | `Placement` (`Tenant`, `Inherit`): the move, the descriptor check, and an ending judged `OutOfMemory` when the leaf's `oom_kill` rose |
 | `rustd/crates/afr_executor/src/error.rs`, `rustd/crates/afr_executor/src/error/raise.rs`, `rustd/crates/afr_executor/src/error/tests.rs`, `rustd/crates/afr_executor/Cargo.toml`, `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | `TenantUnavailable` keeps the kernel's reason; `ProgramUnavailable`, raised only by `portable_pty`'s lookup, leaves with it |
 | `rustd/crates/afr_executor/src/api.rs`, `rustd/crates/afr_executor/tests/link.rs`, `rustd/crates/afr_tools/src/runtime.rs`, `rustd/crates/afr_tools/src/runtime/tests.rs`, `rustd/crates/afr_tools/src/sandbox/output.rs`, `rustd/crates/afr_tools/src/sandbox/output/tests.rs`, `rustd/crates/afr_tools/src/sandbox/oneshot.rs`, `rustd/crates/afr_tools/src/sandbox/shell/tests.rs` | EDIT | An ending killed for memory is `out_of_memory`, a `ToolErrorCode` the model reads, exit code 137, logged `sandbox_out_of_memory` |
-| `rustd/crates/afr_sandbox/src/capacity.rs` | CREATE | The state-disk rule: live sandboxes' remaining limits plus one more plus the reserve |
-| `rustd/crates/afr_supervisor/src/worker_pool.rs`, `rustd/crates/afr_sandbox/src/warm_slots.rs` | EDIT | Poll and refill only with room |
+| `rustd/crates/afd_wire/src/lease.rs`, `rustd/crates/afd_wire/tests/validation_lease.rs`, `rustd/crates/afd_wire/tests/wire_suite.rs`, `rustd/crates/afd_fleet/src/lease/answer.rs`, `public/openapi.json` | EDIT / CREATE | `SandboxLimits` and its bounds; `LeasePayload.limits`, null from the daemon until a fleet carries a size; the regenerated document |
+| `rustd/crates/afr_supervisor/src/lease_loop/workspace.rs`, `rustd/crates/afr_supervisor/src/lease_loop/workspace_tests.rs`, `rustd/crates/afr_supervisor/src/error.rs`, `rustd/crates/afr_supervisor/src/error/raise.rs`, `rustd/crates/afr_supervisor/src/test_support/sandbox.rs`, `rustd/crates/afr_supervisor/Cargo.toml` | EDIT | The runner builds the size a lease names, or its own; a size past the bounds refuses the lease (`LeaseSize`) |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/trials.rs`, `rustd/crates/afr_sandbox/examples/kernel_lane/run.rs` | EDIT | The kernel proofs, S6 among them; `in_sandbox_each` runs several scripts on one sandbox, since what the executor does after an exhaustion is only seen there |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/exhaustion.rs` | CREATE | The exhaustion trials, apart from `trials.rs` so neither passes the length cap |
 | `rustd/crates/afr_sandbox/src/bubblewrap/tests.rs`, `rustd/crates/afr_sandbox/src/workspace_disk/tests.rs` | EDIT | The argument builder binds `tmp/`; the disk's two directories and their modes |
-| `docs/architecture/runner_execution.md` | EDIT | §"Sandbox engines": the two leaves, `/tmp` on the disk, the reserve |
+| `docs/architecture/runner_execution.md` | EDIT | §"Sandbox engines": the two leaves, `/tmp` on the disk, the lease's size |
 | `docs/v2/pending/M214_001_P1_DOCS_OBS_RUST_RUNNER_EXPORTS_ITS_TELEMETRY.md` | EDIT | The runner census gains this workstream's two counters |
 
 ## Applicable Rules
 
-- **`docs/greptile-learnings/RULES.md`** — UFS (reserves and directory names are constants), OWN (one owner per descriptor; the tenant descriptor is close-on-exec), LOG, ERR-RS, TGU (an ending is one enum), FLL, TST-NAM, NDC.
+- **`docs/greptile-learnings/RULES.md`** — UFS (reserves, size bounds and directory names are constants), OWN (one owner per descriptor; the tenant descriptor is close-on-exec), LOG, ERR-RS, TGU (an ending is one enum), FLL, TST-NAM, NDC.
 - `dispatch/write_rust.md` + `docs/RUST_ERROR_STANDARD.md` — a refused move keeps its `io::Error` cause; `pre_exec` stays async-signal-safe (one `write`, no allocation).
-- `docs/LOGGING_STANDARD.md` §8A — `sandbox_capacity_short` logs bytes, never paths a tenant chose; `error_code` on every warning.
-- Indy's Rust bar (Oct 04 and Oct 05, 2026): traits and trait objects where behaviour varies (the capacity rule is a trait the worker pool holds as `&dyn`, so tests swap the disk reading), structs that own their behaviour, borrows over clones, ownership over `Mutex`, `Fn`/`FnMut`/`FnOnce` where behaviour is passed, `afd_core::error_shell!`, `afd_observability` for spans and metrics, established crates over hand-rolled code (`rustix` for `statvfs`, the `write` in `pre_exec` and the loop ioctls; `nix` nowhere new), no duplicated logic (the workspace attach reuses M211_001 §8's `LOOP_CONFIGURE` helper), `afd_core` reused for shared constants.
+- `docs/LOGGING_STANDARD.md` §8A — `sandbox_size_refused` carries the lease id and `error_code`, never a path a tenant chose.
+- `docs/REST_API_DESIGN_GUIDELINES.md` §6 — the document is regenerated, never hand-edited. `limits` writes `null` when absent, as `bundle` does: `afd_wire`'s rule (no `skip_serializing_if`) governs the runner protocol over §3's omit-the-key.
+- Indy's Rust bar (Oct 04 and Oct 05, 2026): traits and trait objects where behaviour varies (the sandbox engine stays the `&dyn Engine` the lease loop holds, so tests read the size it was asked for), structs that own their behaviour, borrows over clones, ownership over `Mutex`, `Fn`/`FnMut`/`FnOnce` where behaviour is passed, `afd_core::error_shell!`, `afd_observability` for spans and metrics, established crates over hand-rolled code (`garde` for the size bounds, `rustix` for the `write` in `pre_exec` and the loop ioctls; `nix` nowhere new), no duplicated logic (the workspace attach reuses M211_001 §8's `LOOP_CONFIGURE` helper), `afd_core` reused for shared constants.
 
 ## Applicable Gates
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | RUST ERR | yes | `error_shell!` per crate, causes preserved |
-| UFS / LOGGING / MILESTONE-ID | yes | Named reserves and leaf names; scoped events; no milestone identifiers in source |
-| File & Function Length (≤350/≤50/≤70) | yes | `capacity.rs` alone owns the rule; `cgroup.rs` splits leaf handling out if it nears the cap |
+| UFS / LOGGING / MILESTONE-ID | yes | Named reserves, size bounds and leaf names; scoped events; no milestone identifiers in source |
+| File & Function Length (≤350/≤50/≤70) | yes | `workspace.rs` owns the sizing; `cgroup.rs` splits leaf handling out if it nears the cap |
 | Architecture consult | yes | `runner_execution.md` §"Sandbox engines" edited in the docs commit that lands this spec |
 
 ## Prior-Art / Reference Implementations
@@ -122,13 +123,16 @@ The workspace image mounts through the host's `mount -o loop` as today, then `LO
 - **Dimension 3.1** DONE — The workspace loop device reports direct I/O on → Test `test_workspace_disk_uses_direct_io`
 - **Dimension 3.2** DONE — Writing 4 GiB to `/workspace` under the 2 GiB memory limit ends in `ENOSPC` with zero out-of-memory kills → Test `test_disk_fill_under_memory_limit_ends_in_enospc`
 
-### §4 — The host keeps a disk reserve
+### §4 — A lease names its sandbox's size — DONE
 
-A worker polls for a lease only while the state file system's available bytes cover every live sandbox's remaining disk limit (limit minus the blocks its image holds), one more sandbox at its full limit, and `STATE_DISK_RESERVE_BYTES`. Live means leases, warm slots and held sandboxes alike. Short of room, the worker waits, and `sandbox_capacity_short` logs once when the host goes short and once when it recovers; warm slots refill under the same rule. **Implementation default:** a 2 GiB reserve, room for the next toolbox release and the runner's logs.
+`LeasePayload.limits` is a nullable `SandboxLimits` (`cpu_millis`, `memory_bytes`, `disk_bytes`), each field `garde`-bounded and its bounds published in the document. The runner proves a size before it builds anything: a lease past a bound ends at startup (`startup_posture`, logged `sandbox_size_refused`) with no sandbox prepared, a lease naming none gets the runner's own `Limits`, and the process cap stays the host's for every lease. A warm slot serves a lease only when its size is the slot's (`warm_slots.rs:110`); any other size is built fresh. The daemon sends `null` until a fleet carries a size; the Zig runner ignores the key (`control_plane_client_lease.zig:12`). **Bounds:** 250–32 000 thousandths of a core, 256 MiB–64 GiB of memory, 1–256 GiB of disk.
 
-- **Dimension 4.1** — The rule admits at exactly the boundary and refuses one byte short → Test `test_capacity_rule_counts_remaining_limits`
-- **Dimension 4.2** — A short host takes no lease and polls again once space returns, logging each transition once → Test `test_short_host_waits_and_resumes`
-- **Dimension 4.3** — On a state disk sized for three filled sandboxes, a fourth is never prepared and the reserve stays free → Test `test_reserve_survives_concurrent_fills`
+- **Dimension 4.1** DONE — A sized lease's sandbox enforces that size, with the host's process cap → Test `a_sized_lease_builds_the_size_it_asked_for`
+- **Dimension 4.2** DONE — A lease naming no size builds the runner's defaults → Test `a_lease_without_a_size_builds_the_hosts_defaults`
+- **Dimension 4.3** DONE — A lease from a daemon without the field decodes, sizeless, and re-encodes `null` → Test `a_lease_without_a_size_decodes_as_none`
+- **Dimension 4.4** DONE — A size past a bound refuses the lease before any sandbox is prepared → Test `a_size_past_its_bounds_refuses_the_lease_before_any_sandbox`
+- **Dimension 4.5** DONE — Each bound admits its limit and refuses one past it → Test `a_size_one_past_any_bound_is_refused`
+- **Dimension 4.6** DONE — The published bounds are the enforced ones → Test `the_published_bounds_are_the_enforced_ones`
 
 ### §5 — S6, kept
 
@@ -144,8 +148,8 @@ lease cgroup          <lease>/{sandbox, tenant}   tenant/memory.max = limit − 
 tenant move           pre_exec: write(fd, "0")   fd = tenant/cgroup.procs, opened by the engine, close-on-exec
 ending                Exited | Signaled | OutOfMemory (tenant memory.events oom_kill rose)
 ToolErrorCode         + OutOfMemory   wire "out_of_memory"
-capacity              available ≥ Σ live (limit − used) + DEFAULT_DISK_BYTES + STATE_DISK_RESERVE_BYTES
-constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERVE_BYTES (2 GiB) · WORKSPACE_DIR · TMP_DIR
+lease size            LeasePayload.limits: SandboxLimits { cpu_millis, memory_bytes, disk_bytes } | null → host Limits
+constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILLIS,MEMORY_BYTES,DISK_BYTES}_{MIN,MAX} · WORKSPACE_DIR · TMP_DIR
 ```
 
 ## Failure Modes
@@ -156,7 +160,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERV
 | Memory exhausted | A tenant allocates past the limit | The killer takes a tenant process; its call reads `out_of_memory` (Dimensions 2.1, 2.2) |
 | Tenant move refused | A kernel without open-time migration checks, or a lost descriptor | Spawn refused with a code; nothing runs unshielded (Dimension 2.4) |
 | Workspace writes outrun reclaim | Dirty pages under the memory limit | Direct I/O removes the second cache; the writer ends in `ENOSPC` (Dimension 3.2) |
-| Host disk short | Live sandboxes could grow past the free space | No lease taken; one log line; resumes on its own (Dimension 4.2) |
+| Size past a bound | A daemon sends a size outside the declared bounds | The lease ends at startup, `startup_posture`, before any sandbox is prepared (Dimension 4.4) |
 | Crash mid-split | Runner dies between creating leaves and entering them | The boot sweep removes both leaves (Dimension 2.5) |
 
 ## Invariants
@@ -164,7 +168,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERV
 1. No tenant process runs in the `sandbox` leaf — the move happens before `exec`, and a failed move fails the spawn; `test_failed_tenant_move_refuses_the_spawn`.
 2. The tenant leaf's memory limit is below the lease's — the engine writes both at create; `test_oom_kills_only_the_tenant`.
 3. No tenant process holds the cgroup descriptor — it is close-on-exec; `test_tenant_process_holds_no_cgroup_descriptor`.
-4. A worker never takes a lease the state disk cannot hold at its full limit with the reserve intact — `capacity.rs` is the one gate before a poll; `test_capacity_rule_counts_remaining_limits`.
+4. No sandbox is built at a size outside the declared bounds — `sized` proves it before `prepare`; `a_size_past_its_bounds_refuses_the_lease_before_any_sandbox`.
 
 ## Metrics & Observability
 
@@ -172,8 +176,8 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERV
 |----------------|-------|------------|--------------------|---------------|------------|
 | `error.type = out_of_memory` on the call's `execute_tool` span (`afd_observability::semconv::ATTR_ERROR_TYPE`) | ops | A tenant process is killed for memory | the span's existing ids | No command text | `test_oom_ending_reads_out_of_memory` |
 | `sandbox_out_of_memory` (runner log, warn) | ops | Same | lease id, `error_code`; the call's ids ride its span | No command text | `test_oom_ending_reads_out_of_memory` |
-| `sandbox_capacity_short` (runner log, warn / info on recovery) | ops | The state disk goes short, and when it recovers | available, required, reserve bytes | No paths | `test_short_host_waits_and_resumes` |
-| `agentsfleet_runner_tool_out_of_memory_total`, `agentsfleet_runner_capacity_short_total` (runner census, M214_001) | ops | The two events above | none — closed label sets | — | M214_001's producer-coverage test |
+| `sandbox_size_refused` (runner log, warn) | ops | A lease names a size past a bound | lease id, `error_code` | No paths | `a_size_past_its_bounds_refuses_the_lease_before_any_sandbox` |
+| `agentsfleet_runner_tool_out_of_memory_total` (runner census, M214_001) | ops | A tenant process is killed for memory | none — closed label set | — | M214_001's producer-coverage test |
 
 ## Test Specification (tiered)
 
@@ -188,9 +192,12 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERV
 | 2.5 | kernel | `test_sweep_removes_both_leaves` | runner killed after the split → restart sweeps `sandbox`, `tenant`, then the lease cgroup |
 | 3.1 | kernel | `test_workspace_disk_uses_direct_io` | `/sys/dev/block/<major>:<minor>/loop/dio` of the mounted disk, read before destroy → `1` |
 | 3.2 | kernel | `test_disk_fill_under_memory_limit_ends_in_enospc` | 4 GiB `dd` under 2 GiB memory → `ENOSPC`; `tenant` `oom_kill` 0 |
-| 4.1 | unit | `test_capacity_rule_counts_remaining_limits` | exact boundary → admit; one byte short → refuse; a held sandbox counts |
-| 4.2 | unit | `test_short_host_waits_and_resumes` | fake disk short then roomy → no poll, then a poll; two log lines |
-| 4.3 | kernel | `test_reserve_survives_concurrent_fills` | 14 GiB state disk, four fills → three prepared; reserve free throughout |
+| 4.1 | unit | `a_sized_lease_builds_the_size_it_asked_for` | 4 000 / 8 GiB / 20 GiB → the engine is asked for exactly that, with the default process cap |
+| 4.2 | unit | `a_lease_without_a_size_builds_the_hosts_defaults` | no `limits` → the engine is asked for `Limits::default()` |
+| 4.3 | unit | `a_lease_without_a_size_decodes_as_none` | no `limits` key, and `null` → `None`; re-encodes `null` |
+| 4.4 | unit | `a_size_past_its_bounds_refuses_the_lease_before_any_sandbox` | 256 MiB − 1 of memory → `startup_posture`, 0 prepared, 0 turns |
+| 4.5 | unit | `a_size_one_past_any_bound_is_refused` | each bound's limit admitted, one past it refused, six rows |
+| 4.6 | unit | `the_published_bounds_are_the_enforced_ones` | `SandboxLimits`'s schema minimum and maximum per field → the `SANDBOX_*` constants |
 | 5.1 | kernel | `test_writable_state_exhaustion_spares_the_sandbox` | four leases, `/workspace` and `/tmp` filled → eight `ENOSPC`, 0 `sandbox` kills, four `ok` |
 
 ## Acceptance Rubric (single scoring surface)
@@ -198,7 +205,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · STATE_DISK_RESERV
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Exhaustion ends in errors the tenant reads, never in a dead sandbox (§1–§3, §5) | `make test-runner-kernel 2>&1 \| grep -c "test_writable_state_exhaustion_spares_the_sandbox ... ok"` | 1 | P0 | |
-| R2 | The capacity rule holds (§4) | `cargo test --manifest-path rustd/Cargo.toml -p afr_sandbox capacity` | exit 0 | P0 | |
+| R2 | A lease's size is built or refused as declared (§4) | `cd rustd && cargo test --all-features -p afr_supervisor -p afd_wire size` | exit 0 | P0 | ✅ 10 passed, 0 failed (§4) |
 | R3 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed tables | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
@@ -216,7 +223,9 @@ N/A — no files deleted. The sandbox's `/tmp` tmpfs flag goes in place.
 ## Out of Scope
 
 - A host memory reserve: the sum of leases' memory limits against the host's memory, which S6 did not test.
-- Per-tenant quotas across leases, and disk limits other than the defaults.
+- Per-tenant quotas across leases.
+- A host disk reserve: a worker waiting until the state disk can hold every live sandbox at its full limit. Deferred by Indy (see Discovery); a host's disk may fill meanwhile.
+- Where a lease's size comes from: the fleet API, its storage, filling it into the lease, placement by a host's ceiling, billing by size, and warm slots per size.
 - The Firecracker engine's own exhaustion behaviour.
 
 ---
@@ -227,9 +236,9 @@ N/A — no files deleted. The sandbox's `/tmp` tmpfs flag goes in place.
 2. **Preserved user behaviour** — Every tool and path is where it was; `/tmp` is still `/tmp`.
 3. **Optimal-way check** — A microVM per lease isolates memory and disk entirely; until the Firecracker engine, cgroups and one disk give the same answer a tenant can act on.
 4. **Rebuild-vs-iterate** — Iterate: four changes to the engine M210_001 built.
-5. **What we build** — The disk layout, the two leaves and the tenant move, direct I/O on the disk, the capacity rule, the S6 trial.
-6. **What we do NOT build** — A host memory reserve, cross-lease quotas (Out of Scope).
-7. **Fit with existing features** — The hold (M211_004) counts as a live sandbox under §4 and freezes the whole lease cgroup, both leaves.
+5. **What we build** — The disk layout, the two leaves and the tenant move, direct I/O on the disk, the lease's size, the S6 trial.
+6. **What we do NOT build** — A host memory or disk reserve, cross-lease quotas, the fleet API for sizes (Out of Scope).
+7. **Fit with existing features** — The hold (M211_004) freezes the whole lease cgroup, both leaves, at whatever size the lease named.
 8. **Surface order** — N/A — no user surface; the thread shows the codes.
 9. **Dashboard restraint** — N/A — no user surface.
 10. **Confused-user next step** — N/A — no user surface; `out_of_memory` and `No space left on device` name the limit that was hit.
@@ -245,4 +254,4 @@ N/A — no files deleted. The sandbox's `/tmp` tmpfs flag goes in place.
 - **Consults** — §3 on the kernel lane (Oct 07, 2026): the lane made its state under `/tmp`, a tmpfs on `afr-kernel` (`findmnt`), so every workspace image was memory and the 4 GiB fill was killed whatever the loop device cached; on a disk (`/var/tmp`, btrfs) `losetup --direct-io=on` reads back `dio` 1 and 3.2 ends in `ENOSPC`. The lane's state now lives under `/var/tmp`, as a host's does on its disk. Indy (in-session, Oct 05, 2026): "Fix all fixes in this PR", approving D3's four fixes in a new workstream of this Pull Request. Source and evidence: spike S6 (`docs/v2/reviews/m211-toolbox-spikes.md`); Landlock grants writes only beneath `WRITABLE` (`rustd/crates/afr_sandbox/src/harden/linux.rs:50-57`); bubblewrap enters its cgroup through an engine-opened descriptor (`bubblewrap_engine/parts.rs:89,282`).
 - **Metrics review** — Two runner log events; no analytics or funnel playbook change.
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Deferrals** — §4's host disk reserve, as written at PLAN (`capacity.rs`, the worker's wait, `sandbox_capacity_short`, `agentsfleet_runner_capacity_short_total`), is not built. Indy (in-session, Oct 07, 2026): "for now the host disk size can get maxed, that is fine, its a separate think to solve disk pressure." §4 became the lease's size in its place, Indy choosing "Lease field": the size rides `LeasePayload`, the daemon sends null for now, and tests inject it.

@@ -4,10 +4,11 @@
 
 use std::time::Instant;
 
+use afd_wire::lease::SandboxLimits;
 use afd_wire::report::FailureClass;
 use afr_executor::Executor;
 use afr_memory::Seed;
-use afr_sandbox::{Sandbox, SandboxRequest};
+use afr_sandbox::{Limits, Sandbox, SandboxRequest};
 use afr_telemetry::labels::SandboxStart;
 use afr_telemetry::record;
 
@@ -20,8 +21,10 @@ use crate::report::Ending;
 const DETAIL_LANDING: &str =
     "the fleet bundle's support files could not be written to the workspace";
 const DETAIL_SANDBOX: &str = "this host could not build a sandbox for the run";
+const DETAIL_SIZE: &str = "the lease asked for a sandbox size outside the bounds a runner builds";
 const EVENT_LANDING_FAILED: &str = "bundle_landing_failed";
 const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
+const EVENT_SIZE_REFUSED: &str = "sandbox_size_refused";
 const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
 
 impl LeaseRun<'_> {
@@ -35,9 +38,13 @@ impl LeaseRun<'_> {
         sink: ActivitySink,
     ) -> Ending {
         let lessee = self.lessee;
+        let limits = match sized(self.lease.limits, lessee.limits) {
+            Ok(limits) => limits,
+            Err(failure) => return self.refuse(&failure, EVENT_SIZE_REFUSED, DETAIL_SIZE),
+        };
         let request = SandboxRequest {
             lease_id: self.ids.lease.as_str(),
-            limits: lessee.limits,
+            limits,
         };
         let started = Instant::now();
         let prepared = lessee.engine.prepare(request).await;
@@ -93,6 +100,30 @@ impl LeaseRun<'_> {
             return self.refuse(&failure, EVENT_LANDING_FAILED, DETAIL_LANDING);
         }
         self.drive(memory, Some(sandbox.executor()), sink).await
+    }
+}
+
+/// The limits a lease's sandbox enforces: the size the lease asked for once
+/// it is proved within the wire's bounds, or this host's own when it asked for
+/// none.
+///
+/// # Errors
+/// The size breaks one of the bounds `SandboxLimits` declares.
+fn sized(asked: Option<SandboxLimits>, host: Limits) -> crate::error::Result<Limits> {
+    match asked {
+        Some(asked) => Ok(within(&garde::Unvalidated::new(asked).validate()?, host)),
+        None => Ok(host),
+    }
+}
+
+/// A proved size as limits. Processes and threads are not on the wire, so the
+/// host's cap holds for every lease.
+fn within(asked: &garde::Valid<SandboxLimits>, host: Limits) -> Limits {
+    Limits {
+        memory_bytes: asked.memory_bytes,
+        cpu_millis: asked.cpu_millis,
+        pids: host.pids,
+        disk_bytes: asked.disk_bytes,
     }
 }
 
