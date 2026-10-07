@@ -33,10 +33,20 @@ pub(crate) fn runtime() -> tokio::runtime::Runtime {
 
 /// Runs `spawn` to its end and gathers its output.
 pub(crate) async fn run(executor: &dyn Executor, spawn: Spawn) -> Result<Outcome, Failed> {
+    run_within(executor, spawn, COMMAND_TIMEOUT).await
+}
+
+/// Runs `spawn` to its end, calling it hung past `timeout`, and gathers its
+/// output.
+pub(crate) async fn run_within(
+    executor: &dyn Executor,
+    spawn: Spawn,
+    timeout: Duration,
+) -> Result<Outcome, Failed> {
     let process = executor.spawn(&spawn).await?;
     let mut output = Vec::new();
     let gathered = tokio::time::timeout(
-        COMMAND_TIMEOUT,
+        timeout,
         process.ended(|_stream, data| output.extend_from_slice(&data)),
     )
     .await;

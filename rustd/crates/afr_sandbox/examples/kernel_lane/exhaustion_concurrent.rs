@@ -9,6 +9,7 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use afr_executor::Ending;
 use afr_sandbox::{BubblewrapEngine, Engine as _, Limits, SANDBOX_LEAF, SandboxRequest};
@@ -16,7 +17,7 @@ use libtest_mimic::Failed;
 
 use crate::exhaustion::{MEMORY_EVENTS, NO_OOM_KILLS, OK};
 use crate::lane::Lane;
-use crate::run::{Outcome, expect, run as run_in, runtime, shell};
+use crate::run::{Outcome, expect, run as run_in, run_within, runtime, shell};
 use crate::trials::ENOSPC;
 
 /// The four leases, filling at once as S6's did.
@@ -27,6 +28,10 @@ const DISK: u64 = 1 << 30;
 /// Each lease's memory: half its disk, so every fill writes twice the memory
 /// limit, the ratio that killed S6's sandboxes through a tmpfs `/tmp`.
 const MEMORY: u64 = DISK / 2;
+/// How long each fill may run before the trial calls it hung. Four leases
+/// fill one host disk at once, each slowed by its tenant throttle while its
+/// pages are written back: minutes under load, where a command gets one.
+const FILL_TIMEOUT: Duration = Duration::from_secs(300);
 /// Fills `/tmp` past the disk.
 // pin test: literal is the contract
 const FILL_TMP: &str = "dd if=/dev/zero of=/tmp/fill bs=1M count=2048 2>&1";
@@ -76,8 +81,8 @@ async fn fill(engine: &BubblewrapEngine, lane: &Lane, lease_id: &str) -> Result<
     let sandbox = engine.prepare(SandboxRequest { lease_id, limits }).await?;
     let executor = sandbox.executor();
     let seen = async {
-        let tmp = run_in(executor, shell(FILL_TMP)).await?;
-        let workspace = run_in(executor, shell(FILL_WORKSPACE)).await?;
+        let tmp = run_within(executor, shell(FILL_TMP), FILL_TIMEOUT).await?;
+        let workspace = run_within(executor, shell(FILL_WORKSPACE), FILL_TIMEOUT).await?;
         let after = run_in(executor, shell(&format!("echo {OK}"))).await?;
         let events = fs::read_to_string(sandbox_events(lane, lease_id)).unwrap_or_default();
         Ok::<_, Failed>(Seen {
