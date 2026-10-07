@@ -43,7 +43,7 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scope.sh"
 audit_scope_init --all "$@"
-audit_index_snapshot "$@"
+audit_index_snapshot '*.zig' '*.rs' 'agentsfleet/src/*.js' 'agentsfleet/src/*.jsx' 'agentsfleet/src/*.ts' 'agentsfleet/src/*.tsx'
 
 MODE="--all"
 STRICT=0

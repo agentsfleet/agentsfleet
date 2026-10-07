@@ -44,7 +44,7 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scope.sh"
 audit_scope_init --all "$@"
-audit_index_snapshot "$@"
+audit_index_snapshot '*.rs'
 
 MODE_STAGED="--staged"
 MODE_ALL="--all"

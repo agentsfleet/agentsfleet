@@ -55,7 +55,7 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scope.sh"
 audit_scope_init --all "$@"
-audit_index_snapshot "$@"
+audit_index_snapshot '*.zig' '*.ts' '*.tsx' '*.js' '*.jsx' '*.rs' '*.go'
 
 # Default: full-codebase scan (`--all` is an explicit alias). `--staged` is the
 # pre-commit lens — it narrows the per-file checks to `git diff --cached`. The
