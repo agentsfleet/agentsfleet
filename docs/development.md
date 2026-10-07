@@ -21,10 +21,10 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   on every commit including the small ones. Pre-commit keeps the checks that
   cost seconds: the partial-staging reject, `orly gate work` (the `conform`
   row — UFS, RUST ERR, LOGGING and the rest, over the staged diff), gitleaks,
-  and the fast per-surface gates. This is the split `docs/VERIFY_TIERS.md`
+  and the fast per-surface gates. This is the split `.orly/docs/VERIFY_TIERS.md`
   already describes; the hooks had drifted from it.
 - **Pre-commit asserts the orly engine pin before it gates.**
-  `.oracle/orly.json` records `orly_version`; CI installs exactly that version
+  `.orly/orly.json` records `orly_version`; CI installs exactly that version
   before gating, and `scripts/check_orly_pin.sh` now proves the local binary
   matches it. It exists because a stale global orly reads the pin, proceeds
   anyway, and grades a narrower criteria set than the repository declares —

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # check_orly_pin.sh — the orly on this machine's PATH must be the version
-# .oracle/orly.json pins.
+# .orly/orly.json pins.
 #
 # THE FAILURE THIS EXISTS TO PREVENT.
 #
-# `.oracle/orly.json` records `orly_version`, and Continuous Integration (CI)
+# `.orly/orly.json` records `orly_version`, and Continuous Integration (CI)
 # installs exactly that version before running the gates — the two lines in
 # .github/workflows/governance.yml that read the field with jq and install it.
 # Locally nothing did. A stale global orly READS the pin, proceeds anyway, and
@@ -26,7 +26,7 @@
 # WHY THE PINNED VERSION IS NEVER SPELLED HERE.
 #
 # A number pasted into this file would be a second place for the pin to live,
-# and the wrong one within an hour of the next engine bump. `.oracle/orly.json`
+# and the wrong one within an hour of the next engine bump. `.orly/orly.json`
 # is the single source; jq reads it with the same expression governance.yml
 # uses, so the local path and CI cannot disagree about what "pinned" means.
 #
@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-CONFIG="${1:-.oracle/orly.json}"
+CONFIG="${1:-.orly/orly.json}"
 ORLY_BIN="${ORLY_BIN:-orly}"
 readonly CONFIG ORLY_BIN
 readonly LABEL="[orly-pin]"
