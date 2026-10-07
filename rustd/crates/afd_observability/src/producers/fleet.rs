@@ -7,6 +7,7 @@
 
 pub mod admission;
 pub mod census;
+pub mod history;
 pub mod repair;
 pub mod runner;
 
@@ -85,6 +86,9 @@ pub struct Handles {
     lease_candidates: Counter<u64>,
     lease_roundtrips: Counter<u64>,
     lease_claims_empty: Counter<u64>,
+    history_bytes: Histogram<f64>,
+    history_cuts: Counter<u64>,
+    history_read_failures: Counter<u64>,
     runs_started: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_write_failures: Counter<u64>,
@@ -126,6 +130,10 @@ impl Handles {
                 .counter_u64(&declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
             lease_roundtrips: instruments.counter_u64(&declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
             lease_claims_empty: instruments.counter_u64(&declared::LEASE_CLAIMS_EMPTY_TOTAL)?,
+            history_bytes: instruments.histogram_f64(&declared::LEASE_HISTORY_BYTES)?,
+            history_cuts: instruments.counter_u64(&declared::LEASE_HISTORY_CUTS_TOTAL)?,
+            history_read_failures: instruments
+                .counter_u64(&declared::LEASE_HISTORY_READ_FAILURES_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_write_failures: instruments

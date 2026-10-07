@@ -73,6 +73,10 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::VerifierRun::ALL.len(),
         ),
         (
+            fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
+            fleet_labels::HistoryCut::ALL.len(),
+        ),
+        (
             library::LIBRARY_STAGE_DURATION_SECONDS_TOTAL.wire_name(),
             library_labels::Surface::ALL.len() * library_labels::Stage::ALL.len(),
         ),
@@ -164,6 +168,7 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::fleet::Correlation),
         set!(crate::metrics::label::fleet::SyntheticEvent),
         set!(crate::metrics::label::fleet::VerifierRun),
+        set!(crate::metrics::label::fleet::HistoryCut),
         set!(crate::metrics::label::fleet::AdmissionOutcome),
         set!(crate::metrics::label::fleet::ReplayOutcome),
         set!(crate::metrics::label::http::TraceSuppression),

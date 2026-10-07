@@ -55,6 +55,9 @@ agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:7	no	err
 agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the two below
 agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
 agentsfleet_lease_poll_db_roundtrips_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = DB cost per poll; idle polls must add zero
+agentsfleet_lease_history_bytes	histogram	f64	By	delta	-	0,1024,4096,8192,16384,32768,49152,65536	fixed:1	no	traffic	bytes of earlier turns each chat lease carries; a crowd at 65536 means conversations outgrow the window
+agentsfleet_lease_history_cuts_total	counter	u64	{lease}	cumulative	reason	-	fixed:3	no	traffic	chat leases whose turns a cap cut, by cap: turns means long conversations, text or bytes means large turns
+agentsfleet_lease_history_read_failures_total	counter	u64	{lease}	cumulative	-	-	fixed:1	no	errors	chat leases issued without their turns because the thread read failed
 agentsfleet_lease_claims_empty_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	won claims that found nothing deliverable; each clears one drained mark
 agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed share is runners dying mid-run
 agentsfleet_fleet_delivery_stage_seconds	histogram	f64	s	delta	stage	0.05,0.1,0.25,0.5,1,2,5,10,20,40,80,160,320	fixed:4	no	latency	event-to-lease, lease-to-first-chunk, event-to-first-chunk and zombie-to-first-chunk latency
