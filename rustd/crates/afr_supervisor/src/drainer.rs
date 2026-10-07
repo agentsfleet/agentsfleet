@@ -8,11 +8,13 @@
 
 use std::time::Duration;
 
+use afd_core::id::Uuid7;
 use tokio::sync::Notify;
 
 use crate::client::{ControlPlane, endless};
 use crate::halt::Halt;
-use crate::report_spool::{Delivery, ReportSpool};
+use crate::holds::Holds;
+use crate::report_spool::{Delivery, ReportSpool, Spooled};
 
 const EVENT_REPLAY_FAILED: &str = "report_spool_replay_failed";
 
@@ -27,6 +29,9 @@ pub(crate) struct Drainer<'a> {
     pub(crate) halt: &'a Halt,
     /// Rung when a lease leaves a report held.
     pub(crate) held: &'a Notify,
+    /// The sandboxes leases left held, one of which a superseded report's
+    /// lease may have parked.
+    pub(crate) holds: &'a Holds,
 }
 
 impl Drainer<'_> {
@@ -60,7 +65,8 @@ impl Drainer<'_> {
         let mut still_held = false;
         for spooled in pending {
             match spooled.deliver(self.plane).await {
-                Ok(Delivery::Settled | Delivery::Superseded | Delivery::Rejected) => {}
+                Ok(Delivery::Settled | Delivery::Rejected) => {}
+                Ok(Delivery::Superseded) => self.superseded(&spooled),
                 Ok(Delivery::Kept(failure)) => {
                     if self.halt.stops_on(&failure) {
                         return true;
@@ -74,6 +80,15 @@ impl Drainer<'_> {
             }
         }
         still_held
+    }
+
+    /// Ends the hold `spooled`'s lease parked, as the lease's own post does
+    /// when the daemon settled the lease without the report: that sandbox
+    /// serves no next lease. A file no lease id names parked nothing.
+    fn superseded(&self, spooled: &Spooled) {
+        if let Ok(lease) = Uuid7::parse(spooled.lease_id()) {
+            self.holds.supersede(lease);
+        }
     }
 }
 

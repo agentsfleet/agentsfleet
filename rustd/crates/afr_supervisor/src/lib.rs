@@ -208,6 +208,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         plane: &lessee.plane,
         halt: &lessee.halt,
         held: &lessee.held,
+        holds: &lessee.holds,
     };
     let pool = worker_pool::serve(Arc::clone(&lessee), watching);
     tokio::join!(heartbeat, drainer.run(), pool);

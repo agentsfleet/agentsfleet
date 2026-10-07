@@ -14,6 +14,7 @@ use bytes::Bytes;
 use tokio::sync::mpsc;
 
 use crate::client::Verb;
+use crate::holds::Release;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, OUTCOME,
     PROCESSED, RENEWAL_TERMINATE, Rig, STARTUP_POSTURE, Writes, daemon, lease, reported,
@@ -229,5 +230,46 @@ fn the_size_at_its_bound_is_built_and_one_past_is_refused() {
     assert_eq!(
         refused.code(),
         afd_core::error_code::INTERNAL_OPERATION_FAILED
+    );
+}
+
+/// A held sandbox serves only a lease of its own size: the fleet's next lease
+/// asking for another size is built fresh at that size, and the hold is
+/// destroyed as `mismatch`.
+#[tokio::test(start_paused = true)]
+async fn test_a_lease_of_another_size_builds_fresh_and_ends_the_hold() {
+    const NEXT_LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
+    const RELEASED: &str = "sandbox_hold_released";
+    let capture = Capture::install();
+    let (asked, mut received) = mpsc::unbounded_channel();
+    let (mut rig, _name) = rig(FakeEngine {
+        asked: Some(asked),
+        ..FakeEngine::default()
+    });
+    rig.lessee.holds.resize(2);
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+    let mut resized = lease(NEXT_LEASE_ID, FLEET_ID, None);
+    resized.limits = Some(ASKED);
+
+    rig.run(&resized).await.unwrap();
+    rig.lessee.holds.shutdown().await;
+
+    let built: Vec<Limits> = std::iter::from_fn(|| received.try_recv().ok()).collect();
+    assert_eq!(built.len(), 2, "the second lease built its own: {built:?}");
+    assert_eq!(built[1].memory_bytes, ASKED.memory_bytes);
+    assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
+    let reasons: Vec<_> = capture
+        .events()
+        .iter()
+        .filter(|event| event.field("event") == Some(RELEASED))
+        .map(|event| event.field("reason").unwrap().to_owned())
+        .collect();
+    let mismatch = Release::Mismatch.outcome().as_str();
+    let shutdown = Release::Shutdown.outcome().as_str();
+    assert_eq!(reasons, [mismatch, shutdown]);
+    assert_eq!(
+        rig.destroyed.load(Ordering::SeqCst),
+        2,
+        "the stale hold, then the fresh one at shutdown"
     );
 }

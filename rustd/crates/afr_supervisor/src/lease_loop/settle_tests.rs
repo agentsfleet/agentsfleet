@@ -5,10 +5,15 @@
 )]
 
 use std::fs;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
+
+use afd_core::error_code::RUN_STALE_FENCING_TOKEN;
+use afd_core::test_util::trace::Capture;
 
 use crate::client::{Call, Verb};
 use crate::error;
+use crate::holds::Release;
 use crate::report_spool::ReportSpool;
 use crate::test_support::{
     Answer, Behaviour, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, OUTCOME, PROCESSED, Rig, daemon,
@@ -124,4 +129,35 @@ async fn an_unspooled_report_the_daemon_will_not_take_is_logged_or_stops_the_run
     let refused = unspoolable(report_unauthorized);
     refused.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
     assert!(refused.lessee.halt.token_refused());
+}
+
+fn report_superseded(call: &Call) -> Option<Answer> {
+    (call.verb == Verb::Report).then(|| {
+        Answer::Fail(error::refused(
+            Verb::Report,
+            409,
+            Some(RUN_STALE_FENCING_TOKEN),
+        ))
+    })
+}
+
+/// A report with nowhere to wait, which the daemon answers as settled without
+/// it, destroys the sandbox its lease parked: that hold serves no next lease.
+#[tokio::test(start_paused = true)]
+async fn test_an_unspooled_superseded_report_destroys_what_it_parked() {
+    const RELEASED: &str = "sandbox_hold_released";
+    let capture = Capture::install();
+    let rig = unspoolable(report_superseded);
+    rig.lessee.holds.resize(2);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+    let held = rig.lessee.holds.fleets().await;
+    rig.lessee.holds.shutdown().await;
+
+    assert!(held.is_empty(), "{held:?}");
+    let released = capture.only(RELEASED);
+    assert_eq!(released.field("fleet_id"), Some(FLEET_ID));
+    let superseded = Release::Superseded.outcome().as_str();
+    assert_eq!(released.field("reason"), Some(superseded));
+    assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
 }

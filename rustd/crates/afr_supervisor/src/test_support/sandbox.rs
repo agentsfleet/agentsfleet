@@ -4,7 +4,8 @@
 use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
 use afr_sandbox::{Engine, HostWorkspace, Limits, Sandbox, SandboxRequest};
@@ -33,6 +34,11 @@ pub(crate) enum Freezer {
     RefusesFreeze,
     /// Freezes, then refuses the thaw.
     RefusesThaw,
+    /// Freezes and thaws, but its executor never answers again, as one that
+    /// died while frozen would.
+    ThawsSilent,
+    /// Freezes and thaws, but its executor fails every listing after.
+    ThawsBroken,
 }
 
 /// An engine whose sandboxes count their teardowns.
@@ -43,6 +49,8 @@ pub(crate) struct FakeEngine {
     /// would take its worker down.
     pub(crate) panic_once: bool,
     pub(crate) fail_teardown: bool,
+    /// How long each teardown takes before it is counted.
+    pub(crate) teardown_takes: Duration,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
     /// Where each sandbox's executor reports the files written into it.
@@ -81,6 +89,7 @@ impl Engine for FakeEngine {
         });
         Ok(Box::new(FakeSandbox {
             fail_teardown: self.fail_teardown,
+            teardown_takes: self.teardown_takes,
             workspace,
             destroyed: Arc::clone(&self.destroyed),
             frozen: Arc::clone(&self.frozen),
@@ -89,6 +98,8 @@ impl Engine for FakeEngine {
             executor: FakeExecutor {
                 written: self.written.clone(),
                 writes: self.writes,
+                freezer: self.freezer,
+                thawed: AtomicBool::default(),
             },
         }))
     }
@@ -97,6 +108,7 @@ impl Engine for FakeEngine {
 #[derive(Debug)]
 struct FakeSandbox {
     fail_teardown: bool,
+    teardown_takes: Duration,
     workspace: Option<(PathBuf, (u32, u32))>,
     destroyed: Arc<AtomicUsize>,
     frozen: Arc<AtomicUsize>,
@@ -131,10 +143,14 @@ impl Sandbox for FakeSandbox {
             return Err(std::io::Error::other(NO_FREEZER).into());
         }
         self.thawed.fetch_add(1, Ordering::SeqCst);
+        self.executor.thawed.store(true, Ordering::SeqCst);
         Ok(())
     }
 
     async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
+        if !self.teardown_takes.is_zero() {
+            tokio::time::sleep(self.teardown_takes).await;
+        }
         self.destroyed.fetch_add(1, Ordering::SeqCst);
         if self.fail_teardown {
             return Err(std::io::Error::other("busy mount").into());
@@ -147,13 +163,19 @@ impl Sandbox for FakeSandbox {
 const READ_ONLY: &str = "read-only workspace";
 /// What a refused freeze or thaw says.
 const NO_FREEZER: &str = "cgroup.freeze refused";
+/// What a broken executor says once its sandbox is thawed.
+pub(crate) const EXECUTOR_GONE: &str = "the executor died while frozen";
 
 /// An executor that refuses to spawn, reports the files written into it, and
-/// answers everything else emptily.
-#[derive(Debug)]
+/// answers everything else emptily, until its sandbox's freezer says not.
+#[derive(Debug, Default)]
 struct FakeExecutor {
     written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
     writes: Writes,
+    /// What its sandbox does when thawed.
+    freezer: Freezer,
+    /// Whether its sandbox was thawed.
+    thawed: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -202,8 +224,12 @@ impl Executor for FakeExecutor {
     }
 
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
-        if self.writes == Writes::Stall {
+        let thawed = self.thawed.load(Ordering::SeqCst);
+        if self.writes == Writes::Stall || (thawed && self.freezer == Freezer::ThawsSilent) {
             std::future::pending::<()>().await;
+        }
+        if thawed && self.freezer == Freezer::ThawsBroken {
+            return Err(std::io::Error::other(EXECUTOR_GONE).into());
         }
         Ok(Listing {
             entries: Vec::new(),

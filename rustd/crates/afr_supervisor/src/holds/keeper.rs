@@ -77,7 +77,7 @@ impl Keeper {
                     let _unasked = reply.send(until);
                 }
                 Request::Release { fleet, reason } => self.release(&fleet, reason),
-                Request::Supersede { fleet, lease } => self.supersede(&fleet, &lease),
+                Request::Supersede { lease } => self.supersede(&lease),
                 Request::Discard {
                     fleet,
                     sandbox,
@@ -177,11 +177,10 @@ impl Keeper {
         }
     }
 
-    /// Ends `fleet`'s hold for a superseded report only when `lease` parked
-    /// it; a hold a later lease parked is that lease's.
-    fn supersede(&mut self, fleet: &Uuid7, lease: &Uuid7) {
-        let parked = |entry: &Entry| entry.key.fleet == *fleet && entry.lease == *lease;
-        if let Some(at) = self.held.iter().position(parked) {
+    /// Ends the hold `lease` parked, for a superseded report; a hold a later
+    /// lease parked is that lease's.
+    fn supersede(&mut self, lease: &Uuid7) {
+        if let Some(at) = self.held.iter().position(|entry| entry.lease == *lease) {
             let entry = self.held.remove(at);
             self.retire(entry, Release::Superseded);
         }
@@ -260,3 +259,7 @@ async fn tear_down(fleet: &Uuid7, sandbox: Box<dyn Sandbox>) {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "keeper_tests.rs"]
+mod tests;
