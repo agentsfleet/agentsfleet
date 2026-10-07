@@ -23,4 +23,14 @@ fn test_an_answer_json_refuses_is_logged_and_reads_as_its_debug_form() {
         logged.field("error_code"),
         Some(INTERNAL_OPERATION_FAILED.as_str())
     );
+    let reason = serde_json::to_string(&refused)
+        .err()
+        .as_ref()
+        .map(ToString::to_string);
+    assert!(reason.is_some(), "JSON refuses the map");
+    assert_eq!(
+        logged.field("reason"),
+        reason.as_deref(),
+        "why JSON refused"
+    );
 }

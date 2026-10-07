@@ -50,6 +50,18 @@ pub(super) const ONE: &str = "one\n";
 const TWO: &str = "two\n";
 /// How the first process's session reads while it runs.
 pub(super) const FIRST_RUNNING: &str = "Process running with session ID 1";
+/// The id of a lease whose log lines a test reads: a default lease's id is
+/// empty, which a line that never read it would carry as well.
+pub(super) const LEASE_ID: &str = "lease-oom";
+
+/// A lease named [`LEASE_ID`], so a log line carries its id only by reading
+/// it off the lease.
+pub(super) fn named_lease() -> Lease<'static> {
+    Lease {
+        lease_id: LEASE_ID,
+        ..Lease::default()
+    }
+}
 
 pub(super) fn exec() -> Box<dyn Tool> {
     Typed::boxed(ExecCommand)
@@ -138,7 +150,7 @@ async fn a_session_killed_for_memory_is_logged_as_a_one_shot_command_is() {
     let capture = Capture::install();
     let executor =
         ScriptedExecutor::new([ScriptedProcess::ends("allocating\n", Ending::OutOfMemory)]);
-    let lease = Lease::default();
+    let lease = named_lease();
 
     let output = call_in(&*exec(), &executor, &lease, opening(REPL, None)).await;
 
@@ -146,7 +158,7 @@ async fn a_session_killed_for_memory_is_logged_as_a_one_shot_command_is() {
     let logged = capture.only(EVENT_OUT_OF_MEMORY);
     assert_eq!(logged.level, tracing::Level::WARN);
     assert_eq!(logged.field("error_code"), Some("out_of_memory"));
-    assert_eq!(logged.field("lease_id"), Some(lease.lease_id));
+    assert_eq!(logged.field("lease_id"), Some(LEASE_ID));
 }
 
 #[tokio::test(start_paused = true)]

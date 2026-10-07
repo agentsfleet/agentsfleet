@@ -1,16 +1,21 @@
 //! `write_stdin` against a process that would not, or could not, take the
-//! write: gone by then, its input closed, or a refusal that is the sandbox's.
+//! write: gone by then, killed for memory, its input closed, or a refusal
+//! that is the sandbox's.
 
 use std::time::Duration;
 
+use afd_core::test_util::trace::Capture;
 use afr_executor::Ending;
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use super::tests::{CAT, EXIT, FIRST, FIRST_RUNNING, ONE, REPL, open, write, writing};
+use super::tests::{
+    CAT, EXIT, FIRST, FIRST_RUNNING, LEASE_ID, ONE, REPL, named_lease, open, write, writing,
+};
 use super::{INPUT_REFUSED, WRITE_UNDELIVERED, YIELD_MS_MIN};
 use crate::lease::Lease;
 use crate::runtime::ToolErrorCode;
+use crate::sandbox::oneshot::EVENT_OUT_OF_MEMORY;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
 
@@ -37,6 +42,29 @@ async fn should_answer_the_ending_of_a_process_gone_by_the_time_of_a_write() {
         [(FIRST, Bytes::from_static(EXIT.as_bytes()))]
     );
     assert!(lease.sessions.get(FIRST).is_none(), "the session is closed");
+}
+
+/// A process the kernel killed for memory while a write was on its way is
+/// logged as a one-shot command killed for memory is, under the lease whose
+/// call wrote to it.
+#[tokio::test(start_paused = true)]
+async fn should_log_a_session_killed_for_memory_during_a_write_under_its_lease() {
+    let capture = Capture::install();
+    let executor =
+        ScriptedExecutor::new([ScriptedProcess::ends_when_written("", Ending::OutOfMemory)]);
+    let lease = named_lease();
+    open(&executor, &lease, REPL).await;
+
+    let output = call_in(&*write(), &executor, &lease, writing(1, ONE, None)).await;
+
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    let logged = capture.only(EVENT_OUT_OF_MEMORY);
+    assert_eq!(logged.level, tracing::Level::WARN);
+    assert_eq!(
+        logged.field("error_code"),
+        Some(ToolErrorCode::OutOfMemory.as_str())
+    );
+    assert_eq!(logged.field("lease_id"), Some(LEASE_ID));
 }
 
 /// A write that found no process, with no ending yet: the ending is on its

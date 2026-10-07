@@ -7,10 +7,12 @@
 use afd_wire::event::message_of;
 use afd_wire::lease::{LeasePayload, Turn};
 use afr_providers::{Message, Replay};
+use afr_tools::catalog::DELEGATE;
+use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use crate::context::{Budget, EVICTED};
-use crate::fixture::{GITHUB_TOKEN, Script, budget, clean, lease, say, unbounded};
+use crate::fixture::{GITHUB_TOKEN, Script, budget, call, clean, lease, say, unbounded};
 use crate::harness::tests::{drive, engine};
 use crate::prompt::Prompt;
 
@@ -19,6 +21,8 @@ const ASKED: &str = "which tests failed?";
 const ANSWERED: &str = "two: a and b";
 /// The current event's message, as the fixture lease carries it.
 const CURRENT: &str = "triage the failed run";
+/// The task the root delegates, which opens its child's conversation.
+const DELEGATED: &str = "read the build log";
 
 /// The fixture lease, carrying `turns` as its earlier history.
 fn with_history(turns: &[(&str, &str)]) -> LeasePayload<'static> {
@@ -139,7 +143,7 @@ async fn test_cache_tokens_recorded_on_the_chat_span() {
     use afd_core::test_util::trace::Capture;
     use afd_observability::semconv::{
         ATTR_USAGE_CACHE_CREATION_TOKENS, ATTR_USAGE_CACHE_READ_TOKENS, ATTR_USAGE_INPUT_TOKENS,
-        OPERATION_CHAT,
+        ATTR_USAGE_OUTPUT_TOKENS, OPERATION_CHAT,
     };
 
     let capture = Capture::install();
@@ -165,8 +169,38 @@ async fn test_cache_tokens_recorded_on_the_chat_span() {
         Some("50"),
         "fresh and cached together"
     );
+    assert_eq!(chat.field(ATTR_USAGE_OUTPUT_TOKENS), Some("2"));
     assert_eq!(chat.field(ATTR_USAGE_CACHE_READ_TOKENS), Some("40"));
     assert_eq!(chat.field(ATTR_USAGE_CACHE_CREATION_TOKENS), Some("6"));
+}
+
+/// Every request of a run files the provider's prompt cache under the
+/// lease's fleet, a delegated child's as well as the root's, so a follow-up
+/// and every child of the fleet read the one cache.
+#[tokio::test]
+async fn test_every_request_keys_the_cache_by_the_fleet() {
+    let script = Script::new([
+        vec![call("p1", DELEGATE.name(), json!({"task": DELEGATED}))],
+        vec![say("done")],
+    ])
+    .with_child(DELEGATED, [vec![say("read")]]);
+    let engine = engine(afr_tools::nested::tools(), &script);
+    let lease = lease(&[DELEGATE.name()], unbounded());
+
+    drive(&engine, &lease, &CancellationToken::new()).await;
+
+    let sent = script.sent();
+    let child = sent.iter().filter(|request| {
+        matches!(request.messages.first(), Some(Message::User(text)) if text.starts_with(DELEGATED))
+    });
+    assert_eq!(
+        (sent.len(), child.count()),
+        (3, 1),
+        "two root turns and the child's one"
+    );
+    for request in &sent {
+        assert_eq!(request.cache_key, lease.event.fleet_id, "{request:?}");
+    }
 }
 
 /// A follow-up's first request repeats the previous lease's, through that

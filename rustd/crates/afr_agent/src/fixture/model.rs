@@ -27,6 +27,9 @@ pub(crate) struct Sent {
     pub(crate) hosted: Vec<&'static str>,
     pub(crate) instructions: String,
     pub(crate) messages: Vec<Message>,
+    /// The key the provider's prompt cache was asked to file the request
+    /// under.
+    pub(crate) cache_key: String,
 }
 
 /// One scripted turn: the chunks it streams, then the failure it ends on.
@@ -208,6 +211,7 @@ impl Provider for Replay {
             hosted: request.hosted.iter().map(|entry| entry.name()).collect(),
             instructions: request.instructions.to_owned(),
             messages: request.messages.to_vec(),
+            cache_key: request.cache_key.to_owned(),
         };
         self.sent.send(sent).expect(RECEIVER_HELD);
         let turns = self.turns_for(request.messages.first());
