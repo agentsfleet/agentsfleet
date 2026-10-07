@@ -113,3 +113,6 @@ fn unqueued(process: ProcessId) {
         "a kill for a process whose reader left could not be queued"
     );
 }
+
+#[cfg(test)]
+mod tests;
