@@ -272,3 +272,12 @@ async fn events_read_to_their_ending_or_finished_by_their_feed_run_no_hook() {
         "finished by the feed"
     );
 }
+
+/// Events that will kill their process say so, without showing the hook.
+#[test]
+fn events_with_a_hook_name_it_in_their_debug() {
+    let (_feed, mut events) = Events::channel();
+    events.on_abandon(|| {});
+
+    assert!(format!("{events:?}").contains("Abandon"), "{events:?}");
+}
