@@ -177,7 +177,7 @@ impl Spooled {
 
     /// The lease the report settles, as its file is named; read here rather
     /// than kept, so the drain names a report a dead process left too.
-    fn lease_id(&self) -> &str {
+    pub(crate) fn lease_id(&self) -> &str {
         self.path
             .file_stem()
             .and_then(OsStr::to_str)

@@ -18,9 +18,10 @@ use super::Drainer;
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
+use crate::holds::Holds;
 use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
-use crate::test_support::{Answer, LEASE_ID, json, plane};
+use crate::test_support::{Answer, LEASE_ID, clock, json, plane};
 
 /// A spooled report's bytes; the drainer never reads them.
 const EMPTY_REPORT: &[u8] = b"{}";
@@ -61,11 +62,13 @@ async fn a_held_report_is_posted_again_until_taken_and_a_new_one_wakes_the_drain
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
     let held = Notify::new();
+    let holds = Holds::start(clock());
     let drainer = Drainer {
         spool: &spool,
         plane: &plane,
         halt: &halt,
         held: &held,
+        holds: &holds,
     };
 
     let ((), ()) = tokio::join!(drainer.run(), async {
@@ -107,12 +110,14 @@ async fn a_refused_token_stops_the_runner_from_the_drain() {
     let (plane, _calls) = plane(|_call| Answer::Fail(error::refused(Verb::Report, 401, None)));
     let halt = Halt::new(CancellationToken::new());
     let held = Notify::new();
+    let holds = Holds::start(clock());
 
     Drainer {
         spool: &spool,
         plane: &plane,
         halt: &halt,
         held: &held,
+        holds: &holds,
     }
     .run()
     .await;
@@ -144,11 +149,13 @@ async fn a_spool_that_will_not_read_is_retried_rather_than_abandoned() {
     let shutdown = CancellationToken::new();
     let halt = Halt::new(shutdown.clone());
     let held = Notify::new();
+    let holds = Holds::start(clock());
     let drainer = Drainer {
         spool: &spool,
         plane: &plane,
         halt: &halt,
         held: &held,
+        holds: &holds,
     };
 
     let ((), ()) = tokio::join!(drainer.run(), async {

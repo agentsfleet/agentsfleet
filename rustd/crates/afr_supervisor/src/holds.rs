@@ -109,7 +109,6 @@ enum Request {
         reason: Release,
     },
     Supersede {
-        fleet: Uuid7,
         lease: Uuid7,
     },
     Discard {
@@ -190,11 +189,11 @@ impl Holds {
         let _stopped = self.requests.send(Request::Release { fleet, reason });
     }
 
-    /// Ends `fleet`'s hold when it is still the one `lease` parked, because
-    /// the daemon settled `lease` without its report. A later lease's hold of
-    /// the same fleet stays: that lease took the sandbox and parked it again.
-    pub(crate) fn supersede(&self, fleet: Uuid7, lease: Uuid7) {
-        let _stopped = self.requests.send(Request::Supersede { fleet, lease });
+    /// Ends the hold `lease` parked, if it is still held, because the daemon
+    /// settled `lease` without its report. A later lease's hold of the same
+    /// fleet stays: that lease took the sandbox and parked it again.
+    pub(crate) fn supersede(&self, lease: Uuid7) {
+        let _stopped = self.requests.send(Request::Supersede { lease });
     }
 
     /// Destroys `sandbox`, which was `fleet`'s hold, for `reason`: logged and

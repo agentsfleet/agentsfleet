@@ -30,7 +30,7 @@ async fn test_a_late_superseded_answer_spares_the_next_leases_hold() {
     let next = id(NEXT_LEASE);
     holds.park(key(FLEET_A), next, taken.sandbox).await.unwrap();
 
-    holds.supersede(id(FLEET_A), id(LEASE));
+    holds.supersede(id(LEASE));
 
     assert_eq!(
         fleets(&holds).await,
@@ -39,7 +39,7 @@ async fn test_a_late_superseded_answer_spares_the_next_leases_hold() {
     );
     let ended = releases(&capture);
     assert!(ended.is_empty(), "{ended:?}");
-    holds.supersede(id(FLEET_A), id(NEXT_LEASE));
+    holds.supersede(id(NEXT_LEASE));
     holds.shutdown().await;
     assert_eq!(releases(&capture), [released(FLEET_A, Release::Superseded)]);
     assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);

@@ -39,7 +39,7 @@ mod sandbox;
 
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
-pub(crate) use self::sandbox::{FakeEngine, Freezer, Writes};
+pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, Writes};
 
 /// A canonical lease identifier.
 pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";

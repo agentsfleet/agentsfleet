@@ -16,10 +16,12 @@ async fn an_append_is_reported_as_a_write_and_a_delete_answers_the_mode() {
     let accepting = FakeExecutor {
         written: Some(written),
         writes: Writes::Accept,
+        ..FakeExecutor::default()
     };
     let refusing = FakeExecutor {
         written: None,
         writes: Writes::Refuse,
+        ..FakeExecutor::default()
     };
 
     accepting

@@ -230,9 +230,7 @@ impl LeaseRun<'_> {
                 let held_until = self.keep(kept, &ending).await;
                 let superseded = self.settle(&mut ending, started, held_until).await;
                 if superseded && held_until.is_some() {
-                    let fleet = self.ids.fleet.clone();
-                    let lease = self.ids.lease.clone();
-                    lessee.holds.supersede(fleet, lease);
+                    lessee.holds.supersede(self.ids.lease.clone());
                 }
             };
             tokio::pin!(settle);

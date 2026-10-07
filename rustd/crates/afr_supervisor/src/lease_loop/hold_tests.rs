@@ -7,24 +7,34 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use afd_core::id::Uuid7;
+use afd_core::test_util::trace::Capture;
 use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
+use futures_util::FutureExt as _;
 
 use crate::client::{Call, Verb};
 use crate::error;
+use crate::holds::Release;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer, LEASE_ID, OUTCOME,
     PROCESSED, RENEWAL_TERMINATE, Rig, daemon, lease, reported,
 };
 
 /// The fleet's second lease, after the one that left its sandbox held.
-const NEXT_LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
+pub(super) const NEXT_LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a805a";
+/// A fleet other than the one whose sandbox is held.
+const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
+/// A fleet busy on a worker no lease in these tests runs on.
+const BUSY_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
+/// The event every release is logged under.
+const RELEASED: &str = "sandbox_hold_released";
 /// Where the report says the hold lapses: the rig's clock stands at zero.
 const HELD_UNTIL: i64 = SANDBOX_HOLD_IDLE_MS;
 /// The report field that carries it.
 const HELD_UNTIL_MS: &str = "held_until_ms";
 
 /// What the fake engine counted.
-struct Counted {
+pub(super) struct Counted {
     prepared: Arc<AtomicUsize>,
     destroyed: Arc<AtomicUsize>,
     frozen: Arc<AtomicUsize>,
@@ -42,7 +52,7 @@ impl Counted {
     }
 
     /// (prepared, frozen, thawed, destroyed)
-    fn read(&self) -> (usize, usize, usize, usize) {
+    pub(super) fn read(&self) -> (usize, usize, usize, usize) {
         let load = |count: &AtomicUsize| count.load(Ordering::SeqCst);
         (
             load(&self.prepared),
@@ -53,13 +63,13 @@ impl Counted {
     }
 }
 
-fn healthy(_call: &Call) -> Option<Answer> {
+pub(super) fn healthy(_call: &Call) -> Option<Answer> {
     None
 }
 
 /// A rig with two workers' worth of room for holds, so a processed lease
 /// parks its sandbox.
-fn holding(
+pub(super) fn holding(
     special: impl Fn(&Call) -> Option<Answer> + Send + Sync + 'static,
     engine: FakeEngine,
     behaviour: Behaviour,
@@ -72,8 +82,26 @@ fn holding(
 
 /// Waits until every release the registry was asked for is done, by asking
 /// it to stop: the answer comes after each teardown.
-async fn settled(rig: &Rig) {
+pub(super) async fn settled(rig: &Rig) {
     rig.lessee.holds.shutdown().await;
+}
+
+/// Every release logged, as (fleet, reason), in the order they happened.
+pub(super) fn releases(capture: &Capture) -> Vec<(String, String)> {
+    capture
+        .events()
+        .iter()
+        .filter(|event| event.field("event") == Some(RELEASED))
+        .map(|event| {
+            let field = |name| event.field(name).unwrap().to_owned();
+            (field("fleet_id"), field("reason"))
+        })
+        .collect()
+}
+
+/// The release `releases` reads back for `fleet` ended for `reason`.
+pub(super) fn released(fleet: &str, reason: Release) -> (String, String) {
+    (fleet.to_owned(), reason.outcome().as_str().to_owned())
 }
 
 #[tokio::test(start_paused = true)]
@@ -210,7 +238,6 @@ async fn test_thaw_failure_falls_back_fresh() {
 
 #[tokio::test(start_paused = true)]
 async fn test_another_fleets_lease_leaves_the_hold_alone() {
-    const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805b";
     let (rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
 
     rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
@@ -228,6 +255,27 @@ async fn test_another_fleets_lease_leaves_the_hold_alone() {
 
     assert_eq!(held, [FLEET_ID, OTHER_FLEET]);
     assert_eq!(counted.read(), (2, 2, 0, 0));
+}
+
+/// The lease that takes the runner's last free worker releases every other
+/// fleet's hold as saturated, and rings the heartbeat so the daemon hears at
+/// once; the fleet it serves parks in their place.
+#[tokio::test(start_paused = true)]
+async fn test_a_lease_on_the_last_free_worker_releases_other_holds() {
+    let capture = Capture::install();
+    let (rig, _counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+    let _other_worker = rig.lessee.holds.occupy(Uuid7::parse(BUSY_FLEET).unwrap());
+
+    rig.run(&lease(NEXT_LEASE_ID, OTHER_FLEET, None))
+        .await
+        .unwrap();
+    let held = rig.lessee.holds.fleets().await;
+
+    assert_eq!(held, [Uuid7::parse(OTHER_FLEET).unwrap()]);
+    assert_eq!(releases(&capture), [released(FLEET_ID, Release::Saturated)]);
+    let rung = rig.lessee.holds.saturated().notified().now_or_never();
+    assert!(rung.is_some(), "the heartbeat is rung at once");
 }
 
 /// The report asks the daemon to hold nothing for its fleet.

@@ -165,3 +165,45 @@ async fn a_worker_that_panics_is_started_again() {
         "the second lease ran on a fresh worker"
     );
 }
+
+/// Once a lease leaves its sandbox held, the next poll names that fleet, so
+/// the daemon offers the fleet's next event here first.
+#[tokio::test(start_paused = true)]
+async fn test_a_poll_after_a_park_names_the_held_fleet() {
+    const HOLDS: &str = "holds";
+    let polls = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&polls);
+    let mut rig = polling(move |polled| {
+        counted.fetch_add(1, Ordering::SeqCst);
+        match polled {
+            0 => granted(FIRST_LEASE),
+            _ => idle(Some(500)),
+        }
+    });
+    let (_published, watching) = watch::channel(assigned(1));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    until(&polls, 2).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    let held: Vec<Option<serde_json::Value>> = rig
+        .calls()
+        .iter()
+        .filter(|call| call.verb == Verb::Lease)
+        .take(2)
+        .map(|call| {
+            let body = call.body.as_ref().unwrap();
+            let sent: serde_json::Value = serde_json::from_slice(body).unwrap();
+            sent.get(HOLDS).cloned()
+        })
+        .collect();
+    assert_eq!(
+        held,
+        [
+            Some(serde_json::json!([])),
+            Some(serde_json::json!([FLEET_ID]))
+        ],
+        "nothing held before the first lease, its fleet after"
+    );
+}

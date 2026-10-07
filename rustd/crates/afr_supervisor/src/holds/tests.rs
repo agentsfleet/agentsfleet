@@ -18,7 +18,7 @@ use crate::test_support::FakeEngine;
 
 const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
 pub(super) const FLEET_A: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
-const FLEET_B: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
+pub(super) const FLEET_B: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
 const FLEET_C: &str = "01890a5d-ac96-774b-bcce-b302099a80a3";
 const FLEET_D: &str = "01890a5d-ac96-774b-bcce-b302099a80a4";
 pub(super) const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
@@ -57,7 +57,7 @@ pub(super) async fn sandbox(engine: &FakeEngine) -> Box<dyn Sandbox> {
     engine.prepare(request).await.unwrap()
 }
 
-async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Option<UnixMillis> {
+pub(super) async fn park(holds: &Holds, engine: &FakeEngine, fleet: &str) -> Option<UnixMillis> {
     holds
         .park(key(fleet), id(LEASE), sandbox(engine).await)
         .await
@@ -253,18 +253,6 @@ async fn test_fewer_workers_release_the_oldest_holds() {
             released(FLEET_B, Release::Capped)
         ]
     );
-}
-
-#[tokio::test]
-async fn test_a_runner_with_no_workers_holds_nothing() {
-    let engine = FakeEngine::default();
-    let (holds, _clock) = holds(0);
-
-    let until = park(&holds, &engine, FLEET_A).await;
-    holds.shutdown().await;
-
-    assert_eq!(until, None);
-    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

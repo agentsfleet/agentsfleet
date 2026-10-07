@@ -11,6 +11,7 @@
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::ErrorCode;
 use afd_observability::semconv::ATTR_SANDBOX_REUSED;
 use afr_sandbox::{Limits, Sandbox};
 
@@ -108,7 +109,7 @@ impl LeaseRun<'_> {
             }
             Err(failure) => {
                 let error_code = failure.code().as_str();
-                let reason = failure.to_string();
+                let reason = failure.reason();
                 let event = EVENT_THAW_FAILED;
                 tracing::warn!(
                     error_code,
@@ -174,14 +175,48 @@ impl LeaseRun<'_> {
     }
 }
 
+/// Why a held sandbox did not come back: it would not thaw, or its executor
+/// did not answer once it had. Kept apart so the log names each one's cause.
+#[derive(Debug)]
+enum Unthawed {
+    /// The sandbox would not thaw.
+    Thaw(afr_sandbox::Error),
+    /// Its executor stayed silent past the wait, or answered with a failure.
+    Answer(afr_executor::Error),
+}
+
+impl Unthawed {
+    /// The registry code the failure is logged under.
+    fn code(&self) -> ErrorCode {
+        match self {
+            Self::Thaw(failure) => failure.code(),
+            Self::Answer(failure) => failure.code(),
+        }
+    }
+
+    /// The log's reason: an executor's failure with its cause, rendered as
+    /// the executor logs its own.
+    fn reason(&self) -> String {
+        match self {
+            Self::Thaw(failure) => failure.to_string(),
+            Self::Answer(failure) => failure.wire_message(),
+        }
+    }
+}
+
 /// Thaws `sandbox` and waits for its executor to answer.
-async fn thawed(sandbox: &dyn Sandbox) -> afr_sandbox::Result<()> {
-    sandbox.thaw().await?;
+async fn thawed(sandbox: &dyn Sandbox) -> Result<(), Unthawed> {
+    sandbox.thaw().await.map_err(Unthawed::Thaw)?;
     let answer = sandbox.executor().list_dir(WORKSPACE_TOP);
-    let _listing = tokio::time::timeout(THAW_ANSWER_WAIT, answer)
+    let answered = tokio::time::timeout(THAW_ANSWER_WAIT, answer)
         .await
-        .map_err(|_late| std::io::Error::new(std::io::ErrorKind::TimedOut, DETAIL_SILENT))??;
-    Ok(())
+        .unwrap_or_else(|_late| Err(silent()));
+    answered.map(drop).map_err(Unthawed::Answer)
+}
+
+/// The failure a thawed executor that never answered is logged as.
+fn silent() -> afr_executor::Error {
+    std::io::Error::new(std::io::ErrorKind::TimedOut, DETAIL_SILENT).into()
 }
 
 /// Records on the lease's span whether its sandbox was a held one.
@@ -192,3 +227,7 @@ pub(super) fn mark_reused(reused: bool) {
 #[cfg(test)]
 #[path = "hold_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "revive_tests.rs"]
+mod revive_tests;
