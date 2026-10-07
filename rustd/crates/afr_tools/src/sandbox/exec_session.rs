@@ -109,7 +109,7 @@ impl Handler for ExecCommand {
             Err(refused) => return refused,
         };
         let sessions = &context.lease.sessions;
-        sessions.make_room(executor).await;
+        let slot = sessions.make_room(executor).await;
         let process = match executor.spawn(&spawn_of(&arguments)).await {
             Ok(process) => process,
             Err(failure) => return failed(&failure),
@@ -117,7 +117,7 @@ impl Handler for ExecCommand {
         let id = process.id;
         // Registered before it is read, so a call the lease stops mid-wait
         // still leaves the process where the run's end finds it.
-        let shared = sessions.open(process);
+        let shared = sessions.open(slot, process);
         let mut process = shared.lock().await;
         let mut collected = Collected::default();
         let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MS_MIN);

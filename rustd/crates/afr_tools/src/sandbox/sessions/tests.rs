@@ -16,12 +16,17 @@ use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 
 /// How long making room may take when nothing it chooses is held.
 const ROOM_MADE_WITHIN: Duration = Duration::from_secs(5);
+/// The program every scripted session names.
+const SHELL: &str = "/bin/sh";
+/// The scripts [`full`] leaves for sessions a test starts itself.
+const STARTS_LEFT: usize = 2;
 
 /// Starts the next scripted process and keeps it as a session.
 async fn opened(executor: &ScriptedExecutor, sessions: &mut Sessions) -> ProcessId {
-    let process = executor.spawn(&Spawn::program("/bin/sh")).await.unwrap();
+    let slot = sessions.make_room(executor).await;
+    let process = executor.spawn(&Spawn::program(SHELL)).await.unwrap();
     let id = process.id;
-    sessions.open(process);
+    sessions.open(slot, process);
     id
 }
 
@@ -104,7 +109,8 @@ async fn should_log_a_session_opening_and_closing_with_its_ending() {
 
 /// `count` running sessions, oldest first.
 async fn full(count: usize) -> (ScriptedExecutor, Sessions, Vec<ProcessId>) {
-    let executor = ScriptedExecutor::new((0..count).map(|_| ScriptedProcess::stays_open("")));
+    let executor =
+        ScriptedExecutor::new((0..count + STARTS_LEFT).map(|_| ScriptedProcess::stays_open("")));
     let mut sessions = Sessions::default();
     let mut ids = Vec::new();
     for _ in 0..count {
@@ -218,4 +224,35 @@ async fn should_log_a_session_ending_once_when_it_is_closed_twice() {
     sessions.close(id, Ending::Exited(0));
 
     assert_eq!(endings(&capture), ["exited"]);
+}
+
+/// Two calls starting sessions at once one short of the cap both hold their
+/// place before either process starts, so the second makes room.
+#[tokio::test]
+async fn should_hold_the_cap_when_two_sessions_start_at_once() {
+    let (executor, sessions, ids) = full(SESSIONS_PER_LEASE_MAX - 1).await;
+
+    let slots = [
+        sessions.make_room(&executor).await,
+        sessions.make_room(&executor).await,
+    ];
+    for slot in slots {
+        sessions.open(slot, executor.spawn(&Spawn::program(SHELL)).await.unwrap());
+    }
+
+    assert_eq!(sessions.book().open.len(), SESSIONS_PER_LEASE_MAX);
+    assert_eq!(executor.killed(), [*ids.first().unwrap()]);
+}
+
+/// A place dropped unopened, as a failed spawn or a cancelled call drops it,
+/// is freed: the next start one short of the cap makes no room.
+#[tokio::test]
+async fn should_free_a_place_dropped_unopened() {
+    let (executor, sessions, _ids) = full(SESSIONS_PER_LEASE_MAX - 1).await;
+
+    drop(sessions.make_room(&executor).await);
+    let _slot = sessions.make_room(&executor).await;
+
+    let killed = executor.killed();
+    assert!(killed.is_empty(), "{killed:?}");
 }
