@@ -7,6 +7,7 @@
 use crate::catalog::Entry;
 use crate::runtime::{Runtime, Tool};
 
+/// The tools one lease is offered: handlers the router runs, and tools the
 /// provider hosts.
 #[derive(Debug, Clone, Default)]
 pub struct Selection<'c> {

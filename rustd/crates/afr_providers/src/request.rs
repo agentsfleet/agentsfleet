@@ -171,3 +171,7 @@ fn user(history: &mut Vec<RigMessage>, content: UserContent) {
 #[cfg(test)]
 #[path = "request/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "request/image_tests.rs"]
+mod image_tests;

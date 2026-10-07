@@ -6,9 +6,11 @@
 //! types its shapes embed, and nothing in `afd_wire` names this crate, so an
 //! edit here rebuilds no runner crate.
 //!
-//! The encoding rules are `afd_wire`'s and hold here unchanged: borrowed
-//! `Cow<'a, str>` text, primitives rather than validated newtypes, no
-//! `skip_serializing_if`, and schemas behind the non-default `openapi` feature.
+//! The encoding rules are `afd_wire`'s: borrowed `Cow<'a, str>` text,
+//! primitives rather than validated newtypes, and schemas behind the
+//! non-default `openapi` feature. `afd_wire`'s ban on `skip_serializing_if`
+//! does not carry over: several shapes here omit an absent optional rather
+//! than write `null`, marked by that attribute on the field.
 
 // Same reason as `afd_wire`: an unused-but-linked dependency is a cost with no
 // benefit. Gated on `not(test)` because the test build links dev-dependencies.
