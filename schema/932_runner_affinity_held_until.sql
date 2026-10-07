@@ -7,7 +7,9 @@
 -- own claim keeps it). The heartbeat leaves a slot written within the last
 -- beat interval alone: the runner lists its holds before its beat goes out,
 -- so a report committing in between would otherwise be wiped. The next beat
--- clears it if still unlisted. While it is in the future and the holder can
+-- clears it if still unlisted. A closing runner's beat waits for nothing: it
+-- holds nothing more and parks nothing more, so its list is final and clears
+-- every slot it leaves out at once. While it is in the future and the holder can
 -- still lease (live, active and not degraded), only the holder claims the
 -- fleet, so its next event runs where the last one stopped.
 --

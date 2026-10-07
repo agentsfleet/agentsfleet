@@ -15,7 +15,7 @@ use afr_sandbox::HostProbe;
 use tokio::sync::watch;
 
 use crate::capability::{capability_report, selftest};
-use crate::client::{ControlPlane, endless};
+use crate::client::{ControlPlane, Verb, endless};
 use crate::error::Result;
 use crate::halt::Halt;
 use crate::holds::{Holds, Release};
@@ -30,6 +30,10 @@ const EVENT_LAST_FAILED: &str = "heartbeat_last_failed";
 /// The event a fleet the daemon named for release, that is no fleet id, is
 /// logged under.
 const EVENT_RELEASE_UNREADABLE: &str = "sandbox_hold_release_unreadable";
+/// How long a stopping runner waits on its last beat before giving up. A stop
+/// must not wait out a whole call timeout on a daemon that does not answer:
+/// the holds lapse there either way, once it finds this runner silent.
+pub(crate) const LAST_BEAT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// What the daemon most recently told this runner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,6 +72,9 @@ pub(crate) struct Heartbeat<'a> {
     label: Option<(SandboxTier, NetworkPolicy)>,
     selftest_due: bool,
     last: Assignment,
+    /// Whether the holds have closed, which makes every list from here on
+    /// final: nothing is held, and nothing more is parked.
+    closed: bool,
 }
 
 impl<'a> Heartbeat<'a> {
@@ -84,6 +91,7 @@ impl<'a> Heartbeat<'a> {
             label: None,
             selftest_due: false,
             last: Assignment::initial(),
+            closed: false,
         }
     }
 
@@ -105,6 +113,7 @@ impl<'a> Heartbeat<'a> {
                     .map(|fleet| Cow::Borrowed(fleet.as_str()))
                     .collect(),
             ),
+            closing: self.closed,
         };
         let body = self.plane.heartbeat(&request).await?;
         let reply: HeartbeatResponse<'_> = body.decode()?;
@@ -135,8 +144,9 @@ impl<'a> Heartbeat<'a> {
     /// those fleets here without waiting out the interval.
     ///
     /// Once leasing stops no lease could take a hold, so every hold ends and
-    /// the beat goes at once. Leasing is a child of serving, so a runner that
-    /// stops serving gets there too; it says so in [`Heartbeat::last_beat`].
+    /// the beat goes at once, saying its list is final. Leasing is a child of
+    /// serving, so a runner that stops serving gets there too; it says so in
+    /// [`Heartbeat::last_beat`], abandoning a beat still in flight.
     pub(crate) async fn keep_beating(
         mut self,
         assignment: &watch::Sender<Assignment>,
@@ -144,19 +154,22 @@ impl<'a> Heartbeat<'a> {
     ) {
         let mut retries = endless();
         let mut pause = Duration::ZERO;
-        let mut holding = true;
         loop {
             tokio::select! {
                 biased;
                 () = halt.serving().cancelled() => return self.last_beat(halt).await,
-                () = halt.leasing().cancelled(), if holding => {
-                    holding = false;
-                    self.holds.close();
-                }
+                () = halt.leasing().cancelled(), if !self.closed => self.close(),
                 () = tokio::time::sleep(pause) => {}
                 () = self.holds.saturated().notified() => {}
             }
-            match self.beat().await {
+            // A daemon that does not answer must not hold up a stop for a
+            // whole call timeout: the beat is dropped for the last one.
+            let beaten = tokio::select! {
+                biased;
+                () = halt.serving().cancelled() => return self.last_beat(halt).await,
+                beaten = self.beat() => beaten,
+            };
+            match beaten {
                 Ok(beat) => {
                     retries = endless();
                     pause = beat.interval;
@@ -166,7 +179,7 @@ impl<'a> Heartbeat<'a> {
                     }
                 }
                 // No last beat: with the token refused, no call can succeed.
-                Err(failure) if halt.stops_on(&failure) => return self.holds.close(),
+                Err(failure) if halt.stops_on(&failure) => return self.close(),
                 Err(failure) => {
                     let code = failure.code().as_str();
                     let event = EVENT_FAILED;
@@ -184,26 +197,37 @@ impl<'a> Heartbeat<'a> {
         }
     }
 
+    /// Ends every hold and parks nothing more, so each beat from here on
+    /// says its list is final.
+    fn close(&mut self) {
+        self.closed = true;
+        self.holds.close();
+    }
+
     /// Ends every hold and beats once more listing none, so the daemon routes
     /// their fleets elsewhere now rather than once it finds this runner
     /// silent. Best effort, and its answer is not acted on: the runner stops
-    /// either way, and a refused token means no call can succeed.
+    /// either way, and a refused token means no call can succeed. A daemon
+    /// that has not answered within [`LAST_BEAT_TIMEOUT`] is given up on.
     async fn last_beat(&mut self, halt: &Halt) {
-        self.holds.close();
+        self.close();
         if halt.token_refused() {
             return;
         }
-        if let Err(failure) = self.beat().await
-            && !halt.stops_on(&failure)
-        {
-            let code = failure.code().as_str();
-            let event = EVENT_LAST_FAILED;
-            tracing::warn!(
-                error_code = code,
-                event,
-                "the last beat failed; this runner's holds stand at the daemon until they lapse"
-            );
-        }
+        let code = match tokio::time::timeout(LAST_BEAT_TIMEOUT, self.beat()).await {
+            Ok(Ok(_answered)) => return,
+            Ok(Err(failure)) if halt.stops_on(&failure) => return,
+            Ok(Err(failure)) => failure.code(),
+            // Unanswered is how a heartbeat fails in transit, and is logged so.
+            Err(_unanswered) => Verb::Heartbeat.code(),
+        };
+        let code = code.as_str();
+        let event = EVENT_LAST_FAILED;
+        tracing::warn!(
+            error_code = code,
+            event,
+            "the last beat failed; this runner's holds stand at the daemon until they lapse"
+        );
     }
 }
 
@@ -225,3 +249,7 @@ mod tests;
 #[cfg(test)]
 #[path = "heartbeat/closing_tests.rs"]
 mod closing_tests;
+
+#[cfg(test)]
+#[path = "heartbeat/unanswered_tests.rs"]
+mod unanswered_tests;

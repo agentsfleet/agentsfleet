@@ -18,5 +18,6 @@ pub(crate) fn view_heartbeat() -> HeartbeatRequest<'static> {
             network_policy: Cow::Borrowed("allow_all"),
         }),
         holds: afd_wire::runner::HeldFleets::default(),
+        closing: false,
     }
 }

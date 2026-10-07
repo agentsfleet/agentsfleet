@@ -172,6 +172,8 @@ closed_set! {
     /// the claim. A hold past its deadline is no hold, and counts nothing.
     HeldClaim {
         /// The runner holding the fleet's sandbox, which continues in it.
+        /// Counted when its lease resumes the hold, so a reclaim, which
+        /// starts clean, counts nothing.
         Holder => "holder",
         /// Another runner, once the holder fell silent or could no longer
         /// lease: degraded, or no longer active.

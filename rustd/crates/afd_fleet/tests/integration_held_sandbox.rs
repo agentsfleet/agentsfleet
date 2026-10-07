@@ -132,6 +132,7 @@ fn beat<'a>(holds: &'a [&'a str]) -> HeartbeatRequest<'a> {
         capability_report: None,
         selftest: None,
         holds: HeldFleets(holds.iter().map(|fleet| Cow::Borrowed(*fleet)).collect()),
+        closing: false,
     }
 }
 

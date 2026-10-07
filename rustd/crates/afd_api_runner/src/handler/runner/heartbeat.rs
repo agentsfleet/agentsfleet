@@ -195,6 +195,17 @@ mod tests {
         assert_eq!(reads(""), (false, Some(0)));
     }
 
+    /// A closing runner's flag survives the read beside its proved list, and
+    /// a body-less beat is no closing one.
+    #[test]
+    fn test_a_closing_beat_reads_as_closing() {
+        let (closing, held) = read(br#"{"holds":[],"closing":true}"#);
+
+        assert!(closing.closing);
+        assert_eq!(held.map(|proved| fleets(&proved).len()), Some(0));
+        assert!(!read(&[]).0.closing);
+    }
+
     /// What the runner is told must be the number this daemon enforces, not a
     /// second one that happens to agree today.
     #[test]

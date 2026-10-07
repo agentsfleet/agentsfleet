@@ -29,6 +29,7 @@ use afd_observability::producers;
 use sqlx::{PgConnection, Row as _};
 
 use crate::error::{Result, query};
+use crate::lease::envelope::Acquired;
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -140,8 +141,10 @@ impl Leases {
         let held: Option<i64> = row.try_get(1).map_err(query(CONTEXT_CLAIM))?;
         let holder: Option<String> = row.try_get(2).map_err(query(CONTEXT_CLAIM))?;
         let outcome = held_claim(held, holder.as_deref(), runner_id, now);
-        if let Some(outcome) = outcome {
-            producers::fleet::hold::claimed(outcome);
+        // The holder's own win counts once its lease is handed out, in
+        // `count_resumed`: only then is it known whether its event resumes.
+        if outcome == Some(HeldClaim::OtherAfterLapse) {
+            producers::fleet::hold::claimed(HeldClaim::OtherAfterLapse);
         }
         Ok(Some(Claimed {
             fence: Fence::from_i64(fence),
@@ -234,6 +237,15 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_RELEASE))?;
         Ok(())
+    }
+}
+
+/// Counts the holder's claim on its live hold, on the exit that hands out a
+/// lease resuming it. Not at the claim: the holder's reclaim resumes nothing,
+/// since the event's first attempt may have run in that sandbox.
+pub(crate) fn count_resumed(acquired: &Acquired) {
+    if acquired.resume_hold {
+        producers::fleet::hold::claimed(HeldClaim::Holder);
     }
 }
 
