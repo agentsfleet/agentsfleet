@@ -11,12 +11,12 @@ use std::time::Duration;
 
 use afd_core::test_util::trace::{Capture, CapturedEvent};
 use afd_wire::activity::ActivityFrame;
-use afr_providers::Message;
+use afr_providers::{Chunk, Message};
 use afr_tools::Tool;
-use afr_tools::catalog::{MEMORY_RECALL, UPDATE_PLAN};
+use afr_tools::catalog::{HTTP_REQUEST, MEMORY_RECALL, UPDATE_PLAN};
 use afr_tools::nested::NESTED;
 
-use crate::fixture::{Canned, Script, Sent};
+use crate::fixture::{Canned, Script, Sent, call};
 
 /// What the fixture lease's event asks, which opens the root's conversation.
 pub(super) const OPENING: &str = "triage the failed run";
@@ -44,8 +44,10 @@ pub(super) const ANSWER: &str = "answer";
 pub(super) const ACCEPTED: &str = "accepted";
 pub(super) const DEPTH: &str = "depth";
 pub(super) const CALLS: &str = "calls";
+pub(super) const DETAIL: &str = "detail";
 /// The statuses a child reads back as.
 pub(super) const RUNNING: &str = "running";
+pub(super) const FAILED: &str = "failed";
 pub(super) const INTERRUPTED: &str = "interrupted";
 /// A wait long enough for a child to reach its first call, in paused time.
 pub(super) const BRIEF_MS: u64 = 1000;
@@ -66,6 +68,25 @@ pub(super) fn offered() -> Vec<&'static str> {
     names.push(UPDATE_PLAN.name());
     names.push(MEMORY_RECALL.name());
     names
+}
+
+/// The six with the two, and a network tool that never answers.
+pub(super) fn stalling_tools() -> Vec<Box<dyn Tool>> {
+    let mut tools = tools();
+    tools.push(Canned::boxed(&HTTP_REQUEST, ""));
+    tools
+}
+
+/// Every name [`stalling_tools`] serves.
+pub(super) fn stalling_offered() -> Vec<&'static str> {
+    let mut names = offered();
+    names.push(HTTP_REQUEST.name());
+    names
+}
+
+/// A turn opening a call to the network tool, which never answers.
+pub(super) fn stall() -> Vec<Chunk> {
+    vec![call("stalled", HTTP_REQUEST.name(), serde_json::json!({}))]
 }
 
 /// The requests whose conversation opened with `opening`: one loop's.

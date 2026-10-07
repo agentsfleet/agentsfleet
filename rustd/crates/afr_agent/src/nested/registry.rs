@@ -239,9 +239,9 @@ impl<'run> Registry<'run> {
     /// had ended keeps the end it had. `None` for an id no child has.
     pub(crate) fn interrupt(&self, id: u64) -> Option<Kind> {
         let mut book = self.book();
-        let child = book.children.get(&id)?;
-        child.stop.cancel();
-        Some(book.end(id, Status::Interrupted))
+        book.children
+            .contains_key(&id)
+            .then(|| book.end(id, Status::Interrupted))
     }
 
     /// Records that child `id` ended as `status`, and answers the status in
@@ -279,6 +279,11 @@ impl Book {
         if child.status.borrow().is_final() {
             return child.status.borrow().kind();
         }
+        // Every child this one started holds a stop descending from this
+        // one's, so cancelling it here ends them however this one ended: a
+        // child that answered leaves no grandchild billing turns or holding
+        // a running slot until the root ends.
+        child.stop.cancel();
         let kind = status.kind();
         child.status.send_replace(status);
         self.running = self.running.saturating_sub(1);

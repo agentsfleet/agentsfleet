@@ -14,7 +14,7 @@ use afr_providers::Call;
 use afr_tools::ToolOutput;
 use afr_tools::nested::Nested;
 
-pub(crate) use self::child::{Guard, run as child};
+pub(crate) use self::child::{Guard, Tether, run as child};
 pub(crate) use self::registry::{Registry, Seat, Start};
 use crate::harness::Harness;
 
@@ -73,3 +73,11 @@ mod run_tests;
 #[cfg(test)]
 #[path = "nested/end_tests.rs"]
 mod end_tests;
+
+#[cfg(test)]
+#[path = "nested/answer_tests.rs"]
+mod answer_tests;
+
+#[cfg(test)]
+#[path = "nested/lifetime_tests.rs"]
+mod lifetime_tests;

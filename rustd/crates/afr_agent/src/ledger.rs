@@ -100,7 +100,10 @@ impl<'run> Ledger<'run> {
         let id = number.to_string();
         let shown = self.scrub.clean_json(call.arguments.clone());
         let bounded = bounded_arguments(&shown);
-        let args_redacted = serde_json::to_string(&bounded).unwrap_or_default();
+        // The frame's field is JSON by its wire definition, so a debug-form
+        // fallback would break it; a JSON value always encodes, so there is
+        // no failure to fall back from or carry.
+        let args_redacted = Value::Object(bounded.clone()).to_string();
         let lease_id = self.lease_id;
         let call_id = id.as_str();
         let tool = call.name.as_str();
