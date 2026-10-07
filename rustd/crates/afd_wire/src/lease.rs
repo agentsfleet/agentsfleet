@@ -139,12 +139,11 @@ pub struct LeasePayload<'a> {
     /// unless the event is a chat message. Absent decodes as empty.
     #[serde(default, borrow)]
     pub history: Vec<Turn<'a>>,
-    /// True when the sandbox this runner holds for the fleet is the fleet's
-    /// latest and this event has not run before: the slot's last lease ran
-    /// here, its hold had not lapsed at the claim, and the event is not a
-    /// reclaim. Anything else builds a fresh sandbox, because the held one may
-    /// predate another runner's run or carry this event's own first attempt.
-    /// Absent decodes as false.
+    /// True when this runner's held sandbox is the fleet's latest and this
+    /// event has not run before. The slot's last lease ran here, its hold had
+    /// not lapsed at the claim, and the event is no reclaim. Anything else
+    /// builds a fresh sandbox, since the held one may predate another runner's
+    /// run or hold this event's first attempt. Absent decodes as false.
     #[serde(default)]
     pub resume_hold: bool,
 }
