@@ -9,10 +9,10 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use afd_api_wire::admin::AdminState;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
-use afd_wire::admin::AdminState;
 
 use super::Due;
 use crate::sql;

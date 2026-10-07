@@ -27,6 +27,7 @@
 
 use std::sync::Arc;
 
+use afd_api_wire::schedule::Page;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code::{self, ErrorCode};
 use afd_core::id::Uuid7;
@@ -36,7 +37,6 @@ use afd_fleet::lease::Standing;
 use afd_fleet::lease::write_fence::WriteFence;
 use afd_http::handler::schedule::{checked, not_fleet_owned, not_found, refused, rendered};
 use afd_http::handler::{Refusal, parameter, parse_id, read_strict_body};
-use afd_wire::schedule::Page;
 use afd_wire::schedule_verb::{QUERY_FENCING_TOKEN, ScheduleCreateRequest};
 use axum::Json;
 use axum::body::Bytes;
@@ -99,7 +99,7 @@ const CREATE_DESCRIPTION: &str = const_format::concatcp!(
     request_body = ScheduleCreateRequest,
     params(afd_http::openapi::path::Lease),
     responses(
-        (status = 201, description = RECONCILED, body = afd_wire::schedule::View),
+        (status = 201, description = RECONCILED, body = afd_api_wire::schedule::View),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

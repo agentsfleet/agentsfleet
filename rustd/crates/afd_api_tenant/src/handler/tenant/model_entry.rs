@@ -47,12 +47,12 @@ use std::time::Instant;
 use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
 use afd_observability::producers::library;
 
-use afd_core::paging::struct_cursor::StructCursor;
 /// Named only by the `body =` clause of this module's `utoipa::path`
 /// annotations, which the default build compiles away — so the import has to
 /// go with them or the feature-off build fails on an unused name.
 #[cfg(feature = "openapi")]
-use afd_wire::tenant_model_entry::ModelEntriesResponse;
+use afd_api_wire::tenant_model_entry::ModelEntriesResponse;
+use afd_core::paging::struct_cursor::StructCursor;
 use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};

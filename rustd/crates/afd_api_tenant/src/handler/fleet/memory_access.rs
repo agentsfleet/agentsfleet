@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use afd_wire::fleet::{MemoryAccess, MemoryAccessRequest};
+use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

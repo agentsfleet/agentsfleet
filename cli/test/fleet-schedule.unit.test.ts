@@ -94,7 +94,7 @@ const provide = (
     Effect.provide(workspacesLayer),
   );
 
-// `created_at` is on the wire (afd_wire/src/schedule.rs:45) and the table
+// `created_at` is on the wire (afd_api_wire/src/schedule.rs:52) and the table
 // appends an AGO column, so the fixture carries it: without it the row renders
 // a column that is always the empty cell, which is what shipped.
 // Ninety seconds ago, so the rendered age is a real one. A fixed future

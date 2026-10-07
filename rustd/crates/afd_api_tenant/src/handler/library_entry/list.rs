@@ -2,20 +2,20 @@
 //! workspace onboarded.
 //!
 //! Split from the removal beside it by what changes together: a field added to
-//! an entry lands here and in `afd_wire::workspace_library`, and touches
+//! an entry lands here and in `afd_api_wire::workspace_library`, and touches
 //! nothing about who may remove one.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Instant;
 
+use afd_api_wire::workspace_library::{OwnedEntriesResponse, OwnedEntryCard};
 use afd_core::error_code;
 use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor;
 use afd_library::{EntryPosition, OwnedEntry, OwnedPage};
 use afd_observability::metrics::label::library::{ReadOutcome, Stage};
 use afd_observability::producers::library;
-use afd_wire::workspace_library::{OwnedEntriesResponse, OwnedEntryCard};
 use axum::Json;
 use axum::extract::{RawQuery, State};
 use axum::response::{IntoResponse as _, Response};

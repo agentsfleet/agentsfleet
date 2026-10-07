@@ -61,6 +61,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api_runner/src/handler/runner/*.rs`, `rustd/crates/afd_auth/src/credential.rs`, `rustd/crates/afd_api/src/openapi.rs` | EDIT | Routes and the token prefix named from `afd_wire::paths` |
 | Every daemon crate importing a moved module (`afd_admission`, `afd_api`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner`, `afd_api_tenant`, `afd_approval`, `afd_bench`, `afd_credential`, `afd_cron`, `afd_events`, `afd_fleet`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_gate`, `afd_http`, `afd_ingress`, `afd_memory`, `afd_observability`, `afd_runner`, `afd_sse`, `afd_state`, `agentsfleetd`): `Cargo.toml`, `src/`, `tests/` | EDIT | `afd_wire::<moved>` becomes `afd_api_wire::<moved>`; the `openapi` features name both crates |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | The new member and workspace dependency; `const_format` for `afd_wire` |
+| `cli/src/commands/whoami.ts`, `cli/test/fleet-schedule.unit.test.ts`, `ui/packages/app/lib/api/events-types.ts`, `ui/packages/app/tests/e2e/acceptance/fixtures/cli-runner.ts` | EDIT | Comments citing a moved module's path now cite `afd_api_wire`; no code changes |
 | `docs/architecture/runner_execution.md` | EDIT | §Crates: `afd_api_wire` is daemon-only; `afd_wire` holds what both sides speak |
 
 ## Applicable Rules
@@ -95,13 +96,13 @@ Three scenarios on this Mac at the branch head before the cut, (A) and (B) the m
 
 - **Dimension 1.1** DONE — The three baseline scenarios are recorded with revision, machine and medians → Test `measure_baseline_rebuilds`
 
-### §2 — The daemon's own types leave the shared crate
+### §2 — The daemon's own types leave the shared crate — DONE
 
 The 22 daemon-only modules and `schedule` move to `afd_api_wire`, with their tests, schema derives and `RunnerTokenRotatedResponse`'s `Debug` impl. `tests/names.rs` moves with them and reads both crates' `src/`, its directory walk through `walkdir` rather than a hand-written recursion. `afd_api_wire` depends on `afd_wire` for the five shared types its modules name (`runner::AssignedPolicy`, `CapabilityReport`, `RunnerLiveness`, `SelftestReport`, and `event::EventSummary` through `tail`); nothing in `afd_wire` names `afd_api_wire`. Each daemon crate's imports and `openapi` feature follow.
 
-- **Dimension 2.1** — No two schema types across both crates publish under one name → Test `no_two_schema_types_publish_under_one_name`
-- **Dimension 2.2** — The published document is byte-identical after the move → Test `regenerated_openapi_matches`
-- **Dimension 2.3** — No runner crate depends on `afd_api_wire` → Test `runner_tree_has_no_api_wire`
+- **Dimension 2.1** DONE — No two schema types across both crates publish under one name → Test `no_two_schema_types_publish_under_one_name`
+- **Dimension 2.2** DONE — The published document is byte-identical after the move → Test `regenerated_openapi_matches`
+- **Dimension 2.3** DONE — No runner crate depends on `afd_api_wire` → Test `runner_tree_has_no_api_wire`
 
 ### §3 — The runner's own state lives in the runner
 
@@ -177,8 +178,8 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | A daemon-only edit rebuilds no runner crate (§5) | `cd rustd && cargo build -q -p agentsfleet_runner && touch crates/afd_api_wire/src/admin.rs && cargo build -p agentsfleet_runner 2>&1 \| grep -c Compiling` | 0 | P0 | |
-| R2 | The document is unchanged (§2) | `cd rustd && cargo run -q -p agentsfleetd --features openapi --bin agentsfleetd -- --no-banner openapi \| diff - ../public/openapi.json` | no output | P0 | |
-| R3 | The runner links no API crate (§2) | `cd rustd && cargo tree -p agentsfleet_runner -e normal \| grep -c afd_api_wire` | 0 | P0 | |
+| R2 | The document is unchanged (§2) | `cd rustd && cargo run -q -p agentsfleetd --features openapi --bin agentsfleetd -- --no-banner openapi \| diff - ../public/openapi.json` | no output | P0 | ✅ `cmp` against `public/openapi.json` silent, 684620 bytes each (§2) |
+| R3 | The runner links no API crate (§2) | `cd rustd && cargo tree -p agentsfleet_runner -e normal \| grep -c afd_api_wire` | 0 | P0 | ✅ `cargo tree -e normal,build,dev --all-features` over `agentsfleet_runner` and all ten `afr_*` crates: 0 `afd_api_wire` lines (§2) |
 | R4 | Routes have one spelling and dead items are gone (§3, §4) | `git grep -nE '"/v1/runners\|RunnerChildInput\|FAIL_CLOSED_DEFAULT\|FLEET_RUNNERS' -- 'rustd/crates/*/src/**' ':!rustd/crates/afd_wire/src/paths.rs'` | no output | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
@@ -235,7 +236,7 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 ## Discovery (consult log)
 
 - **Consults** — Indy (in-session, Oct 07, 2026): "ensure that the afd_wire is split relevantly on what is used in which daemon(agentsfleetd, agentsfleet-runner, commong or shared)", then chose "Go as drawn" for two crates, the runner-only types into `afr_agent`, `paths` as the one route source, and the dead items deleted. Consumer audit at `cc318b856` (non-test uses): the runner names 12 modules and reaches `event` through `lease.rs:7`; `paths` has no daemon `src/` use (the daemon re-spells 22 routes in `afd_api_runner/src/handler/runner/*.rs` and the prefix at `afd_auth/src/credential.rs:78`); `ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` have no daemon reference; `RunnerChildInput`, `FAIL_CLOSED_DEFAULT`, `RUNNERS` and `FLEET_RUNNERS` have none anywhere; `schema` is used only in `afd_fleet_lifecycle/src/sql.rs:298`, under `#[cfg(test)]`; `activity` and `tool_trace` reference each other, both shared; `redact.rs:39,67,80,89` implement `Debug` for three shared types and one daemon type; only the daemon's `afd_api*` crates enable `openapi`; `agentsfleet_runner` itself does not depend on `afd_wire`. Architecture consult: `ARCH: grounded in runner_execution.md:91 | proposal: afd_wire holds what both sides speak; afd_api_wire is daemon-only | status: extends | landing: a`.
-- **Baseline, §1** (Oct 07, 2026: 11:20 AM) — revision `ce95ce655`, rustc 1.98.1, Apple M2, 8 CPUs, dev profile; median of runs 1–3 for (A) and (B). (A) `touch rustd/crates/afd_wire/src/admin.rs` then `cargo build -p agentsfleet_runner`: 12 `Compiling` lines, 7.33s / 4.42s / 4.41s, median **4.42s**. (B) the same touch then `cargo build -p agentsfleetd`: 29 `Compiling` lines, 13.59s / 11.46s / 12.53s, median **12.53s**. (C) `cargo build --workspace --timings` in a fresh target directory: 513 `Compiling` lines in 2m 27s; `afd_wire` lib unit 9.38s, starting at 31.38s. Produced by a scratch script that loops the commands above; the earlier run stopped silently because cargo prints `in 1m 02s` past a minute and the elapsed-time grep missed it.
+- **Baseline, §1** (Oct 07, 2026: 11:00 AM) — revision `ce95ce655`, rustc 1.98.1, Apple M2, 8 CPUs, dev profile; median of runs 1–3 for (A) and (B). (A) `touch rustd/crates/afd_wire/src/admin.rs` then `cargo build -p agentsfleet_runner`: 12 `Compiling` lines, 7.33s / 4.42s / 4.41s, median **4.42s**. (B) the same touch then `cargo build -p agentsfleetd`: 29 `Compiling` lines, 13.59s / 11.46s / 12.53s, median **12.53s**. (C) `cargo build --workspace --timings` in a fresh target directory: 513 `Compiling` lines in 2m 27s; `afd_wire` lib unit 9.38s, starting at 31.38s. Produced by a scratch script that loops the commands above; the earlier run stopped silently because cargo prints `in 1m 02s` past a minute and the elapsed-time grep missed it.
 - **Metrics review** — no analytics or funnel playbook update required: no product or operator signal changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

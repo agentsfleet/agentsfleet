@@ -114,7 +114,7 @@ impl Leases {
             .bind(verdict.label())
             .bind(afd_core::event::status::RECEIVED)
             .bind(verdict.detail())
-            .bind(afd_wire::approval::status::PENDING)
+            .bind(afd_api_wire::approval::status::PENDING)
             .bind(tool_calls)
             .fetch_optional(&mut *connection)
             .await

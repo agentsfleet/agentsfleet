@@ -1,6 +1,6 @@
 //! The frames the daemon itself publishes on a fleet's live tail.
 //!
-//! The runner forwards its mid-run frames through [`crate::activity`]; these
+//! The runner forwards its mid-run frames through [`afd_wire::activity`]; these
 //! are the daemon's own. `event_admitted` says a person's message was accepted,
 //! before any runner has it; the brackets open and close a run —
 //! `event_received` when the lease verb records the row, `event_complete` when
@@ -43,7 +43,7 @@ use std::borrow::Cow;
 
 use serde::Serialize;
 
-use crate::event::EventSummary;
+use afd_wire::event::EventSummary;
 
 /// The terminal row as a completion carries it: [`EventSummary`] without the
 /// two scope columns the channel already names.
@@ -158,7 +158,7 @@ pub enum TailFrame<'a> {
         actor: Cow<'a, str>,
         /// How the event entered the system.
         event_type: Cow<'a, str>,
-        /// What was typed, at most [`crate::event::STEER_MESSAGE_MAX_BYTES`].
+        /// What was typed, at most [`afd_wire::event::STEER_MESSAGE_MAX_BYTES`].
         message: Cow<'a, str>,
         /// Epoch milliseconds the admission was recorded.
         created_at: i64,
@@ -174,7 +174,7 @@ pub enum TailFrame<'a> {
         /// Epoch milliseconds the row was created.
         created_at: i64,
         /// What a person typed, on a steer only: absent for every other
-        /// actor, above [`crate::event::STEER_MESSAGE_MAX_BYTES`], or when the
+        /// actor, above [`afd_wire::event::STEER_MESSAGE_MAX_BYTES`], or when the
         /// stored body does not parse.
         #[serde(skip_serializing_if = "Option::is_none")]
         message: Option<Cow<'a, str>>,

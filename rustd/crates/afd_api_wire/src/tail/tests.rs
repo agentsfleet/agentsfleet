@@ -11,7 +11,7 @@ use std::borrow::Cow;
 use serde_json::{Value, json};
 
 use super::{FleetCounters, TailFrame, TailRow};
-use crate::event::EventSummary;
+use afd_wire::event::EventSummary;
 
 /// The two columns the channel names and the completion leaves off.
 const SCOPE_KEYS: [&str; 2] = ["fleet_id", "workspace_id"];

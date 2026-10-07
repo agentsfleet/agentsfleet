@@ -44,7 +44,7 @@ const EVENT_DELETED: &str = "fleet_schedule_deleted";
     request_body = SchedulePatchRequest,
     params(afd_http::openapi::path::LeaseSchedule),
     responses(
-        (status = 200, description = super::schedule::RECONCILED, body = afd_wire::schedule::View),
+        (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -122,7 +122,7 @@ pub(crate) async fn update<D: Services>(
     ),
     params(afd_http::openapi::path::LeaseSchedule, afd_http::openapi::query::Fence),
     responses(
-        (status = 200, description = super::schedule::RECONCILED, body = afd_wire::schedule::View),
+        (status = 200, description = super::schedule::RECONCILED, body = afd_api_wire::schedule::View),
         (status = 204, description = afd_http::openapi::NO_CONTENT),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),

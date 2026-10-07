@@ -19,6 +19,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_api_wire::grant::status;
 use afd_approval::{
     Decision, IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, REASON_DECLARED_AT_INSTALL,
     Requested, Resolution, Wanted,
@@ -26,7 +27,6 @@ use afd_approval::{
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::ReadyIndex;
-use afd_wire::grant::status;
 use sqlx::Row as _;
 
 use crate::lane::{Lane, NOW_MS};

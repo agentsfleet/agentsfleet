@@ -5,7 +5,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::team::{
+use afd_api_wire::team::{
     AcceptedInviteResponse, InviteEmailResponse, InviteSummary, MemberSummary, WaitingInvite,
     WorkspaceMember,
 };
@@ -55,7 +55,7 @@ fn the_invitee_facing_shapes_carry_only_what_the_page_reads() {
     assert_shape(
         &WaitingInvite {
             id: Cow::Borrowed(TEXT),
-            account: afd_wire::workspace::WorkspaceAccount {
+            account: afd_api_wire::workspace::WorkspaceAccount {
                 tenant_id: Cow::Borrowed(TEXT),
                 owner_name: Cow::Borrowed(TEXT),
             },

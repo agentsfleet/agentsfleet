@@ -9,12 +9,12 @@
 
 use std::sync::Arc;
 
+use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_observability::producers::memory;
-use afd_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_wire::memory::MemoryDelta;
 
 use crate::access::{Access, Directory};

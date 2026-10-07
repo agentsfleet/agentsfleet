@@ -18,11 +18,11 @@
 //! thread. A read that timed out or that Slack refused leaves one line naming
 //! why in the thread's place, and the admission goes ahead.
 
+use afd_api_wire::ingress::{Accepted, MentionRequest, MentionRoute};
 use afd_connector::Provider;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretString;
 use afd_ingress::slack::{MentionAdmission, Subscriber, compose};
-use afd_wire::ingress::{Accepted, MentionRequest, MentionRoute};
 use std::borrow::Cow;
 
 use super::{Asked, EVENT_MENTION, EVENT_ROUTED, Outcome, address, unserialisable};

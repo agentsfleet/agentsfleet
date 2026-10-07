@@ -36,10 +36,10 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::tail::{FleetCounters, TailFrame};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::streams::FleetStreams;
-use afd_wire::tail::{FleetCounters, TailFrame};
 use sqlx::Row as _;
 
 use super::sql;

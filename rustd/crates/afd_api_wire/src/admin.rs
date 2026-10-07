@@ -15,7 +15,7 @@ pub use crate::admin_library::{
     AdminLibraryPatch, AdminLibraryRequirements, FleetBundleItem, FleetBundlesResponse,
     LIBRARY_NAME_MAX_BYTES, REASON_CREDENTIAL_MAX_BYTES, REASON_MAX_BYTES, REASONS_MAX,
 };
-use crate::runner::AssignedPolicy;
+use afd_wire::runner::AssignedPolicy;
 
 /// Operator intent for a runner. Only `Active` admits a runner-plane call;
 /// every other value rejects one.

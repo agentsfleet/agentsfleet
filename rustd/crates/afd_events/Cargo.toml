@@ -33,6 +33,7 @@ afd_db.workspace = true
 # the same question the table answers, asked about the present.
 afd_dragonfly.workspace = true
 # The event type and status spellings the wire carries.
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 # The opaque page cursor. base64url-no-pad, because the value comes back in a
 # query string where a `=` would need percent-encoding.

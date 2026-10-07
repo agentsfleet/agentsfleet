@@ -33,9 +33,9 @@
 
 use std::sync::Arc;
 
+use afd_api_wire::tenant_provider::{ProviderMode, TenantProviderResponse};
 use afd_billing::Posture;
 use afd_credential::provider::{PlatformDefault, Selection};
-use afd_wire::tenant_provider::{ProviderMode, TenantProviderResponse};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};

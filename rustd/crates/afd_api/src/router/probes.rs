@@ -9,8 +9,8 @@
 
 use std::sync::Arc;
 
+use afd_api_wire::health::{Liveness, Readiness};
 use afd_core::error_code;
-use afd_wire::health::{Liveness, Readiness};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse, Response};

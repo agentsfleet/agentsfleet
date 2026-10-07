@@ -44,6 +44,7 @@ afd_state.workspace = true
 # The reclaim and repair sweepers re-deliver through the fleet streams.
 afd_dragonfly.workspace = true
 # The enrolment and heartbeat request shapes, as the frozen wire spells them.
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 serde.workspace = true
 serde_json.workspace = true

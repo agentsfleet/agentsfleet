@@ -8,9 +8,9 @@ mod decode;
 mod events;
 mod store;
 
+use afd_api_wire::admin::RunnerEventItem;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_wire::admin::RunnerEventItem;
 use afd_wire::runner::{AssignedPolicy, CapabilityReport, RunnerLiveness, SelftestReport};
 use sqlx::Row as _;
 
@@ -58,7 +58,7 @@ pub struct RunnerItem {
     /// Assigned isolation tier spelling.
     sandbox_tier: String,
     /// Operator-controlled admission state.
-    admin_state: afd_wire::admin::AdminState,
+    admin_state: afd_api_wire::admin::AdminState,
     /// Runtime state derived from heartbeat and lease rows.
     liveness: RunnerLiveness,
     /// Placement labels assigned at enrolment.
@@ -98,7 +98,7 @@ impl RunnerItem {
 
     /// Operator-controlled admission state.
     #[must_use]
-    pub const fn admin_state(&self) -> afd_wire::admin::AdminState {
+    pub const fn admin_state(&self) -> afd_api_wire::admin::AdminState {
         self.admin_state
     }
 

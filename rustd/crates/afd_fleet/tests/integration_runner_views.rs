@@ -10,11 +10,11 @@ use crate::support;
 use crate::view_heartbeat;
 use std::borrow::Cow;
 
+use afd_api_wire::admin::{RunnerAdminAction, RunnerEventType};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::DEFAULT_LIMIT;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
-use afd_wire::admin::{RunnerAdminAction, RunnerEventType};
 use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 
 use self::requests::{ENROLLED_AT, enrolment};
@@ -184,7 +184,7 @@ async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
         .expect("the detail loads");
     assert_eq!(
         detail.item().admin_state(),
-        afd_wire::admin::AdminState::Cordoned
+        afd_api_wire::admin::AdminState::Cordoned
     );
     assert_eq!(detail.item().liveness(), RunnerLiveness::Online);
     assert_eq!(detail.active_lease_count(), 0);

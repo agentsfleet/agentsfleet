@@ -18,8 +18,8 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::tail::{FleetCounters, TailFrame};
 use afd_dragonfly::FleetStreams;
-use afd_wire::tail::{FleetCounters, TailFrame};
 
 use super::Inbox;
 

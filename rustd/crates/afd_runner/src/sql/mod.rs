@@ -58,7 +58,7 @@ pub mod meta {
 ///
 /// The Zig spells these with `@tagName(protocol.RunnerEventType.…)`, which
 /// derives the wire string from the enum's own spelling. `afd_wire`'s
-/// [`RunnerEventType`](afd_wire::admin::RunnerEventType) carries the same
+/// [`RunnerEventType`](afd_api_wire::admin::RunnerEventType) carries the same
 /// values as serde renames, so the strings come from there rather than being
 /// restated — a rename on either side then fails to compile instead of writing
 /// rows nothing queries.

@@ -295,8 +295,8 @@ mod tests {
     #[test]
     fn the_purge_statement_names_the_setting_the_schema_guards_on() {
         let statement = super::purge::ALLOW_GATE_PURGE;
-        let setting = afd_wire::schema::GATE_PURGE_SETTING;
-        let enabled = afd_wire::schema::GATE_PURGE_ENABLED;
+        let setting = afd_api_wire::schema::GATE_PURGE_SETTING;
+        let enabled = afd_api_wire::schema::GATE_PURGE_ENABLED;
         assert!(
             statement.contains(setting),
             "the purge statement must set `{setting}`, or every append-only \

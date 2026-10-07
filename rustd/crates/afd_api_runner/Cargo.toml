@@ -16,7 +16,7 @@ test-util = ["afd_fleet/test-util"]
 # Generates this plane's half of the OpenAPI document. NOT default: the shipped
 # daemon compiles no annotation, no schema string and no collector — the whole
 # of it is a build-time tool, and CI is where its compile cost belongs.
-openapi = ["dep:utoipa", "afd_http/openapi", "afd_wire/openapi"]
+openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "afd_wire/openapi"]
 
 [dependencies]
 afd_core.workspace = true
@@ -34,6 +34,7 @@ afd_observability.workspace = true
 afd_runner.workspace = true
 # The runs page's `?limit`, bounded as every keyset list is.
 afd_validate.workspace = true
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 # A recall body is checked against the bounds `afd_wire` declares on it.
 garde.workspace = true

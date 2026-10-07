@@ -13,12 +13,12 @@
 /// and a reader that distinguished them would invite a caller to treat one of
 /// them as a maybe.
 ///
-/// Read from [`afd_wire::grant::status`] rather than spelled again, for the
+/// Read from [`afd_api_wire::grant::status`] rather than spelled again, for the
 /// reason the approval vocabulary is: `afd_approval` WRITES this column — an
 /// approval moves the grant, and the operator's revoke moves it back — so a
 /// second copy of the word here is a row one plane writes that the other stops
 /// matching.
-pub const STATUS_APPROVED: &str = afd_wire::grant::status::APPROVED;
+pub const STATUS_APPROVED: &str = afd_api_wire::grant::status::APPROVED;
 
 /// Every integration `fleet_id` may mint against, in one read.
 ///

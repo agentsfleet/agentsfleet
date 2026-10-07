@@ -2,9 +2,9 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::operator::{LeaseKind, LeaseOutcome, RunnerLeaseItem, RunnerLeasesResponse};
 use afd_core::id::Uuid7;
 use afd_db::Db;
-use afd_wire::operator::{LeaseKind, LeaseOutcome, RunnerLeaseItem, RunnerLeasesResponse};
 use sqlx::Row as _;
 
 use crate::error::{Result, cursor_invalid, query, row, runner_not_found};

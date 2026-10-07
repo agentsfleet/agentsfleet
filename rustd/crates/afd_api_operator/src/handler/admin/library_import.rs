@@ -3,10 +3,10 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::admin::{AdminLibraryCreated, AdminLibraryRequirements};
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_library::{Destination, Onboarded};
-use afd_wire::admin::{AdminLibraryCreated, AdminLibraryRequirements};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -36,7 +36,7 @@ const DETAIL_COLLISION: &str = "That bundle's name is already taken by a differe
         "keyed by content hash; the response carries metadata only — never an ",
         "object-store key or support-file content. ",
     ),
-    request_body = afd_wire::admin::AdminLibraryImport,
+    request_body = afd_api_wire::admin::AdminLibraryImport,
     responses(
         (status = 201, description = afd_http::openapi::CREATED, body = AdminLibraryCreated),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),

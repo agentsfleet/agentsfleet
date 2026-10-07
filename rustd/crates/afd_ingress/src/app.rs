@@ -36,9 +36,9 @@
 //! from a single HTTP request. A workspace that has wired itself past that has
 //! a configuration incident, and a loud refusal surfaces it before the invoice.
 
+use afd_api_wire::grant::status;
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::FleetStatus;
-use afd_wire::grant::status;
 use sha2::{Digest as _, Sha256};
 use sqlx::Row as _;
 

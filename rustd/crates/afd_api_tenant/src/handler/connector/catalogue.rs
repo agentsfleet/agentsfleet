@@ -18,8 +18,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::connector::{ARCHETYPE_APP_INSTALL, ARCHETYPE_OAUTH2, CatalogueEntry};
 use afd_connector::Catalogued;
-use afd_wire::connector::{ARCHETYPE_APP_INSTALL, ARCHETYPE_OAUTH2, CatalogueEntry};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
@@ -31,7 +31,7 @@ use crate::services::{Services, WorkspaceConnectors as _};
 
 /// One catalogue row, as the wire renders it.
 ///
-/// The shape and its two archetype spellings are `afd_wire::connector`'s. Both
+/// The shape and its two archetype spellings are `afd_api_wire::connector`'s. Both
 /// strings are `registry.zig`'s `@tagName(spec.archetype)`, so they are a wire
 /// contract the dashboard switches on rather than a description this surface
 /// is free to improve.

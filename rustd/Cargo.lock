@@ -85,6 +85,7 @@ dependencies = [
  "afd_api_operator",
  "afd_api_runner",
  "afd_api_tenant",
+ "afd_api_wire",
  "afd_approval",
  "afd_auth",
  "afd_billing",
@@ -140,6 +141,7 @@ dependencies = [
 name = "afd_api_ingress"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_approval",
  "afd_auth",
  "afd_connector",
@@ -157,7 +159,6 @@ dependencies = [
  "afd_observability",
  "afd_vault",
  "afd_webhook",
- "afd_wire",
  "axum",
  "http",
  "jiff",
@@ -173,6 +174,7 @@ name = "afd_api_operator"
 version = "0.57.0"
 dependencies = [
  "afd_admin",
+ "afd_api_wire",
  "afd_core",
  "afd_credential",
  "afd_http",
@@ -193,6 +195,7 @@ dependencies = [
 name = "afd_api_runner"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_core",
  "afd_cron",
  "afd_events",
@@ -217,6 +220,7 @@ dependencies = [
 name = "afd_api_tenant"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_approval",
  "afd_auth",
  "afd_billing",
@@ -257,10 +261,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "afd_api_wire"
+version = "0.57.0"
+dependencies = [
+ "afd_wire",
+ "garde",
+ "serde",
+ "serde_json",
+ "utoipa",
+ "walkdir",
+]
+
+[[package]]
 name = "afd_approval"
 version = "0.57.0"
 dependencies = [
  "afd_admission",
+ "afd_api_wire",
  "afd_core",
  "afd_crypto",
  "afd_db",
@@ -414,6 +431,7 @@ name = "afd_cron"
 version = "0.57.0"
 dependencies = [
  "afd_admission",
+ "afd_api_wire",
  "afd_core",
  "afd_crypto",
  "afd_db",
@@ -495,6 +513,7 @@ name = "afd_events"
 version = "0.57.0"
 dependencies = [
  "afd_admission",
+ "afd_api_wire",
  "afd_core",
  "afd_db",
  "afd_dragonfly",
@@ -519,6 +538,7 @@ name = "afd_fleet"
 version = "0.57.0"
 dependencies = [
  "afd_admission",
+ "afd_api_wire",
  "afd_approval",
  "afd_auth",
  "afd_billing",
@@ -558,6 +578,7 @@ dependencies = [
 name = "afd_fleet_lifecycle"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_approval",
  "afd_core",
  "afd_credential",
@@ -567,7 +588,6 @@ dependencies = [
  "afd_fleet_runtime",
  "afd_observability",
  "afd_vault",
- "afd_wire",
  "backon",
  "garde",
  "moka",
@@ -583,9 +603,9 @@ dependencies = [
 name = "afd_fleet_ops"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_core",
  "afd_db",
- "afd_wire",
  "sqlx",
  "thiserror",
  "tokio",
@@ -610,6 +630,7 @@ dependencies = [
 name = "afd_gate"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_billing",
  "afd_core",
  "afd_credential",
@@ -637,6 +658,7 @@ version = "0.57.0"
 dependencies = [
  "afd_admin",
  "afd_admission",
+ "afd_api_wire",
  "afd_approval",
  "afd_auth",
  "afd_billing",
@@ -699,6 +721,7 @@ name = "afd_ingress"
 version = "0.57.0"
 dependencies = [
  "afd_admission",
+ "afd_api_wire",
  "afd_connector",
  "afd_core",
  "afd_crypto",
@@ -772,6 +795,7 @@ dependencies = [
 name = "afd_memory"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_core",
  "afd_crypto",
  "afd_db",
@@ -851,6 +875,7 @@ name = "afd_runner"
 version = "0.57.0"
 dependencies = [
  "afd_admission",
+ "afd_api_wire",
  "afd_auth",
  "afd_core",
  "afd_crypto",
@@ -877,10 +902,10 @@ dependencies = [
 name = "afd_sse"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_core",
  "afd_dragonfly",
  "afd_observability",
- "afd_wire",
  "futures-util",
  "serde_json",
  "thiserror",
@@ -894,10 +919,10 @@ dependencies = [
 name = "afd_state"
 version = "0.57.0"
 dependencies = [
+ "afd_api_wire",
  "afd_auth",
  "afd_core",
  "afd_db",
- "afd_wire",
  "sqlx",
  "tokio",
  "tracing",

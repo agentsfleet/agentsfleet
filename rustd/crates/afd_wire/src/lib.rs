@@ -1,5 +1,9 @@
 //! The `/v1/runners` protocol the daemon serves and the runner consumes.
 //!
+//! Only what both sides speak lives here. The daemon's own API types (admin,
+//! tenant, operator, ingress) live in `afd_api_wire`, which depends on this
+//! crate and never the reverse, so an edit there rebuilds no runner crate.
+//!
 //! These types ARE the wire. `agentsfleetd` publishes them through
 //! `public/openapi.json` (the `openapi` feature derives the schemas), and
 //! `agentsfleet-runner` is a client of that document: its Zig structs in
@@ -45,40 +49,16 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod activity;
-pub mod admin;
-mod admin_catalogue;
-mod admin_library;
-pub mod approval;
-pub mod auth;
-pub mod connector;
 pub mod credentials;
 pub mod event;
-pub mod fleet;
-pub mod grant;
-pub mod health;
-pub mod identity;
-pub mod ingress;
 pub mod lease;
 pub mod memory;
 pub mod message_verb;
-pub mod models;
-pub mod operator;
 pub mod paths;
 pub mod policy;
-pub mod preference;
-mod redact;
+pub mod redact;
 pub mod report;
 pub mod runner;
-pub mod schedule;
 pub mod schedule_verb;
-pub mod schema;
-pub mod secret;
-pub mod tail;
-pub mod team;
-pub mod tenant;
-pub mod tenant_model_entry;
-pub mod tenant_provider;
 pub mod tool_detail;
 pub mod tool_trace;
-pub mod workspace;
-pub mod workspace_library;

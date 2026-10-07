@@ -6,8 +6,8 @@
 //! wake or the continuation once, and a retry redoes whichever the first
 //! call may have lost.
 
+use afd_api_wire::approval::status;
 use afd_core::clock::UnixMillis;
-use afd_wire::approval::status;
 
 use super::super::row::read_resolved;
 use super::super::{Inbox, Resolved};

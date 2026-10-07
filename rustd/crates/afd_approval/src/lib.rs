@@ -22,7 +22,7 @@
 //! showing a person what a fleet wants to do.
 //!
 //! What the two DO share is one column's vocabulary, and that lives lower down
-//! in [`afd_wire::approval::status`] where both read it — a drift between two
+//! in [`afd_api_wire::approval::status`] where both read it — a drift between two
 //! copies would make a row one plane wrote the other could not read.
 //!
 //! # The race is Postgres's decision

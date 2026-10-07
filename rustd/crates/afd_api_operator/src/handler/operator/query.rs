@@ -7,11 +7,11 @@
 
 use std::collections::HashMap;
 
+use afd_api_wire::admin::RunnerEventType;
 use afd_core::id::Uuid7;
 use afd_core::paging::CEILING;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
 use afd_validate::Limit;
-use afd_wire::admin::RunnerEventType;
 use garde::Validate as _;
 
 const QUERY_LIMIT: &str = "limit";

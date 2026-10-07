@@ -30,9 +30,9 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use afd_api_wire::tail::FleetCounters;
 use afd_core::error_code;
 use afd_dragonfly::Message;
-use afd_wire::tail::FleetCounters;
 
 pub use self::data::Data;
 use crate::error::{Error, Result};

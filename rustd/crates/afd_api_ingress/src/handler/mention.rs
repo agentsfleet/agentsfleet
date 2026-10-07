@@ -23,10 +23,10 @@
 //! is an `app_mention`" is a type rather than three field lookups that have to
 //! agree (RULE PSR).
 
+use afd_api_wire::ingress::Accepted;
 use afd_connector::Provider;
 use afd_connector::slack::Thread;
 use afd_ingress::slack::{ChannelId, Route, route};
-use afd_wire::ingress::Accepted;
 use serde::Deserialize;
 
 use super::events::REASON_UNREADABLE;

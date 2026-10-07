@@ -16,7 +16,7 @@ test-util = ["afd_admin/test-util", "afd_library/test-util"]
 # Generates this plane's half of the OpenAPI document. NOT default: the shipped
 # daemon compiles no annotation, no schema string and no collector — the whole
 # of it is a build-time tool, and CI is where its compile cost belongs.
-openapi = ["dep:utoipa", "afd_http/openapi", "afd_wire/openapi"]
+openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "afd_wire/openapi"]
 
 [dependencies]
 afd_admin.workspace = true
@@ -30,6 +30,7 @@ afd_credential.workspace = true
 afd_http.workspace = true
 afd_library.workspace = true
 afd_runner.workspace = true
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 # The document generator, reachable only under `openapi`. Optional at every
 # member that names it, so the default resolve is unchanged.

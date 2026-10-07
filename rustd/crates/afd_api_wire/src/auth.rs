@@ -20,7 +20,7 @@
 //! it silently means that belief survives to production. The Zig parses with
 //! `std.json` defaults, which ignore unknown members; refusing is the stricter
 //! and the safer half of the difference, and it is the same rule
-//! [`crate::memory`] already holds the runner plane to.
+//! [`afd_wire::memory`] already holds the runner plane to.
 
 use std::borrow::Cow;
 

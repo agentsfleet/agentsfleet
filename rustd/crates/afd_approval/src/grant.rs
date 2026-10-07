@@ -13,7 +13,7 @@
 //! That is the split [`crate::Inbox`] already makes over
 //! `core.fleet_approval_gates`, and it is the same split for the same reason.
 //! What the two sides share is one column's vocabulary, in
-//! [`afd_wire::grant::status`], and nothing else — a second spelling of
+//! [`afd_api_wire::grant::status`], and nothing else — a second spelling of
 //! `revoked` in either crate is a row one plane writes that the other stops
 //! matching.
 //!
@@ -31,11 +31,11 @@
 //! statement re-answers it a second time in its join. See
 //! [`grant_sql::REVOKE_GRANT`] for why the redundancy stays.
 
+use afd_api_wire::grant::status;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_wire::grant::status;
 use sqlx::Row as _;
 
 use crate::grant_sql;
@@ -56,7 +56,7 @@ pub struct GrantRow {
     pub id: String,
     /// The third party the grant is about.
     pub service: String,
-    /// Where the decision stands, from [`afd_wire::grant::status`].
+    /// Where the decision stands, from [`afd_api_wire::grant::status`].
     pub status: String,
     /// When the grant was raised.
     pub created_at: i64,

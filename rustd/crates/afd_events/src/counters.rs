@@ -1,7 +1,7 @@
 //! A fleet's activity counters, read right before a frame carries them.
 //!
 //! Every frame the daemon publishes on a fleet's tail carries an absolute
-//! counter snapshot (`afd_wire::tail::FleetCounters`), and the publishers
+//! counter snapshot (`afd_api_wire::tail::FleetCounters`), and the publishers
 //! live in three crates. The statement and its decoder live here, once, so a
 //! column added to the counters table reaches every publisher or none.
 //!
@@ -25,8 +25,8 @@
 //! second acquire; the pool-taking variants are for the publishers whose
 //! write already returned its connection.
 
+use afd_api_wire::tail::FleetCounters;
 use afd_db::Db;
-use afd_wire::tail::FleetCounters;
 use sqlx::PgConnection;
 use sqlx::Row as _;
 

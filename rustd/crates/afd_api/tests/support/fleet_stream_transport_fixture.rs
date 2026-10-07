@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
+use afd_api_wire::tail::{FleetCounters, TailFrame, TailRow};
 use afd_wire::report::Outcome;
-use afd_wire::tail::{FleetCounters, TailFrame, TailRow};
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
