@@ -3,10 +3,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use afd_core::error_code;
-use bytes::Bytes;
 use futures_util::StreamExt as _;
 use jsonrpsee_types::{ErrorObject, Id};
 use serde::Deserialize;
@@ -15,16 +13,17 @@ use serde_json::value::RawValue;
 use tokio::io::AsyncWriteExt as _;
 use tokio::net::UnixStream;
 use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_util::codec::{AnyDelimiterCodec, FramedRead};
 use tokio_util::sync::CancellationToken;
 
+use super::call::{self, Call, CallIds, Reply};
 use crate::api::{Ending, Process, ProcessId};
-use crate::error::{self, Error, Result};
+use crate::error::{self, Result};
 use crate::events::{Events, Feed};
 use crate::protocol::{
-    DELIMITER, ExitedParams, KillParams, MAX_FRAME_BYTES, METHOD_KILL, NOTIFY_EXITED,
-    NOTIFY_OUTPUT, OutputParams, READ_CHUNK_BYTES, SpawnResult, decoded, request,
+    DELIMITER, ExitedParams, MAX_FRAME_BYTES, NOTIFY_EXITED, NOTIFY_OUTPUT, OutputParams,
+    READ_CHUNK_BYTES, SpawnResult, decoded,
 };
 
 /// The link took its socket.
@@ -40,46 +39,6 @@ const EVENT_MESSAGE_UNREADABLE: &str = "executor_message_unreadable";
 const EVENT_OUTPUT_OVERSIZED: &str = "executor_output_oversized";
 /// What a message that is neither a notification nor an answer lacks.
 const FIELD_METHOD_OR_ID: &str = "method or id";
-
-/// The number each call carries, so its answer finds its way back. Shared by
-/// every caller and by the link, which sends a kill of its own.
-#[derive(Debug, Default)]
-pub(super) struct CallIds(AtomicU64);
-
-impl CallIds {
-    /// The next unused number.
-    pub(super) fn next(&self) -> u64 {
-        self.0.fetch_add(1, Ordering::Relaxed)
-    }
-}
-
-/// One call on its way to the executor, already a line.
-pub(super) struct Call {
-    /// The number its answer carries.
-    pub(super) id: u64,
-    /// The request, delimited and ready to write.
-    pub(super) line: Bytes,
-    /// Where its answer goes.
-    pub(super) reply: Reply,
-}
-
-/// Where an answer goes, and what it becomes on the way.
-pub(super) enum Reply {
-    /// The raw result, for the caller to decode.
-    Value(oneshot::Sender<Result<Box<RawValue>>>),
-    /// A started process, registered for its events before the caller sees it.
-    Process(oneshot::Sender<Result<Process>>),
-}
-
-impl Reply {
-    /// Answers with a failure.
-    fn fail(self, failure: Error) {
-        let _caller_gone = match self {
-            Self::Value(sender) => sender.send(Err(failure)).is_ok(),
-            Self::Process(sender) => sender.send(Err(failure)).is_ok(),
-        };
-    }
-}
 
 /// Either message the executor sends, read in one pass: a notification names
 /// a method, an answer names the call it answers and carries a result or an
@@ -105,6 +64,9 @@ pub(super) struct Link {
     lines: FramedRead<OwnedReadHalf, AnyDelimiterCodec>,
     write: OwnedWriteHalf,
     calls: mpsc::Receiver<Call>,
+    /// Where a process's events queue their kill when their reader leaves;
+    /// weak, so a process kept open never keeps the connection open.
+    outbox: mpsc::WeakSender<Call>,
     ids: Arc<CallIds>,
     lost: CancellationToken,
     pending: HashMap<u64, Reply>,
@@ -116,11 +78,13 @@ pub(super) struct Link {
 }
 
 impl Link {
-    /// A link over `stream`, taking calls from `calls`, given up when `lost`
-    /// is cancelled.
+    /// A link over `stream`, taking calls from `calls`, whose weak sender
+    /// `outbox` each process's events queue their kill on, given up when
+    /// `lost` is cancelled.
     pub(super) fn new(
         stream: UnixStream,
         calls: mpsc::Receiver<Call>,
+        outbox: mpsc::WeakSender<Call>,
         ids: Arc<CallIds>,
         lost: CancellationToken,
     ) -> Self {
@@ -134,6 +98,7 @@ impl Link {
             lines: FramedRead::new(read, codec),
             write,
             calls,
+            outbox,
             ids,
             lost,
             pending: HashMap::new(),
@@ -227,11 +192,14 @@ impl Link {
         }
     }
 
-    /// Opens the events of a process the executor just started.
+    /// Opens the events of a process the executor just started, which kill
+    /// it when they go before it ended.
     fn register(&mut self, raw: &RawValue) -> Result<Process> {
         let started: SpawnResult = decoded(raw)?;
         let id = ProcessId::new(started.process_id);
-        let (feed, events) = Events::channel();
+        let (feed, mut events) = Events::channel();
+        let ids = Arc::clone(&self.ids);
+        events.on_abandon(call::kill_on_abandon(self.outbox.clone(), ids, id));
         self.processes.insert(id, feed);
         Ok(Process { id, events })
     }
@@ -285,17 +253,7 @@ impl Link {
     /// The kill that ends a process no caller is waiting for; its answer is
     /// heard by no one.
     fn abandon(&self, process: ProcessId) -> Option<Call> {
-        let id = self.ids.next();
-        let params = KillParams {
-            process_id: process.get(),
-        };
-        let (reply, _unheard) = oneshot::channel();
-        // A struct of one integer always encodes.
-        request(id, METHOD_KILL, &params).ok().map(|line| Call {
-            id,
-            line,
-            reply: Reply::Value(reply),
-        })
+        call::kill(&self.ids, process)
     }
 
     /// Fails every waiting call and ends every open process, once each.

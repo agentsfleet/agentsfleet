@@ -1,5 +1,6 @@
 //! A descendant that leaves its process's group and session keeps the output
-//! open; the process is still reported ended, on time, exactly once.
+//! open; the process is still reported ended, on time, exactly once. A
+//! command whose reader left is no orphan either: it is killed.
 #![expect(
     clippy::unwrap_used,
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
@@ -10,7 +11,7 @@ use std::time::{Duration, Instant};
 use afr_executor::{Ending, Executor as _, Spawn};
 use rustix::process::{Pid, Signal, kill_process, test_kill_process};
 
-use crate::support::{Finished, finish, start};
+use crate::support::{Finished, finish, read_until, start};
 
 /// The leader forks and exits; the child starts a session of its own, says
 /// its pid, and sleeps holding the output. `setsid sleep 600 &` without the
@@ -150,4 +151,31 @@ async fn a_backgrounded_job_in_the_group_ends_with_its_command() {
     assert_eq!(finished.endings, [Ending::Exited(0)]);
     assert!(pid.is_some(), "the shell said its job's pid");
     assert!(gone, "the job ended with its command's group");
+}
+
+/// Says its pid, then sleeps far past any test.
+const SAYS_PID_AND_SLEEPS: &str = "echo $$; exec sleep 600";
+
+/// A command whose reader leaves mid-run, as a cancelled tool call does, is
+/// not left running in the workspace: dropping its process kills it.
+#[tokio::test]
+async fn a_command_whose_reader_left_is_killed() {
+    let harness = start().await;
+    let spawn = Spawn::program("sh").args(["-c", SAYS_PID_AND_SLEEPS]);
+    let mut process = harness.client.spawn(&spawn).await.unwrap();
+    let said = read_until(&mut process, "\n").await;
+    let pid = said.trim().parse().ok().and_then(Pid::from_raw);
+
+    drop(process);
+    let gone = match pid {
+        Some(pid) => gone_within(pid, PROMPTLY).await,
+        None => false,
+    };
+    // A pid already gone may name another process by now: kill only the
+    // command.
+    if !gone {
+        reap(pid);
+    }
+    assert!(pid.is_some(), "the command said its pid");
+    assert!(gone, "the command ended when its reader left");
 }
