@@ -186,6 +186,7 @@ impl BubblewrapEngine {
         let argv = bubblewrap::arguments(&Layout {
             toolbox: self.config.toolbox.root(),
             workspace: parts.workspace(),
+            tmp: parts.tmp(),
             run_dir: &run_dir,
             entry: &self.config.entry,
             entry_args: &self.config.entry_args,

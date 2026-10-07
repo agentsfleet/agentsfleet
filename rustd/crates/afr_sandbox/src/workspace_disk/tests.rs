@@ -6,7 +6,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use super::{WorkspaceDisk, absent};
+use std::os::unix::fs::PermissionsExt as _;
+
+use super::{TMP_DIR, WORKSPACE_DIR, WorkspaceDisk, absent, lay_out};
 use crate::host::HostTools;
 
 /// Tools that cannot run, so every build stops at a known step.
@@ -102,4 +104,31 @@ fn test_a_leftover_disk_with_nothing_mounted_is_removed() {
         0,
         "and twice is no failure"
     );
+}
+
+/// The disk is laid out as `workspace/` (0755) and `tmp/` (1777), owned by
+/// the sandbox user, whatever the umask: the sticky bit is what keeps one
+/// tenant process from removing another's scratch file.
+#[test]
+fn test_the_disk_is_laid_out_as_workspace_and_sticky_tmp() {
+    let root = tempfile::tempdir().unwrap();
+    let me = (
+        rustix::process::getuid().as_raw(),
+        rustix::process::getgid().as_raw(),
+    );
+
+    lay_out(root.path(), me).unwrap();
+
+    let mode = |name: &str| {
+        fs::metadata(root.path().join(name))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o7777
+    };
+    assert_eq!(mode(WORKSPACE_DIR), 0o755);
+    assert_eq!(mode(TMP_DIR), 0o1777);
+    let disk = WorkspaceDisk::in_dir(root.path());
+    assert!(disk.workspace().ends_with("workspace/workspace"));
+    assert!(disk.tmp().ends_with("workspace/tmp"));
 }
