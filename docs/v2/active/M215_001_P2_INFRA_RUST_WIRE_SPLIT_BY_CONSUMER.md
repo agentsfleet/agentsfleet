@@ -61,7 +61,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_api_runner/src/handler/runner/*.rs`, `rustd/crates/afd_auth/src/credential.rs`, `rustd/crates/afd_api/src/openapi.rs` | EDIT | Routes and the token prefix named from `afd_wire::paths` |
 | Every daemon crate importing a moved module (`afd_admission`, `afd_api`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner`, `afd_api_tenant`, `afd_approval`, `afd_bench`, `afd_credential`, `afd_cron`, `afd_events`, `afd_fleet`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_gate`, `afd_http`, `afd_ingress`, `afd_memory`, `afd_observability`, `afd_runner`, `afd_sse`, `afd_state`, `agentsfleetd`): `Cargo.toml`, `src/`, `tests/` | EDIT | `afd_wire::<moved>` becomes `afd_api_wire::<moved>`; the `openapi` features name both crates |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock` | EDIT | The new member and workspace dependency; `const_format` for `afd_wire` |
-| `cli/src/commands/whoami.ts`, `cli/test/fleet-schedule.unit.test.ts`, `ui/packages/app/lib/api/events-types.ts`, `ui/packages/app/tests/e2e/acceptance/fixtures/cli-runner.ts` | EDIT | Comments citing a moved module's path now cite `afd_api_wire`; no code changes |
+| `cli/src/commands/whoami.ts`, `cli/test/fleet-schedule.unit.test.ts`, `ui/packages/app/lib/api/events-types.ts`, `ui/packages/app/tests/e2e/acceptance/fixtures/cli-runner.ts`, `cli/test/acceptance/fixtures/grant-ops.ts`, `cli/test/fleetbundle-pr-reviewer.unit.test.ts`, `ui/packages/app/lib/api/approvals-types.ts`, `ui/packages/app/tests/e2e/acceptance/fixtures/grants.ts`, `docs/architecture/runner_fleet.md` | EDIT | Comments citing a moved module's path or item now cite `afd_api_wire`; no code changes. `schema/810_fleet_approval_gates.sql:65,79` still cite `afd_wire::approval`: an applied migration, left for Indy |
 | `docs/architecture/runner_execution.md` | EDIT | §Crates: `afd_api_wire` is daemon-only; `afd_wire` holds what both sides speak |
 
 ## Applicable Rules
@@ -203,7 +203,7 @@ afr_agent::result::{ExecutionResult, ResultOutcome, Failure, Completed}
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `afd_wire::admin` and every moved module path | `git grep -nE 'afd_wire::(admin\|approval\|tenant\|ingress\|schedule)\b' rustd` | 0 matches |
+| `afd_wire::admin` and every moved module path | `git grep -nwE 'afd_wire::(admin\|approval\|tenant\|ingress\|schedule)' rustd` (`-w`, not `\b`: this machine's `git grep -E` matches nothing on `\b`) | 0 matches |
 | `RunnerChildInput`, `FAIL_CLOSED_DEFAULT`, `FLEET_RUNNERS` | `git grep -nwE 'RunnerChildInput\|FAIL_CLOSED_DEFAULT\|FLEET_RUNNERS' rustd` | 0 matches |
 
 ## Out of Scope

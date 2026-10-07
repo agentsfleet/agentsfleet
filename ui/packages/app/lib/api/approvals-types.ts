@@ -16,7 +16,7 @@ export const APPROVAL_DECISION = {
 export type ApprovalDecision = typeof APPROVAL_DECISION[keyof typeof APPROVAL_DECISION];
 
 // The five states a gate row can be in, as the API spells them
-// (`afd_wire::approval::status`). Declared here beside the decision tags so the
+// (`afd_api_wire::approval::status`). Declared here beside the decision tags so the
 // inbox's client components can name a status without pulling the transport.
 //
 // Only two are decisions a person makes. `timed_out` is the deadline passing

@@ -173,7 +173,7 @@ export async function pendingGateFor(
   return pending[0] ?? null;
 }
 
-/** Grant-row statuses, as `afd_wire::grant::status` spells them. */
+/** Grant-row statuses, as `afd_api_wire::grant::status` spells them. */
 export const GRANT_STATUS = {
   pending: "pending",
   approved: "approved",

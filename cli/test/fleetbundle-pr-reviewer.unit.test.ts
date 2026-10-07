@@ -20,7 +20,7 @@ const BUNDLE_DIR = "tests/fixtures/fleetbundle/github-pr-reviewer";
 
 /// The two digest fields that address a Pull Request.
 ///
-/// Spelled as `afd_wire::ingress::PullRequestDigest` spells them, NOT as
+/// Spelled as `afd_api_wire::ingress::PullRequestDigest` spells them, NOT as
 /// GitHub's raw webhook does. The daemon reduces every delivery to that flat
 /// digest before a fleet sees it — deliberately, so an attacker-influenced
 /// eighty-field payload never reaches a model — so `repository.full_name` and
