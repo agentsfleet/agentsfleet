@@ -896,9 +896,6 @@ jsonrpsee-types = { version = "0.26.1", default-features = false }
 # Scratch directories and atomically persisted files: the report spool, the
 # bundle cache and every test that needs a real filesystem.
 tempfile = { version = "3.27.0", default-features = false }
-# The resolved dependency graph, read by the test that proves the runner binary
-# links no datastore or daemon-plane crate.
-cargo_metadata = { version = "0.23.1", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
 libc = { version = "0.2.189", default-features = false }
