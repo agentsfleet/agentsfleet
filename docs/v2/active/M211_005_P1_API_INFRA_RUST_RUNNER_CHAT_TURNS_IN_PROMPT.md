@@ -64,8 +64,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_wire/tests/validation_lease.rs`, `rustd/crates/afd_fleet/tests/fleet_suite.rs`, `public/openapi.json` | EDIT | The wire default proof, the suite registration, the regenerated document |
 | `rustd/crates/afr_agent/src/prompt.rs`, `rustd/crates/afr_agent/src/loop.rs`, `rustd/crates/afr_agent/src/loop/history_tests.rs`, `rustd/crates/afr_agent/src/nested/run_tests.rs` | EDIT / CREATE | The turns lead the conversation, scrubbed; the message comes from `message_of` |
 | `rustd/crates/afr_agent/src/spans.rs` | EDIT | The `chat` span records cache read and cache write tokens |
+| `rustd/crates/afr_agent/src/ledger/tests.rs`, `rustd/Cargo.lock` | EDIT | `Usage.cache_written` in the ledger's literals; the lock file follows the dependency edits |
 | `rustd/crates/afr_providers/src/provider.rs`, `rustd/crates/afr_providers/src/request.rs`, `rustd/crates/afr_providers/src/wire.rs`, `rustd/crates/afr_providers/src/turn.rs` | EDIT | Prompt caching markers on Messages; the cache key on Responses; cache-written tokens kept for the span |
 | `rustd/crates/afd_observability/src/semconv.rs`, `rustd/crates/afd_observability/src/metrics/declared/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet.rs`, `rustd/crates/afd_observability/src/producers/fleet/history.rs`, `rustd/crates/afd_observability/src/metrics/label/fleet.rs`, `rustd/crates/afd_observability/src/metrics/label/tests.rs`, `docs/metrics.census.tsv` | EDIT / CREATE | Two span attributes; three daemon families with their producer |
+| `rustd/crates/afd_events/src/history/mod.rs`, `rustd/crates/afd_events/src/history/statement.rs`, `rustd/crates/afd_events/src/history/statement/tests.rs`, `rustd/crates/afd_events/tests/integration_list_plans/expected.rs` | EDIT | `History::finished_before`: the read filters finished rows in SQL, so running or refused rows never take a window slot |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates.rs`, `rustd/crates/afd_fleet/tests/integration_lease_gates/history.rs` | EDIT / CREATE | Turns through the real plane: lease, report, lease again |
 | `rustd/crates/afd_fleet/tests/integration_lease_history.rs`, `rustd/crates/afr_providers/tests/providers/turns.rs`, `rustd/crates/afr_providers/tests/providers/caching.rs`, `rustd/crates/afr_providers/tests/providers.rs`, `rustd/crates/afr_providers/src/request/tests.rs` | CREATE / EDIT |
 | `rustd/crates/afr_agent/src/loop/shared.rs`, `rustd/crates/afr_agent/src/loop/model_turn.rs`, `rustd/crates/afr_agent/src/engine.rs`, `rustd/crates/afr_agent/src/fixture.rs`, `rustd/crates/afr_agent/src/fixture/model.rs`, `rustd/crates/afr_supervisor/src/{renew/tests.rs,report/tests.rs,test_support.rs,lease_telemetry_tests.rs}`, `rustd/crates/agentsfleetd/tests/support/fake_model.rs` | EDIT | The fleet id reaches the request as its cache key; `Usage.cache_written` in every literal | The integration proofs and the request-body proofs |
 | `docs/architecture/runner_execution.md` | EDIT | §Crates: a chat lease carries the thread's recent turns, and the stable prefix is marked for caching |
@@ -115,21 +118,21 @@ When the claimed event is `chat`, `pull` reads the fleet's thread before the eve
 
 `Prompt` gains the lease's turns. The harness opens the conversation with each turn as a user message and an assistant message with no calls, then the current message (`rustd/crates/afr_agent/src/loop.rs:128-129`); every text passes the lease's `Scrub` first, as the current message does. The current message and a turn's message both come from `message_of`, so a message reads the same as a turn as it read when it was current. The system prompt is unchanged by the turns. A nested child run starts from its task alone. `Budget::evict` rewrites tool results only (`rustd/crates/afr_agent/src/context.rs:48-61`), so turns are never evicted.
 
-- **Dimension 2.1** DONE — The turns lead the conversation, ahead of the current message, and leave the system prompt unchanged → Test `test_history_leads_the_conversation`
-- **Dimension 2.2** DONE — Every turn passes the lease's secret scrub → Test `test_history_is_scrubbed`
-- **Dimension 2.3** DONE — A message reads the same as a turn as it read when it was current → Test `test_history_message_matches_its_first_reading`
-- **Dimension 2.4** DONE — A nested child run's first request holds its task alone → Test `test_child_run_carries_no_history`
-- **Dimension 2.5** DONE — Eviction leaves every turn intact → Test `test_eviction_leaves_history_intact`
+- **Dimension 2.1** DONE · PARKED for production (M213_001 Dimension 1.4) — The turns lead the conversation, ahead of the current message, and leave the system prompt unchanged → Test `test_history_leads_the_conversation`
+- **Dimension 2.2** DONE · PARKED for production (M213_001 Dimension 1.4) — Every turn passes the lease's secret scrub → Test `test_history_is_scrubbed`
+- **Dimension 2.3** DONE · PARKED for production (M213_001 Dimension 1.4) — A message reads the same as a turn as it read when it was current → Test `test_history_message_matches_its_first_reading`
+- **Dimension 2.4** DONE · PARKED for production (M213_001 Dimension 1.4) — A nested child run's first request holds its task alone → Test `test_child_run_carries_no_history`
+- **Dimension 2.5** DONE · PARKED for production (M213_001 Dimension 1.4) — Eviction leaves every turn intact → Test `test_eviction_leaves_history_intact`
 
 ### §3 — The prefix a conversation repeats is cached — DONE
 
 The Messages wire adds rig's `with_prompt_caching()` beside `with_automatic_caching()` (`rustd/crates/afr_providers/src/wire.rs:40-44`): markers on the last tool and the system prompt, plus the provider's moving breakpoint on the conversation, all at the five-minute default. A follow-up within five minutes then reads the tools, the system prompt and every turn before its own message from the cache, and a webhook lease reads the tools and the system prompt. The Responses wire sends `prompt_cache_key` set to the fleet id through rig's `additional_params`, and a nested child run sends its fleet's key; the Chat wire sends none, because its gateways refuse fields they do not know. The trusted repair context stays in the system prompt. It names the event (`rustd/crates/afd_gate/src/policy/repair.rs:66`), so a write-bound lease writes its system prompt and turns to the cache each event and still reads its tools. The `chat` span records cache read and cache write tokens. Billing is unchanged, because rig counts writes inside input (`rustd/crates/afr_providers/src/turn.rs:262-272`).
 
-- **Dimension 3.1** DONE — A Messages request marks the last tool and the system prompt, keeps the top-level breakpoint, and sets no lifetime → Test `test_messages_cache_marks_the_static_prefix`
-- **Dimension 3.2** DONE — `prompt_cache_key` rides the Responses wire only → Test `test_cache_key_rides_responses_only`
-- **Dimension 3.3** DONE — A follow-up's request equals the previous lease's through that lease's message → Test `test_history_prefix_is_byte_identical_across_leases`
-- **Dimension 3.4** DONE — The `chat` span carries the turn's cache read and cache write tokens → Test `test_cache_tokens_recorded_on_the_chat_span`
-- **Dimension 3.5** DONE — A write-bound lease keeps its repair context in the system prompt and out of every message → Test `test_history_leaves_the_repair_context_in_the_system_prompt`
+- **Dimension 3.1** DONE · PARKED for production (M213_001 Dimension 1.4) — A Messages request marks the last tool and the system prompt, keeps the top-level breakpoint, and sets no lifetime → Test `test_messages_cache_marks_the_static_prefix`
+- **Dimension 3.2** DONE · PARKED for production (M213_001 Dimension 1.4) — `prompt_cache_key` rides the Responses wire only → Test `test_cache_key_rides_responses_only`
+- **Dimension 3.3** DONE · PARKED for production (M213_001 Dimension 1.4) — A follow-up's request equals the previous lease's through that lease's message → Test `test_history_prefix_is_byte_identical_on_the_wire`
+- **Dimension 3.4** DONE · PARKED for production (M213_001 Dimension 1.4) — The `chat` span carries the turn's cache read and cache write tokens → Test `test_cache_tokens_recorded_on_the_chat_span`
+- **Dimension 3.5** DONE · PARKED for production (M213_001 Dimension 1.4) — A write-bound lease keeps its repair context in the system prompt and out of every message → Test `test_history_leaves_the_repair_context_in_the_system_prompt`
 
 ## Interfaces
 
@@ -137,12 +140,12 @@ The Messages wire adds rig's `with_prompt_caching()` beside `with_automatic_cach
 afd_wire::lease::Turn<'a>            message: Cow<str> · answer: Cow<str>
 afd_wire::lease::LeasePayload        + history: Vec<Turn>   oldest first; empty unless the event is chat; #[serde(default)]
 afd_wire::lease                      HISTORY_TURNS_MAX = 8 · HISTORY_BYTES_MAX = 65_536 · TURN_TEXT_BYTES_MAX = 16_384
-afd_wire::lease                      NO_REPLY = "[no reply]" · RUN_FAILED_PREFIX = "[the run failed: "
+afd_wire::lease                      ANSWER_NONE = "[no reply]" · ANSWER_FAILED = "[the run failed: " · ANSWER_FAILED_END = "]"
 afd_wire::event::message_of(&str)    -> Cow<str>: the request's `message` string, else the whole request
-afd_fleet::lease::history::Thread    rows before an event, newest first; afd_events::history::History implements it
-afr_providers::provider::Request     + cache_key: Option<&str>   the fleet id; sent on the Responses wire only
+afd_fleet::lease::history::Thread    finished_before(event): finished rows only, newest first; afd_events::history::History implements it
+afr_providers::provider::Request     + cache_key: &'a str         the fleet id; sent on the Responses wire only
 afr_providers::provider::Usage       + cache_written: u64        part of `input`; recorded on the span, billed as today
-afd_observability::semconv           ATTR_USAGE_CACHE_READ_INPUT_TOKENS · ATTR_USAGE_CACHE_CREATION_INPUT_TOKENS
+afd_observability::semconv           ATTR_USAGE_CACHE_READ_TOKENS · ATTR_USAGE_CACHE_CREATION_TOKENS
 ```
 
 ## Failure Modes
@@ -152,13 +155,13 @@ afd_observability::semconv           ATTR_USAGE_CACHE_READ_INPUT_TOKENS · ATTR_
 | Read fails | Postgres unavailable, or a row this build cannot read | Lease issued with no turns; `lease_history_unavailable` warning with `error_code`; the failure counter; the model answers the message alone, as today |
 | Long turn | An answer over 16,384 bytes | Cut on a character boundary and counted `text`; the model sees the cut text |
 | Long conversation | More than eight finished turns, or more than 65,536 bytes | Oldest dropped and counted by cap; the shifted window writes that lease's turns to the cache, and its tools and system prompt stay a read |
-| Zig runner serves the lease | M213_001 has not landed | The field is ignored (`src/runner/daemon/control_plane_client_lease.zig:10-12`); the prompt is today's |
+| Zig runner serves the lease | M213_001 has not landed | The field is ignored (`src/runner/daemon/control_plane_client_lease.zig:10-12`, `ignore_unknown_fields`); the prompt is today's. The daemon still reads the thread for every chat lease, so production pays the read before any runner uses it |
 | Older daemon | A lease without the field | Decodes empty and the prompt is today's (`test_lease_history_defaults_empty`) |
 | Injected text in an earlier turn | A webhook digest or an earlier answer carrying instructions | Stays in a user or assistant message, never the system prompt; tools, egress and writes stay governed by `ExecutionPolicy`, as for the current message |
 | Secret in an earlier turn | A stored answer that echoed a credential | The lease's scrub masks it before send (`test_history_is_scrubbed`) |
-| Prompt below the cache minimum | A short fleet prompt | The provider skips caching and the request succeeds uncached |
+| Prompt below the cache minimum | A short fleet prompt | The provider skips caching and the request succeeds uncached; provider behaviour, not ours, so no test of ours can cause it |
 | Write-bound fleet | The repair context names the event | Its system prompt and turns are written to the cache each event; its tools still read |
-| Two messages at once | A second steer before the first finishes | The affinity slot admits one holder, so the second is leased after the first's report and reads it as a finished turn (`test_follow_up_lease_carries_the_previous_turn`) |
+| Two messages at once | A second steer before the first finishes | The affinity slot admits one holder, so the second is leased after the first's report and reads it as a finished turn (`test_second_message_waits_for_the_first_and_carries_it`) |
 
 ## Invariants
 
@@ -174,19 +177,21 @@ afd_observability::semconv           ATTR_USAGE_CACHE_READ_INPUT_TOKENS · ATTR_
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
 | `agentsfleet_lease_history_bytes` (daemon histogram, `afd_observability` declared + producer) | ops | A chat lease is issued | none | no ids or text in labels | `test_history_metrics_recorded` |
-| `agentsfleet_lease_history_cuts_total` (daemon counter) | ops | A cap cuts a chat lease's turns | `cap`: `turns`, `bytes` or `text` | closed label set | `test_history_metrics_recorded` |
+| `agentsfleet_lease_history_cuts_total` (daemon counter) | ops | A cap cuts a chat lease's turns | `reason`: `turns`, `bytes` or `text` | closed label set | `test_history_metrics_recorded` |
 | `agentsfleet_lease_history_read_failures_total` (daemon counter) | ops | The thread read fails | none | none to guard | `test_history_read_failure_fails_open` |
-| `lease_history_unavailable` (daemon log, warn) | ops | The thread read fails | lease id, fleet id, `error_code` | no message or answer text | `test_history_read_failure_fails_open` |
+| `lease_history_unavailable` (daemon log, warn) | ops | The thread read fails | event id, fleet id, `error_code` (the read runs before the lease is minted, so no lease id exists yet) | no message or answer text | `test_history_read_failure_fails_open` |
 | `gen_ai.usage.cache_read.input_tokens`, `gen_ai.usage.cache_creation.input_tokens` on the `chat` span | ops | Every model turn | token counts | counts only | `test_cache_tokens_recorded_on_the_chat_span` |
 
 ## Test Specification (tiered)
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_follow_up_lease_carries_the_previous_turn` | chat `m1` leased and reported processed with answer `a1`; chat `m2` queued → `m2`'s lease has `history = [{message: "m1", answer: "a1"}]` |
+| 1.1 | integration | `test_follow_up_lease_carries_the_previous_turn` | chat event leased through the real plane, reported processed with an answer; a second chat event → its lease body's `history` holds message and answer |
 | 1.2 | unit | `test_history_keeps_finished_turns_only` | rows processed `a`, fleet_error `timeout`, processed with no text, and a queued row → turns `a`, `[the run failed: timeout]`, `[no reply]`; no queued row |
+| 1.2 | integration | `test_unfinished_rows_never_shrink_the_window` | newest rows running or refused, older ones finished → eight finished turns, the `turns` cut counted |
 | 1.3 | unit | `test_history_caps_turns_and_bytes` | nine finished rows → eight turns, oldest first; a 20,000-byte answer ending in a multi-byte character → at most 16,384 bytes, on a boundary; turns totalling 70,000 bytes → oldest dropped until at most 65,536 |
 | 1.4 | integration | `test_non_chat_lease_carries_no_history` | a webhook event after a finished chat turn → its lease has `history = []` |
+| 1.4 | integration | `test_non_chat_lease_carries_no_history_through_the_plane` | a non-chat event leased through `Plane::issue_ready` → `history` empty in the lease body |
 | 1.5 | integration | `test_history_stays_in_its_fleet` | fleets `f1` and `f2` each with a finished turn → `f1`'s follow-up carries `f1`'s turn only |
 | 1.6 | unit | `test_history_read_failure_fails_open` | a `Thread` that errors → the lease renders with `history = []`, `lease_history_unavailable` logged with its `error_code`, the failure counter at 1 |
 | 1.7 | unit | `test_lease_history_defaults_empty` | lease JSON without `history` → decodes with an empty list; with it → round-trips unchanged |
@@ -198,6 +203,7 @@ afd_observability::semconv           ATTR_USAGE_CACHE_READ_INPUT_TOKENS · ATTR_
 | 2.5 | unit | `test_eviction_leaves_history_intact` | a run past the tool window → older tool results evicted, every turn's messages unchanged |
 | 3.1 | unit | `test_messages_cache_marks_the_static_prefix` | a Messages turn on the provider fake → `cache_control` on the last tool and on the system block, a top-level `cache_control`, no `ttl` |
 | 3.2 | unit | `test_cache_key_rides_responses_only` | one request with cache key `f1` on each wire → the Responses body has `prompt_cache_key = "f1"`; the Messages and Chat bodies have none |
+| 3.3 | integration | `test_history_prefix_is_byte_identical_on_the_wire` | the real loop against the fake provider, one lease then its follow-up, on Messages and Responses → model, tools, system prompt and cache marker or `prompt_cache_key` byte-identical in the captured bodies; the follow-up's conversation opens with the first's exact bytes |
 | 3.3 | unit | `test_history_prefix_is_byte_identical_across_leases` | lease A with message `m1`; lease B with turn `(m1, a1)` and message `m2` → B's first request equals A's in instructions, tools and the first message |
 | 3.4 | unit | `test_cache_tokens_recorded_on_the_chat_span` | provider usage with 900 cache-read and 100 cache-write tokens → the `chat` span carries 900 and 100 |
 | 3.5 | unit | `test_history_leaves_the_repair_context_in_the_system_prompt` | a write-bound lease with turns → the repair context is in the instructions and in no message |
@@ -206,7 +212,7 @@ afd_observability::semconv           ATTR_USAGE_CACHE_READ_INPUT_TOKENS · ATTR_
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | A chat follow-up's lease carries the previous turn; other events and fleets carry none (§1) | `make test-integration-rustd 2>&1 \| grep -c -E "test_(follow_up_lease_carries_the_previous_turn\|non_chat_lease_carries_no_history\|history_stays_in_its_fleet) \.\.\. ok"` | 3 | P0 | |
+| R1 | A chat follow-up's lease carries the previous turn; other events and fleets carry none (§1) | `make test-integration-rustd 2>&1 \| grep -c -E "test_(follow_up_lease_carries_the_previous_turn\|non_chat_lease_carries_no_history_through_the_plane\|history_stays_in_its_fleet\|second_message_waits_for_the_first_and_carries_it\|unfinished_rows_never_shrink_the_window) \.\.\. ok"` | 5 | P0 | |
 | R2 | The daemon keeps finished rows, cuts to the caps, fails open and measures it; the wire decodes leniently (§1) | `cargo test --manifest-path rustd/Cargo.toml -p afd_fleet -p afd_wire history 2>&1 \| grep -c -E "test_(history_keeps_finished_turns_only\|history_caps_turns_and_bytes\|history_read_failure_fails_open\|history_metrics_recorded\|lease_history_defaults_empty) \.\.\. ok"` | 5 | P0 | |
 | R3 | The runner leads with the turns, scrubbed, read as first read, and a child run starts clean (§2, §3) | `cargo test --manifest-path rustd/Cargo.toml -p afr_agent history 2>&1 \| grep -c -E "test_(history_leads_the_conversation\|history_is_scrubbed\|history_message_matches_its_first_reading\|child_run_carries_no_history\|eviction_leaves_history_intact\|history_prefix_is_byte_identical_across_leases\|history_leaves_the_repair_context_in_the_system_prompt) \.\.\. ok"` | 7 | P0 | |
 | R4 | The stable prefix is marked, the key rides Responses, and the span counts cache tokens (§3) | `cargo test --manifest-path rustd/Cargo.toml -p afr_providers -p afr_agent cache 2>&1 \| grep -c -E "test_(messages_cache_marks_the_static_prefix\|cache_key_rides_responses_only\|cache_tokens_recorded_on_the_chat_span) \.\.\. ok"` | 3 | P0 | |
@@ -260,4 +266,7 @@ N/A — no files deleted. `Prompt::new`'s message parse (`rustd/crates/afr_agent
 - **Consults** — Indy (in-session, Oct 05, 2026) chose "Add M211_005, cached (recommended)". Source trace (Oct 05, 2026, at `b0138d7b3`), each claim read from source: the prompt holds the instructions and the current message only (`afr_agent/src/prompt.rs:24-59`), and the conversation starts with that one message (`afr_agent/src/loop.rs:128-129`); `core.fleet_events` keeps each run's `request_json` and whole `response_text` (`schema/800_fleet_events.sql:30-57`), written at report (`afd_fleet/src/lease/finalize.rs:99-112`); the thread reader with bodies exists (`afd_events/src/history/mod.rs:183-214`); the Messages wire caches automatically at the five-minute default (`afr_providers/src/wire.rs:40-44`); rig counts cache writes inside input (`afr_providers/src/turn.rs:262-272`); the repair branch names the event (`afd_gate/src/policy/repair.rs:66`); the Zig runner ignores unknown lease fields (`src/runner/daemon/control_plane_client_lease.zig:10-12`); a chat message is capped at 8,192 bytes (`afd_wire/src/event/steer.rs:111`), under `TURN_TEXT_BYTES_MAX`. Three changes from the design drafted before this spec, each an implementation default Indy may change: only chat events carry turns; the five-minute lifetime stays, because a one-hour write costs twice the input price and the daemon bills writes at the input rate; the trusted repair context stays in the system prompt. Architecture consult: `ARCH: grounded in runner_execution.md:92 | proposal: a chat lease carries the thread's recent turns, sent ahead of the message, with the stable prefix marked for caching | status: extends | landing: a` — the doc edit lands in the docs commit that lands this spec.
 - **Metrics review** — Three daemon families, one daemon log event and two span attributes; no analytics or funnel playbook change, because no product event changes.
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Production run of §2 and §3 parked on M213_001** — > Indy (2026-10-07 ~16:08, AskUserQuestion): "Move them the dimenstions as parked and the spec as DONE. Mention in a prompt to me so i can ask the other agent in M213 to deploy and test this." — context: `agentsfleet_runner/src/main.rs:184-185` refuses every lease with `NO_AGENT_ENGINE`, so the turns reach a model only under test wiring until M213_001 Dimension 1.4. §1 is the daemon's and runs in production now.
+- **Gaps closed at REVIEW (Oct 07, 2026)** — the headline proof wrote rows and called the read with a hand-built cursor; it is now `test_history_read_carries_the_previous_turn`, and `test_follow_up_lease_carries_the_previous_turn` goes lease → report → lease through `Plane::issue_ready`. Running or refused rows took window slots before the finished filter, so a busy thread carried fewer than eight turns: the read now filters in SQL (`test_unfinished_rows_never_shrink_the_window`; red against the old read with `["m4".."m9"]` for `["m2".."m9"]`). Dimension 1.3 asserts the exact window, 2.2 that the masked turn is present, and 3.3 the bytes on the wire.
+- **Published docs** — earlier turns and prompt caching are on `fleets/overview.mdx` in the docs repo, branch `chore/m211-sandbox-tools-changelog`, commit `200e031`, with the changelog in `3c51b93`.
+- **Deferrals** — the production run of §2 and §3, to M213_001 (quote above); nothing else.

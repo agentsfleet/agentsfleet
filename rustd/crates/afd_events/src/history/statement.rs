@@ -281,6 +281,22 @@ pub(super) const SELECT_THREAD_PAGE_AFTER: &str = concat!(
     newest_first!(5)
 );
 
+/// A thread's finished rows before a cursor, the turns a chat lease carries:
+/// `$3` cursor timestamp, `$4` cursor event id, `$5` and `$6` the two
+/// finished statuses, `$7` limit. The statuses are a predicate so the limit
+/// counts finished rows: running or refused rows among the newest would
+/// otherwise shrink the window while older finished turns exist.
+pub(super) const SELECT_THREAD_FINISHED_BEFORE: &str = concat!(
+    shared_columns!(),
+    body_columns!(),
+    from_events!(),
+    fleet_scope!(),
+    "
+  AND (created_at, event_id) < ($3, $4)
+  AND status IN ($5, $6)",
+    newest_first!(7)
+);
+
 // One actor's texts expand from the column list above, beside this file.
 mod actor;
 pub(super) use self::actor::{SELECT_FLEET_PAGE_OF_ACTOR, SELECT_FLEET_PAGE_OF_ACTOR_AFTER};
@@ -295,7 +311,7 @@ pub(super) use self::queued::{SELECT_THREAD_QUEUED, SELECT_THREAD_QUEUED_AFTER};
 /// Every listing and thread text, named, for the suite that asks Postgres how
 /// it plans each one.
 #[cfg(feature = "test-util")]
-pub const READ_TEXTS: [(&str, &str); 12] = [
+pub const READ_TEXTS: [(&str, &str); 13] = [
     ("fleet page", SELECT_FLEET_PAGE),
     ("fleet page by actor", SELECT_FLEET_PAGE_BY_ACTOR),
     ("fleet page after", SELECT_FLEET_PAGE_AFTER),
@@ -312,6 +328,7 @@ pub const READ_TEXTS: [(&str, &str); 12] = [
     ),
     ("thread page", SELECT_THREAD_PAGE),
     ("thread page after", SELECT_THREAD_PAGE_AFTER),
+    ("thread finished before", SELECT_THREAD_FINISHED_BEFORE),
     ("fleet page of actor", SELECT_FLEET_PAGE_OF_ACTOR),
     (
         "fleet page of actor after",

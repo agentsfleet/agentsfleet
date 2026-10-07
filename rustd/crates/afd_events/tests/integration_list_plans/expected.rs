@@ -22,7 +22,7 @@ const FLEET: &str = "fleet_id = $2";
 const WORKSPACE: &str = "workspace_id = $1";
 
 /// `(name, the index an unfiltered text walks in order, its bounds)`.
-pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 12] = [
+pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 13] = [
     (
         "fleet page",
         Some(FLEET_INDEX),
@@ -78,6 +78,11 @@ pub(super) const EXPECTED: [(&str, Option<&str>, &[&str]); 12] = [
     ("thread page", Some(FLEET_INDEX), &[FLEET]),
     (
         "thread page after",
+        Some(FLEET_INDEX),
+        &[FLEET, "ROW(created_at, event_id) < ROW($3, $4)"],
+    ),
+    (
+        "thread finished before",
         Some(FLEET_INDEX),
         &[FLEET, "ROW(created_at, event_id) < ROW($3, $4)"],
     ),
