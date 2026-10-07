@@ -107,34 +107,34 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 When the claimed event is `chat`, `issue_ready` (`deliver.rs`) reads the fleet's thread before the event through `Thread`, once the lease is issued. `History::finished_before` implements it with the event's `(created_at, event_id)` as the cursor, the two finished statuses as its predicate, and one row more than `HISTORY_TURNS_MAX`, so a cut is known and a running or refused row never takes a turn's place. Rows that ended `processed` or `fleet_error` become turns, oldest first. A turn's message is `message_of(request_json)`. Its answer is `response_text`, `[no reply]` when a processed row has none, and `[the run failed: <failure_label>]` for `fleet_error`. Each text is cut to `TURN_TEXT_BYTES_MAX` on a character boundary, and the oldest turns drop until the total fits `HISTORY_BYTES_MAX`. Any other event type carries an empty list. A read that fails issues the lease with an empty list, logs `lease_history_unavailable` with its `error_code`, and counts it, because a follow-up answered without context beats one refused. **Implementation default:** eight turns, 65,536 bytes, 16,384 bytes per text, and chat events only, because a webhook delivery is self-contained and would otherwise carry up to 64 KiB of unrelated runs. Indy may change any of them.
 
-- **Dimension 1.1** DONE — A chat event's lease carries the finished turns before it, oldest first → Test `test_follow_up_lease_carries_the_previous_turn`
-- **Dimension 1.2** DONE — Only finished rows become turns; a failure answers with its label; a silent run answers `[no reply]` → Test `test_history_keeps_finished_turns_only`
-- **Dimension 1.3** DONE — At most eight turns, each text cut on a character boundary, the oldest dropped until the bytes fit → Test `test_history_caps_turns_and_bytes`
-- **Dimension 1.4** DONE — Webhook, cron and continuation leases carry no turns → Test `test_non_chat_lease_carries_no_history`
-- **Dimension 1.5** DONE — Another fleet's rows never appear → Test `test_history_stays_in_its_fleet`
-- **Dimension 1.6** DONE — A failed read issues the lease with no turns, logged and counted → Test `test_history_read_failure_fails_open`
-- **Dimension 1.7** DONE — A lease without the field decodes with no turns → Test `test_lease_history_defaults_empty`
-- **Dimension 1.8** DONE — The bytes histogram observes every chat lease whose thread read answers, each cap that cut counts once, and a read that fails counts as a read failure instead → Test `test_history_metrics_recorded`
+- **Dimension 1.1** — DONE — A chat event's lease carries the finished turns before it, oldest first → Test `test_follow_up_lease_carries_the_previous_turn`
+- **Dimension 1.2** — DONE — Only finished rows become turns; a failure answers with its label; a silent run answers `[no reply]` → Test `test_history_keeps_finished_turns_only`
+- **Dimension 1.3** — DONE — At most eight turns, each text cut on a character boundary, the oldest dropped until the bytes fit → Test `test_history_caps_turns_and_bytes`
+- **Dimension 1.4** — DONE — Webhook, cron and continuation leases carry no turns → Test `test_non_chat_lease_carries_no_history`
+- **Dimension 1.5** — DONE — Another fleet's rows never appear → Test `test_history_stays_in_its_fleet`
+- **Dimension 1.6** — DONE — A failed read issues the lease with no turns, logged and counted → Test `test_history_read_failure_fails_open`
+- **Dimension 1.7** — DONE — A lease without the field decodes with no turns → Test `test_lease_history_defaults_empty`
+- **Dimension 1.8** — DONE — The bytes histogram observes every chat lease whose thread read answers, each cap that cut counts once, and a read that fails counts as a read failure instead → Test `test_history_metrics_recorded`
 
 ### §2 — The model reads them as the conversation — DONE
 
 `Prompt` gains the lease's turns. The harness opens the conversation with each turn as a user message and an assistant message with no calls, then the current message (`rustd/crates/afr_agent/src/loop.rs:128-129`); every text passes the lease's `Scrub` first, as the current message does. The current message and a turn's message both come from `message_of`, so a message reads the same as a turn as it read when it was current. The system prompt is unchanged by the turns. A nested child run starts from its task alone. `Budget::evict` rewrites tool results only (`rustd/crates/afr_agent/src/context.rs:48-61`), so turns are never evicted.
 
-- **Dimension 2.1** DONE · PARKED for production (M213_001 Dimension 1.4) — The turns lead the conversation, ahead of the current message, and leave the system prompt unchanged → Test `test_history_leads_the_conversation`
-- **Dimension 2.2** DONE · PARKED for production (M213_001 Dimension 1.4) — Every turn passes the lease's secret scrub → Test `test_history_is_scrubbed`
-- **Dimension 2.3** DONE · PARKED for production (M213_001 Dimension 1.4) — A message reads the same as a turn as it read when it was current → Test `test_history_message_matches_its_first_reading`
-- **Dimension 2.4** DONE · PARKED for production (M213_001 Dimension 1.4) — A nested child run's first request holds its task alone → Test `test_child_run_carries_no_history`
-- **Dimension 2.5** DONE · PARKED for production (M213_001 Dimension 1.4) — Eviction leaves every turn intact → Test `test_eviction_leaves_history_intact`
+- **Dimension 2.1** — DONE — PARKED for production (M213_001 Dimension 1.4) — The turns lead the conversation, ahead of the current message, and leave the system prompt unchanged → Test `test_history_leads_the_conversation`
+- **Dimension 2.2** — DONE — PARKED for production (M213_001 Dimension 1.4) — Every turn passes the lease's secret scrub → Test `test_history_is_scrubbed`
+- **Dimension 2.3** — DONE — PARKED for production (M213_001 Dimension 1.4) — A message reads the same as a turn as it read when it was current → Test `test_history_message_matches_its_first_reading`
+- **Dimension 2.4** — DONE — PARKED for production (M213_001 Dimension 1.4) — A nested child run's first request holds its task alone → Test `test_child_run_carries_no_history`
+- **Dimension 2.5** — DONE — PARKED for production (M213_001 Dimension 1.4) — Eviction leaves every turn intact → Test `test_eviction_leaves_history_intact`
 
 ### §3 — The prefix a conversation repeats is cached — DONE
 
 The Messages wire adds rig's `with_prompt_caching()` beside `with_automatic_caching()` (`rustd/crates/afr_providers/src/wire.rs:40-44`): markers on the last tool and the system prompt, plus the provider's moving breakpoint on the conversation, all at the five-minute default. A follow-up within five minutes then reads the tools, the system prompt and every turn before its own message from the cache, and a webhook lease reads the tools and the system prompt. The Responses wire sends `prompt_cache_key` set to the fleet id through rig's `additional_params`, and a nested child run sends its fleet's key; the Chat wire sends none, because its gateways refuse fields they do not know. The trusted repair context stays in the system prompt. It names the event (`rustd/crates/afd_gate/src/policy/repair.rs:66`), so a write-bound lease writes its system prompt and turns to the cache each event and still reads its tools. The `chat` span records cache read and cache write tokens. Billing is unchanged, because rig counts writes inside input (`rustd/crates/afr_providers/src/turn.rs:262-272`).
 
-- **Dimension 3.1** DONE · PARKED for production (M213_001 Dimension 1.4) — A Messages request marks the last tool and the system prompt, keeps the top-level breakpoint, and sets no lifetime → Test `test_messages_cache_marks_the_static_prefix`
-- **Dimension 3.2** DONE · PARKED for production (M213_001 Dimension 1.4) — `prompt_cache_key` rides the Responses wire only → Test `test_cache_key_rides_responses_only`
-- **Dimension 3.3** DONE · PARKED for production (M213_001 Dimension 1.4) — A follow-up's request equals the previous lease's through that lease's message → Test `test_history_prefix_is_byte_identical_on_the_wire`
-- **Dimension 3.4** DONE · PARKED for production (M213_001 Dimension 1.4) — The `chat` span carries the turn's cache read and cache write tokens → Test `test_cache_tokens_recorded_on_the_chat_span`
-- **Dimension 3.5** DONE · PARKED for production (M213_001 Dimension 1.4) — A write-bound lease keeps its repair context in the system prompt and out of every message → Test `test_history_leaves_the_repair_context_in_the_system_prompt`
+- **Dimension 3.1** — DONE — PARKED for production (M213_001 Dimension 1.4) — A Messages request marks the last tool and the system prompt, keeps the top-level breakpoint, and sets no lifetime → Test `test_messages_cache_marks_the_static_prefix`
+- **Dimension 3.2** — DONE — PARKED for production (M213_001 Dimension 1.4) — `prompt_cache_key` rides the Responses wire only → Test `test_cache_key_rides_responses_only`
+- **Dimension 3.3** — DONE — PARKED for production (M213_001 Dimension 1.4) — A follow-up's request equals the previous lease's through that lease's message → Test `test_history_prefix_is_byte_identical_on_the_wire`
+- **Dimension 3.4** — DONE — PARKED for production (M213_001 Dimension 1.4) — The `chat` span carries the turn's cache read and cache write tokens → Test `test_cache_tokens_recorded_on_the_chat_span`
+- **Dimension 3.5** — DONE — PARKED for production (M213_001 Dimension 1.4) — A write-bound lease keeps its repair context in the system prompt and out of every message → Test `test_history_leaves_the_repair_context_in_the_system_prompt`
 
 ## Interfaces
 

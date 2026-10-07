@@ -104,43 +104,43 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Three scenarios on this Mac at the branch head before the cut, (A) and (B) the median of three runs and (C) one: (A) `touch rustd/crates/afd_wire/src/admin.rs`, then `cargo build -p agentsfleet_runner`; (B) the same touch, then `cargo build -p agentsfleetd`; (C) a clean `cargo build --workspace --timings` in a fresh target directory, reading `afd_wire`'s unit time. Wall time and the count of `Compiling` lines go into Discovery. Indy has decided the split; the numbers are its record, not its gate.
 
-- **Dimension 1.1** DONE — The three baseline scenarios are recorded with revision, machine and medians → Test `measure_baseline_rebuilds`
+- **Dimension 1.1** — DONE — The three baseline scenarios are recorded with revision, machine and medians → Test `measure_baseline_rebuilds`
 
 ### §2 — The daemon's own types leave the shared crate — DONE
 
 The 23 daemon-only modules and `schedule` move to `afd_api_wire`, with their tests, schema derives and `RunnerTokenRotatedResponse`'s `Debug` impl. `tests/names.rs` moves with them and reads both crates' `src/`, its directory walk through `walkdir` rather than a hand-written recursion. `afd_api_wire` depends on `afd_wire` for the five shared types its modules name (`runner::AssignedPolicy`, `CapabilityReport`, `RunnerLiveness`, `SelftestReport`, and `event::EventSummary` through `tail`); nothing in `afd_wire` names `afd_api_wire`. Each daemon crate's imports and `openapi` feature follow.
 
-- **Dimension 2.1** DONE — No two schema types across both crates publish under one name → Test `no_two_schema_types_publish_under_one_name`
-- **Dimension 2.2** DONE — The published document is byte-identical after the move → Test `regenerated_openapi_matches`
-- **Dimension 2.3** DONE — No runner crate depends on `afd_api_wire` → Test `runner_tree_has_no_api_wire`
+- **Dimension 2.1** — DONE — No two schema types across both crates publish under one name → Test `no_two_schema_types_publish_under_one_name`
+- **Dimension 2.2** — DONE — The published document is byte-identical after the move → Test `regenerated_openapi_matches`
+- **Dimension 2.3** — DONE — No runner crate depends on `afd_api_wire` → Test `runner_tree_has_no_api_wire`
 
 ### §3 — The runner's own state lives in the runner — DONE
 
 `ExecutionResult`, `ResultOutcome`, `Failure` and `Completed` (`afd_wire/src/report.rs:85-118`) move to `afr_agent`, whose loop builds them and whose supervisor reads them. `RunnerChildInput` (`lease.rs:91`), `FAIL_CLOSED_DEFAULT` (`runner.rs:70`) and `paths::FLEET_RUNNERS` are deleted; nothing reads them. `paths::RUNNERS` stays: it is the enrolment constant §4 names, since `/v1/runners` is still spelled as a literal at `afd_api_runner/src/handler/runner/enrolment.rs:48` and `afd_http/src/route/runner_ops.rs:75`. The result types carry no serde or schema derive in `afr_agent`: `RunOutput` (`engine.rs:127`) is never serialized and `public/openapi.json` names none of them, so `Completed` becomes a unit struct.
 
-- **Dimension 3.1** DONE — A finished run still reports through the moved types → Test `test_rust_runner_lease_roundtrip`
-- **Dimension 3.2** DONE — The three unused items are gone from the tree → Test `dead_items_absent`
+- **Dimension 3.1** — DONE — A finished run still reports through the moved types → Test `test_rust_runner_lease_roundtrip`
+- **Dimension 3.2** — DONE — The three unused items are gone from the tree → Test `dead_items_absent`
 
 ### §4 — One source for every runner route — DONE
 
 `paths` gains a template per daemon route, composed with `concatcp!` from the segments the runner joins (`RUNNER_LEASES`, `LEASE_ACTIVITY_SUFFIX`, …); `/v1/runners` enrolment keeps its own constant. The 20 `#[utoipa::path(path = …)]` attributes in `afd_api_runner` name the templates; `afd_auth`'s `RUNNER_TOKEN_PREFIX` and the OpenAPI bearer format read `paths::RUNNER_TOKEN_PREFIX`.
 
-- **Dimension 4.1** DONE — Each template equals the route a runner joins → Test `test_route_templates_compose_from_their_segments`
-- **Dimension 4.2** DONE — No runner route is spelled as a literal outside `paths` → Test `route_literals_only_in_paths`
+- **Dimension 4.1** — DONE — Each template equals the route a runner joins → Test `test_route_templates_compose_from_their_segments`
+- **Dimension 4.2** — DONE — No runner route is spelled as a literal outside `paths` → Test `route_literals_only_in_paths`
 
 ### §5 — Measure after — DONE
 
 §1's scenarios rerun at the branch head, with (A) touching `afd_api_wire/src/admin.rs`.
 
-- **Dimension 5.1** DONE — Scenario A compiles no crate, and B and C are recorded beside the baseline → Test `measure_after_rebuilds`
+- **Dimension 5.1** — DONE — Scenario A compiles no crate, and B and C are recorded beside the baseline → Test `measure_after_rebuilds`
 
 ### §6 — The workspace builds on Rust 1.99.0 — DONE
 
 The pin moves from 1.98.1 to 1.99.0, the newest stable (`channel-rust-stable.toml` reads `1.99.0 (b940084d7 2026-09-28)`). The CI base image is rebuilt and pushed under the new tag, which the workflows derive from `versions.env`. 1.99 renames `fetch_update` to `try_update`. Its clippy adds `assert_is_empty`: string checks take `assert_ne!(x, "")` and every other check keeps `assert!` with the value in its message, which needs no `PartialEq` on the element type.
 
-- **Dimension 6.1** DONE — The workspace lints clean on 1.99.0 → Test `lint_on_pinned_toolchain`
-- **Dimension 6.2** DONE — The image playbook refuses a build when the three pins disagree, and agrees on 1.99.0 → Test `build_and_push_pin_check`
-- **Dimension 6.3** DONE — `ci-rust-alpine:1.99.0-alpine3.24` is published for both architectures → Test `ci_image_manifest_has_both_arches`
+- **Dimension 6.1** — DONE — The workspace lints clean on 1.99.0 → Test `lint_on_pinned_toolchain`
+- **Dimension 6.2** — DONE — The image playbook refuses a build when the three pins disagree, and agrees on 1.99.0 → Test `build_and_push_pin_check`
+- **Dimension 6.3** — DONE — `ci-rust-alpine:1.99.0-alpine3.24` is published for both architectures → Test `ci_image_manifest_has_both_arches`
 
 ## Interfaces
 
