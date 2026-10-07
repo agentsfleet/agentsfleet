@@ -58,6 +58,7 @@ pub(super) async fn run_to_end(
         text,
         exit_code: output::exit_code(ending),
         error_code: output::error_code(ending),
+        image: None,
     }
 }
 

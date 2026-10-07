@@ -6,6 +6,7 @@ use afr_executor::Executor;
 
 use crate::catalog::Entry;
 use crate::lease::Lease;
+use crate::sandbox::ImageAttachment;
 use crate::schema::Schema;
 
 /// Where a tool's handler runs.
@@ -23,14 +24,15 @@ pub enum Runtime {
 ///
 /// The router builds it per call and hands the executor only to a sandbox-side
 /// handler, so a supervisor-side one cannot reach the sandbox by construction.
-/// The lease's state is lent to one call at a time: calls run one after
-/// another, so the borrow checker keeps two from racing, not a lock.
+/// The lease's state is shared: a run's child loops call tools at the same
+/// time as their parent, so each part a call changes sits behind its own lock
+/// ([`Lease`]).
 #[derive(Debug)]
 pub struct ToolContext<'call, 'run> {
     /// The lease's executor; `None` for a supervisor-side call.
     pub executor: Option<&'call dyn Executor>,
     /// What every call of the lease shares.
-    pub lease: &'call mut Lease<'run>,
+    pub lease: &'call Lease<'run>,
 }
 
 /// Why a call failed, in the stable spelling the model and the thread read.
@@ -186,6 +188,8 @@ pub struct ToolOutput {
     pub exit_code: Option<i32>,
     /// Why the call failed, for one that did.
     pub error_code: Option<ToolErrorCode>,
+    /// The image the call read, which rides its result alone.
+    pub image: Option<ImageAttachment>,
 }
 
 impl ToolOutput {
@@ -196,6 +200,7 @@ impl ToolOutput {
             text: text.into(),
             exit_code: None,
             error_code: None,
+            image: None,
         }
     }
 
@@ -207,7 +212,15 @@ impl ToolOutput {
             text: format!("[{code}] {detail}"),
             exit_code: None,
             error_code: Some(code),
+            image: None,
         }
+    }
+
+    /// The same output, with the image the call read.
+    #[must_use]
+    pub fn with_image(mut self, image: ImageAttachment) -> Self {
+        self.image = Some(image);
+        self
     }
 }
 

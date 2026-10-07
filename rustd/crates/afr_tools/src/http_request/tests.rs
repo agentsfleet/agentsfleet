@@ -4,8 +4,9 @@ use afd_core::test_util::trace::Capture;
 use afr_egress::error::one_of_each_kind;
 use afr_egress::fixture::{BRANCH, ELASTIC_QUERY, GRAFANA, GRAFANA_TOKEN, LEASE_ID};
 use afr_egress::testing::{RecordingTransport, Sent, inbound};
-use afr_egress::{Inbound, RESPONSE_MAX_BYTES};
+use afr_egress::{Inbound, Outbound, RESPONSE_MAX_BYTES, Transport};
 use serde_json::{Value, json};
+use tokio::sync::Notify;
 
 use super::HttpRequest;
 use crate::egress::SharedTransport;
@@ -14,12 +15,14 @@ use crate::runtime::{ToolErrorCode, ToolOutput};
 use crate::testing::{HOUR, MINTED, Run, call, replying};
 
 const REFS: &str = "https://api.github.com/repos/acme/widgets/git/refs";
+/// The body every upstream in this suite answers with.
+const ANSWERED: &str = "ok";
 const GITHUB_AUTH: &str = "Bearer ${secrets.github.token}";
 
 /// One call under the fixture policy with `read_only`, and every request
 /// that reached the transport.
 async fn request(read_only: bool, arguments: Value) -> (ToolOutput, Vec<Sent>) {
-    let (transport, sent) = replying(200, "ok");
+    let (transport, sent) = replying(200, ANSWERED);
     let output = request_through(read_only, transport, arguments).await;
     (output, sent.try_iter().collect())
 }
@@ -32,8 +35,8 @@ async fn request_through(
 ) -> ToolOutput {
     let run = Run::new(read_only);
     let tool = Typed::boxed(HttpRequest::new(transport));
-    let mut lease = run.lease();
-    call(tool.as_ref(), &mut lease, arguments).await
+    let lease = run.lease();
+    call(tool.as_ref(), &lease, arguments).await
 }
 
 #[tokio::test]
@@ -137,17 +140,17 @@ async fn test_mintable_credential_minted_once() {
     let run = Run::new(false);
     let (transport, sent) = replying(200, "[]");
     let tool = Typed::boxed(HttpRequest::new(transport));
-    let mut lease = run.lease();
+    let lease = run.lease();
     let read = json!({"url": "https://api.github.com/repos/acme/widgets/pulls", "headers": {"Authorization": GITHUB_AUTH}});
 
     for _call in 0..3 {
-        let output = call(tool.as_ref(), &mut lease, read.clone()).await;
+        let output = call(tool.as_ref(), &lease, read.clone()).await;
         assert_eq!(output.error_code, None);
     }
     assert_eq!(run.mint.asked(), 1);
 
     run.clock.advance_millis(HOUR);
-    let output = call(tool.as_ref(), &mut lease, read).await;
+    let output = call(tool.as_ref(), &lease, read).await;
     assert_eq!(output.error_code, None);
     assert_eq!(run.mint.asked(), 2);
     assert_eq!(sent.try_iter().count(), 4);
@@ -201,11 +204,11 @@ async fn should_mask_a_minted_token_the_upstream_echoes() {
     let (transport, _sent) =
         RecordingTransport::answering(|_outbound| Ok(inbound(200, &format!("token={MINTED}"))));
     let tool = Typed::boxed(HttpRequest::new(Arc::new(transport)));
-    let mut lease = run.lease();
+    let lease = run.lease();
 
     let output = call(
         tool.as_ref(),
-        &mut lease,
+        &lease,
         json!({"url": "https://api.github.com/repos/acme/widgets/", "headers": {"Authorization": GITHUB_AUTH}}),
     )
     .await;
@@ -250,4 +253,50 @@ async fn should_refuse_arguments_the_schema_does_not_name() {
 
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
     assert_eq!(sent, Vec::new());
+}
+
+/// A transport that says when a request reaches it and answers only when
+/// released, so a test can look at the lease while the request is in flight.
+#[derive(Debug, Default)]
+struct Gated {
+    sending: Notify,
+    release: Notify,
+}
+
+#[async_trait::async_trait]
+impl Transport for Gated {
+    async fn send(&self, _outbound: Outbound) -> afr_egress::Result<Inbound> {
+        self.sending.notify_one();
+        self.release.notified().await;
+        Ok(inbound(200, ANSWERED))
+    }
+}
+
+/// The guard is held to admit and mint, never across the send: a slow
+/// upstream leaves every other call of the lease free to admit its own.
+#[tokio::test]
+async fn should_leave_the_guard_free_while_a_request_is_in_flight() {
+    let run = Run::new(false);
+    let gated = Arc::new(Gated::default());
+    let transport: SharedTransport = Arc::clone(&gated) as SharedTransport;
+    let tool = Typed::boxed(HttpRequest::new(transport));
+    let lease = run.lease();
+    let probe = async {
+        gated.sending.notified().await;
+        let free = lease.egress.try_lock().is_ok();
+        gated.release.notify_one();
+        free
+    };
+
+    let (output, free) = tokio::join!(
+        call(
+            tool.as_ref(),
+            &lease,
+            json!({"url": "https://api.github.com/repos/acme/widgets/"})
+        ),
+        probe
+    );
+
+    assert!(free, "the guard was held while the request was in flight");
+    assert_eq!(output.error_code, None, "{output:?}");
 }

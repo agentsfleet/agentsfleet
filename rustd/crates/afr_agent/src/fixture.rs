@@ -156,6 +156,7 @@ impl Tool for Exits {
             text: format!("exited {}", self.code),
             exit_code: Some(self.code),
             error_code: None,
+            image: None,
         }
     }
 }

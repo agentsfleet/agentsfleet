@@ -49,7 +49,7 @@ impl<'run> Router<'run> {
         &self,
         name: &str,
         arguments: &serde_json::Value,
-        lease: &mut Lease<'_>,
+        lease: &Lease<'_>,
     ) -> ToolOutput {
         let Some(tool) = self.selection.tool(name) else {
             return refused(self.selection.hosts(name), name);

@@ -53,12 +53,12 @@ async fn test_exec_session_survives_across_calls() {
         selection.tool(EXEC_COMMAND.name()).unwrap(),
         selection.tool(WRITE_STDIN.name()).unwrap(),
     );
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let opened = call_in(
         exec,
         &client,
-        &mut lease,
+        &lease,
         json!({"cmd": "cat", "yield_time_ms": 250}),
     )
     .await;
@@ -66,7 +66,7 @@ async fn test_exec_session_survives_across_calls() {
     let mut echoes = Vec::new();
     for chars in ["one\n", "two\n"] {
         let arguments = json!({"session_id": id, "chars": chars, "yield_time_ms": ECHO_YIELD_MS});
-        echoes.push(call_in(write, &client, &mut lease, arguments).await.text);
+        echoes.push(call_in(write, &client, &lease, arguments).await.text);
     }
 
     let running = format!("Process running with session ID {id}");
@@ -98,19 +98,19 @@ async fn a_missing_or_escaping_workdir_reads_as_the_callers_mistake() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[EXEC_COMMAND.name()]).unwrap();
     let exec = offered(&selection, &EXEC_COMMAND);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let missing = call_in(
         exec,
         &live.client,
-        &mut lease,
+        &lease,
         json!({"cmd": "true", "workdir": "gone"}),
     )
     .await;
     let escaping = call_in(
         exec,
         &live.client,
-        &mut lease,
+        &lease,
         json!({"cmd": "true", "workdir": "out"}),
     )
     .await;
@@ -142,13 +142,13 @@ async fn test_a_session_is_heard_past_its_first_half_mebibyte() {
         offered(&selection, &EXEC_COMMAND),
         offered(&selection, &WRITE_STDIN),
     );
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     let cmd = "yes | head -c 700000; read word; echo said-$word; sleep 30";
 
     let opened = call_in(
         exec,
         &live.client,
-        &mut lease,
+        &lease,
         json!({"cmd": cmd, "yield_time_ms": ECHO_YIELD_MS}),
     )
     .await;
@@ -157,7 +157,7 @@ async fn test_a_session_is_heard_past_its_first_half_mebibyte() {
         "chars": "go\n",
         "yield_time_ms": ECHO_YIELD_MS,
     });
-    let answered = call_in(write, &live.client, &mut lease, arguments).await;
+    let answered = call_in(write, &live.client, &lease, arguments).await;
 
     assert!(answered.text.contains("said-go\n"), "{}", answered.text);
     assert_eq!(lease.sessions.close_all(&live.client).await, 1);
@@ -178,11 +178,11 @@ async fn test_a_write_the_process_will_not_take_says_so_and_runs_on() {
         offered(&selection, &EXEC_COMMAND),
         offered(&selection, &WRITE_STDIN),
     );
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     let opened = call_in(
         exec,
         &live.client,
-        &mut lease,
+        &lease,
         json!({"cmd": "exec 0<&-; sleep 30", "yield_time_ms": 250}),
     )
     .await;
@@ -192,7 +192,7 @@ async fn test_a_write_the_process_will_not_take_says_so_and_runs_on() {
     let mut refused = None;
     for _ in 0..50 {
         let arguments = json!({"session_id": id, "chars": "x\n", "yield_time_ms": 250});
-        let output = call_in(write, &live.client, &mut lease, arguments).await;
+        let output = call_in(write, &live.client, &lease, arguments).await;
         if output.text.starts_with(super::INPUT_REFUSED) {
             refused = Some(output);
             break;

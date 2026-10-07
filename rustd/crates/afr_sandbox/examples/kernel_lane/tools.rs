@@ -64,12 +64,12 @@ pub(crate) fn shell_calls(
             limits: Limits::default(),
         };
         let sandbox = engine.prepare(request).await?;
-        let mut lease = Lease::default();
+        let lease = Lease::default();
         let mut outputs = Vec::with_capacity(calls.len());
         for arguments in calls {
             let context = ToolContext {
                 executor: Some(sandbox.executor()),
-                lease: &mut lease,
+                lease: &lease,
             };
             outputs.push(tool.call(arguments, context).await);
         }

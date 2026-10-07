@@ -11,10 +11,9 @@ use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
 use afr_egress::Egress;
 use afr_memory::Hydrated;
-use afr_providers::{Call, Connect, Hosted, Message, Provider, Replay, Request, ToolSpec};
+use afr_providers::{Call, Connect, Hosted, Message, Provider, Replay, ToolSpec};
 use afr_secrets::Scrub;
-use afr_telemetry::labels::{Provider as ProviderLabel, TurnOutcome};
-use afr_telemetry::record;
+use afr_telemetry::labels::Provider as ProviderLabel;
 use afr_tools::sandbox::checkouts;
 use afr_tools::{Catalog, Lease, Selection};
 use tokio_util::sync::CancellationToken;
@@ -29,7 +28,6 @@ use crate::offer;
 use crate::prompt::Prompt;
 use crate::router::{self, Router};
 use crate::spans;
-use crate::turn::{Turn, take};
 
 const EVENT_CAP_REACHED: &str = "context_cap_reached";
 const EVENT_CHECKPOINT_FAILED: &str = "memory_checkpoint_failed";
@@ -187,7 +185,9 @@ impl<'run> Harness<'run> {
     /// does not wait for it. A push that fails is logged and the run goes on:
     /// the push before the report carries every entry again.
     async fn checkpoint(&self) {
-        let pending: Vec<MemoryDelta<'static>> = (self.lease.memory.pending().into_iter())
+        let pending: Vec<MemoryDelta<'static>> = (self.lease.memory.lock().await)
+            .pending()
+            .into_iter()
             .map(MemoryDelta::into_owned)
             .collect();
         if pending.is_empty() {
@@ -204,62 +204,6 @@ impl<'run> Harness<'run> {
             let event = EVENT_CHECKPOINT_FAILED;
             tracing::warn!(error_code, lease_id, event);
         }
-    }
-
-    /// One model turn, its start and its end logged as a pair
-    /// (`docs/LOGGING_STANDARD.md` §4 rule 1, at `debug` because a run makes
-    /// one per pass); `None` when the lease stopped it.
-    async fn turn(
-        &mut self,
-        provider: &dyn Provider,
-        number: u64,
-        capped: bool,
-    ) -> Option<afr_providers::Result<Turn>> {
-        let lease_id = self.lease_id;
-        let turn = number;
-        let event = EVENT_TURN_STARTED;
-        tracing::debug!(lease_id, turn, event);
-        let request = Request {
-            model: self.model,
-            instructions: &self.instructions,
-            messages: &self.messages,
-            tools: if capped { &[] } else { &self.specs },
-            hosted: if capped { &[] } else { &self.hosted },
-        };
-        let span = spans::chat(self.model);
-        let started = Instant::now();
-        let streamed = take(provider.stream(request), &mut self.live).instrument(span.clone());
-        let taken = tokio::select! {
-            biased;
-            () = self.stop.cancelled() => None,
-            taken = streamed => Some(taken),
-        };
-        record::turn(
-            self.provider,
-            turn_outcome(taken.as_ref()),
-            started.elapsed(),
-        );
-        match &taken {
-            Some(Ok(done)) => {
-                let input_tokens = done.usage.prompt();
-                let output_tokens = done.usage.output;
-                spans::spent(&span, input_tokens, output_tokens);
-                let calls = done.calls.len();
-                let event = EVENT_TURN_COMPLETED;
-                tracing::debug!(lease_id, turn, input_tokens, output_tokens, calls, event);
-            }
-            Some(Err(failure)) => {
-                let code = failure.code().as_str();
-                let event = EVENT_PROVIDER_FAILED;
-                tracing::warn!(error_code = code, lease_id, turn, event);
-            }
-            None => {
-                let reason = REASON_STOPPED;
-                let event = EVENT_PROVIDER_FAILED;
-                tracing::debug!(lease_id, turn, reason, event);
-            }
-        }
-        taken
     }
 
     /// What the model said and called, as the conversation keeps it: scrubbed,
@@ -286,21 +230,21 @@ impl<'run> Harness<'run> {
     /// at the output limit; `None` when the lease stopped it.
     async fn call(&mut self, call: &Call, cut: bool) -> Option<Message> {
         let router = &self.router;
-        let lease = &mut self.lease;
+        let lease = &self.lease;
         let handler = async move {
             if cut {
                 return router::cut(&call.name);
             }
             router.dispatch(&call.name, &call.arguments, lease).await
         };
-        let text = tokio::select! {
+        let (text, image) = tokio::select! {
             biased;
             () = self.stop.cancelled() => return None,
-            text = self.ledger.call(call, handler) => text,
+            answered = self.ledger.call(call, handler) => answered,
         };
         // The image a call read rides its result alone; the ledger, the trace
         // and the frames saw the text.
-        let image = self.lease.attachment.take().map(attach::image_input);
+        let image = image.map(attach::image_input);
         Some(Message::ToolResult {
             call_id: call.id.clone(),
             output: text.into_inner(),
@@ -316,19 +260,12 @@ impl<'run> Harness<'run> {
     }
 }
 
-/// How a turn ended, as the turn-duration family labels it.
-const fn turn_outcome(taken: Option<&afr_providers::Result<Turn>>) -> TurnOutcome {
-    match taken {
-        Some(Ok(_answered)) => TurnOutcome::Completed,
-        Some(Err(_failed)) => TurnOutcome::Failed,
-        None => TurnOutcome::Stopped,
-    }
-}
-
 #[path = "loop/attach.rs"]
 mod attach;
 #[path = "loop/finish.rs"]
 mod finish;
+#[path = "loop/model_turn.rs"]
+mod model_turn;
 
 #[cfg(test)]
 #[path = "loop/tests.rs"]

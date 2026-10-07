@@ -30,7 +30,7 @@ fn published() -> Vec<SharedMemory<'static>> {
 
 #[tokio::test]
 async fn test_workspace_store_needs_publish() {
-    let mut lease = Lease::new(
+    let lease = Lease::new(
         Box::new(Hydrated::new(Seed {
             publish: false,
             ..Seed::default()
@@ -41,7 +41,7 @@ async fn test_workspace_store_needs_publish() {
 
     let refused = call(
         Typed::boxed(MemoryStore).as_ref(),
-        &mut lease,
+        &lease,
         json!({"key": "deploy_target", "content": "iad", "visibility": "workspace"}),
     )
     .await;
@@ -55,12 +55,15 @@ async fn test_workspace_store_needs_publish() {
         "{}",
         refused.text
     );
-    assert!(lease.memory.into_pending().is_empty(), "nothing is pending");
+    assert!(
+        lease.memory.into_inner().into_pending().is_empty(),
+        "nothing is pending"
+    );
 }
 
 #[tokio::test]
 async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
-    let mut lease = Lease::new(
+    let lease = Lease::new(
         Box::new(Hydrated::new(Seed {
             publish: true,
             ..Seed::default()
@@ -71,20 +74,20 @@ async fn a_publisher_stores_a_share_and_it_is_pushed_as_one() {
 
     let stored = call(
         Typed::boxed(MemoryStore).as_ref(),
-        &mut lease,
+        &lease,
         json!({"key": "deploy_target", "content": "iad", "visibility": "workspace"}),
     )
     .await;
 
     assert_eq!(stored.error_code, None, "{}", stored.text);
-    let pushed = lease.memory.into_pending();
+    let pushed = lease.memory.into_inner().into_pending();
     assert!(pushed.iter().all(|delta| delta.visibility.is_workspace()));
 }
 
 #[tokio::test]
 async fn test_recall_names_the_writer_of_a_shared_entry() {
     let shared = published();
-    let mut lease = Lease::new(
+    let lease = Lease::new(
         Box::new(Hydrated::new(Seed {
             shared: &shared,
             ..Seed::default()
@@ -95,7 +98,7 @@ async fn test_recall_names_the_writer_of_a_shared_entry() {
 
     let recalled = call(
         Typed::boxed(MemoryRecall).as_ref(),
-        &mut lease,
+        &lease,
         json!({"query": "deploy"}),
     )
     .await;
@@ -109,7 +112,7 @@ async fn test_recall_names_the_writer_of_a_shared_entry() {
 #[tokio::test]
 async fn test_forget_leaves_another_fleets_entry() {
     let shared = published();
-    let mut lease = Lease::new(
+    let lease = Lease::new(
         Box::new(Hydrated::new(Seed {
             shared: &shared,
             ..Seed::default()
@@ -120,7 +123,7 @@ async fn test_forget_leaves_another_fleets_entry() {
 
     let forgot = call(
         Typed::boxed(MemoryForget).as_ref(),
-        &mut lease,
+        &lease,
         json!({"key": "deploy_target"}),
     )
     .await;
@@ -128,7 +131,7 @@ async fn test_forget_leaves_another_fleets_entry() {
 
     let recalled = call(
         Typed::boxed(MemoryRecall).as_ref(),
-        &mut lease,
+        &lease,
         json!({"query": "deploy"}),
     )
     .await;
@@ -141,7 +144,7 @@ async fn test_forget_leaves_another_fleets_entry() {
 
 #[tokio::test]
 async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
-    let mut lease = Lease::new(
+    let lease = Lease::new(
         Box::new(Hydrated::new(Seed {
             publish: true,
             ..Seed::default()
@@ -152,13 +155,13 @@ async fn a_publisher_naming_fleet_reach_keeps_the_entry_to_itself() {
 
     let stored = call(
         Typed::boxed(MemoryStore).as_ref(),
-        &mut lease,
+        &lease,
         json!({"key": "deploy_target", "content": "iad", "visibility": "fleet"}),
     )
     .await;
 
     assert_eq!(stored.error_code, None, "{}", stored.text);
-    let pushed = lease.memory.into_pending();
+    let pushed = lease.memory.into_inner().into_pending();
     assert_eq!(pushed.len(), 1);
     assert!(
         pushed.iter().all(|delta| !delta.visibility.is_workspace()),

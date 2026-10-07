@@ -41,7 +41,7 @@ impl Handler for Message {
     type Arguments = Say;
 
     async fn run(&self, arguments: Say, context: ToolContext<'_, '_>) -> ToolOutput {
-        let text = egress::masked(context.lease, arguments.text);
+        let text = egress::masked(context.lease, arguments.text).await;
         answered_with(context.lease.verbs.message(&text).await, |delivered| {
             if delivered {
                 ToolOutput::succeeded(DELIVERED)

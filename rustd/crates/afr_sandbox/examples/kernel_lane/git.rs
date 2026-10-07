@@ -139,13 +139,13 @@ async fn work(
     mirrors
         .check_out(request, &CancellationToken::new())
         .await?;
-    let mut lease = Lease::default().with_checkouts(vec![checkout]);
+    let lease = Lease::default().with_checkouts(vec![checkout]);
     let mut outputs = Vec::with_capacity(calls.len());
     for (name, arguments) in calls {
         let tool = selection.tool(name).ok_or("the runner hosts it")?;
         let context = ToolContext {
             executor: Some(sandbox.executor()),
-            lease: &mut lease,
+            lease: &lease,
         };
         outputs.push(tool.call(arguments, context).await);
     }

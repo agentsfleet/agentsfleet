@@ -102,7 +102,7 @@ impl Live {
 /// Calls `tool` with `arguments` from the supervisor, with `lease`'s state.
 pub(crate) async fn call(
     tool: &dyn Tool,
-    lease: &mut Lease<'_>,
+    lease: &Lease<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
     tool.call(
@@ -120,7 +120,7 @@ pub(crate) async fn call(
 pub(crate) async fn call_in(
     tool: &dyn Tool,
     executor: &dyn Executor,
-    lease: &mut Lease<'_>,
+    lease: &Lease<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
     tool.call(
