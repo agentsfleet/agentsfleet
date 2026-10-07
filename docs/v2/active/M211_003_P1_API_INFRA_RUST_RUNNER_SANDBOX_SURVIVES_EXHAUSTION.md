@@ -33,7 +33,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `test_writable_state_exhaustion_spares_the_sandbox` — four leases fill `/workspace` and `/tmp` at once under the default limits; each `dd` ends in `No space left on device`, no process of the sandbox's own leaf is killed, and each lease's executor runs a new command afterwards.
+**Goal (testable):** `test_writable_state_exhaustion_spares_the_sandbox` — four leases fill `/tmp` and then `/workspace` at once, each writing twice its memory limit; each `dd` ends in `No space left on device`, no process of the sandbox's own leaf is killed, and each lease's executor runs a new command afterwards.
 **Problem:** Spike S6 ran four leases that filled their disks and `/tmp`. Filling `/tmp`, an in-memory tmpfs larger than the lease's 2 GiB memory limit, ended every time in the kernel's out-of-memory killer taking `bwrap`, the sandbox's first process, so the whole sandbox died. One lease was killed while writing to its workspace, before the disk filled. Nothing refused leases when four 4 GiB workspaces took the host's disk from 20 GB free to 5.9 GB.
 **Solution summary:** `/tmp` moves onto the workspace disk, so it fills to `ENOSPC` and shares the lease's disk limit. The lease cgroup splits into a leaf for `bwrap` and the executor and a leaf for every tenant process, whose memory limit sits just below the lease's, so the killer can only pick a tenant process; the call it killed says `out_of_memory`. The workspace disk attaches with direct I/O, so its writes are not cached twice. A lease names its sandbox's size (processor, memory, disk) within declared bounds, and a lease that names none gets the runner's defaults.
 
@@ -136,7 +136,7 @@ The workspace image mounts through the host's `mount -o loop` as today, then `LO
 
 ### §5 — S6, kept
 
-Spike S6's scenario becomes a kernel trial on one shared engine, with lease state on disk: four leases fill `/workspace` and `/tmp` at once.
+Spike S6's scenario becomes a kernel trial on one shared engine, with lease state on disk: four leases fill `/tmp` and then `/workspace` at once, in `examples/kernel_lane/exhaustion_concurrent.rs`. Each lease has 1 GiB of disk and 512 MiB of memory, so every fill writes twice the memory limit, the ratio that killed S6's sandboxes through a tmpfs `/tmp`. S6's own 4 GiB per lease would need 16 GiB free on a lane host; `afr-kernel` has 3.2 GiB (`df -h /`, Oct 07, 2026).
 
 - **Dimension 5.1** — Each lease gets `ENOSPC` on both, no `sandbox` leaf process is killed, and each executor runs a command afterwards → Test `test_writable_state_exhaustion_spares_the_sandbox`
 
@@ -198,7 +198,7 @@ constants             SANDBOX_MEMORY_RESERVE_BYTES (64 MiB) · SANDBOX_{CPU_MILL
 | 4.4 | unit | `a_size_past_its_bounds_refuses_the_lease_before_any_sandbox` | 256 MiB − 1 of memory → `startup_posture`, 0 prepared, 0 turns |
 | 4.5 | unit | `a_size_one_past_any_bound_is_refused` | each bound's limit admitted, one past it refused, six rows |
 | 4.6 | unit | `the_published_bounds_are_the_enforced_ones` | `SandboxLimits`'s schema minimum and maximum per field → the `SANDBOX_*` constants |
-| 5.1 | kernel | `test_writable_state_exhaustion_spares_the_sandbox` | four leases, `/workspace` and `/tmp` filled → eight `ENOSPC`, 0 `sandbox` kills, four `ok` |
+| 5.1 | kernel | `test_writable_state_exhaustion_spares_the_sandbox` | four leases at 1 GiB disk and 512 MiB memory, `/tmp` then `/workspace` filled with 2 GiB each → eight `ENOSPC`, `oom_kill 0` in every `sandbox` leaf, four `ok` |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -254,4 +254,5 @@ N/A — no files deleted. The sandbox's `/tmp` tmpfs flag goes in place.
 - **Consults** — §3 on the kernel lane (Oct 07, 2026): the lane made its state under `/tmp`, a tmpfs on `afr-kernel` (`findmnt`), so every workspace image was memory and the 4 GiB fill was killed whatever the loop device cached; on a disk (`/var/tmp`, btrfs) `losetup --direct-io=on` reads back `dio` 1 and 3.2 ends in `ENOSPC`. The lane's state now lives under `/var/tmp`, as a host's does on its disk. Indy (in-session, Oct 05, 2026): "Fix all fixes in this PR", approving D3's four fixes in a new workstream of this Pull Request. Source and evidence: spike S6 (`docs/v2/reviews/m211-toolbox-spikes.md`); Landlock grants writes only beneath `WRITABLE` (`rustd/crates/afr_sandbox/src/harden/linux.rs:50-57`); bubblewrap enters its cgroup through an engine-opened descriptor (`bubblewrap_engine/parts.rs:89,282`).
 - **Metrics review** — Two runner log events; no analytics or funnel playbook change.
 - **Skill-chain outcomes** — pending.
+- **§5 sizes** (Oct 07, 2026: 1:10 PM) — the trial runs at 1 GiB of disk and 512 MiB of memory per lease, a quarter of S6's, because four default leases need 16 GiB the lane host does not have. Asked of Indy with the default as the other option; no answer yet, so the scaled sizes stand until he picks.
 - **Deferrals** — §4's host disk reserve, as written at PLAN (`capacity.rs`, the worker's wait, `sandbox_capacity_short`, `agentsfleet_runner_capacity_short_total`), is not built. Indy (in-session, Oct 07, 2026): "for now the host disk size can get maxed, that is fine, its a separate think to solve disk pressure." §4 became the lease's size in its place, Indy choosing "Lease field": the size rides `LeasePayload`, the daemon sends null for now, and tests inject it.

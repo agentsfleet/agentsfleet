@@ -21,6 +21,7 @@ use crate::exhaustion::{
     tenant_holds_no_cgroup_descriptor, workspace_and_tmp_share_the_disk,
     workspace_disk_uses_direct_io,
 };
+use crate::exhaustion_concurrent::writable_state_exhaustion_spares_the_sandbox;
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
 use crate::git::{git_runs_local_commands, token_never_enters};
 use crate::lane::{Lane, missing};
@@ -116,6 +117,10 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
         (
             "test_disk_fill_under_memory_limit_ends_in_enospc",
             disk_fill_under_memory_limit_ends_in_enospc,
+        ),
+        (
+            "test_writable_state_exhaustion_spares_the_sandbox",
+            writable_state_exhaustion_spares_the_sandbox,
         ),
         ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
     ];
