@@ -29,8 +29,7 @@
 //! steer, and the sites that need steering — a cache TTL, an expiry check, a
 //! freshness window — are exactly the ones whose failure is invisible until a
 //! token is honoured an hour after it expired. Reading a clock pulls in no
-//! dependency and starts no runtime, which is what
-//! `test_core_dependency_freeze` actually asserts.
+//! dependency and starts no runtime.
 //!
 //! # How to use it
 //!

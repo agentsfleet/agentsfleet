@@ -255,4 +255,4 @@ It does not add imports to another component's root.
 
 A new crate joins `rustd/Cargo.toml`'s explicit member list and carries
 `[lints]` + `workspace = true`, or it silently escapes every deny the workspace
-declares — `test_workspace_lint_policy` fails the build if it does not.
+declares.
