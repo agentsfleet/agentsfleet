@@ -20,7 +20,7 @@ use super::Drainer;
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
-use crate::holds::{HoldKey, Holds, Release};
+use crate::holds::{BuiltUnder, HoldKey, Holds, Release};
 use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
 use crate::test_support::{Answer, FLEET_ID, FakeEngine, LEASE_ID, clock, json, plane};
@@ -191,7 +191,7 @@ async fn parked(engine: &FakeEngine) -> Holds {
         fleet: Uuid7::parse(FLEET_ID).unwrap(),
         workspace: FLEET_ID.to_owned(),
         limits: Limits::default(),
-        policy: String::new(),
+        policy: BuiltUnder::allowing(&[]),
     };
     let sandbox = engine.prepare(request).await.unwrap();
     let lease = Uuid7::parse(LEASE_ID).unwrap();

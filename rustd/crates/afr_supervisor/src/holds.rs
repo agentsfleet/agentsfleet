@@ -25,8 +25,10 @@ use afr_sandbox::{Limits, Sandbox};
 use afr_telemetry::labels::SandboxHold;
 use tokio::sync::{Notify, mpsc, oneshot};
 
+mod built_under;
 mod keeper;
 
+pub(crate) use self::built_under::BuiltUnder;
 use self::keeper::Keeper;
 
 /// What a held sandbox must match to serve a lease. A lease that differs in
@@ -39,9 +41,9 @@ pub(crate) struct HoldKey {
     pub(crate) workspace: String,
     /// The size it enforces.
     pub(crate) limits: Limits,
-    /// The network policy and repository binding it was built under, encoded,
-    /// so a changed policy never runs in a sandbox built for the old one.
-    pub(crate) policy: String,
+    /// The network policy and repository binding it was built under, so a
+    /// changed policy never runs in a sandbox built for the old one.
+    pub(crate) policy: BuiltUnder,
 }
 
 /// Why a hold ended without its fleet's next lease taking it.

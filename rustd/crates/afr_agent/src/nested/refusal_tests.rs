@@ -8,7 +8,9 @@
 use afd_core::test_util::trace::Capture;
 use afd_wire::tool_trace::ToolCallStatus;
 use afr_providers::Chunk;
+use afr_tools::ToolErrorCode;
 use afr_tools::catalog::{DELEGATE, MEMORY_RECALL, SPAWN, UPDATE_PLAN, WAIT_AGENT};
+use afr_tools::nested::NESTED;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -124,4 +126,37 @@ async fn test_child_tools_subset_of_parent() {
     assert_eq!(logged.len(), 1);
     assert_eq!(logged[0].field("error_code"), Some("child_tool_not_held"));
     assert!(events(&capture, EVENT_CHILD_STARTED).is_empty());
+}
+
+/// A call whose arguments its schema refuses reads the refusal and does
+/// nothing: each of the six, given a field none of them names, answers
+/// `invalid_arguments` before it reaches the registry, and no child starts.
+#[tokio::test]
+async fn test_each_nested_tool_refuses_arguments_its_schema_does_not_name() {
+    let capture = Capture::install();
+    let refused_calls: Vec<Chunk> = NESTED
+        .iter()
+        .map(|entry| call(entry.name(), entry.name(), json!({"model": "other"})))
+        .collect();
+    let script = Script::new([refused_calls, vec![say(DONE)]]);
+    let engine = engine(tools(), &script);
+    let lease = lease(&offered(), unbounded());
+
+    let (output, frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+
+    assert_eq!(output.result.content, DONE);
+    let root = requests_opening_with(&script, OPENING);
+    let answered = results(&root[1]);
+    assert_eq!(answered.len(), NESTED.len(), "every call answered");
+    let invalid = format!("[{}]", ToolErrorCode::InvalidArguments.as_str());
+    for (entry, text) in NESTED.iter().zip(answered) {
+        assert!(text.starts_with(&invalid), "{}: {text}", entry.name());
+    }
+    assert!(
+        completions(&frames)
+            .iter()
+            .all(|(_id, status)| *status == ToolCallStatus::Failed)
+    );
+    assert!(events(&capture, EVENT_CHILD_STARTED).is_empty());
+    assert!(events(&capture, EVENT_CHILD_REFUSED).is_empty());
 }

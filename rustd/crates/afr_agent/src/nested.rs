@@ -85,3 +85,7 @@ mod answer_tests;
 #[cfg(test)]
 #[path = "nested/lifetime_tests.rs"]
 mod lifetime_tests;
+
+#[cfg(test)]
+#[path = "nested/registry_tests.rs"]
+mod registry_tests;

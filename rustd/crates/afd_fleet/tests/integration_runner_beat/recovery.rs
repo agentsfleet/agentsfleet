@@ -5,14 +5,49 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use std::borrow::Cow;
+
 use afd_core::clock::UnixMillis;
-use afd_runner::NO_REPORT;
+use afd_core::error_code::INTERNAL_DB_QUERY;
+use afd_core::id::Uuid7;
+use afd_core::test_util::trace::Capture;
+use afd_db::test_util::mint_id;
+use afd_runner::heartbeat::holds::prove;
 use afd_runner::reconcile::REASON_LANDLOCK_UNAVAILABLE;
-use afd_wire::runner::{CapabilityReport, HeartbeatRequest, NetworkPolicy, SandboxTier};
+use afd_runner::{Beat, NO_REPORT};
+use afd_wire::runner::{
+    CapabilityReport, HeartbeatRequest, HeldFleets, NetworkPolicy, SandboxTier,
+};
 
 use super::Verdict;
 use super::requests::{ENROLLED_AT, ONE_BEAT_MS, capable, enrolment};
 use super::support::Fixtures;
+
+/// What a hold reconcile that did not land is logged under.
+const HOLDS_RECONCILE_FAILED: &str = "runner_holds_reconcile_failed";
+
+/// Moves the table the release read joins out of its way, in a database of
+/// the test's own; the beat's other statements never read it.
+const MOVE_FLEETS: &str = "ALTER TABLE core.fleets RENAME TO fleets_moved";
+
+/// `runner` beats once at `now`, listing `fleet` as held.
+async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: i64) -> Beat {
+    let request = HeartbeatRequest {
+        holds: HeldFleets(vec![Cow::Borrowed(fleet)]),
+        ..NO_REPORT
+    };
+    let held = prove(request.holds.clone());
+    fixtures
+        .runners()
+        .heartbeat(
+            runner,
+            &request,
+            held.as_ref(),
+            UnixMillis::from_millis(now),
+        )
+        .await
+        .expect("a release read that fails does not fail the beat")
+}
 
 /// A host that loses a mechanism is degraded on the next beat, and named.
 #[tokio::test]
@@ -151,5 +186,53 @@ async fn test_a_vanished_runner_is_its_own_failure() {
         .self_record(&enrolled.runner_id)
         .await
         .expect("a phantom's failure must not disturb a real row");
+    fixtures.cleanup().await;
+}
+
+/// A release read that fails answers no release, and says why: the runner
+/// keeps its holds one beat longer while the beat itself lands. The same
+/// listed fleet, which no slot of this runner's holds, is answered back for
+/// release while the read works, so the empty answer is the failure's.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
+    let fixtures = Fixtures::create_isolated().await;
+    let enrolled = fixtures
+        .runners()
+        .register(
+            &enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1),
+            UnixMillis::from_millis(ENROLLED_AT),
+        )
+        .await
+        .expect("enrolment must succeed");
+    let runner = &enrolled.runner_id;
+    let fleet = mint_id();
+    let working = beats_holding(&fixtures, runner, &fleet, ENROLLED_AT + ONE_BEAT_MS).await;
+    let mut connection = fixtures.database.acquire().await.expect("a connection");
+    sqlx::query(MOVE_FLEETS)
+        .execute(&mut *connection)
+        .await
+        .expect("the private database's table moves");
+    drop(connection);
+
+    let log = Capture::install();
+    let failed = beats_holding(&fixtures, runner, &fleet, ENROLLED_AT + 2 * ONE_BEAT_MS).await;
+    let warned = log.only(HOLDS_RECONCILE_FAILED).fields;
+    drop(log);
+
+    assert_eq!(working.release_holds, [fleet], "the read works first");
+    assert!(
+        failed.release_holds.is_empty(),
+        "{:?}",
+        failed.release_holds
+    );
+    assert_eq!(
+        warned.get("error_code").map(String::as_str),
+        Some(INTERNAL_DB_QUERY.as_str())
+    );
+    assert_eq!(
+        warned.get("runner_id").map(String::as_str),
+        Some(runner.as_str())
+    );
     fixtures.cleanup().await;
 }

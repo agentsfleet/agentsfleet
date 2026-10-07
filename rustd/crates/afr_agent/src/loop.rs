@@ -169,7 +169,7 @@ impl<'s, 'run> Harness<'s, 'run> {
         shared: &'s Shared<'run>,
         selection: &'s Selection<'run>,
         seat: Seat,
-        guard: Guard<'s, 'run>,
+        guard: &'s Guard<'s, 'run>,
     ) -> Self {
         Self {
             shared,

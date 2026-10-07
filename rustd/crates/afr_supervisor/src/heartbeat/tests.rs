@@ -21,7 +21,7 @@ use super::{Assignment, EVENT_RELEASE_UNREADABLE, Heartbeat, MIN_HEARTBEAT_INTER
 use crate::client::{Call, Verb};
 use crate::error;
 use crate::halt::Halt;
-use crate::holds::{HoldKey, Holds, Release};
+use crate::holds::{BuiltUnder, HoldKey, Holds, Release};
 use crate::test_support::{Answer, FakeEngine, INTERVAL_MS, drain, json, plane};
 
 /// The fleet whose sandbox the runner holds.
@@ -113,7 +113,7 @@ pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> bool {
         fleet: Uuid7::parse(FLEET).unwrap(),
         workspace: LEASE.to_owned(),
         limits: Limits::default(),
-        policy: String::new(),
+        policy: BuiltUnder::allowing(&[]),
     };
     let sandbox = engine.prepare(request).await.unwrap();
     let lease = Uuid7::parse(LEASE).unwrap();

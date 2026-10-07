@@ -5,8 +5,10 @@
 
 use serde_json::json;
 
-use super::{NESTED, Nested};
-use crate::catalog::{DELEGATE, FILE_READ, LIST_AGENTS, SPAWN};
+use super::{NESTED, Nested, RUN_BY_THE_LOOP};
+use crate::catalog::{
+    DELEGATE, FILE_READ, INTERRUPT_AGENT, LIST_AGENTS, SEND_INPUT, SPAWN, WAIT_AGENT,
+};
 use crate::runtime::ToolErrorCode;
 use crate::testing::{call, hosted, offered};
 use crate::{Lease, parsed};
@@ -22,29 +24,32 @@ fn the_six_are_nested_and_a_sandbox_tool_is_not() {
 }
 
 /// A call that reaches a handler, which only the router could make, reads a
-/// refusal naming the loop rather than running anything.
+/// refusal naming the loop and the tool rather than running anything: each of
+/// the six, with arguments its schema admits, so the call reaches its `run`.
 #[tokio::test]
 async fn a_handler_refuses_what_only_the_loop_runs() {
     let (catalog, _sent) = hosted();
     let names: Vec<&str> = NESTED.iter().map(|entry| entry.name()).collect();
     let selection = catalog.select(&names).unwrap();
     let lease = Lease::default();
+    let calls = [
+        (&DELEGATE, json!({"task": "read a.md"})),
+        (&SPAWN, json!({"task": "read b.md", "tools": ["file_read"]})),
+        (&WAIT_AGENT, json!({"child_id": 1, "timeout_ms": 0})),
+        (&SEND_INPUT, json!({"child_id": 2, "message": "stop"})),
+        (&LIST_AGENTS, json!({})),
+        (&INTERRUPT_AGENT, json!({"child_id": 3})),
+    ];
+    assert_eq!(calls.len(), NESTED.len(), "every nested tool is called");
 
-    let delegated = call(
-        offered(&selection, &DELEGATE),
-        &lease,
-        json!({"task": "read a.md"}),
-    )
-    .await;
-    let listed = call(offered(&selection, &LIST_AGENTS), &lease, json!({})).await;
+    for (entry, arguments) in calls {
+        let name = entry.name();
+        let output = call(offered(&selection, entry), &lease, arguments).await;
 
-    assert_eq!(delegated.error_code, Some(ToolErrorCode::NotOffered));
-    assert!(
-        delegated.text.contains("run by the loop"),
-        "{}",
-        delegated.text
-    );
-    assert_eq!(listed.error_code, Some(ToolErrorCode::NotOffered));
+        assert_eq!(output.error_code, Some(ToolErrorCode::NotOffered), "{name}");
+        let refusal = format!("{name} {RUN_BY_THE_LOOP}");
+        assert!(output.text.ends_with(&refusal), "{}", output.text);
+    }
 }
 
 /// The schema the model is told refuses an argument it does not name, so

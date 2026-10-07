@@ -7,6 +7,8 @@
     reason = "test module: a failed precondition should fail the test loudly"
 )]
 
+use std::borrow::Cow;
+
 use afd_core::test_util::trace::Capture;
 use afr_telemetry::labels::SandboxHold;
 
@@ -22,6 +24,8 @@ use crate::test_support::{
 /// What the engine counts for a sandbox destroyed rather than held, as
 /// (prepared, frozen, thawed, destroyed).
 const DESTROYED_UNFROZEN: (usize, usize, usize, usize) = (1, 0, 0, 1);
+/// A host the first lease's sandbox was not built to reach.
+const CHANGED_HOST: &str = "api.github.com";
 
 /// The daemon does not name this runner's hold the fleet's latest sandbox:
 /// another runner ran the fleet since, or the event is a redelivery whose
@@ -79,6 +83,35 @@ async fn test_a_lease_resuming_takes_the_hold() {
     rig.run(&resumed(NEXT_LEASE_ID, FLEET_ID)).await.unwrap();
 
     assert_eq!(counted.read(), (1, 2, 1, 0), "one sandbox, thawed and held");
+}
+
+/// The fleet's next lease is told to resume, but its policy reaches a host
+/// the held sandbox was not built for: the hold ends as a mismatch, never
+/// serving it, and the lease builds fresh.
+#[tokio::test(start_paused = true)]
+async fn test_a_lease_under_a_changed_policy_builds_fresh_and_ends_the_hold() {
+    let capture = Capture::install();
+    let (rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    let mut next = resumed(NEXT_LEASE_ID, FLEET_ID);
+    let reached = Cow::Borrowed(CHANGED_HOST);
+    next.policy.network_policy.allow.push(reached);
+
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+    rig.run(&next).await.unwrap();
+    settled(&rig).await;
+
+    assert_eq!(
+        counted.read(),
+        (2, 2, 0, 2),
+        "built fresh, never thawed; the mismatched hold, then shutdown's"
+    );
+    assert_eq!(
+        releases(&capture),
+        [
+            released(FLEET_ID, Release::Mismatch),
+            released(FLEET_ID, Release::Shutdown)
+        ]
+    );
 }
 
 fn stop_leasing(rig: &Rig) {

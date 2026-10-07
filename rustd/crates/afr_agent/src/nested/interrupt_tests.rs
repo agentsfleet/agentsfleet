@@ -16,9 +16,10 @@ use tokio_util::sync::CancellationToken;
 
 use super::child::EVENT_CHILD_ENDED;
 use super::fixture::{
-    BRIEF_MS, CHILD_DONE, CHILD_ID, DONE, FIRST_CALL, INTERRUPTED, NEVER, RUNNING, SECOND_CALL,
-    STALLS, STATUS, TASK, TASK_KEY, THIRD_CALL, TIMEOUT_MS, events, last_result, parsed,
-    root_requests, spawn_call, stall, stalling_offered, stalling_tools,
+    ANSWER, BRIEF_MS, CHILD_DONE, CHILD_ID, DONE, FIRST_CALL, INTERRUPTED, NEVER, RUNNING,
+    SECOND_CALL, STALLS, STATUS, TASK, TASK_KEY, THIRD_CALL, TIMEOUT_MS, events, last_result,
+    parsed, requests_opening_with, root_requests, spawn_call, stall, stalling_offered,
+    stalling_tools,
 };
 use super::registry::CHILDREN_RUNNING_MAX;
 use crate::fixture::{Script, call, lease, say, unbounded};
@@ -226,5 +227,61 @@ async fn test_interrupting_a_finished_child_keeps_its_end() {
         ends_of(&capture, FIRST_CHILD),
         [Some(DONE.to_owned())],
         "it ends once in the log"
+    );
+}
+
+/// What the spawned child delegates on to a grandchild that stalls.
+const HANDS_OFF: &str = "hand the stall to a grandchild";
+
+/// A delegated child that is interrupted is the delegate call's failure: the
+/// root spawns a child that delegates a stalling grandchild, interrupts the
+/// grandchild by its run-wide id, and waits on the child, which read
+/// `interrupted` naming the grandchild and answered for itself.
+#[tokio::test(start_paused = true)]
+async fn test_an_interrupted_delegated_child_is_the_calls_interruption() {
+    let script = Script::new([
+        vec![call(FIRST_CALL, SPAWN.name(), json!({TASK_KEY: HANDS_OFF}))],
+        vec![call(
+            SECOND_CALL,
+            WAIT_AGENT.name(),
+            json!({CHILD_ID: 1, TIMEOUT_MS: BRIEF_MS}),
+        )],
+        vec![call(
+            THIRD_CALL,
+            INTERRUPT_AGENT.name(),
+            json!({CHILD_ID: 2}),
+        )],
+        vec![call("w1", WAIT_AGENT.name(), json!({CHILD_ID: 1}))],
+        vec![say(DONE)],
+    ])
+    .with_child(
+        HANDS_OFF,
+        [
+            vec![call("d1", DELEGATE.name(), json!({TASK_KEY: STALLS}))],
+            vec![say(CHILD_DONE)],
+        ],
+    )
+    .with_child(STALLS, stalls_then_never("g1"));
+    let engine = engine(stalling_tools(), &script);
+    let lease = lease(&stalling_offered(), unbounded());
+
+    let (output, _frames) = drive(&engine, &lease, &CancellationToken::new()).await;
+
+    assert_eq!(output.result.content, DONE);
+    let root = root_requests(&script);
+    assert_eq!(parsed(last_result(&root[3])), json!({STATUS: INTERRUPTED}));
+    assert_eq!(
+        parsed(last_result(&root[4])),
+        json!({STATUS: DONE, ANSWER: CHILD_DONE}),
+        "the child decided for itself"
+    );
+    let child = requests_opening_with(&script, HANDS_OFF);
+    let delegated = last_result(&child[1]);
+    let code = ToolErrorCode::Interrupted.as_str();
+    let interrupted = format!("[{code}]");
+    assert!(delegated.starts_with(&interrupted), "{delegated}");
+    assert!(
+        delegated.contains("child 2 "),
+        "names the child: {delegated}"
     );
 }

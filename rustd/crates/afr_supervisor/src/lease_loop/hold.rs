@@ -17,7 +17,7 @@ use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
 
 use super::LeaseRun;
-use crate::holds::{HoldKey, Release, Taken};
+use crate::holds::{BuiltUnder, HoldKey, Release, Taken};
 use crate::report::Ending;
 
 /// How long a thawed sandbox's executor has to answer before the hold is
@@ -30,9 +30,6 @@ const EVENT_THAW_FAILED: &str = "sandbox_thaw_failed";
 const EVENT_FREEZE_STARTED: &str = "sandbox_freeze_started";
 const EVENT_FREEZE_COMPLETED: &str = "sandbox_freeze_completed";
 const EVENT_FREEZE_FAILED: &str = "sandbox_freeze_failed";
-/// The event a lease whose policy will not encode, and so neither takes nor
-/// leaves a hold, is logged under.
-const EVENT_KEY_FAILED: &str = "sandbox_hold_key_failed";
 const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
 /// The workspace's own top, as the executor reads a relative path whatever
 /// its root is mounted at.
@@ -44,7 +41,7 @@ const DETAIL_SILENT: &str = "the thawed sandbox's executor did not answer";
 #[derive(Debug)]
 pub(super) struct Kept {
     pub(super) sandbox: Box<dyn Sandbox>,
-    pub(super) key: Option<HoldKey>,
+    pub(super) key: HoldKey,
 }
 
 /// What a lease's work hands back: how it ended, and the sandbox it ran in,
@@ -62,33 +59,14 @@ impl From<Ending> for Worked {
 }
 
 impl LeaseRun<'_> {
-    /// The key this lease's sandbox is filed and found under; none when the
-    /// policy will not encode, so the lease neither takes nor leaves a hold.
-    pub(super) fn hold_key(&self, limits: Limits) -> Option<HoldKey> {
-        let policy = &self.lease.policy;
-        let built_under = (&policy.network_policy, &policy.repository_binding);
-        let encoded = match serde_json::to_string(&built_under) {
-            Ok(encoded) => encoded,
-            Err(failure) => {
-                let failure = crate::error::encode(failure);
-                let error_code = failure.code().as_str();
-                let lease_id = self.ids.lease.as_str();
-                let event = EVENT_KEY_FAILED;
-                tracing::warn!(
-                    error_code,
-                    lease_id,
-                    event,
-                    "the policy would not encode, so the lease neither takes nor leaves a hold"
-                );
-                return None;
-            }
-        };
-        Some(HoldKey {
+    /// The key this lease's sandbox is filed and found under.
+    pub(super) fn hold_key(&self, limits: Limits) -> HoldKey {
+        HoldKey {
             fleet: self.ids.fleet.clone(),
             workspace: self.lease.event.workspace_id.to_string(),
             limits,
-            policy: encoded,
-        })
+            policy: BuiltUnder::of(&self.lease.policy),
+        }
     }
 
     /// The fleet's held sandbox, thawed and answering, or none. A hold the
@@ -147,13 +125,10 @@ impl LeaseRun<'_> {
         // counts too: it takes no lease that could take the hold.
         let leasing = !self.lessee.halt.leasing().is_cancelled();
         let ran_out = ending.processed() && !self.interrupt.is_cancelled();
-        let key = match key {
-            Some(key) if ran_out && leasing && sandbox.is_running() => key,
-            _unheld => {
-                self.destroy(sandbox).await;
-                return None;
-            }
-        };
+        if !(ran_out && leasing && sandbox.is_running()) {
+            self.destroy(sandbox).await;
+            return None;
+        }
         let lease_id = self.ids.lease.as_str();
         let event = EVENT_FREEZE_STARTED;
         tracing::debug!(lease_id, event);
