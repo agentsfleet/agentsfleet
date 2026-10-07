@@ -17106,6 +17106,13 @@
             "description": "Monotonic guard a report must echo.",
             "minimum": 0
           },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "description": "The fleet's earlier turns, oldest first, ahead of this event; empty\nunless the event is a chat message. Absent decodes as empty."
+          },
           "instructions": {
             "type": "string",
             "description": "The installed fleet's behaviour prose, so the sandboxed turn runs the\ninstalled behaviour rather than a generic one. Soft reasoning input —\nhard tool and secret policy stays in `policy`."
@@ -20851,6 +20858,24 @@
           }
         },
         "additionalProperties": false
+      },
+      "Turn": {
+        "type": "object",
+        "description": "One earlier exchange in the fleet's thread: what was asked, and what the\nfleet answered.",
+        "required": [
+          "message",
+          "answer"
+        ],
+        "properties": {
+          "answer": {
+            "type": "string",
+            "description": "The fleet's answer, or the fixed text a reply-less or failed run reads as."
+          },
+          "message": {
+            "type": "string",
+            "description": "The event's message, as `event::message_of` reads it."
+          }
+        }
       },
       "UpdateModelEntryRequest": {
         "type": "object",

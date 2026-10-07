@@ -18,6 +18,7 @@ use afd_approval::{Origin, Requested, Wanted};
 use crate::error::Result;
 use crate::lease::answer::{EVENT_LEASED, no_work, render};
 use crate::lease::envelope::Acquired;
+use crate::lease::history;
 use crate::lease::issue::Billed;
 use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
 use afd_core::event::label;
@@ -174,12 +175,19 @@ impl Plane {
             agentsfleet_event_id,
             "a lease was issued"
         );
+        let history = history::turns(
+            self.thread.as_ref(),
+            &admitted.acquired,
+            admitted.event_type,
+        )
+        .await;
         render(
             &issued.lease_id,
             &admitted.acquired,
             admitted.event_type,
             &admitted.installed,
             policy,
+            history,
         )
         .map(|answer| Step::Go(Leased(answer)))
     }

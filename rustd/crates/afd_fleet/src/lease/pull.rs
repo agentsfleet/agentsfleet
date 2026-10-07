@@ -118,6 +118,8 @@ pub struct Plane {
     /// should get a vote on which third parties exist. The seam for a
     /// different set is [`Vault::declared`], which still takes the trait.
     pub connectors: Registry,
+    /// The fleet's thread, which a chat lease carries its earlier turns from.
+    pub thread: std::sync::Arc<dyn crate::lease::Thread>,
 }
 
 /// What the claim and the gates settled, before the policy is built.

@@ -68,6 +68,7 @@ pub(crate) fn plane() -> Plane {
             Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
         )),
         grants: afd_approval::IntegrationGrants::new(database(), Entropy::new()),
+        thread: Arc::new(afd_events::History::new(database())),
         connectors: Registry::default(),
     }
 }

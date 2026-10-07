@@ -141,3 +141,14 @@ fn the_published_bounds_are_the_enforced_ones() {
         assert_eq!(property["maximum"].as_u64(), Some(max), "{field} maximum");
     }
 }
+
+/// A lease from a daemon that predates the field decodes with no turns, and
+/// re-encodes the empty list the field now always writes.
+#[test]
+fn test_lease_history_defaults_empty() {
+    let text = lease(None);
+    let payload: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
+    assert!(payload.history.is_empty());
+    let encoded = serde_json::to_value(&payload).unwrap();
+    assert_eq!(encoded["history"], serde_json::json!([]));
+}

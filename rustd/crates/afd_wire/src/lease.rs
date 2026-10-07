@@ -73,6 +73,32 @@ pub struct SandboxLimits {
     pub disk_bytes: u64,
 }
 
+/// The most earlier turns a chat lease carries.
+pub const HISTORY_TURNS_MAX: usize = 8;
+/// The most bytes a chat lease's turns carry, messages and answers together.
+pub const HISTORY_BYTES_MAX: usize = 65_536;
+/// The most bytes one turn's message, or its answer, carries.
+pub const TURN_TEXT_BYTES_MAX: usize = 16_384;
+/// A finished run that left no reply.
+pub const ANSWER_NONE: &str = "[no reply]";
+/// What opens a failed run's answer; the run's failure label follows it.
+pub const ANSWER_FAILED: &str = "[the run failed: ";
+/// What closes a failed run's answer.
+pub const ANSWER_FAILED_END: &str = "]";
+
+/// One earlier exchange in the fleet's thread: what was asked, and what the
+/// fleet answered.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Turn<'a> {
+    /// The event's message, as `event::message_of` reads it.
+    #[serde(borrow)]
+    pub message: Cow<'a, str>,
+    /// The fleet's answer, or the fixed text a reply-less or failed run reads as.
+    #[serde(borrow)]
+    pub answer: Cow<'a, str>,
+}
+
 /// The work half of a lease.
 ///
 /// `fencing_token` is a monotonic guard: a report must echo it, and a stale
@@ -108,6 +134,10 @@ pub struct LeasePayload<'a> {
     /// decodes as null, so a daemon that predates the field still leases.
     #[serde(default)]
     pub limits: Option<SandboxLimits>,
+    /// The fleet's earlier turns, oldest first, ahead of this event; empty
+    /// unless the event is a chat message. Absent decodes as empty.
+    #[serde(default, borrow)]
+    pub history: Vec<Turn<'a>>,
 }
 
 /// `POST /v1/runners/me/leases` reply. Always `200`.
