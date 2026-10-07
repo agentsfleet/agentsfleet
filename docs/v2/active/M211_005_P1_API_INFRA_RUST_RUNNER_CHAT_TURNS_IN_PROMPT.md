@@ -25,7 +25,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** bb007001545cb97f4dc27c9325235a6a0ebb4fb9
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
-**Depends on:** M211_002 (the nested child run, which starts without the turns) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:114-137` refuses them until then, and the Zig runner that serves them meanwhile drops the new field, `src/runner/daemon/control_plane_client_lease.zig:10-12`)
+**Depends on:** M211_002 (the nested child run, which starts without the turns) · M213_001 (the Rust runner takes leases; `rustd/crates/agentsfleet_runner/src/main.rs:184-185` refuses them until then, and the Zig runner that serves them meanwhile drops the new field, `src/runner/daemon/control_plane_client_lease.zig:10-12`)
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 05, 2026) from a source trace of the lease, prompt and provider paths at `b0138d7b3`, recorded in Discovery
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Crates (the provider and scrub paragraph, line 92)
 
