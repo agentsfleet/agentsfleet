@@ -8,8 +8,7 @@
 )]
 
 use afd_core::test_util::trace::Capture;
-use afd_wire::tool_trace::ToolCallStatus;
-use afr_providers::{Chunk, Message};
+use afr_providers::Message;
 use afr_tools::catalog::{
     DELEGATE, HTTP_REQUEST, MEMORY_RECALL, SEND_INPUT, SPAWN, UPDATE_PLAN, WAIT_AGENT,
 };
@@ -23,9 +22,8 @@ use super::fixture::{
     SLOW_CALL, STATUS, SUMMARY, TASK, TIMEOUT_MS, events, offered, parsed, requests_opening_with,
     results, tools,
 };
-use super::start::EVENT_CHILD_REFUSED;
 use crate::fixture::{Script, Slow, call, lease, say, spent, unbounded};
-use crate::harness::tests::{completions, drive, engine};
+use crate::harness::tests::{drive, engine};
 
 #[tokio::test]
 async fn test_delegate_returns_child_answer() {
