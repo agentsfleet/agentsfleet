@@ -46,7 +46,9 @@ use super::slot::Slot;
 mod expressions;
 mod host_chains;
 
-pub(super) use self::expressions::{DNS_PORT, DROP};
+#[cfg(feature = "test-util")]
+pub(super) use self::expressions::DNS_PORT;
+pub(super) use self::expressions::DROP;
 pub(super) use self::host_chains::dropping_forward;
 
 /// One `nf_tables` message.
