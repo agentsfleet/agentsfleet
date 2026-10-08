@@ -51,6 +51,26 @@ fn test_v4_shared_address_space_is_blocked_to_its_edges() {
     }
 }
 
+/// The IETF protocol assignments, `192.0.0.0/24`, to its edges and through
+/// each v6 spelling, without spilling into the public addresses beside it.
+#[test]
+fn test_v4_protocol_assignments_are_blocked_to_their_edges() {
+    for blocked in [
+        "192.0.0.0",
+        "192.0.0.8",
+        "192.0.0.170",
+        "192.0.0.255",
+        "::ffff:192.0.0.170",
+        "64:ff9b::192.0.0.170",
+        "2002:c000:00aa::1",
+    ] {
+        assert!(blocks(blocked), "{blocked} must be blocked");
+    }
+    for allowed in ["191.255.255.255", "192.0.1.0", "192.0.2.1"] {
+        assert!(!blocks(allowed), "{allowed} must be allowed");
+    }
+}
+
 #[test]
 fn test_v4_public_boundaries_are_not_over_blocked() {
     // A /12 or /16 widened by one octet is how an SSRF guard quietly stops a

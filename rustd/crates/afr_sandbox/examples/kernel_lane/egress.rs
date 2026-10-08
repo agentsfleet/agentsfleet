@@ -8,12 +8,47 @@ use afr_sandbox::egress_testing::{
 use afr_sandbox::{Engine, Limits, Network, SandboxRequest, probe};
 use libtest_mimic::Failed;
 
+use crate::egress_closed::allow_list_closes_dns_the_host_and_inbound;
+use crate::egress_owned::{
+    host_cannot_delete_a_live_table, probe_refuses_a_dropping_forward_chain,
+};
 use crate::lane::Lane;
 use crate::run::{expect, run, runtime, shell};
+use crate::trials::Body;
+
+/// Every egress trial, by the name the lane reports it under.
+pub(crate) const TRIALS: &[(&str, Body)] = &[
+    ("test_kernel_allow_all_and_deny_all", allow_all_and_deny_all),
+    (
+        "test_kernel_allow_list_admits_only_the_set",
+        allow_list_admits_only_the_set,
+    ),
+    (
+        "test_kernel_allow_list_closes_dns_the_host_and_inbound",
+        allow_list_closes_dns_the_host_and_inbound,
+    ),
+    (
+        "test_kernel_sandbox_cannot_flush_host_rules",
+        sandbox_cannot_flush_host_rules,
+    ),
+    (
+        "test_kernel_host_cannot_delete_a_live_table",
+        host_cannot_delete_a_live_table,
+    ),
+    ("test_egress_release_and_boot_sweep", release_and_boot_sweep),
+    (
+        "test_egress_probe_reports_enforcement",
+        probe_reports_enforcement,
+    ),
+    (
+        "test_egress_probe_refuses_a_dropping_forward_chain",
+        probe_refuses_a_dropping_forward_chain,
+    ),
+];
 
 /// The name the far host is allowlisted under; the sandbox reaches it through
 /// its rendered `/etc/hosts` alone.
-const FAR_NAME: &str = "far.test";
+pub(crate) const FAR_NAME: &str = "far.test";
 /// The address every cloud's metadata service answers on, which no allowlist
 /// built from names reaches.
 const METADATA: &str = "169.254.169.254";
@@ -36,10 +71,10 @@ const FLUSH: &str = "python3 - <<'EOF'\nimport socket, struct\n\
 /// `ENETUNREACH`, as python prints it.
 const UNREACHABLE: &str = "errno 101";
 /// The word `CONNECT` and `FLUSH` print before a failed socket call's number.
-const ERRNO: &str = "errno";
+pub(crate) const ERRNO: &str = "errno";
 
 /// The command that connects to `host` on `port`.
-fn connect(host: &str, port: u16) -> String {
+pub(crate) fn connect(host: &str, port: u16) -> String {
     format!("set -- {host} {port}; {CONNECT}")
 }
 
@@ -67,7 +102,7 @@ fn said_under(
 
 /// `allow_all` shares the host's network, so the far host answers; an
 /// isolated sandbox has no route to it at all.
-pub(crate) fn allow_all_and_deny_all(lane: &Lane) -> Result<(), Failed> {
+fn allow_all_and_deny_all(lane: &Lane) -> Result<(), Failed> {
     let _far = Far::start()?;
     let far = connect(&FAR_LISTED.to_string(), FAR_PORT);
 
@@ -93,7 +128,7 @@ pub(crate) fn allow_all_and_deny_all(lane: &Lane) -> Result<(), Failed> {
 /// else: not the far host's other address, not the metadata address, and not
 /// the resolver port even on the listed address. Its resolver file names no
 /// server.
-pub(crate) fn allow_list_admits_only_the_set(lane: &Lane) -> Result<(), Failed> {
+fn allow_list_admits_only_the_set(lane: &Lane) -> Result<(), Failed> {
     let _far = Far::start()?;
     let allowlist = Far::allowlist(FAR_NAME)?;
     let scripts = [
@@ -119,7 +154,7 @@ pub(crate) fn allow_list_admits_only_the_set(lane: &Lane) -> Result<(), Failed> 
 
 /// The sandbox cannot widen its own rules: a flush sent from inside reaches
 /// no rule of its scope, which stays on the host, holding as before.
-pub(crate) fn sandbox_cannot_flush_host_rules(lane: &Lane) -> Result<(), Failed> {
+fn sandbox_cannot_flush_host_rules(lane: &Lane) -> Result<(), Failed> {
     let _far = Far::start()?;
     let allowlist = Far::allowlist(FAR_NAME)?;
     let scripts = [
@@ -140,7 +175,7 @@ pub(crate) fn sandbox_cannot_flush_host_rules(lane: &Lane) -> Result<(), Failed>
 
 /// A sandbox's table and link exist while it lives and go with it; a killed
 /// run's leftovers are swept when the next engine starts.
-pub(crate) fn release_and_boot_sweep(lane: &Lane) -> Result<(), Failed> {
+fn release_and_boot_sweep(lane: &Lane) -> Result<(), Failed> {
     let allowlist = Far::allowlist(FAR_NAME)?;
     let before = objects()?;
     let during = runtime().block_on(async {
@@ -172,7 +207,7 @@ pub(crate) fn release_and_boot_sweep(lane: &Lane) -> Result<(), Failed> {
 
 /// The probe builds and removes a scope of its own and reports enforcement,
 /// and leaves nothing in the host's namespace.
-pub(crate) fn probe_reports_enforcement(lane: &Lane) -> Result<(), Failed> {
+fn probe_reports_enforcement(lane: &Lane) -> Result<(), Failed> {
     let before = objects()?;
 
     let probed = probe(&lane.config.probe_paths());

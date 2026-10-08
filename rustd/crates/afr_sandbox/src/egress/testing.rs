@@ -18,7 +18,10 @@ use netlink_packet_core::{
     DoneMessage, ErrorMessage, NLM_F_ACK, NLM_F_DUMP, NetlinkBuffer, NetlinkHeader, NetlinkMessage,
     NetlinkPayload, NetlinkSerializable,
 };
-use netlink_packet_netfilter::nftables::{NfTablesMessage, TableAttribute, TableMessage};
+use netlink_packet_netfilter::nftables::{
+    ChainAttribute, ChainMessage, Hook, HookNumber, InetHookNumber, NfTablesMessage,
+    TableAttribute, TableMessage,
+};
 use netlink_packet_netfilter::{NetfilterHeader, NetfilterMessage, NetfilterProtoFamily};
 use netlink_packet_route::RouteNetlinkMessage;
 use netlink_packet_route::link::{LinkAttribute, LinkMessage};
@@ -40,6 +43,9 @@ pub(super) const NEWROUTE: u16 = 24;
 pub(super) const NEWTABLE: u16 = 0x0a00;
 pub(super) const GETTABLE: u16 = 0x0a01;
 pub(super) const DELTABLE: u16 = 0x0a02;
+pub(super) const GETCHAIN: u16 = 0x0a04;
+/// The policy a dropping chain is listed with (`NF_DROP`).
+const DROP_POLICY: u32 = 0;
 /// An `nf_tables` batch's two ends, which are answered by nothing.
 const BATCH: [u16; 2] = [0x10, 0x11];
 /// Bytes in a netlink header.
@@ -59,6 +65,8 @@ struct State {
     closed: Vec<Protocol>,
     tables: Vec<String>,
     links: Vec<String>,
+    /// Forward base chains that drop by policy: family, table, chain.
+    dropping: Vec<(NetfilterProtoFamily, String, String)>,
     entered: usize,
 }
 
@@ -85,6 +93,20 @@ impl Fake {
         state.tables = tables.iter().map(|&name| name.to_owned()).collect();
         state.links = links.iter().map(|&name| name.to_owned()).collect();
         drop(state);
+        self
+    }
+
+    /// The chain dump also lists a forward base chain in `table`, of `family`,
+    /// whose policy drops.
+    pub(super) fn dropping_forward(
+        self,
+        family: NetfilterProtoFamily,
+        table: &str,
+        chain: &str,
+    ) -> Self {
+        self.state()
+            .dropping
+            .push((family, table.to_owned(), chain.to_owned()));
         self
     }
 
@@ -204,17 +226,18 @@ impl FakeWire {
             .find(|(on, refused, _errno)| *on == self.protocol && *refused == message_type)
             .map(|&(_on, _refused, errno)| errno);
         let (tables, links) = (state.tables.clone(), state.links.clone());
+        let dropping = state.dropping.clone();
         drop(state);
         if let Some(errno) = refusal {
             self.replies
                 .push_back(error(header, NonZeroI32::new(-errno)));
         } else if flags & NLM_F_DUMP == NLM_F_DUMP {
-            let names = if message_type == GETTABLE {
-                tables
-            } else {
-                links
+            let listed = match message_type {
+                GETCHAIN => chains(&dropping),
+                GETTABLE => self.dump(&tables),
+                _ => self.dump(&links),
             };
-            self.replies.push_back(self.dump(&names));
+            self.replies.push_back(listed);
             self.replies
                 .push_back(bytes(NetlinkMessage::<RouteNetlinkMessage>::new(
                     NetlinkHeader::default(),
@@ -247,6 +270,29 @@ impl FakeWire {
             })
             .collect()
     }
+}
+
+/// One datagram listing each of `dropping` as a forward base chain whose
+/// policy drops, as the kernel lists chains.
+fn chains(dropping: &[(NetfilterProtoFamily, String, String)]) -> Vec<u8> {
+    dropping
+        .iter()
+        .flat_map(|(family, table, chain)| {
+            let attributes = vec![
+                ChainAttribute::Table(table.clone()),
+                ChainAttribute::Name(chain.clone()),
+                ChainAttribute::Hook(vec![
+                    Hook::Number(HookNumber::Inet(InetHookNumber::Forward)),
+                    Hook::Priority(0),
+                ]),
+                ChainAttribute::Policy(DROP_POLICY),
+            ];
+            bytes(NetlinkMessage::from(NetfilterMessage::new(
+                NetfilterHeader::new(*family, 0, 0),
+                NfTablesMessage::NewChain(ChainMessage { attributes }),
+            )))
+        })
+        .collect()
 }
 
 /// A link named `name`, numbered [`INDEX`].

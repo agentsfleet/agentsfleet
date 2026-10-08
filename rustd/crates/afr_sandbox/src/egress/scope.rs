@@ -1,10 +1,16 @@
 //! One sandbox's scope: its slot, the host-side table holding it to its
 //! allowlist, and the veth pair joining its namespace to the host.
+//!
+//! The table is owned by the netfilter socket that built it ([`rules`]), so
+//! the scope keeps that socket for its whole life: its removal goes through
+//! it, and if the runner dies first, closing it removes the table.
 
 use std::os::fd::BorrowedFd;
 
+use netlink_sys::Socket;
+
 use super::kernel::Kernel;
-use super::netlink::Netlink;
+use super::netlink::{Netlink, Wire};
 use super::slot::{Claim, Slot};
 use super::{link, rules};
 use crate::error::{Error, Result, egress_refused, netlink};
@@ -27,11 +33,13 @@ const EVENT_LEFT: &str = "egress_scope_left";
 
 /// A built scope; [`Scope::remove`] is its one release.
 #[derive(Debug)]
-pub(crate) struct Scope {
+pub(crate) struct Scope<W = Socket> {
     claim: Claim,
+    /// The socket that owns the scope's table.
+    netfilter: Netlink<W>,
 }
 
-impl Scope {
+impl<W: Wire> Scope<W> {
     /// Joins `netns` to the host through a slot of its own, admitting only
     /// `allowlist`'s addresses. The table comes first, so the link never
     /// carries a packet its rules have not seen.
@@ -40,8 +48,8 @@ impl Scope {
     /// No slot is free, or the kernel refused a step. What the build made is
     /// removed before the refusal returns; what cannot be removed keeps its
     /// slot held, for the next run's boot sweep.
-    pub(crate) fn build(
-        kernel: &impl Kernel,
+    pub(crate) fn build<K: Kernel<Wire = W>>(
+        kernel: &K,
         netns: BorrowedFd<'_>,
         allowlist: &Allowlist,
     ) -> Result<Self> {
@@ -55,15 +63,15 @@ impl Scope {
         // Nothing reaches the kernel before this socket opens, so a host that
         // will not give one has nothing to undo: the claim drops and frees the
         // slot, where a later failure keeps it until the removal is confirmed.
-        let mut netfilter = match kernel.netfilter().map_err(netlink(OPEN_NETFILTER)) {
+        let netfilter = match kernel.netfilter().map_err(netlink(OPEN_NETFILTER)) {
             Ok(netfilter) => netfilter,
             Err(error) => {
                 refused(Some(slot), hosts, &error);
                 return Err(error);
             }
         };
-        let scope = Self { claim };
-        match scope.attach(kernel, &mut netfilter, netns, allowlist) {
+        let mut scope = Self { claim, netfilter };
+        match scope.attach(kernel, netns, allowlist) {
             Ok(()) => {
                 let slot = slot.index();
                 let event = EVENT_BUILT;
@@ -79,15 +87,15 @@ impl Scope {
         }
     }
 
-    fn attach<K: Kernel>(
-        &self,
+    fn attach<K: Kernel<Wire = W>>(
+        &mut self,
         kernel: &K,
-        netfilter: &mut Netlink<K::Wire>,
         netns: BorrowedFd<'_>,
         allowlist: &Allowlist,
     ) -> Result<()> {
         let slot = self.claim.slot();
-        rules::apply(netfilter, slot, &allowlist.addresses()).map_err(netlink(INSTALL_RULES))?;
+        rules::apply(&mut self.netfilter, slot, &allowlist.addresses())
+            .map_err(netlink(INSTALL_RULES))?;
         let mut route = kernel.route().map_err(netlink(OPEN_ROUTE))?;
         link::join(&mut route, slot, netns).map_err(netlink(JOIN))?;
         kernel
@@ -95,15 +103,18 @@ impl Scope {
             .map_err(netlink(CONFIGURE_PEER))
     }
 
-    /// Deletes the link, then the table, and frees the slot; anything already
-    /// gone is not a failure.
+    /// Deletes the link, then the table through the socket that owns it, and
+    /// frees the slot; anything already gone is not a failure.
     ///
     /// # Errors
     /// The kernel refused a removal. The slot stays held for this process's
     /// life, so no later scope meets what was left.
-    pub(crate) fn remove(self, kernel: &impl Kernel) -> Result<()> {
+    pub(crate) fn remove<K: Kernel<Wire = W>>(mut self, kernel: &K) -> Result<()> {
         let slot = self.claim.slot();
-        match remove(kernel, slot) {
+        let link = remove_link(kernel, slot);
+        let table =
+            rules::remove(&mut self.netfilter, &slot.table()).map_err(netlink(REMOVE_RULES));
+        match link.and(table) {
             Ok(()) => Ok(()),
             Err(error) => {
                 let error_code = error.code().as_str();
@@ -117,17 +128,23 @@ impl Scope {
     }
 }
 
-/// Removes whatever `slot` holds on the host: its link, then its table.
+/// Removes whatever `slot` holds on the host that no live scope owns: its
+/// link, then its table — a leftover the boot sweep finds.
 pub(super) fn remove(kernel: &impl Kernel, slot: Slot) -> Result<()> {
-    let link = kernel
-        .route()
-        .and_then(|mut route| link::remove(&mut route, &slot.link()))
-        .map_err(netlink(REMOVE_LINK));
+    let link = remove_link(kernel, slot);
     let table = kernel
         .netfilter()
         .and_then(|mut netfilter| rules::remove(&mut netfilter, &slot.table()))
         .map_err(netlink(REMOVE_RULES));
     link.and(table)
+}
+
+/// Removes `slot`'s link from the host.
+fn remove_link(kernel: &impl Kernel, slot: Slot) -> Result<()> {
+    kernel
+        .route()
+        .and_then(|mut route| link::remove(&mut route, &slot.link()))
+        .map_err(netlink(REMOVE_LINK))
 }
 
 /// Logs a scope that could not be built: why, its slot when it had one, and

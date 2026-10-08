@@ -19,6 +19,10 @@ mod confinement;
 #[cfg(target_os = "linux")]
 mod egress;
 #[cfg(target_os = "linux")]
+mod egress_closed;
+#[cfg(target_os = "linux")]
+mod egress_owned;
+#[cfg(target_os = "linux")]
 mod exhaustion;
 #[cfg(target_os = "linux")]
 mod exhaustion_concurrent;
