@@ -124,7 +124,7 @@ main() {
   runner_load_target
   echo "Verifying $RUNNER_ITEM in ${ENV} via Tailscale SSH"
 
-  runner_remote "test \"\$(tailscale status --json | jq -r .Self.Online)\" = true"
+  runner_require_tailnet_online
   egress_probe_remote runner_remote
   verify_ipv4_forwarding
   verify_files_and_service
