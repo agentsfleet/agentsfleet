@@ -15,6 +15,7 @@
 
 mod host;
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::process::ExitCode;
 
 use afd_core::env::{EnvSource, ProcessEnv};
@@ -146,9 +147,8 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
         Ok(telemetry) => telemetry,
         Err(refused) => {
             install_logs(env, None);
-            let error_code = refused.code().as_str();
+            let Logged { error_code, reason } = refused.logged();
             let knob = refused.knob();
-            let reason = refused.told();
             let event = host::EVENT_RUN_FAILED;
             tracing::error!(error_code, knob, reason, event);
             return Err(ExitCode::FAILURE);

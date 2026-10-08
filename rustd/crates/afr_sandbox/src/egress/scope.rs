@@ -5,6 +5,7 @@
 //! the scope keeps that socket for its whole life: its removal goes through
 //! it, and if the runner dies first, closing it removes the table.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::os::fd::BorrowedFd;
 
 use netlink_sys::Socket;
@@ -54,22 +55,17 @@ impl<W: Wire> Scope<W> {
         allowlist: &Allowlist,
     ) -> Result<Self> {
         let hosts = allowlist.hosts();
-        let Some(claim) = Claim::any() else {
-            let error = egress_refused(NO_SLOT);
-            refused(None, hosts, &error);
-            return Err(error);
-        };
+        let claim = Claim::any()
+            .ok_or_else(|| egress_refused(NO_SLOT))
+            .inspect_err(|error| refused(None, hosts, error))?;
         let slot = claim.slot();
         // Nothing reaches the kernel before this socket opens, so a host that
         // will not give one has nothing to undo: the claim drops and frees the
         // slot, where a later failure keeps it until the removal is confirmed.
-        let netfilter = match kernel.netfilter().map_err(netlink(OPEN_NETFILTER)) {
-            Ok(netfilter) => netfilter,
-            Err(error) => {
-                refused(Some(slot), hosts, &error);
-                return Err(error);
-            }
-        };
+        let netfilter = kernel
+            .netfilter()
+            .map_err(netlink(OPEN_NETFILTER))
+            .inspect_err(|error| refused(Some(slot), hosts, error))?;
         let mut scope = Self { claim, netfilter };
         match scope.attach(kernel, netns, allowlist) {
             Ok(()) => {
@@ -117,8 +113,7 @@ impl<W: Wire> Scope<W> {
         match link.and(table) {
             Ok(()) => Ok(()),
             Err(error) => {
-                let error_code = error.code().as_str();
-                let reason = error.told();
+                let Logged { error_code, reason } = error.logged();
                 let event = EVENT_LEFT;
                 tracing::warn!(slot = slot.index(), error_code, reason, event);
                 self.claim.abandon();
@@ -151,8 +146,7 @@ fn remove_link(kernel: &impl Kernel, slot: Slot) -> Result<()> {
 /// how many names it would have admitted — never the names or addresses.
 fn refused(slot: Option<Slot>, hosts: usize, error: &Error) {
     let slot = slot.map(Slot::index);
-    let error_code = error.code().as_str();
-    let reason = error.told();
+    let Logged { error_code, reason } = error.logged();
     let event = EVENT_REFUSED;
     tracing::warn!(slot, hosts, error_code, reason, event);
 }

@@ -68,6 +68,27 @@ pub trait Coded: std::error::Error {
     /// `reason` carries beside `error_code`, without the code a second time
     /// or a captured backtrace.
     fn told(&self) -> String;
+
+    /// Both fields a failure's log line carries, read once:
+    /// `let Logged { error_code, reason } = failure.logged();`, then the
+    /// `tracing` call at the call site, where the logging audit reads it.
+    fn logged(&self) -> Logged {
+        Logged {
+            error_code: self.code().as_str(),
+            reason: self.told(),
+        }
+    }
+}
+
+/// What a failure's log line says about it, named as the line's fields are
+/// (`LOGGING_STANDARD` §5 and §8A), so destructuring binds the locals the
+/// `tracing` call takes by shorthand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Logged {
+    /// The registry code, as the `error_code` field spells it.
+    pub error_code: &'static str,
+    /// [`Coded::told`]: the failure's sentence, then each cause beneath it.
+    pub reason: String,
 }
 
 impl Display for ErrorCode {

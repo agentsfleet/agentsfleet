@@ -1,6 +1,7 @@
 //! The bubblewrap engine: one hardened sandbox per lease, built from the
 //! toolbox, the lease's own cgroup and its own workspace disk.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
 use std::os::unix::fs::DirBuilderExt as _;
@@ -84,8 +85,7 @@ impl BubblewrapEngine {
     pub fn new(config: BubblewrapConfig, host: &HostProbe) -> Result<Self> {
         if let Some(missing) = host.missing() {
             let error = refused(missing);
-            let error_code = error.code().as_str();
-            let reason = error.told();
+            let Logged { error_code, reason } = error.logged();
             let event = EVENT_HOST_REFUSED;
             tracing::error!(
                 missing,
@@ -104,19 +104,17 @@ impl BubblewrapEngine {
         ));
         // Before the sweep, which would otherwise remove a second process's
         // live links on this host.
-        if host.egress
-            && let Err(error) = crate::egress::own_host()
-        {
-            let error_code = error.code().as_str();
-            let reason = error.told();
-            let event = EVENT_HOST_REFUSED;
-            tracing::error!(
-                error_code,
-                reason,
-                event,
-                "this host's egress is owned elsewhere"
-            );
-            return Err(error);
+        if host.egress {
+            crate::egress::own_host().inspect_err(|error| {
+                let Logged { error_code, reason } = error.logged();
+                let event = EVENT_HOST_REFUSED;
+                tracing::error!(
+                    error_code,
+                    reason,
+                    event,
+                    "this host's egress is owned elsewhere"
+                );
+            })?;
         }
         let engine = Self {
             config,
@@ -257,8 +255,7 @@ impl Engine for BubblewrapEngine {
                 Ok(Box::new(sandbox))
             }
             Err(error) => {
-                let error_code = error.code().as_str();
-                let reason = error.told();
+                let Logged { error_code, reason } = error.logged();
                 let event = EVENT_PREPARE_FAILED;
                 tracing::warn!(lease_id, error_code, reason, event);
                 Err(error)

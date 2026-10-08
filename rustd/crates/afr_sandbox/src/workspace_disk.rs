@@ -9,6 +9,7 @@
 //! the lease's memory until its last process is gone; and `mke2fs`'s
 //! `lost+found` stays out of `/workspace`.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::fs::{self, DirBuilder, Permissions};
 use std::io::ErrorKind;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
@@ -124,9 +125,8 @@ impl WorkspaceDisk {
         #[cfg(not(target_os = "linux"))]
         let undone = self.remove_files();
         if let Err(leftover) = undone {
-            let error_code = leftover.code().as_str();
+            let Logged { error_code, reason } = leftover.logged();
             let path = mount_point.display();
-            let reason = leftover.told();
             let event = EVENT_DISK_LEFT;
             tracing::warn!(
                 error_code,

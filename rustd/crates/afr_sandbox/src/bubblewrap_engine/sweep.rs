@@ -8,6 +8,7 @@
 //! disk that will not unmount keeps its image, and its directory, so a loop
 //! device is never left on a file nobody can name.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::fs;
 use std::path::Path;
 
@@ -27,8 +28,7 @@ impl BubblewrapEngine {
     /// host that holds sandboxes to allowlists, every egress table and link.
     pub(super) fn sweep(&self, egress: bool) {
         if egress && let Err(error) = egress::sweep(&egress::Host) {
-            let error_code = error.code().as_str();
-            let reason = error.told();
+            let Logged { error_code, reason } = error.logged();
             let event = EVENT_SWEEP_FAILED;
             tracing::warn!(
                 error_code,
@@ -53,8 +53,7 @@ impl BubblewrapEngine {
                     tracing::info!(%lease_id, event);
                 }
                 Err(error) => {
-                    let error_code = error.code().as_str();
-                    let reason = error.told();
+                    let Logged { error_code, reason } = error.logged();
                     let event = EVENT_SWEEP_FAILED;
                     tracing::warn!(%lease_id, error_code, reason, event);
                 }
