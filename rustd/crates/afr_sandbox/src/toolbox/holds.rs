@@ -7,6 +7,7 @@
 //! calls [`Toolboxes::retain`]; an image held past its release goes at the
 //! first of those after its last sandbox does.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::fmt;
 use std::fs;
 use std::io;
@@ -102,8 +103,7 @@ impl<M: Mounter> Toolboxes<M> {
             .retain_in(&mut admitted)
             .and_then(|_released| self.prune(&admitted));
         if let Err(stuck) = kept {
-            let error_code = stuck.code().as_str();
-            let reason = stuck.told();
+            let Logged { error_code, reason } = stuck.logged();
             let event = EVENT_RELEASE_FAILED;
             tracing::warn!(error_code, reason, event);
         }

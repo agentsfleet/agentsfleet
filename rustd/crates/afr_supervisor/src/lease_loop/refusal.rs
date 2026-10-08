@@ -1,7 +1,7 @@
 //! How a lease that cannot go on ends: the failure logged under its registry
 //! code, and the ending its report carries.
 
-use afd_core::error_code::Coded;
+use afd_core::error_code::{Coded, Logged};
 use afd_wire::report::FailureClass;
 use afr_agent::Unhosted;
 
@@ -52,10 +52,9 @@ impl LeaseRun<'_> {
         event: &'static str,
         detail: &'static str,
     ) -> Ending {
-        let code = failure.code().as_str();
+        let Logged { error_code, reason } = failure.logged();
         let lease_id = self.ids.lease.as_str();
-        let reason = failure.told();
-        tracing::warn!(error_code = code, lease_id, reason, event, detail);
+        tracing::warn!(error_code, lease_id, reason, event, detail);
         failed(class, detail)
     }
 }

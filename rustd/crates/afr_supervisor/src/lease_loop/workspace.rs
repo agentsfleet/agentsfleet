@@ -4,6 +4,7 @@
 //! The sandbox goes back to the lease, which holds it for the fleet's next
 //! lease or destroys it.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::time::Instant;
 
 use afd_wire::lease::SandboxLimits;
@@ -127,9 +128,8 @@ impl LeaseRun<'_> {
     /// the host that resolved them.
     fn egress_refused(&self, failure: &crate::error::Error) -> Ending {
         let blocked = failure.is_egress_blocked();
-        let error_code = failure.code().as_str();
+        let Logged { error_code, reason } = failure.logged();
         let lease_id = self.ids.lease.as_str();
-        let reason = failure.told();
         let hosts = self.egress.hosts(&self.lease.policy.network_policy).len();
         let event = EVENT_EGRESS_REFUSED;
         let detail = if blocked {

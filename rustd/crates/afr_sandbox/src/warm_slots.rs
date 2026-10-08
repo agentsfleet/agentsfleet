@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use afd_core::clock::saturating_millis;
-use afd_core::error_code::{self, ErrorCode};
+use afd_core::error_code::{self, Coded as _, ErrorCode, Logged};
 use backon::{ExponentialBuilder, Retryable as _, Sleeper};
 
 use tokio::sync::{mpsc, oneshot};
@@ -217,8 +217,7 @@ async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Slot>, limits: Limits)
         .sleep(UntilClosed(ready.clone()))
         .when(|_failed: &Failed| !ready.is_closed())
         .notify(|(slot, error): &Failed, delay: Duration| {
-            let error_code = error.code().as_str();
-            let reason = error.told();
+            let Logged { error_code, reason } = error.logged();
             let retry_ms = saturating_millis(delay);
             let event = EVENT_SLOT_FAILED;
             tracing::warn!(slot, error_code, reason, retry_ms, event);
@@ -252,8 +251,7 @@ impl Sleeper for UntilClosed {
 /// Destroys a slot no lease will use.
 async fn retire(Slot { name, sandbox }: Slot) {
     if let Err(error) = sandbox.destroy().await {
-        let error_code = error.code().as_str();
-        let reason = error.told();
+        let Logged { error_code, reason } = error.logged();
         let event = EVENT_SLOT_LEFT;
         tracing::warn!(
             error_code,

@@ -17,6 +17,7 @@
 //!   └──────────────────┘         └───────────────────────────────────────┘
 //! ```
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::fs::{self, File};
 use std::os::fd::{AsFd as _, OwnedFd};
 use std::os::unix::fs::MetadataExt as _;
@@ -73,8 +74,7 @@ pub(crate) fn enforceable() -> bool {
     match probe(&Host, Path::new(IP_FORWARD)) {
         Ok(()) => true,
         Err(error) => {
-            let error_code = error.code().as_str();
-            let reason = error.told();
+            let Logged { error_code, reason } = error.logged();
             let event = EVENT_PROBE_FAILED;
             tracing::warn!(
                 error_code,
@@ -165,8 +165,7 @@ pub(crate) fn sweep(kernel: &impl Kernel) -> Result<()> {
                 tracing::info!(slot, event);
             }
             Err(error) => {
-                let error_code = error.code().as_str();
-                let reason = error.told();
+                let Logged { error_code, reason } = error.logged();
                 let event = EVENT_SWEEP_FAILED;
                 tracing::warn!(slot, error_code, reason, event);
                 claim.abandon();

@@ -6,6 +6,7 @@
 //! sandbox nobody destroyed — and logs what it could not. Both run the same
 //! [`Parts::release`], once.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::fs::{self, File};
@@ -297,8 +298,7 @@ fn log_release(lease_id: &str, failed: Option<&Error>) {
             tracing::debug!(lease_id, event);
         }
         Some(error) => {
-            let error_code = error.code().as_str();
-            let reason = error.told();
+            let Logged { error_code, reason } = error.logged();
             let event = EVENT_TEARDOWN_FAILED;
             tracing::warn!(
                 lease_id,

@@ -6,6 +6,7 @@
 //! with `bindgen` at build time, which would put `libclang` on every Linux
 //! build of the workspace; `mount -o loop` is what every distribution ships.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -110,8 +111,7 @@ where
             tracing::debug!(program, event);
         }
         Err(error) => {
-            let error_code = error.code().as_str();
-            let reason = error.told();
+            let Logged { error_code, reason } = error.logged();
             let event = EVENT_PROGRAM_FAILED;
             tracing::warn!(program, error_code, reason, event);
         }

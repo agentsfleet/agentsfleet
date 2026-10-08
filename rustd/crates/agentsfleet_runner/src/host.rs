@@ -11,7 +11,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use afd_core::error_code::{self, Coded, ErrorCode};
+use afd_core::error_code::{self, Coded, ErrorCode, Logged};
 use afr_sandbox::{Engine, HostProbe, ProbePaths};
 use afr_supervisor::StorageHome;
 
@@ -55,8 +55,7 @@ impl Drop for Mounted {
         let Some(Err(stayed)) = self.toolboxes.as_ref().map(Toolboxes::close) else {
             return;
         };
-        let error_code = stayed.code().as_str();
-        let reason = stayed.told();
+        let Logged { error_code, reason } = stayed.logged();
         let event = EVENT_RUN_FAILED;
         tracing::warn!(error_code, reason, event, "a toolbox image stayed mounted");
     }

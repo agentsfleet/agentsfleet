@@ -1,6 +1,7 @@
 //! Admission by descriptor: the published image opened once, checked, hashed
 //! and attached through that one descriptor, then mounted.
 
+use afd_core::error_code::{Coded as _, Logged};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader};
 use std::os::unix::fs::OpenOptionsExt as _;
@@ -56,9 +57,8 @@ impl Toolbox {
                 tracing::info!(digest, event);
             }
             Err(error) => {
-                let error_code = error.code().as_str();
+                let Logged { error_code, reason } = error.logged();
                 let refusal = error.toolbox_refusal().map(ToolboxRefusal::as_str);
-                let reason = error.told();
                 let event = EVENT_ADMISSION_FAILED;
                 tracing::error!(digest, error_code, refusal, reason, event);
             }
