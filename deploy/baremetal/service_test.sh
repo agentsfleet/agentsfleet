@@ -3,10 +3,9 @@
 #
 #     bash deploy/baremetal/service_test.sh
 #
-# Each case sources deploy.sh in a fresh subshell, as deploy_test.sh does: its
-# `readonly` constants can be assigned once per shell, and its `set -e` would
-# abort on the non-zero returns these cases assert on. A systemctl stub on PATH
-# answers `is-active` from STUB_IS_ACTIVE and `show -p NRestarts` from
+# Each case sources service.sh, with the log.sh it logs through, in a fresh
+# subshell and passes verify_healthy bounds that do not wait. A systemctl stub
+# on PATH answers `is-active` from STUB_IS_ACTIVE and `show -p NRestarts` from
 # STUB_NRESTARTS, one value per call with the last repeating, so a case can
 # hand the check a unit that systemd restarts, or that is down, mid-window.
 
@@ -14,7 +13,11 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
+readonly SERVICE_SH="$SCRIPT_DIR/service.sh"
+readonly LOG_SH="$SCRIPT_DIR/log.sh"
 readonly RUNNER_UNIT="$SCRIPT_DIR/agentsfleet-runner.service"
+# The stub answers for any unit, so the name only has to be passed through.
+readonly UNIT_UNDER_TEST="agentsfleet-runner.service"
 
 passed=0
 failed=0
@@ -52,29 +55,28 @@ exit 0
 STUB
 chmod +x "$STUB_DIR/systemctl"
 
-# verify_healthy's status with no real waits, under the stub answers in "$@"
-# (VAR=value pairs).
+# verify_healthy's status over one probe, no delay and no window, under the
+# stub answers in "$@" (VAR=value pairs).
 health_status() {
   (
     export PATH="$STUB_DIR:$PATH" STUB_STATE="$WORK_DIR/state-$RANDOM"
-    export VERIFY_HEALTH_ATTEMPTS=1 VERIFY_HEALTH_DELAY=0 VERIFY_HEALTH_WINDOW=0
     local assignment
     for assignment in "$@"; do export "${assignment?}"; done
-    # shellcheck source=./deploy.sh
-    source "$DEPLOY_SH" >/dev/null 2>&1
-    set +e
-    verify_healthy >/dev/null 2>&1
+    # shellcheck source=./log.sh
+    source "$LOG_SH"
+    # shellcheck source=./service.sh
+    source "$SERVICE_SH"
+    verify_healthy "$UNIT_UNDER_TEST" 1 0 0 >/dev/null 2>&1
   )
 }
 
 # The failing cases assert a non-zero status, which a harness that cannot
-# source deploy.sh also yields. Fail loud up front instead.
+# source service.sh also yields. Fail loud up front instead.
 preflight() {
   (
-    # shellcheck source=./deploy.sh
-    source "$DEPLOY_SH" >/dev/null 2>&1
-    declare -F verify_healthy >/dev/null && [[ -n "${HEALTH_STABLE_SECONDS:-}" ]]
-  ) || { printf 'FATAL preflight: sourcing deploy.sh did not define the health check\n' >&2; exit 2; }
+    # shellcheck source=./log.sh
+    source "$LOG_SH" && source "$SERVICE_SH" && declare -F verify_healthy >/dev/null
+  ) || { printf 'FATAL preflight: sourcing service.sh did not define the health check\n' >&2; exit 2; }
 }
 
 preflight

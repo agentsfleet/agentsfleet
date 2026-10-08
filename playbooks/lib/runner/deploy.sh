@@ -98,7 +98,11 @@ copy_deploy_files() {
     "$REPO_ROOT/deploy/baremetal/deploy.sh" \
     /opt/agentsfleet/deploy/deploy.sh \
     755
-  # deploy.sh sources these two from its own directory.
+  # deploy.sh sources these three from its own directory.
+  runner_copy \
+    "$REPO_ROOT/deploy/baremetal/log.sh" \
+    /opt/agentsfleet/deploy/log.sh \
+    644
   runner_copy \
     "$REPO_ROOT/deploy/baremetal/toolbox.sh" \
     /opt/agentsfleet/deploy/toolbox.sh \

@@ -18,9 +18,7 @@
 # anything to the host, as does every other refusal (see main).
 #
 # Environment:
-#   DISCORD_WEBHOOK_URL — if set, sends deploy status to Discord
-#   DEPLOY_HOSTNAME     — override hostname in notifications (default: $(hostname))
-#   DRAIN_TIMEOUT       — seconds to wait for a graceful stop (default: 120)
+#   DEPLOY_HOSTNAME — the host name the deploy log names (default: $(hostname))
 #
 # At most one deploy runs per host: main() takes a non-blocking flock and exits
 # non-zero when another deploy already holds it. Sourcing this file runs no deploy
@@ -46,24 +44,18 @@ if [[ "$DEPLOY_EXECUTED" == 1 && -z "${_DEPLOY_UNBUFFERED:-}" ]] && command -v s
   exec stdbuf -oL -eL "$0" "$@"
 fi
 
-# Load Discord webhook from the env file when not already in the environment.
-# Reading the file here keeps the value out of sudo's argument list and therefore
-# out of ps/cmdline output.
-readonly _DISCORD_ENV_FILE="/opt/agentsfleet/.discord-env"
-if [[ -z "${DISCORD_WEBHOOK_URL:-}" && -r "${_DISCORD_ENV_FILE}" ]]; then
-  # shellcheck source=/dev/null
-  source "${_DISCORD_ENV_FILE}"
-fi
-
 readonly REPO="agentsfleet/agentsfleet"
 readonly INSTALL_DIR="/usr/local/bin"
 readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly DEPLOY_DIR="/opt/agentsfleet/deploy"
 readonly ENV_FILE="/opt/agentsfleet/.env"
 readonly ENV_DEST="/etc/default/agentsfleet-runner"
-# Staging the toolbox the runner admits at boot (`install_toolbox`) and
-# restarting and health-checking the unit (`restart_services`,
-# `verify_healthy`), beside this file on the host as in the repository.
+# The log line, staging the toolbox the runner admits at boot
+# (`install_toolbox`), and restarting and health-checking the unit
+# (`restart_services`, `verify_healthy`), beside this file on the host as in
+# the repository.
+# shellcheck source=./log.sh
+source "$(dirname "${BASH_SOURCE[0]}")/log.sh"
 # shellcheck source=./toolbox.sh
 source "$(dirname "${BASH_SOURCE[0]}")/toolbox.sh"
 # shellcheck source=./service.sh
@@ -89,23 +81,29 @@ readonly RELEASE_BUNDLE="${BINARY_NAME}-bundle-linux-${_arch}"
 # Serializes install + `systemctl restart`, which is not atomic: a manual run and
 # a cancel-orphaned CI run can otherwise interleave on the same host. flock beats a
 # lock file — the kernel drops it when the holder dies, so a SIGKILLed deploy never
-# strands later ones. Overridable only so deploy_test.sh can use a writable temp
-# path (/var/lock is root-owned; the tests are not root). Production never sets it.
-readonly DEPLOY_LOCK_PATH="${DEPLOY_LOCK_PATH:-/var/lock/agentsfleet-deploy.lock}"
+# strands later ones. acquire_deploy_lock takes the path, so deploy_test.sh hands
+# it a writable temp file (/var/lock is root-owned; the tests are not root).
+readonly DEPLOY_LOCK_PATH="/var/lock/agentsfleet-deploy.lock"
+
+# How long a stopping runner gets before it is killed (drain_runner).
+readonly DRAIN_TIMEOUT_SECONDS=120
+# How many times, and how many seconds apart, verify_healthy looks for the
+# restarted unit to come up.
+readonly HEALTH_ATTEMPTS=5
+readonly HEALTH_DELAY_SECONDS=2
+# How long a restarted runner must stay up, with systemd restarting it no time
+# in between, before the deploy calls it healthy. A runner that exits during
+# boot (a refused token, a toolbox it cannot admit) still reads active between
+# exits: Restart=always brings it back RestartSec after each one, and that
+# cycle never reaches `failed`. So the window outlasts the unit's RestartSec
+# plus a first boot, which copies and hashes the toolbox image before the
+# runner dials the control plane. service_test.sh holds it above RestartSec.
+readonly HEALTH_STABLE_SECONDS=30
 
 # `agentsfleet-runner --version` prints `agentsfleet-runner <version>`: clap's
 # `version` flag over the workspace version (`rustd/crates/agentsfleet_runner/src/main.rs`).
 # The version is whitespace-delimited field 2.
 readonly VERSION_FIELD_INDEX=2
-
-# ── Logging ──────────────────────────────────────────────────────────────────
-
-log()  { echo "[deploy] $*"; }
-die()  { log "FATAL: $*"; exit 1; }
-
-# Exits quietly: a run refused because another deploy holds the
-# lock is not a failure, and a "deploy FAILED" embed would page for a working deploy.
-die_unnotified() { log "FATAL: $*"; exit 1; }
 
 # ── Version check ────────────────────────────────────────────────────────────
 
@@ -142,7 +140,8 @@ is_already_installed() {
   # systemd accepts the job, so a runner that starts then dies would otherwise skip
   # to "ok" over a dead service. Any failure → report not-installed so the caller
   # runs the full reinstall path, which surfaces the real fault.
-  if ! systemctl start "$SERVICE_NAME" || ! verify_healthy; then
+  if ! systemctl start "$SERVICE_NAME" \
+    || ! verify_healthy "$SERVICE_NAME" "$HEALTH_ATTEMPTS" "$HEALTH_DELAY_SECONDS" "$HEALTH_STABLE_SECONDS"; then
     log "✗ ${SERVICE_NAME} is installed but will not stay up — forcing a full redeploy."
     return 1
   fi
@@ -155,14 +154,15 @@ is_already_installed() {
 # on any exit — normal, fatal, or killed. Non-blocking: an operator wants to hear
 # "a deploy is already running", not queue silently behind one.
 acquire_deploy_lock() {
+  local path="$1"
   command -v flock >/dev/null 2>&1 \
-    || die_unnotified "flock not found — install util-linux; refusing to deploy without a mutex."
+    || die "flock not found — install util-linux; refusing to deploy without a mutex."
 
-  exec {DEPLOY_LOCK_FD}>"$DEPLOY_LOCK_PATH" \
-    || die_unnotified "cannot open deploy lock $DEPLOY_LOCK_PATH"
+  exec {DEPLOY_LOCK_FD}>"$path" \
+    || die "cannot open deploy lock $path"
 
   flock -n "$DEPLOY_LOCK_FD" \
-    || die_unnotified "another deploy holds $DEPLOY_LOCK_PATH — refusing to run install+restart concurrently."
+    || die "another deploy holds $path — refusing to run install+restart concurrently."
 }
 
 # ── Binary acquisition ───────────────────────────────────────────────────────
@@ -272,7 +272,7 @@ main() {
 
   # After argument validation, before anything that touches the host: a usage or
   # bad-component error needs no lock, and must not fail on an unwritable /var/lock.
-  acquire_deploy_lock
+  acquire_deploy_lock "$DEPLOY_LOCK_PATH"
 
   # Skip version check when CI provides a local binary — always do a full
   # install+restart cycle. The shortcut is only for release-download mode.
@@ -292,9 +292,9 @@ main() {
   install_toolbox "$toolbox_dir"
   sync_systemd_unit
   sync_env
-  restart_services
+  restart_services "$SERVICE_NAME" "$DRAIN_TIMEOUT_SECONDS"
 
-  if verify_healthy; then
+  if verify_healthy "$SERVICE_NAME" "$HEALTH_ATTEMPTS" "$HEALTH_DELAY_SECONDS" "$HEALTH_STABLE_SECONDS"; then
     log "Deploy complete: ${BINARY_NAME} ${VERSION}"
   else
     exit 1
