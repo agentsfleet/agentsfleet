@@ -1,0 +1,348 @@
+{
+  "stage": "verify",
+  "items": [
+    {
+      "id": "p11",
+      "question": "verify.assertion",
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p11/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p11/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p12",
+      "question": "verify.assertion",
+      "requirement": "Clicking CopyButton with value 019f2866-2172-7696-9166-c69f309a559a and label Copy workspace ID must write exactly that value to navigator.clipboard.writeText. Writing the label instead is incorrect even if the button shows Copied.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p12/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p12/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p13",
+      "question": "verify.assertion",
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p13/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p13/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p14",
+      "question": "verify.assertion",
+      "requirement": "cn(\"text-eyebrow\", \"text-muted-foreground\") must return exactly \"text-eyebrow text-muted-foreground\", retaining the semantic font size alongside the color. Returning only the color is incorrect.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p14/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p14/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p15",
+      "question": "verify.assertion",
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p15/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p15/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p16",
+      "question": "verify.assertion",
+      "requirement": "Clicking CopyButton with value 019f2866-2172-7696-9166-c69f309a559a and label Copy workspace ID must write exactly that value to navigator.clipboard.writeText. Writing the label instead is incorrect even if the button shows Copied.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p16/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p16/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p17",
+      "question": "verify.assertion",
+      "requirement": "cn(\"text-eyebrow\", \"text-muted-foreground\") must return exactly \"text-eyebrow text-muted-foreground\", retaining the semantic font size alongside the color. Returning only the color is incorrect.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p17/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p17/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p18",
+      "question": "verify.assertion",
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p18/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p18/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p19",
+      "question": "verify.assertion",
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p19/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p19/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p20",
+      "question": "verify.assertion",
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p20/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p20/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ]
+    }
+  ]
+}

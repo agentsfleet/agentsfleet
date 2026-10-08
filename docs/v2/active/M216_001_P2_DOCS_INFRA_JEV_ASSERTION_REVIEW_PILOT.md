@@ -66,6 +66,7 @@ All paths below are relative to this repository. The pilot prefix is `pilots/jev
 | `pilots/jev-assertions/reviews/unaided-author.json`, `reviews/session-template.json` | CREATE | Frozen pre-advice inspection and independent review record shape |
 | `pilots/jev-assertions/receipts/{checks,offline-a,offline-b,live-a,live-b,replay-a,replay-b,summary}.json` | CREATE | Reproducible attempt and proof receipts |
 | `pilots/jev-assertions/receipts/{correct,faulty,runner-tests,conform,secret-scan}.txt` | CREATE | Raw local checking output |
+| `pilots/jev-assertions/receipts/review/` | CREATE | Repository-required review probe receipts and checkpoints; results stay in `report.md` |
 | `pilots/jev-assertions/approval.json`, `receipts/reservations.json`, `reviews/{unaided,assisted}.json` | CREATE after corresponding real evidence exists | One actual approval, append-only request reservations and actual blinded reviews |
 
 Temporary proof copies and dependency installation outputs are disposable local runtime state, never committed. Existing `orly` replay files remain local private cache, not model inputs or deliverables.
@@ -99,13 +100,17 @@ Temporary proof copies and dependency installation outputs are disposable local 
 
 ### §1 — Frozen offline evidence
 
+**Status:** DONE — executable offline preparation; evidence in `pilots/jev-assertions/receipts/checks.json`.
+
 Record requirements, source revision, selectors, expected labels and justifications before advice. Use four cases per existing class and preserve family correlation in the report. Independent expected values stay outside uploads.
 
-- **Dimension 1.1** — Balanced neutral cases and manifests have complete selected evidence except deliberate missing assertion helpers → Test `test_frozen_cases`.
-- **Dimension 1.2** — Correct and faulted copies demonstrate what each assertion detects; faults remain isolated → Test `test_fault_discrimination`.
-- **Dimension 1.3** — Byte changes, answer leakage or evidence outside fixtures refuse execution → Test `test_freeze_refusal`.
+- **Dimension 1.1** — DONE — Balanced neutral cases and manifests have complete selected evidence except deliberate missing assertion helpers → Test `test_frozen_cases`.
+- **Dimension 1.2** — DONE — Correct and faulted copies demonstrate what each assertion detects; faults remain isolated → Test `test_fault_discrimination`.
+- **Dimension 1.3** — DONE — Byte changes, answer leakage or evidence outside fixtures refuse execution → Test `test_freeze_refusal`.
 
 ### §2 — Pre-advice review and approved requests
+
+**Status:** IN_PROGRESS — author inspection frozen; actual upload approval outstanding.
 
 Freeze the author's unaided inspection before any Jev output. Specify paired sessions with blinded identifiers, equal evidence, independent reviewers and recorded elapsed review time. Author-created expectations cannot establish an independent comparison. Missing sessions are reported unmeasured.
 
@@ -114,6 +119,8 @@ Freeze the author's unaided inspection before any Jev output. Specify paired ses
 - **Dimension 2.3** — Reserve each entire ten-request batch before launching; crashes and failures consume reservations; never retry or exceed twenty → Test `test_request_reservations`.
 
 ### §3 — Measurements and recommendation
+
+**Status:** IN_PROGRESS — no live advice or independent paired-review measurement yet.
 
 After owner approval, invoke `orly judge verify --input <manifest> --refresh --json` once per batch. Retain failures even if no usage is returned. Replay with the same command without refresh. Do not manufacture replies to make offline preparation green.
 
@@ -151,7 +158,7 @@ After owner approval, invoke `orly judge verify --input <manifest> --refresh --j
 
 ## Metrics & Observability
 
-No product or operator analytics change. Local pilot measurements contain only case identifiers, result classes, timing, usage and calculated cost; selected source is uploaded solely after approval and secret scanning. No credentials appear in files or logs. Proof: `test_attempt_accounting` and `test_live_approval`.
+No product or operator analytics change. Local pilot receipts retain native command output, case identifiers, result classes, timing, usage and calculated cost; selected source is uploaded solely after approval and secret scanning. The runner never resolves credentials. Proof: `test_attempt_accounting` and `test_live_approval`.
 
 ## Test Specification (tiered)
 
@@ -173,16 +180,16 @@ Regression scope: product behavior, source tests, catalog, confidence threshold,
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
-| R1 | Frozen cases and executable controls | `python3 pilots/jev-assertions/pilot.py check` | exit 0; 20 correct passes; 8 fault rejections and 12 surviving deliberately inadequate assertions | P0 | |
-| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; no provider request | P0 | |
-| R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | |
-| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; spec remains active until measurements complete | P0 | |
-| S1 | Conform | `make harness-verify` | exit 0 | P0 | |
+| R1 | Frozen cases and executable controls | `python3 pilots/jev-assertions/pilot.py check` | exit 0; 20 correct passes; 8 fault rejections and 12 surviving deliberately inadequate assertions | P0 | PASS: `receipts/checks.json`; strong hidden helpers explain four rejections |
+| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; no provider request | P0 | PASS: 25 tests, `receipts/runner-tests.txt` |
+| R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | Offline PASS: both native commands exit 2, requests 0; final measurement outstanding |
+| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; spec remains active until measurements complete | P0 | Offline staged scope PASS: `git diff --cached --name-only`; pilot prefix plus active spec; final branch evidence follows commit |
+| S1 | Conform | `make harness-verify` | exit 0 | P0 | PASS: 50 source files, zero literal violations; `receipts/conform.txt` |
 | S2 | Unit boundary | `make test-unit-all` | exit 0 at PR boundary | P0 | |
 | S3 | Lint boundary | `make lint-all` | exit 0 at PR boundary | P0 | |
 | S4 | Integration boundary | `make test-integration-rustd` | exit 0 at PR boundary in isolated datastore environment | P0 | |
-| S5 | Version preservation | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks protect --staged --redact --no-banner` | exit 0 | P0 | |
+| S5 | Version preservation | `make check-version` | exit 0 | P0 | PASS: all versions match 0.58.0 |
+| S6 | No secrets | `gitleaks protect --staged --redact --no-banner` | exit 0 | P0 | PASS: `no leaks found`, `receipts/secret-scan.txt` |
 
 ## Dead Code Sweep
 
@@ -219,5 +226,7 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 
 - **Consults:** Indy authorized offline preparation and focused commits, required one budget approval before refresh, and required the overall pilot to remain IN_PROGRESS. Source comparison is `dd917b7ef42dcb883b5192fafe894060aab5845d`; engine 0.13.0 checked with `scripts/check_orly_pin.sh`. Earlier fixture contents were not read. The `orly` checkout remains read-only.
 - **Metrics review:** No product analytics/funnel playbook update; local receipts record all approved attempts. Independent review sessions remain unavailable until actual session evidence is supplied.
-- **Skill-chain outcomes:** `context-restore` completed; `orly-spec-new` applied. Section unit audit and gstack review pending; babysitting applies only after a push.
+- **Skill-chain outcomes:** `context-restore` completed; `orly-spec-new` applied. `orly-write-unit-test` maps each Dimension to a named check; 25 runner tests include refusal and failed-attempt checks. gstack's native review identified four pilot-runner accounting defects; regression checks cover their repairs. Functional review probes have verdict pass in `receipts/review/evidence.json`; the final code pass remains a pre-commit action. The audit is not an independent blinded review. Integration audit and repository baselines remain due at the Pull Request boundary. Babysitting applies only after a push.
+- **Offline findings:** `pilot.py check`: 20 correct passes, 8 fault rejections, 12 survivors; Node v26.9.0 runs the incumbent Vitest 5.0.3/jsdom 30.1.2 stack. Initial Bun execution started no tests because jsdom workers raised EventTarget errors; these were refused, never counted as controls. Frozen case bytes stayed unchanged. Both offline `orly` commands returned ten unavailable replay slots and zero requests; no Jev accuracy claim follows.
+- **Freeze correction:** Conformance found 82 copied literal violations. Named-constant repairs stayed in pilot copies, are recorded as exact source adaptations, and retain all 40 proof outcomes. Review also corrected p16's import order. Both corrections preceded any Jev answer; requirements, classifications and justifications stayed fixed. Final digest: `7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa`.
 - **Deferrals:** None. Live approval and required measurements are outstanding dependencies, not completed work or owner-approved deferrals.

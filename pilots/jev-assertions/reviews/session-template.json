@@ -1,0 +1,149 @@
+{
+  "session": null,
+  "reviewer": null,
+  "condition": null,
+  "advice_seen_before_freeze": null,
+  "case_order": [],
+  "decisions": [
+    {
+      "id": "p01",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p02",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p03",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p04",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p05",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p06",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p07",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p08",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p09",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p10",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p11",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p12",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p13",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p14",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p15",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p16",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p17",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p18",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p19",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    },
+    {
+      "id": "p20",
+      "classification": null,
+      "finding": null,
+      "review_seconds": null,
+      "evidence": null
+    }
+  ]
+}

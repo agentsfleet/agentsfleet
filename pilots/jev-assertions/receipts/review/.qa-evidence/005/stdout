@@ -1,0 +1,424 @@
+[
+  {
+    "mode": "offline",
+    "command": [
+      "orly",
+      "judge",
+      "verify",
+      "--input",
+      "pilots/jev-assertions/manifests/a.json",
+      "--json"
+    ],
+    "exit": 2,
+    "stdout": "{\n  \"stage\": \"verify\",\n  \"advisory\": true,\n  \"requests\": 0,\n  \"results\": [\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p01\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.4094169999999977,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p02\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.038624999999996135,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p03\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.02283299999999855,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p04\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.01962500000000489,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p05\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.018667000000000655,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p06\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.018124999999997726,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p07\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.01741599999999721,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p08\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.01779200000000003,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p09\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.01745800000000486,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p10\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.019166999999995937,\n      \"usage\": null\n    }\n  ]\n}\n",
+    "stderr": "",
+    "collection_error": null,
+    "raw_report": {
+      "stage": "verify",
+      "advisory": true,
+      "requests": 0,
+      "results": [
+        {
+          "status": "incomplete",
+          "id": "p01",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.4094169999999977,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p02",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.038624999999996135,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p03",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.02283299999999855,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p04",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01962500000000489,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p05",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.018667000000000655,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p06",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.018124999999997726,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p07",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01741599999999721,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p08",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01779200000000003,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p09",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01745800000000486,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p10",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.019166999999995937,
+          "usage": null
+        }
+      ]
+    },
+    "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+    "reserved_requests": 0,
+    "report": {
+      "stage": "verify",
+      "advisory": true,
+      "requests": 0,
+      "results": [
+        {
+          "status": "incomplete",
+          "id": "p01",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.4094169999999977,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p02",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.038624999999996135,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p03",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.02283299999999855,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p04",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01962500000000489,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p05",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.018667000000000655,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p06",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.018124999999997726,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p07",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01741599999999721,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p08",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01779200000000003,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p09",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01745800000000486,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p10",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.019166999999995937,
+          "usage": null
+        }
+      ]
+    }
+  },
+  {
+    "mode": "offline",
+    "command": [
+      "orly",
+      "judge",
+      "verify",
+      "--input",
+      "pilots/jev-assertions/manifests/b.json",
+      "--json"
+    ],
+    "exit": 2,
+    "stdout": "{\n  \"stage\": \"verify\",\n  \"advisory\": true,\n  \"requests\": 0,\n  \"results\": [\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p11\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.2511250000000018,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p12\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.033084000000002334,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p13\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.02212499999999551,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p14\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.01970800000000139,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p15\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.021416999999999575,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p16\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.018625000000000114,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p17\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.017625000000002444,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p18\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.01737500000000125,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p19\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.017082999999999515,\n      \"usage\": null\n    },\n    {\n      \"status\": \"incomplete\",\n      \"id\": \"p20\",\n      \"question\": \"verify.assertion\",\n      \"reason\": \"No exact replay for these inputs. Use --refresh to permit scanned source upload.\",\n      \"requests\": 0,\n      \"elapsedMs\": 0.017084000000004096,\n      \"usage\": null\n    }\n  ]\n}\n",
+    "stderr": "",
+    "collection_error": null,
+    "raw_report": {
+      "stage": "verify",
+      "advisory": true,
+      "requests": 0,
+      "results": [
+        {
+          "status": "incomplete",
+          "id": "p11",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.2511250000000018,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p12",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.033084000000002334,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p13",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.02212499999999551,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p14",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01970800000000139,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p15",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.021416999999999575,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p16",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.018625000000000114,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p17",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.017625000000002444,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p18",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01737500000000125,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p19",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.017082999999999515,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p20",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.017084000000004096,
+          "usage": null
+        }
+      ]
+    },
+    "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+    "reserved_requests": 0,
+    "report": {
+      "stage": "verify",
+      "advisory": true,
+      "requests": 0,
+      "results": [
+        {
+          "status": "incomplete",
+          "id": "p11",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.2511250000000018,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p12",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.033084000000002334,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p13",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.02212499999999551,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p14",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01970800000000139,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p15",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.021416999999999575,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p16",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.018625000000000114,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p17",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.017625000000002444,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p18",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.01737500000000125,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p19",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.017082999999999515,
+          "usage": null
+        },
+        {
+          "status": "incomplete",
+          "id": "p20",
+          "question": "verify.assertion",
+          "reason": "No exact replay for these inputs. Use --refresh to permit scanned source upload.",
+          "requests": 0,
+          "elapsedMs": 0.017084000000004096,
+          "usage": null
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,59 @@
+{
+  "evidence": [
+    {
+      "capture": "001",
+      "command": "python3 pilots/jev-assertions/pilot_test.py",
+      "contract": "Offline runner refusal and accounting checks",
+      "expected": "Earlier 21 checks passed; superseded by 25-check repair proof",
+      "classification": "superseded"
+    },
+    {
+      "capture": "002",
+      "command": "python3 pilots/jev-assertions/pilot.py live",
+      "contract": "Missing owner approval refuses before admission",
+      "expected": "Exit 2 with missing approval; superseded after runner changes by capture 007",
+      "classification": "superseded"
+    },
+    {
+      "capture": "003",
+      "command": "python3 pilots/jev-assertions/pilot_test.py",
+      "contract": "Preserve attempted answers, accounting, isolation and refusal behavior",
+      "expected": "25 checks pass without provider requests",
+      "classification": "pass"
+    },
+    {
+      "capture": "004",
+      "command": "python3 pilots/jev-assertions/pilot.py check",
+      "contract": "Correct and faulted assertions discriminate frozen behaviors",
+      "expected": "20 correct passes; 8 assertion rejections and 12 faulty passes; requests 0",
+      "classification": "pass"
+    },
+    {
+      "capture": "005",
+      "command": "python3 pilots/jev-assertions/pilot.py replay",
+      "contract": "Collect actual offline replay evidence without upload",
+      "expected": "Both native exits 2; ten unavailable results each; requests 0; collection succeeds",
+      "classification": "pass"
+    },
+    {
+      "capture": "006",
+      "command": "python3 pilots/jev-assertions/pilot.py summarize",
+      "contract": "Missing measurements remain unmeasured with all case slots retained",
+      "expected": "20 pending slots; 0 reservations/requests; independent paired comparison unmeasured",
+      "classification": "pass"
+    },
+    {
+      "capture": "007",
+      "command": "python3 pilots/jev-assertions/pilot.py live",
+      "contract": "Live entrypoint requires actual owner approval",
+      "expected": "Exit 2 with missing approval before any reservation or upload",
+      "classification": "pass"
+    }
+  ],
+  "limits": [
+    "Functional contributor runner only; no browser or production service changes.",
+    "The original 300000 ms exploration deadline was not reset. Affected repair checks used explicit finite deadlines.",
+    "No provider call or independent blinded reviewer measurement; no outside planning-model calls.",
+    "Full unit/lint/isolated datastore integration and comparison baselines remain due at the Pull Request boundary."
+  ]
+}

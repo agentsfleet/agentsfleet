@@ -1,0 +1,1502 @@
+{
+  "schema_version": 1,
+  "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+  "orly_version": "0.13.0",
+  "model": "jev-1.13.0",
+  "question": "verify.assertion",
+  "families": {
+    "copy": {
+      "implementation": "ui/packages/design-system/src/design-system/CopyButton.tsx",
+      "test": "ui/packages/design-system/src/design-system/CopyButton.test.tsx",
+      "test_name": "writes the value to the clipboard and flips to Copied",
+      "imports": [
+        [
+          "\"./Button\"",
+          "\"../../helpers/Button\""
+        ],
+        [
+          "\"../utils\"",
+          "\"../../helpers/utils\""
+        ],
+        [
+          "\"./use-resettable-timeout\"",
+          "\"../../helpers/use-resettable-timeout\""
+        ]
+      ],
+      "fault": [
+        "await navigator.clipboard.writeText(value);",
+        "await navigator.clipboard.writeText(label);"
+      ],
+      "requirement": "Clicking CopyButton with value 019f2866-2172-7696-9166-c69f309a559a and label Copy workspace ID must write exactly that value to navigator.clipboard.writeText. Writing the label instead is incorrect even if the button shows Copied.",
+      "witness": "The isolated incorrect implementation writes Copy workspace ID instead of the supplied value.",
+      "correct_value": "019f2866-2172-7696-9166-c69f309a559a",
+      "incorrect_value": "Copy workspace ID"
+    },
+    "classes": {
+      "implementation": "ui/packages/design-system/src/utils.ts",
+      "test": "ui/packages/design-system/src/utils.test.ts",
+      "test_name": "test_ds_cn_merges_and_keeps_fontsize — a semantic font-size token survives beside a color token",
+      "imports": [],
+      "fault": [
+        "        \"text-eyebrow\",\n",
+        ""
+      ],
+      "requirement": "cn(\"text-eyebrow\", \"text-muted-foreground\") must return exactly \"text-eyebrow text-muted-foreground\", retaining the semantic font size alongside the color. Returning only the color is incorrect.",
+      "witness": "The isolated incorrect implementation omits text-eyebrow from the font-size class group, so the color wins and drops the size.",
+      "correct_value": "text-eyebrow text-muted-foreground",
+      "incorrect_value": "text-muted-foreground"
+    },
+    "relative": {
+      "implementation": "ui/packages/design-system/src/design-system/time-utils.ts",
+      "test": "ui/packages/design-system/src/design-system/time-utils.test.ts",
+      "test_name": "crosses out of 'just now' at exactly 5 s ago",
+      "imports": [],
+      "fault": [
+        "if (abs < 5) return \"just now\";",
+        "if (abs <= 5) return \"just now\";"
+      ],
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "witness": "The isolated incorrect implementation includes exactly five seconds in the just-now band.",
+      "correct_value": "5 seconds ago",
+      "incorrect_value": "just now"
+    },
+    "elapsed": {
+      "implementation": "ui/packages/app/lib/events/run-figures-format.ts",
+      "test": "ui/packages/app/lib/events/run-figures-format.test.ts",
+      "test_name": "should spell elapsed time to the second, as Intl's narrow duration does",
+      "imports": [
+        [
+          "\"@/lib/utils\"",
+          "\"../../helpers/app-utils\""
+        ]
+      ],
+      "fault": [
+        "Math.round(Math.max(0, ms) / MS_PER_SECOND)",
+        "Math.floor(Math.max(0, ms) / MS_PER_SECOND)"
+      ],
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "witness": "The isolated incorrect implementation floors milliseconds-to-seconds instead of rounding.",
+      "correct_value": "1m 0s",
+      "incorrect_value": "59s"
+    }
+  },
+  "helper_sources": {
+    "Button.tsx": "ui/packages/design-system/src/design-system/Button.tsx",
+    "utils.ts": "ui/packages/design-system/src/utils.ts",
+    "use-resettable-timeout.ts": "ui/packages/design-system/src/design-system/use-resettable-timeout.ts",
+    "app-utils.ts": "ui/packages/app/lib/utils.ts"
+  },
+  "cases": [
+    {
+      "id": "p01",
+      "family": "copy",
+      "origin": "seeded-control",
+      "requirement": "Clicking CopyButton with value 019f2866-2172-7696-9166-c69f309a559a and label Copy workspace ID must write exactly that value to navigator.clipboard.writeText. Writing the label instead is incorrect even if the button shows Copied.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "af3a60b0c4d908587606bfb822a645b78009d5fe3db3a3de66668888e28cc053"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.test.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 24,
+          "selected_test": "writes the value to the clipboard and flips to Copied",
+          "sha256": "97b4d0a9c56c9aacb7e48ff6468caa5334193c86862daa83a031422e5546e8fe"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p01/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p01/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "weak",
+      "justification": "The relevant result is observed, but the assertion accepts the supplied incorrect result. Its correct and faulted copies must both pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation writes Copy workspace ID instead of the supplied value.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "019f2866-2172-7696-9166-c69f309a559a",
+        "incorrect_value": "Copy workspace ID"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p02",
+      "family": "relative",
+      "origin": "source-derived-control",
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "112df3cc2c96c5cb6956798a3a8609dbaca7a1588f567507b30681bbb12156d4"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 87,
+          "selected_test": "crosses out of 'just now' at exactly 5 s ago",
+          "sha256": "6c9fe87b9e0932cd673a05067b6a32969145ce6f1993e8c90d4e74db4610d1b8"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p02/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p02/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "exact",
+      "justification": "The test exercises the required operation and compares its result with an independent literal or exact clipboard argument. Its faulted copy must fail at that assertion.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation includes exactly five seconds in the just-now band.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "failed",
+        "correct_value": "5 seconds ago",
+        "incorrect_value": "just now"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p03",
+      "family": "classes",
+      "origin": "seeded-control",
+      "requirement": "cn(\"text-eyebrow\", \"text-muted-foreground\") must return exactly \"text-eyebrow text-muted-foreground\", retaining the semantic font size alongside the color. Returning only the color is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+        },
+        {
+          "path": "ui/packages/design-system/src/utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 56,
+          "selected_test": "test_ds_cn_merges_and_keeps_fontsize — a semantic font-size token survives beside a color token",
+          "sha256": "49c9e32b5202e7e6e8adec84141dc0a57d4d4310f295b0a452f0767b43d0a375"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p03/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p03/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "insufficient",
+      "justification": "The test delegates its assertion to an imported helper whose definition is deliberately absent from selected evidence. The locally present helper is exact, but its meaning cannot be determined from the model input.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation omits text-eyebrow from the font-size class group, so the color wins and drops the size.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "failed",
+        "correct_value": "text-eyebrow text-muted-foreground",
+        "incorrect_value": "text-muted-foreground"
+      },
+      "omitted_context": [
+        "pilots/jev-assertions/helpers/check-classes.ts"
+      ]
+    },
+    {
+      "id": "p04",
+      "family": "elapsed",
+      "origin": "seeded-control",
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "1c966cb50c155d030cf60a82b713e9a7b4ca1a32ec9d225e527c7185bbd0bc2a"
+        },
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 23,
+          "selected_test": "should spell elapsed time to the second, as Intl's narrow duration does",
+          "sha256": "477a986a4dfae9a8894b1988a0726ffb9a7946b83f3aedbdad138cbe36eb31f7"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p04/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p04/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "wrong_target",
+      "justification": "The required operation executes, but the assertion observes a different operation or visible outcome. Its faulted copy must still pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation floors milliseconds-to-seconds instead of rounding.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "1m 0s",
+        "incorrect_value": "59s"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p05",
+      "family": "copy",
+      "origin": "seeded-control",
+      "requirement": "Clicking CopyButton with value 019f2866-2172-7696-9166-c69f309a559a and label Copy workspace ID must write exactly that value to navigator.clipboard.writeText. Writing the label instead is incorrect even if the button shows Copied.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "af3a60b0c4d908587606bfb822a645b78009d5fe3db3a3de66668888e28cc053"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.test.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 24,
+          "selected_test": "writes the value to the clipboard and flips to Copied",
+          "sha256": "97b4d0a9c56c9aacb7e48ff6468caa5334193c86862daa83a031422e5546e8fe"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p05/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p05/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "missing",
+      "justification": "The required operation executes without an assertion on its required result. Its faulted copy must still pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation writes Copy workspace ID instead of the supplied value.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "019f2866-2172-7696-9166-c69f309a559a",
+        "incorrect_value": "Copy workspace ID"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p06",
+      "family": "classes",
+      "origin": "source-derived-control",
+      "requirement": "cn(\"text-eyebrow\", \"text-muted-foreground\") must return exactly \"text-eyebrow text-muted-foreground\", retaining the semantic font size alongside the color. Returning only the color is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+        },
+        {
+          "path": "ui/packages/design-system/src/utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 56,
+          "selected_test": "test_ds_cn_merges_and_keeps_fontsize — a semantic font-size token survives beside a color token",
+          "sha256": "49c9e32b5202e7e6e8adec84141dc0a57d4d4310f295b0a452f0767b43d0a375"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p06/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p06/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "exact",
+      "justification": "The test exercises the required operation and compares its result with an independent literal or exact clipboard argument. Its faulted copy must fail at that assertion.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation omits text-eyebrow from the font-size class group, so the color wins and drops the size.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "failed",
+        "correct_value": "text-eyebrow text-muted-foreground",
+        "incorrect_value": "text-muted-foreground"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p07",
+      "family": "elapsed",
+      "origin": "seeded-control",
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "1c966cb50c155d030cf60a82b713e9a7b4ca1a32ec9d225e527c7185bbd0bc2a"
+        },
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 23,
+          "selected_test": "should spell elapsed time to the second, as Intl's narrow duration does",
+          "sha256": "477a986a4dfae9a8894b1988a0726ffb9a7946b83f3aedbdad138cbe36eb31f7"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p07/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p07/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "weak",
+      "justification": "The relevant result is observed, but the assertion accepts the supplied incorrect result. Its correct and faulted copies must both pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation floors milliseconds-to-seconds instead of rounding.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "1m 0s",
+        "incorrect_value": "59s"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p08",
+      "family": "relative",
+      "origin": "seeded-control",
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "112df3cc2c96c5cb6956798a3a8609dbaca7a1588f567507b30681bbb12156d4"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 87,
+          "selected_test": "crosses out of 'just now' at exactly 5 s ago",
+          "sha256": "6c9fe87b9e0932cd673a05067b6a32969145ce6f1993e8c90d4e74db4610d1b8"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p08/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p08/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "insufficient",
+      "justification": "The test delegates its assertion to an imported helper whose definition is deliberately absent from selected evidence. The locally present helper is exact, but its meaning cannot be determined from the model input.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation includes exactly five seconds in the just-now band.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "failed",
+        "correct_value": "5 seconds ago",
+        "incorrect_value": "just now"
+      },
+      "omitted_context": [
+        "pilots/jev-assertions/helpers/check-relative.ts"
+      ]
+    },
+    {
+      "id": "p09",
+      "family": "copy",
+      "origin": "seeded-control",
+      "requirement": "Clicking CopyButton with value 019f2866-2172-7696-9166-c69f309a559a and label Copy workspace ID must write exactly that value to navigator.clipboard.writeText. Writing the label instead is incorrect even if the button shows Copied.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "af3a60b0c4d908587606bfb822a645b78009d5fe3db3a3de66668888e28cc053"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.test.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 24,
+          "selected_test": "writes the value to the clipboard and flips to Copied",
+          "sha256": "97b4d0a9c56c9aacb7e48ff6468caa5334193c86862daa83a031422e5546e8fe"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p09/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p09/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "wrong_target",
+      "justification": "The required operation executes, but the assertion observes a different operation or visible outcome. Its faulted copy must still pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation writes Copy workspace ID instead of the supplied value.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "019f2866-2172-7696-9166-c69f309a559a",
+        "incorrect_value": "Copy workspace ID"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p10",
+      "family": "classes",
+      "origin": "seeded-control",
+      "requirement": "cn(\"text-eyebrow\", \"text-muted-foreground\") must return exactly \"text-eyebrow text-muted-foreground\", retaining the semantic font size alongside the color. Returning only the color is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+        },
+        {
+          "path": "ui/packages/design-system/src/utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 56,
+          "selected_test": "test_ds_cn_merges_and_keeps_fontsize — a semantic font-size token survives beside a color token",
+          "sha256": "49c9e32b5202e7e6e8adec84141dc0a57d4d4310f295b0a452f0767b43d0a375"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p10/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p10/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "missing",
+      "justification": "The required operation executes without an assertion on its required result. Its faulted copy must still pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation omits text-eyebrow from the font-size class group, so the color wins and drops the size.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "text-eyebrow text-muted-foreground",
+        "incorrect_value": "text-muted-foreground"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p11",
+      "family": "relative",
+      "origin": "seeded-control",
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "112df3cc2c96c5cb6956798a3a8609dbaca7a1588f567507b30681bbb12156d4"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 87,
+          "selected_test": "crosses out of 'just now' at exactly 5 s ago",
+          "sha256": "6c9fe87b9e0932cd673a05067b6a32969145ce6f1993e8c90d4e74db4610d1b8"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p11/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p11/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "weak",
+      "justification": "The relevant result is observed, but the assertion accepts the supplied incorrect result. Its correct and faulted copies must both pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation includes exactly five seconds in the just-now band.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "5 seconds ago",
+        "incorrect_value": "just now"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p12",
+      "family": "copy",
+      "origin": "source-derived-control",
+      "requirement": "Clicking CopyButton with value 019f2866-2172-7696-9166-c69f309a559a and label Copy workspace ID must write exactly that value to navigator.clipboard.writeText. Writing the label instead is incorrect even if the button shows Copied.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "af3a60b0c4d908587606bfb822a645b78009d5fe3db3a3de66668888e28cc053"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.test.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 24,
+          "selected_test": "writes the value to the clipboard and flips to Copied",
+          "sha256": "97b4d0a9c56c9aacb7e48ff6468caa5334193c86862daa83a031422e5546e8fe"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p12/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p12/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "exact",
+      "justification": "The test exercises the required operation and compares its result with an independent literal or exact clipboard argument. Its faulted copy must fail at that assertion.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation writes Copy workspace ID instead of the supplied value.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "failed",
+        "correct_value": "019f2866-2172-7696-9166-c69f309a559a",
+        "incorrect_value": "Copy workspace ID"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p13",
+      "family": "elapsed",
+      "origin": "source-derived-control",
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "1c966cb50c155d030cf60a82b713e9a7b4ca1a32ec9d225e527c7185bbd0bc2a"
+        },
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 23,
+          "selected_test": "should spell elapsed time to the second, as Intl's narrow duration does",
+          "sha256": "477a986a4dfae9a8894b1988a0726ffb9a7946b83f3aedbdad138cbe36eb31f7"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p13/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p13/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "exact",
+      "justification": "The test exercises the required operation and compares its result with an independent literal or exact clipboard argument. Its faulted copy must fail at that assertion.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation floors milliseconds-to-seconds instead of rounding.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "failed",
+        "correct_value": "1m 0s",
+        "incorrect_value": "59s"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p14",
+      "family": "classes",
+      "origin": "seeded-control",
+      "requirement": "cn(\"text-eyebrow\", \"text-muted-foreground\") must return exactly \"text-eyebrow text-muted-foreground\", retaining the semantic font size alongside the color. Returning only the color is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+        },
+        {
+          "path": "ui/packages/design-system/src/utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 56,
+          "selected_test": "test_ds_cn_merges_and_keeps_fontsize — a semantic font-size token survives beside a color token",
+          "sha256": "49c9e32b5202e7e6e8adec84141dc0a57d4d4310f295b0a452f0767b43d0a375"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p14/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p14/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "wrong_target",
+      "justification": "The required operation executes, but the assertion observes a different operation or visible outcome. Its faulted copy must still pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation omits text-eyebrow from the font-size class group, so the color wins and drops the size.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "text-eyebrow text-muted-foreground",
+        "incorrect_value": "text-muted-foreground"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p15",
+      "family": "relative",
+      "origin": "seeded-control",
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "112df3cc2c96c5cb6956798a3a8609dbaca7a1588f567507b30681bbb12156d4"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 87,
+          "selected_test": "crosses out of 'just now' at exactly 5 s ago",
+          "sha256": "6c9fe87b9e0932cd673a05067b6a32969145ce6f1993e8c90d4e74db4610d1b8"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p15/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p15/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "missing",
+      "justification": "The required operation executes without an assertion on its required result. Its faulted copy must still pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation includes exactly five seconds in the just-now band.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "5 seconds ago",
+        "incorrect_value": "just now"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p16",
+      "family": "copy",
+      "origin": "seeded-control",
+      "requirement": "Clicking CopyButton with value 019f2866-2172-7696-9166-c69f309a559a and label Copy workspace ID must write exactly that value to navigator.clipboard.writeText. Writing the label instead is incorrect even if the button shows Copied.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "af3a60b0c4d908587606bfb822a645b78009d5fe3db3a3de66668888e28cc053"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/CopyButton.test.tsx",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 24,
+          "selected_test": "writes the value to the clipboard and flips to Copied",
+          "sha256": "97b4d0a9c56c9aacb7e48ff6468caa5334193c86862daa83a031422e5546e8fe"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p16/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p16/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "insufficient",
+      "justification": "The test delegates its assertion to an imported helper whose definition is deliberately absent from selected evidence. The locally present helper is exact, but its meaning cannot be determined from the model input.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation writes Copy workspace ID instead of the supplied value.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "failed",
+        "correct_value": "019f2866-2172-7696-9166-c69f309a559a",
+        "incorrect_value": "Copy workspace ID"
+      },
+      "omitted_context": [
+        "pilots/jev-assertions/helpers/check-copy.ts"
+      ]
+    },
+    {
+      "id": "p17",
+      "family": "classes",
+      "origin": "seeded-control",
+      "requirement": "cn(\"text-eyebrow\", \"text-muted-foreground\") must return exactly \"text-eyebrow text-muted-foreground\", retaining the semantic font size alongside the color. Returning only the color is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+        },
+        {
+          "path": "ui/packages/design-system/src/utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 56,
+          "selected_test": "test_ds_cn_merges_and_keeps_fontsize — a semantic font-size token survives beside a color token",
+          "sha256": "49c9e32b5202e7e6e8adec84141dc0a57d4d4310f295b0a452f0767b43d0a375"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p17/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p17/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "weak",
+      "justification": "The relevant result is observed, but the assertion accepts the supplied incorrect result. Its correct and faulted copies must both pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation omits text-eyebrow from the font-size class group, so the color wins and drops the size.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "text-eyebrow text-muted-foreground",
+        "incorrect_value": "text-muted-foreground"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p18",
+      "family": "elapsed",
+      "origin": "seeded-control",
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "1c966cb50c155d030cf60a82b713e9a7b4ca1a32ec9d225e527c7185bbd0bc2a"
+        },
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 23,
+          "selected_test": "should spell elapsed time to the second, as Intl's narrow duration does",
+          "sha256": "477a986a4dfae9a8894b1988a0726ffb9a7946b83f3aedbdad138cbe36eb31f7"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p18/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p18/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "missing",
+      "justification": "The required operation executes without an assertion on its required result. Its faulted copy must still pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation floors milliseconds-to-seconds instead of rounding.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "1m 0s",
+        "incorrect_value": "59s"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p19",
+      "family": "relative",
+      "origin": "seeded-control",
+      "requirement": "For now 2026-05-03T12:00:00Z and a timestamp exactly 5000 milliseconds earlier, formatTimeRelative must return exactly \"5 seconds ago\". The \"just now\" band excludes that boundary; returning \"just now\" is incorrect.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "112df3cc2c96c5cb6956798a3a8609dbaca7a1588f567507b30681bbb12156d4"
+        },
+        {
+          "path": "ui/packages/design-system/src/design-system/time-utils.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 87,
+          "selected_test": "crosses out of 'just now' at exactly 5 s ago",
+          "sha256": "6c9fe87b9e0932cd673a05067b6a32969145ce6f1993e8c90d4e74db4610d1b8"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p19/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p19/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "wrong_target",
+      "justification": "The required operation executes, but the assertion observes a different operation or visible outcome. Its faulted copy must still pass.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation includes exactly five seconds in the just-now band.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "passed",
+        "correct_value": "5 seconds ago",
+        "incorrect_value": "just now"
+      },
+      "omitted_context": []
+    },
+    {
+      "id": "p20",
+      "family": "elapsed",
+      "origin": "seeded-control",
+      "requirement": "formatElapsed(59600) must round to the nearest second and return exactly \"1m 0s\". Returning \"59s\" by flooring is incorrect even though it is a well-shaped duration.",
+      "source_revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+      "source_evidence": [
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "sha256": "1c966cb50c155d030cf60a82b713e9a7b4ca1a32ec9d225e527c7185bbd0bc2a"
+        },
+        {
+          "path": "ui/packages/app/lib/events/run-figures-format.test.ts",
+          "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+          "start_line": 23,
+          "selected_test": "should spell elapsed time to the second, as Intl's narrow duration does",
+          "sha256": "477a986a4dfae9a8894b1988a0726ffb9a7946b83f3aedbdad138cbe36eb31f7"
+        }
+      ],
+      "model_evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p20/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p20/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "expected": "insufficient",
+      "justification": "The test delegates its assertion to an imported helper whose definition is deliberately absent from selected evidence. The locally present helper is exact, but its meaning cannot be determined from the model input.",
+      "adaptation": "Same named behavior and independent expected value; isolated test setup and import paths are explicit. This is a pilot adaptation, not a verbatim production-test execution.",
+      "fault": "The isolated incorrect implementation floors milliseconds-to-seconds instead of rounding.",
+      "proof": {
+        "correct": "passed",
+        "faulty": "failed",
+        "correct_value": "1m 0s",
+        "incorrect_value": "59s"
+      },
+      "omitted_context": [
+        "pilots/jev-assertions/helpers/check-elapsed.ts"
+      ]
+    }
+  ],
+  "independent_expected_labels": false,
+  "earlier_orly_fixtures_used": false,
+  "mechanical_source_adaptations": {
+    "families": {
+      "copy": [
+        [
+          "type CopyOutcome = \"idle\" | \"copied\" | \"failed\";",
+          "type CopyOutcome = typeof OUTCOME_IDLE | typeof OUTCOME_COPIED | typeof OUTCOME_FAILED;"
+        ],
+        [
+          "(outcome: \"idle\" | \"copied\" | \"failed\")",
+          "(outcome: CopyOutcome)"
+        ],
+        [
+          "aria-hidden=\"true\"",
+          "aria-hidden={ARIA_HIDDEN_TRUE}"
+        ],
+        [
+          "role=\"status\"",
+          "role={STATUS_ROLE}"
+        ],
+        [
+          "aria-live=\"polite\"",
+          "aria-live={LIVE_POLITENESS}"
+        ],
+        [
+          "\"idle\"",
+          "OUTCOME_IDLE"
+        ],
+        [
+          "\"copied\"",
+          "OUTCOME_COPIED"
+        ],
+        [
+          "\"failed\"",
+          "OUTCOME_FAILED"
+        ],
+        [
+          "type CopyOutcome =",
+          "const OUTCOME_IDLE = \"idle\";\nconst OUTCOME_COPIED = \"copied\";\nconst OUTCOME_FAILED = \"failed\";\nconst ARIA_HIDDEN_TRUE = \"true\";\nconst STATUS_ROLE = \"status\";\nconst LIVE_POLITENESS = \"polite\";\n\ntype CopyOutcome ="
+        ]
+      ],
+      "classes": [],
+      "relative": [
+        [
+          "export type TimeFormat = \"absolute\" | \"relative\" | \"datetime\" | \"clock\";",
+          "export type TimeFormat = \"absolute\" | typeof TIME_RELATIVE | typeof TIME_DATETIME | typeof TIME_CLOCK;"
+        ],
+        [
+          "\"relative\"",
+          "TIME_RELATIVE"
+        ],
+        [
+          "\"datetime\"",
+          "TIME_DATETIME"
+        ],
+        [
+          "\"clock\"",
+          "TIME_CLOCK"
+        ],
+        [
+          "\"2-digit\"",
+          "TWO_DIGIT"
+        ],
+        [
+          "< 60",
+          "< SECONDS_PER_MINUTE"
+        ],
+        [
+          "/ 60",
+          "/ SECONDS_PER_MINUTE"
+        ],
+        [
+          "export type TimeFormat =",
+          "const TIME_RELATIVE = \"relative\";\nconst TIME_DATETIME = \"datetime\";\nconst TIME_CLOCK = \"clock\";\nconst TWO_DIGIT = \"2-digit\";\nconst SECONDS_PER_MINUTE = 60;\n\nexport type TimeFormat ="
+        ]
+      ],
+      "elapsed": [
+        [
+          "unit: \"hour\" | \"minute\" | \"second\"",
+          "unit: typeof UNIT_HOUR | typeof UNIT_MINUTE | typeof UNIT_SECOND"
+        ],
+        [
+          "\"hour\"",
+          "UNIT_HOUR"
+        ],
+        [
+          "\"minute\"",
+          "UNIT_MINUTE"
+        ],
+        [
+          "\"second\"",
+          "UNIT_SECOND"
+        ],
+        [
+          "const LOCALE =",
+          "const UNIT_HOUR = \"hour\";\nconst UNIT_MINUTE = \"minute\";\nconst UNIT_SECOND = \"second\";\n\nconst LOCALE ="
+        ]
+      ]
+    },
+    "helpers": {
+      "Button.tsx": [
+        [
+          "ComponentProps<\"button\">",
+          "ComponentProps<typeof BUTTON_ELEMENT>"
+        ],
+        [
+          "\"button\"",
+          "BUTTON_ELEMENT"
+        ],
+        [
+          "\"default\"",
+          "DEFAULT_VARIANT_KEY"
+        ],
+        [
+          "export const buttonVariants =",
+          "const BUTTON_ELEMENT = \"button\";\nconst DEFAULT_VARIANT_KEY = \"default\";\n\nexport const buttonVariants ="
+        ]
+      ],
+      "app-utils.ts": [
+        [
+          "export const SECONDS_PER_MINUTE = 60;\n",
+          ""
+        ],
+        [
+          "< 60",
+          "< SECONDS_PER_MINUTE"
+        ],
+        [
+          "/ 60",
+          "/ SECONDS_PER_MINUTE"
+        ],
+        [
+          "% 60",
+          "% SECONDS_PER_MINUTE"
+        ],
+        [
+          "\"unit\"",
+          "NUMBER_FORMAT_STYLE"
+        ],
+        [
+          "\"narrow\"",
+          "UNIT_DISPLAY_NARROW"
+        ],
+        [
+          "export function formatDuration",
+          "export const SECONDS_PER_MINUTE = 60;\nconst NUMBER_FORMAT_STYLE = \"unit\";\nconst UNIT_DISPLAY_NARROW = \"narrow\";\n\nexport function formatDuration"
+        ],
+        [
+          "* the rounded figure, so a clock never shows \"60.0s\". */",
+          "* the rounded figure: reaching TENTHS_PER_MINUTE selects the minute band. */"
+        ]
+      ]
+    }
+  },
+  "helper_imports": {
+    "Button.tsx": [
+      [
+        "\"../utils\"",
+        "\"./utils\""
+      ]
+    ]
+  }
+}
