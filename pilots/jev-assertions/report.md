@@ -7,15 +7,16 @@ with zero false alarms, so advice added no findings in this comparison.
 The observed agent-time difference does not establish human time savings.
 Adoption remains Kishore's separate decision.
 
-**Overall status: DONE.** The model measurement, separate blinded agent sessions
-and declared repository checks are complete. The orly 0.14.0 consumer pin is
+**Overall status: IN_PROGRESS.** The model measurement and separate blinded agent sessions
+remain complete. A hosted review reported lost timeout diagnostics; its repair and
+fresh repository checks are pending. The orly 0.14.0 consumer pin is
 verified; owner review remains due before merge. Comparison baselines retain
 the failed unit run alongside the green full boundary result.
 
 Source revision: `dd917b7ef42dcb883b5192fafe894060aab5845d`.
 Frozen input digest: `7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa`.
 Approved runner digest: `4d0644fd93a46bac785f5282392310f24634092bd4843a9189acd1b02875f9e8`.
-The [spec](../../docs/v2/done/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md),
+The [spec](../../docs/v2/active/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md),
 [case ledger](cases.json) and [freeze inventory](freeze.json) bind scope,
 requirements, original source hashes, evidence references and expected labels.
 The [protocol](README.md) specifies checking and separate blinded review sessions.

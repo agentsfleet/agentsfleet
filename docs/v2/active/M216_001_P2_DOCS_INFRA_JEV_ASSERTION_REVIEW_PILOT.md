@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M216
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P2 — bounded contributor experiment
 **Categories:** Documentation (DOCS), Infrastructure (INFRA)
 **Batch:** B1 — independent pilot artifacts
@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** Twenty frozen cases distinguish exact, weak, wrong_target, missing and insufficient assertions, retain every approved Jev attempt, and accompany a verified orly 0.14.0 consumer pin.
 **Problem:** Passing tests can accept incorrect results; model advice has not been measured on this fresh `agentsfleet` sample.
-**Solution summary:** Copy four real behaviors into isolated pilot fixtures, establish expected classifications and executable counterexamples offline, then measure the existing `verify.assertion` question after one owner-approved upload and budget checkpoint. Keep all model results advisory. Required measurements, the recommendation and repository verification are complete; owner review remains due before merge.
+**Solution summary:** Copy four real behaviors into isolated pilot fixtures, establish expected classifications and executable counterexamples offline, then measure the existing `verify.assertion` question after one owner-approved upload and budget checkpoint. Keep all model results advisory. Required measurements and the recommendation are complete; a reported timeout-diagnostics repair and fresh repository verification remain before owner review.
 
 ## PR Intent & comprehension handshake
 
@@ -122,13 +122,14 @@ Freeze the author's unaided inspection before any Jev output. Specify paired ses
 
 ### §3 — Measurements and recommendation
 
-**Status:** DONE — model results, independent agent comparison, recommendation and green repository boundary evidence recorded.
+**Status:** IN_PROGRESS — measurements and recommendation remain complete; timeout-diagnostics retention and fresh boundary verification are pending.
 
 After owner approval, invoke `orly judge verify --input <manifest> --refresh --json` once per batch. Retain failures even if no usage is returned. Replay with the same command without refresh. Do not manufacture replies to make offline preparation green.
 
 - **Dimension 3.1** — DONE — Native classes, withholding, twenty attempts, timing, tokens and calculated cost retained → Test `test_attempt_accounting`; `receipts/summary.json`.
 - **Dimension 3.2** — DONE — Findings, misses and false alarms separated by origin; original attempts and actual agent times retained → Test `test_comparison_metrics`; `report.md` and `receipts/summary.json`.
 - **Dimension 3.3** — DONE — Two fresh blinded agent sessions, sealed initial decisions and recommendation recorded; human time remains unmeasured → Test `test_measurement_completion` (manual); both review records and `receipts/review/blinded/`.
+- **Dimension 3.4** — IN_PROGRESS — Timeout cleanup retains both command output streams in the failed-attempt receipt, including forced killing; spent reservations cannot launch again → Test `test_live_failure_consumes_reservation_without_retry`.
 
 ### §4 — Authorized engine update
 
@@ -152,7 +153,7 @@ After owner approval, invoke `orly judge verify --input <manifest> --refresh --j
 | Changed or leaking evidence | Digest mismatch, labels in upload or wrong path | Refuse before command; `test_freeze_refusal` |
 | Misleading proof | Syntax/import failure mistaken for discriminating assertion | Require correct-copy success and matching assertion failures; `test_fault_discrimination` |
 | No approval / quota exhausted / duplicate launch | Missing bound approval or spent reservation | Refuse before upload; `test_live_approval`, `test_request_reservations` |
-| Process crash or unavailable provider | Timeout, invalid reply, interrupted batch or missing usage | Keep reservation and failure; no retry; unknown usage stays unknown; `test_attempt_accounting` |
+| Process crash or unavailable provider | Timeout, invalid reply, interrupted batch or missing usage | Keep reservation, failure and timeout output; no retry; unknown usage stays unknown; `test_attempt_accounting`, `test_live_failure_consumes_reservation_without_retry` |
 | Reviewer contamination / missing session | Author knows labels, reused session, advice disclosed early | Paired comparison remains unmeasured; `test_comparison_metrics` |
 
 ## Invariants
@@ -181,6 +182,7 @@ No product or operator analytics change. Local pilot receipts retain native comm
 | 3.1 | unit | `test_attempt_accounting` | Failed or withheld native answer → retained attempt, unknown usage preserved |
 | 3.2 | unit | `test_comparison_metrics` | Known seeded answers and absent independent reviews → truthful counters and unmeasured paired gain |
 | 3.3 | manual | `test_measurement_completion` | Two sealed independent agent records → complete paired counts and actual monotonic timing; no human or causal time-saving claim |
+| 3.4 | unit | `test_live_failure_consumes_reservation_without_retry` | Real child prints to both streams before timeout → exact persisted failed receipt and spent reservation; no second launch. `test_subprocess_timeout_stops_child` additionally proves graceful and forced cleanup retain both streams |
 | 4.1 | manual | `test_orly_014_pin` | Published 0.14.0 install, `orly doctor` and `bash scripts/check_orly_pin.sh` → matching engine/pin, current managed files and preserved commands, surfaces and hooks |
 
 Regression scope: product behavior, source tests, catalog, confidence threshold, hooks and gates receive no diff. At least half of runner checks exercise refusal, failed attempts or contamination. No performance or concurrency claim is made about product code.
@@ -190,7 +192,7 @@ Regression scope: product behavior, source tests, catalog, confidence threshold,
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
 | R1 | Frozen cases and executable controls | `python3 pilots/jev-assertions/pilot.py check` | exit 0; 20 correct passes; 8 fault rejections and 12 surviving deliberately inadequate assertions | P0 | ✅ 20 correct passes, 8 rejections, 12 survivors; `receipts/checks.json` |
-| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; no provider request | P0 | ✅ 25 tests passed; `receipts/review/blinded/.qa-evidence/006/stderr` |
+| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; timeout output retained; no provider request | P0 | ❌ timeout regression checks pending; original 25-test result retained in `receipts/review/blinded/.qa-evidence/006/stderr` |
 | R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | ✅ 20 complete attempts, replay requests 0, paired status measured; `receipts/summary.json` |
 | R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; completed spec in done with boundary evidence | P0 | ✅ Pilot prefix, completed spec and engine pin only; `receipts/review/boundary-verification.json` |
 | S1 | Conform | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN; 50 source files, zero literal violations; `receipts/conform.txt` |
@@ -249,3 +251,4 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 - **Completed boundary:** `orly gate pr` at pushed `6a9a8d3c7b01e3c73dba4ffeaa4cef241a924656` exits 0. Unit: 10614 passed, zero failed; integration: 899 passed, zero failed; lint and version checks exit 0. Reported package coverage is 100%; command-line function/line floors are 100%. The +1 product pass is the unchanged comparison-run clipboard failure recovering, not a new product test. The pilot adds 25 scoped runner checks outside product Make selections. Earlier disk-full and stopped-datastore attempts remain recorded; no gate or test was patched. Evidence: `receipts/review/boundary-verification.json`. The exact pushed closing revision must pass its own gate before opening the Pull Request.
 - **Consumer update:** `bun install -g @agentsfleet/orly@0.14.0 --registry=https://registry.npmjs.org --no-cache` installs 0.14.0. The public tarball hash matches the successful release log. `orly update --no-hooks` writes one file, with 70 already current; parsed configuration differs only in its engine version. `orly doctor` and `scripts/check_orly_pin.sh` pass.
 - **Deferrals:** None. Human time remains unmeasured; no human experiment was performed. The approved request allowance is exhausted; no retries or additional provider calls are authorized by the pilot approval.
+- **Hosted review follow-up:** Greptile review `5462577534` at `eceefad0512638abb47b3d9e9667977a39316ce3` reported lost timeout output in `pilot_checks.py:148–152`, thread `4223898848`. Indy's recorded overnight instruction authorizes resolving review feedback in this stream. Reopen the same spec, preserve both output streams through cleanup and receipt collection, and prove graceful/forced timeout handling without provider calls. Existing green hosted checks and immutable measurements remain historical evidence; the repaired pushed revision requires fresh checks and review.
