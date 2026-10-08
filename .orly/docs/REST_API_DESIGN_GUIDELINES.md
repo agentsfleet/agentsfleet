@@ -443,7 +443,7 @@ table decides the paths and methods, `#[utoipa::path]` beside each handler
 carries the prose and the status codes, and the `afd_wire` types carry the
 schemas. The `public/openapi/` YAML tree this section used to describe was
 retired with the Zig daemon; a hand-edit to the JSON is reverted by the next
-regeneration and fails a test before it gets that far.
+regeneration.
 
 ### Adding, renaming, or removing an endpoint
 
@@ -459,14 +459,23 @@ regeneration and fails a test before it gets that far.
      --bin agentsfleetd -- --no-banner openapi > ../public/openapi.json
    ```
 
-**Parity is mechanical, not reviewer-enforced.** Three tests grade it, and the
+**Parity is mechanical, not reviewer-enforced.** Two tests grade it, and the
 first is the one that used to be a review obligation:
 
 | Test | What it refuses |
 |---|---|
 | `test_coverage_gate_rust_source` | a served route with no annotation, or an annotation for a route nobody mounts — named with its method and direction |
-| `test_openapi_build_is_the_source` | a committed artifact that is not what the build emits |
 | `test_documented_codes_match_refusals` | an operation that omits a refusal its guard or scope rung guarantees |
+
+No test checks that `public/openapi.json` matches the build. Regeneration is a
+verify step: from the repository root, run the generator, then check for drift.
+The subshell keeps the diff command at the repository root.
+
+```bash
+(cd rustd && cargo run -q -p agentsfleetd --features openapi \
+  --bin agentsfleetd -- --no-banner openapi > ../public/openapi.json)
+git diff --exit-code public/openapi.json
+```
 
 The prose is graded too: `scripts/check_documentation_rules.py` reads the
 generated document, so a description that breaks the wording rules fails
