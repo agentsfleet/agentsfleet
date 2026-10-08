@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use afd_core::clock::Clock;
 use afr_agent::AgentEngine;
+use afr_egress::Resolve;
 use afr_sandbox::{Engine, Limits};
 use tokio::sync::Notify;
 
 use crate::bundles::BundleCache;
 use crate::client::ControlPlane;
-use crate::egress::Resolve;
 use crate::halt::Halt;
 use crate::holds::Holds;
 use crate::identity::Whoami;

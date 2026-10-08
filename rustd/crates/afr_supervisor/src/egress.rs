@@ -18,15 +18,12 @@
 
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::fmt;
-use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
-use afd_core::net::is_blocked;
 use afd_wire::policy::NetworkPolicy as FleetNetwork;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy};
-use afr_egress::allowlist_host;
+use afr_egress::{Resolve, allowlist_host, unblocked};
 use afr_sandbox::{Allowlist, Network};
 use futures_util::future::try_join_all;
 
@@ -46,8 +43,6 @@ pub(crate) const DEFAULT_REGISTRY: [&str; 8] = [
     "proxy.golang.org",
     "sum.golang.org",
 ];
-/// The port a lookup is made for: any, since only the address is kept.
-const ANY_PORT: u16 = 0;
 
 /// The egress the daemon assigned this runner: its posture, and the registry
 /// hosts an allowlist starts from.
@@ -186,28 +181,6 @@ pub(crate) enum Reach {
     Allowed(Vec<String>),
 }
 
-/// Resolves a host name to its addresses.
-#[async_trait::async_trait]
-pub(crate) trait Resolve: Send + Sync + fmt::Debug {
-    /// Every address `host` resolves to.
-    ///
-    /// # Errors
-    /// The resolver could not answer for `host`.
-    async fn resolve(&self, host: &str) -> io::Result<Vec<IpAddr>>;
-}
-
-/// The host's own resolver, as every other program on it resolves.
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct SystemResolver;
-
-#[async_trait::async_trait]
-impl Resolve for SystemResolver {
-    async fn resolve(&self, host: &str) -> io::Result<Vec<IpAddr>> {
-        let found = tokio::net::lookup_host((host, ANY_PORT)).await?;
-        Ok(found.map(|socket| socket.ip()).collect())
-    }
-}
-
 /// Who named a host: the operator's registry, or the fleet. A host named by
 /// both is the registry's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,17 +190,17 @@ pub(crate) enum Named {
 }
 
 /// `host` with each IPv4 address it resolves to. A host the fleet named is
-/// refused whole when any address it resolves to is blocked, IPv6 included,
-/// as `http_request` refuses it: one blocked answer means the name points
-/// inside.
+/// held to the rule `http_request` holds it to ([`unblocked`]): refused whole
+/// when any address it resolves to is blocked, IPv6 included.
 async fn ipv4(resolver: &dyn Resolve, host: &str, named: Named) -> Result<Vec<(String, Ipv4Addr)>> {
     let addresses = resolver
         .resolve(host)
         .await
         .map_err(error::egress_unresolved(host))?;
-    if named == Named::Fleet && addresses.iter().any(|address| is_blocked(*address)) {
-        return Err(error::egress_blocked(host));
-    }
+    let addresses = match named {
+        Named::Fleet => unblocked(addresses).map_err(|_blocked| error::egress_blocked(host))?,
+        Named::Registry => addresses,
+    };
     let admitted: Vec<_> = addresses
         .into_iter()
         .filter_map(|address| match address {

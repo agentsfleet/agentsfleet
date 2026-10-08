@@ -8,13 +8,15 @@
 
 use std::borrow::Cow;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
 
 use afd_core::error_code::INTERNAL_OPERATION_FAILED;
 use afd_wire::policy::NetworkPolicy as FleetNetwork;
 use afd_wire::runner::NetworkPolicy;
+use afr_egress::SystemResolver;
 use afr_sandbox::{ALLOWLIST_ADDRESSES_MAX, Allowlist, Network};
 
-use super::{Bound, DEFAULT_REGISTRY, Egress, Named, Resolve, SystemResolver};
+use super::{Bound, DEFAULT_REGISTRY, Egress, Named};
 use crate::test_support::{FakeResolver, assigned};
 
 /// Two registry hosts, and a fleet host one of them shares.
@@ -301,13 +303,27 @@ async fn test_a_registry_host_at_a_private_address_is_admitted() {
     assert_eq!(bound, Bound::Allowed(expected));
 }
 
-/// The host's own resolver answers a name every host carries, offline.
+/// One rule holds a name to its whole answer on both egress paths: a host
+/// answering a public and a private address refuses the lease that names it
+/// before its sandbox is built, and is refused again when `http_request`'s
+/// guarded client looks it up.
 #[tokio::test]
-async fn the_system_resolver_answers_from_the_host() {
-    let addresses = SystemResolver.resolve("localhost").await.unwrap();
+async fn test_a_host_with_one_blocked_address_is_refused_on_both_egress_paths() {
+    let resolver = blocking_resolver();
+    let client = afr_egress::guarded_by(reqwest::Client::builder(), Arc::new(resolver.clone()))
+        .build()
+        .unwrap();
 
-    assert!(
-        addresses.contains(&IpAddr::V4(Ipv4Addr::LOCALHOST)),
-        "{addresses:?}"
-    );
+    let bound = allow_list(&[A])
+        .bind(&fleet(&[MIXED], false), &resolver)
+        .await
+        .unwrap_err();
+    let sent = client
+        .get(format!("https://{MIXED}/"))
+        .send()
+        .await
+        .unwrap_err();
+
+    assert!(bound.is_egress_blocked(), "{bound}");
+    assert!(afr_egress::blocked_address(&sent), "{sent}");
 }
