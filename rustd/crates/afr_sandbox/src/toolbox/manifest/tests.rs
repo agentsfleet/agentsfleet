@@ -5,15 +5,18 @@
               the JSON it just built"
 )]
 
+use rustls_pki_types::SubjectPublicKeyInfoDer;
+use rustls_pki_types::pem::PemObject as _;
 use serde_json::json;
 
-use super::{MANIFEST_MAX_BYTES, Release, TOOLBOX_RELEASE_PUBLIC_KEY, debian_arch, host_arch};
+use super::{MANIFEST_MAX_BYTES, Release, debian_arch, host_arch};
 use crate::error::ToolboxRefusal;
 use crate::toolbox::testing::{RUNNER, Signer, facts, manifest_bytes, sha256};
 
 /// The interop fixture: a real release manifest, trimmed to three packages,
-/// signed with `cosign sign-blob` under the key [`TOOLBOX_RELEASE_PUBLIC_KEY`]
-/// is, and checked with `cosign verify-blob` before it was committed.
+/// signed with `cosign sign-blob` under [`FIXTURE_PUBLIC_KEY`]'s private half,
+/// which was then discarded, and checked with `cosign verify-blob` before it
+/// was committed.
 const COSIGN_MANIFEST: &[u8] = include_bytes!("../fixtures/release.json");
 const COSIGN_SIGNATURE: &[u8] = include_bytes!("../fixtures/release.json.sig");
 /// What that fixture names.
@@ -21,6 +24,13 @@ const COSIGN_RUNNER: &str = "0.56.0";
 const COSIGN_DIGEST: &str = "377a14f4401c17acc47c6d90f621b550b9e07b49039cb7831eb48a5a55416402";
 const COSIGN_LENGTH: u64 = 258_277_376;
 const IMAGE: &[u8] = b"an erofs image's bytes";
+/// The key the fixture was signed under: a test key, never the release key,
+/// so the real image the fixture names is admitted by no host.
+const FIXTURE_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELVQWBgCxq2ODgOCaj/XkI/Vlvbjz
+NE5hNFWfWCzZc7dlzHFBosEsGA1965zFODW/81o74kL/hvsesQ2gmbWd8A==
+-----END PUBLIC KEY-----
+";
 
 /// Which check `release` fails `manifest` signed as `signature` on.
 fn refusal(release: &Release, manifest: &[u8], signature: &[u8]) -> Option<ToolboxRefusal> {
@@ -45,16 +55,26 @@ fn a_release_signed_by_its_key_names_its_image() {
 }
 
 #[test]
-fn the_cosign_fixture_verifies_against_the_release_key() {
+fn the_cosign_fixture_verifies_against_the_key_it_was_signed_under() {
+    let key = SubjectPublicKeyInfoDer::from_pem_slice(FIXTURE_PUBLIC_KEY.as_bytes()).unwrap();
+    let release = Release::signed_by(key.as_ref(), COSIGN_RUNNER).on("arm64");
+
+    let manifest = release.verify(COSIGN_MANIFEST, COSIGN_SIGNATURE).unwrap();
+
+    assert_eq!(manifest.sha256(), COSIGN_DIGEST);
+    assert_eq!(manifest.length(), COSIGN_LENGTH);
+}
+
+#[test]
+fn should_refuse_the_cosign_fixture_under_the_release_key() {
     let release = Release::signed_by_release(COSIGN_RUNNER)
         .unwrap()
         .on("arm64");
 
-    let manifest = release.verify(COSIGN_MANIFEST, COSIGN_SIGNATURE).unwrap();
-
-    assert!(TOOLBOX_RELEASE_PUBLIC_KEY.starts_with("-----BEGIN PUBLIC KEY-----\n"));
-    assert_eq!(manifest.sha256(), COSIGN_DIGEST);
-    assert_eq!(manifest.length(), COSIGN_LENGTH);
+    assert_eq!(
+        refusal(&release, COSIGN_MANIFEST, COSIGN_SIGNATURE),
+        Some(ToolboxRefusal::Signature)
+    );
 }
 
 #[test]
