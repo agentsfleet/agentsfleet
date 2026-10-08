@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel
+.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel test-coverage-runner-kernel
 
 # Three shards, one per crate family, so Continuous Integration runs each on its
 # own runner at once and `test-unit-rustd` is all three in order: the whole
@@ -98,3 +98,18 @@ test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
 	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(KERNEL_LANE_RUNNER)" \
 	  $(KERNEL_LANE_CARGO) -p afr_sandbox --features test-util --example kernel_lane
+
+# The kernel lane under coverage: the same run, with the instrument in
+# KERNEL_LANE_CARGO, written as one more report beside the integration lane's
+# shards. `test-coverage-rustd-merge` grades it with them, so the Linux-only
+# lines only this lane reaches count toward the floor. Its caller is the
+# kernel job in .github/workflows/test-integration-rustd.yml.
+test-coverage-runner-kernel:  ## Measure the kernel lane under coverage into rustd/lcov-kernel.info for test-coverage-rustd-merge
+	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
+	@cd $(RUSTD_DIR) && cargo llvm-cov clean --workspace
+	@$(MAKE) --no-print-directory test-runner-kernel KERNEL_LANE_CARGO="cargo llvm-cov run --no-report"
+	@cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
+	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-kernel.info \
+	  || { echo "✗ [rustd] kernel lane lcov report failed"; exit 1; }
+	@git rev-parse HEAD > $(RUSTD_DIR)/lcov-kernel.rev
+	@echo "✓ [rustd] kernel lane measured: $(RUSTD_DIR)/lcov-kernel.info"

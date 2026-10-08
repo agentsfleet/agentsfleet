@@ -24,9 +24,9 @@
 #      that matches nothing exits 0, and "0 tests ran" is indistinguishable from
 #      "everything passed" by exit status alone — the retired lane learned this
 #      the expensive way (it ran green for a week against a dead port).
-#   3. `$(TEST_STATE_DEP)` — a gate run drops schemas and flushes Redis first,
-#      while `KEEP_TEST_STATE=1` keeps the inner loop fast. Same contract the
-#      Zig lane had; CI never sets the escape hatch.
+#   3. `$(TEST_STATE_DEP)` — a gate run drops schemas and flushes the Dragonfly
+#      cluster first, while `KEEP_TEST_STATE=1` keeps the inner loop fast. CI
+#      never sets that escape hatch.
 #   4. The three service knobs are NOT passed on the command line. `test-infra.mk`
 #      exports `TEST_DATABASE_URL`, `TEST_DRAGONFLY_URL` and `TEST_DRAGONFLY_CA_CERT`,
 #      and the suites read those names directly. This file used to resolve a URL
@@ -317,6 +317,10 @@ RUSTD_DAEMON_PACKAGES := agentsfleetd
 RUSTD_RUNNER_IN_DAEMON := integration_rust_runner::
 RUSTD_SHARDS := runner daemon substrate
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
+# Every report the floor is graded over: the shards, and the kernel lane's
+# (`test-coverage-runner-kernel`, make/test-unit.mk), which needs root and a
+# real kernel rather than datastores and so is not a shard.
+RUSTD_COVERAGE_REPORTS := $(RUSTD_SHARDS) kernel
 
 _RUSTD_COVER := cargo llvm-cov --no-report --all-features
 _rustd_packages = $(foreach package,$(1),-p $(package))
@@ -399,7 +403,7 @@ endif
 # this checkout, is refused rather than graded as a smaller lane.
 test-coverage-rustd-merge:  ## Grade the Rust line floor once over every shard's lcov report
 	@$(_RUSTD_COVERAGE_JUDGE) --revision "$$(git rev-parse HEAD)" --out $(RUSTD_DIR)/lcov.info \
-	  $(foreach shard,$(RUSTD_SHARDS),$(RUSTD_DIR)/lcov-$(shard).info)
+	  $(foreach report,$(RUSTD_COVERAGE_REPORTS),$(RUSTD_DIR)/lcov-$(report).info)
 
 # The shard names, for the workflow's matrix: the list lives here once.
 rustd-coverage-shards:  ## Print the Rust coverage lane's shard names
