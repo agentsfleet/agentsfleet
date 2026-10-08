@@ -58,6 +58,9 @@ runs:
       shell: bash
       run: bash scripts/toolbox/install-builder-tools.sh
 
+    # build.sh prints the image's path and nothing else on stdout, as the
+    # kernel lane's `make test-runner-kernel` reads it; the digest is read off
+    # that name by the same toolbox.sh the host deploy runs.
     - name: Build the image from the pinned manifest
       id: image
       shell: bash
@@ -66,18 +69,13 @@ runs:
       run: |
         set -euo pipefail
         out="$PWD/$OUTPUT_DIR"
-        sudo make toolbox-image TOOLBOX_DIR="$out"
+        image="$(sudo make --no-print-directory toolbox-image TOOLBOX_DIR="$out")"
         sudo chown -R "$(id -u):$(id -g)" "$out"
-        images=("$out"/toolbox-*.erofs)
-        if [ "${#images[@]}" -ne 1 ]; then
-          echo "FAIL: expected one image under $out, found ${#images[@]}" >&2
-          exit 1
-        fi
-        name="$(basename "${images[0]}")"
-        digest="${name#toolbox-}"
-        digest="${digest%.erofs}"
+        # shellcheck source=deploy/baremetal/toolbox.sh
+        source deploy/baremetal/toolbox.sh
+        digest="$(toolbox_digest_of "$image")"
         echo "digest=$digest" >> "$GITHUB_OUTPUT"
-        echo "✓ built toolbox-$digest.erofs ($(wc -c < "${images[0]}") bytes)"
+        echo "✓ built toolbox-$digest.erofs ($(wc -c < "$image") bytes)"
 
     # Pinned by version, and each download checked against the checksums file
     # its project publishes beside it, so a moved tag cannot change what runs.
@@ -205,8 +203,16 @@ runs:
         staging="$RUNNER_TEMP/bundle"
         mkdir -p "$staging"
         install -m 755 "$RUNNER_BINARY" "$staging/agentsfleet-runner-linux-amd64"
-        for suffix in erofs json json.sig sbom.spdx.json scan.json; do
-          cp "$OUTPUT_DIR/toolbox-$DIGEST.$suffix" "$staging/"
+        # The set the host's deploy.sh checks the unpacked bundle for, through
+        # the same toolbox_set_files, which also refuses a second image here.
+        # shellcheck source=deploy/baremetal/toolbox.sh
+        source deploy/baremetal/toolbox.sh
+        set_files="$(toolbox_set_files "$OUTPUT_DIR")"
+        while IFS= read -r file; do
+          cp "$file" "$staging/"
+        done <<<"$set_files"
+        for report in sbom.spdx.json scan.json; do
+          cp "$OUTPUT_DIR/toolbox-$DIGEST.$report" "$staging/"
         done
         cp "$OUTPUT_DIR/release.pub" "$staging/"
         mkdir -p "$(dirname "$BUNDLE")"

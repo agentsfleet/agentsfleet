@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Self-tests for the toolbox staging deploy.sh sources from toolbox.sh.
+# Self-tests for toolbox.sh: what one toolbox set is, and staging it.
 #
 #     bash deploy/baremetal/toolbox_test.sh
 #
-# Each case sources deploy.sh in a fresh subshell, as deploy_test.sh does: its
-# `readonly` constants can be assigned once per shell, and its `set -e` would
-# abort on the non-zero returns these cases assert on. Staging writes only
-# under this suite's scratch directory; every path is passed in.
+# toolbox.sh takes every path as an argument and only returns on a refusal, so
+# this suite sources it once and calls it directly. Staging writes only under
+# this suite's scratch directory.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
+# shellcheck source=./toolbox.sh
+source "$SCRIPT_DIR/toolbox.sh"
 
 passed=0
 failed=0
@@ -27,6 +27,8 @@ trap cleanup EXIT
 # Digest-shaped names for the fixtures; staging reads them, nothing hashes them.
 readonly FIXTURE_DIGEST="0000000000000000000000000000000000000000000000000000000000000001"
 readonly OLDER_DIGEST="0000000000000000000000000000000000000000000000000000000000000002"
+# The set the runner admits, spelled here rather than read from toolbox.sh, so
+# a suffix dropped there fails these cases instead of shrinking their fixtures.
 readonly TOOLBOX_PARTS=(erofs json json.sig)
 
 # A directory holding the toolbox set named `digest`, without `skip` if given.
@@ -38,16 +40,29 @@ toolbox_set() {
   done
 }
 
-# Sources deploy.sh and stages `src` into `incoming` with the real `install`,
-# not the stub, so the files land.
+# Stages `src` into `incoming`, quietly.
 stage_toolbox() {
-  local src="$1" incoming="$2"
-  (
-    # shellcheck source=./deploy.sh
-    source "$DEPLOY_SH" >/dev/null 2>&1
-    set +e
-    install_toolbox "$src" "$incoming" >/dev/null 2>&1
-  )
+  install_toolbox "$1" "$2" >/dev/null 2>&1
+}
+
+# The set's paths, image first, so the playbook copies and the action bundles
+# exactly what the host checks.
+test_toolbox_set_files_names_the_three_files_image_first() {
+  local name="test_toolbox_set_files_names_the_three_files_image_first"
+  local dir="$WORK_DIR/named" got want part
+  toolbox_set "$dir" "$FIXTURE_DIGEST"
+  got="$(toolbox_set_files "$dir" | tr '\n' ' ')"
+  want=""
+  for part in "${TOOLBOX_PARTS[@]}"; do
+    want+="$dir/toolbox-$FIXTURE_DIGEST.$part "
+  done
+  if [[ "$got" != "$want" ]]; then
+    bad "$name" "toolbox_set_files printed [$got], want [$want]"
+  elif toolbox_set_files "$WORK_DIR/no-such-dir" >/dev/null 2>&1; then
+    bad "$name" "a directory with no image passed"
+  else
+    ok "$name"
+  fi
 }
 
 # The staged set replaces the previous one whole, so the runner admits exactly
@@ -103,10 +118,8 @@ test_toolbox_storage_home_follows_the_env_file() {
   local configured="$WORK_DIR/configured.env" bare="$WORK_DIR/bare.env" set_home default_home
   printf 'AGENTSFLEET_API_URL=https://api.example.test\nRUNNER_STORAGE_HOME=/srv/runner\n' >"$configured"
   printf 'AGENTSFLEET_API_URL=https://api.example.test\n' >"$bare"
-  # shellcheck source=./deploy.sh
-  set_home="$(source "$DEPLOY_SH" >/dev/null 2>&1; storage_home "$configured")"
-  # shellcheck source=./deploy.sh
-  default_home="$(source "$DEPLOY_SH" >/dev/null 2>&1; storage_home "$bare")"
+  set_home="$(storage_home "$configured")"
+  default_home="$(storage_home "$bare")"
   if [[ "$set_home" != "/srv/runner" ]]; then
     bad "$name" "a configured home read as '$set_home'"
   elif [[ "$default_home" != "/var/lib/agentsfleet-runner" ]]; then
@@ -116,6 +129,7 @@ test_toolbox_storage_home_follows_the_env_file() {
   fi
 }
 
+test_toolbox_set_files_names_the_three_files_image_first
 test_toolbox_staging_replaces_the_previous_set
 test_toolbox_staging_refuses_an_incomplete_set
 test_toolbox_storage_home_follows_the_env_file

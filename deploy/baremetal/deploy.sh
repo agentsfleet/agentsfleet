@@ -46,8 +46,9 @@ fi
 
 readonly REPO="agentsfleet/agentsfleet"
 # The host's paths and the unit's name (layout.sh, which the runner playbook
-# reads too), the log line, staging the toolbox the runner admits at boot
-# (`install_toolbox`), and restarting and health-checking the unit
+# reads too), the log line, what a toolbox set is and how it is staged
+# (toolbox.sh, which the playbook reads too), and restarting and
+# health-checking the unit
 # (`restart_services`, `verify_healthy`), beside this file on the host as in
 # the repository.
 # shellcheck source=./layout.sh
@@ -242,8 +243,19 @@ sync_env() {
 check_deploy_inputs() {
   local binary="$1" toolbox_dir="$2" env_file="${3:-$HOST_ENV_FILE}"
   [[ -f "$binary" ]] || die "runner binary not found: $binary"
-  check_toolbox_set "$toolbox_dir"
+  toolbox_set_files "$toolbox_dir" >/dev/null \
+    || die "the toolbox under $toolbox_dir is not one complete set"
   check_env_file "$env_file"
+}
+
+# Stages the toolbox under `src` where the runner reads it at boot: under the
+# storage home the env file names, else the runner's default.
+stage_toolbox() {
+  local src="$1" incoming
+  incoming="$(storage_home "$HOST_ENV_FILE")/${TOOLBOX_INCOMING_SUBDIR}"
+  install_toolbox "$src" "$incoming" \
+    || die "could not stage the toolbox under $src into $incoming"
+  log "Staged toolbox → ${incoming}"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -285,7 +297,7 @@ main() {
 
   check_deploy_inputs "$binary" "$toolbox_dir"
   install_binary "$binary"
-  install_toolbox "$toolbox_dir"
+  stage_toolbox "$toolbox_dir"
   sync_systemd_unit
   sync_env
   restart_services "$SERVICE_NAME" "$DRAIN_TIMEOUT_SECONDS"

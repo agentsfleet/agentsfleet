@@ -5,16 +5,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./common.sh
 source "$SCRIPT_DIR/common.sh"
-# Where HOST_DEPLOY_FILES come from.
+# Where HOST_DEPLOY_FILES come from, toolbox.sh among them.
 HOST_DEPLOY_SOURCE_DIR="$(cd "$SCRIPT_DIR/../../../deploy/baremetal" && pwd)"
 readonly HOST_DEPLOY_SOURCE_DIR
 
-# The toolbox files a release or a lane build ships beside the binary: the
-# image named by its digest, the release manifest, and cosign's signature over
-# the manifest. The runner admits the three together and refuses leases without
-# them, so a deploy that lacks any of them stops here.
-readonly TOOLBOX_SUFFIXES=(erofs json json.sig)
-# Where they sit: a directory of this name beside RUNNER_BINARY, as every
+# What one toolbox set is (toolbox_set_files), as the host's deploy.sh checks
+# it. The runner admits the set's three files together and refuses leases
+# without them, so a deploy that lacks any of them stops here.
+# shellcheck source=../../../deploy/baremetal/toolbox.sh
+source "$HOST_DEPLOY_SOURCE_DIR/toolbox.sh"
+# Where the set sits: a directory of this name beside RUNNER_BINARY, as every
 # workflow that downloads the two lays them out.
 readonly TOOLBOX_DIR_NAME="toolbox"
 
@@ -33,31 +33,15 @@ validate_inputs() {
       return 2
       ;;
   esac
-  toolbox_files
-}
-
-# Resolves the one toolbox under RUNNER_TOOLBOX_DIR into TOOLBOX_DIGEST and
-# TOOLBOX_PATHS, refusing a directory with none, several, or a file short.
-toolbox_files() {
-  local images=("$RUNNER_TOOLBOX_DIR"/toolbox-*.erofs)
-  if [ "${#images[@]}" -ne 1 ] || [ ! -f "${images[0]}" ]; then
-    echo "ERROR: $RUNNER_TOOLBOX_DIR, beside the runner binary, must hold exactly one toolbox-<sha256>.erofs" >&2
+  local files file
+  files="$(toolbox_set_files "$RUNNER_TOOLBOX_DIR")" || {
+    echo "ERROR: $RUNNER_TOOLBOX_DIR, beside the runner binary, must hold one complete toolbox set" >&2
     return 1
-  fi
-  local name
-  name="$(basename "${images[0]}")"
-  TOOLBOX_DIGEST="${name#toolbox-}"
-  TOOLBOX_DIGEST="${TOOLBOX_DIGEST%.erofs}"
+  }
   TOOLBOX_PATHS=()
-  local suffix
-  for suffix in "${TOOLBOX_SUFFIXES[@]}"; do
-    local file="$RUNNER_TOOLBOX_DIR/toolbox-$TOOLBOX_DIGEST.$suffix"
-    [ -f "$file" ] || {
-      echo "ERROR: toolbox file missing: $file" >&2
-      return 1
-    }
+  while IFS= read -r file; do
     TOOLBOX_PATHS+=("$file")
-  done
+  done <<<"$files"
 }
 
 # Preparation creates the staging directories and hands HOST_ROOT to the
