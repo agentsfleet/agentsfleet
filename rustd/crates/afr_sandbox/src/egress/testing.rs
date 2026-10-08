@@ -43,7 +43,11 @@ pub(super) const NEWROUTE: u16 = libc::RTM_NEWROUTE;
 pub(super) const NEWTABLE: u16 = nftables(libc::NFT_MSG_NEWTABLE);
 pub(super) const GETTABLE: u16 = nftables(libc::NFT_MSG_GETTABLE);
 pub(super) const DELTABLE: u16 = nftables(libc::NFT_MSG_DELTABLE);
+pub(super) const NEWCHAIN: u16 = nftables(libc::NFT_MSG_NEWCHAIN);
 pub(super) const GETCHAIN: u16 = nftables(libc::NFT_MSG_GETCHAIN);
+pub(super) const NEWRULE: u16 = nftables(libc::NFT_MSG_NEWRULE);
+pub(super) const NEWSET: u16 = nftables(libc::NFT_MSG_NEWSET);
+pub(super) const NEWSETELEM: u16 = nftables(libc::NFT_MSG_NEWSETELEM);
 /// An `nf_tables` batch's two ends, which are answered by nothing.
 const BATCH: [u16; 2] = [
     u16_of(libc::NFNL_MSG_BATCH_BEGIN),

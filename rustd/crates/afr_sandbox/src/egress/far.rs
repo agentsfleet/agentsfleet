@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use super::kernel::{Host, Kernel as _};
-use super::slot::{LINK_PREFIX, Slot, TABLE_PREFIX};
+use super::slot::Slot;
 use super::{FORWARDING, IP_FORWARD, OWN_NAMESPACE, link, probe, rules};
 use crate::error::{Error, Result, egress_refused, netlink};
 use crate::network::Allowlist;
@@ -51,8 +51,7 @@ const PROBE_TRIAL_TABLE: &str = "afprobetrial";
 /// # Errors
 /// The kernel would not list them.
 pub fn objects() -> Result<Vec<String>> {
-    let tables = rules::names(&mut Host.netfilter()?, TABLE_PREFIX)?;
-    let links = link::names(&mut Host.route()?, LINK_PREFIX)?;
+    let (tables, links) = super::objects(&Host)?;
     Ok(tables.into_iter().chain(links).collect())
 }
 

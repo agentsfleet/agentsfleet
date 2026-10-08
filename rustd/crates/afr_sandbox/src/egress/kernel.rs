@@ -14,6 +14,7 @@ use netlink_sys::protocols::{NETLINK_NETFILTER, NETLINK_ROUTE};
 use rustix::thread::{LinkNameSpaceType, UnshareFlags};
 
 use super::netlink::{Netlink, Wire};
+use crate::error::{Result as SandboxResult, netlink};
 
 /// The network namespace of the calling thread, as a file another thread can
 /// join or a link can be moved into.
@@ -37,6 +38,35 @@ pub(crate) trait Kernel: Sync {
     /// # Errors
     /// The kernel refused the socket.
     fn netfilter(&self) -> io::Result<Netlink<Self::Wire>>;
+
+    /// `step` over a route conversation of its own, refused as `operation`
+    /// when the socket or the step is.
+    ///
+    /// # Errors
+    /// The kernel refused the socket, or `step` failed.
+    fn over_route<T>(
+        &self,
+        operation: &'static str,
+        step: impl FnOnce(&mut Netlink<Self::Wire>) -> io::Result<T>,
+    ) -> SandboxResult<T> {
+        self.route()
+            .and_then(|mut route| step(&mut route))
+            .map_err(netlink(operation))
+    }
+
+    /// [`Kernel::over_route`], over an `nf_tables` conversation.
+    ///
+    /// # Errors
+    /// The kernel refused the socket, or `step` failed.
+    fn over_netfilter<T>(
+        &self,
+        operation: &'static str,
+        step: impl FnOnce(&mut Netlink<Self::Wire>) -> io::Result<T>,
+    ) -> SandboxResult<T> {
+        self.netfilter()
+            .and_then(|mut netfilter| step(&mut netfilter))
+            .map_err(netlink(operation))
+    }
 
     /// Runs `step` on a thread of its own that has joined `netns`, so every
     /// socket `step` opens speaks to that namespace; the caller's thread never

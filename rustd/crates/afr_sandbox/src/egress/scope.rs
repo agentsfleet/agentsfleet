@@ -5,6 +5,8 @@
 //! the scope keeps that socket for its whole life: its removal goes through
 //! it, and if the runner dies first, closing it removes the table.
 
+use std::borrow::BorrowMut;
+use std::io;
 use std::os::fd::BorrowedFd;
 
 use afd_core::error_code::{Coded as _, Logged};
@@ -107,10 +109,7 @@ impl<W: Wire> Scope<W> {
     /// life, so no later scope meets what was left.
     pub(crate) fn remove<K: Kernel<Wire = W>>(mut self, kernel: &K) -> Result<()> {
         let slot = self.claim.slot();
-        let link = remove_link(kernel, slot);
-        let table =
-            rules::remove(&mut self.netfilter, &slot.table()).map_err(netlink(REMOVE_RULES));
-        match link.and(table) {
+        match remove_with(kernel, slot, || Ok(&mut self.netfilter)) {
             Ok(()) => Ok(()),
             Err(error) => {
                 let Logged { error_code, reason } = error.logged();
@@ -126,20 +125,26 @@ impl<W: Wire> Scope<W> {
 /// Removes whatever `slot` holds on the host that no live scope owns: its
 /// link, then its table — a leftover the boot sweep finds.
 pub(super) fn remove(kernel: &impl Kernel, slot: Slot) -> Result<()> {
-    let link = remove_link(kernel, slot);
-    let table = kernel
-        .netfilter()
-        .and_then(|mut netfilter| rules::remove(&mut netfilter, &slot.table()))
-        .map_err(netlink(REMOVE_RULES));
-    link.and(table)
+    remove_with(kernel, slot, || kernel.netfilter())
 }
 
-/// Removes `slot`'s link from the host.
-fn remove_link(kernel: &impl Kernel, slot: Slot) -> Result<()> {
-    kernel
-        .route()
-        .and_then(|mut route| link::remove(&mut route, &slot.link()))
-        .map_err(netlink(REMOVE_LINK))
+/// Removes `slot`'s link, then its table through the socket `netfilter`
+/// opens or hands back: a table is removed only through the socket that owns
+/// it, when one does. The link goes even when that socket will not open.
+fn remove_with<K, N>(
+    kernel: &K,
+    slot: Slot,
+    netfilter: impl FnOnce() -> io::Result<N>,
+) -> Result<()>
+where
+    K: Kernel,
+    N: BorrowMut<Netlink<K::Wire>>,
+{
+    let link = kernel.over_route(REMOVE_LINK, |route| link::remove(route, &slot.link()));
+    let table = netfilter()
+        .and_then(|mut netfilter| rules::remove(netfilter.borrow_mut(), &slot.table()))
+        .map_err(netlink(REMOVE_RULES));
+    link.and(table)
 }
 
 /// Logs a scope that could not be built: why, its slot when it had one, and
