@@ -22,21 +22,21 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — independent pilot artifacts
 **Branch:** feat/m216-jev-assertion-pilot
 **Baseline revision:** dd917b7ef42dcb883b5192fafe894060aab5845d
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — record commands, revision, environment and counts in the pilot report
+**Test Baseline:** unit=10613 integration=899 — unit comparison retains one failure
+**Baseline evidence:** pilots/jev-assertions/report.md
 **Depends on:** repository comparison baselines and boundary verification before the Pull Request
 **Provenance:** agent-generated from Indy's Oct 08, 2026 pilot instruction
 **Canonical architecture:** existing product architecture remains unchanged; this is an isolated contributor measurement
 
 ## Overview
 
-**Goal (testable):** Twenty frozen cases distinguish exact, weak, wrong_target, missing and insufficient assertions, and retain every approved Jev attempt in a usefulness report.
+**Goal (testable):** Twenty frozen cases distinguish exact, weak, wrong_target, missing and insufficient assertions, retain every approved Jev attempt, and accompany a verified orly 0.14.0 consumer pin.
 **Problem:** Passing tests can accept incorrect results; model advice has not been measured on this fresh `agentsfleet` sample.
 **Solution summary:** Copy four real behaviors into isolated pilot fixtures, establish expected classifications and executable counterexamples offline, then measure the existing `verify.assertion` question after one owner-approved upload and budget checkpoint. Keep all model results advisory. Retain the pilot IN_PROGRESS until its required measurements and evidence-backed recommendation exist.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** Measure Jev assertion advice on a frozen pilot
+- **PR title (eventual):** Measure Jev assertion advice and upgrade orly to 0.14.0
 - **Intent:** Give reviewers evidence about whether Jev helps identify inadequate assertions without changing product behavior or gate authority.
 - **Handshake:** Prepare offline first; submit exactly two ten-item manifests only after approval; keep seeded controls separate from real defects. ASSUMPTIONS I'M MAKING: four correlated behavior families are suitable for a small pilot; unavailable independent blinded reviews yield an explicitly unmeasured paired comparison.
 
@@ -51,6 +51,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Files Changed (blast radius)
 
 All paths below are relative to this repository. The pilot prefix is `pilots/jev-assertions/`; no production, catalog, threshold, hook or gate edits are authorized.
+Indy's subsequent overnight instruction also authorizes the managed engine pin update in this workstream.
 
 | File | Action | Why |
 |------|--------|-----|
@@ -67,6 +68,7 @@ All paths below are relative to this repository. The pilot prefix is `pilots/jev
 | `pilots/jev-assertions/receipts/{checks,offline-a,offline-b,live-a,live-b,replay-a,replay-b,summary}.json` | CREATE | Reproducible attempt and proof receipts |
 | `pilots/jev-assertions/receipts/{correct,faulty,runner-tests,conform,secret-scan}.txt` | CREATE | Raw local checking output |
 | `pilots/jev-assertions/receipts/review/` | CREATE | Repository-required review probe receipts and checkpoints; results stay in `report.md` |
+| `.orly/orly.json` | EDIT | Update the managed engine pin to published 0.14.0 through `orly update --no-hooks`. |
 | `pilots/jev-assertions/approval.json`, `receipts/reservations.json`, `reviews/{unaided,assisted}.json` | CREATE after corresponding real evidence exists | One actual approval, append-only request reservations and actual blinded reviews |
 
 Temporary proof copies and dependency installation outputs are disposable local runtime state, never committed. Existing `orly` replay files remain local private cache, not model inputs or deliverables.
@@ -128,6 +130,12 @@ After owner approval, invoke `orly judge verify --input <manifest> --refresh --j
 - **Dimension 3.2** — DONE — Findings, misses and false alarms separated by origin; original attempts and actual agent times retained → Test `test_comparison_metrics`; `report.md` and `receipts/summary.json`.
 - **Dimension 3.3** — DONE — Two fresh blinded agent sessions, sealed initial decisions and recommendation recorded; human time remains unmeasured → Test `test_measurement_completion` (manual); both review records and `receipts/review/blinded/`.
 
+### §4 — Authorized engine update
+
+**Status:** DONE — published 0.14.0 installed and the managed pin verified; the consumer Pull Request remains subject to boundary checks and Indy's review.
+
+- **Dimension 4.1** — DONE — The installed engine and managed pin equal 0.14.0; existing configuration and hooks survive the update → Test `test_orly_014_pin` (manual).
+
 ## Interfaces
 
 `python3 pilots/jev-assertions/pilot.py check|replay|live|summarize`
@@ -153,7 +161,7 @@ After owner approval, invoke `orly judge verify --input <manifest> --refresh --j
 2. Model inputs omit expected classes, justifications and review decisions: admission compares exact allowed manifest fields and fixture-only references.
 3. Total provider requests ≤20, including failed attempts: exclusive creation and locked append-only batch reservations; each batch is admitted once.
 4. Proposed ceiling is United States dollars (USD) 0.06 at the documented USD 0.042 per million input tokens, output free: reserve 65,536 input tokens per admitted request, giving a conservative twenty-request bound of USD 0.05505024. Approval must confirm pricing; unsupported pricing refuses live admission.
-5. Production preservation: diff paths are limited to this spec and pilot artifacts; faults execute only in temporary fixture copies.
+5. Production preservation: diff paths are limited to this spec, pilot artifacts and the authorized engine pin; faults execute only in temporary fixture copies.
 6. Native answers, uncertainty and availability remain distinct: summarize original receipt fields and retain unmeasured usage without zero substitution.
 
 ## Metrics & Observability
@@ -173,6 +181,7 @@ No product or operator analytics change. Local pilot receipts retain native comm
 | 3.1 | unit | `test_attempt_accounting` | Failed or withheld native answer → retained attempt, unknown usage preserved |
 | 3.2 | unit | `test_comparison_metrics` | Known seeded answers and absent independent reviews → truthful counters and unmeasured paired gain |
 | 3.3 | manual | `test_measurement_completion` | Two sealed independent agent records → complete paired counts and actual monotonic timing; no human or causal time-saving claim |
+| 4.1 | manual | `test_orly_014_pin` | Published 0.14.0 install, `orly doctor` and `bash scripts/check_orly_pin.sh` → matching engine/pin, current managed files and preserved commands, surfaces and hooks |
 
 Regression scope: product behavior, source tests, catalog, confidence threshold, hooks and gates receive no diff. At least half of runner checks exercise refusal, failed attempts or contamination. No performance or concurrency claim is made about product code.
 
@@ -183,7 +192,7 @@ Regression scope: product behavior, source tests, catalog, confidence threshold,
 | R1 | Frozen cases and executable controls | `python3 pilots/jev-assertions/pilot.py check` | exit 0; 20 correct passes; 8 fault rejections and 12 surviving deliberately inadequate assertions | P0 | PASS: `receipts/checks.json`; strong hidden helpers explain four rejections |
 | R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; no provider request | P0 | PASS: 25 tests; fresh output in `receipts/review/blinded/.qa-evidence/006/stderr` |
 | R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | PASS: 20 complete live attempts; replay requests 0; paired status measured, `receipts/summary.json` |
-| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; spec remains active until required boundary evidence exists | P0 | PASS: pilot prefix and active spec only; IN_PROGRESS retained for pending repository checks |
+| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; spec remains active until required boundary evidence exists | P0 | PASS: pilot prefix, active spec and authorized engine pin; IN_PROGRESS retained for pending repository checks |
 | S1 | Conform | `make harness-verify` | exit 0 | P0 | PASS: 50 source files, zero literal violations; `receipts/conform.txt` |
 | S2 | Unit boundary | `make test-unit-all` | exit 0 at PR boundary | P0 | |
 | S3 | Lint boundary | `make lint-all` | exit 0 at PR boundary | P0 | |
@@ -220,7 +229,7 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 - **Chosen shape:** Offline evidence, authorized measurement and truthful reporting are separate dependency-ordered Sections.
 - **Alternatives considered:** Direct custom provider integration duplicates the pinned command and its scanner; manual batch execution cannot enforce a cross-run request ceiling.
 - **Patch-vs-refactor verdict:** A pilot addition is sufficient. Quality ceiling: a larger evaluator cannot create independent reviewers or enlarge this approved sample; no product refactor is justified.
-- **Surface-area checklist:** OpenAPI no; product command-line interface no; user docs no; release/version no; schema/removal no; rule conflict no. Each remains outside the pilot-only diff.
+- **Surface-area checklist:** OpenAPI no; product command-line interface no; user docs no; engine version yes, product version no; schema/removal no; rule conflict no. The explicit consumer pin update accompanies the pilot.
 
 ## Discovery (consult log)
 
@@ -235,4 +244,7 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 - **Paired results:** `pilot.py summarize`: both agents classify 20/20 correctly and find 12/12 seeded weaknesses; misses and false alarms are zero. Unaided elapsed time is 258.305690044 seconds; assisted is 229.249124959 seconds. Different reviewers and orders prevent causal attribution; human active-review time remains unmeasured.
 - **Fixture repair approval:** Indy: "Yes — fix fixture isolation and rerun the checks." — `pilot_test.py` disposable copies now omit the two real review records, alongside omitted receipts. The unchanged suite first failed twice, then passed all 25 checks after repair. Original reviews and approval remain unchanged; the original runner digest identifies historical provider attempts.
 - **Recommendation:** Keep experimental advice; paired finding gain is zero. The observed agent-time difference does not establish human savings or justify adoption. The pilot remains IN_PROGRESS for repository baselines and boundary checks. No newly confirmed production defect, threshold change or gate integration follows.
+- **Overnight scope:** Indy: "in agentsfleet - prune merged, pull origin main, and update orly to 0.14, verify and push the PR, ensure the CI job is green, all greptile commits are resolved and we are good to go fater an eye ball from Indy". Fold the pin into this stream; leave its Pull Request unmerged for Indy. The earlier read-only `orly` restriction described pilot preparation; the later release instruction authorizes the separate engine publication.
+- **Comparison baseline:** Exact `dd917b7ef42dcb883b5192fafe894060aab5845d`, isolated checkout and owned datastore project: unit 10613 passed / 1 failed, Rust 924 ignored, command-line 16 skipped; integration 899 passed / 0 failed. Both failed unit attempts remain recorded. A focused clipboard rerun passes all seven tests; final full verification must still pass. Evidence: `receipts/review/boundary-baseline.json` and `report.md`.
+- **Consumer update:** `bun install -g @agentsfleet/orly@0.14.0 --registry=https://registry.npmjs.org --no-cache` installs 0.14.0. The public tarball hash matches the successful release log. `orly update --no-hooks` writes one file, with 70 already current; parsed configuration differs only in its engine version. `orly doctor` and `scripts/check_orly_pin.sh` pass.
 - **Deferrals:** None. Human time remains unmeasured; no human experiment was performed. The approved request allowance is exhausted; no retries or additional provider calls are authorized by the pilot approval.
