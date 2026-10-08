@@ -1,0 +1,15 @@
+{
+  "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+  "batches": [
+    {
+      "batch": "a",
+      "request_cap": 10,
+      "conservative_usd": "0.02752512"
+    },
+    {
+      "batch": "b",
+      "request_cap": 10,
+      "conservative_usd": "0.02752512"
+    }
+  ]
+}

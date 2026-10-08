@@ -1,12 +1,18 @@
 # Jev assertion pilot results
 
-**Status: IN_PROGRESS.** Offline controls demonstrate measurable assertion
-weaknesses; Jev usefulness and independent reviewer benefit are unmeasured.
-Keep advice experimental until the approved measurements exist.
+**Recommendation: keep Jev experimental and advisory.** Its native answers
+identified every seeded inadequate assertion, while the existing confidence
+handling surfaced seven of twelve. Independent reviewer benefit and review
+time remain **unmeasured**; this evidence does not justify adoption or a gate.
+Adoption remains Kishore's separate decision.
+
+**Overall status: IN_PROGRESS.** The approved model measurement is complete.
+Separate blinded reviewer sessions are unavailable, and repository-wide checks
+and comparison baselines remain due before a Pull Request.
 
 Source revision: `dd917b7ef42dcb883b5192fafe894060aab5845d`.
 Frozen input digest: `7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa`.
-Approved runner digest to propose: `4d0644fd93a46bac785f5282392310f24634092bd4843a9189acd1b02875f9e8`.
+Approved runner digest: `4d0644fd93a46bac785f5282392310f24634092bd4843a9189acd1b02875f9e8`.
 The [spec](../../docs/v2/active/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md),
 [case ledger](cases.json) and [freeze inventory](freeze.json) bind scope,
 requirements, original source hashes, evidence references and expected labels.
@@ -14,11 +20,11 @@ The [protocol](README.md) specifies checking and separate blinded review session
 
 ## Frozen cases and executable controls
 
-Each behavior contributes one case of every existing class. Original production
-tests informed the requirement and exact control; pilot tests are adaptations,
-with full implementations and necessary copied helpers. Listed import and named-constant adaptations preserve the copied behavior. Expected labels and
-justifications were frozen before advice. Earlier `orly` evaluation fixtures
-were not consulted; this is a fresh source-derived sample.
+Each behavior contributes one case of every existing class. The
+[ledger](cases.json) preregisters requirements, expected labels, justifications,
+source hashes and adaptations before advice. Selected implementations and
+helpers are complete except deliberate insufficient-case omissions. Earlier
+`orly` evaluation fixtures were not consulted.
 
 | Behavior | exact | weak | wrong_target | missing | insufficient | Correct → deliberate fault |
 |---|---|---|---|---|---|---|
@@ -27,12 +33,10 @@ were not consulted; this is a fresh source-derived sample.
 | Relative-time boundary | p02 | p11 | p19 | p15 | p08 | `5 seconds ago` → `just now` |
 | Elapsed-time rounding | p13 | p07 | p04 | p18 | p20 | `1m 0s` → `59s` |
 
-Original implementation/test paths and selected test names are recorded per
-family in [cases.json](cases.json). Source-derived exact controls account for
-four cases; sixteen are seeded controls. Twelve assertions deliberately fail
-to reject their family fault. Four insufficient inputs omit their exact
-assertion helper while local execution still includes it. None is a newly
-confirmed production defect.
+The ledger records original implementation/test paths and selected test names.
+There are four source-derived exact controls and sixteen seeded controls:
+twelve inadequate assertions and four omitted-helper inputs. Local execution
+still includes those strong helpers. None is a newly confirmed production defect.
 
 `python3 pilots/jev-assertions/pilot.py check` produced **20 correct passes,
 8 fault rejections and 12 faulty passes**, with **0 provider requests**:
@@ -41,45 +45,71 @@ confirmed production defect.
 the other four come from the hidden insufficient-case helpers. These omissions
 affect classification evidence, not local test quality.
 
-CopyButton's exact assertion rejects copying `Copy workspace ID` instead of the
-supplied value. Identifier (ID) remains abbreviated in this literal source
-label. The p01 weak assertion checks only that `writeText` was called once, so
-the wrong copied value passes. The original selected test checks the exact
-value; this is a seeded demonstration, not a production defect finding.
+CopyButton's exact test rejects copying the button label instead of the supplied
+value. The p01 weak assertion checks only that `writeText` was called once, so
+that incorrect value passes. The original selected test checks the exact value.
 
 ## Advice and review measurements
 
-Both manifests contain ten items, with two of each expected class. The exact
-offline commands returned native exit 2 and ten unavailable replay results
-each, requests 0: [batch a](receipts/offline-a.json),
-[batch b](receipts/offline-b.json). The runner's exit 0 means receipt collection,
-not available advice. No refresh or provider call has occurred.
+`pilot.py summarize` produced the following totals from the retained
+[live batch a](receipts/live-a.json), [live batch b](receipts/live-b.json) and
+[summary](receipts/summary.json). Both native commands exited 0 with ten requests
+and ten complete answers. All twenty attempts remain in the totals; failed and
+unavailable attempts were zero. The two original offline cache misses remain
+in [offline-a](receipts/offline-a.json) and [offline-b](receipts/offline-b.json).
+Subsequent exact [replay-a](receipts/replay-a.json) and
+[replay-b](receipts/replay-b.json) each returned ten complete answers and zero
+requests; replay usage is never added to live spending.
 
-| Measurement | Observed so far | Evidence / limit |
+| Measurement | Native Jev answer | Existing confidence handling |
 |---|---|---|
-| Native answers; confidence withholding | Unmeasured | No live advice; offline replay absent |
-| Confirmed findings, misses, false alarms | Unmeasured for Jev | Keep twelve seeded weaknesses in the eventual denominator |
-| Independent unaided versus assisted review | Unmeasured | Separate blinded sessions unavailable |
-| Reviewer time | Unmeasured | Author inspection untimed and knows labels |
-| Provider requests / reservations | 0 / 0 | Offline receipts and [summary](receipts/summary.json) |
-| Input/output tokens and cost | No live usage; zero known spending | Pending slots are not failed requests or zero-token replies |
-| Seeded versus real defects | Four exact controls, sixteen seeded controls; no confirmed real defect | Preregistered ledger and executable proof |
+| Exact classification agreement | 14/20 | Three matching answers withheld for low strength |
+| Confirmed seeded weaknesses | 12/12 | 7/12 actionable concerns; five withheld |
+| Missed seeded weaknesses | 0/12 | Five produce inspection rather than a repair suggestion |
+| False alarms | 3/8 adequate or omitted-context controls | All three withheld; zero actionable false alarms |
+| Missing-context classification | 0/4 `insufficient` answers | All four low strength and require inspection |
+| Withholding | Nine answers below 0.8 | Native class retained separately |
+| Independent reviewer findings and time | Unmeasured | Separate blinded sessions unavailable |
 
-The [frozen author inspection](reviews/unaided-author.json) explicitly records
-`independent: false`, `blinded: false`, `advice_seen: false`, and unknown review
-time. It cannot demonstrate reviewer improvement. If independent sessions
-remain unavailable, the final report must leave their comparison unmeasured.
-The [summary](receipts/summary.json) retains twenty pending slots; its zero
-native counters express absent data, not accuracy or absence of false alarms.
+Confirmed findings mean a native `weak`, `wrong_target` or `missing` answer on
+one of the twelve known inadequate assertions. Subclass mistakes still confirm
+inadequacy. False alarms use that same positive rule on exact or insufficient
+inputs. This distinguishes label agreement from finding detection. Strength is
+the minimum of answer confidence and chosen-class probability; the existing
+0.8 threshold and question were unchanged. No native answer was `insufficient`.
 
-For actual attempts, report exact-label agreement separately from inadequate
-assertion detection and from concerns withheld by confidence. Confirmed finding
-recall uses all twelve seeded inadequate cases; unavailable results remain in
-that denominator. Inspect native `insufficient` separately from low strength.
-Pair reviewer findings and active review seconds by case, and retain failure,
-request count, model elapsed time, input/output tokens and unknown costs.
-Reviewer finding decisions are counted independently of their classifications;
-their classification agreement cannot silently replace their finding decision.
+Per-class agreement was exact 4/4, weak 4/4, wrong_target 2/4, missing 4/4 and
+insufficient 0/4. Jev called p14 and p19 `missing` instead of `wrong_target`.
+It called omitted-helper cases p03, p08 and p20 `weak`, and p16 `exact`.
+All six classification errors had low strength. CopyButton's weak p01 was
+correctly classified `weak` at strength 0.33 and withheld; exact p12 was `exact`
+at strength 1. All four wrong-target controls were withheld.
+
+| Origin | Cases | Matching labels | Native findings | Native false alarms | Actionable findings |
+|---|---|---|---|---|---|
+| Source-derived exact controls | 4 | 4 | 0 | 0 | 0 |
+| Seeded controls | 16 | 10 | 12 | 3 | 7 |
+| Newly confirmed production defects | 0 | N/A | 0 | N/A | 0 |
+
+The [frozen author inspection](reviews/unaided-author.json) predates advice and
+records no independence, blinding or timing. The
+[protocol](README.md#review-protocol) specifies separate blinded sessions and
+paired decisions/time. Those sessions are absent; author expectations and the
+code-audit agent cannot establish reviewer findings, misses, false alarms or
+time savings. Their comparison remains unmeasured.
+
+## Requests, usage and cost
+
+The live receipts and `pilot.py summarize` report **20/20 requests and
+reservations**, zero unreconciled reservations, **51,813 input tokens** and
+**1,122 output tokens**, with zero unknown-usage slots. Calculated spending is
+**United States dollars (USD) 0.002176146**, using the confirmed tariff; it is
+not an invoice reconciliation. No retries or extra planning-model calls ran.
+The conservative reserved bound was USD 0.05505024 against the USD 0.06 ceiling.
+
+Summing live `elapsedMs` fields gives **6.471 seconds**; their median is
+**311.104 milliseconds**, with a 283.909–442.053 millisecond range. These are
+provider-attempt timings, not reviewer time or complete command runtime.
 
 ## Approval checkpoint
 
@@ -100,95 +130,86 @@ expected labels, justifications, reviews, reports, spec and runner are outside
 model inputs. Copy helpers remain complete; ordinary dependency packages are
 named by imports and use the installed source workspace stack.
 
-Proposed approval: **at most 20 provider requests total, no retries or extra
-planning-model calls, and United States dollars (USD) 0.06**. The official
-[Jev 1.13.0 model table](https://docs.typesafe.ai/models), checked for this
-preparation, lists USD 0.042 per million input tokens, free output and a 64k
-context limit. Reserving 65,536 input tokens for each request bounds twenty
-requests at USD 0.05505024 under that tariff. Verify the current tariff and
-context limit again before admission.
+Kishore approved the frozen scope and budget with **"okay approved"**, recorded
+in [approval.json](approval.json). The official
+[Jev 1.13.0 model table](https://docs.typesafe.ai/models), reconfirmed at
+`2026-10-08T13:21:11.785254+00:00`, lists USD 0.042 per million input tokens,
+free output and a 64k context limit. Reserving 65,536 input tokens per request
+bounded twenty requests at USD 0.05505024. Approval allowed at most twenty
+requests including failures, USD 0.06, no retries and no extra planning calls.
 
 The [runner](pilot_measure.py) locks and persists ten-request reservations
 before each batch, checks frozen bytes and its own approved digest, refuses
 duplicate launches, and keeps failed/crashed reservations spent. Failed or
 unavailable token usage remains unknown. The request ceiling is locally
 enforced; the dollar bound depends on the confirmed provider tariff/context
-limit. A provider account dollar cap has not been verified. No approval record
-or live reservation exists yet.
+limit. A provider account dollar cap has not been verified. Both admitted
+batches are retained in [reservations.json](receipts/reservations.json); the
+approved request allowance is exhausted. Direct refresh or deleting the ledger
+would bypass local enforcement and is outside this approval.
 
 ## Verification and limitations
 
-`python3 pilots/jev-assertions/pilot_test.py` ran **25 checks, all passing**:
-[raw output](receipts/runner-tests.txt). The checks exercise changed evidence,
-label leakage, path escape, missing approval, stale pricing, changed engine,
-concurrent/duplicate reservation, corrupt accounting, failed attempts, native
-classification versus withholding, mismatched receipts, review contamination
-and owned-process timeout cleanup. Synthetic model replies are unit-test
-inputs only and never enter actual attempt receipts.
+`python3 pilots/jev-assertions/pilot_test.py` ran **25 checks, all passing**
+([output](receipts/runner-tests.txt)), covering admission, frozen evidence,
+accounting, failures, process cleanup and contaminated reviews. Synthetic replies
+exist only in isolated unit tests. Runner bytes and frozen proof inputs remain
+unchanged since the offline commit; no redundant proof run was needed.
 
 `ruff check pilots/jev-assertions/*.py` returned `All checks passed!`.
 Executable proofs used Node v26.9.0, Vitest 5.0.3 and jsdom 30.1.2. Initial Bun
-runs failed jsdom EventTarget worker setup and executed no tests; the checker
-refused those runs. Using the framework's Node runtime corrected setup without
-changing frozen case bytes or production files.
+worker setup failed before tests ran; the checker refused those runs. Node
+corrected setup without a production change.
 
 `make harness-verify` returned `ALL GATES GREEN`: 50 source files had zero
 literal violations and the milestone/interface check had zero hits
 ([raw output](receipts/conform.txt)). `make check-version` returned
 `all versions match 0.58.0`. `gitleaks protect --staged --redact --no-banner`
-reported `no leaks found` ([scan output](receipts/secret-scan.txt)). An earlier
-conformance attempt exceeded 120 seconds; the subsequent completed audit is
-recorded in the same receipt. Native code review found four pilot-runner issues:
-malformed replies prevented receipts, error handling discarded native evidence,
-paired metrics ignored finding decisions, and summaries accepted corrupt
-reservation totals. Repairs retain raw output and validated native answers,
-count findings separately, and validate ledgers in both admission and summary.
-The corresponding checks are `test_malformed_output_retains_attempt_receipt`,
-`test_unexpected_exit_retains_valid_native_answers`,
-`test_review_findings_are_separate_from_classifications`, and
-`test_summary_rejects_corrupt_reservation_totals` in [pilot_test.py](pilot_test.py).
-This code audit is separate from independent blinded pilot reviews.
-Outside review-model calls were skipped under the explicit spending checkpoint.
-The declared full
-unit, lint and isolated datastore integration lanes, comparison baselines and
-test delta remain due before the Pull Request. Focused pilot checks do not
-establish a repository-wide test result. No architecture document changes are
-needed: the pilot adds local contributor artifacts and defines no product
-service, storage namespace or production path. No product release or changelog
-claim is made.
+reported `no leaks found` ([scan output](receipts/secret-scan.txt)). The receipt
+retains an initial conformance timeout and completed audit. Pre-advice code
+review repaired four accounting/evidence issues with regression checks in
+[pilot_test.py](pilot_test.py). Outside review-model calls were skipped under
+the spending restriction; native code audits are separate from blinded reviews.
+Full unit/lint/datastore integration lanes, baselines and test delta remain due
+before a Pull Request. These Section checks establish no repository-wide result.
+The diff adds only contributor pilot artifacts; product behavior, architecture,
+version, question catalog, threshold, hooks and gates are preserved.
 
-This sample has only four correlated families, deliberately balanced labels,
-seeded assertion variants and omitted-context controls. It cannot estimate
-production defect prevalence. Model agreement alone cannot prove reviewer
-usefulness. Unknown costs, unavailable advice and missing independent sessions
-must remain visible. The provisional freeze preceded conformance; its
-digest `fd9042b935f01efe5aeff155c8efbedf656177bf80bda060094615b08e62ee5f`
-was superseded solely for named-constant repairs, recorded provenance and an
-import-order correction in p16,
-before any Jev answer. Requirements, labels and justifications did not change.
-The final inventory above binds the proposed upload. The spec stays IN_PROGRESS until actual measurements and
-an evidence-supported recommendation are recorded; adoption remains Kishore's
-separate decision.
+Four correlated families and deliberately balanced seeded variants cannot
+estimate production defect prevalence or calibrate the confidence threshold.
+The provisional freeze was corrected for named constants and p16 import order
+before advice; the spec records that history. Requirements, labels and
+justifications stayed fixed. `verify_freeze()` still returns the registered
+digest; cases and runner bytes never changed after advice. Missing-context
+errors and absent independent reviews prevent a claim of reviewer improvement.
 
-## Exploratory quality assurance (QA) and verification results
+Quality assurance (QA) uses the repository-required functional review route.
 
-The functional runner probes have verdict **pass**, with no open checks:
-[derived evidence](receipts/review/evidence.json),
-[scope and expected behavior](receipts/review/charter.md).
-They ran in the owned worktree at opening commit `5172e8579`, before the focused
-pilot commit. The recorder uses Bun 1.4.2; executable fixture checks use Node.
-The first 21-check probe and earlier missing-approval probe are retained as
-superseded. Current evidence proves 25 runner checks, the 20/8/12 controls,
-zero-request offline replay, twenty pending summary slots and refusal of live
-execution without approval. Synthetic provider replies stay in temporary unit
-tests. Required repair checks used finite deadlines after the original
-five-minute exploration budget expired; that original budget was not reset.
+## Exploratory QA and Verification Results
 
-The recorded progression is [checkpoint 002](receipts/review/exploration-002.json),
+| Field | Current evidence |
+|---|---|
+| Revision / inputs | `908d3cde491` plus actual approval and live receipts; registered input and runner digests unchanged |
+| Scope / authority | Local accounting and replay; repository-required review, pilot-only writes |
+| Runtime / tools | Python 3, `orly` 0.13.0, Bun 1.4.2 evidence recorder |
+| Isolation / bound | Owned worktree and private cache; five-minute window, three probes, 635 milliseconds command time |
+| Outcome | **pass**, no open checks: [derived evidence](receipts/review/live/evidence.json), [charter](receipts/review/live/charter.md) |
+
+| Check | Expected → observed | Outcome |
+|---|---|---|
+| `pilot.py summarize` | Twenty actual attempts; findings/withholding distinct; paired review unmeasured → matched | pass |
+| `pilot.py replay` | Twenty exact cached answers; zero requests → matched live answers, assessments and usage | pass |
+| Resummarize after replay | No double-counted usage → totals unchanged | pass |
+
+[Checkpoint 002](receipts/review/live/exploration-002.json) schedules replay;
+[checkpoint 003](receipts/review/live/exploration-003.json) checks its accounting
+effect. Earlier [offline evidence](receipts/review/evidence.json) retains
+[002](receipts/review/exploration-002.json),
 [003](receipts/review/exploration-003.json),
 [004](receipts/review/exploration-004.json),
 [005](receipts/review/exploration-005.json),
-[006](receipts/review/exploration-006.json), and
-[007](receipts/review/exploration-007.json).
-Coverage excludes provider availability, independent reviewer benefit and
-repository-wide boundary checks. No browser or production service was changed.
+[006](receipts/review/exploration-006.json) and
+[007](receipts/review/exploration-007.json) as history; pre-live pending summaries
+are not current advice evidence. Independent reviews and repository-wide suites
+remain unmeasured/pending. No new tests or operating-rule learnings arose from
+these receipt checks; owned subprocesses exited and private replay state remains local.
