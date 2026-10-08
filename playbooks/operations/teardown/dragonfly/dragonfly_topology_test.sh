@@ -2,13 +2,14 @@
 #
 # Guards the two things in the Dragonfly teardown that a human acts on.
 #
-# It deliberately does NOT pin Dragonfly key names against the Zig constants. The
-# teardown is `FLUSHALL` (02_teardown.sh) and the verification is `DBSIZE == 0`
-# (03_verify.sh) — both name-blind, so no key name is load-bearing for either
-# step. Ten assertions used to pin `fleet:ready`, `connector:outbound` and the
-# rest against queue/constants.zig; they proved only that descriptive prose
-# matched a constant, went red on a reformat, and taxed every rename without
-# preventing any failure. Do not add them back.
+# It deliberately does NOT pin Dragonfly key names against the daemon's
+# constants (`rustd/crates/afd_dragonfly`, e.g. `OUTBOUND_STREAM_KEY` in
+# outbound.rs). The teardown is `FLUSHALL` (02_teardown.sh) and the
+# verification is `DBSIZE == 0` (03_verify.sh) — both name-blind, so no key
+# name is load-bearing for either step. Pinning `fleet:ready`,
+# `connector:outbound` and the rest would prove only that descriptive prose
+# matched a constant, go red on a reformat, and tax every rename without
+# preventing any failure. Do not add such assertions.
 #
 # What remains is prose an operator EXECUTES, which is why pinning it is a real
 # test: the restart instruction (a flush destroys the `fleet_lease` consumer

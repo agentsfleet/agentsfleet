@@ -11,36 +11,26 @@ description = "Merged allowlist — build artifacts, deterministic test fixtures
 paths = [
   # Generated Next.js build artifacts
   '''(^|/)app/\.next/.*''',
-  # Zig test files (deterministic fixtures, not real credentials)
-  '''(^|/).*_test\.zig$''',
-  # Shared test-fixture helpers (deterministic seeds, not real credentials).
-  # Both files went with the Zig daemon, but a full-history scan still reads the
-  # blobs, so the entries stay: removing them surfaced 21 findings from history.
-  '''(^|/)test_fixtures\.zig$''',
-  # Centralized persona auth fixtures — deterministic offline test JWTs, minted
-  # against a throwaway committed test key by a script retired with the tree.
-  '''(^|/)test_scope_tokens\.zig$''',
-  # Zig build/cache directories
+  # Repository scratch directory (gitignored): make targets write throwaway
+  # test certificates and bench artifacts there.
   '''(^|/)\.tmp/''',
-  '''(^|/)zig-cache/''',
-  '''(^|/)\.zig-cache/''',
-  '''(^|/)zig-out/''',
-  '''(^|/)\.tmp/zig-global-cache/''',
-  # Vendored pg.zig upstream test suite (vendor/pg/tests/) — pg.zig's own TLS
-  # fixtures (client.key/crt, root.crt). Not in our build graph: the pg module
-  # roots at vendor/pg/src/pg.zig. Kept byte-identical to upstream rather than
-  # deleted, so allowlist its real-but-unused test PEM.
+  # These match files that exist only in git history, which `gitleaks detect`
+  # scans commit by commit: deterministic test fixtures and offline test JSON
+  # Web Tokens (JWTs), never real credentials, plus a vendored Postgres
+  # client's upstream Transport Layer Security (TLS) test key and the
+  # "SCRAM-SHA-256" mechanism string its Simple Authentication and Security
+  # Layer (SASL) handshake advertises. Dropping them surfaces 114 findings.
+  '''(^|/).*_test\.zig$''',
+  '''(^|/)test_fixtures\.zig$''',
+  '''(^|/)test_scope_tokens\.zig$''',
   '''(^|/)vendor/pg/tests/.*''',
-  # Vendored pg.zig SASL handshake — line 39 advertises the "SCRAM-SHA-256"
-  # mechanism string (eqlIgnoreCase compare), not a credential. False positive.
   '''(^|/)vendor/pg/src/proto/authentication_request\.zig$''',
 ]
 regexTarget = "match"
 regexes = [
   # Pre-M104 test JWTs (kid=rbac-test-kid) still present in git HISTORY — gitleaks
-  # `detect` scans every commit, not just the working tree. The live tree mints
-  # kid=test-kid-static (allowlisted via test_scope_tokens.zig / *_test.zig paths),
-  # but these old-path fixtures persist in history. Deterministic, not real creds.
+  # `detect` scans every commit, not just the working tree, and these fixtures
+  # persist there. Deterministic, not real creds.
   # Do NOT remove based on a working-tree-only grep — history still trips it.
   '''eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ\..*''',
   # UZ-* error codes in structured log messages (false positive: generic-api-key)

@@ -171,8 +171,8 @@ QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QS
 # The names the live-scheduler tests read. Exported here beside the datastore
 # URLs for their reason: the suites read these names directly rather than a lane
 # resolving them into a fourth spelling. `make/test-integration.mk` exported the
-# same two before M175 §6 deleted it with the Zig gating, and nothing re-exported
-# them afterwards -- which is why the Rust port's schedule sync had "no QStash
+# same two before M175 §6 deleted it, and nothing re-exported them afterwards
+# -- which is why the Rust port's schedule sync had "no QStash
 # fake" recorded against it while the compose service was up the whole time.
 AGENTSFLEET_QSTASH_LIVE_URL ?= $(QSTASH_DEV_URL_LOCAL)
 AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(QSTASH_DEV_TOKEN_LOCAL)

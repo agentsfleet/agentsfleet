@@ -1,15 +1,12 @@
 // The model catalogue, read from `GET /v1/models`.
 //
-// This is the CLI's ONLY answer to "which providers and models exist". It used
-// to carry `constants/providers.ts`, a 116-entry hand-copy of NullClaw's
-// `classifyProvider` tables, and the dashboard answered the same question from
-// `core.model_library` — two surfaces, two lists, and a parity test whose whole
-// job was to notice they had diverged. A test that watches a copy drift is not
-// a fix for the copy.
+// This is the CLI's ONLY answer to "which providers and models exist". A
+// hand-kept provider list here would be a second list beside the dashboard's,
+// and a test that watches a copy drift is not a fix for the copy.
 //
-// So the copy is gone. `AddModelEntryDialog.tsx` derives its provider dropdown
-// from `uniqueProviders(models)` over this same endpoint; the CLI now derives
-// the accepted `--provider` set the same way, from the same bytes. A provider
+// `AddModelEntryDialog.tsx` derives its provider dropdown from
+// `uniqueProviders(models)` over this same endpoint; the CLI derives the
+// accepted `--provider` set the same way, from the same bytes. A provider
 // reaches both surfaces by being seeded into the catalogue
 // (scripts/model-library-allowlist.json → the model_catalogue playbook), never
 // by editing TypeScript.
@@ -24,7 +21,7 @@ import { OPENAI_COMPATIBLE_PROVIDER } from "../constants/custom-endpoint.ts";
 import { ValidationError, type CliError } from "../errors/index.ts";
 import type { Redacted } from "effect/Redacted";
 
-/** One priced catalogue row. Mirrors the wire shape in handlers/model_library_page.zig. */
+/** One priced catalogue row. Mirrors `CatalogueModel` in rustd/crates/afd_api_wire/src/models.rs. */
 export interface LibraryModel {
   readonly id?: string;
   readonly provider?: string;
@@ -117,9 +114,11 @@ const acceptedProviders = (
 ): ReadonlyArray<string> => [...catalogueProviders(models), OPENAI_COMPATIBLE_PROVIDER];
 
 /**
- * Names NullClaw dials by spawning a local coding-agent binary. They carry no
- * API key, so they are deliberately absent from the catalogue and always will
- * be — the allowlist does not carry them.
+ * Names of coding-agent CLIs that run as a local binary rather than answer
+ * over HTTPS. They carry no API key, so they are deliberately absent from the
+ * catalogue and always will be — the allowlist does not carry them, and the
+ * runner's provider table (rustd/crates/afr_providers/src/registry.rs) has no
+ * entry to dial them by.
  *
  * This is NOT a provider list and never widens or narrows what is accepted: it
  * only replaces "not in this server's catalogue" with the actual reason for the
@@ -146,8 +145,10 @@ const isCliEngine = (provider: string): boolean =>
 const LIST_SEPARATOR = ", ";
 
 // Absent from the catalogue means UNPRICED, not unreachable. Most of these
-// names are dialable — NullClaw's compat table carries ~100 endpoints the
-// catalogue does not price yet — and every one of them is still usable through
+// names are dialable — the runner's provider table
+// (rustd/crates/afr_providers/assets/providers.json, embedded by
+// rustd/crates/afr_providers/src/registry.rs) names providers the catalogue
+// does not price yet — and every one of them is still usable through
 // the custom-endpoint sentinel. A bare "not in this server's catalogue" reads
 // as "you cannot use this provider", which is false and sends the operator
 // looking for a permission they do not need.

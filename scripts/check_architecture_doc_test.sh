@@ -272,12 +272,11 @@ test_arch_doc_published_links_resolve() {
     'User-facing: [the memory page](https://docs.agentsfleet.net/concepts/memory-internals).'
 }
 
-# ── The schedule-ownership check bans the stale sentences, not the topic ────
+# ── No page names a retired runner outside a dated row ──────────────────────
 #
-# The four pages the check reads carry their required QStash sentences, so only
-# the fifth page decides. The true line names `cron_add` and a schedule on one
-# line, as capabilities.md does; the two stale lines are the ones that shipped
-# when the NullClaw child kept its own timer.
+# The four pages the schedule-ownership check reads carry their required QStash
+# sentences, so only the fifth page decides. A failing case must fail on the
+# retired-runner assertion by name, or it could pass for the wrong reason.
 
 build_schedule_arch_dir() {
   local dir="$1" body="$2"
@@ -290,27 +289,38 @@ build_schedule_arch_dir() {
   printf '%s' "$dir"
 }
 
-test_arch_doc_schedule_ownership_bans_only_stale_sentences() {
-  local name="test_arch_doc_schedule_ownership_bans_only_stale_sentences"
+test_arch_doc_names_no_retired_runner() {
+  local name="test_arch_doc_names_no_retired_runner"
+  local check="architecture_names_no_retired_runner"
   local spec_root="$WORK_DIR/specs"
   build_spec_root "$spec_root"
 
-  local dir
-  dir="$(build_schedule_arch_dir "$WORK_DIR/sched_true" \
-    '| `cron_add` / `schedule` | The fleet'"'"'s own schedules, through the lease'"'"'s schedules verb. |')"
-  if ! run_gate_from_root "$dir" "$spec_root"; then
-    bad "$name" "a true line naming cron_add and a schedule was rejected"
-    return
-  fi
-  local n=0 body
+  local n=0 body dir output
   for body in \
-    'A periodic health check, scheduled by NullClaw'"'"'s `cron_add` tool.' \
-    'A NullClaw-managed schedule firing on time.'
+    'The sandbox is built by `afr_sandbox`.' \
+    '| 2026-10-02 | Indy: "the Zig runner is the rollback" |'
   do
     n=$((n + 1))
-    dir="$(build_schedule_arch_dir "$WORK_DIR/sched_stale_$n" "$body")"
-    if run_gate_from_root "$dir" "$spec_root"; then
-      bad "$name" "a stale sentence passed: $body"
+    dir="$(build_schedule_arch_dir "$WORK_DIR/retired_ok_$n" "$body")"
+    if ! run_gate_from_root "$dir" "$spec_root"; then
+      bad "$name" "a page the check must pass was rejected: $body"
+      return
+    fi
+  done
+  n=0
+  for body in \
+    'A NullClaw child runs the turn.' \
+    'zig build test runs the lane.'
+  do
+    n=$((n + 1))
+    dir="$(build_schedule_arch_dir "$WORK_DIR/retired_bad_$n" "$body")"
+    output="$(cd "$REPO_ROOT" && ARCH_DIR="$dir" SPEC_ROOT="$spec_root" DOC_SET_EXTRA="" \
+      bash "$GATE" 2>&1)" && {
+      bad "$name" "a page naming a retired runner passed: $body"
+      return
+    }
+    if [[ "$output" != *"$check: $dir/capabilities.md:3 "* ]]; then
+      bad "$name" "the failure did not name $check at capabilities.md:3: $output"
       return
     fi
   done
@@ -319,7 +329,7 @@ test_arch_doc_schedule_ownership_bans_only_stale_sentences() {
 
 test_arch_doc_cited_paths_resolve
 test_arch_doc_cited_tables_exist
-test_arch_doc_schedule_ownership_bans_only_stale_sentences
+test_arch_doc_names_no_retired_runner
 test_arch_doc_cited_make_targets_exist
 test_arch_doc_section_anchors_resolve
 test_arch_doc_no_retired_slot_numbers

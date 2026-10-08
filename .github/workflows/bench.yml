@@ -7,14 +7,18 @@ on:
 jobs:
   bench:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/agentsfleet/ci-zig-ubuntu:0.16.0-r4
+    env:
+      HEY_VERSION: 0.1.5
     steps:
       - uses: actions/checkout@v7
-      - name: Install nodejs (bench fixture only)
-        # bench.yml is workflow_dispatch only; ci-zig-ubuntu is kept lean
-        # without nodejs since no other lane needs it.
-        run: apt-get update && apt-get install -y --no-install-recommends nodejs
+      # `make bench` is the hey loadgen gate; the runner image carries node for
+      # the fixture below and Go for this install. hey publishes no release
+      # binaries, so it is built from its module, which the Go checksum
+      # database verifies at this exact version.
+      - name: Install hey
+        run: |
+          GOBIN="$RUNNER_TEMP/bin" go install "github.com/rakyll/hey@v${HEY_VERSION}"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Run bench gate against local health fixture
         run: |
           node -e '

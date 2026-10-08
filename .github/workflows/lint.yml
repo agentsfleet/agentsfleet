@@ -55,7 +55,7 @@ jobs:
   check-gh-actions-valid:
     runs-on: ubuntu-latest
     env:
-      ACTIONLINT_VERSION: 1.7.11
+      ACTIONLINT_VERSION: 1.7.12
     steps:
       - uses: actions/checkout@v7
       - name: Install actionlint
@@ -72,7 +72,7 @@ jobs:
     # CI, so a broken architecture reference, an ungated vault reader, or a
     # deploy-safety regression could merge green. Each is a static check needing
     # only shellcheck (on the runner image) and flock (util-linux, present) — no
-    # bun/zig build. GitHub sets CI=true, so check-deploy-safety's flock lock
+    # bun or cargo build. GitHub sets CI=true, so check-deploy-safety's flock lock
     # tests run here rather than skip.
     runs-on: ubuntu-latest
     steps:
@@ -87,7 +87,7 @@ jobs:
       - name: Deploy version/lock safety
         run: make check-deploy-safety
       # A documented pre-Pull-Request gate that no job ran, so a VERSION out of
-      # step with build.zig.zon or cli/package.json could merge green and only
+      # step with rustd/Cargo.toml or cli/package.json could merge green and only
       # surface at release. Lands here rather than in a job of its own: this is
       # the existing home for static repository-hygiene gates that need no
       # toolchain, and it already runs on every Pull Request.

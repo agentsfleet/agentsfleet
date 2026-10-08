@@ -67,7 +67,7 @@ const KEY_NAME = API_KEY_KEY_NAME;
 const CREATED_AT = API_KEY_CREATED_AT;
 const DEFAULT_SORT = API_KEY_SORT_CREATED_AT_DESC;
 const API_KEY_ID = "api_key_id" as const;
-// Mirrors the daemon's QUERY_STARTING_AFTER (http/pagination.zig).
+// Mirrors the daemon's QUERY_STARTING_AFTER (rustd/crates/afd_core/src/paging.rs).
 const QUERY_STARTING_AFTER = "starting_after" as const;
 const QUERY_SORT = "sort" as const;
 // The list has no paging controls; the client follows next_cursor until the

@@ -8,9 +8,6 @@ coverage:
         # in the live-datastore coverage lane, graded once over its shards.
         # `auto` compares against the parent commit, which would have quietly
         # accepted a slide the moment one lane dropped a point.
-        #
-        # The Zig tree is NOT measured and is ignored below, so it cannot drag
-        # this number. Its source still builds; nothing grades it.
         target: 100%
         threshold: 0%
         informational: false
@@ -109,13 +106,6 @@ coverage:
   round: down
   precision: 2
 
-# The Zig tree publishes per folder, never as one blended figure. Three trees
-# move independently underneath it, and a single number lets any one of them
-# fall while the average holds steady — the same reasoning that made the gate's
-# own floors per-folder in make/test.mk. Each flag filters the ONE merged union
-# report by path, so every badge and every patch status above reads the exact
-# denominator `check_zig_coverage.py` graded, split three ways rather than
-# re-measured.
 flags:
   rust-afd:
     paths:
@@ -127,16 +117,7 @@ comment:
   require_changes: false
 
 ignore:
-  # The Zig tree is unmeasured: its lint, unit, coverage and leak lanes retired
-  # with the daemon, so nothing uploads a report covering these paths. Listing
-  # them explicitly keeps the project percentage honest — without this, a future
-  # uploader that happened to touch them would silently move the number.
-  - "src/**"
-  - "build.zig"
-  - "build_runner.zig"
-  - "build.zig.zon"
   - "schema/**"
-  - "zig-pkg/**"
   - "tests/**"
   - "rustd/target/**"
   # The bench crate is a measuring instrument, not shipped code, and leaves

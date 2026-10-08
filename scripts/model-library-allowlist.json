@@ -33,31 +33,33 @@
     "UZ-PROVIDER-004 membership check (local runtimes). It is not a price and is never",
     "billed: a local runtime is self-managed, where token cost is not charged.",
     "",
-    "Providers are keyed on nullclaw's canonical identifiers (post alias-map, see",
-    "oss/nullclaw/src/provider_names.zig): `kimi` not moonshot-cn, `xai` not grok.",
+    "Providers are keyed on the name a fleet's policy selects, which the runner resolves",
+    "through its provider registry (rustd/crates/afr_providers/src/registry.rs, over the",
+    "table it embeds, rustd/crates/afr_providers/assets/providers.json): `xai`, not its",
+    "alias `grok`.",
     "",
-    "!! base_url is LOAD-BEARING, never decorative. It is a CURATED field — the skeleton",
-    "!! generator no longer overwrites it — because several of our names collide with a",
-    "!! nullclaw alias resolving to a different continent than the one priced here (see",
-    "!! nullclaw_alias_collisions). Do not 'simplify' by dropping it: the failure is",
-    "!! silent — right price, wrong continent."
+    "!! base_url is LOAD-BEARING, never decorative. It names the endpoint these rates were",
+    "!! priced for, and scripts/check_model_allowlist.py reads it to hold the international",
+    "!! rule. The runner dials whatever its registry maps the name to, so a name whose",
+    "!! registry entry resolves to a different continent than the one priced here is",
+    "!! recorded in registry_alias_collisions. Do not 'simplify' by dropping base_url: the",
+    "!! failure is silent — right price, wrong continent."
   ],
-  "_generator": [
-    "Every field here is hand-maintained. Provider identity, aliases, dial and",
-    "display were once derived from the vendored NullClaw source by a generator;",
-    "it was deleted after a dependency bump stopped being the way this file",
-    "changes. After such a bump, diff the vendored provider list by hand and",
-    "add or retire rows here — an absent provider is caught by",
-    "_model_allowlist_check, which fails any dialable provider that is neither",
-    "priced nor carries an unpriced_reason.",
-    "base_url never gets overwritten by anything (see nullclaw_alias_collisions).",
+  "_maintenance": [
+    "Every field here is hand-maintained; nothing regenerates this file. When the",
+    "runner's provider table (rustd/crates/afr_providers/assets/providers.json) gains",
+    "or drops a name, add or remove its row here by hand. _model_allowlist_check",
+    "(scripts/check_model_allowlist.py) fails any provider listed here that is neither",
+    "priced nor carries an unpriced_reason; nothing compares this file with the table.",
+    "base_url never gets overwritten by anything (see registry_alias_collisions).",
     "",
-    "dial=native   NullClaw resolves the name; the runtime owns the endpoint.",
-    "dial=endpoint NullClaw does NOT know the name. Reachable only as an",
+    "dial=native   the provider is dialled by name, so the runner's registry owns the",
+    "              endpoint; a name the registry does not carry is refused at",
+    "              admission rather than dialled wrong.",
+    "dial=endpoint the name is not one the registry carries. Reachable only as an",
     "              OpenAI-compatible custom endpoint, so base_url is mandatory",
     "              and it is never offered as a credential provider id."
   ],
-  "_generated_from": "nullclaw-2026.5.29",
   "verified_at": "2026-08-17",
   "stale_after_days": 45,
   "tiering_note": [
@@ -82,29 +84,22 @@
     "deployment_scoped": "permanent — rates vary per customer deployment, region and commitment tier, and the provider carries no single base_url.",
     "credentialed_feed": "pending — the vendor publishes rates only behind an authenticated endpoint; not verifiable during curation.",
     "no_public_rates": "pending — the vendor publishes no per-token rate table at all.",
-    "awaiting_curation": "pending — newly derived from a NullClaw bump and not yet curated. The only code that is a queue rather than a decision; the next pass either prices the provider or replaces this with the reason it cannot.",
+    "awaiting_curation": "pending — newly added from the runner's provider table and not yet curated. The only code that is a queue rather than a decision; the next pass either prices the provider or replaces this with the reason it cannot.",
     "operator_hosted": "permanent — runs on hardware the operator owns. No per-token price exists to charge against, and no vendor publishes one.",
-    "duplicate_spelling": "permanent — a second NullClaw spelling of a provider already priced under its canonical name, on the same host at the same rates. Priced once so the catalogue does not carry every model of that host twice; the canonical entry's note names the duplicate."
+    "duplicate_spelling": "permanent — a second spelling of a provider already priced under its canonical name, on the same host at the same rates. Priced once so the catalogue does not carry every model of that host twice; the canonical entry's note names the duplicate."
   },
-  "nullclaw_alias_collisions": {
+  "registry_alias_collisions": {
     "_readme": [
-      "Provider names where OUR base_url deliberately differs from what nullclaw's",
-      "same-named alias would resolve to. base_url is curated (never regenerated), so",
-      "these survive a dependency bump; before M168 the generator overwrote both of",
-      "them with the CN endpoint while the rates stayed international.",
-      "Source: oss/nullclaw/src/providers/factory.zig compat_providers table."
+      "Provider names where OUR base_url deliberately differs from where the runner's",
+      "registry sends the same name. base_url is curated, never regenerated.",
+      "Source: rustd/crates/afr_providers/assets/providers.json, embedded by",
+      "rustd/crates/afr_providers/src/registry.rs."
     ],
     "kimi": {
       "ours": "https://api.moonshot.ai/v1",
-      "nullclaw_alias_resolves_to": "https://api.moonshot.cn/v1",
-      "nullclaw_alias_that_matches_ours": "kimi-intl / moonshot-intl",
-      "why_kept": "`kimi` is the name users recognise; the CN/intl split is nullclaw's internal concern and should not leak into our provider dropdown."
-    },
-    "qwen": {
-      "ours": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-      "nullclaw_alias_resolves_to": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "nullclaw_alias_that_matches_ours": "qwen-intl / dashscope-intl",
-      "why_kept": "Same reasoning as kimi."
+      "registry_alias_resolves_to": "https://api.moonshot.cn/v1",
+      "registry_entry_that_matches_ours": "moonshot-intl (aliases kimi-intl / kimi-global / moonshot-global)",
+      "why_kept": "`kimi` is the name users recognise; the CN/intl split should not leak into our provider dropdown. The registry lists `kimi` as an alias of `moonshot`, so a fleet that selects `kimi` dials api.moonshot.cn while the catalogue prices it at the international rates."
     }
   },
   "providers": {
@@ -182,7 +177,7 @@
         { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
         { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
       ],
-      "note": "Keyed `glm`, not `zai`, on purpose: nullclaw's `zai` alias resolves to the CODING endpoint (api.z.ai/api/coding/paas/v4) while `glm` resolves to the general paas path priced here. GLM-5.2 is a general model, so `glm` is the alias that matches."
+      "note": "Keyed `glm`, not `zai`, on purpose: `zai` names the CODING endpoint (api.z.ai/api/coding/paas/v4, carried below as a subscription plan) while `glm` names the general paas path priced here. GLM-5.2 is a general model, so `glm` is the name that matches. The runner's registry (rustd/crates/afr_providers/assets/providers.json) carries neither name, so admission refuses both until an entry lands."
     },
     "minimax": {
       "dial": "native",
@@ -714,7 +709,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "llama.cpp": {
       "dial": "native",
@@ -723,7 +718,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "llamacpp": {
       "dial": "native",
@@ -732,7 +727,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "lm-studio": {
       "dial": "native",
@@ -741,7 +736,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "lmstudio": {
       "dial": "native",
@@ -750,7 +745,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "minimax-cn": {
       "dial": "native",
@@ -885,7 +880,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "opencode": {
       "dial": "native",
@@ -912,7 +907,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "ovh": {
       "dial": "native",
@@ -934,7 +929,7 @@
       "rate_unit": "per_token",
       "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_reads", "output": "pricing.completion" },
       "models": ["gpt-oss-120b", "gpt-oss-20b", "Qwen3.5-397B-A17B", "Qwen3.6-27B"],
-      "note": "Spelling twin of `ovh`; NullClaw dials both names at the same endpoint, and (provider, model_id) keys the catalogue, so each needs its own rows."
+      "note": "Spelling twin of `ovh`; the runner's registry dials both names at the same endpoint (`ovhcloud`, alias `ovh`), and (provider, model_id) keys the catalogue, so each needs its own rows."
     },
     "perplexity": {
       "dial": "native",
@@ -1007,7 +1002,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "shengsuanyun": {
       "dial": "native",
@@ -1104,7 +1099,7 @@
         "anthropic/claude-fable-5",
         "anthropic/claude-haiku-4.5"
       ],
-      "note": "Spelling twin of `vercel`; NullClaw dials both names at the same endpoint, and (provider, model_id) keys the catalogue, so each needs its own rows."
+      "note": "Spelling twin of `vercel`; the runner's registry dials both names at the same endpoint (`vercel`, alias `vercel-ai`), and (provider, model_id) keys the catalogue, so each needs its own rows."
     },
     "vertex": {
       "dial": "native",
@@ -1121,7 +1116,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "volcengine": {
       "dial": "native",

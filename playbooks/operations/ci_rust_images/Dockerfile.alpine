@@ -2,12 +2,11 @@
 #
 # Multi-arch Alpine + Rust base for the musl build lane.
 #
-# It exists for the same reason `Dockerfile.alpine` next door exists for Zig:
-# `make dist-daemons` used to run the stock `rust:*-alpine` image and `apk add`
-# its build dependencies inside a throwaway container, so the same packages
-# were fetched and installed again on every build of every architecture and
-# nothing was cached between them. Here they are layers — pulled once, reused
-# by every build after — and the lane becomes a pure
+# It exists so the build dependencies are image layers. Running the stock
+# `rust:*-alpine` image and `apk add`-ing them inside a throwaway container
+# fetches and installs the same packages again on every build of every
+# architecture, with nothing cached between them. Here they are layers — pulled
+# once, reused by every build after — and the lane becomes a pure
 #   container: image: ghcr.io/agentsfleet/ci-rust-alpine:<tag>
 # step with no per-job network fetch.
 #
@@ -82,8 +81,8 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 # installer (`build_and_push.sh fetch-shas` reads it and refuses when the bytes
 # disagree), so a truncated, cached, or tampered-in-transit body fails here
 # rather than installing. It is not a signature: a wholly compromised
-# static.rust-lang.org would serve a matching pair. That is the same bound
-# `ci_zig_images` works within for its own tarballs.
+# static.rust-lang.org would serve a matching pair, and this image accepts that
+# bound.
 RUN set -eux; \
     arch="$(apk --print-arch)"; \
     case "$arch" in \

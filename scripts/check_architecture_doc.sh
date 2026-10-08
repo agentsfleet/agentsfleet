@@ -8,7 +8,9 @@
 #   * test_arch_M_references_resolve     — every milestone identifier resolves
 #   * test_arch_anchor_links_resolve     — every relative .md link target exists
 #   * test_arch_no_orphan_TODO           — 0 TODO/TKTK/FIXME hits in architecture/
-#   * architecture_schedule_ownership    — cron ownership names QStash, not NullClaw
+#   * architecture_schedule_ownership    — cron ownership names QStash and agentsfleetd
+#   * architecture_names_no_retired_runner — no page names Zig, zlint or NullClaw
+#                                          outside a dated Decisions or history row
 #   * test_arch_cited_paths_resolve      — every cited source path is a tracked file
 #   * test_arch_cited_tables_exist       — every named table is defined in schema/
 #   * test_arch_cited_make_targets_exist — every named make target is declared
@@ -144,16 +146,9 @@ if [ -f "$ARCH_DIR/data_flow.md" ] && [ -f "$ARCH_DIR/user_flow.md" ] && [ -f "$
   if ! grep -q "Upstash QStash" "$ARCH_DIR/README.md"; then
     err "architecture_schedule_ownership: README.md must define cron trigger ownership"
   fi
-  # The two sentences that shipped when the NullClaw child kept its own timer,
-  # matched exactly. A looser pattern cannot tell them from the true design:
-  # `cron_add` is a schedule tool on the daemon's plane, and data_flow.md says in
-  # the same words that no NullClaw child owns a schedule timer. The four
-  # assertions above pin what IS true; this list names only what was false.
-  stale_schedule_hits=$(grep -rnF -e "NullClaw-managed schedule" -e "NullClaw's \`cron_add\`" "$ARCH_DIR" 2>/dev/null || true)
-  if [ -n "$stale_schedule_hits" ]; then
-    err "architecture_schedule_ownership: stale local-scheduler ownership text found:"
-    printf "%s\n" "$stale_schedule_hits" >&2
-  fi
+  # The four assertions above pin what IS true. The sentences that named a
+  # runner-side timer all named NullClaw, so §6 refuses them with every other
+  # mention of that runner.
   [ "$FAIL" = 0 ] && ok "architecture_schedule_ownership: QStash/agentsfleetd ownership is consistent"
 fi
 
@@ -192,6 +187,34 @@ if [ -f "$ARCH_DIR/data_flow.md" ]; then
   fi
   [ "$FAIL" = 0 ] && ok "architecture_absent_mechanisms: no page claims a mechanism the daemon lacks"
 fi
+
+# ---------------------------------------------------------------------------
+# 6. architecture_names_no_retired_runner
+#
+# `agentsfleet-runner` is the Rust runner, and no binary in this tree builds
+# another. A page naming Zig, zlint or NullClaw describes a runner a reader
+# cannot run, so any line naming one fails, case-insensitively. That covers
+# the two sentences that once gave a NullClaw child its own schedule timer.
+#
+# A dated Decisions or history row keeps its quote as it was said: a Markdown
+# table row (the line starts with `|`) carrying a `20YY-MM-DD` or `Mon DD,
+# YYYY` date. Prose is never exempt, dated or not.
+# ---------------------------------------------------------------------------
+readonly RETIRED_RUNNER='zig|zlint|nullclaw'
+readonly MONTHS='Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec'
+# Matched against `grep -n` output, so the row's `|` follows the `N:` prefix.
+readonly DATED_ROW="^[0-9]+:[[:space:]]*[|].*(20[0-9]{2}-[0-9]{2}-[0-9]{2}|($MONTHS) [0-9]{2}, [0-9]{4})"
+retired_runner_hits=0
+while IFS= read -r f; do
+  # Here-string, not a pipe, so every err() sets FAIL in this shell.
+  while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    err "architecture_names_no_retired_runner: $f:${hit%%:*} names a retired runner outside a dated row: ${hit#*:}"
+    retired_runner_hits=$((retired_runner_hits + 1))
+  done <<<"$(grep -niE "$RETIRED_RUNNER" "$f" 2>/dev/null | grep -vE "$DATED_ROW" || true)"
+done < <(find "$ARCH_DIR" -name '*.md' 2>/dev/null | sort)
+[ "$retired_runner_hits" = 0 ] \
+  && ok "architecture_names_no_retired_runner: no page names Zig, zlint or NullClaw outside a dated row"
 
 # ---------------------------------------------------------------------------
 # Citation assertions live beside this file and run in this shell, sharing
