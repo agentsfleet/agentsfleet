@@ -186,6 +186,29 @@ fn test_a_sweep_says_what_it_could_not_do() {
     assert!(Claim::exactly(Slot::new(6).unwrap()).is_none());
 }
 
+/// A sweep that lists the tables but cannot list the links fails naming that
+/// listing, before it removes anything or claims any slot.
+#[test]
+fn test_a_sweep_that_cannot_list_the_links_removes_nothing() {
+    let _claims = claims_held();
+    let kernel = Fake::default()
+        .holding(&["afegress4"], &["afv4"])
+        .closed(Protocol::Route);
+
+    let refused = sweep(&kernel).unwrap_err();
+
+    assert_eq!(refused.netlink_step(), Some(Step::ListLinks));
+    assert!(
+        !kernel.seen_on(Protocol::Netfilter).contains(&DELTABLE),
+        "{:?}",
+        kernel.seen()
+    );
+    assert!(
+        Claim::exactly(Slot::new(4).unwrap()).is_some(),
+        "the slot is free"
+    );
+}
+
 /// The running kernel's sockets open without privilege; making or joining a
 /// namespace needs it, and fails cleanly without.
 #[test]

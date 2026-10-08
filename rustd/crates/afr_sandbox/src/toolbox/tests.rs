@@ -95,3 +95,22 @@ fn a_toolbox_home_opens_its_three_directories() {
         assert!(directory.is_dir(), "{}", directory.display());
     }
 }
+
+/// A home whose root would sit under a file is refused with the host's own
+/// reason, and nothing of it is made: the runner stops at boot rather than
+/// staging a toolbox nowhere.
+#[test]
+fn a_toolbox_home_under_a_file_cannot_open() {
+    let Ok(file) = tempfile::NamedTempFile::new() else {
+        unreachable!("a temporary file")
+    };
+    let root = file.path().join("toolbox");
+
+    let refused = ToolboxHome::open(root.clone());
+
+    assert!(
+        matches!(&refused, Err(error) if error.kind() == std::io::ErrorKind::NotADirectory),
+        "{refused:?}"
+    );
+    assert!(!root.exists(), "no directory of the home is made");
+}

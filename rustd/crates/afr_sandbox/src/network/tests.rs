@@ -47,6 +47,23 @@ fn test_each_name_counts_once() {
     assert_eq!(allowlist.addresses().len(), 2);
 }
 
+/// The names a held sandbox is filed under come once each, in the order they
+/// were merged, however many addresses each answered with and whichever
+/// addresses they share: one lease's hosts, resolved twice, file one key.
+#[test]
+fn test_names_are_each_named_once_in_merge_order() {
+    const FIRST: &str = "b.example";
+    let allowlist = Allowlist::new(vec![
+        entry(FIRST, [10, 0, 0, 9]),
+        entry("a.example", [10, 0, 0, 2]),
+        entry(FIRST, [10, 0, 0, 1]),
+        entry("c.example", [10, 0, 0, 2]),
+    ])
+    .unwrap();
+
+    assert_eq!(allowlist.names(), [FIRST, "a.example", "c.example"]);
+}
+
 /// The sandbox's hosts file names loopback first, then every entry, so a name
 /// with two addresses has two lines and `localhost` still resolves.
 #[test]

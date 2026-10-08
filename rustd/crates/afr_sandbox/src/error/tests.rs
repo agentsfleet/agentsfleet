@@ -85,6 +85,27 @@ fn test_each_egress_refusal_keeps_its_sentence() {
     }
 }
 
+/// Each egress refusal is logged under a name of its own, the `refusal` field
+/// a filter on `egress_scope_refused` or `egress_probe_failed` tells them
+/// apart by.
+#[test]
+fn test_each_egress_refusal_is_logged_under_its_own_name() {
+    let names = [
+        (EgressRefusal::ForwardingOff, "forwarding_off"),
+        (EgressRefusal::ForwardDropped(Vec::new()), "forward_dropped"),
+        (EgressRefusal::NoNamespace, "no_namespace"),
+        (EgressRefusal::NoSlot, "no_slot"),
+        (EgressRefusal::HeldElsewhere, "held_elsewhere"),
+        (EgressRefusal::TooManyAddresses(0), "too_many_addresses"),
+        (EgressRefusal::NoScope, "no_scope"),
+    ];
+
+    for (refusal, name) in names {
+        // pin test: literal is the contract
+        assert_eq!(refusal.as_str(), name, "{refusal:?}");
+    }
+}
+
 /// Each netlink step reads as the phrase an operator has always read after
 /// "the kernel refused", whatever value a test tells it apart by.
 #[cfg(target_os = "linux")]
