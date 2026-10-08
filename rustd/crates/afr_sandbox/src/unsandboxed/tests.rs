@@ -7,6 +7,8 @@ use afr_executor::{Ending, Spawn};
 
 use super::{UnsandboxedEngine, permitted};
 use crate::engine::{Engine, Limits, SandboxRequest};
+use crate::error::EgressRefusal;
+use crate::network::Allowlist;
 
 #[test]
 fn test_release_build_refuses_unsandboxed_engine() {
@@ -193,4 +195,28 @@ async fn test_destroy_aborts_a_lingering_server_and_removes_its_directory() {
     assert_eq!(started.elapsed(), super::SERVER_GRACE);
     assert!(abort.is_finished(), "the lingering task was aborted");
     assert!(!dir.exists(), "the lease directory was removed");
+}
+
+/// An unsandboxed lease shares the host's network and holds nothing to an
+/// allowlist, so a held one asked to take new addresses refuses as having no
+/// scope, and its lease builds fresh: the refill is never taken as done.
+#[tokio::test]
+async fn should_refuse_new_addresses_it_has_no_scope_to_hold() {
+    let base = tempfile::Builder::new()
+        .prefix("afr")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
+    let mut sandbox = engine
+        .prepare(SandboxRequest::new("reallowed", Limits::default()))
+        .await
+        .unwrap();
+
+    let refused = sandbox.reallow(&Allowlist::new(Vec::new()).unwrap()).await;
+    sandbox.destroy().await.unwrap();
+
+    assert_eq!(
+        refused.unwrap_err().egress_refusal(),
+        Some(&EgressRefusal::NoScope)
+    );
 }
