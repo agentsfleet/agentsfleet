@@ -15,7 +15,7 @@
 #   .githooks/pre-commit invokes `make harness-verify` BEFORE `make lint-all`
 #   when lint-relevant files are staged. Harness-verify is seconds-fast and
 #   fails on the cheapest discipline regressions before paying for oxlint /
-#   tsc / zlint / actionlint / redocly.
+#   tsc / actionlint / redocly.
 #
 # Scope:
 #   harness-verify (pre-commit) passes `--staged` to each per-file audit so it

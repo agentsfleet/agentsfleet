@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: _model_allowlist_check lint-all lint-rustd lint-runner-fmt lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
+.PHONY: _model_allowlist_check lint-all lint-rustd lint-website lint-apps-designsystem-cli lint-app lint-design-system lint-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-playbooks-refs
 
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
@@ -36,10 +36,6 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 # rather than compile correctness. Grouped so this target names a
 # policy set instead of a growing list, and so a new rule extends this line
 # rather than adding another near-duplicate wrapper.
-#
-# Deliberately NOT folded in: _fmt_check / _zlint_check (tooling, not policy) and
-# check-test-reachability / _lint_zig_test_depth (test structure, and the latter
-# is invoked directly to record a spec's test baseline).
 _model_allowlist_check:
 	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
 	@python3 scripts/check_model_allowlist.py
@@ -70,24 +66,6 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
 	  cargo check -p agentsfleetd --bin agentsfleetd
 
-# `agentsfleet-runner` is still Zig and ships from `build_runner.zig`, so its
-# formatting is still gated. This is formatting only: the discipline lint that
-# used to check more went with the Zig daemon, and `zig fmt --check` is what
-# remains that costs nothing.
-#
-# A target of its own rather than a rider on `lint-rustd`, which is where it
-# first landed. `make lint-rustd` runs in the `lint-rustd` job of
-# `.github/workflows/test-unit-rustd.yml`, a plain `ubuntu-latest` with rustup
-# and nothing else — so the `command -v zig` guard below failed the Rust lane on
-# a missing Zig toolchain, and the failure read as a test regression. The two
-# toolchains want two runners: Rust rides the ubuntu image it already pins, and
-# this rides `ci-zig-alpine`, the same pre-baked image `release.yml` and
-# `deploy-dev-build.yml` build the runner with. Its caller is the `lint-runner-fmt`
-# job in `.github/workflows/lint.yml`.
-lint-runner-fmt:  ## Check the Zig runner's formatting (zig fmt --check)
-	@command -v zig >/dev/null 2>&1 || { echo "✗ zig not found. Install via: mise install zig"; exit 1; }
-	@$(WITH_PROGRESS) "[runner] zig fmt --check" -- zig fmt --check build_runner.zig build.zig src/
-
 SHELLCHECK ?= shellcheck
 
 lint-shell:  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
@@ -108,7 +86,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd lint-runner-fmt _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check

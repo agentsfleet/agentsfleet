@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs test-unit-runner test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel
+.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel
 
 # Three shards, one per crate family, so Continuous Integration runs each on its
 # own runner at once and `test-unit-rustd` is all three in order: the whole
@@ -44,20 +44,6 @@ test-unit-rustd-daemon:  ## Rust unit shard: agentsfleetd, the daemon binary and
 test-unit-rustd-daemon-libs:  ## Rust unit shard: the daemon's library crates (afd_*)
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-daemon-libs.log,[rustd] unit: daemon libraries,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON_LIBS)))
-
-# The Zig compiler `agentsfleet-runner` builds and ships with, spelled once in
-# `build.zig.zon`. The manifest's floor admits any newer Zig, which then fails
-# on standard-library drift a long way from the cause, so the tests refuse
-# anything but this exact version up front. Recursive, so the read happens
-# only when a runner target asks for it.
-RUNNER_ZIG_VERSION = $(shell sed -n 's/^[[:space:]]*\.minimum_zig_version = "\(.*\)",/\1/p' build.zig.zon)
-
-test-unit-runner:  ## Run the Zig runner's unit tests (zig build test, on build.zig.zon's Zig)
-	@command -v zig >/dev/null 2>&1 || { echo "✗ zig not found. Install via: mise install zig@$(RUNNER_ZIG_VERSION)"; exit 1; }
-	@found="$$(zig version)"; [ "$$found" = "$(RUNNER_ZIG_VERSION)" ] || { \
-	  echo "✗ [runner] zig $$found found; the runner's tests need Zig $(RUNNER_ZIG_VERSION) (build.zig.zon). Install via: mise install zig@$(RUNNER_ZIG_VERSION)"; \
-	  exit 1; }
-	@$(WITH_PROGRESS) "[runner] zig build test" -- zig build --build-file build_runner.zig test
 
 test-unit-cli:  ## Run agentsfleet CLI unit tests (bun)
 	@echo "→ [agentsfleet] Building dist/ (tests spawn dist/bin/agentsfleet.js)..."
@@ -111,4 +97,4 @@ test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (
 	@image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" && \
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
 	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(KERNEL_LANE_RUNNER)" \
-	  $(KERNEL_LANE_CARGO) -p afr_sandbox --example kernel_lane
+	  $(KERNEL_LANE_CARGO) -p afr_sandbox --features test-util --example kernel_lane

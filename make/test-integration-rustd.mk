@@ -1,14 +1,14 @@
 # =============================================================================
 # TEST-INTEGRATION-RUSTD — the Rust substrate against live Postgres + Dragonfly
 # =============================================================================
-# M175 §6 deleted `make/test-integration.mk` with the rest of the Zig gating.
+# M175 §6 deleted `make/test-integration.mk` with the retired daemon's gating.
 # The datastores did not go away with it: `make/test-infra.mk` survived, because
 # it is the disposable-environment half — what boots, where it listens, and how
 # state is reset. This file is the lane that consumes it for the Rust port.
 #
 # Named `test-integration-rustd` rather than reclaiming the freed
-# `test-integration`: that name meant "the Zig daemon suite" for two years, and
-# a target that silently inherits a retired meaning is how a green run gets read
+# `test-integration`: that name meant the retired daemon's suite for two years,
+# and a target that silently inherits a retired meaning is how a green run gets read
 # as a claim it never made.
 #
 # Three things in the recipe are load-bearing and easy to "simplify" away:
@@ -22,8 +22,8 @@
 #      whether the lane passed.
 #   2. The lane fails when the suite reports ZERO passing tests. A selection
 #      that matches nothing exits 0, and "0 tests ran" is indistinguishable from
-#      "everything passed" by exit status alone — the Zig lane learned this the
-#      expensive way (it ran green for a week against a dead port).
+#      "everything passed" by exit status alone — the retired lane learned this
+#      the expensive way (it ran green for a week against a dead port).
 #   3. `$(TEST_STATE_DEP)` — a gate run drops schemas and flushes Redis first,
 #      while `KEEP_TEST_STATE=1` keeps the inner loop fast. Same contract the
 #      Zig lane had; CI never sets the escape hatch.
@@ -53,10 +53,10 @@
 # about six thousand seven hundred migration applications to produce one schema
 # a hundred and forty-three times. That was the whole of the lane's runtime.
 #
-# The Zig harness never did this. Its contract was one line — "Runs against the
+# The retired harness never did this. Its rule was one line — "Runs against the
 # LIVE test database. Never creates temp tables." — and a hundred and forty-five
 # integration files honoured it. `afd_db::test_util::TestDatabase::shared` is
-# that contract restored; see that module on what replaces the isolation.
+# that rule restored; see that module on what replaces the isolation.
 #
 # Through the daemon's own `migrate` subcommand rather than a bespoke recipe, so
 # the lane applies the schema the way a deployment does — including the ledger,
@@ -336,7 +336,7 @@ _RUSTD_SHARD_LCOV := $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).info
 # Every test still runs ONCE: each lands in exactly one shard. Instrumenting the
 # run the lane was already making is what keeps a full verification from
 # executing every live-service test twice on two runners — the mistake the
-# retired Zig graph made and then fixed. The lane migrates after the reset
+# retired build graph made and then fixed. The lane migrates after the reset
 # through `cargo llvm-cov run --no-report`, so the migrator's lines are measured
 # and the daemon is built once, instrumented.
 #
