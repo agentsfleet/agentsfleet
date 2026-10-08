@@ -7,15 +7,15 @@ with zero false alarms, so advice added no findings in this comparison.
 The observed agent-time difference does not establish human time savings.
 Adoption remains Kishore's separate decision.
 
-**Overall status: IN_PROGRESS.** The approved model measurement is complete.
-Separate blinded agent sessions are complete. Repository-wide checks and
-the final test delta remain due before a Pull Request. Comparison baselines
-are recorded below, including the failed unit run.
+**Overall status: DONE.** The model measurement, separate blinded agent sessions
+and declared repository checks are complete. The orly 0.14.0 consumer pin is
+verified; owner review remains due before merge. Comparison baselines retain
+the failed unit run alongside the green full boundary result.
 
 Source revision: `dd917b7ef42dcb883b5192fafe894060aab5845d`.
 Frozen input digest: `7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa`.
 Approved runner digest: `4d0644fd93a46bac785f5282392310f24634092bd4843a9189acd1b02875f9e8`.
-The [spec](../../docs/v2/active/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md),
+The [spec](../../docs/v2/done/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md),
 [case ledger](cases.json) and [freeze inventory](freeze.json) bind scope,
 requirements, original source hashes, evidence references and expected labels.
 The [protocol](README.md) specifies checking and separate blinded review sessions.
@@ -208,8 +208,8 @@ retains an initial conformance timeout and completed audit. Pre-advice code
 review repaired four accounting/evidence issues with regression checks in
 [pilot_test.py](pilot_test.py). Outside review-model calls were skipped under
 the spending restriction; native code audits are separate from blinded reviews.
-Final unit/lint/datastore integration checks and test delta remain due before
-a Pull Request. These Section checks establish no repository-wide result.
+These historical Section checks establish no repository-wide result.
+The completed full boundary is recorded below.
 The pilot accompanies the owner's authorized orly 0.14.0 consumer update.
 Product behavior, architecture, product version, question catalog, threshold,
 hooks and gates are preserved.
@@ -234,7 +234,35 @@ The full retry used a 65,536-file limit. No test or gate was changed.
 
 Integration returned exit 0: 899 passes, zero failures, including 897 regular and two exclusive checks.
 Raw logs remain in the receipt's named local verification directory.
-The final Pull Request gate must run every declared check and return green.
+
+### Completed repository boundary
+
+The [verification receipt](receipts/review/boundary-verification.json) records
+`orly gate pr` at pushed revision `6a9a8d3c7b01e3c73dba4ffeaa4cef241a924656`: exit 0.
+Every declared check ran: unit, lint, datastore integration and version matching.
+The raw log hash, environment and earlier failed attempts are retained.
+
+Unit checks passed **10,614 tests with zero failures**: Rust 4,405, app 3,642,
+website 142, command-line 1,778 and design system 647. Rust ignored 924 tests;
+command-line checks skipped 16 live-target checks. Zig completed with no reported count.
+Reported app, website and design-system coverage was 100% for each metric.
+Command-line function and line coverage matched their 100% floors.
+
+Integration passed **899 tests with zero failures**: 897 regular and two exclusive.
+Lint returned exit 0; version checking reported all product versions match 0.58.0.
+The installed engine and managed pin are 0.14.0; `orly doctor` reports current rules.
+The update changed only the pin, preserving existing settings and hooks.
+
+The unit pass delta is **+1** against the failed comparison run.
+That is the unchanged clipboard test passing, rather than a new product test.
+The pilot adds 25 runner checks outside existing product Make selections; integration delta is zero.
+
+An initial attempt exhausted disk space while compiling; its known failed child and unavailable gate result remain recorded.
+Only the owned disposable Rust build cache was cleaned.
+A second attempt passed unit, lint and version checks, but its integration setup found OrbStack stopped.
+Starting the existing datastore runtime and restoring this run's isolated containers resolved the blocker.
+The final attempt passed without source, hook, gate or test changes.
+The exact pushed spec-closing revision must pass its own gate before the Pull Request opens.
 
 Four correlated families and deliberately balanced seeded variants cannot
 estimate production defect prevalence or calibrate the confidence threshold.
@@ -255,7 +283,7 @@ Quality assurance (QA) uses the repository-required functional review route.
 | Revision / inputs | Original live receipts; frozen input digest unchanged; two sealed independent agent sessions; approved test-only fixture repair |
 | Scope / authority | Local paired summary and runner checks; pilot-only writes; owner-approved fixture isolation |
 | Runtime / tools | Python 3, `orly` 0.13.0, Bun 1.4.2 evidence recorder |
-| Outcome | Local Section checks pass; repository-wide boundary checks remain pending |
+| Outcome | These retained local probes pass; current repository checks pass separately in the boundary receipt |
 
 | Check | Expected → observed | Outcome |
 |---|---|---|
@@ -274,7 +302,8 @@ Quality assurance (QA) uses the repository-required functional review route.
 [009](receipts/review/blinded/exploration-009.json) revalidates the exact seal checks.
 Earlier failed captures stay as history; current results never count them as passes.
 The [derived evidence](receipts/review/blinded/evidence.json) reports `pass` with
-no open local checks. Full repository boundary evidence remains pending.
+no open local checks. Current repository evidence is in the
+[boundary receipt](receipts/review/boundary-verification.json).
 
 ### Earlier retained checks
 
@@ -301,6 +330,6 @@ effect. Earlier [offline evidence](receipts/review/evidence.json) retains
 [005](receipts/review/exploration-005.json),
 [006](receipts/review/exploration-006.json) and
 [007](receipts/review/exploration-007.json) as history; pre-live pending summaries
-are not current advice evidence. Repository-wide suites remain pending.
+are not current advice evidence. Repository-wide suites now pass as recorded above.
 Owned subprocesses exited; original neutral packets remain private temporary
 state. No new tests or operating-rule learnings arose from these receipt checks.
