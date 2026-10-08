@@ -1,7 +1,7 @@
 //! The correlation token a refusal carries.
 //!
 //! The format is the assertion worth having. `req_` plus twelve lowercase hex
-//! characters is what `handlers/common.zig` writes, what the dashboard shows,
+//! characters is what `RequestId::mint` writes, what the dashboard shows,
 //! and what somebody types into a support ticket from a screenshot — so a
 //! change to it is a change to a human process, not just to a string.
 #![cfg(feature = "test-util")]
@@ -20,7 +20,7 @@ const HEX_LEN: usize = 12;
 
 /// A minted id has the shape every consumer of it expects.
 #[test]
-fn test_a_minted_id_is_the_zig_format() {
+fn test_a_minted_id_is_req_and_twelve_hex_characters() {
     let id = RequestId::mint();
     let text = id.as_str();
 
@@ -105,7 +105,10 @@ fn test_an_entropy_failure_answers_the_sentinel() {
 
     let id = RequestId::mint_from(&entropy);
     assert_eq!(id.as_str(), UNKNOWN_REQUEST_ID);
-    assert_eq!(UNKNOWN_REQUEST_ID, "req_unknown", "common.zig's constant");
+    assert_eq!(
+        UNKNOWN_REQUEST_ID, "req_unknown",
+        "the sentinel a client sees"
+    );
 }
 
 /// The three ways to read an id agree.

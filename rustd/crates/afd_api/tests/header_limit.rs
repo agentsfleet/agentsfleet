@@ -16,17 +16,17 @@ const KIB: usize = 1024;
 
 use self::wire::{request_with_header_bytes, serve_one_request};
 
-/// The limit is the byte count `http/server.zig` names.
+/// The limit is 16 KiB, the allowance `afd_api::server` argues for.
 #[test]
-fn test_the_limit_is_the_zig_allowance() {
+fn test_the_limit_is_sixteen_kibibytes() {
     assert_eq!(
         MAX_REQUEST_HEADER_BYTES,
         16 * 1024, // pin test: literal is the contract
-        "MAX_REQUEST_HEADER_BYTES in http/server.zig"
+        "MAX_REQUEST_HEADER_BYTES in afd_api::server"
     );
 }
 
-/// A head larger than httpz's 4 KiB default is still served.
+/// A head larger than 4 KiB is still served.
 ///
 /// The half of the dimension that is about NOT refusing. A session bearer plus
 /// a few proxy hops passes 4 KiB routinely, and a server that refused there
@@ -56,10 +56,9 @@ async fn test_a_head_just_inside_the_allowance_is_served() {
 
 /// A head past the allowance is refused with 431.
 ///
-/// `request_header_size_integration_test.zig` accepts EITHER a 431 or a
-/// transport close, because a client still writing when the server stops
-/// reading can lose the status to a broken socket. That tolerance is not
-/// carried over, and the reason is the size: 17 KiB fits inside any plausible
+/// A looser test would accept EITHER a 431 or a transport close, because a
+/// client still writing when the server stops reading can lose the status to a
+/// broken socket. This one does not, and the reason is the size: 17 KiB fits inside any plausible
 /// socket send buffer, so the write completes into the kernel and the status
 /// always comes back. A test that also accepted a dead socket here would keep
 /// passing if the 431 path regressed entirely — the refusal would still

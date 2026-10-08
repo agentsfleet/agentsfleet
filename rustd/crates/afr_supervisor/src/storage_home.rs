@@ -6,6 +6,10 @@
 //!   <home>/bundles/<hash>.tar     fleet bundles, verified before they are kept
 //!   <home>/git/<workspace>/<owner>/<name>.git
 //!                                 a bare mirror per bound repository
+//!   <home>/toolbox/incoming/      the release a deploy staged: image, manifest
+//!                                 and signature (`deploy/baremetal/toolbox.sh`)
+//!   <home>/toolbox/images/        admitted images, published by digest
+//!   <home>/toolbox/mounts/        where each admitted image is mounted
 //! ```
 //!
 //! What a crashed runner left under `sandboxes` is swept by the engine built on
@@ -22,6 +26,10 @@ const SANDBOXES: &str = "sandboxes";
 const SPOOL: &str = "spool";
 const BUNDLES: &str = "bundles";
 const MIRRORS: &str = "git";
+const TOOLBOX: &str = "toolbox";
+const TOOLBOX_INCOMING: &str = "incoming";
+const TOOLBOX_IMAGES: &str = "images";
+const TOOLBOX_MOUNTS: &str = "mounts";
 
 /// The storage root, with its directories made.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +49,9 @@ impl StorageHome {
             home.spool(),
             home.bundles(),
             home.mirrors(),
+            home.toolbox_incoming(),
+            home.toolbox_images(),
+            home.toolbox_mounts(),
         ] {
             fs::create_dir_all(directory)?;
         }
@@ -67,6 +78,24 @@ impl StorageHome {
     /// Where bound repositories are mirrored, outside every sandbox.
     pub(crate) fn mirrors(&self) -> PathBuf {
         self.root.join(MIRRORS)
+    }
+
+    /// Where a deploy stages the toolbox release this host admits at boot.
+    #[must_use]
+    pub fn toolbox_incoming(&self) -> PathBuf {
+        self.root.join(TOOLBOX).join(TOOLBOX_INCOMING)
+    }
+
+    /// Where admitted toolbox images are published, each under its digest.
+    #[must_use]
+    pub fn toolbox_images(&self) -> PathBuf {
+        self.root.join(TOOLBOX).join(TOOLBOX_IMAGES)
+    }
+
+    /// Where each admitted toolbox image is mounted.
+    #[must_use]
+    pub fn toolbox_mounts(&self) -> PathBuf {
+        self.root.join(TOOLBOX).join(TOOLBOX_MOUNTS)
     }
 }
 

@@ -47,7 +47,7 @@ pub(super) struct Counted {
 }
 
 impl Counted {
-    fn of(engine: &FakeEngine) -> Self {
+    pub(super) fn of(engine: &FakeEngine) -> Self {
         Self {
             prepared: Arc::clone(&engine.prepared),
             destroyed: Arc::clone(&engine.destroyed),

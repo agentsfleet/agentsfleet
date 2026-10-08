@@ -1,9 +1,9 @@
 name: deploy-dev / build
 
-# Called by deploy-dev.yml. Compiles the linux/amd64 binaries and pushes the
-# dev-latest image to GHCR. The caller's credential gate runs before this —
-# nothing here deploys, but the gate still blocks the pipeline ahead of the
-# first artifact leaving the runner.
+# Called by deploy-dev.yml. Compiles the linux/amd64 binaries, builds and signs
+# the runner's toolbox from the branch, and pushes the dev-latest image to GHCR.
+# The caller's credential gate runs before this — nothing here deploys, but the
+# gate still blocks the pipeline ahead of the first artifact leaving the runner.
 
 on:
   workflow_call:
@@ -11,6 +11,9 @@ on:
       runner:
         description: compile-runner job result (success | failure | cancelled | skipped)
         value: ${{ jobs.result.outputs.runner }}
+      toolbox:
+        description: build-toolbox job result (success | failure | cancelled | skipped)
+        value: ${{ jobs.result.outputs.toolbox }}
       daemon:
         description: compile-daemon job result (success | failure | cancelled | skipped)
         value: ${{ jobs.result.outputs.daemon }}
@@ -19,23 +22,61 @@ on:
         value: ${{ jobs.result.outputs.ghcr }}
 
 jobs:
-  # ── 1a. Compile linux/amd64 binaries (Alpine — musl-native static OpenSSL) ─
-  # Build inside Alpine so static OpenSSL archives are musl-compatible.
-  # Produces fully static binaries that run on bookworm (Fly.io) and Trixie (bare-metal).
+  # ── 1a. The runner, linux/amd64 (Alpine — musl-native, fully static) ──────
+  # The same builder and `docker run` shape as the daemon below and as
+  # release.yml, so one versions.env bump moves every binary. The runner and the
+  # daemon run beside each other: they share no build input, so serialising them
+  # would add the slower one's time to the faster one's for nothing.
   compile-runner:
     runs-on: ubuntu-latest
-    container:
-      # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
-      # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
-      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r6
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build the runner (linux/amd64)
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            rustd/target
+          # Exact match or a cold build, as the daemon's cache below, and its
+          # own key so the two jobs never restore each other's target directory.
+          key: cargo-dist-runner-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+
+      - name: Build the runner in Alpine (musl-native)
         run: |
-          zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
-          mkdir -p dist
-          cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
+          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target dist
+          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
+          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
+          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
+          echo "→ building in $BUILDER"
+          docker run --rm \
+            -v "$PWD:/w" \
+            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
+            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -e GIT_COMMIT="${GITHUB_SHA::7}" \
+            -w /w/rustd \
+            "$BUILDER" \
+            sh -c '
+              set -e
+              cargo build --profile dist --bin agentsfleet-runner
+            '
+          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
+          cp rustd/target/dist/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
+          chmod +x dist/agentsfleet-runner-linux-amd64
+
+      - name: Verify static ELF — zero NEEDED, no INTERP
+        run: |
+          bin=dist/agentsfleet-runner-linux-amd64
+          if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
+            echo "FAIL: $bin has dynamic NEEDED entries"
+            readelf -d "$bin" | grep NEEDED
+            exit 1
+          fi
+          if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
+            echo "FAIL: $bin has INTERP (dynamic linker) section"
+            exit 1
+          fi
+          echo "✓ $bin: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -43,12 +84,36 @@ jobs:
           path: dist/agentsfleet-runner-linux-amd64
           retention-days: 3
 
-  # ── 1b. Build Docker image and push dev-latest to GHCR ───────────────────
+  # ── 1b. The toolbox, from the branch ─────────────────────────────────────
+  # The same action release.yml runs, so the dev runner admits an image built,
+  # scanned and signed as a release's is; the metal lane stages it beside the
+  # binary.
+  build-toolbox:
+    needs: compile-runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: runner-binary
+          path: dist
+
+      - uses: ./.github/actions/build-toolbox
+        with:
+          runner-binary: dist/agentsfleet-runner-linux-amd64
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault: ${{ vars.VAULT_PROD }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: runner-toolbox
+          path: dist/toolbox
+          retention-days: 3
+
+  # ── 1c. The daemon, and the dev-latest image ─────────────────────────────
   # Runs on the Ubuntu runner (Docker daemon required; not available inside a
-  # container job).  Downloads compiled binaries from compile-runner.
-  # The daemon the dev image serves. Runs beside compile-runner rather than after
-  # it: the runner and the daemon share no build input, so serialising them
-  # would add the slower one's time to the faster one's for nothing.
+  # container job).
   compile-daemon:
     runs-on: ubuntu-latest
     steps:
@@ -106,8 +171,11 @@ jobs:
           path: dist/agentsfleetd-rs-linux-amd64
           retention-days: 3
 
+  # The image carries the daemon alone, but the push waits on the toolbox too:
+  # metal and Fly ship together, so a toolbox that failed to build, scan or
+  # sign must leave the dev-latest image where it was.
   push-ghcr:
-    needs: [compile-runner, compile-daemon]
+    needs: [compile-runner, build-toolbox, compile-daemon]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -132,15 +200,17 @@ jobs:
   # tell "the image never pushed" from "the whole stage was skipped".
   result:
     runs-on: ubuntu-latest
-    needs: [compile-runner, compile-daemon, push-ghcr]
+    needs: [compile-runner, build-toolbox, compile-daemon, push-ghcr]
     if: always()
     outputs:
       runner: ${{ needs.compile-runner.result }}
+      toolbox: ${{ needs.build-toolbox.result }}
       daemon: ${{ needs.compile-daemon.result }}
       ghcr: ${{ needs.push-ghcr.result }}
     steps:
       - name: Record build results
         run: |
           echo "compile-runner = ${{ needs.compile-runner.result }}"
+          echo "build-toolbox  = ${{ needs.build-toolbox.result }}"
           echo "compile-daemon = ${{ needs.compile-daemon.result }}"
           echo "push-ghcr      = ${{ needs.push-ghcr.result }}"

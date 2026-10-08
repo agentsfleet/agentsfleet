@@ -1,18 +1,15 @@
 //! What the lane needs before any trial runs, and the engine every trial uses.
 
-use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Duration;
 
-use afd_core::env::LOG_LEVEL_VAR;
-use afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND;
+use afd_core::env::ProcessEnv;
 use afr_sandbox::{
-    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostTools, KernelMounter, Manifest,
-    ProbePaths, REQUIRED_CONTROLLERS, SUBTREE_CONTROL, Toolboxes, probe,
+    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, KernelMounter, Manifest, ProbePaths,
+    REQUIRED_CONTROLLERS, SUBTREE_CONTROL, Toolboxes, probe,
 };
 use libtest_mimic::Failed;
 
@@ -22,12 +19,15 @@ use crate::release::Signer;
 pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
 /// The delegated cgroup every lease's cgroup is made under.
 const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
-/// The unprivileged host user and group bubblewrap runs as: `nobody`.
-pub(crate) const SANDBOX_IDS: (u32, u32) = (65_534, 65_534);
+/// The unprivileged host user and group bubblewrap runs as, as on a host.
+pub(crate) const SANDBOX_IDS: (u32, u32) = afr_sandbox::SANDBOX_HOST_IDS;
 /// The cap on user namespaces; zero means bubblewrap cannot start.
 const MAX_USER_NAMESPACES: &str = "/proc/sys/user/max_user_namespaces";
 /// Ubuntu's `AppArmor` switch that forbids unprivileged user namespaces.
 const APPARMOR_USERNS: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
+/// Whether the host forwards IPv4: an allowlisted sandbox's traffic is
+/// forwarded from its link, so the egress trials need it on.
+const IP_FORWARD: &str = "/proc/sys/net/ipv4/ip_forward";
 /// Where each run's leases and toolbox mount live; short, for socket paths.
 pub(crate) const STATE_PREFIX: &str = "afr-lane-";
 /// Where, under the lane's state, each lease's directory is made; apart from
@@ -54,8 +54,6 @@ pub(crate) const STATE_FREE_BYTES_MIN: u64 = 6 << 30;
 const MIB: u64 = 1 << 20;
 /// The state directory: traversable, but listable and writable by root only.
 const STATE_MODE: u32 = 0o711;
-/// How long a sandbox may take to answer.
-const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Everything a trial builds sandboxes with.
 pub(crate) struct Lane {
@@ -119,6 +117,9 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     }
     if fs::read_to_string(APPARMOR_USERNS).is_ok_and(|on| on.trim() == "1") {
         gaps.push(format!("user namespaces: {APPARMOR_USERNS} is 1"));
+    }
+    if fs::read_to_string(IP_FORWARD).map_or(true, |on| on.trim() != "1") {
+        gaps.push(format!("forwarding: {IP_FORWARD} is not 1"));
     }
     if toolbox.is_none() {
         gaps.push(format!("{TOOLBOX_VARIABLE}: names no toolbox image"));
@@ -226,18 +227,15 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
         digest: toolbox.digest().to_owned(),
     };
     let entry = install_entry(state.path())?;
-    let config = BubblewrapConfig {
-        tools: HostTools::default(),
-        toolbox_digest: image.digest().to_owned(),
+    // The constructor a runner host builds with, so the lane proves the
+    // configuration production runs and not a second spelling of it.
+    let config = BubblewrapConfig::for_host(
         toolbox,
         cgroup_root,
-        state_dir: state.path().join(LEASES_DIR),
+        state.path().join(LEASES_DIR),
         entry,
-        entry_args: vec![OsString::from(SANDBOX_SUBCOMMAND)],
-        sandbox_ids: SANDBOX_IDS,
-        log_level: std::env::var_os(LOG_LEVEL_VAR),
-        ready_timeout: READY_TIMEOUT,
-    };
+        &ProcessEnv,
+    );
     Ok(Lane {
         config,
         image,

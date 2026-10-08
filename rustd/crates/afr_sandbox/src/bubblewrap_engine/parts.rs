@@ -1,7 +1,7 @@
 //! What one lease's sandbox owns, and the one release every path ends with.
 //!
-//! [`Parts`] is the single owner of a lease's process, cgroup, workspace disk
-//! and directory. [`Parts::teardown`] releases them and reports what it could
+//! [`Parts`] is the single owner of a lease's process, cgroup, egress scope,
+//! workspace disk and directory. [`Parts::teardown`] releases them and reports what it could
 //! not; dropping `Parts` releases whatever is still held — a cancelled start, a
 //! sandbox nobody destroyed — and logs what it could not. Both run the same
 //! [`Parts::release`], once.
@@ -19,6 +19,7 @@ use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
 use crate::cgroup::{CGROUP_PROCS, Freezer, LeaseCgroup};
+use crate::egress::{Host, Scope};
 use crate::error::{Error, Result, cgroup, program};
 use crate::host::tail;
 use crate::tenant::TenantFiles;
@@ -48,6 +49,7 @@ pub(super) struct Parts {
     dir: Option<PathBuf>,
     disk: Option<WorkspaceDisk>,
     cgroup: Option<LeaseCgroup>,
+    egress: Option<Scope>,
     child: Option<Child>,
     stderr: Option<JoinHandle<String>>,
 }
@@ -60,6 +62,7 @@ impl Parts {
             dir: Some(dir),
             disk: None,
             cgroup: None,
+            egress: None,
             child: None,
             stderr: None,
         }
@@ -95,6 +98,11 @@ impl Parts {
     /// Takes ownership of the lease's cgroup.
     pub(super) fn adopt_cgroup(&mut self, cgroup: LeaseCgroup) -> &LeaseCgroup {
         self.cgroup.insert(cgroup)
+    }
+
+    /// Takes ownership of the scope joining the lease's sandbox to the host.
+    pub(super) fn adopt_egress(&mut self, scope: Scope) {
+        self.egress = Some(scope);
     }
 
     /// Starts bubblewrap inside the cgroup whose `cgroup.procs` is `procs`,
@@ -199,13 +207,15 @@ impl Parts {
             dir: self.dir.take(),
             disk: self.disk.take(),
             cgroup: self.cgroup.take(),
+            egress: self.egress.take(),
             child: self.child.take(),
             stderr: self.stderr.take(),
         }
     }
 
     /// Releases everything still held, in the one order that works: processes
-    /// die before their cgroup goes, and the disk is unmounted before its
+    /// die before their cgroup goes and before their scope's rules do, so no
+    /// packet leaves after its rules, and the disk is unmounted before its
     /// directory is removed. A disk that will not unmount keeps its directory,
     /// image and all, for the boot sweep: an attached loop device is never
     /// left on a file nobody can name.
@@ -225,6 +235,9 @@ impl Parts {
             if matches!(child.try_wait(), Ok(None)) {
                 keep(child.start_kill().map_err(Error::from));
             }
+        }
+        if let Some(scope) = self.egress.take() {
+            keep(scope.remove(&Host));
         }
         if let Some(cgroup) = self.cgroup.take() {
             keep(cgroup.remove());
@@ -249,6 +262,7 @@ impl Drop for Parts {
         let held = self.dir.is_some()
             || self.disk.is_some()
             || self.cgroup.is_some()
+            || self.egress.is_some()
             || self.child.is_some();
         if !held {
             return;

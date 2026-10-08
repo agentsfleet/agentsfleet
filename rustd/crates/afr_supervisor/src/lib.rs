@@ -34,6 +34,7 @@ mod bundles;
 mod client;
 mod credentials;
 mod drainer;
+mod egress;
 mod halt;
 mod heartbeat;
 mod holds;
@@ -73,6 +74,7 @@ pub use self::storage_home::StorageHome;
 use self::bundles::BundleCache;
 use self::client::HttpRunnerApi;
 use self::drainer::Drainer;
+use self::egress::SystemResolver;
 use self::halt::Halt;
 use self::heartbeat::{Assignment, Heartbeat};
 use self::holds::Holds;
@@ -189,6 +191,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
     let lessee = Arc::new(Lessee {
         plane,
         engine,
+        resolver: Box::new(SystemResolver),
         agent,
         spool: ReportSpool::new(&home),
         bundles: BundleCache::new(&home),

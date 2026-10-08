@@ -30,13 +30,15 @@ use tokio_util::sync::CancellationToken;
 use tracing_subscriber::layer::SubscriberExt as _;
 
 use crate::bundles::BundleCache;
+use crate::egress::Egress;
 use crate::halt::Halt;
 use crate::identity::Whoami;
 use crate::lease_loop::Lessee;
 use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
 use crate::test_support::{
-    Behaviour, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, Rig, clock, daemon, lease, plane,
+    Behaviour, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, LEASE_ID, Rig, clock, daemon, lease,
+    plane,
 };
 use crate::turns::FleetTurns;
 use crate::workspace_clone::{GITHUB_ORIGIN, Mirrors};
@@ -279,6 +281,7 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
     let lessee = Lessee {
         plane,
         engine: Box::new(FakeEngine::default()),
+        resolver: Box::new(FakeResolver::default()),
         agent,
         spool: ReportSpool::new(&home),
         bundles: BundleCache::new(&home),
@@ -293,7 +296,10 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
     let (turns, coordinator) = FleetTurns::start();
     tokio::spawn(coordinator);
     let leased = lease(LEASE_ID, FLEET_ID, None);
-    lessee.run(&turns, &leased).await.unwrap();
+    lessee
+        .run(&turns, &leased, &Egress::closed())
+        .await
+        .unwrap();
     drop(guard);
     tokio::task::spawn_blocking(move || telemetry.flush())
         .await

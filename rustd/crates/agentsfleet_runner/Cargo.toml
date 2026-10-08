@@ -20,20 +20,30 @@ name = "agentsfleet-runner"
 path = "src/main.rs"
 
 [dependencies]
-# The log-level knob both binaries read, declared once.
-afd_core.workspace = true
+# The log-level knob both binaries read, declared once, and the stop `run`
+# waits on (`signal`).
+afd_core = { workspace = true, features = ["signal"] }
+# The agent loop every lease's turn runs on.
+afr_agent.workspace = true
+# Every tool the loop hosts, and the guarded network its egress tools send on.
+afr_tools.workspace = true
+afr_egress.workspace = true
 # `probe` answers with the supervisor's own mapping of the host onto the wire,
 # so what the command prints is what a heartbeat would carry.
 afr_supervisor.workspace = true
 # `sandbox` hardens and serves; `probe` reads the host.
 afr_sandbox.workspace = true
-# The log filter that holds the model library's own lines to its warnings.
+# The log filter that holds the model library's own lines to its warnings, and
+# the providers the loop reaches models through.
 afr_providers.workspace = true
 # `run`'s export: the credential-free endpoint, the span budget, the runner's
 # own families and the layer its subscriber carries.
 afr_telemetry.workspace = true
 clap.workspace = true
 serde_json.workspace = true
+# `run`'s runtime, and the token every supervised task stops on.
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
@@ -42,6 +52,15 @@ tracing-subscriber.workspace = true
 tempfile.workspace = true
 # `MapEnv`, so the log-level fallback is tested without the process environment.
 afd_core = { workspace = true, features = ["test-util"] }
+# The `run` suite's fake daemon and collector: real listeners, so the binary
+# leases and exports over the sockets it uses on a host.
+axum.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "sync"] }
+# The routes the fake daemon answers, spelled once.
+afd_wire.workspace = true
+# The span, attribute and knob names the suite reads back, spelled once.
+afd_observability.workspace = true
+afd_otlp.workspace = true
 
 [[test]]
 name = "runner_suite"

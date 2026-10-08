@@ -11,17 +11,17 @@
 
 use super::*;
 
-/// A cursor in the form `keyset_cursor.zig` writes.
-const ZIG_CURSOR: &str = "1735689600000:01924f4e-0000-7000-8000-00000000a11e";
+/// A cursor in the clear `{millis}:{id}` form this inbox issues.
+const CLEAR_CURSOR: &str = "1735689600000:01924f4e-0000-7000-8000-00000000a11e";
 
 /// The boundary instant that cursor carries.
-const ZIG_CURSOR_AT: i64 = 1_735_689_600_000;
+const CLEAR_CURSOR_AT: i64 = 1_735_689_600_000;
 
 /// The boundary gate that cursor carries.
-const ZIG_CURSOR_GATE: &str = "01924f4e-0000-7000-8000-00000000a11e";
+const CLEAR_CURSOR_GATE: &str = "01924f4e-0000-7000-8000-00000000a11e";
 
 /// The same cursor as a browser puts it on the wire.
-const ZIG_CURSOR_ENCODED: &str = "1735689600000%3A01924f4e-0000-7000-8000-00000000a11e";
+const CLEAR_CURSOR_ENCODED: &str = "1735689600000%3A01924f4e-0000-7000-8000-00000000a11e";
 
 /// What a refused parse answers.
 const BAD_REQUEST: u16 = 400;
@@ -51,10 +51,10 @@ fn an_empty_query_is_every_state_at_the_default_size() {
 #[test]
 fn the_three_filters_are_read_off_the_string() {
     let listing = parsed(&format!(
-        "status=denied&fleet_id={ZIG_CURSOR_GATE}&gate_kind=spend"
+        "status=denied&fleet_id={CLEAR_CURSOR_GATE}&gate_kind=spend"
     ));
     assert_eq!(listing.status, Some(GateStatus::Denied));
-    assert_eq!(listing.fleet_id.as_deref(), Some(ZIG_CURSOR_GATE));
+    assert_eq!(listing.fleet_id.as_deref(), Some(CLEAR_CURSOR_GATE));
     assert_eq!(listing.gate_kind.as_deref(), Some("spend"));
 }
 
@@ -83,10 +83,10 @@ fn a_cursor_the_dashboard_encoded_still_resumes() {
     // `URLSearchParams` percent-escapes the colon in the clear wire form,
     // so this is what the dashboard actually sends. Read raw it finds no
     // separator, and every page after the first is refused.
-    let listing = parsed(&format!("cursor={ZIG_CURSOR_ENCODED}"));
+    let listing = parsed(&format!("cursor={CLEAR_CURSOR_ENCODED}"));
     let resume = listing.cursor.expect("an encoded cursor parses");
-    assert_eq!(resume.borrowed().created_at, ZIG_CURSOR_AT);
-    assert_eq!(resume.borrowed().gate_id, ZIG_CURSOR_GATE);
+    assert_eq!(resume.borrowed().created_at, CLEAR_CURSOR_AT);
+    assert_eq!(resume.borrowed().gate_id, CLEAR_CURSOR_GATE);
 }
 
 #[test]
@@ -97,10 +97,10 @@ fn a_fleet_id_that_is_not_an_identifier_is_refused_here() {
         assert_eq!(refusal_status(malformed), BAD_REQUEST, "{malformed}");
     }
     assert_eq!(
-        parsed(&format!("fleet_id={ZIG_CURSOR_GATE}"))
+        parsed(&format!("fleet_id={CLEAR_CURSOR_GATE}"))
             .fleet_id
             .as_deref(),
-        Some(ZIG_CURSOR_GATE)
+        Some(CLEAR_CURSOR_GATE)
     );
 }
 
@@ -145,7 +145,7 @@ fn a_status_no_row_can_be_in_is_refused_rather_than_ignored() {
 }
 
 #[test]
-fn the_page_size_band_is_the_zig_daemons() {
+fn the_page_size_band_is_one_to_two_hundred() {
     assert_eq!(parsed("limit=1").limit, 1);
     assert_eq!(parsed("limit=200").limit, i64::from(MAX_LIMIT));
     // A form field left blank is the default page, as on every list route.
@@ -156,12 +156,12 @@ fn the_page_size_band_is_the_zig_daemons() {
 }
 
 #[test]
-fn a_cursor_the_zig_daemon_minted_resumes_this_one() {
-    let listing = parsed(&format!("cursor={ZIG_CURSOR}"));
+fn a_clear_cursor_resumes_at_its_boundary() {
+    let listing = parsed(&format!("cursor={CLEAR_CURSOR}"));
     let resume = listing.cursor.expect("the cursor parses");
     let borrowed = resume.borrowed();
-    assert_eq!(borrowed.created_at, ZIG_CURSOR_AT);
-    assert_eq!(borrowed.gate_id, ZIG_CURSOR_GATE);
+    assert_eq!(borrowed.created_at, CLEAR_CURSOR_AT);
+    assert_eq!(borrowed.gate_id, CLEAR_CURSOR_GATE);
 }
 
 #[test]

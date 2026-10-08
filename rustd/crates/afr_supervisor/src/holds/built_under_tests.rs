@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use afd_wire::policy::{ExecutionPolicy, RepositoryAccess, RepositoryBinding};
 
 use super::BuiltUnder;
+use crate::egress::Bound;
 use crate::test_support::{FLEET_ID, LEASE_ID, lease};
 
 /// A host the fixture lease does not reach.
@@ -26,7 +27,7 @@ type Change = fn(&mut ExecutionPolicy<'static>);
 fn key(change: Change) -> BuiltUnder {
     let mut policy = lease(LEASE_ID, FLEET_ID, None).policy;
     change(&mut policy);
-    BuiltUnder::of(&policy)
+    BuiltUnder::of(&policy, &Bound::Isolated)
 }
 
 /// A binding with `access` to `repositories` on `branch`.
@@ -95,4 +96,15 @@ fn a_change_to_the_repository_binding_files_another_key() {
     for (index, change) in changes.into_iter().enumerate() {
         assert_ne!(key(change), key(bound), "binding change {index}");
     }
+}
+
+/// The runner's egress is part of the key: the same lease policy under
+/// another network the runner was assigned files another key.
+#[test]
+fn a_change_to_the_runners_egress_files_another_key() {
+    let policy = lease(LEASE_ID, FLEET_ID, None).policy;
+    let under = |egress: Bound| BuiltUnder::of(&policy, &egress);
+
+    assert_eq!(under(Bound::Host), under(Bound::Host));
+    assert_ne!(under(Bound::Host), under(Bound::Isolated));
 }

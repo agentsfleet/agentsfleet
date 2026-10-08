@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# deploy.sh — install the agentsfleet-runner binary and restart its systemd service.
+# deploy.sh — install the agentsfleet-runner binary and its toolbox, and restart
+# the systemd service.
 #
 # Two modes:
-#   Local:    deploy.sh runner <version> <binary-path>
-#             Installs from a local file (CI scp'd the binary to the server).
+#   Local:    deploy.sh runner <version> <binary-path> <toolbox-dir>
+#             Installs from local files (CI copied the binary and the toolbox's
+#             image, manifest and signature to the server).
 #
 #   Release:  deploy.sh runner <version>
-#             Downloads from GitHub Releases (tagged release deploys).
+#             Downloads the offline bundle from GitHub Releases (tagged release
+#             deploys); it carries the binary and the toolbox together.
+#
+# The toolbox lands in the runner's incoming directory, and the runner admits it
+# at boot: it verifies the manifest's signature against the key it is built
+# with, stages the image and mounts it. A host without an admitted toolbox
+# refuses every lease, so a deploy that lacks one stops before the restart.
 #
 # Environment:
 #   DISCORD_WEBHOOK_URL — if set, sends deploy status to Discord
@@ -52,6 +60,10 @@ readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly DEPLOY_DIR="/opt/agentsfleet/deploy"
 readonly ENV_FILE="/opt/agentsfleet/.env"
 readonly ENV_DEST="/etc/default/agentsfleet-runner"
+# Staging the toolbox the runner admits at boot: `install_toolbox`, beside
+# this file on the host as in the repository.
+# shellcheck source=./toolbox.sh
+source "$(dirname "${BASH_SOURCE[0]}")/toolbox.sh"
 readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 
 # The single deployable component. Kept as an explicit argument so the call site
@@ -60,14 +72,15 @@ readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 readonly COMPONENT_RUNNER="runner"
 readonly BINARY_NAME="agentsfleet-runner"
 readonly SERVICE_NAME="agentsfleet-runner.service"
-# Release-download artifact is arch-specific. CI's local-binary mode skips this —
-# it scp's the right-arch binary and passes its path.
+# The release's offline bundle is arch-specific. CI's local mode skips this —
+# it copies the right-arch binary and toolbox and passes their paths.
 case "$(uname -m)" in
   x86_64 | amd64) _arch="amd64" ;;
   aarch64 | arm64) _arch="arm64" ;;
   *) _arch="$(uname -m)" ;;
 esac
-readonly RELEASE_ARTIFACT="${BINARY_NAME}-linux-${_arch}"
+readonly RELEASE_BINARY="${BINARY_NAME}-linux-${_arch}"
+readonly RELEASE_BUNDLE="${BINARY_NAME}-bundle-linux-${_arch}"
 
 # Serializes install + `systemctl restart`, which is not atomic: a manual run and
 # a cancel-orphaned CI run can otherwise interleave on the same host. flock beats a
@@ -76,8 +89,9 @@ readonly RELEASE_ARTIFACT="${BINARY_NAME}-linux-${_arch}"
 # path (/var/lock is root-owned; the tests are not root). Production never sets it.
 readonly DEPLOY_LOCK_PATH="${DEPLOY_LOCK_PATH:-/var/lock/agentsfleet-deploy.lock}"
 
-# `agentsfleet-runner --version` prints `agentsfleet-runner <version> (git <sha>)`
-# (src/runner/cmd/version.zig). The version is whitespace-delimited field 2.
+# `agentsfleet-runner --version` prints `agentsfleet-runner <version>`: clap's
+# `version` flag over the workspace version (`rustd/crates/agentsfleet_runner/src/main.rs`).
+# The version is whitespace-delimited field 2.
 readonly VERSION_FIELD_INDEX=2
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -157,17 +171,18 @@ acquire_from_local() {
 }
 
 acquire_from_release() {
-  local url="https://github.com/${REPO}/releases/download/${VERSION}/${RELEASE_ARTIFACT}.tar.gz"
+  local url="https://github.com/${REPO}/releases/download/${VERSION}/${RELEASE_BUNDLE}.tar.gz"
   local tmpdir
   tmpdir=$(mktemp -d)
   # shellcheck disable=SC2064
   trap "rm -rf '$tmpdir'" EXIT
 
-  log "Downloading ${RELEASE_ARTIFACT} ${VERSION} ..."
-  curl -fsSL -o "${tmpdir}/${RELEASE_ARTIFACT}.tar.gz" "$url" \
-    || die "Download failed. Check that release ${VERSION} includes ${RELEASE_ARTIFACT}."
-  tar xzf "${tmpdir}/${RELEASE_ARTIFACT}.tar.gz" -C "$tmpdir"
-  install -m 755 "${tmpdir}/${RELEASE_ARTIFACT}" "${INSTALL_DIR}/${BINARY_NAME}"
+  log "Downloading ${RELEASE_BUNDLE} ${VERSION} ..."
+  curl -fsSL -o "${tmpdir}/${RELEASE_BUNDLE}.tar.gz" "$url" \
+    || die "Download failed. Check that release ${VERSION} includes ${RELEASE_BUNDLE}."
+  tar xzf "${tmpdir}/${RELEASE_BUNDLE}.tar.gz" -C "$tmpdir"
+  install -m 755 "${tmpdir}/${RELEASE_BINARY}" "${INSTALL_DIR}/${BINARY_NAME}"
+  install_toolbox "$tmpdir"
 }
 
 # ── Systemd sync ─────────────────────────────────────────────────────────────
@@ -186,10 +201,10 @@ sync_env() {
   cp "$ENV_FILE" "$ENV_DEST"
   log "Synced .env → ${ENV_DEST}"
 
-  # Fail loud when any required runner env var is absent. The daemon's own
-  # startup check (getRequired in src/runner/daemon/config.zig) would catch
-  # this too, but a 1/FAILURE systemd loop with `MissingEnvVar` is a confusing
-  # surface for an operator — die here with the specific missing keys instead.
+  # Fail loud when any required runner env var is absent. The runner's own boot
+  # check (`afr_supervisor::Config::from_env`) would catch this too, but a
+  # 1/FAILURE systemd loop with `run_failed` is a confusing surface for an
+  # operator — die here with the specific missing keys instead.
   local required=(AGENTSFLEET_API_URL AGENTSFLEET_RUNNER_TOKEN)
   local missing=()
   local k
@@ -282,16 +297,19 @@ verify_healthy() {
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
-  if [[ $# -lt 2 || $# -gt 3 ]]; then
-    echo "Usage: deploy.sh runner <version> [binary-path]"
+  if [[ $# -lt 2 || $# -gt 4 || $# -eq 3 ]]; then
+    echo "Usage: deploy.sh runner <version> [binary-path toolbox-dir]"
     echo "  version:     GitHub release tag (e.g. v0.1.0) or dev SHA (e.g. dev-abc1234)"
-    echo "  binary-path: local path to pre-staged binary (optional; downloads from GH release if omitted)"
+    echo "  binary-path: local path to the pre-staged binary; with it, toolbox-dir is required"
+    echo "  toolbox-dir: local directory holding toolbox-<sha256>.{erofs,json,json.sig}"
+    echo "  Both omitted: the release's offline bundle is downloaded from GitHub Releases."
     exit 1
   fi
 
   COMPONENT="$1"
   VERSION="$2"
   LOCAL_BINARY="${3:-}"
+  LOCAL_TOOLBOX="${4:-}"
 
   [[ "$COMPONENT" == "$COMPONENT_RUNNER" ]] \
     || die "Unknown component '$COMPONENT'. The only deployable component is '${COMPONENT_RUNNER}'."
@@ -308,6 +326,7 @@ main() {
 
   if [[ -n "$LOCAL_BINARY" ]]; then
     acquire_from_local "$LOCAL_BINARY"
+    install_toolbox "$LOCAL_TOOLBOX"
   else
     acquire_from_release
   fi

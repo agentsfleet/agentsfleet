@@ -74,10 +74,7 @@ pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
         let sandbox = engine
-            .prepare(SandboxRequest {
-                lease_id: PLANT,
-                limits: Limits::default(),
-            })
+            .prepare(SandboxRequest::new(PLANT, Limits::default()))
             .await?;
         let said = run(sandbox.executor(), shell(PLANT_SCRIPT)).await;
         let lease = lane.lease_dir(PLANT);

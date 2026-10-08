@@ -1,0 +1,197 @@
+//! What `run` leases with on this host: the sandbox engine, the capability
+//! report heartbeats carry, and the agent loop every lease's turn runs on.
+//!
+//! On Linux the engine is bubblewrap, built from the cgroup the service
+//! manager delegated, the toolbox release a deploy staged, and the runner
+//! binary itself as every sandbox's entry
+//! (`docs/architecture/runner_execution.md` §Toolbox). A debug build can be
+//! told to build no sandbox at all, so a suite drives this binary end to end on
+//! a host without bubblewrap; a release build has no way to ask.
+
+use std::fmt::Display;
+use std::process::ExitCode;
+use std::sync::Arc;
+
+use afd_core::error_code::{self, Coded, ErrorCode};
+use afr_sandbox::{Engine, HostProbe, ProbePaths};
+use afr_supervisor::StorageHome;
+
+#[cfg(target_os = "linux")]
+use afr_sandbox::{KernelMounter, Toolboxes};
+
+/// The event every failure that stops `run` is logged under.
+pub(crate) const EVENT_RUN_FAILED: &str = "run_failed";
+/// Why `run` stopped when the host lacks a mechanism every sandbox needs.
+const CANNOT_SANDBOX: &str = "this host cannot build a sandbox";
+
+/// The engine and the facts `run` serves leases with.
+pub(crate) struct Host {
+    /// Builds each lease's sandbox.
+    pub(crate) engine: Box<dyn Engine>,
+    /// What this host's kernel can enforce, as every heartbeat states it.
+    pub(crate) probe: HostProbe,
+    /// The toolbox images the engine's sandboxes run on, unmounted when this
+    /// is dropped: after serving ends, or on any boot failure past admission.
+    pub(crate) mounted: Mounted,
+}
+
+/// The toolbox images a host admitted; none for an engine that mounts none.
+pub(crate) struct Mounted {
+    #[cfg(target_os = "linux")]
+    toolboxes: Option<Toolboxes<KernelMounter>>,
+}
+
+/// Unmounts what was admitted. A refusal is logged and left: the process is
+/// ending either way, and the next start adopts or detaches what stayed.
+#[cfg(target_os = "linux")]
+impl Drop for Mounted {
+    fn drop(&mut self) {
+        let Some(Err(stayed)) = self.toolboxes.as_ref().map(Toolboxes::close) else {
+            return;
+        };
+        let error_code = stayed.code().as_str();
+        let reason = stayed.to_string();
+        let event = EVENT_RUN_FAILED;
+        tracing::warn!(error_code, reason, event, "a toolbox image stayed mounted");
+    }
+}
+
+impl Host {
+    /// The bubblewrap engine this host builds sandboxes with.
+    ///
+    /// # Errors
+    /// The reason it cannot, already logged, as the exit status.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn bubblewrap(home: &StorageHome) -> Result<Self, ExitCode> {
+        use std::fs::File;
+        use std::io::BufReader;
+        use std::path::Path;
+
+        use afd_core::env::ProcessEnv;
+        use afr_sandbox::{
+            BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, Release, SELF_CGROUP_PATH,
+            delegated_root,
+        };
+
+        let own = File::open(SELF_CGROUP_PATH).map_err(|error| io_failed(&error))?;
+        let cgroup_root = delegated_root(BufReader::new(own), Path::new(CGROUP_ROOT)).or_exit()?;
+        let probe = afr_sandbox::probe(&ProbePaths {
+            cgroup_root: cgroup_root.clone(),
+            state_dir: Some(home.sandboxes()),
+            ..ProbePaths::default()
+        });
+        if let Some(missing) = probe.missing() {
+            return Err(cannot_sandbox(missing));
+        }
+        let release = Release::signed_by_release(env!("CARGO_PKG_VERSION")).or_exit()?;
+        let toolboxes = Toolboxes::open(
+            home.toolbox_images(),
+            KernelMounter::new(home.toolbox_mounts()),
+        )
+        .or_exit()?;
+        // Admission mounts only what it admits, so a refusal leaves nothing to
+        // unmount; past it, every early return drops `mounted`.
+        let toolbox = toolboxes
+            .admit_incoming(&release, &home.toolbox_incoming())
+            .or_exit()?;
+        let mounted = Mounted {
+            toolboxes: Some(toolboxes),
+        };
+        let entry = std::env::current_exe().map_err(|error| io_failed(&error))?;
+        let config =
+            BubblewrapConfig::for_host(toolbox, cgroup_root, home.sandboxes(), entry, &ProcessEnv);
+        let engine = BubblewrapEngine::new(config, &probe).or_exit()?;
+        Ok(Self {
+            engine: Box::new(engine),
+            probe,
+            mounted,
+        })
+    }
+
+    /// No bubblewrap engine exists off Linux.
+    ///
+    /// # Errors
+    /// Always: the first mechanism the host's probe found missing, already
+    /// logged, as the exit status.
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn bubblewrap(_home: &StorageHome) -> Result<Self, ExitCode> {
+        let probe = afr_sandbox::probe(&ProbePaths::default());
+        Err(cannot_sandbox(
+            probe.missing().unwrap_or(afr_sandbox::MECHANISM_BUBBLEWRAP),
+        ))
+    }
+
+    /// An engine that builds no sandbox: each lease's tools run in a scratch
+    /// directory under the storage home. A debug build alone has it, and the
+    /// engine itself refuses to exist in a release build.
+    ///
+    /// # Errors
+    /// The engine refused, already logged, as the exit status.
+    #[cfg(debug_assertions)]
+    pub(crate) fn unsandboxed(home: &StorageHome) -> Result<Self, ExitCode> {
+        let engine = afr_sandbox::UnsandboxedEngine::new(home.sandboxes()).or_exit()?;
+        Ok(Self {
+            engine: Box::new(engine),
+            probe: afr_sandbox::probe(&ProbePaths::default()),
+            mounted: Mounted {
+                #[cfg(target_os = "linux")]
+                toolboxes: None,
+            },
+        })
+    }
+}
+
+/// The agent loop every lease's turn runs on: every tool this runner hosts,
+/// their egress through the guarded network, and the model providers the
+/// shipped registry names.
+///
+/// # Errors
+/// The failure, already logged, as the exit status.
+pub(crate) fn agent() -> Result<afr_agent::Loop, ExitCode> {
+    let network = afr_egress::Network::new().or_exit()?;
+    let connector = afr_providers::Registry::builtin()
+        .and_then(afr_providers::Connector::new)
+        .or_exit()?;
+    Ok(afr_agent::Loop::new(
+        afr_tools::Catalog::hosted(Arc::new(network)),
+        connector,
+    ))
+}
+
+/// A step `run` cannot go on from: its failure, whichever crate raised it,
+/// logged under its registry code and `run_failed`, as the exit status.
+pub(crate) trait OrExit<T> {
+    /// The value, or the failure logged and turned into the exit status.
+    ///
+    /// # Errors
+    /// The step failed.
+    fn or_exit(self) -> Result<T, ExitCode>;
+}
+
+impl<T, E: Coded> OrExit<T> for Result<T, E> {
+    fn or_exit(self) -> Result<T, ExitCode> {
+        self.map_err(|failure| stopped(failure.code(), &failure))
+    }
+}
+
+/// Logs an input/output failure the runner's own crates did not raise.
+pub(crate) fn io_failed(failure: &std::io::Error) -> ExitCode {
+    stopped(error_code::INTERNAL_OPERATION_FAILED, failure)
+}
+
+/// Logs a host that lacks `missing`, which every sandbox needs.
+fn cannot_sandbox(missing: &'static str) -> ExitCode {
+    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let reason = CANNOT_SANDBOX;
+    let event = EVENT_RUN_FAILED;
+    tracing::error!(error_code, missing, reason, event);
+    ExitCode::FAILURE
+}
+
+fn stopped(code: ErrorCode, reason: &dyn Display) -> ExitCode {
+    let error_code = code.as_str();
+    let reason = reason.to_string();
+    let event = EVENT_RUN_FAILED;
+    tracing::error!(error_code, reason, event);
+    ExitCode::FAILURE
+}

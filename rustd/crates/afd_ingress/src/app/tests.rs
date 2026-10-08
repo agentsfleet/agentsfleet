@@ -155,10 +155,9 @@ fn the_ceiling_admits_exactly_its_own_count_and_refuses_one_more() {
 
 /// The ceiling is a spend bound, so its value is load-bearing rather than taste.
 ///
-/// `github.zig`'s `MAX_FANOUT`. A change here changes how much one signed HTTP
-/// request may cost this deployment, which is a decision no refactor should be
-/// able to make quietly.
+/// A change here changes how much one signed HTTP request may cost this
+/// deployment, which is a decision no refactor should be able to make quietly.
 #[test]
-fn the_ceiling_is_the_count_the_zig_ingress_enforces() {
+fn the_ceiling_is_one_hundred_fleets_per_delivery() {
     assert_eq!(MAX_FANOUT, 100);
 }

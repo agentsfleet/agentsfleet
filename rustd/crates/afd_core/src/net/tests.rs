@@ -11,10 +11,10 @@ fn blocks(address: &str) -> bool {
     is_blocked(address.parse::<IpAddr>().expect("an address literal"))
 }
 
-/// Every range the retired `ip_literal.zig` blocked, in the spellings its own
-/// suite used.
+/// Every reserved IPv4 range — loopback, private, link-local, this-network,
+/// multicast, reserved and broadcast — at its edges.
 #[test]
-fn test_v4_blocklist_matches_the_retired_ranges() {
+fn test_v4_blocklist_covers_every_reserved_range() {
     for blocked in [
         "127.0.0.1",
         "127.255.255.255",

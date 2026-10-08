@@ -39,6 +39,7 @@ fn probe() -> HostProbe {
         kvm: Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,
+        egress: false,
     }
 }
 

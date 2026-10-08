@@ -75,6 +75,10 @@ pub struct HostProbe {
     /// The state file system takes direct I/O, so a workspace disk is cached
     /// once rather than twice; `None` when no state directory was named.
     pub workspace_direct_io: Option<bool>,
+    /// The kernel built and removed an egress scope — a veth pair and its
+    /// host-side `nf_tables` table — with forwarding on, so an
+    /// `allow_list_egress` sandbox reaches its allowlist and nothing else.
+    pub egress: bool,
 }
 
 /// Where [`probe`] reads each fact from.
@@ -115,12 +119,21 @@ impl Default for ProbePaths {
 /// is a mechanism the host does not have.
 #[must_use]
 pub fn probe(paths: &ProbePaths) -> HostProbe {
-    read(paths, crate::harden::landlock_enforceable())
+    read(
+        paths,
+        crate::harden::landlock_enforceable(),
+        egress_enforceable(),
+    )
 }
 
 /// [`probe`], told whether the kernel builds the sandbox's Landlock ruleset
-/// rather than asking it, so a test states a host it is not running on.
-pub(crate) fn read(paths: &ProbePaths, landlock_enforceable: bool) -> HostProbe {
+/// and an egress scope rather than asking it, so a test states a host it is
+/// not running on.
+pub(crate) fn read(
+    paths: &ProbePaths,
+    landlock_enforceable: bool,
+    egress_enforceable: bool,
+) -> HostProbe {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     HostProbe {
         landlock: landlock_enforceable
@@ -144,7 +157,20 @@ pub(crate) fn read(paths: &ProbePaths, landlock_enforceable: bool) -> HostProbe 
             .lines()
             .any(|line| line.split_whitespace().last() == Some(MECHANISM_TOOLBOX_FILESYSTEM)),
         workspace_direct_io: paths.state_dir.as_deref().map(direct_io),
+        egress: egress_enforceable,
     }
+}
+
+/// Whether this host builds an egress scope: one is built and removed.
+#[cfg(target_os = "linux")]
+fn egress_enforceable() -> bool {
+    crate::egress::enforceable()
+}
+
+/// No other kernel has `nf_tables`.
+#[cfg(not(target_os = "linux"))]
+const fn egress_enforceable() -> bool {
+    false
 }
 
 /// Whether `dir`'s file system opens a file for direct I/O, which is what the

@@ -33,11 +33,13 @@ use tokio::sync::mpsc;
 use crate::client::{Call, ControlPlane, RunnerApi};
 
 mod git_fixture;
+mod resolver;
 mod rig;
 #[path = "test_support/sandbox.rs"]
 mod sandbox;
 
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
+pub(crate) use self::resolver::{FakeResolver, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, Writes};
 

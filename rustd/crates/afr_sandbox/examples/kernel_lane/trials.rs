@@ -15,6 +15,10 @@ use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 use crate::admission::{MOUNTINFO, adoption, path_swap};
 use crate::budgets::start_budgets;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
+use crate::egress::{
+    allow_all_and_deny_all, allow_list_admits_only_the_set, probe_reports_enforcement,
+    release_and_boot_sweep, sandbox_cannot_flush_host_rules,
+};
 use crate::exhaustion::{
     disk_fill_under_memory_limit_ends_in_enospc, full_tmp_answers_enospc,
     oom_kills_only_the_tenant, runaway, sweep_removes_both_leaves,
@@ -68,6 +72,20 @@ const TRIALS: &[(&str, Body)] = &[
     ),
     ("test_cgroup_limits_contain_runaway", runaway),
     ("test_sandbox_has_no_network", no_network),
+    ("test_kernel_allow_all_and_deny_all", allow_all_and_deny_all),
+    (
+        "test_kernel_allow_list_admits_only_the_set",
+        allow_list_admits_only_the_set,
+    ),
+    (
+        "test_kernel_sandbox_cannot_flush_host_rules",
+        sandbox_cannot_flush_host_rules,
+    ),
+    ("test_egress_release_and_boot_sweep", release_and_boot_sweep),
+    (
+        "test_egress_probe_reports_enforcement",
+        probe_reports_enforcement,
+    ),
     (
         "test_sandbox_has_private_shared_memory_and_cgroup_view",
         shared_memory_and_cgroup_view,
@@ -256,10 +274,7 @@ fn toolbox_read_only(lane: &Lane) -> Result<(), Failed> {
     let (said, unheld, held) = runtime().block_on(async {
         let engine = BubblewrapEngine::new(config, &probe(&lane.config.probe_paths()))?;
         let unheld = Arc::strong_count(&toolbox);
-        let request = SandboxRequest {
-            lease_id: "toolbox",
-            limits: Limits::default(),
-        };
+        let request = SandboxRequest::new("toolbox", Limits::default());
         let sandbox = engine.prepare(request).await?;
         let held = Arc::strong_count(&toolbox);
         let script =
@@ -307,10 +322,7 @@ async fn starts(engine: &dyn Engine, kind: &str) -> Result<Duration, Failed> {
         let lease_id = format!("{kind}-{number}");
         let started = Instant::now();
         let sandbox = engine
-            .prepare(SandboxRequest {
-                lease_id: &lease_id,
-                limits: Limits::default(),
-            })
+            .prepare(SandboxRequest::new(&lease_id, Limits::default()))
             .await?;
         taken.push(started.elapsed());
         sandbox.destroy().await?;

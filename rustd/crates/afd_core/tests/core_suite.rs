@@ -21,6 +21,9 @@ mod id;
 mod limits;
 #[path = "problem.rs"]
 mod problem;
+#[cfg(all(unix, feature = "signal", feature = "test-util"))]
+#[path = "signal.rs"]
+mod signal;
 #[cfg(feature = "test-util")]
 #[path = "trace.rs"]
 mod trace;

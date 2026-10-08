@@ -1,12 +1,34 @@
+#![expect(
+    clippy::expect_used,
+    reason = "test module: a failed precondition should fail the test loudly"
+)]
+
 use std::path::Path;
 
 use super::{Limits, SandboxRequest};
+use crate::network::{Allowlist, Network};
 
 fn request(lease_id: &str) -> SandboxRequest<'_> {
-    SandboxRequest {
-        lease_id,
-        limits: Limits::default(),
-    }
+    SandboxRequest::new(lease_id, Limits::default())
+}
+
+/// A request names no network until it is told one, and then names that one,
+/// keeping its lease and limits.
+#[test]
+fn test_a_request_is_isolated_until_told_otherwise() {
+    let allowlist = Allowlist::new(Vec::new()).expect("an empty allowlist is within the cap");
+    let isolated = request("lease-a");
+
+    let shared = isolated.with_network(Network::Host);
+    let allowed = isolated.with_network(Network::Allowed(&allowlist));
+
+    assert_eq!(isolated.network, Network::Isolated);
+    assert_eq!(shared.network, Network::Host);
+    assert_eq!(allowed.network, Network::Allowed(&allowlist));
+    assert_eq!(
+        (allowed.lease_id, allowed.limits),
+        (isolated.lease_id, isolated.limits)
+    );
 }
 
 #[test]

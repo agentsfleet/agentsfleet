@@ -3,7 +3,9 @@
 //! [`WarmSlots`] wraps any [`Engine`] and is one itself. A single task owns the
 //! ready sandboxes; a lease claims one through a channel and the task starts a
 //! replacement, so no lock guards the pool and no sandbox is handed out twice.
-//! A claimed sandbox is destroyed with its lease and never returns.
+//! A claimed sandbox is destroyed with its lease and never returns. Slots are
+//! built with no network beyond loopback, so only a lease asking for that
+//! gets one.
 
 use std::pin::Pin;
 use std::sync::Arc;
@@ -18,6 +20,7 @@ use tokio::task::{JoinHandle, JoinSet};
 
 use crate::engine::{Engine, Limits, Sandbox, SandboxRequest};
 use crate::error::Result;
+use crate::network::Network;
 
 /// What every warm sandbox is named, before its lease is known.
 const SLOT_PREFIX: &str = "warm-";
@@ -107,7 +110,9 @@ impl WarmSlots {
 impl Engine for WarmSlots {
     async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
         let started = Instant::now();
-        let warm = if request.limits == self.limits {
+        // Every slot is built isolated: a request for another network, which
+        // the namespace is chosen for at start, starts cold.
+        let warm = if request.limits == self.limits && request.network == Network::Isolated {
             self.claim().await
         } else {
             None
@@ -196,13 +201,7 @@ async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Slot>, limits: Limits)
             // Named like a lease, so a slot never meets a leftover of a
             // previous run under the same name.
             let name = format!("{SLOT_PREFIX}{}", uuid::Uuid::now_v7());
-            match inner
-                .prepare(SandboxRequest {
-                    lease_id: &name,
-                    limits,
-                })
-                .await
-            {
+            match inner.prepare(SandboxRequest::new(&name, limits)).await {
                 Ok(sandbox) => Ok(Slot { name, sandbox }),
                 Err(error) => Err((name, error)),
             }

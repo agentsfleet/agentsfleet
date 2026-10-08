@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "afd_admin"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -57,7 +57,7 @@ dependencies = [
 
 [[package]]
 name = "afd_admission"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admin",
  "afd_admission",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_ingress"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_approval",
@@ -171,7 +171,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_operator"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admin",
  "afd_api_wire",
@@ -193,7 +193,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_runner"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_core",
@@ -218,7 +218,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_tenant"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_approval",
@@ -262,7 +262,7 @@ dependencies = [
 
 [[package]]
 name = "afd_api_wire"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_wire",
  "garde",
@@ -274,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "afd_approval"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -293,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "afd_auth"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -307,7 +307,7 @@ dependencies = [
 
 [[package]]
 name = "afd_bench"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admission",
  "afd_approval",
@@ -342,7 +342,7 @@ dependencies = [
 
 [[package]]
 name = "afd_billing"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "afd_connector"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -383,7 +383,7 @@ dependencies = [
 
 [[package]]
 name = "afd_core"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_validate",
  "base64 0.23.1",
@@ -393,6 +393,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "thiserror",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -400,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "afd_credential"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_billing",
  "afd_core",
@@ -429,7 +430,7 @@ dependencies = [
 
 [[package]]
 name = "afd_cron"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -460,7 +461,7 @@ dependencies = [
 
 [[package]]
 name = "afd_crypto"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "aes-gcm",
  "afd_core",
@@ -477,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "afd_db"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "sqlx",
@@ -490,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "afd_dragonfly"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -511,7 +512,7 @@ dependencies = [
 
 [[package]]
 name = "afd_events"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -536,7 +537,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -578,7 +579,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet_lifecycle"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_approval",
@@ -603,7 +604,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet_ops"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_core",
@@ -615,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "afd_fleet_runtime"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_validate",
@@ -630,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "afd_gate"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_billing",
@@ -656,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "afd_http"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admin",
  "afd_admission",
@@ -700,7 +701,7 @@ dependencies = [
 
 [[package]]
 name = "afd_identity"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_auth",
  "afd_core",
@@ -720,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "afd_ingress"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -745,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "afd_library"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -776,7 +777,7 @@ dependencies = [
 
 [[package]]
 name = "afd_mail"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -795,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "afd_memory"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_core",
@@ -814,7 +815,7 @@ dependencies = [
 
 [[package]]
 name = "afd_observability"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -834,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "afd_otlp"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -849,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "afd_outbound"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_connector",
  "afd_core",
@@ -874,7 +875,7 @@ dependencies = [
 
 [[package]]
 name = "afd_runner"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admission",
  "afd_api_wire",
@@ -902,7 +903,7 @@ dependencies = [
 
 [[package]]
 name = "afd_sse"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_core",
@@ -919,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "afd_state"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_api_wire",
  "afd_auth",
@@ -933,7 +934,7 @@ dependencies = [
 
 [[package]]
 name = "afd_tenant"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_auth",
  "afd_core",
@@ -961,14 +962,14 @@ dependencies = [
 
 [[package]]
 name = "afd_validate"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "garde",
 ]
 
 [[package]]
 name = "afd_vault"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -983,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "afd_webhook"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_crypto",
@@ -993,7 +994,7 @@ dependencies = [
 
 [[package]]
 name = "afd_wire"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_validate",
  "const_format",
@@ -1006,7 +1007,7 @@ dependencies = [
 
 [[package]]
 name = "afr_agent"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -1031,7 +1032,7 @@ dependencies = [
 
 [[package]]
 name = "afr_egress"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -1049,7 +1050,7 @@ dependencies = [
 
 [[package]]
 name = "afr_executor"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "async-trait",
@@ -1071,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "afr_memory"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -1085,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "afr_providers"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -1117,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "afr_sandbox"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_validate",
@@ -1138,6 +1139,10 @@ dependencies = [
  "landlock",
  "libc",
  "libtest-mimic",
+ "netlink-packet-core",
+ "netlink-packet-netfilter",
+ "netlink-packet-route",
+ "netlink-sys",
  "procfs-core",
  "rustix",
  "rustls-pki-types",
@@ -1156,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "afr_secrets"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -1168,7 +1173,7 @@ dependencies = [
 
 [[package]]
 name = "afr_supervisor"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -1208,7 +1213,7 @@ dependencies = [
 
 [[package]]
 name = "afr_telemetry"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_observability",
@@ -1228,7 +1233,7 @@ dependencies = [
 
 [[package]]
 name = "afr_tools"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
  "afd_wire",
@@ -1253,23 +1258,32 @@ dependencies = [
 
 [[package]]
 name = "agentsfleet_runner"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_core",
+ "afd_observability",
+ "afd_otlp",
+ "afd_wire",
+ "afr_agent",
+ "afr_egress",
  "afr_providers",
  "afr_sandbox",
  "afr_supervisor",
  "afr_telemetry",
+ "afr_tools",
+ "axum",
  "clap",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
 ]
 
 [[package]]
 name = "agentsfleetd"
-version = "0.58.0"
+version = "0.59.0"
 dependencies = [
  "afd_admin",
  "afd_admission",
@@ -2060,6 +2074,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
+
+[[package]]
 name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2379,6 +2399,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab63b0e2bf4d5928aff72e83a7dace85d7bba5fe12dcc3c5a572d78caffd3f3c"
 dependencies = [
  "derive_builder_core",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "derive_more"
+version = "0.99.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6edb4b64a43d977b8e99788fe3a04d483834fba1215a7e02caa415b626497f7f"
+dependencies = [
+ "convert_case",
+ "proc-macro2",
+ "quote",
+ "rustc_version",
  "syn 2.0.119",
 ]
 
@@ -4613,6 +4646,49 @@ name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
+
+[[package]]
+name = "netlink-packet-core"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d6e2daf9a8c2e21302714706860a0e6be02e03d17294ecc66b354ea7d4059dd"
+
+[[package]]
+name = "netlink-packet-netfilter"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c185c39f3e48167a2eec4f73138b0f24066d9300016e7df9fbb513ae85f706ed"
+dependencies = [
+ "bitflags 2.13.2",
+ "derive_more",
+ "libc",
+ "netlink-packet-core",
+ "zerocopy",
+]
+
+[[package]]
+name = "netlink-packet-route"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59d48ffc8b73a506e1ff0878528c72668f2bfbc3d875b6be890a96be5d0d5576"
+dependencies = [
+ "bitflags 2.13.2",
+ "libc",
+ "log",
+ "netlink-packet-core",
+ "zerocopy",
+]
+
+[[package]]
+name = "netlink-sys"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c99d38e00b420df49e940fe0826e667c3dad82ac68eb4c2bbf754c1c14a83a10"
+dependencies = [
+ "bytes",
+ "libc",
+ "log",
+]
 
 [[package]]
 name = "new_debug_unreachable"

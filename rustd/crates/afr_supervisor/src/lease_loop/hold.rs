@@ -17,6 +17,7 @@ use afr_telemetry::labels::SandboxHold;
 use afr_telemetry::record;
 
 use super::LeaseRun;
+use crate::egress::Bound;
 use crate::holds::{BuiltUnder, HoldKey, Release, Taken};
 use crate::report::Ending;
 
@@ -59,13 +60,14 @@ impl From<Ending> for Worked {
 }
 
 impl LeaseRun<'_> {
-    /// The key this lease's sandbox is filed and found under.
-    pub(super) fn hold_key(&self, limits: Limits) -> HoldKey {
+    /// The key this lease's sandbox, enforcing `limits` and reaching what
+    /// `bound` admits, is filed and found under.
+    pub(super) fn hold_key(&self, limits: Limits, bound: &Bound) -> HoldKey {
         HoldKey {
             fleet: self.ids.fleet.clone(),
             workspace: self.lease.event.workspace_id.to_string(),
             limits,
-            policy: BuiltUnder::of(&self.lease.policy),
+            policy: BuiltUnder::of(&self.lease.policy, bound),
         }
     }
 
@@ -203,3 +205,7 @@ mod revive_tests;
 #[cfg(test)]
 #[path = "unheld_tests.rs"]
 mod unheld_tests;
+
+#[cfg(test)]
+#[path = "reassign_tests.rs"]
+mod reassign_tests;

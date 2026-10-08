@@ -10,7 +10,7 @@
 //!
 //! Tokio refuses the signals a process cannot catch, so
 //! `SignalKind::from_raw(SIGKILL)` fails through the same public call SIGTERM
-//! goes through. That is why [`agentsfleetd::signal::stop_on_kind`] takes the
+//! goes through. That is why [`afd_core::signal::stop_on_kind`] takes the
 //! kind as an argument: nothing else about a real SIGTERM registration can be
 //! made to fail on demand.
 //!
@@ -20,7 +20,7 @@
 //! first line replaces that disposition for the whole process BEFORE anything
 //! is raised, so by the time `kill(1)` runs there is a handler to catch it.
 //! Each integration test file is its own process, so nothing else is affected.
-#![cfg(all(unix, feature = "test-util"))]
+#![cfg(all(unix, feature = "signal", feature = "test-util"))]
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -63,7 +63,7 @@ async fn test_a_kind_that_will_not_register_falls_back_to_interrupt() {
         "the premise: SIGKILL is a registration that fails, which SIGTERM never does"
     );
 
-    let stopping = tokio::spawn(agentsfleetd::signal::stop_on_kind(SignalKind::from_raw(
+    let stopping = tokio::spawn(afd_core::signal::stop_on_kind(SignalKind::from_raw(
         SIGKILL,
     )));
 
@@ -80,7 +80,7 @@ async fn test_a_kind_that_will_not_register_falls_back_to_interrupt() {
 
     assert!(
         observed.is_ok(),
-        "with SIGTERM unregistered, SIGINT alone must still stop the daemon"
+        "with SIGTERM unregistered, SIGINT alone must still stop the process"
     );
     stopping.await.expect("the fallback path did not panic");
 }

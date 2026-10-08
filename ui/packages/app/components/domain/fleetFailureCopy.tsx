@@ -15,21 +15,29 @@ const CHAT_STARTUP_FAILURE_LABEL =
 const RUNNER_REFUSAL_SENTENCE =
   "The runner refused this run before the fleet started.";
 
-// Cause lines the runner emits when IT refuses a startup_posture lease before
-// the fleet ever runs — mirrored verbatim from the runner's own cause lines,
-// the single source for telling a runner-side refusal apart from a fleet with
-// no instructions. Matching is exact: any other detail keeps the
-// needs-instructions sentence.
+// Cause lines the runner reports when IT refuses a startup_posture lease before
+// the fleet ever runs: the `DETAIL_*` constants the supervisor ends a lease
+// with under `FailureClass::StartupPosture`, in
+// rustd/crates/afr_supervisor/src/lease_loop.rs and its `lease_loop/` modules.
+// They are the single source for telling a runner-side refusal apart from a
+// fleet with no instructions. Matching is exact: any other detail keeps the
+// needs-instructions sentence, and fleetFailureCopy.test.ts reads the Rust
+// source so a reworded line fails a test instead of reaching a user.
 export const RUNNER_REFUSAL_DETAILS = [
-  "sandbox could not be established on this runner",
-  "strict egress policy is not implemented on this runner",
-  "the child could not be enrolled in the resource-control domain",
-  "sandbox setup aborted before the fleet started",
-  "failed to serialize the lease for the child",
-  // `lease_run.zig` DETAIL_BUNDLE_MATERIALIZE. Missing, it fell through to the
-  // needs-instructions sentence and sent an operator to rewrite a fleet whose
-  // instructions were fine — the runner had failed to fetch its bundle.
-  "fleet bundle download or extraction failed before start",
+  "the worker pool was shutting down when the lease arrived",
+  // Missing, the bundle refusal fell through to the needs-instructions
+  // sentence and sent an operator to rewrite a fleet whose instructions were
+  // fine: the runner had failed to fetch its bundle.
+  "the fleet bundle could not be fetched and verified",
+  "the fleet's memory could not be read",
+  "the fleet names a tool this runner cannot host",
+  "the fleet names a model provider this runner does not speak",
+  "the fleet names a model endpoint at a private or reserved address",
+  "the lease asked for a sandbox size outside the bounds a runner builds",
+  "this host could not build a sandbox for the run",
+  "the fleet bundle's support files could not be written to the workspace",
+  "a bound repository could not be checked out into the workspace",
+  "the egress allowlist could not be resolved into addresses this runner can admit",
 ] as const;
 
 // Failure copy for the chat surface. Startup-posture failures get concise
@@ -73,7 +81,7 @@ function isRunnerRefusal(cause: string): boolean {
 }
 
 // Cause lines written for operators are prose and always contain whitespace
-// ("sandbox could not be established on this runner"). A single bare token —
+// ("this host could not build a sandbox for the run"). A single bare token —
 // `FleetInitFailed` — is an internal error name that leaked through a layer
 // which should have mapped it, and it is never shown to the user.
 function isInternalIdentifier(cause: string): boolean {

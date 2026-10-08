@@ -1,5 +1,6 @@
 //! The boot sweep: what a previous run of this host left in the state
-//! directory, removed before this one builds anything.
+//! directory and in the host's network namespace, removed before this one
+//! builds anything.
 //!
 //! A runner killed mid-lease leaves its sandboxes' cgroups, mounted workspace
 //! disks and directories behind. Each lease directory's name is its cgroup's,
@@ -12,6 +13,7 @@ use std::path::Path;
 
 use super::BubblewrapEngine;
 use crate::cgroup::LeaseCgroup;
+use crate::egress;
 use crate::error::Result;
 use crate::workspace_disk::WorkspaceDisk;
 
@@ -21,8 +23,20 @@ const EVENT_SWEPT: &str = "sandbox_swept";
 const EVENT_SWEEP_FAILED: &str = "sandbox_sweep_failed";
 
 impl BubblewrapEngine {
-    /// Removes every lease a previous run left, logging each one.
-    pub(super) fn sweep(&self) {
+    /// Removes every lease a previous run left, logging each one, and, on a
+    /// host that holds sandboxes to allowlists, every egress table and link.
+    pub(super) fn sweep(&self, egress: bool) {
+        if egress && let Err(error) = egress::sweep(&egress::Host) {
+            let error_code = error.code().as_str();
+            let reason = error.to_string();
+            let event = EVENT_SWEEP_FAILED;
+            tracing::warn!(
+                error_code,
+                reason,
+                event,
+                "the egress sweep could not list what to remove"
+            );
+        }
         let Ok(entries) = fs::read_dir(&self.config.state_dir) else {
             return;
         };

@@ -12,9 +12,6 @@ use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
 /// The built binary under test.
 const BINARY: &str = env!("CARGO_BIN_EXE_agentsfleet-runner");
 
-/// What `run` logs when it refuses to start.
-const RUN_REFUSED: &str = "run_refused";
-
 /// What `run` logs when its boot fails.
 const RUN_FAILED: &str = "run_failed";
 
@@ -23,9 +20,6 @@ const UNREACHABLE_DAEMON: &str = "http://127.0.0.1:9";
 
 /// A token of the runner's shape.
 const TOKEN: &str = "agt_r_entries_test";
-
-/// The exit status of an entry this build refuses.
-const REFUSED: i32 = 2;
 
 /// Where an instrumented build writes its coverage profile. Kept across a
 /// cleared environment, so the binary's own lines are measured when the suite
@@ -81,11 +75,11 @@ fn run_fails_at_boot_without_its_environment() {
     );
 }
 
-/// With a valid environment, `run` boots — storage home opened, host probed —
-/// and refuses before it contacts the daemon: exit 2 where the
-/// host could build a sandbox, 1 where it could not, `run_refused` either way.
+/// With a valid environment and no staged toolbox, `run` boots — storage
+/// home opened, host probed — and stops before it contacts the daemon, saying
+/// why: a test host either cannot build a sandbox or has no release staged.
 #[test]
-fn run_boots_then_refuses_without_an_agent_engine() {
+fn run_stops_at_boot_on_a_host_it_cannot_lease_on() {
     let home = tempfile::tempdir().expect("a storage home");
     let ran = cleared("run")
         .env(ENV_API_URL, UNREACHABLE_DAEMON)
@@ -95,12 +89,8 @@ fn run_boots_then_refuses_without_an_agent_engine() {
         .expect("the runner binary starts");
 
     let stderr = String::from_utf8_lossy(&ran.stderr);
-    assert!(stderr.contains(RUN_REFUSED), "{stderr}");
-    let host_can_sandbox = afr_sandbox::probe(&afr_sandbox::ProbePaths::default())
-        .missing()
-        .is_none();
-    let expected = if host_can_sandbox { REFUSED } else { 1 };
-    assert_eq!(ran.status.code(), Some(expected), "{stderr}");
+    assert!(stderr.contains(RUN_FAILED), "{stderr}");
+    assert_eq!(ran.status.code(), Some(1), "{stderr}");
     assert!(
         home.path().join("sandboxes").is_dir(),
         "the storage home was opened, its directories made"
@@ -146,14 +136,6 @@ fn run_with(home: &std::path::Path, extra: &[(&str, &str)]) -> Output {
         .expect("the runner binary starts")
 }
 
-/// The exit status a valid `run` ends with on this host.
-fn booted_status() -> i32 {
-    let host_can_sandbox = afr_sandbox::probe(&afr_sandbox::ProbePaths::default())
-        .missing()
-        .is_none();
-    if host_can_sandbox { REFUSED } else { 1 }
-}
-
 /// Without the endpoint, `run` builds no export and says so once.
 #[test]
 fn test_runner_exports_nothing_when_unconfigured() {
@@ -164,7 +146,7 @@ fn test_runner_exports_nothing_when_unconfigured() {
     let stderr = String::from_utf8_lossy(&ran.stderr);
     assert_eq!(stderr.matches(EXPORT_DISABLED).count(), 1, "{stderr}");
     assert!(!stderr.contains(EXPORT_STARTED), "{stderr}");
-    assert_eq!(ran.status.code(), Some(booted_status()), "{stderr}");
+    assert_eq!(ran.status.code(), Some(1), "{stderr}");
 }
 
 /// With the endpoint set, `run` exports and names the knob it read, never
@@ -184,8 +166,8 @@ fn run_exports_naming_only_the_knob() {
         !stderr.contains(REFUSING_COLLECTOR),
         "the address stays out of the journal: {stderr}"
     );
-    assert!(stderr.contains(RUN_REFUSED), "{stderr}");
-    assert_eq!(ran.status.code(), Some(booted_status()), "{stderr}");
+    assert!(stderr.contains(RUN_FAILED), "{stderr}");
+    assert_eq!(ran.status.code(), Some(1), "{stderr}");
 }
 
 /// A header knob refuses `run` before it boots, naming the knob: the runner

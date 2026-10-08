@@ -1,9 +1,10 @@
-//! The shapes both binaries have to agree on, checked without a server.
+//! The shapes every replica has to agree on, checked without a server.
 //!
-//! Every key format, knob name and constant here is read or written by the Zig
-//! daemon too. A drift in any of them is not a failed test in production — it
-//! is two processes quietly using different keys against the same Dragonfly, which
-//! looks like lost events rather than like a bug.
+//! Every key format, knob name and constant here is read or written by every
+//! replica against one Dragonfly, and by the entries already in it. A drift in
+//! any of them is not a failed test in production — it is two processes
+//! quietly using different keys against the same Dragonfly, which looks like
+//! lost events rather than like a bug.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::unwrap_used,
@@ -39,17 +40,14 @@ fn env_with(pairs: &[(&str, &str)]) -> MapEnv {
 
 /// The key every fleet's events live on, and the group they are read under.
 ///
-/// The three names a Dragonfly key is built from, frozen as `queue/constants.zig`
-/// spelled them at sunset.
-///
-/// These were read out of that file at test time so the assertion could not
-/// drift with the thing it checked. The tree is deleted in this milestone, so
-/// the values are pinned here instead. They stay worth asserting for the reason
-/// they always were, which was never about Zig: a producer and its consumers
-/// agree on these bytes or events vanish silently, and a key renamed in a
-/// refactor strands every entry already written under the old one.
+/// The three names a Dragonfly key is built from, pinned as literals here
+/// rather than read back from the constants they check, so the assertion
+/// cannot drift with the thing it checks. They are worth asserting because a
+/// producer and its consumers agree on these bytes or events vanish silently,
+/// and a key renamed in a refactor strands every entry already written under
+/// the old one.
 #[test]
-fn test_stream_key_and_group_match_the_zig_constants() {
+fn test_stream_key_and_group_are_pinned_literals() {
     assert_eq!(
         fleet_stream_key("fleet_0123"),
         "fleet:fleet_0123:events",
@@ -72,13 +70,12 @@ fn test_stream_key_and_group_match_the_zig_constants() {
     );
 }
 
-/// The session key and time-to-live, frozen as they were declared.
+/// The session key and time-to-live, pinned as literals.
 ///
-/// Read from that file until the tree's deletion; pinned here now. The property
-/// outlives its source: a prefix or a lifetime that moves without a migration
-/// signs every live session out at once.
+/// A prefix or a lifetime that moves without a migration signs every live
+/// session out at once.
 #[test]
-fn test_session_key_and_ttl_match_the_zig_store() {
+fn test_session_key_and_ttl_are_pinned_literals() {
     assert_eq!(session_key("abc"), "auth:session:abc");
     assert_eq!(SESSION_TTL, Duration::from_secs(300));
 
@@ -90,10 +87,8 @@ fn test_session_key_and_ttl_match_the_zig_store() {
 
 /// Every role reads the one knob, because every role dials the one cluster.
 ///
-/// The pair used to be `REDIS_URL` and `REDIS_URL_API`, spelled to match the
-/// retired Zig daemon so a deployment could move between binaries without
-/// touching its environment. Two names for one endpoint bought a second way to
-/// misconfigure it, and the binary that justified them is gone.
+/// Two names for one endpoint would buy a second way to misconfigure it and
+/// nothing else, so `DRAGONFLY_URL` is the whole surface.
 #[test]
 fn test_every_role_reads_the_one_url_knob() {
     for role in DragonflyRole::ALL {
@@ -248,7 +243,7 @@ fn test_connect_timeout_knob() {
     }
 }
 
-/// The certificate authority path is read from the knob the Zig side reads.
+/// The certificate authority path is read from the knob the daemon documents.
 #[test]
 fn test_ca_cert_file_comes_from_the_documented_knob() {
     assert_eq!(CA_CERT_FILE_KNOB, "DRAGONFLY_TLS_CA_CERT_FILE");

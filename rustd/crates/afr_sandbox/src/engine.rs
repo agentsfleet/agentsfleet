@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use afr_executor::Executor;
 
 use crate::error::Result;
+use crate::network::Network;
 
 /// Memory a lease's sandbox may hold before its tree is killed.
 pub const DEFAULT_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -73,9 +74,29 @@ pub struct SandboxRequest<'a> {
     pub lease_id: &'a str,
     /// What it enforces.
     pub limits: Limits,
+    /// What its network reaches.
+    pub network: Network<'a>,
 }
 
 impl<'a> SandboxRequest<'a> {
+    /// A sandbox for `lease_id` enforcing `limits`, reaching nothing beyond
+    /// loopback until [`SandboxRequest::with_network`] says otherwise: an
+    /// engine never opens a network no one asked for.
+    #[must_use]
+    pub const fn new(lease_id: &'a str, limits: Limits) -> Self {
+        Self {
+            lease_id,
+            limits,
+            network: Network::Isolated,
+        }
+    }
+
+    /// The same request, its network reaching what `network` names.
+    #[must_use]
+    pub const fn with_network(self, network: Network<'a>) -> Self {
+        Self { network, ..self }
+    }
+
     /// The lease's identifier, checked as a name its directory and its cgroup
     /// can both carry.
     ///
