@@ -43,7 +43,7 @@ fn unset_knobs_resolve_to_the_documented_defaults() {
 
     assert_eq!(config.encoding(), Encoding::HttpProtobuf);
     assert_eq!(config.timeout(), DEFAULT_TIMEOUT);
-    assert!(config.headers().is_empty());
+    assert_eq!(config.headers(), []);
     assert_eq!(config.source(), OTEL_ENDPOINT_KNOB);
 }
 
@@ -176,7 +176,7 @@ fn the_headers_knob_is_left_to_the_caller() {
         (OTEL_HEADERS_KNOB, "authorization=Bearer token"),
     ]);
 
-    assert!(config.headers().is_empty());
+    assert_eq!(config.headers(), []);
     let configured = config.with_headers(vec![("x-scope".to_owned(), "a".to_owned())]);
     assert_eq!(configured.headers().len(), 1);
 }

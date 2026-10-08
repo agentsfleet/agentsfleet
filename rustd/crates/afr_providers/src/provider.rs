@@ -122,6 +122,10 @@ pub struct Request<'a> {
     pub tools: &'a [ToolSpec<'a>],
     /// The provider-hosted tools offered, sent as the provider's own specs.
     pub hosted: &'a [Hosted],
+    /// The conversation's cache key: the fleet, so every lease of one
+    /// conversation, and every child run in it, shares a cache. Only the
+    /// Responses wire sends it.
+    pub cache_key: &'a str,
 }
 
 /// Tokens one turn spent, or a run summed over its turns.
@@ -132,6 +136,9 @@ pub struct Usage {
     pub input: u64,
     /// Prompt tokens read from the provider's cache.
     pub cached_input: u64,
+    /// Prompt tokens written to the provider's cache, already inside
+    /// `input`: recorded on the turn's span, never billed apart.
+    pub cache_written: u64,
     /// Completion tokens.
     pub output: u64,
 }
@@ -154,6 +161,7 @@ impl AddAssign for Usage {
     fn add_assign(&mut self, rhs: Self) {
         self.input = self.input.saturating_add(rhs.input);
         self.cached_input = self.cached_input.saturating_add(rhs.cached_input);
+        self.cache_written = self.cache_written.saturating_add(rhs.cache_written);
         self.output = self.output.saturating_add(rhs.output);
     }
 }

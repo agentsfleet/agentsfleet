@@ -14,10 +14,10 @@ async fn posted(
     text: &str,
 ) -> (crate::runtime::ToolOutput, Vec<Asked>) {
     let verbs = RecordingVerbs::answering(Ok(String::new()), delivered);
-    let mut lease = lease_with(&verbs);
+    let lease = lease_with(&verbs);
     let output = call(
         Typed::boxed(Message).as_ref(),
-        &mut lease,
+        &lease,
         json!({"text": text}),
     )
     .await;

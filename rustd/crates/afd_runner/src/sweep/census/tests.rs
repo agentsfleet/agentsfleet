@@ -35,7 +35,7 @@ fn every_modelled_spelling_is_counted_under_its_member() {
             (FleetStatusLabel::Stopped, 1),
         ]
     );
-    assert!(tally.unmodelled.is_empty());
+    assert!(tally.unmodelled.is_empty(), "{:?}", tally.unmodelled);
     assert_eq!(tally.scanned(), 4);
 }
 

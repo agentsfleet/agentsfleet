@@ -91,7 +91,7 @@ impl Handler for CronAdd {
     type Arguments = Add;
 
     async fn run(&self, arguments: Add, context: ToolContext<'_, '_>) -> ToolOutput {
-        let message = egress::masked(context.lease, arguments.message);
+        let message = egress::masked(context.lease, arguments.message).await;
         let call = ScheduleCall::Create {
             cron: &arguments.cron,
             timezone: arguments.timezone.as_deref(),
@@ -156,9 +156,10 @@ impl Handler for CronUpdate {
             Ok(schedule) => schedule,
             Err(refused) => return refused,
         };
-        let message = arguments
-            .message
-            .map(|text| egress::masked(context.lease, text));
+        let message = match arguments.message {
+            Some(text) => Some(egress::masked(context.lease, text).await),
+            None => None,
+        };
         let call = ScheduleCall::Update {
             schedule: &schedule,
             cron: arguments.cron.as_deref(),

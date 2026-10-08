@@ -1,7 +1,7 @@
 //! Filter and keyset mechanics for runner history reads.
 
+use afd_api_wire::admin::{RunnerEventItem, RunnerEventType};
 use afd_core::id::Uuid7;
-use afd_wire::admin::{RunnerEventItem, RunnerEventType};
 
 use crate::error::Result;
 use crate::sql;

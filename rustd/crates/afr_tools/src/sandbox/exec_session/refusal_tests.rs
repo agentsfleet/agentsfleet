@@ -12,11 +12,11 @@ use crate::testing::{call, call_in};
 #[tokio::test]
 async fn should_refuse_a_session_id_that_is_not_a_whole_number() {
     let executor = ScriptedExecutor::new([]);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     for session_id in [json!("1"), json!(-1), json!(1.5)] {
         let arguments = json!({SESSION_ID: session_id, CHARS: "x"});
-        let output = call_in(&*write(), &executor, &mut lease, arguments).await;
+        let output = call_in(&*write(), &executor, &lease, arguments).await;
 
         assert_eq!(
             output.error_code,
@@ -34,7 +34,7 @@ async fn should_refuse_a_session_that_is_not_open() {
     let output = call_in(
         &*write(),
         &executor,
-        &mut Lease::default(),
+        &Lease::default(),
         writing(99, "x", None),
     )
     .await;
@@ -43,19 +43,20 @@ async fn should_refuse_a_session_that_is_not_open() {
         output.text,
         "[session_not_found] session 99 is not an open session"
     );
-    assert!(executor.written().is_empty());
+    let written = executor.written();
+    assert!(written.is_empty(), "{written:?}");
 }
 
 #[tokio::test]
 async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
-    let opened = call(&*exec(), &mut lease, opening(CAT, None)).await;
-    let written = call(&*write(), &mut lease, writing(1, "", None)).await;
+    let opened = call(&*exec(), &lease, opening(CAT, None)).await;
+    let written = call(&*write(), &lease, writing(1, "", None)).await;
     let refused = call_in(
         &*exec(),
         &ScriptedExecutor::new([]),
-        &mut lease,
+        &lease,
         opening(CAT, None),
     )
     .await;
@@ -67,5 +68,5 @@ async fn should_refuse_without_a_sandbox_or_when_the_spawn_is_refused() {
         "a refused spawn reads the executor's reason, got {:?}",
         refused.text
     );
-    assert!(lease.sessions.get_mut(FIRST).is_none());
+    assert!(lease.sessions.get(FIRST).is_none());
 }

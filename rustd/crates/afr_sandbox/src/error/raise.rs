@@ -41,6 +41,11 @@ pub(crate) fn cgroup(file: &'static str) -> impl Fn(std::io::Error) -> Error {
     move |source| ErrorKind::Cgroup { file, source }.into()
 }
 
+/// Reports a cgroup file that could not be read, naming the file.
+pub(crate) fn cgroup_unreadable(file: &'static str) -> impl Fn(std::io::Error) -> Error {
+    move |source| ErrorKind::CgroupUnreadable { file, source }.into()
+}
+
 /// Reports a cgroup that would not go, naming it.
 pub(crate) fn cgroup_left(path: &std::path::Path) -> impl Fn(std::io::Error) -> Error {
     move |source| {
@@ -50,6 +55,15 @@ pub(crate) fn cgroup_left(path: &std::path::Path) -> impl Fn(std::io::Error) -> 
         }
         .into()
     }
+}
+
+/// Reports a cgroup that never reached `state` after it was asked to.
+pub(crate) fn cgroup_unsettled(path: &std::path::Path, state: &'static str) -> Error {
+    ErrorKind::CgroupUnsettled {
+        path: path.to_owned(),
+        state,
+    }
+    .into()
 }
 
 /// Refuses a toolbox release whose `what` would not parse, failing admission's
@@ -108,4 +122,9 @@ pub(crate) fn lease_id_unsafe(lease_id: &str) -> Error {
 /// Refuses to serve from a process that still holds what it must not.
 pub(crate) fn unconfined(detail: &'static str) -> Error {
     ErrorKind::Unconfined { detail }.into()
+}
+
+/// Refuses a descriptor the sandbox entry was named but did not inherit.
+pub(crate) fn not_inherited(descriptor: i32) -> Error {
+    ErrorKind::NotInherited { descriptor }.into()
 }

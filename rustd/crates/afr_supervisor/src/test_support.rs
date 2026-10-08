@@ -17,10 +17,10 @@ use afd_wire::activity::{ActivityFrame, FleetResponseChunk};
 use afd_wire::lease::{BundleManifest, LeasePayload};
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
-use afd_wire::report::{Completed, ExecutionResult, ResultOutcome};
 use afd_wire::tool_detail::ToolCallRecord;
 use afd_wire::tool_trace::{ToolCallStatus, ToolTrace, ToolTraceCall};
 use afr_agent::{AgentEngine, AgentRun, Needs, RunOutput};
+use afr_agent::{Completed, ExecutionResult, ResultOutcome};
 use afr_executor::{Executor, ProcessId, Spawn};
 use afr_providers::{Connect as _, Connector, Registry, Usage};
 use afr_tools::Catalog;
@@ -39,7 +39,7 @@ mod sandbox;
 
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
-pub(crate) use self::sandbox::{FakeEngine, Writes};
+pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, Writes};
 
 /// A canonical lease identifier.
 pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
@@ -68,8 +68,8 @@ pub(crate) const RUNNER_CRASH: &str = "runner_crash";
 
 /// The wall clock every lease test reads: fixed at zero, so a lease's deadline
 /// is measured in the paused tokio time the tests advance.
-pub(crate) fn clock() -> Box<dyn afd_core::clock::Clock> {
-    Box::new(afd_core::clock::FixedClock::at(
+pub(crate) fn clock() -> std::sync::Arc<dyn afd_core::clock::Clock> {
+    std::sync::Arc::new(afd_core::clock::FixedClock::at(
         afd_core::clock::UnixMillis::from_millis(0),
     ))
 }
@@ -264,7 +264,8 @@ async fn exercise(executor: &dyn Executor) {
     assert!(executor.kill(id).await.is_ok());
     assert!(executor.read_file("a", 1).await.is_ok());
     assert!(executor.write_file("a", Bytes::new()).await.is_ok());
-    assert!(executor.list_dir("/").await.unwrap().entries.is_empty());
+    let entries = executor.list_dir("/").await.unwrap().entries;
+    assert!(entries.is_empty(), "{entries:?}");
 }
 
 /// What [`Behaviour::Stops`] and [`Behaviour::Spends`] spend before the lease
@@ -272,6 +273,7 @@ async fn exercise(executor: &dyn Executor) {
 pub(crate) const SPENT: Usage = Usage {
     input: 3,
     cached_input: 1,
+    cache_written: 0,
     output: 4,
 };
 
@@ -279,7 +281,7 @@ pub(crate) const SPENT: Usage = Usage {
 pub(crate) fn answer() -> RunOutput {
     RunOutput {
         result: ExecutionResult {
-            outcome: ResultOutcome::Completed(Completed {}),
+            outcome: ResultOutcome::Completed(Completed),
             content: "done".into(),
             token_count: 8,
             wall_seconds: 1,

@@ -80,9 +80,9 @@ mod tests {
         let declared = config("");
         let policy = network(&declared);
 
-        assert!(policy.allow.is_empty());
+        assert_eq!(policy.allow, [] as [std::borrow::Cow<'_, str>; 0]);
         assert!(!policy.read_only);
-        assert!(policy.read_post_paths.is_empty());
+        assert_eq!(policy.read_post_paths, [] as [std::borrow::Cow<'_, str>; 0]);
     }
 
     #[test]

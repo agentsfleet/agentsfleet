@@ -18,7 +18,7 @@ impl Slot {
     /// `limit`. Never wraps: a full lease stays full.
     pub(super) fn reserve(&self, limit: u32) -> bool {
         self.spans
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
                 (used < limit).then_some(used + 1)
             })
             .is_ok()
@@ -107,7 +107,7 @@ impl SecondWindow {
     /// never runs backwards.
     pub(super) fn take(&self, now: u32, limit: u32) -> bool {
         self.0
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |packed| {
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |packed| {
                 let (second, used) = unpack(packed);
                 let (second, used) = if now > second {
                     (now, 0)

@@ -10,11 +10,11 @@ use crate::support;
 use crate::view_heartbeat;
 use std::borrow::Cow;
 
+use afd_api_wire::admin::{RunnerAdminAction, RunnerEventType};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::paging::DEFAULT_LIMIT;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
-use afd_wire::admin::{RunnerAdminAction, RunnerEventType};
 use afd_wire::runner::{NetworkPolicy, RunnerLiveness, SandboxTier};
 
 use self::requests::{ENROLLED_AT, enrolment};
@@ -83,6 +83,7 @@ async fn exercise_view_runner(fixtures: &Fixtures, live_runner: &Uuid7) {
         .heartbeat(
             live_runner,
             &heartbeat,
+            None,
             UnixMillis::from_millis(ENROLLED_AT + 1),
         )
         .await
@@ -184,7 +185,7 @@ async fn assert_runner_detail(fixtures: &Fixtures, runner: &Uuid7) {
         .expect("the detail loads");
     assert_eq!(
         detail.item().admin_state(),
-        afd_wire::admin::AdminState::Cordoned
+        afd_api_wire::admin::AdminState::Cordoned
     );
     assert_eq!(detail.item().liveness(), RunnerLiveness::Online);
     assert_eq!(detail.active_lease_count(), 0);
@@ -220,7 +221,7 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7) {
         .await
         .expect("the terminal event page loads");
     assert_eq!((first.total(), second.total(), third.total()), (4, 4, 4));
-    assert!(third.items().is_empty());
+    assert_eq!(third.items(), []);
     assert!(third.next_cursor().is_none());
     let event_types = first
         .into_items()

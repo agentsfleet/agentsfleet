@@ -94,7 +94,7 @@ export async function spawnAgentsfleet(
  * only started running when the lane stopped dying in global setup.
  *
  * `POST /v1/api-keys` mints an `agt_t` tenant key and returns its plaintext
- * exactly once (afd_wire/src/tenant.rs:29-40), which is the one shape a test
+ * exactly once (afd_api_wire/src/tenant.rs:29-40), which is the one shape a test
  * can hand a subprocess. The caller deletes it in teardown.
  */
 export async function mintCliKey(

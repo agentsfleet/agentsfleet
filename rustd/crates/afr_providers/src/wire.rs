@@ -4,9 +4,11 @@
 //! a vendor rig knows (its path, its quirks, how it carries reasoning back) and
 //! a plain OpenAI-compatible gateway at the route's base for everything else.
 //! The base is always the registry's, so a host is chosen by the runner's
-//! table and never by the library. Messages caches the system prompt, the
-//! tools and the conversation's tail, so a loop re-sending its growing
-//! conversation pays full price for the new turn only.
+//! table and never by the library. Messages marks the tools and the system
+//! prompt for caching and lets the provider move a breakpoint along the
+//! conversation, so a loop re-sending its growing conversation, and a chat
+//! follow-up re-sending its earlier turns, pays full price for the new part
+//! only.
 
 use rig_core::DynModel;
 use rig_core::operation::Completion;
@@ -40,6 +42,7 @@ pub(crate) fn model(
             let mut messages = client.completion(model);
             messages.wire = messages
                 .wire
+                .with_prompt_caching()
                 .with_automatic_caching()
                 .with_default_max_tokens(MAX_TOKENS);
             messages.erase()

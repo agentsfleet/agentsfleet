@@ -73,7 +73,7 @@ fn each_outcome_renders_a_distinct_sentence() {
     .collect();
 
     for sentence in &rendered {
-        assert!(!sentence.is_empty());
+        assert_ne!(sentence, "");
     }
     let mut unique = rendered.clone();
     unique.sort();

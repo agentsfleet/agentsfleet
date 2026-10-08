@@ -116,7 +116,7 @@ fn test_toolbox_admission_refusals() {
         ]
     );
     assert!(recorder.mounted.lock().unwrap().is_empty(), "0 mounts");
-    assert!(toolboxes.digests().is_empty());
+    assert_eq!(toolboxes.digests(), [] as [String; 0]);
 }
 
 /// Dimension 8.4: a held image is never unmounted, the current and previous
@@ -201,7 +201,7 @@ fn should_keep_an_image_whose_unmount_is_refused() {
     recorder.refuse_unmounts.store(false, Ordering::SeqCst);
     assert_eq!(toolboxes.retain().unwrap(), 1);
     toolboxes.close().unwrap();
-    assert!(toolboxes.digests().is_empty());
+    assert_eq!(toolboxes.digests(), [] as [String; 0]);
 }
 
 #[test]

@@ -53,7 +53,7 @@ async fn test_browser_tools_refuse_until_firecracker() {
             FILE_READ.name(),
         ])
         .unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let mut refusals = Vec::with_capacity(3);
     for (entry, arguments) in [
@@ -64,13 +64,13 @@ async fn test_browser_tools_refuse_until_firecracker() {
         let tool = offered(&selection, entry);
         refusals.push((
             entry.name(),
-            call_in(tool, &scripted, &mut lease, arguments).await,
+            call_in(tool, &scripted, &lease, arguments).await,
         ));
     }
     let read = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: PAGE}),
     )
     .await;
@@ -104,7 +104,7 @@ async fn test_browser_tools_refuse_until_firecracker() {
 async fn any_arguments_and_no_sandbox_are_refused_the_same_way() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[BROWSER.name()]).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     for arguments in [
         json!(null),
@@ -112,7 +112,7 @@ async fn any_arguments_and_no_sandbox_are_refused_the_same_way() {
         json!([1, 2]),
         json!({"nested": {"deep": true}}),
     ] {
-        let refused = call(offered(&selection, &BROWSER), &mut lease, arguments).await;
+        let refused = call(offered(&selection, &BROWSER), &lease, arguments).await;
 
         assert_eq!(
             refused.error_code,

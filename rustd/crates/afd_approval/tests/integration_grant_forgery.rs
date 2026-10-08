@@ -37,10 +37,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_api_wire::approval::status as gate_status;
+use afd_api_wire::grant::status;
 use afd_approval::{Decision, IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, Wanted};
 use afd_crypto::entropy::Entropy;
-use afd_wire::approval::status as gate_status;
-use afd_wire::grant::status;
 use sqlx::Row as _;
 
 use crate::lane::{Lane, NOW_MS, mint};

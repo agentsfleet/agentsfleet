@@ -8,7 +8,7 @@
 use afd_core::id::Uuid7;
 use afd_core::timing::NO_WORK_RETRY_AFTER_MS;
 use afd_wire::event::{EventEnvelope, EventType};
-use afd_wire::lease::{BundleManifest, LeasePayload, LeaseResponse, SecretDelivery};
+use afd_wire::lease::{BundleManifest, LeasePayload, LeaseResponse, SecretDelivery, Turn};
 use afd_wire::policy::ExecutionPolicy;
 
 use crate::error::{DETAIL_EVENT_MALFORMED, Result, rejected};
@@ -70,6 +70,7 @@ pub(super) fn render<'a>(
     event_type: EventType,
     installed: &'a Installed,
     policy: ExecutionPolicy<'a>,
+    history: Vec<Turn<'a>>,
 ) -> Result<String> {
     answer(Some(LeasePayload {
         lease_id: lease_id.as_str().into(),
@@ -97,5 +98,12 @@ pub(super) fn render<'a>(
             .map(|hash| BundleManifest {
                 content_hash: hash.into(),
             }),
+        // No fleet carries a size yet, so every runner builds its defaults.
+        limits: None,
+        history,
+        resume_hold: acquired.resume_hold,
     }))
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests;

@@ -116,6 +116,7 @@ impl FakeHost {
             bubblewrap: true,
             kvm: Kvm::Absent,
             toolbox_filesystem: true,
+            workspace_direct_io: None,
         };
         let config = BubblewrapConfig {
             tools: HostTools {

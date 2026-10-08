@@ -10,7 +10,7 @@
 use sqlx::Row as _;
 use sqlx::postgres::PgRow;
 
-use afd_wire::tail::FleetCounters;
+use afd_api_wire::tail::FleetCounters;
 
 use crate::error::{Error, row_malformed};
 use crate::history::EventRow;

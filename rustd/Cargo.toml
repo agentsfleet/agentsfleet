@@ -15,15 +15,15 @@
 
 [workspace]
 resolver = "3"
-members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_otlp", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_telemetry", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
+members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_api_wire", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_otlp", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_telemetry", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
 
 [workspace.package]
-version = "0.57.0"
+version = "0.58.0"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
 # only by rust-toolchain.toml's pin, so a lower floor would be an untested claim).
-rust-version = "1.98.1"
+rust-version = "1.99.0"
 # MIT, matching the repository's own `LICENSE` and `cli/package.json`. The
 # manifest said Apache-2.0 from its first commit, which made this workspace the
 # only part of the product claiming a licence the project does not ship under —
@@ -151,6 +151,10 @@ afd_vault = { path = "crates/afd_vault" }
 # datastore, no runtime and no router.
 afd_webhook = { path = "crates/afd_webhook" }
 afd_wire = { path = "crates/afd_wire" }
+# The daemon's own API types: every admin, tenant, operator and ingress shape
+# no runner speaks. Split from `afd_wire` so an edit here rebuilds no runner
+# crate.
+afd_api_wire = { path = "crates/afd_api_wire" }
 # The Rust runner: the supervisor outside every sandbox, the sandbox engines,
 # the executor that runs inside each one, and the agent-engine seam. They depend
 # on `afd_wire`, `afd_core` and `afd_observability` and on nothing else from the
@@ -852,6 +856,8 @@ lettre = { version = "0.11.23", default-features = false, features = [
 # Reviewed snapshots of the rendered email, so a template change shows up as a
 # diff in review rather than as a surprise in an inbox.
 insta = { version = "1.48.0", default-features = false }
+# A directory walk for the source-reading tests, so none hand-writes the recursion.
+walkdir = { version = "2.5.0", default-features = false }
 # The subscriber, which §6 wires to OTLP. It is a dev-dependency until then for
 # a reason worth stating: `tracing::warn!` checks whether its callsite is
 # ENABLED before it evaluates its arguments, so with no subscriber installed a
@@ -890,17 +896,12 @@ serde_ignored = { version = "0.1.14", default-features = false }
 rustix = { version = "1.1.5", default-features = false, features = ["std", "fs", "mount", "process", "thread"] }
 landlock = { version = "0.4.7", default-features = false }
 seccompiler = { version = "0.5.0", default-features = false }
-# Pseudo-terminals for the executor's interactive processes; Codex's choice.
-portable-pty = { version = "0.9.0", default-features = false }
 # The JSON-RPC 2.0 envelope the executor protocol rides — request, response,
 # notification and error object — rather than a hand-written copy of the spec.
 jsonrpsee-types = { version = "0.26.1", default-features = false }
 # Scratch directories and atomically persisted files: the report spool, the
 # bundle cache and every test that needs a real filesystem.
 tempfile = { version = "3.27.0", default-features = false }
-# The resolved dependency graph, read by the test that proves the runner binary
-# links no datastore or daemon-plane crate.
-cargo_metadata = { version = "0.23.1", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
 libc = { version = "0.2.189", default-features = false }

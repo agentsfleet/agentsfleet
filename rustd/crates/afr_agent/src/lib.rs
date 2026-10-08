@@ -19,9 +19,11 @@ mod fixture;
 #[path = "loop.rs"]
 mod harness;
 mod ledger;
+mod nested;
 mod offer;
 mod prompt;
 mod records;
+mod result;
 mod router;
 #[cfg(feature = "test-util")]
 pub mod scripted;
@@ -34,6 +36,7 @@ mod turn;
 pub use self::engine::{AgentEngine, AgentRun, Checkpoint, EventSink, Meter, Needs, RunOutput};
 pub use self::error::{Error, Result, Unhosted};
 pub use self::harness::Loop;
+pub use self::result::{Completed, ExecutionResult, Failure, ResultOutcome};
 pub use self::router::Router;
 // The seam a run's schedule and message tools reach `agentsfleetd` through,
 // re-exported so the supervisor implements it through the crate it drives.

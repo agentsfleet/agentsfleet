@@ -58,7 +58,8 @@ fn should_split_records_across_bodies_at_the_post_bound_in_order() {
 
 #[test]
 fn should_post_nothing_for_no_records() {
-    assert!(bodies(9, &[]).unwrap().is_empty());
+    let none_written = bodies(9, &[]).unwrap();
+    assert!(none_written.is_empty(), "{none_written:?}");
     assert_eq!(numbers(&bodies(9, &[record(1, 0)]).unwrap())[0], [1]);
 }
 

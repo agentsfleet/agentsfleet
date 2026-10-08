@@ -7,10 +7,11 @@
 //! site is how a consumer's `metadata->>'lease_id'` silently stops matching.
 
 pub use afd_state::sql::{
-    ADMIN_STATE_ACTIVE, ADMIN_STATE_DRAINED, ADMIN_STATE_DRAINING, LAST_SEEN_NEVER,
-    LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
+    ADMIN_STATE_ACTIVE, ADMIN_STATE_DRAINED, ADMIN_STATE_DRAINING, FLEET_STATUS_ACTIVE,
+    LAST_SEEN_NEVER, LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED,
 };
 
+pub mod holds;
 pub mod runner;
 pub mod runner_admin;
 pub mod runner_view;
@@ -58,7 +59,7 @@ pub mod meta {
 ///
 /// The Zig spells these with `@tagName(protocol.RunnerEventType.…)`, which
 /// derives the wire string from the enum's own spelling. `afd_wire`'s
-/// [`RunnerEventType`](afd_wire::admin::RunnerEventType) carries the same
+/// [`RunnerEventType`](afd_api_wire::admin::RunnerEventType) carries the same
 /// values as serde renames, so the strings come from there rather than being
 /// restated — a rename on either side then fails to compile instead of writing
 /// rows nothing queries.

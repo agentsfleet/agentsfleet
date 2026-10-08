@@ -70,6 +70,8 @@ pub(crate) struct Seen {
     pub(crate) path: String,
     pub(crate) headers: HeaderMap,
     pub(crate) body: serde_json::Value,
+    /// The body as it arrived, byte for byte.
+    pub(crate) raw: Bytes,
 }
 
 /// The scripted replies, played in order through a lock-free cursor.
@@ -124,12 +126,14 @@ impl Fake {
             let script = Arc::clone(&script);
             let sent = sent.clone();
             async move {
-                let body = serde_json::from_slice(&body).unwrap_or_default();
+                let raw = body;
+                let body = serde_json::from_slice(&raw).unwrap_or_default();
                 let path = uri.path().to_owned();
                 sent.send(Seen {
                     path,
                     headers,
                     body,
+                    raw,
                 })
                 .expect("the suite holds the receiver");
                 let index = script.next.fetch_add(1, Ordering::Relaxed);

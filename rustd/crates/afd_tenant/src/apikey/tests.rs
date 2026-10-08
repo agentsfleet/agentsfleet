@@ -79,6 +79,6 @@ fn an_unreadable_api_key_row_keeps_its_context_and_cause() {
     let failure = super::row_unreadable(sqlx::Error::PoolClosed);
 
     assert!(failure.source().is_some(), "the sqlx cause survives");
-    assert!(!failure.to_string().is_empty());
-    assert!(!failure.code().as_str().is_empty());
+    assert_ne!(failure.to_string(), "");
+    assert_ne!(failure.code().as_str(), "");
 }

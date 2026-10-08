@@ -14,10 +14,11 @@ use std::time::Duration;
 use afd_core::id::Uuid7;
 use afd_wire::activity::ActivityRequest;
 use afd_wire::credentials::MintCredentialRequest;
+use afd_wire::lease::LeaseRequest;
 use afd_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
 use afd_wire::paths;
 use afd_wire::report::{RenewRequest, RenewResponse};
-use afd_wire::runner::HeartbeatRequest;
+use afd_wire::runner::{HeartbeatRequest, HeldFleets};
 use backon::{ExponentialBuilder, Retryable as _};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -109,10 +110,15 @@ impl ControlPlane {
         self.send_json(Verb::Heartbeat, path, request).await
     }
 
-    /// Polls for the next lease.
-    pub(crate) async fn lease(&self) -> Result<Body> {
+    /// Polls for the next lease, naming the fleets whose sandboxes this
+    /// runner holds so a held fleet's next event comes here first.
+    pub(crate) async fn lease(&self, held: &[Uuid7]) -> Result<Body> {
         let path = Cow::Borrowed(paths::RUNNER_LEASES);
-        self.send(Verb::Lease, path, None).await
+        let holds = held.iter().map(|fleet| Cow::Borrowed(fleet.as_str()));
+        let request = LeaseRequest {
+            holds: HeldFleets(holds.collect()),
+        };
+        self.send_json(Verb::Lease, path, &request).await
     }
 
     /// Renews a held lease with the run's cumulative tokens, and returns its

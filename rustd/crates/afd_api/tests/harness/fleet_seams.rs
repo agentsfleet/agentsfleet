@@ -249,6 +249,12 @@ impl Fleet {
         &self.capabilities
     }
 
+    /// The lease plane's poll log, shared with the router this fleet builds,
+    /// so a case taken before `router` reads what the handler handed it.
+    pub(crate) fn lease_plane(&self) -> super::NoWork {
+        self.leases.clone()
+    }
+
     /// The live fleet store, for a stream fixture that changes rows directly.
     pub(crate) fn fleet_store(&self) -> Fleets {
         self.fleets.clone()

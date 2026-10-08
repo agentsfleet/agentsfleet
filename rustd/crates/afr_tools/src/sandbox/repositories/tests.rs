@@ -55,8 +55,12 @@ fn should_check_out_nothing_for_a_lease_with_no_tool_in_the_sandbox() {
         .collect();
     let policy = offering(&in_the_supervisor_or_at_the_provider);
 
-    assert!(!in_the_supervisor_or_at_the_provider.is_empty());
-    assert!(checkouts(&policy).unwrap().is_empty());
+    assert!(
+        !in_the_supervisor_or_at_the_provider.is_empty(),
+        "{in_the_supervisor_or_at_the_provider:?}"
+    );
+    let found = checkouts(&policy).unwrap();
+    assert!(found.is_empty(), "{found:?}");
 }
 
 #[test]
@@ -64,7 +68,8 @@ fn should_check_out_nothing_for_a_lease_with_no_binding() {
     let mut policy = offering(&[SHELL.name()]);
     policy.repository_binding = None;
 
-    assert!(checkouts(&policy).unwrap().is_empty());
+    let found = checkouts(&policy).unwrap();
+    assert!(found.is_empty(), "{found:?}");
 }
 
 #[test]
@@ -128,5 +133,6 @@ fn should_refuse_two_bound_repositories_that_share_a_directory() {
 fn should_check_out_nothing_for_a_name_the_catalog_does_not_publish() {
     let policy = offering(&["shell_but_misspelled"]);
 
-    assert!(checkouts(&policy).unwrap().is_empty());
+    let found = checkouts(&policy).unwrap();
+    assert!(found.is_empty(), "{found:?}");
 }

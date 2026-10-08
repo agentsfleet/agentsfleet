@@ -57,7 +57,7 @@ const DETAIL_MALFORMED: &str = "Malformed report body";
 /// Records one terminal execution result.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/reports",
+    path = afd_wire::paths::RUNNER_REPORTS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_report",
     summary = "Report the result of one run",

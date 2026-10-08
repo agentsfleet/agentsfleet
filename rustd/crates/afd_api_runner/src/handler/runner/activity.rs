@@ -40,7 +40,7 @@ const DETAIL_MALFORMED: &str = "Malformed activity body";
 /// Forwards one batch of live-tail frames.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/leases/{lease_id}/activity",
+    path = afd_wire::paths::LEASE_ACTIVITY,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_publish_activity",
     summary = "Publish live-tail activity frames",

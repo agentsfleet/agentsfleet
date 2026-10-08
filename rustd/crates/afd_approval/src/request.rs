@@ -28,9 +28,9 @@
 //! written, and it is spelled from the same constant the statement is bound
 //! with.
 
+use afd_api_wire::grant::status;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_wire::grant::status;
 use sqlx::{Acquire as _, Row as _};
 
 use crate::grant::IntegrationGrants;
@@ -242,7 +242,7 @@ impl IntegrationGrants {
                 now.saturating_add_millis(GRANT_DECISION_WINDOW_MS)
                     .as_millis(),
             )
-            .bind(afd_wire::approval::status::PENDING)
+            .bind(afd_api_wire::approval::status::PENDING)
             .fetch_one(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;

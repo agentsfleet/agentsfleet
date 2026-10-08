@@ -21,6 +21,8 @@ pub(super) const TIMEOUT_MS_DEFAULT: u64 = 10_000;
 pub(super) const TIMEOUT_MS_MAX: u64 = 600_000;
 /// The event a command killed at its timeout logs under.
 pub(super) const EVENT_TIMED_OUT: &str = "process_timed_out";
+/// The event a command the kernel killed for memory logs under.
+pub(super) const EVENT_OUT_OF_MEMORY: &str = "sandbox_out_of_memory";
 
 /// How long a command may run: what the model asked, or the default, never
 /// past the ceiling.
@@ -50,6 +52,10 @@ pub(super) async fn run_to_end(
             let after = saturating_millis(timeout);
             output::with_line(text, &format!("{} after {after} ms", output::TIMED_OUT))
         }
+        Ending::OutOfMemory => {
+            out_of_memory(lease_id);
+            output::with_line(text, &output::status(ending))
+        }
         Ending::Exited(_) | Ending::Signaled(_) | Ending::Interrupted => {
             output::with_line(text, &output::status(ending))
         }
@@ -58,7 +64,17 @@ pub(super) async fn run_to_end(
         text,
         exit_code: output::exit_code(ending),
         error_code: output::error_code(ending),
+        image: None,
     }
+}
+
+/// Logs a command the kernel killed because the sandbox's tenant processes
+/// ran out of memory: the model reads the code, the operator the lease. No
+/// command text, which is the tenant's.
+pub(super) fn out_of_memory(lease_id: &str) {
+    let error_code = ToolErrorCode::OutOfMemory.as_str();
+    let event = EVENT_OUT_OF_MEMORY;
+    tracing::warn!(lease_id, error_code, event);
 }
 
 /// Logs a command the executor killed at its timeout: the model reads the

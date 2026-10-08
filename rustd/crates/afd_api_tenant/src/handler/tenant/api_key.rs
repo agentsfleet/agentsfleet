@@ -3,14 +3,14 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::tenant::{
+    ApiKeySummary, MintApiKeyRequest, MintedApiKeyResponse, PageResponse, PatchApiKeyRequest,
+    RevokedApiKeyResponse,
+};
 use afd_core::id::Uuid7;
 use afd_core::paging::{Boundary as _, CEILING, Page};
 use afd_tenant::apikey::{
     ApiKeySort, Deactivation, Description, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
-};
-use afd_wire::tenant::{
-    ApiKeySummary, MintApiKeyRequest, MintedApiKeyResponse, PageResponse, PatchApiKeyRequest,
-    RevokedApiKeyResponse,
 };
 use axum::Json;
 use axum::body::Bytes;

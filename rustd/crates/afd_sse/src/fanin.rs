@@ -259,7 +259,7 @@ mod tests {
         let wanted = BTreeSet::from(["fleet-a".to_owned(), "fleet-b".to_owned()]);
 
         assert_eq!(fan_in.sync_to(&wanted).attached, 0);
-        assert!(fan_in.fleets().is_empty());
+        assert_eq!(fan_in.fleets(), [] as [String; 0]);
         assert_eq!(format!("{fan_in:?}"), "FanIn { attached: 0, seq: 0, .. }");
     }
 

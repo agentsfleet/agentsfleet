@@ -47,6 +47,14 @@ impl super::Sandbox for Watchless {
         unreachable!("never driven")
     }
 
+    async fn freeze(&self) -> crate::Result<()> {
+        Ok(())
+    }
+
+    async fn thaw(&self) -> crate::Result<()> {
+        Ok(())
+    }
+
     async fn destroy(self: Box<Self>) -> crate::Result<()> {
         Ok(())
     }

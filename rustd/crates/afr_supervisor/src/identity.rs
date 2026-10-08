@@ -9,7 +9,7 @@
 
 use afd_observability::semconv::{
     ATTR_AGENT_ID, ATTR_EVENT_ID, ATTR_LEASE_ID, ATTR_RUNNER_HOST, ATTR_RUNNER_ID,
-    RUNNER_SCOPE_NAME, SPAN_RUNNER_LEASE,
+    ATTR_SANDBOX_REUSED, RUNNER_SCOPE_NAME, SPAN_RUNNER_LEASE,
 };
 use afd_wire::lease::LeasePayload;
 use afd_wire::runner::SelfResponse;
@@ -82,6 +82,7 @@ pub(crate) fn lease_span(identity: Option<&Identity>, lease: &LeasePayload<'_>) 
         { ATTR_LEASE_ID } = lease_id,
         { ATTR_EVENT_ID } = event_id,
         { ATTR_AGENT_ID } = fleet_id,
+        { ATTR_SANDBOX_REUSED } = tracing::field::Empty,
     )
 }
 

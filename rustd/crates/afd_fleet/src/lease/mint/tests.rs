@@ -156,7 +156,7 @@ fn no_refusal_answers_an_untyped_failure() {
             );
             // And every one of them says something, because a detail is not
             // optional on this plane.
-            assert!(!refusal.detail().is_empty());
+            assert!(!refusal.detail().is_empty(), "{:?}", refusal.detail());
         }
     }
 }

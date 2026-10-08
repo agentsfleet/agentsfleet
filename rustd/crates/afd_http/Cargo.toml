@@ -50,6 +50,7 @@ afd_runner.workspace = true
 afd_sse.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 axum = { workspace = true, features = ["json", "matched-path", "query"] }
 http.workspace = true

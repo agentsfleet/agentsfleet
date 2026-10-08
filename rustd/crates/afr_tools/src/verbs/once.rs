@@ -77,7 +77,7 @@ impl Handler for ScheduleOnce {
             Ok(cron) => cron,
             Err(detail) => return ToolOutput::failed(ToolErrorCode::InvalidArguments, detail),
         };
-        let message = egress::masked(context.lease, arguments.message);
+        let message = egress::masked(context.lease, arguments.message).await;
         let call = ScheduleCall::Create {
             cron: &cron,
             timezone: Some(UTC),

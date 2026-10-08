@@ -65,20 +65,14 @@ pub(crate) fn input_closed() -> Error {
     ErrorKind::InputClosed.into()
 }
 
-/// The launcher could not find or start the program, for the reason `source`
-/// gives.
-pub(crate) fn program_unavailable(
-    source: impl Into<Box<dyn std::error::Error + Send + Sync>>,
-) -> Error {
-    ErrorKind::ProgramUnavailable {
-        source: source.into(),
-    }
-    .into()
-}
-
 /// A process started without a handle the executor needs.
 pub(crate) fn launch_incomplete() -> Error {
     ErrorKind::LaunchIncomplete.into()
+}
+
+/// The tenant leaf cannot be entered, for the reason `source` gives.
+pub(crate) fn tenant_unavailable(source: std::io::Error) -> Error {
+    ErrorKind::TenantUnavailable { source }.into()
 }
 
 /// Parameters that decoded but cannot be used.

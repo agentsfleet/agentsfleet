@@ -6,12 +6,12 @@
 //! without driving HTTP. Each field is parsed once into a type that cannot hold
 //! a bad value — a library tier, a [`FleetName`], a [`ChannelId`].
 
+use afd_api_wire::fleet::InstallFleetRequest;
 use afd_connector::Provider;
 use afd_core::id::Uuid7;
 use afd_fleet_lifecycle::{Install, LibrarySource};
 use afd_fleet_runtime::FleetName;
 use afd_fleet_runtime::config::{ChannelId, Mention};
-use afd_wire::fleet::InstallFleetRequest;
 
 use crate::handler::Refusal;
 

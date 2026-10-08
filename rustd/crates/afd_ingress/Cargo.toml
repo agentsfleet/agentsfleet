@@ -57,6 +57,7 @@ afd_vault.workspace = true
 # secret rather than a wrong header. Nothing in this crate computes a tag.
 afd_webhook.workspace = true
 # The event type and stream field names a delivery is appended under.
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 # A stored credential is a JSON object and the shared secret is one field of
 # it; nothing here serializes.

@@ -14,7 +14,7 @@ use tokio::task::JoinHandle;
 
 use crate::bubblewrap::SOCKET_NAME;
 use crate::engine::{Engine, HostWorkspace, Sandbox, SandboxRequest};
-use crate::error::{ErrorKind, Result};
+use crate::error::{ErrorKind, Result, unconfined};
 
 /// The workspace directory inside each lease's scratch directory.
 const WORKSPACE_DIR: &str = "workspace";
@@ -22,6 +22,8 @@ const WORKSPACE_DIR: &str = "workspace";
 const CONNECT_WITHIN: Duration = Duration::from_secs(1);
 /// How long a closed session may take to end its processes.
 const SERVER_GRACE: Duration = Duration::from_secs(5);
+/// Why an unconfined sandbox is never frozen.
+const NO_FREEZER: &str = "its processes run under no cgroup to freeze";
 
 /// Builds an unconfined "sandbox" per lease under a scratch directory.
 #[derive(Debug)]
@@ -111,6 +113,16 @@ impl Sandbox for Unconfined {
 
     fn is_running(&mut self) -> bool {
         !self.server.is_finished()
+    }
+
+    /// Refused: its processes run on the host under no cgroup, so nothing can
+    /// stop them together. It is destroyed, never held.
+    async fn freeze(&self) -> Result<()> {
+        Err(unconfined(NO_FREEZER))
+    }
+
+    async fn thaw(&self) -> Result<()> {
+        Err(unconfined(NO_FREEZER))
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {

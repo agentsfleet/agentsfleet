@@ -3,9 +3,9 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::admin::{AdminLibrariesResponse, AdminLibraryItem, AdminLibraryRequirements};
 use afd_core::error_code;
 use afd_library::{DeleteLibrary, LibraryItem, MAX_SKILL_NAME_LEN, PatchLibrary};
-use afd_wire::admin::{AdminLibrariesResponse, AdminLibraryItem, AdminLibraryRequirements};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -108,7 +108,7 @@ pub(crate) async fn list<D: Services>(State(services): State<Arc<D>>) -> Respons
         "unpublish the entry. Omitting the header preserves last-write-wins ",
         "behavior. ",
     ),
-    request_body = afd_wire::admin::AdminLibraryPatch,
+    request_body = afd_api_wire::admin::AdminLibraryPatch,
     params(
         CatalogIdPath,
         ("If-Match" = Option<String>, Header, description = "Optional catalog row version from the list response. Stale values return 412 with the current `etag`."),

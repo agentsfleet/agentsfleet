@@ -2,6 +2,7 @@
 
 use schemars::JsonSchema;
 use schemars::generate::SchemaSettings;
+use serde::Deserialize;
 
 /// The key a generated schema names its type under, which no provider reads.
 const TITLE: &str = "title";
@@ -52,3 +53,17 @@ impl Schema {
         }
     }
 }
+
+// The arguments a tool that reads none takes, `list_agents` and every test
+// tool among them: its schema is the empty object that refuses every key,
+// derived like a real tool's rather than written as JSON beside it. The doc
+// line below is what schemars hands the model as the schema's description,
+// so it is written for the model.
+/// Takes no arguments.
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[expect(
+    clippy::empty_structs_with_brackets,
+    reason = "schemars renders a unit struct as `null`; the braces make it the empty object every provider's function wire expects"
+)]
+pub struct NoArguments {}

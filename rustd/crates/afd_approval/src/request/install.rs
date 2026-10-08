@@ -20,9 +20,9 @@
 //! verb reports [`Requested::Denied`]. A revoke that the next install undid
 //! would be a stop button with a timer on it.
 
+use afd_api_wire::grant::status;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_wire::grant::status;
 use sqlx::Row as _;
 
 use super::{Requested, Wanted};
@@ -113,7 +113,7 @@ fn report(outcome: Requested, fleet: &Uuid7, service: &str, standing: &str) {
 mod tests {
     use super::settle;
     use crate::request::Requested;
-    use afd_wire::grant::status;
+    use afd_api_wire::grant::status;
 
     #[test]
     fn m202_001_an_install_reports_the_status_that_survived() {

@@ -35,12 +35,16 @@ pub(crate) mod statement;
 mod tool_call;
 
 use afd_core::clock::UnixMillis;
+use afd_core::event::status;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 
 use crate::error::{self, Result};
 
-use self::statement::{SELECT_DETAIL, SELECT_THREAD_PAGE, SELECT_THREAD_PAGE_AFTER, listing_text};
+use self::statement::{
+    SELECT_DETAIL, SELECT_THREAD_FINISHED_BEFORE, SELECT_THREAD_PAGE, SELECT_THREAD_PAGE_AFTER,
+    listing_text,
+};
 
 pub use self::cursor::Cursor;
 pub use self::detail::EventDetailRow;
@@ -53,6 +57,7 @@ const CONTEXT_FLEET_PAGE: &str = "read a fleet's history";
 const CONTEXT_WORKSPACE_PAGE: &str = "read a workspace's history";
 const CONTEXT_DETAIL: &str = "read one event";
 const CONTEXT_THREAD: &str = "read a fleet's message thread";
+const CONTEXT_FINISHED: &str = "read a fleet's finished turns";
 
 /// The page a caller gets when they name no size.
 pub const DEFAULT_LIMIT: i64 = 50;
@@ -212,6 +217,37 @@ impl History {
         let waiting = queued::waiting(&mut connection, workspace, fleet, cursor, bound).await?;
         let cut = usize::try_from(bound).unwrap_or(usize::MAX);
         Ok(queued::merged(delivered, waiting, cut))
+    }
+
+    /// The finished rows of a fleet's thread before `at`, newest first, bodies
+    /// included: what a chat lease reads its turns from. Finished is the
+    /// statement's predicate, so `limit` counts finished rows only, and no
+    /// waiting message is merged in, since it has no answer yet.
+    ///
+    /// # Errors
+    /// As [`Self::thread_page`].
+    pub async fn finished_before(
+        &self,
+        workspace: &Uuid7,
+        fleet: &Uuid7,
+        at: &Cursor,
+        limit: i64,
+    ) -> Result<Vec<EventDetailRow>> {
+        let mut connection = self.database.acquire().await?;
+        sqlx::query(SELECT_THREAD_FINISHED_BEFORE)
+            .bind(workspace.as_str())
+            .bind(fleet.as_str())
+            .bind(at.created_at)
+            .bind(at.event_id.as_str())
+            .bind(status::PROCESSED)
+            .bind(status::FLEET_ERROR)
+            .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(error::query(CONTEXT_FINISHED))?
+            .iter()
+            .map(EventDetailRow::read)
+            .collect()
     }
 
     /// The listing both entry points run: the text their scope, cursor and

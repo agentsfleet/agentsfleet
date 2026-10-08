@@ -12,7 +12,8 @@
 )]
 
 use crate::harness;
-use crate::integration_workspace_approvals::{Fixture, LISTING_SUBJECT};
+use crate::integration_workspace_approvals::LISTING_SUBJECT;
+use crate::integration_workspace_approvals_fixture::Fixture;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};

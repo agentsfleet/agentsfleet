@@ -23,8 +23,8 @@ const ANSWER: &str = r#"{"schedule_id":"0199a0b0-0000-7000-8000-0000000000aa"}"#
 /// Calls `tool` with `arguments` and answers what it asked and returned.
 async fn asked(tool: Box<dyn Tool>, arguments: serde_json::Value) -> (Vec<Asked>, String) {
     let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
-    let mut lease = lease_with(&verbs);
-    let output = call(tool.as_ref(), &mut lease, arguments).await;
+    let lease = lease_with(&verbs);
+    let output = call(tool.as_ref(), &lease, arguments).await;
     (verbs.asked(), output.text)
 }
 
@@ -108,17 +108,14 @@ async fn test_cron_tools_map_onto_the_verb() {
 async fn a_minted_token_is_masked_out_of_a_schedule_message() {
     let run = Run::new(false);
     let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
-    let mut lease = run.lease_reaching(&verbs);
+    let lease = run.lease_reaching(&verbs);
     let (minting, _sent) = replying(200, "ok");
     let read = json!({
         "url": "https://api.github.com/repos/acme/widgets/",
         "headers": {"Authorization": "Bearer ${secrets.github.token}"},
     });
     let request = Typed::boxed(HttpRequest::new(minting));
-    assert_eq!(
-        call(request.as_ref(), &mut lease, read).await.error_code,
-        None
-    );
+    assert_eq!(call(request.as_ref(), &lease, read).await.error_code, None);
 
     let leaky = format!("retry with {MINTED}");
     for (tool, arguments) in [
@@ -131,7 +128,7 @@ async fn a_minted_token_is_masked_out_of_a_schedule_message() {
             json!({"schedule_id": SCHEDULE, "message": leaky}),
         ),
     ] {
-        let output = call(tool.as_ref(), &mut lease, arguments).await;
+        let output = call(tool.as_ref(), &lease, arguments).await;
         assert_eq!(output.error_code, None, "{}", output.text);
     }
     let messages: Vec<String> = verbs
@@ -161,10 +158,10 @@ async fn a_schedule_id_that_is_not_one_never_leaves() {
         Typed::boxed(CronRuns),
     ] {
         let verbs = RecordingVerbs::answering(Ok(ANSWER.to_owned()), Ok(true));
-        let mut lease = lease_with(&verbs);
+        let lease = lease_with(&verbs);
         let output = call(
             tool.as_ref(),
-            &mut lease,
+            &lease,
             json!({"schedule_id": "../../memory"}),
         )
         .await;
@@ -183,10 +180,10 @@ async fn a_refusal_reaches_the_model_with_its_code() {
         ))),
         Ok(true),
     );
-    let mut lease = lease_with(&verbs);
+    let lease = lease_with(&verbs);
     let output = call(
         Typed::boxed(CronRemove).as_ref(),
-        &mut lease,
+        &lease,
         json!({"schedule_id": SCHEDULE}),
     )
     .await;
@@ -206,5 +203,5 @@ async fn naming_a_fleet_refuses_the_call() {
         json!({"cron": "0 9 * * 1", "message": "m", "fleet_id": "x"}),
     )
     .await;
-    assert!(asked.is_empty());
+    assert!(asked.is_empty(), "{asked:?}");
 }

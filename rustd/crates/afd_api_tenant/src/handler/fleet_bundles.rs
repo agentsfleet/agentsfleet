@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::admin::{FleetBundleItem, FleetBundlesResponse};
 use afd_library::PublicLibraryItem;
-use afd_wire::admin::{FleetBundleItem, FleetBundlesResponse};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};

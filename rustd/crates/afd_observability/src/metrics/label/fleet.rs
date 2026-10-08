@@ -156,6 +156,32 @@ closed_set! {
 }
 
 closed_set! {
+    /// Which cap cut a chat lease's earlier turns.
+    HistoryCut {
+        /// More finished turns than a lease carries; the oldest were left.
+        Turns => "turns",
+        /// A message or answer past its text cap was cut.
+        Text => "text",
+        /// The turns passed the byte budget; the oldest were dropped.
+        Bytes => "bytes",
+    }
+}
+
+closed_set! {
+    /// Who won the claim on a fleet whose slot named a sandbox held live at
+    /// the claim. A hold past its deadline is no hold, and counts nothing.
+    HeldClaim {
+        /// The runner holding the fleet's sandbox, which continues in it.
+        /// Counted when its lease resumes the hold, so a reclaim, which
+        /// starts clean, counts nothing.
+        Holder => "holder",
+        /// Another runner, once the holder fell silent or could no longer
+        /// lease: degraded, or no longer active.
+        OtherAfterLapse => "other_after_lapse",
+    }
+}
+
+closed_set! {
     /// Where a verification run got to.
     VerifierRun {
         /// Dispatched onto the fleet's stream.

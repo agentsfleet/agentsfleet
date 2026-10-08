@@ -39,7 +39,7 @@ mod tests;
 
 pub(crate) use self::raise::{
     connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
-    not_a_file, not_found, path_refused, program_unavailable, refused, unknown_process,
+    not_a_file, not_found, path_refused, refused, tenant_unavailable, unknown_process,
     unresponsive,
 };
 
@@ -125,18 +125,19 @@ pub(crate) enum ErrorKind {
     #[error("the process's input is closed")]
     InputClosed,
 
-    /// The program could not be found or started.
-    #[error("the program could not be started")]
-    ProgramUnavailable {
-        /// Why, as the launcher put it.
-        #[source]
-        source: Box<dyn std::error::Error + Send + Sync>,
-    },
-
     /// A process started without a handle the executor needs to run it: a
     /// pipe, or a process identifier it can signal.
     #[error("the process started without a handle the executor needs")]
     LaunchIncomplete,
+
+    /// The tenant leaf every started process moves into cannot be entered:
+    /// its descriptor was lost, or the leaf did not read as one.
+    #[error("the tenant leaf cannot be entered")]
+    TenantUnavailable {
+        /// The operating system's reason.
+        #[source]
+        source: io::Error,
+    },
 
     /// A call's parameters were well-formed but unusable.
     #[error("{detail}")]
@@ -211,10 +212,9 @@ impl Error {
             ErrorKind::UnknownProcess => UNKNOWN_PROCESS_CODE,
             ErrorKind::NotFound { .. } => FILE_NOT_FOUND_CODE,
             ErrorKind::InputBacklogFull | ErrorKind::InputClosed => CALL_EXECUTION_FAILED_CODE,
-            ErrorKind::InvalidParams { .. }
-            | ErrorKind::Malformed { .. }
-            | ErrorKind::NotAFile
-            | ErrorKind::ProgramUnavailable { .. } => INVALID_PARAMS_CODE,
+            ErrorKind::InvalidParams { .. } | ErrorKind::Malformed { .. } | ErrorKind::NotAFile => {
+                INVALID_PARAMS_CODE
+            }
             ErrorKind::Io { source } if is_caller_mistake(source) => INVALID_PARAMS_CODE,
             _internal => INTERNAL_ERROR_CODE,
         }

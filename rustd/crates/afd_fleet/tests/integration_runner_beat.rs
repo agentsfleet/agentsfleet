@@ -54,12 +54,15 @@ async fn test_the_first_beat_reports_and_comes_online() {
     let beat = HeartbeatRequest {
         capability_report: Some(capable()),
         selftest: None,
+        holds: afd_wire::runner::HeldFleets::default(),
+        closing: false,
     };
     let first = fixtures
         .runners()
         .heartbeat(
             &enrolled.runner_id,
             &beat,
+            None,
             UnixMillis::from_millis(ENROLLED_AT + ONE_BEAT_MS),
         )
         .await
@@ -119,6 +122,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
             .heartbeat(
                 &enrolled.runner_id,
                 &NO_REPORT,
+                None,
                 UnixMillis::from_millis(ENROLLED_AT + beat * ONE_BEAT_MS),
             )
             .await
@@ -138,6 +142,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
         .heartbeat(
             &enrolled.runner_id,
             &NO_REPORT,
+            None,
             UnixMillis::from_millis(lapsed),
         )
         .await
@@ -179,6 +184,8 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let beat = HeartbeatRequest {
         capability_report: Some(flooded),
         selftest: None,
+        holds: afd_wire::runner::HeldFleets::default(),
+        closing: false,
     };
 
     let answered = fixtures
@@ -186,6 +193,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
         .heartbeat(
             &enrolled.runner_id,
             &beat,
+            None,
             UnixMillis::from_millis(ENROLLED_AT + ONE_BEAT_MS),
         )
         .await
@@ -244,6 +252,8 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
             sandbox_tier: Cow::Borrowed("dev_none"),
             network_policy: Cow::Borrowed("allow_all"),
         }),
+        holds: afd_wire::runner::HeldFleets::default(),
+        closing: false,
     };
     let beat_at = ENROLLED_AT + ONE_BEAT_MS;
 
@@ -251,6 +261,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
         .heartbeat(
             &enrolled.runner_id,
             &inconsistent,
+            None,
             UnixMillis::from_millis(beat_at),
         )
         .await

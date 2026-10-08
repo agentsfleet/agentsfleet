@@ -90,7 +90,7 @@ impl Handler for Pushover {
         {
             return ToolOutput::failed(ToolErrorCode::InvalidArguments, PRIORITY_OUT_OF_RANGE);
         }
-        let statics = context.lease.egress.statics();
+        let statics = context.lease.egress.lock().await.statics();
         let credential = |field: &str| {
             statics
                 .field(CREDENTIAL, field)
@@ -99,7 +99,7 @@ impl Handler for Pushover {
         let (token, user) = match (credential(FIELD_TOKEN), credential(FIELD_USER)) {
             (Ok(token), Ok(user)) => (token, user),
             (Err(missing), _) | (_, Err(missing)) => {
-                return egress::refused(Self::ENTRY, context.lease.egress.lease_id(), &missing);
+                return egress::refused(Self::ENTRY, context.lease.lease_id, &missing);
             }
         };
         let body = Body {

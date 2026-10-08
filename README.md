@@ -8,7 +8,7 @@
 [![website coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=website&label=website&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=website)
 [![cli coverage](https://img.shields.io/codecov/c/github/agentsfleet/agentsfleet?flag=cli&label=cli&logo=codecov&logoColor=white)](https://codecov.io/gh/agentsfleet/agentsfleet?flags[0]=cli)
 [![Zig](https://img.shields.io/badge/Zig-0.16.0-F7A41D?logo=zig&logoColor=white)](https://ziglang.org/download/)
-[![Rust](https://img.shields.io/badge/Rust-1.98.1-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.99.0-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Docs](https://img.shields.io/badge/Docs-agentsfleet.net-0A7CFF?logo=gitbook&logoColor=white)](https://docs.agentsfleet.net)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -56,7 +56,7 @@ Define an agent in Markdown, connect a webhook, and get an evidenced diagnosis a
 
 ## Local development
 
-**Prerequisites:** [Rust 1.98.1](https://rustup.rs) (pinned by `rustd/rust-toolchain.toml`, which rustup installs on the first `cargo` run inside `rustd/`) · [Zig 0.16.0](https://ziglang.org/download/) (only to build the runner) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Rust 1.99.0](https://rustup.rs) (pinned by `rustd/rust-toolchain.toml`, which rustup installs on the first `cargo` run inside `rustd/`) · [Zig 0.16.0](https://ziglang.org/download/) (only to build the runner) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 ```bash
 git clone https://github.com/agentsfleet/agentsfleet.git

@@ -36,6 +36,7 @@ mod credentials;
 mod drainer;
 mod halt;
 mod heartbeat;
+mod holds;
 mod identity;
 mod lease_loop;
 mod memory;
@@ -74,6 +75,7 @@ use self::client::HttpRunnerApi;
 use self::drainer::Drainer;
 use self::halt::Halt;
 use self::heartbeat::{Assignment, Heartbeat};
+use self::holds::Holds;
 use self::identity::Whoami;
 use self::lease_loop::Lessee;
 use self::report_spool::ReportSpool;
@@ -95,7 +97,7 @@ pub(crate) struct Runner {
     /// What every sandbox enforces.
     pub(crate) limits: Limits,
     /// The wall clock lease deadlines are read against.
-    pub(crate) clock: Box<dyn Clock>,
+    pub(crate) clock: Arc<dyn Clock>,
 }
 
 /// Reads the configuration from `env` and opens its storage home.
@@ -164,7 +166,7 @@ fn compose(
         agent,
         probe,
         limits: Limits::default(),
-        clock: Box::new(SystemClock),
+        clock: Arc::new(SystemClock),
     })
 }
 
@@ -192,21 +194,25 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         bundles: BundleCache::new(&home),
         mirrors: Mirrors::new(home.mirrors(), origin),
         limits,
+        holds: Holds::start(Arc::clone(&clock)),
         clock,
         halt: Halt::new(shutdown),
         held: Notify::new(),
         whoami: Whoami::default(),
     });
     let (assignment, watching) = watch::channel(Assignment::initial());
-    let heartbeat = Heartbeat::new(&lessee.plane, &probe).keep_beating(&assignment, &lessee.halt);
+    let heartbeat = Heartbeat::new(&lessee.plane, &probe, &lessee.holds)
+        .keep_beating(&assignment, &lessee.halt);
     let drainer = Drainer {
         spool: &lessee.spool,
         plane: &lessee.plane,
         halt: &lessee.halt,
         held: &lessee.held,
+        holds: &lessee.holds,
     };
     let pool = worker_pool::serve(Arc::clone(&lessee), watching);
     tokio::join!(heartbeat, drainer.run(), pool);
+    lessee.holds.shutdown().await;
     if lessee.halt.token_refused() {
         return Err(error::token_refused());
     }

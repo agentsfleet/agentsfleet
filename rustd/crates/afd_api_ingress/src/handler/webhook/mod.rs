@@ -117,7 +117,7 @@ pub(crate) fn text<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
 /// Re-exported rather than defined here: they are public wire, declared in
 /// `public/openapi.json` and read by senders and the dashboard, so `afd_wire`
 /// owns the shape and this plane names it.
-pub(crate) use afd_wire::ingress::{Accepted, Ignored};
+pub(crate) use afd_api_wire::ingress::{Accepted, Ignored};
 
 /// The reason a delivery to a fleet nobody is running is dropped.
 ///

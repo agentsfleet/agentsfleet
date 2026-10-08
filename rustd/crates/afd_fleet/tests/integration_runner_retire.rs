@@ -9,10 +9,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_api_wire::admin::RunnerAdminAction;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Billed;
-use afd_wire::admin::RunnerAdminAction;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use crate::requests::{ENROLLED_AT, enrolment};

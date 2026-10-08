@@ -68,7 +68,7 @@ fn a_broken_bound_is_told_as_the_field_that_broke_it() {
 
     let model_past_cap = format!(
         r#"{{"provider":"anthropic","source_workspace_id":"{WORKSPACE}","model":"{}","base_url":null}}"#,
-        "m".repeat(afd_wire::admin::MODEL_ID_MAX_BYTES + 1)
+        "m".repeat(afd_api_wire::admin::MODEL_ID_MAX_BYTES + 1)
     );
     assert_eq!(
         request(model_past_cap.as_bytes()),

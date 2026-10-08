@@ -3,17 +3,24 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
+use std::fs::{self, File, OpenOptions};
 use std::time::Duration;
 
 use bytes::Bytes;
+use rustix::process::Signal;
 use tokio::io::AsyncReadExt as _;
 use tokio::net::UnixStream;
 use tokio::sync::mpsc;
 
-use super::write_lines;
+use super::{Tenant, bind, write_lines};
+use crate::api::Ending;
 
 /// Longer than a writer takes to give up on a dead socket.
 const PATIENCE: Duration = Duration::from_secs(5);
+/// The leaf's `memory.events`, before and after the kernel kills a process
+/// in it for memory.
+const NO_KILLS: &str = "oom 0\noom_kill 0\n";
+const ONE_KILL: &str = "oom 1\noom_kill 1\n";
 
 /// What the writer puts on the socket for what was queued, once both queues
 /// close.
@@ -68,4 +75,32 @@ async fn a_writer_whose_socket_closed_stops_though_its_queues_stay_open() {
 
     assert!(stopped.is_ok(), "the failed write ended the writer");
     drop(answer);
+}
+
+/// A listener given a tenant places what it starts in the tenant's leaf, so
+/// a kill the leaf counted reads as out of memory; a bare listener keeps
+/// processes where the executor runs and reads the same kill as reported.
+#[test]
+fn a_listener_with_a_tenant_places_its_processes_in_the_leaf() {
+    let dir = tempfile::tempdir().unwrap();
+    let (procs, events) = (
+        dir.path().join("cgroup.procs"),
+        dir.path().join("memory.events"),
+    );
+    fs::write(&procs, "").unwrap();
+    fs::write(&events, NO_KILLS).unwrap();
+    let tenant = Tenant::new(
+        OpenOptions::new().write(true).open(&procs).unwrap().into(),
+        File::open(&events).unwrap().into(),
+    )
+    .unwrap();
+    let bare = bind(&dir.path().join("bare.sock")).unwrap();
+    let tenanted = bind(&dir.path().join("tenant.sock"))
+        .unwrap()
+        .with_tenant(tenant);
+    fs::write(&events, ONE_KILL).unwrap();
+    let killed = Ending::Signaled(Signal::KILL.as_raw());
+
+    assert_eq!(tenanted.placement.judge(killed), Ending::OutOfMemory);
+    assert_eq!(bare.placement.judge(killed), killed);
 }

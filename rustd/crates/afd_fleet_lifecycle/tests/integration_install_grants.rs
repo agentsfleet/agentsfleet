@@ -21,11 +21,11 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_api_wire::grant::status;
 use afd_approval::{
     IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, REASON_DECLARED_AT_INSTALL, Wanted,
 };
 use afd_crypto::entropy::Entropy;
-use afd_wire::grant::status;
 use sqlx::Row as _;
 
 use crate::support::{GITHUB_HANDLE, Lane, STATIC_HANDLE};

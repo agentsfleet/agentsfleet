@@ -38,6 +38,8 @@ mod integration_credential_mint;
 mod integration_delivery_lookup;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
+#[path = "integration_held_sandbox.rs"]
+mod integration_held_sandbox;
 #[path = "integration_lease_affinity.rs"]
 mod integration_lease_affinity;
 #[path = "integration_lease_assign.rs"]
@@ -48,6 +50,8 @@ mod integration_lease_block;
 mod integration_lease_fairness;
 #[path = "integration_lease_gates.rs"]
 mod integration_lease_gates;
+#[path = "integration_lease_history.rs"]
+mod integration_lease_history;
 #[path = "integration_lease_installed.rs"]
 mod integration_lease_installed;
 #[path = "integration_lease_issue.rs"]

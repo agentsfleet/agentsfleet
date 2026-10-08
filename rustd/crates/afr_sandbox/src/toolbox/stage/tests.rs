@@ -79,7 +79,7 @@ fn should_refuse_a_half_written_image_of_the_right_length() {
 
     assert_eq!(refused.toolbox_refusal(), Some(ToolboxRefusal::Digest));
     assert!(!published(dir.path(), &manifest).exists());
-    assert!(staged(dir.path()).is_empty());
+    assert_eq!(staged(dir.path()), [] as [String; 0]);
 }
 
 #[test]
@@ -103,7 +103,7 @@ fn should_sweep_the_partial_copies_a_killed_run_left() {
     }
 
     assert_eq!(sweep(dir.path()).unwrap(), 2);
-    assert!(staged(dir.path()).is_empty());
+    assert_eq!(staged(dir.path()), [] as [String; 0]);
     assert_eq!(sweep(dir.path()).unwrap(), 0);
 }
 

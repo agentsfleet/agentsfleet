@@ -36,6 +36,7 @@ fn report_bytes() -> Bytes {
             &Meter::default(),
             Duration::ZERO,
             None,
+            None,
         ))
         .unwrap(),
     )
@@ -123,7 +124,7 @@ async fn an_answer_that_settles_the_lease_removes_the_entry() {
     for answer in settling {
         let (delivery, left, ..) = deliver_once(answer).await;
 
-        assert!(matches!(delivery, Delivery::Settled));
+        assert!(matches!(delivery, Delivery::Superseded), "{delivery:?}");
         assert_eq!(left, 0);
     }
 }
@@ -205,7 +206,8 @@ async fn only_reports_are_pending() {
     let (_root, home) = home();
     fs::write(home.spool().join("notes.txt"), b"operator").unwrap();
 
-    assert!(ReportSpool::new(&home).pending().await.unwrap().is_empty());
+    let left_over = ReportSpool::new(&home).pending().await.unwrap();
+    assert!(left_over.is_empty(), "{left_over:?}");
 }
 
 #[tokio::test]

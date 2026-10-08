@@ -38,15 +38,16 @@ fn bytes_of(kind: ImageKind, length: usize) -> Vec<u8> {
 async fn viewed(live: &Live, path: &str, images: bool) -> (ToolOutput, Option<ImageAttachment>) {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[IMAGE.name()]).unwrap();
-    let mut lease = Lease::default().with_image_input(images);
+    let lease = Lease::default().with_image_input(images);
     let answer = call_in(
         offered(&selection, &IMAGE),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: path}),
     )
     .await;
-    (answer, lease.attachment)
+    let image = answer.image.clone();
+    (answer, image)
 }
 
 #[tokio::test]
@@ -188,11 +189,11 @@ async fn a_missing_image_a_path_out_and_no_sandbox_read_their_codes() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[IMAGE.name()]).unwrap();
     let tool = offered(&selection, &IMAGE);
-    let mut lease = Lease::default().with_image_input(true);
+    let lease = Lease::default().with_image_input(true);
 
-    let missing = call_in(tool, &live.client, &mut lease, json!({PATH: "absent.png"})).await;
-    let out = call_in(tool, &scripted, &mut lease, json!({PATH: "../etc/x.png"})).await;
-    let unsandboxed = call(tool, &mut lease, json!({PATH: SHOT})).await;
+    let missing = call_in(tool, &live.client, &lease, json!({PATH: "absent.png"})).await;
+    let out = call_in(tool, &scripted, &lease, json!({PATH: "../etc/x.png"})).await;
+    let unsandboxed = call(tool, &lease, json!({PATH: SHOT})).await;
 
     assert_eq!(
         missing.error_code,
@@ -213,7 +214,12 @@ async fn a_missing_image_a_path_out_and_no_sandbox_read_their_codes() {
         scripted.spawned().is_empty(),
         "nothing was asked of the sandbox"
     );
-    assert!(lease.attachment.is_none());
+    assert!(
+        [&missing, &out, &unsandboxed]
+            .iter()
+            .all(|refused| refused.image.is_none()),
+        "a refused call carries no image"
+    );
     live.stop().await;
 }
 

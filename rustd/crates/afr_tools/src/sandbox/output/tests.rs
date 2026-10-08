@@ -205,6 +205,7 @@ fn should_word_each_ending_as_codex_does() {
     assert_eq!(status(Ending::Exited(3)), "Process exited with code 3");
     assert_eq!(status(Ending::Signaled(9)), "Process killed by signal 9");
     assert_eq!(status(Ending::TimedOut), "Process timed out");
+    assert_eq!(status(Ending::OutOfMemory), "Process killed: out of memory");
     assert_eq!(
         status(Ending::Interrupted),
         "Process interrupted before its ending arrived"
@@ -220,6 +221,11 @@ fn should_report_a_signal_as_a_shell_does_and_no_status_without_one() {
         Some(i32::MAX),
         "saturates, never wraps"
     );
+    assert_eq!(
+        exit_code(Ending::OutOfMemory),
+        Some(137),
+        "as the SIGKILL it was"
+    );
     assert_eq!(exit_code(Ending::TimedOut), None);
     assert_eq!(exit_code(Ending::Interrupted), None);
 }
@@ -229,6 +235,10 @@ fn should_fail_only_a_process_that_did_not_end_by_itself() {
     assert_eq!(error_code(Ending::Exited(1)), None);
     assert_eq!(error_code(Ending::Signaled(9)), None);
     assert_eq!(error_code(Ending::TimedOut), Some(ToolErrorCode::TimedOut));
+    assert_eq!(
+        error_code(Ending::OutOfMemory),
+        Some(ToolErrorCode::OutOfMemory)
+    );
     assert_eq!(
         error_code(Ending::Interrupted),
         Some(ToolErrorCode::Interrupted)

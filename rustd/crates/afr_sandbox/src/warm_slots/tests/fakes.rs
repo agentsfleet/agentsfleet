@@ -68,6 +68,12 @@ impl Sandbox for Named {
     fn is_running(&mut self) -> bool {
         !self.dead
     }
+    async fn freeze(&self) -> Result<()> {
+        Ok(())
+    }
+    async fn thaw(&self) -> Result<()> {
+        Ok(())
+    }
     async fn destroy(self: Box<Self>) -> Result<()> {
         assert!(!self.panics, "a teardown that panics");
         self.destroyed.fetch_add(1, Ordering::SeqCst);
@@ -95,7 +101,7 @@ impl Engine for Counting {
     async fn prepare(&self, request: SandboxRequest<'_>) -> Result<Box<dyn Sandbox>> {
         let refused = self
             .refusals
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
                 left.checked_sub(1)
             });
         if refused.is_ok() {

@@ -4,6 +4,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the runner"
 )]
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -21,6 +23,18 @@ const GLANCE: Duration = Duration::from_millis(50);
 const KIB: usize = 1024;
 /// The size of a pipe read on the executor's side.
 const CHUNK_BYTES: usize = 16 * KIB;
+
+/// Events of a fresh channel whose abandon hook counts its runs, the count,
+/// and the feed.
+fn counted() -> (super::Feed, Events, Arc<AtomicUsize>) {
+    let (feed, mut events) = Events::channel();
+    let runs = Arc::new(AtomicUsize::new(0));
+    let counter = Arc::clone(&runs);
+    events.on_abandon(move || {
+        counter.fetch_add(1, Ordering::Relaxed);
+    });
+    (feed, events, runs)
+}
 
 /// A stdout event of `data`.
 fn said(data: &'static [u8]) -> ProcessEvent {
@@ -227,4 +241,43 @@ async fn an_ending_carries_whether_output_was_left_behind() {
             output_abandoned: true,
         })
     );
+}
+
+#[test]
+fn events_that_go_while_their_process_may_run_run_their_hook_once() {
+    let (feed, events, runs) = counted();
+    feed.output(Stream::Stdout, Bytes::from_static(b"unread"));
+
+    drop(events);
+
+    assert_eq!(runs.load(Ordering::Relaxed), 1);
+    drop(feed);
+}
+
+#[tokio::test]
+async fn events_read_to_their_ending_or_finished_by_their_feed_run_no_hook() {
+    let (feed, mut read, read_runs) = counted();
+    feed.end(Ending::Exited(0), false);
+    let ended = read.recv().await;
+    let (feed, unread, unread_runs) = counted();
+    drop(feed);
+
+    drop((read, unread));
+
+    assert!(matches!(ended, Some(ProcessEvent::Ended { .. })));
+    assert_eq!(read_runs.load(Ordering::Relaxed), 0, "read to its ending");
+    assert_eq!(
+        unread_runs.load(Ordering::Relaxed),
+        0,
+        "finished by the feed"
+    );
+}
+
+/// Events that will kill their process say so, without showing the hook.
+#[test]
+fn events_with_a_hook_name_it_in_their_debug() {
+    let (_feed, mut events) = Events::channel();
+    events.on_abandon(|| {});
+
+    assert!(format!("{events:?}").contains("Abandon"), "{events:?}");
 }

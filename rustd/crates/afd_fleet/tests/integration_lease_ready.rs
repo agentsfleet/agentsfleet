@@ -249,7 +249,7 @@ async fn test_candidates_skip_held_slots() {
 
     let mut reached = None;
     for _poll in 0..READY_PARTITIONS {
-        let (selected, cost) = scene.leases.select_measured(other, now).await;
+        let (selected, cost) = scene.leases.select_measured(other, &[], now).await;
         let selected = selected.expect("the poll must not fault");
         assert!(
             selected.is_none(),

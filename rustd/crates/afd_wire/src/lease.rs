@@ -2,11 +2,12 @@
 
 use std::borrow::Cow;
 
+use garde::Validate;
 use serde::{Deserialize, Serialize};
 
 use crate::event::EventEnvelope;
-use crate::memory::MemoryDelta;
 use crate::policy::ExecutionPolicy;
+use crate::runner::HeldFleets;
 
 /// How tenant secrets reach the runner.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -31,6 +32,72 @@ pub struct BundleManifest<'a> {
     /// Content hash addressing the immutable canonical archive.
     #[serde(borrow)]
     pub content_hash: Cow<'a, str>,
+}
+
+/// The smallest processor share a lease may ask for, in thousandths of a core.
+pub const SANDBOX_CPU_MILLIS_MIN: u32 = 250;
+/// The largest processor share a lease may ask for: 32 cores.
+pub const SANDBOX_CPU_MILLIS_MAX: u32 = 32_000;
+/// The least memory a lease may ask for. Above the sandbox's own reserve, so
+/// the tenant's processes always get some.
+pub const SANDBOX_MEMORY_BYTES_MIN: u64 = 256 * 1024 * 1024;
+/// The most memory a lease may ask for: 64 GiB.
+pub const SANDBOX_MEMORY_BYTES_MAX: u64 = 64 * 1024 * 1024 * 1024;
+/// The smallest workspace disk a lease may ask for: 1 GiB.
+pub const SANDBOX_DISK_BYTES_MIN: u64 = 1024 * 1024 * 1024;
+/// The largest workspace disk a lease may ask for: 256 GiB.
+pub const SANDBOX_DISK_BYTES_MAX: u64 = 256 * 1024 * 1024 * 1024;
+
+/// The sandbox a lease asks for.
+///
+/// Bounded, because the runner builds exactly what it is told. A size past
+/// these bounds is a daemon fault, so the runner refuses the lease. Whether
+/// this host has room for it is a separate question.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
+pub struct SandboxLimits {
+    /// Processor share, in thousandths of one core.
+    #[garde(range(min = SANDBOX_CPU_MILLIS_MIN, max = SANDBOX_CPU_MILLIS_MAX))]
+    // utoipa takes only literals here; `validation_lease.rs` pins them to the
+    // constants garde reads.
+    #[cfg_attr(feature = "openapi", schema(minimum = 250, maximum = 32_000))]
+    pub cpu_millis: u32,
+    /// Memory, in bytes.
+    #[garde(range(min = SANDBOX_MEMORY_BYTES_MIN, max = SANDBOX_MEMORY_BYTES_MAX))]
+    #[cfg_attr(feature = "openapi", schema(minimum = 268_435_456_u64))]
+    #[cfg_attr(feature = "openapi", schema(maximum = 68_719_476_736_u64))]
+    pub memory_bytes: u64,
+    /// The workspace disk's size, in bytes.
+    #[garde(range(min = SANDBOX_DISK_BYTES_MIN, max = SANDBOX_DISK_BYTES_MAX))]
+    #[cfg_attr(feature = "openapi", schema(minimum = 1_073_741_824_u64))]
+    #[cfg_attr(feature = "openapi", schema(maximum = 274_877_906_944_u64))]
+    pub disk_bytes: u64,
+}
+
+/// The most earlier turns a chat lease carries.
+pub const HISTORY_TURNS_MAX: usize = 8;
+/// The most bytes a chat lease's turns carry, messages and answers together.
+pub const HISTORY_BYTES_MAX: usize = 65_536;
+/// The most bytes one turn's message, or its answer, carries.
+pub const TURN_TEXT_BYTES_MAX: usize = 16_384;
+/// A finished run that left no reply.
+pub const ANSWER_NONE: &str = "[no reply]";
+/// What opens a failed run's answer; the run's failure label follows it.
+pub const ANSWER_FAILED: &str = "[the run failed: ";
+/// What closes a failed run's answer.
+pub const ANSWER_FAILED_END: &str = "]";
+
+/// One earlier exchange in the fleet's thread: what was asked, and what the
+/// fleet answered.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Turn<'a> {
+    /// The event's message, as `event::message_of` reads it.
+    #[serde(borrow)]
+    pub message: Cow<'a, str>,
+    /// The fleet's answer, or the fixed text a reply-less or failed run reads as.
+    #[serde(borrow)]
+    pub answer: Cow<'a, str>,
 }
 
 /// The work half of a lease.
@@ -64,6 +131,42 @@ pub struct LeasePayload<'a> {
     /// The bundle to materialize, when the fleet was created from one.
     #[serde(borrow)]
     pub bundle: Option<BundleManifest<'a>>,
+    /// The sandbox to run in; null means the runner's own defaults. Absent
+    /// decodes as null, so a daemon that predates the field still leases.
+    #[serde(default)]
+    pub limits: Option<SandboxLimits>,
+    /// The fleet's earlier turns, oldest first, ahead of this event; empty
+    /// unless the event is a chat message. Absent decodes as empty.
+    #[serde(default, borrow)]
+    pub history: Vec<Turn<'a>>,
+    /// True when this runner's held sandbox is the fleet's latest and this
+    /// event has not run before. The slot's last lease ran here, its hold had
+    /// not lapsed at the claim, and the event is no reclaim. Anything else
+    /// builds a fresh sandbox, since the held one may predate another runner's
+    /// run or hold this event's first attempt. Absent decodes as false.
+    #[serde(default)]
+    pub resume_hold: bool,
+}
+
+/// `POST /v1/runners/me/leases` request.
+///
+/// What a polling runner tells the daemon about itself: the fleets whose
+/// sandboxes it holds, so a held fleet's next event reaches it first. An empty
+/// or unreadable body reads as holding nothing, so a poll never fails over
+/// what it carries.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LeaseRequest<'a> {
+    /// Every fleet this runner holds a frozen sandbox for. Absent decodes as
+    /// empty.
+    #[serde(borrow, default)]
+    #[garde(dive)]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(value_type = Vec<String>, max_items = 64, min_length = 36, max_length = 36)
+    )]
+    pub holds: HeldFleets<'a>,
 }
 
 /// `POST /v1/runners/me/leases` reply. Always `200`.
@@ -78,21 +181,4 @@ pub struct LeaseResponse<'a> {
     pub lease: Option<LeasePayload<'a>>,
     /// How long to wait before asking again, when there is none.
     pub retry_after_ms: Option<u32>,
-}
-
-/// What the runner parent pipes to the sandboxed child's standard input.
-///
-/// The parent hydrated the memory over the trusted plane because it holds the
-/// token; the child makes no network call of its own, so no credential, URL or
-/// connection string ever reaches the sandboxed fleet.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RunnerChildInput<'a> {
-    /// The lease to execute.
-    #[serde(borrow)]
-    pub lease: LeasePayload<'a>,
-    /// The fleet's prior memory, already hydrated by the parent.
-    #[serde(borrow)]
-    pub hydrated_memory: Vec<MemoryDelta<'a>>,
 }

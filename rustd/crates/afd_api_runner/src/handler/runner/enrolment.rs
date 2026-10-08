@@ -45,7 +45,7 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
 /// Enrols a host, answering its identity and its one-time credential.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners",
+    path = afd_wire::paths::RUNNERS,
     tag = afd_http::openapi::tag::FLEET,
     operation_id = "register_runner",
     summary = "Register a runner",

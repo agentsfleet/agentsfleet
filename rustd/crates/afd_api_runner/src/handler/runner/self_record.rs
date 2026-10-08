@@ -26,7 +26,7 @@ const EVENT: &str = "runner_self_read_failed";
 /// Answers the runner's own registration row.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/runners/me",
+    path = afd_wire::paths::RUNNER_SELF,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "get_runner_self",
     summary = "Read this runner's own row",

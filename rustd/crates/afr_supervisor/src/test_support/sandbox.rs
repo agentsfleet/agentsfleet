@@ -4,10 +4,11 @@
 use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_sandbox::{Engine, HostWorkspace, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine, HostWorkspace, Limits, Sandbox, SandboxRequest};
 use bytes::Bytes;
 use tokio::sync::mpsc;
 
@@ -23,6 +24,25 @@ pub(crate) enum Writes {
     Stall,
 }
 
+/// What a fake sandbox does when it is frozen and when it is thawed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum Freezer {
+    /// Freezes and thaws.
+    #[default]
+    Works,
+    /// Refuses the freeze, as a host without the cgroup freezer would.
+    RefusesFreeze,
+    /// Freezes, then refuses the thaw.
+    RefusesThaw,
+    /// Freezes and thaws, but its executor never answers again, as one that
+    /// died while frozen would.
+    ThawsSilent,
+    /// Freezes and thaws, but its executor fails every listing after.
+    ThawsBroken,
+    /// Its processes ended after the run, so it no longer reports running.
+    Dead,
+}
+
 /// An engine whose sandboxes count their teardowns.
 #[derive(Debug, Default)]
 pub(crate) struct FakeEngine {
@@ -31,6 +51,8 @@ pub(crate) struct FakeEngine {
     /// would take its worker down.
     pub(crate) panic_once: bool,
     pub(crate) fail_teardown: bool,
+    /// How long each teardown takes before it is counted.
+    pub(crate) teardown_takes: Duration,
     pub(crate) prepared: Arc<AtomicUsize>,
     pub(crate) destroyed: Arc<AtomicUsize>,
     /// Where each sandbox's executor reports the files written into it.
@@ -40,11 +62,21 @@ pub(crate) struct FakeEngine {
     /// The host directory each sandbox offers as its workspace, owned by
     /// whoever owns it; none keeps the workspace out of the host's reach.
     pub(crate) workspace: Option<PathBuf>,
+    /// Where each prepare reports the limits it was asked to enforce.
+    pub(crate) asked: Option<mpsc::UnboundedSender<Limits>>,
+    /// How many times its sandboxes were frozen, and thawed.
+    pub(crate) frozen: Arc<AtomicUsize>,
+    pub(crate) thawed: Arc<AtomicUsize>,
+    /// What its sandboxes do when frozen and thawed.
+    pub(crate) freezer: Freezer,
 }
 
 #[async_trait::async_trait]
 impl Engine for FakeEngine {
-    async fn prepare(&self, _request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+    async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
+        if let Some(asked) = &self.asked {
+            let _ = asked.send(request.limits);
+        }
         if self.refuse {
             return Err(std::io::Error::other("no landlock").into());
         }
@@ -59,11 +91,17 @@ impl Engine for FakeEngine {
         });
         Ok(Box::new(FakeSandbox {
             fail_teardown: self.fail_teardown,
+            teardown_takes: self.teardown_takes,
             workspace,
             destroyed: Arc::clone(&self.destroyed),
+            frozen: Arc::clone(&self.frozen),
+            thawed: Arc::clone(&self.thawed),
+            freezer: self.freezer,
             executor: FakeExecutor {
                 written: self.written.clone(),
                 writes: self.writes,
+                freezer: self.freezer,
+                thawed: AtomicBool::default(),
             },
         }))
     }
@@ -72,8 +110,12 @@ impl Engine for FakeEngine {
 #[derive(Debug)]
 struct FakeSandbox {
     fail_teardown: bool,
+    teardown_takes: Duration,
     workspace: Option<(PathBuf, (u32, u32))>,
     destroyed: Arc<AtomicUsize>,
+    frozen: Arc<AtomicUsize>,
+    thawed: Arc<AtomicUsize>,
+    freezer: Freezer,
     executor: FakeExecutor,
 }
 
@@ -90,7 +132,31 @@ impl Sandbox for FakeSandbox {
         })
     }
 
+    fn is_running(&mut self) -> bool {
+        self.freezer != Freezer::Dead
+    }
+
+    async fn freeze(&self) -> afr_sandbox::Result<()> {
+        if self.freezer == Freezer::RefusesFreeze {
+            return Err(std::io::Error::other(NO_FREEZER).into());
+        }
+        self.frozen.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+
+    async fn thaw(&self) -> afr_sandbox::Result<()> {
+        if self.freezer == Freezer::RefusesThaw {
+            return Err(std::io::Error::other(NO_FREEZER).into());
+        }
+        self.thawed.fetch_add(1, Ordering::SeqCst);
+        self.executor.thawed.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
     async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
+        if !self.teardown_takes.is_zero() {
+            tokio::time::sleep(self.teardown_takes).await;
+        }
         self.destroyed.fetch_add(1, Ordering::SeqCst);
         if self.fail_teardown {
             return Err(std::io::Error::other("busy mount").into());
@@ -101,13 +167,21 @@ impl Sandbox for FakeSandbox {
 
 /// What a refused write or delete says.
 const READ_ONLY: &str = "read-only workspace";
+/// What a refused freeze or thaw says.
+pub(crate) const NO_FREEZER: &str = "cgroup.freeze refused";
+/// What a broken executor says once its sandbox is thawed.
+pub(crate) const EXECUTOR_GONE: &str = "the executor died while frozen";
 
 /// An executor that refuses to spawn, reports the files written into it, and
-/// answers everything else emptily.
-#[derive(Debug)]
+/// answers everything else emptily, until its sandbox's freezer says not.
+#[derive(Debug, Default)]
 struct FakeExecutor {
     written: Option<mpsc::UnboundedSender<(String, Bytes)>>,
     writes: Writes,
+    /// What its sandbox does when thawed.
+    freezer: Freezer,
+    /// Whether its sandbox was thawed.
+    thawed: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -156,6 +230,13 @@ impl Executor for FakeExecutor {
     }
 
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
+        let thawed = self.thawed.load(Ordering::SeqCst);
+        if self.writes == Writes::Stall || (thawed && self.freezer == Freezer::ThawsSilent) {
+            std::future::pending::<()>().await;
+        }
+        if thawed && self.freezer == Freezer::ThawsBroken {
+            return Err(std::io::Error::other(EXECUTOR_GONE).into());
+        }
         Ok(Listing {
             entries: Vec::new(),
             truncated: false,

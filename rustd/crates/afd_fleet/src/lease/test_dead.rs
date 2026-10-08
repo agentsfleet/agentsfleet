@@ -68,6 +68,7 @@ pub(crate) fn plane() -> Plane {
             Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),
         )),
         grants: afd_approval::IntegrationGrants::new(database(), Entropy::new()),
+        thread: Arc::new(afd_events::History::new(database())),
         connectors: Registry::default(),
     }
 }
@@ -93,5 +94,6 @@ pub(crate) fn acquired() -> Acquired {
         event_created_at: AT,
         reused: None,
         ready: ReadyToken::mint(&Entropy::new(), AT).expect("the host has entropy"),
+        resume_hold: false,
     }
 }

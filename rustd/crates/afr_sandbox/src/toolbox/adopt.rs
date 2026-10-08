@@ -5,12 +5,12 @@
 
 use std::fs::{self, File};
 use std::io::{self, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use procfs_core::FromBufRead as _;
 use procfs_core::process::MountInfos;
 
-use super::loop_device::{self, LO_FLAGS_READ_ONLY};
+use super::loop_device::{self, LO_FLAGS_READ_ONLY, LOOP_MAJOR};
 use crate::error::Result;
 use crate::mounts;
 use crate::probe::MECHANISM_TOOLBOX_FILESYSTEM as EROFS;
@@ -22,14 +22,6 @@ const REQUIRED_OPTIONS: [&str; 3] = ["ro", "nosuid", "nodev"];
 /// The root a mount of a whole file system shows: anything else is a bind of
 /// a directory inside one.
 const WHOLE_FILE_SYSTEM: &str = "/";
-/// The block-device major number every loop device has.
-const LOOP_MAJOR: u32 = 7;
-/// Where the kernel publishes every block device by number, and the file
-/// naming a device's node.
-const SYS_DEV_BLOCK: &str = "/sys/dev/block";
-const UEVENT: &str = "uevent";
-/// The line of a device's `uevent` that names its node under `/dev`.
-const DEVNAME: &str = "DEVNAME=";
 /// The event an adopted mount is logged under.
 const EVENT_ADOPTED: &str = "sandbox_toolbox_adopted";
 /// The event a foreign mount at a toolbox root is logged under as it goes.
@@ -103,7 +95,7 @@ fn mismatch(root: &Path, image: (u64, u64)) -> Result<Option<String>> {
             "on device {major}:{minor}, not a loop device"
         )));
     }
-    let backing = loop_device::backing(&loop_node(major, minor)?)?;
+    let backing = loop_device::backing(&loop_device::node(major, minor)?)?;
     Ok(backing_mismatch(&backing, image))
 }
 
@@ -121,22 +113,6 @@ fn backing_mismatch(backing: &loop_device::Backing, image: (u64, u64)) -> Option
         return Some("a loop device that is writable or shows part of its file".to_owned());
     }
     None
-}
-
-/// The node of loop device `major:minor`, as the kernel names it.
-fn loop_node(major: u32, minor: u32) -> Result<PathBuf> {
-    let uevent = fs::read_to_string(
-        Path::new(SYS_DEV_BLOCK)
-            .join(format!("{major}:{minor}"))
-            .join(UEVENT),
-    )?;
-    uevent
-        .lines()
-        .find_map(|line| line.strip_prefix(DEVNAME))
-        .map(|name| Path::new("/dev").join(name))
-        .ok_or_else(|| {
-            io::Error::other(format!("loop device {major}:{minor} names no node")).into()
-        })
 }
 
 #[cfg(test)]

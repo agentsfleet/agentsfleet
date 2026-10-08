@@ -37,9 +37,10 @@ impl Leases {
     pub async fn select_measured(
         &self,
         runner_id: &Uuid7,
+        held: &[Uuid7],
         now: UnixMillis,
     ) -> (Result<Option<Acquired>>, PollMeasurement) {
-        let (selected, cost) = self.select_recording(runner_id, now).await;
+        let (selected, cost) = self.select_recording(runner_id, held, now).await;
         let measured = PollMeasurement {
             candidates_scanned: cost.candidates_scanned,
             database_roundtrips: cost.database_roundtrips,

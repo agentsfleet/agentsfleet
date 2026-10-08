@@ -12,10 +12,11 @@ use std::collections::BTreeSet;
 use super::*;
 
 /// The texts outside the listing grid, with how many values `History` binds
-/// to each: the thread's two, and one actor's two (`statement/actor.rs`).
-const THREADS: [(&str, usize); 4] = [
+/// to each: the thread's three, and one actor's two (`statement/actor.rs`).
+const THREADS: [(&str, usize); 5] = [
     (SELECT_THREAD_PAGE, 3),
     (SELECT_THREAD_PAGE_AFTER, 5),
+    (SELECT_THREAD_FINISHED_BEFORE, 7),
     (SELECT_FLEET_PAGE_OF_ACTOR, 4),
     (SELECT_FLEET_PAGE_OF_ACTOR_AFTER, 6),
 ];
@@ -76,7 +77,12 @@ fn only_the_detail_and_thread_reads_pay_for_the_bodies() {
     // hundred rows must not carry a trigger payload and an agent's full
     // answer per row. The thread pays for them — it IS the expanded read,
     // paged.
-    for text in [SELECT_DETAIL, SELECT_THREAD_PAGE, SELECT_THREAD_PAGE_AFTER] {
+    for text in [
+        SELECT_DETAIL,
+        SELECT_THREAD_PAGE,
+        SELECT_THREAD_PAGE_AFTER,
+        SELECT_THREAD_FINISHED_BEFORE,
+    ] {
         assert!(text.contains(body_columns!()), "{text}");
     }
     for shape in listing_shapes() {
@@ -92,7 +98,12 @@ fn the_bodies_follow_every_shared_column() {
     // which reads by index. That only holds while the bodies come after all
     // fifteen of them — so the ordering is an invariant of the text, not a
     // convention of how it was written.
-    for text in [SELECT_DETAIL, SELECT_THREAD_PAGE, SELECT_THREAD_PAGE_AFTER] {
+    for text in [
+        SELECT_DETAIL,
+        SELECT_THREAD_PAGE,
+        SELECT_THREAD_PAGE_AFTER,
+        SELECT_THREAD_FINISHED_BEFORE,
+    ] {
         let bodies = text
             .find("request_json")
             .expect("a bodies-included read selects the trigger payload");
@@ -141,6 +152,18 @@ fn every_listing_carries_the_predicates_of_its_shape() {
         assert!(text.contains("AND created_at >= $"), "{shape:?}");
     }
     assert!(SELECT_THREAD_PAGE_AFTER.contains("AND (created_at, event_id) < ($3, $4)"));
+}
+
+/// The turns read resumes before its event and keeps finished rows in the
+/// statement, so its limit never counts a row that is not a turn.
+#[test]
+fn the_finished_read_filters_by_status_in_the_statement() {
+    let text = SELECT_THREAD_FINISHED_BEFORE;
+    assert!(
+        text.contains("AND (created_at, event_id) < ($3, $4)"),
+        "{text}"
+    );
+    assert!(text.contains("AND status IN ($5, $6)"), "{text}");
 }
 
 /// The suite that plans the texts plans every one `History` runs.

@@ -223,7 +223,11 @@ async fn a_delivery_to_a_fleet_that_is_not_runnable_is_acknowledged_and_dropped(
         document.get("ignored").and_then(Value::as_str),
         Some(REASON_PAUSED)
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -238,7 +242,11 @@ async fn a_paused_fleet_acknowledges_a_signed_body_before_parsing_it() {
         document.get("ignored").and_then(Value::as_str),
         Some(REASON_PAUSED)
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -256,7 +264,11 @@ async fn a_verified_body_that_is_not_a_document_is_refused() {
             .map(str::to_owned),
         Some(code(error_code::WEBHOOK_MALFORMED))
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -278,7 +290,11 @@ async fn a_signature_bound_to_another_delivery_is_refused() {
             .map(str::to_owned),
         Some(code(error_code::WEBHOOK_SIGNATURE_INVALID))
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -299,5 +315,9 @@ async fn a_fleet_whose_workspace_holds_no_svix_secret_verifies_nothing() {
             .map(str::to_owned),
         Some(code(error_code::WEBHOOK_CREDENTIAL_NOT_CONFIGURED))
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }

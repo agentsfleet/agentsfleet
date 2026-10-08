@@ -55,6 +55,14 @@ LIMIT 1";
 /// spellings would mean a report that fences correctly and updates nothing.
 pub const LEASE_STATUS_ACTIVE: &str = "active";
 
+/// The `core.fleets.status` a leasable fleet carries.
+///
+/// Declared here, beside the lease statuses, because two crates compare
+/// against it: the lease pass, which offers only active fleets, and the
+/// heartbeat, which tells a runner to drop the sandbox it holds for a fleet
+/// that is no longer active (RULE UFS).
+pub const FLEET_STATUS_ACTIVE: &str = "active";
+
 /// The status a REPORTED lease is flipped into.
 ///
 /// `protocol.zig`'s `RUNNER_LEASE_STATUS_REPORTED`. The claim-and-settle
@@ -102,7 +110,7 @@ pub const ADMIN_STATE_DRAINED: &str = "drained";
 
 #[cfg(test)]
 mod tests {
-    use afd_wire::admin::AdminState;
+    use afd_api_wire::admin::AdminState;
 
     /// Every admin-state bind here spells a variant `AdminState` declares.
     ///

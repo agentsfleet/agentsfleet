@@ -16,6 +16,7 @@ fn probe(kvm: Kvm, toolbox_filesystem: bool) -> HostProbe {
         bubblewrap: true,
         kvm,
         toolbox_filesystem,
+        workspace_direct_io: None,
     }
 }
 
@@ -78,6 +79,7 @@ fn every_missing_mechanism_fails_its_own_check() {
         bubblewrap: false,
         kvm: Kvm::Absent,
         toolbox_filesystem: false,
+        workspace_direct_io: None,
     };
 
     let report = selftest(&bare, SandboxTier::DevNone, NetworkPolicy::AllowAll);
@@ -137,4 +139,35 @@ fn the_probe_answer_is_the_report_plus_every_check() {
         .map(|check| check.name.as_ref())
         .collect();
     assert_eq!(refused, ["kvm", "toolbox_filesystem"]);
+}
+
+#[test]
+fn test_direct_io_check_follows_the_probe() {
+    let stated = |workspace_direct_io| {
+        let probe = HostProbe {
+            workspace_direct_io,
+            ..probe(Kvm::Usable, true)
+        };
+        selftest(&probe, SandboxTier::LandlockFull, NetworkPolicy::AllowAll)
+    };
+
+    let unnamed = stated(None);
+    let direct = stated(Some(true));
+    let buffered = stated(Some(false));
+
+    assert!(
+        unnamed
+            .checks
+            .iter()
+            .all(|check| check.name != "workspace_direct_io"),
+        "no state directory, no claim about it"
+    );
+    assert!(check(&direct, "workspace_direct_io").0);
+    assert!(
+        check(&direct, "workspace_direct_io")
+            .1
+            .contains("cached once")
+    );
+    let (ok, detail) = check(&buffered, "workspace_direct_io");
+    assert!(!ok && detail.contains("falls back to buffered"));
 }

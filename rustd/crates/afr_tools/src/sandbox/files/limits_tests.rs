@@ -26,26 +26,26 @@ async fn a_file_past_one_read_is_cut_for_reading_and_refused_for_editing() {
     let selection = catalog
         .select(&[FILE_READ.name(), FILE_EDIT.name()])
         .unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let read = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "big.txt"}),
     )
     .await;
     let edit = call_in(
         offered(&selection, &FILE_EDIT),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "big.txt", OLD_TEXT: "x", NEW_TEXT: "y"}),
     )
     .await;
     let past = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "big.txt", "offset": 2}),
     )
     .await;
@@ -87,19 +87,19 @@ async fn a_file_that_is_not_text_is_read_lossily_and_refused_for_editing() {
     let selection = catalog
         .select(&[FILE_READ.name(), FILE_EDIT.name()])
         .unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let read = call_in(
         offered(&selection, &FILE_READ),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "blob"}),
     )
     .await;
     let edit = call_in(
         offered(&selection, &FILE_EDIT),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: "blob", OLD_TEXT: "a", NEW_TEXT: "b"}),
     )
     .await;

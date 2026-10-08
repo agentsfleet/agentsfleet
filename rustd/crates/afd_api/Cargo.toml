@@ -26,7 +26,7 @@ test-util = [
 ]
 
 # The merged document: every plane's collector, plus this crate's own probes.
-# NOT default — see the plane crates' note. `afd_wire/openapi` is named
+# NOT default — see the plane crates' note. `afd_api_wire/openapi` is named
 # directly as well as through the planes, because the merge test reads schemas
 # this crate's own annotations reference.
 openapi = [
@@ -36,7 +36,7 @@ openapi = [
   "afd_api_runner/openapi",
   "afd_api_tenant/openapi",
   "afd_http/openapi",
-  "afd_wire/openapi",
+  "afd_api_wire/openapi",
 ]
 
 # Each dependency is added by the module that uses it: `unreachable_pub` and
@@ -50,7 +50,7 @@ afd_api_operator.workspace = true
 afd_api_runner.workspace = true
 afd_api_tenant.workspace = true
 afd_http.workspace = true
-afd_wire.workspace = true
+afd_api_wire.workspace = true
 afd_auth.workspace = true
 # The document generator, reachable only under `openapi`.
 utoipa = { workspace = true, optional = true }
@@ -76,6 +76,9 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+# The harness stubs the runner plane, whose request and report types are the
+# shared protocol.
+afd_wire.workspace = true
 # The harness's invite mailer, the production one over the fixture vault; its
 # test-util seam shortens the send deadline for the stalled-relay case.
 afd_mail = { workspace = true, features = ["test-util"] }

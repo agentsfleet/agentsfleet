@@ -7,6 +7,8 @@ mod harness;
 
 #[path = "app_ingress_route.rs"]
 mod app_ingress_route;
+#[path = "app_ingress_route_dropped.rs"]
+mod app_ingress_route_dropped;
 #[path = "connector_events_route.rs"]
 mod connector_events_route;
 #[path = "identity_signup_events.rs"]

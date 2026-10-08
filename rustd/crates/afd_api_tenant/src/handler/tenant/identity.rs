@@ -25,8 +25,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::identity::{CurrentUserResponse, credential_class};
 use afd_auth::principal::{Person, PersonCredential};
-use afd_wire::identity::{CurrentUserResponse, credential_class};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
@@ -169,7 +169,10 @@ mod tests {
     /// them.
     #[test]
     fn a_person_holding_nothing_renders_an_empty_list() {
-        assert!(scopes_of(&person_holding(ScopeSet::from_scopes(&[]))).is_empty());
+        assert_eq!(
+            scopes_of(&person_holding(ScopeSet::from_scopes(&[]))),
+            [] as [std::borrow::Cow<'_, str>; 0]
+        );
     }
 
     /// Each class renders its own wire word, taken from the shared constants.

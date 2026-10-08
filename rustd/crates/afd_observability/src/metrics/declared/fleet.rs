@@ -40,6 +40,23 @@ pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
 pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
 
+/// Bytes of earlier turns each chat lease carries.
+pub const LEASE_HISTORY_BYTES: Declared<HistogramKind> =
+    Declared::new("agentsfleet_lease_history_bytes");
+
+/// Chat leases whose earlier turns a cap cut, by the cap.
+pub const LEASE_HISTORY_CUTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_lease_history_cuts_total");
+
+/// Won claims on a fleet whose slot named a sandbox held live at the claim,
+/// by who won.
+pub const LEASE_HELD_CLAIMS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_lease_held_claims_total");
+
+/// Chat leases issued without their turns because the thread read failed.
+pub const LEASE_HISTORY_READ_FAILURES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_lease_history_read_failures_total");
+
 /// Won claims that found nothing deliverable; each clears one drained mark.
 pub const LEASE_CLAIMS_EMPTY_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_claims_empty_total");

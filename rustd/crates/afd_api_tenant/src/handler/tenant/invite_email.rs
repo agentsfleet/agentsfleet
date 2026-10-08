@@ -10,13 +10,13 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::team::InviteEmailResponse;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_mail::{InviteLetter, InviteSend};
 use afd_observability::{InviteEmailOutcome, Telemetry};
 use afd_tenant::team::{EmailAttempt, EmailStatus, INVITE_VALID_DAYS, Invitation};
-use afd_wire::team::InviteEmailResponse;
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};

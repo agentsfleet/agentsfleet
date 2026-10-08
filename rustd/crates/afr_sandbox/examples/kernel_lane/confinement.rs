@@ -20,6 +20,9 @@ const PLANT: &str = "plant";
 /// then says who it runs as and writes one file where it may.
 const PLANT_SCRIPT: &str = "(echo x > /run/agentsfleet/planted && chmod u+s /run/agentsfleet/planted) \
      2>/dev/null && echo planted || echo sealed; id -u; echo y > /workspace/owned";
+/// Where `/workspace/owned` lands under the lease's directory: the disk mounts
+/// at `workspace/`, and `/workspace` is its `workspace/` directory.
+const OWNED_ON_HOST: &str = "workspace/workspace/owned";
 
 /// Every system call the seccomp program refuses, by the filter's own list,
 /// then `keyctl` with the x32 bit set, which a filter keyed on numbers alone
@@ -78,7 +81,7 @@ pub(crate) fn plants_nothing(lane: &Lane) -> Result<(), Failed> {
             .await?;
         let said = run(sandbox.executor(), shell(PLANT_SCRIPT)).await;
         let lease = lane.lease_dir(PLANT);
-        let owner = fs::metadata(lease.join("workspace/owned")).map(|meta| meta.uid());
+        let owner = fs::metadata(lease.join(OWNED_ON_HOST)).map(|meta| meta.uid());
         let run_dir: Vec<_> = fs::read_dir(lease.join("run"))?
             .flatten()
             .map(|entry| entry.file_name())

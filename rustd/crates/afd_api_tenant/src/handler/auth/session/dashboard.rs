@@ -9,12 +9,12 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::auth::{
+    ApproveSessionRequest, ApproveSessionResponse, VerifySessionRequest, VerifySessionResponse,
+};
 use afd_observability::Telemetry;
 use afd_tenant::session::Fingerprint;
 use afd_tenant::session::input::{Approval, Code};
-use afd_wire::auth::{
-    ApproveSessionRequest, ApproveSessionResponse, VerifySessionRequest, VerifySessionResponse,
-};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

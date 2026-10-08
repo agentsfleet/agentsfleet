@@ -13,7 +13,7 @@
 
 use std::borrow::Cow;
 
-use afd_wire::tail::{TailFrame, TailRow};
+use afd_api_wire::tail::{TailFrame, TailRow};
 use serde_json::Value;
 
 /// The fleet stream's path in the document.

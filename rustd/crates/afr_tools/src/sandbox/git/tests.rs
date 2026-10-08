@@ -53,9 +53,9 @@ fn widgets() -> Checkout<'static> {
 #[tokio::test]
 async fn test_git_tool_runs_in_the_one_checked_out_repository() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("On branch dev\n", 0)]);
-    let mut lease = holding(vec![widgets()]);
+    let lease = holding(vec![widgets()]);
 
-    let output = call_in(&*git(), &executor, &mut lease, running(&["status"])).await;
+    let output = call_in(&*git(), &executor, &lease, running(&["status"])).await;
 
     assert_eq!(output.text, "On branch dev\n");
     assert_eq!((output.exit_code, output.error_code), (Some(0), None));
@@ -80,17 +80,11 @@ async fn should_run_in_the_workspace_root_with_no_or_several_checkouts() {
         ..widgets()
     };
 
+    call_in(&*git(), &executor, &holding(Vec::new()), running(&["log"])).await;
     call_in(
         &*git(),
         &executor,
-        &mut holding(Vec::new()),
-        running(&["log"]),
-    )
-    .await;
-    call_in(
-        &*git(),
-        &executor,
-        &mut holding(vec![widgets(), other]),
+        &holding(vec![widgets(), other]),
         running(&["-C", WIDGETS, "log"]),
     )
     .await;
@@ -107,16 +101,10 @@ async fn should_run_in_the_workspace_root_with_no_or_several_checkouts() {
 async fn test_git_tool_refuses_network_subcommands() {
     let capture = Capture::install();
     let executor = ScriptedExecutor::new([]);
-    let mut lease = holding(vec![widgets()]);
+    let lease = holding(vec![widgets()]);
 
     for refused in GIT_REFUSED_SUBCOMMANDS {
-        let output = call_in(
-            &*git(),
-            &executor,
-            &mut lease,
-            running(&[refused, "origin"]),
-        )
-        .await;
+        let output = call_in(&*git(), &executor, &lease, running(&[refused, "origin"])).await;
 
         assert_eq!(
             output.error_code,
@@ -144,12 +132,12 @@ async fn test_git_tool_refuses_network_subcommands() {
 #[tokio::test]
 async fn should_find_the_subcommand_after_global_options() {
     let executor = ScriptedExecutor::new([]);
-    let mut lease = holding(vec![widgets()]);
+    let lease = holding(vec![widgets()]);
 
     let output = call_in(
         &*git(),
         &executor,
-        &mut lease,
+        &lease,
         running(&["-c", "user.name=x", "--no-pager", "-C", WIDGETS, "push"]),
     )
     .await;
@@ -190,13 +178,13 @@ fn should_skip_each_valued_global_option_with_its_value() {
 
 #[tokio::test]
 async fn should_refuse_without_a_sandbox_and_on_a_refused_spawn() {
-    let mut lease = holding(vec![widgets()]);
+    let lease = holding(vec![widgets()]);
 
-    let unsandboxed = call(&*git(), &mut lease, running(&["status"])).await;
+    let unsandboxed = call(&*git(), &lease, running(&["status"])).await;
     let refused = call_in(
         &*git(),
         &ScriptedExecutor::new([]),
-        &mut lease,
+        &lease,
         running(&["status"]),
     )
     .await;
@@ -219,13 +207,14 @@ async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
     let output = call_in(
         &*git(),
         &executor,
-        &mut Lease::default(),
+        &Lease::default(),
         json!({"args": "status"}),
     )
     .await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
-    assert!(executor.spawned().is_empty());
+    let spawned = executor.spawned();
+    assert!(spawned.is_empty(), "{spawned:?}");
 }
 
 /// git runs in the checkout's directory; one the model removed is its own
@@ -233,9 +222,9 @@ async fn should_refuse_arguments_that_are_not_a_list_of_strings() {
 #[tokio::test]
 async fn should_read_file_not_found_when_the_checkout_is_gone() {
     let live = Live::start().await;
-    let mut lease = holding(vec![widgets()]);
+    let lease = holding(vec![widgets()]);
 
-    let missing = call_in(&*git(), &live.client, &mut lease, running(&["status"])).await;
+    let missing = call_in(&*git(), &live.client, &lease, running(&["status"])).await;
 
     assert_eq!(
         missing.error_code,

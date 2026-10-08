@@ -1,7 +1,7 @@
 //! Which stored answers wake the fleet again when a resolve finds the gate
 //! already answered.
 
-use afd_wire::approval::status;
+use afd_api_wire::approval::status;
 
 use super::stood::leaves_delivery_parked;
 

@@ -4,12 +4,12 @@
 
 use crate::requests;
 use crate::support;
+use afd_api_wire::admin::RunnerAdminAction;
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialDirectory as _, Digest};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_state::Credentials;
-use afd_wire::admin::RunnerAdminAction;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use self::requests::{ENROLLED_AT, enrolment};

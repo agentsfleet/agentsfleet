@@ -25,9 +25,9 @@
 
 use afd_core::clock::UnixMillis;
 
+use afd_api_wire::tail::FleetCounters;
 use afd_core::id::Uuid7;
 use afd_events::Closed;
-use afd_wire::tail::FleetCounters;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
@@ -289,7 +289,7 @@ impl Leases {
             // is what keeps the row shape identical for the refusals that
             // carry no operator-readable instruction.
             .bind(refusal.detail)
-            .bind(afd_wire::approval::status::PENDING)
+            .bind(afd_api_wire::approval::status::PENDING)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_BLOCKED))?;

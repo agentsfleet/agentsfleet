@@ -53,7 +53,7 @@ afd_dragonfly.workspace = true
 afd_fleet_runtime.workspace = true
 # The gate status spelling the detail read counts pending approvals under —
 # read from the wire vocabulary, never restated here (RULE UFS).
-afd_wire.workspace = true
+afd_api_wire.workspace = true
 # One fleet enumeration per workspace per tick, shared by every live stream
 # watching it — and `get`/`insert` coalesce the misses a cadence produces.
 moka.workspace = true

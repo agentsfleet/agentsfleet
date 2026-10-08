@@ -83,7 +83,7 @@ pub async fn poll_until(
     let token = shared.abort.token();
     while Instant::now() < shared.deadline && !token.is_cancelled() && !shared.exhausted() {
         let started = Instant::now();
-        match leases.select(runner, now()).await {
+        match leases.select(runner, &[], now()).await {
             Ok(Some(_acquired)) => {
                 outcomes.succeeded(started.elapsed())?;
                 shared.leased.fetch_add(1, Ordering::Relaxed);

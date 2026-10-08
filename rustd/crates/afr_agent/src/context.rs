@@ -83,6 +83,12 @@ impl Checkpoints {
         }
     }
 
+    /// A cadence that is never due: a child loop's, whose stores the push
+    /// before the report carries.
+    pub(crate) const fn never() -> Self {
+        Self { every: 0, since: 0 }
+    }
+
     /// Counts one finished call; `true` when it completes a cadence.
     pub(crate) fn due(&mut self) -> bool {
         if self.every == 0 {

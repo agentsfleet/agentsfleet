@@ -6,10 +6,10 @@
     reason = "integration test: an unmet precondition should fail the test loudly"
 )]
 
+use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_core::clock::UnixMillis;
 use afd_memory::Record;
 use afd_memory::page::{After, View};
-use afd_wire::fleet::{MemoryAccess, MemoryAccessRequest};
 use afd_wire::memory::{PINNED_CATEGORY, Visibility};
 
 use crate::workspace::{Grants, Workspace, delta};

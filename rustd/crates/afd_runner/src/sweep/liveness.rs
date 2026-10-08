@@ -25,13 +25,13 @@
 
 use std::time::Duration;
 
+use afd_api_wire::admin::AdminState;
 use afd_core::clock::{self, UnixMillis};
 use afd_core::id::Uuid7;
 use afd_core::spelling;
 use afd_core::timing::{HEARTBEAT_INTERVAL_MS, RUNNER_OFFLINE_AFTER_MS};
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_wire::admin::AdminState;
 use sqlx::{Acquire as _, Row as _};
 
 use crate::error::{Result, query};

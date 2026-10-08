@@ -7,6 +7,16 @@ use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
 use super::{Layout, arguments};
+use crate::tenant::TenantDescriptors;
+
+/// What a test's `/dev/shm` may hold.
+const SHARED_MEMORY_BYTES: u64 = 512 * 1024 * 1024;
+
+/// The numbers a test's tenant leaf is named under.
+const TENANT: TenantDescriptors = TenantDescriptors {
+    tenant_procs: 7,
+    tenant_events: 9,
+};
 
 fn argv() -> Vec<String> {
     with_level(Some("debug"))
@@ -16,11 +26,14 @@ fn with_level(level: Option<&str>) -> Vec<String> {
     let entry_args = [OsString::from("sandbox")];
     arguments(&Layout {
         toolbox: Path::new("/srv/toolbox/abc"),
-        workspace: Path::new("/srv/leases/l1/workspace"),
+        workspace: Path::new("/srv/leases/l1/workspace/workspace"),
+        tmp: Path::new("/srv/leases/l1/workspace/tmp"),
         run_dir: Path::new("/srv/leases/l1/run"),
         entry: Path::new("/usr/local/bin/agentsfleet-runner"),
         entry_args: &entry_args,
         log_level: level.map(OsStr::new),
+        tenant: TENANT,
+        shared_memory_bytes: SHARED_MEMORY_BYTES,
     })
     .into_iter()
     .map(|part| part.into_string().unwrap_or_default())
@@ -61,17 +74,38 @@ fn test_every_namespace_is_new_and_nothing_is_kept() {
 }
 
 #[test]
-fn test_shared_memory_is_a_private_tmpfs_every_user_writes() {
+fn test_shared_memory_is_a_private_sized_tmpfs_every_user_writes() {
     let argv = argv();
+    let size = SHARED_MEMORY_BYTES.to_string();
 
-    assert_eq!(
-        after(&argv, "--perms", "1777"),
-        ["--perms", "1777", "--tmpfs"]
-    );
+    let mounted = argv.windows(6).any(|window| {
+        window
+            == [
+                "--perms",
+                "1777",
+                "--size",
+                size.as_str(),
+                "--tmpfs",
+                "/dev/shm",
+            ]
+    });
+
     assert!(
-        argv.windows(2)
-            .any(|pair| pair[0] == "--tmpfs" && pair[1] == "/dev/shm")
+        mounted,
+        "/dev/shm is a 1777 tmpfs of {size} bytes: {argv:?}"
     );
+}
+
+#[test]
+fn test_shared_memory_is_a_quarter_of_the_sandboxs_memory() {
+    let limits = crate::Limits {
+        // pin test: literal is the contract
+        memory_bytes: 2 * 1024 * 1024 * 1024,
+        ..crate::Limits::default()
+    };
+
+    // pin test: literal is the contract
+    assert_eq!(limits.shared_memory_bytes(), 512 * 1024 * 1024);
 }
 
 #[test]
@@ -83,8 +117,8 @@ fn test_the_toolbox_is_the_read_only_root_and_the_workspace_is_writable() {
         ["--ro-bind", "/srv/toolbox/abc", "/"]
     );
     assert_eq!(
-        after(&argv, "--bind", "/srv/leases/l1/workspace"),
-        ["--bind", "/srv/leases/l1/workspace", "/workspace"]
+        after(&argv, "--bind", "/srv/leases/l1/workspace/workspace"),
+        ["--bind", "/srv/leases/l1/workspace/workspace", "/workspace"]
     );
     assert_eq!(
         after(&argv, "--bind", "/srv/leases/l1/run"),
@@ -105,8 +139,16 @@ fn test_the_command_is_the_bound_runner_told_to_serve() {
     let argv = argv();
 
     assert_eq!(
-        argv[argv.len() - 3..],
-        ["--", "/opt/agentsfleet/agentsfleet-runner", "sandbox"]
+        argv[argv.len() - 7..],
+        [
+            "--",
+            "/opt/agentsfleet/agentsfleet-runner",
+            "sandbox",
+            "--tenant-procs",
+            "7",
+            "--tenant-events",
+            "9"
+        ]
     );
     // The executor owns `PATH`; the only variable passed in is the log level.
     assert_eq!(
@@ -140,4 +182,45 @@ fn test_the_socket_lies_in_the_socket_directory() {
         super::sandbox_socket(),
         Path::new(super::SANDBOX_RUN_DIR).join(super::SOCKET_NAME)
     );
+}
+
+/// `/tmp` is the disk's `tmp/`, bound read-write, and no tmpfs stands there:
+/// a scratch file that fills the disk answers `ENOSPC`, never the memory
+/// limit.
+#[test]
+fn test_tmp_is_the_disks_tmp_directory_and_no_tmpfs() {
+    let argv = argv();
+
+    assert_eq!(
+        after(&argv, "--bind", "/srv/leases/l1/workspace/tmp"),
+        ["--bind", "/srv/leases/l1/workspace/tmp", "/tmp"]
+    );
+    let tmpfs_at_tmp = argv
+        .windows(2)
+        .any(|pair| pair[0] == "--tmpfs" && pair[1] == "/tmp");
+    assert!(!tmpfs_at_tmp, "{argv:?}");
+}
+
+#[test]
+fn test_the_entry_reads_back_the_tenant_descriptors_it_was_named() {
+    let argv = arguments(&Layout {
+        toolbox: Path::new("/t"),
+        workspace: Path::new("/w"),
+        tmp: Path::new("/tmp"),
+        run_dir: Path::new("/r"),
+        entry: Path::new("/e"),
+        entry_args: &[],
+        log_level: None,
+        tenant: TENANT,
+        shared_memory_bytes: SHARED_MEMORY_BYTES,
+    });
+    // The last mention: the first is the entry's own read-only bind.
+    let entry = argv
+        .iter()
+        .rposition(|part| part == "/opt/agentsfleet/agentsfleet-runner")
+        .unwrap_or_else(|| unreachable!("no entry in {argv:?}"));
+
+    let parsed = TenantDescriptors::parse_from(argv[entry..].iter().cloned());
+
+    assert_eq!(parsed.ok(), Some(TENANT), "the flags round-trip");
 }

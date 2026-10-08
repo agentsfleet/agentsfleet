@@ -9,6 +9,7 @@
 //! the same bound on its client (`exec-server/src/client.rs`, a 1 MiB retained
 //! history per process).
 
+use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use bytes::Bytes;
@@ -47,11 +48,26 @@ impl Shared {
     }
 }
 
+/// What the reading end runs when it goes while its process may still run.
+struct Abandon(Box<dyn FnOnce() + Send + Sync>);
+
+impl fmt::Debug for Abandon {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Abandon").finish_non_exhaustive()
+    }
+}
+
 /// The reading end of a process's events: its output in order, a count where
 /// output was dropped unread, then exactly one [`ProcessEvent::Ended`].
+///
+/// Events the client opened kill their process when they go before its
+/// ending was read; a stand-in executor's do nothing.
 #[derive(Debug)]
 pub struct Events {
     shared: Arc<Shared>,
+    /// Run on drop while the process may still run; dropped unrun once its
+    /// ending is read.
+    abandon: Option<Abandon>,
 }
 
 /// The feeding end. Dropping it without [`Feed::end`] finishes the events
@@ -78,7 +94,17 @@ impl Events {
         let feed = Feed {
             shared: Arc::clone(&shared),
         };
-        (feed, Self { shared })
+        let events = Self {
+            shared,
+            abandon: None,
+        };
+        (feed, events)
+    }
+
+    /// Runs `abandon` when these events go while the process may still run:
+    /// not once its ending was read, nor once the feed finished them.
+    pub(crate) fn on_abandon(&mut self, abandon: impl FnOnce() + Send + Sync + 'static) {
+        self.abandon = Some(Abandon(Box::new(abandon)));
     }
 
     /// The next event, waiting for one; `None` once the ending was read, or
@@ -107,10 +133,13 @@ impl Events {
             });
         }
         match state.ending.take() {
-            Some(ending) => Ok(ProcessEvent::Ended {
-                ending,
-                output_abandoned: state.output_abandoned,
-            }),
+            Some(ending) => {
+                self.abandon = None;
+                Ok(ProcessEvent::Ended {
+                    ending,
+                    output_abandoned: state.output_abandoned,
+                })
+            }
             None if state.finished => Err(TryRecvError::Disconnected),
             None => Err(TryRecvError::Empty),
         }
@@ -155,6 +184,18 @@ impl Drop for Feed {
     fn drop(&mut self) {
         self.shared.state().finished = true;
         self.shared.changed.notify_one();
+    }
+}
+
+/// Events that go while their process may still run hand it to their
+/// abandon hook: a caller that left mid-read leaves nothing running.
+impl Drop for Events {
+    fn drop(&mut self) {
+        if let Some(Abandon(abandon)) = self.abandon.take()
+            && !self.is_finished()
+        {
+            abandon();
+        }
     }
 }
 

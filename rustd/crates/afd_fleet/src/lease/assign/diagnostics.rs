@@ -27,6 +27,9 @@ const EVENT_ENTRY_UNDECODABLE_DROP_FAILED: &str = "assign_entry_undecodable_drop
 /// A lapsed holder's event was taken back under a higher fence.
 pub(super) const EVENT_LEASE_RECLAIMED: &str = "lease_reclaimed";
 
+/// A held fleet's readiness could not be read; the poll went on without it.
+pub(super) const EVENT_HELD_READ_FAILED: &str = "assign_held_read_failed";
+
 /// Reports a queue failure that ended a poll before any fleet was examined.
 ///
 /// A `warn` rather than an `err` because the runner recovers on its own: it
@@ -46,6 +49,25 @@ pub(super) fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_dra
         runner_id = runner,
         reason,
         "the lease poll ended early; the runner backs off and re-polls"
+    );
+}
+
+/// Reports a held fleet whose readiness read failed.
+///
+/// A `warn` and not a failed poll: the fleet's event still reaches whichever
+/// runner's partition pass finds its mark, so the poll carries on without it.
+pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dragonfly::Error) {
+    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let runner = runner_id.as_str();
+    let fleet = fleet_id.as_str();
+    let reason = error.to_string();
+    tracing::warn!(
+        error_code = code,
+        event = EVENT_HELD_READ_FAILED,
+        runner_id = runner,
+        fleet_id = fleet,
+        reason,
+        "a held fleet's readiness could not be read; the poll goes on without it"
     );
 }
 

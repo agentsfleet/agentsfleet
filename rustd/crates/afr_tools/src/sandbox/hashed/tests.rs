@@ -44,11 +44,11 @@ async fn read_then_edit(
     let selection = catalog
         .select(&[FILE_READ_HASHED.name(), FILE_EDIT_HASHED.name()])
         .unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     let read = call_in(
         offered(&selection, &FILE_READ_HASHED),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: GREEK}),
     )
     .await;
@@ -58,7 +58,7 @@ async fn read_then_edit(
     let edit = call_in(
         offered(&selection, &FILE_EDIT_HASHED),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: GREEK, TARGET: target, END_TARGET: end_target, NEW_TEXT: new_text}),
     )
     .await;
@@ -98,12 +98,12 @@ async fn a_read_tags_every_line_as_nullclaw_prints_them() {
     std::fs::write(live.root.join(GREEK), THREE_LINES).unwrap();
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[FILE_READ_HASHED.name()]).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let read = call_in(
         offered(&selection, &FILE_READ_HASHED),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATH: GREEK}),
     )
     .await;

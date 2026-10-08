@@ -21,10 +21,11 @@ use afr_executor::{Client, Executor};
 use afr_memory::Hydrated;
 use tokio::task::JoinHandle;
 
-use crate::catalog::{Catalog, Entry, Selection};
+use crate::catalog::{Catalog, Entry};
 use crate::egress::SharedTransport;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolContext, ToolOutput};
+use crate::selection::Selection;
 
 /// When every egress suite's clock starts.
 pub(crate) const START: UnixMillis = UnixMillis::from_millis(1_700_000_000_000);
@@ -102,7 +103,7 @@ impl Live {
 /// Calls `tool` with `arguments` from the supervisor, with `lease`'s state.
 pub(crate) async fn call(
     tool: &dyn Tool,
-    lease: &mut Lease<'_>,
+    lease: &Lease<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
     tool.call(
@@ -120,7 +121,7 @@ pub(crate) async fn call(
 pub(crate) async fn call_in(
     tool: &dyn Tool,
     executor: &dyn Executor,
-    lease: &mut Lease<'_>,
+    lease: &Lease<'_>,
     arguments: serde_json::Value,
 ) -> ToolOutput {
     tool.call(

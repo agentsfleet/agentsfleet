@@ -10,8 +10,8 @@ use crate::support;
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::admin::RunnerAdminAction;
 use afd_core::clock::UnixMillis;
-use afd_wire::admin::RunnerAdminAction;
 use afd_wire::runner::{
     AssignedPolicy, BindMode, CapabilityReport, ExtraBind, NetworkPolicy, SandboxTier,
 };
@@ -135,7 +135,7 @@ async fn concurrent_identical_transitions_append_one_event() {
             task.await
                 .expect("the transition task completes")
                 .expect("identical transitions are idempotent"),
-            afd_wire::admin::AdminState::Cordoned
+            afd_api_wire::admin::AdminState::Cordoned
         );
     }
     assert_eq!(

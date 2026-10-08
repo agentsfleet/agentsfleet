@@ -25,9 +25,9 @@
 
 use std::collections::BTreeMap;
 
+use afd_api_wire::approval::status;
+use afd_api_wire::tail::FleetCounters;
 use afd_core::clock::UnixMillis;
-use afd_wire::approval::status;
-use afd_wire::tail::FleetCounters;
 use sqlx::Row as _;
 
 use super::Inbox;

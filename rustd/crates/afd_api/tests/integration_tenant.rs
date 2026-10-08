@@ -143,7 +143,11 @@ async fn assert_workspace_creation(router: &axum::Router, token: &str) {
     let first = create_workspace(router, token, r#"{"name":"deploy bots"}"#).await;
     assert_eq!(text(&first, "name"), "deploy bots");
     let generated = create_workspace(router, token, "{}").await;
-    assert!(!text(&generated, "name").is_empty());
+    assert!(
+        !text(&generated, "name").is_empty(),
+        "{:?}",
+        text(&generated, "name")
+    );
 
     let duplicate = send(
         router,

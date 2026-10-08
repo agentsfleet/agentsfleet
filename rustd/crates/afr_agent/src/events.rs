@@ -15,6 +15,17 @@ use afd_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 use crate::engine::EventSink;
 use afr_secrets::{Carry, Scrub};
 
+/// Frames that go nowhere: a child loop's text is its parent's to read
+/// through the call that started it, never the thread's answer.
+static SILENT: Silent = Silent;
+
+/// A sink that drops every frame.
+struct Silent;
+
+impl EventSink for Silent {
+    fn emit(&self, _frame: ActivityFrame<'static>) {}
+}
+
 /// Where one run's frames go, and the stream's position.
 pub(crate) struct Live<'run> {
     sink: &'run dyn EventSink,
@@ -36,6 +47,11 @@ impl<'run> Live<'run> {
             answer: Carry::default(),
             reasoning: Carry::default(),
         }
+    }
+
+    /// Frames for a child loop, which sends none.
+    pub(crate) fn silent(scrub: &'run Scrub, started: Instant) -> Self {
+        Self::new(&SILENT, scrub, started)
     }
 
     /// Streams `text` of `kind`, holding back any tail that could still be a

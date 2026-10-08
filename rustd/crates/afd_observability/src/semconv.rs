@@ -95,6 +95,12 @@ pub const ATTR_USAGE_INPUT_TOKENS: &str = "gen_ai.usage.input_tokens";
 /// Completion tokens for the whole run.
 pub const ATTR_USAGE_OUTPUT_TOKENS: &str = "gen_ai.usage.output_tokens";
 
+/// Prompt tokens a model turn read from the provider's cache.
+pub const ATTR_USAGE_CACHE_READ_TOKENS: &str = "gen_ai.usage.cache_read.input_tokens";
+
+/// Prompt tokens a model turn wrote to the provider's cache.
+pub const ATTR_USAGE_CACHE_CREATION_TOKENS: &str = "gen_ai.usage.cache_creation.input_tokens";
+
 /// Whether the sandbox was this platform's or the tenant's own.
 pub const ATTR_EXECUTION_POSTURE: &str = "agentsfleet.execution.posture";
 
@@ -159,6 +165,10 @@ pub const ATTR_RUNNER_HOST: &str = "agentsfleet.runner.host";
 /// The lease a runner span belongs to.
 pub const ATTR_LEASE_ID: &str = "agentsfleet.lease.id";
 
+/// Whether a lease ran in the sandbox its fleet's previous lease left held,
+/// rather than a fresh one; absent from a lease that used no sandbox.
+pub const ATTR_SANDBOX_REUSED: &str = "agentsfleet.sandbox.reused";
+
 /// One model turn.
 pub const OPERATION_CHAT: &str = "chat";
 
@@ -177,6 +187,7 @@ pub const RUNNER_SPAN_KEYS: &[&str] = &[
     ATTR_RUNNER_ID,
     ATTR_RUNNER_HOST,
     ATTR_LEASE_ID,
+    ATTR_SANDBOX_REUSED,
     ATTR_EVENT_ID,
     ATTR_AGENT_ID,
     ATTR_OPERATION_NAME,
@@ -184,6 +195,8 @@ pub const RUNNER_SPAN_KEYS: &[&str] = &[
     ATTR_REQUEST_MODEL,
     ATTR_USAGE_INPUT_TOKENS,
     ATTR_USAGE_OUTPUT_TOKENS,
+    ATTR_USAGE_CACHE_READ_TOKENS,
+    ATTR_USAGE_CACHE_CREATION_TOKENS,
     ATTR_TOOL_NAME,
     ATTR_TOOL_CALL_ID,
 ];

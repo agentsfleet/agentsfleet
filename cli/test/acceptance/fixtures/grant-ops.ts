@@ -56,14 +56,14 @@ const FIELD_INTEGRATION = "integration";
  */
 export const REASON_DECLARED_AT_INSTALL = "Declared by the fleet bundle at install";
 
-/** Grant-row statuses, as `afd_wire::grant::status` spells them. */
+/** Grant-row statuses, as `afd_api_wire::grant::status` spells them. */
 export const GRANT_STATUS = {
   pending: "pending",
   approved: "approved",
   revoked: "revoked",
 } as const;
 
-/** Gate statuses, as `afd_wire::approval::status` spells them. */
+/** Gate statuses, as `afd_api_wire::approval::status` spells them. */
 export const GATE_STATUS = {
   pending: "pending",
   approved: "approved",

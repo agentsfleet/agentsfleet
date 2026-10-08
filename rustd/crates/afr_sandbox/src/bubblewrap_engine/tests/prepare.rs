@@ -12,11 +12,12 @@ use std::time::Duration;
 use afd_core::test_util::trace::Capture;
 use afr_executor::{Ending, Spawn};
 
-use super::super::BubblewrapEngine;
+use super::super::{BubblewrapEngine, EVENT_DISK_BUFFERED};
 use super::support::{
     BRIEF, FAILER, FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SLEEPER, request,
     serve_leases,
 };
+use crate::cgroup::{CGROUP_PROCS, SANDBOX_LEAF};
 use crate::engine::Engine;
 use crate::warm_slots::WarmSlots;
 
@@ -36,8 +37,9 @@ async fn test_a_lease_runs_through_the_engine_and_keeps_a_disk_it_cannot_unmount
         .ended(|_stream, data| output.extend_from_slice(&data))
         .await
         .unwrap();
-    let joined = fs::read_to_string(host.config.cgroup_root.join("lease-1/cgroup.procs")).unwrap();
-    let io_limit = fs::read_to_string(host.config.cgroup_root.join("lease-1/io.max")).unwrap();
+    let lease_cgroup = host.config.cgroup_root.join("lease-1");
+    let joined = fs::read_to_string(lease_cgroup.join(SANDBOX_LEAF).join(CGROUP_PROCS)).unwrap();
+    let io_limit = fs::read_to_string(lease_cgroup.join("io.max")).unwrap();
     let destroyed = sandbox.destroy().await;
     server.abort();
 
@@ -47,13 +49,32 @@ async fn test_a_lease_runs_through_the_engine_and_keeps_a_disk_it_cannot_unmount
     );
     assert_eq!(
         joined, "0",
-        "bubblewrap joined the lease's cgroup before it ran"
+        "bubblewrap joined the lease's sandbox leaf before it ran"
     );
     assert!(io_limit.contains("wbps="), "{io_limit}");
     // Nothing was mounted, so the unmount is refused: the image stays for the
     // boot sweep rather than being unlinked under an attached loop device.
     destroyed.unwrap_err();
     assert!(host.lease_dir("lease-1").join(IMAGE).exists());
+}
+
+/// The fake host's mount makes no loop device, so there is none to switch to
+/// direct I/O: the lease still starts, and is named as one whose disk the
+/// host caches a second time.
+#[tokio::test]
+async fn test_a_disk_without_a_loop_device_is_logged_buffered_under_its_lease() {
+    let host = FakeHost::new(SLEEPER);
+    let server = serve_leases(host.config.state_dir.clone());
+    let capture = Capture::install();
+
+    let sandbox = host.engine().prepare(request("lease-13")).await.unwrap();
+    let _left = sandbox.destroy().await;
+    server.abort();
+
+    assert_eq!(
+        capture.only(EVENT_DISK_BUFFERED).field("lease_id"),
+        Some("lease-13")
+    );
 }
 
 #[tokio::test]

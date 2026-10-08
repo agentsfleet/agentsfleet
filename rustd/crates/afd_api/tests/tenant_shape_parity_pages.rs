@@ -10,9 +10,9 @@
 
 use std::borrow::Cow;
 
-use afd_wire::models::{CatalogueModel, CatalogueResponse};
-use afd_wire::tenant::{ApiKeySummary, ChargeSummary, ChargesResponse, PageResponse};
-use afd_wire::workspace::{
+use afd_api_wire::models::{CatalogueModel, CatalogueResponse};
+use afd_api_wire::tenant::{ApiKeySummary, ChargeSummary, ChargesResponse, PageResponse};
+use afd_api_wire::workspace::{
     CreatedWorkspaceResponse, WorkspaceAccount, WorkspaceSummary, WorkspacesResponse,
 };
 use serde_json::Value;

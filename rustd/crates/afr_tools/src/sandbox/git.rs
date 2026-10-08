@@ -68,7 +68,7 @@ impl Handler for Git {
     type Arguments = Invocation;
 
     async fn run(&self, arguments: Invocation, context: ToolContext<'_, '_>) -> ToolOutput {
-        let lease_id = context.lease.egress.lease_id();
+        let lease_id = context.lease.lease_id;
         if let Some(refused) = subcommand(&arguments.args)
             .filter(|subcommand| GIT_REFUSED_SUBCOMMANDS.contains(subcommand))
         {

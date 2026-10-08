@@ -4,11 +4,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::team::{MemberSummary, WorkspaceMember};
 use afd_core::error_code;
 use afd_events::steer_actor;
 use afd_http::handler::{IdPath, IdSegment};
 use afd_tenant::team::Member;
-use afd_wire::team::{MemberSummary, WorkspaceMember};
 use axum::Json;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
@@ -54,7 +54,7 @@ const STATE_LAST_OWNER: &str = "last_owner";
         "`next_cursor` is always `null` and `total` counts them all. ",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_wire::tenant::PageResponse<MemberSummary>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<MemberSummary>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -134,7 +134,7 @@ pub(crate) async fn remove<D: Services>(
     ),
     params(afd_http::openapi::path::Workspace),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_wire::tenant::PageResponse<WorkspaceMember>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<WorkspaceMember>),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),

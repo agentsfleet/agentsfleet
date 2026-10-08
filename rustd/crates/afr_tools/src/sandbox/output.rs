@@ -25,6 +25,9 @@ const BYTES_PER_TOKEN: usize = 4;
 const OUTPUT_TOKENS_DEFAULT: usize = 10_000;
 /// What a shell adds to a signal's number to report it as an exit status.
 const SIGNAL_EXIT_BASE: i32 = 128;
+/// The signal the kernel's out-of-memory killer sends, `SIGKILL`, whose
+/// number every Unix fixes at 9.
+const OUT_OF_MEMORY_SIGNAL: i32 = 9;
 /// How a process that exited reads.
 const EXITED: &str = "Process exited with code";
 /// How a session still running reads.
@@ -33,6 +36,8 @@ pub(super) const RUNNING: &str = "Process running with session ID";
 const SIGNALED: &str = "Process killed by signal";
 /// How a process the executor killed at its timeout reads.
 pub(super) const TIMED_OUT: &str = "Process timed out";
+/// How a process the kernel killed for its sandbox's memory reads.
+const OUT_OF_MEMORY: &str = "Process killed: out of memory";
 /// How a process whose ending never reached the caller reads.
 const INTERRUPTED: &str = "Process interrupted before its ending arrived";
 /// What a call whose process ended with its output still open reads last:
@@ -208,6 +213,7 @@ pub(super) fn status(ending: Ending) -> String {
         Ending::Exited(code) => format!("{EXITED} {code}"),
         Ending::Signaled(signal) => format!("{SIGNALED} {signal}"),
         Ending::TimedOut => TIMED_OUT.to_owned(),
+        Ending::OutOfMemory => OUT_OF_MEMORY.to_owned(),
         Ending::Interrupted => INTERRUPTED.to_owned(),
     }
 }
@@ -218,6 +224,7 @@ pub(super) fn exit_code(ending: Ending) -> Option<i32> {
     match ending {
         Ending::Exited(code) => Some(code),
         Ending::Signaled(signal) => Some(SIGNAL_EXIT_BASE.saturating_add(signal)),
+        Ending::OutOfMemory => Some(SIGNAL_EXIT_BASE + OUT_OF_MEMORY_SIGNAL),
         Ending::TimedOut | Ending::Interrupted => None,
     }
 }
@@ -226,6 +233,7 @@ pub(super) fn exit_code(ending: Ending) -> Option<i32> {
 pub(super) fn error_code(ending: Ending) -> Option<ToolErrorCode> {
     match ending {
         Ending::TimedOut => Some(ToolErrorCode::TimedOut),
+        Ending::OutOfMemory => Some(ToolErrorCode::OutOfMemory),
         Ending::Interrupted => Some(ToolErrorCode::Interrupted),
         Ending::Exited(_) | Ending::Signaled(_) => None,
     }

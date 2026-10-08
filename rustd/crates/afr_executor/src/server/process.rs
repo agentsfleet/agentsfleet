@@ -12,6 +12,7 @@
 //! kill or because the session ended, the process is stopped the same way.
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -20,7 +21,7 @@ use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
-use super::launch::{Exit, OUTPUT_BACKLOG, Plan, Spawned, launcher};
+use super::launch::{Exit, OUTPUT_BACKLOG, Placement, Plan, Spawned, launcher};
 use crate::api::Ending;
 use crate::edges::Chunk;
 use crate::error::Result;
@@ -54,20 +55,27 @@ const EVENT_OUTPUT_ABANDONED: &str = "executor_output_abandoned";
 /// A signal found no process group, usually because it had already ended.
 const EVENT_SIGNAL_MISSED: &str = "executor_signal_missed";
 
-/// A started process and when its executor stops waiting for it.
+/// A started process, when its executor stops waiting for it, and where it
+/// was placed, which says what its ending means.
 pub(super) struct ProcessRun {
     spawned: Spawned,
     timeout: Option<Duration>,
+    placement: Arc<dyn Placement>,
 }
 
 impl ProcessRun {
-    /// Starts what `plan` describes, and answers with where its input goes.
-    pub(super) fn start(plan: &Plan) -> Result<(Self, mpsc::Sender<Bytes>)> {
+    /// Starts what `plan` describes, placed by `placement`, and answers with
+    /// where its input goes.
+    pub(super) fn start(
+        plan: &Plan,
+        placement: &Arc<dyn Placement>,
+    ) -> Result<(Self, mpsc::Sender<Bytes>)> {
         let (input, queued) = mpsc::channel(INPUT_BACKLOG);
-        let spawned = launcher(plan.on_terminal()).launch(plan, queued)?;
+        let spawned = launcher(plan.on_terminal()).launch(plan, placement, queued)?;
         let run = Self {
             spawned,
             timeout: plan.time_limit(),
+            placement: Arc::clone(placement),
         };
         Ok((run, input))
     }
@@ -114,7 +122,10 @@ impl ProcessRun {
                     group.stop(&mut exit).await;
                     break Ending::TimedOut;
                 }
-                ending = &mut exit => break ending,
+                // Only an ending the process came to by itself is judged: a
+                // kill the executor sent is the executor's, whatever else the
+                // leaf saw meanwhile.
+                ending = &mut exit => break self.placement.judge(ending),
             }
         };
         // Ended, so a write or a kill from here on finds no process — before
