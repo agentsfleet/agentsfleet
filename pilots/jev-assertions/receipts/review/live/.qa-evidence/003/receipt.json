@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "id": "003",
+  "cwd": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot",
+  "argv": [
+    "python3",
+    "pilots/jev-assertions/pilot.py",
+    "summarize"
+  ],
+  "deadline": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/receipts/review/live/deadline.json",
+  "timing": [
+    {
+      "guard": "qa-deadline",
+      "event": "started",
+      "version": 1,
+      "startedAt": "2026-10-08T13:35:06.559Z",
+      "deadlineAt": "2026-10-08T13:40:06.559Z",
+      "budgetMs": 300000,
+      "observedAt": "2026-10-08T13:37:28.635Z",
+      "remainingMs": 157924,
+      "expired": false
+    },
+    {
+      "guard": "qa-deadline",
+      "event": "finished",
+      "observedAt": "2026-10-08T13:37:28.740Z",
+      "deadlineAt": "2026-10-08T13:40:06.559Z",
+      "timedOut": false,
+      "exitCode": 0
+    }
+  ],
+  "startedAt": "2026-10-08T13:37:28.633Z",
+  "completedAt": "2026-10-08T13:37:28.742Z",
+  "exitCode": 0,
+  "signal": null,
+  "status": "complete",
+  "observation": {
+    "sha256": "9da92aecf14ed6b4cd6c87a7f094b0b3ff063aa5d1e69358e76448e6c6650097",
+    "bytes": 1805
+  },
+  "publicOutput": false,
+  "stdout": {
+    "sha256": "9da92aecf14ed6b4cd6c87a7f094b0b3ff063aa5d1e69358e76448e6c6650097",
+    "bytes": 1805
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  }
+}

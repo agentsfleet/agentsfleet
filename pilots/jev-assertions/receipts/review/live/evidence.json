@@ -1,0 +1,3265 @@
+{
+  "revision": "908d3cde491fcd31efb6f34cd9eb700def98a792",
+  "runtime": "bun 1.4.2",
+  "cwd": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot",
+  "limits": [
+    "Independent blinded reviewer benefit and review time remain unmeasured.",
+    "Declared repository-wide suites and comparison baselines remain due before a Pull Request.",
+    "Pre-advice source proofs retain unchanged frozen inputs; their earlier receipts are Section evidence, not fresh review captures.",
+    "No additional provider calls or product changes; retained replay cache remains private local runtime state."
+  ],
+  "evidence": [
+    {
+      "command": "python3 pilots/jev-assertions/pilot.py summarize",
+      "contract": "Retain every actual native attempt and separate findings, withholding and unavailable review comparison",
+      "expected": "Twenty slots and requests; native agreement 14, seeded findings 12, false alarms 3, actionable findings 7; paired review unmeasured",
+      "classification": "pass",
+      "observed": {
+        "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+        "model": "jev-1.13.0",
+        "frozen_cases": 20,
+        "measurement_status": "measured",
+        "reserved_requests": 20,
+        "reported_requests": 20,
+        "unreconciled_request_reservations": 0,
+        "live_case_slots_recorded": 20,
+        "native": {
+          "cases": 20,
+          "available": 20,
+          "unavailable": 0,
+          "native_matches": 14,
+          "confirmed_findings": 12,
+          "false_alarms": 3,
+          "finding_misses": 0,
+          "native_misses": 0,
+          "unavailable_weaknesses": 0,
+          "low_strength": 9,
+          "matching_native_withheld_by_strength": 3,
+          "confident_confirmed_findings": 7
+        },
+        "by_origin": {
+          "seeded-control": {
+            "cases": 16,
+            "available": 16,
+            "unavailable": 0,
+            "native_matches": 10,
+            "confirmed_findings": 12,
+            "false_alarms": 3,
+            "finding_misses": 0,
+            "native_misses": 0,
+            "unavailable_weaknesses": 0,
+            "low_strength": 9,
+            "matching_native_withheld_by_strength": 3,
+            "confident_confirmed_findings": 7
+          },
+          "source-derived-control": {
+            "cases": 4,
+            "available": 4,
+            "unavailable": 0,
+            "native_matches": 4,
+            "confirmed_findings": 0,
+            "false_alarms": 0,
+            "finding_misses": 0,
+            "native_misses": 0,
+            "unavailable_weaknesses": 0,
+            "low_strength": 0,
+            "matching_native_withheld_by_strength": 0,
+            "confident_confirmed_findings": 0
+          }
+        },
+        "real_defects": [],
+        "paired_review": {
+          "status": "unmeasured",
+          "reason": "Separate independent blinded review sessions are unavailable"
+        },
+        "known_usage": {
+          "input_tokens": 51813,
+          "output_tokens": 1122
+        },
+        "usage_unknown_slots": 0,
+        "known_cost_usd": "0.002176146",
+        "reserved_cost_upper_usd": "0.05505024",
+        "ceiling_usd": "0.06"
+      }
+    },
+    {
+      "command": "python3 pilots/jev-assertions/pilot.py replay",
+      "contract": "Exact frozen replay retains native answers without another provider request",
+      "expected": "Both commands exit 0 with ten complete answers, identical live answers/assessments/usage and zero requests",
+      "classification": "pass",
+      "observed": [
+        {
+          "mode": "replay",
+          "command": [
+            "orly",
+            "judge",
+            "verify",
+            "--input",
+            "pilots/jev-assertions/manifests/a.json",
+            "--json"
+          ],
+          "exit": 0,
+          "stdout": "{\n  \"stage\": \"verify\",\n  \"advisory\": true,\n  \"requests\": 0,\n  \"results\": [\n    {\n      \"status\": \"complete\",\n      \"id\": \"p01\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"3de682b3a3dc8604bced3ae03e77e0a4c751287ac853fffe3c4043006f654005\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p01/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 144,\n          \"digest\": \"ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p01/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 26,\n          \"digest\": \"73d22714ebbcea8dcd2dae0cead837fb486adf36804c2d14b0a81e1a794475b4\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/Button.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 98,\n          \"digest\": \"09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 37,\n          \"digest\": \"612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/use-resettable-timeout.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 48,\n          \"digest\": \"c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"weak\",\n        \"strength\": 0.33,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"weak\",\n        \"probabilities\": {\n          \"exact\": 0,\n          \"weak\": 0.47000000000000003,\n          \"wrong_target\": 0.11,\n          \"missing\": 0.42,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.33\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 351.26324999999997,\n      \"usage\": {\n        \"input_tokens\": 4667,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p02\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"2aa4965ce4c05bfb34d087050904136b791f09a447d82a314a85b77d442199a0\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p02/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 104,\n          \"digest\": \"900742863608ad79c4e0fd22845f62640b54cafa19e9b242c00decbaa933a49d\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p02/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"4df7dd7107fbf116e118cd8ead552cfcb081624462d098ff51e67d7dca6ba2c7\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"exact\",\n        \"strength\": 1,\n        \"uncertain\": false,\n        \"concern\": false,\n        \"action\": \"The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"exact\",\n        \"probabilities\": {\n          \"exact\": 1,\n          \"weak\": 0,\n          \"wrong_target\": 0,\n          \"insufficient\": 0,\n          \"missing\": 0\n        },\n        \"confidence\": 1\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 301.258875,\n      \"usage\": {\n        \"input_tokens\": 2016,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p03\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"c31e16118c428a23517eb4bb8a1fff19c4066a86af0a8d710fe2fc128c22c2c3\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p03/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 37,\n          \"digest\": \"612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p03/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 8,\n          \"digest\": \"38171fdbf22632e0a83d3e8756c5e07916cceabd8af773220165cc3c9aecb521\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"weak\",\n        \"strength\": 0.49,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"weak\",\n        \"probabilities\": {\n          \"exact\": 0.03,\n          \"weak\": 0.59,\n          \"wrong_target\": 0,\n          \"missing\": 0.06,\n          \"insufficient\": 0.32\n        },\n        \"confidence\": 0.49\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 298.0952080000002,\n      \"usage\": {\n        \"input_tokens\": 1273,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p04\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"0d235655c2a52eba18533c94d3b022bb21e10f96c201e9ba3eed979c610be4c1\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p04/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p04/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 7,\n          \"digest\": \"e4a2028c62359cced80e3afb653fd1eddb3ab8383e1070f219324fef853b9362\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/app-utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"wrong_target\",\n        \"strength\": 0.47,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"wrong_target\",\n        \"probabilities\": {\n          \"missing\": 0.42,\n          \"wrong_target\": 0.58,\n          \"insufficient\": 0,\n          \"weak\": 0,\n          \"exact\": 0\n        },\n        \"confidence\": 0.47\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 317.8072910000001,\n      \"usage\": {\n        \"input_tokens\": 2423,\n        \"output_tokens\": 57\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p05\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"867ddeda14bfcf506d54663538d0f8f24599aa6f261599817929a16f1eea1feb\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p05/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 144,\n          \"digest\": \"ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p05/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 25,\n          \"digest\": \"335ebc219f72b0bd26105e046047d1bfb2bff614c6e24555954797f0b0bfbe0e\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/Button.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 98,\n          \"digest\": \"09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 37,\n          \"digest\": \"612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/use-resettable-timeout.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 48,\n          \"digest\": \"c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"missing\",\n        \"strength\": 0.97,\n        \"uncertain\": false,\n        \"concern\": true,\n        \"action\": \"Add an assertion on the required behavior before accepting this test as evidence.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"missing\",\n        \"probabilities\": {\n          \"wrong_target\": 0.01,\n          \"insufficient\": 0,\n          \"weak\": 0.01,\n          \"missing\": 0.98,\n          \"exact\": 0\n        },\n        \"confidence\": 0.97\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 442.0533749999995,\n      \"usage\": {\n        \"input_tokens\": 4648,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p06\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"f7d5f648687fee74d731867c8fc853860856551e09295064731bb9781eb4e968\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p06/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 37,\n          \"digest\": \"612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p06/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 7,\n          \"digest\": \"daa7a25bbcea543c51d6a18506a5d5179f54ba5d641fe59ad716a8a2488aaccd\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"exact\",\n        \"strength\": 0.99,\n        \"uncertain\": false,\n        \"concern\": false,\n        \"action\": \"The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"exact\",\n        \"probabilities\": {\n          \"exact\": 1,\n          \"weak\": 0,\n          \"wrong_target\": 0,\n          \"missing\": 0,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.99\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 287.8957500000006,\n      \"usage\": {\n        \"input_tokens\": 1272,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p07\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"d18a80e03cac744fccf1682323a1ba610984927c0febeae8f93b2972bc4b538d\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p07/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p07/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 7,\n          \"digest\": \"c01901ed816577a03d2c11107d1126ad31c28fd2c9309d207a5207e52d275952\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/app-utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"weak\",\n        \"strength\": 0.99,\n        \"uncertain\": false,\n        \"concern\": true,\n        \"action\": \"Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"weak\",\n        \"probabilities\": {\n          \"exact\": 0,\n          \"weak\": 0.99,\n          \"wrong_target\": 0,\n          \"missing\": 0.01,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.99\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 287.41020800000024,\n      \"usage\": {\n        \"input_tokens\": 2405,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p08\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"6621ea4640f292ae685fd33a538b478eb6f33ed59fd7be7cb997904217c58e3e\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p08/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 104,\n          \"digest\": \"900742863608ad79c4e0fd22845f62640b54cafa19e9b242c00decbaa933a49d\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p08/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 10,\n          \"digest\": \"c3498b40f5fe2826387c8069ff6e4de87dd866163d22b07ead0d595a414933eb\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"weak\",\n        \"strength\": 0.35,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"weak\",\n        \"probabilities\": {\n          \"insufficient\": 0.45,\n          \"wrong_target\": 0,\n          \"missing\": 0.01,\n          \"weak\": 0.48,\n          \"exact\": 0.06\n        },\n        \"confidence\": 0.35\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 344.1588750000001,\n      \"usage\": {\n        \"input_tokens\": 2024,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p09\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"c008a59e522a6644d9957f64f1c2a86569940ce5fe01d79f72f97d88a06d9d66\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p09/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 144,\n          \"digest\": \"ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p09/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 27,\n          \"digest\": \"ef7902f595f4ef021d603aaa59b9f9f1d37e9b888d7924da0a94fd206c3acb5c\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/Button.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 98,\n          \"digest\": \"09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 37,\n          \"digest\": \"612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/use-resettable-timeout.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 48,\n          \"digest\": \"c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"wrong_target\",\n        \"strength\": 0.67,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"wrong_target\",\n        \"probabilities\": {\n          \"exact\": 0,\n          \"weak\": 0.09,\n          \"wrong_target\": 0.74,\n          \"missing\": 0.17,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.67\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 359.09220900000037,\n      \"usage\": {\n        \"input_tokens\": 4693,\n        \"output_tokens\": 57\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p10\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"c5ed376c1c75b10573f546985dbabc0bd8c1c1c5994908887f1a2969d4fded6c\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p10/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 36,\n          \"digest\": \"119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p10/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 7,\n          \"digest\": \"7d0dff064ad3b4df2db455431937525217cdc07fc60f203b3d91ac6abe6ebda6\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"missing\",\n        \"strength\": 0.99,\n        \"uncertain\": false,\n        \"concern\": true,\n        \"action\": \"Add an assertion on the required behavior before accepting this test as evidence.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"missing\",\n        \"probabilities\": {\n          \"wrong_target\": 0,\n          \"exact\": 0,\n          \"missing\": 0.99,\n          \"insufficient\": 0,\n          \"weak\": 0.01\n        },\n        \"confidence\": 0.99\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 331.83250000000044,\n      \"usage\": {\n        \"input_tokens\": 1248,\n        \"output_tokens\": 56\n      }\n    }\n  ]\n}\n",
+          "stderr": "",
+          "collection_error": null,
+          "raw_report": {
+            "stage": "verify",
+            "advisory": true,
+            "requests": 0,
+            "results": [
+              {
+                "status": "complete",
+                "id": "p01",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "3de682b3a3dc8604bced3ae03e77e0a4c751287ac853fffe3c4043006f654005",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p01/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p01/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 26,
+                    "digest": "73d22714ebbcea8dcd2dae0cead837fb486adf36804c2d14b0a81e1a794475b4"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.33,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.47000000000000003,
+                    "wrong_target": 0.11,
+                    "missing": 0.42,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.33
+                },
+                "requests": 0,
+                "elapsedMs": 351.26324999999997,
+                "usage": {
+                  "input_tokens": 4667,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p02",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "2aa4965ce4c05bfb34d087050904136b791f09a447d82a314a85b77d442199a0",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p02/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "900742863608ad79c4e0fd22845f62640b54cafa19e9b242c00decbaa933a49d"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p02/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "4df7dd7107fbf116e118cd8ead552cfcb081624462d098ff51e67d7dca6ba2c7"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 1,
+                  "uncertain": false,
+                  "concern": false,
+                  "action": "The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "exact": 1,
+                    "weak": 0,
+                    "wrong_target": 0,
+                    "insufficient": 0,
+                    "missing": 0
+                  },
+                  "confidence": 1
+                },
+                "requests": 0,
+                "elapsedMs": 301.258875,
+                "usage": {
+                  "input_tokens": 2016,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p03",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "c31e16118c428a23517eb4bb8a1fff19c4066a86af0a8d710fe2fc128c22c2c3",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p03/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p03/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 8,
+                    "digest": "38171fdbf22632e0a83d3e8756c5e07916cceabd8af773220165cc3c9aecb521"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.49,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0.03,
+                    "weak": 0.59,
+                    "wrong_target": 0,
+                    "missing": 0.06,
+                    "insufficient": 0.32
+                  },
+                  "confidence": 0.49
+                },
+                "requests": 0,
+                "elapsedMs": 298.0952080000002,
+                "usage": {
+                  "input_tokens": 1273,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p04",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "0d235655c2a52eba18533c94d3b022bb21e10f96c201e9ba3eed979c610be4c1",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p04/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p04/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "e4a2028c62359cced80e3afb653fd1eddb3ab8383e1070f219324fef853b9362"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "wrong_target",
+                  "strength": 0.47,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "wrong_target",
+                  "probabilities": {
+                    "missing": 0.42,
+                    "wrong_target": 0.58,
+                    "insufficient": 0,
+                    "weak": 0,
+                    "exact": 0
+                  },
+                  "confidence": 0.47
+                },
+                "requests": 0,
+                "elapsedMs": 317.8072910000001,
+                "usage": {
+                  "input_tokens": 2423,
+                  "output_tokens": 57
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p05",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "867ddeda14bfcf506d54663538d0f8f24599aa6f261599817929a16f1eea1feb",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p05/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p05/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 25,
+                    "digest": "335ebc219f72b0bd26105e046047d1bfb2bff614c6e24555954797f0b0bfbe0e"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.97,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Add an assertion on the required behavior before accepting this test as evidence."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "wrong_target": 0.01,
+                    "insufficient": 0,
+                    "weak": 0.01,
+                    "missing": 0.98,
+                    "exact": 0
+                  },
+                  "confidence": 0.97
+                },
+                "requests": 0,
+                "elapsedMs": 442.0533749999995,
+                "usage": {
+                  "input_tokens": 4648,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p06",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "f7d5f648687fee74d731867c8fc853860856551e09295064731bb9781eb4e968",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p06/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p06/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "daa7a25bbcea543c51d6a18506a5d5179f54ba5d641fe59ad716a8a2488aaccd"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 0.99,
+                  "uncertain": false,
+                  "concern": false,
+                  "action": "The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "exact": 1,
+                    "weak": 0,
+                    "wrong_target": 0,
+                    "missing": 0,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.99
+                },
+                "requests": 0,
+                "elapsedMs": 287.8957500000006,
+                "usage": {
+                  "input_tokens": 1272,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p07",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "d18a80e03cac744fccf1682323a1ba610984927c0febeae8f93b2972bc4b538d",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p07/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p07/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "c01901ed816577a03d2c11107d1126ad31c28fd2c9309d207a5207e52d275952"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.99,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.99,
+                    "wrong_target": 0,
+                    "missing": 0.01,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.99
+                },
+                "requests": 0,
+                "elapsedMs": 287.41020800000024,
+                "usage": {
+                  "input_tokens": 2405,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p08",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "6621ea4640f292ae685fd33a538b478eb6f33ed59fd7be7cb997904217c58e3e",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p08/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "900742863608ad79c4e0fd22845f62640b54cafa19e9b242c00decbaa933a49d"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p08/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 10,
+                    "digest": "c3498b40f5fe2826387c8069ff6e4de87dd866163d22b07ead0d595a414933eb"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.35,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "insufficient": 0.45,
+                    "wrong_target": 0,
+                    "missing": 0.01,
+                    "weak": 0.48,
+                    "exact": 0.06
+                  },
+                  "confidence": 0.35
+                },
+                "requests": 0,
+                "elapsedMs": 344.1588750000001,
+                "usage": {
+                  "input_tokens": 2024,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p09",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "c008a59e522a6644d9957f64f1c2a86569940ce5fe01d79f72f97d88a06d9d66",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p09/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p09/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 27,
+                    "digest": "ef7902f595f4ef021d603aaa59b9f9f1d37e9b888d7924da0a94fd206c3acb5c"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "wrong_target",
+                  "strength": 0.67,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "wrong_target",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.09,
+                    "wrong_target": 0.74,
+                    "missing": 0.17,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.67
+                },
+                "requests": 0,
+                "elapsedMs": 359.09220900000037,
+                "usage": {
+                  "input_tokens": 4693,
+                  "output_tokens": 57
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p10",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "c5ed376c1c75b10573f546985dbabc0bd8c1c1c5994908887f1a2969d4fded6c",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p10/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 36,
+                    "digest": "119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p10/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "7d0dff064ad3b4df2db455431937525217cdc07fc60f203b3d91ac6abe6ebda6"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.99,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Add an assertion on the required behavior before accepting this test as evidence."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "wrong_target": 0,
+                    "exact": 0,
+                    "missing": 0.99,
+                    "insufficient": 0,
+                    "weak": 0.01
+                  },
+                  "confidence": 0.99
+                },
+                "requests": 0,
+                "elapsedMs": 331.83250000000044,
+                "usage": {
+                  "input_tokens": 1248,
+                  "output_tokens": 56
+                }
+              }
+            ]
+          },
+          "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+          "reserved_requests": 0,
+          "report": {
+            "stage": "verify",
+            "advisory": true,
+            "requests": 0,
+            "results": [
+              {
+                "status": "complete",
+                "id": "p01",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "3de682b3a3dc8604bced3ae03e77e0a4c751287ac853fffe3c4043006f654005",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p01/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p01/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 26,
+                    "digest": "73d22714ebbcea8dcd2dae0cead837fb486adf36804c2d14b0a81e1a794475b4"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.33,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.47000000000000003,
+                    "wrong_target": 0.11,
+                    "missing": 0.42,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.33
+                },
+                "requests": 0,
+                "elapsedMs": 351.26324999999997,
+                "usage": {
+                  "input_tokens": 4667,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p02",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "2aa4965ce4c05bfb34d087050904136b791f09a447d82a314a85b77d442199a0",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p02/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "900742863608ad79c4e0fd22845f62640b54cafa19e9b242c00decbaa933a49d"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p02/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "4df7dd7107fbf116e118cd8ead552cfcb081624462d098ff51e67d7dca6ba2c7"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 1,
+                  "uncertain": false,
+                  "concern": false,
+                  "action": "The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "exact": 1,
+                    "weak": 0,
+                    "wrong_target": 0,
+                    "insufficient": 0,
+                    "missing": 0
+                  },
+                  "confidence": 1
+                },
+                "requests": 0,
+                "elapsedMs": 301.258875,
+                "usage": {
+                  "input_tokens": 2016,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p03",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "c31e16118c428a23517eb4bb8a1fff19c4066a86af0a8d710fe2fc128c22c2c3",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p03/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p03/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 8,
+                    "digest": "38171fdbf22632e0a83d3e8756c5e07916cceabd8af773220165cc3c9aecb521"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.49,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0.03,
+                    "weak": 0.59,
+                    "wrong_target": 0,
+                    "missing": 0.06,
+                    "insufficient": 0.32
+                  },
+                  "confidence": 0.49
+                },
+                "requests": 0,
+                "elapsedMs": 298.0952080000002,
+                "usage": {
+                  "input_tokens": 1273,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p04",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "0d235655c2a52eba18533c94d3b022bb21e10f96c201e9ba3eed979c610be4c1",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p04/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p04/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "e4a2028c62359cced80e3afb653fd1eddb3ab8383e1070f219324fef853b9362"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "wrong_target",
+                  "strength": 0.47,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "wrong_target",
+                  "probabilities": {
+                    "missing": 0.42,
+                    "wrong_target": 0.58,
+                    "insufficient": 0,
+                    "weak": 0,
+                    "exact": 0
+                  },
+                  "confidence": 0.47
+                },
+                "requests": 0,
+                "elapsedMs": 317.8072910000001,
+                "usage": {
+                  "input_tokens": 2423,
+                  "output_tokens": 57
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p05",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "867ddeda14bfcf506d54663538d0f8f24599aa6f261599817929a16f1eea1feb",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p05/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p05/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 25,
+                    "digest": "335ebc219f72b0bd26105e046047d1bfb2bff614c6e24555954797f0b0bfbe0e"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.97,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Add an assertion on the required behavior before accepting this test as evidence."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "wrong_target": 0.01,
+                    "insufficient": 0,
+                    "weak": 0.01,
+                    "missing": 0.98,
+                    "exact": 0
+                  },
+                  "confidence": 0.97
+                },
+                "requests": 0,
+                "elapsedMs": 442.0533749999995,
+                "usage": {
+                  "input_tokens": 4648,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p06",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "f7d5f648687fee74d731867c8fc853860856551e09295064731bb9781eb4e968",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p06/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p06/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "daa7a25bbcea543c51d6a18506a5d5179f54ba5d641fe59ad716a8a2488aaccd"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 0.99,
+                  "uncertain": false,
+                  "concern": false,
+                  "action": "The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "exact": 1,
+                    "weak": 0,
+                    "wrong_target": 0,
+                    "missing": 0,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.99
+                },
+                "requests": 0,
+                "elapsedMs": 287.8957500000006,
+                "usage": {
+                  "input_tokens": 1272,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p07",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "d18a80e03cac744fccf1682323a1ba610984927c0febeae8f93b2972bc4b538d",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p07/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p07/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "c01901ed816577a03d2c11107d1126ad31c28fd2c9309d207a5207e52d275952"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.99,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.99,
+                    "wrong_target": 0,
+                    "missing": 0.01,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.99
+                },
+                "requests": 0,
+                "elapsedMs": 287.41020800000024,
+                "usage": {
+                  "input_tokens": 2405,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p08",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "6621ea4640f292ae685fd33a538b478eb6f33ed59fd7be7cb997904217c58e3e",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p08/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "900742863608ad79c4e0fd22845f62640b54cafa19e9b242c00decbaa933a49d"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p08/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 10,
+                    "digest": "c3498b40f5fe2826387c8069ff6e4de87dd866163d22b07ead0d595a414933eb"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.35,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "insufficient": 0.45,
+                    "wrong_target": 0,
+                    "missing": 0.01,
+                    "weak": 0.48,
+                    "exact": 0.06
+                  },
+                  "confidence": 0.35
+                },
+                "requests": 0,
+                "elapsedMs": 344.1588750000001,
+                "usage": {
+                  "input_tokens": 2024,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p09",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "c008a59e522a6644d9957f64f1c2a86569940ce5fe01d79f72f97d88a06d9d66",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p09/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "ef5ca7df7ee5546a55a5c78f2011a229a15f9bb4716befb8b382cbffd922532f"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p09/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 27,
+                    "digest": "ef7902f595f4ef021d603aaa59b9f9f1d37e9b888d7924da0a94fd206c3acb5c"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "wrong_target",
+                  "strength": 0.67,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "wrong_target",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.09,
+                    "wrong_target": 0.74,
+                    "missing": 0.17,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.67
+                },
+                "requests": 0,
+                "elapsedMs": 359.09220900000037,
+                "usage": {
+                  "input_tokens": 4693,
+                  "output_tokens": 57
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p10",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "c5ed376c1c75b10573f546985dbabc0bd8c1c1c5994908887f1a2969d4fded6c",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p10/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 36,
+                    "digest": "119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p10/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "7d0dff064ad3b4df2db455431937525217cdc07fc60f203b3d91ac6abe6ebda6"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.99,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Add an assertion on the required behavior before accepting this test as evidence."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "wrong_target": 0,
+                    "exact": 0,
+                    "missing": 0.99,
+                    "insufficient": 0,
+                    "weak": 0.01
+                  },
+                  "confidence": 0.99
+                },
+                "requests": 0,
+                "elapsedMs": 331.83250000000044,
+                "usage": {
+                  "input_tokens": 1248,
+                  "output_tokens": 56
+                }
+              }
+            ]
+          }
+        },
+        {
+          "mode": "replay",
+          "command": [
+            "orly",
+            "judge",
+            "verify",
+            "--input",
+            "pilots/jev-assertions/manifests/b.json",
+            "--json"
+          ],
+          "exit": 0,
+          "stdout": "{\n  \"stage\": \"verify\",\n  \"advisory\": true,\n  \"requests\": 0,\n  \"results\": [\n    {\n      \"status\": \"complete\",\n      \"id\": \"p11\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"66d7d5006b7612df6e9662fe03421bccdcf923149e025c55bc742d0b4811c683\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p11/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 104,\n          \"digest\": \"1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p11/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"11fefcae582d8b7b2f148608bbcb911ff68a6c4752007b8ab18b2f566d92a87a\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"weak\",\n        \"strength\": 0.92,\n        \"uncertain\": false,\n        \"concern\": true,\n        \"action\": \"Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"weak\",\n        \"probabilities\": {\n          \"exact\": 0,\n          \"weak\": 0.94,\n          \"wrong_target\": 0,\n          \"missing\": 0.06,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.92\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 306.39208299999973,\n      \"usage\": {\n        \"input_tokens\": 2015,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p12\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"1997baabd95847b08238d0edbdc508c446361e31e4b5c92647b63b7071ab3c0c\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p12/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 144,\n          \"digest\": \"f5961d0a98ad9a2e3f94f50e7a1b602073aaf549958d9f16ae0379b04103c16b\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p12/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 28,\n          \"digest\": \"fca29784ce7621f71cb35e74dd3035952525119785de4df29f36958fa342f443\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/Button.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 98,\n          \"digest\": \"09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 37,\n          \"digest\": \"612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/use-resettable-timeout.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 48,\n          \"digest\": \"c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"exact\",\n        \"strength\": 1,\n        \"uncertain\": false,\n        \"concern\": false,\n        \"action\": \"The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"exact\",\n        \"probabilities\": {\n          \"missing\": 0,\n          \"exact\": 1,\n          \"insufficient\": 0,\n          \"wrong_target\": 0,\n          \"weak\": 0\n        },\n        \"confidence\": 1\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 331.55704200000037,\n      \"usage\": {\n        \"input_tokens\": 4696,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p13\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"a67d24263d9c943cbf9919cce68d14459ae1cac9c8e4ecf5a550cabf81e91277\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p13/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"b1e91f942dd53134acc53228db563a08278c4ae7b41cc7e22b0b1f5a923bdfd7\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p13/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 7,\n          \"digest\": \"9592c07c1ba58da7f5c22adb775b2cc4cdb872a3ca3411245571bd9aeeb0b670\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/app-utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"exact\",\n        \"strength\": 1,\n        \"uncertain\": false,\n        \"concern\": false,\n        \"action\": \"The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"exact\",\n        \"probabilities\": {\n          \"exact\": 1,\n          \"insufficient\": 0,\n          \"weak\": 0,\n          \"wrong_target\": 0,\n          \"missing\": 0\n        },\n        \"confidence\": 1\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 301.95758399999977,\n      \"usage\": {\n        \"input_tokens\": 2400,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p14\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"2cf56f28d9b1b1bb6f1e2346129048835fda293b9790d6ee81755e43a1465278\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p14/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 36,\n          \"digest\": \"119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p14/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 7,\n          \"digest\": \"2cc01e7ed3b829ac782afd54b5ec4fde0cbce9b55e17dc1ffebaf5f635db984f\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"missing\",\n        \"strength\": 0.55,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"missing\",\n        \"probabilities\": {\n          \"exact\": 0,\n          \"weak\": 0.02,\n          \"wrong_target\": 0.33,\n          \"missing\": 0.65,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.55\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 299.2292910000001,\n      \"usage\": {\n        \"input_tokens\": 1262,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p15\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"5b7e5648f5435485d137786a453655ce70669bd8b4f31c92b4352de29d265361\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p15/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 104,\n          \"digest\": \"1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p15/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"7ae406f1579383ecf736a04fff648cd171f6efc9bdb352ca163f17395e883bf1\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"missing\",\n        \"strength\": 0.98,\n        \"uncertain\": false,\n        \"concern\": true,\n        \"action\": \"Add an assertion on the required behavior before accepting this test as evidence.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"missing\",\n        \"probabilities\": {\n          \"exact\": 0,\n          \"weak\": 0.01,\n          \"wrong_target\": 0,\n          \"missing\": 0.99,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.98\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 283.9086670000006,\n      \"usage\": {\n        \"input_tokens\": 2007,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p16\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"5866e7d019e84d5687d2902260811619b3abbc2515448602d8971ca68426bf67\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p16/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 144,\n          \"digest\": \"f5961d0a98ad9a2e3f94f50e7a1b602073aaf549958d9f16ae0379b04103c16b\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p16/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 27,\n          \"digest\": \"5832002adc111d4e5121847e2e49f4a83ec3fbe40a3e0b01de054e97ef9fbb98\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/Button.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 98,\n          \"digest\": \"09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 37,\n          \"digest\": \"612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/use-resettable-timeout.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 48,\n          \"digest\": \"c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"exact\",\n        \"strength\": 0.68,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"exact\",\n        \"probabilities\": {\n          \"missing\": 0,\n          \"exact\": 0.74,\n          \"weak\": 0.05,\n          \"insufficient\": 0.21,\n          \"wrong_target\": 0\n        },\n        \"confidence\": 0.68\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 323.4697500000002,\n      \"usage\": {\n        \"input_tokens\": 4674,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p17\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"5fddf66fdc991d9ed00f59ebbdaad2672faf01bfdaec12c11b1912aba56bb753\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p17/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 36,\n          \"digest\": \"119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p17/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"d32a46a6ff1f102e0ae62a347ffdff09f910cdc21d94203e64bc6b4b584cf5e0\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"weak\",\n        \"strength\": 1,\n        \"uncertain\": false,\n        \"concern\": true,\n        \"action\": \"Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"weak\",\n        \"probabilities\": {\n          \"missing\": 0,\n          \"weak\": 1,\n          \"insufficient\": 0,\n          \"wrong_target\": 0,\n          \"exact\": 0\n        },\n        \"confidence\": 1\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 312.02399999999943,\n      \"usage\": {\n        \"input_tokens\": 1265,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p18\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"acb97f39c25e4c2a7162dfc7d5278eedfd09db506d53722cbece274b61b4ac21\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p18/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p18/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 7,\n          \"digest\": \"3729a8004408c30da0b1bd36efba4610aa9eb6505f66391eeb536ab324c0c5bc\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/app-utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"missing\",\n        \"strength\": 0.97,\n        \"uncertain\": false,\n        \"concern\": true,\n        \"action\": \"Add an assertion on the required behavior before accepting this test as evidence.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"missing\",\n        \"probabilities\": {\n          \"exact\": 0,\n          \"weak\": 0.03,\n          \"wrong_target\": 0,\n          \"missing\": 0.97,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.97\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 310.184166,\n      \"usage\": {\n        \"input_tokens\": 2389,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p19\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"622c4ca3e29b2607d2fdfe26b7a0780ffb50cebdd2658cb454947f7f655e9f29\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p19/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 104,\n          \"digest\": \"1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p19/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"1d3d2be9fe1afc12fdbb7181abafee31681b546799ada317552c88d43778b838\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"missing\",\n        \"strength\": 0.42,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"missing\",\n        \"probabilities\": {\n          \"exact\": 0,\n          \"weak\": 0.01,\n          \"wrong_target\": 0.46,\n          \"missing\": 0.53,\n          \"insufficient\": 0\n        },\n        \"confidence\": 0.42\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 287.051958,\n      \"usage\": {\n        \"input_tokens\": 2027,\n        \"output_tokens\": 56\n      }\n    },\n    {\n      \"status\": \"complete\",\n      \"id\": \"p20\",\n      \"question\": \"verify.assertion\",\n      \"mode\": \"replay\",\n      \"model\": \"jev-1.13.0\",\n      \"identity\": \"644d5d588a9dc4d1cd266ff03eac272dd0a27593ea1a41148de73885bd6bdf84\",\n      \"sources\": [\n        {\n          \"role\": \"implementation\",\n          \"path\": \"pilots/jev-assertions/fixtures/p20/implementation.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"b1e91f942dd53134acc53228db563a08278c4ae7b41cc7e22b0b1f5a923bdfd7\"\n        },\n        {\n          \"role\": \"test\",\n          \"path\": \"pilots/jev-assertions/fixtures/p20/test.tsx\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 8,\n          \"digest\": \"1b2d79f5439aeb6fb272544b0ac398ac64f4c33af016854c5d8f7748b37061a6\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/app-utils.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 56,\n          \"digest\": \"2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f\"\n        },\n        {\n          \"role\": \"context\",\n          \"path\": \"pilots/jev-assertions/helpers/setup.ts\",\n          \"selector\": {\n            \"kind\": \"file\"\n          },\n          \"startLine\": 1,\n          \"endLine\": 9,\n          \"digest\": \"a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e\"\n        }\n      ],\n      \"assessment\": {\n        \"decision\": \"weak\",\n        \"strength\": 0.51,\n        \"uncertain\": true,\n        \"concern\": false,\n        \"action\": \"Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval.\"\n      },\n      \"answer\": {\n        \"type\": \"choice\",\n        \"choice\": \"weak\",\n        \"probabilities\": {\n          \"exact\": 0.05,\n          \"weak\": 0.61,\n          \"wrong_target\": 0,\n          \"missing\": 0.07,\n          \"insufficient\": 0.27\n        },\n        \"confidence\": 0.51\n      },\n      \"requests\": 0,\n      \"elapsedMs\": 394.73812499999985,\n      \"usage\": {\n        \"input_tokens\": 2409,\n        \"output_tokens\": 56\n      }\n    }\n  ]\n}\n",
+          "stderr": "",
+          "collection_error": null,
+          "raw_report": {
+            "stage": "verify",
+            "advisory": true,
+            "requests": 0,
+            "results": [
+              {
+                "status": "complete",
+                "id": "p11",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "66d7d5006b7612df6e9662fe03421bccdcf923149e025c55bc742d0b4811c683",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p11/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p11/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "11fefcae582d8b7b2f148608bbcb911ff68a6c4752007b8ab18b2f566d92a87a"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.92,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.94,
+                    "wrong_target": 0,
+                    "missing": 0.06,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.92
+                },
+                "requests": 0,
+                "elapsedMs": 306.39208299999973,
+                "usage": {
+                  "input_tokens": 2015,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p12",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "1997baabd95847b08238d0edbdc508c446361e31e4b5c92647b63b7071ab3c0c",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p12/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "f5961d0a98ad9a2e3f94f50e7a1b602073aaf549958d9f16ae0379b04103c16b"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p12/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 28,
+                    "digest": "fca29784ce7621f71cb35e74dd3035952525119785de4df29f36958fa342f443"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 1,
+                  "uncertain": false,
+                  "concern": false,
+                  "action": "The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "missing": 0,
+                    "exact": 1,
+                    "insufficient": 0,
+                    "wrong_target": 0,
+                    "weak": 0
+                  },
+                  "confidence": 1
+                },
+                "requests": 0,
+                "elapsedMs": 331.55704200000037,
+                "usage": {
+                  "input_tokens": 4696,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p13",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "a67d24263d9c943cbf9919cce68d14459ae1cac9c8e4ecf5a550cabf81e91277",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p13/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "b1e91f942dd53134acc53228db563a08278c4ae7b41cc7e22b0b1f5a923bdfd7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p13/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "9592c07c1ba58da7f5c22adb775b2cc4cdb872a3ca3411245571bd9aeeb0b670"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 1,
+                  "uncertain": false,
+                  "concern": false,
+                  "action": "The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "exact": 1,
+                    "insufficient": 0,
+                    "weak": 0,
+                    "wrong_target": 0,
+                    "missing": 0
+                  },
+                  "confidence": 1
+                },
+                "requests": 0,
+                "elapsedMs": 301.95758399999977,
+                "usage": {
+                  "input_tokens": 2400,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p14",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "2cf56f28d9b1b1bb6f1e2346129048835fda293b9790d6ee81755e43a1465278",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p14/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 36,
+                    "digest": "119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p14/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "2cc01e7ed3b829ac782afd54b5ec4fde0cbce9b55e17dc1ffebaf5f635db984f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.55,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.02,
+                    "wrong_target": 0.33,
+                    "missing": 0.65,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.55
+                },
+                "requests": 0,
+                "elapsedMs": 299.2292910000001,
+                "usage": {
+                  "input_tokens": 1262,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p15",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "5b7e5648f5435485d137786a453655ce70669bd8b4f31c92b4352de29d265361",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p15/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p15/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "7ae406f1579383ecf736a04fff648cd171f6efc9bdb352ca163f17395e883bf1"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.98,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Add an assertion on the required behavior before accepting this test as evidence."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.01,
+                    "wrong_target": 0,
+                    "missing": 0.99,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.98
+                },
+                "requests": 0,
+                "elapsedMs": 283.9086670000006,
+                "usage": {
+                  "input_tokens": 2007,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p16",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "5866e7d019e84d5687d2902260811619b3abbc2515448602d8971ca68426bf67",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p16/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "f5961d0a98ad9a2e3f94f50e7a1b602073aaf549958d9f16ae0379b04103c16b"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p16/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 27,
+                    "digest": "5832002adc111d4e5121847e2e49f4a83ec3fbe40a3e0b01de054e97ef9fbb98"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 0.68,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "missing": 0,
+                    "exact": 0.74,
+                    "weak": 0.05,
+                    "insufficient": 0.21,
+                    "wrong_target": 0
+                  },
+                  "confidence": 0.68
+                },
+                "requests": 0,
+                "elapsedMs": 323.4697500000002,
+                "usage": {
+                  "input_tokens": 4674,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p17",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "5fddf66fdc991d9ed00f59ebbdaad2672faf01bfdaec12c11b1912aba56bb753",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p17/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 36,
+                    "digest": "119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p17/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "d32a46a6ff1f102e0ae62a347ffdff09f910cdc21d94203e64bc6b4b584cf5e0"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 1,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "missing": 0,
+                    "weak": 1,
+                    "insufficient": 0,
+                    "wrong_target": 0,
+                    "exact": 0
+                  },
+                  "confidence": 1
+                },
+                "requests": 0,
+                "elapsedMs": 312.02399999999943,
+                "usage": {
+                  "input_tokens": 1265,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p18",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "acb97f39c25e4c2a7162dfc7d5278eedfd09db506d53722cbece274b61b4ac21",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p18/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p18/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "3729a8004408c30da0b1bd36efba4610aa9eb6505f66391eeb536ab324c0c5bc"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.97,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Add an assertion on the required behavior before accepting this test as evidence."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.03,
+                    "wrong_target": 0,
+                    "missing": 0.97,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.97
+                },
+                "requests": 0,
+                "elapsedMs": 310.184166,
+                "usage": {
+                  "input_tokens": 2389,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p19",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "622c4ca3e29b2607d2fdfe26b7a0780ffb50cebdd2658cb454947f7f655e9f29",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p19/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p19/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "1d3d2be9fe1afc12fdbb7181abafee31681b546799ada317552c88d43778b838"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.42,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.01,
+                    "wrong_target": 0.46,
+                    "missing": 0.53,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.42
+                },
+                "requests": 0,
+                "elapsedMs": 287.051958,
+                "usage": {
+                  "input_tokens": 2027,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p20",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "644d5d588a9dc4d1cd266ff03eac272dd0a27593ea1a41148de73885bd6bdf84",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p20/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "b1e91f942dd53134acc53228db563a08278c4ae7b41cc7e22b0b1f5a923bdfd7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p20/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 8,
+                    "digest": "1b2d79f5439aeb6fb272544b0ac398ac64f4c33af016854c5d8f7748b37061a6"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.51,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0.05,
+                    "weak": 0.61,
+                    "wrong_target": 0,
+                    "missing": 0.07,
+                    "insufficient": 0.27
+                  },
+                  "confidence": 0.51
+                },
+                "requests": 0,
+                "elapsedMs": 394.73812499999985,
+                "usage": {
+                  "input_tokens": 2409,
+                  "output_tokens": 56
+                }
+              }
+            ]
+          },
+          "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+          "reserved_requests": 0,
+          "report": {
+            "stage": "verify",
+            "advisory": true,
+            "requests": 0,
+            "results": [
+              {
+                "status": "complete",
+                "id": "p11",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "66d7d5006b7612df6e9662fe03421bccdcf923149e025c55bc742d0b4811c683",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p11/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p11/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "11fefcae582d8b7b2f148608bbcb911ff68a6c4752007b8ab18b2f566d92a87a"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.92,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.94,
+                    "wrong_target": 0,
+                    "missing": 0.06,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.92
+                },
+                "requests": 0,
+                "elapsedMs": 306.39208299999973,
+                "usage": {
+                  "input_tokens": 2015,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p12",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "1997baabd95847b08238d0edbdc508c446361e31e4b5c92647b63b7071ab3c0c",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p12/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "f5961d0a98ad9a2e3f94f50e7a1b602073aaf549958d9f16ae0379b04103c16b"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p12/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 28,
+                    "digest": "fca29784ce7621f71cb35e74dd3035952525119785de4df29f36958fa342f443"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 1,
+                  "uncertain": false,
+                  "concern": false,
+                  "action": "The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "missing": 0,
+                    "exact": 1,
+                    "insufficient": 0,
+                    "wrong_target": 0,
+                    "weak": 0
+                  },
+                  "confidence": 1
+                },
+                "requests": 0,
+                "elapsedMs": 331.55704200000037,
+                "usage": {
+                  "input_tokens": 4696,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p13",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "a67d24263d9c943cbf9919cce68d14459ae1cac9c8e4ecf5a550cabf81e91277",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p13/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "b1e91f942dd53134acc53228db563a08278c4ae7b41cc7e22b0b1f5a923bdfd7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p13/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "9592c07c1ba58da7f5c22adb775b2cc4cdb872a3ca3411245571bd9aeeb0b670"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 1,
+                  "uncertain": false,
+                  "concern": false,
+                  "action": "The linked assertion checks the required result. Run it against the incorrect behavior to confirm it discriminates."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "exact": 1,
+                    "insufficient": 0,
+                    "weak": 0,
+                    "wrong_target": 0,
+                    "missing": 0
+                  },
+                  "confidence": 1
+                },
+                "requests": 0,
+                "elapsedMs": 301.95758399999977,
+                "usage": {
+                  "input_tokens": 2400,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p14",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "2cf56f28d9b1b1bb6f1e2346129048835fda293b9790d6ee81755e43a1465278",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p14/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 36,
+                    "digest": "119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p14/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "2cc01e7ed3b829ac782afd54b5ec4fde0cbce9b55e17dc1ffebaf5f635db984f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.55,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.02,
+                    "wrong_target": 0.33,
+                    "missing": 0.65,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.55
+                },
+                "requests": 0,
+                "elapsedMs": 299.2292910000001,
+                "usage": {
+                  "input_tokens": 1262,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p15",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "5b7e5648f5435485d137786a453655ce70669bd8b4f31c92b4352de29d265361",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p15/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p15/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "7ae406f1579383ecf736a04fff648cd171f6efc9bdb352ca163f17395e883bf1"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.98,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Add an assertion on the required behavior before accepting this test as evidence."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.01,
+                    "wrong_target": 0,
+                    "missing": 0.99,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.98
+                },
+                "requests": 0,
+                "elapsedMs": 283.9086670000006,
+                "usage": {
+                  "input_tokens": 2007,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p16",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "5866e7d019e84d5687d2902260811619b3abbc2515448602d8971ca68426bf67",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p16/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 144,
+                    "digest": "f5961d0a98ad9a2e3f94f50e7a1b602073aaf549958d9f16ae0379b04103c16b"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p16/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 27,
+                    "digest": "5832002adc111d4e5121847e2e49f4a83ec3fbe40a3e0b01de054e97ef9fbb98"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/Button.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 98,
+                    "digest": "09a7ff08ae8284d8c8f809f5d58bc350312a4b5784c0a7b1d066a760d4bc1234"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 37,
+                    "digest": "612ced09d70d85ab6a41b19326b31581e3d2658a7fde14c0a63a8cceb80addb9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 48,
+                    "digest": "c0cfac05ca6ba4ffb7fc7356b9c5a2cd6edb67d2f549a2a14fe8fe9ecccc15b9"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "exact",
+                  "strength": 0.68,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "exact",
+                  "probabilities": {
+                    "missing": 0,
+                    "exact": 0.74,
+                    "weak": 0.05,
+                    "insufficient": 0.21,
+                    "wrong_target": 0
+                  },
+                  "confidence": 0.68
+                },
+                "requests": 0,
+                "elapsedMs": 323.4697500000002,
+                "usage": {
+                  "input_tokens": 4674,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p17",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "5fddf66fdc991d9ed00f59ebbdaad2672faf01bfdaec12c11b1912aba56bb753",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p17/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 36,
+                    "digest": "119aa187791c476f51b949c132abc52dc2193edcc08b1d470dd6c386e395d5c7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p17/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "d32a46a6ff1f102e0ae62a347ffdff09f910cdc21d94203e64bc6b4b584cf5e0"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 1,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Replace the broad assertion with an exact expected result or an independently computed expected value, then rerun the seeded bug."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "missing": 0,
+                    "weak": 1,
+                    "insufficient": 0,
+                    "wrong_target": 0,
+                    "exact": 0
+                  },
+                  "confidence": 1
+                },
+                "requests": 0,
+                "elapsedMs": 312.02399999999943,
+                "usage": {
+                  "input_tokens": 1265,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p18",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "acb97f39c25e4c2a7162dfc7d5278eedfd09db506d53722cbece274b61b4ac21",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p18/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "39d37807bf8ea647473daf0e8177f2007b03f584130605627a541fdda7613a5c"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p18/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 7,
+                    "digest": "3729a8004408c30da0b1bd36efba4610aa9eb6505f66391eeb536ab324c0c5bc"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.97,
+                  "uncertain": false,
+                  "concern": true,
+                  "action": "Add an assertion on the required behavior before accepting this test as evidence."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.03,
+                    "wrong_target": 0,
+                    "missing": 0.97,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.97
+                },
+                "requests": 0,
+                "elapsedMs": 310.184166,
+                "usage": {
+                  "input_tokens": 2389,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p19",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "622c4ca3e29b2607d2fdfe26b7a0780ffb50cebdd2658cb454947f7f655e9f29",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p19/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 104,
+                    "digest": "1e7086789f6528573425679e419df52f1729294e5175d703d512a6e2dbc7d5c0"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p19/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "1d3d2be9fe1afc12fdbb7181abafee31681b546799ada317552c88d43778b838"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "missing",
+                  "strength": 0.42,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "missing",
+                  "probabilities": {
+                    "exact": 0,
+                    "weak": 0.01,
+                    "wrong_target": 0.46,
+                    "missing": 0.53,
+                    "insufficient": 0
+                  },
+                  "confidence": 0.42
+                },
+                "requests": 0,
+                "elapsedMs": 287.051958,
+                "usage": {
+                  "input_tokens": 2027,
+                  "output_tokens": 56
+                }
+              },
+              {
+                "status": "complete",
+                "id": "p20",
+                "question": "verify.assertion",
+                "mode": "replay",
+                "model": "jev-1.13.0",
+                "identity": "644d5d588a9dc4d1cd266ff03eac272dd0a27593ea1a41148de73885bd6bdf84",
+                "sources": [
+                  {
+                    "role": "implementation",
+                    "path": "pilots/jev-assertions/fixtures/p20/implementation.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "b1e91f942dd53134acc53228db563a08278c4ae7b41cc7e22b0b1f5a923bdfd7"
+                  },
+                  {
+                    "role": "test",
+                    "path": "pilots/jev-assertions/fixtures/p20/test.tsx",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 8,
+                    "digest": "1b2d79f5439aeb6fb272544b0ac398ac64f4c33af016854c5d8f7748b37061a6"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/app-utils.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 56,
+                    "digest": "2d810960f8b32be65b9debc35689cffb0b64ba1db0bfaadd16ecd3540c128f1f"
+                  },
+                  {
+                    "role": "context",
+                    "path": "pilots/jev-assertions/helpers/setup.ts",
+                    "selector": {
+                      "kind": "file"
+                    },
+                    "startLine": 1,
+                    "endLine": 9,
+                    "digest": "a00bc941453b436394497dabd4e1ca11d8967f2c188c6934b7bd88ced626890e"
+                  }
+                ],
+                "assessment": {
+                  "decision": "weak",
+                  "strength": 0.51,
+                  "uncertain": true,
+                  "concern": false,
+                  "action": "Inspect the selected context and supply any missing evidence. This uncertain answer suggests no repair or approval."
+                },
+                "answer": {
+                  "type": "choice",
+                  "choice": "weak",
+                  "probabilities": {
+                    "exact": 0.05,
+                    "weak": 0.61,
+                    "wrong_target": 0,
+                    "missing": 0.07,
+                    "insufficient": 0.27
+                  },
+                  "confidence": 0.51
+                },
+                "requests": 0,
+                "elapsedMs": 394.73812499999985,
+                "usage": {
+                  "input_tokens": 2409,
+                  "output_tokens": 56
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "command": "python3 pilots/jev-assertions/pilot.py summarize",
+      "contract": "Replay metadata must not be added to live request totals or spending",
+      "expected": "Observation identical to 001: requests 20, input tokens 51813, output tokens 1122, calculated USD 0.002176146",
+      "classification": "pass",
+      "observed": {
+        "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+        "model": "jev-1.13.0",
+        "frozen_cases": 20,
+        "measurement_status": "measured",
+        "reserved_requests": 20,
+        "reported_requests": 20,
+        "unreconciled_request_reservations": 0,
+        "live_case_slots_recorded": 20,
+        "native": {
+          "cases": 20,
+          "available": 20,
+          "unavailable": 0,
+          "native_matches": 14,
+          "confirmed_findings": 12,
+          "false_alarms": 3,
+          "finding_misses": 0,
+          "native_misses": 0,
+          "unavailable_weaknesses": 0,
+          "low_strength": 9,
+          "matching_native_withheld_by_strength": 3,
+          "confident_confirmed_findings": 7
+        },
+        "by_origin": {
+          "seeded-control": {
+            "cases": 16,
+            "available": 16,
+            "unavailable": 0,
+            "native_matches": 10,
+            "confirmed_findings": 12,
+            "false_alarms": 3,
+            "finding_misses": 0,
+            "native_misses": 0,
+            "unavailable_weaknesses": 0,
+            "low_strength": 9,
+            "matching_native_withheld_by_strength": 3,
+            "confident_confirmed_findings": 7
+          },
+          "source-derived-control": {
+            "cases": 4,
+            "available": 4,
+            "unavailable": 0,
+            "native_matches": 4,
+            "confirmed_findings": 0,
+            "false_alarms": 0,
+            "finding_misses": 0,
+            "native_misses": 0,
+            "unavailable_weaknesses": 0,
+            "low_strength": 0,
+            "matching_native_withheld_by_strength": 0,
+            "confident_confirmed_findings": 0
+          }
+        },
+        "real_defects": [],
+        "paired_review": {
+          "status": "unmeasured",
+          "reason": "Separate independent blinded review sessions are unavailable"
+        },
+        "known_usage": {
+          "input_tokens": 51813,
+          "output_tokens": 1122
+        },
+        "usage_unknown_slots": 0,
+        "known_cost_usd": "0.002176146",
+        "reserved_cost_upper_usd": "0.05505024",
+        "ceiling_usd": "0.06"
+      }
+    }
+  ],
+  "learning": [
+    {
+      "observationCapture": "001",
+      "observationArgv": [
+        "python3",
+        "pilots/jev-assertions/pilot.py",
+        "summarize"
+      ],
+      "hypothesis": "Measured totals reconcile; exact cached replay must retain the same native answers while adding zero provider requests.",
+      "nextCapture": "002",
+      "nextArgv": [
+        "python3",
+        "pilots/jev-assertions/pilot.py",
+        "replay"
+      ]
+    },
+    {
+      "observationCapture": "002",
+      "observationArgv": [
+        "python3",
+        "pilots/jev-assertions/pilot.py",
+        "replay"
+      ],
+      "hypothesis": "Replay retains original usage metadata; resummarizing must keep live spending and attempt totals unchanged rather than count replay usage again.",
+      "nextCapture": "003",
+      "nextArgv": [
+        "python3",
+        "pilots/jev-assertions/pilot.py",
+        "summarize"
+      ]
+    }
+  ],
+  "verdict": {
+    "status": "pass",
+    "open": []
+  }
+}
