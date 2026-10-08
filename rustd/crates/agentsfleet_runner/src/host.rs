@@ -11,10 +11,12 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use afd_core::error_code::{self, Coded, ErrorCode, Logged};
+use afd_core::error_code::{self, Coded, ErrorCode};
 use afr_sandbox::{Engine, HostProbe, ProbePaths};
 use afr_supervisor::StorageHome;
 
+#[cfg(target_os = "linux")]
+use afd_core::error_code::Logged;
 #[cfg(target_os = "linux")]
 use afr_sandbox::{KernelMounter, Toolboxes};
 
