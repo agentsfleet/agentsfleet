@@ -2,13 +2,14 @@
 
 **Recommendation: keep Jev experimental and advisory.** Its native answers
 identified every seeded inadequate assertion, while the existing confidence
-handling surfaced seven of twelve. Independent reviewer benefit and review
-time remain **unmeasured**; this evidence does not justify adoption or a gate.
+handling surfaced seven of twelve. Both independent agents found all twelve
+with zero false alarms, so advice added no findings in this comparison.
+The observed agent-time difference does not establish human time savings.
 Adoption remains Kishore's separate decision.
 
 **Overall status: IN_PROGRESS.** The approved model measurement is complete.
-Separate blinded reviewer sessions are unavailable, and repository-wide checks
-and comparison baselines remain due before a Pull Request.
+Separate blinded agent sessions are complete. Repository-wide checks and
+comparison baselines remain due before a Pull Request.
 
 Source revision: `dd917b7ef42dcb883b5192fafe894060aab5845d`.
 Frozen input digest: `7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa`.
@@ -69,7 +70,7 @@ requests; replay usage is never added to live spending.
 | False alarms | 3/8 adequate or omitted-context controls | All three withheld; zero actionable false alarms |
 | Missing-context classification | 0/4 `insufficient` answers | All four low strength and require inspection |
 | Withholding | Nine answers below 0.8 | Native class retained separately |
-| Independent reviewer findings and time | Unmeasured | Separate blinded sessions unavailable |
+| Independent agent comparison | Same 12/12 findings in both conditions | Observed time difference below; no causal claim |
 
 Confirmed findings mean a native `weak`, `wrong_target` or `missing` answer on
 one of the twelve known inadequate assertions. Subclass mistakes still confirm
@@ -92,11 +93,35 @@ at strength 1. All four wrong-target controls were withheld.
 | Newly confirmed production defects | 0 | N/A | 0 | N/A | 0 |
 
 The [frozen author inspection](reviews/unaided-author.json) predates advice and
-records no independence, blinding or timing. The
-[protocol](README.md#review-protocol) specifies separate blinded sessions and
-paired decisions/time. Those sessions are absent; author expectations and the
-code-audit agent cannot establish reviewer findings, misses, false alarms or
-time savings. Their comparison remains unmeasured.
+records no independence, blinding or timing. The completed comparison uses
+different [unaided](reviews/unaided.json) and [assisted](reviews/assisted.json)
+agent sessions. Both began without inherited conversation and were blinded to
+expected labels and case origins. Author inspection and code review remain
+separate from these measurements.
+
+| Measurement | Unaided agent | Assisted agent | Assisted minus unaided |
+|---|---|---|---|
+| Classification agreement | 20/20 | 20/20 | 0 cases |
+| Confirmed seeded weaknesses | 12/12 | 12/12 | 0 findings |
+| Missed seeded weaknesses | 0/12 | 0/12 | 0 misses |
+| False alarms on adequate or omitted-context inputs | 0/8 | 0/8 | 0 alarms |
+| Missing-context classification | 4/4 | 4/4 | 0 cases |
+| Summed agent elapsed time | 258.306 seconds | 229.249 seconds | −29.057 seconds |
+| Human active-review time | Unmeasured | Unmeasured | Unmeasured |
+
+`pilot.py summarize` derives every finding and classification row from the
+original records. No paired finding or classification changed. Raw
+[unaided timing](receipts/review/blinded/unaided-timing.json) and
+[assisted timing](receipts/review/blinded/assisted-timing.json) retain forty
+separate monotonic-clock intervals. The [provenance](receipts/review/blinded/provenance.json)
+binds neutral input hashes, identical evidence, separate orders, and original
+live-advice hashes. The unaided record froze before assisted advice exposure.
+
+The assisted total was 11.249% shorter in this pair.
+Different reviewers, ordering, tool latency, and small timer-boundary differences
+prevent attributing that difference to Jev. The coordinator corrected one
+label spelling without re-evaluation; original labels remain in assisted metadata.
+This comparison establishes no human time-saving or controlled causal effect.
 
 ## Requests, usage and cost
 
@@ -151,10 +176,22 @@ would bypass local enforcement and is outside this approval.
 ## Verification and limitations
 
 `python3 pilots/jev-assertions/pilot_test.py` ran **25 checks, all passing**
-([output](receipts/runner-tests.txt)), covering admission, frozen evidence,
-accounting, failures, process cleanup and contaminated reviews. Synthetic replies
-exist only in isolated unit tests. Runner bytes and frozen proof inputs remain
-unchanged since the offline commit; no redundant proof run was needed.
+([fresh output](receipts/review/blinded/.qa-evidence/006/stderr)), covering
+admission, frozen evidence, accounting, failures, process cleanup and contaminated
+reviews. The [earlier output](receipts/runner-tests.txt) remains historical.
+Synthetic replies exist only in isolated unit tests.
+
+Adding real reviews exposed a disposable-fixture error: unit copies included
+reviews but excluded their supporting live receipts. The full command failed
+twice; its minimized comparison check also failed. Kishore approved omitting
+the two real records from disposable copies. All original checks then passed.
+The repair changes only `pilot_test.py` setup; review validation and original
+records remain unchanged.
+
+The approved runner digest above identifies the original provider attempts.
+The repaired runner digest is `ad78997d26d7db23e62709d68887b2455e05fdc46394b6ada8b2bb90b4f0a6f2`.
+The historical approval remains unchanged and does not authorize another upload.
+Frozen proof inputs still match their original digest.
 
 `ruff check pilots/jev-assertions/*.py` returned `All checks passed!`.
 Executable proofs used Node v26.9.0, Vitest 5.0.3 and jsdom 30.1.2. Initial Bun
@@ -180,12 +217,42 @@ estimate production defect prevalence or calibrate the confidence threshold.
 The provisional freeze was corrected for named constants and p16 import order
 before advice; the spec records that history. Requirements, labels and
 justifications stayed fixed. `verify_freeze()` still returns the registered
-digest; cases and runner bytes never changed after advice. Missing-context
-errors and absent independent reviews prevent a claim of reviewer improvement.
+digest; frozen cases never changed after advice. The approved fixture repair
+changes only runner test setup. Missing-context errors and unchanged independent
+findings support keeping advice experimental.
+One agent pair does not establish human reviewer improvement.
 
 Quality assurance (QA) uses the repository-required functional review route.
 
 ## Exploratory QA and Verification Results
+
+| Field | Current evidence |
+|---|---|
+| Revision / inputs | Original live receipts; frozen input digest unchanged; two sealed independent agent sessions; approved test-only fixture repair |
+| Scope / authority | Local paired summary and runner checks; pilot-only writes; owner-approved fixture isolation |
+| Runtime / tools | Python 3, `orly` 0.13.0, Bun 1.4.2 evidence recorder |
+| Outcome | Local Section checks pass; repository-wide boundary checks remain pending |
+
+| Check | Expected → observed | Outcome |
+|---|---|---|
+| `pilot.py summarize` | Two complete paired sessions; original 20 attempts and usage → matched | pass |
+| Review-seal and finding-counter checks | Reject changed seal; findings separate from class agreement → matched | pass |
+| `pilot_test.py` | 25 passing checks → 25 pass after approved fixture repair | pass |
+| Minimized comparison command | Absent unit reviews report unmeasured → matched after repair | pass |
+
+[Checkpoint 002](receipts/review/blinded/exploration-002.json) checks the review seal;
+[003](receipts/review/blinded/exploration-003.json) starts the full runner checks.
+[004](receipts/review/blinded/exploration-004.json) replays the initial failure;
+[005](receipts/review/blinded/exploration-005.json) minimizes it.
+[006](receipts/review/blinded/exploration-006.json) validates the approved repair;
+[007](receipts/review/blinded/exploration-007.json) closes the minimized failure.
+[008](receipts/review/blinded/exploration-008.json) recomputes the actual comparison.
+[009](receipts/review/blinded/exploration-009.json) revalidates the exact seal checks.
+Earlier failed captures stay as history; current results never count them as passes.
+The [derived evidence](receipts/review/blinded/evidence.json) reports `pass` with
+no open local checks. Full repository boundary evidence remains pending.
+
+### Earlier retained checks
 
 | Field | Current evidence |
 |---|---|
@@ -210,6 +277,6 @@ effect. Earlier [offline evidence](receipts/review/evidence.json) retains
 [005](receipts/review/exploration-005.json),
 [006](receipts/review/exploration-006.json) and
 [007](receipts/review/exploration-007.json) as history; pre-live pending summaries
-are not current advice evidence. Independent reviews and repository-wide suites
-remain unmeasured/pending. No new tests or operating-rule learnings arose from
-these receipt checks; owned subprocesses exited and private replay state remains local.
+are not current advice evidence. Repository-wide suites remain pending.
+Owned subprocesses exited; original neutral packets remain private temporary
+state. No new tests or operating-rule learnings arose from these receipt checks.

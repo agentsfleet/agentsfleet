@@ -1,0 +1,41 @@
+{
+  "owner_quote": "Yes \u2014 fix fixture isolation and rerun the checks.",
+  "scope": "Only pilot_test.py setUp: omit unaided.json and assisted.json from disposable copies, alongside already omitted live receipts.",
+  "original_test_source_sha256": "0c1c53fdf9379e7aac9446be8fd1b36c1c86440decfe32f5b08d57b9ce8b8903",
+  "repaired_test_source_sha256": "ae597883ec254c294a18cbcc9ed822fe2087c81b50b7f3168e7f6b82ae3f3991",
+  "original_approved_runner_digest": "4d0644fd93a46bac785f5282392310f24634092bd4843a9189acd1b02875f9e8",
+  "repaired_runner_digest": "ad78997d26d7db23e62709d68887b2455e05fdc46394b6ada8b2bb90b4f0a6f2",
+  "original_approval_changed": false,
+  "live_upload_reauthorized": false,
+  "tests_added": 0,
+  "test_count": 25,
+  "verification_capture": "006",
+  "required_test_ledger": [
+    {
+      "changed_unit": "Disposable unit fixture isolation",
+      "tests": [
+        "test_comparison_metrics",
+        "test_unexpected_exit_retains_valid_native_answers"
+      ],
+      "status": "pass",
+      "evidence": ".qa-evidence/006/stderr"
+    },
+    {
+      "changed_unit": "Actual paired review records and summary",
+      "tests": [
+        "test_measurement_completion (manual)"
+      ],
+      "status": "pass",
+      "evidence": "Original clock events, input inventories, sealed review records, and .qa-evidence/008/observation.json"
+    },
+    {
+      "changed_unit": "Review-seal and finding-counter preservation",
+      "tests": [
+        "test_review_contamination_seal",
+        "test_review_findings_are_separate_from_classifications"
+      ],
+      "status": "pass",
+      "evidence": ".qa-evidence/009/stderr"
+    }
+  ]
+}

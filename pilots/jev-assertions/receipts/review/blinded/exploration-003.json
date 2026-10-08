@@ -1,0 +1,16 @@
+{
+  "observationCapture": "002",
+  "observationArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot_test.py",
+    "PilotTests.test_review_contamination_seal",
+    "PilotTests.test_review_findings_are_separate_from_classifications"
+  ],
+  "observed": "",
+  "hypothesis": "The seal and finding counters pass their targeted refusal checks. Run the existing 25 pilot runner checks to verify adjacent frozen inputs, admission, accounting, and failures remain valid with real review records added.",
+  "nextCapture": "003",
+  "nextArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot_test.py"
+  ]
+}

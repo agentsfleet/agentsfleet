@@ -1,0 +1,16 @@
+{
+  "observationCapture": "007",
+  "observationArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot_test.py",
+    "PilotTests.test_comparison_metrics"
+  ],
+  "observed": "",
+  "hypothesis": "The minimized failure is repaired. Recompute the real comparison after the test-only setup change; paired decisions, original usage, and the twenty-request total must remain unchanged.",
+  "nextCapture": "008",
+  "nextArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot.py",
+    "summarize"
+  ]
+}

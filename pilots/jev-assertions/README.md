@@ -59,6 +59,18 @@ evidence, including identical deliberate omissions. Require all five classes,
 a finding decision, evidence references, and measured active review seconds.
 Count missing context separately from an inadequate assertion.
 
+The completed comparison used two fresh in-host Codex agents with no inherited
+conversation. Both received identical selected evidence in separate shuffled
+orders; the assisted agent also received the original retained Jev advice.
+Their [unaided](reviews/unaided.json) and [assisted](reviews/assisted.json)
+records retain initial judgments, evidence references, and separately measured
+case times. [Provenance](receipts/review/blinded/provenance.json) records the
+dispatch, input hashes, timing limits, and a label-spelling correction.
+
+These are agent elapsed times, including reasoning and tool latency.
+Human active-review time remains unmeasured. One reviewer per condition and
+different orders prevent attributing an observed time difference to Jev.
+
 1. Give the unaided reviewer a shuffled order of all twenty items without
    Jev advice. Freeze `reviews/unaided.json` before obtaining or revealing
    advice. Give the assisted reviewer a separately shuffled order, the same
@@ -81,6 +93,11 @@ Count missing context separately from an inadequate assertion.
 If these sessions are unavailable, leave their files absent and report the
 comparison **unmeasured**. Model-label agreement and author inspection remain
 separate observations. They cannot substitute for a paired review.
+
+Disposable unit fixtures omit the two real review records and their receipts.
+Unit checks create their own review inputs; the original measured records
+remain unchanged. The original upload approval keeps its historical runner
+digest after the separately approved test-fixture repair.
 
 ## One approval, bounded live execution
 
