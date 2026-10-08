@@ -15,7 +15,9 @@ use netlink_packet_netfilter::nftables::{
 use netlink_packet_netfilter::{NetfilterMessage, NetfilterMessageInner};
 
 use super::expressions::{ACCEPT, DROP};
-use super::{FORWARD, INPUT, POSTROUTING, install, names, remove, u8_of, u16_of, uninstall};
+use super::{
+    FORWARD, INPUT, POSTROUTING, install, names, remove, u8_of, u16_of, u32_of, uninstall,
+};
 use crate::egress::slot::Slot;
 use crate::egress::testing::{DELTABLE, Fake, Protocol, round_trip};
 
@@ -328,12 +330,17 @@ fn test_only_prefixed_tables_are_listed() {
 }
 
 /// A kernel number `libc` spells as an `int` keeps its value in the width a
-/// netlink field holds it in, and one past that width is refused.
+/// netlink field holds it in, and one past that width, or a negative one in an
+/// unsigned field, is refused.
 #[test]
 fn test_a_kernel_number_narrows_unchanged_or_not_at_all() {
     let getchain = libc::NFNL_SUBSYS_NFTABLES << 8 | libc::NFT_MSG_GETCHAIN;
 
     assert_eq!(u16_of(getchain), 0x0a04); // pin test: literal is the contract
     assert_eq!(u8_of(libc::IPPROTO_UDP), 17); // pin test: literal is the contract
+    assert_eq!(u32_of(libc::NF_ACCEPT), 1); // pin test: literal is the contract
     let _refused = std::panic::catch_unwind(|| u8_of(getchain)).unwrap_err();
+    for negative in [libc::NFT_RETURN, libc::NFT_JUMP] {
+        let _refused = std::panic::catch_unwind(|| u32_of(negative)).unwrap_err();
+    }
 }

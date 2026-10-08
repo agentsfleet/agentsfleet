@@ -312,6 +312,17 @@ pub(super) const fn u16_of(number: c_int) -> u16 {
     u16::from_le_bytes([low, high])
 }
 
+/// [`u8_of`], for a four-byte field: every `int` fits, so only a negative one,
+/// a verdict such as `NFT_RETURN` among them, is refused rather than read as
+/// its magnitude.
+///
+/// # Panics
+/// When `number` is negative, which fails the build as [`u8_of`] does.
+pub(super) const fn u32_of(number: c_int) -> u32 {
+    assert!(number >= 0, "a negative kernel number in an unsigned field");
+    number.unsigned_abs()
+}
+
 #[cfg(test)]
 #[path = "rules_tests.rs"]
 mod tests;
