@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use super::kernel::{Host, Kernel as _};
 use super::slot::Slot;
-use super::{FORWARDING, IP_FORWARD, OWN_NAMESPACE, link, probe, rules};
+use super::{FORWARDING, IP_FORWARD, OWN_NAMESPACE, forwards, link, probe, rules};
 use crate::error::{Error, Result, Step, netlink};
 use crate::network::Allowlist;
 
@@ -45,6 +45,13 @@ const FAR_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// The table the probe trial leaves a dropping forward chain in; not an egress
 /// table's name, so no sweep removes it.
 const PROBE_TRIAL_TABLE: &str = "afprobetrial";
+
+/// Whether this host forwards IPv4, as the probe reads it: an allowlisted
+/// sandbox's traffic is forwarded from its link, so the egress trials need it.
+#[must_use]
+pub fn forwarding_on() -> bool {
+    forwards(Path::new(IP_FORWARD)).unwrap_or(false)
+}
 
 /// Every egress table and link in the host's namespace, by name.
 ///

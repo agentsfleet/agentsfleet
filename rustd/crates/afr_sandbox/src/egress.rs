@@ -81,9 +81,14 @@ pub(crate) fn enforceable() -> bool {
     }
 }
 
+/// Whether the file at `path` reads as forwarding IPv4.
+fn forwards(path: &Path) -> std::io::Result<bool> {
+    Ok(fs::read_to_string(path)?.trim() == FORWARDING)
+}
+
 /// [`enforceable`] against `kernel`, reading forwarding from `forwarding`.
 fn probe(kernel: &impl Kernel, forwarding: &Path) -> Result<()> {
-    if fs::read_to_string(forwarding)?.trim() != FORWARDING {
+    if !forwards(forwarding)? {
         return Err(egress_refused(EgressRefusal::ForwardingOff));
     }
     let dropping = kernel.over_netfilter(Step::ListChains, rules::dropping_forward)?;

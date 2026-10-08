@@ -7,6 +7,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use afd_core::env::ProcessEnv;
+use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
     BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, KernelMounter, Manifest, ProbePaths,
     REQUIRED_CONTROLLERS, SUBTREE_CONTROL, Toolboxes, probe,
@@ -25,9 +26,9 @@ pub(crate) const SANDBOX_IDS: (u32, u32) = afr_sandbox::SANDBOX_HOST_IDS;
 const MAX_USER_NAMESPACES: &str = "/proc/sys/user/max_user_namespaces";
 /// Ubuntu's `AppArmor` switch that forbids unprivileged user namespaces.
 const APPARMOR_USERNS: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
-/// Whether the host forwards IPv4: an allowlisted sandbox's traffic is
-/// forwarded from its link, so the egress trials need it on.
-const IP_FORWARD: &str = "/proc/sys/net/ipv4/ip_forward";
+/// What a host that does not forward IPv4 lacks: an allowlisted sandbox's
+/// traffic is forwarded from its link, so the egress trials need it on.
+const FORWARDING_OFF: &str = "forwarding: net.ipv4.ip_forward is not 1";
 /// Where each run's leases and toolbox mount live; short, for socket paths.
 pub(crate) const STATE_PREFIX: &str = "afr-lane-";
 /// Where, under the lane's state, each lease's directory is made; apart from
@@ -118,8 +119,8 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     if fs::read_to_string(APPARMOR_USERNS).is_ok_and(|on| on.trim() == "1") {
         gaps.push(format!("user namespaces: {APPARMOR_USERNS} is 1"));
     }
-    if fs::read_to_string(IP_FORWARD).map_or(true, |on| on.trim() != "1") {
-        gaps.push(format!("forwarding: {IP_FORWARD} is not 1"));
+    if !forwarding_on() {
+        gaps.push(FORWARDING_OFF.to_owned());
     }
     if toolbox.is_none() {
         gaps.push(format!("{TOOLBOX_VARIABLE}: names no toolbox image"));

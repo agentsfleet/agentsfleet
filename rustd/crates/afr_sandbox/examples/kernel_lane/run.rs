@@ -71,28 +71,25 @@ pub(crate) fn in_sandbox(
     limits: Limits,
     script: &str,
 ) -> Result<Outcome, Failed> {
-    in_sandbox_each(lane, lease_id, limits, &[script])?
+    in_sandbox_each(lane, SandboxRequest::new(lease_id, limits), &[script])?
         .pop()
         .ok_or_else(|| Failed::from("one script runs once"))
 }
 
-/// Runs each of `scripts` in turn in one fresh sandbox with `limits`, then
-/// destroys it: what the executor does after a command exhausted something
-/// is only seen on the same sandbox.
+/// Runs each of `scripts` in turn in one fresh sandbox built as `request`
+/// asks, then destroys it: what the executor does after a command exhausted
+/// something is only seen on the same sandbox.
 pub(crate) fn in_sandbox_each(
     lane: &Lane,
-    lease_id: &str,
-    limits: Limits,
-    scripts: &[&str],
+    request: SandboxRequest<'_>,
+    scripts: &[impl AsRef<str>],
 ) -> Result<Vec<Outcome>, Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
-        let sandbox = engine
-            .prepare(SandboxRequest::new(lease_id, limits))
-            .await?;
+        let sandbox = engine.prepare(request).await?;
         let mut outcomes = Vec::with_capacity(scripts.len());
         for script in scripts {
-            match run(sandbox.executor(), shell(script)).await {
+            match run(sandbox.executor(), shell(script.as_ref())).await {
                 Ok(outcome) => outcomes.push(outcome),
                 Err(failed) => {
                     sandbox.destroy().await?;
@@ -103,6 +100,14 @@ pub(crate) fn in_sandbox_each(
         sandbox.destroy().await?;
         Ok(outcomes)
     })
+}
+
+/// What each outcome printed, trimmed.
+pub(crate) fn said(outcomes: Vec<Outcome>) -> Vec<String> {
+    outcomes
+        .into_iter()
+        .map(|outcome| outcome.output.trim().to_owned())
+        .collect()
 }
 
 pub(crate) fn expect(holds: bool, why: impl Into<String>) -> Result<(), Failed> {
