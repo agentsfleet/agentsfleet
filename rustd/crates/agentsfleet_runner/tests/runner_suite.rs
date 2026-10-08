@@ -2,6 +2,8 @@
 
 #[path = "entries.rs"]
 mod entries;
+#[path = "support.rs"]
+mod support;
 // `run --unsandboxed` exists in a debug build alone.
 #[cfg(debug_assertions)]
 #[path = "fake_daemon.rs"]
