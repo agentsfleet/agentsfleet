@@ -19,6 +19,16 @@ readonly DEPLOY="$RUNNER_TEST_DIR/deploy.sh"
 readonly VERIFY="$RUNNER_TEST_DIR/verify.sh"
 readonly DEPLOY_SCRIPT="$RUNNER_TEST_DIR/../../../deploy/baremetal/deploy.sh"
 readonly REPO_ROOT="$RUNNER_TEST_DIR/../../.."
+# The cgroup controllers the runner lanes require, as common.sh declares them,
+# read in a subshell so the library's `set -e` stays out of this harness. The
+# stub's cgroup report and the cases hand back exactly these.
+# shellcheck source=./common.sh
+required_controllers="$(source "$RUNNER_TEST_DIR/common.sh" && printf '%s' "$REQUIRED_CGROUP_CONTROLLERS")"
+readonly required_controllers
+if [ -z "$required_controllers" ]; then
+  printf 'FATAL: REQUIRED_CGROUP_CONTROLLERS read empty from %s\n' "$RUNNER_TEST_DIR/common.sh" >&2
+  exit 2
+fi
 passed=0
 failed=0
 work_dir="$(mktemp -d)"
@@ -82,12 +92,12 @@ case "$command" in
     ;;
   *"cgroup.subtree_control"*)
     printf '%s\n' \
-      'root_controllers=cpu io memory pids' \
-      'root_subtree=cpu io memory pids' \
-      'slice_controllers=cpu io memory pids' \
-      'slice_subtree=cpu io memory pids' \
-      'service_controllers=cpu io memory pids' \
-      "service_subtree=${STUB_CGROUP_CONTROLLERS:-cpu io memory pids}"
+      "root_controllers=$STUB_REQUIRED_CONTROLLERS" \
+      "root_subtree=$STUB_REQUIRED_CONTROLLERS" \
+      "slice_controllers=$STUB_REQUIRED_CONTROLLERS" \
+      "slice_subtree=$STUB_REQUIRED_CONTROLLERS" \
+      "service_controllers=$STUB_REQUIRED_CONTROLLERS" \
+      "service_subtree=${STUB_CGROUP_CONTROLLERS:-$STUB_REQUIRED_CONTROLLERS}"
     ;;
   "cat '/proc/sys/net/ipv4/ip_forward'")
     printf '%s\n' "${STUB_IP_FORWARD:-1}"
@@ -148,6 +158,7 @@ run_script() {
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
     READYZ_COUNTER="$readyz_counter" \
+    STUB_REQUIRED_CONTROLLERS="$required_controllers" \
     RUNNER_BINARY="$runner_binary" \
     RUNNER_VERSION=test-build \
     ALLOW_VAULT_READS=1 \
