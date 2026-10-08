@@ -23,6 +23,7 @@ use crate::toolbox::Toolbox;
 use crate::workspace_disk::{Caching, WorkspaceDisk};
 
 mod config;
+mod held;
 mod names;
 mod parts;
 mod stderr;

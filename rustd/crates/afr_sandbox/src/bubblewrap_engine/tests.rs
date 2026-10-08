@@ -8,6 +8,7 @@
 //! which is how these tests prove a disk that will not unmount keeps its image.
 
 mod freeze;
+mod held;
 mod prepare;
 mod release;
 mod support;
