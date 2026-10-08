@@ -20,6 +20,13 @@ Type=simple
 ExecStart=/usr/local/bin/agentsfleet-runner run
 Restart=always
 RestartSec=5
+# 77 (EX_NOPERM, `EXIT_TOKEN_REFUSED` in agentsfleet_runner's host.rs) is the
+# runner stopping because the control plane refused its token: the runner is
+# cordoned, drained, revoked or deleted, and no restart changes that answer.
+# Each restart would boot, admit the toolbox and dial again only to be
+# refused. After an uncordon, start it again with
+# `sudo systemctl restart agentsfleet-runner`.
+RestartPreventExitStatus=77
 # A stopped runner's in-flight lease is reclaimed by the control plane
 # (lease_expires_at + fencing_token), so a bounded stop never loses or
 # double-runs work; the timeout just lets an in-flight child finish.
@@ -43,8 +50,9 @@ KillMode=mixed
 #   (optional) RUNNER_STORAGE_HOME — host-local root for lease sandboxes, the
 #                          report spool, the bundle cache and the toolbox (a disk
 #                          fact the control plane cannot know); defaults to
-#                          /var/lib/agentsfleet-runner when unset. A different
-#                          root must be added to ReadWritePaths below, which
+#                          /var/lib/agentsfleet-runner when unset, which
+#                          StateDirectory= below creates. A different root must
+#                          exist and be added to ReadWritePaths below, which
 #                          ProtectSystem=strict leaves read-only otherwise.
 #   (optional) OTEL_EXPORTER_OTLP_ENDPOINT — the runner collector the runner
 #                          exports its spans and metrics to; unset exports nothing
@@ -86,7 +94,13 @@ MemoryAccounting=yes
 TasksAccounting=yes
 # The storage home holds every lease's sandbox, the report spool, the bundle
 # cache and the mounted toolbox, so it must be writable under ProtectSystem=strict.
-ReadWritePaths=/run/agentsfleet /sys/fs/cgroup/system.slice/agentsfleet-runner.service /tmp /var/lib/agentsfleet-runner
+# StateDirectory= creates /var/lib/agentsfleet-runner (root, 0755) when it is
+# missing, on a fresh host or after an operator wipes it, and makes it
+# writable. A plain ReadWritePaths entry instead fails the unit with
+# 226/NAMESPACE before the runner starts, so `StorageHome::open`
+# (`afr_supervisor`), which makes the directories beneath it, never runs.
+StateDirectory=agentsfleet-runner
+ReadWritePaths=/run/agentsfleet /sys/fs/cgroup/system.slice/agentsfleet-runner.service /tmp
 ProtectHome=yes
 
 [Install]

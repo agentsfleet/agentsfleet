@@ -98,10 +98,14 @@ copy_deploy_files() {
     "$REPO_ROOT/deploy/baremetal/deploy.sh" \
     /opt/agentsfleet/deploy/deploy.sh \
     755
-  # deploy.sh sources it from its own directory.
+  # deploy.sh sources these two from its own directory.
   runner_copy \
     "$REPO_ROOT/deploy/baremetal/toolbox.sh" \
     /opt/agentsfleet/deploy/toolbox.sh \
+    644
+  runner_copy \
+    "$REPO_ROOT/deploy/baremetal/service.sh" \
+    /opt/agentsfleet/deploy/service.sh \
     644
   runner_copy \
     "$REPO_ROOT/deploy/baremetal/agentsfleet-runner.service" \
@@ -134,6 +138,7 @@ main() {
   echo "Deploying $RUNNER_ITEM in ${ENV} via Tailscale SSH"
   runner_verify_host_cgroup_capability
   verify_host_prepared
+  runner_enable_ipv4_forwarding
   copy_deploy_files
   write_runner_environment
   deploy_runner

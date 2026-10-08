@@ -7,7 +7,15 @@ RUNNER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$RUNNER_LIB_DIR/../common.sh"
 
 readonly CGROUP_ROOT="/sys/fs/cgroup"
-readonly REQUIRED_CGROUP_CONTROLLERS="cpu memory pids"
+# The runner's host probe refuses to start without each of these
+# (`REQUIRED_CONTROLLERS` in rustd/crates/afr_sandbox/src/probe.rs);
+# runner_host_test.sh holds the two lists equal.
+readonly REQUIRED_CGROUP_CONTROLLERS="cpu io memory pids"
+# An allowlisted sandbox reaches its registries through this host: its packets
+# are forwarded from its own link out of the host's. The runner's boot probe
+# reads the setting and reports egress unenforced without it.
+readonly IPV4_FORWARD_PROC="/proc/sys/net/ipv4/ip_forward"
+readonly IPV4_FORWARD_SYSCTL_FILE="/etc/sysctl.d/60-agentsfleet-runner.conf"
 
 runner_read_required() {
   local ref="$1"
@@ -129,6 +137,18 @@ runner_verify_host_cgroup_capability() {
     echo "ERROR: cgroup v2 controller check failed for $RUNNER_TARGET" >&2
     return 1
   }
+}
+
+# Turns IPv4 forwarding on where it survives a reboot, and reads it back.
+# Preparation and every deploy run it, so a host prepared before forwarding was
+# part of preparation gains it at its next deploy.
+runner_enable_ipv4_forwarding() {
+  runner_remote "
+    set -e
+    echo 'net.ipv4.ip_forward = 1' | sudo tee '$IPV4_FORWARD_SYSCTL_FILE' >/dev/null
+    sudo sysctl -q -p '$IPV4_FORWARD_SYSCTL_FILE'
+    test \"\$(cat '$IPV4_FORWARD_PROC')\" = 1
+  "
 }
 
 runner_copy() {

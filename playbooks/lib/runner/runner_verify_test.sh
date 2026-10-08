@@ -31,6 +31,40 @@ test_should_fail_when_cpu_controller_is_not_delegated() {
     ok "$name"
   fi
 }
+# The runner's host probe requires io as well, and refuses to start without it.
+test_should_fail_when_io_controller_is_not_delegated() {
+  local name="test_should_fail_when_io_controller_is_not_delegated"
+  local output status=0
+  output="$(
+    run_script \
+      ENV=dev \
+      STUB_CGROUP_CONTROLLERS='cpu memory pids' \
+      bash "$VERIFY"
+  )" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "missing io delegation passed"
+  elif [[ "$output" != *"cgroup controller is not delegated: io"* ]]; then
+    bad "$name" "$output"
+  else
+    ok "$name"
+  fi
+}
+# A host with forwarding off runs a healthy-looking service that leases no
+# allowlisted-egress work, so verification names it.
+test_should_fail_when_ipv4_forwarding_is_off() {
+  local name="test_should_fail_when_ipv4_forwarding_is_off"
+  local output status=0
+  output="$(run_script ENV=dev STUB_IP_FORWARD=0 bash "$VERIFY")" || status=$?
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "a host with net.ipv4.ip_forward=0 passed verification"
+  elif [[ "$output" != *"/proc/sys/net/ipv4/ip_forward reads '0'"* ]]; then
+    bad "$name" "$output"
+  elif ! grep -qF "cat '/proc/sys/net/ipv4/ip_forward'" "$calls"; then
+    bad "$name" "verification never read the host's forwarding setting"
+  else
+    ok "$name"
+  fi
+}
 test_should_fail_verification_when_service_check_fails() {
   local name="test_should_fail_verification_when_service_check_fails"
   local output status=0
@@ -125,6 +159,8 @@ test_should_fail_and_name_the_status_when_the_control_plane_stays_down() {
   fi
 }
 test_should_fail_when_cpu_controller_is_not_delegated
+test_should_fail_when_io_controller_is_not_delegated
+test_should_fail_when_ipv4_forwarding_is_off
 test_should_fail_verification_when_service_check_fails
 test_should_fail_verification_when_service_is_not_enabled
 test_should_fail_verification_when_runner_token_is_rejected

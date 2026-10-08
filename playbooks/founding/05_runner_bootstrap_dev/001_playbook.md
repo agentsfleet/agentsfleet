@@ -48,9 +48,10 @@ ALLOW_RUNNER_HOST_PREPARE=1 \
 ```
 
 Before changing the host, preparation checks that cgroup v2 exposes Central
-Processing Unit (CPU), memory, and process controllers. The deployment workflow
-then verifies that systemd delegated those controllers to the started runner
-service. Preparation installs host dependencies and creates deployment
+Processing Unit (CPU), block input/output (I/O), memory, and process
+controllers, the four the runner refuses to start without. The deployment
+workflow then verifies that systemd delegated those controllers to the started
+runner service. Preparation installs host dependencies and creates deployment
 directories; it does not copy a runner binary, write a token, or start a
 service.
 
@@ -138,6 +139,8 @@ gh run watch "$DEV_VERIFY_RUN_ID" \
 The Pipeline downloads its own checked artifact and invokes the canonical runner
 deployment and verification scripts. It installs the tracked systemd unit,
 writes the environment file without exposing the token, starts the service, and
-fails closed unless `cpu`, `memory`, and `pids` are delegated.
+fails closed unless `cpu`, `io`, `memory`, and `pids` are delegated and
+IPv4 forwarding is on; every deploy turns forwarding on, so a host prepared
+without it gains it there.
 
 Continue to `playbooks/founding/06_verify_dev/001_playbook.md`.

@@ -42,6 +42,11 @@ pub(crate) fn image_name(digest: &str) -> String {
     format!("{TOOLBOX_PREFIX}{digest}{TOOLBOX_SUFFIX}")
 }
 
+/// Whether `name` is a published image's name, of any digest.
+pub(crate) fn is_image_name(name: &str) -> bool {
+    name.starts_with(TOOLBOX_PREFIX) && name.ends_with(TOOLBOX_SUFFIX)
+}
+
 /// An admitted toolbox, mounted read-only on the host. A sandbox holds the one
 /// it runs on by keeping a clone of its `Arc` until it is destroyed.
 #[derive(Debug, PartialEq, Eq)]

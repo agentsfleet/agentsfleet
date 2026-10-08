@@ -69,6 +69,19 @@ verify_cgroup_controllers() {
   done
 }
 
+# Without IPv4 forwarding the runner's egress probe fails, and the daemon marks
+# every runner assigned an allowlisted egress policy degraded and leases it
+# nothing, while the service itself reads healthy.
+verify_ipv4_forwarding() {
+  local forwarding
+  forwarding="$(runner_remote "cat '$IPV4_FORWARD_PROC'" || true)"
+  if [ "$forwarding" != 1 ]; then
+    echo "ERROR: $IPV4_FORWARD_PROC reads '${forwarding:-unreadable}', so the runner cannot enforce allowlisted egress; the runner deploy turns it on in $IPV4_FORWARD_SYSCTL_FILE, which a later sysctl.d file can override" >&2
+    return 1
+  fi
+  echo "  ✓ IPv4 forwarding: on"
+}
+
 # The runner reaches the control plane through Cloudflare, so this probe reads
 # the edge as well as the box. A cloudflared connector re-registers for a few
 # seconds after every API deploy, and Cloudflare answers 530 (error 1033 — no
@@ -113,6 +126,7 @@ main() {
 
   runner_remote "test \"\$(tailscale status --json | jq -r .Self.Online)\" = true"
   egress_probe_remote runner_remote
+  verify_ipv4_forwarding
   verify_files_and_service
   verify_cgroup_controllers
   verify_control_plane
