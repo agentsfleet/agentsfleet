@@ -7,11 +7,19 @@ use std::fs;
 use std::os::fd::AsFd as _;
 
 use afd_core::test_util::trace::Capture;
+use netlink_packet_netfilter::NetfilterProtoFamily;
 
 use super::kernel::{Host, Kernel as _};
 use super::slot::{Claim, Slot, claims_held};
-use super::testing::{DELLINK, DELTABLE, Fake, NEWTABLE, Protocol};
+use super::testing::{DELLINK, DELTABLE, Fake, GETCHAIN, NEWTABLE, Protocol};
 use super::{enforceable, namespace_of, probe, sweep};
+
+/// A file reading as forwarding on, in `dir`.
+fn forwarding_on(dir: &tempfile::TempDir) -> std::path::PathBuf {
+    let on = dir.path().join("on");
+    fs::write(&on, "1\n").unwrap();
+    on
+}
 
 /// The probe asks forwarding first: a host that forwards nothing could build
 /// a scope and still carry no packet through it.
@@ -34,8 +42,7 @@ fn test_the_probe_needs_forwarding() {
 fn test_the_probe_builds_and_removes_a_scope_of_its_own() {
     let _claims = claims_held();
     let dir = tempfile::tempdir().unwrap();
-    let on = dir.path().join("on");
-    fs::write(&on, "1\n").unwrap();
+    let on = forwarding_on(&dir);
     let kernel = Fake::default();
     let failing = Fake::default().refusing(Protocol::Netfilter, NEWTABLE, libc::EOPNOTSUPP);
 
@@ -52,6 +59,43 @@ fn test_the_probe_builds_and_removes_a_scope_of_its_own() {
     assert!(
         refused.to_string().contains("the egress table"),
         "{refused}"
+    );
+}
+
+/// A host whose own forward chain drops by policy would pass no allowlisted
+/// connection, whatever the sandbox's table admits: the probe refuses, names
+/// each such chain, and builds nothing. A host whose chains cannot be listed
+/// is refused too, naming the step.
+#[test]
+fn test_the_probe_refuses_a_host_whose_forward_chain_drops() {
+    let _claims = claims_held();
+    let dir = tempfile::tempdir().unwrap();
+    let on = forwarding_on(&dir);
+    let dropping = Fake::default()
+        .dropping_forward(NetfilterProtoFamily::IPv4, "filter", "FORWARD")
+        .dropping_forward(NetfilterProtoFamily::Inet, "ufw", "forward");
+    let unlisted = Fake::default().refusing(Protocol::Netfilter, GETCHAIN, libc::EPERM);
+
+    let refused = probe(&dropping, &on).unwrap_err();
+    let blind = probe(&unlisted, &on).unwrap_err();
+
+    let reason = refused.to_string();
+    assert!(
+        reason.contains("drops by policy")
+            && reason.contains("ip filter FORWARD")
+            && reason.contains("inet ufw forward"),
+        "{reason}"
+    );
+    assert_eq!(dropping.entered(), 0, "no scope is built");
+    assert!(
+        !dropping.seen_on(Protocol::Netfilter).contains(&NEWTABLE),
+        "the host's chains are only read"
+    );
+    assert!(
+        blind
+            .to_string()
+            .contains("listing the host's forward chains"),
+        "{blind}"
     );
 }
 

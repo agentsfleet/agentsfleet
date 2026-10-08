@@ -31,12 +31,14 @@ use crate::network::Allowlist;
 pub mod far;
 mod kernel;
 mod link;
+mod lock;
 mod netlink;
 mod rules;
 mod scope;
 mod slot;
 
 pub(crate) use self::kernel::Host;
+pub(crate) use self::lock::own_host;
 pub(crate) use self::scope::Scope;
 
 /// Whether the host forwards IPv4 between its links: an allowlisted sandbox's
@@ -48,8 +50,11 @@ const FORWARDING: &str = "1";
 const OWN_NAMESPACE: &str = "/proc/self/ns/net";
 /// The probe's refusals.
 const FORWARDING_OFF: &str = "the host does not forward IPv4 (net.ipv4.ip_forward is not 1)";
+const FORWARD_DROPPED: &str =
+    "a forward chain on the host drops by policy, so no allowlisted connection would pass";
 const NO_NAMESPACE: &str = "no process in the sandbox runs in a network namespace of its own";
-/// What a sweep step is named in a refusal.
+/// What a probe or sweep step is named in a refusal.
+const LIST_CHAINS: &str = "listing the host's forward chains";
 const LIST_TABLES: &str = "listing egress tables";
 const LIST_LINKS: &str = "listing egress links";
 /// The events the probe and the sweep are logged under.
@@ -57,11 +62,13 @@ const EVENT_PROBE_FAILED: &str = "egress_probe_failed";
 const EVENT_SWEPT: &str = "egress_swept";
 const EVENT_SWEEP_FAILED: &str = "egress_sweep_failed";
 
-/// Whether this host can hold a sandbox to an allowlist: it forwards IPv4, and
-/// a whole scope builds and comes down again.
+/// Whether this host can hold a sandbox to an allowlist: it forwards IPv4, no
+/// forward chain of its own drops by policy, and a whole scope builds and
+/// comes down again.
 ///
 /// The scope is built in a namespace made for the probe, never the host's, so
 /// a probe run beside a live runner neither meets its scopes nor removes them.
+/// The host's chains are only read.
 pub(crate) fn enforceable() -> bool {
     match probe(&Host, Path::new(IP_FORWARD)) {
         Ok(()) => true,
@@ -84,6 +91,16 @@ pub(crate) fn enforceable() -> bool {
 fn probe(kernel: &impl Kernel, forwarding: &Path) -> Result<()> {
     if fs::read_to_string(forwarding)?.trim() != FORWARDING {
         return Err(egress_refused(FORWARDING_OFF));
+    }
+    let dropping = kernel
+        .netfilter()
+        .and_then(|mut netfilter| rules::dropping_forward(&mut netfilter))
+        .map_err(netlink(LIST_CHAINS))?;
+    if !dropping.is_empty() {
+        return Err(egress_refused(format!(
+            "{FORWARD_DROPPED}: {}",
+            dropping.join(", ")
+        )));
     }
     let host = kernel.fresh_namespace()?;
     let sandbox = kernel.fresh_namespace()?;

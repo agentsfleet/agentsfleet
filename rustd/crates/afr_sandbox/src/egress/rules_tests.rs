@@ -9,8 +9,8 @@ use std::net::Ipv4Addr;
 use netlink_packet_core::{NLM_F_ACK, NetlinkMessage, NetlinkPayload};
 use netlink_packet_netfilter::nftables::{
     Bitwise, ChainAttribute, Cmp, DataAttribute, ExpressionAttribute, Expressions, Immediate,
-    ListAttribute, Meta, MetaKey, NfTablesMessage, RuleAttribute, SetElementList, Verdict,
-    VerdictAttribute,
+    ListAttribute, Meta, MetaKey, NfTablesMessage, RuleAttribute, SetElementList, TableAttribute,
+    TableFlags, Verdict, VerdictAttribute,
 };
 use netlink_packet_netfilter::{NetfilterMessage, NetfilterMessageInner};
 
@@ -173,6 +173,19 @@ fn test_the_table_is_built_in_one_batch() {
 
 /// An empty allowlist builds the table and set with nothing in the set: the
 /// sandbox reaches nothing, and the kernel is never sent an empty element list.
+/// The table asks to be owned by the socket that builds it, so no other
+/// process may delete or flush it and it goes when that socket closes.
+#[test]
+fn test_the_table_is_owned_by_its_builder() {
+    let inners = read_back(install(Slot::new(4).unwrap(), &[]));
+
+    let owned = tables(&inners).iter().any(|message| {
+        matches!(message, NfTablesMessage::NewTable(table)
+            if table.attributes.contains(&TableAttribute::Flags(TableFlags::Owner)))
+    });
+    assert!(owned, "the new table carries NFT_TABLE_F_OWNER");
+}
+
 #[test]
 fn test_an_empty_allowlist_fills_nothing() {
     let messages = read_back(install(Slot::new(5).unwrap(), &[]));

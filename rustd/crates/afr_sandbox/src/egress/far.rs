@@ -6,14 +6,17 @@
 //! Every object is made with this module's own netlink, so the lane runs no
 //! `nft` or `ip` program either.
 
-use std::io::{self, Write as _};
-use std::net::{Ipv4Addr, TcpListener};
+use std::fs;
+use std::io::{self, Read as _, Write as _};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::os::fd::{AsFd as _, OwnedFd};
+use std::path::Path;
+use std::time::Duration;
 
 use super::kernel::{Host, Kernel as _};
 use super::slot::{LINK_PREFIX, Slot, TABLE_PREFIX};
-use super::{link, rules};
-use crate::error::{Result, egress_refused, netlink};
+use super::{FORWARDING, IP_FORWARD, link, probe, rules};
+use crate::error::{Error, Result, egress_refused, netlink};
 use crate::network::Allowlist;
 
 /// The far host's link: its host end, and the end in its own namespace.
@@ -21,7 +24,7 @@ const FAR_LINK: &str = "afx0";
 const FAR_PEER: &str = "afy0";
 /// The far network: the host end, an address the far host answers on, and a
 /// second one it answers on too, which an allowlist leaves out.
-const FAR_HOST_SIDE: Ipv4Addr = Ipv4Addr::new(10, 70, 0, 1);
+pub const FAR_HOST_SIDE: Ipv4Addr = Ipv4Addr::new(10, 70, 0, 1);
 /// See [`FAR_HOST_SIDE`].
 pub const FAR_LISTED: Ipv4Addr = Ipv4Addr::new(10, 70, 0, 2);
 /// See [`FAR_HOST_SIDE`].
@@ -37,6 +40,11 @@ pub const DNS_PORT: u16 = 53;
 pub const FAR_GREETING: &str = "far";
 /// Why the far host could not be built.
 const FAR_FAILED: &str = "the far host's link";
+/// How long a connection from the far host waits before it counts as dropped.
+const FAR_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// The table the probe trial leaves a dropping forward chain in; not an egress
+/// table's name, so no sweep removes it.
+const PROBE_TRIAL_TABLE: &str = "afprobetrial";
 
 /// Every egress table and link in the host's namespace, by name.
 ///
@@ -55,21 +63,57 @@ pub fn objects() -> Result<Vec<String>> {
 /// No such slot, or the kernel refused.
 pub fn leave(index: u8) -> Result<()> {
     let slot = Slot::new(index).ok_or_else(|| egress_refused("no such slot"))?;
-    rules::apply(&mut Host.netfilter()?, slot, &[])?;
+    // Unowned, as a runner built before tables were owned leaves it: an owned
+    // table goes with the socket that made it.
+    Host.netfilter()?
+        .acknowledged(rules::install_unowned(slot, &[]))?;
     // Both ends in the host's namespace, so the pair outlives every process.
     let own = std::fs::File::open("/proc/self/ns/net")?;
     link::join(&mut Host.route()?, slot, own.as_fd())?;
     Ok(())
 }
 
+/// Deletes the table named `table` from a socket that does not own it, the
+/// two ways a host tool would: by name, then as `nft flush ruleset` narrowed
+/// to that name, and returns the kernel's answer to each.
+///
+/// # Errors
+/// No netfilter socket opened.
+pub fn delete_from_elsewhere(table: &str) -> Result<[io::Result<()>; 2]> {
+    let mut netfilter = Host.netfilter()?;
+    let by_name = rules::remove(&mut netfilter, table);
+    let flushed = netfilter.acknowledged(rules::flush_named(table));
+    Ok([by_name, flushed])
+}
+
+/// Runs the probe in a network namespace of its own that forwards IPv4, first
+/// beside a forward chain that drops by policy and then with that chain gone,
+/// and answers whether each run reported enforcement.
+///
+/// # Errors
+/// The namespace, its forwarding or the dropping chain could not be made.
+pub fn probe_beside_a_dropping_forward_chain() -> Result<[bool; 2]> {
+    let namespace = Host.fresh_namespace()?;
+    Host.inside(namespace.as_fd(), || {
+        fs::write(IP_FORWARD, FORWARDING)?;
+        let mut netfilter = Host.netfilter()?;
+        netfilter.acknowledged(rules::dropping_forward_table(PROBE_TRIAL_TABLE))?;
+        let beside = probe(&Host, Path::new(IP_FORWARD)).is_ok();
+        rules::remove(&mut netfilter, PROBE_TRIAL_TABLE)?;
+        let without = probe(&Host, Path::new(IP_FORWARD)).is_ok();
+        Ok::<_, Error>([beside, without])
+    })
+}
+
 /// A host past the sandbox's link, in a namespace of its own.
 ///
-/// Joined to the host, it answers [`FAR_GREETING`] on [`FAR_PORT`] and
-/// [`DNS_PORT`] at both [`FAR_LISTED`] and [`FAR_UNLISTED`]. Its link is
-/// removed when it drops; its listening threads end with the process.
+/// Joined to the host, it answers [`FAR_GREETING`] over TCP and UDP on
+/// [`FAR_PORT`] and [`DNS_PORT`] at both [`FAR_LISTED`] and [`FAR_UNLISTED`],
+/// and routes back through the host. Its link is removed when it drops; its
+/// listening threads end with the process.
 #[derive(Debug)]
 pub struct Far {
-    _namespace: OwnedFd,
+    namespace: OwnedFd,
 }
 
 impl Far {
@@ -86,12 +130,31 @@ impl Far {
             .map_err(netlink(FAR_FAILED))?;
         configure(&mut route, FAR_LINK, &[FAR_HOST_SIDE]).map_err(netlink(FAR_FAILED))?;
         Host.inside(namespace.as_fd(), || {
-            configure(&mut Host.route()?, FAR_PEER, &[FAR_LISTED, FAR_UNLISTED])?;
-            [FAR_PORT, DNS_PORT].into_iter().try_for_each(listen)
+            let mut route = Host.route()?;
+            configure(&mut route, FAR_PEER, &[FAR_LISTED, FAR_UNLISTED])?;
+            let index = link::index_named(&mut route, FAR_PEER)?;
+            route.acknowledged(vec![link::default_route(index, FAR_HOST_SIDE)])?;
+            [FAR_PORT, DNS_PORT].into_iter().try_for_each(listen)?;
+            [FAR_PORT, DNS_PORT]
+                .into_iter()
+                .try_for_each(answer_datagrams)
         })
         .map_err(netlink(FAR_FAILED))?;
-        Ok(Self {
-            _namespace: namespace,
+        Ok(Self { namespace })
+    }
+
+    /// Connects from the far host to `address` and returns what came back:
+    /// how the lane proves a connection into a sandbox is dropped.
+    ///
+    /// # Errors
+    /// The connection failed or timed out.
+    pub fn connect_from(&self, address: SocketAddr) -> io::Result<String> {
+        Host.inside(self.namespace.as_fd(), || {
+            let mut stream = TcpStream::connect_timeout(&address, FAR_CONNECT_TIMEOUT)?;
+            stream.set_read_timeout(Some(FAR_CONNECT_TIMEOUT))?;
+            let mut said = String::new();
+            stream.read_to_string(&mut said)?;
+            Ok(said)
         })
     }
 
@@ -137,6 +200,19 @@ fn listen(port: u16) -> io::Result<()> {
     std::thread::spawn(move || {
         for mut stream in listener.incoming().flatten() {
             let _said = stream.write_all(FAR_GREETING.as_bytes());
+        }
+    });
+    Ok(())
+}
+
+/// Answers every datagram on `port` with the greeting, on a thread of its own
+/// in the calling thread's namespace.
+fn answer_datagrams(port: u16) -> io::Result<()> {
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port))?;
+    std::thread::spawn(move || {
+        let mut buffer = [0; 64];
+        while let Ok((_read, from)) = socket.recv_from(&mut buffer) {
+            let _said = socket.send_to(FAR_GREETING.as_bytes(), from);
         }
     });
     Ok(())

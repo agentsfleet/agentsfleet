@@ -15,6 +15,11 @@
 //!
 //! The table is built in one batch, which the kernel applies whole or not at
 //! all, so a slot never has half its rules.
+//!
+//! The table is owned by the socket that built it (`NFT_TABLE_F_OWNER`): no
+//! other socket may change or delete it, a `nft flush ruleset` on the host
+//! passes it by, and the kernel removes it when that socket closes, a crashed
+//! runner's included. [`super::Scope`] keeps the socket for the scope's life.
 
 use std::io;
 use std::net::Ipv4Addr;
@@ -25,7 +30,7 @@ use netlink_packet_core::{
 use netlink_packet_netfilter::nftables::{
     ChainAttribute, ChainMessage, DataAttribute, Hook, InetHookNumber, ListAttribute,
     NfTablesMessage, RuleAttribute, RuleMessage, SetAttribute, SetElementAttribute, SetElementList,
-    SetElementMessage, SetMessage, TableAttribute, TableMessage,
+    SetElementMessage, SetMessage, TableAttribute, TableFlags, TableMessage,
 };
 use netlink_packet_netfilter::none::ControlMessage;
 use netlink_packet_netfilter::{
@@ -37,6 +42,9 @@ use super::netlink::{Netlink, Wire};
 use super::slot::Slot;
 
 mod expressions;
+mod host_chains;
+
+pub(super) use self::host_chains::dropping_forward;
 
 /// One `nf_tables` message.
 pub(super) type Message = NetlinkMessage<NetfilterMessage>;
@@ -59,12 +67,24 @@ const FILTER: &str = "filter";
 const NAT: &str = "nat";
 const FILTER_PRIORITY: u32 = 0;
 const SOURCE_NAT_PRIORITY: u32 = 100;
-/// The batch that builds `slot`'s table, set and chains, admitting `addresses`.
+/// The batch that builds `slot`'s table, set and chains, admitting `addresses`,
+/// owned by the socket that sends it.
 pub(super) fn install(slot: Slot, addresses: &[Ipv4Addr]) -> Vec<Message> {
+    install_flagged(slot, addresses, TableFlags::Owner)
+}
+
+/// [`install`] with no owner, so the table outlives the socket that sent it:
+/// the leftover a runner built before tables were owned leaves behind.
+#[cfg(feature = "test-util")]
+pub(super) fn install_unowned(slot: Slot, addresses: &[Ipv4Addr]) -> Vec<Message> {
+    install_flagged(slot, addresses, TableFlags::empty())
+}
+
+fn install_flagged(slot: Slot, addresses: &[Ipv4Addr], flags: TableFlags) -> Vec<Message> {
     let table = slot.table();
     let link = slot.link();
     let mut messages = vec![
-        new_table(&table),
+        new_table(&table, flags),
         new_set(&table),
         base_chain(
             &table,
@@ -72,6 +92,7 @@ pub(super) fn install(slot: Slot, addresses: &[Ipv4Addr]) -> Vec<Message> {
             FILTER,
             InetHookNumber::Forward,
             FILTER_PRIORITY,
+            ACCEPT,
         ),
         base_chain(
             &table,
@@ -79,6 +100,7 @@ pub(super) fn install(slot: Slot, addresses: &[Ipv4Addr]) -> Vec<Message> {
             FILTER,
             InetHookNumber::LocalIn,
             FILTER_PRIORITY,
+            ACCEPT,
         ),
         base_chain(
             &table,
@@ -86,6 +108,7 @@ pub(super) fn install(slot: Slot, addresses: &[Ipv4Addr]) -> Vec<Message> {
             NAT,
             InetHookNumber::PostRouting,
             SOURCE_NAT_PRIORITY,
+            ACCEPT,
         ),
     ];
     if !addresses.is_empty() {
@@ -105,6 +128,34 @@ pub(super) fn uninstall(table: &str) -> Vec<Message> {
         }),
         0,
     )])
+}
+
+/// The batch `nft flush ruleset` sends, narrowed to tables named `table`: a
+/// deletion addressed to no family, which the kernel answers by flushing every
+/// matching table the sending socket may touch.
+#[cfg(feature = "test-util")]
+pub(super) fn flush_named(table: &str) -> Vec<Message> {
+    let inner = NfTablesMessage::DeleteTable(TableMessage {
+        attributes: vec![TableAttribute::Name(table.to_owned())],
+    });
+    batch(vec![nf_in(NetfilterProtoFamily::Unspec, inner, 0)])
+}
+
+/// A table named `table`, owned by nobody, holding one forward base chain
+/// whose policy drops, as ufw or Docker leave on a host.
+#[cfg(feature = "test-util")]
+pub(super) fn dropping_forward_table(table: &str) -> Vec<Message> {
+    batch(vec![
+        new_table(table, TableFlags::empty()),
+        base_chain(
+            table,
+            FORWARD,
+            FILTER,
+            InetHookNumber::Forward,
+            FILTER_PRIORITY,
+            DROP,
+        ),
+    ])
 }
 
 /// Asks for every `inet` table.
@@ -162,8 +213,11 @@ pub(super) fn names<W: Wire>(netfilter: &mut Netlink<W>, prefix: &str) -> io::Re
         .collect())
 }
 
-fn new_table(table: &str) -> Message {
-    let attributes = vec![TableAttribute::Name(table.to_owned())];
+fn new_table(table: &str, flags: TableFlags) -> Message {
+    let attributes = vec![
+        TableAttribute::Name(table.to_owned()),
+        TableAttribute::Flags(flags),
+    ];
     nf(
         NfTablesMessage::NewTable(TableMessage { attributes }),
         NLM_F_CREATE | NLM_F_EXCL,
@@ -205,12 +259,19 @@ fn elements(table: &str, addresses: &[Ipv4Addr]) -> Message {
     )
 }
 
-fn base_chain(table: &str, name: &str, kind: &str, hook: InetHookNumber, priority: u32) -> Message {
+fn base_chain(
+    table: &str,
+    name: &str,
+    kind: &str,
+    hook: InetHookNumber,
+    priority: u32,
+    policy: u32,
+) -> Message {
     let attributes = vec![
         ChainAttribute::Table(table.to_owned()),
         ChainAttribute::Name(name.to_owned()),
         ChainAttribute::Hook(vec![Hook::Number(hook.into()), Hook::Priority(priority)]),
-        ChainAttribute::Policy(ACCEPT),
+        ChainAttribute::Policy(policy),
         ChainAttribute::Type(kind.to_owned()),
     ];
     nf(
@@ -233,7 +294,12 @@ fn new_rule(table: &str, chain: &str, expressions: Vec<Expression>) -> Message {
 
 /// `inner`, addressed to the `inet` family, asking an acknowledgement.
 fn nf(inner: NfTablesMessage, flags: u16) -> Message {
-    let header = NetfilterHeader::new(NetfilterProtoFamily::Inet, 0, 0);
+    nf_in(NetfilterProtoFamily::Inet, inner, flags)
+}
+
+/// `inner`, addressed to `family`, asking an acknowledgement.
+fn nf_in(family: NetfilterProtoFamily, inner: NfTablesMessage, flags: u16) -> Message {
+    let header = NetfilterHeader::new(family, 0, 0);
     let mut message = NetlinkMessage::from(NetfilterMessage::new(header, inner));
     message.header.flags = NLM_F_REQUEST | NLM_F_ACK | flags;
     message
