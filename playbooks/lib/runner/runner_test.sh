@@ -249,6 +249,44 @@ test_should_declare_workflow_vault_read_approval() {
   done
   ok "$name"
 }
+test_should_copy_the_toolbox_beside_the_binary() {
+  local name="test_should_copy_the_toolbox_beside_the_binary"
+  local output status=0 part
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+    return
+  fi
+  for part in erofs json json.sig; do
+    if ! grep -q "/opt/agentsfleet/toolbox/toolbox-$TOOLBOX_FIXTURE_DIGEST.$part" "$calls"; then
+      bad "$name" "the toolbox's .$part never reached the host"
+      return
+    fi
+  done
+  if ! grep -q '/opt/agentsfleet/deploy/deploy.sh runner .* /opt/agentsfleet/toolbox' "$calls"; then
+    bad "$name" "the canonical deploy was not handed the toolbox directory"
+  else
+    ok "$name"
+  fi
+}
+test_should_clear_an_earlier_toolbox_before_staging() {
+  local name="test_should_clear_an_earlier_toolbox_before_staging"
+  local output status=0 cleared copied
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+    return
+  fi
+  cleared="$(grep -nF "find /opt/agentsfleet/toolbox -maxdepth 1 -name 'toolbox-*' -type f -delete" "$calls" | head -1 | cut -d: -f1)"
+  copied="$(grep -nF "/opt/agentsfleet/toolbox/toolbox-$TOOLBOX_FIXTURE_DIGEST.erofs" "$calls" | head -1 | cut -d: -f1)"
+  if [ -z "$cleared" ]; then
+    bad "$name" "an earlier deploy's toolbox set is never removed from the host's staging directory"
+  elif [ -z "$copied" ] || [ "$cleared" -ge "$copied" ]; then
+    bad "$name" "the staging directory is cleared after the new set lands, not before it"
+  else
+    ok "$name"
+  fi
+}
 test_should_refuse_a_deploy_without_its_toolbox() {
   local name="test_should_refuse_a_deploy_without_its_toolbox"
   local signature="$toolbox_fixture/toolbox-$TOOLBOX_FIXTURE_DIGEST.json.sig"
@@ -278,5 +316,7 @@ test_should_use_canonical_unit_refresh
 test_should_reject_shell_unsafe_runner_inputs
 test_should_require_vault_read_approval
 test_should_declare_workflow_vault_read_approval
+test_should_copy_the_toolbox_beside_the_binary
+test_should_clear_an_earlier_toolbox_before_staging
 test_should_refuse_a_deploy_without_its_toolbox
 report_results
