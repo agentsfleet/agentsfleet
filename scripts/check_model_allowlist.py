@@ -35,8 +35,8 @@ ALLOWLIST = Path("scripts/model-library-allowlist.json")
 
 RATE_FIELDS = ("input", "cached_input", "output")
 
-# Closed vocabulary. A sixth value means the vocabulary is wrong — extend it
-# deliberately here and in the file's `unpriced_reasons` legend, together.
+# Closed vocabulary. A value outside it means the vocabulary is wrong — extend
+# it deliberately here and in the file's `unpriced_reasons` legend, together.
 VALID_REASONS = frozenset(
     {
         "cn_endpoint",
@@ -48,6 +48,7 @@ VALID_REASONS = frozenset(
         "awaiting_curation",
         "duplicate_spelling",
         "operator_hosted",
+        "unsupported_wire",
     }
 )
 

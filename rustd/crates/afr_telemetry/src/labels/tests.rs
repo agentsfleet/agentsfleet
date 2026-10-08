@@ -20,13 +20,14 @@ fn a_provider_is_its_registry_name_or_other() {
         ("xai", "xai"),
         ("grok", "xai"),
         ("moonshot-cn", "moonshot"),
+        ("kimi", "moonshot-intl"),
         ("custom:https://models.example.com/v1", OTHER),
         ("our-internal-gateway", OTHER),
     ] {
         assert_eq!(Provider::of(configured).as_str(), label, "`{configured}`");
     }
     // Every shipped entry, and `_other`: the ceiling is sized to this.
-    assert_eq!(Provider::count(), 40);
+    assert_eq!(Provider::count(), 43);
 }
 
 /// A table that will not parse names no provider, so every label is `_other`
