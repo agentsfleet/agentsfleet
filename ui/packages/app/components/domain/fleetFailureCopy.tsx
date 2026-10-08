@@ -38,6 +38,7 @@ export const RUNNER_REFUSAL_DETAILS = [
   "the fleet bundle's support files could not be written to the workspace",
   "a bound repository could not be checked out into the workspace",
   "the egress allowlist could not be resolved into addresses this runner can admit",
+  "the fleet allows an egress host at a private or reserved address",
 ] as const;
 
 // Failure copy for the chat surface. Startup-posture failures get concise

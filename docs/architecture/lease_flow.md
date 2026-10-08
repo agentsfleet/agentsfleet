@@ -271,7 +271,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
      io.max <loop major:minor> rbps=wbps=200 MiB/s
      leaves: sandbox (bwrap, executor) · tenant (memory.max less the reserve, memory.high)
    run/  0700, owned by the sandbox user
-   bwrap --unshare-{user,pid,ipc,uts,cgroup}  --share-net | --unshare-net (per policy)
+   bwrap --unshare-{user,pid,ipc,uts,cgroup}  [--unshare-net unless allow_all]
          --disable-userns --cap-drop ALL --clearenv --die-with-parent --new-session
          --ro-bind <toolbox mount> /            ← the shared EROFS root
          --proc /proc --dev /dev --tmpfs /dev/shm (a quarter of memory)
