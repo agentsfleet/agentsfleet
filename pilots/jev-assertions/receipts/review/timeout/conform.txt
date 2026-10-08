@@ -1,0 +1,12 @@
+
+[1m[36m●[0m [1mHARNESS VERIFY[0m [2m── deterministic gates · staged scope (pre-commit lens)[0m
+  [2m→[0m UFS                  [32m✓[0m [2mOK:   audit-ufs: no source files in scope[0m
+  [2m→[0m GITLEAKS CONFIG      [32m✓[0m [2mOK: gitleaks lock allowlist is path-, key-, and digest-restricted[0m
+  [2m→[0m DESIGN TOKEN         [32m✓[0m [2mOK: design-token discipline — named utilities and flat fills verified (mode=--staged)[0m
+  [2m→[0m SPEC TEMPLATE        [32m✓[0m [2mOK:   no spec files in scope (--staged)[0m
+  [2m→[0m LOGGING              [32m✓[0m [2mOK:   no source files in scope (--staged)[0m
+  [2m→[0m RUST ERR             [32m✓[0m [2mOK:   ERR-RS: no runtime Rust files in scope (--staged)[0m
+  [2m→[0m LIFECYCLE            [32m✓[0m [2mOK:   no zig source files in scope (--staged)[0m
+  [2m→[0m MS-ID + UI           [32m✓[0m [2mOK:   audit-msid-ui (staged) — 0 hits[0m
+[1m[36m●[0m [1m[32mALL GATES GREEN[0m [2m── ready for VERIFY[0m
+

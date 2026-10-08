@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from pilot_checks import (
     BATCHES,
+    CommandTimeoutError,
     DEFECT_LABELS,
     LABELS,
     PREFIX,
@@ -164,6 +165,9 @@ def judge_batch(root, batch, refresh=False, approval=None):
         report = raw_report
         if code not in (0, 2):
             error_message = "Unexpected command result; validated native answers retained"
+    except CommandTimeoutError as error:
+        stdout, stderr = error.stdout, error.stderr
+        error_message = str(error)
     except (TimeoutError, OSError, KeyError, ValueError, TypeError) as error:
         error_message = str(error)
     receipt = {"mode": suffix, "command": arguments, "exit": code, "stdout": stdout, "stderr": stderr,

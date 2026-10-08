@@ -1,0 +1,70 @@
+{
+  "revision": "3685f9140269bd8d7202aadb7fb51f2a36c93312",
+  "runtime": "bun 1.4.2",
+  "cwd": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot",
+  "limits": [
+    "Native unit checks cover isolated current inputs; original 40 fixture proofs are retained and unchanged. Full repository verification is separate. No live provider, browser or human-time experiment runs here."
+  ],
+  "evidence": [
+    {
+      "command": "orly doctor",
+      "contract": "Current managed rules and declared commands",
+      "expected": "exit 0; installed rules match .orly/orly.json",
+      "classification": "pass",
+      "observed": "🟢 installed rules match .orly/orly.json; work and verification commands are declared\n"
+    },
+    {
+      "command": "python3 pilots/jev-assertions/pilot_test.py",
+      "contract": "Current pilot timeout output, failed receipt and spent reservation refusals",
+      "expected": "exit 0; 25 checks pass, including both cleanup branches, exact stream contents and spent reservation refusal; no provider request",
+      "classification": "pass",
+      "observed": ""
+    },
+    {
+      "command": "python3 -c 'import sys; sys.dont_write_bytecode=True; sys.path.insert(0,\"pilots/jev-assertions\"); import json; from pilot_checks import ROOT,PREFIX,verify_freeze,load; from pilot_measure import paired_reviews,runner_digest; pilot=ROOT/PREFIX; frozen=verify_freeze(); paired=paired_reviews(pilot,load(pilot/\"cases.json\")[\"cases\"]); assert paired[\"status\"]==\"measured\" and len(paired[\"pairs\"])==20; print(json.dumps({\"frozen_digest\":frozen,\"runner_digest\":runner_digest(),\"paired_status\":paired[\"status\"],\"paired_cases\":len(paired[\"pairs\"]),\"provider_requests\":0}))'",
+      "contract": "Original frozen bytes and independent review seals",
+      "expected": "original frozen digest; measured paired status with 20 cases; zero provider requests",
+      "classification": "pass",
+      "observed": {
+        "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+        "runner_digest": "dd7decdef4fdd5130cd4fb935fe9caf74b269817a7d755adb75d94889b55d924",
+        "paired_status": "measured",
+        "paired_cases": 20,
+        "provider_requests": 0
+      }
+    }
+  ],
+  "learning": [
+    {
+      "observationCapture": "001",
+      "observationArgv": [
+        "orly",
+        "doctor"
+      ],
+      "hypothesis": "Managed rules match the pin; the enhanced pilot suite should retain timeout output and block a spent reservation on current source.",
+      "nextCapture": "002",
+      "nextArgv": [
+        "python3",
+        "pilots/jev-assertions/pilot_test.py"
+      ]
+    },
+    {
+      "observationCapture": "002",
+      "observationArgv": [
+        "python3",
+        "pilots/jev-assertions/pilot_test.py"
+      ],
+      "hypothesis": "All 25 enhanced checks pass; the original frozen inventory and sealed paired reviews should still match, with zero provider requests.",
+      "nextCapture": "003",
+      "nextArgv": [
+        "python3",
+        "-c",
+        "import sys; sys.dont_write_bytecode=True; sys.path.insert(0,\"pilots/jev-assertions\"); import json; from pilot_checks import ROOT,PREFIX,verify_freeze,load; from pilot_measure import paired_reviews,runner_digest; pilot=ROOT/PREFIX; frozen=verify_freeze(); paired=paired_reviews(pilot,load(pilot/\"cases.json\")[\"cases\"]); assert paired[\"status\"]==\"measured\" and len(paired[\"pairs\"])==20; print(json.dumps({\"frozen_digest\":frozen,\"runner_digest\":runner_digest(),\"paired_status\":paired[\"status\"],\"paired_cases\":len(paired[\"pairs\"]),\"provider_requests\":0}))"
+      ]
+    }
+  ],
+  "verdict": {
+    "status": "pass",
+    "open": []
+  }
+}

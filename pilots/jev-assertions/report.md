@@ -8,8 +8,8 @@ The observed agent-time difference does not establish human time savings.
 Adoption remains Kishore's separate decision.
 
 **Overall status: IN_PROGRESS.** The model measurement and separate blinded agent sessions
-remain complete. A hosted review reported lost timeout diagnostics; its repair and
-fresh repository checks are pending. The orly 0.14.0 consumer pin is
+remain complete. The reported timeout-diagnostics repair passes its local checks;
+fresh repository and hosted checks remain due on the pushed repair. The orly 0.14.0 consumer pin is
 verified; owner review remains due before merge. Comparison baselines retain
 the failed unit run alongside the green full boundary result.
 
@@ -191,7 +191,7 @@ The repair changes only `pilot_test.py` setup; review validation and original
 records remain unchanged.
 
 The approved runner digest above identifies the original provider attempts.
-The repaired runner digest is `ad78997d26d7db23e62709d68887b2455e05fdc46394b6ada8b2bb90b4f0a6f2`.
+The fixture-repaired runner digest is `ad78997d26d7db23e62709d68887b2455e05fdc46394b6ada8b2bb90b4f0a6f2`.
 The historical approval remains unchanged and does not authorize another upload.
 Frozen proof inputs still match their original digest.
 
@@ -271,13 +271,46 @@ The provisional freeze was corrected for named constants and p16 import order
 before advice; the spec records that history. Requirements, labels and
 justifications stayed fixed. `verify_freeze()` still returns the registered
 digest; frozen cases never changed after advice. The approved fixture repair
-changes only runner test setup. Missing-context errors and unchanged independent
+changed only runner test setup. The timeout repair below also changes runner cleanup
+and failed-receipt collection. Missing-context errors and unchanged independent
 findings support keeping advice experimental.
 One agent pair does not establish human reviewer improvement.
 
 Quality assurance (QA) uses the repository-required functional review route.
 
 ## Exploratory QA and Verification Results
+
+### Timeout diagnostic repair
+
+[Greptile's review](https://github.com/agentsfleet/agentsfleet/pull/737#discussion_r4223898848)
+found that timeout cleanup discarded both output streams. Cleanup now carries
+those streams into the failed receipt, while retaining unknown usage and the spent reservation.
+
+The [timeout verification record](receipts/review/timeout/verification.json)
+binds source hashes, the regression ledger, raw output and fresh local probes.
+On the old implementation, the enhanced suite ran 25 checks with three failing
+assertions across two test methods. The repaired suite passes all 25 checks.
+Randomized order, seed 37, also passes all 25 checks; two existing checks were strengthened.
+
+| Partial completion | Retained result |
+|---|---|
+| Child prints, then stops gracefully after timeout | Exact standard output and standard error survive; child is reaped |
+| Child ignores the stop signal, then is killed | Both streams survive; child is reaped |
+| Live command times out after reservation | Ten slots remain unavailable; usage stays unknown; ten requests stay reserved; a repeat launch is refused |
+
+The three [fresh functional probes](receipts/review/timeout/evidence.json) pass:
+managed pin inspection, the enhanced suite, and read-only frozen-input/review validation.
+[Checkpoint 002](receipts/review/timeout/exploration-002.json) precedes the suite;
+[003](receipts/review/timeout/exploration-003.json) precedes the frozen-input check.
+All twelve captured input hashes remain unchanged. These probes make zero provider requests.
+
+The current runner digest is `dd7decdef4fdd5130cd4fb935fe9caf74b269817a7d755adb75d94889b55d924`.
+The historical approval and original measurements remain unchanged.
+The independent native code audit found no further defect; tests and raw receipts received reduced, summary-only review coverage.
+Outside model review remained disabled. Current-source conformance passes; its literal/logging leaves exclude Python.
+The new pushed revision still needs its full gate and hosted checks.
+
+### Earlier blinded-comparison checks
 
 | Field | Current evidence |
 |---|---|

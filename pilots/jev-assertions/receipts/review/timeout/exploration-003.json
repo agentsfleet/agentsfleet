@@ -1,0 +1,15 @@
+{
+  "observationCapture": "002",
+  "observationArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot_test.py"
+  ],
+  "observed": "",
+  "hypothesis": "All 25 enhanced checks pass; the original frozen inventory and sealed paired reviews should still match, with zero provider requests.",
+  "nextCapture": "003",
+  "nextArgv": [
+    "python3",
+    "-c",
+    "import sys; sys.dont_write_bytecode=True; sys.path.insert(0,\"pilots/jev-assertions\"); import json; from pilot_checks import ROOT,PREFIX,verify_freeze,load; from pilot_measure import paired_reviews,runner_digest; pilot=ROOT/PREFIX; frozen=verify_freeze(); paired=paired_reviews(pilot,load(pilot/\"cases.json\")[\"cases\"]); assert paired[\"status\"]==\"measured\" and len(paired[\"pairs\"])==20; print(json.dumps({\"frozen_digest\":frozen,\"runner_digest\":runner_digest(),\"paired_status\":paired[\"status\"],\"paired_cases\":len(paired[\"pairs\"]),\"provider_requests\":0}))"
+  ]
+}

@@ -146,6 +146,12 @@ reservation. Existing live receipts cannot be replaced by another launch.
 Keep the ledger and worktree; direct refresh commands or deleting local records
 would bypass this local enforcement and violate the approved procedure.
 
+On timeout, cleanup stops the command's process group and retains both output
+streams in the failed receipt. Unknown request usage stays unknown; the full
+reservation stays spent. Both graceful stopping and forced killing have real-child
+regression checks in the [timeout evidence](receipts/review/timeout/verification.json).
+This repair does not authorize another upload under the historical approval.
+
 The installed `orly` pin checks the entire batch before upload, scans selected
 source, and makes at most one sequential request per item. Approval is bound to
 both frozen evidence and the runner's bytes. Native answers and usage remain in

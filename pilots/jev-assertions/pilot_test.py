@@ -18,6 +18,14 @@ import pilot_measure as measure
 PILOT = checks.ROOT / checks.PREFIX
 FROZEN = "freeze.json"
 CASE_IDENTIFIER = "p01"
+TIMEOUT_STDOUT = "before timeout\n"
+TIMEOUT_STDERR = "timeout diagnostic\n"
+TEST_TIMEOUT = 1
+TEST_KILL_GRACE = 0.05
+STOPPED_PROCESS_GROUP = "process group was stopped"
+IGNORE_TERMINATION = "import signal; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+TIMEOUT_CHILD = (f"import sys, time; print({TIMEOUT_STDOUT!r}, end='', flush=True); "
+                 f"print({TIMEOUT_STDERR!r}, end='', file=sys.stderr, flush=True); time.sleep(30)")
 
 
 class PilotTests(unittest.TestCase):
@@ -197,20 +205,35 @@ class PilotTests(unittest.TestCase):
         self.assertEqual(1, metrics["native_matches"])
 
     def test_live_failure_consumes_reservation_without_retry(self):
+        arguments = [sys.executable, "-c", TIMEOUT_CHILD]
         with (patch.object(measure, "approved", return_value="frozen-test"),
-              patch.object(measure, "run_process", side_effect=TimeoutError("timed out")) as command):
+              patch.object(measure, "run_process", side_effect=lambda *args, **kwargs:
+                           checks.run_process(arguments, timeout=TEST_TIMEOUT)) as command):
             receipt = measure.judge_batch(self.root, "a", True, {})
         command.assert_called_once()
+        self.assertEqual(TIMEOUT_STDOUT, receipt["stdout"])
+        self.assertEqual(TIMEOUT_STDERR, receipt["stderr"])
+        self.assertIsNone(receipt["exit"])
+        self.assertIsNone(receipt["raw_report"])
+        self.assertIn(STOPPED_PROCESS_GROUP, receipt["collection_error"])
+        self.assertEqual(receipt, checks.load(self.pilot / "receipts/live-a.json"))
         self.assertEqual(10, receipt["reserved_requests"])
+        self.assertEqual(10, checks.load(self.pilot / "receipts/reservations.json")["batches"][0]["request_cap"])
         self.assertIsNone(receipt["report"]["requests"])
         self.assertEqual(10, len(receipt["report"]["results"]))
         with self.assertRaisesRegex(ValueError, "cannot be replaced"):
             measure.judge_batch(self.root, "a", True, {})
+        command.assert_called_once()
 
     def test_subprocess_timeout_stops_child(self):
-        arguments = [sys.executable, "-c", "import time; time.sleep(30)"]
-        with self.assertRaisesRegex(TimeoutError, "process group was stopped"):
-            checks.run_process(arguments, timeout=0.05)
+        for prefix in ("", IGNORE_TERMINATION):
+            arguments = [sys.executable, "-c", prefix + TIMEOUT_CHILD]
+            with (self.subTest(forced_kill=bool(prefix)),
+                  patch.object(checks, "KILL_GRACE_SECONDS", TEST_KILL_GRACE)):
+                with self.assertRaisesRegex(TimeoutError, STOPPED_PROCESS_GROUP) as caught:
+                    checks.run_process(arguments, timeout=TEST_TIMEOUT)
+                self.assertEqual(TIMEOUT_STDOUT, getattr(caught.exception, "stdout", None))
+                self.assertEqual(TIMEOUT_STDERR, getattr(caught.exception, "stderr", None))
 
     def test_native_report_counts_and_choices(self):
         manifest = checks.load(self.pilot / "manifests/a.json")
