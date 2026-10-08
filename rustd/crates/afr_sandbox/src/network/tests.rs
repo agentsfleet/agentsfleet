@@ -6,6 +6,7 @@
 use std::net::Ipv4Addr;
 
 use super::{ALLOWLIST_ADDRESSES_MAX, Allowlist, RESOLV_CONF};
+use crate::error::EgressRefusal;
 
 fn entry(name: &str, address: [u8; 4]) -> (String, Ipv4Addr) {
     (name.to_owned(), Ipv4Addr::from(address))
@@ -90,9 +91,11 @@ fn test_an_allowlist_past_the_cap_is_refused() {
         "a repeat adds no address"
     );
     let refused = Allowlist::new(over).unwrap_err();
-    assert!(
-        refused.to_string().contains("past the 256"),
-        "the refusal names the cap: {refused}"
+    assert_eq!(
+        refused.egress_refusal(),
+        Some(&EgressRefusal::TooManyAddresses(
+            ALLOWLIST_ADDRESSES_MAX + 1
+        ))
     );
 }
 

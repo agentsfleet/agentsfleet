@@ -4,6 +4,7 @@
 )]
 
 use super::take;
+use crate::error::EgressRefusal;
 
 /// A second holder is refused while the first holds the lock, and saying so
 /// names the reason; once the first lets go, the lock is free again. Two opens
@@ -18,9 +19,9 @@ fn test_a_second_holder_is_refused_until_the_first_lets_go() {
     drop(first);
     let again = take(&path);
 
-    assert!(
-        refused.to_string().contains("another runner process"),
-        "{refused}"
+    assert_eq!(
+        refused.egress_refusal(),
+        Some(&EgressRefusal::HeldElsewhere)
     );
     again.unwrap();
 }

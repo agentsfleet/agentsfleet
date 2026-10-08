@@ -16,19 +16,9 @@ use super::kernel::Kernel;
 use super::netlink::{Netlink, Wire};
 use super::slot::{Claim, Slot};
 use super::{link, rules};
-use crate::error::{Error, Result, egress_refused, netlink};
+use crate::error::{EgressRefusal, Error, Result, Step, egress_refused, netlink};
 use crate::network::Allowlist;
 
-/// Why a scope could not claim a slot.
-const NO_SLOT: &str = "every egress slot on this host is held by a running sandbox";
-/// What each netlink step is named in a refusal.
-const OPEN_NETFILTER: &str = "a netfilter socket";
-const INSTALL_RULES: &str = "the egress table";
-const OPEN_ROUTE: &str = "a route socket";
-const JOIN: &str = "the veth pair joining the sandbox to the host";
-const CONFIGURE_PEER: &str = "the sandbox side of its veth pair";
-const REMOVE_RULES: &str = "removing the egress table";
-const REMOVE_LINK: &str = "removing the veth pair";
 /// The events a scope's life is logged under.
 const EVENT_BUILT: &str = "egress_scope_built";
 const EVENT_REFUSED: &str = "egress_scope_refused";
@@ -58,7 +48,7 @@ impl<W: Wire> Scope<W> {
     ) -> Result<Self> {
         let hosts = allowlist.hosts();
         let claim = Claim::any()
-            .ok_or_else(|| egress_refused(NO_SLOT))
+            .ok_or_else(|| egress_refused(EgressRefusal::NoSlot))
             .inspect_err(|error| refused(None, hosts, error))?;
         let slot = claim.slot();
         // Nothing reaches the kernel before this socket opens, so a host that
@@ -66,7 +56,7 @@ impl<W: Wire> Scope<W> {
         // slot, where a later failure keeps it until the removal is confirmed.
         let netfilter = kernel
             .netfilter()
-            .map_err(netlink(OPEN_NETFILTER))
+            .map_err(netlink(Step::OpenNetfilter))
             .inspect_err(|error| refused(Some(slot), hosts, error))?;
         let mut scope = Self { claim, netfilter };
         match scope.attach(kernel, netns, allowlist) {
@@ -93,12 +83,12 @@ impl<W: Wire> Scope<W> {
     ) -> Result<()> {
         let slot = self.claim.slot();
         rules::apply(&mut self.netfilter, slot, &allowlist.addresses())
-            .map_err(netlink(INSTALL_RULES))?;
-        let mut route = kernel.route().map_err(netlink(OPEN_ROUTE))?;
-        link::join(&mut route, slot, netns).map_err(netlink(JOIN))?;
+            .map_err(netlink(Step::InstallRules))?;
+        let mut route = kernel.route().map_err(netlink(Step::OpenRoute))?;
+        link::join(&mut route, slot, netns).map_err(netlink(Step::Join))?;
         kernel
             .inside(netns, || link::configure_peer(&mut kernel.route()?, slot))
-            .map_err(netlink(CONFIGURE_PEER))
+            .map_err(netlink(Step::ConfigurePeer))
     }
 
     /// Deletes the link, then the table through the socket that owns it, and
@@ -140,20 +130,22 @@ where
     K: Kernel,
     N: BorrowMut<Netlink<K::Wire>>,
 {
-    let link = kernel.over_route(REMOVE_LINK, |route| link::remove(route, &slot.link()));
+    let link = kernel.over_route(Step::RemoveLink, |route| link::remove(route, &slot.link()));
     let table = netfilter()
         .and_then(|mut netfilter| rules::remove(netfilter.borrow_mut(), &slot.table()))
-        .map_err(netlink(REMOVE_RULES));
+        .map_err(netlink(Step::RemoveRules));
     link.and(table)
 }
 
-/// Logs a scope that could not be built: why, its slot when it had one, and
-/// how many names it would have admitted — never the names or addresses.
+/// Logs a scope that could not be built: why, which refusal when it was one,
+/// its slot when it had one, and how many names it would have admitted —
+/// never the names or addresses.
 fn refused(slot: Option<Slot>, hosts: usize, error: &Error) {
     let slot = slot.map(Slot::index);
     let Logged { error_code, reason } = error.logged();
+    let refusal = error.egress_refusal().map(EgressRefusal::as_str);
     let event = EVENT_REFUSED;
-    tracing::warn!(slot, hosts, error_code, reason, event);
+    tracing::warn!(slot, hosts, error_code, refusal, reason, event);
 }
 
 #[cfg(test)]

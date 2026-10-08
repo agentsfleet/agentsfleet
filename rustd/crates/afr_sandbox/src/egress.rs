@@ -26,7 +26,7 @@ use afd_core::error_code::{Coded as _, Logged};
 
 use self::kernel::Kernel;
 use self::slot::{Claim, LINK_PREFIX, Slot, TABLE_PREFIX};
-use crate::error::{Result, egress_refused};
+use crate::error::{EgressRefusal, Result, Step, egress_refused};
 use crate::network::Allowlist;
 
 #[cfg(feature = "test-util")]
@@ -50,15 +50,6 @@ const IP_FORWARD: &str = "/proc/sys/net/ipv4/ip_forward";
 const FORWARDING: &str = "1";
 /// This process's network namespace.
 const OWN_NAMESPACE: &str = "/proc/self/ns/net";
-/// The probe's refusals.
-const FORWARDING_OFF: &str = "the host does not forward IPv4 (net.ipv4.ip_forward is not 1)";
-const FORWARD_DROPPED: &str =
-    "a forward chain on the host drops by policy, so no allowlisted connection would pass";
-const NO_NAMESPACE: &str = "no process in the sandbox runs in a network namespace of its own";
-/// What a probe or sweep step is named in a refusal.
-const LIST_CHAINS: &str = "listing the host's forward chains";
-const LIST_TABLES: &str = "listing egress tables";
-const LIST_LINKS: &str = "listing egress links";
 /// The events the probe and the sweep are logged under.
 const EVENT_PROBE_FAILED: &str = "egress_probe_failed";
 const EVENT_SWEPT: &str = "egress_swept";
@@ -76,9 +67,11 @@ pub(crate) fn enforceable() -> bool {
         Ok(()) => true,
         Err(error) => {
             let Logged { error_code, reason } = error.logged();
+            let refusal = error.egress_refusal().map(EgressRefusal::as_str);
             let event = EVENT_PROBE_FAILED;
             tracing::warn!(
                 error_code,
+                refusal,
                 reason,
                 event,
                 "this host cannot hold a sandbox to an allowlist"
@@ -91,14 +84,11 @@ pub(crate) fn enforceable() -> bool {
 /// [`enforceable`] against `kernel`, reading forwarding from `forwarding`.
 fn probe(kernel: &impl Kernel, forwarding: &Path) -> Result<()> {
     if fs::read_to_string(forwarding)?.trim() != FORWARDING {
-        return Err(egress_refused(FORWARDING_OFF));
+        return Err(egress_refused(EgressRefusal::ForwardingOff));
     }
-    let dropping = kernel.over_netfilter(LIST_CHAINS, rules::dropping_forward)?;
+    let dropping = kernel.over_netfilter(Step::ListChains, rules::dropping_forward)?;
     if !dropping.is_empty() {
-        return Err(egress_refused(format!(
-            "{FORWARD_DROPPED}: {}",
-            dropping.join(", ")
-        )));
+        return Err(egress_refused(EgressRefusal::ForwardDropped(dropping)));
     }
     let host = kernel.fresh_namespace()?;
     let sandbox = kernel.fresh_namespace()?;
@@ -126,7 +116,7 @@ pub(crate) fn namespace_of(procs: &Path) -> Result<OwnedFd> {
             let found = file.metadata().ok()?;
             (found.ino() != own.ino() || found.dev() != own.dev()).then(|| OwnedFd::from(file))
         })
-        .ok_or_else(|| egress_refused(NO_NAMESPACE))
+        .ok_or_else(|| egress_refused(EgressRefusal::NoNamespace))
 }
 
 /// Removes every egress table and link a previous run of this host left, in
@@ -172,10 +162,10 @@ pub(crate) fn sweep(kernel: &impl Kernel) -> Result<()> {
 /// # Errors
 /// The kernel would not list them.
 fn objects(kernel: &impl Kernel) -> Result<(Vec<String>, Vec<String>)> {
-    let tables = kernel.over_netfilter(LIST_TABLES, |netfilter| {
+    let tables = kernel.over_netfilter(Step::ListTables, |netfilter| {
         rules::names(netfilter, TABLE_PREFIX)
     })?;
-    let links = kernel.over_route(LIST_LINKS, |route| link::names(route, LINK_PREFIX))?;
+    let links = kernel.over_route(Step::ListLinks, |route| link::names(route, LINK_PREFIX))?;
     Ok((tables, links))
 }
 

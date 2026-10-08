@@ -13,6 +13,7 @@ use super::kernel::{Host, Kernel as _};
 use super::slot::{Claim, Slot, claims_held};
 use super::testing::{DELLINK, DELTABLE, Fake, GETCHAIN, NEWTABLE, Protocol};
 use super::{enforceable, namespace_of, probe, sweep};
+use crate::error::{EgressRefusal, Step};
 
 /// A file reading as forwarding on, in `dir`.
 fn forwarding_on(dir: &tempfile::TempDir) -> std::path::PathBuf {
@@ -32,7 +33,10 @@ fn test_the_probe_needs_forwarding() {
     let refused = probe(&Fake::default(), &off).unwrap_err();
     let unreadable = probe(&Fake::default(), &dir.path().join("absent"));
 
-    assert!(refused.to_string().contains("ip_forward"), "{refused}");
+    assert_eq!(
+        refused.egress_refusal(),
+        Some(&EgressRefusal::ForwardingOff)
+    );
     unreadable.unwrap_err();
 }
 
@@ -56,10 +60,7 @@ fn test_the_probe_builds_and_removes_a_scope_of_its_own() {
     );
     assert!(kernel.seen_on(Protocol::Route).contains(&DELLINK));
     assert!(kernel.seen_on(Protocol::Netfilter).contains(&DELTABLE));
-    assert!(
-        refused.to_string().contains("the egress table"),
-        "{refused}"
-    );
+    assert_eq!(refused.netlink_step(), Some(Step::InstallRules));
 }
 
 /// A host whose own forward chain drops by policy would pass no allowlisted
@@ -79,24 +80,17 @@ fn test_the_probe_refuses_a_host_whose_forward_chain_drops() {
     let refused = probe(&dropping, &on).unwrap_err();
     let blind = probe(&unlisted, &on).unwrap_err();
 
-    let reason = refused.to_string();
-    assert!(
-        reason.contains("drops by policy")
-            && reason.contains("ip filter FORWARD")
-            && reason.contains("inet ufw forward"),
-        "{reason}"
+    let chains = ["ip filter FORWARD", "inet ufw forward"].map(str::to_owned);
+    assert_eq!(
+        refused.egress_refusal(),
+        Some(&EgressRefusal::ForwardDropped(chains.to_vec()))
     );
     assert_eq!(dropping.entered(), 0, "no scope is built");
     assert!(
         !dropping.seen_on(Protocol::Netfilter).contains(&NEWTABLE),
         "the host's chains are only read"
     );
-    assert!(
-        blind
-            .to_string()
-            .contains("listing the host's forward chains"),
-        "{blind}"
-    );
+    assert_eq!(blind.netlink_step(), Some(Step::ListChains));
 }
 
 /// Without the privilege to make a namespace, this host cannot hold a sandbox
@@ -133,10 +127,7 @@ fn test_a_sandbox_sharing_the_hosts_namespace_is_refused() {
     let refused = namespace_of(&procs).unwrap_err();
     let unreadable = namespace_of(&dir.path().join("absent"));
 
-    assert!(
-        refused.to_string().contains("namespace of its own"),
-        "{refused}"
-    );
+    assert_eq!(refused.egress_refusal(), Some(&EgressRefusal::NoNamespace));
     unreadable.unwrap_err();
 }
 
@@ -190,10 +181,7 @@ fn test_a_sweep_says_what_it_could_not_do() {
     let refused = sweep(&blind).unwrap_err();
     sweep(&stuck).unwrap();
 
-    assert!(
-        refused.to_string().contains("listing egress tables"),
-        "{refused}"
-    );
+    assert_eq!(refused.netlink_step(), Some(Step::ListTables));
     assert_eq!(capture.only("egress_sweep_failed").field("slot"), Some("6"));
     assert!(Claim::exactly(Slot::new(6).unwrap()).is_none());
 }

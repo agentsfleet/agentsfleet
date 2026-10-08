@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter;
 use std::net::Ipv4Addr;
 
-use crate::error::{Result, egress_refused};
+use crate::error::{EgressRefusal, Result, egress_refused};
 
 /// The most addresses one lease's allowlist may hold: the host-side set is
 /// built in one netlink transaction, and a list this long is a mistake, not
@@ -72,10 +72,7 @@ impl Allowlist {
         let allowlist = Self { entries };
         let addresses = allowlist.addresses().len();
         if addresses > ALLOWLIST_ADDRESSES_MAX {
-            let detail = format!(
-                "{addresses} addresses, past the {ALLOWLIST_ADDRESSES_MAX} a lease may reach"
-            );
-            return Err(egress_refused(detail));
+            return Err(egress_refused(EgressRefusal::TooManyAddresses(addresses)));
         }
         Ok(allowlist)
     }
