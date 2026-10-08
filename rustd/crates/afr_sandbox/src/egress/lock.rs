@@ -17,12 +17,10 @@ use std::fs::{self, File, TryLockError};
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 
-use crate::error::{Result, egress_refused};
+use crate::error::{EgressRefusal, Result, egress_refused};
 
 /// The lock file, in the runner's runtime directory on the host.
 const HOST_LOCK: &str = "/run/agentsfleet/egress.lock";
-/// Why a second process may not own the host's egress.
-const HELD_ELSEWHERE: &str = "another runner process owns this host's egress tables and links";
 
 /// The lock this process holds, once taken. Every engine the process builds
 /// shares it, as they share the slot claims.
@@ -53,7 +51,7 @@ fn take(path: &Path) -> Result<File> {
         .open(path)?;
     match file.try_lock() {
         Ok(()) => Ok(file),
-        Err(TryLockError::WouldBlock) => Err(egress_refused(HELD_ELSEWHERE)),
+        Err(TryLockError::WouldBlock) => Err(egress_refused(EgressRefusal::HeldElsewhere)),
         Err(TryLockError::Error(error)) => Err(error.into()),
     }
 }

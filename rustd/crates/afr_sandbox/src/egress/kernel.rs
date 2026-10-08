@@ -14,7 +14,7 @@ use netlink_sys::protocols::{NETLINK_NETFILTER, NETLINK_ROUTE};
 use rustix::thread::{LinkNameSpaceType, UnshareFlags};
 
 use super::netlink::{Netlink, Wire};
-use crate::error::{Result as SandboxResult, netlink};
+use crate::error::{Result as SandboxResult, Step, netlink};
 
 /// The network namespace of the calling thread, as a file another thread can
 /// join or a link can be moved into.
@@ -46,7 +46,7 @@ pub(crate) trait Kernel: Sync {
     /// The kernel refused the socket, or `step` failed.
     fn over_route<T>(
         &self,
-        operation: &'static str,
+        operation: Step,
         step: impl FnOnce(&mut Netlink<Self::Wire>) -> io::Result<T>,
     ) -> SandboxResult<T> {
         self.route()
@@ -60,7 +60,7 @@ pub(crate) trait Kernel: Sync {
     /// The kernel refused the socket, or `step` failed.
     fn over_netfilter<T>(
         &self,
-        operation: &'static str,
+        operation: Step,
         step: impl FnOnce(&mut Netlink<Self::Wire>) -> io::Result<T>,
     ) -> SandboxResult<T> {
         self.netfilter()

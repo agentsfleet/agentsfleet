@@ -15,6 +15,7 @@ use crate::egress::testing::{
     DELLINK, DELTABLE, Fake, GETLINK, NEWADDR, NEWCHAIN, NEWLINK, NEWROUTE, NEWRULE, NEWSET,
     NEWSETELEM, NEWTABLE, Protocol, SETLINK,
 };
+use crate::error::{EgressRefusal, Step};
 use crate::network::Allowlist;
 
 /// A name the allowlist carries two addresses for, as a round-robin DNS
@@ -96,22 +97,22 @@ fn test_egress_setup_failures_refuse_the_lease() {
         // With no netfilter socket, nothing was sent, so the slot is freed.
         (
             Fake::default().closed(Protocol::Netfilter),
-            "a netfilter socket",
+            Step::OpenNetfilter,
             true,
         ),
         (
             Fake::default().refusing(Protocol::Netfilter, NEWTABLE, libc::EPERM),
-            "the egress table",
+            Step::InstallRules,
             true,
         ),
         (
             Fake::default().refusing(Protocol::Route, NEWLINK, libc::EEXIST),
-            "the veth pair",
+            Step::Join,
             true,
         ),
         (
             Fake::default().refusing(Protocol::Route, NEWROUTE, libc::ENETUNREACH),
-            "the sandbox side",
+            Step::ConfigurePeer,
             true,
         ),
         // With no route socket, the table is already built and its link
@@ -119,7 +120,7 @@ fn test_egress_setup_failures_refuse_the_lease() {
         // sweep.
         (
             Fake::default().closed(Protocol::Route),
-            "a route socket",
+            Step::OpenRoute,
             false,
         ),
     ];
@@ -128,17 +129,16 @@ fn test_egress_setup_failures_refuse_the_lease() {
 
         let refused = Scope::build(&kernel, namespace().as_fd(), &allowlist()).unwrap_err();
 
-        let reason = refused.to_string();
-        assert!(reason.contains(step), "{step}: {reason}");
+        assert_eq!(refused.netlink_step(), Some(step));
         let line = capture.only("egress_scope_refused");
-        assert_eq!(line.field("hosts"), Some("2"), "{step}");
+        assert_eq!(line.field("hosts"), Some("2"), "{step:?}");
         assert!(
             !format!("{:?}", line.fields).contains("example")
                 && !format!("{:?}", line.fields).contains("10.0.0"),
-            "{step}: no names or addresses are logged"
+            "{step:?}: no names or addresses are logged"
         );
         let slot = slot_in(&capture, "egress_scope_refused");
-        assert_eq!(Claim::exactly(slot).is_some(), freed, "{step}");
+        assert_eq!(Claim::exactly(slot).is_some(), freed, "{step:?}");
     }
 }
 
@@ -153,10 +153,7 @@ fn test_a_scope_that_will_not_come_down_keeps_its_slot() {
 
     let left = scope.remove(&kernel).unwrap_err();
 
-    assert!(
-        left.to_string().contains("removing the veth pair"),
-        "{left}"
-    );
+    assert_eq!(left.netlink_step(), Some(Step::RemoveLink));
     assert!(
         kernel.seen_on(Protocol::Netfilter).contains(&DELTABLE),
         "the table still goes"
@@ -176,11 +173,10 @@ fn test_a_host_with_every_slot_held_refuses() {
     let refused = Scope::build(&kernel, namespace().as_fd(), &allowlist()).unwrap_err();
 
     drop(held);
-    assert!(
-        refused.to_string().contains("every egress slot"),
-        "{refused}"
-    );
-    assert_eq!(capture.only("egress_scope_refused").field("slot"), None);
+    assert_eq!(refused.egress_refusal(), Some(&EgressRefusal::NoSlot));
+    let line = capture.only("egress_scope_refused");
+    assert_eq!(line.field("slot"), None);
+    assert_eq!(line.field("refusal"), Some(EgressRefusal::NoSlot.as_str()));
     assert_eq!(kernel.seen(), [], "the kernel is asked nothing");
 }
 
@@ -194,8 +190,5 @@ fn test_a_leftovers_link_goes_even_when_its_table_cannot() {
     let refused = remove(&kernel, slot).unwrap_err();
 
     assert_eq!(kernel.seen_on(Protocol::Route), [DELLINK]);
-    assert!(
-        refused.to_string().contains("removing the egress table"),
-        "{refused}"
-    );
+    assert_eq!(refused.netlink_step(), Some(Step::RemoveRules));
 }

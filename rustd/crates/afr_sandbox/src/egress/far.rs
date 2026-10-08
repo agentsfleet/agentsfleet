@@ -16,7 +16,7 @@ use std::time::Duration;
 use super::kernel::{Host, Kernel as _};
 use super::slot::Slot;
 use super::{FORWARDING, IP_FORWARD, OWN_NAMESPACE, link, probe, rules};
-use crate::error::{Error, Result, egress_refused, netlink};
+use crate::error::{Error, Result, Step, netlink};
 use crate::network::Allowlist;
 
 /// The far host's link: its host end, and the end in its own namespace.
@@ -38,8 +38,8 @@ pub const FAR_PORT: u16 = 8443;
 pub const DNS_PORT: u16 = rules::DNS_PORT;
 /// What the far host says to every connection.
 pub const FAR_GREETING: &str = "far";
-/// Why the far host could not be built.
-const FAR_FAILED: &str = "the far host's link";
+/// Why a slot that does not exist cannot be left behind.
+const NO_SUCH_SLOT: &str = "no such slot";
 /// How long a connection from the far host waits before it counts as dropped.
 const FAR_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// The table the probe trial leaves a dropping forward chain in; not an egress
@@ -61,7 +61,8 @@ pub fn objects() -> Result<Vec<String>> {
 /// # Errors
 /// No such slot, or the kernel refused.
 pub fn leave(index: u8) -> Result<()> {
-    let slot = Slot::new(index).ok_or_else(|| egress_refused("no such slot"))?;
+    let slot = Slot::new(index)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, NO_SUCH_SLOT))?;
     // Unowned, as a runner built before tables were owned leaves it: an owned
     // table goes with the socket that made it.
     Host.netfilter()?
@@ -126,8 +127,8 @@ impl Far {
         let _stale = remove_link(FAR_LINK);
         route
             .acknowledged(vec![far_pair(namespace.as_fd())])
-            .map_err(netlink(FAR_FAILED))?;
-        configure(&mut route, FAR_LINK, &[FAR_HOST_SIDE]).map_err(netlink(FAR_FAILED))?;
+            .map_err(netlink(Step::Far))?;
+        configure(&mut route, FAR_LINK, &[FAR_HOST_SIDE]).map_err(netlink(Step::Far))?;
         Host.inside(namespace.as_fd(), || {
             let mut route = Host.route()?;
             configure(&mut route, FAR_PEER, &[FAR_LISTED, FAR_UNLISTED])?;
@@ -138,7 +139,7 @@ impl Far {
                 .into_iter()
                 .try_for_each(answer_datagrams)
         })
-        .map_err(netlink(FAR_FAILED))?;
+        .map_err(netlink(Step::Far))?;
         Ok(Self { namespace })
     }
 
