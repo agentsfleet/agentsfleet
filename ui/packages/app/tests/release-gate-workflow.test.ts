@@ -1,7 +1,8 @@
 /**
  * Release-gate workflow invariants — the deployment pipeline's cache keys,
- * evidence uploads, and notification verdict are release-critical behavior,
- * pinned here against the workflow sources and the extracted verdict script.
+ * evidence uploads, promotion and rollout are release-critical behavior,
+ * pinned here against the workflow sources. The notification verdict has its
+ * own suite, `release-gate-verdict.test.ts`.
  *
  * The development pipeline spans a job graph and called stage workflows.
  * Its Bun and Playwright setup, including the cache key, lives in the shared
@@ -16,10 +17,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import acceptanceConfig from "../playwright.acceptance.config";
+import { REPO_ROOT, WORKFLOWS_DIR, deployDevFamily } from "./helpers/release-workflows";
 
-const REPO_ROOT = path.join(__dirname, "../../../..");
-const WORKFLOWS_DIR = path.join(REPO_ROOT, ".github/workflows");
-const DEPLOY_DEV_WORKFLOW = path.join(WORKFLOWS_DIR, "deploy-dev.yml");
 const POST_RELEASE_WORKFLOW = path.join(WORKFLOWS_DIR, "post-release.yml");
 const RELEASE_WORKFLOW = path.join(WORKFLOWS_DIR, "release.yml");
 const SMOKE_POST_DEPLOY_WORKFLOW = path.join(WORKFLOWS_DIR, "smoke-post-deploy.yml");
@@ -35,26 +34,12 @@ const PHANTOM_LOCK = "ui/packages/app/bun.lock";
 const MARKETING_SMOKE_PROJECTS = ["agentsfleet-website", "agentsfleet-app"] as const;
 const INSTALLER_PROJECT = "agentsfleet-agents-dev";
 
-function deployDevYaml(): string {
-  return fs.readFileSync(DEPLOY_DEV_WORKFLOW, "utf8");
-}
-
 function postReleaseYaml(): string {
   return fs.readFileSync(POST_RELEASE_WORKFLOW, "utf8");
 }
 
 function releaseYaml(): string {
   return fs.readFileSync(RELEASE_WORKFLOW, "utf8");
-}
-
-/** Every file of the dev pipeline (caller + called stages), concatenated. */
-function deployDevFamily(): string {
-  return fs
-    .readdirSync(WORKFLOWS_DIR)
-    .filter((f) => f.startsWith("deploy-dev") && f.endsWith(".yml"))
-    .sort()
-    .map((f) => fs.readFileSync(path.join(WORKFLOWS_DIR, f), "utf8"))
-    .join("\n");
 }
 
 function playwrightSetupAction(): string {
@@ -180,109 +165,6 @@ describe("artifacts uploaded are the artifacts downloaded", () => {
       });
       expect(matched, `no download pattern matches uploaded artifact '${artifact}'`).toBe(true);
     }
-  });
-});
-
-describe("the release verdict reports every job", () => {
-  it("should emit one summary event per release-critical job", () => {
-    const workflow = deployDevYaml();
-    for (const job of [
-      "compile-runner",
-      "compile-daemon",
-      "push-ghcr",
-      "deploy-fly",
-      "qa",
-      "acceptance-e2e",
-      "acceptance-cli",
-      "deploy-metal",
-    ]) {
-      expect(workflow).toContain(`"${job}=$`);
-    }
-    expect(workflow).toContain("dev_release_acceptance_summary job=${entry%%=*}");
-  });
-
-  it("should name the stage that broke, not report a build failure as four bare skips", () => {
-    // The bug: build and Fly had no line in the verdict, so a failed image push
-    // rendered as `QA: skipped | acceptance-e2e: skipped | acceptance-cli:
-    // skipped | metal: skipped` — red, correctly, with nothing saying why. The
-    // reader had to open the run to learn whether the push failed, Fly refused,
-    // or /readyz never came up.
-    const workflow = deployDevYaml();
-    expect(workflow).toContain("RUNNER_BUILD: ${{ needs.build.outputs.runner }}");
-    expect(workflow).toContain("DAEMON_BUILD: ${{ needs.build.outputs.daemon }}");
-    expect(workflow).toContain("GHCR_RESULT: ${{ needs.build.outputs.ghcr }}");
-    expect(workflow).toContain("FLY_RESULT: ${{ needs.fly.outputs.result }}");
-    expect(workflow).toContain(
-      "build: runner ${RUNNER_BUILD} | daemon ${DAEMON_BUILD} | ghcr ${GHCR_RESULT} | fly ${FLY_RESULT}",
-    );
-    // notify must depend on the stages it reports, or the outputs are empty.
-    expect(workflow).toContain("needs: [build, fly, acceptance, metal]");
-  });
-
-  it("should default every reported stage to skipped so an empty output never reads as a pass", () => {
-    // A called workflow that never ran returns "" for its outputs. Without the
-    // :-skipped default an unset stage is neither success nor skipped, and a
-    // string comparison against "success" is the only thing standing between
-    // that and a green verdict on a deploy that did not happen.
-    const workflow = deployDevYaml();
-    for (const v of [
-      "RUNNER_BUILD",
-      "DAEMON_BUILD",
-      "GHCR_RESULT",
-      "FLY_RESULT",
-      "QA_RESULT",
-      "ACCEPTANCE_RESULT",
-      "CLI_RESULT",
-      "METAL_RESULT",
-    ]) {
-      expect(workflow).toContain(`${v}="\${${v}:-skipped}"`);
-    }
-  });
-
-  it("should report build and fly without re-judging them in the green condition", () => {
-    // Deliberate restraint, pinned so nobody "completes" it later: nothing
-    // downstream can pass if the image never pushed, so the acceptance outputs
-    // come back empty and the verdict is already red on their account. Adding
-    // build and fly to the green condition would be redundant logic whose only
-    // possible contribution is a new way to be wrong.
-    const workflow = deployDevYaml();
-    // The WHOLE condition, not the tail after an anchor: a stage added BEFORE
-    // the anchor would slip past a split-and-inspect-the-rest assertion. (It
-    // did — this test was written that way first and a mutant survived it.)
-    const condition = workflow.slice(workflow.indexOf("\n          if [ "), workflow.indexOf("; then"));
-    expect(condition).toContain("QA_RESULT");
-    for (const reported of ["RUNNER_BUILD", "DAEMON_BUILD", "GHCR_RESULT", "FLY_RESULT"]) {
-      expect(condition).not.toContain(reported);
-    }
-  });
-});
-
-describe("the notification verdict consumes every gate", () => {
-  it("test_dev_notification_includes_cli_result", () => {
-    // Gate results cross the reusable-workflow boundary as outputs — a called
-    // workflow's own result collapses to one bit, which would hide WHICH gate
-    // broke the release. The verdict must read the granular output, and the
-    // acceptance workflow must actually export it from the job result.
-    const workflow = deployDevYaml();
-    expect(workflow).toContain("CLI_RESULT: ${{ needs.acceptance.outputs.cli }}");
-    expect(workflow).toContain('[ "$CLI_RESULT" = success ]');
-    expect(workflow).toContain("acceptance-cli: ${CLI_RESULT}");
-    const family = deployDevFamily();
-    expect(family).toContain("cli: ${{ needs.acceptance-cli.result }}");
-  });
-
-  it("test_dev_notification_green_requires_all_gates", () => {
-    const workflow = deployDevYaml();
-    expect(workflow).toContain('[ "$QA_RESULT" = success ]');
-    expect(workflow).toContain('[ "$ACCEPTANCE_RESULT" = success ]');
-    expect(workflow).toContain('[ "$CLI_RESULT" = success ]');
-    expect(workflow).toContain('[ "$METAL_RESULT" = success ] || [ "$METAL_RESULT" = skipped ]');
-    expect(workflow).toContain("✅ DEV deploy green");
-    expect(workflow).toContain("❌ DEV deploy not releasable");
-    // An upstream failure that skipped a whole stage leaves its output empty;
-    // the verdict must read that as skipped — red — never as a pass.
-    expect(workflow).toContain('QA_RESULT="${QA_RESULT:-skipped}"');
-    expect(workflow).toContain('METAL_RESULT="${METAL_RESULT:-skipped}"');
   });
 });
 
