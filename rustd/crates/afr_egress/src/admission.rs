@@ -19,6 +19,7 @@ use reqwest::header::{AUTHORIZATION, HOST};
 use reqwest::{Method, Url};
 use url::Host;
 
+use crate::allowlist::{self, allowlist_host};
 use crate::error::{Error, Result, raise};
 use crate::origin;
 use crate::placeholder::{self, SecretRef};
@@ -123,7 +124,7 @@ impl<'p> Admission<'p> {
         let url = self.locate(&draft.url, draft.placement)?;
         let host = url.host_str().unwrap_or_default();
         let credentials = placed(&draft)?;
-        self.listed(host)?;
+        self.listed(&url, host)?;
         reachable(&url, host)?;
         credentials
             .into_iter()
@@ -172,11 +173,19 @@ impl<'p> Admission<'p> {
         }
     }
 
-    fn listed(self, host: &str) -> Result<()> {
-        self.network
-            .allow
-            .iter()
-            .any(|allowed| allowed.eq_ignore_ascii_case(host))
+    /// Whether `url`'s host is one an allowlist entry names, each entry read
+    /// as the sandbox's kernel set reads it ([`allowlist_host`]). An entry no
+    /// host can be read from names none.
+    fn listed(self, url: &Url, host: &str) -> Result<()> {
+        let wanted = url.host().map(|named| allowlist::spelled(&named));
+        let named = wanted.is_some_and(|wanted| {
+            self.network
+                .allow
+                .iter()
+                .filter_map(|entry| allowlist_host(entry))
+                .any(|allowed| allowed == wanted)
+        });
+        named
             .then_some(())
             .ok_or_else(|| raise::host_not_allowed(host))
     }
@@ -309,3 +318,7 @@ mod tests;
 #[cfg(test)]
 #[path = "admission/credential_tests.rs"]
 mod credential_tests;
+
+#[cfg(test)]
+#[path = "admission/allowlist_tests.rs"]
+mod allowlist_tests;
