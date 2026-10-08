@@ -1,34 +1,9 @@
-use netlink_packet_netfilter::nftables::{
-    ChainAttribute, ChainMessage, Hook, HookNumber, InetHookNumber, NfTablesMessage,
-};
-use netlink_packet_netfilter::{NetfilterHeader, NetfilterMessage, NetfilterProtoFamily};
+use netlink_packet_netfilter::NetfilterProtoFamily;
+use netlink_packet_netfilter::nftables::InetHookNumber;
 
 use super::super::expressions::{ACCEPT, DROP};
 use super::dropping;
-
-/// A base chain as the kernel lists it.
-fn chain(
-    family: NetfilterProtoFamily,
-    table: &str,
-    name: &str,
-    hook: InetHookNumber,
-    policy: u32,
-) -> NetfilterMessage {
-    NetfilterMessage::new(
-        NetfilterHeader::new(family, 0, 0),
-        NfTablesMessage::NewChain(ChainMessage {
-            attributes: vec![
-                ChainAttribute::Table(table.to_owned()),
-                ChainAttribute::Name(name.to_owned()),
-                ChainAttribute::Hook(vec![
-                    Hook::Number(HookNumber::Inet(hook)),
-                    Hook::Priority(0),
-                ]),
-                ChainAttribute::Policy(policy),
-            ],
-        }),
-    )
-}
+use crate::egress::testing::chain;
 
 /// A forward chain that drops by policy is named, in either family that
 /// carries IPv4: ufw's and Docker's chains are `ip`, a hand-written one is

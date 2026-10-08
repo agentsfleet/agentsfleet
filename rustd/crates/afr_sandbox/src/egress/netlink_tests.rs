@@ -5,18 +5,18 @@
 
 use std::collections::VecDeque;
 use std::io;
-use std::num::NonZeroI32;
 
 use netlink_packet_core::{
-    DoneMessage, ErrorMessage, NLM_F_ACK, NLM_F_REQUEST, NetlinkBuffer, NetlinkHeader,
-    NetlinkMessage, NetlinkPayload,
+    ErrorMessage, NLM_F_ACK, NLM_F_REQUEST, NetlinkBuffer, NetlinkHeader, NetlinkMessage,
+    NetlinkPayload,
 };
 use netlink_packet_route::RouteNetlinkMessage;
-use netlink_packet_route::link::{LinkAttribute, LinkMessage};
+use netlink_packet_route::link::LinkMessage;
 use netlink_sys::protocols::NETLINK_ROUTE;
 
-use super::{Netlink, Wire, split};
-use crate::egress::testing::bytes;
+use super::{Netlink, Wire, encode, frames, split};
+use crate::egress::link::name_of;
+use crate::egress::testing::{ack, done, new_link as named, refusal};
 
 /// A wire that answers with the datagrams a test scripted, and keeps what was
 /// sent.
@@ -52,49 +52,13 @@ fn request(flags: u16) -> NetlinkMessage<RouteNetlinkMessage> {
     message
 }
 
-fn answer(code: Option<i32>) -> Vec<u8> {
-    let mut error = ErrorMessage::default();
-    error.code = code.and_then(NonZeroI32::new);
-    bytes(NetlinkMessage::<RouteNetlinkMessage>::new(
-        NetlinkHeader::default(),
-        NetlinkPayload::Error(error),
-    ))
-}
-
-fn named(name: &str) -> Vec<u8> {
-    let mut link = LinkMessage::default();
-    link.attributes = vec![LinkAttribute::IfName(name.to_owned())];
-    bytes(NetlinkMessage::from(RouteNetlinkMessage::NewLink(link)))
-}
-
-fn done() -> Vec<u8> {
-    bytes(NetlinkMessage::<RouteNetlinkMessage>::new(
-        NetlinkHeader::default(),
-        NetlinkPayload::Done(DoneMessage::default()),
-    ))
-}
-
-fn name_of(message: RouteNetlinkMessage) -> Option<String> {
-    match message {
-        RouteNetlinkMessage::NewLink(link) => {
-            link.attributes
-                .into_iter()
-                .find_map(|attribute| match attribute {
-                    LinkAttribute::IfName(name) => Some(name),
-                    _ => None,
-                })
-        }
-        _ => None,
-    }
-}
-
 /// Every request asking an acknowledgement waits for one, however the replies
 /// are split into datagrams; one that asks none is not waited for. All of them
 /// leave in one datagram, numbered in turn.
 #[test]
 fn test_every_acknowledgement_is_waited_for() {
-    let both = [answer(None), answer(None)].concat();
-    let mut netlink = scripted(vec![answer(None), both]);
+    let both = [ack(), ack()].concat();
+    let mut netlink = scripted(vec![ack(), both]);
     let ask = NLM_F_REQUEST | NLM_F_ACK;
 
     netlink
@@ -120,7 +84,7 @@ fn test_every_acknowledgement_is_waited_for() {
 /// A refusal ends the wait with the kernel's own reason.
 #[test]
 fn test_a_refusal_answers_its_errno() {
-    let mut netlink = scripted(vec![answer(None), answer(Some(-libc::EEXIST))]);
+    let mut netlink = scripted(vec![ack(), refusal(libc::EEXIST)]);
     let ask = NLM_F_REQUEST | NLM_F_ACK;
 
     let refused = netlink
@@ -135,7 +99,7 @@ fn test_a_refusal_answers_its_errno() {
 #[test]
 fn test_a_fetch_answers_one_message() {
     let found = scripted(vec![named("afv3")]).fetch(request(0)).unwrap();
-    let refused = scripted(vec![answer(Some(-libc::ENODEV))])
+    let refused = scripted(vec![refusal(libc::ENODEV)])
         .fetch(request(0))
         .unwrap_err();
     let ended = scripted(vec![done()]).fetch(request(0)).unwrap_err();
@@ -158,7 +122,7 @@ fn test_a_dump_gathers_until_done() {
         .into_iter()
         .filter_map(name_of)
         .collect();
-    let refused = scripted(vec![named("lo"), answer(Some(-libc::EPERM))]).dump(request(0));
+    let refused = scripted(vec![named("lo"), refusal(libc::EPERM)]).dump(request(0));
 
     assert_eq!(names, ["lo", "afv1", "afv2"]);
     assert_eq!(refused.unwrap_err().raw_os_error(), Some(libc::EPERM));
@@ -190,6 +154,31 @@ fn test_a_malformed_datagram_is_refused() {
     split::<RouteNetlinkMessage>(&cut).unwrap_err();
     split::<RouteNetlinkMessage>(&short).unwrap_err();
     split::<RouteNetlinkMessage>(&[0; 3]).unwrap_err();
+}
+
+/// A message whose length is not a multiple of four is padded to the next
+/// one, and the frame after it starts past that padding.
+#[test]
+fn test_a_message_is_padded_and_the_next_frame_starts_past_it() {
+    let mut echoed = ErrorMessage::default();
+    echoed.header = vec![1, 2, 3];
+    let odd = encode(NetlinkMessage::<RouteNetlinkMessage>::new(
+        NetlinkHeader::default(),
+        NetlinkPayload::Error(echoed),
+    ));
+    let unpadded = usize::try_from(NetlinkBuffer::new(&odd).length()).unwrap();
+    let datagram = [odd.clone(), ack()].concat();
+
+    let lengths: Vec<usize> = frames(&datagram)
+        .map(|frame| frame.unwrap().len())
+        .collect();
+
+    assert!(
+        unpadded < odd.len() && odd.len().is_multiple_of(4),
+        "{unpadded} in {}",
+        odd.len()
+    );
+    assert_eq!(lengths, [unpadded, ack().len()]);
 }
 
 /// The real socket opens without privilege and lists this namespace's links,
