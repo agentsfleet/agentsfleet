@@ -59,7 +59,7 @@ const ALLOW_LIST: &str = "allow_list_egress";
 /// the network.
 const LOCAL_REGISTRY: &str = "localhost";
 /// What a lease whose egress would not bind logs.
-const EGRESS_REFUSED: &str = "egress_scope_refused";
+const EGRESS_REFUSED: &str = "egress_bind_refused";
 
 /// One run of the binary through one lease.
 struct Ran {

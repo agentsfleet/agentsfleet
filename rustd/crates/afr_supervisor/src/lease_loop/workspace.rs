@@ -37,7 +37,7 @@ const DETAIL_EGRESS: &str =
 /// so it is told apart from the runner-side failures above.
 const DETAIL_EGRESS_BLOCKED: &str =
     "the fleet allows an egress host at a private or reserved address";
-const EVENT_EGRESS_REFUSED: &str = "egress_scope_refused";
+const EVENT_EGRESS_REFUSED: &str = "egress_bind_refused";
 const EVENT_LANDING_FAILED: &str = "bundle_landing_failed";
 const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
 const EVENT_SIZE_REFUSED: &str = "sandbox_size_refused";
@@ -138,13 +138,7 @@ impl LeaseRun<'_> {
             DETAIL_EGRESS
         };
         tracing::warn!(error_code, lease_id, reason, hosts, event, detail);
-        // Each line named in its own call: the dashboard's copy is checked
-        // against the `failed(..)` calls this crate spells.
-        if blocked {
-            failed(FailureClass::StartupPosture, DETAIL_EGRESS_BLOCKED)
-        } else {
-            failed(FailureClass::StartupPosture, DETAIL_EGRESS)
-        }
+        failed(FailureClass::StartupPosture, detail)
     }
 
     /// Builds a fresh sandbox enforcing `limits` and reaching what `bound`
