@@ -14,7 +14,7 @@ use crate::egress_owned::{
 };
 use crate::egress_reallow::reallow_swaps_the_set_in_place;
 use crate::lane::Lane;
-use crate::run::{expect, run, runtime, shell};
+use crate::run::{expect, in_sandbox_each, runtime, said};
 use crate::trials::Body;
 
 /// Every egress trial, by the name the lane reports it under.
@@ -83,26 +83,16 @@ pub(crate) fn connect(host: &str, port: u16) -> String {
     format!("set -- {host} {port}; {CONNECT}")
 }
 
-/// Runs each of `scripts` in one sandbox reaching `network`, and returns what
-/// each printed, trimmed.
+/// What each of `scripts` printed, trimmed, run in turn in one sandbox for
+/// `lease_id` reaching `network`.
 fn said_under(
     lane: &Lane,
     lease_id: &str,
     network: Network<'_>,
     scripts: &[String],
 ) -> Result<Vec<String>, Failed> {
-    runtime().block_on(async {
-        let engine = lane.engine();
-        let request = SandboxRequest::new(lease_id, Limits::default()).with_network(network);
-        let sandbox = engine.prepare(request).await?;
-        let mut said = Vec::with_capacity(scripts.len());
-        for script in scripts {
-            let outcome = run(sandbox.executor(), shell(script)).await;
-            said.push(outcome.map(|outcome| outcome.output.trim().to_owned()));
-        }
-        sandbox.destroy().await?;
-        said.into_iter().collect()
-    })
+    let request = SandboxRequest::new(lease_id, Limits::default()).with_network(network);
+    in_sandbox_each(lane, request, scripts).map(said)
 }
 
 /// `allow_all` shares the host's network, so the far host answers; an

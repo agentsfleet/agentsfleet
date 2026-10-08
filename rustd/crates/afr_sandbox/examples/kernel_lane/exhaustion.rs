@@ -63,8 +63,7 @@ pub(crate) fn full_tmp_answers_enospc(lane: &Lane) -> Result<(), Failed> {
     };
     let outcomes = in_sandbox_each(
         lane,
-        "tmpfill",
-        limits,
+        SandboxRequest::new("tmpfill", limits),
         &[
             "dd if=/dev/zero of=/tmp/fill bs=1M count=80 2>&1",
             "echo ok",
@@ -92,8 +91,7 @@ pub(crate) fn workspace_and_tmp_share_the_disk(lane: &Lane) -> Result<(), Failed
     };
     let outcomes = in_sandbox_each(
         lane,
-        "shared",
-        limits,
+        SandboxRequest::new("shared", limits),
         &[
             "dd if=/dev/zero of=/workspace/fill bs=1M count=40 2>&1; ls -a /workspace",
             "dd if=/dev/zero of=/tmp/fill bs=1M count=40 2>&1",
