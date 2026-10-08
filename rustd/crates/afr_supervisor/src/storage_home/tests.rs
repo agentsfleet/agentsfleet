@@ -13,14 +13,15 @@ fn opening_a_home_makes_its_directories_and_opening_it_again_keeps_them() {
     let home = StorageHome::open(root.path()).unwrap();
     let again = StorageHome::open(root.path()).unwrap();
 
+    let toolbox = home.toolbox();
     for directory in [
         home.sandboxes(),
         home.spool(),
         home.bundles(),
         home.mirrors(),
-        home.toolbox_incoming(),
-        home.toolbox_images(),
-        home.toolbox_mounts(),
+        toolbox.incoming(),
+        toolbox.images(),
+        toolbox.mounts(),
     ] {
         assert!(directory.is_dir(), "{}", directory.display());
     }
@@ -43,8 +44,8 @@ fn the_toolbox_directories_are_three_siblings_under_the_home() {
 
     let home = StorageHome::open(root.path()).unwrap();
 
-    let toolbox = root.path().join("toolbox");
-    assert_eq!(home.toolbox_incoming(), toolbox.join("incoming"));
-    assert_eq!(home.toolbox_images(), toolbox.join("images"));
-    assert_eq!(home.toolbox_mounts(), toolbox.join("mounts"));
+    let (toolbox, under) = (home.toolbox(), root.path().join("toolbox"));
+    assert_eq!(toolbox.incoming(), under.join("incoming"));
+    assert_eq!(toolbox.images(), under.join("images"));
+    assert_eq!(toolbox.mounts(), under.join("mounts"));
 }

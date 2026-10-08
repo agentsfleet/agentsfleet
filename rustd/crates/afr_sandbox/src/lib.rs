@@ -75,7 +75,7 @@ pub use self::tenant::{TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors}
 pub use self::toolbox::KernelMounter;
 pub use self::toolbox::{
     MANIFEST_SUFFIX, Manifest, Mounter, Release, SIGNATURE_SUFFIX, TOOLBOX_KEEP_RELEASES,
-    TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY, TOOLBOX_SUFFIX, Toolbox, Toolboxes,
+    TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY, TOOLBOX_SUFFIX, Toolbox, ToolboxHome, Toolboxes,
 };
 pub use self::unsandboxed::UnsandboxedEngine;
 pub use self::warm_slots::WarmSlots;
