@@ -298,7 +298,7 @@ fn log_release(lease_id: &str, failed: Option<&Error>) {
         }
         Some(error) => {
             let error_code = error.code().as_str();
-            let reason = error.to_string();
+            let reason = error.told();
             let event = EVENT_TEARDOWN_FAILED;
             tracing::warn!(
                 lease_id,

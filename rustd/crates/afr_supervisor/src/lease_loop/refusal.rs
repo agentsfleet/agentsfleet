@@ -54,7 +54,8 @@ impl LeaseRun<'_> {
     ) -> Ending {
         let code = failure.code().as_str();
         let lease_id = self.ids.lease.as_str();
-        tracing::warn!(error_code = code, lease_id, event, detail);
+        let reason = failure.told();
+        tracing::warn!(error_code = code, lease_id, reason, event, detail);
         failed(class, detail)
     }
 }

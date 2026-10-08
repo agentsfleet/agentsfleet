@@ -8,7 +8,6 @@
 //! told to build no sandbox at all, so a suite drives this binary end to end on
 //! a host without bubblewrap; a release build has no way to ask.
 
-use std::fmt::Display;
 use std::process::ExitCode;
 use std::sync::Arc;
 
@@ -57,7 +56,7 @@ impl Drop for Mounted {
             return;
         };
         let error_code = stayed.code().as_str();
-        let reason = stayed.to_string();
+        let reason = stayed.told();
         let event = EVENT_RUN_FAILED;
         tracing::warn!(error_code, reason, event, "a toolbox image stayed mounted");
     }
@@ -177,13 +176,13 @@ pub(crate) trait OrExit<T> {
 
 impl<T, E: Coded> OrExit<T> for Result<T, E> {
     fn or_exit(self) -> Result<T, ExitCode> {
-        self.map_err(|failure| stopped(failure.code(), &failure))
+        self.map_err(|failure| stopped(failure.code(), &failure.told()))
     }
 }
 
 /// Logs an input/output failure the runner's own crates did not raise.
 pub(crate) fn io_failed(failure: &std::io::Error) -> ExitCode {
-    stopped(error_code::INTERNAL_OPERATION_FAILED, failure)
+    stopped(error_code::INTERNAL_OPERATION_FAILED, &failure.to_string())
 }
 
 /// Logs a host that lacks `missing`, which every sandbox needs.
@@ -195,9 +194,10 @@ fn cannot_sandbox(missing: &'static str) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn stopped(code: ErrorCode, reason: &dyn Display) -> ExitCode {
+/// Logs why `run` stopped, `reason` being the failure's sentence and its
+/// causes, and turns its code into the exit status.
+fn stopped(code: ErrorCode, reason: &str) -> ExitCode {
     let error_code = code.as_str();
-    let reason = reason.to_string();
     let event = EVENT_RUN_FAILED;
     tracing::error!(error_code, reason, event);
     ExitCode::from(exit_status(code))

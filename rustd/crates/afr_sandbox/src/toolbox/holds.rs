@@ -103,7 +103,7 @@ impl<M: Mounter> Toolboxes<M> {
             .and_then(|_released| self.prune(&admitted));
         if let Err(stuck) = kept {
             let error_code = stuck.code().as_str();
-            let reason = stuck.to_string();
+            let reason = stuck.told();
             let event = EVENT_RELEASE_FAILED;
             tracing::warn!(error_code, reason, event);
         }
@@ -164,7 +164,7 @@ impl<M: Mounter> Toolboxes<M> {
                         .is_some_and(|refusal| REFUSALS_OF_THE_FILE.contains(&refusal)) =>
             {
                 let digest = manifest.sha256();
-                let reason = refused.to_string();
+                let reason = refused.told();
                 let event = EVENT_RESTAGED;
                 tracing::warn!(digest, reason, event);
                 fs::remove_file(image)?;

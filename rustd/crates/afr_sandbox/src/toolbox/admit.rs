@@ -58,7 +58,7 @@ impl Toolbox {
             Err(error) => {
                 let error_code = error.code().as_str();
                 let refusal = error.toolbox_refusal().map(ToolboxRefusal::as_str);
-                let reason = error.to_string();
+                let reason = error.told();
                 let event = EVENT_ADMISSION_FAILED;
                 tracing::error!(digest, error_code, refusal, reason, event);
             }

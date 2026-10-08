@@ -148,7 +148,7 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
             install_logs(env, None);
             let error_code = refused.code().as_str();
             let knob = refused.knob();
-            let reason = refused.to_string();
+            let reason = refused.told();
             let event = host::EVENT_RUN_FAILED;
             tracing::error!(error_code, knob, reason, event);
             return Err(ExitCode::FAILURE);

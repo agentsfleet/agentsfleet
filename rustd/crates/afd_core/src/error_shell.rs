@@ -24,7 +24,8 @@
 //! nothing at build time and expands in the crate that calls it.
 
 /// Generates the hull of a crate-level error: the boxed struct, the backtrace
-/// capture, `Display`, `source()`, and [`crate::error_code::Coded`].
+/// capture, `Display`, `source()`, the `told()` a log's `reason` reads, and
+/// [`crate::error_code::Coded`].
 ///
 /// The calling crate declares `ErrorKind` (a `thiserror::Error` enum), its own
 /// `pub type Result<T, E = Error>` alias, and `code()` on `Error` — `Display`
@@ -85,11 +86,30 @@ macro_rules! error_shell {
             pub fn backtrace(&self) -> &std::backtrace::Backtrace {
                 &self.inner.backtrace
             }
+
+            /// This failure's own sentence, then each cause beneath it, the
+            /// way a chain walker reads them: a log's `reason`. The code is
+            /// the log's `error_code` field already, and `Display` would carry
+            /// a captured backtrace too, so a cause's reason (a kernel errno,
+            /// a resolver's answer) is named here and nowhere else.
+            #[must_use]
+            pub fn told(&self) -> String {
+                std::iter::successors(std::error::Error::source(self), |cause| {
+                    std::error::Error::source(*cause)
+                })
+                .fold(self.inner.kind.to_string(), |told, cause| {
+                    format!("{told}: {cause}")
+                })
+            }
         }
 
         impl $crate::error_code::Coded for $error {
             fn code(&self) -> $crate::error_code::ErrorCode {
                 $error::code(self)
+            }
+
+            fn told(&self) -> String {
+                $error::told(self)
             }
         }
 

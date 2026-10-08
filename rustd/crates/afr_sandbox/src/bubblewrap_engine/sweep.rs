@@ -28,7 +28,7 @@ impl BubblewrapEngine {
     pub(super) fn sweep(&self, egress: bool) {
         if egress && let Err(error) = egress::sweep(&egress::Host) {
             let error_code = error.code().as_str();
-            let reason = error.to_string();
+            let reason = error.told();
             let event = EVENT_SWEEP_FAILED;
             tracing::warn!(
                 error_code,
@@ -54,7 +54,7 @@ impl BubblewrapEngine {
                 }
                 Err(error) => {
                     let error_code = error.code().as_str();
-                    let reason = error.to_string();
+                    let reason = error.told();
                     let event = EVENT_SWEEP_FAILED;
                     tracing::warn!(%lease_id, error_code, reason, event);
                 }

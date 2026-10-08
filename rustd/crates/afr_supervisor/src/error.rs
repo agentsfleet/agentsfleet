@@ -279,18 +279,6 @@ impl Error {
         }
     }
 
-    /// This failure's own sentence, then each cause beneath it, the way a chain
-    /// walker reads them: a log's `reason`. The code is the log's `error_code`
-    /// field already, and a resolver's or the sandbox engine's reason, which
-    /// `Display` stops short of, is what tells an operator why.
-    #[must_use]
-    pub fn told(&self) -> String {
-        std::iter::successors(std::error::Error::source(self), |cause| cause.source())
-            .fold(self.kind().to_string(), |told, cause| {
-                format!("{told}: {cause}")
-            })
-    }
-
     /// Whether a host the fleet allowed resolved to an address no fleet may
     /// reach, which the fleet's owner fixes rather than the runner's.
     #[must_use]

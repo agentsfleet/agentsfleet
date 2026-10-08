@@ -31,6 +31,13 @@ fn should_render_the_backtrace_only_when_the_environment_asks_for_one() {
             rendered.lines().count() > 1,
             "a captured backtrace must be rendered, got: {rendered}"
         );
+        let told = err.told();
+        assert_eq!(
+            told.lines().count(),
+            1,
+            "a log's reason never carries the backtrace: {told}"
+        );
+        assert!(!told.starts_with('['), "nor the code: {told}");
         return;
     }
 

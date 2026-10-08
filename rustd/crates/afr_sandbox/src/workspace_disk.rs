@@ -126,7 +126,7 @@ impl WorkspaceDisk {
         if let Err(leftover) = undone {
             let error_code = leftover.code().as_str();
             let path = mount_point.display();
-            let reason = leftover.to_string();
+            let reason = leftover.told();
             let event = EVENT_DISK_LEFT;
             tracing::warn!(
                 error_code,
