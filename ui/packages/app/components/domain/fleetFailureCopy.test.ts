@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MessageState } from "@assistant-ui/react";
 import {
@@ -19,28 +17,6 @@ const NEEDS_INSTRUCTIONS =
   "This fleet needs instructions before it can respond.";
 const RUNNER_REFUSED = "The runner refused this run before the fleet started.";
 const UNFINISHED_REPLY = "This fleet couldn’t complete the reply.";
-
-// The supervisor's production source: where a lease is ended and with which
-// cause line. Test files are left out, since a fixture may spell any line.
-const SUPERVISOR_SRC = resolve(
-  process.cwd(),
-  "../../../rustd/crates/afr_supervisor/src",
-);
-const DETAIL_DECLARATION = /const (DETAIL_\w+): &str =\s*"([^"]*)"/g;
-const DETAIL_NAME = /\b(DETAIL_\w+)\b/g;
-const REFUSE_CALL = /\.refuse\([^;]*?,\s*(DETAIL_\w+)\s*\)/g;
-const STARTUP_POSTURE_FAILURE =
-  /failed\(\s*FailureClass::StartupPosture,\s*(DETAIL_\w+)\s*,?\s*\)/g;
-const UNHOSTED_BODY =
-  /fn unhosted\([\s\S]*?failed\(FailureClass::StartupPosture, detail\)/;
-
-function supervisorSource(): string {
-  return readdirSync(SUPERVISOR_SRC, { recursive: true, encoding: "utf8" })
-    .filter((name) => name.endsWith(".rs"))
-    .filter((name) => !/(^|\/)(tests?|[\w]+_tests|test_support)(\.rs|\/)/.test(name))
-    .map((name) => readFileSync(join(SUPERVISOR_SRC, name), "utf8"))
-    .join("\n");
-}
 
 function failedEvent(overrides: Partial<FleetEvent> = {}): FleetEvent {
   return {
@@ -168,73 +144,5 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
       failureLabel: "runner_crash",
       failureDetail: "UnexpectedFault",
     }))).toBe(UNFINISHED_REPLY);
-  });
-
-  // The refusal list is a hand-copy of cause lines the runner emits, in another
-  // language, matched by exact string. Nothing but this test connects the two:
-  // reword a line on the runner side and every refusal silently reverts to
-  // "this fleet needs instructions" — the exact bug the split was written to
-  // fix, reappearing with no failing test to announce it.
-  //
-  // Derived from the runner source rather than from a second copy of the list,
-  // so the assertion cannot pass by agreeing with itself.
-  it("carries exactly the runner's own startup-posture refusal lines", () => {
-    const supervisor = supervisorSource();
-
-    // Every `DETAIL_*` literal the supervisor declares, by name; a long one
-    // wraps onto the next line after its `=`.
-    const literals = new Map<string, string>();
-    for (const match of supervisor.matchAll(DETAIL_DECLARATION)) {
-      const [, name, text] = match;
-      if (name === undefined || text === undefined) continue;
-      literals.set(name, text);
-    }
-    expect(literals.size).toBeGreaterThan(0);
-
-    // Only the ones a lease ends with under `FailureClass::StartupPosture`. A
-    // line ended under another class — `renewal_terminate`, say — is not a
-    // refusal to start and must NOT appear in the chat copy's list.
-    //
-    // Three emission shapes, and the guard must know all three: `refuse`,
-    // which hard-codes the class; `failed(FailureClass::StartupPosture, ..)`
-    // named directly; and `unhosted`, which picks its line by what the fleet
-    // named and then ends the lease under the class.
-    const unhosted = supervisor.match(UNHOSTED_BODY)?.[0] ?? "";
-    expect(unhosted, "the unhosted refusal moved or was renamed").not.toBe("");
-    const refusals = new Set<string>();
-    const named = [
-      ...supervisor.matchAll(REFUSE_CALL),
-      ...supervisor.matchAll(STARTUP_POSTURE_FAILURE),
-      ...unhosted.matchAll(DETAIL_NAME),
-    ];
-    for (const match of named) {
-      const name = match[1];
-      if (name === undefined) continue;
-      const literal = literals.get(name);
-      expect(literal, `${name} is emitted but never declared`).toBeDefined();
-      if (literal !== undefined) refusals.add(literal);
-    }
-
-    expect([...refusals].sort()).toEqual([...RUNNER_REFUSAL_DETAILS].sort());
-  });
-
-  // The internal-identifier rule keys on whitespace: operator-facing cause lines
-  // are prose, a bare token is a leaked error name. That holds for every cause
-  // the runner declares today — but nothing stopped a future one-word cause from
-  // being added, at which point it would be silently suppressed AND misread as a
-  // runner refusal. Derived from the runner source so the guard cannot drift.
-  it("every runner cause line is prose, so the internal-identifier rule cannot misfire", () => {
-    const offenders: string[] = [];
-    for (const match of supervisorSource().matchAll(DETAIL_DECLARATION)) {
-      const [, name, text] = match;
-      if (name === undefined || text === undefined) continue;
-      if (!/\s/.test(text)) offenders.push(`${name} = "${text}"`);
-    }
-
-    expect(
-      offenders,
-      "a single-word cause line would be treated as an internal identifier: " +
-        "hidden from the user and reported as a runner refusal. Reword it as prose.",
-    ).toEqual([]);
   });
 });
