@@ -15,20 +15,20 @@ use std::os::fd::{BorrowedFd, OwnedFd};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use netlink_packet_core::{
-    DoneMessage, ErrorMessage, NLM_F_ACK, NLM_F_DUMP, NetlinkBuffer, NetlinkHeader, NetlinkMessage,
-    NetlinkPayload, NetlinkSerializable,
+    Emitable as _, NLM_F_ACK, NLM_F_DUMP, NetlinkBuffer, NetlinkHeader, NetlinkMessage,
 };
 use netlink_packet_netfilter::nftables::{
-    ChainAttribute, ChainMessage, Hook, HookNumber, InetHookNumber, NfTablesMessage,
-    TableAttribute, TableMessage,
+    InetHookNumber, NfTablesMessage, TableAttribute, TableMessage,
 };
 use netlink_packet_netfilter::{NetfilterHeader, NetfilterMessage, NetfilterProtoFamily};
-use netlink_packet_route::RouteNetlinkMessage;
-use netlink_packet_route::link::{LinkAttribute, LinkMessage};
 
+use self::replies::answered;
+pub(super) use self::replies::{ack, chain, done, new_link, refusal, round_trip};
 use super::kernel::Kernel;
-use super::netlink::{Netlink, Wire};
-use super::rules::u16_of;
+use super::netlink::{Netlink, Wire, encode, frames};
+use super::rules::{DROP, u16_of};
+
+mod replies;
 
 /// The index every link lookup answers.
 pub(super) const INDEX: u32 = 7;
@@ -49,8 +49,6 @@ const BATCH: [u16; 2] = [
     u16_of(libc::NFNL_MSG_BATCH_BEGIN),
     u16_of(libc::NFNL_MSG_BATCH_END),
 ];
-/// Bytes in a netlink header.
-const HEADER_LEN: usize = 16;
 
 /// An `nf_tables` message's type: the subsystem in the high byte, the
 /// message in the low.
@@ -200,12 +198,12 @@ pub(super) struct FakeWire {
 
 impl Wire for FakeWire {
     fn send(&mut self, datagram: &[u8]) -> io::Result<()> {
-        let mut rest = datagram;
-        while let Ok(buffer) = NetlinkBuffer::new_checked(rest) {
+        let header_len = NetlinkHeader::default().buffer_len();
+        for frame in frames(datagram) {
+            let frame = frame?;
+            let buffer = NetlinkBuffer::new(frame);
             let (message_type, flags) = (buffer.message_type(), buffer.flags());
-            let length = usize::try_from(buffer.length()).unwrap();
-            let header = rest.get(..HEADER_LEN).unwrap().to_vec();
-            rest = rest.get(length.next_multiple_of(4)..).unwrap_or_default();
+            let header = frame.get(..header_len).unwrap().to_vec();
             // A batch's ends are `nf_tables` framing; on a route socket the
             // same numbers are a new link and a deleted one.
             if self.protocol == Protocol::Netfilter && BATCH.contains(&message_type) {
@@ -237,7 +235,7 @@ impl FakeWire {
         drop(state);
         if let Some(errno) = refusal {
             self.replies
-                .push_back(error(header, NonZeroI32::new(-errno)));
+                .push_back(answered(header, NonZeroI32::new(-errno)));
         } else if flags & NLM_F_DUMP == NLM_F_DUMP {
             let listed = match message_type {
                 GETCHAIN => chains(&dropping),
@@ -245,18 +243,11 @@ impl FakeWire {
                 _ => self.dump(&links),
             };
             self.replies.push_back(listed);
-            self.replies
-                .push_back(bytes(NetlinkMessage::<RouteNetlinkMessage>::new(
-                    NetlinkHeader::default(),
-                    NetlinkPayload::Done(DoneMessage::default()),
-                )));
+            self.replies.push_back(done());
         } else if flags & NLM_F_ACK != 0 {
-            self.replies.push_back(error(header, None));
+            self.replies.push_back(answered(header, None));
         } else {
-            self.replies
-                .push_back(bytes(NetlinkMessage::from(RouteNetlinkMessage::NewLink(
-                    link("fake"),
-                ))));
+            self.replies.push_back(new_link("fake"));
         }
     }
 
@@ -265,10 +256,8 @@ impl FakeWire {
         names
             .iter()
             .flat_map(|name| match self.protocol {
-                Protocol::Route => bytes(NetlinkMessage::from(RouteNetlinkMessage::NewLink(link(
-                    name,
-                )))),
-                Protocol::Netfilter => bytes(NetlinkMessage::from(NetfilterMessage::new(
+                Protocol::Route => new_link(name),
+                Protocol::Netfilter => encode(NetlinkMessage::from(NetfilterMessage::new(
                     NetfilterHeader::new(NetfilterProtoFamily::Inet, 0, 0),
                     NfTablesMessage::NewTable(TableMessage {
                         attributes: vec![TableAttribute::Name(name.clone())],
@@ -284,48 +273,9 @@ impl FakeWire {
 fn chains(dropping: &[(NetfilterProtoFamily, String, String)]) -> Vec<u8> {
     dropping
         .iter()
-        .flat_map(|(family, table, chain)| {
-            let attributes = vec![
-                ChainAttribute::Table(table.clone()),
-                ChainAttribute::Name(chain.clone()),
-                ChainAttribute::Hook(vec![
-                    Hook::Number(HookNumber::Inet(InetHookNumber::Forward)),
-                    Hook::Priority(0),
-                ]),
-                ChainAttribute::Policy(super::rules::DROP),
-            ];
-            bytes(NetlinkMessage::from(NetfilterMessage::new(
-                NetfilterHeader::new(*family, 0, 0),
-                NfTablesMessage::NewChain(ChainMessage { attributes }),
-            )))
+        .flat_map(|(family, table, name)| {
+            let listed = chain(*family, table, name, InetHookNumber::Forward, DROP);
+            encode(NetlinkMessage::from(listed))
         })
         .collect()
-}
-
-/// A link named `name`, numbered [`INDEX`].
-fn link(name: &str) -> LinkMessage {
-    let mut link = LinkMessage::default();
-    link.header.index = INDEX;
-    link.attributes = vec![LinkAttribute::IfName(name.to_owned())];
-    link
-}
-
-/// An acknowledgement of the request whose header is `header`, or, with a
-/// `code`, its refusal.
-fn error(header: Vec<u8>, code: Option<NonZeroI32>) -> Vec<u8> {
-    let mut answer = ErrorMessage::default();
-    answer.code = code;
-    answer.header = header;
-    bytes(NetlinkMessage::<RouteNetlinkMessage>::new(
-        NetlinkHeader::default(),
-        NetlinkPayload::Error(answer),
-    ))
-}
-
-/// `message`, finished and serialized.
-pub(super) fn bytes<I: NetlinkSerializable>(mut message: NetlinkMessage<I>) -> Vec<u8> {
-    message.finalize();
-    let mut buffer = vec![0; message.buffer_len()];
-    message.serialize(&mut buffer);
-    buffer
 }

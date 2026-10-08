@@ -159,10 +159,7 @@ pub(super) fn names<W: Wire>(route: &mut Netlink<W>, prefix: &str) -> io::Result
     let links = route.dump(every())?;
     Ok(links
         .into_iter()
-        .filter_map(|message| match message {
-            RouteNetlinkMessage::NewLink(link) => name_of(link),
-            _ => None,
-        })
+        .filter_map(name_of)
         .filter(|name| name.starts_with(prefix))
         .collect())
 }
@@ -182,8 +179,11 @@ fn by_name(name: &str) -> LinkMessage {
     link
 }
 
-/// The name a link message carries.
-fn name_of(link: LinkMessage) -> Option<String> {
+/// The name a link carries; none for any other message.
+pub(super) fn name_of(message: RouteNetlinkMessage) -> Option<String> {
+    let RouteNetlinkMessage::NewLink(link) = message else {
+        return None;
+    };
     link.attributes
         .into_iter()
         .find_map(|attribute| match attribute {

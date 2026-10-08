@@ -7,7 +7,7 @@ use std::fs::File;
 use std::net::{IpAddr, Ipv4Addr};
 use std::os::fd::{AsFd as _, AsRawFd as _};
 
-use netlink_packet_core::{NLM_F_ACK, NLM_F_CREATE, NLM_F_EXCL, NLM_F_REQUEST, NetlinkMessage};
+use netlink_packet_core::{NLM_F_ACK, NLM_F_CREATE, NLM_F_EXCL, NLM_F_REQUEST};
 use netlink_packet_route::RouteNetlinkMessage;
 use netlink_packet_route::address::AddressAttribute;
 use netlink_packet_route::link::{InfoData, InfoVeth, LinkAttribute, LinkFlags, LinkInfo};
@@ -16,17 +16,8 @@ use netlink_packet_route::route::{RouteAddress, RouteAttribute};
 use super::{address, configure_peer, default_route, join, names, pair, remove, up};
 use crate::egress::slot::Slot;
 use crate::egress::testing::{
-    DELLINK, Fake, GETLINK, NEWADDR, NEWLINK, NEWROUTE, Protocol, SETLINK, bytes,
+    DELLINK, Fake, GETLINK, NEWADDR, NEWLINK, NEWROUTE, Protocol, SETLINK, round_trip,
 };
-
-/// `message` as the kernel would read it back.
-fn round_trip(message: NetlinkMessage<RouteNetlinkMessage>) -> RouteNetlinkMessage {
-    let parsed = NetlinkMessage::<RouteNetlinkMessage>::deserialize(&bytes(message)).unwrap();
-    match parsed.payload {
-        netlink_packet_core::NetlinkPayload::InnerMessage(inner) => inner,
-        other => unreachable!("not a route message: {other:?}"),
-    }
-}
 
 /// The pair is created whole, the host end named for the slot and the peer
 /// created straight into the sandbox's namespace, and refused if either name

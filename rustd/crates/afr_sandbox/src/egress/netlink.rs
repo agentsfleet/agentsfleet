@@ -144,14 +144,7 @@ impl<W: Wire> Netlink<W> {
         for mut message in messages {
             self.sequence = self.sequence.wrapping_add(1);
             message.header.sequence_number = self.sequence;
-            message.finalize();
-            let mut bytes = vec![0; message.buffer_len()];
-            message.serialize(&mut bytes);
-            datagram.extend(bytes);
-            datagram.resize(
-                datagram.len().next_multiple_of(usize::from(NLMSG_ALIGNTO)),
-                0,
-            );
+            datagram.extend(encode(message));
         }
         self.wire.send(&datagram)
     }
@@ -162,22 +155,46 @@ impl<W: Wire> Netlink<W> {
     }
 }
 
+/// `message`, finished and serialized, padded to where a message after it
+/// in the same datagram would start.
+pub(super) fn encode<I: NetlinkSerializable>(mut message: NetlinkMessage<I>) -> Vec<u8> {
+    message.finalize();
+    let length = message.buffer_len();
+    let mut bytes = vec![0; length];
+    message.serialize(&mut bytes);
+    bytes.resize(length.next_multiple_of(usize::from(NLMSG_ALIGNTO)), 0);
+    bytes
+}
+
 /// Every message in `datagram`, in order.
 fn split<I: NetlinkDeserializable>(datagram: &[u8]) -> io::Result<Vec<NetlinkMessage<I>>> {
-    let mut messages = Vec::new();
+    frames(datagram)
+        .map(|frame| NetlinkMessage::deserialize(frame?).map_err(io::Error::other))
+        .collect()
+}
+
+/// The bytes of each message in `datagram`, in order, ending at the first
+/// that does not fit.
+pub(super) fn frames(datagram: &[u8]) -> impl Iterator<Item = io::Result<&[u8]>> {
     let mut rest = datagram;
-    while !rest.is_empty() {
-        let length = NetlinkBuffer::new_checked(rest)
-            .map_err(io::Error::other)?
-            .length();
-        let length = usize::try_from(length).map_err(io::Error::other)?;
-        let (message, after) = rest.split_at_checked(length).ok_or_else(truncated)?;
-        messages.push(NetlinkMessage::deserialize(message).map_err(io::Error::other)?);
-        rest = after
-            .get(length.next_multiple_of(usize::from(NLMSG_ALIGNTO)) - length..)
-            .unwrap_or_default();
-    }
-    Ok(messages)
+    std::iter::from_fn(move || {
+        (!rest.is_empty()).then(|| {
+            let framed = frame(rest);
+            rest = framed.as_ref().map_or(&[][..], |&(_message, after)| after);
+            framed.map(|(message, _after)| message)
+        })
+    })
+}
+
+/// The first message in `rest`, and what follows its padding.
+fn frame(rest: &[u8]) -> io::Result<(&[u8], &[u8])> {
+    let length = NetlinkBuffer::new_checked(rest)
+        .map_err(io::Error::other)?
+        .length();
+    let length = usize::try_from(length).map_err(io::Error::other)?;
+    let (message, after) = rest.split_at_checked(length).ok_or_else(truncated)?;
+    let padding = length.next_multiple_of(usize::from(NLMSG_ALIGNTO)) - length;
+    Ok((message, after.get(padding..).unwrap_or_default()))
 }
 
 /// A message longer than the datagram that carried it.

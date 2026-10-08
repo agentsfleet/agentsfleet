@@ -6,7 +6,7 @@
 
 use std::net::Ipv4Addr;
 
-use netlink_packet_core::{NLM_F_ACK, NetlinkMessage, NetlinkPayload};
+use netlink_packet_core::{NLM_F_ACK, NetlinkMessage};
 use netlink_packet_netfilter::nftables::{
     Bitwise, ChainAttribute, Cmp, DataAttribute, ExpressionAttribute, Expressions, Immediate,
     ListAttribute, Meta, MetaKey, NfTablesMessage, RuleAttribute, SetElementList, TableAttribute,
@@ -17,19 +17,13 @@ use netlink_packet_netfilter::{NetfilterMessage, NetfilterMessageInner};
 use super::expressions::{ACCEPT, DROP};
 use super::{FORWARD, INPUT, POSTROUTING, install, names, remove, u8_of, u16_of, uninstall};
 use crate::egress::slot::Slot;
-use crate::egress::testing::{DELTABLE, Fake, Protocol, bytes};
+use crate::egress::testing::{DELTABLE, Fake, Protocol, round_trip};
 
 /// Every message of a batch, as the kernel would read it back.
 fn read_back(batch: Vec<NetlinkMessage<NetfilterMessage>>) -> Vec<NetfilterMessageInner> {
     batch
         .into_iter()
-        .map(|message| {
-            let parsed = NetlinkMessage::<NetfilterMessage>::deserialize(&bytes(message)).unwrap();
-            match parsed.payload {
-                NetlinkPayload::InnerMessage(inner) => inner.inner,
-                other => unreachable!("not a netfilter message: {other:?}"),
-            }
-        })
+        .map(|message| round_trip(message).inner)
         .collect()
 }
 
