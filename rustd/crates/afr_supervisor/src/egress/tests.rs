@@ -218,6 +218,22 @@ async fn test_egress_setup_failures_refuse_the_lease() {
     assert!(crowded_cause.contains("past the"), "{crowded_cause}");
 }
 
+/// A refused allowlist is told the way every failure is: the engine's reason
+/// beneath the supervisor's sentence, and the code nowhere in it, since the
+/// log line's `error_code` field carries it.
+#[tokio::test]
+async fn test_a_refused_allowlist_is_told_without_its_code() {
+    let crowded = allow_list(&[CROWDED])
+        .bind(&fleet(&[], false), &resolver())
+        .await
+        .unwrap_err();
+
+    let told = crowded.told();
+
+    assert!(told.contains("past the"), "{told}");
+    assert!(!told.contains(crowded.code().as_str()), "{told}");
+}
+
 /// A host the fleet names is refused when any address it resolves to is one
 /// no fleet may reach, IPv6 spellings and a blocked answer beside a public one
 /// included. The refusal names the host, never the address.
