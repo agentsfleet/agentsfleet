@@ -12,9 +12,8 @@ primary_region = "iad"
 # worker thread per core: four on this machine size. A request and an event
 # stream are each a task, so neither pins a thread while it waits on Postgres,
 # Dragonfly or the client, and the runner lease is a single non-blocking poll
-# (docs/architecture/scaling.md). API_HTTP_THREADS and API_HTTP_WORKERS in
-# [env] below are read by no agentsfleetd code; the core count sizes the
-# runtime. Watch saturation via the exported runtime families in Grafana; the
+# (docs/architecture/scaling.md). The core count sizes the runtime, and no
+# environment knob changes it. Watch saturation via the exported runtime families in Grafana; the
 # next lever is more replicas (the binding constraint per scaling.md).
 #
 # Backpressure:
@@ -52,8 +51,6 @@ primary_region = "iad"
 # server can give does not serve more traffic — it answers 503 to the request
 # that needed connection eighteen.
 [env]
-  API_HTTP_THREADS = "32"
-  API_HTTP_WORKERS = "2"
   DATABASE_POOL_SIZE_API = "5"
   # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,
   # not a credential — so it lives here rather than in the 1Password-staged
