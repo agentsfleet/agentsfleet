@@ -71,7 +71,7 @@ test_should_refuse_host_without_required_cgroup_support() {
   elif ! grep -q '/sys/fs/cgroup/cgroup.controllers' "$calls"; then
     bad "$name" "host preparation did not check cgroup support"
     return
-  elif ! grep -Fq 'for controller in cpu io memory pids; do' "$calls" ||
+  elif ! grep -Fq "for controller in $required_controllers; do" "$calls" ||
     [[ "$output" != *"ERROR: required cgroup v2 controller unavailable: io"* ]]
   then
     bad "$name" "host preparation did not identify every required cgroup controller"
@@ -92,7 +92,7 @@ test_should_refuse_host_without_required_cgroup_support() {
     bad "$name" "runner deployment passed without required cgroup support"
   elif ! grep -q '/sys/fs/cgroup/cgroup.controllers' "$calls"; then
     bad "$name" "runner deployment did not check cgroup support"
-  elif ! grep -Fq 'for controller in cpu io memory pids; do' "$calls" ||
+  elif ! grep -Fq "for controller in $required_controllers; do" "$calls" ||
     [[ "$output" != *"ERROR: required cgroup v2 controller unavailable: io"* ]]
   then
     bad "$name" "runner deployment did not identify every required cgroup controller"
