@@ -193,6 +193,15 @@ async function collect(allowlist) {
  * snapshot. No DATABASE_URL (or no psql) is not an error — it just means every
  * row reads as new, which is exactly the fresh-install case.
  */
+/**
+ * What a failed psql said, without the command line `execFileSync` puts in
+ * its message: psql's stderr when it was captured, else its exit status.
+ */
+function psqlFailure(err) {
+  const said = typeof err.stderr === "string" ? err.stderr.trim() : "";
+  return said || `psql exited with status ${err.status ?? "unknown"}`;
+}
+
 function readLive() {
   const url = process.env.DATABASE_URL;
   if (!url && PSQL_TAKES_URL) {
@@ -208,7 +217,9 @@ function readLive() {
     const args = PSQL_TAKES_URL ? [...pre, url] : pre;
     raw = execFileSync(bin, [...args, "-At", "-F", "\t", "-c", sql], { encoding: "utf8" });
   } catch (err) {
-    fail(`could not read core.model_library (${PSQL_ARGV.join(" ")}): ${err.message}`);
+    // Never err.message: it repeats the command line, and the URL argument
+    // carries the database password.
+    fail(`could not read core.model_library (${PSQL_ARGV.join(" ")}): ${psqlFailure(err)}`);
   }
   const live = new Map();
   for (const line of raw.split("\n").filter(Boolean)) {
@@ -392,10 +403,16 @@ if (PSQL_TAKES_URL && !process.env.DATABASE_URL) fail("APPLY=1 needs DATABASE_UR
   // Only the rows the diff named: upserting every allowlisted row would bump
   // updated_at_ms on unchanged rows and destroy it as a per-row drift signal.
   const toWrite = [...delta.added, ...delta.changed.map((c) => c.row)];
-  execFileSync(bin, [...args, "-v", "ON_ERROR_STOP=1", "-f", "-"], {
-    input: emit(toWrite, allowlist, stamp),
-    stdio: ["pipe", "inherit", "inherit"],
-  });
+  try {
+    execFileSync(bin, [...args, "-v", "ON_ERROR_STOP=1", "-f", "-"], {
+      input: emit(toWrite, allowlist, stamp),
+      stdio: ["pipe", "inherit", "inherit"],
+    });
+  } catch (err) {
+    // psql's own stderr is already on the terminal; the thrown message would
+    // repeat the command line, password included.
+    fail(`could not apply the catalogue (${PSQL_ARGV.join(" ")}): ${psqlFailure(err)}`);
+  }
 }
 console.log(`✓ applied — ${delta.added.length} added, ${delta.changed.length} updated`);
 // No restart. This transaction bumped core.model_catalogue_revision alongside

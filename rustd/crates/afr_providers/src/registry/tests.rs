@@ -49,6 +49,12 @@ fn should_route_each_named_provider_to_its_wire_and_base() {
         ("mistral", "https://api.mistral.ai/"),
         ("deepseek", "https://api.deepseek.com/"),
         ("openrouter", "https://openrouter.ai/api/v1"),
+        ("glm", "https://api.z.ai/api/paas/v4"),
+        ("minimax", "https://api.minimax.io/v1"),
+        (
+            "qwen",
+            "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        ),
     ] {
         let named = route(name);
         assert_eq!(
@@ -60,14 +66,40 @@ fn should_route_each_named_provider_to_its_wire_and_base() {
     assert_eq!(route("grok"), route("xai"), "an alias is the same route");
 }
 
+/// The model catalogue prices `kimi` at Moonshot's international rates
+/// (`scripts/model-library-allowlist.json`), so the name dials the
+/// international host; only the `-cn` spellings reach the mainland one.
+#[test]
+fn should_dial_kimi_at_the_international_endpoint_it_is_priced_for() {
+    let registry = Registry::builtin().unwrap();
+    let base = |name: &str| registry.route(name).unwrap().base.to_string();
+
+    for international in ["kimi", "kimi-intl", "moonshot-intl"] {
+        assert_eq!(
+            base(international),
+            "https://api.moonshot.ai/v1",
+            "{international}"
+        );
+    }
+    for mainland in ["kimi-cn", "moonshot-cn", "moonshot"] {
+        assert_eq!(base(mainland), "https://api.moonshot.cn/v1", "{mainland}");
+    }
+}
+
+/// Each name is left out for a reason the chat wire cannot absorb: `bedrock`
+/// signs every request with AWS Signature Version 4 and streams AWS
+/// event-stream frames; `gemini` expects Gemini 3's thought signatures back on
+/// each tool call, a field rig's chat wire does not carry; `dashscope` is the
+/// mainland-China endpoint, which the catalogue never prices; `lmstudio` is a
+/// loopback host; `copilot` needs a token exchange; and names match exactly.
 #[test]
 fn should_refuse_a_name_the_table_leaves_out() {
     let registry = Registry::builtin().unwrap();
 
     for left_out in [
         "bedrock",
-        "glm",
-        "minimax",
+        "gemini",
+        "dashscope",
         "lmstudio",
         "copilot",
         "Anthropic",

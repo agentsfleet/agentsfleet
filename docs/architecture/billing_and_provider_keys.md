@@ -227,7 +227,7 @@ Function shape (M80_010) — **deltas** in, run fee + three-tier token cost out;
 
 ```rust
 // Rate resolution runs on the caller's already-acquired connection (M143 §2.2)
-// against §9's composite key: provider ("anthropic", "pioneer", …) and model
+// against §9's composite key: provider ("anthropic", "fireworks", …) and model
 // ("accounts/fireworks/models/kimi-k3", "kimi-k3", …).
 //
 // self_managed prices with NO statement at all
@@ -482,11 +482,11 @@ The runner resolves a lease's `provider` through its registry, `rustd/crates/afr
 | Native OpenAI | OpenAI Responses | `openai` |
 | Direct vendor, OpenAI-compatible | OpenAI-compatible chat | `fireworks`, `groq`, `moonshot-intl`, `deepseek`, `mistral`, `xai`, `cerebras` |
 | Multi-vendor gateway | OpenAI-compatible chat | `openrouter`, `vercel`, `poe`, `nearai`, `huggingface` |
-| Endpoint-only | OpenAI-compatible chat via `custom:<base_url>`, `https` with a host only | `pioneer` |
+| Endpoint-only | OpenAI-compatible chat via `custom:<base_url>`, `https` with a host only | `custom:https://vllm.corp/v1` |
 
 A name needing request signing, a token exchange, a non-streaming wire or a loopback host, a local runtime among them, has no registry entry, so a lease naming it is refused.
 
-**Regional split — international is what we price.** Where a vendor runs separate mainland-China and international services, the allowlist prices the **international** endpoint; the China endpoint carries no rates and is reached, when someone needs it, as an OpenAI-compatible custom endpoint. The base URL a lease dials is always the registry's. The registry resolves `kimi` to the China endpoint (`api.moonshot.cn`) and `kimi-intl` to the international one, and it has no `qwen` entry, so a lease naming `qwen` is refused.
+**Regional split — international is what we price.** Where a vendor runs separate mainland-China and international services, the allowlist prices the **international** endpoint; the China endpoint carries no rates and is reached, when someone needs it, as an OpenAI-compatible custom endpoint. The base URL a lease dials is always the registry's. The registry resolves `kimi` and `kimi-intl` to the international endpoint (`api.moonshot.ai`), where the allowlist prices them, and only `moonshot`, `moonshot-cn` and `kimi-cn` to the China one; `qwen` dials DashScope's international endpoint and `glm` Z.ai's general one.
 
 For self-managed provider key with Fireworks + Kimi K3:
 
@@ -530,7 +530,7 @@ What the catalogue holds is curated in `scripts/model-library-allowlist.json` an
 
 **The provider is a column, not an inference from the model id.** `core.model_library` keys on `(provider, model_id)` precisely so one model can appear under several hosts at different rates — Kimi K3 is priced separately under `fireworks`, `novita`, `chutes`, `poe` and `openrouter`, and they do not agree. Reading the host out of the id string works only for the vendors whose id happens to carry it, and it is wrong for every gateway. Users pick their provider through their self-managed credential body; the resolver reads that value, never a prefix.
 
-**Every provider is priced, or records why it never will be.** An allowlist entry carries either rates or exactly one `unpriced_reason` — `cn_endpoint`, `subscription_plan`, `gateway_passthrough`, `deployment_scoped`, `credentialed_feed`, `no_public_rates`, `awaiting_curation`, or `operator_hosted`. Only `awaiting_curation` is a queue; the rest are decisions. The distinction is load-bearing because an uncatalogued model is not a soft state — `UZ-PROVIDER-004` refuses activation for it, and platform posture fails closed with `error.ModelNotPriced` (§4.2). Local runtimes take `operator_hosted`: the model runs on hardware the operator owns, so no vendor publishes a per-token rate and none can be derived. Making them activatable is a product decision about the local-runtime experience — a tenant-chosen provider id resolves to a fixed loopback port, so the dial target needs gating per runner first — and it is deliberately not taken here. `scripts/check_model_allowlist.py` enforces all of it under `make lint-all`, so a provider cannot quietly re-enter the uncurated state that left 87 of them unusable.
+**Every provider is priced, or records why it never will be.** An allowlist entry carries either rates or exactly one `unpriced_reason` — `cn_endpoint`, `subscription_plan`, `gateway_passthrough`, `deployment_scoped`, `credentialed_feed`, `no_public_rates`, `awaiting_curation`, `operator_hosted`, `duplicate_spelling`, or `unsupported_wire`. `awaiting_curation` is the curation queue and `unsupported_wire` waits on a runner wire (Bedrock's request signing, Gemini's thought signatures); the rest are decisions. The distinction is load-bearing because an uncatalogued model is not a soft state — `UZ-PROVIDER-004` refuses activation for it, and platform posture fails closed with `error.ModelNotPriced` (§4.2). Local runtimes take `operator_hosted`: the model runs on hardware the operator owns, so no vendor publishes a per-token rate and none can be derived. Making them activatable is a product decision about the local-runtime experience — a tenant-chosen provider id resolves to a fixed loopback port, so the dial target needs gating per runner first — and it is deliberately not taken here. `scripts/check_model_allowlist.py` enforces all of it under `make lint-all`, so a provider cannot quietly re-enter the uncurated state that left 87 of them unusable.
 
 Properties:
 

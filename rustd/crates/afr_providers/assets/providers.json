@@ -26,16 +26,19 @@
   {"name": "opencode", "aliases": ["opencode-zen"], "wire": "chat", "base_url": "https://opencode.ai/zen/v1"},
   {"name": "astrai", "aliases": [], "wire": "chat", "base_url": "https://as-trai.com/v1"},
   {"name": "poe", "aliases": [], "wire": "chat", "base_url": "https://api.poe.com/v1"},
-  {"name": "moonshot", "aliases": ["kimi", "moonshot-cn", "kimi-cn"], "wire": "chat", "base_url": "https://api.moonshot.cn/v1", "dialect": "moonshot"},
+  {"name": "moonshot", "aliases": ["moonshot-cn", "kimi-cn"], "wire": "chat", "base_url": "https://api.moonshot.cn/v1", "dialect": "moonshot"},
   {"name": "doubao", "aliases": ["volcengine", "ark"], "wire": "chat", "base_url": "https://ark.cn-beijing.volces.com/api/v3"},
   {"name": "hunyuan", "aliases": ["tencent"], "wire": "chat", "base_url": "https://api.hunyuan.cloud.tencent.com/v1"},
   {"name": "baichuan", "aliases": [], "wire": "chat", "base_url": "https://api.baichuan-ai.com/v1"},
-  {"name": "moonshot-intl", "aliases": ["moonshot-global", "kimi-intl", "kimi-global"], "wire": "chat", "base_url": "https://api.moonshot.ai/v1", "dialect": "moonshot"},
+  {"name": "moonshot-intl", "aliases": ["kimi", "moonshot-global", "kimi-intl", "kimi-global"], "wire": "chat", "base_url": "https://api.moonshot.ai/v1", "dialect": "moonshot"},
   {"name": "byteplus", "aliases": [], "wire": "chat", "base_url": "https://ark.ap-southeast.bytepluses.com/api/v3"},
   {"name": "kimi-code", "aliases": ["kimi_coding"], "wire": "chat", "base_url": "https://api.kimi.com/coding/v1"},
   {"name": "volcengine-plan", "aliases": [], "wire": "chat", "base_url": "https://ark.cn-beijing.volces.com/api/coding/v3"},
   {"name": "byteplus-plan", "aliases": [], "wire": "chat", "base_url": "https://ark.ap-southeast.bytepluses.com/api/coding/v3"},
   {"name": "nvidia", "aliases": ["nvidia-nim", "build.nvidia.com"], "wire": "chat", "base_url": "https://integrate.api.nvidia.com/v1"},
   {"name": "ovhcloud", "aliases": ["ovh"], "wire": "chat", "base_url": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1"},
-  {"name": "novita", "aliases": ["novita-ai"], "wire": "chat", "base_url": "https://api.novita.ai/openai/v1"}
+  {"name": "novita", "aliases": ["novita-ai"], "wire": "chat", "base_url": "https://api.novita.ai/openai/v1"},
+  {"name": "glm", "aliases": [], "wire": "chat", "base_url": "https://api.z.ai/api/paas/v4", "dialect": "zai"},
+  {"name": "minimax", "aliases": [], "wire": "chat", "base_url": "https://api.minimax.io/v1", "dialect": "minimax"},
+  {"name": "qwen", "aliases": [], "wire": "chat", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"}
 ]
