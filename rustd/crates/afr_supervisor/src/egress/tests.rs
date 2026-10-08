@@ -14,7 +14,7 @@ use afd_wire::policy::NetworkPolicy as FleetNetwork;
 use afd_wire::runner::NetworkPolicy;
 use afr_sandbox::{ALLOWLIST_ADDRESSES_MAX, Allowlist, Network};
 
-use super::{Bound, DEFAULT_REGISTRY, Egress, Resolve, SystemResolver};
+use super::{Bound, DEFAULT_REGISTRY, Egress, Named, Resolve, SystemResolver};
 use crate::test_support::{FakeResolver, assigned};
 
 /// Two registry hosts, and a fleet host one of them shares.
@@ -91,6 +91,11 @@ fn blocking_resolver() -> FakeResolver {
     ])
 }
 
+/// Each host's name, dropping who named it.
+fn names(hosts: &[(String, Named)]) -> Vec<&str> {
+    hosts.iter().map(|(host, _named)| host.as_str()).collect()
+}
+
 /// Registry hosts come first, then the fleet's, each once in the order first
 /// named; a read-only fleet adds none, and a registry left empty is the
 /// runner's default set.
@@ -98,10 +103,15 @@ fn blocking_resolver() -> FakeResolver {
 fn test_egress_plan_merges_and_excludes_read_only() {
     let egress = allow_list(&[A, B]);
 
-    assert_eq!(egress.hosts(&fleet(&[B, C], false)), [A, B, C]);
-    assert_eq!(egress.hosts(&fleet(&[B, C], true)), [A, B]);
+    let (registry, from_fleet) = (Named::Registry, Named::Fleet);
     assert_eq!(
-        allow_list(&[]).hosts(&fleet(&[], false)),
+        egress.hosts(&fleet(&[B, C], false)),
+        [(A, registry), (B, registry), (C, from_fleet)]
+            .map(|(host, named)| (host.to_owned(), named))
+    );
+    assert_eq!(names(&egress.hosts(&fleet(&[B, C], true))), [A, B]);
+    assert_eq!(
+        names(&allow_list(&[]).hosts(&fleet(&[], false))),
         DEFAULT_REGISTRY,
         "an operator who named no registry gets the runner's own"
     );
@@ -119,7 +129,7 @@ fn an_entry_keeps_its_host_and_drops_its_port_scheme_and_path() {
         false,
     );
 
-    assert_eq!(egress.hosts(&authored), [A, B, C, "::1", "a b"]);
+    assert_eq!(names(&egress.hosts(&authored)), [A, B, C, "::1", "a b"]);
 }
 
 /// Each posture maps to its network: the host's, none, or the resolved

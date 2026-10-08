@@ -58,6 +58,8 @@ const ANY_PORT: u16 = 0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Egress {
     policy: NetworkPolicy,
+    /// The registry hosts every `allow_list_egress` lease reaches: the
+    /// operator's, or [`DEFAULT_REGISTRY`] when the operator named none.
     registry: Arc<[Box<str>]>,
 }
 
@@ -70,44 +72,46 @@ impl Egress {
         }
     }
 
-    /// The egress `assigned` names, each registry entry cut to its host.
+    /// The egress `assigned` names, each registry entry cut to its host, or
+    /// [`DEFAULT_REGISTRY`] when it names none.
     pub(crate) fn assigned(assigned: &AssignedPolicy<'_>) -> Self {
-        Self {
-            policy: assigned.network_policy,
-            registry: assigned
-                .registry_allowlist
+        let named = &assigned.registry_allowlist;
+        let registry = if named.is_empty() {
+            DEFAULT_REGISTRY.map(Box::from).into()
+        } else {
+            named
                 .iter()
                 .map(|entry| Box::from(host_of(entry)))
-                .collect(),
+                .collect()
+        };
+        Self {
+            policy: assigned.network_policy,
+            registry,
         }
     }
 
-    /// The hosts an `allow_list_egress` lease under `fleet` reaches: the
-    /// registry, then the fleet's own unless it is read-only, each cut to its
-    /// host and named once, in the order first named.
-    pub(crate) fn hosts(&self, fleet: &FleetNetwork<'_>) -> Vec<String> {
-        let registry = self.registry();
+    /// The hosts an `allow_list_egress` lease under `fleet` reaches, each with
+    /// who named it: the registry, then the fleet's own unless it is
+    /// read-only, each cut to its host and named once, in the order first
+    /// named. A host named by both is the registry's.
+    pub(crate) fn hosts(&self, fleet: &FleetNetwork<'_>) -> Vec<(String, Named)> {
         let fleet_hosts = if fleet.read_only {
             &[][..]
         } else {
             fleet.allow.as_slice()
         };
+        let registry = self
+            .registry
+            .iter()
+            .map(|host| (host.to_string(), Named::Registry));
+        let fleet_named = fleet_hosts
+            .iter()
+            .map(|entry| (host_of(entry).into_owned(), Named::Fleet));
         let mut seen = HashSet::new();
         registry
-            .into_iter()
-            .chain(fleet_hosts.iter().map(|entry| host_of(entry).into_owned()))
-            .filter(|host| seen.insert(host.clone()))
+            .chain(fleet_named)
+            .filter(|(host, _named)| seen.insert(host.clone()))
             .collect()
-    }
-
-    /// The registry hosts every `allow_list_egress` lease reaches: the
-    /// operator's, or [`DEFAULT_REGISTRY`] when the operator named none.
-    fn registry(&self) -> Vec<String> {
-        if self.registry.is_empty() {
-            DEFAULT_REGISTRY.map(str::to_owned).to_vec()
-        } else {
-            self.registry.iter().map(ToString::to_string).collect()
-        }
     }
 
     /// What a lease under `fleet` reaches, resolved through `resolver`.
@@ -126,16 +130,12 @@ impl Egress {
             NetworkPolicy::AllowAll => Ok(Bound::Host),
             NetworkPolicy::DenyAllEgress => Ok(Bound::Isolated),
             NetworkPolicy::AllowListEgress => {
-                let registry = self.registry();
                 let hosts = self.hosts(fleet);
-                let addresses = try_join_all(hosts.iter().map(|host| {
-                    let named = if registry.contains(host) {
-                        Named::Registry
-                    } else {
-                        Named::Fleet
-                    };
-                    ipv4(resolver, host, named)
-                }))
+                let addresses = try_join_all(
+                    hosts
+                        .iter()
+                        .map(|(host, named)| ipv4(resolver, host, *named)),
+                )
                 .await?;
                 Allowlist::new(addresses.into_iter().flatten().collect())
                     .map(Bound::Allowed)
@@ -193,7 +193,7 @@ impl Resolve for SystemResolver {
 /// Who named a host: the operator's registry, or the fleet. A host named by
 /// both is the registry's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Named {
+pub(crate) enum Named {
     Registry,
     Fleet,
 }
