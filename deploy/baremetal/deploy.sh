@@ -14,7 +14,8 @@
 # The toolbox lands in the runner's incoming directory, and the runner admits it
 # at boot: it verifies the manifest's signature against the key it is built
 # with, stages the image and mounts it. A host without an admitted toolbox
-# refuses every lease, so a deploy that lacks one stops before the restart.
+# refuses every lease, so a deploy that lacks one stops before it writes
+# anything to the host, as does every other refusal (see main).
 #
 # Environment:
 #   DISCORD_WEBHOOK_URL — if set, sends deploy status to Discord
@@ -60,10 +61,13 @@ readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly DEPLOY_DIR="/opt/agentsfleet/deploy"
 readonly ENV_FILE="/opt/agentsfleet/.env"
 readonly ENV_DEST="/etc/default/agentsfleet-runner"
-# Staging the toolbox the runner admits at boot: `install_toolbox`, beside
-# this file on the host as in the repository.
+# Staging the toolbox the runner admits at boot (`install_toolbox`) and
+# restarting and health-checking the unit (`restart_services`,
+# `verify_healthy`), beside this file on the host as in the repository.
 # shellcheck source=./toolbox.sh
 source "$(dirname "${BASH_SOURCE[0]}")/toolbox.sh"
+# shellcheck source=./service.sh
+source "$(dirname "${BASH_SOURCE[0]}")/service.sh"
 readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 
 # The single deployable component. Kept as an explicit argument so the call site
@@ -163,26 +167,31 @@ acquire_deploy_lock() {
 
 # ── Binary acquisition ───────────────────────────────────────────────────────
 
-acquire_from_local() {
+install_binary() {
   local src="$1"
-  [[ -f "$src" ]] || die "Local binary not found: $src"
-  log "Installing from local path: $src"
+  log "Installing ${BINARY_NAME} from $src"
   install -m 755 "$src" "${INSTALL_DIR}/${BINARY_NAME}"
 }
 
-acquire_from_release() {
+# The bundle is built on a Continuous Integration (CI) runner, so every member,
+# `./` included, carries that runner's uid. Unpacked as root with tar's
+# defaults, `./` would hand the directory, and the binary in it, to whichever
+# host account has that uid before root installs it; these keep root the owner
+# and the directory's own 0700.
+readonly BUNDLE_EXTRACT_FLAGS=(--no-same-owner --no-overwrite-dir)
+
+# Downloads the release's offline bundle and unpacks it into RELEASE_DIR, a
+# fresh directory removed on exit. Changes nothing else on the host.
+fetch_release() {
   local url="https://github.com/${REPO}/releases/download/${VERSION}/${RELEASE_BUNDLE}.tar.gz"
-  local tmpdir
-  tmpdir=$(mktemp -d)
+  RELEASE_DIR=$(mktemp -d)
   # shellcheck disable=SC2064
-  trap "rm -rf '$tmpdir'" EXIT
+  trap "rm -rf '$RELEASE_DIR'" EXIT
 
   log "Downloading ${RELEASE_BUNDLE} ${VERSION} ..."
-  curl -fsSL -o "${tmpdir}/${RELEASE_BUNDLE}.tar.gz" "$url" \
+  curl -fsSL -o "${RELEASE_DIR}/${RELEASE_BUNDLE}.tar.gz" "$url" \
     || die "Download failed. Check that release ${VERSION} includes ${RELEASE_BUNDLE}."
-  tar xzf "${tmpdir}/${RELEASE_BUNDLE}.tar.gz" -C "$tmpdir"
-  install -m 755 "${tmpdir}/${RELEASE_BINARY}" "${INSTALL_DIR}/${BINARY_NAME}"
-  install_toolbox "$tmpdir"
+  tar xzf "${RELEASE_DIR}/${RELEASE_BUNDLE}.tar.gz" -C "$RELEASE_DIR" "${BUNDLE_EXTRACT_FLAGS[@]}"
 }
 
 # ── Systemd sync ─────────────────────────────────────────────────────────────
@@ -195,11 +204,12 @@ sync_systemd_unit() {
   log "Synced ${SERVICE_NAME} → systemd."
 }
 
-sync_env() {
-  [[ -f "$ENV_FILE" ]] \
-    || die "missing $ENV_FILE — deploy through playbooks/lib/runner/deploy.sh"
-  cp "$ENV_FILE" "$ENV_DEST"
-  log "Synced .env → ${ENV_DEST}"
+# Refuses the env file sync_env would install. `env_file` is injectable so
+# deploy_test.sh can read a fixture (production passes nothing).
+check_env_file() {
+  local env_file="${1:-$ENV_FILE}"
+  [[ -f "$env_file" ]] \
+    || die "missing $env_file — deploy through playbooks/lib/runner/deploy.sh"
 
   # Fail loud when any required runner env var is absent. The runner's own boot
   # check (`afr_supervisor::Config::from_env`) would catch this too, but a
@@ -209,89 +219,35 @@ sync_env() {
   local missing=()
   local k
   for k in "${required[@]}"; do
-    grep -qE "^${k}=" "$ENV_DEST" || missing+=("$k")
+    grep -qE "^${k}=" "$env_file" || missing+=("$k")
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
-    die "missing required runner env vars in $ENV_DEST: ${missing[*]}"
+    die "missing required runner env vars in $env_file: ${missing[*]}"
   fi
 
   # Reject the documented placeholder shape (`agt_rFAKE_…`). The daemon's prefix
   # check only enforces `agt_r*`, which a placeholder satisfies — that would
   # loop on 401s. Better to fail at deploy time with a clear cause.
-  if grep -qE '^AGENTSFLEET_RUNNER_TOKEN=agt_rFAKE' "$ENV_DEST"; then
-    die "AGENTSFLEET_RUNNER_TOKEN in $ENV_DEST is the placeholder; mint a real agt_r via POST /v1/runners and update 1Password before re-running"
+  if grep -qE '^AGENTSFLEET_RUNNER_TOKEN=agt_rFAKE' "$env_file"; then
+    die "AGENTSFLEET_RUNNER_TOKEN in $env_file is the placeholder; mint a real agt_r via POST /v1/runners and update 1Password before re-running"
   fi
 }
 
-# ── Service restart ──────────────────────────────────────────────────────────
-
-drain_runner() {
-  # Bounded graceful stop. Lease reclaim (lease_expires_at + fencing_token) is
-  # the safety net for a forced stop, so the timeout only gives an in-flight
-  # child a chance to finish before SIGKILL.
-  local timeout="${DRAIN_TIMEOUT:-120}"
-
-  if ! systemctl is-active --quiet "$SERVICE_NAME"; then
-    log "Runner not running — skipping drain."
-    return 0
-  fi
-
-  log "Stopping runner (timeout=${timeout}s) ..."
-  if ! timeout "$timeout" systemctl stop "$SERVICE_NAME"; then
-    log "⚠ Stop timeout (${timeout}s) — killing runner forcefully."
-    systemctl kill --signal=SIGKILL "$SERVICE_NAME" 2>/dev/null || true
-  fi
+sync_env() {
+  cp "$ENV_FILE" "$ENV_DEST"
+  log "Synced .env → ${ENV_DEST}"
 }
 
-restart_services() {
-  drain_runner
-  log "Restarting runner ..."
-  # One-time transition off any pre-rename unit before the renamed unit takes
-  # over. The fleet's rename chain is zombie-runner → agent-runner →
-  # agentsfleet-runner; a host still carrying either legacy unit gets it stopped,
-  # disabled, AND its unit file removed here so the transition fires exactly once
-  # (a left-behind disabled unit would otherwise re-trip this every deploy). Live
-  # bare-metal boxes were provisioned as zombie-runner, so that name MUST be
-  # covered — the prior shim named only agent-runner and so left
-  # zombie-runner.service enabled alongside the new unit. We warn LOUDLY rather
-  # than clean up silently, so a box that still carried pre-rename residue is
-  # visible in the deploy log + Discord; non-fatal because the cutover is
-  # self-healing. Harmless no-op on a freshly-bootstrapped box.
-  local legacy_unit found_stale=0
-  for legacy_unit in zombie-runner.service agent-runner.service; do
-    if systemctl cat "$legacy_unit" >/dev/null 2>&1; then
-      found_stale=1
-      log "⚠ STALE LEGACY UNIT ${legacy_unit} found on ${HOST} — stopping, disabling, and removing it (pre-rename residue; investigate why this host was not re-bootstrapped if unexpected)."
-      systemctl stop "$legacy_unit" 2>/dev/null || true
-      systemctl disable "$legacy_unit" 2>/dev/null || true
-      rm -f "${SYSTEMD_DIR}/${legacy_unit}" 2>/dev/null || true
-    fi
-  done
-  [[ "$found_stale" -eq 1 ]] && systemctl daemon-reload
-  systemctl enable "$SERVICE_NAME"
-  systemctl restart "$SERVICE_NAME"
-}
-
-verify_healthy() {
-  # attempts/delay overridable only so deploy_test.sh avoids a real 10s wait.
-  local attempts="${VERIFY_HEALTH_ATTEMPTS:-5}"
-  local delay="${VERIFY_HEALTH_DELAY:-2}"
-  for i in $(seq 1 "$attempts"); do
-    sleep "$delay"
-    if systemctl is-active --quiet "$SERVICE_NAME"; then
-      log "✓ ${SERVICE_NAME} is active (attempt ${i}/${attempts})."
-      return 0
-    fi
-    # Fail fast: if systemd already marked it failed, don't keep waiting.
-    if systemctl is-failed --quiet "$SERVICE_NAME" 2>/dev/null; then
-      log "✗ ${SERVICE_NAME} entered failed state."
-      break
-    fi
-  done
-  log "✗ ${SERVICE_NAME} failed to start. Dumping diagnostics:"
-  systemctl status "$SERVICE_NAME" --no-pager || true
-  journalctl -u "$SERVICE_NAME" --no-pager -n 30 || true
-  return 1
+# Every check that can refuse this deploy, run before its first write to the
+# host. A binary replaced ahead of a refusal boots at the next restart against
+# the toolbox the previous release staged, and the runner refuses a manifest
+# that does not name its own version, so the host would stop serving long
+# after the deploy that broke it.
+check_deploy_inputs() {
+  local binary="$1" toolbox_dir="$2" env_file="${3:-$ENV_FILE}"
+  [[ -f "$binary" ]] || die "runner binary not found: $binary"
+  check_toolbox_set "$toolbox_dir"
+  check_env_file "$env_file"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -324,13 +280,16 @@ main() {
     return 0
   fi
 
-  if [[ -n "$LOCAL_BINARY" ]]; then
-    acquire_from_local "$LOCAL_BINARY"
-    install_toolbox "$LOCAL_TOOLBOX"
-  else
-    acquire_from_release
+  local binary="$LOCAL_BINARY" toolbox_dir="$LOCAL_TOOLBOX"
+  if [[ -z "$LOCAL_BINARY" ]]; then
+    fetch_release
+    binary="${RELEASE_DIR}/${RELEASE_BINARY}"
+    toolbox_dir="$RELEASE_DIR"
   fi
 
+  check_deploy_inputs "$binary" "$toolbox_dir"
+  install_binary "$binary"
+  install_toolbox "$toolbox_dir"
   sync_systemd_unit
   sync_env
   restart_services

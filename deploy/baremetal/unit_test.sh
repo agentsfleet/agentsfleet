@@ -22,11 +22,14 @@ readonly RUNTIME_DIR_ROOT="/run"
 readonly RUN_ENTRY="run"
 # What %H expands to: the host's name, one series identity per host.
 readonly HOST_SPECIFIER="%H"
+# systemd creates a system unit's StateDirectory=<name> at /var/lib/<name>.
+readonly STATE_DIR_ROOT="/var/lib"
 
 # The Rust owners of the values below.
 readonly PROBE_RS="$REPO_ROOT/rustd/crates/afr_sandbox/src/probe.rs"
 readonly CONFIG_RS="$REPO_ROOT/rustd/crates/afr_supervisor/src/config.rs"
 readonly RESOURCE_RS="$REPO_ROOT/rustd/crates/afd_otlp/src/resource.rs"
+readonly HOST_RS="$REPO_ROOT/rustd/crates/agentsfleet_runner/src/host.rs"
 
 passed=0
 failed=0
@@ -47,6 +50,12 @@ rust_str_const() {
   sed -n "s/^pub const ${name}: &str = \"\\(.*\\)\";$/\\1/p" "$file"
 }
 
+# The value of `const <name>: u8 = <value>;` in `file`, public or not.
+rust_u8_const() {
+  local file="$1" name="$2"
+  sed -n "s/^\\(pub[^ ]* \\)\\{0,1\\}const ${name}: u8 = \\([0-9]*\\);$/\\2/p" "$file"
+}
+
 # The space-separated members of `pub const <name>: [&str; N] = [...];`.
 rust_str_array() {
   local file="$1" name="$2"
@@ -64,7 +73,7 @@ unit_value() {
 # check vacuously. Fail loud up front instead.
 preflight() {
   local owner
-  for owner in "$PROBE_RS" "$CONFIG_RS" "$RESOURCE_RS" "$RUNNER_UNIT"; do
+  for owner in "$PROBE_RS" "$CONFIG_RS" "$RESOURCE_RS" "$HOST_RS" "$RUNNER_UNIT"; do
     [[ -f "$owner" ]] \
       || { printf 'FATAL preflight: %s is missing\n' "$owner" >&2; exit 2; }
   done
@@ -74,6 +83,8 @@ preflight() {
     || { printf 'FATAL preflight: DEFAULT_STORAGE_HOME unreadable in %s\n' "$CONFIG_RS" >&2; exit 2; }
   [[ -n "$(rust_str_const "$RESOURCE_RS" INSTANCE_ID_KNOB)" ]] \
     || { printf 'FATAL preflight: INSTANCE_ID_KNOB unreadable in %s\n' "$RESOURCE_RS" >&2; exit 2; }
+  [[ -n "$(rust_u8_const "$HOST_RS" EXIT_TOKEN_REFUSED)" ]] \
+    || { printf 'FATAL preflight: EXIT_TOKEN_REFUSED unreadable in %s\n' "$HOST_RS" >&2; exit 2; }
 }
 
 preflight
@@ -120,16 +131,24 @@ test_unit_defines_home() {
 }
 
 # The storage home holds every lease's sandbox, the spool, the bundle cache and
-# the toolbox, so it must be writable under ProtectSystem=strict; and the host
-# probe refuses every sandbox unless each controller it requires is delegated.
+# the toolbox, so it must be writable under ProtectSystem=strict, and it must
+# not stop the unit when it is missing: StateDirectory= creates it, where a
+# plain ReadWritePaths entry fails the unit with 226/NAMESPACE before the
+# runner can. And the host probe refuses every sandbox unless each controller
+# it requires is delegated.
 test_baremetal_unit_hosts_the_rust_runner() {
   local name="test_baremetal_unit_hosts_the_rust_runner"
-  local storage_home writable delegated controller
+  local storage_home state_dir writable delegated controller
   storage_home="$(rust_str_const "$CONFIG_RS" DEFAULT_STORAGE_HOME)"
+  state_dir="$(unit_value StateDirectory)"
   writable=" $(unit_value ReadWritePaths) "
   delegated=" $(unit_value Delegate) "
-  if [[ "$writable" != *" $storage_home "* ]]; then
-    bad "$name" "ReadWritePaths does not name the storage home $storage_home"
+  if [[ -z "$state_dir" || "${STATE_DIR_ROOT}/${state_dir}" != "$storage_home" ]]; then
+    bad "$name" "StateDirectory=${state_dir} does not create the storage home $storage_home"
+    return
+  fi
+  if [[ "$writable" == *" $storage_home "* ]]; then
+    bad "$name" "ReadWritePaths names $storage_home, which fails the unit with 226/NAMESPACE while it is missing"
     return
   fi
   for controller in $(rust_str_array "$PROBE_RS" REQUIRED_CONTROLLERS); do
@@ -139,6 +158,21 @@ test_baremetal_unit_hosts_the_rust_runner() {
     fi
   done
   ok "$name"
+}
+
+# A runner whose token the control plane refuses (cordoned, drained, revoked)
+# stays down: restarting it would only boot, admit its toolbox and be refused
+# again, every RestartSec, until someone stopped the unit.
+test_unit_does_not_restart_a_refused_token() {
+  local name="test_unit_does_not_restart_a_refused_token"
+  local refused prevented
+  refused="$(rust_u8_const "$HOST_RS" EXIT_TOKEN_REFUSED)"
+  prevented=" $(unit_value RestartPreventExitStatus) "
+  if [[ "$prevented" != *" $refused "* ]]; then
+    bad "$name" "RestartPreventExitStatus=${prevented# } omits EXIT_TOKEN_REFUSED ($refused), so a refused runner restarts in a loop"
+  else
+    ok "$name"
+  fi
 }
 
 # Each host publishes its own metric series: the knob the runner's resource
@@ -171,6 +205,7 @@ test_unit_passes_systemd_analyze() {
 test_unit_starts_the_run_entry
 test_unit_defines_home
 test_baremetal_unit_hosts_the_rust_runner
+test_unit_does_not_restart_a_refused_token
 test_unit_names_each_host_instance
 
 if command -v systemd-analyze >/dev/null 2>&1; then

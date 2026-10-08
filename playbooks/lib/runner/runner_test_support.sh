@@ -5,9 +5,10 @@
 #
 # Split out of runner_test.sh when the verify-lane cases pushed that file past
 # the 350-line cap. The `op` and `tailscale` stubs plus the hermetic
-# `run_script` launcher are the entire world those suites execute in, and both
-# runner_test.sh and runner_verify_test.sh need them identically — a second
-# copy would drift the moment one suite taught its stub a new answer.
+# `run_script` launcher are the entire world those suites execute in, and
+# runner_test.sh, runner_verify_test.sh and runner_host_test.sh need them
+# identically — a second copy would drift the moment one suite taught its stub
+# a new answer.
 
 set -uo pipefail
 
@@ -82,12 +83,15 @@ case "$command" in
     ;;
   *"cgroup.subtree_control"*)
     printf '%s\n' \
-      'root_controllers=cpu memory pids' \
-      'root_subtree=cpu memory pids' \
-      'slice_controllers=cpu memory pids' \
-      'slice_subtree=cpu memory pids' \
-      'service_controllers=cpu memory pids' \
-      "service_subtree=${STUB_CGROUP_CONTROLLERS:-cpu memory pids}"
+      'root_controllers=cpu io memory pids' \
+      'root_subtree=cpu io memory pids' \
+      'slice_controllers=cpu io memory pids' \
+      'slice_subtree=cpu io memory pids' \
+      'service_controllers=cpu io memory pids' \
+      "service_subtree=${STUB_CGROUP_CONTROLLERS:-cpu io memory pids}"
+    ;;
+  "cat '/proc/sys/net/ipv4/ip_forward'")
+    printf '%s\n' "${STUB_IP_FORWARD:-1}"
     ;;
   *"/readyz"*)
     # One status per probe, last entry repeating, so a case can hand the

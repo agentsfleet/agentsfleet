@@ -4,6 +4,7 @@
 )]
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -16,6 +17,12 @@ use crate::toolbox::{Manifest, image_name};
 struct Release {
     manifest: Manifest,
     source: std::path::PathBuf,
+}
+
+/// Rewrites the published image at `path` in place, as rot or an edit would.
+fn edit_in_place(path: &Path, bytes: Vec<u8>) {
+    fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+    fs::write(path, bytes).unwrap();
 }
 
 /// Image `n`, downloaded under `dir`.
@@ -232,7 +239,7 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
         .path()
         .join("images")
         .join(image_name(one.manifest.sha256()));
-    fs::write(&published, vec![9_u8; 64]).unwrap();
+    edit_in_place(&published, vec![9_u8; 64]);
 
     toolboxes.admit(&one.manifest, &one.source).unwrap();
 
@@ -240,7 +247,7 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
     assert_eq!(recorder.mounted.lock().unwrap().len(), 2);
     fs::write(&one.source, vec![9_u8; 64]).unwrap();
     toolboxes.close().unwrap();
-    fs::write(&published, vec![9_u8; 64]).unwrap();
+    edit_in_place(&published, vec![9_u8; 64]);
     assert_eq!(
         toolboxes
             .admit(&one.manifest, &one.source)
@@ -249,4 +256,48 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
         Some(ToolboxRefusal::Digest),
         "a download that is not the image either is refused, once"
     );
+}
+
+/// A restart of the same release mounts the image the last start published,
+/// without its download: closing unmounts and keeps the file.
+#[test]
+fn should_admit_after_a_restart_without_copying_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let signer = Signer::new();
+    let one = release(&signer, dir.path(), 1);
+    let (toolboxes, _recorder) = open(dir.path());
+    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.close().unwrap();
+    fs::remove_file(&one.source).unwrap();
+
+    let (restarted, recorder) = open(dir.path());
+    restarted
+        .admit(&one.manifest, &dir.path().join("gone"))
+        .unwrap();
+
+    assert_eq!(
+        recorder.mounted.lock().unwrap().len(),
+        1,
+        "mounted in place"
+    );
+    assert_eq!(restarted.digests(), [one.manifest.sha256()]);
+}
+
+/// A start that admits a new release removes the image an earlier start kept
+/// for the old one, so kept files never pile up across deploys.
+#[test]
+fn should_remove_an_image_no_admitted_release_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let signer = Signer::new();
+    let [one, two] = [1, 2].map(|n| release(&signer, dir.path(), n));
+    let (toolboxes, _recorder) = open(dir.path());
+    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.close().unwrap();
+
+    let (restarted, _recorder) = open(dir.path());
+    restarted.admit(&two.manifest, &two.source).unwrap();
+
+    let images = dir.path().join("images");
+    assert!(!images.join(image_name(one.manifest.sha256())).exists());
+    assert!(images.join(image_name(two.manifest.sha256())).exists());
 }

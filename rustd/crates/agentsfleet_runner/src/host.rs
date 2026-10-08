@@ -23,6 +23,13 @@ use afr_sandbox::{KernelMounter, Toolboxes};
 pub(crate) const EVENT_RUN_FAILED: &str = "run_failed";
 /// Why `run` stopped when the host lacks a mechanism every sandbox needs.
 const CANNOT_SANDBOX: &str = "this host cannot build a sandbox";
+/// The status `run` exits with when the daemon refused the runner's token
+/// (`EX_NOPERM`). The unit names it in `RestartPreventExitStatus`: restarting
+/// does not make a cordoned, drained or revoked token valid again, so the
+/// runner stays stopped until an operator restarts it.
+const EXIT_TOKEN_REFUSED: u8 = 77;
+/// The status every other failure exits with.
+const EXIT_FAILED: u8 = 1;
 
 /// The engine and the facts `run` serves leases with.
 pub(crate) struct Host {
@@ -193,5 +200,18 @@ fn stopped(code: ErrorCode, reason: &dyn Display) -> ExitCode {
     let reason = reason.to_string();
     let event = EVENT_RUN_FAILED;
     tracing::error!(error_code, reason, event);
-    ExitCode::FAILURE
+    ExitCode::from(exit_status(code))
 }
+
+/// The status a failure coded `code` ends `run` with.
+fn exit_status(code: ErrorCode) -> u8 {
+    if code == error_code::RUN_INVALID_RUNNER_TOKEN {
+        EXIT_TOKEN_REFUSED
+    } else {
+        EXIT_FAILED
+    }
+}
+
+#[cfg(test)]
+#[path = "host_tests.rs"]
+mod tests;

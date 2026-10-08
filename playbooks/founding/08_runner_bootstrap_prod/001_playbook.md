@@ -61,7 +61,8 @@ ALLOW_RUNNER_HOST_PREPARE=1 \
 ```
 
 Preparation checks that each host's cgroup v2 exposes Central Processing Unit
-(CPU), memory, and process controllers before changing it. The deployment
+(CPU), block input/output (I/O), memory, and process controllers, the four the
+runner refuses to start without, before changing it. The deployment
 workflow then verifies that systemd delegated those controllers to each started
 runner service. Preparation does not install a runner binary, write a token, or
 start a service.

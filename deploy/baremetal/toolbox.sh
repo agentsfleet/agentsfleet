@@ -29,27 +29,42 @@ storage_home() {
   printf '%s\n' "${configured:-$RUNNER_STORAGE_HOME_DEFAULT}"
 }
 
-# Moves the one toolbox under `src` into the runner's incoming directory,
-# replacing whatever set was there, so the runner admits exactly this release
-# at its next boot. Refuses a directory with no image, several, or a file of
-# the set missing: the runner would refuse the whole set, after the restart,
-# where the cause is harder to read. `incoming` is injectable for the same
-# reason `storage_home`'s file is.
-install_toolbox() {
+# The digest a toolbox file is named by: toolbox-<digest>.erofs.
+toolbox_digest_of() {
+  local name
+  name="$(basename "$1")"
+  name="${name#toolbox-}"
+  printf '%s\n' "${name%.erofs}"
+}
+
+# Refuses `src` unless it holds exactly one toolbox, every file of its set
+# present: the runner would refuse the whole set after the restart, where the
+# cause is harder to read. Writes nothing, so deploy.sh runs it before it
+# changes anything on the host.
+check_toolbox_set() {
   local src="$1"
-  local incoming="${2:-$(storage_home)/${TOOLBOX_INCOMING_SUBDIR}}"
   local images=("$src"/toolbox-*.erofs)
   [[ "${#images[@]}" -eq 1 && -f "${images[0]}" ]] \
     || die "expected exactly one toolbox-<sha256>.erofs under $src"
-  local name digest
-  name="$(basename "${images[0]}")"
-  digest="${name#toolbox-}"
-  digest="${digest%.erofs}"
-  local suffix
+  local digest suffix
+  digest="$(toolbox_digest_of "${images[0]}")"
   for suffix in "${TOOLBOX_SUFFIXES[@]}"; do
     [[ -f "$src/toolbox-$digest.$suffix" ]] \
       || die "toolbox file missing: $src/toolbox-$digest.$suffix"
   done
+}
+
+# Moves the one toolbox under `src` into the runner's incoming directory,
+# replacing whatever set was there, so the runner admits exactly this release
+# at its next boot. A set `check_toolbox_set` refuses is never staged.
+# `incoming` is injectable for the same reason `storage_home`'s file is.
+install_toolbox() {
+  local src="$1"
+  local incoming="${2:-$(storage_home)/${TOOLBOX_INCOMING_SUBDIR}}"
+  check_toolbox_set "$src"
+  local images=("$src"/toolbox-*.erofs)
+  local digest suffix
+  digest="$(toolbox_digest_of "${images[0]}")"
 
   install -d -m 755 "$incoming"
   find "$incoming" -maxdepth 1 -name 'toolbox-*' -type f -delete

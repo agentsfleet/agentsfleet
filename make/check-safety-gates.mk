@@ -45,11 +45,14 @@ check-architecture-doc:  ## docs/architecture/ stays true — milestone refs res
 
 check-deploy-safety:  ## deploy.sh version-skip equality + deploy mutex, and shellcheck over deploy/baremetal/
 	@# deploy/ sits outside _shell_lint's scripts/*.sh glob, so it would otherwise
-	@# never be shellchecked. The two lock cases need flock (util-linux); they skip
-	@# on a machine without it and hard-fail when CI is set — see deploy_test.sh.
+	@# never be shellchecked. The two lock cases need flock (util-linux), and the
+	@# bundle case GNU tar; each skips on a machine without it and hard-fails when
+	@# CI is set — see deploy_test.sh and deploy_inputs_test.sh.
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@$(SHELLCHECK) --severity=error -x deploy/baremetal/*.sh
 	@bash deploy/baremetal/deploy_test.sh
+	@bash deploy/baremetal/deploy_inputs_test.sh
+	@bash deploy/baremetal/service_test.sh
 	@bash deploy/baremetal/toolbox_test.sh
 	@bash deploy/baremetal/unit_test.sh
 	@# The collector stand-up's ORDER, which actionlint cannot see: an app
