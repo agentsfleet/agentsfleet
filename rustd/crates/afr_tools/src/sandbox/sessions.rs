@@ -200,7 +200,7 @@ async fn end(executor: &dyn Executor, id: ProcessId, process: Shared) -> bool {
     }
     if let Err(refused) = executor.kill(id).await {
         let session_id = id.get();
-        let reason = refused.to_string();
+        let reason = refused.told();
         let event = EVENT_KILL_REFUSED;
         tracing::debug!(session_id, reason, event);
     }

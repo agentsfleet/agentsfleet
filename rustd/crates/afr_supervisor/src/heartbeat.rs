@@ -238,7 +238,7 @@ impl<'a> Heartbeat<'a> {
 /// code the runner gives any identifier it cannot read. No hold is released:
 /// nothing names one.
 fn unreadable_release(named: &str, failure: afd_core::error::Error) {
-    let reason = failure.to_string();
+    let reason = failure.told();
     let error_code = crate::Error::from(failure).code().as_str();
     let fleet_id = named;
     let event = EVENT_RELEASE_UNREADABLE;

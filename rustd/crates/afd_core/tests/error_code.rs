@@ -163,15 +163,23 @@ fn test_lookup_finds_declared_codes_only() {
     }
 }
 
-/// Code that logs a failure from any crate reads the same code the crate's
-/// own accessor answers, through the trait every error shell implements.
+/// Code that logs a failure from any crate reads the same code and reason the
+/// crate's own accessors answer, through the trait every error shell
+/// implements.
 #[test]
 fn test_every_shelled_error_names_its_code_through_the_trait() {
-    fn named(failure: &impl Coded) -> ErrorCode {
-        failure.code()
+    fn named(failure: &impl Coded) -> (ErrorCode, String) {
+        (failure.code(), failure.told())
     }
     let failure = WorkerCount::new(0).unwrap_err();
 
-    assert_eq!(named(&failure), failure.code());
-    assert_eq!(named(&failure).as_str(), "UZ-REQ-001");
+    let (code, told) = named(&failure);
+
+    assert_eq!(code, failure.code());
+    assert_eq!(code.as_str(), "UZ-REQ-001");
+    assert_eq!(told, failure.told());
+    assert!(
+        !told.contains(code.as_str()) && failure.to_string().contains(&told),
+        "the reason is the shown failure without its code: {told}"
+    );
 }

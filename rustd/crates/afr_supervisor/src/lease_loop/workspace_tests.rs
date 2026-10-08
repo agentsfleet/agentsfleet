@@ -28,6 +28,8 @@ const SKILL: &[u8] = b"skill";
 /// A support file in a directory the workspace does not have yet.
 const GUIDE_PATH: &str = "docs/guide.md";
 const GUIDE: &[u8] = b"guide";
+/// The log field that says why.
+const REASON: &str = "reason";
 
 /// The canonical archive the importer stores, and the name it gave it.
 fn bundle() -> (Bytes, String) {
@@ -208,6 +210,12 @@ async fn a_size_past_its_bounds_refuses_the_lease_before_any_sandbox() {
         refused.field("lease_id").is_some_and(|id| !id.is_empty()),
         "and its lease: {refused:?}"
     );
+    assert!(
+        refused
+            .field(REASON)
+            .is_some_and(|reason| !reason.is_empty() && !reason.starts_with('[')),
+        "and why, its code only once: {refused:?}"
+    );
 }
 
 #[test]
@@ -263,7 +271,7 @@ async fn test_a_lease_of_another_size_builds_fresh_and_ends_the_hold() {
         .events()
         .iter()
         .filter(|event| event.field("event") == Some(RELEASED))
-        .map(|event| event.field("reason").unwrap().to_owned())
+        .map(|event| event.field(REASON).unwrap().to_owned())
         .collect();
     let mismatch = Release::Mismatch.outcome().as_str();
     let shutdown = Release::Shutdown.outcome().as_str();

@@ -255,16 +255,6 @@ impl Error {
         self.kind().to_string()
     }
 
-    /// This failure's own sentence, then each cause beneath it, the way a chain
-    /// walker reads them: a log's `reason`. The code is the log's `error_code`
-    /// field already, and `Display` would carry a captured backtrace too, so a
-    /// netlink refusal names the kernel's errno here and nowhere else.
-    #[must_use]
-    pub fn told(&self) -> String {
-        std::iter::successors(std::error::Error::source(self), |cause| cause.source())
-            .fold(self.detail(), |told, cause| format!("{told}: {cause}"))
-    }
-
     /// The mechanism this host lacks, when the failure is that the host cannot
     /// build a sandbox at all — as opposed to one sandbox failing.
     #[must_use]

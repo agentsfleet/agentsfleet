@@ -111,7 +111,7 @@ where
         }
         Err(error) => {
             let error_code = error.code().as_str();
-            let reason = error.to_string();
+            let reason = error.told();
             let event = EVENT_PROGRAM_FAILED;
             tracing::warn!(program, error_code, reason, event);
         }

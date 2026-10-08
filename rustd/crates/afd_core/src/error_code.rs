@@ -63,6 +63,11 @@ impl ErrorCode {
 pub trait Coded: std::error::Error {
     /// The registry code this failure answers with.
     fn code(&self) -> ErrorCode;
+
+    /// The failure's own sentence, then each cause beneath it: what a log's
+    /// `reason` carries beside `error_code`, without the code a second time
+    /// or a captured backtrace.
+    fn told(&self) -> String;
 }
 
 impl Display for ErrorCode {

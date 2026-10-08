@@ -218,7 +218,7 @@ async fn fill(inner: Arc<dyn Engine>, ready: mpsc::Sender<Slot>, limits: Limits)
         .when(|_failed: &Failed| !ready.is_closed())
         .notify(|(slot, error): &Failed, delay: Duration| {
             let error_code = error.code().as_str();
-            let reason = error.to_string();
+            let reason = error.told();
             let retry_ms = saturating_millis(delay);
             let event = EVENT_SLOT_FAILED;
             tracing::warn!(slot, error_code, reason, retry_ms, event);
@@ -253,7 +253,7 @@ impl Sleeper for UntilClosed {
 async fn retire(Slot { name, sandbox }: Slot) {
     if let Err(error) = sandbox.destroy().await {
         let error_code = error.code().as_str();
-        let reason = error.to_string();
+        let reason = error.told();
         let event = EVENT_SLOT_LEFT;
         tracing::warn!(
             error_code,
