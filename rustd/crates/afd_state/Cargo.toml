@@ -19,7 +19,7 @@ test-util = ["afd_auth/test-util", "afd_core/test-util", "afd_db/test-util"]
 [dependencies]
 # The trait implemented here, and the record it answers with. `afd_auth` cannot
 # name `sqlx` — that is the portability wall this crate exists on the far side
-# of, exactly as `cmd/api_key_lookup.zig` sits outside `src/auth/`.
+# of.
 afd_auth.workspace = true
 afd_core.workspace = true
 # The pool. A directory holds one and runs three statements against it.
