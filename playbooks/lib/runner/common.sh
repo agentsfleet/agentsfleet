@@ -18,6 +18,14 @@ readonly REQUIRED_CGROUP_CONTROLLERS="cpu io memory pids"
 # reads the setting and reports egress unenforced without it.
 readonly IPV4_FORWARD_PROC="/proc/sys/net/ipv4/ip_forward"
 readonly IPV4_FORWARD_SYSCTL_FILE="/etc/sysctl.d/60-agentsfleet-runner.conf"
+# What a runner host must have on PATH: bubblewrap for each lease's sandbox, nft
+# and ip for its egress boundary, and the curl and jq the checks in this
+# directory run on the host. Host preparation installs them.
+readonly RUNNER_HOST_TOOLS="bwrap nft ip curl jq"
+# Debian omits sbin from non-interactive Tailscale SSH sessions even though
+# nftables installs nft there. Expands on the host, not here.
+# shellcheck disable=SC2016
+readonly RUNNER_REMOTE_SBIN_PATH='export PATH="/usr/sbin:/sbin:$PATH"'
 
 runner_read_required() {
   local ref="$1"
@@ -120,6 +128,25 @@ runner_load_context() {
 runner_remote() {
   local command="$1"
   tailscale ssh "$RUNNER_TARGET" "$command"
+}
+
+# Fails, naming the first one missing, unless every RUNNER_HOST_TOOLS tool is
+# on the host's PATH.
+runner_require_remote_tools() {
+  runner_remote "
+    $RUNNER_REMOTE_SBIN_PATH
+    for tool in $RUNNER_HOST_TOOLS; do
+      if ! command -v \"\$tool\" >/dev/null; then
+        echo \"ERROR: required host tool missing: \$tool\" >&2
+        exit 1
+      fi
+    done
+  "
+}
+
+# Fails unless the host reports itself online on the tailnet.
+runner_require_tailnet_online() {
+  runner_remote "test \"\$(tailscale status --json | jq -r .Self.Online)\" = true"
 }
 
 runner_verify_host_cgroup_capability() {

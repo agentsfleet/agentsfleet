@@ -31,22 +31,6 @@ prepare_host_paths() {
   "
 }
 
-verify_host_base() {
-  runner_remote '
-    set -e
-    # Debian omits sbin from non-interactive Tailscale SSH sessions even
-    # though nftables installs nft there. Match the established egress probe.
-    export PATH="/usr/sbin:/sbin:$PATH"
-    test "$(tailscale status --json | jq -r .Self.Online)" = true
-    command -v bwrap >/dev/null
-    command -v nft >/dev/null
-    command -v ip >/dev/null
-    command -v curl >/dev/null
-    command -v jq >/dev/null
-    test "$(cat /proc/sys/net/ipv4/ip_forward)" = 1
-  '
-}
-
 main() {
   require_approvals
   runner_load_target
@@ -56,7 +40,8 @@ main() {
   install_host_dependencies
   runner_enable_ipv4_forwarding
   prepare_host_paths
-  verify_host_base
+  runner_require_tailnet_online
+  runner_require_remote_tools
   echo "PASS: $RUNNER_ITEM host preparation completed"
 }
 

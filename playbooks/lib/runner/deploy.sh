@@ -61,22 +61,14 @@ toolbox_files() {
 verify_host_prepared() {
   runner_remote '
     set -e
-    # Debian omits sbin from non-interactive Tailscale SSH sessions even
-    # though nftables installs nft there. Match host preparation and the
-    # established egress probe.
-    export PATH="/usr/sbin:/sbin:$PATH"
     test -d /opt/agentsfleet/bin
     test -d /opt/agentsfleet/deploy
     test -w /opt/agentsfleet/bin
     test -w /opt/agentsfleet/deploy
     mkdir -p /opt/agentsfleet/toolbox
     test -w /opt/agentsfleet/toolbox
-    command -v bwrap >/dev/null
-    command -v nft >/dev/null
-    command -v ip >/dev/null
-    command -v curl >/dev/null
-    command -v jq >/dev/null
   '
+  runner_require_remote_tools
 }
 
 write_runner_environment() {

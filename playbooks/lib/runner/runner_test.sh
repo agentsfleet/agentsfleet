@@ -140,6 +140,18 @@ test_should_not_install_packages_during_deploy() {
     ok "$name"
   fi
 }
+# nft and ip live in /usr/sbin, which Debian leaves off a non-interactive
+# Tailscale SSH session's PATH; the host tool check puts it back before its
+# first probe, in preparation and in every deploy.
+sbin_precedes_tool_probe() {
+  awk '
+    index($0, "export PATH=\"/usr/sbin:/sbin:$PATH\"") {
+      getline
+      if (index($0, "for tool in ")) found = 1
+    }
+    END { exit !found }
+  ' "$calls"
+}
 test_should_include_sbin_when_checking_host_tools() {
   local name="test_should_include_sbin_when_checking_host_tools"
   local output status=0
@@ -147,13 +159,7 @@ test_should_include_sbin_when_checking_host_tools() {
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
     return
-  elif ! awk '
-    $0 == "    export PATH=\"/usr/sbin:/sbin:$PATH\"" {
-      getline
-      if ($0 == "    test \"$(tailscale status --json | jq -r .Self.Online)\" = true") found=1
-    }
-    END { exit !found }
-  ' "$calls"; then
+  elif ! sbin_precedes_tool_probe; then
     bad "$name" "host preparation did not expose Debian sbin tools"
     return
   fi
@@ -162,13 +168,7 @@ test_should_include_sbin_when_checking_host_tools() {
   output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! awk '
-    $0 == "    export PATH=\"/usr/sbin:/sbin:$PATH\"" {
-      getline
-      if ($0 == "    test -d /opt/agentsfleet/bin") found=1
-    }
-    END { exit !found }
-  ' "$calls"; then
+  elif ! sbin_precedes_tool_probe; then
     bad "$name" "runner deployment did not expose Debian sbin tools"
   else
     ok "$name"
