@@ -28,28 +28,35 @@ use netlink_packet_route::link::{LinkAttribute, LinkMessage};
 
 use super::kernel::Kernel;
 use super::netlink::{Netlink, Wire};
+use super::rules::u16_of;
 
 /// The index every link lookup answers.
 pub(super) const INDEX: u32 = 7;
 /// The route messages a scope sends, by type.
-pub(super) const NEWLINK: u16 = 16;
-pub(super) const DELLINK: u16 = 17;
-pub(super) const GETLINK: u16 = 18;
-pub(super) const SETLINK: u16 = 19;
-pub(super) const NEWADDR: u16 = 20;
-pub(super) const NEWROUTE: u16 = 24;
-/// The `nf_tables` messages a scope sends, by type: subsystem 10, then the
-/// message.
-pub(super) const NEWTABLE: u16 = 0x0a00;
-pub(super) const GETTABLE: u16 = 0x0a01;
-pub(super) const DELTABLE: u16 = 0x0a02;
-pub(super) const GETCHAIN: u16 = 0x0a04;
-/// The policy a dropping chain is listed with (`NF_DROP`).
-const DROP_POLICY: u32 = 0;
+pub(super) const NEWLINK: u16 = libc::RTM_NEWLINK;
+pub(super) const DELLINK: u16 = libc::RTM_DELLINK;
+pub(super) const GETLINK: u16 = libc::RTM_GETLINK;
+pub(super) const SETLINK: u16 = libc::RTM_SETLINK;
+pub(super) const NEWADDR: u16 = libc::RTM_NEWADDR;
+pub(super) const NEWROUTE: u16 = libc::RTM_NEWROUTE;
+/// The `nf_tables` messages a scope sends, by type.
+pub(super) const NEWTABLE: u16 = nftables(libc::NFT_MSG_NEWTABLE);
+pub(super) const GETTABLE: u16 = nftables(libc::NFT_MSG_GETTABLE);
+pub(super) const DELTABLE: u16 = nftables(libc::NFT_MSG_DELTABLE);
+pub(super) const GETCHAIN: u16 = nftables(libc::NFT_MSG_GETCHAIN);
 /// An `nf_tables` batch's two ends, which are answered by nothing.
-const BATCH: [u16; 2] = [0x10, 0x11];
+const BATCH: [u16; 2] = [
+    u16_of(libc::NFNL_MSG_BATCH_BEGIN),
+    u16_of(libc::NFNL_MSG_BATCH_END),
+];
 /// Bytes in a netlink header.
 const HEADER_LEN: usize = 16;
+
+/// An `nf_tables` message's type: the subsystem in the high byte, the
+/// message in the low.
+const fn nftables(message: libc::c_int) -> u16 {
+    u16_of(libc::NFNL_SUBSYS_NFTABLES << 8 | message)
+}
 
 /// Which protocol a socket speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,7 +292,7 @@ fn chains(dropping: &[(NetfilterProtoFamily, String, String)]) -> Vec<u8> {
                     Hook::Number(HookNumber::Inet(InetHookNumber::Forward)),
                     Hook::Priority(0),
                 ]),
-                ChainAttribute::Policy(DROP_POLICY),
+                ChainAttribute::Policy(super::rules::DROP),
             ];
             bytes(NetlinkMessage::from(NetfilterMessage::new(
                 NetfilterHeader::new(*family, 0, 0),

@@ -5,9 +5,9 @@
 //! the scope keeps that socket for its whole life: its removal goes through
 //! it, and if the runner dies first, closing it removes the table.
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::os::fd::BorrowedFd;
 
+use afd_core::error_code::{Coded as _, Logged};
 use netlink_sys::Socket;
 
 use super::kernel::Kernel;

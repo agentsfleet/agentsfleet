@@ -4,9 +4,9 @@
 //! The sandbox goes back to the lease, which holds it for the fleet's next
 //! lease or destroys it.
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::time::Instant;
 
+use afd_core::error_code::{Coded as _, Logged};
 use afd_wire::lease::SandboxLimits;
 use afd_wire::report::FailureClass;
 use afr_executor::Executor;

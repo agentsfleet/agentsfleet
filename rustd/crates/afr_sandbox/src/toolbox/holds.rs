@@ -7,12 +7,13 @@
 //! calls [`Toolboxes::retain`]; an image held past its release goes at the
 //! first of those after its last sandbox does.
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use afd_core::error_code::{Coded as _, Logged};
 
 use super::{Manifest, Toolbox, stage};
 use crate::error::{Result, ToolboxRefusal};

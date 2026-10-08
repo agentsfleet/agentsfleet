@@ -8,13 +8,10 @@
 use std::io;
 
 use netlink_packet_core::{
-    NLM_F_ACK, NLM_F_DUMP, NLM_F_REQUEST, NetlinkBuffer, NetlinkDeserializable, NetlinkMessage,
-    NetlinkPayload, NetlinkSerializable,
+    NLM_F_ACK, NLM_F_DUMP, NLM_F_REQUEST, NLMSG_ALIGNTO, NetlinkBuffer, NetlinkDeserializable,
+    NetlinkMessage, NetlinkPayload, NetlinkSerializable,
 };
 use netlink_sys::{Socket, SocketAddr};
-
-/// Netlink messages start on four-byte boundaries.
-const ALIGN: usize = 4;
 
 /// Where a conversation's bytes go and come from.
 pub(crate) trait Wire {
@@ -151,7 +148,10 @@ impl<W: Wire> Netlink<W> {
             let mut bytes = vec![0; message.buffer_len()];
             message.serialize(&mut bytes);
             datagram.extend(bytes);
-            datagram.resize(datagram.len().next_multiple_of(ALIGN), 0);
+            datagram.resize(
+                datagram.len().next_multiple_of(usize::from(NLMSG_ALIGNTO)),
+                0,
+            );
         }
         self.wire.send(&datagram)
     }
@@ -174,7 +174,7 @@ fn split<I: NetlinkDeserializable>(datagram: &[u8]) -> io::Result<Vec<NetlinkMes
         let (message, after) = rest.split_at_checked(length).ok_or_else(truncated)?;
         messages.push(NetlinkMessage::deserialize(message).map_err(io::Error::other)?);
         rest = after
-            .get(length.next_multiple_of(ALIGN) - length..)
+            .get(length.next_multiple_of(usize::from(NLMSG_ALIGNTO)) - length..)
             .unwrap_or_default();
     }
     Ok(messages)

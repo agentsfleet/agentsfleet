@@ -8,9 +8,10 @@
 //! disk that will not unmount keeps its image, and its directory, so a loop
 //! device is never left on a file nobody can name.
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::fs;
 use std::path::Path;
+
+use afd_core::error_code::{Coded as _, Logged};
 
 use super::BubblewrapEngine;
 use crate::cgroup::LeaseCgroup;

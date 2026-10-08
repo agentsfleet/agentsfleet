@@ -15,7 +15,9 @@
 use std::io;
 
 use netlink_packet_core::NetlinkMessage;
-use netlink_packet_netfilter::nftables::{ChainAttribute, ChainMessage, Hook, NfTablesMessage};
+use netlink_packet_netfilter::nftables::{
+    ChainAttribute, ChainMessage, Hook, InetHookNumber, NfTablesMessage,
+};
 use netlink_packet_netfilter::{
     NetfilterHeader, NetfilterMessage, NetfilterMessageInner, NetfilterProtoFamily,
 };
@@ -23,9 +25,6 @@ use netlink_packet_netfilter::{
 use super::super::netlink::{Netlink, Wire};
 use super::expressions::DROP;
 
-/// The forward hook's number, the same in every family that carries IPv4
-/// (`NF_INET_FORWARD`).
-const FORWARD_HOOK: u32 = 2;
 /// The two families whose forward chains see the sandbox's IPv4 traffic, as
 /// `nft` names them.
 const INET: &str = "inet";
@@ -69,10 +68,12 @@ fn dropping(message: NetfilterMessage) -> Option<String> {
         return None;
     };
     let attributes = chain.attributes;
+    // The forward hook is numbered the same in every family carrying IPv4.
+    let forward_hook = u32::from(InetHookNumber::Forward);
     let forward = attributes.iter().any(|attribute| {
         matches!(attribute, ChainAttribute::Hook(hooks)
             if hooks.iter().any(|hook| matches!(hook, Hook::Number(number)
-                if u32::from(*number) == FORWARD_HOOK)))
+                if u32::from(*number) == forward_hook)))
     });
     let drops = attributes
         .iter()
