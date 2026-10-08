@@ -9,18 +9,13 @@ use std::os::fd::AsFd as _;
 
 use afd_core::test_util::trace::Capture;
 
-use super::Scope;
+use super::{Scope, remove};
 use crate::egress::slot::{Claim, Slot, claims_held};
 use crate::egress::testing::{
-    DELLINK, DELTABLE, Fake, GETLINK, NEWADDR, NEWLINK, NEWROUTE, NEWTABLE, Protocol, SETLINK,
+    DELLINK, DELTABLE, Fake, GETLINK, NEWADDR, NEWCHAIN, NEWLINK, NEWROUTE, NEWRULE, NEWSET,
+    NEWSETELEM, NEWTABLE, Protocol, SETLINK,
 };
 use crate::network::Allowlist;
-
-/// The `nf_tables` messages a table is built from, by type.
-const NEWCHAIN: u16 = 0x0a03;
-const NEWRULE: u16 = 0x0a06;
-const NEWSET: u16 = 0x0a09;
-const NEWSETELEM: u16 = 0x0a0c;
 
 /// A name the allowlist carries two addresses for, as a round-robin DNS
 /// answer gives them.
@@ -187,4 +182,20 @@ fn test_a_host_with_every_slot_held_refuses() {
     );
     assert_eq!(capture.only("egress_scope_refused").field("slot"), None);
     assert_eq!(kernel.seen(), [], "the kernel is asked nothing");
+}
+
+/// A leftover's link goes even when no `nf_tables` socket opens to remove its
+/// table, and the refusal names the table's removal.
+#[test]
+fn test_a_leftovers_link_goes_even_when_its_table_cannot() {
+    let kernel = Fake::default().closed(Protocol::Netfilter);
+    let slot = Slot::new(9).unwrap();
+
+    let refused = remove(&kernel, slot).unwrap_err();
+
+    assert_eq!(kernel.seen_on(Protocol::Route), [DELLINK]);
+    assert!(
+        refused.to_string().contains("removing the egress table"),
+        "{refused}"
+    );
 }

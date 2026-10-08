@@ -26,7 +26,7 @@ use afd_core::error_code::{Coded as _, Logged};
 
 use self::kernel::Kernel;
 use self::slot::{Claim, LINK_PREFIX, Slot, TABLE_PREFIX};
-use crate::error::{Result, egress_refused, netlink};
+use crate::error::{Result, egress_refused};
 use crate::network::Allowlist;
 
 #[cfg(feature = "test-util")]
@@ -93,10 +93,7 @@ fn probe(kernel: &impl Kernel, forwarding: &Path) -> Result<()> {
     if fs::read_to_string(forwarding)?.trim() != FORWARDING {
         return Err(egress_refused(FORWARDING_OFF));
     }
-    let dropping = kernel
-        .netfilter()
-        .and_then(|mut netfilter| rules::dropping_forward(&mut netfilter))
-        .map_err(netlink(LIST_CHAINS))?;
+    let dropping = kernel.over_netfilter(LIST_CHAINS, rules::dropping_forward)?;
     if !dropping.is_empty() {
         return Err(egress_refused(format!(
             "{FORWARD_DROPPED}: {}",
@@ -139,14 +136,7 @@ pub(crate) fn namespace_of(procs: &Path) -> Result<OwnedFd> {
 /// The kernel would not list the tables or the links; each object it lists
 /// but will not remove is logged and left.
 pub(crate) fn sweep(kernel: &impl Kernel) -> Result<()> {
-    let tables = kernel
-        .netfilter()
-        .and_then(|mut netfilter| rules::names(&mut netfilter, TABLE_PREFIX))
-        .map_err(netlink(LIST_TABLES))?;
-    let links = kernel
-        .route()
-        .and_then(|mut route| link::names(&mut route, LINK_PREFIX))
-        .map_err(netlink(LIST_LINKS))?;
+    let (tables, links) = objects(kernel)?;
     let mut slots: Vec<Slot> = tables
         .iter()
         .filter_map(|table| Slot::named(table, TABLE_PREFIX))
@@ -174,6 +164,19 @@ pub(crate) fn sweep(kernel: &impl Kernel) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Every egress table and every egress link in the calling thread's
+/// namespace, by name.
+///
+/// # Errors
+/// The kernel would not list them.
+fn objects(kernel: &impl Kernel) -> Result<(Vec<String>, Vec<String>)> {
+    let tables = kernel.over_netfilter(LIST_TABLES, |netfilter| {
+        rules::names(netfilter, TABLE_PREFIX)
+    })?;
+    let links = kernel.over_route(LIST_LINKS, |route| link::names(route, LINK_PREFIX))?;
+    Ok((tables, links))
 }
 
 #[cfg(test)]
