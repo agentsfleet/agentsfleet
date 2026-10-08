@@ -17,9 +17,6 @@
 # refuses every lease, so a deploy that lacks one stops before it writes
 # anything to the host, as does every other refusal (see main).
 #
-# Environment:
-#   DEPLOY_HOSTNAME — the host name the deploy log names (default: $(hostname))
-#
 # At most one deploy runs per host: main() takes a non-blocking flock and exits
 # non-zero when another deploy already holds it. Sourcing this file runs no deploy
 # — deploy_test.sh relies on that to exercise the functions directly.
@@ -59,7 +56,6 @@ source "$(dirname "${BASH_SOURCE[0]}")/log.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/toolbox.sh"
 # shellcheck source=./service.sh
 source "$(dirname "${BASH_SOURCE[0]}")/service.sh"
-readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 
 # The single deployable component. Kept as an explicit argument so the call site
 # names what it deploys; the resolver rejects any other value (catches stale
