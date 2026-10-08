@@ -24,11 +24,11 @@ use afd_otlp::config::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB};
 use afd_otlp::resource::INSTANCE_ID_KNOB;
 use serde_json::Value;
 
-use crate::fake_daemon::{ALLOW_ALL, FakeCollector, FakeDaemon, LEASE_ID};
+use afd_wire::runner::NetworkPolicy;
+
+use crate::fake_daemon::{FENCING, FakeCollector, FakeDaemon, LEASE_ID};
 use crate::support::{RUN_FAILED, Runner};
 
-/// The fencing token the fixture lease carries, which the report echoes.
-const FENCING: u64 = 504;
 /// How long one lease is given to settle.
 const SETTLE_WITHIN: Duration = Duration::from_secs(60);
 /// How long the binary is given to stop once told to, as systemd tells it.
@@ -43,9 +43,6 @@ const JSON_PROTOCOL: &str = "http/json";
 const TRACES: &str = "/v1/traces";
 /// The identity the systemd unit gives a host (`%H`), here spelled out.
 const INSTANCE: &str = "host-a";
-/// The other two egress postures a daemon assigns.
-const DENY_ALL: &str = "deny_all_egress";
-const ALLOW_LIST: &str = "allow_list_egress";
 /// A registry every host resolves offline, so the allowlist binds without
 /// the network.
 const LOCAL_REGISTRY: &str = "localhost";
@@ -220,30 +217,30 @@ fn test_runner_binary_exports_its_lease_trace() {
 fn test_runner_binary_runs_a_lease_per_policy() {
     let runtime = runtime();
     for (policy, registry) in [
-        (ALLOW_ALL, &[][..]),
-        (DENY_ALL, &[][..]),
-        (ALLOW_LIST, &[LOCAL_REGISTRY][..]),
+        (NetworkPolicy::AllowAll, &[][..]),
+        (NetworkPolicy::DenyAllEgress, &[][..]),
+        (NetworkPolicy::AllowListEgress, &[LOCAL_REGISTRY][..]),
     ] {
         let mut daemon = runtime.block_on(FakeDaemon::assigning(policy, registry));
 
         let ran = run_one_lease(&runtime, &mut daemon, &[]);
 
-        assert_eq!(ran.report["lease_id"], LEASE_ID, "{policy}: {}", ran.report);
+        assert_eq!(ran.report["lease_id"], LEASE_ID, "{policy:?}: {}", ran.report);
         assert_ne!(
             ran.report["failure_reason"], STARTUP_POSTURE,
-            "{policy}: the lease was admitted and its turn ran: {}",
+            "{policy:?}: the lease was admitted and its turn ran: {}",
             ran.report
         );
         assert!(
             ran.status.success(),
-            "{policy}: {:?}: {}",
+            "{policy:?}: {:?}: {}",
             ran.status,
             ran.stderr
         );
-        assert!(!ran.stderr.contains(RUN_FAILED), "{policy}: {}", ran.stderr);
+        assert!(!ran.stderr.contains(RUN_FAILED), "{policy:?}: {}", ran.stderr);
         assert!(
             !ran.stderr.contains(EGRESS_REFUSED),
-            "{policy}: {}",
+            "{policy:?}: {}",
             ran.stderr
         );
     }
