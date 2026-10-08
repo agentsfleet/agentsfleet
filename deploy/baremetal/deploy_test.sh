@@ -222,19 +222,21 @@ test_deploy_lock_refused_while_another_deploy_holds_it() {
   fi
 }
 
-# Runs deploy.sh's main in local mode with its lock answering `lock_status`
-# and its input checks passed, and succeeds when the deploy reached install.
+# Runs deploy.sh's main in local mode with its lock answering `lock_status`,
+# its run directory and input checks passed, and succeeds when the deploy
+# reached install.
 deploy_reaches_install() {
-  local lock_status="$1" sentinels="$2" binary="$3"
-  mkdir -p "$sentinels"
+  local lock_status="$1" sentinels="$2"
+  mkdir -p "$sentinels/run"
   (
     export SENTINEL_DIR="$sentinels" PATH="$STUB_DIR:$PATH"
     # shellcheck source=./deploy.sh
     source "$DEPLOY_SH" >/dev/null 2>&1
     set +e
     acquire_deploy_lock() { [[ "$lock_status" -eq 0 ]] || exit "$lock_status"; }
+    check_run_dir() { :; }
     check_deploy_inputs() { :; }
-    main runner v9.9.9 "$binary" "$WORK_DIR/toolbox" >/dev/null 2>&1
+    main runner v9.9.9 "$sentinels/run" >/dev/null 2>&1
   )
   [[ -e "$sentinels/$SENTINEL_INSTALL" ]]
 }
@@ -244,11 +246,9 @@ deploy_reaches_install() {
 # by the lock and not by something earlier.
 test_deploy_takes_the_lock_before_any_write() {
   local name="test_deploy_takes_the_lock_before_any_write"
-  local binary="$WORK_DIR/staged-binary"
-  : >"$binary"
-  if ! deploy_reaches_install 0 "$WORK_DIR/lock-free" "$binary"; then
+  if ! deploy_reaches_install 0 "$WORK_DIR/lock-free"; then
     bad "$name" "a deploy with the lock free never reached install — test harness fault, not a deploy fault"
-  elif deploy_reaches_install 1 "$WORK_DIR/lock-held" "$binary"; then
+  elif deploy_reaches_install 1 "$WORK_DIR/lock-held"; then
     bad "$name" "a deploy refused the lock still reached install — the lock is taken too late"
   else
     ok "$name"

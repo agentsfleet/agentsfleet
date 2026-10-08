@@ -3,13 +3,17 @@
 # the systemd service.
 #
 # Two modes:
-#   Local:    deploy.sh runner <version> <binary-path> <toolbox-dir>
-#             Installs from local files (CI copied the binary and the toolbox's
-#             image, manifest and signature to the server).
+#   Local:    deploy.sh runner <version> <run-dir>
+#             Installs from one deploy's run directory under HOST_RUNS_DIR
+#             (layout.sh), which the runner playbook filled with the binary,
+#             the toolbox's image, manifest and signature, and the runner's
+#             env file. Reads nothing else, and removes the directory when it
+#             ends, however it ends.
 #
 #   Release:  deploy.sh runner <version>
 #             Downloads the offline bundle from GitHub Releases (tagged release
-#             deploys); it carries the binary and the toolbox together.
+#             deploys); it carries the binary and the toolbox together. The
+#             runner keeps the env file the last local deploy installed.
 #
 # The toolbox lands in the runner's incoming directory, and the runner admits it
 # at boot: it verifies the manifest's signature against the key it is built
@@ -197,10 +201,9 @@ sync_systemd_unit() {
   log "Synced ${SERVICE_NAME} → systemd."
 }
 
-# Refuses the env file sync_env would install. `env_file` is injectable so
-# deploy_test.sh can read a fixture (production passes nothing).
+# Refuses the env file sync_env would install.
 check_env_file() {
-  local env_file="${1:-$HOST_ENV_FILE}"
+  local env_file="$1"
   [[ -f "$env_file" ]] \
     || die "missing $env_file — deploy through playbooks/lib/runner/deploy.sh"
 
@@ -226,9 +229,15 @@ check_env_file() {
   fi
 }
 
+# Installs `env_file` for the unit. A release deploy reads the one already
+# installed, so there is nothing to copy.
 sync_env() {
-  cp "$HOST_ENV_FILE" "$UNIT_ENV_FILE"
-  log "Synced .env → ${UNIT_ENV_FILE}"
+  local env_file="$1"
+  if [[ "$env_file" == "$UNIT_ENV_FILE" ]]; then
+    return 0
+  fi
+  install -m 600 "$env_file" "$UNIT_ENV_FILE"
+  log "Synced ${env_file} → ${UNIT_ENV_FILE}"
 }
 
 # Every check that can refuse this deploy, run before its first write to the
@@ -237,7 +246,7 @@ sync_env() {
 # that does not name its own version, so the host would stop serving long
 # after the deploy that broke it.
 check_deploy_inputs() {
-  local binary="$1" toolbox_dir="$2" env_file="${3:-$HOST_ENV_FILE}"
+  local binary="$1" toolbox_dir="$2" env_file="$3"
   [[ -f "$binary" ]] || die "runner binary not found: $binary"
   toolbox_set_files "$toolbox_dir" >/dev/null \
     || die "the toolbox under $toolbox_dir is not one complete set"
@@ -245,57 +254,81 @@ check_deploy_inputs() {
 }
 
 # Stages the toolbox under `src` where the runner reads it at boot: under the
-# storage home the env file names, else the runner's default.
+# storage home `env_file` names, else the runner's default.
 stage_toolbox() {
-  local src="$1" incoming
-  incoming="$(storage_home "$HOST_ENV_FILE")/${TOOLBOX_INCOMING_SUBDIR}"
+  local src="$1" env_file="$2" incoming
+  incoming="$(storage_home "$env_file")/${TOOLBOX_INCOMING_SUBDIR}"
   install_toolbox "$src" "$incoming" \
     || die "could not stage the toolbox under $src into $incoming"
   log "Staged toolbox → ${incoming}"
 }
 
+# ── Run directory ────────────────────────────────────────────────────────────
+
+# Refuses `run_dir` unless it is a directory directly under `runs_root` named
+# RUN_DIR_PREFIX and a suffix, as the playbook makes one: this deploy removes
+# it as root when it ends. `runs_root` is injectable so deploy_run_dir_test.sh
+# can hand it a writable one (production passes HOST_RUNS_DIR).
+check_run_dir() {
+  local run_dir="$1" runs_root="$2" name
+  name="$(basename "$run_dir")"
+  [[ "$(dirname "$run_dir")" == "$runs_root" && "$name" == "$RUN_DIR_PREFIX"?* && -d "$run_dir" ]] \
+    || die "not a run directory under ${runs_root}: $run_dir"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
-  if [[ $# -lt 2 || $# -gt 4 || $# -eq 3 ]]; then
-    echo "Usage: deploy.sh runner <version> [binary-path toolbox-dir]"
-    echo "  version:     GitHub release tag (e.g. v0.1.0) or dev SHA (e.g. dev-abc1234)"
-    echo "  binary-path: local path to the pre-staged binary; with it, toolbox-dir is required"
-    echo "  toolbox-dir: local directory holding toolbox-<sha256>.{erofs,json,json.sig}"
-    echo "  Both omitted: the release's offline bundle is downloaded from GitHub Releases."
+  if [[ $# -lt 2 || $# -gt 3 ]]; then
+    echo "Usage: deploy.sh runner <version> [run-dir]"
+    echo "  version: GitHub release tag (e.g. v0.1.0) or dev SHA (e.g. dev-abc1234)"
+    echo "  run-dir: a run directory under ${HOST_RUNS_DIR} holding the binary, the"
+    echo "           toolbox-<sha256>.{erofs,json,json.sig} set and ${RUN_ENV_FILE_NAME}"
+    echo "  Omitted: the release's offline bundle is downloaded from GitHub Releases."
     exit 1
   fi
 
   COMPONENT="$1"
   VERSION="$2"
-  LOCAL_BINARY="${3:-}"
-  LOCAL_TOOLBOX="${4:-}"
+  RUN_DIR="${3:-}"
 
   [[ "$COMPONENT" == "$COMPONENT_RUNNER" ]] \
     || die "Unknown component '$COMPONENT'. The only deployable component is '${COMPONENT_RUNNER}'."
+
+  # Before the lock, so a deploy refused the lock still removes the directory
+  # it was handed. Only this deploy reads that directory: no lock guards it.
+  if [[ -n "$RUN_DIR" ]]; then
+    check_run_dir "$RUN_DIR" "$HOST_RUNS_DIR"
+    trap 'rm -rf -- "$RUN_DIR"' EXIT
+  fi
 
   # After argument validation, before anything that touches the host: a usage or
   # bad-component error needs no lock, and must not fail on an unwritable /var/lock.
   acquire_deploy_lock "$DEPLOY_LOCK_PATH"
 
-  # Skip version check when CI provides a local binary — always do a full
+  # Skip version check when the playbook hands over a run — always do a full
   # install+restart cycle. The shortcut is only for release-download mode.
-  if [[ -z "$LOCAL_BINARY" ]] && is_already_installed; then
+  if [[ -z "$RUN_DIR" ]] && is_already_installed; then
     return 0
   fi
 
-  local binary="$LOCAL_BINARY" toolbox_dir="$LOCAL_TOOLBOX"
-  if [[ -z "$LOCAL_BINARY" ]]; then
+  local binary toolbox_dir env_file
+  if [[ -n "$RUN_DIR" ]]; then
+    binary="${RUN_DIR}/${BINARY_NAME}"
+    toolbox_dir="$RUN_DIR"
+    env_file="${RUN_DIR}/${RUN_ENV_FILE_NAME}"
+  else
     fetch_release
     binary="${RELEASE_DIR}/${RELEASE_BINARY}"
     toolbox_dir="$RELEASE_DIR"
+    env_file="$UNIT_ENV_FILE"
   fi
 
-  check_deploy_inputs "$binary" "$toolbox_dir"
+  check_deploy_inputs "$binary" "$toolbox_dir" "$env_file"
   install_binary "$binary"
-  stage_toolbox "$toolbox_dir"
+  stage_toolbox "$toolbox_dir" "$env_file"
   sync_systemd_unit
-  sync_env
+  sync_env "$env_file"
   restart_services "$SERVICE_NAME" "$DRAIN_TIMEOUT_SECONDS"
 
   if verify_healthy "$SERVICE_NAME" "$HEALTH_ATTEMPTS" "$HEALTH_DELAY_SECONDS" "$HEALTH_STABLE_SECONDS"; then

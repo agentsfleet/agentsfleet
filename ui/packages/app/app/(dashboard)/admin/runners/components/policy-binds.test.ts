@@ -85,8 +85,8 @@ describe("bindPathIssue", () => {
   });
 
   // `/opt` moved HERE from the already-mounted list, and that move is the
-  // security change: the daemon writes its control-plane token to
-  // `/opt/agentsfleet/.env`, so `/opt` is no longer bound into a lease and an
+  // security change: the deploy stages the runner's control-plane token under
+  // `/opt/agentsfleet`, so `/opt` is no longer bound into a lease and an
   // operator naming it is now refused as host control rather than waved off as
   // redundant. Same for the broad `/etc`, which carries the account database.
   it.each(["/opt", "/proc/self", "/root", "/var/lib/agentsfleet", "/var/run"])(

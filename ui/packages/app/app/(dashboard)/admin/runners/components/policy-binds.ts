@@ -71,8 +71,8 @@ export const SENSITIVE_PATHS = [
   "/run",
   "/var/run",
   "/var/lib/agentsfleet",
-  // The deploy writes the runner token to `/opt/agentsfleet/.env`; the entry
-  // above named a directory the token does not live in.
+  // The deploy stages the runner token under `/opt/agentsfleet`, in each
+  // deploy's run directory; the entry above named a directory it never enters.
   "/opt/agentsfleet",
   // Refused as a tree now that the baseline binds only individual files under
   // it — otherwise an operator bind could reach `/etc/shadow`, or replace the

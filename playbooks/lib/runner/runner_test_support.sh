@@ -29,6 +29,19 @@ if [ -z "$required_controllers" ]; then
   printf 'FATAL: REQUIRED_CGROUP_CONTROLLERS read empty from %s\n' "$RUNNER_TEST_DIR/common.sh" >&2
   exit 2
 fi
+# The host paths a deploy stages under, as layout.sh names them, read in a
+# subshell under other names: layout.sh's constants are readonly.
+# shellcheck source=../../../deploy/baremetal/layout.sh
+read -r HOST_ROOT_PATH HOST_RUNS_PATH HOST_DEPLOY_PATH RUN_ENV_NAME RUN_BINARY_NAME <<<"$(
+  source "$RUNNER_TEST_DIR/../../../deploy/baremetal/layout.sh" &&
+    printf '%s ' "$HOST_ROOT" "$HOST_RUNS_DIR" "$HOST_DEPLOY_DIR" "$RUN_ENV_FILE_NAME" "$BINARY_NAME"
+)"
+# shellcheck disable=SC2034  # runner_stage_test.sh reads the run's paths
+readonly HOST_ROOT_PATH HOST_RUNS_PATH HOST_DEPLOY_PATH RUN_ENV_NAME RUN_BINARY_NAME
+if [ -z "$RUN_BINARY_NAME" ]; then
+  printf 'FATAL: the run directory layout read empty from layout.sh\n' >&2
+  exit 2
+fi
 passed=0
 failed=0
 work_dir="$(mktemp -d)"
@@ -80,6 +93,15 @@ then
   command="${command//\/sys\/fs\/cgroup/$STUB_CGROUP_ROOT}"
   bash -c "$command"
   exit $?
+fi
+# A command on a run directory (making one, copying into it, removing it) runs
+# for real against STUB_HOST_ROOT, which stands in for HOST_ROOT, so a case can
+# read what a deploy staged and what it left; a path it prints is translated
+# back. The host's own deploy.sh, reached through sudo, never runs.
+if [ -n "${HOST_RUNS_PATH:-}" ] && [[ "$command" == *"$HOST_RUNS_PATH"* && "$command" != *sudo* ]]; then
+  output="$(bash -c "${command//"$HOST_ROOT_PATH"/$STUB_HOST_ROOT}")" || exit $?
+  [ -z "$output" ] || printf '%s\n' "${output//"$STUB_HOST_ROOT"/$HOST_ROOT_PATH}"
+  exit 0
 fi
 case "$command" in
   *"BWRAP_VERSION="*)
@@ -133,6 +155,9 @@ for part in erofs json json.sig; do
 done
 cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
+# The host's file system as a deploy's run-directory commands see it.
+host_root="$work_dir/host"
+mkdir -p "$host_root"
 
 run_script() {
   : >"$calls"
@@ -159,6 +184,9 @@ run_script() {
     CALLS="$calls" \
     READYZ_COUNTER="$readyz_counter" \
     STUB_REQUIRED_CONTROLLERS="$required_controllers" \
+    STUB_HOST_ROOT="$host_root" \
+    HOST_ROOT_PATH="$HOST_ROOT_PATH" \
+    HOST_RUNS_PATH="$HOST_RUNS_PATH" \
     RUNNER_BINARY="$runner_binary" \
     RUNNER_VERSION=test-build \
     ALLOW_VAULT_READS=1 \
