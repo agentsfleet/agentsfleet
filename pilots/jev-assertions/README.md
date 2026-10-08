@@ -4,7 +4,7 @@ Run a frozen contributor experiment on `agentsfleet` tests using the existing
 `orly` question `verify.assertion`. Its five native answers are `exact`, `weak`,
 `wrong_target`, `missing`, and `insufficient`. Advice stays advisory.
 
-The [active spec](../../docs/v2/active/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md)
+The [completed spec](../../docs/v2/done/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md)
 owns scope and lifecycle. [report.md](report.md) records results, evidence and
 limitations. Expected classifications and justifications live in
 [cases.json](cases.json); never include that file in a model request.

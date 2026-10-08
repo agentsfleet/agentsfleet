@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M216
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — bounded contributor experiment
 **Categories:** Documentation (DOCS), Infrastructure (INFRA)
 **Batch:** B1 — independent pilot artifacts
@@ -24,7 +24,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** dd917b7ef42dcb883b5192fafe894060aab5845d
 **Test Baseline:** unit=10613 integration=899 — unit comparison retains one failure
 **Baseline evidence:** pilots/jev-assertions/report.md
-**Depends on:** repository comparison baselines and boundary verification before the Pull Request
+**Depends on:** recorded comparison baselines and green declared repository checks; owner review before merge
 **Provenance:** agent-generated from Indy's Oct 08, 2026 pilot instruction
 **Canonical architecture:** existing product architecture remains unchanged; this is an isolated contributor measurement
 
@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** Twenty frozen cases distinguish exact, weak, wrong_target, missing and insufficient assertions, retain every approved Jev attempt, and accompany a verified orly 0.14.0 consumer pin.
 **Problem:** Passing tests can accept incorrect results; model advice has not been measured on this fresh `agentsfleet` sample.
-**Solution summary:** Copy four real behaviors into isolated pilot fixtures, establish expected classifications and executable counterexamples offline, then measure the existing `verify.assertion` question after one owner-approved upload and budget checkpoint. Keep all model results advisory. Retain the pilot IN_PROGRESS until its required measurements and evidence-backed recommendation exist.
+**Solution summary:** Copy four real behaviors into isolated pilot fixtures, establish expected classifications and executable counterexamples offline, then measure the existing `verify.assertion` question after one owner-approved upload and budget checkpoint. Keep all model results advisory. Required measurements, the recommendation and repository verification are complete; owner review remains due before merge.
 
 ## PR Intent & comprehension handshake
 
@@ -122,7 +122,7 @@ Freeze the author's unaided inspection before any Jev output. Specify paired ses
 
 ### §3 — Measurements and recommendation
 
-**Status:** DONE — model results, independent agent comparison and recommendation recorded; repository boundary evidence remains pending.
+**Status:** DONE — model results, independent agent comparison, recommendation and green repository boundary evidence recorded.
 
 After owner approval, invoke `orly judge verify --input <manifest> --refresh --json` once per batch. Retain failures even if no usage is returned. Replay with the same command without refresh. Do not manufacture replies to make offline preparation green.
 
@@ -132,7 +132,7 @@ After owner approval, invoke `orly judge verify --input <manifest> --refresh --j
 
 ### §4 — Authorized engine update
 
-**Status:** DONE — published 0.14.0 installed and the managed pin verified; the consumer Pull Request remains subject to boundary checks and Indy's review.
+**Status:** DONE — published 0.14.0 installed, managed pin verified and declared checks green; the consumer Pull Request awaits Indy's review.
 
 - **Dimension 4.1** — DONE — The installed engine and managed pin equal 0.14.0; existing configuration and hooks survive the update → Test `test_orly_014_pin` (manual).
 
@@ -189,16 +189,16 @@ Regression scope: product behavior, source tests, catalog, confidence threshold,
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
-| R1 | Frozen cases and executable controls | `python3 pilots/jev-assertions/pilot.py check` | exit 0; 20 correct passes; 8 fault rejections and 12 surviving deliberately inadequate assertions | P0 | PASS: `receipts/checks.json`; strong hidden helpers explain four rejections |
-| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; no provider request | P0 | PASS: 25 tests; fresh output in `receipts/review/blinded/.qa-evidence/006/stderr` |
-| R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | PASS: 20 complete live attempts; replay requests 0; paired status measured, `receipts/summary.json` |
-| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; spec remains active until required boundary evidence exists | P0 | PASS: pilot prefix, active spec and authorized engine pin; IN_PROGRESS retained for pending repository checks |
-| S1 | Conform | `make harness-verify` | exit 0 | P0 | PASS: 50 source files, zero literal violations; `receipts/conform.txt` |
-| S2 | Unit boundary | `make test-unit-all` | exit 0 at PR boundary | P0 | |
-| S3 | Lint boundary | `make lint-all` | exit 0 at PR boundary | P0 | |
-| S4 | Integration boundary | `make test-integration-rustd` | exit 0 at PR boundary in isolated datastore environment | P0 | |
-| S5 | Version preservation | `make check-version` | exit 0 | P0 | PASS: all versions match 0.58.0 |
-| S6 | No secrets | `gitleaks protect --staged --redact --no-banner` | exit 0 | P0 | PASS: `no leaks found`, `receipts/secret-scan.txt` |
+| R1 | Frozen cases and executable controls | `python3 pilots/jev-assertions/pilot.py check` | exit 0; 20 correct passes; 8 fault rejections and 12 surviving deliberately inadequate assertions | P0 | ✅ 20 correct passes, 8 rejections, 12 survivors; `receipts/checks.json` |
+| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; no provider request | P0 | ✅ 25 tests passed; `receipts/review/blinded/.qa-evidence/006/stderr` |
+| R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | ✅ 20 complete attempts, replay requests 0, paired status measured; `receipts/summary.json` |
+| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; completed spec in done with boundary evidence | P0 | ✅ Pilot prefix, completed spec and engine pin only; `receipts/review/boundary-verification.json` |
+| S1 | Conform | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN; 50 source files, zero literal violations; `receipts/conform.txt` |
+| S2 | Unit boundary | `make test-unit-all` | exit 0 at PR boundary | P0 | ✅ exit 0: 10614 passed, zero failed; `receipts/review/boundary-verification.json` |
+| S3 | Lint boundary | `make lint-all` | exit 0 at PR boundary | P0 | ✅ exit 0: all declared lint checks green; `receipts/review/boundary-verification.json` |
+| S4 | Integration boundary | `make test-integration-rustd` | exit 0 at PR boundary in isolated datastore environment | P0 | ✅ exit 0: 899 passed, zero failed; `receipts/review/boundary-verification.json` |
+| S5 | Version preservation | `make check-version` | exit 0 | P0 | ✅ all versions match 0.58.0 |
+| S6 | No secrets | `gitleaks protect --staged --redact --no-banner` | exit 0 | P0 | ✅ no leaks found; `receipts/secret-scan.txt` |
 
 ## Dead Code Sweep
 
@@ -235,7 +235,7 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 
 - **Consults:** Indy authorized offline preparation and focused commits, required one budget approval before refresh, and required the overall pilot to remain IN_PROGRESS. Source comparison is `dd917b7ef42dcb883b5192fafe894060aab5845d`; engine 0.13.0 checked with `scripts/check_orly_pin.sh`. Earlier fixture contents were not read. The `orly` checkout remains read-only.
 - **Metrics review:** No product analytics/funnel playbook update; local receipts record all approved attempts. Fresh blinded agents used identical selected evidence and separately shuffled orders, with retained advice only in the assisted condition.
-- **Skill-chain outcomes:** `context-restore` completed; `orly-spec-new` applied. `orly-write-unit-test` maps each Dimension to a named check; 25 runner tests include refusal and failed-attempt checks. gstack's native review identified four pilot-runner accounting defects; regression checks cover their repairs. Functional offline probes have verdict pass in `receipts/review/evidence.json`; code audit remains separate from blinded pilot reviews. Repository baselines and declared boundary checks remain due before a Pull Request. Babysitting applies only after a push.
+- **Skill-chain outcomes:** `context-restore` completed; `orly-spec-new` applied. `orly-write-unit-test` maps each Dimension to a named check; 25 runner tests include refusal and failed-attempt checks. gstack's native review identified four pilot-runner accounting defects; regression checks cover their repairs. Functional offline probes have verdict pass in `receipts/review/evidence.json`; code audit remains separate from blinded pilot reviews. Comparison baselines and every declared boundary check are recorded. Babysitting follows each push; hosted checks and owner review remain separate from local verification.
 - **Offline findings:** `pilot.py check`: 20 correct passes, 8 fault rejections, 12 survivors; Node v26.9.0 runs the incumbent Vitest 5.0.3/jsdom 30.1.2 stack. Initial Bun execution started no tests because jsdom workers raised EventTarget errors; these were refused, never counted as controls. Frozen case bytes stayed unchanged. Both offline `orly` commands returned ten unavailable replay slots and zero requests; no Jev accuracy claim follows.
 - **Freeze correction:** Conformance found 82 copied literal violations. Named-constant repairs stayed in pilot copies, are recorded as exact source adaptations, and retain all 40 proof outcomes. Review also corrected p16's import order. Both corrections preceded any Jev answer; requirements, classifications and justifications stayed fixed. Final digest: `7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa`.
 - **Approval:** Indy: "okay approved" — approved the frozen upload scope, at most twenty requests including failures, United States dollars (USD) 0.06, no retries or extra planning-model calls. `approval.json` binds input/runner digests and pricing reconfirmed at `2026-10-08T13:21:11.785254+00:00` before admission.
@@ -243,8 +243,9 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 - **Blinded method approval:** Indy: "yes" — use two fresh in-host agent reviewers with no inherited conversation. Both initial records and forty actual timing intervals are retained; the assisted record binds the frozen unaided bytes and original live-advice hashes. No new provider request ran.
 - **Paired results:** `pilot.py summarize`: both agents classify 20/20 correctly and find 12/12 seeded weaknesses; misses and false alarms are zero. Unaided elapsed time is 258.305690044 seconds; assisted is 229.249124959 seconds. Different reviewers and orders prevent causal attribution; human active-review time remains unmeasured.
 - **Fixture repair approval:** Indy: "Yes — fix fixture isolation and rerun the checks." — `pilot_test.py` disposable copies now omit the two real review records, alongside omitted receipts. The unchanged suite first failed twice, then passed all 25 checks after repair. Original reviews and approval remain unchanged; the original runner digest identifies historical provider attempts.
-- **Recommendation:** Keep experimental advice; paired finding gain is zero. The observed agent-time difference does not establish human savings or justify adoption. The pilot remains IN_PROGRESS for repository baselines and boundary checks. No newly confirmed production defect, threshold change or gate integration follows.
+- **Recommendation:** Keep experimental advice; paired finding gain is zero. The observed agent-time difference does not establish human savings or justify adoption. Required measurements and repository boundary checks are complete. No newly confirmed production defect, threshold change or gate integration follows.
 - **Overnight scope:** Indy: "in agentsfleet - prune merged, pull origin main, and update orly to 0.14, verify and push the PR, ensure the CI job is green, all greptile commits are resolved and we are good to go fater an eye ball from Indy". Fold the pin into this stream; leave its Pull Request unmerged for Indy. The earlier read-only `orly` restriction described pilot preparation; the later release instruction authorizes the separate engine publication.
-- **Comparison baseline:** Exact `dd917b7ef42dcb883b5192fafe894060aab5845d`, isolated checkout and owned datastore project: unit 10613 passed / 1 failed, Rust 924 ignored, command-line 16 skipped; integration 899 passed / 0 failed. Both failed unit attempts remain recorded. A focused clipboard rerun passes all seven tests; final full verification must still pass. Evidence: `receipts/review/boundary-baseline.json` and `report.md`.
+- **Comparison baseline:** Exact `dd917b7ef42dcb883b5192fafe894060aab5845d`, isolated checkout and owned datastore project: unit 10613 passed / 1 failed, Rust 924 ignored, command-line 16 skipped; integration 899 passed / 0 failed. Both failed unit attempts remain recorded. A focused clipboard rerun passes all seven tests without replacing the failed full result. Evidence: `receipts/review/boundary-baseline.json` and `report.md`.
+- **Completed boundary:** `orly gate pr` at pushed `6a9a8d3c7b01e3c73dba4ffeaa4cef241a924656` exits 0. Unit: 10614 passed, zero failed; integration: 899 passed, zero failed; lint and version checks exit 0. Reported package coverage is 100%; command-line function/line floors are 100%. The +1 product pass is the unchanged comparison-run clipboard failure recovering, not a new product test. The pilot adds 25 scoped runner checks outside product Make selections. Earlier disk-full and stopped-datastore attempts remain recorded; no gate or test was patched. Evidence: `receipts/review/boundary-verification.json`. The exact pushed closing revision must pass its own gate before opening the Pull Request.
 - **Consumer update:** `bun install -g @agentsfleet/orly@0.14.0 --registry=https://registry.npmjs.org --no-cache` installs 0.14.0. The public tarball hash matches the successful release log. `orly update --no-hooks` writes one file, with 70 already current; parsed configuration differs only in its engine version. `orly doctor` and `scripts/check_orly_pin.sh` pass.
 - **Deferrals:** None. Human time remains unmeasured; no human experiment was performed. The approved request allowance is exhausted; no retries or additional provider calls are authorized by the pilot approval.
