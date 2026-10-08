@@ -3,9 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 # shellcheck source=./common.sh
 source "$SCRIPT_DIR/common.sh"
+# Where HOST_DEPLOY_FILES come from.
+HOST_DEPLOY_SOURCE_DIR="$(cd "$SCRIPT_DIR/../../../deploy/baremetal" && pwd)"
+readonly HOST_DEPLOY_SOURCE_DIR
 
 # The toolbox files a release or a lane build ships beside the binary: the
 # image named by its digest, the release manifest, and cosign's signature over
@@ -58,16 +60,18 @@ toolbox_files() {
   done
 }
 
+# Preparation creates the staging directories and hands HOST_ROOT to the
+# deploy user. Creating them again here, as that user, costs nothing on a
+# prepared host, brings in one the layout gained since its preparation, and
+# fails on a host never prepared, whose HOST_ROOT the deploy user cannot write.
 verify_host_prepared() {
-  runner_remote '
+  runner_remote "
     set -e
-    test -d /opt/agentsfleet/bin
-    test -d /opt/agentsfleet/deploy
-    test -w /opt/agentsfleet/bin
-    test -w /opt/agentsfleet/deploy
-    mkdir -p /opt/agentsfleet/toolbox
-    test -w /opt/agentsfleet/toolbox
-  '
+    mkdir -p $HOST_STAGING_DIRS
+    for dir in $HOST_STAGING_DIRS; do
+      test -w \"\$dir\"
+    done
+  "
   runner_require_remote_tools
 }
 
@@ -80,50 +84,33 @@ write_runner_environment() {
     printf 'AGENTSFLEET_RUNNER_TOKEN=%s\n' "$RUNNER_TOKEN"
   } >"$env_file"
   chmod 600 "$env_file"
-  runner_copy "$env_file" /opt/agentsfleet/.env 600
+  runner_copy "$env_file" "$HOST_ENV_FILE" 600
   rm -f "$env_file"
   trap - RETURN
 }
 
 copy_deploy_files() {
-  runner_copy \
-    "$REPO_ROOT/deploy/baremetal/deploy.sh" \
-    /opt/agentsfleet/deploy/deploy.sh \
-    755
-  # deploy.sh sources these three from its own directory.
-  runner_copy \
-    "$REPO_ROOT/deploy/baremetal/log.sh" \
-    /opt/agentsfleet/deploy/log.sh \
-    644
-  runner_copy \
-    "$REPO_ROOT/deploy/baremetal/toolbox.sh" \
-    /opt/agentsfleet/deploy/toolbox.sh \
-    644
-  runner_copy \
-    "$REPO_ROOT/deploy/baremetal/service.sh" \
-    /opt/agentsfleet/deploy/service.sh \
-    644
-  runner_copy \
-    "$REPO_ROOT/deploy/baremetal/agentsfleet-runner.service" \
-    /opt/agentsfleet/deploy/agentsfleet-runner.service \
-    644
-  runner_copy "$RUNNER_BINARY" /opt/agentsfleet/bin/agentsfleet-runner 755
-  # The staging copy under /opt is the host's; deploy.sh copies the set into
-  # the runner's incoming directory, where the runner admits it at boot. The
-  # host's deploy.sh refuses a directory holding more than one image, so the
-  # set an earlier deploy (or one cut short) left here goes first.
-  runner_remote "find /opt/agentsfleet/toolbox -maxdepth 1 -name 'toolbox-*' -type f -delete"
-  local file
+  local entry file
+  for entry in "${HOST_DEPLOY_FILES[@]}"; do
+    file="${entry%%:*}"
+    runner_copy "$HOST_DEPLOY_SOURCE_DIR/$file" "$HOST_DEPLOY_DIR/$file" "${entry##*:}"
+  done
+  runner_copy "$RUNNER_BINARY" "$HOST_BIN_DIR/$BINARY_NAME" 755
+  # The staging copy under HOST_ROOT is the host's; deploy.sh copies the set
+  # into the runner's incoming directory, where the runner admits it at boot.
+  # The host's deploy.sh refuses a directory holding more than one image, so
+  # the set an earlier deploy (or one cut short) left here goes first.
+  runner_remote "find $HOST_TOOLBOX_DIR -maxdepth 1 -name 'toolbox-*' -type f -delete"
   for file in "${TOOLBOX_PATHS[@]}"; do
-    runner_copy "$file" "/opt/agentsfleet/toolbox/$(basename "$file")" 644
+    runner_copy "$file" "$HOST_TOOLBOX_DIR/$(basename "$file")" 644
   done
 }
 
 deploy_runner() {
   runner_remote "
     set -e
-    sudo /opt/agentsfleet/deploy/deploy.sh runner '$RUNNER_VERSION' \
-      /opt/agentsfleet/bin/agentsfleet-runner /opt/agentsfleet/toolbox
+    sudo $HOST_DEPLOY_DIR/deploy.sh runner '$RUNNER_VERSION' \
+      $HOST_BIN_DIR/$BINARY_NAME $HOST_TOOLBOX_DIR
   "
 }
 

@@ -19,7 +19,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
 # Where deploy.sh reads the runner's env file; a host that has one would
 # answer the env case with its own file instead of the refusal it expects.
-readonly HOST_ENV_FILE="/opt/agentsfleet/.env"
+# Read in a subshell, under another name: layout.sh's constants are readonly,
+# and every case sources deploy.sh, which sources layout.sh again.
+# shellcheck source=./layout.sh
+host_env_file="$(source "$SCRIPT_DIR/layout.sh" && printf '%s' "$HOST_ENV_FILE")"
+readonly host_env_file
 readonly SENTINEL_INSTALL="install-ran"
 readonly FIXTURE_DIGEST="0000000000000000000000000000000000000000000000000000000000000001"
 readonly TOOLBOX_PARTS=(erofs json json.sig)
@@ -102,14 +106,14 @@ test_deploy_refused_toolbox_leaves_the_host_untouched() {
 test_deploy_refused_env_leaves_the_host_untouched() {
   local name="test_deploy_refused_env_leaves_the_host_untouched"
   local binary="$WORK_DIR/binary" toolbox="$WORK_DIR/full-toolbox" sentinels="$WORK_DIR/env-refused"
-  if [[ -e "$HOST_ENV_FILE" ]]; then
-    skip "$name" "$HOST_ENV_FILE exists here, so the deploy would not refuse it"
+  if [[ -e "$host_env_file" ]]; then
+    skip "$name" "$host_env_file exists here, so the deploy would not refuse it"
     return
   fi
   : >"$binary"
   toolbox_set "$toolbox"
   if local_deploy_status "$sentinels" "$binary" "$toolbox"; then
-    bad "$name" "a deploy with no env file at $HOST_ENV_FILE exited 0"
+    bad "$name" "a deploy with no env file at $host_env_file exited 0"
   elif [[ -e "$sentinels/$SENTINEL_INSTALL" ]]; then
     bad "$name" "a deploy refused for its env file wrote to the host first"
   else

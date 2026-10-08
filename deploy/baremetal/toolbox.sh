@@ -23,7 +23,7 @@ readonly TOOLBOX_SUFFIXES=(erofs json json.sig)
 # `env_file` is injectable so deploy_test.sh can read a fixture (production
 # passes nothing).
 storage_home() {
-  local env_file="${1:-$ENV_FILE}"
+  local env_file="${1:-$HOST_ENV_FILE}"
   local configured
   configured=$(sed -n 's/^RUNNER_STORAGE_HOME=//p' "$env_file" 2>/dev/null | head -1)
   printf '%s\n' "${configured:-$RUNNER_STORAGE_HOME_DEFAULT}"

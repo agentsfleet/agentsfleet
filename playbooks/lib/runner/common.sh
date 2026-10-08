@@ -5,6 +5,10 @@ set -euo pipefail
 RUNNER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../common.sh
 source "$RUNNER_LIB_DIR/../common.sh"
+# The host's paths, the unit's name and the files of the host deploy, as the
+# host's deploy.sh reads them too.
+# shellcheck source=../../../deploy/baremetal/layout.sh
+source "$RUNNER_LIB_DIR/../../../deploy/baremetal/layout.sh"
 
 readonly CGROUP_ROOT="/sys/fs/cgroup"
 # The runner's host probe refuses to start without each of these
