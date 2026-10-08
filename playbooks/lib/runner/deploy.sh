@@ -59,18 +59,25 @@ verify_host_prepared() {
   runner_require_remote_tools
 }
 
+# The runner's environment, written here before its copy to the host. It holds
+# the runner token, so the EXIT trap removes it however the deploy ends: a copy
+# that fails exits the shell under `set -e`, and a RETURN trap never fires then.
+RUNNER_ENV_TEMP=""
+remove_runner_env_temp() {
+  [ -z "$RUNNER_ENV_TEMP" ] || rm -f "$RUNNER_ENV_TEMP"
+  RUNNER_ENV_TEMP=""
+}
+trap remove_runner_env_temp EXIT
+
 write_runner_environment() {
-  local env_file
-  env_file="$(mktemp)"
-  trap 'rm -f "${env_file:-}"' RETURN
+  RUNNER_ENV_TEMP="$(mktemp)"
   {
     printf 'AGENTSFLEET_API_URL=%s\n' "$RUNNER_API_URL"
     printf 'AGENTSFLEET_RUNNER_TOKEN=%s\n' "$RUNNER_TOKEN"
-  } >"$env_file"
-  chmod 600 "$env_file"
-  runner_copy "$env_file" "$HOST_ENV_FILE" 600
-  rm -f "$env_file"
-  trap - RETURN
+  } >"$RUNNER_ENV_TEMP"
+  chmod 600 "$RUNNER_ENV_TEMP"
+  runner_copy "$RUNNER_ENV_TEMP" "$HOST_ENV_FILE" 600
+  remove_runner_env_temp
 }
 
 copy_deploy_files() {
