@@ -34,6 +34,8 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 
 /// Where a record goes when nobody chose.
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
+/// Logged when a second SIGINT or SIGTERM ends a drain the first one began.
+const EVENT_STOP_FORCED: &str = "runner_stop_forced";
 
 /// The runner's command line.
 #[derive(Debug, Parser)]
@@ -218,9 +220,34 @@ async fn serve(
             shutdown.cancel();
         }
     });
-    let served = afr_supervisor::run(config, home, engine, Box::new(agent), probe, shutdown).await;
+    let running = afr_supervisor::run(
+        config,
+        home,
+        engine,
+        Box::new(agent),
+        probe,
+        shutdown.clone(),
+    );
+    let served = tokio::select! {
+        served = running => served,
+        () = forced(&shutdown) => {
+            let event = EVENT_STOP_FORCED;
+            tracing::warn!(event);
+            Ok(())
+        }
+    };
     stopping.abort();
     served
+}
+
+/// Resolves on a second SIGINT or SIGTERM, once the first has begun a drain:
+/// the operator will not wait for the leases in flight. The first signal's
+/// handler stays installed for the process's life, so without this a second
+/// one would be swallowed until a lease ended. Dropping the run unwinds
+/// through `main`, so the toolbox is still unmounted on the way out.
+async fn forced(shutdown: &CancellationToken) {
+    shutdown.cancelled().await;
+    afd_core::signal::shutdown().await;
 }
 
 /// Installs [`subscriber`] for the process, writing records to stderr.

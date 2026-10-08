@@ -98,13 +98,11 @@ fn test_a_scope_builds_its_rules_before_its_link() {
 fn test_egress_setup_failures_refuse_the_lease() {
     let _claims = claims_held();
     let cases = [
-        // With no socket for one protocol, what that protocol would have made
-        // cannot be confirmed gone either: the slot stays held for the next
-        // run's sweep.
+        // With no netfilter socket, nothing was sent, so the slot is freed.
         (
             Fake::default().closed(Protocol::Netfilter),
             "a netfilter socket",
-            false,
+            true,
         ),
         (
             Fake::default().refusing(Protocol::Netfilter, NEWTABLE, libc::EPERM),
@@ -121,6 +119,9 @@ fn test_egress_setup_failures_refuse_the_lease() {
             "the sandbox side",
             true,
         ),
+        // With no route socket, the table is already built and its link
+        // cannot be confirmed gone: the slot stays held for the next run's
+        // sweep.
         (
             Fake::default().closed(Protocol::Route),
             "a route socket",

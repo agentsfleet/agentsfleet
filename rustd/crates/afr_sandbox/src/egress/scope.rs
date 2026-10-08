@@ -4,6 +4,7 @@
 use std::os::fd::BorrowedFd;
 
 use super::kernel::Kernel;
+use super::netlink::Netlink;
 use super::slot::{Claim, Slot};
 use super::{link, rules};
 use crate::error::{Error, Result, egress_refused, netlink};
@@ -51,8 +52,18 @@ impl Scope {
             return Err(error);
         };
         let slot = claim.slot();
+        // Nothing reaches the kernel before this socket opens, so a host that
+        // will not give one has nothing to undo: the claim drops and frees the
+        // slot, where a later failure keeps it until the removal is confirmed.
+        let mut netfilter = match kernel.netfilter().map_err(netlink(OPEN_NETFILTER)) {
+            Ok(netfilter) => netfilter,
+            Err(error) => {
+                refused(Some(slot), hosts, &error);
+                return Err(error);
+            }
+        };
         let scope = Self { claim };
-        match scope.attach(kernel, netns, allowlist) {
+        match scope.attach(kernel, &mut netfilter, netns, allowlist) {
             Ok(()) => {
                 let slot = slot.index();
                 let event = EVENT_BUILT;
@@ -68,16 +79,15 @@ impl Scope {
         }
     }
 
-    fn attach(
+    fn attach<K: Kernel>(
         &self,
-        kernel: &impl Kernel,
+        kernel: &K,
+        netfilter: &mut Netlink<K::Wire>,
         netns: BorrowedFd<'_>,
         allowlist: &Allowlist,
     ) -> Result<()> {
         let slot = self.claim.slot();
-        let mut netfilter = kernel.netfilter().map_err(netlink(OPEN_NETFILTER))?;
-        rules::apply(&mut netfilter, slot, &allowlist.addresses())
-            .map_err(netlink(INSTALL_RULES))?;
+        rules::apply(netfilter, slot, &allowlist.addresses()).map_err(netlink(INSTALL_RULES))?;
         let mut route = kernel.route().map_err(netlink(OPEN_ROUTE))?;
         link::join(&mut route, slot, netns).map_err(netlink(JOIN))?;
         kernel
@@ -97,7 +107,7 @@ impl Scope {
             Ok(()) => Ok(()),
             Err(error) => {
                 let error_code = error.code().as_str();
-                let reason = error.to_string();
+                let reason = error.told();
                 let event = EVENT_LEFT;
                 tracing::warn!(slot = slot.index(), error_code, reason, event);
                 self.claim.abandon();
@@ -125,7 +135,7 @@ pub(super) fn remove(kernel: &impl Kernel, slot: Slot) -> Result<()> {
 fn refused(slot: Option<Slot>, hosts: usize, error: &Error) {
     let slot = slot.map(Slot::index);
     let error_code = error.code().as_str();
-    let reason = error.to_string();
+    let reason = error.told();
     let event = EVENT_REFUSED;
     tracing::warn!(slot, hosts, error_code, reason, event);
 }

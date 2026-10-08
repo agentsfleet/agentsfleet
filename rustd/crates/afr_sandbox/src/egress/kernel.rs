@@ -106,15 +106,17 @@ impl Kernel for Host {
 }
 
 /// Runs `work` on a thread of its own and returns what it returned: a thread
-/// that changes its namespace must not be one the caller goes on using.
+/// that changes its namespace must not be one the caller goes on using. A
+/// thread the host will not give is a failure of this one call: the release
+/// profile aborts on panic, so `Scope::spawn`'s panic would end the runner.
 fn on_own_thread<T, E>(work: impl FnOnce() -> Result<T, E> + Send) -> Result<T, E>
 where
     T: Send,
     E: From<io::Error> + Send,
 {
     std::thread::scope(|threads| {
-        threads
-            .spawn(work)
+        std::thread::Builder::new()
+            .spawn_scoped(threads, work)?
             .join()
             .unwrap_or_else(|_panicked| Err(io::Error::other(PANICKED).into()))
     })

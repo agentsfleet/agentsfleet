@@ -85,7 +85,7 @@ impl BubblewrapEngine {
         if let Some(missing) = host.missing() {
             let error = refused(missing);
             let error_code = error.code().as_str();
-            let reason = error.to_string();
+            let reason = error.told();
             let event = EVENT_HOST_REFUSED;
             tracing::error!(
                 missing,
@@ -242,7 +242,7 @@ impl Engine for BubblewrapEngine {
             }
             Err(error) => {
                 let error_code = error.code().as_str();
-                let reason = error.to_string();
+                let reason = error.told();
                 let event = EVENT_PREPARE_FAILED;
                 tracing::warn!(lease_id, error_code, reason, event);
                 Err(error)

@@ -19,7 +19,12 @@
 //! SIGINT's default disposition is to terminate. The guard registered on the
 //! first line replaces that disposition for the whole process BEFORE anything
 //! is raised, so by the time `kill(1)` runs there is a handler to catch it.
-//! Each integration test file is its own process, so nothing else is affected.
+//!
+//! The process is shared: this file is a module of the `core_suite` binary
+//! (`tests/core_suite.rs`), and its signals reach every test running beside
+//! it. That stays harmless because no other module registers a signal or
+//! awaits `shutdown`, and tokio never unregisters a handler once installed, so
+//! a SIGINT sent after the first guard terminates nothing.
 #![cfg(all(unix, feature = "signal", feature = "test-util"))]
 #![expect(
     clippy::expect_used,
@@ -42,9 +47,9 @@ const RETRY: Duration = Duration::from_millis(50);
 
 /// Sends SIGINT to this process.
 ///
-/// Through `kill(1)` rather than `libc::raise`: this workspace links no libc
-/// and forbids unsafe code, and one fork per retry is nothing against a test
-/// that is waiting on a signal anyway.
+/// Through `kill(1)` rather than `libc::raise`: this test crate declares no
+/// `libc` dependency and writes no unsafe code, and one fork per retry is
+/// nothing against a test that is waiting on a signal anyway.
 fn interrupt_self() {
     let sent = Command::new("kill")
         .args(["-INT", &std::process::id().to_string()])
@@ -83,4 +88,26 @@ async fn test_a_kind_that_will_not_register_falls_back_to_interrupt() {
         "with SIGTERM unregistered, SIGINT alone must still stop the process"
     );
     stopping.await.expect("the fallback path did not panic");
+}
+
+/// A drain that has begun still hears the operator: `shutdown` resolves once
+/// per signal, so a process awaiting it a second time is stopped by a second
+/// SIGINT rather than swallowing it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_shutdown_resolves_again_for_a_second_signal() {
+    let _guard = signal(SignalKind::interrupt()).expect("SIGINT registers, replacing its default");
+
+    for round in ["the first signal", "the second signal"] {
+        let stopping = tokio::spawn(afd_core::signal::shutdown());
+        let observed = tokio::time::timeout(PATIENCE, async {
+            while !stopping.is_finished() {
+                interrupt_self();
+                tokio::time::sleep(RETRY).await;
+            }
+        })
+        .await;
+
+        assert!(observed.is_ok(), "{round} must resolve shutdown");
+        stopping.await.expect("shutdown did not panic");
+    }
 }

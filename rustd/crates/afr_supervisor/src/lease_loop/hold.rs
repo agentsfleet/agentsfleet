@@ -92,7 +92,7 @@ impl LeaseRun<'_> {
                 .await
                 .err()
                 .map(|silent| (silent.code(), silent.wire_message())),
-            Err(refused) => Some((refused.code(), told(&refused))),
+            Err(refused) => Some((refused.code(), refused.told())),
         };
         let Some((code, reason)) = given_up else {
             let event = EVENT_THAW_COMPLETED;
@@ -175,13 +175,6 @@ async fn answered(sandbox: &dyn Sandbox) -> afr_executor::Result<()> {
         .await
         .unwrap_or_else(|_late| Err(silent()))
         .map(drop)
-}
-
-/// A sandbox failure's own sentence, then each cause beneath it, as a chain
-/// walker reads them; the code is the log's `error_code` field already.
-fn told(failure: &afr_sandbox::Error) -> String {
-    std::iter::successors(std::error::Error::source(failure), |cause| cause.source())
-        .fold(failure.detail(), |told, cause| format!("{told}: {cause}"))
 }
 
 /// The failure a thawed executor that never answered is logged as.

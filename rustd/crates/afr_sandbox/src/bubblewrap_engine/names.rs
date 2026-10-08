@@ -20,11 +20,16 @@ const RESOLV_CONF_FILE: &str = "resolv.conf";
 const RESOLVER_FILE_MODE: u32 = 0o644;
 
 /// Joins the running sandbox whose cgroup lists its processes at `procs` to the
-/// host, admitting `allowlist`, off the async runtime: netlink blocks.
+/// host, admitting `allowlist`, off the async runtime: netlink blocks. The
+/// blocking thread runs inside the caller's span, so a scope's refusal is
+/// logged under the lease it refused.
 pub(super) async fn join(procs: PathBuf, allowlist: Allowlist) -> Result<Scope> {
+    let span = tracing::Span::current();
     tokio::task::spawn_blocking(move || {
-        let netns = egress::namespace_of(&procs)?;
-        Scope::build(&egress::Host, netns.as_fd(), &allowlist)
+        span.in_scope(|| {
+            let netns = egress::namespace_of(&procs)?;
+            Scope::build(&egress::Host, netns.as_fd(), &allowlist)
+        })
     })
     .await?
 }

@@ -67,7 +67,7 @@ pub(crate) fn enforceable() -> bool {
         Ok(()) => true,
         Err(error) => {
             let error_code = error.code().as_str();
-            let reason = error.to_string();
+            let reason = error.told();
             let event = EVENT_PROBE_FAILED;
             tracing::warn!(
                 error_code,
@@ -149,7 +149,7 @@ pub(crate) fn sweep(kernel: &impl Kernel) -> Result<()> {
             }
             Err(error) => {
                 let error_code = error.code().as_str();
-                let reason = error.to_string();
+                let reason = error.told();
                 let event = EVENT_SWEEP_FAILED;
                 tracing::warn!(slot, error_code, reason, event);
                 claim.abandon();
