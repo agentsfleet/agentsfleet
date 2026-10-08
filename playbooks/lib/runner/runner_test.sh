@@ -28,6 +28,8 @@ test_should_prepare_host_without_reading_runner_token() {
     bad "$name" "host preparation read a runner token"
   elif ! grep -q 'apt-get install' "$calls"; then
     bad "$name" "host preparation did not install dependencies"
+  elif ! grep -q 'net.ipv4.ip_forward = 1' "$calls"; then
+    bad "$name" "host preparation did not turn on IPv4 forwarding for allowlisted sandboxes"
   elif grep -q '/opt/agentsfleet/deploy/deploy.sh runner' "$calls"; then
     bad "$name" "host preparation deployed a runner"
   else
@@ -247,6 +249,43 @@ test_should_declare_workflow_vault_read_approval() {
   done
   ok "$name"
 }
+test_should_copy_the_toolbox_beside_the_binary() {
+  local name="test_should_copy_the_toolbox_beside_the_binary"
+  local output status=0 part
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+    return
+  fi
+  for part in erofs json json.sig; do
+    if ! grep -q "/opt/agentsfleet/toolbox/toolbox-$TOOLBOX_FIXTURE_DIGEST.$part" "$calls"; then
+      bad "$name" "the toolbox's .$part never reached the host"
+      return
+    fi
+  done
+  if ! grep -q '/opt/agentsfleet/deploy/deploy.sh runner .* /opt/agentsfleet/toolbox' "$calls"; then
+    bad "$name" "the canonical deploy was not handed the toolbox directory"
+  else
+    ok "$name"
+  fi
+}
+test_should_refuse_a_deploy_without_its_toolbox() {
+  local name="test_should_refuse_a_deploy_without_its_toolbox"
+  local signature="$toolbox_fixture/toolbox-$TOOLBOX_FIXTURE_DIGEST.json.sig"
+  local output status=0
+  mv "$signature" "$signature.aside"
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  mv "$signature.aside" "$signature"
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "a deploy without the manifest's signature passed"
+  elif [[ "$output" != *"toolbox file missing"* ]]; then
+    bad "$name" "$output"
+  elif grep -q '/opt/agentsfleet/deploy/deploy.sh runner' "$calls"; then
+    bad "$name" "the refused deploy still reached the host's deploy"
+  else
+    ok "$name"
+  fi
+}
 test_should_prepare_host_without_reading_runner_token
 test_should_require_host_prepare_approval
 test_should_refuse_host_without_required_cgroup_support
@@ -259,4 +298,6 @@ test_should_use_canonical_unit_refresh
 test_should_reject_shell_unsafe_runner_inputs
 test_should_require_vault_read_approval
 test_should_declare_workflow_vault_read_approval
+test_should_copy_the_toolbox_beside_the_binary
+test_should_refuse_a_deploy_without_its_toolbox
 report_results

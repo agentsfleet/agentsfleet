@@ -1,12 +1,13 @@
 //! Resolving when the process is asked to stop.
 //!
 //! Both signals are watched, because they arrive from different places and mean
-//! the same thing here: SIGTERM from an orchestrator, SIGINT from a terminal.
-//! `serve.zig` watches both for the same reason.
+//! the same thing here: SIGTERM from an orchestrator — Fly for `agentsfleetd`,
+//! systemd for `agentsfleet-runner` — and SIGINT from a terminal.
 //!
-//! This lives in the library rather than beside `main` so the degraded path —
-//! one handler registered instead of two — is reachable from a suite. It was in
-//! `main.rs` before, where nothing could drive it.
+//! One implementation both binaries call, behind the `signal` feature so the
+//! value layer links no runtime for a crate that does not stop processes. It
+//! lives in a library rather than beside either `main` so the degraded path —
+//! one handler registered instead of two — is reachable from a suite.
 
 /// Resolves when the process is asked to stop.
 pub async fn shutdown() {
@@ -19,10 +20,9 @@ pub async fn shutdown() {
 
 /// Resolves on SIGINT, or on `terminate` when that kind could be registered.
 ///
-/// `terminate` is a parameter rather than a constant for the same reason
-/// [`crate::serve::serve_accepts`] takes an `Acceptor`: the only interesting
-/// thing about registering a handler is what happens when registration FAILS,
-/// and SIGTERM does not fail on demand. Tokio refuses the two kinds a process
+/// `terminate` is a parameter rather than a constant because the only
+/// interesting thing about registering a handler is what happens when
+/// registration FAILS, and SIGTERM does not fail on demand. Tokio refuses the two kinds a process
 /// cannot catch, so `SignalKind::from_raw(SIGKILL)` is a registration that
 /// fails through the same public API production goes through — which is what
 /// makes the fallback below testable rather than hoped-for.

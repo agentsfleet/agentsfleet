@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 mod adopt;
 mod holds;
+mod incoming;
 #[cfg(target_os = "linux")]
 mod kernel_mounter;
 #[cfg(target_os = "linux")]
@@ -26,6 +27,7 @@ mod stage;
 mod testing;
 
 pub use self::holds::{Mounter, TOOLBOX_KEEP_RELEASES, Toolboxes};
+pub use self::incoming::{MANIFEST_SUFFIX, SIGNATURE_SUFFIX};
 #[cfg(target_os = "linux")]
 pub use self::kernel_mounter::KernelMounter;
 pub use self::manifest::{Manifest, Release, TOOLBOX_RELEASE_PUBLIC_KEY};

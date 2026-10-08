@@ -1,4 +1,4 @@
-//! The strong `ETag` over a resource's hashed surface — `http/etag.zig`'s digest.
+//! The strong `ETag` over a resource's hashed surface.
 //!
 //! A quoted SHA-256 over an ordered field list, where each present field
 //! contributes a marker, an eight-byte big-endian length and its bytes, and an
@@ -8,8 +8,8 @@
 //!
 //! # Why the encoding lives here rather than in the HTTP crate
 //!
-//! A client cache may hold a tag the ZIG daemon computed and present it to this
-//! one mid-cutover, so the encoding is a WIRE fact — the same kind of fact as a
+//! A client cache holds a tag across deployments and presents it back, so the
+//! encoding is a WIRE fact — the same kind of fact as a
 //! registry code or a cursor's spelling, both of which are already this crate's.
 //! Two callers now need it and they are not layered: `afd_api` attaches the tag
 //! to a response, and `afd_fleet_lifecycle` compares one INSIDE the row lock a
@@ -86,10 +86,10 @@ mod tests {
     use super::{compute, sha256_hex};
 
     #[test]
-    fn the_tag_is_the_zig_encoding_to_the_byte() {
-        // Pinned: sha256 of 0x01 ++ u64_be(5) ++ "hello", quoted — computed
-        // once against `etag.zig`'s algorithm. A client cache may present this
-        // tag to either daemon mid-cutover.
+    fn the_tag_is_a_quoted_sha256_hex_and_deterministic() {
+        // sha256 of 0x01 ++ u64_be(5) ++ "hello", quoted. A client cache holds
+        // this tag across deployments and presents it back, so the encoding
+        // must not drift.
         let tag = compute(&[Some(b"hello")]);
         assert_eq!(tag.len(), 66, "quoted 64-hex form");
         assert!(tag.starts_with('"') && tag.ends_with('"'));

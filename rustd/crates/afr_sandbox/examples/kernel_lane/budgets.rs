@@ -140,10 +140,7 @@ async fn round_of_leases(
 async fn one_start(engine: &dyn Engine, lease_id: &str) -> Result<Start, Failed> {
     let started = Instant::now();
     let sandbox = engine
-        .prepare(SandboxRequest {
-            lease_id,
-            limits: Limits::default(),
-        })
+        .prepare(SandboxRequest::new(lease_id, Limits::default()))
         .await?;
     let ready = started.elapsed();
     let began = Instant::now();

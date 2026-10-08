@@ -110,6 +110,14 @@ STUB
 chmod +x "$stub_dir/op" "$stub_dir/tailscale"
 runner_binary="$work_dir/agentsfleet-runner"
 printf 'runner\n' >"$runner_binary"
+# The toolbox a deploy ships beside the binary, as every workflow lays it out:
+# the image named by its digest, its manifest and the manifest's signature.
+readonly TOOLBOX_FIXTURE_DIGEST="0000000000000000000000000000000000000000000000000000000000000001"
+toolbox_fixture="$work_dir/toolbox"
+mkdir -p "$toolbox_fixture"
+for part in erofs json json.sig; do
+  printf '%s\n' "$part" >"$toolbox_fixture/toolbox-$TOOLBOX_FIXTURE_DIGEST.$part"
+done
 cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
 

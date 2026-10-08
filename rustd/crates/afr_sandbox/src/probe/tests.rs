@@ -43,7 +43,7 @@ fn host(dir: &Path) -> ProbePaths {
 fn test_capability_probe_states_every_mechanism_it_finds() {
     let dir = tempfile::tempdir().unwrap();
 
-    let found = read(&host(dir.path()), true);
+    let found = read(&host(dir.path()), true, false);
 
     assert_eq!(
         found,
@@ -55,6 +55,7 @@ fn test_capability_probe_states_every_mechanism_it_finds() {
             kvm: Kvm::Usable,
             toolbox_filesystem: true,
             workspace_direct_io: None,
+            egress: false,
         }
     );
     assert_eq!(found.missing(), None);
@@ -67,9 +68,9 @@ fn test_capability_probe_states_kvm_absent_and_denied() {
     let paths = host(dir.path());
 
     fs::set_permissions(&paths.kvm, fs::Permissions::from_mode(0o000)).unwrap();
-    let denied = read(&paths, true).kvm;
+    let denied = read(&paths, true, false).kvm;
     fs::remove_file(&paths.kvm).unwrap();
-    let absent = read(&paths, true).kvm;
+    let absent = read(&paths, true, false).kvm;
 
     assert_eq!((denied, absent), (Kvm::Denied, Kvm::Absent));
 }
@@ -80,7 +81,7 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
     let paths = host(dir.path());
     let missing = |edit: &dyn Fn()| {
         edit();
-        read(&paths, true).missing()
+        read(&paths, true, false).missing()
     };
 
     assert_eq!(
@@ -98,14 +99,14 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
     );
     fs::write(&paths.filesystems, "\terofs\n").unwrap();
     // Throughput limits are required too: a host without `io` builds nothing.
-    assert_eq!(read(&paths, true).missing(), Some("io"));
-    assert!(!read(&paths, true).has_required_controllers());
+    assert_eq!(read(&paths, true, false).missing(), Some("io"));
+    assert!(!read(&paths, true, false).has_required_controllers());
     fs::write(
         paths.cgroup_root.join("cgroup.subtree_control"),
         "cpu io memory",
     )
     .unwrap();
-    assert_eq!(read(&paths, true).missing(), Some("pids"));
+    assert_eq!(read(&paths, true, false).missing(), Some("pids"));
     assert_eq!(
         missing(&|| fs::set_permissions(&paths.bwrap, fs::Permissions::from_mode(0o644)).unwrap()),
         Some("bubblewrap")
@@ -134,7 +135,7 @@ fn test_unreadable_facts_read_as_absent_mechanisms() {
         state_dir: None,
     };
 
-    let found = read(&paths, true);
+    let found = read(&paths, true, false);
 
     assert_eq!(found.missing(), Some("landlock"));
     assert_eq!(found.cgroup_controllers, [] as [String; 0]);
@@ -157,7 +158,7 @@ fn test_default_paths_are_the_kernels_own() {
 fn test_a_kernel_too_old_for_the_ruleset_reads_as_without_landlock() {
     let dir = tempfile::tempdir().unwrap();
 
-    let found = read(&host(dir.path()), false);
+    let found = read(&host(dir.path()), false, false);
 
     assert!(!found.landlock);
     assert_eq!(found.missing(), Some("landlock"));
@@ -173,8 +174,8 @@ fn test_direct_io_is_probed_only_in_a_named_state_directory() {
         ..unnamed.clone()
     };
 
-    assert_eq!(read(&unnamed, true).workspace_direct_io, None);
-    let probed = read(&named, true).workspace_direct_io;
+    assert_eq!(read(&unnamed, true, false).workspace_direct_io, None);
+    let probed = read(&named, true, false).workspace_direct_io;
     assert!(probed.is_some(), "a named directory is tried");
     assert_eq!(
         fs::read_dir(state.path()).unwrap().count(),

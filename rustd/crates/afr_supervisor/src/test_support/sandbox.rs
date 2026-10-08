@@ -8,9 +8,11 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_sandbox::{Engine, HostWorkspace, Limits, Sandbox, SandboxRequest};
+use afr_sandbox::{Engine, HostWorkspace, Limits, Network, Sandbox, SandboxRequest};
 use bytes::Bytes;
 use tokio::sync::mpsc;
+
+use crate::egress::Bound;
 
 /// How a fake executor answers a file write.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -64,6 +66,8 @@ pub(crate) struct FakeEngine {
     pub(crate) workspace: Option<PathBuf>,
     /// Where each prepare reports the limits it was asked to enforce.
     pub(crate) asked: Option<mpsc::UnboundedSender<Limits>>,
+    /// Where each prepare reports the network it was asked to reach.
+    pub(crate) reached: Option<mpsc::UnboundedSender<Bound>>,
     /// How many times its sandboxes were frozen, and thawed.
     pub(crate) frozen: Arc<AtomicUsize>,
     pub(crate) thawed: Arc<AtomicUsize>,
@@ -76,6 +80,9 @@ impl Engine for FakeEngine {
     async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
         if let Some(asked) = &self.asked {
             let _ = asked.send(request.limits);
+        }
+        if let Some(reached) = &self.reached {
+            let _ = reached.send(bound(request.network));
         }
         if self.refuse {
             return Err(std::io::Error::other("no landlock").into());
@@ -241,6 +248,16 @@ impl Executor for FakeExecutor {
             entries: Vec::new(),
             truncated: false,
         })
+    }
+}
+
+/// The network a sandbox was asked for, owned, so a test reads it back after
+/// the request is gone.
+fn bound(network: Network<'_>) -> Bound {
+    match network {
+        Network::Host => Bound::Host,
+        Network::Isolated => Bound::Isolated,
+        Network::Allowed(allowlist) => Bound::Allowed(allowlist.clone()),
     }
 }
 

@@ -23,6 +23,18 @@ install_host_dependencies() {
   '
 }
 
+# An allowlisted sandbox reaches its registries through this host: its packets
+# are forwarded from its own link out of the host's. The runner's boot probe
+# reads this setting and reports egress unenforced without it, so it is made
+# to survive a reboot.
+enable_ipv4_forwarding() {
+  runner_remote '
+    set -e
+    echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/60-agentsfleet-runner.conf >/dev/null
+    sudo sysctl -q -p /etc/sysctl.d/60-agentsfleet-runner.conf
+  '
+}
+
 prepare_host_paths() {
   runner_remote "
     set -e
@@ -43,6 +55,7 @@ verify_host_base() {
     command -v ip >/dev/null
     command -v curl >/dev/null
     command -v jq >/dev/null
+    test "$(cat /proc/sys/net/ipv4/ip_forward)" = 1
   '
 }
 
@@ -53,6 +66,7 @@ main() {
   echo "Preparing $RUNNER_ITEM in ${ENV} via Tailscale SSH"
   runner_verify_host_cgroup_capability
   install_host_dependencies
+  enable_ipv4_forwarding
   prepare_host_paths
   verify_host_base
   echo "PASS: $RUNNER_ITEM host preparation completed"

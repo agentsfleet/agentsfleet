@@ -5,45 +5,12 @@
 
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
-use super::{Mounter, Toolboxes};
-use crate::error::{Result, ToolboxRefusal};
-use crate::toolbox::testing::{Signer, facts, manifest_bytes, sha256};
-use crate::toolbox::{Manifest, Toolbox, image_name};
-
-/// Mounts nothing; checks the image's length and digest as admission does,
-/// records what it was asked to mount and unmount, and refuses unmounts while
-/// told to.
-#[derive(Debug, Default)]
-struct Recorder {
-    mounted: Mutex<Vec<String>>,
-    unmounted: Mutex<Vec<String>>,
-    refuse_unmounts: AtomicBool,
-}
-
-impl Mounter for Arc<Recorder> {
-    fn mount(&self, manifest: &Manifest, image: &Path) -> Result<Toolbox> {
-        let bytes = fs::read(image)?;
-        manifest.check_length(u64::try_from(bytes.len()).unwrap())?;
-        manifest.check_digest(&sha256(&bytes))?;
-        let digest = manifest.sha256().to_owned();
-        self.mounted.lock().unwrap().push(digest.clone());
-        Ok(Toolbox::at(image.with_extension("mnt"), digest))
-    }
-
-    fn unmount(&self, toolbox: &Toolbox) -> Result<()> {
-        if self.refuse_unmounts.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("busy").into());
-        }
-        self.unmounted
-            .lock()
-            .unwrap()
-            .push(toolbox.digest().to_owned());
-        Ok(())
-    }
-}
+use crate::error::ToolboxRefusal;
+use crate::toolbox::testing::{Signer, facts, manifest_bytes, open};
+use crate::toolbox::{Manifest, image_name};
 
 /// An image, its download, and the manifest naming it.
 struct Release {
@@ -60,16 +27,6 @@ fn release(signer: &Signer, dir: &Path, n: u8) -> Release {
         manifest: signer.manifest(&bytes),
         source,
     }
-}
-
-fn open(dir: &Path) -> (Toolboxes<Arc<Recorder>>, Arc<Recorder>) {
-    let recorder = Arc::new(Recorder::default());
-    let images = dir.join("images");
-    fs::create_dir_all(&images).unwrap();
-    (
-        Toolboxes::open(images, Arc::clone(&recorder)).unwrap(),
-        recorder,
-    )
 }
 
 /// Dimension 8.2: a bad signature, a wrong length, the wrong architecture

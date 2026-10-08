@@ -87,7 +87,9 @@ pub(crate) fn in_sandbox_each(
 ) -> Result<Vec<Outcome>, Failed> {
     runtime().block_on(async {
         let engine = lane.engine();
-        let sandbox = engine.prepare(SandboxRequest { lease_id, limits }).await?;
+        let sandbox = engine
+            .prepare(SandboxRequest::new(lease_id, limits))
+            .await?;
         let mut outcomes = Vec::with_capacity(scripts.len());
         for script in scripts {
             match run(sandbox.executor(), shell(script)).await {

@@ -24,11 +24,11 @@ use afd_core::error_code::{self, ErrorCode};
 mod raise;
 
 pub(crate) use self::raise::{
-    cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, lease_id_unsafe, not_inherited,
-    program, refused, toolbox_refused, toolbox_unreadable, unconfined,
+    cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, egress_refused, lease_id_unsafe,
+    not_inherited, program, refused, toolbox_refused, toolbox_unreadable, unconfined,
 };
 #[cfg(target_os = "linux")]
-pub(crate) use self::raise::{not_ready, toolbox_unexpected};
+pub(crate) use self::raise::{netlink, not_ready};
 
 afd_core::error_shell!(
     /// A sandbox failure, with the backtrace of where it was raised.
@@ -126,16 +126,6 @@ pub(crate) enum ErrorKind {
         state: &'static str,
     },
 
-    /// The toolbox is not the image this runner was configured to run.
-    #[cfg(target_os = "linux")]
-    #[error("the toolbox is {actual}, but this runner is configured for {expected}")]
-    ToolboxUnexpected {
-        /// The digest of the image that is mounted.
-        actual: String,
-        /// The digest the configuration names.
-        expected: String,
-    },
-
     /// The executor could not be reached within the ready timeout.
     #[cfg(target_os = "linux")]
     #[error("the sandbox's executor did not answer within {waited:?}")]
@@ -189,6 +179,25 @@ pub(crate) enum ErrorKind {
     /// The unsandboxed engine was asked for in a release build.
     #[error("a release build never runs a tool call unsandboxed")]
     UnsandboxedInRelease,
+
+    /// A lease's egress cannot be held to what its policy allows, so the lease
+    /// is refused before its sandbox runs anything.
+    #[error("the lease's egress was refused: {detail}")]
+    EgressRefused {
+        /// Why.
+        detail: String,
+    },
+
+    /// A netlink request that builds or removes an egress scope failed.
+    #[cfg(target_os = "linux")]
+    #[error("the kernel refused {operation}")]
+    Netlink {
+        /// What was asked of it.
+        operation: &'static str,
+        /// The kernel's reason.
+        #[source]
+        source: std::io::Error,
+    },
 
     /// A system call the engine makes directly was refused.
     #[cfg(target_os = "linux")]
@@ -288,6 +297,9 @@ pub enum ToolboxRefusal {
     Digest,
     /// The image is not a regular file: a link, a directory or a device.
     NotAFile,
+    /// The host's incoming directory holds no release, or more than one: a
+    /// deploy stages exactly one.
+    Unstaged,
 }
 
 impl ToolboxRefusal {
@@ -303,6 +315,7 @@ impl ToolboxRefusal {
             Self::Length => "length_mismatch",
             Self::Digest => "digest_mismatch",
             Self::NotAFile => "not_a_file",
+            Self::Unstaged => "release_unstaged",
         }
     }
 }

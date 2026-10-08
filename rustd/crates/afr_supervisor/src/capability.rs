@@ -27,8 +27,10 @@ const SECCOMP_ON: &str = "Seccomp is available, so system calls can be filtered.
 const SECCOMP_OFF: &str = "Seccomp is not available; system calls cannot be filtered.";
 const BUBBLEWRAP_ON: &str = "The bubblewrap launcher is installed and runs.";
 const BUBBLEWRAP_OFF: &str = "The bubblewrap launcher is missing or does not run.";
-const CGROUP_ON: &str = "The cpu, memory and pids controllers are delegated to this runner.";
-const CGROUP_OFF: &str = "The cpu, memory or pids controller is not delegated to this runner.";
+/// Each names every controller in `afr_sandbox::REQUIRED_CONTROLLERS`, which a
+/// test holds them to.
+const CGROUP_ON: &str = "The cpu, io, memory and pids controllers are delegated to this runner.";
+const CGROUP_OFF: &str = "The cpu, io, memory or pids controller is not delegated to this runner.";
 const KVM_USABLE: &str = "The KVM device opens, so a microVM engine can run here.";
 const KVM_DENIED: &str = "The KVM device exists but this runner cannot open it.";
 const KVM_ABSENT: &str = "There is no KVM device, so only the bubblewrap engine can run here.";
@@ -41,7 +43,9 @@ const DIRECT_IO_OFF: &str = "The state file system refuses direct I/O, so a work
 
 /// The capability report a heartbeat carries.
 ///
-/// Egress enforcement is not offered yet: a sandbox here has no network at all.
+/// Egress enforcement is what the boot probe measured: a host that built and
+/// removed an egress scope can hold a sandbox to its allowlist, and the
+/// daemon reads an `allow_list_egress` runner degraded on any other.
 #[must_use]
 pub fn capability_report(probe: &HostProbe) -> CapabilityReport<'_> {
     CapabilityReport {
@@ -53,7 +57,7 @@ pub fn capability_report(probe: &HostProbe) -> CapabilityReport<'_> {
             .map(|controller| Cow::Borrowed(controller.as_str()))
             .collect(),
         bubblewrap: probe.bubblewrap,
-        egress_enforcement: false,
+        egress_enforcement: probe.egress,
     }
 }
 

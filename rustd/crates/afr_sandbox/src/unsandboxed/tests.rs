@@ -31,10 +31,7 @@ async fn test_an_unsandboxed_lease_runs_a_process_and_is_removed() {
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
 
     let mut sandbox = engine
-        .prepare(SandboxRequest {
-            lease_id: "l1",
-            limits: Limits::default(),
-        })
+        .prepare(SandboxRequest::new("l1", Limits::default()))
         .await
         .unwrap();
     assert!(sandbox.is_running(), "its executor is serving");
@@ -68,10 +65,7 @@ async fn should_show_the_host_the_workspace_its_executor_serves() {
         .unwrap();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
     let sandbox = engine
-        .prepare(SandboxRequest {
-            lease_id: "host-view",
-            limits: Limits::default(),
-        })
+        .prepare(SandboxRequest::new("host-view", Limits::default()))
         .await
         .unwrap();
 
@@ -110,10 +104,7 @@ async fn test_an_unconfined_sandbox_refuses_to_freeze_or_thaw() {
         .unwrap();
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
     let mut sandbox = engine
-        .prepare(SandboxRequest {
-            lease_id: "l4",
-            limits: Limits::default(),
-        })
+        .prepare(SandboxRequest::new("l4", Limits::default()))
         .await
         .unwrap();
 
@@ -142,10 +133,7 @@ async fn test_a_lease_directory_that_cannot_be_made_is_refused() {
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
 
     let refused = engine
-        .prepare(SandboxRequest {
-            lease_id: "l2",
-            limits: Limits::default(),
-        })
+        .prepare(SandboxRequest::new("l2", Limits::default()))
         .await;
 
     refused.unwrap_err();
@@ -163,10 +151,7 @@ async fn test_an_executor_that_never_answers_refuses_the_lease_and_cleans_up() {
     let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
 
     let refused = engine
-        .prepare(SandboxRequest {
-            lease_id: "l3",
-            limits: Limits::default(),
-        })
+        .prepare(SandboxRequest::new("l3", Limits::default()))
         .await;
 
     // The executor's own failure, logged under the executor's code.

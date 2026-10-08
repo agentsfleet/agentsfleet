@@ -33,7 +33,7 @@ fn should_ship_a_table_whose_every_name_is_unique_and_dialled_over_https() {
     }
     assert!(
         seen.len() > 50,
-        "every name the Zig runner speaks over these wires"
+        "the embedded table names every provider these wires reach"
     );
 }
 

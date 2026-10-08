@@ -10,7 +10,7 @@
 //! match, two runtime constructions and the signal handler, and none of it
 //! could be reached by a suite because a binary crate's internals cannot be
 //! linked. Argument parsing, dispatch and the shutdown signal now live in
-//! [`agentsfleetd::cli`] and [`agentsfleetd::signal`], where they can.
+//! [`agentsfleetd::cli`] and [`afd_core::signal`], where they can.
 
 use std::process::ExitCode;
 
@@ -20,10 +20,9 @@ use clap::Parser as _;
 
 fn main() -> ExitCode {
     // `Cli::parse` exits the process itself on `--help`, `--version` and any
-    // usage error — 2 for the last of those, which is what `serve_args.zig`'s
-    // three error variants were reaching for and never managed: a usage error
-    // is not a boot refusal, and an init system restarting on the latter should
-    // not restart on the former. It comes first here because it writes nothing
+    // usage error — 2 for the last of those, because a usage error is not a
+    // boot refusal, and an init system restarting on the latter should not
+    // restart on the former. It comes first here because it writes nothing
     // on the path that continues, which is what lets the nameplate still be the
     // process's first output.
     let cli = Cli::parse();
@@ -59,6 +58,6 @@ fn main() -> ExitCode {
         &cli,
         &ProcessEnv,
         tokio::runtime::Runtime::new,
-        agentsfleetd::signal::shutdown(),
+        afd_core::signal::shutdown(),
     ))
 }

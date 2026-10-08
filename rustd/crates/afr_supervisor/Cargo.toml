@@ -69,8 +69,9 @@ url.workspace = true
 # The runner token and minted credentials are wiped from memory when dropped.
 zeroize.workspace = true
 # `fs` for the report spool's one-step renames and removals; the executor
-# links it already.
-tokio = { workspace = true, features = ["fs", "rt", "sync", "time", "macros"] }
+# links it already. `net` for the host resolver an egress allowlist is
+# resolved through.
+tokio = { workspace = true, features = ["fs", "rt", "sync", "time", "macros", "net"] }
 # The token that stops a run when its lease is refused, and stops the pool at
 # shutdown.
 tokio-util.workspace = true

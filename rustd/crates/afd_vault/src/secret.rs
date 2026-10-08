@@ -2,10 +2,9 @@
 //!
 //! # Parse, do not validate
 //!
-//! `secrets.zig` calls `validateSecretName` and `vault.validateObject` at the
-//! top of `innerStoreSecret` and again at the top of `innerReplaceSecret`, and
-//! a third verb that forgot either would compile and store an ambiguous shape.
-//! Here the checks ARE the constructors: a [`SecretName`] cannot be empty or
+//! A check called at the top of each write verb leaves the next verb free to
+//! forget it, compile, and store an ambiguous shape. Here the checks ARE the
+//! constructors: a [`SecretName`] cannot be empty or
 //! over-long, and a [`SecretBody`] cannot be anything but a non-empty JSON
 //! object within its bound. Every function downstream takes those types, so
 //! there is no re-check to remember and none to delete (`M-STRONG-TYPES-GUARD`).
@@ -16,9 +15,7 @@
 //! same plaintext, built together in one constructor. No caller can supply a
 //! projection, because none can construct one — which is what makes "the
 //! `meta_*` columns describe the ciphertext beside them" a fact about the type
-//! rather than a promise about the statement. `state/vault.zig` gets there by
-//! being the only writer and saying so in a comment; this gets there by leaving
-//! no other shape expressible.
+//! rather than a promise about the statement.
 
 use afd_crypto::secret::{SecretBytes, SecretObject};
 use garde::{Unvalidated, Validate};
@@ -45,12 +42,10 @@ pub const MAX_DATA_BYTES: usize = 4 * 1024;
 
 /// A name a workspace may store a secret under.
 ///
-/// Bounded by LENGTH alone, which is what `validateSecretName` bounds. A
-/// stricter alphabet is tempting — the name is interpolated as
-/// `${secrets.<name>.<field>}` and rides a path segment — but rows written by
-/// the Zig daemon already hold whatever it accepted, and a Rust daemon that
-/// refused those names would make existing credentials unreachable through the
-/// item route mid-cutover. Parity is the milestone's rule and it applies here.
+/// Bounded by LENGTH alone. A stricter alphabet is tempting — the name is
+/// interpolated as `${secrets.<name>.<field>}` and rides a path segment — but
+/// stored rows may hold names outside any such alphabet, and refusing them
+/// would make those credentials unreachable through the item route.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SecretName(Box<str>);
 
@@ -86,9 +81,9 @@ impl SecretName {
 /// declaration bounds all of them.
 #[derive(Debug, Validate)]
 struct Named<'a> {
-    /// BYTES, not characters. The column is `TEXT` and the Zig bound is
-    /// `name.len`, which is a byte count; counting characters would accept a
-    /// name the other daemon refuses.
+    /// BYTES, not characters. The column is `TEXT` and `MAX_NAME_BYTES` is a
+    /// byte count; counting characters would accept sixty-four multi-byte
+    /// characters at up to four times the bound.
     #[garde(length(bytes, min = 1, max = MAX_NAME_BYTES))]
     name: &'a str,
 }
@@ -106,9 +101,8 @@ struct Canonical<'a> {
 /// A secret body ready to be sealed, with the projection of those same bytes.
 ///
 /// The plaintext is wrapped in [`SecretBytes`], so it is zeroed when this value
-/// drops rather than left on the heap for whatever allocates next — the
-/// property `secure_memory.freeBytes` gives the Zig write path, obtained here
-/// from a destructor instead of from a `defer` somebody has to write.
+/// drops rather than left on the heap for whatever allocates next. A destructor
+/// does it, so there is no cleanup call somebody has to remember to write.
 #[derive(Debug)]
 pub struct SecretBody {
     plaintext: SecretBytes,
@@ -136,12 +130,10 @@ impl SecretBody {
             return Err(ErrorKind::DataInvalid.into());
         }
 
-        // Canonical, and canonical the same way the Zig daemon is: the
-        // workspace enables `serde_json/preserve_order`, so a key set keeps the
-        // order it arrived in — which is what `std.json.Value`'s
-        // insertion-ordered object map does. Two daemons stringifying one body
-        // therefore produce the same bytes, and the size bound below decides
-        // identically on either.
+        // Canonical means insertion order: the workspace enables
+        // `serde_json/preserve_order`, so a key set keeps the order it arrived
+        // in. One body therefore stringifies to one byte sequence, and the size
+        // bound below decides on exactly the bytes that get sealed.
         let canonical = object
             .canonical()
             .map_err(|_unwritable| ErrorKind::DataInvalid)?;
@@ -196,10 +188,9 @@ mod tests {
     }
 
     #[test]
-    fn a_multibyte_name_is_measured_in_bytes_like_the_zig_bound() {
+    fn a_multibyte_name_is_measured_in_bytes() {
         // Sixty-four characters that are not sixty-four bytes. Counting
-        // characters would accept a name the other daemon refuses, and the two
-        // must agree on the same row.
+        // characters would accept a name twice the byte bound.
         let multibyte = "é".repeat(MAX_NAME_BYTES);
         assert_eq!(multibyte.len(), MAX_NAME_BYTES * 2);
         SecretName::parse(&multibyte)
@@ -282,9 +273,9 @@ mod tests {
 
     #[test]
     fn the_canonical_bytes_keep_the_order_the_caller_sent() {
-        // `preserve_order` is what makes this crate and the Zig daemon
-        // stringify one body to the same bytes. A sorted map would still be
-        // correct JSON and would silently break that agreement.
+        // `preserve_order` is what keeps the sealed bytes in the caller's key
+        // order. A sorted map would still be correct JSON and would silently
+        // change the bytes a stored body was sealed as.
         let body = SecretBody::parse(&data(r#"{"z":"1","a":"2"}"#)).expect("a valid body");
 
         assert_eq!(body.plaintext(), br#"{"z":"1","a":"2"}"#);

@@ -13,7 +13,7 @@ use tracing::Level;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, Layer};
 
-use super::{Cli, Command, log_filter};
+use super::{Cli, Command, RunArgs, log_filter};
 
 /// The engine starts the binary inside each sandbox by the sandbox crate's
 /// spelling of the sub-command and its tenant flags, so the two can never
@@ -51,7 +51,10 @@ fn a_sandbox_entry_without_its_tenant_leaf_does_not_parse() {
 
 #[test]
 fn every_entry_parses_and_nothing_else_does() {
-    for (word, entry) in [("run", Command::Run), ("probe", Command::Probe)] {
+    for (word, entry) in [
+        ("run", Command::Run(RunArgs::default())),
+        ("probe", Command::Probe),
+    ] {
         assert_eq!(
             Cli::try_parse_from(["agentsfleet-runner", word])
                 .unwrap()
@@ -68,6 +71,26 @@ fn every_entry_parses_and_nothing_else_does() {
             "{refused:?} parsed"
         );
     }
+}
+
+/// A debug build takes `run --unsandboxed`, and a plain `run` builds the
+/// sandbox; a release build has no such flag to parse.
+#[test]
+fn run_builds_a_sandbox_unless_a_debug_build_is_told_not_to() {
+    let parse = |argv: &[&str]| Cli::try_parse_from(argv).map(|cli| cli.command);
+
+    assert_eq!(
+        parse(&["agentsfleet-runner", "run"]).unwrap(),
+        Command::Run(RunArgs::default())
+    );
+    let unsandboxed = parse(&["agentsfleet-runner", "run", "--unsandboxed"]);
+    #[cfg(debug_assertions)]
+    assert_eq!(
+        unsandboxed.unwrap(),
+        Command::Run(RunArgs { unsandboxed: true })
+    );
+    #[cfg(not(debug_assertions))]
+    assert!(unsandboxed.is_err(), "a release build has no such flag");
 }
 
 /// An unreadable level falls back rather than refusing: a typo in a debugging

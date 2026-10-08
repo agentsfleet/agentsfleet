@@ -13,11 +13,12 @@ use tokio::sync::{Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    Answer, FakeAgent, FakeEngine, GRANTED_UNTIL, INTERVAL_MS, RUNNER_HOST, RUNNER_ID, clock,
-    drain, json, plane,
+    Answer, FakeAgent, FakeEngine, FakeResolver, GRANTED_UNTIL, INTERVAL_MS, RUNNER_HOST,
+    RUNNER_ID, clock, drain, json, plane,
 };
 use crate::bundles::BundleCache;
 use crate::client::{Call, Verb};
+use crate::egress::Egress;
 use crate::halt::Halt;
 use crate::holds::Holds;
 use crate::identity::Whoami;
@@ -61,6 +62,26 @@ impl Rig {
         agent: FakeAgent,
         holds: Holds,
     ) -> Self {
+        Self::build(answer, engine, agent, holds, FakeResolver::default())
+    }
+
+    /// [`Rig::new`], resolving each lease's egress through `resolver`.
+    pub(crate) fn resolving(
+        answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
+        engine: FakeEngine,
+        agent: FakeAgent,
+        resolver: FakeResolver,
+    ) -> Self {
+        Self::build(answer, engine, agent, Holds::start(clock()), resolver)
+    }
+
+    fn build(
+        answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
+        engine: FakeEngine,
+        agent: FakeAgent,
+        holds: Holds,
+        resolver: FakeResolver,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let home = StorageHome::open(root.path()).unwrap();
         let (plane, calls) = plane(answer);
@@ -74,6 +95,7 @@ impl Rig {
         let lessee = Arc::new(Lessee {
             plane,
             engine: Box::new(engine),
+            resolver: Box::new(resolver),
             agent: Box::new(agent),
             spool: ReportSpool::new(&home),
             bundles: BundleCache::new(&home),
@@ -102,11 +124,21 @@ impl Rig {
         }
     }
 
-    /// Runs one lease under a fresh turn coordinator.
+    /// Runs one lease under a fresh turn coordinator, reaching nothing.
     pub(crate) async fn run(&self, lease: &LeasePayload<'_>) -> crate::Result<()> {
+        self.run_under(lease, &Egress::closed()).await
+    }
+
+    /// Runs one lease under a fresh turn coordinator, reaching what `egress`
+    /// admits.
+    pub(crate) async fn run_under(
+        &self,
+        lease: &LeasePayload<'_>,
+        egress: &Egress,
+    ) -> crate::Result<()> {
         let (turns, coordinator) = FleetTurns::start();
         tokio::spawn(coordinator);
-        self.lessee.run(&turns, lease).await
+        self.lessee.run(&turns, lease, egress).await
     }
 
     /// Where the repository `owner/name` is served from: `<origins>/owner/name.git`.

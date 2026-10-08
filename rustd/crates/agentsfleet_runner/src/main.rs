@@ -2,20 +2,27 @@
 //!
 //! Three entries, each only composing library crates:
 //!
-//! - `run` supervises this host's leases, as the systemd unit. It exports its
-//!   spans and its own metric families to the runner collector when
-//!   `OTEL_EXPORTER_OTLP_ENDPOINT` names one, and holds no credential to do it.
+//! - `run` supervises this host's leases, as the systemd unit: each lease's
+//!   turn runs on the agent loop, its tools in a bubblewrap sandbox of its own
+//!   (`host`). It exports its spans and its own metric families to the runner
+//!   collector when `OTEL_EXPORTER_OTLP_ENDPOINT` names one, and holds no
+//!   credential to do it.
 //! - `probe` prints what this host's kernel can enforce, as a heartbeat would
 //!   carry it.
 //! - `sandbox` is started by the engine inside each sandbox: it hardens itself
 //!   before any thread exists, then serves the executor. The binary is bound
 //!   read-only into every sandbox, so there is no second artifact to ship.
 
+mod host;
+
 use std::process::ExitCode;
 
 use afd_core::env::{EnvSource, ProcessEnv};
-use afd_core::error_code;
+use afr_supervisor::StorageHome;
 use afr_telemetry::{Endpoint, SpanLayer, Telemetry};
+use tokio_util::sync::CancellationToken;
+
+use self::host::{Host, OrExit as _};
 
 use clap::{Parser, Subcommand};
 use tracing::level_filters::LevelFilter;
@@ -27,19 +34,6 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 
 /// Where a record goes when nobody chose.
 const DEFAULT_LEVEL: LevelFilter = LevelFilter::INFO;
-
-/// Why `run` will not start in this build.
-const NO_AGENT_ENGINE: &str = "this build carries no agent engine, so it takes no leases; the agent loop and its model providers arrive with their own runner workstream";
-
-/// What `run` logs when it will not start.
-const EVENT_RUN_REFUSED: &str = "run_refused";
-/// The event a boot that could not read its configuration or open its storage
-/// home is logged under.
-const EVENT_RUN_FAILED: &str = "run_failed";
-
-/// Exit status for an entry this build refuses: distinct from a failure, so a
-/// service manager does not restart it in a loop.
-const REFUSED: u8 = 2;
 
 /// The runner's command line.
 #[derive(Debug, Parser)]
@@ -54,12 +48,23 @@ struct Cli {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Subcommand)]
 enum Command {
     /// Supervise this host's leases.
-    Run,
+    Run(RunArgs),
     /// Print what this host's kernel can enforce.
     Probe,
     /// Harden this process and serve the executor; started inside each sandbox,
     /// told the tenant leaf's descriptors it inherited.
     Sandbox(afr_sandbox::TenantDescriptors),
+}
+
+/// How `run` builds each lease's sandbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::Args)]
+struct RunArgs {
+    /// Build no sandbox: every lease's tools run unconfined in a scratch
+    /// directory under the storage home. A debug build alone has the flag, so
+    /// a suite can drive this binary end to end on a host without bubblewrap.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    unsandboxed: bool,
 }
 
 fn main() -> ExitCode {
@@ -68,7 +73,7 @@ fn main() -> ExitCode {
         // nothing may start one before it.
         Command::Sandbox(tenant) => sandbox(tenant),
         Command::Probe => probe(),
-        Command::Run => run(),
+        Command::Run(args) => run(args),
     }
 }
 
@@ -110,14 +115,15 @@ fn probe() -> ExitCode {
     }
 }
 
-/// Starts the export when an endpoint is configured, boots, and delivers what
-/// the export holds on the way out.
-fn run() -> ExitCode {
+/// Starts the export when an endpoint is configured, serves leases until the
+/// process is asked to stop, and delivers what the export holds on the way
+/// out.
+fn run(args: RunArgs) -> ExitCode {
     let telemetry = match exporting(&ProcessEnv) {
         Ok(telemetry) => telemetry,
         Err(refused) => return refused,
     };
-    let ended = supervise();
+    let ended = supervise(args).unwrap_or_else(|failed| failed);
     if let Some(telemetry) = telemetry {
         telemetry.close();
     }
@@ -141,7 +147,7 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
             let error_code = refused.code().as_str();
             let knob = refused.knob();
             let reason = refused.to_string();
-            let event = EVENT_RUN_FAILED;
+            let event = host::EVENT_RUN_FAILED;
             tracing::error!(error_code, knob, reason, event);
             return Err(ExitCode::FAILURE);
         }
@@ -154,35 +160,67 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
     Ok(telemetry)
 }
 
-/// Boots as far as an agent engine is needed, then refuses.
+/// Boots, builds this host's engine and the agent loop, and serves leases
+/// until the process is asked to stop or the daemon says stop.
 ///
-/// Every check a real start makes runs first — the environment and token, the
-/// storage home, what this kernel can enforce — so a misconfigured host fails
-/// at boot. Only the agent engine is missing, and the workstream that builds
-/// one composes `afr_supervisor::run` here, with the engine whose boot sweep
-/// clears what a crashed runner left.
-fn supervise() -> ExitCode {
-    if let Err(error) = afr_supervisor::boot(&ProcessEnv) {
-        let error_code = error.code().as_str();
-        let reason = error.to_string();
-        let event = EVENT_RUN_FAILED;
-        tracing::error!(error_code, reason, event);
-        return ExitCode::FAILURE;
+/// Every check a start makes runs before the daemon is dialled — the
+/// environment and token, the storage home, the delegated cgroup, what this
+/// kernel can enforce, the staged toolbox — so a misinstalled host fails at
+/// boot and says why.
+///
+/// # Errors
+/// The failure, already logged under `run_failed`, as the exit status.
+fn supervise(args: RunArgs) -> Result<ExitCode, ExitCode> {
+    let (config, home) = afr_supervisor::boot(&ProcessEnv).or_exit()?;
+    // `mounted` outlives the runtime and the engine it is moved into: every
+    // sandbox is gone before its toolbox is unmounted.
+    let Host {
+        engine,
+        probe,
+        mounted: _mounted,
+    } = args.host(&home)?;
+    let agent = host::agent()?;
+    let runtime = tokio::runtime::Runtime::new().map_err(|error| host::io_failed(&error))?;
+    runtime
+        .block_on(serve(&config, home, engine, agent, probe))
+        .map(|()| ExitCode::SUCCESS)
+        .or_exit()
+}
+
+impl RunArgs {
+    /// The host `run` leases on: no sandbox when a debug build is told so,
+    /// bubblewrap otherwise.
+    ///
+    /// # Errors
+    /// The failure, already logged, as the exit status.
+    fn host(self, home: &StorageHome) -> Result<Host, ExitCode> {
+        #[cfg(debug_assertions)]
+        if self.unsandboxed {
+            return Host::unsandboxed(home);
+        }
+        Host::bubblewrap(home)
     }
-    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-    let event = EVENT_RUN_REFUSED;
-    let host = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
-    if let Some(missing) = host.missing() {
-        tracing::error!(
-            error_code,
-            missing,
-            event,
-            "this host cannot build a sandbox"
-        );
-        return ExitCode::FAILURE;
-    }
-    tracing::error!(error_code, reason = NO_AGENT_ENGINE, event);
-    ExitCode::from(REFUSED)
+}
+
+/// Serves leases until SIGTERM or SIGINT, or until the daemon says stop.
+async fn serve(
+    config: &afr_supervisor::Config,
+    home: StorageHome,
+    engine: Box<dyn afr_sandbox::Engine>,
+    agent: afr_agent::Loop,
+    probe: afr_sandbox::HostProbe,
+) -> afr_supervisor::Result<()> {
+    let shutdown = CancellationToken::new();
+    let stopping = tokio::spawn({
+        let shutdown = shutdown.clone();
+        async move {
+            afd_core::signal::shutdown().await;
+            shutdown.cancel();
+        }
+    });
+    let served = afr_supervisor::run(config, home, engine, Box::new(agent), probe, shutdown).await;
+    stopping.abort();
+    served
 }
 
 /// Installs [`subscriber`] for the process, writing records to stderr.

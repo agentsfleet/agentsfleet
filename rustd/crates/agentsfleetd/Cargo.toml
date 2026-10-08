@@ -56,7 +56,8 @@ reqwest.workspace = true
 afd_api.workspace = true
 afd_billing.workspace = true
 afd_credential.workspace = true
-afd_core.workspace = true
+# `signal::shutdown`, the stop `serve` waits on.
+afd_core = { workspace = true, features = ["signal"] }
 afd_events.workspace = true
 # The composition root: this crate is the one that names which directory,
 # capability provider and verifier the generic HTTP shell is served through.
@@ -131,7 +132,7 @@ afd_crypto.workspace = true
 afd_db.workspace = true
 afd_dragonfly.workspace = true
 afd_runner.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The cancellation token every supervised task stops on.
 tokio-util.workspace = true
 # The accept loop drives hyper directly: `axum::serve` cannot bound the header

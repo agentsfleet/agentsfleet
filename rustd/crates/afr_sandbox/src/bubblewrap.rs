@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 
 use afd_core::env::LOG_LEVEL_VAR;
 
+use crate::network::{SANDBOX_HOSTS, SANDBOX_RESOLV_CONF};
 use crate::tenant::TenantDescriptors;
 
 /// Where the workspace disk appears inside the sandbox: the root the executor
@@ -59,16 +60,19 @@ pub(crate) const SANDBOX_TMP: &str = "/tmp";
 /// socket directory is bound.
 const RUN: &str = "/run";
 
-/// A fresh namespace of every kind a tool call could share with the host. The
-/// cgroup one hides the host's cgroup tree, and with it the lease's path.
-const NAMESPACES: [&str; 6] = [
+/// A fresh namespace of every kind a tool call could share with the host, the
+/// network aside ([`NetworkLayout`]). The cgroup one hides the host's cgroup
+/// tree, and with it the lease's path.
+const NAMESPACES: [&str; 5] = [
     "--unshare-user",
     "--unshare-pid",
     "--unshare-ipc",
     "--unshare-uts",
-    "--unshare-net",
     "--unshare-cgroup",
 ];
+/// A network namespace of the sandbox's own, holding nothing but loopback
+/// until the engine joins it to the host.
+const UNSHARE_NET: &str = "--unshare-net";
 /// What the process inside may not keep or do.
 const RESTRICTIONS: [&str; 6] = [
     "--disable-userns",
@@ -80,6 +84,8 @@ const RESTRICTIONS: [&str; 6] = [
 ];
 /// Binds a host path read-only.
 const RO_BIND: &str = "--ro-bind";
+/// Binds a host path read-only when it exists, and skips it when it does not.
+const RO_BIND_TRY: &str = "--ro-bind-try";
 /// Binds a host path read-write.
 const BIND: &str = "--bind";
 /// Mounts a fresh `/proc`.
@@ -102,6 +108,33 @@ const GID_FLAG: &str = "--gid";
 const CHDIR_FLAG: &str = "--chdir";
 /// Ends bubblewrap's own options.
 const END_OF_OPTIONS: &str = "--";
+
+/// Whether a sandbox has a network namespace of its own, and where the names
+/// it resolves come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NetworkLayout<'a> {
+    /// The host's network namespace, and the host's own resolver files at the
+    /// same paths, so a name resolves as it does on the host.
+    Host,
+    /// A namespace of its own with nothing but loopback, and the image's
+    /// resolver files.
+    Isolated,
+    /// A namespace of its own, which the engine joins to the host once the
+    /// sandbox runs, and the resolver files rendered for its allowlist.
+    Allowed {
+        /// The rendered `/etc/hosts`, on the host.
+        hosts: &'a Path,
+        /// The resolver-less `/etc/resolv.conf`, on the host.
+        resolv_conf: &'a Path,
+    },
+}
+
+impl NetworkLayout<'_> {
+    /// Whether the sandbox gets a network namespace of its own.
+    const fn unshares(self) -> bool {
+        !matches!(self, Self::Host)
+    }
+}
 
 /// The host paths a sandbox is built from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,6 +159,8 @@ pub struct Layout<'a> {
     /// The log level the process inside logs at, passed through the cleared
     /// environment when the runner has one set.
     pub log_level: Option<&'a OsStr>,
+    /// What its network reaches, and where its names come from.
+    pub network: NetworkLayout<'a>,
 }
 
 /// Bubblewrap's arguments for `layout`, ending with the entry, its own, and
@@ -134,10 +169,12 @@ pub struct Layout<'a> {
 pub fn arguments(layout: &Layout<'_>) -> Vec<OsString> {
     let mut argv: Vec<OsString> = NAMESPACES
         .into_iter()
+        .chain(layout.network.unshares().then_some(UNSHARE_NET))
         .chain(RESTRICTIONS)
         .map(OsString::from)
         .collect();
     mount(&mut argv, layout);
+    names(&mut argv, layout.network);
     // The executor puts its own default `PATH` on every process it starts;
     // the sandbox's entry needs none.
     if let Some(level) = layout.log_level {
@@ -208,6 +245,30 @@ fn mount(argv: &mut Vec<OsString>, layout: &Layout<'_>) {
             argv,
             &[flag_name.as_ref(), host.as_os_str(), inside.as_ref()],
         );
+    }
+}
+
+/// Appends the resolver files `network` names, over the image's own.
+fn names(argv: &mut Vec<OsString>, network: NetworkLayout<'_>) {
+    let binds: [(&str, &OsStr, &str); 2] = match network {
+        // The host's own files, at the paths the image has them: a host
+        // without one keeps the image's.
+        NetworkLayout::Host => [
+            (RO_BIND_TRY, SANDBOX_HOSTS.as_ref(), SANDBOX_HOSTS),
+            (
+                RO_BIND_TRY,
+                SANDBOX_RESOLV_CONF.as_ref(),
+                SANDBOX_RESOLV_CONF,
+            ),
+        ],
+        NetworkLayout::Isolated => return,
+        NetworkLayout::Allowed { hosts, resolv_conf } => [
+            (RO_BIND, hosts.as_os_str(), SANDBOX_HOSTS),
+            (RO_BIND, resolv_conf.as_os_str(), SANDBOX_RESOLV_CONF),
+        ],
+    };
+    for (flag_name, host, inside) in binds {
+        flag(argv, &[flag_name.as_ref(), host, inside.as_ref()]);
     }
 }
 

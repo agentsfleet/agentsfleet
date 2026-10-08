@@ -196,13 +196,12 @@ async fn a_catalogued_activation_stores_the_catalogues_ceiling() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_negative_catalogue_ceiling_is_clamped_the_way_the_zig_clamps_it() {
+async fn a_negative_catalogue_ceiling_is_stored_as_zero() {
     // core.model_library.context_cap_tokens is INTEGER NOT NULL with no
     // nonnegative CHECK — bounds live in the application (RULE STS) — so a
-    // negative ceiling is a row the schema permits. model_rate_cache.zig
-    // clamps it with @max(cap, 0) at every read; without the same clamp in the
-    // activation statement this daemon would STORE -1 where the Zig stores 0,
-    // and the two implementations' rows would differ over one database.
+    // negative ceiling is a row the schema permits. The activation statement
+    // clamps it with GREATEST(…, 0), so a -1 catalogue row stores as 0, the
+    // unknown/auto sentinel, rather than as a negative ceiling.
     let fixture = Fixture::create().await;
     let model = unique_model();
     catalogue(&fixture, NAMED_PROVIDER, &model, -1).await;

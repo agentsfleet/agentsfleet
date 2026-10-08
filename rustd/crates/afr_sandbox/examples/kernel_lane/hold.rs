@@ -64,10 +64,7 @@ struct Seen {
 pub(crate) fn held_sandbox_resumes_where_it_stopped(lane: &Lane) -> Result<(), Failed> {
     let seen = runtime().block_on(async {
         let engine = lane.engine();
-        let request = SandboxRequest {
-            lease_id: LEASE,
-            limits: Limits::default(),
-        };
+        let request = SandboxRequest::new(LEASE, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let seen = hold_and_resume(lane, sandbox.as_ref()).await;
         sandbox.destroy().await?;
@@ -162,10 +159,7 @@ fn size(path: &Path) -> u64 {
 /// directory go, with no thaw first.
 pub(crate) fn destroy_frozen(lane: &Lane) -> Result<(), Failed> {
     let (frozen_events, destroyed) = runtime().block_on(async {
-        let request = SandboxRequest {
-            lease_id: DESTROYED_FROZEN,
-            limits: Limits::default(),
-        };
+        let request = SandboxRequest::new(DESTROYED_FROZEN, Limits::default());
         let sandbox = lane.engine().prepare(request).await?;
         run_in(sandbox.executor(), shell(&start_ticker())).await?;
         sandbox.freeze().await?;

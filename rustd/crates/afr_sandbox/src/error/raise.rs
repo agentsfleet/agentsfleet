@@ -101,14 +101,18 @@ pub(crate) fn not_ready(waited: std::time::Duration) -> impl Fn(afr_executor::Er
     move |source| ErrorKind::NotReady { waited, source }.into()
 }
 
-/// Refuses a toolbox other than the one this runner was configured for.
-#[cfg(target_os = "linux")]
-pub(crate) fn toolbox_unexpected(actual: &str, expected: &str) -> Error {
-    ErrorKind::ToolboxUnexpected {
-        actual: actual.to_owned(),
-        expected: expected.to_owned(),
+/// Refuses a lease whose egress cannot be held to its policy, saying why.
+pub(crate) fn egress_refused(detail: impl Into<String>) -> Error {
+    ErrorKind::EgressRefused {
+        detail: detail.into(),
     }
     .into()
+}
+
+/// Names the netlink request `operation` when the kernel refuses it.
+#[cfg(target_os = "linux")]
+pub(crate) fn netlink(operation: &'static str) -> impl Fn(std::io::Error) -> Error {
+    move |source| ErrorKind::Netlink { operation, source }.into()
 }
 
 /// Refuses a lease whose identifier could name a directory not its own.

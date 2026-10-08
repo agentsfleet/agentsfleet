@@ -20,6 +20,28 @@ const NEEDS_INSTRUCTIONS =
 const RUNNER_REFUSED = "The runner refused this run before the fleet started.";
 const UNFINISHED_REPLY = "This fleet couldn’t complete the reply.";
 
+// The supervisor's production source: where a lease is ended and with which
+// cause line. Test files are left out, since a fixture may spell any line.
+const SUPERVISOR_SRC = resolve(
+  process.cwd(),
+  "../../../rustd/crates/afr_supervisor/src",
+);
+const DETAIL_DECLARATION = /const (DETAIL_\w+): &str =\s*"([^"]*)"/g;
+const DETAIL_NAME = /\b(DETAIL_\w+)\b/g;
+const REFUSE_CALL = /\.refuse\([^;]*?,\s*(DETAIL_\w+)\s*\)/g;
+const STARTUP_POSTURE_FAILURE =
+  /failed\(\s*FailureClass::StartupPosture,\s*(DETAIL_\w+)\s*,?\s*\)/g;
+const UNHOSTED_BODY =
+  /fn unhosted\([\s\S]*?failed\(FailureClass::StartupPosture, detail\)/;
+
+function supervisorSource(): string {
+  return readdirSync(SUPERVISOR_SRC, { recursive: true, encoding: "utf8" })
+    .filter((name) => name.endsWith(".rs"))
+    .filter((name) => !/(^|\/)(tests?|[\w]+_tests|test_support)(\.rs|\/)/.test(name))
+    .map((name) => readFileSync(join(SUPERVISOR_SRC, name), "utf8"))
+    .join("\n");
+}
+
 function failedEvent(overrides: Partial<FleetEvent> = {}): FleetEvent {
   return {
     id: "evt-1",
@@ -81,7 +103,7 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
 
   // Reported live on the dev fleet: the runner could not load its config inside
   // the sandbox, and the user was told their fleet lacked instructions — with a
-  // raw Zig error name pasted after the em-dash. The fleet was configured
+  // raw error identifier pasted after the em-dash. The fleet was configured
   // correctly; the fault was entirely runner-side.
   it("test_unrecognised_cause_is_not_blamed_on_the_fleet: an internal identifier reads as a runner failure", () => {
     expect(eventOutcome(failedEvent({ failureDetail: "FleetInitFailed" }))).toBe(
@@ -157,37 +179,35 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
   // Derived from the runner source rather than from a second copy of the list,
   // so the assertion cannot pass by agreeing with itself.
   it("carries exactly the runner's own startup-posture refusal lines", () => {
-    const runnerRoot = resolve(process.cwd(), "../../../src/runner");
-    const sources = readdirSync(runnerRoot, { recursive: true, encoding: "utf8" })
-      .filter((name) => name.endsWith(".zig"))
-      .map((name) => readFileSync(join(runnerRoot, name), "utf8"));
-    const all = sources.join("\n");
+    const supervisor = supervisorSource();
 
-    // Every `DETAIL_*` literal the runner declares, by name.
+    // Every `DETAIL_*` literal the supervisor declares, by name; a long one
+    // wraps onto the next line after its `=`.
     const literals = new Map<string, string>();
-    for (const match of all.matchAll(/const (DETAIL_\w+) = "([^"]*)"/g)) {
-      const name = match[1];
-      const text = match[2];
+    for (const match of supervisor.matchAll(DETAIL_DECLARATION)) {
+      const [, name, text] = match;
       if (name === undefined || text === undefined) continue;
       literals.set(name, text);
     }
     expect(literals.size).toBeGreaterThan(0);
 
-    // Only the ones emitted under `.startup_posture`. A cause line raised under
-    // another class — `landlock_deny`, say — is not a refusal to start and must
-    // NOT appear in the chat copy's list.
+    // Only the ones a lease ends with under `FailureClass::StartupPosture`. A
+    // line ended under another class — `renewal_terminate`, say — is not a
+    // refusal to start and must NOT appear in the chat copy's list.
     //
-    // Two emission shapes, and the guard must know both. The supervisor raises
-    // through `failedDetailed(alloc, .startup_posture, DETAIL_X)`; the lease
-    // runner refuses BEFORE the fork through `reportStartupFailure(..., DETAIL_X)`,
-    // which hard-codes the class. Scanning only the first is how the bundle
-    // line went missing: the guard passed while the copy was wrong.
+    // Three emission shapes, and the guard must know all three: `refuse`,
+    // which hard-codes the class; `failed(FailureClass::StartupPosture, ..)`
+    // named directly; and `unhosted`, which picks its line by what the fleet
+    // named and then ends the lease under the class.
+    const unhosted = supervisor.match(UNHOSTED_BODY)?.[0] ?? "";
+    expect(unhosted, "the unhosted refusal moved or was renamed").not.toBe("");
     const refusals = new Set<string>();
-    const emissions = [
-      /failedDetailed\([^,]+,\s*\.startup_posture,\s*(?:\w+\.)?(DETAIL_\w+)\s*\)/g,
-      /reportStartupFailure\([^;]*?,\s*(DETAIL_\w+)\s*\)/g,
+    const named = [
+      ...supervisor.matchAll(REFUSE_CALL),
+      ...supervisor.matchAll(STARTUP_POSTURE_FAILURE),
+      ...unhosted.matchAll(DETAIL_NAME),
     ];
-    for (const match of emissions.flatMap((pattern) => [...all.matchAll(pattern)])) {
+    for (const match of named) {
       const name = match[1];
       if (name === undefined) continue;
       const literal = literals.get(name);
@@ -204,16 +224,9 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
   // being added, at which point it would be silently suppressed AND misread as a
   // runner refusal. Derived from the runner source so the guard cannot drift.
   it("every runner cause line is prose, so the internal-identifier rule cannot misfire", () => {
-    const runnerRoot = resolve(process.cwd(), "../../../src/runner");
-    const all = readdirSync(runnerRoot, { recursive: true, encoding: "utf8" })
-      .filter((name) => name.endsWith(".zig"))
-      .map((name) => readFileSync(join(runnerRoot, name), "utf8"))
-      .join("\n");
-
     const offenders: string[] = [];
-    for (const match of all.matchAll(/const (DETAIL_\w+) = "([^"]*)"/g)) {
-      const name = match[1];
-      const text = match[2];
+    for (const match of supervisorSource().matchAll(DETAIL_DECLARATION)) {
+      const [, name, text] = match;
       if (name === undefined || text === undefined) continue;
       if (!/\s/.test(text)) offenders.push(`${name} = "${text}"`);
     }

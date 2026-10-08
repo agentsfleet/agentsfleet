@@ -25,7 +25,7 @@ name: deploy (dev)
 # AUTOMATIC ON MERGE, and manual as well.
 #
 # The push trigger was removed on 2026-08-23 (b9163ed32) for one stated reason:
-# the daemon this lane deployed was the FROZEN Zig revision, and rebuilding a
+# the daemon this lane deployed was the frozen predecessor, and rebuilding a
 # codebase being replaced on every merge bought nothing. That commit named the
 # condition for its return — "Deploying the Rust daemon is M181's job" — and
 # `compile-daemon` now does exactly that: `cargo build --profile dist --bin
