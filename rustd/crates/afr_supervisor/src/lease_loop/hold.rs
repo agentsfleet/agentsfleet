@@ -11,6 +11,7 @@
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::ErrorCode;
 use afd_observability::semconv::ATTR_SANDBOX_REUSED;
 use afr_sandbox::{Limits, Sandbox};
 use afr_telemetry::labels::SandboxHold;
@@ -28,6 +29,7 @@ const EVENT_REUSED: &str = "sandbox_reused";
 const EVENT_THAW_STARTED: &str = "sandbox_thaw_started";
 const EVENT_THAW_COMPLETED: &str = "sandbox_thaw_completed";
 const EVENT_THAW_FAILED: &str = "sandbox_thaw_failed";
+const EVENT_REFILL_FAILED: &str = "sandbox_refill_failed";
 const EVENT_FREEZE_STARTED: &str = "sandbox_freeze_started";
 const EVENT_FREEZE_COMPLETED: &str = "sandbox_freeze_completed";
 const EVENT_FREEZE_FAILED: &str = "sandbox_freeze_failed";
@@ -71,10 +73,11 @@ impl LeaseRun<'_> {
         }
     }
 
-    /// The fleet's held sandbox, thawed and answering, or none. A hold the
-    /// lease was not told to resume is ended, and so is one that will not
-    /// thaw or whose executor stays silent; the lease builds a fresh one.
-    pub(super) async fn revive(&self, key: &HoldKey) -> Option<Box<dyn Sandbox>> {
+    /// The fleet's held sandbox, holding to what `bound` admits, thawed and
+    /// answering, or none. A hold the lease was not told to resume is ended,
+    /// and so is one that will not take `bound`'s addresses, will not thaw,
+    /// or whose executor stays silent; the lease builds a fresh one.
+    pub(super) async fn revive(&self, key: &HoldKey, bound: &Bound) -> Option<Box<dyn Sandbox>> {
         let holds = &self.lessee.holds;
         if !self.lease.resume_hold {
             // The daemon does not record this runner's hold as the fleet's
@@ -83,18 +86,18 @@ impl LeaseRun<'_> {
             holds.release(key.fleet.clone(), Release::Superseded);
             return None;
         }
-        let Taken { sandbox, held_ms } = holds.take(key).await?;
+        let Taken {
+            mut sandbox,
+            held_ms,
+        } = holds.take(key).await?;
         let lease_id = self.ids.lease.as_str();
-        let event = EVENT_THAW_STARTED;
-        tracing::debug!(lease_id, event);
-        let given_up = match sandbox.thaw().await {
-            Ok(()) => answered(sandbox.as_ref())
-                .await
-                .err()
-                .map(|silent| (silent.code(), silent.wire_message())),
-            Err(refused) => Some((refused.code(), refused.told())),
-        };
-        let Some((code, reason)) = given_up else {
+        let given_up = resume(sandbox.as_mut(), bound, lease_id).await.err();
+        let Some(GivenUp {
+            event,
+            code,
+            reason,
+        }) = given_up
+        else {
             let event = EVENT_THAW_COMPLETED;
             tracing::debug!(lease_id, event);
             let fleet_id = key.fleet.as_str();
@@ -104,7 +107,6 @@ impl LeaseRun<'_> {
             return Some(sandbox);
         };
         let error_code = code.as_str();
-        let event = EVENT_THAW_FAILED;
         tracing::warn!(
             error_code,
             lease_id,
@@ -168,6 +170,43 @@ impl LeaseRun<'_> {
     }
 }
 
+/// Why a held sandbox could not serve its fleet's next lease: the event its
+/// failed step is logged under, the failure's code, and why.
+struct GivenUp {
+    event: &'static str,
+    code: ErrorCode,
+    reason: String,
+}
+
+/// Holds a frozen sandbox to what `bound` admits, when that is an allowlist,
+/// then thaws it and waits for its executor to answer. The addresses change
+/// while it is frozen, so no process in it runs against the old set once its
+/// names name the new one.
+async fn resume(sandbox: &mut dyn Sandbox, bound: &Bound, lease_id: &str) -> Result<(), GivenUp> {
+    let refused = |event, failure: afr_sandbox::Error| GivenUp {
+        event,
+        code: failure.code(),
+        reason: failure.told(),
+    };
+    if let Bound::Allowed(allowlist) = bound {
+        sandbox
+            .reallow(allowlist)
+            .await
+            .map_err(|failure| refused(EVENT_REFILL_FAILED, failure))?;
+    }
+    let event = EVENT_THAW_STARTED;
+    tracing::debug!(lease_id, event);
+    sandbox
+        .thaw()
+        .await
+        .map_err(|failure| refused(EVENT_THAW_FAILED, failure))?;
+    answered(sandbox).await.map_err(|silent| GivenUp {
+        event: EVENT_THAW_FAILED,
+        code: silent.code(),
+        reason: silent.wire_message(),
+    })
+}
+
 /// Waits for a thawed sandbox's executor to answer.
 async fn answered(sandbox: &dyn Sandbox) -> afr_executor::Result<()> {
     let answer = sandbox.executor().list_dir(WORKSPACE_TOP);
@@ -202,3 +241,7 @@ mod unheld_tests;
 #[cfg(test)]
 #[path = "reassign_tests.rs"]
 mod reassign_tests;
+
+#[cfg(test)]
+#[path = "refill_tests.rs"]
+mod refill_tests;

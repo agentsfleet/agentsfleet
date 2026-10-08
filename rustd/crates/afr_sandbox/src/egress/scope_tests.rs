@@ -12,8 +12,8 @@ use afd_core::test_util::trace::Capture;
 use super::{Scope, remove};
 use crate::egress::slot::{Claim, Slot, claims_held};
 use crate::egress::testing::{
-    DELLINK, DELTABLE, Fake, GETLINK, NEWADDR, NEWCHAIN, NEWLINK, NEWROUTE, NEWRULE, NEWSET,
-    NEWSETELEM, NEWTABLE, Protocol, SETLINK,
+    DELLINK, DELSETELEM, DELTABLE, Fake, GETLINK, NEWADDR, NEWCHAIN, NEWLINK, NEWROUTE, NEWRULE,
+    NEWSET, NEWSETELEM, NEWTABLE, Protocol, SETLINK,
 };
 use crate::error::{EgressRefusal, Step};
 use crate::network::Allowlist;
@@ -191,4 +191,40 @@ fn test_a_leftovers_link_goes_even_when_its_table_cannot() {
 
     assert_eq!(kernel.seen_on(Protocol::Route), [DELLINK]);
     assert_eq!(refused.netlink_step(), Some(Step::RemoveRules));
+}
+
+/// A built scope takes a new allowlist in place: its set is emptied and
+/// refilled through the socket that owns its table, and the log counts the
+/// names it now admits. A swap the kernel refuses names its step.
+#[test]
+fn test_a_scope_takes_new_addresses_in_place() {
+    let _claims = claims_held();
+    let capture = Capture::install();
+    let kernel = Fake::default();
+    let refusing = Fake::default().refusing(Protocol::Netfilter, DELSETELEM, libc::EPERM);
+    let mut scope = Scope::build(&kernel, namespace().as_fd(), &allowlist()).unwrap();
+    let mut stuck = Scope::build(&refusing, namespace().as_fd(), &allowlist()).unwrap();
+    let moved = Allowlist::new(vec![(
+        TWICE_RESOLVED.to_owned(),
+        Ipv4Addr::new(10, 0, 0, 9),
+    )])
+    .unwrap();
+
+    scope.reallow(&moved).unwrap();
+    let refused = stuck.reallow(&moved).unwrap_err();
+
+    assert!(
+        kernel
+            .seen_on(Protocol::Netfilter)
+            .ends_with(&[DELSETELEM, NEWSETELEM]),
+        "{:?}",
+        kernel.seen_on(Protocol::Netfilter)
+    );
+    assert_eq!(refused.netlink_step(), Some(Step::RefillRules));
+    assert_eq!(
+        capture.only("egress_scope_refilled").field("hosts"),
+        Some("1")
+    );
+    scope.remove(&kernel).unwrap();
+    stuck.remove(&refusing).unwrap();
 }

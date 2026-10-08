@@ -65,6 +65,10 @@ fn test_each_egress_refusal_keeps_its_sentence() {
             EgressRefusal::TooManyAddresses(257),
             "257 addresses, past the 256 a lease may reach",
         ),
+        (
+            EgressRefusal::NoScope,
+            "the sandbox was built to no allowlist, so it has no addresses to replace",
+        ),
     ];
 
     for (refusal, sentence) in sentences {
@@ -95,6 +99,7 @@ fn test_each_netlink_step_keeps_its_sentence() {
         (Step::Join, "the veth pair joining the sandbox to the host"),
         (Step::ConfigurePeer, "the sandbox side of its veth pair"),
         (Step::RemoveRules, "removing the egress table"),
+        (Step::RefillRules, "refilling the egress set"),
         (Step::RemoveLink, "removing the veth pair"),
         (Step::ListChains, "listing the host's forward chains"),
         (Step::ListTables, "listing egress tables"),

@@ -17,6 +17,8 @@ const NO_NAMESPACE: &str = "no process in the sandbox runs in a network namespac
 const NO_SLOT: &str = "every egress slot on this host is held by a running sandbox";
 /// What [`EgressRefusal::HeldElsewhere`] says.
 const HELD_ELSEWHERE: &str = "another runner process owns this host's egress tables and links";
+/// What [`EgressRefusal::NoScope`] says.
+const NO_SCOPE: &str = "the sandbox was built to no allowlist, so it has no addresses to replace";
 
 /// Why a lease's egress cannot be held to what its policy allows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +37,8 @@ pub enum EgressRefusal {
     /// The allowlist resolved to this many distinct addresses, past
     /// [`ALLOWLIST_ADDRESSES_MAX`].
     TooManyAddresses(usize),
+    /// A sandbox built to no allowlist was asked to replace its addresses.
+    NoScope,
 }
 
 impl EgressRefusal {
@@ -48,6 +52,7 @@ impl EgressRefusal {
             Self::NoSlot => "no_slot",
             Self::HeldElsewhere => "held_elsewhere",
             Self::TooManyAddresses(_) => "too_many_addresses",
+            Self::NoScope => "no_scope",
         }
     }
 }
@@ -64,6 +69,7 @@ impl fmt::Display for EgressRefusal {
                 f,
                 "{addresses} addresses, past the {ALLOWLIST_ADDRESSES_MAX} a lease may reach"
             ),
+            Self::NoScope => f.write_str(NO_SCOPE),
         }
     }
 }
@@ -84,6 +90,8 @@ pub enum Step {
     ConfigurePeer,
     /// Removing the scope's table.
     RemoveRules,
+    /// Replacing the addresses in the scope's set.
+    RefillRules,
     /// Removing the veth pair.
     RemoveLink,
     /// Listing the host's forward chains.
@@ -108,6 +116,7 @@ impl fmt::Display for Step {
             Self::Join => "the veth pair joining the sandbox to the host",
             Self::ConfigurePeer => "the sandbox side of its veth pair",
             Self::RemoveRules => "removing the egress table",
+            Self::RefillRules => "refilling the egress set",
             Self::RemoveLink => "removing the veth pair",
             Self::ListChains => "listing the host's forward chains",
             Self::ListTables => "listing egress tables",

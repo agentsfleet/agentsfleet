@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use afr_executor::Executor;
 
 use crate::error::Result;
-use crate::network::Network;
+use crate::network::{Allowlist, Network};
 
 /// Memory a lease's sandbox may hold before its tree is killed.
 pub const DEFAULT_MEMORY_BYTES: u64 = 2 * 1024 * 1024 * 1024;
@@ -198,6 +198,19 @@ pub trait Sandbox: Send + Sync + fmt::Debug {
     /// As [`Sandbox::freeze`]. A sandbox that will not thaw is destroyed, and
     /// its lease gets a fresh one.
     async fn thaw(&self) -> Result<()>;
+
+    /// Holds the sandbox to `allowlist` from now on, in place of the
+    /// allowlist it was built to, and renders its names to match: what a held
+    /// sandbox takes when its next lease's hosts resolved anew. The addresses
+    /// change in one transaction, so no connection meets half of each set;
+    /// call it while the sandbox is frozen, so nothing reads its names
+    /// mid-write.
+    ///
+    /// # Errors
+    /// The sandbox was built to no allowlist, the kernel refused the swap, or
+    /// its names would not render. A sandbox that refuses is destroyed, never
+    /// resumed.
+    async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()>;
 
     /// Ends every process inside, then removes what it held.
     ///

@@ -6,20 +6,22 @@ use std::borrow::Cow;
 
 use afd_wire::policy::{ExecutionPolicy, NetworkPolicy, RepositoryBinding};
 
-use crate::egress::Bound;
+use crate::egress::{Bound, Reach};
 
 /// What a sandbox was built under, owned, so a hold outlives the lease that
 /// parked it and a changed policy never runs in a sandbox built for the old
 /// one. Compared field by field, as the wire types are.
 ///
-/// The egress is the one the runner's assignment resolved to, addresses and
-/// all: a sandbox built to share the host's network, or to reach yesterday's
-/// addresses, never serves a lease the runner now assigns otherwise.
+/// The egress is what the runner's assignment reaches, by name: a sandbox
+/// built to share the host's network, or to reach other names, never serves a
+/// lease the runner now assigns otherwise. The addresses are left out, so a
+/// name that resolves elsewhere since keeps its hold, and the resumed sandbox
+/// takes the new addresses in place.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct BuiltUnder {
     network: NetworkPolicy<'static>,
     repositories: Option<RepositoryBinding<'static>>,
-    egress: Bound,
+    egress: Reach,
 }
 
 impl BuiltUnder {
@@ -41,7 +43,7 @@ impl BuiltUnder {
                     access: binding.access,
                     base_branch: Cow::Owned(binding.base_branch.as_ref().to_owned()),
                 }),
-            egress: egress.clone(),
+            egress: egress.reach(),
         }
     }
 
@@ -56,7 +58,7 @@ impl BuiltUnder {
                 read_post_paths: Vec::new(),
             },
             repositories: None,
-            egress: Bound::Isolated,
+            egress: Reach::Isolated,
         }
     }
 }

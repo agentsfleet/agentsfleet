@@ -1,9 +1,15 @@
 //! A hold's policy key: the same lease policy files the same key, and a
 //! change to any field it carries files another.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test module: an allowlist the test built itself is under its cap"
+)]
 
 use std::borrow::Cow;
+use std::net::Ipv4Addr;
 
 use afd_wire::policy::{ExecutionPolicy, RepositoryAccess, RepositoryBinding};
+use afr_sandbox::Allowlist;
 
 use super::BuiltUnder;
 use crate::egress::Bound;
@@ -107,4 +113,22 @@ fn a_change_to_the_runners_egress_files_another_key() {
 
     assert_eq!(under(Bound::Host), under(Bound::Host));
     assert_ne!(under(Bound::Host), under(Bound::Isolated));
+}
+
+/// An allowlisted egress files its key by the names it reaches: the same
+/// names at new addresses file the same key, so the hold is kept and its
+/// sandbox takes the new addresses; another name files another key.
+#[test]
+fn an_allowlist_files_its_key_by_name_not_address() {
+    let policy = lease(LEASE_ID, FLEET_ID, None).policy;
+    let reaching = |names: &[&str], last: u8| {
+        let entries = names
+            .iter()
+            .map(|name| ((*name).to_owned(), Ipv4Addr::new(192, 0, 2, last)))
+            .collect();
+        BuiltUnder::of(&policy, &Bound::Allowed(Allowlist::new(entries).unwrap()))
+    };
+
+    assert_eq!(reaching(&[HOST], 1), reaching(&[HOST], 2));
+    assert_ne!(reaching(&[HOST], 1), reaching(&[HOST, REPOSITORY], 1));
 }

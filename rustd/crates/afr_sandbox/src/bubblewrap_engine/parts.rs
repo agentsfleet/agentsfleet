@@ -6,36 +6,30 @@
 //! sandbox nobody destroyed — and logs what it could not. Both run the same
 //! [`Parts::release`], once.
 
-use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use afd_core::error_code::{Coded as _, Logged};
-use futures_util::StreamExt as _;
 use futures_util::future::OptionFuture;
-use tokio::process::{Child, ChildStderr, Command};
+use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
-use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
 use crate::cgroup::{CGROUP_PROCS, Freezer, LeaseCgroup};
 use crate::egress::{Host, Scope};
-use crate::error::{Error, Result, cgroup, program};
-use crate::host::tail;
+use crate::error::{EgressRefusal, Error, Result, cgroup, egress_refused, program};
+use crate::network::Allowlist;
 use crate::tenant::TenantFiles;
 use crate::workspace_disk::WorkspaceDisk;
+
+use super::names::Names;
+use super::stderr::drain;
 
 /// What a process writes to `cgroup.procs` to move itself.
 const SELF: &[u8] = b"0";
 /// The name a sandbox that exited before it served is reported under.
 const BWRAP: &str = "bwrap";
-/// The longest error-stream line kept whole.
-const LINE_MAX_BYTES: usize = 4_096;
-/// How many of the sandbox's last error-stream lines a refusal quotes.
-const TAIL_LINES: usize = 20;
-/// The event each line the sandbox writes to its error stream is logged under.
-const EVENT_SANDBOX_STDERR: &str = "sandbox_stderr";
 /// The event a teardown's start is logged under.
 const EVENT_TEARDOWN_STARTED: &str = "sandbox_teardown_started";
 /// The event a teardown that removed everything is logged under.
@@ -104,6 +98,31 @@ impl Parts {
     /// Takes ownership of the scope joining the lease's sandbox to the host.
     pub(super) fn adopt_egress(&mut self, scope: Scope) {
         self.egress = Some(scope);
+    }
+
+    /// Holds the lease's scope to `allowlist` in place of the allowlist it
+    /// was built to, off the async runtime since netlink blocks, then renders
+    /// the sandbox's names to match. The scope comes back whatever the kernel
+    /// answered, so a refused swap leaves it as it was, for the release.
+    ///
+    /// # Errors
+    /// No scope was built, the kernel refused the swap, or the names would
+    /// not render.
+    pub(super) async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
+        let mut scope = self
+            .egress
+            .take()
+            .ok_or_else(|| egress_refused(EgressRefusal::NoScope))?;
+        let span = tracing::Span::current();
+        let next = allowlist.clone();
+        let (scope, swapped) = tokio::task::spawn_blocking(move || {
+            let swapped = span.in_scope(|| scope.reallow(&next));
+            (scope, swapped)
+        })
+        .await?;
+        self.egress = Some(scope);
+        swapped?;
+        Names::rewrite(self.dir(), allowlist)
     }
 
     /// Starts bubblewrap inside the cgroup whose `cgroup.procs` is `procs`,
@@ -316,35 +335,4 @@ fn log_release(lease_id: &str, failed: Option<&Error>) {
 pub(super) fn enter(procs: &File) -> std::io::Result<()> {
     rustix::io::write(procs, SELF)?;
     Ok(())
-}
-
-/// Logs each line the sandbox writes to its error stream and keeps the last
-/// few, for the refusal that quotes them — cut to the same tail a host
-/// program's refusal keeps.
-///
-/// An over-long line is skipped, not fatal: the codec discards it to its
-/// newline, the stream pauses once with `None`, and reading resumes — so the
-/// reason a sandbox gives after a flood is still the one quoted. Only a `None`
-/// that follows no overrun is the end of the stream.
-async fn drain(stream: ChildStderr) -> String {
-    let mut lines = FramedRead::new(stream, LinesCodec::new_with_max_length(LINE_MAX_BYTES));
-    let mut last = VecDeque::with_capacity(TAIL_LINES);
-    let mut overran = false;
-    loop {
-        match lines.next().await {
-            Some(Ok(line)) => {
-                overran = false;
-                let event = EVENT_SANDBOX_STDERR;
-                tracing::debug!(line, event);
-                if last.len() == TAIL_LINES {
-                    last.pop_front();
-                }
-                last.push_back(line);
-            }
-            Some(Err(LinesCodecError::MaxLineLengthExceeded)) => overran = true,
-            None if overran => overran = false,
-            Some(Err(LinesCodecError::Io(_))) | None => break,
-        }
-    }
-    tail(Vec::from(last).join("\n").as_bytes())
 }

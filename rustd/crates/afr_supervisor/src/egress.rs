@@ -158,6 +158,15 @@ pub(crate) enum Bound {
 }
 
 impl Bound {
+    /// What it reaches by name, its addresses left out.
+    pub(crate) fn reach(&self) -> Reach {
+        match self {
+            Self::Host => Reach::Host,
+            Self::Isolated => Reach::Isolated,
+            Self::Allowed(allowlist) => Reach::Allowed(allowlist.names().to_vec()),
+        }
+    }
+
     /// The network a sandbox is asked for.
     pub(crate) const fn network(&self) -> Network<'_> {
         match self {
@@ -166,6 +175,19 @@ impl Bound {
             Self::Allowed(allowlist) => Network::Allowed(allowlist),
         }
     }
+}
+
+/// What a sandbox was built to reach, by name: what a held sandbox is filed
+/// under, so a lease whose hosts resolved to new addresses still finds it and
+/// the sandbox takes the new addresses in place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Reach {
+    /// The host's own network.
+    Host,
+    /// Nothing beyond loopback.
+    Isolated,
+    /// These names, each once, in the order merged.
+    Allowed(Vec<String>),
 }
 
 /// Resolves a host name to its addresses.

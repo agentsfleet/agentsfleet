@@ -100,6 +100,13 @@ impl Allowlist {
         self.names.len()
     }
 
+    /// Each name it admits once, in the order merged: what a sandbox built to
+    /// it is held under, whatever addresses the names resolve to next.
+    #[must_use]
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
     /// Every distinct address, in first-seen order: the host-side set.
     #[must_use]
     pub fn addresses(&self) -> &[Ipv4Addr] {

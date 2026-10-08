@@ -16,7 +16,7 @@ use crate::bubblewrap::{self, Layout, NetworkLayout, SOCKET_NAME};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup};
 use crate::engine::{Engine, HostWorkspace, LeaseName, Limits, Sandbox, SandboxRequest};
 use crate::error::{Result, not_ready, refused, unconfined};
-use crate::network::Network;
+use crate::network::{Allowlist, Network};
 use crate::probe::HostProbe;
 use crate::tenant::{TenantDescriptors, TenantFiles};
 use crate::toolbox::Toolbox;
@@ -25,6 +25,7 @@ use crate::workspace_disk::{Caching, WorkspaceDisk};
 mod config;
 mod names;
 mod parts;
+mod stderr;
 mod sweep;
 
 pub use self::config::BubblewrapConfig;
@@ -299,6 +300,10 @@ impl Sandbox for Bubblewrapped {
 
     async fn thaw(&self) -> Result<()> {
         settle(self.parts.freezer(), Freezer::thaw).await
+    }
+
+    async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
+        self.parts.reallow(allowlist).await
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {
