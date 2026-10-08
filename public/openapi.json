@@ -15030,7 +15030,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module. The Zig daemon serialises through `res.json(value, .{})`,\nand std.json's default emits null optionals, so a row is always the\nsame set of keys. Omission would be a shape change a dashboard's\n`\"revoked_at\" in row` check can feel."
+            "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module — so a row is always the same set of keys. Omission would\nbe a shape change a dashboard's `\"revoked_at\" in row` check can feel."
           }
         }
       },
@@ -15467,7 +15467,7 @@
       },
       "ChargeSummary": {
         "type": "object",
-        "description": "One ledger row as the charges list shows it.\n\nField-for-field the Zig `TelemetryRow`, in its order — the struct is\nserialized straight to JSON there, so the row IS the wire shape.",
+        "description": "One ledger row as the charges list shows it.\n\nField order is wire order — the struct is serialized straight to JSON, so\nthe row IS the wire shape.",
         "required": [
           "id",
           "tenant_id",
@@ -18209,7 +18209,7 @@
                     "null"
                   ],
                   "format": "int64",
-                  "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module. The Zig daemon serialises through `res.json(value, .{})`,\nand std.json's default emits null optionals, so a row is always the\nsame set of keys. Omission would be a shape change a dashboard's\n`\"revoked_at\" in row` check can feel."
+                  "description": "When it stopped working, if it has.\n\nEmitted as `null` rather than omitted — here and on every optional in\nthis module — so a row is always the same set of keys. Omission would\nbe a shape change a dashboard's `\"revoked_at\" in row` check can feel."
                 }
               }
             },
