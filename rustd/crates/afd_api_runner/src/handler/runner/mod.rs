@@ -1,15 +1,11 @@
 //! The runner plane's verbs.
 //!
-//! One module per verb, because a verb is the unit a reviewer reads: the Zig
-//! daemon keeps one file per handler for the same reason, and the split
-//! survives the port unchanged. What does not survive is the shape INSIDE each
-//! file — a Zig handler holds a request context, acquires a connection, runs
-//! statements and writes a response, so there is no seam between deciding and
-//! answering and no way to test one without the other.
-//!
-//! Here the decision is `afd_fleet`'s and the answer is this crate's. Every
-//! function below is short enough to read in one sitting for that reason, not
-//! by discipline.
+//! One module per verb, because a verb is the unit a reviewer reads. Inside
+//! each, the decision is `afd_fleet`'s and the answer is this crate's: a
+//! handler that held a request context, acquired a connection, ran statements
+//! and wrote a response would leave no seam between deciding and answering,
+//! and no way to test one without the other. Every function below is short
+//! enough to read in one sitting for that reason, not by discipline.
 //!
 //! # Enrolment is on the OTHER plane
 //!

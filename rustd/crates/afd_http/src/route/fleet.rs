@@ -122,10 +122,9 @@ impl FleetRoute {
                 fleet_path!("/schedules/{schedule_id}"),
                 Scopes::rw(SCHEDULE_READ, SCHEDULE_WRITE),
             ),
-            // `/sync` as its own segment, where the Zig daemon and the shipped
-            // clients spell it `…/{schedule_id}:sync`. A deliberate divergence,
-            // and the same one the approval decision took — see
-            // [`crate::route::WorkspaceRoute::ApprovalResolve`].
+            // `/sync` as its own segment rather than the custom verb
+            // `…/{schedule_id}:sync`. The same choice the approval decision
+            // took — see [`crate::route::WorkspaceRoute::ApprovalResolve`].
             //
             // The reason is the router: `matchit` refuses any literal after a
             // parameter inside one segment (`tree.rs:783`, "Prefixes after route

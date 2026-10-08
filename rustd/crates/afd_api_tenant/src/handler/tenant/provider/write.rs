@@ -36,9 +36,8 @@ use super::{
 ///
 /// Writes an explicit platform row rather than deleting the tenant's, so the
 /// dashboard can tell "explicitly reset" from "never configured". The written
-/// provider/model/cap are copied from the live default at reset time, which is
-/// the Zig's behavior kept for parity — the divergence register carries the
-/// consequence (a later repointed default is not reflected by this row's view).
+/// provider/model/cap are copied from the live default at reset time, so a
+/// default repointed later is not reflected by this row's view.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/v1/tenants/me/provider",
@@ -171,7 +170,7 @@ pub(crate) async fn apply<D: Services>(
         // Two shapes, one answer: a body that will not read as a credential,
         // and a row whose metadata says it is not a provider key. To a caller
         // the repair is the same — store a provider credential under that name
-        // — and the Zig answers this code for both.
+        // — so both answer this one code.
         Activation::NotAProviderKey | Activation::Malformed => {
             return Err(Refusal::coded(
                 error_code::PROVIDER_SECRET_DATA_MALFORMED,

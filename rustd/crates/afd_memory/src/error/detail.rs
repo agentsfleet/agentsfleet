@@ -1,9 +1,8 @@
 //! The sentence each failure tells a caller, named so a suite can assert one
 //! without respelling it.
 //!
-//! The memory operator surface's are pinned to `memory/handler.zig` and its
-//! `helpers.zig`: a client comparing bytes across the two daemons sees no
-//! difference.
+//! The memory operator surface's sentences are part of the answer a client
+//! reads, so each is spelled once here and changing one is a visible change.
 
 /// The detail for a database that cannot be reached.
 pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
@@ -14,22 +13,23 @@ pub use afd_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 /// The detail for an operation that failed for any other reason.
 pub use afd_core::error::DETAIL_OPERATION_FAILED as OPERATION_FAILED;
 
-/// `helpers.zig`'s `S_AGENTSFLEET_NOT_FOUND`, lower-case as the Zig spells it.
+/// The fleet does not exist, or is not in the caller's workspace — one answer
+/// for both, so a probe learns nothing. Lower-case, unlike [`ENTRY_NOT_FOUND`].
 pub const FLEET_NOT_FOUND: &str = "fleet not found";
 
-/// `handler.zig`'s `S_MEMORY_BACKEND_ROLE_SWITCH_FAILED`.
+/// An operator statement could not take the memory role (`SET LOCAL ROLE`).
 pub const ROLE_SWITCH: &str = "memory backend role switch failed";
 
-/// `handler.zig`'s `S_MEMORY_LIST_FAILED` — the recent and category reads.
+/// A refused recent or category read.
 pub const LIST_FAILED: &str = "memory list failed";
 
-/// `handler.zig`'s sentence for a refused `?query=` statement.
+/// A refused `?query=` statement.
 pub const SEARCH_FAILED: &str = "memory search failed";
 
-/// `handler.zig`'s sentence for a refused forget.
+/// A refused forget.
 pub const FORGET_FAILED: &str = "memory forget failed";
 
-/// `handler.zig`'s `S_MEMORY_ENTRY_NOT_FOUND`.
+/// A forget naming a key the fleet holds no entry under.
 pub const ENTRY_NOT_FOUND: &str = "No memory entry with that key";
 
 /// A call that reached the workspace while its memory was being copied to

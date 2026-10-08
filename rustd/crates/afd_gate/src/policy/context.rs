@@ -28,8 +28,7 @@ use afd_wire::policy::ContextBudget;
 
 /// The window when the cap is unknown, and for every cap between the tiers.
 ///
-/// `execution_policy.zig`'s `DEFAULT_TOOL_WINDOW`. Sized for a 200k–300k-class
-/// model.
+/// Sized for a 200k–300k-class model.
 pub const DEFAULT_TOOL_WINDOW: u32 = 20;
 
 /// The window for a cap at or above [`CAP_LARGE_TOKENS`].

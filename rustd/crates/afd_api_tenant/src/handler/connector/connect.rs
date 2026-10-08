@@ -10,10 +10,8 @@
 //!
 //! A consent screen and an App installation page are different destinations and
 //! the same instruction — send the browser here — so `install_url` carries
-//! either. `connect.zig` splits into `connectOauth2` and `connectAppInstall`
-//! and both end at the same `hx.ok(.ok, .{ .install_url = url })`; the split
-//! there is about building the URL, which is `afd_connector`'s registry job
-//! here and not this handler's.
+//! either. Building the URL differs per archetype, and that is
+//! `afd_connector`'s registry job, not this handler's.
 
 use std::borrow::Cow;
 use std::sync::Arc;

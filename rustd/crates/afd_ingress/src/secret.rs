@@ -4,10 +4,9 @@
 //!
 //! The per-fleet HMAC family stores a JSON OBJECT and signs with one field of
 //! it, `webhook_secret`. The Svix family stores the raw `whsec_…` string with
-//! no envelope of its own. `serve_webhook_lookup.zig` reads them with two
-//! functions for that reason and so does this module — a single reader taking
-//! an "is it JSON" branch would be one flag away from feeding a whole JSON
-//! document to an HMAC as if it were a key.
+//! no envelope of its own. This module reads them with two functions for that
+//! reason — a single reader taking an "is it JSON" branch would be one flag
+//! away from feeding a whole JSON document to an HMAC as if it were a key.
 //!
 //! # Every failure here is `Ok(None)`, and that is the fail-closed answer
 //!
@@ -33,10 +32,9 @@ use crate::error::Result;
 
 /// The field of a stored credential object that holds the shared secret.
 ///
-/// `serve_webhook_lookup.zig`'s `WEBHOOK_SECRET_FIELD`, kept byte-for-byte: an
-/// operator stores this credential once and both daemons read it during a
-/// cutover, so the field name is a stored-data contract rather than a spelling
-/// this crate may improve.
+/// Pinned byte-for-byte: operators have already stored credentials under this
+/// field, so the name is stored data rather than a spelling this crate may
+/// improve.
 const WEBHOOK_SECRET_FIELD: &str = "webhook_secret";
 
 impl Ingress {
@@ -84,8 +82,7 @@ impl Ingress {
     ///
     /// The stored SHAPE is the same JSON object with the same `webhook_secret`
     /// field, which is why this shares [`webhook_secret_field`] rather than
-    /// carrying a second reader — `webhook_verify.zig:55` declares the App's
-    /// `platform_secret_field` as that same name.
+    /// carrying a second reader.
     ///
     /// `Ok(None)` for every way the secret can turn out to be unusable, and for
     /// a deployment that has configured no admin workspace at all. All of them
@@ -140,10 +137,9 @@ mod tests {
 
     /// Every shape a stored credential can take that names no usable secret.
     ///
-    /// The Zig proves the same set on its Svix twin
-    /// (`serve_webhook_lookup.zig`'s `extractSecretRef` suite). Each one of
-    /// these reaching the wall as "no secret configured" is what makes the
-    /// refusal `UZ-WH-020` rather than a tag computed against nothing.
+    /// Each one of these reaching the wall as "no secret configured" is what
+    /// makes the refusal `UZ-WH-020` rather than a tag computed against
+    /// nothing.
     #[test]
     fn no_stored_shape_but_a_populated_field_yields_key_material() {
         let refused = [

@@ -89,9 +89,8 @@ impl Error {
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             // The queue joins the internal family for the registry reason the
-            // runner plane's does: the Zig logs `ERR_INTERNAL_OPERATION_FAILED`
-            // for every Dragonfly failure it meets, and a new code would fire the
-            // ERROR REGISTRY gate over a registry this family does not own.
+            // runner plane's does: a new code for a Dragonfly failure would fire
+            // the ERROR REGISTRY gate over a registry this family does not own.
             // A daemon that cannot draw random bytes or name an instant is THIS
             // process failing, not the caller's request being wrong.
             ErrorKind::Queue { .. } | ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => {

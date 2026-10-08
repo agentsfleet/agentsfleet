@@ -16,9 +16,6 @@
 //! shared authentication layer has nothing to do. The secret is per-fleet and
 //! lives behind a vault read keyed by the URL's own `fleet_id`, which means the
 //! check cannot happen before routing has picked the fleet out of the path.
-//! `webhook_sig.zig` reaches the same conclusion from the other direction: its
-//! middleware takes a `lookup` callback into the database, which is a layer
-//! that had to become a handler to do its job.
 
 pub(crate) mod app_route;
 pub(crate) mod approval_route;
@@ -46,9 +43,8 @@ use crate::handler::Refusal;
 
 /// The most bytes a delivery on this surface may CARRY.
 ///
-/// `github.zig`'s `MAX_BODY_SIZE`, and it is the semantic cap: a body past it
-/// earns `UZ-WH-030` and a sentence naming the limit, so a sender that is
-/// posting too much learns which limit it hit.
+/// The semantic cap: a body past it earns `UZ-WH-030` and a sentence naming
+/// the limit, so a sender that is posting too much learns which limit it hit.
 pub(crate) const MAX_BODY_SIZE: usize = 1024 * 1024;
 
 /// The most bytes this daemon will BUFFER before it refuses.
@@ -121,7 +117,7 @@ pub(crate) use afd_api_wire::ingress::{Accepted, Ignored};
 
 /// The reason a delivery to a fleet nobody is running is dropped.
 ///
-/// `error_entries.zig:135-137`: a webhook to a paused fleet answers 200
+/// A webhook to a paused fleet answers 200
 /// `{"ignored":"fleet_paused"}`, because a sender's retry queue adds no value
 /// for a fleet somebody paused on purpose. `UZ-WH-003` was retired to make room
 /// for exactly this answer.

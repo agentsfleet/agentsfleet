@@ -92,7 +92,7 @@ pub enum ToolErrorCode {
     Interrupted,
     /// The session named is not open: it never was, or its process ended.
     SessionNotFound,
-    /// The subcommand reaches a remote, and the sandbox has no network.
+    /// The subcommand reaches a remote, which only the runner reaches.
     SubcommandNotAllowed,
     /// The path leaves the workspace, by name or through a link.
     PathNotAllowed,

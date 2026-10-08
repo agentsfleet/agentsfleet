@@ -14,8 +14,7 @@
 //! [`WorkspaceConnectors::finish`] takes a [`Spent`]. So a handler cannot
 //! redeem a code for a state it has not spent, and cannot spend one it has not
 //! verified — and neither can a stub, which is what keeps a suite from proving
-//! an order production does not run. `callback.zig` reaches the same ordering
-//! by writing the steps in one function and trusting nobody reorders them.
+//! an order production does not run.
 //!
 //! # Why `verify` is the one step that is not a future
 //!

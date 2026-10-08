@@ -110,8 +110,8 @@ async fn a_cursor_this_daemon_never_issued_is_refused() {
 
 #[tokio::test]
 async fn an_unreadable_limit_reads_as_the_default_rather_than_a_refusal() {
-    // `list.zig`'s leniency, kept: this list absorbs a bad limit where the
-    // workspace directory answers a 400. Each is its own handler's vocabulary,
+    // This list is lenient: it absorbs a bad limit where the workspace
+    // directory answers a 400. Each is its own handler's vocabulary,
     // and a client sitting on either would change class if they were merged.
     let path = format!("{}?limit=not-a-number", collection());
     let response = authorised(Method::GET, &path, "").await;

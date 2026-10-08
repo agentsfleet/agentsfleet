@@ -1,10 +1,8 @@
 //! Writing a new account's tenant back to the identity provider.
 //!
-//! The port of `auth/clerk_backend.zig`, and the write side of
-//! [`crate::provider`]'s read. Both carry the same credential to the same API
-//! base; they are separate modules because the Zig kept them separate, for the
-//! reason that survives the port: a claim read decides whether a request
-//! proceeds, and this decides nothing at all.
+//! The write side of [`crate::provider`]'s read. Both carry the same credential
+//! to the same API base; they are separate modules because a claim read decides
+//! whether a request proceeds, and this decides nothing at all.
 //!
 //! # Why a failure here is not a failed signup
 //!
@@ -137,9 +135,9 @@ impl ProviderMetadata {
     /// Maps a response status onto the three outcomes an operator acts on
     /// differently.
     ///
-    /// `clerk_backend.zig::mapStatus` draws the same lines, and it is a
-    /// separate function here for the same reason the read's is: every branch
-    /// is provable without standing up a listener.
+    /// A separate function for the same reason the read's
+    /// `ProviderClaims::classify` is: every branch is provable without
+    /// standing up a listener.
     #[must_use]
     pub const fn classify(status: u16) -> Option<MetadataUnwritten> {
         match status {

@@ -7,15 +7,11 @@ use super::ErrorCode;
 
 /// Untrusted Fleet Bundle bytes failed validation.
 ///
-/// `ERR_FLEET_BUNDLE_INVALID` in the Zig registry. The detail kept by the
-/// importing service identifies the violated bound without exposing content.
+/// The detail kept by the importing service identifies the violated bound
+/// without exposing content.
 pub const FLEET_BUNDLE_INVALID: ErrorCode = ErrorCode::declare("UZ-BUNDLE-001");
 
 /// No Fleet Bundle snapshot is stored under the requested content hash.
-///
-/// `ERR_FLEET_BUNDLE_NOT_FOUND`. Referenced from the Zig registry, never
-/// declared here as a new code (RULE ERR) — `error_registry.zig:109` owns the
-/// value.
 ///
 /// Not an error the runner acts on by retrying. A bundle with no support files
 /// stores no snapshot at all, so this is the ORDINARY answer for a skill-only
@@ -28,22 +24,16 @@ pub const FLEET_BUNDLE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-BUNDLE-002"
 
 /// A bundle whose declared credentials this workspace does not all hold.
 ///
-/// `ERR_FLEET_BUNDLE_SECRETS_MISSING` (`error_entries.zig:184`). Raised BEFORE
-/// the fleet row is written, so a workspace short a credential ends with no
-/// fleet rather than an installed one that cannot run. A 424 rather than a 400:
-/// the request is well formed and the workspace is not ready for it, and the
-/// body names which credentials to add.
+/// Raised BEFORE the fleet row is written, so a workspace short a credential
+/// ends with no fleet rather than an installed one that cannot run. A 424
+/// rather than a 400: the request is well formed and the workspace is not ready
+/// for it, and the body names which credentials to add.
 pub const FLEET_BUNDLE_SECRETS_MISSING: ErrorCode = ErrorCode::declare("UZ-BUNDLE-003");
 
 /// An external Fleet Bundle source could not be fetched.
-///
-/// `ERR_FLEET_BUNDLE_FETCH_FAILED` in the Zig registry.
 pub const FLEET_BUNDLE_FETCH_FAILED: ErrorCode = ErrorCode::declare("UZ-BUNDLE-004");
 
 /// The Fleet Bundle snapshot store is unconfigured, or would not answer.
-///
-/// `ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE`. Referenced from the Zig registry
-/// (`error_registry.zig:112`).
 ///
 /// One code for both, because the runner acts identically on either: it is a
 /// 503, the work is not refused, and the poll comes back. Which of the two it

@@ -96,9 +96,10 @@ impl<'a> Verdict<'a> {
 
 /// The stored spelling of one failure class.
 ///
-/// `FailureClass.label()` in the Zig. Derived from the wire enum's own serde
-/// renaming rather than restated, so a rename fails to compile instead of
-/// writing rows nothing queries — the device [`crate::sql::event_type`] uses.
+/// Each string is the wire enum's `snake_case` serde spelling, so a stored
+/// class reads the same as the reported one. Exhaustive, so a new class fails
+/// the build until it is given a spelling rather than writing rows nothing
+/// queries.
 fn class_label(class: FailureClass) -> &'static str {
     match class {
         FailureClass::StartupPosture => "startup_posture",
@@ -120,14 +121,10 @@ fn class_label(class: FailureClass) -> &'static str {
 
 /// `text` capped to `max` bytes, never splitting a character.
 ///
-/// [`str::is_char_boundary`] asks directly what `truncateUtf8` infers by
-/// masking `0xC0` off each byte and walking back over the continuations. The
-/// two agree on every input — a boundary is precisely a byte that is not a
-/// continuation — but only one of them says so, and the hand-rolled version
-/// sits twenty lines from a comment explaining UTF-8 to its reader.
-///
-/// The walk is bounded by three: no character encodes to more than four bytes,
-/// so at most three continuations precede a boundary.
+/// [`str::is_char_boundary`] asks directly whether a byte starts a character,
+/// so no byte masking is needed to find one. The walk is bounded by three: no
+/// character encodes to more than four bytes, so at most three continuations
+/// precede a boundary.
 pub(super) fn truncate(text: &str, max: usize) -> &str {
     if text.len() <= max {
         return text;

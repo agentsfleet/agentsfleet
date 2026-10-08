@@ -216,8 +216,8 @@ async fn an_address_carrying_no_verification_is_refused() {
 
 #[tokio::test]
 async fn an_address_with_no_local_part_is_refused_rather_than_renamed() {
-    // The Zig substitutes a fixed tenant name here. That hides a malformed
-    // event behind a tenant nobody can tell from another; this refuses.
+    // Substituting a fixed tenant name here would hide a malformed event behind
+    // a tenant nobody can tell from another, so this refuses.
     let answer = signed(&created(ADA, "@example.test", json!({}))).await;
     assert_eq!(
         refusal_code(answer).await,

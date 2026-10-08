@@ -7,16 +7,15 @@
 //! test-integration-rustd` drops the schemas once, applies the migrations once,
 //! and every test in the run then works inside that one database.
 //!
-//! This is the Zig harness's contract, restored. That harness said it in one
-//! line — "Runs against the LIVE test database. Never creates temp tables." —
-//! and a hundred and forty-five integration files honoured it.
+//! The rule in one line: runs against the LIVE test database, never creates
+//! temp tables.
 //!
-//! **What the port had been doing instead, and what it cost.** Every test
-//! created a database of its own and applied all forty-seven `schema/*.sql`
-//! files into it. At a hundred and forty-three tests that is roughly six
-//! thousand seven hundred migration applications per lane run, to produce one
-//! schema a hundred and forty-three times, and it was the whole of the run's
-//! hundred and thirty-five seconds.
+//! **What a database per test costs.** Every test would create a database of
+//! its own and apply all forty-seven `schema/*.sql` files into it. At a
+//! hundred and forty-three tests that is roughly six thousand seven hundred
+//! migration applications per lane run, to produce one schema a hundred and
+//! forty-three times: over two minutes of wall clock spent on nothing a test
+//! asserts.
 //!
 //! # What replaces the isolation, since something must
 //!
@@ -41,9 +40,7 @@
 //! [`TestDatabase::create`] still makes a database of its own. The suites that
 //! need it are the ones ABOUT schema state — the migrator's own ledger, lock
 //! and failure paths — which cannot run inside an already-migrated database
-//! without testing something else. Zig had exactly this exception too, and
-//! exactly one file used it (`pool_migration_state_test.zig`, and its
-//! `SCRATCH_DB`).
+//! without testing something else.
 
 #![expect(
     clippy::panic,

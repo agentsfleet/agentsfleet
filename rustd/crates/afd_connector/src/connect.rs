@@ -13,8 +13,8 @@
 //! [`Connectors::finish`] takes one. So a caller cannot redeem a code for a
 //! state it has not spent, and it cannot spend one it has not verified —
 //! [`Connectors::spend`] takes a [`Verified`], which only [`Connectors::verify`]
-//! produces. `callback.zig` reaches the same ordering by writing the four steps
-//! in one function and trusting nobody reorders them.
+//! produces. Writing the four steps in one function would reach the same
+//! ordering by trusting nobody reorders them; the types make the trust unneeded.
 //!
 //! # Why the workspace check sits BETWEEN verify and spend
 //!
@@ -23,8 +23,8 @@
 //! who obtained a state — from a browser log, a referrer header, a shared
 //! screen — could burn the starter's in-flight connect without being able to
 //! complete it themselves. So the identity and workspace checks come first and
-//! the spend is the last thing before the vendor call. `state.zig` states the
-//! same ordering rule in its own header.
+//! the spend is the last thing before the vendor call. The header of
+//! `crate::state` states the same ordering rule from the state's side.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

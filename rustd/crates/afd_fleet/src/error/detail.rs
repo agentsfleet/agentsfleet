@@ -1,31 +1,30 @@
 //! What a caller is TOLD, as distinct from what went wrong.
 //!
-//! Every sentence here is client-visible, so each is pinned byte-for-byte
-//! against the `problem_response.zig` or handler original it replaces: parity
-//! in this milestone is behavioural, and what a caller reads is behaviour
-//! (RULE UFS). They live apart from [`super::ErrorKind`] because the two answer
-//! different questions — that one is what happened, this is what we say — and
-//! because a sentence changing is a wire change while a kind changing is not.
+//! Every sentence here is client-visible, so each is a wire fact: what a caller
+//! reads is behaviour (RULE UFS). They live apart from [`super::ErrorKind`]
+//! because the two answer different questions — that one is what happened, this
+//! is what we say — and because a sentence changing is a wire change while a
+//! kind changing is not.
 
-/// `register.zig`'s refusal when `host_id` is absent or too long.
+/// The enrolment refusal when `host_id` is absent or too long.
 ///
-/// Client-visible, so it is pinned byte-for-byte: parity in this milestone is
-/// behavioural, and what a caller reads is behaviour (RULE UFS).
+/// Client-visible, so changing it is a wire change: what a caller reads is
+/// behaviour (RULE UFS).
 pub const DETAIL_HOST_ID_BOUNDS: &str = "host_id must be 1-256 chars";
 
-/// `register.zig`'s refusal for a malformed registry allowlist entry.
+/// The enrolment refusal for a malformed registry allowlist entry.
 pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be host[:port] names";
 
-/// `self.zig`'s refusal when the token authenticated and the row is gone.
+/// The refusal when the token authenticated and the runner row is gone.
 pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 
-/// `runner_patch.zig`'s refusal when a terminal runner cannot collect an ask.
+/// The refusal when a terminal runner cannot collect a self-test ask.
 pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
 
-/// `problem_response.zig`'s `internalDbUnavailable` detail.
+/// The database-outage detail every crate shares through `afd_core::error`.
 pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
 
-/// `problem_response.zig`'s `internalDbError` detail.
+/// The database-fault detail every crate shares through `afd_core::error`.
 pub use afd_core::error::DETAIL_DATABASE_ERROR;
 
 /// An event on the stream this daemon cannot execute.
@@ -37,16 +36,14 @@ pub const DETAIL_EVENT_MALFORMED: &str = "leased event malformed";
 
 /// A queue outage, shaped like its database counterpart above.
 ///
-/// Zig has no byte-identical original: its lease path collapses every Dragonfly
-/// failure to a no-work reply rather than surfacing one, so no `hx.fail` in
-/// that family ever writes this sentence. It exists because a detail is not
-/// optional here, and answering "Database unavailable" for a Dragonfly outage
-/// would send an operator to the wrong datastore. The CODE stays
-/// `UZ-INTERNAL-003`, which is what the Zig assign path logs — no new registry
-/// entry, so the ERROR REGISTRY gate does not fire.
+/// A detail is not optional here, and answering "Database unavailable" for a
+/// Dragonfly outage would send an operator to the wrong datastore. The CODE is
+/// `UZ-INTERNAL-003`, shared with the rest of the internal-failure family in
+/// `classify.rs` — no registry entry of its own, so the ERROR REGISTRY gate
+/// does not fire.
 pub const DETAIL_QUEUE_UNAVAILABLE: &str = "Queue unavailable";
 
-/// `register.zig`'s `internalOperationError` detail.
+/// The detail when enrolment could not mint the identifier a client waits on.
 ///
 /// Reached only from the enrolment path: it is the one verb that mints an
 /// identifier a client is waiting on, and every other mint in this crate is
@@ -55,20 +52,16 @@ pub const DETAIL_REGISTRATION_FAILED: &str = "runner registration failed";
 
 /// A lease whose tenant's provider could not be resolved.
 ///
-/// Zig has no byte-identical original, for the same reason
-/// [`DETAIL_QUEUE_UNAVAILABLE`] does not: `service_billing.zig` answers a
-/// provider-resolution failure with a no-work reply and a `warn`, so no
-/// `hx.fail` in that family ever writes a sentence for it. It exists because a
-/// detail is not optional here, and it deliberately says nothing about WHICH
-/// part of the configuration is broken — the caller is a runner asking for
-/// work, and the tenant's vault layout is not its business. The operator gets
-/// the field name in the log.
+/// A detail is not optional here, and this one deliberately says nothing about
+/// WHICH part of the configuration is broken — the caller is a runner asking
+/// for work, and the tenant's vault layout is not its business. The operator
+/// gets the field name in the log.
 pub const DETAIL_PROVIDER_UNRESOLVED: &str = "provider unresolved";
 
 /// A fleet naming a credential the vault does not hold.
 ///
-/// Pinned to the Zig registry entry for `UZ-AGT-003`, which is the sentence an
-/// operator reads on every other surface that raises this code. The lease path
+/// The registry sentence for `UZ-AGT-003`, which is what an operator reads on
+/// every other surface that raises this code. The lease path
 /// itself never writes it — it ends the event and answers no-work — but a
 /// detail is not optional, and answering a DIFFERENT sentence for the same code
 /// on one surface is how a runbook stops matching what the product says.
@@ -86,12 +79,9 @@ pub const DETAIL_VAULT_DATA_INVALID: &str = "Secret data must be a non-empty JSO
 
 /// A fleet's stored configuration could not be read.
 ///
-/// No `problem_response.zig` sentence to copy: the Zig meets this failure
-/// inside its claim, where it returns an error the fleet loop LOGS and the
-/// runner is simply told there is no work. Here the same failure can reach a
-/// caller, so it needs a sentence — and this one names the stored document
-/// rather than the request, because the runner did nothing wrong and the fix
-/// is in the fleet.
+/// The failure can reach a caller, so it needs a sentence — and this one names
+/// the stored document rather than the request, because the runner did nothing
+/// wrong and the fix is in the fleet.
 pub const DETAIL_CONFIG_UNREADABLE: &str = "fleet configuration unreadable";
 
 /// A gate reference that could not be written.
@@ -112,15 +102,14 @@ pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "approval gate reference unwr
 /// failure into an approval nobody can spend. Never rendered.
 pub const DETAIL_GATE_BINDING_UNWRITABLE: &str = "approval gate binding unwritable";
 
-/// `service_report.zig`'s refusal when the presenting holder has been
-/// superseded.
+/// The report refusal when the presenting holder has been superseded.
 ///
 /// It names the outcome — the current holder's result wins — because that is
 /// the fact the runner acts on: it stops retrying and discards its own result,
 /// rather than backing off and re-reporting into a lease it no longer holds.
 pub const DETAIL_STALE_FENCE: &str = "Lease superseded by a newer holder; report rejected";
 
-/// `service_renew.zig`'s refusal when no lease with that id is the caller's.
+/// The renewal refusal when no lease with that id is the caller's.
 ///
 /// Deliberately says nothing about WHICH of the two happened — no such lease,
 /// or somebody else's lease. The load is scoped by runner, so this sentence is
@@ -128,19 +117,19 @@ pub const DETAIL_STALE_FENCE: &str = "Lease superseded by a newer holder; report
 /// endpoint an oracle for live lease ids.
 pub const DETAIL_LEASE_NOT_FOUND: &str = "No lease matches this lease_id for the runner";
 
-/// `service_renew.zig`'s refusal when the lease moved on before this renewal.
+/// The renewal refusal when the lease moved on before this renewal.
 ///
-/// One sentence for what the Zig spells two ways — "no longer active; reclaimed
-/// or already reported" at the status check, and "reassigned before this
-/// renewal" after the atomic extend. Both are the same fact observed a moment
-/// apart, and the runner's remedy is identical either way: terminate the child.
-/// Two sentences would suggest a distinction it could act on and cannot.
+/// One sentence for two observations — the status check finding the lease no
+/// longer active, and the atomic extend finding it reassigned. Both are the
+/// same fact observed a moment apart, and the runner's remedy is identical
+/// either way: terminate the child. Two sentences would suggest a distinction
+/// it could act on and cannot.
 pub const DETAIL_LEASE_LOST: &str = "Lease was reassigned before this renewal; terminate the child";
 
-/// `service_renew.zig`'s refusal at the hard runtime ceiling.
+/// The renewal refusal at the hard runtime ceiling.
 pub const DETAIL_LEASE_MAX_RUNTIME: &str = "Lease reached the hard max runtime; not renewed";
 
-/// `service_renew.zig`'s refusal when the TENANT's credit pool is spent.
+/// The renewal refusal when the TENANT's credit pool is spent.
 ///
 /// Distinct from [`DETAIL_BUDGET_EXHAUSTED`] beside it, and the two sentences
 /// are the only thing that tells an operator which pool to look at: this one is
@@ -148,29 +137,30 @@ pub const DETAIL_LEASE_MAX_RUNTIME: &str = "Lease reached the hard max runtime; 
 pub const DETAIL_RENEWAL_NO_CREDITS: &str =
     "Tenant balance can no longer fund this run; not renewed";
 
-/// `service_renew.zig`'s refusal when the FLEET's own ceiling is reached.
+/// The renewal refusal when the FLEET's own ceiling is reached.
 pub const DETAIL_BUDGET_EXHAUSTED: &str = "Fleet budget exhausted for this window; not renewed";
 
-/// `bundles.zig`'s answer when nothing is stored under a content hash.
+/// The bundle answer when nothing is stored under a content hash.
 ///
 /// Reads as a statement of fact rather than as a fault, because it is one: a
 /// bundle with no support files stores no snapshot, so a runner meeting this
-/// proceeds with none. The sentence is the Zig's verbatim.
+/// proceeds with none.
 pub const DETAIL_BUNDLE_NOT_FOUND: &str = "no snapshot stored for this content hash";
 
-/// `bundles.zig`'s answer when snapshot storage is not configured at all.
+/// The bundle answer when snapshot storage is not configured at all.
 pub const DETAIL_BUNDLE_STORAGE_UNAVAILABLE: &str = "Fleet Bundle snapshot storage is unavailable";
 
-/// `bundles.zig`'s answer when the store was reached and would not serve.
+/// The bundle answer when the store was reached and would not serve.
 ///
-/// Distinct from [`DETAIL_BUNDLE_STORAGE_UNAVAILABLE`] beside it, and the Zig
-/// draws the same line under one code: an operator reading the first goes and
+/// Distinct from [`DETAIL_BUNDLE_STORAGE_UNAVAILABLE`] beside it, under one
+/// code: an operator reading the first goes and
 /// sets four knobs, and reading the second goes and looks at the bucket. The
 /// runner cannot act on the difference and is not asked to — both are 503s it
 /// re-polls past.
 pub const DETAIL_BUNDLE_FETCH_FAILED: &str = "Fleet Bundle snapshot fetch failed";
 
-/// `credentials_mint.zig`'s `S_INTEGRATION_NOT_CONNECTED`.
+/// The mint refusal when the workspace has no connected integration under
+/// the handle.
 ///
 /// Answers BOTH a workspace that connected nothing under this name and a handle
 /// naming a connector this registry does not carry. One sentence for both, and
@@ -178,19 +168,19 @@ pub const DETAIL_BUNDLE_FETCH_FAILED: &str = "Fleet Bundle snapshot fetch failed
 /// would make the mint an oracle for which connectors a deployment ships.
 pub const DETAIL_INTEGRATION_NOT_CONNECTED: &str = "Integration not connected for this workspace";
 
-/// `credentials_mint.zig`'s broker-absent sentence.
+/// The mint refusal when this deployment holds no broker credential.
 ///
 /// An OPERATOR's fault, and the sentence says so: no tenant action reaches it,
 /// because what is missing is this deployment's own platform credential.
 pub const DETAIL_MINT_UNCONFIGURED: &str = "This deployment isn't set up to mint credentials yet";
 
-/// `credentials_mint.zig`'s GitHub reconnect sentence.
+/// The mint refusal when a GitHub App installation must be reconnected.
 pub const DETAIL_GITHUB_RECONNECT: &str = "GitHub App installation needs reconnect";
 
-/// `credentials_mint.zig`'s `S_MINT_FAILED`.
+/// The mint refusal when the GitHub token exchange failed.
 pub const DETAIL_MINT_FAILED: &str = "Credential mint failed";
 
-/// `credentials_mint.zig`'s `S_CONNECTOR_RECONNECT`.
+/// The mint refusal when a connector's authorization has expired.
 ///
 /// Provider-NEUTRAL on purpose. A Zoho refresh that failed must never tell a
 /// runner to reconnect a GitHub App, which is what a shared sentence across the
@@ -198,7 +188,7 @@ pub const DETAIL_MINT_FAILED: &str = "Credential mint failed";
 pub const DETAIL_CONNECTOR_RECONNECT: &str =
     "Connector authorization expired — reconnect the integration";
 
-/// `credentials_mint.zig`'s `S_CONNECTOR_MINT_FAILED`.
+/// The mint refusal when a connector's token refresh failed.
 pub const DETAIL_CONNECTOR_MINT_FAILED: &str = "Connector token refresh failed";
 
 /// The refusal a message earns when its event came from no thread.
@@ -215,24 +205,12 @@ pub const DETAIL_MESSAGE_LIMIT: &str = const_format::concatcp!(
     " messages; put the rest in the answer"
 );
 
-/// `credentials_mint.zig`'s `S_GRANT_REQUIRED`.
+/// The mint refusal when no approved grant covers the fleet and integration.
 pub const DETAIL_GRANT_REQUIRED: &str =
     "No approved integration grant for this fleet and integration";
 
-// ── The device-flow login surface ────────────────────────────────────────
-//
-// Every sentence below is `session_helpers.zig`'s `failFromStoreError` mapping
-// or the verify dispatcher's, pinned byte-for-byte. Where the Zig writes two
-// spellings for one code — the poll path's "Session already consumed" against
-// the store path's fuller sentence — the fuller one wins and the short one
-// goes: two sentences for one code is the drift RULE UFS names, and a caller
-// matching on the code cannot act on which handler it came from.
-
-// ── The tenant api-key lifecycle ─────────────────────────────────────────
-//
-// Pinned to `api_keys/tenant.zig`'s own sentences. The lifecycle refusals are
-// the ones a dashboard renders directly, so each says what to do next rather
-// than what went wrong.
-//
-// The memory operator surface's sentences moved to `afd_memory::error::detail`
-// with the store that raises them.
+// One sentence per code, everywhere: two sentences for one code is the drift
+// RULE UFS names, and a caller matching on the code cannot act on which
+// handler it came from. The device-flow login and tenant api-key sentences
+// live in `afd_auth::error`, and the memory operator surface's in
+// `afd_memory::error::detail`, each beside the store that raises them.

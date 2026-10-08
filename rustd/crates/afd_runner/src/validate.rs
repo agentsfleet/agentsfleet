@@ -4,8 +4,8 @@
 //! (`afd_wire::runner::{RegisterRequest, AssignedPolicy, ExtraBind}`); what
 //! stays here is the sentence each broken bound earns, keyed by the path garde
 //! reports, and the worker clamp. The host-id and allowlist sentences are
-//! `protocol_policy.zig`'s and `register.zig`'s, pinned byte-for-byte — a
-//! client reads them.
+//! `crate::error`'s `DETAIL_HOST_ID_BOUNDS` and `DETAIL_REGISTRY_ALLOWLIST`,
+//! and their bytes are a wire fact — a client reads them.
 
 use afd_core::limits::WorkerCount;
 use afd_validate::Sentences;
@@ -105,9 +105,9 @@ pub struct StoredAssignment {
 }
 
 impl StoredAssignment {
-    /// What a proved assignment stores. Clamped, never refused:
-    /// `register.zig` clamps into the shared bounds so what is echoed is what
-    /// runs, and `WorkerCount::clamping` is that rule as a type.
+    /// What a proved assignment stores. Clamped, never refused: the count is
+    /// clamped into the shared bounds so what is echoed is what runs, and
+    /// `WorkerCount::clamping` is that rule as a type.
     fn of(policy: &AssignedPolicy<'_>) -> Self {
         Self {
             worker_count: WorkerCount::clamping(policy.worker_count),

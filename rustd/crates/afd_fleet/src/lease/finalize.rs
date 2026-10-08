@@ -1,10 +1,8 @@
 //! The writes a won report owes, and which side of the commit each falls on.
 //!
 //! The terminal event row, the session checkpoint, the stream acknowledgement
-//! and the audit row that closes the lease's history. The Zig ran all of them
-//! after the money, independently, each logged if it did not land — five
-//! separate facts about a run already paid for. That shape is kept for the two
-//! that cannot be anything else and abandoned for the two that can.
+//! and the audit row that closes the lease's history. Two of them commit with
+//! the money; the other two run after it, each logged if it does not land.
 //!
 //! # Two of these are the report, and two are about it
 //!
@@ -31,12 +29,11 @@
 //! cannot be charged twice. What an operator gets is a warn line naming which
 //! one did not land.
 //!
-//! # The cap is `is_char_boundary`, not a nibble walk
+//! # The cap lands on a character boundary
 //!
-//! `event_rows.truncateUtf8` walks back over continuation bytes by masking
-//! `0xC0`, because Zig's standard library gave it nothing better. Rust has
-//! [`str::is_char_boundary`], which asks the question directly. See
-//! [`truncate`].
+//! A response cut at a byte cap can split a multi-byte character and store
+//! text that is not UTF-8. [`truncate`] backs off to the last
+//! [`str::is_char_boundary`] at or below the cap.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -62,9 +59,8 @@ const CONTEXT_RELEASED: &str = "runner lease released event";
 
 /// The session cursor a fleet resumes from.
 ///
-/// Serialized through `serde` rather than assembled by hand: the Zig builds an
-/// anonymous struct and stringifies it, which is the same thing, and the
-/// failure arm — `catch "{}"` — is what a `Result` here says out loud instead.
+/// Serialized through `serde` rather than assembled by hand, so the two fields
+/// are escaped the way any JSON reader expects.
 #[derive(Debug, serde::Serialize)]
 struct Checkpoint<'a> {
     last_event_id: &'a str,
@@ -153,9 +149,9 @@ impl Leases {
     ) -> Result<()> {
         // `Value`, then `Display`. `serde_json::to_string` is fallible in its
         // signature and cannot fail for two string fields, which would leave an
-        // error arm no test could reach and no caller could act on — the Zig
-        // spells the same dead branch as `catch "{}"`, silently checkpointing a
-        // fleet to nothing. Rendering a `Value` has no failure to absorb.
+        // error arm no test could reach and no caller could act on, and a
+        // fallback such as `"{}"` there would silently checkpoint a fleet to
+        // nothing. Rendering a `Value` has no failure to absorb.
         let document = serde_json::json!(Checkpoint {
             last_event_id,
             last_response: truncate(last_response, MAX_CHECKPOINT_RESPONSE_BYTES),

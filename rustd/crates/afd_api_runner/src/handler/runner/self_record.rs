@@ -53,7 +53,7 @@ pub(crate) async fn handle<D: Services>(
         // Assembled and serialised inside this arm, so every `Cow` borrowing
         // the row is written to the wire before the row is dropped — the
         // ownership split `SelfRow` documents, held by the borrow checker
-        // rather than by the `defer q.deinit()` ordering the Zig relies on.
+        // rather than by statement order.
         Ok(row) => Json(payload(&row)).into_response(),
         Err(error) => refuse(&error, EVENT),
     }

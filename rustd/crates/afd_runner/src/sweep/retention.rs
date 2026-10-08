@@ -69,8 +69,8 @@ const RETENTION_WINDOW_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 
 /// The premise the whole age-keyed design rests on.
 ///
-/// `retention_sweeper.zig` states it as a `comptime` block for the same reason:
-/// if a lease could outlive the retention window, this sweep would delete rows
+/// Asserted at compile time because if a lease could outlive the retention
+/// window, this sweep would delete rows
 /// belonging to work still running, and it would do it silently.
 const _: () = assert!(
     MAX_RUNTIME_MS < RETENTION_WINDOW_MS,

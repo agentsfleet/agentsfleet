@@ -3,12 +3,12 @@
 //! The dashboard narrows on a tagged union (`ui/packages/app/lib/api/secrets.ts`)
 //! where the fields a kind carries are exactly the fields it CAN carry: a
 //! `provider_key` names its provider, a `custom_endpoint` names its provider
-//! and may name a URL, and a `custom_secret` names nothing. The flat struct
-//! this replaces mirrored that contract by CONVENTION — two hand-written
-//! degrade arms, one in the list and one in the batch describe, each
-//! remembering to shed the descriptors a degraded row must not carry. The Zig
-//! peer forgot, and could emit `kind: custom_secret` beside a provider label —
-//! a shape the union does not admit.
+//! and may name a URL, and a `custom_secret` names nothing. A flat struct can
+//! keep that union only by CONVENTION — two hand-written degrade arms, one in
+//! the list and one in the batch describe, each remembering to shed the
+//! descriptors a degraded row must not carry. One forgotten arm emits
+//! `kind: custom_secret` beside a provider label — a shape the union does not
+//! admit.
 //!
 //! Here the shed is structural: [`Classified::CustomSecret`] has no field to
 //! carry a provider in, so no future edit can reintroduce the stitch without
@@ -184,9 +184,9 @@ mod tests {
     /// A spelling this build cannot place degrades, and the degrade cannot
     /// carry a provider — there is no field for one.
     ///
-    /// The populated provider and base URL are the point: the Zig peer kept
-    /// them beside a degraded kind, a shape the dashboard's union does not
-    /// admit, and this is the case that pins the difference.
+    /// The populated provider and base URL are the point: keeping them beside
+    /// a degraded kind is a shape the dashboard's union does not admit, and
+    /// this is the case that pins their absence.
     #[test]
     fn should_degrade_an_unplaceable_spelling_and_structurally_shed_its_descriptors() {
         let classified = Classified::classify(

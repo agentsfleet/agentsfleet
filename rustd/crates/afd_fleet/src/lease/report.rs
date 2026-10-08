@@ -24,12 +24,12 @@
 //!
 //! # What this verb does NOT do
 //!
-//! No activity publish and no connector outbound hand-off: both are §4's, and
-//! both are pure fan-out that writes no durable row this milestone's parity is
-//! measured on. No OTLP spans either — the drained amount comes back as a
-//! VALUE, the way [`afd_billing::Accounts::debit_receive`] answers one, and
-//! M181 §5 attaches the instrument. Fusing an exporter into the money path is
-//! what makes `service_billing.zig` unable to run without one configured.
+//! No activity publish and no connector outbound hand-off: both are pure
+//! fan-out that writes no durable row, so neither belongs inside the settle.
+//! No OTLP spans either — the drained amount comes back as a VALUE, the way
+//! [`afd_billing::Accounts::debit_receive`] answers one, and the caller
+//! attaches the instrument. An exporter fused into the money path would be one
+//! a report could not settle without.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -57,9 +57,9 @@ use afd_billing::{Cumulative, Meter, Nanos};
 ///
 /// Both callers of this verb describe the finished run: one reports it to
 /// product analytics, the other records its delivery span. Neither concern
-/// belongs on the money path — fusing an exporter into it is what leaves
-/// `service_billing.zig` unable to run without one configured — so the money
-/// path answers with the facts and the handler decides what to say about them.
+/// belongs on the money path — an exporter fused into it would be one a report
+/// could not settle without — so the money path answers with the facts and the
+/// handler decides what to say about them.
 ///
 /// Exhaustive on purpose, where most of this crate's public types are not: a
 /// suite stubbing the lease plane has to ANSWER with one of these, and a

@@ -1,11 +1,10 @@
 //! `POST /v1/webhooks/svix/{fleet_id}` — the Svix-signed variant.
 //!
-//! The port of `webhooks/fleet.zig`'s Svix branch. The same delivery as
-//! [`super::receive_route`] serves, from a sender that signs it under Svix's
-//! scheme instead of the provider's own — which is why the fleet id sits in a
-//! different path segment rather than behind a flag: the route IS the choice of
-//! verifier, and a query parameter deciding which wall to cross would be a wall
-//! a sender picks.
+//! The same delivery as [`super::receive_route`] serves, from a sender that
+//! signs it under Svix's scheme instead of the provider's own — which is why
+//! the fleet id sits in a different path segment rather than behind a flag:
+//! the route IS the choice of verifier, and a query parameter deciding which
+//! wall to cross would be a wall a sender picks.
 //!
 //! # `svix-id` is the claim key, and it is a signed one
 //!

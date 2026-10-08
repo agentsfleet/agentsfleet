@@ -5,16 +5,15 @@
 //! [`super::pull`] — this file is what the datastore does, that one is the
 //! order it is asked to do it in.
 //!
-//! # `Settled` is an enum where the Zig has a struct
+//! # `Settled` is an enum
 //!
-//! `renewal_settle.zig` answers `{ claimed: bool, charged_nanos: i64 }`, and
-//! the two fields are not independent: a report that lost the fence charges
-//! nothing, so `claimed = false` with a non-zero amount is a state the type
-//! permits and the code cannot produce. Ported literally that leaves every
-//! caller free to read the amount without checking the flag — which is exactly
-//! the bug the flag exists to prevent, one `if` away at every call site.
+//! Whether the claim won and what it charged are not independent: a report
+//! that lost the fence charges nothing. A `{ claimed: bool, charged: i64 }`
+//! pair would permit `claimed = false` with a non-zero amount and leave every
+//! caller free to read the amount without checking the flag, one `if` away
+//! at every call site.
 //!
-//! Rust can say it once: [`Settled::Claimed`] CARRIES the amount and neither
+//! The enum says it once: [`Settled::Claimed`] CARRIES the amount and neither
 //! [`Settled::Fenced`] nor [`Settled::AlreadySettled`] has anywhere to put
 //! one. Reading a charge without having established the claim is not a mistake
 //! to avoid; it does not compile.
@@ -44,8 +43,8 @@ const TABLE_LEASES: &str = "fleet.runner_leases";
 
 /// The lease a report is about, as the row holds it.
 ///
-/// Every identifier is a [`Uuid7`] rather than the `[]const u8` the Zig
-/// arena-dups: the columns are `uuid` and the finalize path passes them to four
+/// Every identifier is a [`Uuid7`] rather than a string: the columns are
+/// `uuid` and the finalize path passes them to four
 /// more statements, so parsing once here is what stops a malformed one reaching
 /// a `::uuid` cast four frames down and failing as a query error instead of as
 /// the data fault it is.
@@ -252,8 +251,6 @@ mod tests {
     /// The property the enum exists for, asserted as the shape rather than as a
     /// value: neither `Settled::Fenced` nor `Settled::AlreadySettled` takes a
     /// payload, so no caller can read an amount off a report that charged
-    /// nothing. The Zig's paired `{ claimed, charged_nanos }` permits exactly
-    /// that and relies on every call site to check the flag first.
     ///
     /// The last assertion is the one §7 added: a superseded holder and a
     /// runner re-sending a settled report both write nothing, and collapsing

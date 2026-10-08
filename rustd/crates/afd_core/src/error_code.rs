@@ -1,11 +1,8 @@
 //! The `UZ-*` codes a client matches on, declared once each.
 //!
-//! Until the Zig daemon retired, its `errors/error_registry.zig` was the
-//! registry of record and this module was a checked subset of it — the codes
-//! the port had reached. That tree is gone, and this is now the registry of
-//! record for the whole product. Adding a code here is a public-contract
-//! decision: `REGISTRY` is what a client matches on, and
-//! `test_error_registry_unique` is what holds the list to one spelling each.
+//! This module is the registry of record for the whole product. Adding a code
+//! here is a public-contract decision: `REGISTRY` is what a client matches on,
+//! and `test_error_registry_unique` is what holds the list to one spelling each.
 //!
 //! Codes are added here as the milestone that emits them lands, never
 //! speculatively: an unreferenced code is dead code that looks like coverage.
@@ -124,7 +121,7 @@ pub use self::request::*;
 /// Every code this crate declares, in declaration order.
 ///
 /// The exhaustive list the registry tests walk. A code added above without a
-/// row here is invisible to the uniqueness and Zig-parity checks, which is why
+/// row here is invisible to the uniqueness and problem-entry checks, which is why
 /// `test_error_registry_unique` also asserts the count.
 pub const REGISTRY: &[ErrorCode] = &[
     UUIDV7_INVALID_ID_SHAPE,

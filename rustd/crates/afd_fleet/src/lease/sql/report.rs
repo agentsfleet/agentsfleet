@@ -1,12 +1,6 @@
 //! The terminal report: one statement that claims the lease and settles the
 //! money, and the scoped read that precedes it.
 //!
-//! Text is byte-identical to `fleet/renewal_settle.zig` and the inline load in
-//! `fleet/service_report.zig`, for the reason [`super`] gives — REVIEW reading
-//! these side by side against the Zig is the only enforcement of
-//! row-equivalence left, and a statement re-derived rather than copied cannot
-//! be read that way.
-//!
 //! # Why the claim and the settle are ONE statement
 //!
 //! They authorize each other. The fence that says this runner may report is the
@@ -73,8 +67,7 @@ SELECT status FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::u
 
 /// Claim the report and settle the final slice, atomically.
 ///
-/// `renewal_settle.zig`'s `CLAIM_SETTLE_SQL`, copied. Eight CTEs, and the
-/// ordering between them is the design:
+/// Eight CTEs, and the ordering between them is the design:
 ///
 /// `probe` reads the lease and the slot under `FOR UPDATE OF l, a` — that
 /// affinity lock is what serialises a racing reclaim behind this statement —
@@ -225,9 +218,8 @@ SELECT (SELECT charged FROM guard)          AS charged,
 /// Seventeen positional parameters, eleven of them `bigint`, and `$3`
 /// referenced nine times — the shape [`super::lease::LeaseRow`] documents the
 /// hazard of. Six of those parameters are the three token counts and the four
-/// rates, which is where `renewal_settle.zig` splats a seven-field
-/// `MeterInputs` of bare integers; here they arrive as one
-/// [`Meter`](afd_billing::Meter), so a transposition has to get past two named
+/// rates; they arrive as one [`Meter`](afd_billing::Meter) rather than as a
+/// flat run of bare integers, so a transposition has to get past two named
 /// types instead of past nothing.
 ///
 /// The `$n` order is written ONCE, in [`SettleRow::bind`], beside the text it
@@ -285,8 +277,7 @@ impl<'a> SettleRow<'a> {
 
 /// Record that a lease was given back.
 ///
-/// `fleet/sql.zig`'s `INSERT_RUNNER_EVENT`, which the Zig reaches through
-/// `runner_events.appendLeaseReleased`. The closing bracket of the
+/// Run by `Leases::record_released` in `finalize.rs`. The closing bracket of the
 /// `lease_acquired` row [`super::lease::INSERT_LEASE_WITH_EVENT`] writes, and
 /// deliberately a separate statement rather than a CTE on the settle: it is
 /// best-effort audit, and a datastore blip writing history must not fail a

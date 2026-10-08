@@ -7,7 +7,7 @@
 //! fires — minutes later, with no output saying why. So this polls
 //! `pg_try_advisory_lock` a bounded number of times and then fails loudly with
 //! a named error, which puts "lock held" in front of an operator in seconds.
-//! The bound IS the stop path (`pool_migration_lock.zig:6-13`).
+//! The bound IS the stop path: [`RetryPolicy`] is the only way out of a held lock.
 //!
 //! # Why a query error is not a retry
 //!
@@ -30,8 +30,8 @@ const OP_PROBE: &str = "migrate.probe_lock";
 
 /// The one key the schema migration lock is taken under, cluster-wide.
 ///
-/// Same constant as `pool_migration_lock.zig:29`, because the Zig daemon and
-/// this binary must contend with each other rather than migrate in parallel.
+/// Every migrator against a database takes this same key, so two replicas
+/// booting together contend with each other rather than migrate in parallel.
 const ADVISORY_KEY: i64 = 0x7A6F_6D62_6965_0001;
 
 /// How long to keep polling a held lock before giving up.
@@ -65,8 +65,7 @@ impl RetryPolicy {
 /// One poll's verdict.
 ///
 /// A named decision rather than a condition inline in the loop: it is the part
-/// worth testing without a database, and `pool_migration_lock.zig` splits it
-/// out for the same reason.
+/// worth testing without a database, so [`classify`] owns it on its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Attempt {
     /// This session now holds the lock.
@@ -187,7 +186,7 @@ impl MigrationLock {
 /// `pg_try_advisory_xact_lock` releases when the statement's implicit
 /// transaction ends, so this can run on a pooled connection without leaving a
 /// lock behind — which a session-scoped acquire plus a separate unlock cannot
-/// promise (`pool_migration_lock.zig:96-104`).
+/// promise.
 ///
 /// # Errors
 /// Returns a query error when the probe statement fails.

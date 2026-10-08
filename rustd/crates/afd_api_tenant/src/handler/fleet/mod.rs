@@ -1,17 +1,16 @@
 //! The workspace's fleets over HTTP: the list, and the install.
 //!
-//! The port of `http/handlers/fleets/list.zig` and `create.zig`. The item half —
-//! read, edit, purge — is [`detail`], split along the line the route table
-//! already draws: everything here is addressed by a workspace alone, everything
-//! there by a fleet as well.
+//! The item half — read, edit, purge — is [`detail`], split along the line the
+//! route table already draws: everything here is addressed by a workspace
+//! alone, everything there by a fleet as well.
 //!
 //! # Ownership is not checked here, and that is the point
 //!
-//! Every Zig handler under `fleets/` opens with a hand-written
-//! `authorizeWorkspace` call, and one that forgot would be a cross-tenant read
-//! with nothing failing. Here the check is a LAYER mounted from the route's own
-//! template, so [`WorkspaceContext`] is a handler saying which workspace it is
-//! acting in — never a handler deciding whether it may.
+//! A hand-written check at the top of each handler is one a new handler could
+//! forget, and that would be a cross-tenant read with nothing failing. The
+//! check is a LAYER mounted from the route's own template, so
+//! [`WorkspaceContext`] is a handler saying which workspace it is acting in —
+//! never a handler deciding whether it may.
 
 pub mod detail;
 mod detail_request;
@@ -53,8 +52,8 @@ const EVENT_INSTALL: &str = "fleet_install_failed";
 
 /// The page a caller naming no `limit` gets.
 ///
-/// Twenty where the workspace directory serves fifty — each is its own Zig
-/// handler's number, and parity keeps them apart.
+/// Twenty where the workspace directory serves fifty — each surface publishes
+/// its own default, kept apart on purpose.
 const LIST_LIMIT_DEFAULT: u32 = 20;
 
 /// The most rows one list page may carry.
@@ -195,10 +194,10 @@ fn short_a_credential_or(
 
 /// The page size asked for, clamped, or the default.
 ///
-/// Total rather than fallible, and that is `list.zig`'s behaviour kept: a limit
-/// that will not parse reads as the default here, where the workspace directory
-/// answers a 400. Each is its own handler's vocabulary — the divergence would be
-/// making them agree, and a client sitting on either would change class.
+/// Total rather than fallible: a limit that will not parse reads as the default
+/// here, where the workspace directory answers a 400. Each is its own surface's
+/// published behaviour — making them agree would move a client sitting on
+/// either into a different status class.
 fn limit_or_default(raw: Option<&str>) -> u32 {
     raw.and_then(|value| value.parse::<u32>().ok())
         .filter(|asked| *asked > 0)

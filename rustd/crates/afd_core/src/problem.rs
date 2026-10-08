@@ -1,32 +1,30 @@
 //! What a client is told about an error, beyond its code.
 //!
-//! Mirrors what the retired daemon's `errors/error_entries.zig` paired: every
-//! registry code with the status it answers, a title, a hint written for an
-//! integrator, and — where the dashboard renders it — a sentence written for a
-//! person. §5's `application/problem+json` envelope is assembled from exactly
-//! these fields, so they live beside the codes rather than in the HTTP crate:
-//! the status a code answers with is a property OF THE CODE, and two callers
-//! answering different statuses for one code would be the bug this prevents.
+//! Every registry code is paired with the status it answers, a title, a hint
+//! written for an integrator, and — where the dashboard renders it — a sentence
+//! written for a person. §5's `application/problem+json` envelope is assembled
+//! from exactly these fields, so they live beside the codes rather than in the
+//! HTTP crate: the status a code answers with is a property OF THE CODE, and
+//! two callers answering different statuses for one code would be the bug this
+//! prevents.
 //!
 //! # Why the docs link is derived and not stored
 //!
-//! `docs_uri` is `ERROR_DOCS_BASE ++ code` in the Zig entries — a fact about
-//! the documentation site's anchor scheme, not about the error. Deriving it
-//! here means a code can never carry a link to a different code's anchor.
+//! `docs_uri` is [`DOCS_BASE`] followed by the code — a fact about the
+//! documentation site's anchor scheme, not about the error. Deriving it here
+//! means a code can never carry a link to a different code's anchor.
 //!
 //! # Why an unregistered code degrades rather than fails
 //!
 //! [`Problem::of`] answers [`Problem::UNKNOWN`] — a 500 — for a code with no
-//! entry, exactly as `error_registry.lookup` returns its `UNKNOWN` entry. A
-//! response is being written at that point and there is nothing better to do
-//! than answer honestly. `test_every_declared_code_has_an_entry` is what stops
-//! that fallback from ever being reached by a code this workspace declares.
+//! entry. A response is being written at that point and there is nothing better
+//! to do than answer honestly. `test_every_declared_code_has_an_entry` is what
+//! stops that fallback from ever being reached by a code this workspace
+//! declares.
 
 use crate::error_code::{self, ErrorCode};
 
-/// The documentation anchor every code's link is built from.
-///
-/// `error_entries.zig`'s `ERROR_DOCS_BASE` (RULE UFS).
+/// The documentation anchor every code's link is built from (RULE UFS).
 pub const DOCS_BASE: &str = "https://docs.agentsfleet.net/api-reference/error-codes#";
 
 /// Everything a client is told about one error code.
@@ -85,9 +83,8 @@ impl Problem {
     /// A dashboard-safe sentence, where one is authored.
     ///
     /// `None` for the codes a person never sees — a runner-plane wire contract,
-    /// a boot check, a command-line surface. The Zig side omits the field from
-    /// the wire entirely rather than serializing a null, and §5's envelope does
-    /// the same.
+    /// a boot check, a command-line surface. §5's envelope omits the field from
+    /// the wire entirely rather than serializing a null.
     #[must_use]
     pub const fn user_message(self) -> Option<&'static str> {
         self.user_message

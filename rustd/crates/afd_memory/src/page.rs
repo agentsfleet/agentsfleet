@@ -9,9 +9,10 @@ use crate::error::detail::{LIST_FAILED, SEARCH_FAILED};
 
 /// Which rows one page reads.
 ///
-/// An enum rather than two optional parameters: a page has exactly ONE view,
-/// so the precedence `handler.zig` resolves with an if-ladder — search beats
-/// category beats recent — has nothing left to get wrong here.
+/// An enum rather than two optional parameters: a page has exactly ONE view.
+/// The route settles the precedence — search beats category beats recent —
+/// once, when it builds the variant, so the store has nothing left to get
+/// wrong here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View<'a> {
     /// Everything the fleet remembers, newest first.

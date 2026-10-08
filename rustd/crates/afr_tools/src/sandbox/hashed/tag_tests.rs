@@ -3,8 +3,8 @@
 
 use super::{Line, Located, Target, lines, tag, tagged};
 
-/// The tag is nullclaw's: Fowler–Noll–Vo 1a over the trimmed line before,
-/// a bar, and the trimmed line, keeping twelve bits as three hex digits.
+/// The tag is Fowler–Noll–Vo 1a over the trimmed line before, a bar, and the
+/// trimmed line, keeping twelve bits as three hex digits.
 #[test]
 fn a_tag_is_the_low_twelve_bits_of_fnv1a_over_parent_bar_line() {
     // pin test: literal is the contract

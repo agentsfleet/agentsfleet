@@ -8,9 +8,8 @@
 //! # The signing secret is the approval one, and that is not a copy
 //!
 //! `connector::state_secret` reads `APPROVAL_IDENTITY` — one deployment secret
-//! serves both the approval callbacks and the connect states, which is the
-//! Zig's `approval_signing_secret` doing the same. A fixture sealing two would
-//! be inventing a split the daemon does not have.
+//! serves both the approval callbacks and the connect states. A fixture sealing
+//! two would be inventing a split the daemon does not have.
 
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;

@@ -9,11 +9,9 @@
 //!
 //! # What is deliberately absent
 //!
-//! A scratch struct. Each Zig handler opens with `var scratch: RequestScratch =
-//! undefined` and fills it on the next line, and the four fields it holds are
-//! re-derived per verb whether or not that verb needs them. Here the address
-//! and the user agent are an [`Origin`](crate::client::Origin) extractor, so a
-//! verb that does not name one does not compute one.
+//! A per-request scratch struct filled for every verb. The address and the user
+//! agent are an [`Origin`](crate::client::Origin) extractor, so a verb that
+//! does not name one does not compute one.
 
 pub(crate) mod session;
 

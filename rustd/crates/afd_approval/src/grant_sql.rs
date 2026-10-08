@@ -6,17 +6,11 @@
 //! relationship with a third party, once, for every event after it. Two
 //! authorities, two statement sets, so a reader looking for the grant half does
 //! not read past the gate half to find it.
-//!
-//! Text is byte-identical to `integration_grants/workspace.zig`. Row-equivalence
-//! is the cutover invariant, so a statement is copied rather than re-derived;
-//! where a `$n` order looks odd, it is odd in the original too.
 
 /// Whether `$1` is a fleet that `$2` holds.
 ///
-/// The port of `common.getFleetWorkspaceId` plus the equality check that
-/// follows every one of its call sites: the Zig fetches the fleet's workspace
-/// and compares it in the handler, which is one round trip's worth of row to
-/// answer a yes-or-no the predicate can answer itself.
+/// A yes-or-no the predicate answers itself, so no workspace row comes back
+/// for a caller to compare.
 ///
 /// The two TENANT-FACING verbs run it FIRST, because both must tell "no such
 /// fleet here" from their own absent row, and the two carry different codes. A
@@ -38,8 +32,7 @@ SELECT 1 FROM core.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid";
 
 /// Every grant a fleet holds, newest first.
 ///
-/// Copied from `integration_grants/workspace.zig`'s `innerListGrants`. Unpaged
-/// and unfiltered: a fleet holds at most one grant per service — the unique
+/// Unpaged and unfiltered: a fleet holds at most one grant per service — the unique
 /// constraint on `(fleet_id, service)` says so — and the supported-service
 /// count is what bounds the page. `requested_reason` is the wire's `reason`.
 ///
@@ -52,12 +45,10 @@ ORDER BY created_at DESC";
 
 /// Revokes one grant, scoped to the workspace that holds its fleet.
 ///
-/// Copied from `integration_grants/workspace.zig`'s `innerRevokeGrant`,
-/// including the join to `core.fleets` the handler had already made redundant.
-/// That redundancy is the point and it is load-bearing: if the fleet-scope read
-/// above is ever dropped from this crate, the statement still refuses a
-/// cross-workspace revoke, and `workspace.zig`'s own integration test runs this
-/// exact text with a foreign workspace to prove it.
+/// The join to `core.fleets` repeats what [`SELECT_FLEET_IN_WORKSPACE`] has
+/// already decided, and that redundancy is load-bearing: if the fleet-scope
+/// read is ever dropped from this crate, the statement still refuses a
+/// cross-workspace revoke.
 ///
 /// `g.status != $1` is what makes a second revoke report nothing rather than
 /// re-stamping `revoked_at`, so the caller can tell "I revoked it" from

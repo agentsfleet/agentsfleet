@@ -1,6 +1,6 @@
 //! Reading a capability claim from the provider's backend API.
 //!
-//! Two tiers on purpose, matching how `clerk_scope_fetch.zig` splits itself:
+//! Two tiers on purpose, matching how `afd_identity::provider` splits itself:
 //! the status mapping and the claim extraction are PURE, so every branch is
 //! provable without a listener; the request path gets a loopback server.
 #![expect(

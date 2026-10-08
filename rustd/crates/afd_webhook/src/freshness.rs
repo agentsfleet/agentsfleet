@@ -4,23 +4,22 @@
 //!
 //! Rejecting only OLD deliveries would leave a forger free to sign a timestamp
 //! years in the future, which never goes stale. So the window is closed on both
-//! sides: `hmac_sig.zig::isTimestampFreshAt` refuses `ts > now + drift` and
-//! `now - ts > drift` alike, and this is that function.
+//! sides: [`is_fresh_at`] refuses `ts > now + drift` and `now - ts > drift`
+//! alike.
 //!
 //! # Why `now` is a parameter
 //!
-//! Because a boundary test that reads the clock twice races itself. The Zig
-//! comment says it outright — fatal at an exact ±drift edge, routine under
-//! valgrind — and the fix there is the fix here: the decision takes an explicit
-//! instant, and only the production entry point reads a clock.
+//! Because a boundary test that reads the clock twice races itself, and fails
+//! at an exact ±drift edge whenever the clock ticks between the reads. The
+//! decision takes an explicit instant, and only the production entry point
+//! reads a clock.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The freshness window every provider on this surface is held to.
 ///
-/// Five minutes, matching `webhook_constants.zig::SLACK_MAX_TS_DRIFT_SECONDS`
-/// and `svix_verify.zig::SVIX_MAX_DRIFT_SECONDS`, which are the same number
-/// written twice in the Zig. It is named once here (RULE UFS) and it is an
+/// Five minutes, for the hex-digest schemes in `scheme.rs` and for Svix in
+/// `vendor/svix.rs` alike. It is named once here (RULE UFS) and it is an
 /// explicit invariant rather than a magic number (RULE TIM): widening it widens
 /// the replay window every provider on this surface is exposed to.
 pub const MAX_DRIFT_SECONDS: i64 = 300;
@@ -42,17 +41,16 @@ pub fn is_fresh_at(timestamp: &str, now_unix_seconds: i64, max_drift: i64) -> bo
     let Ok(signed_at) = timestamp.parse::<i64>() else {
         return false;
     };
-    // Zero and negative are refused ahead of the window arithmetic, matching the
-    // Zig's `ts <= 0` guard. A zero timestamp is the epoch, which is stale by
-    // fifty-odd years; carrying it into the subtraction below would answer the
-    // same way, but only by accident of the arithmetic.
+    // Zero and negative are refused ahead of the window arithmetic. A zero
+    // timestamp is the epoch, which is stale by fifty-odd years; carrying it
+    // into the subtraction below would answer the same way, but only by
+    // accident of the arithmetic.
     if signed_at <= 0 {
         return false;
     }
     // Saturating rather than wrapping: a sender is free to put `i64::MAX` in the
     // header, and `now + max_drift` overflowing would panic in debug and wrap to
-    // a negative bound in release — which would ACCEPT the forgery. The Zig gets
-    // this for free from its own overflow semantics; here it is stated.
+    // a negative bound in release — which would ACCEPT the forgery.
     if signed_at > now_unix_seconds.saturating_add(max_drift) {
         return false;
     }

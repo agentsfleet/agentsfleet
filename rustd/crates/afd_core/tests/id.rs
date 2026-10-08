@@ -1,4 +1,4 @@
-//! Identity validation: the accept/reject set must match `id_format.zig` exactly.
+//! Identity validation: the accept/reject set `afd_core::id::Uuid7::parse` enforces.
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -26,7 +26,7 @@ fn should_accept_a_canonical_lowercase_version_7_identifier() {
     assert_eq!(id.to_string(), CANONICAL);
 }
 
-/// Catches the bug the Zig module exists to prevent: one entity reachable under
+/// Catches the bug the lowercase rule exists to prevent: one entity reachable under
 /// two spellings, because Postgres folds `::uuid` to lowercase while every
 /// text-keyed store (Dragonfly dedupe keys, session keys, string equality) does not.
 #[test]
@@ -132,9 +132,9 @@ fn should_round_trip_through_serde_unchanged() {
     assert_eq!(serde_json::from_str::<Uuid7>(&json).unwrap(), id);
 }
 
-/// A JSON producer may escape any character. The Zig parser unescapes before it
-/// validates, so an escaped-but-canonical identifier is accepted there; a
-/// borrowing deserializer here would reject it and call the divergence an
+/// A JSON producer may escape any character. `Uuid7`'s deserializer reads through
+/// `String`, so an escaped-but-canonical identifier is unescaped before it is
+/// validated; a borrowing deserializer would reject it and call the rejection an
 /// optimization.
 #[test]
 fn should_accept_an_escaped_but_canonical_identifier() {
@@ -205,9 +205,9 @@ fn should_sort_minted_identifiers_by_the_instant_they_carry() {
 ///
 /// `uuid::Builder::from_unix_timestamp_millis` MASKS an oversized value into
 /// the field. Masking would mint an identifier that sorts wrongly for the rest
-/// of the row's life, and `id_format.zig` refuses instead — so this is the
-/// behaviour the delegation must not lose, and the reason the bound stayed
-/// hand-written when the bit layout did not.
+/// of the row's life, so `Uuid7::encode` refuses instead — the behaviour the
+/// delegation to `uuid` must not lose, and the reason the bound stays
+/// hand-written when the bit layout does not.
 #[test]
 fn should_refuse_an_instant_the_48_bit_field_cannot_hold() {
     // One millisecond past the largest value six bytes hold.

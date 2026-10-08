@@ -14,14 +14,13 @@
 //! floor, the ceiling, the attempt count, and `with_jitter`. Writing those
 //! five numbers is the whole module.
 //!
-//! # Why jitter is an improvement rather than parity
+//! # Why the delays are jittered
 //!
-//! `worker.zig` sleeps a flat `200ms << attempt`. Every worker that saw the
-//! same vendor outage therefore retries in the same millisecond, and the
-//! recovering vendor is hit by the whole deployment at once — the retry storm
-//! that keeps it down. `backon` adds a random offset inside each delay.
-//! Dimension 5.1's "jittered" is this departure from the port, not a copy of
-//! it.
+//! Under a flat `200ms << attempt`, every worker that saw the same vendor
+//! outage retries in the same millisecond, and the recovering vendor is hit by
+//! the whole deployment at once — the retry storm that keeps it down. `backon`
+//! adds a random offset inside each delay, which is what Dimension 5.1's
+//! "jittered" means.
 //!
 //! # The budget is small on purpose
 //!
@@ -38,12 +37,11 @@ use backon::ExponentialBuilder;
 
 /// How many times one answer is offered before it is given up on.
 ///
-/// `worker.zig`'s `MAX_ATTEMPTS` is also three, for the reason its comment
-/// gives: a crash is already covered by pending redelivery, so this budget only
-/// has to cover a transient.
+/// Three, because a crash is already covered by pending redelivery, so this
+/// budget only has to cover a transient.
 pub const DELIVERY_ATTEMPTS: usize = 3;
 
-/// The first delay, and the base the rest double from. The Zig's own base.
+/// The first delay, and the base the rest double from.
 const FIRST_DELAY: Duration = Duration::from_millis(200);
 
 /// The ceiling one delay may reach.
@@ -56,10 +54,9 @@ const MAX_DELAY: Duration = Duration::from_millis(800);
 ///
 /// `max_times` is the number of RETRIES, so it is one fewer than the attempts:
 /// the first try is not a retry. Deriving it from [`DELIVERY_ATTEMPTS`] rather
-/// than writing `2` is what keeps the two from drifting — the Zig's install
-/// wrote its sleeps down, derived the count with `attempt + 1 >= len`, and
-/// shipped a loop guard that left the last delay unreachable while the comment
-/// beside it promised four tries.
+/// than writing `2` is what keeps the two from drifting — a count written down
+/// separately from the attempts can leave the last delay unreachable while a
+/// comment beside it promises one more try.
 #[must_use]
 pub const fn delivery_schedule() -> ExponentialBuilder {
     ExponentialBuilder::new()

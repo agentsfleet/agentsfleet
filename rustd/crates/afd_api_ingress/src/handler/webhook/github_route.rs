@@ -1,8 +1,8 @@
 //! `POST /v1/webhooks/{fleet_id}/github` — one fleet's own GitHub deliveries.
 //!
-//! The port of `webhooks/github.zig`. It reads the delivery's kind from the
-//! header GitHub sets, hands the verified body to [`super::github::classify`],
-//! and turns the three answers into the two responses this surface has.
+//! It reads the delivery's kind from the header GitHub sets, hands the
+//! verified body to [`super::github::classify`], and turns the three answers
+//! into the two responses this surface has.
 //!
 //! # Why the event kind comes from a header and never from the body
 //!

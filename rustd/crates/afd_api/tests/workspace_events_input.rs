@@ -8,13 +8,11 @@
 //! # Why every one of these is worth a case
 //!
 //! These sentences are already on the wire. `docs/REST_API_DESIGN_GUIDELINES.md`
-//! §9 treats a narrowing of a served surface as a breaking change, and the Zig
-//! daemon still answers these paths in production — so a value it takes and
-//! this port refuses is a regression a dashboard hits, and a value it refuses
-//! and this port takes is a filter silently doing nothing. The oracle is
-//! `workspaces/events.zig` and `fleets/events.zig`; the strings below are
-//! theirs, spelled out rather than imported so that the test and the code under
-//! test cannot agree with each other by construction.
+//! §9 treats a narrowing of a served surface as a breaking change — so a value
+//! a client sends today that this refuses is a regression a dashboard hits, and
+//! a value this takes that it should refuse is a filter silently doing nothing.
+//! The strings below are spelled out rather than imported so that the test and
+//! the code under test cannot agree with each other by construction.
 //!
 //! # The refusal ORDER is part of the surface
 //!
@@ -137,7 +135,7 @@ async fn assert_accepted(suffix: &str) {
 #[tokio::test]
 async fn a_page_size_inside_the_served_band_reaches_the_store() {
     // Absent and blank are the default page, and the two ends are the band: an
-    // off-by-one at either would refuse a size the Zig daemon serves today.
+    // off-by-one at either would refuse a size a client sends today.
     for suffix in ["", "?limit=", "?limit=1", "?limit=200", "?limit=50"] {
         assert_accepted(suffix).await;
     }
@@ -168,8 +166,9 @@ async fn a_page_size_outside_the_served_band_is_refused() {
 /// The page size is refused before the exclusions are even looked at.
 ///
 /// Three faults in one request, and the caller is told about the first. The
-/// order is `events.zig`'s, and it is what a client's error handling branches
-/// on when it retries with one parameter changed.
+/// order is fixed in `afd_api_tenant`'s event query reader, and it is what a
+/// client's error handling branches on when it retries with one parameter
+/// changed.
 #[tokio::test]
 async fn the_page_size_is_refused_before_the_exclusions_are_looked_at() {
     assert_refused("?limit=0&cursor=zzz&since=garbage", DETAIL_LIMIT).await;
@@ -216,8 +215,9 @@ async fn a_cursor_this_daemon_did_not_mint_is_refused() {
 /// Every window form this daemon reads is accepted.
 #[tokio::test]
 async fn every_window_form_this_daemon_reads_is_accepted() {
-    // The four units `parseSince` takes, the zero window that means "now", and
-    // the absolute form at exactly the length the Zig shape-checks for.
+    // The four units `afd_events::parse_since` takes, the zero window that
+    // means "now", and the absolute form at exactly the length it shape-checks
+    // for.
     for suffix in [
         "?since=15s",
         "?since=30m",
@@ -232,11 +232,11 @@ async fn every_window_form_this_daemon_reads_is_accepted() {
 
 /// A window this daemon cannot read is refused.
 ///
-/// The offset and fractional forms are refused because `parseRfc3339Z` refuses
-/// them: taking them here would make this port's accepted set WIDER than the
-/// daemon still serving these paths, which is the migration hazard §9 is about
-/// in the other direction. The impossible calendar date is the one declared
-/// narrowing — the Zig rolls `2026-02-31` into March, and this refuses it.
+/// The offset and fractional forms are refused because the absolute form is
+/// exactly `YYYY-MM-DDTHH:MM:SSZ`: once a wider set is served, §9 makes
+/// narrowing it back a breaking change. The impossible calendar date is
+/// refused too — `2026-02-31` names no instant, and rolling it into March would
+/// answer a question nobody asked.
 #[tokio::test]
 async fn a_window_this_daemon_cannot_read_is_refused() {
     let unreadable = [
@@ -301,15 +301,15 @@ async fn the_drill_down_narrows_the_workspace_listing_or_is_refused() {
     assert_accepted(&format!("?fleet_id={FLEET}")).await;
     assert_refused("?fleet_id=not-a-uuid", DETAIL_FLEET_ID).await;
     // And it is validated BEFORE the window, which is where
-    // `workspaces/events.zig` validates it.
+    // `WorkspaceListing::parse` validates it.
     assert_refused("?fleet_id=not-a-uuid&since=garbage", DETAIL_FLEET_ID).await;
 }
 
 /// The drill-down is not a parameter the per-fleet listing reads.
 ///
 /// The fleet is already in the path there, so a `fleet_id=` in the query has
-/// nothing to narrow and is ignored rather than refused — `fleets/events.zig`
-/// never asks the query string for one. Worth pinning because the two listings
+/// nothing to narrow and is ignored rather than refused — the per-fleet
+/// `Listing::parse` never validates one. Worth pinning because the two listings
 /// share a parameter reader, and a reader that validated the drill-down for
 /// both would start refusing a request this surface has always served.
 #[tokio::test]
@@ -321,10 +321,10 @@ async fn the_drill_down_is_not_a_parameter_the_per_fleet_listing_reads() {
 
 /// Both listings answer one parser, parameter for parameter.
 ///
-/// The property the port is built on — one `Params` read by two entry points —
-/// asserted rather than assumed. Two hand-written parsers is what the Zig has,
-/// and it is why its two handlers carry copies of `prefixToLike` that had
-/// already drifted apart on the backslash.
+/// The property the listings are built on — one `Params` read by two entry
+/// points — asserted rather than assumed. Two hand-written parsers would carry
+/// two copies of the actor-prefix escaping, free to drift apart on the
+/// backslash.
 #[tokio::test]
 async fn both_listings_answer_one_parser() {
     let shared = [

@@ -98,9 +98,9 @@ pub enum Category {
 
 /// How many distinct series a family may occupy, and on what basis.
 ///
-/// This replaces the boolean flags the Zig registry carried, because a boolean
-/// cannot say how many — and "how many" is the only form of this fact a budget
-/// can be asserted against.
+/// An enum rather than a boolean flag, because a boolean cannot say how many —
+/// and "how many" is the only form of this fact a budget can be asserted
+/// against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Policy {
     /// A closed label product, known entirely at declaration time.

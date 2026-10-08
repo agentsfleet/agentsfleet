@@ -5,9 +5,8 @@
 //! The redeem is provider-agnostic: an authorization code posted to whichever
 //! endpoint issued it. What differs is what the answer MEANS, and that is the
 //! per-provider parse — Slack's install envelope, the ordinary refresh triple,
-//! and the two extras that ride it. `oauth_refresh.zig` splits the same way and
-//! for the same reason: a new refresh connector should be a small delta rather
-//! than a copied file.
+//! and the two extras that ride it. Splitting there keeps a new refresh
+//! connector a small delta rather than a copied file.
 //!
 //! # Jira pays for a second round trip, and it is not optional
 //!

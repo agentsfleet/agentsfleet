@@ -1,9 +1,8 @@
 //! The statements over `core.integration_grants` this crate reads.
 //!
-//! Copied from `state/integration_grant_lookup.zig`, which is the only Zig
-//! module that answers "may this fleet use this integration". Read-only on
-//! both sides: the request/approve/revoke half is the tenant plane's, and a
-//! second writer of a standing human decision is exactly what must not exist.
+//! They answer "may this fleet use this integration", and they only read: the
+//! request/approve/revoke half is the tenant plane's, and a second writer of a
+//! standing human decision is exactly what must not exist.
 
 /// The `status` a grant must hold for a fleet to mint against it.
 ///

@@ -8,11 +8,11 @@
 //!
 //! # Nulls stay on this wire, unlike the tenant registry's
 //!
-//! The Zig serializes this page with default options, so an absent value is
-//! emitted as `null` rather than omitted. That is the opposite of the model
-//! registry beside it, and both are deliberate: this page's optional keys are
-//! `total` and `next_cursor`, which §3 requires PRESENT on every page, and it
-//! has no per-card key whose absence a client union narrows on.
+//! An absent value on this page is emitted as `null` rather than omitted.
+//! That is the opposite of the model registry beside it, and both are
+//! deliberate: this page's optional keys are `total` and `next_cursor`, which
+//! §3 requires PRESENT on every page, and it has no per-card key whose absence
+//! a client union narrows on.
 //!
 //! # There is no field for bundle content, and no key that would fit one
 //!
@@ -29,9 +29,9 @@ use crate::admin::AdminLibraryRequirements;
 /// One gallery card.
 //
 // `requirements` is the admin surface's type on purpose rather than by
-// accident: the two responses share an `OpenAPI` schema, and the Zig's own note
-// records that emitting a different shape here made two documented-identical
-// payloads disagree about their contents. One type is what stops that.
+// accident: the two responses share an `OpenAPI` schema, and a different shape
+// here would make two documented-identical payloads disagree about their
+// contents. One type is what stops that.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -188,7 +188,7 @@ mod tests {
         })
         .expect("the card serializes");
 
-        // The order is the Zig's, and the absences are the point: no
+        // The order is the wire order, and the absences are the point: no
         // skill_markdown, no support_files, no content_hash, no snapshot key.
         assert_eq!(
             body,

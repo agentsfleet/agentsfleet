@@ -23,26 +23,21 @@
 //! anywhere in its graph. THIS crate is the only one that turns that string
 //! into a [`afd_connector::Provider`] and picks a poster for it. Adding a
 //! connector is therefore one arm in [`dispatch`] plus a sibling poster — never
-//! a change to the path that produced the answer. `worker.zig` states the same
-//! rule and is the only importer of `slack/post.zig` for the same reason.
+//! a change to the path that produced the answer.
 //!
-//! # Two recorded departures from the Zig
+//! # How the worker waits, and how it backs off
 //!
-//! **The read parks instead of polling.** `worker.zig` sleeps 250 ms between
-//! non-blocking claims, and says why: its pooled connections are borrowed
-//! per-command and cannot be parked on a stream. That is a fact about a
-//! blocking client, not about the queue — so here the worker owns an
-//! [`afd_dragonfly::Dedicated`] connection and `XREADGROUP … BLOCK` holds until an
-//! entry lands. An answer is delivered the instant it is queued rather than up
-//! to a quarter-second later, and an idle deployment issues one command per
-//! block interval instead of four per second forever.
+//! **The read parks instead of polling.** A pooled connection borrowed per
+//! command cannot be parked on a stream, so the worker owns an
+//! [`afd_dragonfly::Dedicated`] connection and `XREADGROUP … BLOCK` holds until
+//! an entry lands. An answer is delivered the instant it is queued, and an idle
+//! deployment issues one command per block interval rather than a poll loop's
+//! several a second forever.
 //!
-//! **The backoff is jittered.** The Zig retries at a flat `200ms << attempt`,
-//! so every worker that saw the same vendor outage retries in the same
-//! millisecond and the recovering vendor is hit by the whole fleet at once.
-//! [`retry`] uses `backon`'s jittered schedule instead. This is an improvement
-//! over the port, not parity with it, and Dimension 5.1 grades the improved
-//! behaviour.
+//! **The backoff is jittered.** A flat `200ms << attempt` would have every
+//! worker that saw the same vendor outage retry in the same millisecond, and
+//! the recovering vendor would be hit by the whole fleet at once. [`retry`]
+//! uses `backon`'s jittered schedule instead, and Dimension 5.1 grades it.
 //!
 //! # Delivery is serial, and that is a requirement
 //!

@@ -1,6 +1,4 @@
 //! The claim read: one fleet's installed shape, as one statement.
-//!
-//! Copied from `fleet/sql.zig`'s `SELECT_FLEET_WITH_SESSION`.
 
 /// The fleet row and its session checkpoint, in ONE statement.
 ///
@@ -12,21 +10,16 @@
 /// comes back NULL for that fleet and the caller substitutes its fresh-context
 /// sentinel.
 ///
-/// `$1::uuid` where the Zig binds a bare `$1`: the Zig driver sends an untyped
-/// parameter and lets Postgres infer it, while sqlx binds a `&str` as `text`
-/// and `core.fleets.id` is a `UUID` column. The cast is the same accommodation
-/// [`super::gate`]'s statements carry, and the only difference from the
-/// original text.
+/// `$1::uuid` because sqlx binds a `&str` as `text` and `core.fleets.id` is a
+/// `UUID` column; the cast lets Postgres compare the two.
 ///
 /// # `execution_id` is deliberately absent
 ///
-/// The Zig reads and clears an execution handle on this path. It is not ported
-/// and neither is its `CLEAR_STALE_EXECUTION` companion: the column has no
+/// Nothing on this path reads or clears an execution handle: the column has no
 /// production writer of a value and no production reader, and what it tries to
 /// express — which fleet is executing right now — is `fleet.runner_leases`,
 /// which has the fence and the TTL that make the answer trustworthy. A handle
-/// with no expiry can only go stale, which is why it needed crash recovery at
-/// all.
+/// with no expiry can only go stale.
 ///
 /// `$1` fleet.
 pub const SELECT_FLEET_WITH_SESSION: &str = "\

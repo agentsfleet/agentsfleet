@@ -1,11 +1,10 @@
 //! The operator surface's reads: one statement per view and page position.
 //!
-//! Copied from `http/handlers/memory/sql.zig`: fleet-scoped, bounded, and
-//! keyset-paged over `(created_at, key, fleet_id)` — `created_at` because an
-//! upsert moves `updated_at` mid-walk, and `fleet_id` because two writers'
-//! shared rows can tie on the first two. Each read gains one predicate over the
-//! Zig: a fleet granted to read shared memory also sees other fleets' shared
-//! rows, through `$2`, which is the workspace for a granted reader and NULL
+//! Fleet-scoped, bounded, and keyset-paged over `(created_at, key, fleet_id)`
+//! — `created_at` because an upsert moves `updated_at` mid-walk, and
+//! `fleet_id` because two writers' shared rows can tie on the first two. A
+//! fleet granted to read shared memory also sees other fleets' shared rows,
+//! through `$2`, which is the workspace for a granted reader and NULL
 //! otherwise — and a NULL compares true to nothing.
 //!
 //! Six statements rather than one built at run time, and one bind order for

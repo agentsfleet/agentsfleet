@@ -30,9 +30,9 @@ const TABLE_FLEETS: &str = "core.fleets";
 
 /// The session context a fleet with no checkpoint starts from.
 ///
-/// `fleet_session.zig`'s `S_FRESH_CONTEXT`. An empty JSON OBJECT rather than
-/// `null` or an empty string: the runner reads this as a context document, and
-/// a fleet on its first run has an empty one rather than a missing one.
+/// An empty JSON OBJECT rather than `null` or an empty string: the runner
+/// reads this as a context document, and a fleet on its first run has an empty
+/// one rather than a missing one.
 pub const FRESH_CONTEXT: &str = "{}";
 
 /// A fleet as installed, resolved for one lease.

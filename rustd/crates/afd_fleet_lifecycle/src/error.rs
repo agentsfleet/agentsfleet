@@ -9,10 +9,9 @@
 //! # One table, not two
 //!
 //! [`Error::answer`] returns the registry code AND the sentence together, and
-//! both public accessors read from it. The Zig handlers spell
-//! `hx.fail(code, detail)` at each call site with nothing relating the two, so
-//! two handlers can describe one failure differently and both compile. Here a
-//! kind cannot take its code and its sentence from different places.
+//! both public accessors read from it, so a kind cannot take its code and its
+//! sentence from different places, and two call sites cannot describe one
+//! failure differently.
 //!
 //! # Where a failure is raised
 //!

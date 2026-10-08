@@ -1,13 +1,10 @@
 //! The lease store: one pool, one entropy source, and the verbs over both.
 //!
-//! The same shape as [`crate::runner::Runners`], for the same reason. Zig
-//! passes a `*pg.Conn` into every `affinity.zig` function because it has no
-//! way to own one — the caller acquires, defers the release, and hands the
-//! borrow down. Ported literally that becomes a set of free functions taking
-//! `&Db`, which reads fine and gives away the property this crate is built on:
-//! [`Leases::pool`] is `pub(crate)`, so nothing outside can run a statement
-//! that is not in [`crate::sql`], and the side-by-side parity read of that
-//! module stays meaningful (Invariant 5).
+//! The same shape as [`afd_runner::Runners`], for the same reason. A set of
+//! free functions taking `&Db` would read fine and give away the property this
+//! crate is built on: [`Leases::pool`] is `pub(crate)`, so nothing outside can
+//! run a statement that is not in [`crate::lease::sql`], and that module stays
+//! the one place a reviewer reads every statement the plane runs.
 //!
 //! So the pool is OWNED here and the verbs are methods, split one concern per
 //! file — [`super::affinity`] is the claim and the fence, and the modules

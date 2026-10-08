@@ -10,9 +10,8 @@
 //! conflict on a value the caller never chose — so it is re-drawn with a
 //! suffix, three times, and only then reported.
 //!
-//! The Zig expresses that as a three-argument classifier returning a
-//! three-armed enum. Here it is the shape of the loop: an explicit name has no
-//! retry branch to take, because [`Naming::Chosen`] carries no attempts.
+//! The rule is the shape of the loop: an explicit name has no retry branch to
+//! take, because [`Naming::Chosen`] carries no attempts.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -42,7 +41,7 @@ const VISIBILITY_PUBLIC: &str = "public";
 /// Classification is by EXACT constraint and not by SQLSTATE alone: the table
 /// carries other unique indexes, and an identifier collision is not a fact
 /// about the NAME. A rename landing on one side turns a duplicate-name conflict
-/// into a 500, which is the regression the Zig comment records.
+/// into a 500.
 const NAME_CONSTRAINT: &str = "uq_fleets_workspace_id_name";
 
 /// The contexts a failed statement on this path reports under.
@@ -198,9 +197,8 @@ impl Naming {
 
     /// The next naming to try, or `None` when the collision is the answer.
     ///
-    /// A chosen name never redraws — the arm simply does not exist for it,
-    /// which is the type doing what the Zig's `name_explicit` boolean does at
-    /// runtime.
+    /// A chosen name never redraws — the arm simply does not exist for it, so
+    /// the type keeps an explicit name intact without a runtime flag.
     fn redraw(&self, entropy: &afd_crypto::entropy::Entropy) -> Result<Option<Self>> {
         match self {
             Self::Chosen(_typed) => Ok(None),

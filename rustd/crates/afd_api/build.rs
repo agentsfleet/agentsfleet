@@ -6,8 +6,6 @@
 //! build rather than a missing wire-up, and is the one thing a diagnostic field
 //! must never do.
 //!
-//! `build_options.git_commit` is the Zig equivalent (`build.zig:36`).
-//!
 //! # One name, and it is `make`'s
 //!
 //! The override knob is `GIT_COMMIT` — the variable `make/build.mk` already

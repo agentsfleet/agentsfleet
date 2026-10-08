@@ -20,8 +20,7 @@
 //! A custom OpenAI-compatible gateway may be keyless — that is the spec's
 //! optional-key design, and a tenant fronting their own vLLM has no bearer
 //! token to give. Every NAMED provider must carry a non-empty key. The two
-//! rules are one expression here rather than the Zig's `is_compatible` flag
-//! computed once and consulted twice.
+//! rules are one expression here, so they cannot come apart.
 
 use serde::Deserialize;
 
@@ -121,9 +120,8 @@ impl Resolution for SelfManaged {
 
         // A resolved endpoint IS the compatible provider — `endpoint::resolve`
         // has already refused every other pairing — so the optional-key rule
-        // reads off the outcome rather than re-comparing the provider string.
-        // The Zig computes an `is_compatible` flag and consults it twice, which
-        // is two places for the two rules to come apart.
+        // reads off the outcome rather than re-comparing the provider string,
+        // which would be a second place for the two rules to come apart.
         let api_key = bearer(vetted.api_key, vetted.dialled.is_some())?;
 
         Ok(Resolved::new(
@@ -139,8 +137,8 @@ impl Resolution for SelfManaged {
 
 /// The key this credential resolves with, given whether one is optional.
 ///
-/// A blank key and an absent key are the same fact — the Zig folds both to `""`
-/// and then length-checks — so they are one arm here rather than two.
+/// A blank key and an absent key are the same fact, so they are one arm here
+/// rather than two.
 fn bearer(api_key: Option<SecretString>, keyless_permitted: bool) -> Result<SecretString> {
     match api_key {
         Some(key) if !key.is_empty() => Ok(key),
@@ -257,10 +255,10 @@ mod tests {
 
     #[test]
     fn an_ssrf_refusal_ends_the_event_rather_than_re_polling_forever() {
-        // A deliberate divergence: the Zig classifies this transient, so the
-        // delivery re-polls at the poll interval indefinitely and no terminal
-        // row is ever written. A stored URL pointing at the metadata service
-        // does not become safe by being retried.
+        // Permanent, deliberately: classified transient, the delivery would
+        // re-poll at the poll interval indefinitely and no terminal row would
+        // ever be written. A stored URL pointing at the metadata service does
+        // not become safe by being retried.
         let refused = strategy()
             .interpret(
                 br#"{"provider":"openai-compatible","base_url":"https://169.254.169.254/v1"}"#,

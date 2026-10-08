@@ -1,8 +1,7 @@
 //! The two reads over a tenant's money: the wallet, and the charges ledger.
 //!
-//! The port of `tenant_billing.zig`, sentence for sentence: the limit
-//! refusals, the empty-cursor-is-first-page rule, and the bare "Tenant
-//! context required" are wire facts a dashboard mid-cutover may already be
+//! The limit refusals, the empty-cursor-is-first-page rule, and the bare
+//! "Tenant context required" are wire facts a dashboard may already be
 //! matching on, so each is pinned here rather than shared with a family that
 //! spells its own.
 
@@ -114,7 +113,7 @@ pub(crate) async fn charges<D: Services>(
     let query = query.unwrap_or_default();
     let limit = charges_limit(parameter(&query, QUERY_LIMIT))?;
     // `?cursor=` with an empty value is the first page expressed verbosely,
-    // not a malformed token — the Zig handler's rule, kept to the byte.
+    // not a malformed token.
     let boundary = match parameter(&query, "cursor").filter(|token| !token.is_empty()) {
         None => None,
         Some(token) => Some(cursor::parse(token).map_err(Refusal::at(EVENT_CHARGES))?),
@@ -139,8 +138,8 @@ pub(crate) async fn charges<D: Services>(
 /// The wallet as the wire shows it.
 ///
 /// `is_exhausted` is derived HERE, not stored: the row holds one fact — when
-/// the balance reached zero — and the boolean is that fact restated, exactly
-/// as `tenant_billing.zig` computes it at the response site.
+/// the balance reached zero — and the boolean is that fact restated at the
+/// response site.
 const fn wallet_response(wallet: &Wallet) -> BillingResponse {
     BillingResponse {
         balance_nanos: wallet.balance_nanos,
@@ -195,10 +194,9 @@ const CHARGES_CEILING: Ceiling = Ceiling::new(CHARGES_LIMIT_MAX, CHARGES_LIMIT_D
 
 /// The page size the caller asked for, or the refusal their spelling earns.
 ///
-/// The port of `parseLimit`: absent or empty means the default, a non-number
-/// is one sentence, and zero or past the cap is the other. A sign is not a
-/// digit, so `-1` lands on the not-numeric sentence as it does on the Zig
-/// daemon's unsigned `parseInt`.
+/// Absent or empty means the default, a non-number is one sentence, and zero
+/// or past the cap is the other. A sign is not a digit, so `-1` lands on the
+/// not-numeric sentence.
 fn charges_limit(raw: Option<&str>) -> Result<u32, Refusal> {
     Limit::parse(raw, CHARGES_CEILING).map_err(|limit_break| {
         Refusal::malformed(match limit_break {

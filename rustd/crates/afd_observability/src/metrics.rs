@@ -6,13 +6,12 @@
 //!
 //! # Why a file is the contract
 //!
-//! The family set is parity data: the Rust daemon has to emit what the Zig one
-//! emitted, byte for byte at the OTLP wire, or every dashboard built on those
-//! names breaks on the swap. A contract that lives in Rust source can only be
-//! graded by reading Rust source, so it lives in `docs/metrics.census.tsv` and
-//! the registry is built FROM it. The parity test then grades the registry
-//! against the same file in both directions, and a family on one side only is
-//! named rather than quietly dropped.
+//! The family set is wire data: every dashboard is built on these names, byte
+//! for byte at the OTLP wire, so a rename breaks a panel silently. A list that
+//! lives in Rust source can only be graded by reading Rust source, so it lives
+//! in `docs/metrics.census.tsv` and the registry is built FROM it. The parity
+//! test then grades the registry against the same file in both directions, and
+//! a family on one side only is named rather than quietly dropped.
 
 pub mod declared;
 pub mod export;

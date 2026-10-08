@@ -2,26 +2,17 @@
 //!
 //! # A maintained parser decides the types, not a table we own
 //!
-//! This module used to carry a port of `yaml_frontmatter.zig`'s `writeScalar`
-//! — a coercion table sitting on a bare tokeniser, resolving every scalar by
-//! hand — on the reasoning that a YAML crate would type scalars WRONG for a
-//! parity port. That reasoning was tested against the wrong crate. Probed
-//! against `yaml_serde` (the YAML 1.2 core schema, maintained by the YAML
-//! organisation) the two agree on every case the table existed to defend:
-//! `01` stays `"01"`, `0123456` stays a string, `NO` does not become false,
-//! `yes` and `on` stay strings, and `NaN` stays text.
+//! `yaml_serde` (the YAML 1.2 core schema, maintained by the YAML
+//! organisation) types every scalar, and it answers each case a fleet document
+//! depends on: `01` stays `"01"`, `0123456` stays a string, `NO` does not
+//! become false, `yes` and `on` stay strings, and `NaN` stays text.
 //!
 //! The zero-padded identifier and the Norway problem — the two failures worth
-//! owning code to prevent — YAML 1.2 already prevents. What the table bought
-//! beyond that was three spellings no fleet document contains (`1e5`, `0x1F`,
-//! `+1`), and the committed fixture corpus uses none of them.
+//! owning code to prevent — YAML 1.2 already prevents.
 //!
-//! It also cost one. The table could not see quote style, so `name: "true"`
-//! collapsed to the boolean `true` — a defect this module previously declared
-//! and preserved for parity. `yaml_serde` reads it as the string it is, and
-//! the two other declared divergences go the same way: a block scalar folds
-//! correctly, and an apostrophe in a plain scalar no longer truncates the
-//! document, which the pinned `zig-yaml` fork did silently.
+//! It also sees quote style, so `name: "true"` is the string it is rather than
+//! the boolean `true`. A block scalar folds correctly, and an apostrophe in a
+//! plain scalar does not truncate the document.
 //!
 //! # What is still ours, because serde does not do it
 //!
@@ -34,8 +25,7 @@
 //! only carry a STRING and this crate's error must reach the caller with its
 //! type intact. [`Refusal`] is that channel: the visitor stashes the typed
 //! error and returns whatever serde will take, and [`to_json`] prefers the
-//! stashed one. The retired hand-rolled walk did the same thing with a
-//! `failure` field, for the same reason.
+//! stashed one.
 
 use std::cell::RefCell;
 use std::fmt;
@@ -54,10 +44,9 @@ type Refusal = RefCell<Option<Error>>;
 
 /// Renders a frontmatter block as the JSON a fleet's `config_json` stores.
 ///
-/// An empty block is an empty object, matching `yamlFrontmatterToJson`'s
-/// `docs.items.len == 0` arm — the document is well-formed and says nothing,
-/// which the schema layer above refuses with a sentence naming the block it
-/// wanted.
+/// An empty block is an empty object — the document is well-formed and says
+/// nothing, which the schema layer above refuses with a sentence naming the
+/// block it wanted.
 ///
 /// # Errors
 /// Reports YAML this daemon cannot read, and a key repeated within one mapping.

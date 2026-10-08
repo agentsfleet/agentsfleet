@@ -12,10 +12,8 @@ use super::{
 /// One entry of `triggers`.
 ///
 /// An internally-tagged enum, so `type` selects the variant and each variant
-/// carries only its own keys — the Zig's `union(FleetTriggerType)` expressed
-/// where the compiler can check it. An unrecognised `type` becomes a serde
-/// error that NAMES the accepted variants, which is strictly more than the
-/// Zig's opaque `InvalidTriggerType`.
+/// carries only its own keys, where the compiler can check them. An
+/// unrecognised `type` becomes a serde error that NAMES the accepted variants.
 ///
 /// `Serialize` too, so a trigger the daemon WRITES into a document — an
 /// install attaching a channel — is spelled by this declaration and cannot

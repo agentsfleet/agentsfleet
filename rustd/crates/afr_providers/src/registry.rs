@@ -2,11 +2,11 @@
 //!
 //! The table is data, `assets/providers.json`, embedded at build time the way
 //! `IronClaw` embeds its `providers.json` (`ironclaw_llm/src/registry.rs`), so a
-//! provider is a reviewed line of JSON rather than code (RULE CFG). It carries
-//! every name the Zig runner's provider table maps to a wire this runner
-//! speaks, at the base URL the Zig runner dials. A name it leaves out, such as
-//! one needing request signing, a token exchange, a non-streaming wire or a
-//! loopback host, is refused at admission rather than dialled wrong.
+//! provider is a reviewed line of JSON rather than code (RULE CFG). Each entry
+//! maps a name to a wire this runner speaks and the base URL its vendor
+//! serves. A name it leaves out, such as one needing request signing, a token
+//! exchange, a non-streaming wire or a loopback host, is refused at admission
+//! rather than dialled wrong.
 //!
 //! An entry may name the rig dialect its vendor speaks, for the vendor's quirks:
 //! its chat path, the fields it rejects, how it hands reasoning back. The base
@@ -18,10 +18,9 @@
 //! taken only as `https` with a host, and the transport follows no redirect,
 //! so a turn reaches that host and no other. rig appends `/chat/completions`
 //! to the base it is given, so a URL already ending there is trimmed back to
-//! its base, as the Zig runner did, and a bare host gets `/v1`, where vLLM,
-//! llama.cpp and LM Studio serve, as `IronClaw` does
-//! (`ironclaw_llm/src/lib.rs`, `normalize_openai_base_url`). Any other path is
-//! dialled as written.
+//! its base, and a bare host gets `/v1`, where vLLM, llama.cpp and LM Studio
+//! serve, as `IronClaw` does (`ironclaw_llm/src/lib.rs`,
+//! `normalize_openai_base_url`). Any other path is dialled as written.
 
 use std::collections::HashMap;
 use std::net::IpAddr;

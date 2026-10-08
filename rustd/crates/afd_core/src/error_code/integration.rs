@@ -17,40 +17,36 @@ use super::ErrorCode;
 
 /// The workspace has connected no integration under the requested name.
 ///
-/// `ERR_CRED_INTEGRATION_NOT_CONNECTED` (`error_registry.zig:228`). A 404, and
-/// the answer for BOTH "the vault holds no handle" and "the handle names a
-/// connector this daemon does not carry" — a runner acts identically on either,
-/// and telling them apart would make the mint an oracle for which connectors a
-/// deployment ships.
+/// A 404, and the answer for BOTH "the vault holds no handle" and "the handle
+/// names a connector this daemon does not carry" — a runner acts identically on
+/// either, and telling them apart would make the mint an oracle for which
+/// connectors a deployment ships.
 pub const CRED_INTEGRATION_NOT_CONNECTED: ErrorCode = ErrorCode::declare("UZ-CRED-001");
 
 /// This deployment has no credential broker wired.
 ///
-/// `ERR_CRED_BROKER_NOT_CONFIGURED` (`error_registry.zig:229`). A 503, and an
-/// OPERATOR's fault rather than a tenant's: the broker is a boot-wired
-/// singleton, so its absence is a deployment that was never set up to mint.
+/// A 503, and an OPERATOR's fault rather than a tenant's: the broker is a
+/// boot-wired singleton, so its absence is a deployment that was never set up
+/// to mint.
 pub const CRED_BROKER_NOT_CONFIGURED: ErrorCode = ErrorCode::declare("UZ-CRED-002");
 
 /// A self-managed selection named no credential to dial with.
 ///
-/// `ERR_PROVIDER_SECRET_REF_REQUIRED` (`error_registry.zig:127`). The first
-/// rung of the write ladder: a tenant asking to bring its own key has to say
-/// which one, and the mode is meaningless without it.
+/// The first rung of the write ladder: a tenant asking to bring its own key has
+/// to say which one, and the mode is meaningless without it.
 pub const PROVIDER_SECRET_REF_REQUIRED: ErrorCode = ErrorCode::declare("UZ-PROVIDER-001");
 
 /// The credential a self-managed selection named does not exist.
 ///
-/// `ERR_PROVIDER_SECRET_NOT_FOUND` (`error_registry.zig:128`). Distinct from
-/// the rung above because the tenant DID answer: the name is simply not one of
-/// this workspace's, and telling it apart from silence is what makes the
-/// refusal actionable.
+/// Distinct from the rung above because the tenant DID answer: the name is
+/// simply not one of this workspace's, and telling it apart from silence is
+/// what makes the refusal actionable.
 pub const PROVIDER_SECRET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-PROVIDER-002");
 
 /// The stored credential is not shaped like a provider key.
 ///
-/// `ERR_PROVIDER_SECRET_DATA_MALFORMED` (`error_registry.zig:129`). The row
-/// opened and its contents did not parse. It carries no detail about WHAT did
-/// not parse, deliberately — the value is a credential.
+/// The row opened and its contents did not parse. It carries no detail about
+/// WHAT did not parse, deliberately — the value is a credential.
 pub const PROVIDER_SECRET_DATA_MALFORMED: ErrorCode = ErrorCode::declare("UZ-PROVIDER-003");
 
 /// The selected provider/model pair has no priced catalogue row.
@@ -70,15 +66,13 @@ pub const PROVIDER_MODEL_EXISTS: ErrorCode = ErrorCode::declare("UZ-PROVIDER-008
 
 /// No platform key is configured for the active default.
 ///
-/// `ERR_PROVIDER_PLATFORM_KEY_MISSING` (`error_registry.zig:135`). An
-/// operator's fault, not a tenant's: the platform default is a deployment-wide
-/// row and a tenant riding it cannot supply what is missing.
+/// An operator's fault, not a tenant's: the platform default is a
+/// deployment-wide row and a tenant riding it cannot supply what is missing.
 pub const PROVIDER_PLATFORM_KEY_MISSING: ErrorCode = ErrorCode::declare("UZ-PROVIDER-009");
 
 /// The tenant has no primary workspace to resolve a credential against.
 ///
-/// `ERR_TENANT_NO_PRIMARY_WORKSPACE` (`error_registry.zig:136`). A
-/// self-managed key lives in a workspace's vault, so a tenant without one has
+/// A self-managed key lives in a workspace's vault, so a tenant without one has
 /// nowhere for the key to be.
 pub const TENANT_NO_PRIMARY_WORKSPACE: ErrorCode = ErrorCode::declare("UZ-PROVIDER-010");
 
@@ -93,117 +87,106 @@ pub const PROVIDER_SOURCE_WORKSPACE_NOT_FOUND: ErrorCode = ErrorCode::declare("U
 
 /// The entry a tenant asked to remove is the one currently selected.
 ///
-/// `ERR_MODELS_DELETE_ACTIVE` (`error_registry.zig:138`). Refused rather than
-/// cascaded: dropping the active entry would leave the selection pointing at
-/// nothing, and choosing a replacement is the tenant's call.
+/// Refused rather than cascaded: dropping the active entry would leave the
+/// selection pointing at nothing, and choosing a replacement is the tenant's
+/// call.
 pub const MODELS_DELETE_ACTIVE: ErrorCode = ErrorCode::declare("UZ-MODELS-001");
 
 /// The credential a registry entry named does not exist.
 ///
-/// `ERR_MODELS_SECRET_NOT_FOUND` (`error_registry.zig:139`). The same fact as
-/// `PROVIDER_SECRET_NOT_FOUND` on a different surface, and kept apart because
-/// the two answer different requests with different repairs.
+/// The same fact as `PROVIDER_SECRET_NOT_FOUND` on a different surface, and
+/// kept apart because the two answer different requests with different repairs.
 pub const MODELS_SECRET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MODELS-002");
 
 /// The tenant already registered this model against this credential.
-///
-/// `ERR_MODELS_DUPLICATE_ENTRY` (`error_registry.zig:140`).
 pub const MODELS_DUPLICATE_ENTRY: ErrorCode = ErrorCode::declare("UZ-MODELS-003");
 
 /// No registry entry has the requested identifier.
-///
-/// `ERR_MODELS_ENTRY_NOT_FOUND` (`error_registry.zig:141`).
 pub const MODELS_ENTRY_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MODELS-004");
 
 /// The GitHub App installation is gone.
 ///
-/// `ERR_GH_RECONNECT_REQUIRED` (`error_registry.zig:230`). Uninstalled or
-/// revoked, so no token can be minted from it. A HUMAN's remedy — no amount of
-/// retrying reconnects an App somebody removed — which is why it is its own
-/// code rather than a mint failure.
+/// Uninstalled or revoked, so no token can be minted from it. A HUMAN's remedy
+/// — no amount of retrying reconnects an App somebody removed — which is why it
+/// is its own code rather than a mint failure.
 pub const GH_RECONNECT_REQUIRED: ErrorCode = ErrorCode::declare("UZ-GH-001");
 
 /// GitHub did not return an installation token this daemon would hand over.
 ///
-/// `ERR_GH_MINT_FAILED` (`error_registry.zig:231`). One code for both retry
-/// classes, deliberately: the runner reacts the same way to a vendor outage and
-/// to a malformed exchange, and the class is the broker's own concern. It also
-/// answers a token that came back reaching FURTHER than the fleet declared —
-/// the exchange worked, the credential was discarded, and a runner cannot be
-/// told the difference without being told what it nearly received.
+/// One code for both retry classes, deliberately: the runner reacts the same
+/// way to a vendor outage and to a malformed exchange, and the class is the
+/// broker's own concern. It also answers a token that came back reaching
+/// FURTHER than the fleet declared — the exchange worked, the credential was
+/// discarded, and a runner cannot be told the difference without being told
+/// what it nearly received.
 pub const GH_MINT_FAILED: ErrorCode = ErrorCode::declare("UZ-GH-002");
 
 /// The fleet holds no approved grant for the integration it asked to mint.
 ///
-/// `ERR_GRANT_NOT_FOUND` (`error_registry.zig:195`). Absent, pending and
-/// revoked all answer this: only an approved standing decision admits anything,
-/// and a caller able to tell them apart would treat pending as a maybe.
+/// Absent, pending and revoked all answer this: only an approved standing
+/// decision admits anything, and a caller able to tell them apart would treat
+/// pending as a maybe.
 pub const GRANT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-GRANT-001");
 
 /// The revoke addressed a grant this fleet does not hold.
 ///
-/// `ERR_GRANT_REVOKE_NOT_FOUND` (`error_registry.zig:196`). A 404 where
-/// [`GRANT_NOT_FOUND`] is a 403, and the difference is who is being refused:
-/// that one tells a RUNNER its mint is ungranted, this tells an OPERATOR the
-/// row they aimed at is not there. "Already revoked" answers the same code on
-/// purpose — the revoke is idempotent in intent and the grant is not usable
-/// either way, so telling the two apart would only invite a caller to retry.
+/// A 404 where [`GRANT_NOT_FOUND`] is a 403, and the difference is who is being
+/// refused: that one tells a RUNNER its mint is ungranted, this tells an
+/// OPERATOR the row they aimed at is not there. "Already revoked" answers the
+/// same code on purpose — the revoke is idempotent in intent and the grant is
+/// not usable either way, so telling the two apart would only invite a caller
+/// to retry.
 pub const GRANT_REVOKE_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-GRANT-002");
 
 /// A connector's OAuth exchange was rejected.
 ///
-/// `ERR_CONNECTOR_OAUTH_EXCHANGE_FAILED` (`error_registry.zig:239`). The
-/// refresh-grant connectors' answer to BOTH a dead refresh token and a failed
-/// exchange, where GitHub has two codes for the same pair. That asymmetry is
-/// the Zig's and is kept: a Zoho failure must never tell a runner to reconnect
-/// a GitHub App, and the shared connector code is what stops it.
+/// The refresh-grant connectors' answer to BOTH a dead refresh token and a
+/// failed exchange, where GitHub has two codes for the same pair. That
+/// asymmetry is deliberate: a Zoho failure must never tell a runner to
+/// reconnect a GitHub App, and the shared connector code is what stops it.
 pub const CONNECTOR_OAUTH_EXCHANGE_FAILED: ErrorCode = ErrorCode::declare("UZ-CONN-006");
 
 /// No operator has configured this deployment's app for the provider.
 ///
-/// `ERR_CONNECTOR_NOT_CONFIGURED` (`error_registry.zig:233`). A 503, and an
-/// OPERATOR's fault rather than a tenant's: the `<provider>-app` bag holds one
-/// OAuth app serving every workspace, so its absence is a deployment that was
-/// never set up to connect that provider. Nothing a person clicking Connect
-/// can do changes it, which is why it is not a 4xx.
+/// A 503, and an OPERATOR's fault rather than a tenant's: the `<provider>-app`
+/// bag holds one OAuth app serving every workspace, so its absence is a
+/// deployment that was never set up to connect that provider. Nothing a person
+/// clicking Connect can do changes it, which is why it is not a 4xx.
 pub const CONNECTOR_NOT_CONFIGURED: ErrorCode = ErrorCode::declare("UZ-CONN-001");
 
 /// The connect callback's state was missing, forged, expired, or already used.
 ///
-/// `ERR_CONNECTOR_STATE_INVALID` (`error_registry.zig:234`). ONE code for all
-/// four, deliberately: a caller able to tell a forged state from a spent one
-/// learns which check they got past, and every one of them has the same remedy
-/// — start the connect again. The reason is in the operator's log instead, where
-/// `afd_connector::state::Rejected` names it.
+/// ONE code for all four, deliberately: a caller able to tell a forged state
+/// from a spent one learns which check they got past, and every one of them has
+/// the same remedy — start the connect again. The reason is in the operator's
+/// log instead, where `afd_connector::state::Rejected` names it.
 pub const CONNECTOR_STATE_INVALID: ErrorCode = ErrorCode::declare("UZ-CONN-002");
 
 /// An outbound provider call timed out, or the provider was unreachable.
 ///
-/// `ERR_CONNECTOR_VENDOR_DEADLINE` (`error_registry.zig:235`). Distinct from
-/// [`CONNECTOR_OAUTH_EXCHANGE_FAILED`] beside it, and the difference is what a
-/// person does next (RULE ECL): nothing was spent here, so the same connect
-/// retried in a moment can still succeed, where a refused exchange has burned
-/// its authorization code and must be started again.
+/// Distinct from [`CONNECTOR_OAUTH_EXCHANGE_FAILED`] beside it, and the
+/// difference is what a person does next (RULE ECL): nothing was spent here, so
+/// the same connect retried in a moment can still succeed, where a refused
+/// exchange has burned its authorization code and must be started again.
 pub const CONNECTOR_VENDOR_DEADLINE: ErrorCode = ErrorCode::declare("UZ-CONN-003");
 
 /// The path named a provider this daemon ships no App ingress for.
 ///
-/// `ERR_CONNECTOR_UNKNOWN` (`error_registry.zig:236`). A refusal rather than a
-/// dropped delivery, unlike the rest of the App ingress family: every other
-/// non-acceptance there is a correctly-addressed delivery this daemon chose not
-/// to act on, and this one is addressed to nothing at all. Nobody is retrying
-/// it into existence, so there is no retry loop to protect.
+/// A refusal rather than a dropped delivery, unlike the rest of the App ingress
+/// family: every other non-acceptance there is a correctly-addressed delivery
+/// this daemon chose not to act on, and this one is addressed to nothing at
+/// all. Nobody is retrying it into existence, so there is no retry loop to
+/// protect.
 pub const CONNECTOR_UNKNOWN: ErrorCode = ErrorCode::declare("UZ-CONN-004");
 
 /// A GitHub installation could not be proven to belong to the person connecting.
 ///
-/// `ERR_CONNECTOR_INSTALLATION_OWNERSHIP` (`error_registry.zig:241`). A 403 on
-/// the callback, and the whole GitHub archetype turns on it: a user
+/// A 403 on the callback, and the whole GitHub archetype turns on it: a user
 /// authorization proves the PERSON, and this is what refuses to bind an
-/// installation that person cannot reach — none listed, more than one listed
-/// so that choosing would be guessing an organisation, a claimed id the token
-/// does not open, or an installation another workspace already routes. Nothing
-/// is sealed or routed on this answer.
+/// installation that person cannot reach — none listed, more than one listed so
+/// that choosing would be guessing an organisation, a claimed id the token does
+/// not open, or an installation another workspace already routes. Nothing is
+/// sealed or routed on this answer.
 pub const CONNECTOR_INSTALLATION_OWNERSHIP: ErrorCode = ErrorCode::declare("UZ-CONN-008");
 
 /// A GitHub installation listing was refused by the vendor.
@@ -224,21 +207,18 @@ pub const CONNECTOR_INSTALLATION_LISTING_FAILED: ErrorCode = ErrorCode::declare(
 
 /// No human approved a repository-write gate for this event.
 ///
-/// `ERR_REPAIR_WRITE_UNAPPROVED` (`error_registry.zig:199`). The run is not
-/// refused — it continues read-only — so this is a refusal of the TOKEN and not
-/// of the work.
+/// The run is not refused — it continues read-only — so this is a refusal of
+/// the TOKEN and not of the work.
 pub const REPAIR_WRITE_UNAPPROVED: ErrorCode = ErrorCode::declare("UZ-REPAIR-010");
 
 /// The fleet's declared reach no longer matches the approved card.
 ///
-/// `ERR_REPAIR_BINDING_DRIFT` (`error_registry.zig:200`). Its own code rather
-/// than an unapproved gate, because the remedy differs: an approval exists and
-/// a human must be shown the reach the fleet declares NOW.
+/// Its own code rather than an unapproved gate, because the remedy differs: an
+/// approval exists and a human must be shown the reach the fleet declares NOW.
 pub const REPAIR_BINDING_DRIFT: ErrorCode = ErrorCode::declare("UZ-REPAIR-011");
 
 /// The approved write allowance is spent.
 ///
-/// `ERR_REPAIR_SPEND_EXHAUSTED` (`error_registry.zig:202`). The one refusal in
-/// this group that says the approval was real and was HONOURED — as far as it
-/// went.
+/// The one refusal in this group that says the approval was real and was
+/// HONOURED — as far as it went.
 pub const REPAIR_SPEND_EXHAUSTED: ErrorCode = ErrorCode::declare("UZ-REPAIR-013");

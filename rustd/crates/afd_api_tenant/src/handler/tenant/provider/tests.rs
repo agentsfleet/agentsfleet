@@ -119,10 +119,9 @@ fn should_compose_a_tenant_without_a_row_from_the_live_default() {
 
 /// Nothing configured anywhere is an empty view, never a 404.
 ///
-/// The Zig serves empty strings here and this matches it deliberately: a client
-/// that got a 404 would have to tell "this deployment has no default" apart
-/// from "this route is gone", and the Models page renders the empty names as
-/// its "not configured" state.
+/// Empty strings, deliberately: a client that got a 404 would have to tell
+/// "this deployment has no default" apart from "this route is gone", and the
+/// Models page renders the empty names as its "not configured" state.
 #[test]
 fn should_render_the_empty_view_when_nothing_is_configured_anywhere() {
     let view = empty_view();

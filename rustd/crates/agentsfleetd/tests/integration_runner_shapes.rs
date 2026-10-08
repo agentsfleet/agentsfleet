@@ -1,5 +1,4 @@
-//! Dimension 7.2 — the ported statements fill the columns they were written
-//! to fill.
+//! Dimension 7.2 — the statements fill the columns they were written to fill.
 //!
 //! A binary of its own, beside `integration_runner_e2e.rs` (RULE FLL, split by
 //! concern): that suite asserts a SEQUENCE — the loop a runner walks — while
@@ -8,13 +7,10 @@
 //! sets and a request loop, which is two subjects and one place to look for
 //! both.
 //!
-//! # What this replaces
+//! # What this proves
 //!
-//! §7 records the trade: M175 §6 deleted the Zig integration lanes, so no second
-//! daemon exists to diff rows against. This is the weaker claim that stands in
-//! its place — not "these rows equal the Zig's", which nothing can check any
-//! more, but "these rows carry every column the ported statement was written to
-//! fill". A port that drops a column from an `INSERT` list still compiles, still
+//! Every row carries every column its statement was written to fill. A
+//! statement that drops a column from an `INSERT` list still compiles, still
 //! returns `Ok`, and still passes every behavioural assertion that reads some
 //! OTHER column. This is the test that does not.
 //!

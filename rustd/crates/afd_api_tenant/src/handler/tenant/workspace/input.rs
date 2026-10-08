@@ -16,8 +16,8 @@ pub const DETAIL_MALFORMED_QUERY: &str = "Malformed query string";
 
 /// The refusal a `limit` outside `1..=100` — or not a number — earns.
 ///
-/// ONE sentence for both, where the charges walk spells two: each is its Zig
-/// handler's own vocabulary, kept apart on purpose.
+/// ONE sentence for both, where the charges walk spells two: each surface keeps
+/// its own published vocabulary, apart on purpose.
 pub const DETAIL_INVALID_LIMIT: &str = "Limit must be between 1 and 100";
 
 /// The refusal a `starting_after` this daemon never issued earns.
@@ -45,10 +45,10 @@ struct NameFilter<'q> {
 }
 
 /// The page size the caller asked for, or the one refusal any wrong spelling
-/// earns — `tenant_workspaces.zig` does not say which way a limit was wrong.
+/// earns — the directory does not say which way a limit was wrong.
 ///
 /// The bound is the shared keyset one, [`CEILING`]; the charges walk allows
-/// two hundred, its own Zig handler's number.
+/// two hundred, `afd_billing::tenant::CHARGES_LIMIT_MAX`.
 pub(super) fn requested_limit(raw: Option<&str>) -> Result<u32, Refusal> {
     Limit::parse(raw, CEILING).map_err(|_break| Refusal::malformed(DETAIL_INVALID_LIMIT))
 }

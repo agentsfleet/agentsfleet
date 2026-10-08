@@ -330,16 +330,14 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// A method on the plane rather than a value a handler reads from the
     /// request, and that is the whole point: a credential and the deployment
     /// that minted it are ONE fact, so a client-asserted `Host` header would
-    /// let the two disagree. `serve_broker.zig` and `runtime_loader.zig` read
-    /// the same knob for the same reason.
+    /// let the two disagree.
     fn deployment(&self) -> &str;
 
     /// The instant this request's writes are stamped with.
     ///
     /// Read ONCE per verb and threaded through it, so every row one request
-    /// writes carries the same instant — the property `heartbeat.zig` loses by
-    /// calling `clock.nowMillis()` separately in each of its four writes, which
-    /// leaves a beat's liveness stamp a millisecond or two after its own
-    /// transition event.
+    /// writes carries the same instant. Reading the clock again for each write
+    /// would leave, say, a heartbeat's liveness stamp a millisecond or two
+    /// after its own transition event.
     fn now(&self) -> UnixMillis;
 }

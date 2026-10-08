@@ -228,8 +228,8 @@ pub(crate) async fn purge<D: Services>(
 
 /// `POST …/schedules/{schedule_id}/sync`.
 ///
-/// `/sync` rather than the Zig's `:sync` — a published-surface divergence the
-/// router forces, argued at [`crate::route::FleetRoute::ScheduleSync`].
+/// `/sync` rather than a `:sync` verb suffix — the router forces the segment,
+/// argued at [`crate::route::FleetRoute::ScheduleSync`].
 ///
 /// # Errors
 /// As [`patch`].

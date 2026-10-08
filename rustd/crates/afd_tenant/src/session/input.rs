@@ -2,11 +2,11 @@
 //!
 //! # Parse, don't validate — and why that matters HERE specifically
 //!
-//! The Zig store validates inside the write: `approve` checks four lengths and
-//! a digit run at the top of the function that then issues the `EVAL`, so the
-//! only thing standing between an unbounded caller-supplied blob and a Dragonfly
-//! key is that those five `if`s were remembered. Add a sixth field later and
-//! nothing fails until somebody parks a megabyte in the queue.
+//! A store that validates inside the write — four length checks and a digit
+//! run at the top of the function that then issues the `EVAL` — leaves only
+//! those five remembered `if`s between an unbounded caller-supplied blob and a
+//! Dragonfly key. Add a sixth field later and nothing fails until somebody
+//! parks a megabyte in the queue.
 //!
 //! Here the bound is the TYPE. [`Sessions::approve`](super::Sessions::approve)
 //! takes an [`Approval`], and an `Approval` can only be built out of a request
@@ -108,10 +108,8 @@ struct OpenSent<'a> {
     public_key: &'a str,
     /// Printable ASCII is the DOCUMENTED rule — `UZ-AUTH-017`'s registry entry
     /// says "1 to 64 characters from space through tilde", and the public
-    /// specification is the parity oracle this port grades against. The Zig
-    /// store bounds the length only, so a label carrying a newline is accepted
-    /// there and refused here; that divergence is recorded in the milestone's
-    /// Discovery log rather than left for a reader to find.
+    /// specification is what a client reads. A length-only bound would accept
+    /// a label carrying a newline; the charset check refuses it.
     #[garde(length(bytes, min = 1, max = TOKEN_NAME_MAX), custom(charset(is_label_char)))]
     token_name: &'a str,
 }

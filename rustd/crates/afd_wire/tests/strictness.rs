@@ -91,11 +91,11 @@ fn should_reject_an_unknown_enum_value() {
     let _ = serde_json::from_str::<AssignedPolicy<'_>>(ok).unwrap();
 }
 
-/// The round-trip proves ENCODING parity but cannot prove integer WIDTH parity
-/// in the widening direction: any value the Zig side emits fits a wider Rust
-/// type and re-serializes identically, so a `u32` mistyped as `u64` round-trips
-/// clean. This pins the declared widths directly — a value one past the maximum
-/// must be refused, which fails the moment a field is widened.
+/// The round-trip proves the ENCODING but cannot prove an integer's WIDTH in
+/// the widening direction: any in-range value fits a wider Rust type and
+/// re-serializes identically, so a `u32` mistyped as `u64` round-trips clean.
+/// This pins the declared widths directly — a value one past the maximum must
+/// be refused, which fails the moment a field is widened.
 #[test]
 fn should_refuse_values_past_each_declared_integer_width() {
     // u32 — the cumulative token counters on renewal.
@@ -116,9 +116,9 @@ fn should_refuse_values_past_each_declared_integer_width() {
     let _ = serde_json::from_str::<RenewRequest>(negative).unwrap_err();
 }
 
-/// A required field left out is an error, not a default. Zig's wire structs
-/// default only the fields explicitly marked defaulted, and a Rust type that
-/// silently substituted `0` or `""` would accept payloads the daemon refuses.
+/// A required field left out is an error, not a default. Only the fields
+/// marked `#[serde(default)]` may be absent, and a type that silently
+/// substituted `0` or `""` would accept payloads the daemon refuses.
 #[test]
 fn should_reject_a_payload_missing_a_required_field() {
     let err = serde_json::from_str::<ReportRequest<'_>>(r#"{"lease_id":"a"}"#).unwrap_err();

@@ -6,10 +6,9 @@
 //! nullable and the identifier is the key. It needs one to be TALKED about: a
 //! person picking from a list, a support conversation, a log line somebody is
 //! reading at two in the morning. Making the caller supply one turns "create me
-//! a workspace" into a naming decision they did not ask to make, and the Zig
-//! daemon's `POST /v1/workspaces` refuses a blank name with a 400 for exactly
-//! that non-reason. Signup bootstrap, meanwhile, generates one — the same
-//! product answering the same question two ways.
+//! a workspace" into a naming decision they did not ask to make. Signup
+//! bootstrap generates one, so `POST /v1/workspaces` does too for a blank name
+//! — the same product answering the same question one way.
 //!
 //! # Where the words come from
 //!
@@ -44,8 +43,7 @@ const SEPARATOR: char = '-';
 /// the way a person counts "128 characters", not the way UTF-8 spends bytes.
 const MAX_NAME_CODEPOINTS: usize = 128;
 
-/// The ASCII whitespace a name's ends lose before any rule runs —
-/// `lifecycle.zig`'s trim set.
+/// The ASCII whitespace a name's ends lose before any rule runs.
 const TRIMMED: &[char] = &[' ', '\t', '\x0b', '\x0c', '\r', '\n'];
 
 /// A workspace name the caller chose, already past every rule.
@@ -61,16 +59,13 @@ impl Chosen {
     ///
     /// `Ok(Some)` is a name to store; `Ok(None)` says the caller chose
     /// nothing — absent, empty once trimmed, or whitespace however spelled —
-    /// and the create generates one instead. That third outcome is this port's
-    /// declared divergence from `lifecycle.zig`, which answers a 400 for it;
-    /// the spec's Discovery log carries the approval.
+    /// and the create generates one instead, rather than answering a 400.
     ///
     /// # Errors
     /// Refuses a name carrying a control character, a bidirectional override,
     /// or a line separator — each of which lets a name lie about itself in a
-    /// list — and one past the code-point cap. The checks run in
-    /// `lifecycle.zig`'s order, so a long name with a forbidden character is
-    /// refused for the character on both daemons.
+    /// list — and one past the code-point cap. The character check runs first,
+    /// so a long name with a forbidden character is refused for the character.
     pub fn parse(raw: &str) -> Result<Option<Self>> {
         let trimmed = raw.trim_matches(TRIMMED);
         if trimmed.chars().any(is_forbidden) {
@@ -105,9 +100,9 @@ struct Trimmed<'a> {
 
 /// A code point no stored name may carry.
 ///
-/// `lifecycle.zig`'s table: the C0 and C1 controls, the Arabic letter mark,
-/// the directional marks, the Unicode line and paragraph separators, the
-/// bidirectional embeddings and overrides, and the bidirectional isolates.
+/// The C0 and C1 controls, the Arabic letter mark, the directional marks, the
+/// Unicode line and paragraph separators, the bidirectional embeddings and
+/// overrides, and the bidirectional isolates.
 const fn is_forbidden(codepoint: char) -> bool {
     matches!(codepoint,
         '\u{0000}'..='\u{001f}'
@@ -121,9 +116,8 @@ const fn is_forbidden(codepoint: char) -> bool {
 
 /// A code point that is whitespace without being ASCII whitespace.
 ///
-/// `lifecycle.zig`'s set, minus `U+0085`: that one sits inside the C1 control
-/// range, so the forbidden check above decides it first on both daemons and a
-/// row here could never fire.
+/// `U+0085` is absent on purpose: it sits inside the C1 control range, so the
+/// forbidden check above decides it first and a row here could never fire.
 const fn is_unicode_whitespace(codepoint: char) -> bool {
     matches!(
         codepoint,

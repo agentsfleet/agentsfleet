@@ -9,9 +9,8 @@
 //! request somewhere admission never saw), sends HTTPS only, gives up after a
 //! fixed time, and reads at most [`RESPONSE_MAX_BYTES`] of a response.
 //!
-//! This is where the runner departs from `NullClaw` on purpose: `NullClaw` lets
-//! an allowlisted host resolve to a private address, and a runner serving many
-//! tenants on one host does not.
+//! The refusal holds for an allowlisted host too: a runner serves many tenants
+//! on one host, so an allowlist entry never grants a private address.
 
 use std::error::Error as StdError;
 use std::net::SocketAddr;

@@ -1,8 +1,7 @@
 //! The statement a recorded gate's durable answer is read through.
 //!
-//! Copied from `fleet_runtime/sql.zig`. One statement here today because one is
-//! what the lease path reads: the gate ROW is written by the park, and the
-//! resolve is the tenant plane's.
+//! The lease path reads one statement here, [`SELECT_GATE_STATUS`]: the gate
+//! ROW is written by the park, and the resolve is the tenant plane's.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -26,11 +25,9 @@ ORDER BY created_at DESC LIMIT 1";
 /// Raise one approval gate, in the `pending` state a human answers out of,
 /// and answer how many of the fleet's gates now wait — this one included.
 ///
-/// The insert is `fleet_runtime/sql.zig`'s `INSERT_GATE`, with the `::uuid`
-/// and `::text` casts every other statement in this crate carries: the Zig
-/// driver sends an untyped parameter and lets Postgres infer, sqlx binds
-/// `&str` as `text`, and `id`/`fleet_id`/`workspace_id` are `UUID` columns.
-/// Column list, column order and the two literal `''` columns are unchanged.
+/// The `::uuid` casts are the ones every other statement in this crate
+/// carries: sqlx binds `&str` as `text`, and `id`/`fleet_id`/`workspace_id`
+/// are `UUID` columns.
 ///
 /// `resolved_by` and `detail` are literal `''` rather than binds because a
 /// pending gate has no resolver and no resolution note — [`RESOLVE_GATE`]'s
@@ -70,9 +67,9 @@ SELECT COUNT(*) FROM (
 /// Stop a fleet, so nothing else of its work is admitted.
 ///
 /// Written by the two auto-kill paths — a tripped anomaly rule and an
-/// `auto_kill` gate rule — and by nothing else in this crate. Inline in
-/// `fleet/approval_gate.zig`'s `pauseFleet`; collected here because RULE SQLMOD
-/// is what makes the verbatim-SQL parity review possible at all.
+/// `auto_kill` gate rule — and by nothing else in this crate. Kept here with
+/// the crate's other statements, per RULE SQLMOD, so every statement it runs
+/// can be reviewed in one file.
 ///
 /// `$1` now, `$2` fleet.
 pub const PAUSE_FLEET: &str = "\

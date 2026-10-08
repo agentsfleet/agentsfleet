@@ -98,10 +98,10 @@ fn resolve_with(
 
 /// The S3 client, pointed at an R2 account endpoint.
 ///
-/// Region and addressing style are FIXED rather than configured, and `r2.zig`
-/// fixes the same two: R2 labels every region `auto` for AWS Signature V4, and an account
-/// endpoint addresses the bucket in the path. Exposing either as a knob would
-/// be exposing a value that has exactly one correct setting.
+/// Region and addressing style are FIXED rather than configured: R2 labels
+/// every region `auto` for AWS Signature V4, and an account endpoint addresses
+/// the bucket in the path. Exposing either as a knob would be exposing a value
+/// that has exactly one correct setting.
 fn build(config: &BundleStoreConfig) -> object_store::Result<object_store::aws::AmazonS3> {
     AmazonS3Builder::new()
         .with_endpoint(config.endpoint())

@@ -77,12 +77,11 @@ impl Leases {
         let streams = self.streams();
         let mut payloads = Vec::with_capacity(frames.len());
         for frame in frames {
-            // `args_redacted` arrives as a STRING holding JSON, and the Zig
-            // parses it into a `std.json.Value` purely to splice it back out
-            // again — a whole tree built and dropped per tool call, because Zig
-            // has no way to say "these bytes are already JSON". `RawValue` says
-            // exactly that: it validates the syntax and keeps the bytes, so the
-            // frame is checked without ever being materialised.
+            // `args_redacted` arrives as a STRING holding JSON. Parsing it into
+            // a tree only to splice it back out would build and drop a whole
+            // value per tool call. `RawValue` says "these bytes are already
+            // JSON": it validates the syntax and keeps the bytes, so the frame
+            // is checked without ever being materialised.
             let owned;
             let published = match Published::of(target, frame) {
                 Ok(value) => {
@@ -187,8 +186,9 @@ impl crate::lease::pull::Plane {
     }
 }
 
-/// The first chunk carries the Zig duration once; all later chunks carry none.
-/// Rust wall times come from the same clock and are skipped if it moved back.
+/// The first chunk carries the runner's agent-relative duration once; all later
+/// chunks carry none. The two daemon-side samples come from one clock read and
+/// are skipped if the clock moved back.
 fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
     if !target.timing_eligible {
         return;

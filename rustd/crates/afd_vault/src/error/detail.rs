@@ -1,18 +1,16 @@
 //! The sentence each refusal tells a caller, named so a suite can assert one
 //! without respelling it.
 //!
-//! Every string is byte-identical to the `MSG_*` constant in
-//! `errors/error_registry.zig` it mirrors. A client may hold either daemon's
-//! answer mid-cutover and the command-line tool matches on some of them, so the
-//! bytes are a wire fact rather than prose this crate is free to improve.
+//! The command-line tool matches on some of these sentences, so the bytes are
+//! a wire fact rather than prose this crate is free to improve.
 
-/// `problem_response.zig`'s `internalDbUnavailable` detail.
+/// The sentence for a datastore that cannot be reached, shared by every plane.
 pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 
-/// `problem_response.zig`'s `internalDbError` detail.
+/// The sentence for a statement that reached the datastore and would not run.
 pub use afd_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
-/// `problem_response.zig`'s `internalOperationError` detail for a sealed row.
+/// The sentence for an internal failure on a sealed row.
 ///
 /// A seal that would not produce an envelope and an envelope that would not
 /// open answer the same sentence, because which of them failed is an oracle —
@@ -36,8 +34,7 @@ pub const NAME_TAKEN: &str = "a secret with this name already exists in this wor
 
 /// The count-free form of the still-referenced refusal.
 ///
-/// `secrets.zig` formats the count into its sentence and falls back to this
-/// wording when the allocation fails. Here it is what [`super::Error::detail`]
-/// answers — a `&'static str` by the edge's own contract — while the counted
-/// form is rendered by the delete handler from [`super::Error::referenced_by`].
+/// This is what [`super::Error::detail`] answers — a `&'static str` by the
+/// edge's own contract — while the counted form is rendered by the delete
+/// handler from [`super::Error::referenced_by`].
 pub const STILL_REFERENCED: &str = "Secret is referenced by model registry entries";

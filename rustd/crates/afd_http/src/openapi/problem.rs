@@ -14,9 +14,9 @@
 //! # This describes the wire, not the writer
 //!
 //! Nothing here is constructed at runtime. [`crate::envelope::ProblemResponse`]
-//! builds the body it sends as a map, in the field order the Zig envelope
-//! wrote; this type is what the document says about that body, and the
-//! substrate suite holds the two to the same field set.
+//! builds the body it sends as a map, in a fixed field order; this type is
+//! what the document says about that body, and the substrate suite holds the
+//! two to the same field set.
 
 use utoipa::ToSchema;
 

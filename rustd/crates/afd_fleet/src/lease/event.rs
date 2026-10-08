@@ -16,12 +16,11 @@
 //!
 //! # Why the caller is not `issue`
 //!
-//! In the Zig daemon this write opens `runBilling`, ahead of the balance and
-//! approval gates, because a gate refusal has to have a row to mark
-//! `gate_blocked`. Porting it into the issue step instead would move it AFTER
-//! those gates and leave a refused event with nothing to record its refusal
-//! on. So it stays a verb of its own, and the gate pass calls it first — the
-//! same position it holds upstream.
+//! This write opens the pass in `pull.rs`, ahead of the balance and approval
+//! gates, because a gate refusal has to have a row to mark `gate_blocked`.
+//! Folded into the issue step it would run AFTER those gates and leave a
+//! refused event with nothing to record its refusal on. So it stays a verb of
+//! its own, and the gate pass calls it first.
 
 use afd_core::clock::UnixMillis;
 

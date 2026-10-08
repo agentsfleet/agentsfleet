@@ -9,12 +9,11 @@
 //! | [`Stated`] | the daemon and the workspace | fact |
 //! | [`Claim`](super::Claim) | a language model | an attributed claim |
 //!
-//! `approval_gate_detail.zig` holds both in ONE flat struct and keeps them
-//! apart with a comment plus a naming convention. That holds exactly as long as
-//! every future reader honours it — and the renderer is a different file, in a
-//! different milestone, written by someone who did not read this one. Here they
-//! are separate types a renderer receives separately, so attributing the
-//! model's half is not a discipline it can forget.
+//! One flat struct kept apart by a comment and a naming convention would hold
+//! exactly as long as every future reader honours it — and the renderer is a
+//! different file, in a different milestone, written by someone who did not
+//! read this one. So they are separate types a renderer receives separately,
+//! and attributing the model's half is not a discipline it can forget.
 //!
 //! Every field below is either derived by the daemon from the delivery envelope
 //! or authored by whoever configured the fleet. Nothing here passed through a

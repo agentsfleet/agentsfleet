@@ -14,16 +14,10 @@
 //!
 //! # Why this is short
 //!
-//! `fleet_memory.zig` spends a `TierRun` struct with `used`/`head_taken`/
-//! `closed` flags, an `admit` method, and TWO passes over the rows — one to
-//! size the pinned tier and one to replay the identical decisions while
-//! selecting. Its comment has to promise the passes stay "in lockstep by
-//! construction", because nothing checks that two copies of one rule agree.
-//!
 //! "Take entries while the running total fits" is a prefix of a cumulative sum,
 //! which is [`Iterator::scan`] and [`Iterator::take_while`]. Written that way
-//! the flags are gone, the second pass is gone, and the rule appears once, in
-//! [`fits`]. What is left is two counts and a countdown.
+//! the selection carries no state flags and never replays the rule: it appears
+//! once, in [`fits`], and what is left is two counts and a countdown.
 
 use afd_wire::memory::{MemoryDelta, PINNED_CATEGORY};
 
@@ -93,9 +87,8 @@ pub fn prefix_within(sizes: impl Iterator<Item = usize>, budget: usize) -> usize
 
 /// A hydration window: what the run is seeded with, and what stays behind.
 ///
-/// Both halves are owned, so "the dropped set" is a value. The Zig compacts in
-/// place and leaves the slice a permutation whose tail is the dropped set — a
-/// fact its callers depend on and only a comment states.
+/// Both halves are owned, so "the dropped set" is a value a caller reads
+/// directly, with no slice layout to depend on.
 #[derive(Debug)]
 pub struct Window<'a> {
     /// The entries that hydrate, in their original recency order.
@@ -296,9 +289,8 @@ mod tests {
 
     /// Every entry lands in exactly one half, so nothing is lost or duplicated.
     ///
-    /// The invariant the Zig states as a comment about its slice being "a
-    /// permutation of its input". Here it is checkable, because both halves are
-    /// values.
+    /// Together the halves are a permutation of the input, and that is
+    /// checkable because both halves are values.
     #[test]
     fn test_the_two_halves_partition_the_input() {
         let entries = vec![

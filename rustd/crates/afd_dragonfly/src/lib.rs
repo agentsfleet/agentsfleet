@@ -36,15 +36,15 @@
 //! budget refuses the producer, which is a refusal a person can see where a
 //! trim never was.
 //!
-//! # What is shared with the Zig daemon, and why
+//! # What is a data format, and why
 //!
-//! Both binaries read and write the same keys. So the key shapes
+//! Every replica reads and writes the same keys, and every entry already in a
+//! deployed Dragonfly was written under them. So the key shapes
 //! (`fleet:{id}:events`, `fleet:ready`, `auth:session:{id}`), the consumer
-//! group name and the session time-to-live are a DATA FORMAT
-//! and are spelled here exactly as they are there. The atomic session
-//! transition goes further: `session_verify_consume.lua` is included from the
-//! Zig tree byte-for-byte, so the two binaries send the same script rather
-//! than two implementations that agree today.
+//! group name and the session time-to-live are a DATA FORMAT: a rename
+//! strands what is already written. The atomic session transition is a Lua
+//! script included from `src/session/` so that every replica sends the same
+//! bytes rather than two implementations that agree today.
 
 // Same reasoning as the sibling crates: an unused dependency is supply-chain
 // surface and compile time for nothing.

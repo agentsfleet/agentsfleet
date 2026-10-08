@@ -2,24 +2,22 @@
 //!
 //! # The same number, for the opposite reason
 //!
-//! `http/server.zig` sets a 16 KiB header allowance because httpz defaults to
-//! 4 KiB and that was too TIGHT: a session bearer runs past a kilobyte on its
-//! own, every proxy the request crosses appends forwarding and tracing headers,
-//! and the dashboard proxy passes an upstream status through verbatim — so a
-//! refusal born in the daemon surfaced in a browser as a 431 against a request
-//! whose own headers were small.
+//! 16 KiB is a FLOOR because anything tighter refuses real traffic: a session
+//! bearer runs past a kilobyte on its own, every proxy the request crosses
+//! appends forwarding and tracing headers, and the dashboard proxy passes an
+//! upstream status through verbatim — so a refusal born in the daemon surfaces
+//! in a browser as a 431 against a request whose own headers were small.
 //!
-//! hyper has the opposite default. Its connection buffer is ~400 KB, so nothing
-//! legitimate is ever refused — and a client that opens connections and dribbles
-//! header bytes into each one can hold four hundred kilobytes apiece before the
-//! server gives up. At the thousand-odd connections this daemon accepts, that is
-//! hundreds of megabytes of buffer a caller chooses to allocate.
+//! It is also a CEILING, because hyper's default is the other extreme. Its
+//! connection buffer is ~400 KB, so nothing legitimate is ever refused — and a
+//! client that opens connections and dribbles header bytes into each one can
+//! hold four hundred kilobytes apiece before the server gives up. At the
+//! thousand-odd connections this daemon accepts, that is hundreds of megabytes
+//! of buffer a caller chooses to allocate.
 //!
-//! So the port keeps the number and inverts the argument: 16 KiB is a CEILING
-//! here where it was a FLOOR there. It stays the same number because it is the
-//! same fact about the deployment — the Node proxy in front of this server
-//! already tolerates 16 KiB, and a server should be neither the tightest limit
-//! in a chain nor unbounded.
+//! The number is a fact about the deployment — the Node proxy in front of this
+//! server already tolerates 16 KiB, and a server should be neither the tightest
+//! limit in a chain nor unbounded.
 //!
 //! # What else the buffer bounds
 //!
@@ -33,9 +31,8 @@ use hyper_util::server::conn::auto;
 
 /// Room for a request's status line and headers.
 ///
-/// `MAX_REQUEST_HEADER_BYTES` in `http/server.zig`, to the byte. A request
-/// whose head does not fit is answered `431 Request Header Fields Too Large`
-/// rather than read without bound.
+/// A request whose head does not fit is answered
+/// `431 Request Header Fields Too Large` rather than read without bound.
 pub const MAX_REQUEST_HEADER_BYTES: usize = 16 * 1024;
 
 /// The largest frame this server will read on an HTTP/2 stream.
@@ -87,7 +84,7 @@ pub fn connection_builder() -> auto::Builder<TokioExecutor> {
         .max_frame_size(MAX_FRAME_BYTES);
     // hyper's own default is ~400 KB and nothing announces that it changed, so
     // a bound this important is worth one line an operator can grep for when a
-    // client starts getting 431s it did not get from the Zig daemon.
+    // client starts getting 431s.
     tracing::debug!(
         max_request_header_bytes = MAX_REQUEST_HEADER_BYTES,
         max_frame_bytes = MAX_FRAME_BYTES,

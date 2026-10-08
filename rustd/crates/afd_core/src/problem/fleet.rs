@@ -19,16 +19,14 @@ pub(super) const FLEET: &[Problem] = &[
     },
     Problem {
         code: error_code::RUN_STALE_FENCING_TOKEN,
-        // 409, matching the Zig entry's `.conflict`. The word is exact: two
-        // runners each hold a lease they believe is live, and the fence is what
-        // settles which one is. Not a 403 — nothing about the credential is
-        // wrong — and not a 410, because the resource is very much still there,
-        // owned by somebody else.
+        // 409, and the word is exact: two runners each hold a lease they
+        // believe is live, and the fence is what settles which one is. Not a
+        // 403 — nothing about the credential is wrong — and not a 410, because
+        // the resource is very much still there, owned by somebody else.
         status: 409,
         title: "Stale fencing token",
         hint: "The lease was reclaimed by a newer holder. This report is rejected; the current holder's result wins.",
-        // Not dashboard-facing: this rides the runner-to-control-plane wire
-        // contract, and the Zig entry carries the same reachability note.
+        // Not dashboard-facing: this rides the runner-to-control-plane wire.
         user_message: None,
     },
     Problem {
@@ -92,15 +90,15 @@ pub(super) const FLEET: &[Problem] = &[
     Problem {
         code: error_code::RUN_BUDGET_EXCEEDED,
         // 402, and the status is load-bearing rather than decorative: the stock
-        // runner classifies a renew refusal by BOTH status and code, and
-        // `control_plane_client_test.zig` pins that a UZ-RUN-015 arriving on
-        // any other terminal status is NOT a budget breach. A 403 here would
-        // leave the runner treating an exhausted ceiling as an auth failure.
+        // runner classifies a renew refusal by BOTH status and code, and a
+        // UZ-RUN-015 arriving on any other terminal status is NOT a budget
+        // breach to it. A 403 here would leave the runner treating an
+        // exhausted ceiling as an auth failure.
         status: 402,
         title: "Lease renewal blocked: fleet budget exhausted",
         hint: "The fleet reached its daily_dollars or monthly_dollars limit from `TRIGGER.md`, so the run stops. The tenant balance is fine; this is the fleet's own budget.",
         // Not dashboard-facing: this rides the runner-to-control-plane wire
-        // protocol, and the Zig entry carries the same reachability note.
+        // protocol.
         user_message: None,
     },
     Problem {
@@ -128,15 +126,14 @@ pub(super) const FLEET: &[Problem] = &[
     },
     Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
-        // 424, matching the Zig entry's `.failed_dependency`. The fleet's own
-        // request is well-formed; what is missing is a credential it depends
-        // on, which is the distinction this status exists to make.
+        // 424: the fleet's own request is well-formed; what is missing is a
+        // credential it depends on, which is the distinction this status
+        // exists to make.
         status: 424,
         title: "Fleet credential missing",
         hint: "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`",
-        // Not dashboard-facing, and the Zig entry carries the same reachability
-        // note: this is a CLI and API-key surface, and on the lease path it is
-        // logged rather than rendered at all.
+        // Not dashboard-facing: this is a CLI and API-key surface, and on the
+        // lease path it is logged rather than rendered at all.
         user_message: None,
     },
     Problem {
@@ -144,10 +141,9 @@ pub(super) const FLEET: &[Problem] = &[
         status: 409,
         title: "Fleet name already exists",
         hint: "A Fleet with this name already exists. Use `agentsfleet kill <name>` first, then deploy again.",
-        // No dashboard sentence, and the Zig entry carries the same
-        // reachability note: an explicit name is a command-line and API-key
-        // surface, because the dashboard's one-step install names nothing and
-        // takes the re-drawn suffix instead of ever seeing this.
+        // No dashboard sentence: an explicit name is a command-line and
+        // API-key surface, because the dashboard's one-step install names
+        // nothing and takes the re-drawn suffix instead of ever seeing this.
         user_message: None,
     },
     Problem {
@@ -161,10 +157,9 @@ pub(super) const FLEET: &[Problem] = &[
     },
     Problem {
         code: error_code::AGENTSFLEET_NOT_FOUND,
-        // 404, and pinned as such on both sides: `error_registry_test.zig`
-        // asserts it, because collapsing "no such fleet" and "another
-        // workspace's fleet" into one status is what keeps the endpoint from
-        // being an oracle for which identifiers are real.
+        // 404, because collapsing "no such fleet" and "another workspace's
+        // fleet" into one status is what keeps the endpoint from being an
+        // oracle for which identifiers are real.
         status: 404,
         title: "Fleet not found",
         hint: "Fleet not found. Verify the fleet_id and that it has not been killed.",
@@ -251,9 +246,8 @@ pub(super) const FLEET: &[Problem] = &[
         status: 404,
         title: "Fleet not found for memory op",
         hint: "The fleet_id does not exist or is not in this workspace. Verify both.",
-        // Not dashboard-facing in the Zig entries, and the reachability note
-        // there says why: the code was authored for the runner's memory push.
-        // The operator surface answers it too, and the sentence an integrator
+        // Not dashboard-facing: the code serves the runner's memory push. The
+        // operator surface answers it too, and the sentence an integrator
         // reads is the right one for both.
         user_message: None,
     },

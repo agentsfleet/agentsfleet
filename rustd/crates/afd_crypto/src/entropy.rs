@@ -12,7 +12,7 @@
 //! A sealed envelope with a random nonce cannot be compared against a fixture,
 //! so without a pinned nonce the seal path can only be tested by round-tripping
 //! it through the open path. Pinning the nonce is what lets a test assert the
-//! exact bytes the Zig daemon would have written.
+//! exact bytes a seal writes.
 //!
 //! The mock lives behind the `test-util` feature (`M-TEST-UTIL`), so a release
 //! build has no constructor that can weaken nonce generation.

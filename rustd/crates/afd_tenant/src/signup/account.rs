@@ -41,9 +41,9 @@ pub struct Bootstrapped {
 /// malformed event rather than a person without a name, and a caller refuses it
 /// exactly as it refuses an event carrying no address at all.
 ///
-/// The Zig substitutes a fixed word here instead. That hides an invalid input
-/// behind a tenant indistinguishable from any other, and validating at the
-/// boundary is this port's rule rather than the Zig's (RULE PORT).
+/// No fixed word is substituted for a missing local part: that would hide an
+/// invalid input behind a tenant indistinguishable from any other, so the
+/// input is refused at the boundary instead.
 #[must_use]
 pub fn personal_tenant_name(email: &str) -> Option<&str> {
     let local = email.split('@').next().unwrap_or_default();

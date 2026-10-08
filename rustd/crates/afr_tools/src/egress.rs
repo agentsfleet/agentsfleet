@@ -15,7 +15,7 @@ use crate::catalog::Entry;
 use crate::lease::Lease;
 use crate::runtime::{ToolErrorCode, ToolOutput};
 
-/// The event a refused call logs under: the Zig bridge's spelling.
+/// The event a refused call logs under, fixed because dashboards match on it.
 const EVENT_TOOL_REFUSED: &str = "tool_refused";
 
 /// The statuses a tool reports as succeeded.
