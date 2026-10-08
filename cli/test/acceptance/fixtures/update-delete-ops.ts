@@ -4,7 +4,8 @@
  * Builds an *update* bundle whose front-matter `name:` matches an
  * already-installed fleet, then drives `agentsfleet fleet update <id>
  * --from <dir> --json`. The server's PATCH path enforces a
- * name-equality guard (patch.zig#name_mismatch → UZ-AGT-011): an update
+ * name-equality guard (`NameMismatch` in
+ * rustd/crates/afd_fleet_lifecycle/src/edit/rewrite.rs → UZ-AGT-011): an update
  * bundle whose name differs from the live fleet is rejected. So the only
  * way to exercise the success path is to re-emit the canonical sample
  * with the live fleet's exact name and a mutated SKILL.md body that

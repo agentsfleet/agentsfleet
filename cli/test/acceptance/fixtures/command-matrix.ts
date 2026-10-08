@@ -102,9 +102,7 @@ export interface RequiresIdentifierRow {
 //              (only meaningful when `apiHits: true`). The codes are
 //              declared in rustd/crates/afd_core/src/error_code/ —
 //              fleet.rs, auth.rs and integration.rs carry the three this
-//              matrix names. The Zig registry this once cited went with
-//              the Zig daemon; the path stopped resolving before the
-//              codes moved, which is how a citation outlives its file.
+//              matrix names.
 //   clientRejectCode — CLI-emitted error code when local validation /
 //              local lookup rejects the request (apiHits: false rows).
 export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
@@ -257,7 +255,8 @@ export const AUTH_REQUIRED_REPRESENTATIVE: ReadonlyArray<ReadonlyArray<string>> 
   ["connector", "list"],
   ["billing", "show"],
   ["list"],
-  // The catalogue is bearer-authed (handlers/model_library.zig), so `models`
+  // The catalogue is bearer-authed
+  // (rustd/crates/afd_api_tenant/src/handler/tenant/models.rs), so `models`
   // must fail on the auth guard rather than dialing and surfacing a transport
   // error — the read happens before there is anything to read with.
   ["models"],
