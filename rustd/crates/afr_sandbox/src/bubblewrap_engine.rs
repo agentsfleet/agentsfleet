@@ -1,7 +1,6 @@
 //! The bubblewrap engine: one hardened sandbox per lease, built from the
 //! toolbox, the lease's own cgroup and its own workspace disk.
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::ffi::OsString;
 use std::fs::{self, DirBuilder};
 use std::os::unix::fs::DirBuilderExt as _;
@@ -9,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use afd_core::error_code::{Coded as _, Logged};
 use afr_executor::{Client, Executor};
 use rustix::fs::{Gid, Uid};
 

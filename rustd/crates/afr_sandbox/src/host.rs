@@ -6,10 +6,11 @@
 //! with `bindgen` at build time, which would put `libclang` on every Linux
 //! build of the workspace; `mount -o loop` is what every distribution ships.
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+
+use afd_core::error_code::{Coded as _, Logged};
 
 use crate::error::{Result, program as failed};
 

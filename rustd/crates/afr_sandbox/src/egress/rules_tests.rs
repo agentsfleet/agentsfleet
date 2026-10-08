@@ -15,7 +15,7 @@ use netlink_packet_netfilter::nftables::{
 use netlink_packet_netfilter::{NetfilterMessage, NetfilterMessageInner};
 
 use super::expressions::{ACCEPT, DROP};
-use super::{FORWARD, INPUT, POSTROUTING, install, names, remove, uninstall};
+use super::{FORWARD, INPUT, POSTROUTING, install, names, remove, u8_of, u16_of, uninstall};
 use crate::egress::slot::Slot;
 use crate::egress::testing::{DELTABLE, Fake, Protocol, bytes};
 
@@ -331,4 +331,15 @@ fn test_only_prefixed_tables_are_listed() {
     let listed = names(&mut kernel.open_netfilter(), "afegress").unwrap();
 
     assert_eq!(listed, ["afegress2", "afegress40"]);
+}
+
+/// A kernel number `libc` spells as an `int` keeps its value in the width a
+/// netlink field holds it in, and one past that width is refused.
+#[test]
+fn test_a_kernel_number_narrows_unchanged_or_not_at_all() {
+    let getchain = libc::NFNL_SUBSYS_NFTABLES << 8 | libc::NFT_MSG_GETCHAIN;
+
+    assert_eq!(u16_of(getchain), 0x0a04); // pin test: literal is the contract
+    assert_eq!(u8_of(libc::IPPROTO_UDP), 17); // pin test: literal is the contract
+    let _refused = std::panic::catch_unwind(|| u8_of(getchain)).unwrap_err();
 }

@@ -24,6 +24,8 @@
 use std::io;
 use std::net::Ipv4Addr;
 
+use libc::c_int;
+
 use netlink_packet_core::{
     NLM_F_ACK, NLM_F_APPEND, NLM_F_CREATE, NLM_F_EXCL, NLM_F_REQUEST, NetlinkMessage,
 };
@@ -37,13 +39,14 @@ use netlink_packet_netfilter::{
     NetfilterHeader, NetfilterMessage, NetfilterMessageInner, NetfilterProtoFamily,
 };
 
-use self::expressions::{ACCEPT, DROP, Expression, WORD, forward, from, masquerade};
+use self::expressions::{ACCEPT, Expression, WORD, forward, from, masquerade};
 use super::netlink::{Netlink, Wire};
 use super::slot::Slot;
 
 mod expressions;
 mod host_chains;
 
+pub(super) use self::expressions::{DNS_PORT, DROP};
 pub(super) use self::host_chains::dropping_forward;
 
 /// One `nf_tables` message.
@@ -56,8 +59,8 @@ pub(super) const SET: &str = "allow";
 pub(super) const SET_ID: u32 = 1;
 /// The kernel's own number for the `ipv4_addr` data type.
 const IPV4_ADDR_TYPE: u32 = 7;
-/// The netfilter subsystem a batch is addressed to (`NFNL_SUBSYS_NFTABLES`).
-const NFTABLES: u16 = 10;
+/// The netfilter subsystem a batch is addressed to.
+const NFTABLES: u16 = u16_of(libc::NFNL_SUBSYS_NFTABLES);
 /// The chains, their hooks, kinds and priorities: filtering at the filter
 /// priority, address translation at source-NAT's.
 const FORWARD: &str = "forward";
@@ -318,6 +321,28 @@ fn batch(messages: Vec<Message>) -> Vec<Message> {
         .chain(messages)
         .chain([control(ControlMessage::BatchEnd)])
         .collect()
+}
+
+/// A kernel number `libc` spells as a C `int`, in the one byte a netlink
+/// field holds it in.
+///
+/// # Panics
+/// When `number` does not fit, which fails the build: every caller is a
+/// `const`.
+pub(super) const fn u8_of(number: c_int) -> u8 {
+    let [low, rest @ ..] = number.to_le_bytes();
+    assert!(matches!(rest, [0, 0, 0]), "a kernel number past one byte");
+    low
+}
+
+/// [`u8_of`], for a two-byte field.
+///
+/// # Panics
+/// When `number` does not fit, which fails the build as [`u8_of`] does.
+pub(super) const fn u16_of(number: c_int) -> u16 {
+    let [low, high, rest @ ..] = number.to_le_bytes();
+    assert!(matches!(rest, [0, 0]), "a kernel number past two bytes");
+    u16::from_le_bytes([low, high])
 }
 
 #[cfg(test)]

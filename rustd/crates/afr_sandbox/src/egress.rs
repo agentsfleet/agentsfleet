@@ -17,11 +17,12 @@
 //!   └──────────────────┘         └───────────────────────────────────────┘
 //! ```
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::fs::{self, File};
 use std::os::fd::{AsFd as _, OwnedFd};
 use std::os::unix::fs::MetadataExt as _;
 use std::path::Path;
+
+use afd_core::error_code::{Coded as _, Logged};
 
 use self::kernel::Kernel;
 use self::slot::{Claim, LINK_PREFIX, Slot, TABLE_PREFIX};

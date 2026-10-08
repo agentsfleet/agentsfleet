@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use super::kernel::{Host, Kernel as _};
 use super::slot::{LINK_PREFIX, Slot, TABLE_PREFIX};
-use super::{FORWARDING, IP_FORWARD, link, probe, rules};
+use super::{FORWARDING, IP_FORWARD, OWN_NAMESPACE, link, probe, rules};
 use crate::error::{Error, Result, egress_refused, netlink};
 use crate::network::Allowlist;
 
@@ -35,7 +35,7 @@ const FAR_PREFIX_LEN: u8 = 29;
 /// which every sandbox's rules close.
 pub const FAR_PORT: u16 = 8443;
 /// See [`FAR_PORT`].
-pub const DNS_PORT: u16 = 53;
+pub const DNS_PORT: u16 = rules::DNS_PORT;
 /// What the far host says to every connection.
 pub const FAR_GREETING: &str = "far";
 /// Why the far host could not be built.
@@ -68,7 +68,7 @@ pub fn leave(index: u8) -> Result<()> {
     Host.netfilter()?
         .acknowledged(rules::install_unowned(slot, &[]))?;
     // Both ends in the host's namespace, so the pair outlives every process.
-    let own = std::fs::File::open("/proc/self/ns/net")?;
+    let own = std::fs::File::open(OWN_NAMESPACE)?;
     link::join(&mut Host.route()?, slot, own.as_fd())?;
     Ok(())
 }

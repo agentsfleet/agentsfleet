@@ -1,12 +1,12 @@
 //! Admission by descriptor: the published image opened once, checked, hashed
 //! and attached through that one descriptor, then mounted.
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
+use afd_core::error_code::{Coded as _, Logged};
 use digest_io::IoWrapper;
 use rustix::fs::FileType;
 use rustix::mount::MountFlags;

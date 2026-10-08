@@ -15,10 +15,10 @@
 
 mod host;
 
-use afd_core::error_code::{Coded as _, Logged};
 use std::process::ExitCode;
 
 use afd_core::env::{EnvSource, ProcessEnv};
+use afd_core::error_code::{Coded as _, Logged};
 use afr_supervisor::StorageHome;
 use afr_telemetry::{Endpoint, SpanLayer, Telemetry};
 use tokio_util::sync::CancellationToken;

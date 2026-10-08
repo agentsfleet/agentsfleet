@@ -7,43 +7,41 @@ use netlink_packet_netfilter::nftables::{
     Lookup, Meta, MetaKey, Operator, Payload, Register, Verdict, VerdictAttribute,
 };
 
-use super::{SET, SET_ID};
+use super::{SET, SET_ID, u8_of};
 use crate::egress::slot::{PREFIX_LEN, Slot};
 
 /// One expression in a rule.
 pub(super) type Expression = ListAttribute<ExpressionAttribute>;
 
-/// The verdicts, as the kernel numbers them (`NF_DROP`, `NF_ACCEPT`).
-pub(super) const DROP: u32 = 0;
-pub(super) const ACCEPT: u32 = 1;
+/// The verdicts, as the kernel numbers them.
+pub(in crate::egress) const DROP: u32 = libc::NF_DROP.unsigned_abs();
+pub(super) const ACCEPT: u32 = libc::NF_ACCEPT.unsigned_abs();
 /// Bytes in an IPv4 address, a set key, and a 32-bit register.
 pub(super) const WORD: u32 = 4;
 /// Where a payload load starts: the network header, or the transport one.
-const NETWORK_HEADER: u32 = 1;
-const TRANSPORT_HEADER: u32 = 2;
+const NETWORK_HEADER: u32 = libc::NFT_PAYLOAD_NETWORK_HEADER.unsigned_abs();
+const TRANSPORT_HEADER: u32 = libc::NFT_PAYLOAD_TRANSPORT_HEADER.unsigned_abs();
 /// Offsets into an IPv4 header, and the destination port's in a TCP or UDP one.
 const SOURCE_OFFSET: u32 = 12;
 const DESTINATION_OFFSET: u32 = 16;
 const PORT_OFFSET: u32 = 2;
 const PORT_LEN: u32 = 2;
 /// `meta nfproto ipv4`, and the two transports a resolver answers on.
-const NFPROTO_IPV4: u8 = 2;
-const TCP: u8 = 6;
-const UDP: u8 = 17;
+const NFPROTO_IPV4: u8 = u8_of(libc::NFPROTO_IPV4);
+const TCP: u8 = u8_of(libc::IPPROTO_TCP);
+const UDP: u8 = u8_of(libc::IPPROTO_UDP);
 /// The resolver port, closed to every sandbox whatever its set holds.
-const DNS_PORT: u16 = 53;
+pub(in crate::egress) const DNS_PORT: u16 = 53;
 /// The connection-tracking expression: its register and key attributes, and
 /// the key that reads a connection's state.
 const CT: &str = "ct";
 const CT_DESTINATION_REGISTER: u16 = 1;
 const CT_KEY: u16 = 2;
-const CT_STATE: u32 = 0;
+const CT_STATE: u32 = libc::NFT_CT_STATE.unsigned_abs();
 /// `established` and `related`, as the state register's bits hold them.
 const ESTABLISHED_OR_RELATED: u32 = 0b110;
 /// The expression that rewrites a source to the outgoing link's address.
 const MASQUERADE: &str = "masq";
-/// Bytes an interface name is compared over, its padding included.
-const IFNAMSIZ: usize = 16;
 
 /// The forward chain's rules, in order: the resolver port closed, the set
 /// reached, everything else from the sandbox dropped, and nothing reaching it
@@ -198,6 +196,7 @@ fn verdict(code: u32) -> Expression {
 /// comparison is of the whole name and `afv1` never matches `afv12`.
 fn interface(name: &str) -> Vec<u8> {
     let mut padded = name.as_bytes().to_vec();
-    padded.resize(IFNAMSIZ, 0);
+    // An interface name is compared over its whole buffer, padding included.
+    padded.resize(libc::IFNAMSIZ, 0);
     padded
 }
