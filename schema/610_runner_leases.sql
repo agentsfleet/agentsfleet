@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS fleet.runner_leases (
 
 -- api_runtime: the serve tier owns /v1/runners/me/{leases,reports}; it inserts a
 -- lease at issue and reads and updates status at report. DELETE is the retention
--- sweeper's (fleet/retention_sweeper.zig), which removes terminal-status rows
--- older than the retention window — the one retention policy that exists, kept
--- exactly as M149 shipped it.
+-- sweeper's (`rustd/crates/afd_runner/src/sweep/retention.rs`), which removes
+-- terminal-status rows older than the retention window — the one retention
+-- policy that exists, kept exactly as M149 shipped it.
 GRANT SELECT, INSERT, UPDATE, DELETE ON fleet.runner_leases TO api_runtime;

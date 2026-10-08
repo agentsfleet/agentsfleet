@@ -68,9 +68,8 @@ CREATE TABLE IF NOT EXISTS core.platform_provider_defaults (
 -- `source_workspace_id` deliberately has no ON DELETE action. A cascade would
 -- silently disable the platform default for every tenant the moment an admin
 -- workspace was deleted, and SET NULL is not available on a NOT NULL column —
--- so deletion is refused and account erasure removes these rows explicitly
--- (state/account_teardown.zig). This is one of the rows that stays in the
--- explicit delete order precisely because no cascade should cover it.
+-- so deletion is refused, and account erasure has to remove these rows
+-- explicitly, precisely because no cascade should cover them.
 
 -- No index on source_workspace_id. The table holds one row per provider — a
 -- single-figure row count — so the erasure path's `source_workspace_id IN (…)`

@@ -2,10 +2,10 @@
 -- explicitly configured a provider; the absence of a row is the synthesised
 -- platform default.
 --
--- The resolver (state/tenant_provider.zig) treats "no row" and "row with
--- mode = platform" as identical for runtime behaviour. An explicit row is
--- written when the user runs `tenant provider reset`, so the dashboard can
--- distinguish "never configured" from "explicitly reset".
+-- The resolver (`rustd/crates/afd_credential/src/provider/selection.rs`) treats
+-- "no row" and "row with mode = platform" as identical for runtime behaviour.
+-- An explicit row is written when the user runs `tenant provider reset`, so the
+-- dashboard can distinguish "never configured" from "explicitly reset".
 --
 -- Identity exception (SCHEMA_CONVENTIONS "Identity Column"), and the first slot
 -- to state it, so the later 1:1 tables can cite this one: a row that exists at
@@ -22,8 +22,8 @@
 -- primary key.
 --
 -- Value constraints (mode ∈ {platform, self_managed}; secret_ref nullability
--- tied to mode) are enforced in application code via constants in
--- state/tenant_provider.zig — RULE STS forbids static-string CHECKs.
+-- tied to mode) are enforced in application code via the `posture` constants in
+-- `rustd/crates/afd_billing/src/sql.rs` — RULE STS forbids static-string CHECKs.
 
 CREATE TABLE IF NOT EXISTS core.tenant_model_selection (
     tenant_id          UUID    PRIMARY KEY REFERENCES core.tenants(id) ON DELETE CASCADE,
