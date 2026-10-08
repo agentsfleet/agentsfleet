@@ -9,7 +9,7 @@ use rustls_pki_types::SubjectPublicKeyInfoDer;
 use rustls_pki_types::pem::PemObject as _;
 use serde_json::json;
 
-use super::{MANIFEST_MAX_BYTES, Release, debian_arch, host_arch};
+use super::{MANIFEST_MAX_BYTES, Release, TOOLBOX_RELEASE_PUBLIC_KEY, debian_arch, host_arch};
 use crate::error::ToolboxRefusal;
 use crate::toolbox::testing::{RUNNER, Signer, facts, manifest_bytes, sha256};
 
@@ -31,6 +31,15 @@ MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELVQWBgCxq2ODgOCaj/XkI/Vlvbjz
 NE5hNFWfWCzZc7dlzHFBosEsGA1965zFODW/81o74kL/hvsesQ2gmbWd8A==
 -----END PUBLIC KEY-----
 ";
+/// How a P-256 public key's DER opens, through the uncompressed point's
+/// marker: `id-ecPublicKey` on `prime256v1`, the one curve admission verifies
+/// a release signature on.
+const P256_KEY_PREFIX: [u8; 27] = [
+    0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a,
+    0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04,
+];
+/// That key's whole length: the prefix, then its two 32-byte coordinates.
+const P256_KEY_LENGTH: usize = 91;
 
 /// Which check `release` fails `manifest` signed as `signature` on.
 fn refusal(release: &Release, manifest: &[u8], signature: &[u8]) -> Option<ToolboxRefusal> {
@@ -75,6 +84,20 @@ fn should_refuse_the_cosign_fixture_under_the_release_key() {
         refusal(&release, COSIGN_MANIFEST, COSIGN_SIGNATURE),
         Some(ToolboxRefusal::Signature)
     );
+}
+
+/// The release key is a P-256 key, as the fixture key that verifies a real
+/// cosign signature is: a key of any other kind would parse, then refuse
+/// every release on every host.
+#[test]
+fn the_release_key_is_a_p256_key() {
+    for pem in [TOOLBOX_RELEASE_PUBLIC_KEY, FIXTURE_PUBLIC_KEY] {
+        let key = SubjectPublicKeyInfoDer::from_pem_slice(pem.as_bytes()).unwrap();
+        let der: &[u8] = key.as_ref();
+
+        assert_eq!(der.len(), P256_KEY_LENGTH, "{pem}");
+        assert!(der.starts_with(&P256_KEY_PREFIX), "{pem}");
+    }
 }
 
 #[test]

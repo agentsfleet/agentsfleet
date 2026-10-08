@@ -12,6 +12,7 @@ use netlink_packet_netfilter::nftables::{
 };
 
 use super::{refill, refilled};
+use crate::egress::rules::SET;
 use crate::egress::slot::Slot;
 use crate::egress::testing::{DELSETELEM, Fake, NEWSETELEM, Protocol, round_trip};
 
@@ -72,6 +73,30 @@ fn test_a_refill_empties_the_set_then_fills_it_in_one_batch() {
             .any(|attribute| matches!(attribute, SetElementList::SetId(_))),
         "the set is found by name"
     );
+}
+
+/// Both messages of a refill name the slot's own table and the set its build
+/// made, so a held sandbox's refill never touches another slot's addresses.
+#[test]
+fn test_a_refill_names_its_own_slots_table_and_set() {
+    let slot = Slot::new(7).unwrap();
+
+    for message in read_back(slot, &MOVED) {
+        let (NfTablesMessage::DeleteSetElement(list) | NfTablesMessage::NewSetElement(list)) =
+            &message
+        else {
+            unreachable!("a refill changes set elements alone: {message:?}")
+        };
+        let attributes = &list.attributes;
+        assert!(
+            attributes.contains(&SetElementList::Table(slot.table())),
+            "{message:?}"
+        );
+        assert!(
+            attributes.contains(&SetElementList::Set(SET.to_owned())),
+            "{message:?}"
+        );
+    }
 }
 
 /// A refill to no address only empties the set: an empty list is no message.
