@@ -62,7 +62,7 @@ test_should_fail_verification_when_runner_token_is_rejected() {
   local output status=0
   output="$(run_script \
     ENV=dev \
-    TAILSCALE_FAIL_MATCH='agentsfleet-runner doctor' \
+    TAILSCALE_FAIL_MATCH='/v1/runners/me' \
     bash "$VERIFY")" || status=$?
   if [ "$status" -eq 0 ]; then
     bad "$name" "failed runner identity check passed"
@@ -80,7 +80,7 @@ test_should_verify_without_reading_runner_token() {
     bad "$name" "read-only verification read a runner token"
   elif ! grep -q 'systemctl is-enabled' "$calls"; then
     bad "$name" "verification did not check reboot enablement"
-  elif ! grep -q 'agentsfleet-runner doctor' "$calls"; then
+  elif ! grep -q 'Authorization: Bearer .*/v1/runners/me' "$calls"; then
     bad "$name" "verification did not prove runner token validity"
   else
     ok "$name"

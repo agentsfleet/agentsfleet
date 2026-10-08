@@ -215,7 +215,7 @@ test_deploy_second_invocation_blocked_when_locked() {
 
   local status=0
   DEPLOY_LOCK_PATH="$lock" SENTINEL_DIR="$sentinels" PATH="$STUB_DIR:$PATH" \
-    bash "$DEPLOY_SH" runner v9.9.9 "$binary" >/dev/null 2>&1 || status=$?
+    bash "$DEPLOY_SH" runner v9.9.9 "$binary" "$WORK_DIR/toolbox" >/dev/null 2>&1 || status=$?
   kill "$holder" 2>/dev/null
   wait "$holder" 2>/dev/null
 
