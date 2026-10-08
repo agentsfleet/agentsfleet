@@ -38,7 +38,7 @@ export const RUNNER_ADMIN_STATES = [
 ] as const;
 
 // Canonical Stripe-style paging parameter names — spelled identically to the
-// daemon's `QUERY_STARTING_AFTER` / `QUERY_LIMIT` (http/pagination.zig).
+// daemon's `QUERY_STARTING_AFTER` / `QUERY_LIMIT` (rustd/crates/afd_core/src/paging.rs).
 export const QUERY_STARTING_AFTER = "starting_after";
 
 export const QUERY_LIMIT = "limit";

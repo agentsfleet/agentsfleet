@@ -23,7 +23,7 @@ describe("installStepFromKind — the cross-tier frame→step map", () => {
     expect(installStepFromKind("totally_unknown")).toBeNull();
   });
 
-  it("the kind values are the agreed contract strings (mirror the Zig publisher)", () => {
+  it("the kind values are the client's own install:* vocabulary (no server constant declares them)", () => {
     expect(FRAME_KIND.INSTALL_CREATING).toBe("install:creating");
     expect(FRAME_KIND.INSTALL_PROVISIONING).toBe("install:provisioning");
     expect(FRAME_KIND.INSTALL_READY).toBe("install:ready");

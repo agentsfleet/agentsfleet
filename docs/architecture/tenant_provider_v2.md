@@ -38,16 +38,14 @@ ALTER TABLE core.tenant_model_selection ADD COLUMN secret_id UUID REFERENCES vau
 
 An INSERT of a referencing row then takes `FOR KEY SHARE` on the credential
 row; a DELETE of a referenced credential fails IN THE DATABASE. The
-producer/destroyer race that `afd_vault/src/sql.rs`'s lock trio hand-simulates
-(as the retired Zig daemon's `secret_reference_txn` module did before it) is
-settled by Postgres, for every future reference producer too. The Zig module's
-own first sentence conceded the point: "it cannot be a foreign key: secret_ref
+producer/destroyer race that `afd_vault/src/sql.rs`'s lock trio hand-simulates is
+settled by Postgres, for every future reference producer too. That module's own
+comment concedes the point: the reference "cannot be a foreign key: `secret_ref`
 is TEXT" — a fact about the columns, not about possibility.
 
 Migration shape: add column → backfill by join on `(workspace, key_name)` →
 dual-write → flip readers → keep `secret_ref` TEXT for display only (or derive
-it). Single-writer only: this lands after the Zig daemon is retired, never
-during the soak.
+it). Single-writer only: `agentsfleetd` is the one writer of these tables.
 
 **Deletes:** both implementations of the lock treaty, the deadlock-order
 contract between crates, and the orphan class.
@@ -102,14 +100,13 @@ PUT /v1/tenants/me/provider {mode:self_managed, secret_ref, model}
 2 statements · no explicit locks · no treaty · no decrypt · nothing to go stale
 ```
 
-From 15 round trips and two decrypts (Zig) → 7 and one (cutover parity floor)
-→ 2 and none — but the last jump is bought with schema, not SQL.
+From 7 round trips and one decrypt today → 2 and none — but the jump is bought
+with schema, not SQL.
 
 ## Sequencing
 
 V2-1 first: it deletes shared machinery both later steps would otherwise have
 to respect. Then V2-2, then V2-3. Each is independently shippable; all three
-are single-writer migrations gated on LAND of the cutover (Zig daemon
-retired). None of this runs during the soak — the parity milestone implements
-the treaty as-is, and every such site carries a comment naming the section
-here that deletes it.
+are single-writer migrations, and `agentsfleetd` is the one writer. Until they
+land, `agentsfleetd` carries the treaty as-is, and every such site carries a
+comment naming the section here that deletes it.

@@ -52,7 +52,8 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
 
 // The ONE trigger fixture for the whole acceptance tree. The daemon's importer
 // requires name, triggers, tools, and budget in TRIGGER.md frontmatter
-// (fleet_runtime/config_parser.zig) — a spec-local copy that drifts from that
+// (`FleetConfig` in rustd/crates/afd_fleet_runtime/src/config/mod.rs) — a
+// spec-local copy that drifts from that
 // set fails every install with UZ-BUNDLE-001, which is why no spec defines its
 // own (pinned by seed.test.ts).
 export function triggerMd(name: string): string {

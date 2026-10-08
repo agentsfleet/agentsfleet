@@ -13,8 +13,11 @@
  *    "anonymous creds could get in" loose end. The sweep deletes any per-run
  *    fixture user older than STALE_AFTER_MS, matched by the STRICT pattern
  *    below (never by domain alone), so every suite run self-heals the
- *    previous crashed one. Clerk's user.deleted webhook then hard-purges the
- *    bootstrapped tenant daemon-side (state/account_teardown.zig).
+ *    previous crashed one. Deleting the Clerk user does NOT remove its
+ *    bootstrapped tenant: the daemon answers `user.deleted` as an ignored
+ *    event and tears nothing down
+ *    (rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs), so
+ *    the swept user's tenant and workspace rows stay in Postgres.
  *
  * 3. Leaked-fleet and leaked-library sweeps. Per-spec afterEach cleanup misses whenever a run
  *    crashes or CI is interrupted, and a leaked fixture fleet is not inert:

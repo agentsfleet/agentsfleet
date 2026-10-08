@@ -4,7 +4,7 @@
 
 How users pay for what they run, and how the runtime stays neutral between two cost realities: us paying the language-model provider, or the user paying the language-model provider directly.
 
-This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the control plane's lease path (`agentsfleetd`) and the runner's NullClaw child, and the install-time path lives in the `agentsfleet` CLI and the Fleet Bundle. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
+This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the control plane's lease path (`agentsfleetd`) and the runner's supervisor, and the install-time path lives in the `agentsfleet` CLI and the Fleet Bundle. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
 The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + run); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **run** is posture-dispatched and reflects the cost difference (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
@@ -69,7 +69,7 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 | Credit-based Amp-style billing, no tier ladder | one number that drains; refills are grants or purchases | preamble, §2 |
 | Platform default routes through the admin tenant's own credential | no separate platform vault, no env-var fallback, one vault code path | §1 |
 | Fireworks Kimi K3 as the v2.0 platform default | strongest general model in the catalogue at 1M context; capability chosen over wholesale price | §1 |
-| The allowlist is the provider enumeration; this doc never re-lists it | a hand-copied provider table drifts the moment NullClaw is bumped | §9, §10 |
+| The allowlist is the provider enumeration; this doc never re-lists it | a hand-copied provider table drifts the moment the runner's provider registry changes | §9, §10 |
 | A provider is priced, or records why it never will be | "not yet priced" read as a queue nobody was working; 87 providers sat in it | §10 |
 | Free usage is a balance, not a promotional window | a number that drains cannot silently stay open; the timestamp-gated version priced every tenant at zero for its whole life | §2.3 |
 | Incremental per-renewal metering replaced the one-shot estimate | drained credit equals runtime × rate + actual tokens; refund-on-actual superseded | §3, §13; M80_010 |
@@ -93,9 +93,9 @@ One persona carries the worked examples through this doc and the scenarios: **Jo
 A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per fleet):
 
 - **Platform-managed (v2.0 default = Fireworks Kimi K3).** agentsfleet routes platform-managed inference through the **admin tenant's self-managed credential**. The `agentsfleet-admin` user is one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md). It signs up like a normal user and gets promoted to `role=admin` in Clerk. It stores a Fireworks credential in its own workspace's `vault.secrets` (the same M45 crypto_store path any self-managed user takes), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_provider_defaults` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At lease time the control plane (`agentsfleetd`) follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays agentsfleet a per-event fee that bundles inference (token-based, retail-rate-driven through the model library) plus orchestration, storage, and egress.
-- **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_model_selection` row points at that name through `secret_ref`. The runner's NullClaw child uses that key to call the provider's API. The user pays their provider directly for inference; agentsfleet charges a smaller flat orchestration fee per event with no token markup.
+- **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_model_selection` row points at that name through `secret_ref`. The runner's supervisor uses that key to call the provider's API; the key never enters a sandbox. The user pays their provider directly for inference; agentsfleet charges a smaller flat orchestration fee per event with no token markup.
 
-**Why Fireworks Kimi K3 is the v2.0 platform default.** It is the strongest general-purpose model in the catalogue that is not Anthropic- or OpenAI-priced, and its 1M context window means a coding agent working a real repository does not hit the wall mid-run. That is a deliberate trade against wholesale price: the K2.7-code generation on the same host is materially cheaper per token, and the default takes capability over cost because a run that exhausts its context and fails costs more than the tokens it saved. Fireworks is OpenAI-compatible (NullClaw routes through `compatible.zig`), so one code path serves both postures.
+**Why Fireworks Kimi K3 is the v2.0 platform default.** It is the strongest general-purpose model in the catalogue that is not Anthropic- or OpenAI-priced, and its 1M context window means a coding agent working a real repository does not hit the wall mid-run. That is a deliberate trade against wholesale price: the K2.7-code generation on the same host is materially cheaper per token, and the default takes capability over cost because a run that exhausts its context and fails costs more than the tokens it saved. Fireworks is OpenAI-compatible (the runner's registry maps `fireworks` to the chat wire, §9), so one code path serves both postures.
 
 The default is a **pointer, not a constant**: `core.platform_provider_defaults` names `(provider, source_workspace_id)`, and the model comes from the admin tenant's credential body. Changing it is an admin write, not a deploy. Whatever it points at must have a `core.model_library` row — an unpriced default would make every platform-posture slice fail `error.ModelNotPriced` (§4.2), which is exactly what naming a superseded model here did until M168. Under platform it dials Fireworks with the api_key the admin tenant provisioned via `PUT /v1/admin/platform-keys`. Under self-managed it dials Fireworks — or any other catalogue provider — with the user's own key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
 
@@ -171,7 +171,7 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 Why two debit points and not one:
 
 - **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero post-GA without re-plumbing.
-- **Run captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
+- **Run captures the cost of running the fleet's turn.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
 
 **Ledger rows (M80_010).** `billing.usage_ledger` is keyed `(event_id, charge_type, fleet_id)` since slot 916: one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals. The `UNIQUE (event_id, charge_type, fleet_id)` constraint updates that fleet's `stage` row in place, never multiplies it; the run is billed under `charge_type = stage`. So one event → exactly 2 ledger rows, whether the run renewed once or forty times.
 
@@ -312,7 +312,7 @@ flowchart TD
     F --> G[Approval gate]
     G -->|blocked| Wait[gate_blocked until<br/>user resumes]
     G -->|pass| H[Resolve secrets_map]
-    H --> J[Issue lease — gate+receive done, NO run debit at issue<br/>runner forks NullClaw child]
+    H --> J[Issue lease — gate+receive done, NO run debit at issue<br/>runner runs the agent loop]
     J --> Renew[Runner /renew ticks<br/>meter slice Δ → wallet/ledger/breakdown §3]
     Renew --> K[Runner reports result]
     K --> L[UPDATE fleet_events SET status=processed<br/>SETTLE final slice + advance cursor §3<br/>release affinity, XACK]
@@ -413,7 +413,7 @@ Vault credentials are opaque JSON objects keyed by name (M45 contract). The self
 }
 ```
 
-`provider` is one of the names NullClaw's provider catalogue recognises (`anthropic`, `openai`, `fireworks`, `together`, `groq`, `moonshot`, `kimi`, `openrouter`, `cerebras`, …). `model` is the provider's model identifier. `api_key` is the user's credential.
+`provider` is a name the runner's provider registry resolves (`anthropic`, `openai`, `fireworks`, `together`, `groq`, `moonshot`, `kimi`, `openrouter`, `cerebras`, …), or `custom:<base_url>` (§9). `model` is the provider's model identifier. `api_key` is the user's credential.
 
 The `tenant_model_selection` row points at the credential by name through `secret_ref`. Multi-credential tenants are supported (a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet tenant provider create --secret <other>`); only one is *active* at a time per tenant.
 
@@ -428,14 +428,14 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 **The api_key MAY exist in:**
 
 - `vault.secrets` rows as envelope ciphertext.
-- Server-side process memory — `agentsfleetd`'s process (the return value of `tenant_provider.resolveActiveProvider`) **and** the runner's NullClaw session + per-call HTTP client. `agentsfleetd` resolves the key on the lease path (fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`; the runner injects it into the engine for the inference call and `secureZero`s it after use. The key rides the same trusted-fleet inline envelope as `secrets_map`. The control plane synchronously writes that machine response, closes the connection on write failure, then erases the serialized response buffer and request arena.
+- Server-side process memory — `agentsfleetd`'s process (the return value of `tenant_provider.resolveActiveProvider`) **and** the runner's supervisor, whose provider client sends it in the one header its wire names; no sandbox ever holds it ([`runner_execution.md`](./runner_execution.md#crates)). `agentsfleetd` resolves the key on the lease path (fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`; the runner uses it for the inference call only. The key rides the same trusted-fleet inline envelope as `secrets_map`. The control plane synchronously writes that machine response, closes the connection on write failure, then erases the serialized response buffer and request arena.
 - Outbound HTTPS request headers to the LLM provider (e.g. `Authorization: Bearer …`).
 
 **The api_key MUST NEVER appear in:**
 
 - User-facing HTTP response bodies — `agentsfleet doctor --json` output, `GET /v1/tenants/me/provider`, the `GET /v1/workspaces/{ws}/secrets` metadata list (§8.3), and any other JSON a user sees. The authenticated runner lease is the machine-plane exception described above.
 - Logs — `agentsfleetd`, runner, structured logs, request logs.
-- The fleet's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (the runner's NullClaw uses it for the inference call only, never via `secrets_map`).
+- The fleet's tool context — placeholders are substituted at send time by the runner's egress guard, outside the sandbox; the provider key is on a different path entirely (the runner's provider client uses it for the inference call only, never via `secrets_map`).
 - Persisted event rows — `core.fleet_events`, `billing.usage_ledger`, anything else under `core.*` or `billing.*`.
 - User-facing artefacts — frontmatter, the dashboard, CLI table output, status-page bodies.
 
@@ -474,19 +474,19 @@ core.tenant_model_entries (id, tenant_id, model_id, secret_ref, created_at, upda
 
 ## 9. Provider routing — what makes Fireworks + Kimi K3 work today
 
-NullClaw already speaks the OpenAI-compatible wire format, and it dials **103 provider names**. The enumeration lives in `scripts/model-library-allowlist.json`, hand-maintained against `nullclaw/src/providers/factory.zig`. This section names the shapes those 103 fall into; it deliberately does not re-list them, because a hand-copied table is wrong the moment NullClaw is bumped — which is how the eight rows that used to sit here came to describe a fraction of what the platform could dial.
+The runner resolves a lease's `provider` through its registry, `rustd/crates/afr_providers/assets/providers.json`. Each name maps to one of three wires and a base URL. A name the registry lacks refuses the lease at admission ([`runner_execution.md`](./runner_execution.md#crates)). The model library's enumeration lives in `scripts/model-library-allowlist.json`. This section names the shapes; it deliberately re-lists neither file, because a hand-copied table is wrong the moment one of them changes.
 
 | Shape | Wire format | Examples |
 |---|---|---|
 | Native Anthropic | Anthropic Messages | `anthropic` |
 | Native OpenAI | OpenAI Responses | `openai` |
-| Direct vendor, OpenAI-compatible | OpenAI-compatible | `fireworks`, `groq`, `kimi`, `qwen`, `glm`, `minimax`, `deepseek`, `mistral`, `xai` |
-| Multi-vendor gateway | OpenAI-compatible | `openrouter`, `vercel`, `poe`, `nearai`, `huggingface` |
-| Regional twin of a priced vendor | OpenAI-compatible | `kimi-intl`, `qwen-us`, `minimax-io`, `zhipu-global` |
-| Local runtime | OpenAI-compatible | `ollama`, `vllm`, `llama.cpp`, `lm-studio`, `sglang` |
-| Endpoint-only (NullClaw cannot resolve the name) | OpenAI-compatible via `custom:<base_url>` | `pioneer` |
+| Direct vendor, OpenAI-compatible | OpenAI-compatible chat | `fireworks`, `groq`, `moonshot-intl`, `deepseek`, `mistral`, `xai`, `cerebras` |
+| Multi-vendor gateway | OpenAI-compatible chat | `openrouter`, `vercel`, `poe`, `nearai`, `huggingface` |
+| Endpoint-only | OpenAI-compatible chat via `custom:<base_url>`, `https` with a host only | `pioneer` |
 
-**Regional split — international is what we price.** Where a vendor runs separate mainland-China and international services, the allowlist prices and dials the **international** endpoint; the China endpoint carries no rates and is reached, when someone needs it, as an OpenAI-compatible custom endpoint. `base_url` is therefore a curated field that the skeleton generator never overwrites: NullClaw resolves both `kimi` and `qwen` to their China endpoints, while our rates for both come from the international price pages. Regenerating that field silently produced the right price against the wrong continent.
+A name needing request signing, a token exchange, a non-streaming wire or a loopback host, a local runtime among them, has no registry entry, so a lease naming it is refused.
+
+**Regional split — international is what we price.** Where a vendor runs separate mainland-China and international services, the allowlist prices the **international** endpoint; the China endpoint carries no rates and is reached, when someone needs it, as an OpenAI-compatible custom endpoint. The base URL a lease dials is always the registry's. The registry resolves `kimi` to the China endpoint (`api.moonshot.cn`) and `kimi-intl` to the international one, and it has no `qwen` entry, so a lease naming `qwen` is refused.
 
 For self-managed provider key with Fireworks + Kimi K3:
 
@@ -495,7 +495,7 @@ provider: "fireworks"
 model:    "accounts/fireworks/models/kimi-k3"
 ```
 
-The OpenAI-compatible client routes the call to `https://api.fireworks.ai/inference/v1/chat/completions`. No provider-specific code needed in this repo. The same path opens up every other compatible provider in NullClaw's catalogue without further work.
+The OpenAI-compatible client routes the call to `https://api.fireworks.ai/inference/v1/chat/completions`. No provider-specific code needed in this repo. Another OpenAI-compatible vendor is one reviewed line in the registry.
 
 ---
 

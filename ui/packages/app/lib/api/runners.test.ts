@@ -278,7 +278,10 @@ describe("parseLabels", () => {
   });
 });
 
-describe("wire constants mirror the Zig enums", () => {
+// The daemon's enums: `RunnerLiveness` and `SandboxTier` in
+// rustd/crates/afd_wire/src/runner.rs; `AdminState`, `RunnerAdminAction` and
+// `RunnerEventType` in rustd/crates/afd_api_wire/src/admin.rs.
+describe("wire constants mirror the daemon's enums", () => {
   it("test_sandbox_tier_vocabulary_excludes_seatbelt: carries the runner value sets verbatim", () => {
     // §6 — only tiers with real enforcement are assignable; the Seatbelt tier
     // is removed (not deprecated) because no enforcement code ever existed.

@@ -103,7 +103,8 @@ export async function installFleet(
 export type FleetStatusSettable = "active" | "stopped" | "killed";
 
 // PATCH response. The handler echoes the new status only when the request set
-// one (src/http/handlers/fleets/patch.zig); `setFleetStatus` always sends a
+// one (the `Transitioned` arm of `PatchedFleetResponse` in
+// rustd/crates/afd_api_wire/src/fleet.rs); `setFleetStatus` always sends a
 // status, so it always comes back. `config_revision` is the post-write revision.
 export interface FleetStatusUpdate {
   fleet_id: string;
