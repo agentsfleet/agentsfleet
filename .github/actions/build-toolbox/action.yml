@@ -52,16 +52,11 @@ outputs:
 runs:
   using: composite
   steps:
-    # mmdebstrap builds the root in unshare mode, so the runner's own user
-    # needs subordinate ids (uidmap); the keyring is what every package is
-    # checked against; erofs-utils writes and dumps the image.
+    # The list and why each package is on it live in the script, which the
+    # kernel lane's coverage job runs too.
     - name: Install the builder's tools
       shell: bash
-      run: |
-        set -euo pipefail
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq --no-install-recommends \
-          mmdebstrap erofs-utils debian-archive-keyring uidmap python3 curl
+      run: bash scripts/toolbox/install-builder-tools.sh
 
     - name: Build the image from the pinned manifest
       id: image

@@ -117,20 +117,74 @@ jobs:
         # logs at all -- a diagnostic that fails exactly when it is needed.
         run: docker compose logs --tail 200 postgres dragonfly
 
-  # The lane's verdict, under the name it has always reported: every shard's
-  # report merged line by line, the floor graded once over the union, one
-  # Codecov upload. It runs when a shard failed too, and fails in turn, so a
-  # red shard is a red lane rather than a skipped check.
+  # The kernel lane, as root on the hosted runner, which is a virtual machine
+  # of its own: no nested virtualization is needed, only what a runner host is
+  # prepared with. It is the only run that reaches the Linux-only sandbox
+  # lines (egress, cgroups, mounts), so its report joins the shards' in the
+  # merge below. `make test-coverage-runner-kernel` runs the lane under the
+  # instrument and fails, never skips, when the kernel lacks a mechanism.
+  kernel:
+    name: coverage (kernel)
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: '0'
+    # A cold instrumented build, the toolbox's debootstrap, then the lane.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - name: Show the pinned toolchain
+        run: rustup show && cargo --version
+        working-directory: rustd
+      - name: Cache cargo registry
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-kernel-v1-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: |
+            cargo-kernel-v1-${{ runner.os }}-
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Install the toolbox builder and bubblewrap
+        run: bash scripts/toolbox/install-builder-tools.sh bubblewrap
+      # The host the runner playbook prepares: IPv4 forwarding on, and no
+      # forward chain that drops by policy (Docker's `FORWARD` chain does, and
+      # the runner's probe refuses such a host). Ubuntu's AppArmor denies
+      # capabilities inside an unprivileged user namespace, and bubblewrap
+      # starts as the sandbox's own user.
+      - name: Prepare the host as a runner host
+        run: |
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo iptables -P FORWARD ACCEPT
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Measure the kernel lane
+        run: make test-coverage-runner-kernel
+      - name: Keep the kernel lane's report for the merge
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustd-lcov-kernel
+          path: |
+            rustd/lcov-kernel.info
+            rustd/lcov-kernel.rev
+          if-no-files-found: error
+          retention-days: 3
+
+  # The lane's verdict, under the name it has always reported: every report,
+  # the shards' and the kernel lane's, merged line by line, the floor graded
+  # once over the union, one Codecov upload. It runs when a shard failed too,
+  # and fails in turn, so a red shard is a red lane rather than a skipped check.
   test-integration-rustd:
-    needs: [plan, shard]
+    needs: [plan, shard, kernel]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every shard measured
-        if: needs.shard.result != 'success'
+        if: needs.shard.result != 'success' || needs.kernel.result != 'success'
         run: |
-          echo "✗ [rustd] a coverage shard did not finish (result: ${{ needs.shard.result }}); the floor is not graded over part of the lane"
+          echo "✗ [rustd] a coverage report did not finish (shards: ${{ needs.shard.result }}, kernel: ${{ needs.kernel.result }}); the floor is not graded over part of the lane"
           exit 1
       # Depth 2: a pull request checks out GitHub's merge commit, whose first
       # parent is the base the patch floor measures from.
