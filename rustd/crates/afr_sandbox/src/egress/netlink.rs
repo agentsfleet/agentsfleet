@@ -1,6 +1,11 @@
 //! One netlink conversation: requests serialized back to back into one
 //! datagram, and the kernel's replies read until the request is answered.
 //!
+//! A conversation reads only the replies numbered as its own requests. One
+//! that ends at a refusal leaves the kernel's later replies to that batch on
+//! the socket, and a scope's socket outlives every conversation it carries, so
+//! the next conversation would otherwise read one as its own answer.
+//!
 //! What crosses the socket is behind [`Wire`], so every way a conversation
 //! ends — every acknowledgement, a refusal mid-batch, a dump split across
 //! datagrams — is proven without a kernel; only [`Netlink::open`] needs one.
@@ -66,7 +71,11 @@ impl<W: Wire> Netlink<W> {
     }
 
     /// Sends `messages` as one datagram and waits until each one that asks for
-    /// an acknowledgement has one, or the first refusal.
+    /// an acknowledgement has one, or the first refusal. Replies the kernel
+    /// sends after that refusal stay unread, and a later conversation passes
+    /// over them by their numbers rather than waiting here for them: a batch
+    /// the kernel refuses whole is answered once, on its first message, so
+    /// waiting for every message's reply could wait forever.
     ///
     /// # Errors
     /// The kernel refused a message, or the socket failed.
@@ -78,9 +87,9 @@ impl<W: Wire> Netlink<W> {
             .iter()
             .filter(|message| message.header.flags & NLM_F_ACK != 0)
             .count();
-        self.send(messages)?;
+        let sent = self.send(messages)?;
         while waiting > 0 {
-            for reply in self.receive::<I>()? {
+            for reply in self.receive::<I>(sent)? {
                 if let NetlinkPayload::Error(error) = reply.payload {
                     refused(&error)?;
                     waiting = waiting.saturating_sub(1);
@@ -100,9 +109,9 @@ impl<W: Wire> Netlink<W> {
         I: NetlinkSerializable + NetlinkDeserializable,
     {
         message.header.flags = NLM_F_REQUEST;
-        self.send(vec![message])?;
+        let sent = self.send(vec![message])?;
         loop {
-            for reply in self.receive::<I>()? {
+            for reply in self.receive::<I>(sent)? {
                 match reply.payload {
                     NetlinkPayload::InnerMessage(answer) => return Ok(answer),
                     NetlinkPayload::Error(error) => refused(&error)?,
@@ -123,10 +132,10 @@ impl<W: Wire> Netlink<W> {
         I: NetlinkSerializable + NetlinkDeserializable,
     {
         message.header.flags = NLM_F_REQUEST | NLM_F_DUMP;
-        self.send(vec![message])?;
+        let sent = self.send(vec![message])?;
         let mut answers = Vec::new();
         loop {
-            for reply in self.receive::<I>()? {
+            for reply in self.receive::<I>(sent)? {
                 match reply.payload {
                     NetlinkPayload::InnerMessage(answer) => answers.push(answer),
                     NetlinkPayload::Done(_) => return Ok(answers),
@@ -139,19 +148,49 @@ impl<W: Wire> Netlink<W> {
 
     /// Numbers each message, then sends them all as one datagram: an
     /// `nf_tables` batch is one transaction only when it arrives whole.
-    fn send<I: NetlinkSerializable>(&mut self, messages: Vec<NetlinkMessage<I>>) -> io::Result<()> {
+    fn send<I: NetlinkSerializable>(
+        &mut self,
+        messages: Vec<NetlinkMessage<I>>,
+    ) -> io::Result<Sent> {
+        let mut sent = Sent {
+            first: self.sequence.wrapping_add(1),
+            count: 0,
+        };
         let mut datagram = Vec::new();
         for mut message in messages {
             self.sequence = self.sequence.wrapping_add(1);
             message.header.sequence_number = self.sequence;
+            sent.count = sent.count.wrapping_add(1);
             datagram.extend(encode(message));
         }
-        self.wire.send(&datagram)
+        self.wire.send(&datagram).map(|()| sent)
     }
 
-    /// The messages in the next datagram.
-    fn receive<I: NetlinkDeserializable>(&mut self) -> io::Result<Vec<NetlinkMessage<I>>> {
-        split(&self.wire.recv()?)
+    /// The messages in the next datagram that answer `sent`; one an earlier
+    /// conversation left unread is passed over.
+    fn receive<I: NetlinkDeserializable>(
+        &mut self,
+        sent: Sent,
+    ) -> io::Result<Vec<NetlinkMessage<I>>> {
+        let mut replies = split(&self.wire.recv()?)?;
+        replies.retain(|reply| sent.numbered(reply.header.sequence_number));
+        Ok(replies)
+    }
+}
+
+/// The numbers one conversation's requests went out under: `count` of them
+/// from `first`, in turn, wrapping past `u32::MAX` as the counter does.
+#[derive(Debug, Clone, Copy)]
+struct Sent {
+    first: u32,
+    count: u32,
+}
+
+impl Sent {
+    /// Whether a reply numbered `sequence` answers one of these requests: the
+    /// kernel numbers each reply as the request it answers.
+    const fn numbered(self, sequence: u32) -> bool {
+        sequence.wrapping_sub(self.first) < self.count
     }
 }
 

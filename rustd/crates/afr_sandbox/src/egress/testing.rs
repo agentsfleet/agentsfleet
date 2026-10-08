@@ -23,7 +23,7 @@ use netlink_packet_netfilter::nftables::{
 use netlink_packet_netfilter::{NetfilterHeader, NetfilterMessage, NetfilterProtoFamily};
 
 use self::replies::answered;
-pub(super) use self::replies::{ack, chain, done, new_link, refusal, round_trip};
+pub(super) use self::replies::{ack, answering, chain, done, new_link, refusal, round_trip};
 use super::kernel::Kernel;
 use super::netlink::{Netlink, Wire, encode, frames};
 use super::rules::{DROP, u16_of};
@@ -208,13 +208,19 @@ impl Wire for FakeWire {
             let frame = frame?;
             let buffer = NetlinkBuffer::new(frame);
             let (message_type, flags) = (buffer.message_type(), buffer.flags());
+            let sequence = buffer.sequence_number();
             let header = frame.get(..header_len).unwrap().to_vec();
             // A batch's ends are `nf_tables` framing; on a route socket the
             // same numbers are a new link and a deleted one.
             if self.protocol == Protocol::Netfilter && BATCH.contains(&message_type) {
                 continue;
             }
-            self.answer(message_type, flags, header);
+            let answers = self.answer(message_type, flags, header);
+            self.replies.extend(
+                answers
+                    .into_iter()
+                    .map(|answer| answering(sequence, answer)),
+            );
         }
         Ok(())
     }
@@ -227,7 +233,8 @@ impl Wire for FakeWire {
 }
 
 impl FakeWire {
-    fn answer(&mut self, message_type: u16, flags: u16, header: Vec<u8>) {
+    /// The datagrams the kernel answers one request with, in order.
+    fn answer(&self, message_type: u16, flags: u16, header: Vec<u8>) -> Vec<Vec<u8>> {
         let mut state = self.kernel.state();
         state.seen.push((self.protocol, message_type));
         let refusal = state
@@ -239,20 +246,18 @@ impl FakeWire {
         let dropping = state.dropping.clone();
         drop(state);
         if let Some(errno) = refusal {
-            self.replies
-                .push_back(answered(header, NonZeroI32::new(-errno)));
+            vec![answered(header, NonZeroI32::new(-errno))]
         } else if flags & NLM_F_DUMP == NLM_F_DUMP {
             let listed = match message_type {
                 GETCHAIN => chains(&dropping),
                 GETTABLE => self.dump(&tables),
                 _ => self.dump(&links),
             };
-            self.replies.push_back(listed);
-            self.replies.push_back(done());
+            vec![listed, done()]
         } else if flags & NLM_F_ACK != 0 {
-            self.replies.push_back(answered(header, None));
+            vec![answered(header, None)]
         } else {
-            self.replies.push_back(new_link("fake"));
+            vec![new_link("fake")]
         }
     }
 

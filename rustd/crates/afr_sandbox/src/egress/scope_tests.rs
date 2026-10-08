@@ -228,3 +228,50 @@ fn test_a_scope_takes_new_addresses_in_place() {
     scope.remove(&kernel).unwrap();
     stuck.remove(&refusing).unwrap();
 }
+
+/// A refill the kernel refuses part-way leaves its later replies on the
+/// scope's socket, and the removal after it reads only its own: a leftover
+/// refusal does not strand a slot whose table came down, and a leftover
+/// acknowledgement does not hide the removal's own refusal.
+#[test]
+fn test_a_removal_after_a_refused_refill_reads_its_own_answer() {
+    let _claims = claims_held();
+    let cases = [
+        // The refill's second message is refused too; the table still goes.
+        (libc::EEXIST, None),
+        // The refill's second message is acknowledged; the table will not go.
+        (0, Some(libc::EBUSY)),
+    ];
+    for (added, removed) in cases {
+        let capture = Capture::install();
+        let kernel = Fake::default();
+        let mut scope = Scope::build(&kernel, namespace().as_fd(), &allowlist()).unwrap();
+        let slot = slot_in(&capture, "egress_scope_built");
+        let kernel = kernel.refusing(Protocol::Netfilter, DELSETELEM, libc::EPERM);
+        let kernel = match added {
+            0 => kernel,
+            errno => kernel.refusing(Protocol::Netfilter, NEWSETELEM, errno),
+        };
+        let kernel = match removed {
+            Some(errno) => kernel.refusing(Protocol::Netfilter, DELTABLE, errno),
+            None => kernel,
+        };
+
+        let refill = scope.reallow(&allowlist()).unwrap_err();
+        let removal = scope.remove(&kernel);
+
+        assert_eq!(refill.netlink_step(), Some(Step::RefillRules));
+        assert!(
+            kernel
+                .seen_on(Protocol::Netfilter)
+                .ends_with(&[DELSETELEM, NEWSETELEM, DELTABLE]),
+            "{added}: the refill's whole batch reached the kernel"
+        );
+        assert_eq!(
+            removal.err().and_then(|left| left.netlink_step()),
+            removed.map(|_errno| Step::RemoveRules),
+            "{added}"
+        );
+        assert_eq!(Claim::exactly(slot).is_some(), removed.is_none(), "{added}");
+    }
+}

@@ -10,8 +10,8 @@ use std::fmt::Debug;
 use std::num::NonZeroI32;
 
 use netlink_packet_core::{
-    DoneMessage, ErrorMessage, NetlinkDeserializable, NetlinkHeader, NetlinkMessage,
-    NetlinkPayload, NetlinkSerializable,
+    DoneMessage, ErrorMessage, NLMSG_ALIGNTO, NetlinkBuffer, NetlinkDeserializable, NetlinkHeader,
+    NetlinkMessage, NetlinkPayload, NetlinkSerializable,
 };
 use netlink_packet_netfilter::nftables::{
     ChainAttribute, ChainMessage, Hook, HookNumber, InetHookNumber, NfTablesMessage,
@@ -43,6 +43,20 @@ pub(super) fn answered(header: Vec<u8>, code: Option<NonZeroI32>) -> Vec<u8> {
         NetlinkHeader::default(),
         NetlinkPayload::Error(answer),
     ))
+}
+
+/// `datagram` with every message in it numbered `sequence`, as the kernel
+/// numbers each reply as the request it answers.
+pub(in crate::egress) fn answering(sequence: u32, mut datagram: Vec<u8>) -> Vec<u8> {
+    let mut at = 0;
+    while let Some(rest) = datagram.get_mut(at..).filter(|rest| !rest.is_empty()) {
+        let mut message = NetlinkBuffer::new(rest);
+        message.set_sequence_number(sequence);
+        let length = usize::try_from(message.length()).unwrap();
+        assert!(length > 0, "a message claiming no length ends no frame");
+        at += length.next_multiple_of(usize::from(NLMSG_ALIGNTO));
+    }
+    datagram
 }
 
 /// The end of a dump.

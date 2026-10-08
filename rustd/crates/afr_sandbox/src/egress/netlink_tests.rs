@@ -16,7 +16,7 @@ use netlink_sys::protocols::NETLINK_ROUTE;
 
 use super::{Netlink, Wire, encode, frames, split};
 use crate::egress::link::name_of;
-use crate::egress::testing::{ack, done, new_link as named, refusal};
+use crate::egress::testing::{ack, answering, done, new_link as named, refusal};
 
 /// A wire that answers with the datagrams a test scripted, and keeps what was
 /// sent.
@@ -57,8 +57,8 @@ fn request(flags: u16) -> NetlinkMessage<RouteNetlinkMessage> {
 /// leave in one datagram, numbered in turn.
 #[test]
 fn test_every_acknowledgement_is_waited_for() {
-    let both = [ack(), ack()].concat();
-    let mut netlink = scripted(vec![ack(), both]);
+    let both = [answering(3, ack()), answering(4, ack())].concat();
+    let mut netlink = scripted(vec![answering(1, ack()), both]);
     let ask = NLM_F_REQUEST | NLM_F_ACK;
 
     netlink
@@ -84,7 +84,10 @@ fn test_every_acknowledgement_is_waited_for() {
 /// A refusal ends the wait with the kernel's own reason.
 #[test]
 fn test_a_refusal_answers_its_errno() {
-    let mut netlink = scripted(vec![ack(), refusal(libc::EEXIST)]);
+    let mut netlink = scripted(vec![
+        answering(1, ack()),
+        answering(2, refusal(libc::EEXIST)),
+    ]);
     let ask = NLM_F_REQUEST | NLM_F_ACK;
 
     let refused = netlink
@@ -94,15 +97,54 @@ fn test_a_refusal_answers_its_errno() {
     assert_eq!(refused.raw_os_error(), Some(libc::EEXIST));
 }
 
+/// A conversation reads only the replies numbered as its own requests: what an
+/// earlier one left unread after its refusal, an acknowledgement or a refusal,
+/// is passed over, whichever way the next conversation asks.
+#[test]
+fn test_a_reply_an_earlier_conversation_left_is_passed_over() {
+    let ask = NLM_F_REQUEST | NLM_F_ACK;
+    let left = [answering(2, ack()), answering(3, refusal(libc::EEXIST))].concat();
+    let mut netlink = scripted(vec![
+        answering(1, refusal(libc::EPERM)),
+        left.clone(),
+        answering(4, ack()),
+        left,
+        answering(5, named("afv3")),
+        answering(3, done()),
+        answering(6, [named("afv1"), done()].concat()),
+    ]);
+
+    let refused = netlink
+        .acknowledged(vec![request(ask), request(ask), request(ask)])
+        .unwrap_err();
+    netlink.acknowledged(vec![request(ask)]).unwrap();
+    let found = netlink.fetch(request(0)).unwrap();
+    let names: Vec<_> = netlink
+        .dump(request(0))
+        .unwrap()
+        .into_iter()
+        .filter_map(name_of)
+        .collect();
+
+    assert_eq!(refused.raw_os_error(), Some(libc::EPERM));
+    assert_eq!(name_of(found).as_deref(), Some("afv3"));
+    assert_eq!(names, ["afv1"]);
+    assert!(netlink.wire.replies.is_empty(), "every reply read");
+}
+
 /// A fetch answers the kernel's message, or its refusal, or "not found" when
 /// the kernel ends without one.
 #[test]
 fn test_a_fetch_answers_one_message() {
-    let found = scripted(vec![named("afv3")]).fetch(request(0)).unwrap();
-    let refused = scripted(vec![refusal(libc::ENODEV)])
+    let found = scripted(vec![answering(1, named("afv3"))])
+        .fetch(request(0))
+        .unwrap();
+    let refused = scripted(vec![answering(1, refusal(libc::ENODEV))])
         .fetch(request(0))
         .unwrap_err();
-    let ended = scripted(vec![done()]).fetch(request(0)).unwrap_err();
+    let ended = scripted(vec![answering(1, done())])
+        .fetch(request(0))
+        .unwrap_err();
 
     assert_eq!(name_of(found).as_deref(), Some("afv3"));
     assert_eq!(refused.raw_os_error(), Some(libc::ENODEV));
@@ -113,8 +155,8 @@ fn test_a_fetch_answers_one_message() {
 /// many datagrams as it takes; a refusal mid-dump ends it.
 #[test]
 fn test_a_dump_gathers_until_done() {
-    let first = [named("lo"), named("afv1")].concat();
-    let mut netlink = scripted(vec![first, [named("afv2"), done()].concat()]);
+    let first = answering(1, [named("lo"), named("afv1")].concat());
+    let mut netlink = scripted(vec![first, answering(1, [named("afv2"), done()].concat())]);
 
     let names: Vec<_> = netlink
         .dump(request(0))
@@ -122,7 +164,11 @@ fn test_a_dump_gathers_until_done() {
         .into_iter()
         .filter_map(name_of)
         .collect();
-    let refused = scripted(vec![named("lo"), refusal(libc::EPERM)]).dump(request(0));
+    let refused = scripted(vec![answering(
+        1,
+        [named("lo"), refusal(libc::EPERM)].concat(),
+    )])
+    .dump(request(0));
 
     assert_eq!(names, ["lo", "afv1", "afv2"]);
     assert_eq!(refused.unwrap_err().raw_os_error(), Some(libc::EPERM));
