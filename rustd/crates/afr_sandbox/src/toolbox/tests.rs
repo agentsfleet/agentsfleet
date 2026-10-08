@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::{TOOLBOX_PREFIX, TOOLBOX_SUFFIX, Toolbox, image_name};
+use super::{TOOLBOX_PREFIX, TOOLBOX_SUFFIX, Toolbox, ToolboxHome, image_name};
 
 #[test]
 fn an_image_is_published_under_its_digest() {
@@ -70,5 +70,28 @@ mod refusals {
         assert_eq!(refusal(&pipe), Some(ToolboxRefusal::NotAFile));
         assert_eq!(refusal(&long), Some(ToolboxRefusal::Length));
         assert_eq!(refusal(&other), Some(ToolboxRefusal::Digest));
+    }
+}
+
+/// A home opened makes its three sibling directories, and opening it again
+/// keeps them; one taken as it stands makes nothing.
+#[test]
+fn a_toolbox_home_opens_its_three_directories() {
+    let Ok(dir) = tempfile::tempdir() else {
+        unreachable!("a temporary directory")
+    };
+    let root = dir.path().join("toolbox");
+
+    let taken = ToolboxHome::at(root.clone());
+    let made = taken.incoming().exists();
+    let opened = ToolboxHome::open(root.clone()).map(|home| home == taken);
+    let again = ToolboxHome::open(root.clone()).is_ok();
+
+    assert!(!made, "taking a home as it stands makes nothing");
+    assert!(matches!(opened, Ok(true)), "{opened:?}");
+    assert!(again, "an opened home opens again");
+    for directory in [taken.incoming(), taken.images(), taken.mounts()] {
+        assert_eq!(directory.parent(), Some(root.as_path()));
+        assert!(directory.is_dir(), "{}", directory.display());
     }
 }

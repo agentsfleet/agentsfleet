@@ -20,6 +20,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use afr_sandbox::ToolboxHome;
+
 use crate::error::Result;
 
 const SANDBOXES: &str = "sandboxes";
@@ -27,9 +29,6 @@ const SPOOL: &str = "spool";
 const BUNDLES: &str = "bundles";
 const MIRRORS: &str = "git";
 const TOOLBOX: &str = "toolbox";
-const TOOLBOX_INCOMING: &str = "incoming";
-const TOOLBOX_IMAGES: &str = "images";
-const TOOLBOX_MOUNTS: &str = "mounts";
 
 /// The storage root, with its directories made.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,12 +48,10 @@ impl StorageHome {
             home.spool(),
             home.bundles(),
             home.mirrors(),
-            home.toolbox_incoming(),
-            home.toolbox_images(),
-            home.toolbox_mounts(),
         ] {
             fs::create_dir_all(directory)?;
         }
+        ToolboxHome::open(home.root.join(TOOLBOX))?;
         Ok(home)
     }
 
@@ -80,22 +77,11 @@ impl StorageHome {
         self.root.join(MIRRORS)
     }
 
-    /// Where a deploy stages the toolbox release this host admits at boot.
+    /// Where the toolbox is kept: the release a deploy stages, the images
+    /// admitted from it, and their mounts.
     #[must_use]
-    pub fn toolbox_incoming(&self) -> PathBuf {
-        self.root.join(TOOLBOX).join(TOOLBOX_INCOMING)
-    }
-
-    /// Where admitted toolbox images are published, each under its digest.
-    #[must_use]
-    pub fn toolbox_images(&self) -> PathBuf {
-        self.root.join(TOOLBOX).join(TOOLBOX_IMAGES)
-    }
-
-    /// Where each admitted toolbox image is mounted.
-    #[must_use]
-    pub fn toolbox_mounts(&self) -> PathBuf {
-        self.root.join(TOOLBOX).join(TOOLBOX_MOUNTS)
+    pub fn toolbox(&self) -> ToolboxHome {
+        ToolboxHome::at(self.root.join(TOOLBOX))
     }
 }
 

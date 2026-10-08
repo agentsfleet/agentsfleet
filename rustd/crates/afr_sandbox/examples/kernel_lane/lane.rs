@@ -10,7 +10,7 @@ use afd_core::env::ProcessEnv;
 use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
     BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, KernelMounter, Manifest, ProbePaths,
-    REQUIRED_CONTROLLERS, SUBTREE_CONTROL, Toolboxes, probe,
+    REQUIRED_CONTROLLERS, SUBTREE_CONTROL, ToolboxHome, Toolboxes, probe,
 };
 use libtest_mimic::Failed;
 
@@ -34,10 +34,9 @@ pub(crate) const STATE_PREFIX: &str = "afr-lane-";
 /// Where, under the lane's state, each lease's directory is made; apart from
 /// the toolbox mount, so no lease name can land on it.
 const LEASES_DIR: &str = "leases";
-/// Where, under the lane's state, the toolbox image is staged and kept, and
-/// where it is mounted.
+/// Where, under the lane's state, the toolbox image is staged, kept and
+/// mounted, as a host keeps it.
 const TOOLBOX_DIR: &str = "toolbox";
-const MOUNTS_DIR: &str = "mounts";
 /// The lane binary's name where the sandbox binds it from.
 const ENTRY_NAME: &str = "agentsfleet-runner";
 /// Readable and executable by everyone, writable by nobody but root.
@@ -220,8 +219,8 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
         .tempdir_in(STATE_PARENT)?;
     let signer = Signer::new()?;
     let manifest = signer.manifest_beside(image)?;
-    let mounter = KernelMounter::new(state.path().join(MOUNTS_DIR));
-    let toolboxes = Toolboxes::open(state.path().join(TOOLBOX_DIR), mounter)?;
+    let home = ToolboxHome::open(state.path().join(TOOLBOX_DIR))?;
+    let toolboxes = Toolboxes::open(home.images(), KernelMounter::new(home.mounts()))?;
     let toolbox = toolboxes.admit(&manifest, image)?;
     let image = LaneImage {
         path: image.to_owned(),

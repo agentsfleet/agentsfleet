@@ -89,15 +89,16 @@ impl Host {
             return Err(cannot_sandbox(missing));
         }
         let release = Release::signed_by_release(env!("CARGO_PKG_VERSION")).or_exit()?;
+        let toolbox_home = home.toolbox();
         let toolboxes = Toolboxes::open(
-            home.toolbox_images(),
-            KernelMounter::new(home.toolbox_mounts()),
+            toolbox_home.images(),
+            KernelMounter::new(toolbox_home.mounts()),
         )
         .or_exit()?;
         // Admission mounts only what it admits, so a refusal leaves nothing to
         // unmount; past it, every early return drops `mounted`.
         let toolbox = toolboxes
-            .admit_incoming(&release, &home.toolbox_incoming())
+            .admit_incoming(&release, &toolbox_home.incoming())
             .or_exit()?;
         let mounted = Mounted {
             toolboxes: Some(toolboxes),
