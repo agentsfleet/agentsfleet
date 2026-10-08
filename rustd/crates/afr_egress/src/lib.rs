@@ -18,6 +18,7 @@ pub mod fixture;
 pub mod testing;
 
 mod admission;
+mod allowlist;
 mod egress;
 mod mint;
 mod network;
@@ -28,6 +29,7 @@ mod transport;
 mod vault;
 
 pub use self::admission::{Draft, Placement};
+pub use self::allowlist::allowlist_host;
 pub use self::egress::Egress;
 pub use self::error::{Error, Result};
 pub use self::mint::{Mint, Minted};
