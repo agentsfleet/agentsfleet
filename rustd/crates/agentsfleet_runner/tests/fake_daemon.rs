@@ -96,7 +96,11 @@ impl FakeDaemon {
 
 /// What the daemon keeps between calls: where reports go, whether the one
 /// lease was granted, and the healthy daemon it answers as.
-type State<'a> = (&'a mpsc::UnboundedSender<Value>, &'a AtomicBool, &'a Healthy);
+type State<'a> = (
+    &'a mpsc::UnboundedSender<Value>,
+    &'a AtomicBool,
+    &'a Healthy,
+);
 
 /// The daemon's reply to one call: the one lease the first time it is asked
 /// for, each report kept, and a healthy daemon's reply to everything else,

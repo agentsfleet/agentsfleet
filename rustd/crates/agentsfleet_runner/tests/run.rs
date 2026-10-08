@@ -225,7 +225,11 @@ fn test_runner_binary_runs_a_lease_per_policy() {
 
         let ran = run_one_lease(&runtime, &mut daemon, &[]);
 
-        assert_eq!(ran.report["lease_id"], LEASE_ID, "{policy:?}: {}", ran.report);
+        assert_eq!(
+            ran.report["lease_id"], LEASE_ID,
+            "{policy:?}: {}",
+            ran.report
+        );
         assert_ne!(
             ran.report["failure_reason"], STARTUP_POSTURE,
             "{policy:?}: the lease was admitted and its turn ran: {}",
@@ -237,7 +241,11 @@ fn test_runner_binary_runs_a_lease_per_policy() {
             ran.status,
             ran.stderr
         );
-        assert!(!ran.stderr.contains(RUN_FAILED), "{policy:?}: {}", ran.stderr);
+        assert!(
+            !ran.stderr.contains(RUN_FAILED),
+            "{policy:?}: {}",
+            ran.stderr
+        );
         assert!(
             !ran.stderr.contains(EGRESS_REFUSED),
             "{policy:?}: {}",
