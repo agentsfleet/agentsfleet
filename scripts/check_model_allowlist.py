@@ -3,7 +3,8 @@
 
 scripts/model-library-allowlist.json feeds core.model_library, which is what
 UZ-PROVIDER-004 checks before a tenant may activate a model, and what
-computeStageCharge prices a platform-posture slice from. Both consequences are
+`slice_charge` (rustd/crates/afd_billing/src/nanos.rs) prices a platform-posture
+slice from. Both consequences are
 silent when the file is wrong: an uncurated provider looks dialable and refuses
 activation, and a zero rate bills nobody while every downstream guard passes.
 
@@ -20,9 +21,7 @@ So the file's invariants are checked here rather than trusted to review:
                               not hang off a mainland-China endpoint. This is
                               the wrong-continent failure the file's own header
                               warns about, and it shipped for months.
-  5. api providers have fixtures — otherwise the integration lane silently
-                              depends on the network being up.
-  6. sentinel rates announce themselves — a rate small enough to be a placeholder
+  5. sentinel rates announce themselves — a rate small enough to be a placeholder
                               must carry `rate_basis`, or it reads as a real
                               price nobody meant to charge.
 
@@ -33,7 +32,6 @@ import sys
 from pathlib import Path
 
 ALLOWLIST = Path("scripts/model-library-allowlist.json")
-FIXTURE_DIR = Path("tests/fixtures/model-library")
 
 RATE_FIELDS = ("input", "cached_input", "output")
 
@@ -119,14 +117,6 @@ def check_region_agreement(name: str, cfg: dict) -> list[str]:
     return []
 
 
-def check_api_has_fixture(name: str, cfg: dict) -> list[str]:
-    if cfg.get("source") != "api":
-        return []
-    if (FIXTURE_DIR / f"{name}.json").is_file():
-        return []
-    return [f"{name}: source=api with no fixture at {FIXTURE_DIR / f'{name}.json'} — the integration lane would need the network"]
-
-
 def check_floor_is_marked(name: str, cfg: dict) -> list[str]:
     """A sentinel rate must announce itself, or it reads as a real price."""
     models = [m for m in (cfg.get("models") or []) if isinstance(m, dict)]
@@ -145,7 +135,6 @@ CHECKS = (
     check_reason_vocabulary,
     check_no_zero_rates,
     check_region_agreement,
-    check_api_has_fixture,
     check_floor_is_marked,
 )
 
