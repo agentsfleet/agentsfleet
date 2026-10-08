@@ -9,8 +9,10 @@
 export const SKILL_FILE_NAME = "SKILL.md";
 export const TRIGGER_FILE_NAME = "TRIGGER.md";
 
-// Cross-runtime pair: `fleet_runtime/markdown_limits.zig` declares MAX_SOURCE_LEN
-// and MAX_TRIGGER_LEN at this same ceiling. Refusing at the daemon's boundary
+// Cross-runtime pair: `MAX_MARKDOWN_LEN` in
+// rustd/crates/afd_library/src/validate.rs bounds both `skill_markdown` and
+// `trigger_markdown` at this same ceiling (`ImportBody` in
+// rustd/crates/afd_library/src/model.rs). Refusing at the daemon's boundary
 // rather than a looser one of our own means an oversized body is refused before
 // the round-trip instead of after it — and File.text() never pulls it into the
 // tab to find out.

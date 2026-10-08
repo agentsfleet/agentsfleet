@@ -59,7 +59,8 @@ describe("presentErrorString", () => {
 
 // The codes this session's audit curated (UZ-PROVIDER-*, UZ-VAULT-*,
 // UZ-BUNDLE-*, UZ-APPROVAL-*, plus most of the pre-existing entries) moved
-// to the backend's `user_message` (error_entries.zig's eu()) — see
+// to the backend's `user_message` (`Problem::user_message`, authored per code
+// under rustd/crates/afd_core/src/problem/) — see
 // client.test.ts's "prefers user_message over detail" for the mechanism.
 // CODE_MAP now holds only what can never be backend-authored.
 describe("CODE_MAP — shrunk to client-minted entries", () => {

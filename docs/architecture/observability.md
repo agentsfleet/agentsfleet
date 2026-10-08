@@ -245,16 +245,15 @@ makes it much smaller than the three missing families above.
 ## `agentsfleet-runner` — a collector of its own
 
 **Built: the runner exports its own spans and metric families. The runner
-collector is built later.** The Zig runner (`src/runner/`) carries no metrics,
-OTel, or PostHog; its lone `record_metric` hook is a no-op stub. The Rust
-runner's `run` entry exports over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT`
-names a collector (`rustd/crates/afr_telemetry/`, built on the transport both
-binaries share, `rustd/crates/afd_otlp/`). Both runners write logfmt to stderr
-and report liveness and results over `/v1/runners` (heartbeat, `/renew`,
-result-report). `agentsfleetd` owns the runner's observable state in
+collector is built later.** The runner's `run` entry exports over OTLP/HTTP
+when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector
+(`rustd/crates/afr_telemetry/`, built on the transport both binaries share,
+`rustd/crates/afd_otlp/`). The runner writes logfmt to stderr and reports
+liveness and results over `/v1/runners` (heartbeat, `/renew`, result-report).
+It sends PostHog nothing. `agentsfleetd` owns the runner's observable state in
 `afd_observability`'s per-runner table and derives fleet liveness itself.
-Until the runner cutover switches the agent engine on, `run` refuses every lease, so the
-export is built and configured but carries no lease yet.
+`run` composes `afr_supervisor::run` (`rustd/crates/agentsfleet_runner/src/main.rs`),
+so every lease the runner takes runs inside a `runner.lease` span.
 
 **What the runner reads.** The endpoint, protocol and timeout knobs the daemon
 reads, and no header knob: `OTEL_EXPORTER_OTLP_HEADERS`, any signal's own
@@ -534,9 +533,9 @@ built, the runner collector reads them from the host's log store. Field rules:
 endpoint, addressed by the OpenTelemetry specification's own environment names.
 It does not know which backend its signal reaches, and that is the point.
 
-The Zig daemon posted direct to a vendor, gated on a `GRAFANA_OTLP_*` triple —
-vendor identity spelled into the daemon's own configuration. That worked while
-there was one backend, and it makes moving to a second one a daemon change:
+Posting direct to a vendor, gated on a `GRAFANA_OTLP_*` triple, spells vendor
+identity into the daemon's own configuration. That works while there is one
+backend, and it makes moving to a second one a daemon change:
 new credentials, new configuration, a redeploy, and a window in which the old
 and new paths are both half-configured. Fan-out to two backends at once is not
 expressible at all without teaching the daemon about both.
@@ -573,9 +572,8 @@ daemon: no `/metrics` route is served, and no scrape is configured in either
 environment. A pull endpoint would be a second export path exporting the same
 measurements by a different mechanism with a different failure mode.
 
-The vendor-named knobs are accepted as ALIASES through cutover so a rollback to
-the Zig binary keeps exporting, and they retire with that daemon. Where both a
-standard name and a vendor alias are set, the standard name wins.
+The vendor-named knobs are accepted as ALIASES, as the next section spells out.
+Where both a standard name and a vendor alias are set, the standard name wins.
 
 ### The Rust daemon's export path, as built
 
@@ -620,9 +618,8 @@ client awaited there would have no driver.
   its temporality and the census declares it per family. The cost families
   report windows (delta) and the runtime families report running totals
   (cumulative); one provider would silently rewrite half of them. Each
-  provider's periodic reader collects every 5 s, the Zig exporter's own
-  maximum flush interval, kept so no series changes rate at the swap. The
-  reader posts through a counting wrapper whose number is collection CYCLES
+  provider's periodic reader collects every 5 s (`COLLECT_INTERVAL` in
+  `rustd/crates/afd_otlp/src/pipelines.rs`). The reader posts through a counting wrapper whose number is collection CYCLES
   the exporter failed to send. Every census family is claimed from the
   registry at boot under its declared kind and series ceiling. Families whose
   mechanism this daemon does not run are named, with a reason each, in
@@ -648,7 +645,10 @@ beside it carries a credential.
 
 ## The OTLP exporter substrate
 
-The Zig daemon's substrate; the Rust daemon's is the SDK pipeline above.
+No binary in this tree builds the ring this section and its capacity audit
+describe: `agentsfleetd` and `agentsfleet-runner` export through the SDK
+pipeline above (`rustd/crates/afd_otlp/src/pipelines.rs`). Size nothing against
+these figures until they are measured against that pipeline.
 
 One pipeline serves traces (`/v1/traces`), logs (`/v1/logs`), and metrics
 (`/v1/metrics`): a lock-free MPSC ring, one shared endpoint configuration, a

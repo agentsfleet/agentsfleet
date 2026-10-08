@@ -37,8 +37,9 @@ test.describe("kill", () => {
     await killFleet(page);
     await expectDetailKilled(page);
 
-    // Dashboard listing: row still appears (list.zig does not filter killed
-    // rows) but state dot is `failed`.
+    // Dashboard listing: row still appears (`SELECT_FLEET_PAGE_FIRST` in
+    // rustd/crates/afd_fleet_lifecycle/src/sql.rs does not filter killed rows)
+    // but state dot is `failed`.
     await page.goto(workspaceHref(ws, "fleets"));
     await expectRowState(page, seeded.id, "failed");
   });
