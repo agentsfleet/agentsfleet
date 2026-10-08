@@ -162,6 +162,11 @@ runs:
     # The signature is over the manifest's exact bytes, offline (no transparency
     # log), which is what the runner checks. The public half is compared against
     # the key compiled into the runner before anything is signed.
+    #
+    # cosign 3 signs a Sigstore bundle by default and ignores
+    # `--output-signature`; the two `=false` flags keep the bare signature file
+    # the runner verifies. The key's first line in manifest.rs carries the
+    # `pub const … = "` prefix, which `sub` strips before the comparison.
     - name: Sign the release manifest with the key the runner is built with
       shell: bash
       env:
@@ -176,13 +181,14 @@ runs:
           exit 1
         fi
         cosign public-key --key env://COSIGN_PRIVATE_KEY --outfile "$out/release.pub"
-        awk '/-----BEGIN PUBLIC KEY-----/{p=1} p{print} /-----END PUBLIC KEY-----/{exit}' \
+        awk '/-----BEGIN PUBLIC KEY-----/{p=1; sub(/^.*-----BEGIN/, "-----BEGIN")} p{print} /-----END PUBLIC KEY-----/{exit}' \
           "$RUNNER_KEY_SOURCE" > "$RUNNER_TEMP/built-in.pub"
         if ! diff -q <(tr -d '[:space:]' < "$out/release.pub") <(tr -d '[:space:]' < "$RUNNER_TEMP/built-in.pub") >/dev/null; then
           echo "✗ the signing key's public half is not TOOLBOX_RELEASE_PUBLIC_KEY in $RUNNER_KEY_SOURCE; the runner would refuse this toolbox" >&2
           exit 1
         fi
         cosign sign-blob --yes --tlog-upload=false \
+          --new-bundle-format=false --use-signing-config=false \
           --key env://COSIGN_PRIVATE_KEY \
           --output-signature "$out/toolbox-$DIGEST.json.sig" \
           "$out/toolbox-$DIGEST.json"

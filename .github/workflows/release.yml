@@ -337,10 +337,12 @@ jobs:
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   push-ghcr:
     runs-on: ubuntu-latest
-    # The image carries the daemon and nothing else, so it waits on the daemon
-    # and its runtime check — not on the runner or the macOS binary, which ship
-    # in the GitHub release and never enter this image.
-    needs: [verify-tag, compile-daemon, verify-runtime-compat]
+    # The image carries the daemon alone, but the push waits on the toolbox too:
+    # everything downstream of this push deploys Fly and then metal, and the
+    # metal jobs download the toolbox artifact. A toolbox that failed to build,
+    # scan or sign must stop the release here, before Fly ships a daemon whose
+    # runners cannot follow it. The macOS binary still never gates the image.
+    needs: [verify-tag, compile-daemon, verify-runtime-compat, build-toolbox-amd64]
     permissions:
       packages: write
     steps:
