@@ -184,8 +184,13 @@ export function failureSentenceFor(tag: string): string {
  * that cannot be followed is noise, so an unmapped or unactionable class
  * returns null and renders nothing.
  */
+// startup_posture is the runner refusing the run before the fleet starts; its
+// cause says whether the fix is in the fleet's settings or on the runner.
+export const RUNNER_REFUSAL_SENTENCE =
+  "The runner refused this run before the fleet started.";
+
 export const GUIDANCE = {
-  STARTUP: "Add this fleet's instructions on its Skill tab — the next delivery picks them up.",
+  STARTUP: `${RUNNER_REFUSAL_SENTENCE} If the cause names a fleet setting, change it and retry; if it names the runner or its host, retry once.`,
 } as const;
 
 export function guidanceFor(tag: string | null | undefined): string | null {

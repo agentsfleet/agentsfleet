@@ -14,7 +14,10 @@ import {
   ROW_TONE,
   useSenderLabel,
 } from "./FleetMessageRow";
+import { RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
 
+// Dimming rides `data-optimistic`; the row itself carries no fade class.
+const FADED_ROW_CLASS = /opacity-60/;
 const AT = new Date(Date.UTC(2026, 6, 21, 10, 42, 17));
 
 afterEach(() => {
@@ -102,7 +105,7 @@ describe("FleetMessageRow", () => {
     const row = container.querySelector('[data-role="user"]') as HTMLElement;
     expect(row.getAttribute("data-optimistic")).toBe("true");
     expect(row.getAttribute("data-failed")).toBe("true");
-    expect(row.className).not.toMatch(/opacity-60/);
+    expect(row.className).not.toMatch(FADED_ROW_CLASS);
   });
 });
 
@@ -114,7 +117,7 @@ describe("FleetActivityRow", () => {
         headline="agentsfleet/agentsfleet#546 was edited"
         createdAt={AT}
         annotation={<span>EDITED</span>}
-        outcome="This fleet needs instructions before it can respond."
+        outcome={RUNNER_REFUSAL_SENTENCE}
         failed
         messageRole="system"
       >
@@ -125,7 +128,7 @@ describe("FleetActivityRow", () => {
     const card = row as HTMLElement;
     const headline = screen.getByText("agentsfleet/agentsfleet#546 was edited");
     const outcome = screen
-      .getByText("This fleet needs instructions before it can respond.")
+      .getByText(RUNNER_REFUSAL_SENTENCE)
       .closest("p") as HTMLElement;
     const details = screen.getByRole("button", { name: "Details" });
     const time = row.querySelector("time") as HTMLTimeElement;

@@ -4,19 +4,17 @@ import {
   AGENTSFLEET_EVENT_STATUS,
   type FleetEvent,
 } from "@/lib/streaming/fleet-stream-row";
-import {
-  eventOutcome,
-  messageOutcome,
-  RUNNER_REFUSAL_DETAILS,
-} from "./fleetFailureCopy";
+import { eventOutcome, messageOutcome } from "./fleetFailureCopy";
 
-// The two startup_posture sentences this module must keep apart: the fleet
-// that never got instructions, and the runner that refused before the fleet
-// ever ran. Both spelled here verbatim so a rewording breaks a test.
-const NEEDS_INSTRUCTIONS =
-  "This fleet needs instructions before it can respond.";
+// The runner is the only writer of startup_posture, so every startup failure
+// reads as its refusal, whatever cause line rides beside it.
 const RUNNER_REFUSED = "The runner refused this run before the fleet started.";
 const UNFINISHED_REPLY = "This fleet couldn’t complete the reply.";
+// Cause lines in the runner's own shape: prose naming what it refused on.
+const BUNDLE_REFUSAL = "the fleet bundle could not be fetched and verified";
+const SANDBOX_REFUSAL = "this host could not build a sandbox for the run";
+// A cause no runner build sends today, e.g. one carried by a pre-Rust row.
+const UNLISTED_CAUSE = "no instructions configured";
 
 function failedEvent(overrides: Partial<FleetEvent> = {}): FleetEvent {
   return {
@@ -48,8 +46,8 @@ function failedMessage(
 }
 
 describe("fleetFailureCopy — startup_posture sentences", () => {
-  it.each([...RUNNER_REFUSAL_DETAILS])(
-    "reads a runner refusal from the detail: %s",
+  it.each([BUNDLE_REFUSAL, SANDBOX_REFUSAL, UNLISTED_CAUSE])(
+    "reads every startup cause as the runner's refusal: %s",
     (detail) => {
       expect(eventOutcome(failedEvent({ failureDetail: detail }))).toBe(
         `${RUNNER_REFUSED} — ${detail}`,
@@ -57,64 +55,38 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
     },
   );
 
-  it("reads a runner refusal out of the em-dash in the outcome when no detail rides beside it", () => {
-    const [detail] = RUNNER_REFUSAL_DETAILS;
-    expect(eventOutcome(failedEvent({ outcome: `failed — ${detail}` }))).toBe(
-      `${RUNNER_REFUSED} — ${detail}`,
+  it("reads the cause out of the em-dash in the outcome when no detail rides beside it", () => {
+    expect(eventOutcome(failedEvent({ outcome: `failed — ${BUNDLE_REFUSAL}` }))).toBe(
+      `${RUNNER_REFUSED} — ${BUNDLE_REFUSAL}`,
     );
   });
 
-  it("routes a message's refusal detail through the same sentence", () => {
-    const [detail] = RUNNER_REFUSAL_DETAILS;
-    expect(messageOutcome(failedMessage(detail))).toBe(
-      `${RUNNER_REFUSED} — ${detail}`,
+  it("routes a message's cause through the same sentence", () => {
+    expect(messageOutcome(failedMessage(SANDBOX_REFUSAL))).toBe(
+      `${RUNNER_REFUSED} — ${SANDBOX_REFUSAL}`,
     );
   });
 
-  it("keeps the needs-instructions sentence verbatim for a non-refusal detail", () => {
-    expect(
-      eventOutcome(failedEvent({ failureDetail: "no instructions configured" })),
-    ).toBe(`${NEEDS_INSTRUCTIONS} — no instructions configured`);
+  it("states the refusal alone when no cause was recorded", () => {
+    expect(eventOutcome(failedEvent())).toBe(RUNNER_REFUSED);
+    expect(messageOutcome(failedMessage(null))).toBe(RUNNER_REFUSED);
   });
 
   // Reported live on the dev fleet: the runner could not load its config inside
-  // the sandbox, and the user was told their fleet lacked instructions — with a
-  // raw error identifier pasted after the em-dash. The fleet was configured
-  // correctly; the fault was entirely runner-side.
-  it("test_unrecognised_cause_is_not_blamed_on_the_fleet: an internal identifier reads as a runner failure", () => {
-    expect(eventOutcome(failedEvent({ failureDetail: "FleetInitFailed" }))).toBe(
-      RUNNER_REFUSED,
-    );
-    expect(messageOutcome(failedMessage("FleetInitFailed"))).toBe(RUNNER_REFUSED);
-  });
-
+  // the sandbox, and a raw error identifier was pasted after the em-dash.
   it("test_raw_error_identifier_never_shown: no internal identifier survives into the sentence", () => {
     for (const identifier of [
       "FleetInitFailed",
       "SandboxEstablishFailed",
       "UZ-EXEC-012",
     ]) {
-      const rendered = eventOutcome(failedEvent({ failureDetail: identifier }));
-      expect(rendered).not.toContain(identifier);
+      expect(eventOutcome(failedEvent({ failureDetail: identifier }))).toBe(RUNNER_REFUSED);
+      expect(messageOutcome(failedMessage(identifier))).toBe(RUNNER_REFUSED);
       // It also must not leak through the em-dash-embedded path.
       expect(
         eventOutcome(failedEvent({ outcome: `failed — ${identifier}` })),
-      ).not.toContain(identifier);
+      ).toBe(RUNNER_REFUSED);
     }
-  });
-
-  it("test_missing_instructions_keeps_its_sentence: a genuine fleet-config cause still names the fleet", () => {
-    // The inverse guard: prose causes are unaffected by the identifier rule, so
-    // a fleet that really has no instructions still says so.
-    expect(
-      eventOutcome(failedEvent({ failureDetail: "no instructions configured" })),
-    ).toBe(`${NEEDS_INSTRUCTIONS} — no instructions configured`);
-    expect(eventOutcome(failedEvent())).toBe(NEEDS_INSTRUCTIONS);
-  });
-
-  it("keeps the needs-instructions sentence verbatim when no detail was recorded", () => {
-    expect(eventOutcome(failedEvent())).toBe(NEEDS_INSTRUCTIONS);
-    expect(messageOutcome(failedMessage(null))).toBe(NEEDS_INSTRUCTIONS);
   });
 
   it("leaves every other failure tag on the shared event-summary sentence", () => {

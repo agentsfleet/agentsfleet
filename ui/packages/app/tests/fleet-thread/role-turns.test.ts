@@ -2,7 +2,7 @@ import { FLEET_NAME, ev, mockStream, renderThread, threadElement } from "./harne
 import { describe, expect, it } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import { LOADING_VERBS } from "@/components/layout/loading-verbs";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
 import { FleetThread } from "@/components/domain/FleetThread";
 import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
 
@@ -207,7 +207,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
   });
 
   it("keeps repeated startup failures inline in one expandable activity group", () => {
-    const cause = "no instructions configured";
+    const cause = "this host could not build a sandbox for the run";
     mockStream(
       Array.from({ length: 15 }, (_, i) =>
         ev({
@@ -228,7 +228,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
     expect(screen.queryByTestId("fleet-failure-banner")).toBeNull();
     expect(screen.getByTestId("group-count").textContent).toBe("×15");
     expect(
-      screen.getByText(/This fleet needs instructions before it can respond\./),
+      screen.getByText(RUNNER_REFUSAL_SENTENCE, { exact: false }),
     ).toBeTruthy();
     expect(screen.queryByTestId("failure-guidance")).toBeNull();
     expect(screen.queryByText(cause)).toBeNull();
