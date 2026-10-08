@@ -23,6 +23,7 @@ use crate::network::Allowlist;
 use crate::tenant::TenantFiles;
 use crate::workspace_disk::WorkspaceDisk;
 
+use super::held::off_runtime;
 use super::names::Names;
 use super::stderr::drain;
 
@@ -102,26 +103,21 @@ impl Parts {
 
     /// Holds the lease's scope to `allowlist` in place of the allowlist it
     /// was built to, off the async runtime since netlink blocks, then renders
-    /// the sandbox's names to match. The scope comes back whatever the kernel
-    /// answered, so a refused swap leaves it as it was, for the release.
+    /// the sandbox's names to match. The scope comes back whatever the swap
+    /// did, a panic included ([`off_runtime`]), so a refused swap leaves it as
+    /// it was, for the release.
     ///
     /// # Errors
-    /// No scope was built, the kernel refused the swap, or the names would
-    /// not render.
+    /// No scope was built, the kernel refused the swap, the swap panicked, or
+    /// the names would not render.
     pub(super) async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
-        let mut scope = self
-            .egress
-            .take()
-            .ok_or_else(|| egress_refused(EgressRefusal::NoScope))?;
         let span = tracing::Span::current();
         let next = allowlist.clone();
-        let (scope, swapped) = tokio::task::spawn_blocking(move || {
-            let swapped = span.in_scope(|| scope.reallow(&next));
-            (scope, swapped)
+        off_runtime(&mut self.egress, move |scope| {
+            span.in_scope(|| scope.reallow(&next))
         })
-        .await?;
-        self.egress = Some(scope);
-        swapped?;
+        .await?
+        .ok_or_else(|| egress_refused(EgressRefusal::NoScope))??;
         Names::rewrite(self.dir(), allowlist)
     }
 
