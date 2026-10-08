@@ -60,7 +60,8 @@ pub const REASON_NETWORK_NEEDS_CAGE: &str = "network isolation needs a sandbox t
 
 /// Controllers a cage-building tier needs in the delegated subtree.
 ///
-/// Mirrors the runner-side enablement set (`CgroupScope`: cpu, memory, pids).
+/// A subset of the runner's own requirement, `REQUIRED_CONTROLLERS` in
+/// `afr_sandbox/src/probe.rs`: cpu, io, memory and pids.
 /// Evidence for [`Guarantee::ResourceLimits`] on a Linux host, and nothing
 /// beyond that — a substrate that caps a lease by giving it a vCPU and a memory
 /// ceiling proves the same guarantee without a cgroup anywhere.

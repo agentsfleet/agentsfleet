@@ -67,7 +67,8 @@ SELECT status FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::u
 
 /// Claim the report and settle the final slice, atomically.
 ///
-/// Eight CTEs, and the ordering between them is the design:
+/// Nine common table expressions (CTEs), and the ordering between them is
+/// the design:
 ///
 /// `probe` reads the lease and the slot under `FOR UPDATE OF l, a` — that
 /// affinity lock is what serialises a racing reclaim behind this statement —
@@ -79,8 +80,10 @@ SELECT status FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::u
 /// and the row has to stay optional because a tenant with no wallet still
 /// reports. The lock makes `bal0` the LIVE balance after any wait.
 ///
+/// `calc` prices the deltas into `run_fee` and `token_cost` at the bound rates.
+///
 /// `guard` is the fence, and every write below is `FROM guard` — so a
-/// superseded holder writes nothing at all rather than some prefix of the six
+/// superseded holder writes nothing at all rather than some prefix of the five
 /// writes. `charged = LEAST(slice, bal0)` is the wallet's real delta in every
 /// interleaving, so audit rows at exhaustion sum to the actual drain and never
 /// past it.
@@ -89,6 +92,8 @@ SELECT status FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::u
 /// `ext_aff` advances the slot's. Both clamp with `GREATEST(old, $n)`, so a
 /// report carrying regressed cumulatives cannot rewind a cursor and hand the
 /// next slice a delta it already charged for.
+///
+/// `wallet` drains `slice` from the balance, floored at zero.
 ///
 /// `ledger`'s `ON CONFLICT (event_id, charge_type, fleet_id) DO UPDATE` is the dedup the
 /// spec's Dimension 3.3 names: a replayed report ACCUMULATES into the one
@@ -215,9 +220,9 @@ SELECT (SELECT charged FROM guard)          AS charged,
 
 /// Everything [`CLAIM_AND_SETTLE`] needs, by name.
 ///
-/// Seventeen positional parameters, eleven of them `bigint`, and `$3`
-/// referenced nine times — the shape [`super::lease::LeaseRow`] documents the
-/// hazard of. Six of those parameters are the three token counts and the four
+/// Seventeen positional parameters, ten of them `bigint`, and `$3`
+/// referenced eleven times — the shape [`super::lease::LeaseRow`] documents the
+/// hazard of. Seven of those parameters are the three token counts and the four
 /// rates; they arrive as one [`Meter`](afd_billing::Meter) rather than as a
 /// flat run of bare integers, so a transposition has to get past two named
 /// types instead of past nothing.

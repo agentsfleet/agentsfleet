@@ -65,8 +65,8 @@ const RELATIVE_SEGMENTS: [&str; 2] = [".", ".."];
 /// Every daemon-owned or sensitive subtree an operator bind must not overlap.
 ///
 /// Kept as two lists with `SENSITIVE_BIND_PATHS` for the reason each exists:
-/// these are the read-only baseline the cage mounts, the other list holds host
-/// and daemon state.
+/// these are host paths an operator bind may not overlap, the other list holds
+/// host and daemon state. [`bind_path`] refuses either overlap with one error.
 const PROTECTED_BIND_PATHS: [&str; 14] = [
     "/etc/ssl/certs",
     "/run/systemd/resolve",

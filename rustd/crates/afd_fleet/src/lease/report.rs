@@ -24,8 +24,10 @@
 //!
 //! # What this verb does NOT do
 //!
-//! No activity publish and no connector outbound hand-off: both are pure
-//! fan-out that writes no durable row, so neither belongs inside the settle.
+//! No activity publish and no delivery-queue append inside the settle. An owed
+//! answer's obligation row does commit there, through
+//! [`crate::lease::obligation`]; the publish and the append run after the
+//! commit, best effort, and a failure is logged, never returned.
 //! No OTLP spans either — the drained amount comes back as a VALUE, the way
 //! [`afd_billing::Accounts::debit_receive`] answers one, and the caller
 //! attaches the instrument. An exporter fused into the money path would be one

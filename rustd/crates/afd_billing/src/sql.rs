@@ -1,10 +1,12 @@
 //! `billing.*` and the two `core` tables a money decision reads.
 //!
 //! The wallet and the workspace→tenant hop, the apportioning drain, the ledger
-//! insert and the rate read. Collected here for the reason [`super`] gives: a
-//! review of this module reads every statement the money path can run, and a
-//! statement assembled from fragments in another file cannot be read that way.
-//! So every statement is written out flat, never concatenated.
+//! insert and the rate read. The rest of the money path sits beside its
+//! callers: the lease renewal and settle statements in
+//! `afd_fleet/src/lease/sql/{renew,report}.rs` drain the balance and write the
+//! `stage` ledger rows, and `INSERT_WALLET` in `afd_tenant/src/sql/signup.rs`
+//! opens a wallet with its starter grant. Every statement here is written out
+//! flat, never concatenated, so a review reads the SQL that runs.
 
 /// The tenant a workspace belongs to.
 ///

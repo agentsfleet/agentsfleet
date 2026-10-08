@@ -122,7 +122,8 @@ fn drain_stderr(child: &mut Child) -> JoinHandle<String> {
 
 /// Sends SIGTERM, as systemd's stop does.
 ///
-/// Through `kill(1)`: this workspace links no libc and forbids unsafe code.
+/// Through `kill(1)`: this test crate declares no `libc` dependency and writes
+/// no unsafe code.
 fn terminate(child: &Child) {
     let sent = Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
