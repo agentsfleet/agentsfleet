@@ -7,7 +7,18 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
-use super::{HostProbe, Kvm, ProbePaths, read};
+use super::{Enforceable, HostProbe, Kvm, ProbePaths, read};
+
+/// A kernel that builds the sandbox's Landlock ruleset and no egress scope.
+const LANDLOCK_ONLY: Enforceable = Enforceable {
+    landlock: true,
+    egress: false,
+};
+/// A kernel that builds neither.
+const NEITHER: Enforceable = Enforceable {
+    landlock: false,
+    egress: false,
+};
 
 /// A host stated as files: every fact present unless a test removes it.
 fn host(dir: &Path) -> ProbePaths {
@@ -43,7 +54,7 @@ fn host(dir: &Path) -> ProbePaths {
 fn test_capability_probe_states_every_mechanism_it_finds() {
     let dir = tempfile::tempdir().unwrap();
 
-    let found = read(&host(dir.path()), true, false);
+    let found = read(&host(dir.path()), LANDLOCK_ONLY);
 
     assert_eq!(
         found,
@@ -68,9 +79,9 @@ fn test_capability_probe_states_kvm_absent_and_denied() {
     let paths = host(dir.path());
 
     fs::set_permissions(&paths.kvm, fs::Permissions::from_mode(0o000)).unwrap();
-    let denied = read(&paths, true, false).kvm;
+    let denied = read(&paths, LANDLOCK_ONLY).kvm;
     fs::remove_file(&paths.kvm).unwrap();
-    let absent = read(&paths, true, false).kvm;
+    let absent = read(&paths, LANDLOCK_ONLY).kvm;
 
     assert_eq!((denied, absent), (Kvm::Denied, Kvm::Absent));
 }
@@ -81,7 +92,7 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
     let paths = host(dir.path());
     let missing = |edit: &dyn Fn()| {
         edit();
-        read(&paths, true, false).missing()
+        read(&paths, LANDLOCK_ONLY).missing()
     };
 
     assert_eq!(
@@ -99,14 +110,14 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
     );
     fs::write(&paths.filesystems, "\terofs\n").unwrap();
     // Throughput limits are required too: a host without `io` builds nothing.
-    assert_eq!(read(&paths, true, false).missing(), Some("io"));
-    assert!(!read(&paths, true, false).has_required_controllers());
+    assert_eq!(read(&paths, LANDLOCK_ONLY).missing(), Some("io"));
+    assert!(!read(&paths, LANDLOCK_ONLY).has_required_controllers());
     fs::write(
         paths.cgroup_root.join("cgroup.subtree_control"),
         "cpu io memory",
     )
     .unwrap();
-    assert_eq!(read(&paths, true, false).missing(), Some("pids"));
+    assert_eq!(read(&paths, LANDLOCK_ONLY).missing(), Some("pids"));
     assert_eq!(
         missing(&|| fs::set_permissions(&paths.bwrap, fs::Permissions::from_mode(0o644)).unwrap()),
         Some("bubblewrap")
@@ -135,7 +146,7 @@ fn test_unreadable_facts_read_as_absent_mechanisms() {
         state_dir: None,
     };
 
-    let found = read(&paths, true, false);
+    let found = read(&paths, LANDLOCK_ONLY);
 
     assert_eq!(found.missing(), Some("landlock"));
     assert_eq!(found.cgroup_controllers, [] as [String; 0]);
@@ -158,7 +169,7 @@ fn test_default_paths_are_the_kernels_own() {
 fn test_a_kernel_too_old_for_the_ruleset_reads_as_without_landlock() {
     let dir = tempfile::tempdir().unwrap();
 
-    let found = read(&host(dir.path()), false, false);
+    let found = read(&host(dir.path()), NEITHER);
 
     assert!(!found.landlock);
     assert_eq!(found.missing(), Some("landlock"));
@@ -174,12 +185,31 @@ fn test_direct_io_is_probed_only_in_a_named_state_directory() {
         ..unnamed.clone()
     };
 
-    assert_eq!(read(&unnamed, true, false).workspace_direct_io, None);
-    let probed = read(&named, true, false).workspace_direct_io;
+    assert_eq!(read(&unnamed, LANDLOCK_ONLY).workspace_direct_io, None);
+    let probed = read(&named, LANDLOCK_ONLY).workspace_direct_io;
     assert!(probed.is_some(), "a named directory is tried");
     assert_eq!(
         fs::read_dir(state.path()).unwrap().count(),
         0,
         "the probe leaves no file behind"
     );
+}
+
+/// Egress is enforceable exactly when the kernel built and removed a scope:
+/// no file the probe reads says so.
+#[test]
+fn test_egress_is_what_the_kernel_built() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = host(dir.path());
+
+    let built = read(
+        &paths,
+        Enforceable {
+            egress: true,
+            ..LANDLOCK_ONLY
+        },
+    );
+
+    assert!(built.egress);
+    assert!(!read(&paths, LANDLOCK_ONLY).egress);
 }

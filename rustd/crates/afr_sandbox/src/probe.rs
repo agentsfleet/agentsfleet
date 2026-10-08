@@ -115,28 +115,40 @@ impl Default for ProbePaths {
     }
 }
 
+/// What the kernel builds when asked, beyond what its files list: the
+/// sandbox's Landlock ruleset, and an egress scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Enforceable {
+    /// The kernel builds the ruleset the sandbox needs, not only lists
+    /// Landlock among its modules.
+    pub(crate) landlock: bool,
+    /// The kernel builds and removes an egress scope.
+    pub(crate) egress: bool,
+}
+
+impl Enforceable {
+    /// Asks this host's kernel to build each.
+    fn measure() -> Self {
+        Self {
+            landlock: crate::harden::landlock_enforceable(),
+            egress: egress_enforceable(),
+        }
+    }
+}
+
 /// Reads what this host can enforce. Never fails: a fact that cannot be read
 /// is a mechanism the host does not have.
 #[must_use]
 pub fn probe(paths: &ProbePaths) -> HostProbe {
-    read(
-        paths,
-        crate::harden::landlock_enforceable(),
-        egress_enforceable(),
-    )
+    read(paths, Enforceable::measure())
 }
 
-/// [`probe`], told whether the kernel builds the sandbox's Landlock ruleset
-/// and an egress scope rather than asking it, so a test states a host it is
-/// not running on.
-pub(crate) fn read(
-    paths: &ProbePaths,
-    landlock_enforceable: bool,
-    egress_enforceable: bool,
-) -> HostProbe {
+/// [`probe`], told what the kernel builds rather than asking it, so a test
+/// states a host it is not running on.
+pub(crate) fn read(paths: &ProbePaths, enforceable: Enforceable) -> HostProbe {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     HostProbe {
-        landlock: landlock_enforceable
+        landlock: enforceable.landlock
             && text(&paths.lsm)
                 .trim()
                 .split(',')
@@ -157,7 +169,7 @@ pub(crate) fn read(
             .lines()
             .any(|line| line.split_whitespace().last() == Some(MECHANISM_TOOLBOX_FILESYSTEM)),
         workspace_direct_io: paths.state_dir.as_deref().map(direct_io),
-        egress: egress_enforceable,
+        egress: enforceable.egress,
     }
 }
 
