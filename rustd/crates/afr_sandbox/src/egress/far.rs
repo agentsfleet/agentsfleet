@@ -22,14 +22,17 @@ use crate::network::Allowlist;
 /// The far host's link: its host end, and the end in its own namespace.
 const FAR_LINK: &str = "afx0";
 const FAR_PEER: &str = "afy0";
-/// The far network: the host end, an address the far host answers on, and a
-/// second one it answers on too, which an allowlist leaves out.
+/// The far network: the host end, an address the far host answers on, a
+/// second one it answers on too, which an allowlist leaves out, and a third a
+/// refill can add.
 pub const FAR_HOST_SIDE: Ipv4Addr = Ipv4Addr::new(10, 70, 0, 1);
 /// See [`FAR_HOST_SIDE`].
 pub const FAR_LISTED: Ipv4Addr = Ipv4Addr::new(10, 70, 0, 2);
 /// See [`FAR_HOST_SIDE`].
 pub const FAR_UNLISTED: Ipv4Addr = Ipv4Addr::new(10, 70, 0, 3);
-/// The far network's prefix: the three addresses above and room to spare.
+/// See [`FAR_HOST_SIDE`].
+pub const FAR_SPARE: Ipv4Addr = Ipv4Addr::new(10, 70, 0, 4);
+/// The far network's prefix: the four addresses above and room to spare.
 const FAR_PREFIX_LEN: u8 = 29;
 /// The port the far host answers on, and the resolver port it answers on too,
 /// which every sandbox's rules close.
@@ -115,9 +118,9 @@ pub fn probe_beside_a_dropping_forward_chain() -> Result<[bool; 2]> {
 /// A host past the sandbox's link, in a namespace of its own.
 ///
 /// Joined to the host, it answers [`FAR_GREETING`] over TCP and UDP on
-/// [`FAR_PORT`] and [`DNS_PORT`] at both [`FAR_LISTED`] and [`FAR_UNLISTED`],
-/// and routes back through the host. Its link is removed when it drops; its
-/// listening threads end with the process.
+/// [`FAR_PORT`] and [`DNS_PORT`] at [`FAR_LISTED`], [`FAR_UNLISTED`] and
+/// [`FAR_SPARE`], and routes back through the host. Its link is removed when
+/// it drops; its listening threads end with the process.
 #[derive(Debug)]
 pub struct Far {
     namespace: OwnedFd,
@@ -138,7 +141,7 @@ impl Far {
         configure(&mut route, FAR_LINK, &[FAR_HOST_SIDE]).map_err(netlink(Step::Far))?;
         Host.inside(namespace.as_fd(), || {
             let mut route = Host.route()?;
-            configure(&mut route, FAR_PEER, &[FAR_LISTED, FAR_UNLISTED])?;
+            configure(&mut route, FAR_PEER, &[FAR_LISTED, FAR_UNLISTED, FAR_SPARE])?;
             let index = link::index_named(&mut route, FAR_PEER)?;
             route.acknowledged(vec![link::default_route(index, FAR_HOST_SIDE)])?;
             [FAR_PORT, DNS_PORT].into_iter().try_for_each(listen)?;
