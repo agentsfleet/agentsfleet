@@ -49,7 +49,8 @@ CREATE INDEX IF NOT EXISTS idx_runner_events_runner_id_created_at_id
 CREATE INDEX IF NOT EXISTS idx_runner_events_runner_id_type_created_at_id
     ON fleet.runner_events (runner_id, event_type, created_at DESC, id DESC);
 
--- Reader: the retention sweep (fleet/retention_sweeper.zig), which filters by tag
+-- Reader: the retention sweep
+-- (`rustd/crates/afd_runner/src/sweep/retention.rs`), which filters by tag
 -- and age across ALL runners — so neither runner-leading index above can serve
 -- it. Measured on the steady-state cycle at 100,000 rows across 201 runners:
 -- 4.76 ms on the runner-leading index → 0.36 ms here. The runner-leading index
