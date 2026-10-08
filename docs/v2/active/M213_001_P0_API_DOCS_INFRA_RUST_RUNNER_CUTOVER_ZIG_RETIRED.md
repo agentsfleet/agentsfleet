@@ -131,7 +131,7 @@ The Zig tree, the three build files and the NullClaw dependency are deleted. `te
 - **Dimension 2.1** — DONE — No `.zig` file and no Zig build file is tracked → Test `test_no_zig_sources_remain`
 - **Dimension 2.2** — DONE — `make test-unit-all` and `make lint-all` pass with a `zig` that fails first on `PATH`, and neither calls it → Test `test_lanes_need_no_zig`
 - **Dimension 2.3** — DONE — `make check-version` passes reading `rustd/Cargo.toml` and `cli/package.json` only → Test `test_check_version_reads_two_manifests`
-- **Dimension 2.4** — No workflow, make file, script or `.orly/orly.json` names `zig`, `nullclaw`, `zig-out` or `build_runner`, the architecture check's own two scripts aside, since naming them is how they refuse a page that does; the Zig rule pack under `.orly/` arrives through Indy's orly persona, not this repository, and fires on no file here (Indy, Oct 08, 2026: "Keep, amend spec") → Test `test_repository_config_names_no_zig`
+- **Dimension 2.4** — DONE — No workflow, make file, script or `.orly/orly.json` names `zig`, `nullclaw`, `zig-out` or `build_runner`, the architecture check's own two scripts aside, since naming them is how they refuse a page that does; the Zig rule pack under `.orly/` arrives through Indy's orly persona, not this repository, and fires on no file here (Indy, Oct 08, 2026: "Keep, amend spec") → Test `test_repository_config_names_no_zig`
 
 ### §3 — Nothing describes Zig or NullClaw as current
 
@@ -141,7 +141,7 @@ Every Rust comment and test name that mirrors, ports or compares to Zig or NullC
 - **Dimension 3.2** — DONE — The architecture check passes, and fails on a fixture page that reintroduces the NullClaw child → Test `test_architecture_describes_the_rust_runner`
 - **Dimension 3.3** — DONE — The CLI's three comments name the Rust files they mirror → Test `test_cli_comments_point_at_rust`
 - **Dimension 3.4** — DONE — `lease_flow.md` is the end-to-end walk: every claim either links to the page that owns it or is narrative of the walk, its caveat is gone, and its gap list holds only gaps open after this Pull Request, each naming what would close it → Test `test_lease_flow_links_its_owners`
-- **Dimension 3.5** — No page under `docs/architecture/` names Zig, `zlint` or NullClaw; only `docs/v2/done/` and `docs/v2/pending/` keep them as history → Test `test_architecture_names_no_zig`
+- **Dimension 3.5** — DONE — No page under `docs/architecture/` names Zig, `zlint` or NullClaw; only `docs/v2/done/` and `docs/v2/pending/` keep them as history → Test `test_architecture_names_no_zig`
 
 ### §4 — The published docs and the changelog say what shipped
 
