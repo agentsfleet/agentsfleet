@@ -40,9 +40,10 @@ mod rig;
 mod sandbox;
 
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
-pub(crate) use self::resolver::{FakeResolver, assigned};
+pub(crate) use self::resolver::assigned;
 pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, NO_REFILL, Writes};
+pub(crate) use afr_egress::testing::FakeResolver;
 
 pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};
 /// When every fake lease is granted until, in Unix milliseconds: thirty

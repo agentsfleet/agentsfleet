@@ -4,7 +4,8 @@
 )]
 
 use std::io::{Read as _, Write as _};
-use std::net::{SocketAddr, TcpListener};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
+use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::HeaderMap;
@@ -13,12 +14,33 @@ use reqwest::{Client, Method, Url};
 use super::{BlockedAddress, Capped, Network, guarded_lookup, origin_of};
 use crate::error::raise;
 use crate::fixture::shown;
+use crate::testing::FakeResolver;
 use crate::transport::{Outbound, Transport};
 
 /// How long a read that should return at once is given before the test fails.
 const PROMPTLY: Duration = Duration::from_secs(5);
 /// A loopback listener on whatever port the system hands out.
 const ANY_LOOPBACK_PORT: &str = "127.0.0.1:0";
+/// A name the resolver answers with loopback, one it answers with a public
+/// address, and one it has never heard of.
+const INSIDE: &str = "inside.example";
+const PUBLIC: &str = "public.example";
+const NOWHERE: &str = "nowhere.example";
+const PUBLIC_ADDRESS: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
+
+/// A resolver answering [`INSIDE`] with loopback and [`PUBLIC`] with a public
+/// address, so the guard is driven with no DNS.
+fn resolver() -> Arc<FakeResolver> {
+    Arc::new(FakeResolver::answering(&[
+        (INSIDE, &[IpAddr::V4(Ipv4Addr::LOCALHOST)]),
+        (PUBLIC, &[PUBLIC_ADDRESS]),
+    ]))
+}
+
+/// The guarded client, resolving through [`resolver`].
+fn network() -> Network {
+    Network::build(Client::builder(), resolver()).unwrap()
+}
 
 /// A plain-HTTP server on a loopback port that reads one request's head,
 /// answers it with `reply`, and holds the connection open until the client
@@ -76,45 +98,40 @@ fn should_show_a_redirect_as_its_origin_alone() {
 
 #[tokio::test]
 async fn should_refuse_a_name_that_resolves_to_loopback() {
-    let refused = guarded_lookup("localhost".to_owned()).await.err();
+    let refused = guarded_lookup(&*resolver(), INSIDE).await.err();
 
     assert!(refused.is_some_and(|refusal| refusal.is::<BlockedAddress>()));
 }
 
 #[tokio::test]
 async fn should_answer_address_not_allowed_when_the_resolver_refuses_the_name() {
-    let network = Network::new().unwrap();
     let outbound = Outbound {
         method: Method::GET,
-        url: Url::parse("https://localhost:9/").unwrap(),
+        url: Url::parse(&format!("https://{INSIDE}:9/")).unwrap(),
         headers: HeaderMap::new(),
         body: None,
     };
 
-    let refused = network.send(outbound).await.err().as_ref().map(shown);
+    let refused = network().send(outbound).await.err().as_ref().map(shown);
 
-    assert_eq!(
-        refused,
-        Some(shown(&raise::address_not_allowed("localhost")))
-    );
+    assert_eq!(refused, Some(shown(&raise::address_not_allowed(INSIDE))));
 }
 
 #[tokio::test]
 async fn should_answer_unreachable_when_the_name_does_not_resolve() {
-    let network = Network::new().unwrap();
     let outbound = Outbound {
         method: Method::GET,
-        url: Url::parse("https://no-such-host.invalid/").unwrap(),
+        url: Url::parse(&format!("https://{NOWHERE}/")).unwrap(),
         headers: HeaderMap::new(),
         body: None,
     };
 
-    let refused = network.send(outbound).await.err().as_ref().map(shown);
+    let refused = network().send(outbound).await.err().as_ref().map(shown);
 
     assert_eq!(
         refused,
         Some(shown(&raise::upstream_unreachable(
-            "no-such-host.invalid",
+            NOWHERE,
             super::NOT_CONNECTED
         )))
     );
@@ -140,13 +157,7 @@ async fn should_answer_timed_out_when_the_host_never_answers() {
         body: None,
     };
 
-    let refused = Network::new()
-        .unwrap()
-        .send(outbound)
-        .await
-        .err()
-        .as_ref()
-        .map(shown);
+    let refused = network().send(outbound).await.err().as_ref().map(shown);
 
     let host = address.ip().to_string();
     let timed_out = raise::upstream_unreachable(&host, super::TIMED_OUT);
@@ -201,10 +212,10 @@ async fn should_hand_back_a_body_that_is_not_utf8_with_its_bad_bytes_replaced() 
 
 #[tokio::test]
 async fn should_answer_every_address_of_a_host_none_of_whose_addresses_is_blocked() {
-    let resolved = guarded_lookup("1.1.1.1".to_owned()).await.unwrap();
+    let resolved = guarded_lookup(&*resolver(), PUBLIC).await.unwrap();
 
     assert_eq!(
         resolved.collect::<Vec<_>>(),
-        [SocketAddr::from(([1, 1, 1, 1], 0))]
+        [SocketAddr::new(PUBLIC_ADDRESS, 0)]
     );
 }

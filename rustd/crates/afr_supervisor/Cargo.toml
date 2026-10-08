@@ -83,6 +83,9 @@ futures-util.workspace = true
 [dev-dependencies]
 # The recorder a suite reads its own measurements back through.
 afr_telemetry = { workspace = true, features = ["test-util"] }
+# `FakeResolver`: the egress suites resolve through the one fake the guarded
+# client's suites use.
+afr_egress = { workspace = true, features = ["test-util"] }
 # The production connector the fake agent admits through, so a lease naming a
 # provider no wire speaks is refused by the real check.
 afr_providers.workspace = true
