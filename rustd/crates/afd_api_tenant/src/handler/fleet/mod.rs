@@ -25,10 +25,12 @@ pub mod message_steer;
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::fleet::{
+    FleetSummary, FleetsResponse, InstalledFleetResponse, Triggers, WebhookUrl,
+};
 use afd_core::id::Uuid7;
 use afd_core::paging::Cursor;
 use afd_fleet_lifecycle::{After, FleetPage, FleetRow, Installed};
-use afd_wire::fleet::{FleetSummary, FleetsResponse, InstalledFleetResponse, Triggers, WebhookUrl};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{RawQuery, State};
@@ -138,7 +140,7 @@ pub(crate) async fn list<D: Services>(
         "default API trigger when the library has no trigger. ",
         "Set `slack_channel_id` so the fleet answers mentions in that Slack channel. ",
     ),
-    request_body = afd_wire::fleet::InstallFleetRequest,
+    request_body = afd_api_wire::fleet::InstallFleetRequest,
     params(
         afd_http::openapi::path::Workspace,
     ),

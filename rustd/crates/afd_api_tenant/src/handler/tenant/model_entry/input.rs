@@ -72,7 +72,7 @@ pub(super) fn parse_entry_id(raw: &str) -> Result<Uuid7, Refusal> {
 
 /// The refusal for the bound a request body broke.
 ///
-/// The BOUNDS live on the request types in [`afd_wire::tenant_model_entry`];
+/// The BOUNDS live on the request types in [`afd_api_wire::tenant_model_entry`];
 /// the wording stays here because the dashboard renders it. A blank and an
 /// oversized `model_id` break one bound at one path yet are different repairs,
 /// so the value picks the table and the table picks the sentence. A `model_id`

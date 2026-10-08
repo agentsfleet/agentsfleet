@@ -39,17 +39,12 @@ impl<'run> Router<'run> {
         }
     }
 
-    /// The lease's executor, when the lease has a sandbox.
-    pub(crate) const fn executor(&self) -> Option<&'run dyn Executor> {
-        self.executor
-    }
-
     /// Runs one call to `name` with `arguments`, lending it the lease's state.
     pub async fn dispatch(
         &self,
         name: &str,
         arguments: &serde_json::Value,
-        lease: &mut Lease<'_>,
+        lease: &Lease<'_>,
     ) -> ToolOutput {
         let Some(tool) = self.selection.tool(name) else {
             return refused(self.selection.hosts(name), name);

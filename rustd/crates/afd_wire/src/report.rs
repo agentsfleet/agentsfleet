@@ -67,77 +67,6 @@ pub enum FailureClass {
     BudgetBreach,
 }
 
-/// A clean finish. Empty by construction — the run's numbers live on the result
-/// itself, shared by both verdicts.
-///
-/// The braces are load-bearing and cannot become a unit struct: serde encodes a
-/// unit struct as `null`, so `Outcome::Completed` would serialize as
-/// `{"completed":null}` where the wire carries `{"completed":{}}`.
-/// `test_wire_roundtrip_all_fixtures` fails on that change, which is what makes
-/// this reason checkable rather than asserted.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[expect(
-    clippy::empty_structs_with_brackets,
-    reason = "the empty braces are the wire encoding; a unit struct serializes as null"
-)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Completed {}
-
-/// Why a run failed.
-///
-/// `class` is null only when the peer reported a failure without classifying it.
-/// A cause is never guessed from a bare failure.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Failure<'a> {
-    /// The classified cause, when there is one.
-    pub class: Option<FailureClass>,
-    /// Human-readable cause from the classification site.
-    #[serde(borrow)]
-    pub detail: Cow<'a, str>,
-}
-
-/// The run's verdict. `Completed` carries no cause because a clean run has none.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ResultOutcome<'a> {
-    /// The run finished cleanly.
-    Completed(Completed),
-    /// The run failed.
-    #[serde(borrow)]
-    Failed(Failure<'a>),
-}
-
-/// The terminal stage result the runner produces and the report consumes.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExecutionResult<'a> {
-    /// Whether the run finished or failed, and why.
-    #[serde(borrow)]
-    pub outcome: ResultOutcome<'a>,
-    /// The run's output.
-    #[serde(borrow)]
-    pub content: Cow<'a, str>,
-    /// Total tokens, for reporting rather than billing.
-    pub token_count: u64,
-    /// Wall-clock seconds the run took.
-    pub wall_seconds: u64,
-    /// Peak resident bytes observed.
-    pub memory_peak_bytes: u64,
-    /// Milliseconds the run spent throttled.
-    pub cpu_throttled_ms: u64,
-    /// Cumulative prompt tokens for the whole run.
-    pub input_tokens: u64,
-    /// Cumulative cache-read tokens for the whole run.
-    pub cached_input_tokens: u64,
-    /// Cumulative completion tokens for the whole run.
-    pub output_tokens: u64,
-}
-
 /// `POST /v1/runners/me/leases/{lease_id}/renew` reply.
 ///
 /// The authoritative new kill deadline. A non-`200` means stop renewing and kill
@@ -237,6 +166,10 @@ pub struct ReportRequest<'a> {
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<ToolTrace>))]
     pub tool_calls: Option<RawToolTrace<'a>>,
+    /// Epoch milliseconds until which this runner holds the run's sandbox,
+    /// frozen, for the fleet's next event. Absent when it holds none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_until_ms: Option<i64>,
 }
 
 /// `POST /v1/runners/me/reports` reply.

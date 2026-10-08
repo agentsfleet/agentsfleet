@@ -159,7 +159,7 @@ async fn poll_until_acknowledged(
     let plane = held.fixtures.plane();
     for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
         let answer = plane
-            .lease(&held.runner, false, now)
+            .lease(&held.runner, &[], false, now)
             .await
             .expect("the poll must reach the datastore");
         // The reason rides the log rather than the JSON, so the claim is

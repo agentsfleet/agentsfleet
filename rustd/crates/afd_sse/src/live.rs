@@ -75,7 +75,6 @@ impl Live {
     }
 
     /// Every frame published for one fleet, numbered from zero.
-    #[must_use]
     pub fn tail_of(&self, fleet_id: &str) -> BoxStream<'static, Frame> {
         match self.hub.as_ref() {
             Some(hub) => {
@@ -117,7 +116,6 @@ impl Live {
     /// The convenience the per-fleet route gets for free: a workspace whose
     /// fleet set never changes for the life of the connection needs no refresh
     /// tick, and a caller that DOES need one drives [`FanIn`] itself.
-    #[must_use]
     pub fn multiplex_of(&self, fleets: &BTreeSet<String>) -> BoxStream<'static, Frame> {
         let mut fan_in = self.fan_in();
         fan_in.sync_to(fleets);

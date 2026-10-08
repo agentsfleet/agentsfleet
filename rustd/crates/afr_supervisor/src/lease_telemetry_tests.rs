@@ -97,6 +97,7 @@ impl Scripted {
         let spent = Chunk::Usage(Usage {
             input: 2,
             cached_input: 0,
+            cache_written: 0,
             output: 1,
         });
         let said = if index == 0 {
@@ -283,6 +284,7 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
         bundles: BundleCache::new(&home),
         mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
         limits: Limits::default(),
+        holds: crate::holds::Holds::start(clock()),
         clock: clock(),
         halt: Halt::new(CancellationToken::new()),
         held: Notify::new(),

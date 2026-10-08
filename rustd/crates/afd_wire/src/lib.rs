@@ -1,5 +1,9 @@
 //! The `/v1/runners` protocol the daemon serves and the runner consumes.
 //!
+//! Only what both sides speak lives here. The daemon's own API types (admin,
+//! tenant, operator, ingress) live in `afd_api_wire`, which depends on this
+//! crate and never the reverse, so an edit there rebuilds no runner crate.
+//!
 //! These types ARE the wire. `agentsfleetd` publishes them through
 //! `public/openapi.json` (the `openapi` feature derives the schemas), and
 //! `agentsfleet-runner` is a client of that document: its Zig structs in
@@ -24,12 +28,14 @@
 //! to `64` and re-serialize to `64` — a byte mismatch against a fixture the Zig
 //! daemon, which clamps at assignment rather than at parse, emits as `168`.
 //!
-//! # No `skip_serializing_if`, anywhere
+//! # `skip_serializing_if` is for receivers that refuse unknown fields
 //!
-//! The Zig emitter writes `null` for an absent optional, so serde must too. A
-//! `skip_serializing_if` would drop the key and break byte equality — which is
-//! why the round-trip test exists rather than a field-by-field comparison that
-//! would not notice.
+//! An absent optional writes `null`, except on a shape whose receiver is
+//! `#[serde(deny_unknown_fields)]`, such as the report and the activity
+//! frames. There a field added after release skips itself when absent, so a
+//! message that does not use it still decodes on a receiver that predates it.
+//! A shape that admits unknown fields, such as [`lease::LeasePayload`], never
+//! skips: its newer fields decode from absence through `#[serde(default)]`.
 //!
 //! # Version
 //!
@@ -45,40 +51,16 @@
 #![cfg_attr(not(test), deny(unused_crate_dependencies))]
 
 pub mod activity;
-pub mod admin;
-mod admin_catalogue;
-mod admin_library;
-pub mod approval;
-pub mod auth;
-pub mod connector;
 pub mod credentials;
 pub mod event;
-pub mod fleet;
-pub mod grant;
-pub mod health;
-pub mod identity;
-pub mod ingress;
 pub mod lease;
 pub mod memory;
 pub mod message_verb;
-pub mod models;
-pub mod operator;
 pub mod paths;
 pub mod policy;
-pub mod preference;
-mod redact;
+pub mod redact;
 pub mod report;
 pub mod runner;
-pub mod schedule;
 pub mod schedule_verb;
-pub mod schema;
-pub mod secret;
-pub mod tail;
-pub mod team;
-pub mod tenant;
-pub mod tenant_model_entry;
-pub mod tenant_provider;
 pub mod tool_detail;
 pub mod tool_trace;
-pub mod workspace;
-pub mod workspace_library;

@@ -67,13 +67,8 @@ async fn test_memory_push_fenced_before_report() {
         "the run's chunk reached the live tail"
     );
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
-    assert!(
-        ReportSpool::new(&rig.home)
-            .pending()
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    let pending = ReportSpool::new(&rig.home).pending().await.unwrap();
+    assert!(pending.is_empty(), "{pending:?}");
 }
 
 #[tokio::test(start_paused = true)]
@@ -174,7 +169,8 @@ async fn a_drained_live_tail_abandons_nothing() {
         .unwrap();
 
     assert_eq!(reported(&rig.calls())[OUTCOME], PROCESSED);
-    assert!(abandoned(&recorded).is_empty());
+    let unfinished = abandoned(&recorded);
+    assert!(unfinished.is_empty(), "{unfinished:?}");
 }
 
 #[tokio::test(start_paused = true)]

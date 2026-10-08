@@ -27,7 +27,7 @@ test-util = [
 # Generates this plane's half of the OpenAPI document. NOT default: the shipped
 # daemon compiles no annotation, no schema string and no collector — the whole
 # of it is a build-time tool, and CI is where its compile cost belongs.
-openapi = ["dep:utoipa", "afd_http/openapi", "afd_wire/openapi"]
+openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "afd_wire/openapi"]
 
 [dependencies]
 jiff.workspace = true
@@ -64,6 +64,7 @@ afd_sse.workspace = true
 afd_dragonfly.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
+afd_api_wire.workspace = true
 afd_wire.workspace = true
 # The invite link is built by path segment from the dashboard base, the way
 # the connector's own dashboard URLs are, never by string formatting.

@@ -13,9 +13,14 @@ use super::Shell;
 use crate::handler::Typed;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
-use crate::sandbox::oneshot::{EVENT_TIMED_OUT, TIMEOUT_MS_DEFAULT, TIMEOUT_MS_MAX};
+use crate::sandbox::oneshot::{
+    EVENT_OUT_OF_MEMORY, EVENT_TIMED_OUT, TIMEOUT_MS_DEFAULT, TIMEOUT_MS_MAX,
+};
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::{call, call_in};
+
+/// Two sleeps in one process group, the shell waiting on the second.
+const SLEEP_TWICE: &str = "sleep 60 & sleep 60";
 
 fn shell() -> Box<dyn Tool> {
     Typed::boxed(Shell)
@@ -36,7 +41,7 @@ async fn test_shell_runs_through_the_executor_and_reports_its_exit_code() {
     let output = call_in(
         &*shell(),
         &executor,
-        &mut Lease::default(),
+        &Lease::default(),
         json!({"command": "echo hi; exit 3"}),
     )
     .await;
@@ -80,7 +85,7 @@ async fn should_answer_with_the_output_alone_when_the_command_succeeds() {
     let output = call_in(
         &*shell(),
         &executor,
-        &mut Lease::default(),
+        &Lease::default(),
         json!({"command": "true"}),
     )
     .await;
@@ -94,11 +99,11 @@ async fn should_answer_with_the_output_alone_when_the_command_succeeds() {
 async fn should_hold_the_timeout_the_model_names_under_the_ceiling() {
     let executor =
         ScriptedExecutor::new([ScriptedProcess::exits("", 0), ScriptedProcess::exits("", 0)]);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     for timeout_ms in [1_500, 86_400_000] {
         let arguments = json!({"command": "true", "timeout_ms": timeout_ms});
-        call_in(&*shell(), &executor, &mut lease, arguments).await;
+        call_in(&*shell(), &executor, &lease, arguments).await;
     }
 
     let limits: Vec<_> = executor.spawned().iter().map(Spawn::time_limit).collect();
@@ -119,8 +124,8 @@ async fn test_shell_timeout_reports_timed_out_and_logs_it() {
     let output = call_in(
         &*shell(),
         &executor,
-        &mut Lease::default(),
-        json!({"command": "sleep 60 & sleep 60", "timeout_ms": 500}),
+        &Lease::default(),
+        json!({"command": SLEEP_TWICE, "timeout_ms": 500}),
     )
     .await;
 
@@ -135,27 +140,51 @@ async fn test_shell_timeout_reports_timed_out_and_logs_it() {
 }
 
 #[tokio::test]
+async fn test_oom_ending_reads_out_of_memory() {
+    let capture = Capture::install();
+    let executor =
+        ScriptedExecutor::new([ScriptedProcess::ends("allocating\n", Ending::OutOfMemory)]);
+
+    let output = call_in(
+        &*shell(),
+        &executor,
+        &Lease::default(),
+        json!({"command": "python3 -c 'bytearray(8 << 30)'"}),
+    )
+    .await;
+
+    assert_eq!(output.text, "allocating\nProcess killed: out of memory");
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    assert_eq!(output.exit_code, Some(137));
+    let logged = capture.only(EVENT_OUT_OF_MEMORY);
+    assert_eq!(logged.level, tracing::Level::WARN);
+    assert_eq!(logged.field("error_code"), Some("out_of_memory"));
+    assert!(logged.field("lease_id").is_some(), "{logged:?}");
+    assert!(
+        logged
+            .fields
+            .values()
+            .all(|value| !value.contains("bytearray")),
+        "no command text: {logged:?}"
+    );
+}
+
+#[tokio::test]
 async fn should_report_a_signal_and_a_lost_ending() {
     let executor = ScriptedExecutor::new([
         ScriptedProcess::ends("", Ending::Signaled(9)),
         ScriptedProcess::vanishes("partial"),
     ]);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let killed = call_in(
         &*shell(),
         &executor,
-        &mut lease,
+        &lease,
         json!({"command": "kill -9 $$"}),
     )
     .await;
-    let lost = call_in(
-        &*shell(),
-        &executor,
-        &mut lease,
-        json!({"command": "sleep 1"}),
-    )
-    .await;
+    let lost = call_in(&*shell(), &executor, &lease, json!({"command": "sleep 1"})).await;
 
     assert_eq!(killed.text, "Process killed by signal 9");
     assert_eq!(killed.exit_code, Some(137));
@@ -176,7 +205,7 @@ async fn should_cut_a_long_output_to_the_model_budget() {
     let output = call_in(
         &*shell(),
         &executor,
-        &mut Lease::default(),
+        &Lease::default(),
         json!({"command": "yes x | head -c 50000"}),
     )
     .await;
@@ -189,13 +218,13 @@ async fn should_cut_a_long_output_to_the_model_budget() {
 
 #[tokio::test]
 async fn should_refuse_without_a_sandbox_or_when_the_executor_refuses() {
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
-    let unsandboxed = call(&*shell(), &mut lease, json!({"command": "true"})).await;
+    let unsandboxed = call(&*shell(), &lease, json!({"command": "true"})).await;
     let refused = call_in(
         &*shell(),
         &ScriptedExecutor::new([]),
-        &mut lease,
+        &lease,
         json!({"command": "true"}),
     )
     .await;
@@ -220,13 +249,14 @@ async fn should_refuse_an_argument_it_does_not_take_and_run_nothing() {
     let output = call_in(
         &*shell(),
         &executor,
-        &mut Lease::default(),
+        &Lease::default(),
         json!({"command": "true", "cwd": "/"}),
     )
     .await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
-    assert!(executor.spawned().is_empty());
+    let spawned = executor.spawned();
+    assert!(spawned.is_empty(), "{spawned:?}");
 }
 
 /// A command whose output was still open when it ended says so, after its
@@ -239,7 +269,7 @@ async fn should_say_the_output_was_still_open_after_the_output() {
     let output = call_in(
         &*shell(),
         &executor,
-        &mut Lease::default(),
+        &Lease::default(),
         json!({"command": "true"}),
     )
     .await;

@@ -17,15 +17,27 @@ mod budgets;
 #[cfg(target_os = "linux")]
 mod confinement;
 #[cfg(target_os = "linux")]
+mod exhaustion;
+#[cfg(target_os = "linux")]
+mod exhaustion_concurrent;
+#[cfg(target_os = "linux")]
 mod files;
 #[cfg(target_os = "linux")]
+mod filesystems;
+#[cfg(target_os = "linux")]
+mod forked_kill;
+#[cfg(target_os = "linux")]
 mod git;
+#[cfg(target_os = "linux")]
+mod hold;
 #[cfg(target_os = "linux")]
 mod lane;
 #[cfg(target_os = "linux")]
 mod release;
 #[cfg(target_os = "linux")]
 mod run;
+#[cfg(target_os = "linux")]
+mod shared_memory;
 #[cfg(target_os = "linux")]
 mod toolbox;
 #[cfg(target_os = "linux")]

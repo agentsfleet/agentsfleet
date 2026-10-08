@@ -8,12 +8,12 @@
 //! express it, and no statement here needs a guard against it. That is the
 //! whole reason the operator side does not reuse the reader's enum.
 //!
-//! The spellings come from [`afd_wire::approval::status`], shared with the
+//! The spellings come from [`afd_api_wire::approval::status`], shared with the
 //! reader rather than copied: a drift between the two would make a row one
 //! plane wrote the other could not read, and the gate would sit pending forever
 //! with a human's answer landing nowhere.
 
-use afd_wire::approval::status;
+use afd_api_wire::approval::status;
 
 /// A terminal answer to an approval gate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

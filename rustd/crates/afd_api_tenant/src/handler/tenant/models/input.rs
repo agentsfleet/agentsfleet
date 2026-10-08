@@ -8,11 +8,11 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::admin::PROVIDER_MAX_BYTES;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_tenant::models::Boundary;
 use afd_tenant::models::cursor;
-use afd_wire::admin::PROVIDER_MAX_BYTES;
 use garde::Validate as _;
 
 use super::{

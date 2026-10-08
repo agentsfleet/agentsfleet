@@ -16,9 +16,6 @@ mod protocol_negotiation;
 mod request_id;
 // Gated on the feature that generates the document it grades.
 #[cfg(feature = "openapi")]
-#[path = "openapi_artifact.rs"]
-mod openapi_artifact;
-#[cfg(feature = "openapi")]
 #[path = "openapi_codes.rs"]
 mod openapi_codes;
 #[cfg(feature = "openapi")]

@@ -20,8 +20,8 @@
 
 use crate::harness;
 
+use afd_api_wire::tenant_model_entry::MODEL_ID_MAX_BYTES;
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_wire::tenant_model_entry::MODEL_ID_MAX_BYTES;
 use base64::Engine as _;
 use http::{Method, StatusCode};
 use serde_json::Value;

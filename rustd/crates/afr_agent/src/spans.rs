@@ -6,11 +6,14 @@
 //! call. The keys are `afd_observability::semconv`'s, spelled nowhere else.
 
 use afd_observability::semconv::{
-    ATTR_OPERATION_NAME, ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL, ATTR_TOOL_CALL_ID, ATTR_TOOL_NAME,
-    ATTR_USAGE_INPUT_TOKENS, ATTR_USAGE_OUTPUT_TOKENS, OPERATION_CHAT, OPERATION_EXECUTE_TOOL,
-    OPERATION_INVOKE_AGENT, RUNNER_SCOPE_NAME, provider,
+    ATTR_ERROR_TYPE, ATTR_OPERATION_NAME, ATTR_PROVIDER_NAME, ATTR_REQUEST_MODEL,
+    ATTR_TOOL_CALL_ID, ATTR_TOOL_NAME, ATTR_USAGE_CACHE_CREATION_TOKENS,
+    ATTR_USAGE_CACHE_READ_TOKENS, ATTR_USAGE_INPUT_TOKENS, ATTR_USAGE_OUTPUT_TOKENS,
+    OPERATION_CHAT, OPERATION_EXECUTE_TOOL, OPERATION_INVOKE_AGENT, RUNNER_SCOPE_NAME, provider,
 };
 use afd_wire::policy::ExecutionPolicy;
+use afr_providers::Usage;
+use afr_tools::ToolErrorCode;
 use tracing::Span;
 use tracing::field::Empty;
 
@@ -38,13 +41,18 @@ pub(crate) fn chat(model: &str) -> Span {
         { ATTR_REQUEST_MODEL } = model,
         { ATTR_USAGE_INPUT_TOKENS } = Empty,
         { ATTR_USAGE_OUTPUT_TOKENS } = Empty,
+        { ATTR_USAGE_CACHE_READ_TOKENS } = Empty,
+        { ATTR_USAGE_CACHE_CREATION_TOKENS } = Empty,
     )
 }
 
-/// Records what a turn spent on its span.
-pub(crate) fn spent(span: &Span, input: u64, output: u64) {
-    span.record(ATTR_USAGE_INPUT_TOKENS, input);
-    span.record(ATTR_USAGE_OUTPUT_TOKENS, output);
+/// Records what a turn spent on its span: the whole prompt, the completion,
+/// and how much of the prompt the provider's cache read and wrote.
+pub(crate) fn spent(span: &Span, usage: Usage) {
+    span.record(ATTR_USAGE_INPUT_TOKENS, usage.prompt());
+    span.record(ATTR_USAGE_OUTPUT_TOKENS, usage.output);
+    span.record(ATTR_USAGE_CACHE_READ_TOKENS, usage.cached_input);
+    span.record(ATTR_USAGE_CACHE_CREATION_TOKENS, usage.cache_written);
 }
 
 /// The span one tool call is traced in, naming the tool by the catalog's
@@ -61,7 +69,17 @@ pub(crate) fn execute_tool(name: &str, call_id: &str) -> Span {
         { ATTR_OPERATION_NAME } = OPERATION_EXECUTE_TOOL,
         { ATTR_TOOL_NAME } = tool,
         { ATTR_TOOL_CALL_ID } = call_id,
+        { ATTR_ERROR_TYPE } = Empty,
     )
+}
+
+/// Records why a tool call failed on its span: the closed code the model
+/// reads, never the call's own text. A call that answered with none, a
+/// non-zero exit among them, carries no error type.
+pub(crate) fn failed(span: &Span, code: Option<ToolErrorCode>) {
+    if let Some(code) = code {
+        span.record(ATTR_ERROR_TYPE, code.as_str());
+    }
 }
 
 #[cfg(test)]

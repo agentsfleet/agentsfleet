@@ -251,6 +251,7 @@ fn capable() -> afr_sandbox::HostProbe {
         bubblewrap: true,
         kvm: afr_sandbox::Kvm::Absent,
         toolbox_filesystem: true,
+        workspace_direct_io: None,
     }
 }
 

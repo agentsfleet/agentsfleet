@@ -118,7 +118,8 @@ impl Handler for MemoryStore {
             category: category.map_or(Cow::Borrowed(PINNED_CATEGORY), Cow::Owned),
             visibility: visibility.map(Visibility::from).unwrap_or_default(),
         };
-        match context.lease.memory.store(delta).await {
+        let stored_entry = context.lease.memory.lock().await.store(delta).await;
+        match stored_entry {
             Ok(()) => ToolOutput::succeeded(stored),
             Err(failure) => refused(&failure),
         }
@@ -141,7 +142,8 @@ impl Handler for MemoryRecall {
             .limit
             .unwrap_or(RECALL_DEFAULT)
             .min(RECALL_LIMIT_MAX);
-        match context.lease.memory.recall(&arguments.query, limit).await {
+        let memory = context.lease.memory.lock().await;
+        match memory.recall(&arguments.query, limit).await {
             Ok(recalled) => ToolOutput::succeeded(
                 lines(&recalled, |found| {
                     format!("{} ({}): {}", found.key, label(found), found.content)
@@ -165,12 +167,8 @@ impl Handler for MemoryList {
     type Arguments = List;
 
     async fn run(&self, arguments: List, context: ToolContext<'_, '_>) -> ToolOutput {
-        match context
-            .lease
-            .memory
-            .list(arguments.category.as_deref())
-            .await
-        {
+        let memory = context.lease.memory.lock().await;
+        match memory.list(arguments.category.as_deref()).await {
             Ok(listed) => ToolOutput::succeeded(
                 lines(&listed, |found| format!("{} ({})", found.key, label(found)))
                     .unwrap_or_else(|| LISTED_NOTHING.to_owned()),
@@ -194,7 +192,8 @@ impl Handler for MemoryForget {
 
     async fn run(&self, arguments: Forget, context: ToolContext<'_, '_>) -> ToolOutput {
         let key = arguments.key;
-        match context.lease.memory.forget(&key).await {
+        let forgotten = context.lease.memory.lock().await.forget(&key).await;
+        match forgotten {
             Ok(Forgotten::ForThisRun) => ToolOutput::succeeded(format!("{key} {FORGOT}")),
             Ok(Forgotten::Unknown) => ToolOutput::succeeded(format!("{FORGOT_NOTHING} {key}")),
             Err(failure) => refused(&failure),

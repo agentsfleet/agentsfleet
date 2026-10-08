@@ -1,14 +1,14 @@
 //! The prompt: the installed instructions as the system prompt, the trusted
 //! repair context beneath them on a write-bound lease, where the workspace's
-//! repositories are checked out, and the event's message as the first user
-//! turn.
+//! repositories are checked out, the fleet's earlier turns, and the event's
+//! message as the latest user turn.
 //!
-//! The message is the event's `message` field when the request carries one as
-//! a string, and the whole request otherwise, the fallback
-//! `src/runner/child_exec_input.zig` defines.
+//! The message is `afd_wire::event::message_of`'s reading of the request, the
+//! same reading the daemon gave each earlier turn's message.
 
 use std::fmt;
 
+use afd_wire::event::message_of;
 use afd_wire::lease::LeasePayload;
 use afd_wire::policy::repository::{self, FIELD_REF, REFS_HEADS, REFS_PATH};
 use afd_wire::policy::{ExecutionPolicy, HttpMethod, RepositoryAccess};
@@ -25,31 +25,28 @@ const WORKSPACE: &str = "## Workspace";
 const DEFAULT_BRANCH: &str = "its default branch";
 /// What separates two blocks of the system prompt.
 const BLOCK_BREAK: &str = "\n\n";
-/// The request field holding the event's message.
-const FIELD_MESSAGE: &str = "message";
 
 /// What a run asks the model first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Prompt {
     /// The system prompt.
     pub(crate) instructions: String,
-    /// The first user turn.
+    /// The fleet's earlier turns, oldest first: what was asked, and what the
+    /// fleet answered.
+    pub(crate) history: Vec<(String, String)>,
+    /// The latest user turn.
     pub(crate) message: String,
 }
 
 impl Prompt {
     /// The prompt for `lease`.
     pub(crate) fn new(lease: &LeasePayload<'_>) -> Self {
-        let request = lease.event.request_json.as_ref();
-        let message = serde_json::from_str::<serde_json::Value>(request)
-            .ok()
-            .and_then(|value| {
-                value
-                    .get(FIELD_MESSAGE)
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_owned)
-            })
-            .unwrap_or_else(|| request.to_owned());
+        let message = message_of(&lease.event.request_json).into_owned();
+        let history = lease
+            .history
+            .iter()
+            .map(|turn| (turn.message.to_string(), turn.answer.to_string()))
+            .collect();
         let installed = (!lease.instructions.is_empty())
             .then(|| format!("{INSTALLED_INSTRUCTIONS}{}", lease.instructions));
         let repair = RepairContext::of(&lease.policy).map(|context| context.to_string());
@@ -62,6 +59,7 @@ impl Prompt {
             .join(BLOCK_BREAK);
         Self {
             instructions,
+            history,
             message,
         }
     }

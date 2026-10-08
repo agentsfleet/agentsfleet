@@ -38,7 +38,7 @@ const EVENT_BODY_INVALID: &str = "renew_body_parse_failed";
 /// Extends one live lease's deadline.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/leases/{lease_id}/renew",
+    path = afd_wire::paths::LEASE_RENEW,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_renew_lease",
     summary = "Extend a live lease",

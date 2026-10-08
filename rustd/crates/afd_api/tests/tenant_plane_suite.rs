@@ -84,6 +84,8 @@ mod integration_wall_recheck;
 mod integration_wall_ticks;
 #[path = "integration_workspace_approvals.rs"]
 mod integration_workspace_approvals;
+#[path = "integration_workspace_approvals_fixture.rs"]
+mod integration_workspace_approvals_fixture;
 #[path = "integration_workspace_approvals_listing.rs"]
 mod integration_workspace_approvals_listing;
 #[path = "integration_workspace_library_entries.rs"]

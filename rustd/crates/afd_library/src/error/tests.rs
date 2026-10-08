@@ -33,7 +33,7 @@ fn every_invalid_bundle_rule_has_a_stable_public_classification() {
     ];
 
     for invalid in size_failures {
-        assert!(!invalid.to_string().is_empty());
+        assert_ne!(invalid.to_string(), "");
         assert_classification(
             &Error::from(invalid),
             PAYLOAD_TOO_LARGE,
@@ -42,7 +42,7 @@ fn every_invalid_bundle_rule_has_a_stable_public_classification() {
         );
     }
     for invalid in shape_failures {
-        assert!(!invalid.to_string().is_empty());
+        assert_ne!(invalid.to_string(), "");
         assert_classification(
             &Error::from(invalid),
             FLEET_BUNDLE_INVALID,
@@ -68,7 +68,7 @@ fn every_source_failure_has_the_documented_retry_posture() {
     for failure in source_failures {
         let display = failure.to_string();
         let error = Error::from(failure);
-        assert!(!display.is_empty());
+        assert_ne!(display, "");
         let size = matches!(
             failure,
             SourceFailure::ArchiveTooLarge | SourceFailure::TooManyFiles

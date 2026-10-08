@@ -22,6 +22,9 @@ garde.workspace = true
 # crate that bounds untrusted input. A leaf on garde alone, so the wire types
 # still carry no daemon crate.
 afd_validate.workspace = true
+# `concatcp!` composes each route from its segments at compile time, so the
+# router, the OpenAPI attributes and the runner read one spelling.
+const_format.workspace = true
 # Deliberately NOT afd_core. See the module documentation in src/lib.rs: wire
 # types carry primitives, and validating at parse would break byte parity.
 serde.workspace = true
@@ -36,11 +39,12 @@ utoipa = { workspace = true, optional = true }
 
 [features]
 # Generates the OpenAPI schemas for these wire types. NOT default: the shipped
-# daemon resolves a dependency graph carrying serde and serde_json alone, which
-# is the invariant `the_default_build_carries_no_utoipa` grades.
+# daemon resolves a dependency graph carrying serde and serde_json alone.
 openapi = ["dep:utoipa"]
 
 [dev-dependencies]
+# Pins every route template in one reviewed snapshot.
+insta.workspace = true
 serde_json.workspace = true
 
 [lints]

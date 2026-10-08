@@ -72,6 +72,9 @@ pub struct HostProbe {
     /// The kernel can mount the toolbox's file system (EROFS); without it no
     /// sandbox can be built.
     pub toolbox_filesystem: bool,
+    /// The state file system takes direct I/O, so a workspace disk is cached
+    /// once rather than twice; `None` when no state directory was named.
+    pub workspace_direct_io: Option<bool>,
 }
 
 /// Where [`probe`] reads each fact from.
@@ -89,6 +92,9 @@ pub struct ProbePaths {
     pub cgroup_root: PathBuf,
     /// The bubblewrap launcher.
     pub bwrap: PathBuf,
+    /// Where each lease's workspace image is made; `None` when no engine is
+    /// configured, and then the probe says nothing about direct I/O.
+    pub state_dir: Option<PathBuf>,
 }
 
 impl Default for ProbePaths {
@@ -100,6 +106,7 @@ impl Default for ProbePaths {
             seccomp_actions: SECCOMP_ACTIONS_PATH.into(),
             cgroup_root: CGROUP_ROOT.into(),
             bwrap: BWRAP_PATH.into(),
+            state_dir: None,
         }
     }
 }
@@ -136,7 +143,28 @@ pub(crate) fn read(paths: &ProbePaths, landlock_enforceable: bool) -> HostProbe 
         toolbox_filesystem: text(&paths.filesystems)
             .lines()
             .any(|line| line.split_whitespace().last() == Some(MECHANISM_TOOLBOX_FILESYSTEM)),
+        workspace_direct_io: paths.state_dir.as_deref().map(direct_io),
     }
+}
+
+/// Whether `dir`'s file system opens a file for direct I/O, which is what the
+/// loop device behind a workspace disk needs to skip the host's page cache.
+/// An unnamed file, so the probe leaves nothing behind.
+#[cfg(target_os = "linux")]
+fn direct_io(dir: &Path) -> bool {
+    use rustix::fs::{Mode, OFlags};
+    rustix::fs::open(
+        dir,
+        OFlags::TMPFILE | OFlags::RDWR | OFlags::DIRECT,
+        Mode::RUSR | Mode::WUSR,
+    )
+    .is_ok()
+}
+
+/// No other kernel's loop device skips the page cache.
+#[cfg(not(target_os = "linux"))]
+const fn direct_io(_dir: &Path) -> bool {
+    false
 }
 
 /// Opens the device for reading and writing, which is what a microVM needs.

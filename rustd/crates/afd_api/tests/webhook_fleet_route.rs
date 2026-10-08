@@ -285,7 +285,11 @@ async fn an_allow_list_is_measured_against_the_header_not_the_payload() {
         Value::String(error_code::WEBHOOK_MALFORMED.as_str().to_owned()),
         "a body that is not the event its own header claims is the sender's bug"
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -324,7 +328,11 @@ async fn a_green_run_is_dropped_with_its_reason_rather_than_waking_the_fleet() {
         REASON_NON_FAILURE_CONCLUSION,
         "the classifier's reason reaches the sender rather than a bare 200"
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[path = "webhook_fleet_route/unidentified.rs"]

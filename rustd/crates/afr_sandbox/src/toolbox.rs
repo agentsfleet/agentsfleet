@@ -19,7 +19,7 @@ mod holds;
 #[cfg(target_os = "linux")]
 mod kernel_mounter;
 #[cfg(target_os = "linux")]
-mod loop_device;
+pub(crate) mod loop_device;
 mod manifest;
 mod stage;
 #[cfg(test)]

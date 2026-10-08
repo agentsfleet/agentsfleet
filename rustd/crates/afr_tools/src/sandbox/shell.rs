@@ -42,7 +42,7 @@ impl Handler for Shell {
             Err(refused) => return refused,
         };
         let timeout = timeout_of(arguments.timeout_ms);
-        let lease_id = context.lease.egress.lease_id();
+        let lease_id = context.lease.lease_id;
         run_to_end(executor, command(&arguments.command), timeout, lease_id).await
     }
 }

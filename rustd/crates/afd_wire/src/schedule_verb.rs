@@ -5,7 +5,7 @@
 //! the path's `lease_id`, so a body cannot reach another fleet's schedules. A
 //! read and a delete carry the fence in the query; a create, an edit and a run
 //! carry it in the body. The views a reply carries are the tenant surface's
-//! own [`crate::schedule::View`], so a person and a fleet read one shape.
+//! own `afd_api_wire::schedule::View`, so a person and a fleet read one shape.
 
 use std::borrow::Cow;
 

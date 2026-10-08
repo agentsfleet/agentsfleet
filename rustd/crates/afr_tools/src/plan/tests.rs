@@ -18,7 +18,7 @@ async fn test_update_plan_records_steps() {
         ],
     });
 
-    let output = call(tool.as_ref(), &mut Lease::default(), plan).await;
+    let output = call(tool.as_ref(), &Lease::default(), plan).await;
 
     assert_eq!(output.error_code, None);
     assert_eq!(
@@ -35,7 +35,7 @@ async fn a_plan_without_an_explanation_lists_only_its_steps() {
     let tool = Typed::boxed(UpdatePlan);
     let plan = json!({"plan": [{"step": "Read the run", "status": "pending"}]});
 
-    let output = call(tool.as_ref(), &mut Lease::default(), plan).await;
+    let output = call(tool.as_ref(), &Lease::default(), plan).await;
 
     assert_eq!(output.text, "[pending] Read the run");
 }
@@ -45,7 +45,7 @@ async fn a_step_with_an_unknown_status_is_refused() {
     let tool = Typed::boxed(UpdatePlan);
     let plan = json!({"plan": [{"step": "Read the run", "status": "blocked"}]});
 
-    let output = call(tool.as_ref(), &mut Lease::default(), plan).await;
+    let output = call(tool.as_ref(), &Lease::default(), plan).await;
 
     assert_eq!(output.error_code, Some(ToolErrorCode::InvalidArguments));
 }

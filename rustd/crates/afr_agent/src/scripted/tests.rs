@@ -7,10 +7,10 @@
 use std::borrow::Cow;
 use std::sync::mpsc;
 
+use crate::ResultOutcome;
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryDelta;
-use afd_wire::report::ResultOutcome;
 use afr_egress::testing::CountingMint;
 use afr_executor::{
     Ending, Events, Executor, FileContent, Listing, Process, ProcessId, Spawn, Stream,
@@ -156,7 +156,7 @@ async fn a_process_step_without_a_sandbox_fails_the_turn() {
         "{}",
         failure.detail
     );
-    assert!(frames.is_empty());
+    assert_eq!(frames, [] as [afd_wire::activity::ActivityFrame<'_>; 0]);
 }
 
 #[tokio::test]
@@ -198,7 +198,7 @@ async fn remembered_items_are_handed_back_for_the_push() {
     let (output, frames) = drive(&ScriptedEngine::new([Step::Remember(delta.clone())]), None).await;
 
     assert_eq!(output.unwrap().memory, [delta]);
-    assert!(frames.is_empty());
+    assert_eq!(frames, [] as [afd_wire::activity::ActivityFrame<'_>; 0]);
 }
 
 #[tokio::test]

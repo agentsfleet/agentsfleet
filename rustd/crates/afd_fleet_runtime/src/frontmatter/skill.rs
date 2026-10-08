@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(skill.name().as_str(), "probe");
         assert_eq!(skill.description(), "A probe.");
         assert_eq!(skill.version().as_str(), "1.0.0");
-        assert!(skill.tags().is_empty());
+        assert_eq!(skill.tags(), []);
         assert_eq!(skill.author(), None);
     }
 

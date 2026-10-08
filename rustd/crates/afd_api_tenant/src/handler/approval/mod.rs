@@ -26,11 +26,11 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::approval::{ApprovalSummary, ApprovalsResponse};
 use afd_approval::{Filter, GateRow};
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::paging::Cursor as CoreCursor;
-use afd_wire::approval::{ApprovalSummary, ApprovalsResponse};
 use axum::Json;
 use axum::extract::{Path, RawQuery, State};
 use axum::response::{IntoResponse as _, Response};

@@ -186,7 +186,7 @@ fn test_envelope_rejects_unsupported_version() {
 fn test_envelope_seals_an_empty_payload() {
     let aad = Aad::new("ws_0123", "empty");
     let envelope = Sealer::new().seal(&kek(), &aad, b"").unwrap();
-    assert!(envelope.payload_ciphertext().is_empty());
+    assert_eq!(envelope.payload_ciphertext(), b"");
     assert!(envelope.open(&kek(), &aad).unwrap().is_empty());
 }
 

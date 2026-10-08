@@ -4,7 +4,7 @@
 use afr_telemetry::labels::{Provider, RetryReason, TurnOutcome};
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
-use afd_wire::report::ResultOutcome;
+use afr_agent::ResultOutcome;
 
 use super::support::wires::Wire;
 use super::support::{Fake, Reply, engine, lease, run};

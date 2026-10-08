@@ -69,6 +69,7 @@ pub(crate) fn report<'a>(
         },
         last_event_id: RESUME_EVENT_ID,
         last_response: RESUME_RESPONSE,
+        held_until: None,
         now,
     }
 }

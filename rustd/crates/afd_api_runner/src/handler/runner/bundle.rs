@@ -47,7 +47,7 @@ const CONTENT_TYPE_TAR: HeaderValue = HeaderValue::from_static(TAR);
 /// Serves one bundle's canonical tar by content hash.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/runners/me/bundles/{content_hash}",
+    path = afd_wire::paths::RUNNER_BUNDLE,
     tag = afd_http::openapi::tag::FLEET_BUNDLES,
     operation_id = "runner_fetch_bundle",
     summary = "Fetch a fleet's support-file bundle",

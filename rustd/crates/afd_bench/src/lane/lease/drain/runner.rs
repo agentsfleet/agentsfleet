@@ -112,7 +112,7 @@ pub(super) async fn drive(plane: &Plane, runner: &Uuid7, shared: &Shared) -> Res
     while shared.open() {
         tally.polls += 1;
         let started = Instant::now();
-        let Ok(answer) = plane.lease(runner, false, clock::now()).await else {
+        let Ok(answer) = plane.lease(runner, &[], false, clock::now()).await else {
             tally.failures += 1;
             shared.abort.record(false);
             continue;
@@ -165,5 +165,6 @@ fn processed<'a>(lease: &'a LeasePayload<'a>) -> ReportRequest<'a> {
             last_response: Cow::Borrowed(RESPONSE),
         },
         tool_calls: None,
+        held_until_ms: None,
     }
 }

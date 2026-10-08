@@ -18,9 +18,10 @@ use tokio::process::{Child, ChildStderr, Command};
 use tokio::task::JoinHandle;
 use tokio_util::codec::{FramedRead, LinesCodec, LinesCodecError};
 
-use crate::cgroup::{CGROUP_PROCS, LeaseCgroup};
+use crate::cgroup::{CGROUP_PROCS, Freezer, LeaseCgroup};
 use crate::error::{Error, Result, cgroup, program};
 use crate::host::tail;
+use crate::tenant::TenantFiles;
 use crate::workspace_disk::WorkspaceDisk;
 
 /// What a process writes to `cgroup.procs` to move itself.
@@ -69,16 +70,26 @@ impl Parts {
         self.dir.as_deref().unwrap_or(Path::new(""))
     }
 
-    /// Where the lease's workspace disk is mounted, once it has one.
+    /// The lease's `workspace/` on its disk, once it has one.
     pub(super) fn workspace(&self) -> &Path {
         self.disk
             .as_ref()
-            .map_or(Path::new(""), WorkspaceDisk::mount_point)
+            .map_or(Path::new(""), WorkspaceDisk::workspace)
+    }
+
+    /// The lease's `tmp/` on its disk, once it has one.
+    pub(super) fn tmp(&self) -> &Path {
+        self.disk.as_ref().map_or(Path::new(""), WorkspaceDisk::tmp)
     }
 
     /// Takes ownership of the lease's workspace disk.
     pub(super) fn adopt_disk(&mut self, disk: WorkspaceDisk) -> &WorkspaceDisk {
         self.disk.insert(disk)
+    }
+
+    /// The freezer of the lease's cgroup, once it has one.
+    pub(super) fn freezer(&self) -> Option<Freezer> {
+        self.cgroup.as_ref().map(LeaseCgroup::freezer)
     }
 
     /// Takes ownership of the lease's cgroup.
@@ -88,12 +99,14 @@ impl Parts {
 
     /// Starts bubblewrap inside the cgroup whose `cgroup.procs` is `procs`,
     /// as host user `ids` when given — what a root runner passes, so nothing
-    /// the sandbox does happens as host root.
+    /// the sandbox does happens as host root — inheriting `tenant`, which
+    /// `argv` names to the entry.
     pub(super) fn spawn(
         &mut self,
         bwrap: &Path,
         argv: Vec<OsString>,
         procs: &Path,
+        tenant: TenantFiles,
         ids: Option<(u32, u32)>,
     ) -> Result<()> {
         // `create` is a no-op on a cgroup file system, which publishes the file
@@ -117,14 +130,19 @@ impl Parts {
             // root sets a user, so no host group survives either.
             command.uid(uid).gid(gid);
         }
+        let hook = move || {
+            enter(&join)?;
+            tenant.inherit()
+        };
         // SAFETY: the hook runs in the child between fork and exec, where only
         // async-signal-safe calls are sound. It makes one `write` system call on
-        // a file opened before the fork, which the hook owns, and allocates
-        // nothing, so every process bubblewrap starts is born inside the
-        // lease's cgroup. The kernel checks the write against the opener's
-        // credentials, so it holds after the user change above. The file
-        // closes with the command, after the spawn.
-        unsafe { command.pre_exec(move || enter(&join)) };
+        // a file opened before the fork, then two `fcntl` calls on the tenant
+        // leaf's files, all owned by the hook, and allocates nothing, so every
+        // process bubblewrap starts is born inside the sandbox leaf and the
+        // entry inherits the tenant leaf's two descriptors. The kernel checks
+        // the write against the opener's credentials, so it holds after the
+        // user change above. The files close with the command, after the spawn.
+        unsafe { command.pre_exec(hook) };
         let mut child = command.spawn()?;
         self.stderr = child
             .stderr

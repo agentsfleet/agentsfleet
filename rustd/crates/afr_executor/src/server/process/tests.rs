@@ -6,6 +6,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use afd_core::test_util::trace::Capture;
@@ -18,14 +19,14 @@ use tokio_util::sync::CancellationToken;
 use tracing::Level;
 
 use super::super::files::Workspace;
-use super::super::launch::Plan;
+use super::super::launch::{Inherit, Placement, Plan};
 use super::{
     DRAIN_BYTES_MAX, DRAIN_GRACE, EVENT_OUTPUT_ABANDONED, EVENT_PROCESS_COMPLETED,
     EVENT_PROCESS_FAILED, EVENT_SIGNAL_MISSED, Group, ProcessRun, drain, report,
 };
 use crate::api::{Ending, Stream};
 use crate::edges::Chunk;
-use crate::protocol::{READ_CHUNK_BYTES, SpawnParams};
+use crate::protocol::{NOTIFY_EXITED, READ_CHUNK_BYTES, SpawnParams};
 
 /// A program that writes for as long as its output is taken.
 pub(super) const YES: &str = "/usr/bin/yes";
@@ -49,6 +50,15 @@ pub(super) fn started_within(
     argv: &[&str],
     timeout_ms: Option<u64>,
 ) -> (ProcessRun, tempfile::TempDir) {
+    started_placed(argv, timeout_ms, &(Arc::new(Inherit) as Arc<dyn Placement>))
+}
+
+/// [`started_within`], placed by `placement`.
+fn started_placed(
+    argv: &[&str],
+    timeout_ms: Option<u64>,
+    placement: &Arc<dyn Placement>,
+) -> (ProcessRun, tempfile::TempDir) {
     let root = tempfile::tempdir().unwrap();
     let workspace = Workspace::open(root.path()).unwrap();
     let params = SpawnParams {
@@ -58,8 +68,44 @@ pub(super) fn started_within(
         pty: false,
         timeout_ms,
     };
-    let (run, _input) = ProcessRun::start(&Plan::new(params, &workspace).unwrap()).unwrap();
+    let (run, _input) =
+        ProcessRun::start(&Plan::new(params, &workspace).unwrap(), placement).unwrap();
     (run, root)
+}
+
+/// A placement that reads every ending it is asked about as the kernel's
+/// out-of-memory kill.
+#[derive(Debug)]
+struct AlwaysOutOfMemory;
+
+impl Placement for AlwaysOutOfMemory {
+    fn check(&self) -> crate::error::Result<()> {
+        Ok(())
+    }
+
+    fn enter(&self) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn judge(&self, _ending: Ending) -> Ending {
+        Ending::OutOfMemory
+    }
+}
+
+/// Drives `run` until it ends, `stop` as its stop token, and answers with
+/// the ending its `process/exited` reported.
+async fn reported_ending(run: ProcessRun, stop: CancellationToken) -> Option<Ending> {
+    let (lines, mut written) = mpsc::channel(QUEUED);
+    let driving = tokio::spawn(run.drive(1, stop, lines));
+    let mut ending = None;
+    while let Some(line) = written.recv().await {
+        let message: Value = serde_json::from_slice(&line).unwrap();
+        if message["method"] == NOTIFY_EXITED {
+            ending = serde_json::from_value(message["params"]["ending"].clone()).ok();
+        }
+    }
+    driving.await.unwrap();
+    ending
 }
 
 /// One chunk of `bytes` bytes, as the reader hands it on.
@@ -129,6 +175,7 @@ fn an_ending_is_logged_under_the_kind_the_wire_spells() {
         Ending::Exited(2),
         Ending::Signaled(9),
         Ending::TimedOut,
+        Ending::OutOfMemory,
         Ending::Interrupted,
     ] {
         let wire = serde_json::to_value(ending).unwrap();
@@ -140,6 +187,35 @@ fn an_ending_is_logged_under_the_kind_the_wire_spells() {
             "{ending:?}"
         );
     }
+}
+
+/// Only an ending a process came to by itself is judged: a kill or a timeout
+/// the executor sent stays the executor's, even under a placement that would
+/// read every ending as out of memory.
+#[tokio::test]
+async fn an_ending_the_executor_caused_is_never_read_as_out_of_memory() {
+    let judging: Arc<dyn Placement> = Arc::new(AlwaysOutOfMemory);
+    let (by_itself, _first) = started_placed(&[SH, "-c", "exit 0"], None, &judging);
+    let (killed, _second) = started_placed(&[SH, "-c", "sleep 30"], None, &judging);
+    let (timed_out, _third) = started_placed(&[SH, "-c", "sleep 30"], Some(50), &judging);
+    let kill = CancellationToken::new();
+    kill.cancel();
+
+    let endings = [
+        reported_ending(by_itself, CancellationToken::new()).await,
+        reported_ending(killed, kill).await,
+        reported_ending(timed_out, CancellationToken::new()).await,
+    ];
+
+    assert_eq!(
+        endings,
+        [
+            Some(Ending::OutOfMemory),
+            Some(Ending::Signaled(Signal::TERM.as_raw())),
+            Some(Ending::TimedOut),
+        ],
+        "only the ending the process came to by itself is judged"
+    );
 }
 
 #[test]

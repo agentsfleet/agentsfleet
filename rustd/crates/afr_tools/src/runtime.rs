@@ -2,10 +2,13 @@
 
 use std::fmt;
 
+use serde::de::DeserializeOwned;
+
 use afr_executor::Executor;
 
 use crate::catalog::Entry;
 use crate::lease::Lease;
+use crate::sandbox::ImageAttachment;
 use crate::schema::Schema;
 
 /// Where a tool's handler runs.
@@ -23,14 +26,15 @@ pub enum Runtime {
 ///
 /// The router builds it per call and hands the executor only to a sandbox-side
 /// handler, so a supervisor-side one cannot reach the sandbox by construction.
-/// The lease's state is lent to one call at a time: calls run one after
-/// another, so the borrow checker keeps two from racing, not a lock.
+/// The lease's state is shared: a run's child loops call tools at the same
+/// time as their parent, so each part a call changes sits behind its own lock
+/// ([`Lease`]).
 #[derive(Debug)]
 pub struct ToolContext<'call, 'run> {
     /// The lease's executor; `None` for a supervisor-side call.
     pub executor: Option<&'call dyn Executor>,
     /// What every call of the lease shares.
-    pub lease: &'call mut Lease<'run>,
+    pub lease: &'call Lease<'run>,
 }
 
 /// Why a call failed, in the stable spelling the model and the thread read.
@@ -80,6 +84,9 @@ pub enum ToolErrorCode {
     WorkspaceMemoryNotGranted,
     /// The command ran past its timeout, and its process group was killed.
     TimedOut,
+    /// The kernel killed the command's process because its sandbox's tenant
+    /// processes ran out of memory.
+    OutOfMemory,
     /// The process's ending never reached the caller: its sandbox or the
     /// executor went away.
     Interrupted,
@@ -122,6 +129,15 @@ pub enum ToolErrorCode {
     AgentsfleetdRefused,
     /// `agentsfleetd` could not be reached.
     AgentsfleetdUnreachable,
+    /// The run already has as many children running, or started, as one run
+    /// may.
+    ChildCapReached,
+    /// A child asked for a tool its parent was not offered.
+    ChildToolNotHeld,
+    /// No child of this run has the id named.
+    ChildNotFound,
+    /// The child ended on a failure of its own, which the output carries.
+    ChildFailed,
 }
 
 impl ToolErrorCode {
@@ -148,6 +164,7 @@ impl ToolErrorCode {
             Self::UpstreamStatus => "upstream_status",
             Self::WorkspaceMemoryNotGranted => "workspace_memory_not_granted",
             Self::TimedOut => "timed_out",
+            Self::OutOfMemory => "out_of_memory",
             Self::Interrupted => "interrupted",
             Self::SessionNotFound => "session_not_found",
             Self::SubcommandNotAllowed => "subcommand_not_allowed",
@@ -167,6 +184,10 @@ impl ToolErrorCode {
             Self::MessageLimitReached => "message_limit_reached",
             Self::AgentsfleetdRefused => "agentsfleetd_refused",
             Self::AgentsfleetdUnreachable => "agentsfleetd_unreachable",
+            Self::ChildCapReached => "child_cap_reached",
+            Self::ChildToolNotHeld => "child_tool_not_held",
+            Self::ChildNotFound => "child_not_found",
+            Self::ChildFailed => "child_failed",
         }
     }
 }
@@ -174,6 +195,24 @@ impl ToolErrorCode {
 impl fmt::Display for ToolErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+/// `arguments` as `A`, or the refusal the model reads when they do not parse
+/// as `A`'s schema. The one place a call's arguments are parsed, whether a
+/// handler runs them or the loop does.
+///
+/// # Errors
+/// The arguments break the schema: a field missing, mistyped, or not named.
+pub fn parsed<A: DeserializeOwned>(arguments: &serde_json::Value) -> Result<A, ToolOutput> {
+    match A::deserialize(arguments) {
+        Ok(arguments) => Ok(arguments),
+        // The refusal carries serde's sentence to the model; no error chain
+        // leaves here, since a parse the model got wrong is the model's to read.
+        Err(refused) => Err(ToolOutput::failed(
+            ToolErrorCode::InvalidArguments,
+            &refused.to_string(),
+        )),
     }
 }
 
@@ -186,6 +225,8 @@ pub struct ToolOutput {
     pub exit_code: Option<i32>,
     /// Why the call failed, for one that did.
     pub error_code: Option<ToolErrorCode>,
+    /// The image the call read, which rides its result alone.
+    pub image: Option<ImageAttachment>,
 }
 
 impl ToolOutput {
@@ -196,6 +237,7 @@ impl ToolOutput {
             text: text.into(),
             exit_code: None,
             error_code: None,
+            image: None,
         }
     }
 
@@ -207,7 +249,15 @@ impl ToolOutput {
             text: format!("[{code}] {detail}"),
             exit_code: None,
             error_code: Some(code),
+            image: None,
         }
+    }
+
+    /// The same output, with the image the call read.
+    #[must_use]
+    pub fn with_image(mut self, image: ImageAttachment) -> Self {
+        self.image = Some(image);
+        self
     }
 }
 

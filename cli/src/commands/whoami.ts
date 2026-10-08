@@ -35,7 +35,7 @@ import { EMPTY_CELL } from "../output/index.ts";
 // person never gave a name — never a guess at one.
 
 // The wire words `credential_class` spells in
-// rustd/crates/afd_wire/src/identity.rs, and what each one means to somebody
+// rustd/crates/afd_api_wire/src/identity.rs, and what each one means to somebody
 // reading a terminal. An unrecognised class renders as itself rather than as
 // "unknown": a server that grew a fourth class is still telling the truth, and
 // a client that hid it would be the thing that lied.

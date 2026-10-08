@@ -14,6 +14,7 @@ use crate::error::{self, Result};
 use crate::handler::Typed;
 use crate::http_request::HttpRequest;
 use crate::memory::{MemoryForget, MemoryList, MemoryRecall, MemoryStore};
+use crate::nested;
 use crate::plan::UpdatePlan;
 use crate::pushover::Pushover;
 use crate::runtime::{Runtime, Tool};
@@ -21,6 +22,7 @@ use crate::sandbox::{
     ApplyPatch, Browser, BrowserOpen, ExecCommand, FileAppend, FileDelete, FileEdit,
     FileEditHashed, FileRead, FileReadHashed, FileWrite, Git, Image, Screenshot, Shell, WriteStdin,
 };
+use crate::selection::Selection;
 use crate::verbs::{
     CronAdd, CronList, CronRemove, CronRun, CronRuns, CronUpdate, Message, ScheduleOnce,
 };
@@ -91,6 +93,14 @@ pub const CRON_RUNS: Entry = Entry::new("cron_runs", Runtime::Supervisor);
 pub const DELEGATE: Entry = Entry::new("delegate", Runtime::Supervisor);
 /// A nested loop that runs alongside.
 pub const SPAWN: Entry = Entry::new("spawn", Runtime::Supervisor);
+/// A spawned loop's answer, or that it still runs.
+pub const WAIT_AGENT: Entry = Entry::new("wait_agent", Runtime::Supervisor);
+/// A message for a spawned loop's next turn.
+pub const SEND_INPUT: Entry = Entry::new("send_input", Runtime::Supervisor);
+/// Every child of the run and its state.
+pub const LIST_AGENTS: Entry = Entry::new("list_agents", Runtime::Supervisor);
+/// Ends one spawned loop.
+pub const INTERRUPT_AGENT: Entry = Entry::new("interrupt_agent", Runtime::Supervisor);
 /// One shell command, run to its end.
 pub const SHELL: Entry = Entry::new("shell", Runtime::Sandbox);
 /// A process the model drives across calls.
@@ -125,7 +135,7 @@ pub const BROWSER_OPEN: Entry = Entry::new("browser_open", Runtime::Sandbox);
 pub const SCREENSHOT: Entry = Entry::new("screenshot", Runtime::Sandbox);
 
 /// Every published tool.
-pub const PUBLISHED: [&Entry; 35] = [
+pub const PUBLISHED: [&Entry; 39] = [
     &HTTP_REQUEST,
     &WEB_FETCH,
     &PUSHOVER,
@@ -145,6 +155,10 @@ pub const PUBLISHED: [&Entry; 35] = [
     &CRON_RUNS,
     &DELEGATE,
     &SPAWN,
+    &WAIT_AGENT,
+    &SEND_INPUT,
+    &LIST_AGENTS,
+    &INTERRUPT_AGENT,
     &SHELL,
     &EXEC_COMMAND,
     &WRITE_STDIN,
@@ -186,7 +200,7 @@ impl Catalog {
     /// sending through `transport`.
     #[must_use]
     pub fn hosted(transport: Arc<dyn Transport>) -> Self {
-        Self::new(vec![
+        let mut handlers = vec![
             Typed::boxed(HttpRequest::new(Arc::clone(&transport))),
             Typed::boxed(WebFetch::new(Arc::clone(&transport))),
             Typed::boxed(Pushover::new(transport)),
@@ -219,7 +233,9 @@ impl Catalog {
             Typed::boxed(CronUpdate),
             Typed::boxed(CronRun),
             Typed::boxed(CronRuns),
-        ])
+        ];
+        handlers.extend(nested::tools());
+        Self::new(handlers)
     }
 
     /// The tools a lease naming `names` is offered.
@@ -250,52 +266,6 @@ impl Catalog {
             .iter()
             .map(Box::as_ref)
             .find(|handler| handler.name() == name)
-    }
-}
-
-/// The tools one lease is offered: handlers the router runs, and tools the
-/// provider hosts.
-#[derive(Debug, Default)]
-pub struct Selection<'c> {
-    tools: Vec<&'c dyn Tool>,
-    hosted: Vec<&'static Entry>,
-}
-
-impl<'c> Selection<'c> {
-    /// Whether any offered tool runs inside the sandbox; a lease with none
-    /// starts no sandbox.
-    #[must_use]
-    pub fn needs_sandbox(&self) -> bool {
-        self.tools
-            .iter()
-            .any(|tool| tool.runtime() == Runtime::Sandbox)
-    }
-
-    /// The handler for `name`, when the lease was offered one.
-    #[must_use]
-    pub fn tool(&self, name: &str) -> Option<&'c dyn Tool> {
-        self.tools.iter().copied().find(|tool| tool.name() == name)
-    }
-
-    /// Whether `name` is one of the provider-hosted tools offered.
-    #[must_use]
-    pub fn hosts(&self, name: &str) -> bool {
-        self.hosted.iter().any(|entry| entry.name == name)
-    }
-
-    /// The handlers the lease was offered.
-    pub fn tools(&self) -> impl Iterator<Item = &'c dyn Tool> + '_ {
-        self.tools.iter().copied()
-    }
-
-    /// The provider-hosted tools offered.
-    #[must_use]
-    pub fn hosted(&self) -> &[&'static Entry] {
-        &self.hosted
-    }
-
-    fn offers(&self, name: &str) -> bool {
-        self.tool(name).is_some() || self.hosts(name)
     }
 }
 

@@ -7,13 +7,13 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::team::{AcceptedInviteResponse, CreateInviteRequest, WaitingInvite};
+use afd_api_wire::workspace::WorkspaceAccount;
 use afd_auth::principal::Person;
 use afd_http::handler::{IdPath, IdSegment};
 use afd_tenant::cli_credential::UserIdentity;
 use afd_tenant::error::InviteConflict;
 use afd_tenant::team::{Email, Invitee, NewInvite, Waiting};
-use afd_wire::team::{AcceptedInviteResponse, CreateInviteRequest, WaitingInvite};
-use afd_wire::workspace::WorkspaceAccount;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
@@ -85,7 +85,7 @@ const STATE_MEMBER: &str = "member";
     ),
     request_body = CreateInviteRequest,
     responses(
-        (status = 201, description = afd_http::openapi::CREATED, body = afd_wire::team::InviteSummary),
+        (status = 201, description = afd_http::openapi::CREATED, body = afd_api_wire::team::InviteSummary),
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
@@ -138,7 +138,7 @@ pub(crate) async fn create<D: Services>(
         "`null` and `total` counts them all. ",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_wire::tenant::PageResponse<afd_wire::team::InviteSummary>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<afd_api_wire::team::InviteSummary>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
@@ -216,7 +216,7 @@ pub(crate) async fn revoke<D: Services>(
         "account it joins. One page: `next_cursor` is always `null`. ",
     ),
     responses(
-        (status = 200, description = afd_http::openapi::OK, body = afd_wire::tenant::PageResponse<WaitingInvite>),
+        (status = 200, description = afd_http::openapi::OK, body = afd_api_wire::tenant::PageResponse<WaitingInvite>),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::UNKNOWN_SUBJECT),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),

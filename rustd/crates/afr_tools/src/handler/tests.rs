@@ -28,14 +28,14 @@ fn a_typed_schema_is_one_flat_object_that_refuses_unknown_arguments() {
 #[tokio::test]
 async fn arguments_that_do_not_parse_are_refused_before_the_handler_runs() {
     let tool = Typed::boxed(MemoryRecall);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     for refused in [
         json!({"query": "k", "token": "smuggled"}),
         json!({"query": 7}),
         json!({"limit": 5}),
     ] {
-        let output = call(tool.as_ref(), &mut lease, refused.clone()).await;
+        let output = call(tool.as_ref(), &lease, refused.clone()).await;
         assert_eq!(
             output.error_code,
             Some(ToolErrorCode::InvalidArguments),
@@ -47,7 +47,7 @@ async fn arguments_that_do_not_parse_are_refused_before_the_handler_runs() {
             output.text
         );
     }
-    let parsed = call(tool.as_ref(), &mut lease, json!({"query": "k"})).await;
+    let parsed = call(tool.as_ref(), &lease, json!({"query": "k"})).await;
     assert_eq!(parsed.text, "nothing remembered matches k");
     assert_eq!(parsed.error_code, None);
 }

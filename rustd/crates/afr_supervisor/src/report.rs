@@ -3,12 +3,10 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
-use afd_core::clock::saturating_millis;
+use afd_core::clock::{UnixMillis, saturating_millis};
 use afd_wire::lease::LeasePayload;
-use afd_wire::report::{
-    ExecutionResult, Failure, FailureClass, Outcome, ReportCheckpoint, ReportRequest,
-    ReportTelemetry, ResultOutcome,
-};
+use afd_wire::report::{FailureClass, Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
+use afr_agent::{ExecutionResult, Failure, ResultOutcome};
 use afr_agent::{Meter, RunOutput};
 
 /// How a lease's run ended.
@@ -33,6 +31,12 @@ pub(crate) enum Ending {
 }
 
 impl Ending {
+    /// Whether the run ended as the fleet meant it to: the report says
+    /// `processed`, which is the one ending whose sandbox is worth holding.
+    pub(crate) fn processed(&self) -> bool {
+        verdict(self).0 == Outcome::Processed
+    }
+
     /// This ending, for a lease the daemon or the runner ended before the run
     /// did: a run that handed back output keeps it, with `class` and `detail`
     /// as its failure, so its tokens are billed and its memory pushed.
@@ -57,15 +61,18 @@ impl Ending {
 }
 
 /// The report for `lease`, which ran for `wall`, carrying `trace`: the run's
-/// trace encoded, when it called a tool. Its tokens are the result's when the
-/// run handed one back, and otherwise what `meter` counted turn by turn, so a
-/// run that never finished still bills what it spent.
+/// trace encoded, when it called a tool, and `held_until`: when the sandbox it
+/// left held for the fleet's next lease lapses, if it left one. Its tokens are
+/// the result's when the run handed one back, and otherwise what `meter`
+/// counted turn by turn, so a run that never finished still bills what it
+/// spent.
 pub(crate) fn report<'a>(
     lease: &'a LeasePayload<'a>,
     ending: &'a Ending,
     meter: &Meter,
     wall: Duration,
     trace: Option<&'a str>,
+    held_until: Option<UnixMillis>,
 ) -> ReportRequest<'a> {
     let (outcome, failure_reason, failure_detail) = verdict(ending);
     let (result, first_chunk) = match ending {
@@ -111,6 +118,7 @@ pub(crate) fn report<'a>(
             last_response: response_text,
         },
         tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
+        held_until_ms: held_until.map(UnixMillis::as_millis),
     }
 }
 

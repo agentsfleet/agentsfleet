@@ -77,8 +77,8 @@ use crate::services::{Services, WorkspaceOwnership as _};
 ///
 /// For the lists an account keeps small by nature, its invites and its
 /// members, where a cursor would promise a second page that cannot exist.
-fn one_page<'a, T>(items: Vec<T>) -> afd_wire::tenant::PageResponse<'a, T> {
-    afd_wire::tenant::PageResponse {
+fn one_page<'a, T>(items: Vec<T>) -> afd_api_wire::tenant::PageResponse<'a, T> {
+    afd_api_wire::tenant::PageResponse {
         total: i64::try_from(items.len()).unwrap_or(i64::MAX),
         items,
         next_cursor: None,

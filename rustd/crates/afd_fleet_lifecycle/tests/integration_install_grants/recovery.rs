@@ -28,11 +28,13 @@ async fn an_unreadable_handle_leaves_the_install_active_without_a_grant() {
         lane.fleet_column(&installed.id, "status").await.as_deref(),
         Some("active")
     );
-    assert!(grant_rows(&lane, installed.id.as_str()).await.is_empty());
-    assert!(
-        carded_services(&lane, installed.id.as_str())
-            .await
-            .is_empty()
+    assert_eq!(
+        grant_rows(&lane, installed.id.as_str()).await,
+        [] as [(String, String, String); 0]
+    );
+    assert_eq!(
+        carded_services(&lane, installed.id.as_str()).await,
+        [] as [Option<String>; 0]
     );
     lane.cleanup().await;
 }
@@ -68,11 +70,13 @@ async fn a_failed_grant_identifier_leaves_the_install_active_without_a_card() {
         Some("active")
     );
     assert!(lane.has_consumer_group(&installed.id).await);
-    assert!(grant_rows(&lane, installed.id.as_str()).await.is_empty());
-    assert!(
-        carded_services(&lane, installed.id.as_str())
-            .await
-            .is_empty()
+    assert_eq!(
+        grant_rows(&lane, installed.id.as_str()).await,
+        [] as [(String, String, String); 0]
+    );
+    assert_eq!(
+        carded_services(&lane, installed.id.as_str()).await,
+        [] as [Option<String>; 0]
     );
     lane.cleanup().await;
 }

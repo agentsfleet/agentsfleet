@@ -8,13 +8,14 @@
 )]
 
 use std::sync::mpsc;
+use std::time::Duration;
 
 use afd_wire::activity::ActivityFrame;
 use afd_wire::lease::LeasePayload;
-use afr_tools::stub::NoArguments;
+use afr_tools::NoArguments;
 use afr_tools::{Entry, Schema, Tool, ToolContext, ToolOutput};
 
-pub(crate) use self::model::{Script, Unreachable, call, ended, say, spent};
+pub(crate) use self::model::{Script, Sent, Unreachable, call, ended, say, spent, spent_caching};
 use afr_secrets::{Clean, Scrub};
 
 #[path = "fixture/model.rs"]
@@ -119,6 +120,47 @@ impl Tool for Canned {
     }
 }
 
+/// A tool answering every call with `output` after `delay`, for a suite
+/// under paused time that needs a call to be open until it says.
+#[derive(Debug)]
+pub(crate) struct Slow {
+    entry: &'static Entry,
+    schema: Schema,
+    output: String,
+    delay: Duration,
+}
+
+impl Slow {
+    pub(crate) fn boxed(entry: &'static Entry, output: &str, delay: Duration) -> Box<dyn Tool> {
+        Box::new(Self {
+            entry,
+            schema: Schema::of::<NoArguments>(entry.name()),
+            output: output.to_owned(),
+            delay,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for Slow {
+    fn entry(&self) -> &'static Entry {
+        self.entry
+    }
+
+    fn schema(&self) -> &Schema {
+        &self.schema
+    }
+
+    async fn call(
+        &self,
+        _arguments: &serde_json::Value,
+        _context: ToolContext<'_, '_>,
+    ) -> ToolOutput {
+        tokio::time::sleep(self.delay).await;
+        ToolOutput::succeeded(self.output.clone())
+    }
+}
+
 /// A tool whose every call ran a process that exited with `code`.
 #[derive(Debug)]
 pub(crate) struct Exits {
@@ -156,6 +198,7 @@ impl Tool for Exits {
             text: format!("exited {}", self.code),
             exit_code: Some(self.code),
             error_code: None,
+            image: None,
         }
     }
 }

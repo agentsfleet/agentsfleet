@@ -29,8 +29,7 @@
 //! steer, and the sites that need steering — a cache TTL, an expiry check, a
 //! freshness window — are exactly the ones whose failure is invisible until a
 //! token is honoured an hour after it expired. Reading a clock pulls in no
-//! dependency and starts no runtime, which is what
-//! `test_core_dependency_freeze` actually asserts.
+//! dependency and starts no runtime.
 //!
 //! # How to use it
 //!
@@ -220,7 +219,7 @@ impl FixedClock {
     pub fn advance_millis(&self, millis: i64) {
         let _previous = self
             .0
-            .fetch_update(
+            .try_update(
                 std::sync::atomic::Ordering::SeqCst,
                 std::sync::atomic::Ordering::SeqCst,
                 |current| Some(current.saturating_add(millis)),

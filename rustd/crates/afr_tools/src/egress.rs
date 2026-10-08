@@ -48,26 +48,25 @@ impl From<Refusal> for ToolErrorCode {
 pub(crate) async fn send(
     entry: &Entry,
     transport: &dyn Transport,
-    lease: &mut Lease<'_>,
+    lease: &Lease<'_>,
     draft: Draft,
 ) -> Result<Inbound, ToolOutput> {
-    let outbound = lease
-        .egress
-        .prepare(draft)
-        .await
-        .map_err(|failure| refused(entry, lease.egress.lease_id(), &failure))?;
+    // The guard is held to admit and mint, never across the send, so a slow
+    // upstream holds no other call of the lease.
+    let prepared = lease.egress.lock().await.prepare(draft).await;
+    let outbound = prepared.map_err(|failure| refused(entry, lease.lease_id, &failure))?;
     let mut inbound = transport
         .send(outbound)
         .await
-        .map_err(|failure| refused(entry, lease.egress.lease_id(), &failure))?;
-    inbound.body = masked(lease, inbound.body);
+        .map_err(|failure| refused(entry, lease.lease_id, &failure))?;
+    inbound.body = masked(lease, inbound.body).await;
     Ok(inbound)
 }
 
 /// `text` with every token the lease minted masked; `text` itself when none
 /// is in it.
-pub(crate) fn masked(lease: &Lease<'_>, text: String) -> String {
-    let changed = match lease.egress.mask(&text) {
+pub(crate) async fn masked(lease: &Lease<'_>, text: String) -> String {
+    let changed = match lease.egress.lock().await.mask(&text) {
         Cow::Owned(masked) => Some(masked),
         Cow::Borrowed(_) => None,
     };

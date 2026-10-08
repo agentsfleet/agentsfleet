@@ -32,12 +32,12 @@
 //! instead — see [`Policy`] — because a divergence a reader has to discover by
 //! opening a second file is one that gets 'fixed' by somebody who did not.
 
-use afd_core::clock::UnixMillis;
-use afd_core::spelling::to_spelling;
 /// The two flat objects a verified delivery becomes on the stream. Stream
 /// payloads rather than HTTP bodies, and wire all the same: a fleet's prose
 /// reads these field names, so `afd_wire` owns them.
-use afd_wire::ingress::{PullRequestDigest, WorkflowRunDigest};
+use afd_api_wire::ingress::{PullRequestDigest, WorkflowRunDigest};
+use afd_core::clock::UnixMillis;
+use afd_core::spelling::to_spelling;
 use octocrab::models::webhook_events::payload::{
     PullRequestWebhookEventAction, WorkflowRunWebhookEventAction,
 };

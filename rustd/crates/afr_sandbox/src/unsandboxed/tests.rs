@@ -99,6 +99,39 @@ async fn should_show_the_host_the_workspace_its_executor_serves() {
     );
 }
 
+/// Its processes run on the host under no cgroup, so nothing stops them
+/// together: a freeze and a thaw are each refused, saying so, and the
+/// sandbox serves on, to be destroyed rather than held.
+#[tokio::test]
+async fn test_an_unconfined_sandbox_refuses_to_freeze_or_thaw() {
+    let base = tempfile::Builder::new()
+        .prefix("afr")
+        .tempdir_in("/tmp")
+        .unwrap();
+    let engine = UnsandboxedEngine::new(base.path().to_owned()).unwrap();
+    let mut sandbox = engine
+        .prepare(SandboxRequest {
+            lease_id: "l4",
+            limits: Limits::default(),
+        })
+        .await
+        .unwrap();
+
+    let refused = [sandbox.freeze().await, sandbox.thaw().await]
+        .map(|step| step.err().map(|error| error.to_string()));
+    let serving = sandbox.is_running();
+    sandbox.destroy().await.unwrap();
+
+    for said in &refused {
+        assert!(
+            said.as_deref()
+                .is_some_and(|said| said.contains(super::NO_FREEZER)),
+            "{refused:?}"
+        );
+    }
+    assert!(serving, "a refused freeze leaves the sandbox serving");
+}
+
 #[tokio::test]
 async fn test_a_lease_directory_that_cannot_be_made_is_refused() {
     let base = tempfile::Builder::new()

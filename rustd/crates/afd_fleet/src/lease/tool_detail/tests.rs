@@ -100,7 +100,7 @@ fn the_budget_keeps_the_lowest_calls_that_fit() {
     let body = post(&records);
     let request: ToolCallRecordsRequest<'_> = serde_json::from_str(&body).expect("a post");
     let (candidates, skipped) = narrow_all(&request.calls);
-    assert!(skipped.is_empty());
+    assert!(skipped.is_empty(), "{skipped:?}");
     let (kept, over) = within_budget(candidates, 0, &BTreeMap::new());
     assert_eq!(kept.len(), 16, "16 × 64 KiB is the whole 1 MiB");
     assert_eq!(over.len(), 4);

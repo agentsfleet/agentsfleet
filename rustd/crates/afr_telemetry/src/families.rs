@@ -16,8 +16,8 @@ use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};
 
 use crate::labels::{
-    FrameDrop, LABEL_PROVIDER, LABEL_TOOL, Provider, PushFailure, RetryReason, SandboxStart, Tool,
-    ToolOutcome, TurnOutcome,
+    FrameDrop, LABEL_PROVIDER, LABEL_TOOL, Provider, PushFailure, RetryReason, SandboxHold,
+    SandboxStart, Tool, ToolOutcome, TurnOutcome,
 };
 use crate::record::Recorder;
 
@@ -52,6 +52,14 @@ pub const MEMORY_PUSH_FAILURES: Declared<CounterKind> =
 pub const TOOL_CALL_DURATION: Declared<HistogramKind> =
     Declared::new("agentsfleet_runner_tool_call_duration_seconds");
 
+/// Tenant processes the kernel killed for memory inside a sandbox.
+pub const TOOL_OUT_OF_MEMORY: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_tool_out_of_memory_total");
+
+/// Sandboxes held between a fleet's leases, by what became of them.
+pub const SANDBOX_HOLDS: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_sandbox_holds_total");
+
 /// Spans the span budget shed.
 pub const SPANS_SUPPRESSED: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_spans_suppressed_total");
@@ -78,6 +86,8 @@ pub struct Families {
     frames_dropped: Counter<u64>,
     push_failures: Counter<u64>,
     tool_calls: Histogram<f64>,
+    out_of_memory: Counter<u64>,
+    sandbox_holds: Counter<u64>,
     spans_suppressed: Counter<u64>,
     entries_discarded: Counter<u64>,
 }
@@ -96,6 +106,8 @@ impl Families {
             frames_dropped: instruments.counter_u64(&ACTIVITY_FRAMES_DROPPED)?,
             push_failures: instruments.counter_u64(&MEMORY_PUSH_FAILURES)?,
             tool_calls: instruments.histogram_f64(&TOOL_CALL_DURATION)?,
+            out_of_memory: instruments.counter_u64(&TOOL_OUT_OF_MEMORY)?,
+            sandbox_holds: instruments.counter_u64(&SANDBOX_HOLDS)?,
             spans_suppressed: instruments.counter_u64(&SPANS_SUPPRESSED)?,
             entries_discarded: instruments.counter_u64(&OTLP_ENTRIES_DISCARDED)?,
         })
@@ -148,6 +160,15 @@ impl Recorder for Families {
                 KeyValue::new(LABEL_OUTCOME, outcome.as_str()),
             ],
         );
+    }
+
+    fn out_of_memory(&self) {
+        self.out_of_memory.add(1, &[]);
+    }
+
+    fn sandbox_hold(&self, outcome: SandboxHold) {
+        self.sandbox_holds
+            .add(1, &[KeyValue::new(LABEL_OUTCOME, outcome.as_str())]);
     }
 
     fn spans_suppressed(&self, spans: u64) {

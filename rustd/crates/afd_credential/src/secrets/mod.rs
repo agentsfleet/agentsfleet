@@ -253,7 +253,8 @@ mod tests {
             declared.secrets_map().get("fly"),
             Some(&json!({"api_token": "FlyTokenXyz"}))
         );
-        assert!(declared.mintable().is_empty());
+        let mintable = declared.mintable();
+        assert!(mintable.is_empty(), "{mintable:?}");
     }
 
     #[test]

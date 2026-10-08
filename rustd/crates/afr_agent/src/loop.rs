@@ -1,35 +1,31 @@
 //! The agent loop: turns until the model answers without a tool call, the
 //! context cap is reached, the lease is stopped, or the provider fails.
 //!
-//! The [`Ledger`] keeps what each call did; this module runs the turns.
+//! One [`Harness`] drives one loop: the run's root, or a child a nested tool
+//! started, which is the same loop over a task of the model's with a narrower
+//! selection. What every loop of the run shares is [`Shared`]; the ledger
+//! keeps what each call did. Children are polled beside the root loop, never
+//! spawned, so a run that ends takes every child with it.
 //! `docs/architecture/runner_execution.md` §"Tool catalog" is the design.
 
-use std::time::Instant;
-
-use afd_core::clock::SystemClock;
-use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
-use afr_egress::Egress;
-use afr_memory::Hydrated;
-use afr_providers::{Call, Connect, Hosted, Message, Provider, Replay, Request, ToolSpec};
+use afr_providers::{Call, Connect, Hosted, Message, Replay, ToolSpec};
 use afr_secrets::Scrub;
-use afr_telemetry::labels::{Provider as ProviderLabel, TurnOutcome};
-use afr_telemetry::record;
-use afr_tools::sandbox::checkouts;
-use afr_tools::{Catalog, Lease, Selection};
+use afr_tools::{Catalog, Selection};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
-use crate::context::{Budget, CAP_REACHED, Checkpoints};
-use crate::engine::{AgentEngine, AgentRun, Checkpoint, Meter, Needs, RunOutput};
+use self::children::Children;
+use self::shared::Shared;
+use crate::context::{Budget, Checkpoints};
+use crate::engine::{AgentEngine, AgentRun, Needs, RunOutput};
 use crate::error::Result;
 use crate::events::Live;
-use crate::ledger::Ledger;
+use crate::nested::{self, Guard, Registry, Seat, Tether};
 use crate::offer;
 use crate::prompt::Prompt;
 use crate::router::{self, Router};
 use crate::spans;
-use crate::turn::{Turn, take};
 
 const EVENT_CAP_REACHED: &str = "context_cap_reached";
 const EVENT_CHECKPOINT_FAILED: &str = "memory_checkpoint_failed";
@@ -38,6 +34,8 @@ const EVENT_TURN_COMPLETED: &str = "provider_turn_completed";
 const EVENT_PROVIDER_FAILED: &str = "provider_turn_failed";
 /// Why a turn the lease stopped did not complete.
 const REASON_STOPPED: &str = "lease_stopped";
+/// What joins two messages a parent sent a child before one turn.
+const INPUT_JOIN: &str = "\n\n";
 
 /// The agent engine that runs the model against the lease's tools.
 #[derive(Debug)]
@@ -72,88 +70,139 @@ impl AgentEngine for Loop {
         let provider = self.connect.connect(run.lease)?;
         let scrub = Scrub::new(policy)?;
         let span = spans::invoke_agent(policy);
-        let harness = Harness::new(&run, &selection, &scrub);
-        Ok(harness.drive(provider.as_ref()).instrument(span).await)
+        let prompt = Prompt::new(run.lease);
+        let instructions = scrub.clean(prompt.instructions).into_inner();
+        // Every earlier turn passes the scrub the current message does: a
+        // secret said in an earlier message is still a secret.
+        let mut opening: Vec<Message> = prompt
+            .history
+            .into_iter()
+            .flat_map(|(asked, answered)| {
+                [
+                    Message::User(scrub.clean(asked).into_inner()),
+                    Message::Assistant {
+                        text: scrub.clean(answered).into_inner(),
+                        calls: Vec::new(),
+                        replay: Replay::default(),
+                    },
+                ]
+            })
+            .collect();
+        opening.push(Message::User(scrub.clean(prompt.message).into_inner()));
+        let (registry, requests) = Registry::new();
+        let shared = Shared::new(
+            &run,
+            &selection,
+            provider.as_ref(),
+            &scrub,
+            registry,
+            instructions,
+        );
+        let driven = async {
+            let mut children = Children::new(requests);
+            let mut root = Harness::root(&shared, opening);
+            let ending = children.beside(&shared, root.drive()).await;
+            // Every child is dropped before the ledger closes, so each one's
+            // open call ends `interrupted` in the trace the report carries.
+            children.end_all();
+            root.finish(ending).await
+        };
+        Ok(driven.instrument(span).await)
     }
 }
 
-/// How a run's turns ended.
-enum Ending {
+/// How a loop's turns ended.
+pub(crate) enum Ending {
     Answered(String),
     Failed(afr_providers::Error),
     Stopped,
 }
 
-/// One run in progress.
-struct Harness<'run> {
-    lease_id: &'run str,
-    model: &'run str,
-    /// The provider, as the turn-duration family labels it.
-    provider: ProviderLabel,
-    stop: &'run CancellationToken,
-    checkpoint: &'run dyn Checkpoint,
-    checkpoints: Checkpoints,
-    router: Router<'run>,
-    specs: Vec<ToolSpec<'run>>,
+/// One loop in progress: the root, or a child.
+pub(crate) struct Harness<'s, 'run> {
+    pub(crate) shared: &'s Shared<'run>,
+    /// How many loops this one is inside: zero for the root.
+    pub(crate) depth: u8,
+    /// Cancelled when this loop is to end: the run's token for the root, a
+    /// descendant of its parent's for a child.
+    pub(crate) stop: CancellationToken,
+    /// The tools this loop is offered; a child's selection narrows it.
+    pub(crate) selection: &'s Selection<'run>,
+    router: Router<'s>,
+    specs: Vec<ToolSpec<'s>>,
     hosted: Vec<Hosted>,
-    scrub: &'run Scrub,
-    /// What every call of the lease shares, lent to one call at a time.
-    lease: Lease<'run>,
-    live: Live<'run>,
-    ledger: Ledger<'run>,
+    live: Live<'s>,
+    checkpoints: Checkpoints,
     budget: Budget,
-    instructions: String,
     messages: Vec<Message>,
-    meter: &'run Meter,
-    started: Instant,
+    /// The child this loop is, when it is one: its guard, and what its
+    /// parent sent, read into its next turn.
+    pub(crate) child: Option<Tether<'s, 'run>>,
 }
 
-impl<'run> Harness<'run> {
-    fn new(run: &AgentRun<'run>, selection: &'run Selection<'run>, scrub: &'run Scrub) -> Self {
-        let policy = &run.lease.policy;
-        let prompt = Prompt::new(run.lease);
-        let started = Instant::now();
+impl<'s, 'run> Harness<'s, 'run> {
+    /// The run's root loop, over every tool the lease was offered, opening
+    /// with the fleet's earlier turns and then the event's message.
+    fn root(shared: &'s Shared<'run>, opening: Vec<Message>) -> Self {
+        let selection = shared.selection;
         Self {
-            lease_id: &run.lease.lease_id,
-            model: &policy.context.model,
-            provider: ProviderLabel::of(&policy.provider),
-            stop: run.stop,
-            checkpoint: run.checkpoint,
-            checkpoints: Checkpoints::new(&policy.context),
-            router: Router::new(selection, run.executor),
+            shared,
+            depth: 0,
+            stop: shared.stop.clone(),
+            selection,
+            router: Router::new(selection, shared.executor),
             specs: offer::specs(selection),
             hosted: offer::hosted(selection),
-            scrub,
-            // The supervisor refused a lease whose binding does not parse
-            // before this turn began, so none reaches here.
-            lease: Lease::new(
-                Box::new(Hydrated::new(run.memory)),
-                Egress::new(&run.lease.lease_id, policy, run.mint, &SystemClock),
-                run.verbs,
-            )
-            .with_checkouts(checkouts(policy).unwrap_or_default()),
-            live: Live::new(run.events, scrub, started),
-            ledger: Ledger::new(&run.lease.lease_id, run.events, scrub),
-            budget: Budget::new(&policy.context),
-            instructions: scrub.clean(prompt.instructions).into_inner(),
-            messages: vec![Message::User(scrub.clean(prompt.message).into_inner())],
-            meter: run.meter,
-            started,
+            live: Live::new(shared.events, shared.scrub, shared.started),
+            checkpoints: Checkpoints::new(shared.context),
+            budget: Budget::new(shared.context),
+            messages: opening,
+            child: None,
         }
     }
 
-    async fn drive(mut self, provider: &dyn Provider) -> RunOutput {
-        self.lease.image_input = provider.accepts_images();
+    /// A child loop over `selection`, opening with its seat's task. Its text
+    /// goes to no frame: its parent reads it through the call that started
+    /// it. It writes no checkpoint: the push before the report carries what
+    /// it stored.
+    pub(crate) fn child(
+        shared: &'s Shared<'run>,
+        selection: &'s Selection<'run>,
+        seat: Seat,
+        guard: &'s Guard<'s, 'run>,
+    ) -> Self {
+        Self {
+            shared,
+            depth: seat.depth,
+            stop: seat.stop,
+            selection,
+            router: Router::new(selection, shared.executor),
+            specs: offer::specs(selection),
+            hosted: offer::hosted(selection),
+            live: Live::silent(shared.scrub, shared.started),
+            checkpoints: Checkpoints::never(),
+            budget: Budget::new(shared.context),
+            messages: vec![Message::User(shared.scrub.clean(seat.task).into_inner())],
+            child: Some(Tether {
+                guard,
+                input: seat.input,
+            }),
+        }
+    }
+
+    /// Runs the loop's turns to their end.
+    pub(crate) async fn drive(&mut self) -> Ending {
         let mut capped = false;
         let mut turns: u64 = 0;
-        let ending = loop {
+        loop {
             turns += 1;
-            let turn = match self.turn(provider, turns, capped).await {
+            self.read_input();
+            let turn = match self.turn(turns, capped).await {
                 Some(Ok(turn)) => turn,
                 Some(Err(failure)) => break Ending::Failed(failure),
                 None => break Ending::Stopped,
             };
-            self.meter.add(turn.usage);
+            self.shared.meter.add(turn.usage);
             if capped || turn.calls.is_empty() {
                 break Ending::Answered(turn.text);
             }
@@ -179,160 +228,61 @@ impl<'run> Harness<'run> {
                 capped = true;
                 self.cap_reached(turns, turn.usage.prompt());
             }
-        };
-        self.finish(ending).await
-    }
-
-    /// Writes the memory stored so far back, when any is; a stopped lease
-    /// does not wait for it. A push that fails is logged and the run goes on:
-    /// the push before the report carries every entry again.
-    async fn checkpoint(&self) {
-        let pending: Vec<MemoryDelta<'static>> = (self.lease.memory.pending().into_iter())
-            .map(MemoryDelta::into_owned)
-            .collect();
-        if pending.is_empty() {
-            return;
-        }
-        let pushed = tokio::select! {
-            biased;
-            () = self.stop.cancelled() => return,
-            pushed = self.checkpoint.push(pending) => pushed,
-        };
-        if let Err(failure) = pushed {
-            let error_code = failure.code().as_str();
-            let lease_id = self.lease_id;
-            let event = EVENT_CHECKPOINT_FAILED;
-            tracing::warn!(error_code, lease_id, event);
-        }
-    }
-
-    /// One model turn, its start and its end logged as a pair
-    /// (`docs/LOGGING_STANDARD.md` §4 rule 1, at `debug` because a run makes
-    /// one per pass); `None` when the lease stopped it.
-    async fn turn(
-        &mut self,
-        provider: &dyn Provider,
-        number: u64,
-        capped: bool,
-    ) -> Option<afr_providers::Result<Turn>> {
-        let lease_id = self.lease_id;
-        let turn = number;
-        let event = EVENT_TURN_STARTED;
-        tracing::debug!(lease_id, turn, event);
-        let request = Request {
-            model: self.model,
-            instructions: &self.instructions,
-            messages: &self.messages,
-            tools: if capped { &[] } else { &self.specs },
-            hosted: if capped { &[] } else { &self.hosted },
-        };
-        let span = spans::chat(self.model);
-        let started = Instant::now();
-        let streamed = take(provider.stream(request), &mut self.live).instrument(span.clone());
-        let taken = tokio::select! {
-            biased;
-            () = self.stop.cancelled() => None,
-            taken = streamed => Some(taken),
-        };
-        record::turn(
-            self.provider,
-            turn_outcome(taken.as_ref()),
-            started.elapsed(),
-        );
-        match &taken {
-            Some(Ok(done)) => {
-                let input_tokens = done.usage.prompt();
-                let output_tokens = done.usage.output;
-                spans::spent(&span, input_tokens, output_tokens);
-                let calls = done.calls.len();
-                let event = EVENT_TURN_COMPLETED;
-                tracing::debug!(lease_id, turn, input_tokens, output_tokens, calls, event);
-            }
-            Some(Err(failure)) => {
-                let code = failure.code().as_str();
-                let event = EVENT_PROVIDER_FAILED;
-                tracing::warn!(error_code = code, lease_id, turn, event);
-            }
-            None => {
-                let reason = REASON_STOPPED;
-                let event = EVENT_PROVIDER_FAILED;
-                tracing::debug!(lease_id, turn, reason, event);
-            }
-        }
-        taken
-    }
-
-    /// What the model said and called, as the conversation keeps it: scrubbed,
-    /// so no secret value is ever sent to the model, whoever wrote it. The
-    /// router ran each call with the arguments as the model wrote them. The
-    /// provider's replay goes back unopened: it is the provider's own record
-    /// of its reasoning, signed where the provider signs it.
-    fn remembered(&self, text: String, calls: Vec<Call>, replay: Replay) -> Message {
-        let calls = calls
-            .into_iter()
-            .map(|call| Call {
-                arguments: self.scrub.clean_json(call.arguments).into_inner(),
-                ..call
-            })
-            .collect();
-        Message::Assistant {
-            text: self.scrub.clean(text).into_inner(),
-            calls,
-            replay,
         }
     }
 
     /// Runs one call to its end, or answers it unrun when its turn was `cut`
-    /// at the output limit; `None` when the lease stopped it.
-    async fn call(&mut self, call: &Call, cut: bool) -> Option<Message> {
-        let router = &self.router;
-        let lease = &mut self.lease;
-        let handler = async move {
+    /// at the output limit; `None` when the loop was stopped. A nested tool
+    /// the loop was offered runs here, beside the turn; every other call
+    /// goes to the router.
+    async fn call(&self, call: &Call, cut: bool) -> Option<Message> {
+        let handler = async {
             if cut {
                 return router::cut(&call.name);
             }
-            router.dispatch(&call.name, &call.arguments, lease).await
+            if let Some(output) = nested::run(self, call).await {
+                return output;
+            }
+            let lease = &self.shared.lease;
+            self.router
+                .dispatch(&call.name, &call.arguments, lease)
+                .await
         };
-        let text = tokio::select! {
+        let (text, image) = tokio::select! {
             biased;
             () = self.stop.cancelled() => return None,
-            text = self.ledger.call(call, handler) => text,
+            answered = self.shared.ledger.call(call, handler) => answered,
         };
+        if let Some(child) = &self.child {
+            child.guard.called();
+        }
         // The image a call read rides its result alone; the ledger, the trace
         // and the frames saw the text.
-        let image = self.lease.attachment.take().map(attach::image_input);
+        let image = image.map(attach::image_input);
         Some(Message::ToolResult {
             call_id: call.id.clone(),
             output: text.into_inner(),
             image,
         })
     }
-
-    fn cap_reached(&mut self, turns: u64, tokens: u64) {
-        let lease_id = self.lease_id;
-        let event = EVENT_CAP_REACHED;
-        tracing::info!(lease_id, turns, tokens, event);
-        self.messages.push(Message::User(CAP_REACHED.to_owned()));
-    }
-}
-
-/// How a turn ended, as the turn-duration family labels it.
-const fn turn_outcome(taken: Option<&afr_providers::Result<Turn>>) -> TurnOutcome {
-    match taken {
-        Some(Ok(_answered)) => TurnOutcome::Completed,
-        Some(Err(_failed)) => TurnOutcome::Failed,
-        None => TurnOutcome::Stopped,
-    }
 }
 
 #[path = "loop/attach.rs"]
 mod attach;
+#[path = "loop/children.rs"]
+mod children;
+#[path = "loop/conversation.rs"]
+mod conversation;
 #[path = "loop/finish.rs"]
 mod finish;
+#[path = "loop/model_turn.rs"]
+mod model_turn;
+#[path = "loop/shared.rs"]
+pub(crate) mod shared;
 
 #[cfg(test)]
 #[path = "loop/tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "loop/image_tests.rs"]
@@ -341,6 +291,10 @@ mod image_tests;
 #[cfg(test)]
 #[path = "loop/budget_tests.rs"]
 mod budget_tests;
+
+#[cfg(test)]
+#[path = "loop/history_tests.rs"]
+mod history_tests;
 
 #[cfg(test)]
 #[path = "loop/provider_failure_tests.rs"]

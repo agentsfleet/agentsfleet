@@ -39,11 +39,11 @@ const EACH_KIND: &str = concat!(
 pub(super) async fn apply(live: &Live, patch: &str) -> ToolOutput {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[APPLY_PATCH.name()]).unwrap();
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     call_in(
         offered(&selection, &APPLY_PATCH),
         &live.client,
-        &mut lease,
+        &lease,
         json!({PATCH: patch}),
     )
     .await
@@ -234,7 +234,7 @@ async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
     let (catalog, _sent) = hosted();
     let selection = catalog.select(&[APPLY_PATCH.name()]).unwrap();
     let tool = offered(&selection, &APPLY_PATCH);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     for patch in [
         "*** Begin Patch\n*** Add File: ../escape.txt\n+x\n*** End Patch\n",
@@ -242,7 +242,7 @@ async fn a_hunk_path_leaving_the_workspace_is_refused_before_any_call() {
         "*** Begin Patch\n*** Delete File: a/../../b\n*** End Patch\n",
         "*** Begin Patch\n*** Add File: ok.txt\n+x\n*** Update File: a.txt\n*** Move to: ../moved.txt\n@@\n-a\n+b\n*** End Patch\n",
     ] {
-        let refused = call_in(tool, &executor, &mut lease, json!({PATCH: patch})).await;
+        let refused = call_in(tool, &executor, &lease, json!({PATCH: patch})).await;
 
         assert_eq!(
             refused.error_code,

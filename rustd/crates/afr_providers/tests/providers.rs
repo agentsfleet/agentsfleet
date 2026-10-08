@@ -14,6 +14,8 @@
 
 mod support;
 
+#[path = "providers/caching.rs"]
+mod caching;
 #[path = "providers/ends.rs"]
 mod ends;
 #[path = "providers/hosts.rs"]
@@ -28,8 +30,9 @@ mod turns;
 use std::time::{Duration, Instant};
 
 use afd_core::test_util::trace::Capture;
-use afd_wire::report::{FailureClass, ResultOutcome};
+use afd_wire::report::FailureClass;
 use afd_wire::tool_trace::ToolCallStatus;
+use afr_agent::ResultOutcome;
 use afr_tools::catalog::{UPDATE_PLAN, WEB_SEARCH};
 use serde_json::json;
 use tracing::level_filters::LevelFilter;

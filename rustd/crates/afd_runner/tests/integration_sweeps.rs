@@ -16,6 +16,9 @@ use afd_runner::sweep::retention::Retention;
 
 const OLD: i64 = 1;
 const NEVER_SEEN: i64 = 0;
+/// Passes the lane's backlog may take to drain: far past any lane's runners
+/// over the liveness batch.
+const MAX_DRAIN_PASSES: usize = 64;
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -37,8 +40,19 @@ async fn liveness_and_retention_converge_real_runner_rows() {
     assert!(!fixture.slot_is_expired(&fixture.unknown_fleet).await);
     assert_eq!(fixture.offline_events().await, 1);
 
-    let second = liveness.sweep().await.expect("a repeated pass converges");
-    assert_eq!(second.changed, 0);
+    // A pass takes one batch of due runners, and the lane may hold more than a
+    // batch of other suites' stale rows; the repeat converges once they drain.
+    let mut passes = 0;
+    while liveness
+        .sweep()
+        .await
+        .expect("a repeated pass converges")
+        .changed
+        > 0
+    {
+        passes += 1;
+        assert!(passes < MAX_DRAIN_PASSES, "the lane's due runners drain");
+    }
     assert_eq!(fixture.offline_events().await, 1);
 
     let retention = Retention::new(fixture.database.clone());

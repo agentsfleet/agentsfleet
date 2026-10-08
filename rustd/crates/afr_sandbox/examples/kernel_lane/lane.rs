@@ -29,7 +29,7 @@ const MAX_USER_NAMESPACES: &str = "/proc/sys/user/max_user_namespaces";
 /// Ubuntu's `AppArmor` switch that forbids unprivileged user namespaces.
 const APPARMOR_USERNS: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
 /// Where each run's leases and toolbox mount live; short, for socket paths.
-const STATE_PREFIX: &str = "afr-lane-";
+pub(crate) const STATE_PREFIX: &str = "afr-lane-";
 /// Where, under the lane's state, each lease's directory is made; apart from
 /// the toolbox mount, so no lease name can land on it.
 const LEASES_DIR: &str = "leases";
@@ -40,7 +40,18 @@ const MOUNTS_DIR: &str = "mounts";
 /// The lane binary's name where the sandbox binds it from.
 const ENTRY_NAME: &str = "agentsfleet-runner";
 /// Readable and executable by everyone, writable by nobody but root.
-const ENTRY_MODE: u32 = 0o755;
+pub(crate) const ENTRY_MODE: u32 = 0o755;
+/// Where the lane's state is made: on a disk, as a host's is. A tmpfs `/tmp`
+/// would make every workspace image memory, so a disk fill would be a
+/// memory fill whatever the loop device caches.
+const STATE_PARENT: &str = "/var/tmp";
+/// The free space under [`STATE_PARENT`] a run needs: the concurrent
+/// exhaustion trial's four 1 GiB disks filled at once, the staged toolbox and
+/// the runner copy, with room to spare. Short of it, that trial's fills end in
+/// the host's I/O errors rather than each sandbox's own `ENOSPC`.
+pub(crate) const STATE_FREE_BYTES_MIN: u64 = 6 << 30;
+/// Bytes in a mebibyte, for the free-space gap's numbers.
+const MIB: u64 = 1 << 20;
 /// The state directory: traversable, but listable and writable by root only.
 const STATE_MODE: u32 = 0o711;
 /// How long a sandbox may take to answer.
@@ -112,7 +123,34 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     if toolbox.is_none() {
         gaps.push(format!("{TOOLBOX_VARIABLE}: names no toolbox image"));
     }
+    gaps.extend(short_of_disk(Path::new(STATE_PARENT)));
     gaps
+}
+
+/// Why `parent` cannot hold a run's state, if it cannot: too little free, with
+/// any lane state an earlier run left behind named so it can be cleared. This
+/// run's own state is made after the check, so every such directory is an
+/// earlier run's, or a concurrent one's, and is named rather than removed.
+pub(crate) fn short_of_disk(parent: &Path) -> Option<String> {
+    let free = match rustix::fs::statvfs(parent) {
+        Ok(stat) => stat.f_bavail.saturating_mul(stat.f_frsize),
+        Err(error) => return Some(format!("disk: {} is unreadable: {error}", parent.display())),
+    };
+    (free < STATE_FREE_BYTES_MIN).then(|| {
+        let left: Vec<String> = fs::read_dir(parent)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(STATE_PREFIX))
+            .collect();
+        format!(
+            "disk: {} has {} MiB free, under the {} MiB a run fills; lane state left by earlier runs: {left:?}",
+            parent.display(),
+            free / MIB,
+            STATE_FREE_BYTES_MIN / MIB,
+        )
+    })
 }
 
 /// Checks every prerequisite, builds the lane, and runs the trials.
@@ -177,7 +215,7 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
     let cgroup_root = paths.cgroup_root;
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
-        .tempdir_in("/tmp")?;
+        .tempdir_in(STATE_PARENT)?;
     let signer = Signer::new()?;
     let manifest = signer.manifest_beside(image)?;
     let mounter = KernelMounter::new(state.path().join(MOUNTS_DIR));
@@ -241,9 +279,18 @@ fn delegate() -> std::io::Result<PathBuf> {
     Ok(root)
 }
 
-/// The sandbox side: harden, then serve the executor until the lane hangs up.
+/// The sandbox side: take the tenant leaf's descriptors the engine named,
+/// harden, then serve the executor until the lane hangs up.
 pub(crate) fn serve() -> ExitCode {
-    match afr_sandbox::serve_sandboxed() {
+    let tenant = match afr_sandbox::TenantDescriptors::parse_from(std::env::args_os().skip(1)) {
+        Ok(tenant) => tenant,
+        Err(refused) => {
+            // logging: the sandbox side starts no subscriber; stderr is its only report
+            eprintln!("the sandbox was not told its tenant leaf: {refused}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match afr_sandbox::serve_sandboxed(tenant) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("the sandbox stopped: {error}");

@@ -13,8 +13,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use afd_api_wire::grant::status;
 use afd_core::id::Uuid7;
-use afd_wire::grant::status;
 
 use super::{KIND_INTEGRATION_GRANT, Origin, Requested, Wanted, settle};
 

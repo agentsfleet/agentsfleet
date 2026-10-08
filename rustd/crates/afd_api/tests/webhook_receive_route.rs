@@ -192,7 +192,11 @@ async fn a_paused_fleet_acknowledges_a_signed_body_before_parsing_it() {
         document.get("ignored").and_then(Value::as_str),
         Some(REASON_PAUSED)
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -213,7 +217,11 @@ async fn a_verified_body_that_is_not_a_document_is_refused() {
             .map(str::to_owned),
         Some(code(error_code::WEBHOOK_MALFORMED))
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -231,7 +239,11 @@ async fn a_signature_under_the_wrong_key_wakes_nothing() {
             .map(str::to_owned),
         Some(code(error_code::WEBHOOK_SIGNATURE_INVALID))
     );
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }
 
 #[tokio::test]
@@ -245,5 +257,9 @@ async fn a_path_naming_no_canonical_fleet_is_refused_before_the_wall() {
     let status = refused.status();
     let document = json_body(refused).await;
     assert!(status.is_client_error(), "{status} {document}");
-    assert!(ingress.deliveries().is_empty());
+    assert!(
+        ingress.deliveries().is_empty(),
+        "{:?}",
+        ingress.deliveries()
+    );
 }

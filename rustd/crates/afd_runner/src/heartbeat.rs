@@ -22,8 +22,8 @@ use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_observability::producers;
-use afd_wire::runner::{CapabilityReport, HeartbeatRequest, SelftestReport};
-use garde::Validate as _;
+use afd_wire::runner::{CapabilityReport, HeartbeatRequest, HeldFleets, SelftestReport};
+use garde::{Valid, Validate as _};
 use sqlx::{Executor as _, PgConnection, Row as _};
 
 use crate::bounds;
@@ -39,7 +39,6 @@ use crate::store::Runners;
 const CONTEXT_POLICY_READ: &str = "runner policy read";
 
 /// The scoped events a best-effort write reports itself under.
-const EVENT_VERDICT_WRITE: &str = "verdict_persist_failed";
 const EVENT_SELFTEST_WRITE: &str = "selftest_persist_failed";
 const EVENT_LIVENESS_WRITE: &str = "heartbeat_bump_failed";
 
@@ -52,6 +51,8 @@ const EVENT_LIVENESS_WRITE: &str = "heartbeat_bump_failed";
 pub const NO_REPORT: HeartbeatRequest<'static> = HeartbeatRequest {
     capability_report: None,
     selftest: None,
+    holds: HeldFleets(Vec::new()),
+    closing: false,
 };
 
 /// What one beat resolved to, for the reply the host reads.
@@ -67,6 +68,8 @@ pub struct Beat {
     /// ask, so echoing it back would tell the host to immediately re-run the
     /// probe it has this second finished.
     pub selftest_requested: bool,
+    /// Fleets the beat listed as held that the runner should let go of.
+    pub release_holds: Vec<String>,
 }
 
 /// The policy row, as the reconciliation needs it.
@@ -79,7 +82,10 @@ struct PolicyRow {
 }
 
 impl Runners {
-    /// Records a beat and answers what the host must apply.
+    /// Records a beat and answers what the host must apply. `held` is the
+    /// beat's holds list as its handler proved it; `None` holds nothing. A
+    /// beat whose `closing` is set clears every hold the list leaves out at
+    /// once, since a closing runner's list is final.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, a statement Postgres refused,
@@ -90,6 +96,7 @@ impl Runners {
         &self,
         runner: &Uuid7,
         beat: &HeartbeatRequest<'_>,
+        held: Option<&Valid<HeldFleets<'_>>>,
         now: UnixMillis,
     ) -> Result<Beat> {
         let mut connection = self.pool().acquire().await?;
@@ -100,11 +107,13 @@ impl Runners {
         let assigned = row.assignment.decode();
         let verdict = reconcile(assigned.as_ref(), incoming.or(stored.as_ref()));
 
-        persist_verdict(&mut connection, runner, incoming, &row.stored, verdict, now).await;
+        verdict::persist(&mut connection, runner, incoming, &row.stored, verdict, now).await;
         // After the capability write, so a malformed verdict cannot cost the
         // beat its reconciliation.
         let reported = persist_selftest(&mut connection, runner, beat.selftest.as_ref(), now).await;
         self.bump_liveness(&mut connection, runner, now).await;
+        let release_holds =
+            holds::reconcile(&mut connection, runner, held, beat.closing, now).await;
         // The gauge's only input. Liveness is a Postgres row a collection
         // callback cannot read — it is a network round trip, and the SDK
         // collects on a thread that must not make one — so the beat that
@@ -113,6 +122,7 @@ impl Runners {
 
         Ok(Beat {
             selftest_requested: row.selftest_requested && !reported,
+            release_holds,
             assignment: row.assignment,
             verdict,
         })
@@ -191,46 +201,6 @@ impl Runners {
     fn event_id(&self, now: UnixMillis) -> Result<Uuid7> {
         Ok(self.entropy().uuid7(now)?)
     }
-}
-
-/// Writes what this beat changed about the verdict.
-///
-/// A fresh report always lands with its verdict; otherwise only a MOVED verdict
-/// writes, and the statement's own guard makes a steady state write nothing at
-/// all. The `differs_from` check ahead of it saves the round trip that guard
-/// would otherwise cost on every beat of every idle host.
-async fn persist_verdict(
-    connection: &mut PgConnection,
-    runner: &Uuid7,
-    incoming: Option<&CapabilityReport<'_>>,
-    stored: &StoredVerdict,
-    verdict: Verdict,
-    now: UnixMillis,
-) {
-    let millis = now.as_millis();
-    if let Some(report) = incoming {
-        let report_json = serde_json::to_string(report).unwrap_or_else(|_unreachable| {
-            // Unreachable for this shape — booleans and a string list — and an
-            // empty object is the honest degradation: it stores "reported
-            // nothing" rather than a half-written report.
-            "{}".to_owned()
-        });
-        let write = sqlx::query(sql::runner::UPDATE_RUNNER_CAPABILITY_AND_VERDICT)
-            .bind(runner.as_str())
-            .bind(report_json)
-            .bind(millis)
-            .bind(verdict.is_degraded())
-            .bind(verdict.reason());
-        best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
-    } else if stored.differs_from(verdict) {
-        let write = sqlx::query(sql::runner::UPDATE_RUNNER_VERDICT)
-            .bind(runner.as_str())
-            .bind(verdict.is_degraded())
-            .bind(verdict.reason())
-            .bind(millis);
-        best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
-    }
-    announce(runner, stored, verdict);
 }
 
 /// Stores a reported verdict, and answers whether anything was written.
@@ -314,29 +284,8 @@ fn report(event: &'static str, runner: &Uuid7, error: &Error) {
     tracing::warn!(error_code = code, runner_id = id, reason, event);
 }
 
-/// Says a verdict CHANGED, and only when it changed.
-///
-/// A degradation is an operator event — a host that will not take work — so it
-/// is `warn` on the transition and silent on every beat after it. Logging the
-/// state rather than the transition would put one line per host per ten seconds
-/// into the log and hide the moment it happened.
-fn announce(runner: &Uuid7, stored: &StoredVerdict, verdict: Verdict) {
-    let id = runner.as_str();
-    match (stored.degraded, verdict.reason()) {
-        (false, Some(reason)) => {
-            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::warn!(
-                error_code = code,
-                runner_id = id,
-                reason,
-                event = "runner_degraded",
-                "runner degraded — it will not be assigned work until this is fixed"
-            );
-        }
-        (true, None) => tracing::debug!(runner_id = id, event = "runner_recovered"),
-        _steady => {}
-    }
-}
+pub mod holds;
+mod verdict;
 
 #[cfg(test)]
 #[path = "heartbeat/tests.rs"]

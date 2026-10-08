@@ -308,7 +308,7 @@ fn unset_knobs_resolve_to_the_documented_defaults() {
 
     assert_eq!(config.encoding(), afd_otlp::Encoding::HttpProtobuf);
     assert_eq!(config.timeout(), afd_otlp::DEFAULT_TIMEOUT);
-    assert!(config.headers().is_empty());
+    assert_eq!(config.headers(), []);
 }
 
 /// A resolved configuration never renders the credential it carries.

@@ -8,13 +8,13 @@
 use std::borrow::Cow;
 use std::time::Instant;
 
+use crate::{Completed, ExecutionResult, Failure, ResultOutcome};
 use afd_core::clock::saturating_millis_signed;
 use afd_wire::activity::{
     ActivityFrame, FleetResponseChunk, StreamTextKind, ToolCallCompleted, ToolCallStarted,
 };
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
-use afd_wire::report::{Completed, ExecutionResult, Failure, ResultOutcome};
 use afr_executor::{Ending, Executor, Spawn};
 
 use crate::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
@@ -160,7 +160,7 @@ fn say(events: &dyn EventSink, turn: &mut Turn, text: &str) {
 fn finish(turn: Turn, started: Instant) -> RunOutput {
     let outcome = turn
         .failure
-        .map_or(ResultOutcome::Completed(Completed {}), |detail| {
+        .map_or(ResultOutcome::Completed(Completed), |detail| {
             ResultOutcome::Failed(Failure {
                 class: None,
                 detail: Cow::Owned(detail),

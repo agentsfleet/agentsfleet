@@ -5,10 +5,10 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::team::InviteSummary;
 use afd_connector::Dashboard;
 use afd_core::id::Uuid7;
 use afd_tenant::team::Invitation;
-use afd_wire::team::InviteSummary;
 
 /// The dashboard path an invite's accept page lives under.
 const INVITES_PATH: &str = "invites";

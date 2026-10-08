@@ -19,6 +19,7 @@ use tokio_util::codec::{AnyDelimiterCodec, AnyDelimiterCodecError, FramedRead};
 use tokio_util::sync::{CancellationToken, DropGuard};
 
 use super::files::Workspace;
+use super::launch::Placement;
 use super::launch::Plan;
 use super::process::ProcessRun;
 use crate::error::{self, Result};
@@ -63,6 +64,8 @@ impl Running {
 /// The state one connection owns.
 pub(super) struct Session {
     workspace: Arc<Workspace>,
+    /// Where every process the session starts is placed.
+    placement: Arc<dyn Placement>,
     outbound: mpsc::UnboundedSender<Bytes>,
     /// Where each process's output and exit go, bounded.
     output: mpsc::Sender<Bytes>,
@@ -73,15 +76,17 @@ pub(super) struct Session {
 }
 
 impl Session {
-    /// A session answering through `outbound`, its processes speaking
-    /// through `output`.
+    /// A session answering through `outbound`, its processes placed by
+    /// `placement` and speaking through `output`.
     pub(super) fn new(
         workspace: Arc<Workspace>,
+        placement: Arc<dyn Placement>,
         outbound: mpsc::UnboundedSender<Bytes>,
         output: mpsc::Sender<Bytes>,
     ) -> Self {
         Self {
             workspace,
+            placement,
             outbound,
             output,
             processes: HashMap::new(),
@@ -193,7 +198,7 @@ impl Session {
     fn spawn(&mut self, id: Id<'static>, params: Result<SpawnParams<'static>>) {
         let started = params
             .and_then(|spawn| Plan::new(spawn, &self.workspace))
-            .and_then(|plan| ProcessRun::start(&plan));
+            .and_then(|plan| ProcessRun::start(&plan, &self.placement));
         match started {
             Ok((run, input)) => {
                 let process = self.next_process;

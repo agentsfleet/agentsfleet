@@ -150,7 +150,7 @@ async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
     let mut leased = BTreeSet::new();
     for _poll in 0..READY_PARTITIONS {
         if let Some(acquired) = store
-            .select(&runner, now)
+            .select(&runner, &[], now)
             .await
             .expect("a poll must not fault")
         {

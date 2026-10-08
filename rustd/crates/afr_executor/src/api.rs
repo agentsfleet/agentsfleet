@@ -45,7 +45,7 @@ pub enum Stream {
 /// The executor's `process/exited` carries this as it is, so the wire and the
 /// caller spell an ending one way: `{"kind":"exited","code":0}`,
 /// `{"kind":"signaled","code":9}`, `{"kind":"timed_out"}`,
-/// `{"kind":"interrupted"}`.
+/// `{"kind":"out_of_memory"}`, `{"kind":"interrupted"}`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "code", rename_all = "snake_case")]
 pub enum Ending {
@@ -55,6 +55,9 @@ pub enum Ending {
     Signaled(i32),
     /// Its timeout elapsed and the executor killed its group.
     TimedOut,
+    /// The kernel killed it because its sandbox's tenant processes ran out of
+    /// memory.
+    OutOfMemory,
     /// No status reached the caller: the executor or its sandbox went away,
     /// or the executor could not learn how the process ended.
     Interrupted,
@@ -69,6 +72,7 @@ impl Ending {
             Self::Exited(_) => "exited",
             Self::Signaled(_) => "signaled",
             Self::TimedOut => "timed_out",
+            Self::OutOfMemory => "out_of_memory",
             Self::Interrupted => "interrupted",
         }
     }
@@ -78,7 +82,7 @@ impl Ending {
     pub const fn code(self) -> Option<i32> {
         match self {
             Self::Exited(code) | Self::Signaled(code) => Some(code),
-            Self::TimedOut | Self::Interrupted => None,
+            Self::TimedOut | Self::OutOfMemory | Self::Interrupted => None,
         }
     }
 }

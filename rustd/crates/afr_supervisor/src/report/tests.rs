@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use afd_wire::report::{ExecutionResult, Failure, FailureClass, Outcome, ResultOutcome};
+use afd_wire::report::{FailureClass, Outcome};
+use afr_agent::{ExecutionResult, Failure, ResultOutcome};
 
 use afr_agent::Meter;
 use afr_providers::Usage;
@@ -14,6 +15,7 @@ fn spent(input: u64, cached_input: u64, output: u64) -> Meter {
     meter.add(Usage {
         input,
         cached_input,
+        cache_written: 0,
         output,
     });
     meter
@@ -32,6 +34,7 @@ fn a_completed_run_reports_its_answer_tokens_and_timings() {
         &ending,
         &spent(3, 1, 4),
         Duration::from_secs(2),
+        None,
         None,
     );
 
@@ -71,7 +74,14 @@ fn a_fleet_failure_inside_a_finished_run_reports_its_class() {
         first_chunk: None,
     };
 
-    let report = report(&lease, &ending, &Meter::default(), Duration::ZERO, None);
+    let report = report(
+        &lease,
+        &ending,
+        &Meter::default(),
+        Duration::ZERO,
+        None,
+        None,
+    );
 
     assert_eq!(report.outcome, Outcome::FleetError);
     assert_eq!(report.failure_reason, Some(FailureClass::PolicyDeny));
@@ -92,6 +102,7 @@ fn a_run_that_never_finished_still_reports_what_it_spent() {
         &ending,
         &spent(7, 2, 3),
         Duration::from_millis(5),
+        None,
         None,
     );
 
@@ -125,6 +136,7 @@ fn a_run_that_never_started_reports_zero_usage() {
         &Meter::default(),
         Duration::from_millis(5),
         None,
+        None,
     );
 
     assert_eq!(report.outcome, Outcome::FleetError);
@@ -147,7 +159,14 @@ fn a_finished_run_bills_its_result_not_the_meter() {
         first_chunk: None,
     };
 
-    let report = report(&lease, &ending, &spent(100, 50, 25), Duration::ZERO, None);
+    let report = report(
+        &lease,
+        &ending,
+        &spent(100, 50, 25),
+        Duration::ZERO,
+        None,
+        None,
+    );
 
     assert_eq!(
         (

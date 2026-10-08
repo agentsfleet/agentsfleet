@@ -169,7 +169,7 @@ async fn recovers_an_abandoned_lease(fixtures: &Fixtures, leases: &Leases) {
 /// test's to choose, and the property is about all of them.
 async fn every_partition_of_an_empty_index_is_free(leases: &Leases, runner: &Uuid7) {
     for _poll in 0..READY_PARTITIONS {
-        let (outcome, cost) = leases.select_measured(runner, clock::now()).await;
+        let (outcome, cost) = leases.select_measured(runner, &[], clock::now()).await;
         assert_eq!(
             cost.candidates_scanned, 0,
             "no writer has marked this index, so a peek offers nothing"
@@ -192,7 +192,7 @@ async fn every_partition_of_an_empty_index_is_free(leases: &Leases, runner: &Uui
 /// mark was written to.
 async fn poll_until_a_candidate(leases: &Leases, runner: &Uuid7) -> Option<PollMeasurement> {
     for _poll in 0..READY_PARTITIONS {
-        let (_outcome, cost) = leases.select_measured(runner, clock::now()).await;
+        let (_outcome, cost) = leases.select_measured(runner, &[], clock::now()).await;
         if cost.candidates_scanned > 0 {
             return Some(cost);
         }

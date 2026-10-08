@@ -19,12 +19,12 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::admin::AdminLibraryImport;
 use afd_core::clock::UnixMillis;
 use afd_core::error_code::{self, ErrorCode};
 use afd_library::{
     Destination, ImportBody, LibraryImports, Onboarded, Repository, SourceKind, valid_revision,
 };
-use afd_wire::admin::AdminLibraryImport;
 
 /// What one onboarding request asks for, carrying only what its kind needs.
 ///

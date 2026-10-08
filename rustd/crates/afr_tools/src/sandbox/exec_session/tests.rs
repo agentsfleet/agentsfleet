@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use afd_core::test_util::trace::Capture;
 use afr_executor::{Ending, ProcessId, Spawn};
 use bytes::Bytes;
 use serde_json::{Value, json};
@@ -18,6 +19,7 @@ use super::{
 use crate::handler::Typed;
 use crate::lease::Lease;
 use crate::runtime::{Tool, ToolErrorCode};
+use crate::sandbox::oneshot::EVENT_OUT_OF_MEMORY;
 use crate::sandbox::sessions::SESSIONS_PER_LEASE_MAX;
 use crate::sandbox::{ScriptedExecutor, ScriptedProcess};
 use crate::testing::call_in;
@@ -48,6 +50,18 @@ pub(super) const ONE: &str = "one\n";
 const TWO: &str = "two\n";
 /// How the first process's session reads while it runs.
 pub(super) const FIRST_RUNNING: &str = "Process running with session ID 1";
+/// The id of a lease whose log lines a test reads: a default lease's id is
+/// empty, which a line that never read it would carry as well.
+pub(super) const LEASE_ID: &str = "lease-oom";
+
+/// A lease named [`LEASE_ID`], so a log line carries its id only by reading
+/// it off the lease.
+pub(super) fn named_lease() -> Lease<'static> {
+    Lease {
+        lease_id: LEASE_ID,
+        ..Lease::default()
+    }
+}
 
 pub(super) fn exec() -> Box<dyn Tool> {
     Typed::boxed(ExecCommand)
@@ -77,17 +91,17 @@ fn only_spawn(executor: &ScriptedExecutor) -> Spawn {
 }
 
 /// Opens one session on `executor` that yields as briefly as it may.
-pub(super) async fn open(executor: &ScriptedExecutor, lease: &mut Lease<'_>, cmd: &str) {
+pub(super) async fn open(executor: &ScriptedExecutor, lease: &Lease<'_>, cmd: &str) {
     call_in(&*exec(), executor, lease, opening(cmd, Some(YIELD_MS_MIN))).await;
 }
 
 #[tokio::test(start_paused = true)]
 async fn test_exec_command_keeps_a_running_process_as_a_session() {
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("ready\n")]);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     let started = Instant::now();
 
-    let output = call_in(&*exec(), &executor, &mut lease, opening(DEV_SERVER, None)).await;
+    let output = call_in(&*exec(), &executor, &lease, opening(DEV_SERVER, None)).await;
 
     assert_eq!(output.text, format!("ready\n{FIRST_RUNNING}"));
     assert_eq!((output.exit_code, output.error_code), (None, None));
@@ -96,7 +110,7 @@ async fn test_exec_command_keeps_a_running_process_as_a_session() {
         Duration::from_millis(YIELD_MS_DEFAULT),
         "a running process is read for the whole yield"
     );
-    assert!(lease.sessions.get_mut(FIRST).is_some(), "it stays open");
+    assert!(lease.sessions.get(FIRST).is_some(), "it stays open");
     let spawn = only_spawn(&executor);
     assert_eq!(spawn.argv(), ["/bin/sh", "-c", DEV_SERVER]);
     assert!(!spawn.on_terminal(), "pipes unless the model asks");
@@ -110,7 +124,7 @@ async fn should_start_on_a_terminal_in_a_workdir_when_asked() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("", 0)]);
     let arguments = json!({CMD: REPL, "tty": true, "workdir": WORKDIR});
 
-    call_in(&*exec(), &executor, &mut Lease::default(), arguments).await;
+    call_in(&*exec(), &executor, &Lease::default(), arguments).await;
 
     let spawn = only_spawn(&executor);
     assert!(spawn.on_terminal());
@@ -120,18 +134,31 @@ async fn should_start_on_a_terminal_in_a_workdir_when_asked() {
 #[tokio::test(start_paused = true)]
 async fn should_answer_at_once_with_the_exit_of_a_process_that_ends_in_its_yield() {
     let executor = ScriptedExecutor::new([ScriptedProcess::exits("built\n", 2)]);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     let started = Instant::now();
 
-    let output = call_in(&*exec(), &executor, &mut lease, opening("make", None)).await;
+    let output = call_in(&*exec(), &executor, &lease, opening("make", None)).await;
 
     assert_eq!(output.text, "built\nProcess exited with code 2");
     assert_eq!(output.exit_code, Some(2));
     assert_eq!(started.elapsed(), Duration::ZERO);
-    assert!(
-        lease.sessions.get_mut(FIRST).is_none(),
-        "no session is left"
-    );
+    assert!(lease.sessions.get(FIRST).is_none(), "no session is left");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_session_killed_for_memory_is_logged_as_a_one_shot_command_is() {
+    let capture = Capture::install();
+    let executor =
+        ScriptedExecutor::new([ScriptedProcess::ends("allocating\n", Ending::OutOfMemory)]);
+    let lease = named_lease();
+
+    let output = call_in(&*exec(), &executor, &lease, opening(REPL, None)).await;
+
+    assert_eq!(output.error_code, Some(ToolErrorCode::OutOfMemory));
+    let logged = capture.only(EVENT_OUT_OF_MEMORY);
+    assert_eq!(logged.level, tracing::Level::WARN);
+    assert_eq!(logged.field("error_code"), Some("out_of_memory"));
+    assert_eq!(logged.field("lease_id"), Some(LEASE_ID));
 }
 
 #[tokio::test(start_paused = true)]
@@ -140,19 +167,13 @@ async fn should_hold_a_yield_between_the_shortest_and_the_longest() {
         ScriptedProcess::stays_open(""),
         ScriptedProcess::stays_open(""),
     ]);
-    let mut lease = Lease::default();
+    let lease = Lease::default();
 
     let started = Instant::now();
-    call_in(&*exec(), &executor, &mut lease, opening("a", Some(1))).await;
+    call_in(&*exec(), &executor, &lease, opening("a", Some(1))).await;
     let shortest = started.elapsed();
     let started = Instant::now();
-    call_in(
-        &*exec(),
-        &executor,
-        &mut lease,
-        opening("b", Some(3_600_000)),
-    )
-    .await;
+    call_in(&*exec(), &executor, &lease, opening("b", Some(3_600_000))).await;
     let longest = started.elapsed();
 
     assert_eq!(shortest, Duration::from_millis(YIELD_MS_MIN));
@@ -166,12 +187,12 @@ async fn test_exec_command_makes_room_past_the_session_cap() {
     let executor = ScriptedExecutor::new(
         (0..=SESSIONS_PER_LEASE_MAX).map(|_| ScriptedProcess::stays_open("")),
     );
-    let mut lease = Lease::default();
+    let lease = Lease::default();
     for _ in 0..SESSIONS_PER_LEASE_MAX {
-        open(&executor, &mut lease, "sleep 600").await;
+        open(&executor, &lease, "sleep 600").await;
     }
 
-    let opened = call_in(&*exec(), &executor, &mut lease, opening("one more", None)).await;
+    let opened = call_in(&*exec(), &executor, &lease, opening("one more", None)).await;
 
     assert_eq!(opened.error_code, None, "{opened:?}");
     assert_eq!(executor.spawned().len(), SESSIONS_PER_LEASE_MAX + 1);
@@ -181,11 +202,11 @@ async fn test_exec_command_makes_room_past_the_session_cap() {
 #[tokio::test(start_paused = true)]
 async fn test_write_stdin_feeds_a_session_and_reads_what_it_printed() {
     let executor = ScriptedExecutor::new([ScriptedProcess::echoes()]);
-    let mut lease = Lease::default();
-    open(&executor, &mut lease, CAT).await;
+    let lease = Lease::default();
+    open(&executor, &lease, CAT).await;
 
-    let first = call_in(&*write(), &executor, &mut lease, writing(1, ONE, None)).await;
-    let second = call_in(&*write(), &executor, &mut lease, writing(1, TWO, None)).await;
+    let first = call_in(&*write(), &executor, &lease, writing(1, ONE, None)).await;
+    let second = call_in(&*write(), &executor, &lease, writing(1, TWO, None)).await;
 
     assert_eq!(first.text, format!("{ONE}{FIRST_RUNNING}"));
     assert_eq!(second.text, format!("{TWO}{FIRST_RUNNING}"));
@@ -201,14 +222,14 @@ async fn test_write_stdin_feeds_a_session_and_reads_what_it_printed() {
 #[tokio::test(start_paused = true)]
 async fn should_poll_with_an_empty_write_for_at_least_five_seconds() {
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
-    let mut lease = Lease::default();
-    open(&executor, &mut lease, "tail -f build.log").await;
+    let lease = Lease::default();
+    open(&executor, &lease, "tail -f build.log").await;
     let started = Instant::now();
 
     let polled = call_in(
         &*write(),
         &executor,
-        &mut lease,
+        &lease,
         writing(1, "", Some(YIELD_MS_MIN)),
     )
     .await;
@@ -227,13 +248,13 @@ async fn should_poll_with_an_empty_write_for_at_least_five_seconds() {
 #[tokio::test(start_paused = true)]
 async fn should_answer_the_ending_of_a_process_that_exited_between_calls() {
     let executor = ScriptedExecutor::new([ScriptedProcess::stays_open("")]);
-    let mut lease = Lease::default();
-    open(&executor, &mut lease, "sh confirm.sh").await;
+    let lease = Lease::default();
+    open(&executor, &lease, "sh confirm.sh").await;
     assert!(executor.end(FIRST, Ending::Exited(4)));
     let answer = writing(1, "y\n", None);
 
-    let output = call_in(&*write(), &executor, &mut lease, answer.clone()).await;
-    let again = call_in(&*write(), &executor, &mut lease, answer).await;
+    let output = call_in(&*write(), &executor, &lease, answer.clone()).await;
+    let again = call_in(&*write(), &executor, &lease, answer).await;
 
     assert_eq!(output.text, "Process exited with code 4");
     assert_eq!(output.exit_code, Some(4));
@@ -247,8 +268,8 @@ async fn should_answer_the_ending_of_a_process_that_exited_between_calls() {
 #[tokio::test(start_paused = true)]
 async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     let executor = Arc::new(ScriptedExecutor::new([ScriptedProcess::echoes()]));
-    let mut lease = Lease::default();
-    open(&executor, &mut lease, REPL).await;
+    let lease = Lease::default();
+    open(&executor, &lease, REPL).await;
     let exiting = Arc::clone(&executor);
     // The process exits a moment after it reads what was written.
     let exit = tokio::spawn(async move {
@@ -257,7 +278,7 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
     });
     let started = Instant::now();
 
-    let output = call_in(&*write(), &*executor, &mut lease, writing(1, EXIT, None)).await;
+    let output = call_in(&*write(), &*executor, &lease, writing(1, EXIT, None)).await;
 
     assert!(exit.await.unwrap(), "the process was open to end");
     assert_eq!(output.text, format!("{EXIT}Process exited with code 0"));
@@ -268,7 +289,7 @@ async fn should_answer_the_exit_of_a_process_that_ends_after_a_write() {
         "answered as the process ended, not at the yield"
     );
     assert!(
-        lease.sessions.get_mut(FIRST).is_none(),
+        lease.sessions.get(FIRST).is_none(),
         "an ended session leaves"
     );
 }
@@ -283,7 +304,7 @@ async fn should_say_the_output_was_still_open_before_the_status_line() {
     let output = call_in(
         &*exec(),
         &executor,
-        &mut Lease::default(),
+        &Lease::default(),
         opening(DEV_SERVER, None),
     )
     .await;

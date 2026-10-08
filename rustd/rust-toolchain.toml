@@ -22,6 +22,6 @@
 # runs both, and a toolchain missing either fails the lane loudly instead of
 # skipping the check. `llvm-tools` backs cargo-llvm-cov's coverage lane.
 [toolchain]
-channel = "1.98.1"
+channel = "1.99.0"
 components = ["rustfmt", "clippy", "llvm-tools"]
 profile = "minimal"

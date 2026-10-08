@@ -30,6 +30,8 @@ pub mod refuse;
 pub mod report;
 
 #[cfg(test)]
+mod lift_tests;
+#[cfg(test)]
 mod tests;
 
 pub use self::detail::{

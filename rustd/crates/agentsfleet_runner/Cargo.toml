@@ -42,8 +42,6 @@ tracing-subscriber.workspace = true
 tempfile.workspace = true
 # `MapEnv`, so the log-level fallback is tested without the process environment.
 afd_core = { workspace = true, features = ["test-util"] }
-# The resolved graph the dependency test walks.
-cargo_metadata.workspace = true
 
 [[test]]
 name = "runner_suite"

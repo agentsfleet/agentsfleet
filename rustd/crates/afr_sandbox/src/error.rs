@@ -24,8 +24,8 @@ use afd_core::error_code::{self, ErrorCode};
 mod raise;
 
 pub(crate) use self::raise::{
-    cgroup, cgroup_left, lease_id_unsafe, program, refused, toolbox_refused, toolbox_unreadable,
-    unconfined,
+    cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, lease_id_unsafe, not_inherited,
+    program, refused, toolbox_refused, toolbox_unreadable, unconfined,
 };
 #[cfg(target_os = "linux")]
 pub(crate) use self::raise::{not_ready, toolbox_unexpected};
@@ -96,6 +96,16 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
+    /// A cgroup file the engine reads could not be opened or read.
+    #[error("the cgroup file {file} could not be read")]
+    CgroupUnreadable {
+        /// Which file.
+        file: &'static str,
+        /// The kernel's reason.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// A cgroup could not be removed: still busy after its kill, or refused.
     #[error("the cgroup {path} could not be removed")]
     CgroupLeft {
@@ -104,6 +114,16 @@ pub(crate) enum ErrorKind {
         /// The kernel's reason.
         #[source]
         source: std::io::Error,
+    },
+
+    /// A cgroup took its freeze or thaw but never reported reaching it, so
+    /// some process in it is still running or still stopped.
+    #[error("the cgroup {path} did not settle {state}")]
+    CgroupUnsettled {
+        /// The cgroup's directory.
+        path: PathBuf,
+        /// The state it was asked for: `frozen` or `thawed`.
+        state: &'static str,
     },
 
     /// The toolbox is not the image this runner was configured to run.
@@ -142,6 +162,14 @@ pub(crate) enum ErrorKind {
         /// The executor's failure.
         #[source]
         source: afr_executor::Error,
+    },
+
+    /// The sandbox entry was named a descriptor it did not inherit, or the
+    /// same one twice.
+    #[error("descriptor {descriptor} was not inherited from the engine")]
+    NotInherited {
+        /// The number the command line named.
+        descriptor: i32,
     },
 
     /// A hardened process still holds something it must not.
@@ -212,6 +240,12 @@ impl Error {
         }
     }
 
+    /// The failure in its own sentence, without its code or backtrace.
+    #[must_use]
+    pub fn detail(&self) -> String {
+        self.kind().to_string()
+    }
+
     /// The mechanism this host lacks, when the failure is that the host cannot
     /// build a sandbox at all — as opposed to one sandbox failing.
     #[must_use]
@@ -278,3 +312,6 @@ impl fmt::Display for ToolboxRefusal {
         f.write_str(self.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests;

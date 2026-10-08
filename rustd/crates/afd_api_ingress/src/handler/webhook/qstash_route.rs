@@ -33,7 +33,7 @@ use crate::services::{FleetSchedules as _, Services};
 
 use super::text;
 /// What an accepted fire is answered with. Public wire.
-use afd_wire::ingress::Fired;
+use afd_api_wire::ingress::Fired;
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "schedule_fire_append_failed";

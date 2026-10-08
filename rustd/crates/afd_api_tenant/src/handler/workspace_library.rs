@@ -35,17 +35,17 @@ use std::time::Instant;
 use afd_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
 use afd_observability::producers::library;
 
-use afd_core::error_code;
-use afd_core::paging::QUERY_STARTING_AFTER;
-use afd_core::paging::struct_cursor::{self, StructCursor};
-use afd_library::{Destination, Position, Tier};
 /// Named only by the `body =` clause of this module's `utoipa::path`
 /// annotations, which the default build compiles away — so the import has to
 /// go with them or the feature-off build fails on an unused name.
 #[cfg(feature = "openapi")]
-use afd_wire::admin::AdminLibraryCreated;
+use afd_api_wire::admin::AdminLibraryCreated;
 #[cfg(feature = "openapi")]
-use afd_wire::workspace_library::GalleryResponse;
+use afd_api_wire::workspace_library::GalleryResponse;
+use afd_core::error_code;
+use afd_core::paging::QUERY_STARTING_AFTER;
+use afd_core::paging::struct_cursor::{self, StructCursor};
+use afd_library::{Destination, Position, Tier};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{RawQuery, State};
@@ -210,7 +210,7 @@ async fn read_gallery<D: Services>(
         "bytes converges on one `(workspace_id, content_hash)` row. The ",
         "response carries metadata only. ",
     ),
-    request_body = afd_wire::admin::AdminLibraryImport,
+    request_body = afd_api_wire::admin::AdminLibraryImport,
     params(
         afd_http::openapi::path::Workspace,
     ),

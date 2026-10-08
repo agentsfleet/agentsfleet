@@ -67,7 +67,7 @@ use crate::services::Services;
 
 use super::provider_of;
 /// The two documents a 200 carries. Public wire.
-use afd_wire::ingress::{EchoAnswer, EventsAnswer};
+use afd_api_wire::ingress::{EchoAnswer, EventsAnswer};
 
 /// The scoped event a dropped delivery is logged under.
 const EVENT_DROPPED: &str = "connector_events_dropped";

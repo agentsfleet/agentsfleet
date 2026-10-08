@@ -24,8 +24,8 @@ pub(super) fn referenced_detail(entries: u32) -> String {
 }
 
 /// One stored projection, as the list emits it.
-pub(super) fn summary(held: &SecretSummary) -> afd_wire::secret::SecretSummary<'_> {
-    afd_wire::secret::SecretSummary {
+pub(super) fn summary(held: &SecretSummary) -> afd_api_wire::secret::SecretSummary<'_> {
+    afd_api_wire::secret::SecretSummary {
         name: Cow::Borrowed(&held.name),
         created_at: held.created_at_ms,
         kind: held.kind().as_str(),

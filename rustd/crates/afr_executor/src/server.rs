@@ -29,6 +29,8 @@ use tokio::net::unix::OwnedWriteHalf;
 use tokio::sync::mpsc;
 
 use self::files::Workspace;
+pub use self::launch::Tenant;
+use self::launch::{Inherit, Placement};
 use self::session::Session;
 use crate::error::Result;
 
@@ -51,6 +53,9 @@ const EVENT_SERVE_FAILED: &str = "executor_serve_failed";
 #[derive(Debug)]
 pub struct Listener {
     socket: std::os::unix::net::UnixListener,
+    /// Where every process it starts is placed: where the executor runs,
+    /// unless [`Listener::with_tenant`] names a leaf.
+    placement: Arc<dyn Placement>,
 }
 
 /// Claims `socket` for the executor.
@@ -63,10 +68,23 @@ pub struct Listener {
 pub fn bind(socket: &Path) -> Result<Listener> {
     let socket = std::os::unix::net::UnixListener::bind(socket)?;
     socket.set_nonblocking(true)?;
-    Ok(Listener { socket })
+    Ok(Listener {
+        socket,
+        placement: Arc::new(Inherit),
+    })
 }
 
 impl Listener {
+    /// Starts every process in `tenant`'s leaf instead, refusing a spawn
+    /// whose process cannot move there.
+    #[must_use]
+    pub fn with_tenant(self, tenant: Tenant) -> Self {
+        Self {
+            placement: Arc::new(tenant),
+            ..self
+        }
+    }
+
     /// Serves one supervisor connection, confining file calls and working
     /// directories to `root`, until the connection closes.
     ///
@@ -78,7 +96,7 @@ impl Listener {
     pub async fn serve(self, root: &Path) -> Result<()> {
         let event = EVENT_SERVE_STARTED;
         tracing::info!(event, "the executor is listening");
-        let served = accept(self.socket, root).await;
+        let served = accept(self.socket, self.placement, root).await;
         match &served {
             Ok(()) => {
                 let event = EVENT_SERVE_COMPLETED;
@@ -104,7 +122,11 @@ pub async fn serve(socket: &Path, root: &Path) -> Result<()> {
 }
 
 /// Takes the one connection and serves it to its end.
-async fn accept(socket: std::os::unix::net::UnixListener, root: &Path) -> Result<()> {
+async fn accept(
+    socket: std::os::unix::net::UnixListener,
+    placement: Arc<dyn Placement>,
+    root: &Path,
+) -> Result<()> {
     let listener = UnixListener::from_std(socket)?;
     let workspace = Arc::new(Workspace::open(root)?);
     let (stream, _peer) = listener.accept().await?;
@@ -112,7 +134,9 @@ async fn accept(socket: std::os::unix::net::UnixListener, root: &Path) -> Result
     let (answers, answered) = mpsc::unbounded_channel();
     let (output, said) = mpsc::channel(OUTPUT_LINES_IN_FLIGHT);
     let writer = tokio::spawn(write_lines(write, answered, said));
-    Session::new(workspace, answers, output).run(read).await;
+    Session::new(workspace, placement, answers, output)
+        .run(read)
+        .await;
     // The session dropped the last senders, so the writer drains and ends.
     Ok(writer.await?)
 }

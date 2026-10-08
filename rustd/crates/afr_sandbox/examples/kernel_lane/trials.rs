@@ -6,108 +6,151 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use afr_executor::Ending;
 use afr_sandbox::{
     BubblewrapEngine, Engine, Limits, MECHANISM_LANDLOCK as LANDLOCK, ProbePaths, SandboxRequest,
     Toolbox, WarmSlots, probe,
 };
 use libtest_mimic::{Arguments, Conclusion, Failed, Trial};
 
-use crate::admission::{adoption, path_swap};
+use crate::admission::{MOUNTINFO, adoption, path_swap};
 use crate::budgets::start_budgets;
 use crate::confinement::{landlock_denies, no_capabilities, plants_nothing, seccomp_refuses};
+use crate::exhaustion::{
+    disk_fill_under_memory_limit_ends_in_enospc, full_tmp_answers_enospc,
+    oom_kills_only_the_tenant, runaway, sweep_removes_both_leaves,
+    tenant_holds_no_cgroup_descriptor, workspace_and_tmp_share_the_disk,
+    workspace_disk_uses_direct_io,
+};
+use crate::exhaustion_concurrent::writable_state_exhaustion_spares_the_sandbox;
 use crate::files::{file_tools_refuse_link_out, file_tools_run_inside};
+use crate::filesystems::{buffered_disk, failed_mount_is_unmounted, probe_direct_io, short_disk};
+use crate::forked_kill::forked_oom;
 use crate::git::{git_runs_local_commands, token_never_enters};
+use crate::hold::{destroy_frozen, held_sandbox_resumes_where_it_stopped, sweep_frozen};
 use crate::lane::{Lane, missing};
 use crate::run::{REACH_OUT, UNREACHABLE, expect, in_sandbox, run as run_in, runtime, shell};
+use crate::shared_memory::full_shared_memory_spares_the_tenant;
 use crate::toolbox::toolbox_carries_the_tools;
 use crate::tools::{shell_exit_code, shell_inherits_sandbox, shell_timeout};
 
 /// Workspace disk a limit trial fills past.
-const SMALL_DISK: u64 = 64 * 1024 * 1024;
-/// Memory a runaway trial exceeds.
-const SMALL_MEMORY: u64 = 256 * 1024 * 1024;
-/// Processes a fork-bomb trial exceeds.
-const FEW_PIDS: u32 = 64;
+pub(crate) const SMALL_DISK: u64 = 64 * 1024 * 1024;
 /// Starts measured each way for the start-budget trial.
 const STARTS: usize = 5;
 /// The disk-limit trial's lease name.
 const DISK: &str = "disk";
+/// What the kernel says to a writer on a full disk.
+pub(crate) const ENOSPC: &str = "No space left on device";
+/// Why a trial that ran two scripts and got another count fails.
+pub(crate) const TWO_OUTCOMES: &str = "two outcomes";
+/// How a tenant process's cgroup reads from inside the sandbox's namespace.
+pub(crate) const TENANT_CGROUP: &str = "0::/../tenant";
 /// Where a refusal trial points the engine's state.
 const LEASES: &str = "leases";
 
-/// More forks than any lane's process limit allows.
-const FORK_ATTEMPTS: u32 = 1000;
-
-/// A fork bomb that counts how many children it got before the kernel refused.
-fn fork_bomb() -> String {
-    format!(
-        "import os, time\nmade = 0\nfor _ in range({FORK_ATTEMPTS}):\n    try:\n        \
-         if os.fork() == 0:\n            time.sleep(60)\n            os._exit(0)\n        \
-         made += 1\n    except OSError:\n        break\nprint(made)\n"
-    )
-}
-
 type Body = fn(&Lane) -> Result<(), Failed>;
+
+/// Every trial, by the name the lane reports it under.
+const TRIALS: &[(&str, Body)] = &[
+    ("test_sandbox_process_has_no_capabilities", no_capabilities),
+    (
+        "test_sandbox_cannot_plant_files_on_the_host",
+        plants_nothing,
+    ),
+    ("test_seccomp_refuses_listed_syscalls", seccomp_refuses),
+    (
+        "test_landlock_denies_write_outside_workspace",
+        landlock_denies,
+    ),
+    (
+        "test_workspace_disk_enforces_limit_and_is_removed",
+        disk_limit,
+    ),
+    ("test_cgroup_limits_contain_runaway", runaway),
+    ("test_sandbox_has_no_network", no_network),
+    (
+        "test_sandbox_has_private_shared_memory_and_cgroup_view",
+        shared_memory_and_cgroup_view,
+    ),
+    ("test_unbuildable_sandbox_refuses_lease", unbuildable),
+    ("test_toolbox_build_is_reproducible", reproducible),
+    ("test_lease_sees_toolbox_read_only", toolbox_read_only),
+    ("test_toolbox_carries_the_tools", toolbox_carries_the_tools),
+    ("test_toolbox_admission_survives_path_swap", path_swap),
+    ("test_toolbox_adoption_checks_identity", adoption),
+    (
+        "test_shell_runs_inside_the_sandbox_with_exit_code",
+        shell_exit_code,
+    ),
+    ("test_shell_timeout_kills_the_group", shell_timeout),
+    (
+        "test_shell_process_inherits_the_sandbox",
+        shell_inherits_sandbox,
+    ),
+    ("test_git_tool_runs_local_commands", git_runs_local_commands),
+    (
+        "test_read_token_never_enters_the_sandbox",
+        token_never_enters,
+    ),
+    (
+        "test_file_tools_run_inside_the_sandbox",
+        file_tools_run_inside,
+    ),
+    (
+        "test_file_tools_refuse_a_link_out_of_the_sandbox",
+        file_tools_refuse_link_out,
+    ),
+    ("test_warm_start_beats_cold_start", warm_beats_cold),
+    ("test_start_budgets_with_four_leases", start_budgets),
+    ("test_full_tmp_answers_enospc", full_tmp_answers_enospc),
+    (
+        "test_full_shared_memory_spares_the_tenant",
+        full_shared_memory_spares_the_tenant,
+    ),
+    (
+        "test_workspace_and_tmp_share_the_disk",
+        workspace_and_tmp_share_the_disk,
+    ),
+    ("test_oom_kills_only_the_tenant", oom_kills_only_the_tenant),
+    (
+        "test_tenant_process_holds_no_cgroup_descriptor",
+        tenant_holds_no_cgroup_descriptor,
+    ),
+    ("test_sweep_removes_both_leaves", sweep_removes_both_leaves),
+    (
+        "test_workspace_disk_uses_direct_io",
+        workspace_disk_uses_direct_io,
+    ),
+    (
+        "test_disk_fill_under_memory_limit_ends_in_enospc",
+        disk_fill_under_memory_limit_ends_in_enospc,
+    ),
+    (
+        "test_writable_state_exhaustion_spares_the_sandbox",
+        writable_state_exhaustion_spares_the_sandbox,
+    ),
+    (
+        "test_frozen_sandbox_resumes_where_it_stopped",
+        held_sandbox_resumes_where_it_stopped,
+    ),
+    ("test_frozen_sandbox_is_destroyed_whole", destroy_frozen),
+    ("test_sweep_removes_a_frozen_leftover", sweep_frozen),
+    ("test_shell_reported_kill_reads_as_oom", forked_oom),
+    ("test_disk_without_direct_io_runs_buffered", buffered_disk),
+    (
+        "test_a_disk_whose_mount_helper_failed_is_unmounted",
+        failed_mount_is_unmounted,
+    ),
+    ("test_probe_reads_direct_io_per_filesystem", probe_direct_io),
+    ("test_lane_refuses_a_disk_short_of_room", short_disk),
+    ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
+];
 
 /// Runs every trial against `lane`, one at a time.
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
-    let rows: [(&str, Body); 24] = [
-        ("test_sandbox_process_has_no_capabilities", no_capabilities),
-        (
-            "test_sandbox_cannot_plant_files_on_the_host",
-            plants_nothing,
-        ),
-        ("test_seccomp_refuses_listed_syscalls", seccomp_refuses),
-        (
-            "test_landlock_denies_write_outside_workspace",
-            landlock_denies,
-        ),
-        (
-            "test_workspace_disk_enforces_limit_and_is_removed",
-            disk_limit,
-        ),
-        ("test_cgroup_limits_contain_runaway", runaway),
-        ("test_sandbox_has_no_network", no_network),
-        (
-            "test_sandbox_has_private_shared_memory_and_cgroup_view",
-            shared_memory_and_cgroup_view,
-        ),
-        ("test_unbuildable_sandbox_refuses_lease", unbuildable),
-        ("test_toolbox_build_is_reproducible", reproducible),
-        ("test_lease_sees_toolbox_read_only", toolbox_read_only),
-        ("test_toolbox_carries_the_tools", toolbox_carries_the_tools),
-        ("test_toolbox_admission_survives_path_swap", path_swap),
-        ("test_toolbox_adoption_checks_identity", adoption),
-        (
-            "test_shell_runs_inside_the_sandbox_with_exit_code",
-            shell_exit_code,
-        ),
-        ("test_shell_timeout_kills_the_group", shell_timeout),
-        (
-            "test_shell_process_inherits_the_sandbox",
-            shell_inherits_sandbox,
-        ),
-        ("test_git_tool_runs_local_commands", git_runs_local_commands),
-        (
-            "test_read_token_never_enters_the_sandbox",
-            token_never_enters,
-        ),
-        (
-            "test_file_tools_run_inside_the_sandbox",
-            file_tools_run_inside,
-        ),
-        (
-            "test_file_tools_refuse_a_link_out_of_the_sandbox",
-            file_tools_refuse_link_out,
-        ),
-        ("test_warm_start_beats_cold_start", warm_beats_cold),
-        ("test_start_budgets_with_four_leases", start_budgets),
-        ("test_kernel_lane_refuses_to_skip", refuses_to_skip),
-    ];
-    let trials = rows
-        .into_iter()
-        .map(|(name, body)| {
+    let trials = TRIALS
+        .iter()
+        .map(|&(name, body)| {
             let lane = Arc::clone(lane);
             Trial::test(name, move || body(&lane))
         })
@@ -127,53 +170,16 @@ fn disk_limit(lane: &Lane) -> Result<(), Failed> {
         "dd if=/dev/zero of=/workspace/fill bs=1M count=80 2>&1",
     )?;
     expect(
-        filled.output.contains("No space left on device"),
+        filled.output.contains(ENOSPC),
         format!("ENOSPC, got {:?}", filled.output),
     )?;
     let dir = lane.lease_dir(DISK);
-    let mounts = fs::read_to_string("/proc/self/mountinfo").unwrap_or_default();
+    let mounts = fs::read_to_string(MOUNTINFO).unwrap_or_default();
     expect(!dir.exists(), "the lease's directory is removed")?;
     expect(
         !mounts.contains(&dir.display().to_string()),
         "nothing stays mounted",
     )
-}
-
-fn runaway(lane: &Lane) -> Result<(), Failed> {
-    let limits = Limits {
-        pids: FEW_PIDS,
-        memory_bytes: SMALL_MEMORY,
-        ..Limits::default()
-    };
-    let bomb = in_sandbox(
-        lane,
-        "forkbomb",
-        limits,
-        &format!("python3 -c '{}'", fork_bomb()),
-    )?;
-    let made: u32 = bomb
-        .output
-        .trim()
-        .parse()
-        .map_err(|_unparsed| format!("fork count, got {:?}", bomb.output))?;
-    expect(
-        made < FEW_PIDS,
-        format!("pids.max stops the bomb, it made {made}"),
-    )?;
-    let hog = in_sandbox(
-        lane,
-        "hog",
-        limits,
-        // pin test: literal is the contract
-        "exec python3 -c 'b = bytearray(2 * 1024 ** 3); print(len(b))'",
-    )?;
-    expect(
-        hog.ending == Ending::Signaled(libc::SIGKILL),
-        format!("the hog is killed, got {:?}", hog.ending),
-    )?;
-    // The supervisor's own process is this one, and it is still here to build
-    // another sandbox.
-    in_sandbox(lane, "after", Limits::default(), "true").map(drop)
 }
 
 fn no_network(lane: &Lane) -> Result<(), Failed> {
@@ -193,9 +199,11 @@ fn shared_memory_and_cgroup_view(lane: &Lane) -> Result<(), Failed> {
         said.contains("locked"),
         format!("shared memory is writable, got {said:?}"),
     )?;
+    // The namespace's root is the sandbox leaf, where bubblewrap entered it;
+    // a tenant process sits in the leaf beside it.
     expect(
-        said.lines().any(|line| line == "0::/"),
-        format!("the lease sees its cgroup as the root, got {said:?}"),
+        said.lines().any(|line| line == TENANT_CGROUP),
+        format!("the lease sees the tenant leaf beside its root, got {said:?}"),
     )
 }
 

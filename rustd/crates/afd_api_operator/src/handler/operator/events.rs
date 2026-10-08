@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use afd_wire::admin::RunnerEventsResponse;
+use afd_api_wire::admin::RunnerEventsResponse;
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};

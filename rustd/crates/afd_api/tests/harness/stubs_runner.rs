@@ -1,5 +1,7 @@
 //! The runner plane's stub: a lease plane that always answers no-work.
 
+use std::sync::{Arc, Mutex};
+
 use afd_api::services::Leasing;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -13,16 +15,34 @@ use afd_fleet::lease::report::Reconciled;
 /// runs. A stub that always answers the same thing keeps that boundary honest,
 /// because a suite here cannot accidentally start asserting on lease
 /// behaviour that belongs to `afd_fleet`'s own integration lane.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct NoWork;
+///
+/// It remembers the holds each poll named, which is the one thing the lease
+/// handler decides before the plane: what the poll's body reads as.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct NoWork {
+    polled: Arc<Mutex<Vec<Vec<String>>>>,
+}
+
+impl NoWork {
+    /// The fleets each poll named as held, oldest poll first.
+    pub(crate) fn polled_holds(&self) -> Vec<Vec<String>> {
+        self.polled.lock().expect("the poll log is healthy").clone()
+    }
+}
 
 impl Leasing for NoWork {
     fn lease(
         &self,
         _runner_id: &Uuid7,
+        held: &[Uuid7],
         _degraded: bool,
         _now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
+        let named = held.iter().map(|fleet| fleet.as_str().to_owned()).collect();
+        self.polled
+            .lock()
+            .expect("the poll log is healthy")
+            .push(named);
         std::future::ready(Ok(r#"{"lease":null,"retry_after_ms":1000}"#.to_owned()))
     }
 

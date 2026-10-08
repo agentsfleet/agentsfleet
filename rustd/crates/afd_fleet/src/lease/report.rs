@@ -33,6 +33,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
 use afd_wire::report::ReportRequest;
 
 use crate::error::{Result, lease_not_found, stale_fence};
@@ -232,8 +233,21 @@ fn terminal<'a>(
         },
         last_event_id: request.checkpoint.last_event_id.as_ref(),
         last_response: request.checkpoint.last_response.as_ref(),
+        held_until: held_until(request.held_until_ms, now),
         now,
     }
+}
+
+/// When the sandbox the run left held lapses, as the slot records it: never
+/// past one idle window from now, whatever the runner asked, so a runner
+/// cannot steer a fleet to itself for longer than a hold lasts. A deadline
+/// already past holds nothing.
+fn held_until(asked_ms: Option<i64>, now: UnixMillis) -> Option<UnixMillis> {
+    let latest = now.saturating_add_millis(SANDBOX_HOLD_IDLE_MS);
+    asked_ms
+        .map(UnixMillis::from_millis)
+        .filter(|asked| *asked > now)
+        .map(|asked| asked.min(latest))
 }
 
 /// The run's tool trace as the event row stores it, fenced to `lease`.

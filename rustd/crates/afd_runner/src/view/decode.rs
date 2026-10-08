@@ -2,10 +2,10 @@
 
 use std::borrow::Cow;
 
+use afd_api_wire::admin::{RunnerEventItem, RunnerEventType};
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
-use afd_wire::admin::{RunnerEventItem, RunnerEventType};
 use afd_wire::runner::{
     AssignedPolicy, CapabilityReport, ExtraBind, RunnerLiveness, SelftestCheck, SelftestReport,
 };

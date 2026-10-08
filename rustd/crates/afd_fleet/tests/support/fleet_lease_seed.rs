@@ -188,7 +188,7 @@ pub(crate) async fn select_fleet_within_rotations(
     const ROTATIONS: u16 = 8;
     for _poll in 0..(READY_PARTITIONS * ROTATIONS) {
         if let Some(acquired) = leases
-            .select(runner, now)
+            .select(runner, &[], now)
             .await
             .expect("the assignment pass must not fault")
             && acquired.fleet_id.to_string() == fleet
@@ -206,7 +206,7 @@ pub(crate) async fn select_within_one_rotation(
 ) -> Option<Acquired> {
     for _poll in 0..READY_PARTITIONS {
         if let Some(acquired) = leases
-            .select(runner, now)
+            .select(runner, &[], now)
             .await
             .expect("the assignment pass must not fault")
         {

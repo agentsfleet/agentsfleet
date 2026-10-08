@@ -18,9 +18,9 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use afd_api_wire::connector::ConsentRedirect;
 use afd_connector::callback::relay_uri;
 use afd_connector::{Started, Starting};
-use afd_wire::connector::ConsentRedirect;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};

@@ -16,7 +16,8 @@
 //!
 //! So a status code alone proves almost nothing here: 200 is the answer for
 //! "woken" and for six different flavours of "dropped". Every case below reads
-//! the REASON, and the ones that should wake a fleet read the append log.
+//! the REASON, and the ones that should wake a fleet read the append log. The
+//! dropped cases live in `app_ingress_route_dropped.rs`, split at the file cap.
 //!
 //! # No datastore, and that is a property of the seam
 //!
@@ -26,10 +27,6 @@
 //! and no Postgres or Dragonfly anywhere.
 
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
-)]
 
 use crate::harness;
 
@@ -48,46 +45,23 @@ use serde_json::Value;
 /// The one fixture in the corpus written for this surface and, until now,
 /// referenced by nothing. Its `installation.id` is [`signed::INSTALLATION`],
 /// which is what lets the scripted lookup answer for it.
-const APP_RUN_FAILURE: &str =
+pub(crate) const APP_RUN_FAILURE: &str =
     include_str!("../../../../tests/fixtures/webhooks/github_run_failure_app.json");
-
-/// The same run, green.
-const APP_RUN_SUCCESS: &str =
-    include_str!("../../../../tests/fixtures/webhooks/github_run_success.json");
 
 /// What an App sends to prove the endpoint answers.
 const PING: &str = include_str!("../../../../tests/fixtures/webhooks/github_ping.json");
 
-/// A terminal production deployment, as an App sends it.
-///
-/// Minimal on purpose: `octocrab` types `deployment` and `deployment_status` as
-/// free-form JSON, so what this fixture has to get right is the ENVELOPE — the
-/// installation this deployment's scripted lookup answers for, and a repository
-/// a subscriber could match. The payload is here to be classified, and the
-/// point of the test is that classification has nowhere to send it.
-const APP_DEPLOYMENT_STATUS: &str =
-    include_str!("../../../../tests/fixtures/webhooks/github_deployment_status_app.json");
-
 /// The delivery kind both run fixtures are.
-const EVENT_WORKFLOW_RUN: &str = "workflow_run";
+pub(crate) const EVENT_WORKFLOW_RUN: &str = "workflow_run";
 
 /// The kind a ping is.
 const EVENT_PING: &str = "ping";
 
-/// The kind a production deployment result is.
-///
-/// Named here because this build has no writer for what it carries — see the
-/// test at the bottom of this file.
-const EVENT_DEPLOYMENT_STATUS: &str = "deployment_status";
-
-/// The reason a delivery no rule classifies is answered with.
-const REASON_UNSUPPORTED: &str = "unsupported_event";
-
 /// The secret this DEPLOYMENT's App signs every installation's deliveries with.
-const APP_SECRET: &[u8] = b"fixture-github-app-secret";
+pub(crate) const APP_SECRET: &[u8] = b"fixture-github-app-secret";
 
 /// The provider this daemon serves an App ingress for.
-const SHIPPED: &str = "github";
+pub(crate) const SHIPPED: &str = "github";
 
 /// One it does not, spelled as a person might guess it.
 const UNSHIPPED: &str = "dropbox";
@@ -108,12 +82,12 @@ fn path(provider: &str) -> String {
 }
 
 /// The registry code, as it is spelled on the wire.
-fn code(code: ErrorCode) -> String {
+pub(crate) fn code(code: ErrorCode) -> String {
     code.as_str().to_owned()
 }
 
 /// A deployment holding the App secret, its installation, and its subscribers.
-fn deployment(subscribers: Vec<afd_ingress::Binding>) -> Arc<Scripted> {
+pub(crate) fn deployment(subscribers: Vec<afd_ingress::Binding>) -> Arc<Scripted> {
     Arc::new(
         Scripted::new()
             .app_signing(APP_SECRET)
@@ -123,12 +97,12 @@ fn deployment(subscribers: Vec<afd_ingress::Binding>) -> Arc<Scripted> {
 }
 
 /// The fleets a delivery fans out to, each declaring GitHub with no allow-list.
-fn subscriber(fleet: &str) -> afd_ingress::Binding {
+pub(crate) fn subscriber(fleet: &str) -> afd_ingress::Binding {
     signed::binding_of(fleet, signed::TRIGGER_GITHUB, "active")
 }
 
 /// One delivery of `body` as `event`, signed with `secret`.
-async fn deliver(
+pub(crate) async fn deliver(
     ingress: &Arc<Scripted>,
     provider: &str,
     event: &str,
@@ -144,18 +118,6 @@ async fn deliver(
     let proof = signed::signature(Scheme::BodyHex, secret, body.as_bytes());
     let headers = signed::github_headers(event, signed::DELIVERY_ID, &proof);
     send_with_headers(&router, Method::POST, &path(provider), None, body, &headers).await
-}
-
-/// The reason a 200 carries, which is the whole answer on this surface.
-async fn dropped_for(response: axum::response::Response) -> String {
-    let status = response.status();
-    let document = json_body(response).await;
-    assert_eq!(status, StatusCode::OK, "a drop is acknowledged: {document}");
-    document
-        .get("ignored")
-        .and_then(Value::as_str)
-        .expect("a dropped delivery names why")
-        .to_owned()
 }
 
 #[tokio::test]
@@ -277,68 +239,6 @@ async fn a_ping_is_answered_only_on_the_far_side_of_the_signature() {
 }
 
 #[tokio::test]
-async fn a_delivery_for_an_installation_no_workspace_claims_is_dropped_not_refused() {
-    // An App stays installed after a workspace disconnects it, and keeps
-    // posting. Refusing would retry-loop a delivery the sender cannot fix.
-    let ingress = Arc::new(Scripted::new().app_signing(APP_SECRET));
-    let answered = deliver(
-        &ingress,
-        SHIPPED,
-        EVENT_WORKFLOW_RUN,
-        APP_SECRET,
-        APP_RUN_FAILURE,
-    )
-    .await;
-
-    assert_eq!(
-        dropped_for(answered).await,
-        code(error_code::WEBHOOK_INSTALL_NOT_MAPPED)
-    );
-    assert!(ingress.deliveries().is_empty());
-}
-
-#[tokio::test]
-async fn a_delivery_no_fleet_subscribes_to_is_dropped() {
-    let ingress = deployment(Vec::new());
-    let answered = deliver(
-        &ingress,
-        SHIPPED,
-        EVENT_WORKFLOW_RUN,
-        APP_SECRET,
-        APP_RUN_FAILURE,
-    )
-    .await;
-
-    assert_eq!(
-        dropped_for(answered).await,
-        code(error_code::WEBHOOK_SUBSCRIPTION_NOT_FOUND)
-    );
-    assert!(ingress.deliveries().is_empty());
-}
-
-#[tokio::test]
-async fn a_green_run_is_dropped_rather_than_woken_on() {
-    // The classification runs on the App surface too, and it is the reason
-    // most App traffic costs nothing: a successful build is the common case.
-    let ingress = deployment(vec![subscriber(signed::FLEET)]);
-    let answered = deliver(
-        &ingress,
-        SHIPPED,
-        EVENT_WORKFLOW_RUN,
-        APP_SECRET,
-        APP_RUN_SUCCESS,
-    )
-    .await;
-
-    let reason = dropped_for(answered).await;
-    assert!(!reason.is_empty(), "a drop always names why");
-    assert!(
-        ingress.deliveries().is_empty(),
-        "a fleet woken by a green build burns a run on nothing to repair"
-    );
-}
-
-#[tokio::test]
 async fn a_matched_set_past_the_ceiling_is_refused_rather_than_truncated() {
     // Waking the first hundred of a hundred and one is a silent,
     // order-dependent choice about whose fleet runs. The operator who wired it
@@ -416,36 +316,9 @@ async fn a_delivery_that_is_not_the_event_its_header_claims_is_malformed() {
             .map(str::to_owned),
         Some(code(error_code::WEBHOOK_MALFORMED))
     );
-    assert!(ingress.deliveries().is_empty());
-}
-
-/// A `deployment_status` delivery is acknowledged and dropped, recording nothing.
-///
-/// The endpoint's generated description used to say this event "records the
-/// deployed commit and schedules eligible verification fleets". It does not:
-/// `github.zig` wrote repair evidence through writers that were never ported,
-/// so the delivery falls through classification and is dropped as unsupported.
-/// The description now says so, and this is the behaviour behind the sentence —
-/// prose and route graded together, because the sentence is the part an
-/// integrator acts on.
-///
-/// Dropped rather than refused, deliberately: a 4xx is what makes a provider
-/// retry, and there is nothing here for a retry to achieve.
-#[tokio::test]
-async fn a_deployment_status_delivery_is_acknowledged_and_records_nothing() {
-    let ingress = deployment(vec![subscriber(signed::FLEET)]);
-    let answered = deliver(
-        &ingress,
-        SHIPPED,
-        EVENT_DEPLOYMENT_STATUS,
-        APP_SECRET,
-        APP_DEPLOYMENT_STATUS,
-    )
-    .await;
-
-    assert_eq!(dropped_for(answered).await, REASON_UNSUPPORTED);
     assert!(
         ingress.deliveries().is_empty(),
-        "no run was started for an event this build cannot act on"
+        "{:?}",
+        ingress.deliveries()
     );
 }

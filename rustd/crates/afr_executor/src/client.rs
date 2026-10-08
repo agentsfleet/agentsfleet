@@ -7,6 +7,9 @@
 //! fails and every open process ends `Interrupted` — once, because the link
 //! drops each sender as it ends it.
 //!
+//! A process's events that go before its ending was read kill it, so a caller
+//! that leaves mid-command — a cancelled tool call — leaves nothing running.
+//!
 //! Every call has a deadline. An executor that stops answering — stopped,
 //! wedged, its sandbox frozen — fails the call and gives up the link with it,
 //! so the supervisor is never left waiting on a sandbox that will not speak.
@@ -34,9 +37,11 @@ use crate::protocol::{
     ReadParams, ReadResult, SpawnParams, WriteFileParams, WriteParams, decoded, request,
 };
 
+mod call;
 mod link;
 
-use self::link::{Call, CallIds, Link, Reply};
+use self::call::{Call, CallIds, Reply};
+use self::link::Link;
 
 /// How many calls may wait for the link to send them.
 const CALL_BACKLOG: usize = 64;
@@ -91,7 +96,8 @@ impl Client {
         let (calls, queue) = mpsc::channel(CALL_BACKLOG);
         let ids = Arc::new(CallIds::default());
         let lost = CancellationToken::new();
-        tokio::spawn(Link::new(stream, queue, Arc::clone(&ids), lost.clone()).run());
+        let outbox = calls.downgrade();
+        tokio::spawn(Link::new(stream, queue, outbox, Arc::clone(&ids), lost.clone()).run());
         Self {
             calls,
             ids,

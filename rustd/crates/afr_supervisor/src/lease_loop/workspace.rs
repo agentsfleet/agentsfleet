@@ -1,16 +1,19 @@
-//! The lease's sandbox and its workspace: the sandbox is built, the bundle's
-//! support files land where the fleet's instructions find them, the turn runs,
-//! and the sandbox is destroyed exactly once.
+//! The lease's sandbox and its workspace: the fleet's held sandbox is taken
+//! or a fresh one built, the bundle's support files land where the fleet's
+//! instructions find them, and the turn runs. The sandbox goes back to the
+//! lease, which holds it for the fleet's next lease or destroys it.
 
 use std::time::Instant;
 
+use afd_wire::lease::SandboxLimits;
 use afd_wire::report::FailureClass;
 use afr_executor::Executor;
 use afr_memory::Seed;
-use afr_sandbox::{Sandbox, SandboxRequest};
+use afr_sandbox::{Limits, Sandbox, SandboxRequest};
 use afr_telemetry::labels::SandboxStart;
 use afr_telemetry::record;
 
+use super::hold::{Kept, Worked, mark_reused};
 use super::{DETAIL_RENEWAL, LeaseRun, failed};
 use crate::activity::ActivitySink;
 use crate::bundles::Bundle;
@@ -20,56 +23,78 @@ use crate::report::Ending;
 const DETAIL_LANDING: &str =
     "the fleet bundle's support files could not be written to the workspace";
 const DETAIL_SANDBOX: &str = "this host could not build a sandbox for the run";
+const DETAIL_SIZE: &str = "the lease asked for a sandbox size outside the bounds a runner builds";
 const EVENT_LANDING_FAILED: &str = "bundle_landing_failed";
 const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
-const EVENT_DESTROY_FAILED: &str = "sandbox_destroy_failed";
+const EVENT_SIZE_REFUSED: &str = "sandbox_size_refused";
 
 impl LeaseRun<'_> {
-    /// Builds the lease's sandbox, checks the bound repositories out into it,
-    /// runs the turn in it, and destroys it. A sandbox that cannot be built,
-    /// or a repository that will not check out, ends the lease at startup.
+    /// Takes the fleet's held sandbox, or builds one and checks the bound
+    /// repositories out into it, then runs the turn in it and hands it back.
+    /// A held sandbox keeps the repositories as its last lease left them. A
+    /// sandbox that cannot be built, or a repository that will not check out,
+    /// ends the lease at startup.
     pub(super) async fn sandboxed(
         &self,
         memory: Seed<'_>,
         bundle: Option<&Bundle>,
         sink: ActivitySink,
-    ) -> Ending {
-        let lessee = self.lessee;
-        let request = SandboxRequest {
-            lease_id: self.ids.lease.as_str(),
-            limits: lessee.limits,
+    ) -> Worked {
+        let limits = match sized(self.lease.limits, self.lessee.limits) {
+            Ok(limits) => limits,
+            Err(failure) => {
+                return self
+                    .refuse(&failure, EVENT_SIZE_REFUSED, DETAIL_SIZE)
+                    .into();
+            }
         };
-        let started = Instant::now();
-        let prepared = lessee.engine.prepare(request).await;
-        let outcome = if prepared.is_ok() {
-            SandboxStart::Ready
+        let key = self.hold_key(limits);
+        let held = self.revive(&key).await;
+        let revived = held.is_some();
+        mark_reused(revived);
+        let sandbox = match held {
+            Some(sandbox) => sandbox,
+            None => match self.prepare(limits).await {
+                Ok(sandbox) => sandbox,
+                Err(refused) => return (*refused).into(),
+            },
+        };
+        let checked_out = if revived {
+            Ok(())
         } else {
-            SandboxStart::Failed
+            self.check_out(sandbox.as_ref()).await
         };
-        record::sandbox_start(outcome, started.elapsed());
-        let sandbox = match prepared {
-            Ok(sandbox) => sandbox,
-            Err(failure) => return self.refuse(&failure, EVENT_SANDBOX_REFUSED, DETAIL_SANDBOX),
-        };
-        let ending = match self.check_out(sandbox.as_ref()).await {
+        let ending = match checked_out {
             Ok(()) => {
                 self.in_sandbox(memory, bundle, sandbox.as_ref(), sink)
                     .await
             }
             Err(refused) => *refused,
         };
-        if let Err(failure) = sandbox.destroy().await {
-            let code = failure.code().as_str();
-            let lease_id = self.ids.lease.as_str();
-            let event = EVENT_DESTROY_FAILED;
-            tracing::warn!(
-                error_code = code,
-                lease_id,
-                event,
-                "a sandbox did not tear down cleanly"
-            );
+        Worked {
+            ending,
+            kept: Some(Kept { sandbox, key }),
         }
-        ending
+    }
+
+    /// Builds a fresh sandbox enforcing `limits`, or the startup failure that
+    /// ends the lease when the host cannot.
+    async fn prepare(&self, limits: Limits) -> Result<Box<dyn Sandbox>, Box<Ending>> {
+        let request = SandboxRequest {
+            lease_id: self.ids.lease.as_str(),
+            limits,
+        };
+        let started = Instant::now();
+        let prepared = self.lessee.engine.prepare(request).await;
+        let outcome = if prepared.is_ok() {
+            SandboxStart::Ready
+        } else {
+            SandboxStart::Failed
+        };
+        record::sandbox_start(outcome, started.elapsed());
+        prepared.map_err(|failure| {
+            Box::new(self.refuse(&failure, EVENT_SANDBOX_REFUSED, DETAIL_SANDBOX))
+        })
     }
 
     /// Lands the bundle's support files in the workspace, then runs the turn.
@@ -93,6 +118,30 @@ impl LeaseRun<'_> {
             return self.refuse(&failure, EVENT_LANDING_FAILED, DETAIL_LANDING);
         }
         self.drive(memory, Some(sandbox.executor()), sink).await
+    }
+}
+
+/// The limits a lease's sandbox enforces: the size the lease asked for once
+/// it is proved within the wire's bounds, or this host's own when it asked for
+/// none.
+///
+/// # Errors
+/// The size breaks one of the bounds `SandboxLimits` declares.
+fn sized(asked: Option<SandboxLimits>, host: Limits) -> crate::error::Result<Limits> {
+    match asked {
+        Some(asked) => Ok(within(&garde::Unvalidated::new(asked).validate()?, host)),
+        None => Ok(host),
+    }
+}
+
+/// A proved size as limits. Processes and threads are not on the wire, so the
+/// host's cap holds for every lease.
+fn within(asked: &garde::Valid<SandboxLimits>, host: Limits) -> Limits {
+    Limits {
+        memory_bytes: asked.memory_bytes,
+        cpu_millis: asked.cpu_millis,
+        pids: host.pids,
+        disk_bytes: asked.disk_bytes,
     }
 }
 

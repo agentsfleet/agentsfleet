@@ -19,9 +19,9 @@
 //! it to. That is the deployment's misconfiguration, and it is refused as one
 //! rather than answered as a connect that never happened.
 
+use afd_api_wire::connector::{Connected, STATUS_CONNECTED};
 use afd_connector::callback;
 use afd_core::id::Uuid7;
-use afd_wire::connector::{Connected, STATUS_CONNECTED};
 use axum::Json;
 use axum::response::{IntoResponse as _, Response};
 use http::{StatusCode, header};

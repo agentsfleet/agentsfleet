@@ -13,8 +13,8 @@
 //! it causes — a row one release writes that the next cannot read — has no
 //! failing test behind it.
 
+use afd_api_wire::approval::status;
 use afd_core::spelling::from_spelling;
-use afd_wire::approval::status;
 use serde::Deserialize;
 
 /// The Dragonfly mirror's word for an approval.

@@ -18,8 +18,8 @@ use std::sync::Arc;
 
 use std::borrow::Cow;
 
+use afd_api_wire::connector::{ConnectionView, STATUS_CONNECTED, STATUS_NOT_CONNECTED};
 use afd_connector::{Connection, Forgotten};
-use afd_wire::connector::{ConnectionView, STATUS_CONNECTED, STATUS_NOT_CONNECTED};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
@@ -32,7 +32,7 @@ use crate::services::{Services, WorkspaceConnectors as _};
 
 /// One connection, or the absence of one, as the wire renders it.
 ///
-/// The shape and its two status spellings are `afd_wire::connector`'s — see
+/// The shape and its two status spellings are `afd_api_wire::connector`'s — see
 /// that module on why a response type declared beside its handler is a contract
 /// only one side can see.
 fn view(connection: Option<&Connection>) -> ConnectionView<'_> {

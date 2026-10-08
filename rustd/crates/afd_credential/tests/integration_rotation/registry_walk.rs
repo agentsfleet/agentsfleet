@@ -154,7 +154,7 @@ async fn an_empty_registry_answers_an_empty_page_with_no_boundary() {
         .await
         .expect("an empty registry is a page, not a failure");
 
-    assert!(page.rows.is_empty());
+    assert_eq!(page.rows, [] as [afd_credential::provider::RegistryRow; 0]);
     assert!(page.next.is_none());
 
     fixture.cleanup().await;

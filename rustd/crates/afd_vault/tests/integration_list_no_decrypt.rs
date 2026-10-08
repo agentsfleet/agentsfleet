@@ -151,7 +151,7 @@ async fn one_workspaces_secrets_are_invisible_to_another() {
         .await
         .expect("the list answers");
 
-    assert!(listed.is_empty());
+    assert_eq!(listed, [] as [afd_vault::SecretSummary; 0]);
 
     // And a delete addressed at the neighbour's copy of the name removes
     // nothing — absence rather than somebody else's row.

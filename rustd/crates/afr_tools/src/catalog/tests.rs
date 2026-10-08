@@ -210,3 +210,69 @@ fn the_hosted_catalog_offers_every_schedule_and_message_tool() {
     assert_eq!(names(&selection), eight);
     assert!(!selection.needs_sandbox());
 }
+
+/// A child's selection is its parent's narrowed to the names it asked for,
+/// hosted entries included, and the first name the parent lacks refuses it.
+#[test]
+fn a_selection_narrows_to_names_it_offers_and_refuses_one_it_does_not() {
+    let catalog = catalog();
+    let parent = catalog
+        .select(&[FILE_READ.name(), WEB_SEARCH.name(), UPDATE_PLAN.name()])
+        .unwrap();
+
+    let narrowed = parent
+        .narrowed(&[WEB_SEARCH.name(), FILE_READ.name(), FILE_READ.name()])
+        .unwrap();
+    let asked = [FILE_READ.name(), SHELL.name(), HTTP_REQUEST.name()];
+    let refused = parent.narrowed(&asked);
+
+    assert_eq!(names(&narrowed), [FILE_READ.name()]);
+    assert_eq!(narrowed.hosted(), [&WEB_SEARCH]);
+    assert_eq!(refused.err(), Some(SHELL.name()), "the first name not held");
+}
+
+/// Dropping entries leaves the rest, handlers and hosted alike.
+#[test]
+fn a_selection_without_entries_keeps_the_rest() {
+    let catalog = catalog();
+    let parent = catalog
+        .select(&[FILE_READ.name(), WEB_SEARCH.name(), UPDATE_PLAN.name()])
+        .unwrap();
+
+    let without = parent.without(&[&UPDATE_PLAN, &WEB_SEARCH]);
+
+    assert_eq!(names(&without), [FILE_READ.name()]);
+    let hosted = without.hosted();
+    assert!(hosted.is_empty(), "{hosted:?}");
+    assert_eq!(names(&parent).len(), 2, "the parent is untouched");
+}
+
+/// Every published entry a handler serves is hosted, so a policy naming any
+/// of them is admitted; one left out of `hosted` would refuse every lease
+/// naming it at admission, which is how a tool goes dark.
+#[test]
+fn every_published_handler_entry_is_hosted() {
+    let (transport, _sent) = crate::testing::replying(200, "");
+    let catalog = Catalog::hosted(transport);
+    let served: Vec<&str> = PUBLISHED
+        .iter()
+        .filter(|entry| entry.runtime() != Runtime::Provider)
+        .map(|entry| entry.name())
+        .collect();
+
+    let unhosted: Vec<&str> = served
+        .iter()
+        .copied()
+        .filter(|name| catalog.select(&[*name]).is_err())
+        .collect();
+
+    assert_eq!(
+        served.len(),
+        PUBLISHED.len() - 1,
+        "one entry is the provider's"
+    );
+    assert!(
+        unhosted.is_empty(),
+        "published but not hosted: {unhosted:?}"
+    );
+}

@@ -276,6 +276,9 @@ impl ServingPlane {
                 accounts: Accounts::new(database.clone(), Entropy::new()),
                 memories: Memories::new(database.clone(), Entropy::new()),
                 providers,
+                // The thread a chat lease reads its earlier turns from: the
+                // rows the dashboard thread shows, through the same reader.
+                thread: Arc::new(History::new(database.clone())),
                 vault: Vault::new(database, kek),
                 broker,
                 connectors: Registry::default(),

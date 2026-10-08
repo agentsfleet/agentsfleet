@@ -28,7 +28,8 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
     ///
     /// `degraded` fails CLOSED: a runner whose verdict could not be read is
     /// issued nothing, because its assignment names an isolation the host may
-    /// not deliver.
+    /// not deliver. `held` names the fleets whose sandboxes the runner holds,
+    /// for the pass to try before its partition.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, or a stored configuration
@@ -37,6 +38,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
     fn lease(
         &self,
         runner_id: &Uuid7,
+        held: &[Uuid7],
         degraded: bool,
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
@@ -219,10 +221,11 @@ impl Leasing for Plane {
     fn lease(
         &self,
         runner_id: &Uuid7,
+        held: &[Uuid7],
         degraded: bool,
         now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
-        Self::lease(self, runner_id, degraded, now)
+        Self::lease(self, runner_id, held, degraded, now)
     }
 
     fn report(

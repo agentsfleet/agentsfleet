@@ -105,6 +105,11 @@ pub struct Acquired {
     /// A park clears the mark with it, so a mark ingress writes while the
     /// pass runs is a newer generation and survives.
     pub ready: ReadyToken,
+    /// Whether the runner runs this event in the sandbox it holds for the
+    /// fleet. Only a fresh event whose claim found this runner's hold live: a
+    /// reclaimed event's first attempt may have run in that sandbox, so it
+    /// starts clean.
+    pub resume_hold: bool,
 }
 
 /// Build the acquired envelope from a reclaimed lease.
@@ -133,6 +138,7 @@ pub(crate) fn from_reclaim(
         event_created_at: UnixMillis::from_millis(prior.event_created_at),
         reused: Some(prior.reused),
         ready: ready.clone(),
+        resume_hold: false,
     })
 }
 
@@ -178,6 +184,7 @@ pub(crate) fn from_fresh(
             .map_err(|_unparseable| envelope_malformed(FIELD_CREATED_AT))?,
         reused: None,
         ready: ready.clone(),
+        resume_hold: claimed.resume_hold,
     })
 }
 
@@ -222,6 +229,7 @@ mod tests {
         super::Claimed {
             fence: super::Fence::from_i64(1),
             leased_until: UnixMillis::from_millis(1_788_550_064_853),
+            resume_hold: false,
         }
     }
 

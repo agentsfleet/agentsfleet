@@ -12,12 +12,12 @@
 //! cannot disagree about a fleet's history — which two statements would
 //! eventually do.
 
+use afd_api_wire::tail::TailFrame;
 use afd_core::id::Uuid7;
 use afd_events::{
     CallAddress, Cursor, EventDetailRow, EventRow, Filter, History, Result as EventResult, Steer,
     Steered, ToolCallRow,
 };
-use afd_wire::tail::TailFrame;
 
 /// Everything the event-history routes act through.
 pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {

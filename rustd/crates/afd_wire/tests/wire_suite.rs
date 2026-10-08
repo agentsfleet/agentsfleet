@@ -1,6 +1,6 @@
 //! Every `afd_wire` test file, in one test binary.
 //!
-//! One binary rather than 4: cargo runs test BINARIES serially and the tests
+//! One binary rather than 9: cargo runs test BINARIES serially and the tests
 //! inside one binary in parallel, so each extra binary bought a serial stretch
 //! and re-paid its own process start and dynamic linking.
 //!
@@ -11,30 +11,25 @@
 //! walk. Crates whose suites take `TestDatabase::shared` — `afd_runner` and
 //! `afd_tenant` — are deliberately NOT aggregated for that reason.
 
-#[path = "admin_shapes.rs"]
-mod admin_shapes;
 #[path = "memory_shapes.rs"]
 mod memory_shapes;
 #[path = "policy_shapes.rs"]
 mod policy_shapes;
-// Ungated for the same reason: it reads the sources, not the schemas.
-#[path = "names.rs"]
-mod names;
 #[path = "redaction.rs"]
 mod redaction;
-// Gated with the feature it grades: without `openapi` there are no schemas to
-// assert, and the module would name types whose derives were never expanded.
-#[cfg(feature = "openapi")]
-#[path = "schema.rs"]
-mod schema;
+// Every runner route template, pinned in one reviewed snapshot.
+#[path = "routes.rs"]
+mod routes;
 #[path = "strictness.rs"]
 mod strictness;
-#[path = "tenant_provider_shapes.rs"]
-mod tenant_provider_shapes;
 // Declared bounds at their exact limits, the steer request's own rows, and a
 // seeded mutation corpus the parser must survive without panicking.
 #[path = "validation.rs"]
 mod validation;
+#[path = "validation_holds.rs"]
+mod validation_holds;
+#[path = "validation_lease.rs"]
+mod validation_lease;
 #[path = "validation_mutation.rs"]
 mod validation_mutation;
 #[path = "validation_steer.rs"]

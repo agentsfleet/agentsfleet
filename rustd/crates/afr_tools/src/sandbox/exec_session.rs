@@ -19,7 +19,7 @@ use tokio::time::Instant;
 use super::files::failed;
 use super::output::{self, Collected};
 use super::sessions::Sessions;
-use super::{command, executor_of, unavailable};
+use super::{command, executor_of, oneshot, unavailable};
 use crate::catalog::{EXEC_COMMAND, Entry, WRITE_STDIN};
 use crate::handler::Handler;
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
@@ -108,8 +108,8 @@ impl Handler for ExecCommand {
             Ok(executor) => executor,
             Err(refused) => return refused,
         };
-        let sessions = &mut context.lease.sessions;
-        sessions.make_room(executor).await;
+        let sessions = &context.lease.sessions;
+        let slot = sessions.make_room(executor).await;
         let process = match executor.spawn(&spawn_of(&arguments)).await {
             Ok(process) => process,
             Err(failure) => return failed(&failure),
@@ -117,12 +117,14 @@ impl Handler for ExecCommand {
         let id = process.id;
         // Registered before it is read, so a call the lease stops mid-wait
         // still leaves the process where the run's end finds it.
-        let process = sessions.open(process);
+        let shared = sessions.open(slot, process);
+        let mut process = shared.lock().await;
         let mut collected = Collected::default();
         let deadline = Instant::now() + yield_of(arguments.yield_time_ms, YIELD_MS_MIN);
-        let ended = collected.until(process, deadline).await;
+        let ended = collected.until(&mut process, deadline).await;
         let budget = output::budget(arguments.max_output_tokens);
-        reply(sessions, id, &collected, ended, budget, None)
+        let lease_id = context.lease.lease_id;
+        reply(sessions, lease_id, id, &collected, ended, budget, None)
     }
 }
 
@@ -144,15 +146,18 @@ impl Handler for WriteStdin {
             Err(refused) => return refused,
         };
         let id = ProcessId::new(arguments.session_id);
-        let sessions = &mut context.lease.sessions;
-        let Some(process) = sessions.get_mut(id) else {
+        let sessions = &context.lease.sessions;
+        let Some(shared) = sessions.get(id) else {
             return not_open(id);
         };
+        // Held across the yield: a second call on this session waits its
+        // turn, and a call on another session never waits on this one.
+        let mut process = shared.lock().await;
         let mut collected = Collected::default();
         let mut refused: Option<&'static str> = None;
         // A process that ended since the last call answers with its ending,
         // never with a write the executor would refuse.
-        let ended = if let Some(ending) = collected.arrived(process) {
+        let ended = if let Some(ending) = collected.arrived(&mut process) {
             Some(ending)
         } else {
             let floor = if arguments.chars.is_empty() {
@@ -181,10 +186,11 @@ impl Handler for WriteStdin {
                 }
             };
             let deadline = Instant::now() + yield_of(arguments.yield_time_ms, floor);
-            collected.until(process, deadline).await
+            collected.until(&mut process, deadline).await
         };
         let budget = output::budget(arguments.max_output_tokens);
-        reply(sessions, id, &collected, ended, budget, refused)
+        let lease_id = context.lease.lease_id;
+        reply(sessions, lease_id, id, &collected, ended, budget, refused)
     }
 }
 
@@ -204,11 +210,13 @@ fn yield_of(asked: Option<u64>, floor: u64) -> Duration {
     Duration::from_millis(asked.unwrap_or(YIELD_MS_DEFAULT).clamp(floor, YIELD_MS_MAX))
 }
 
-/// One call's answer on session `id`: what arrived, why a write was refused
-/// when it was, then the session's state. A process that ended leaves the
-/// registry here.
+/// One call's answer on session `id` of lease `lease_id`: what arrived, why a
+/// write was refused when it was, then the session's state. A process that
+/// ended leaves the registry here, logged as a one-shot command is when the
+/// kernel killed it for memory.
 fn reply(
-    sessions: &mut Sessions,
+    sessions: &Sessions,
+    lease_id: &str,
     id: ProcessId,
     collected: &Collected,
     ended: Option<Ending>,
@@ -217,6 +225,9 @@ fn reply(
 ) -> ToolOutput {
     let state = match ended {
         Some(ending) => {
+            if ending == Ending::OutOfMemory {
+                oneshot::out_of_memory(lease_id);
+            }
             sessions.close(id, ending);
             output::status(ending)
         }
@@ -231,6 +242,7 @@ fn reply(
         text: output::with_line(text, &state),
         exit_code: ended.and_then(output::exit_code),
         error_code: ended.and_then(output::error_code),
+        image: None,
     }
 }
 

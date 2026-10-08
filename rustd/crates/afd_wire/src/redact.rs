@@ -13,26 +13,29 @@
 //!
 //! Adding a secret-bearing field to a type below means extending its impl here.
 //! `missing_debug_implementations` is denied workspace-wide, so a type cannot
-//! simply drop `Debug` to dodge the question.
+//! simply drop `Debug` to dodge the question. `afd_api_wire`'s own `redact`
+//! module holds the daemon-only types' impls and renders through the helpers
+//! exported here, so the redacted spelling stays one constant.
 
 use std::fmt::{self, Debug, Formatter};
 
-use crate::admin::RunnerTokenRotatedResponse;
 use crate::credentials::MintCredentialResponse;
 use crate::policy::ExecutionPolicy;
 use crate::runner::RegisterResponse;
 
 /// What a redacted field renders as. One spelling, so a log grep for leaked
 /// credentials has exactly one negative to look for.
-const REDACTED: &str = "<redacted>";
-const RUNNER_TOKEN_FIELD: &str = "runner_token";
+pub const REDACTED: &str = "<redacted>";
+/// The field name a runner's bearer token renders under, in either crate.
+pub const RUNNER_TOKEN_FIELD: &str = "runner_token";
 
 /// Renders a secret as its length only.
 ///
 /// The length is safe and occasionally decisive — "the key is 0 bytes" is the
 /// difference between a misconfigured credential and a rejected one, and reading
 /// it off a log beats reproducing the request.
-fn redacted(secret: &str) -> String {
+#[must_use]
+pub fn redacted(secret: &str) -> String {
     format!("{REDACTED} ({} bytes)", secret.len())
 }
 
@@ -73,15 +76,6 @@ impl Debug for RegisterResponse<'_> {
             // survive in plaintext.
             .field(RUNNER_TOKEN_FIELD, &redacted(&self.runner_token))
             .field("assigned_policy", &self.assigned_policy)
-            .finish()
-    }
-}
-
-impl Debug for RunnerTokenRotatedResponse<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RunnerTokenRotatedResponse")
-            .field("id", &self.id)
-            .field(RUNNER_TOKEN_FIELD, &redacted(&self.runner_token))
             .finish()
     }
 }

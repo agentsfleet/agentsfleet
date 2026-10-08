@@ -9,6 +9,10 @@ use std::path::Path;
 use super::LeaseCgroup;
 use crate::engine::Limits;
 
+/// A mebibyte, and a gibibyte.
+const MIB: u64 = 1024 * 1024;
+const GIB: u64 = 1024 * MIB;
+
 const LIMITS: Limits = Limits {
     memory_bytes: 268_435_456,
     cpu_millis: 1_500,
@@ -42,7 +46,126 @@ fn test_lease_cgroup_writes_every_limit() {
         !dir.join("memory.swap.max").exists(),
         "no swap accounting, nothing written"
     );
-    assert_eq!(made.procs(), dir.join("cgroup.procs"));
+    assert_eq!(made.procs(), dir.join("sandbox").join("cgroup.procs"));
+}
+
+#[test]
+fn test_a_lease_cgroup_splits_into_a_sandbox_leaf_and_a_smaller_tenant_leaf() {
+    let root = tempfile::tempdir().unwrap();
+
+    let made = LeaseCgroup::create(root.path(), "lease-9", &LIMITS).unwrap();
+
+    let dir = root.path().join("lease-9");
+    assert_eq!(
+        read(&dir, "cgroup.subtree_control"),
+        "+cpu +io +memory +pids"
+    );
+    assert!(dir.join("sandbox").is_dir(), "bubblewrap's leaf");
+    let tenant = dir.join("tenant");
+    assert_eq!(
+        read(&tenant, "memory.max"),
+        (LIMITS.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES).to_string(),
+        "the tenant runs out before the sandbox"
+    );
+    assert_eq!(made.tenant_procs(), tenant.join("cgroup.procs"));
+    assert_eq!(made.tenant_events(), tenant.join("memory.events"));
+}
+
+/// Without a throttle, a tenant writing past its disk fills its leaf with
+/// pages still being written back and is killed before it reads `ENOSPC`.
+#[test]
+fn test_the_tenant_leaf_throttles_an_eighth_below_its_limit() {
+    let root = tempfile::tempdir().unwrap();
+
+    LeaseCgroup::create(root.path(), "lease-11", &LIMITS).unwrap();
+
+    let tenant = root.path().join("lease-11/tenant");
+    let limit = LIMITS.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES;
+    assert_eq!(
+        read(&tenant, "memory.high"),
+        (limit - limit / 8).to_string()
+    );
+}
+
+/// A large lease keeps the headroom a mid-sized one gets and no more: with
+/// no swap, everything inside the band is throttled, so an eighth of a large
+/// limit would slow the allocation-heavy work it was sized for.
+#[test]
+fn test_a_large_tenant_leaf_throttles_a_capped_headroom_below_its_limit() {
+    let root = tempfile::tempdir().unwrap();
+    let large = Limits {
+        memory_bytes: 4 * GIB,
+        ..LIMITS
+    };
+
+    LeaseCgroup::create(root.path(), "lease-14", &large).unwrap();
+
+    let tenant = root.path().join("lease-14/tenant");
+    let limit = large.memory_bytes - super::SANDBOX_MEMORY_RESERVE_BYTES;
+    assert_eq!(
+        read(&tenant, "memory.high"),
+        (limit - 128 * MIB).to_string()
+    );
+}
+
+#[test]
+fn test_a_limit_below_the_reserve_leaves_the_tenant_nothing_rather_than_wrapping() {
+    let root = tempfile::tempdir().unwrap();
+    let tiny = Limits {
+        memory_bytes: 1_024,
+        ..LIMITS
+    };
+
+    LeaseCgroup::create(root.path(), "lease-10", &tiny).unwrap();
+
+    let tenant = root.path().join("lease-10/tenant");
+    assert_eq!(read(&tenant, "memory.max"), "0");
+    assert_eq!(read(&tenant, "memory.high"), "0");
+}
+
+#[test]
+fn test_removal_takes_both_leaves_before_the_lease_cgroup() {
+    let root = tempfile::tempdir().unwrap();
+    let (made, dir) = plain(root.path(), "lease-11");
+    fs::create_dir(dir.join("sandbox")).unwrap();
+    fs::create_dir(dir.join("tenant")).unwrap();
+
+    // A directory with children cannot go, so the lease going at all says
+    // its leaves went first.
+    made.remove_dirs().unwrap();
+
+    assert!(!dir.exists(), "leaves, then the lease");
+}
+
+#[test]
+fn test_a_crash_before_the_split_leaves_nothing_the_removal_trips_on() {
+    let root = tempfile::tempdir().unwrap();
+    let (made, dir) = plain(root.path(), "lease-12");
+
+    made.remove_dirs().unwrap();
+
+    assert!(!dir.exists(), "no leaves, the lease goes alone");
+}
+
+/// A split refused after it made the sandbox leaf, as `create` undoes it:
+/// the leaf goes with the refusal, so no half-split cgroup is left behind.
+#[test]
+fn test_a_split_refused_midway_is_undone_with_the_leaf_it_made() {
+    let root = tempfile::tempdir().unwrap();
+    let (made, dir) = plain(root.path(), "lease-13");
+    // A file where the tenant leaf goes: the sandbox leaf is made, then the
+    // tenant leaf is refused.
+    fs::write(dir.join("tenant"), "").unwrap();
+
+    let refused = made.split(&LIMITS).unwrap_err();
+    let midway = dir.join("sandbox").is_dir();
+    let handed_back = made.undo(refused);
+
+    assert!(midway, "the split got as far as the sandbox leaf");
+    assert!(
+        !dir.join("sandbox").exists(),
+        "the leaf the split made is removed: {handed_back}"
+    );
 }
 
 #[test]
@@ -118,4 +241,20 @@ fn test_kill_writes_one_and_remove_names_the_cgroup_that_stayed() {
 
     assert!(left.to_string().contains("lease-8"), "{left}");
     assert!(left.to_string().contains("could not be removed"), "{left}");
+}
+
+/// Both leaves stop together because the freezer is the lease cgroup's own:
+/// it writes the request and reads the settled state beside the leaves,
+/// never inside one.
+#[test]
+fn test_the_freezer_acts_on_the_lease_cgroup_itself() {
+    let root = tempfile::tempdir().unwrap();
+    let (made, dir) = plain(root.path(), "lease-14");
+    fs::write(dir.join("cgroup.events"), "populated 1\nfrozen 1\n").unwrap();
+
+    let freezer = made.freezer();
+    freezer.freeze().unwrap();
+
+    assert_eq!(read(&dir, "cgroup.freeze"), "1");
+    assert!(freezer.is_frozen().unwrap());
 }

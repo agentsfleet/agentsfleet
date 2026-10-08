@@ -17,7 +17,7 @@
 //! `afd_approval` is the OPERATOR's: the queue a person browses, the one
 //! decision Postgres admits, the continuation an approval lands. This crate is
 //! what parks the run in the first place and what reads the answer. The two
-//! share one column's vocabulary, in [`afd_wire::approval::status`], and
+//! share one column's vocabulary, in [`afd_api_wire::approval::status`], and
 //! nothing else.
 
 mod error;

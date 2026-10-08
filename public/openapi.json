@@ -4690,8 +4690,24 @@
           "Runners"
         ],
         "summary": "Poll for the next lease",
-        "description": "The poll a runner lives on. Answers either a lease to run or a backoff to wait out. The claim, the money, the gates and the policy are all decided before the answer is written. ",
+        "description": "The poll a runner lives on. Answers either a lease to run or a backoff to wait out. The claim, the money, the gates and the policy are all decided before the answer is written. The body lists the fleets whose sandboxes the runner holds, which are tried first. An empty or unreadable body holds nothing. ",
         "operationId": "runner_lease",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LeaseRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "A lease to run, or a backoff to wait out",
@@ -4715,6 +4731,16 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The payload is over this route's ceiling",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16707,7 +16733,7 @@
       },
       "HeartbeatRequest": {
         "type": "object",
-        "description": "`POST /v1/runners/me/heartbeats` request.\n\nThe capability report rides the first beat and any beat where the probe\nresult changed. Both fields default to absent so an older runner's empty body\nstill parses.",
+        "description": "`POST /v1/runners/me/heartbeats` request.\n\nThe capability report rides the first beat and any beat where the probe\nresult changed. Every field defaults to absent or empty, so an older\nrunner's empty body still parses.",
         "properties": {
           "capability_report": {
             "oneOf": [
@@ -16719,6 +16745,20 @@
                 "description": "What this host can enforce, when the probe result is being reported."
               }
             ]
+          },
+          "closing": {
+            "type": "boolean",
+            "description": "The runner holds nothing more and parks nothing more, so its `holds`\nlist is final. The daemon clears every hold that list leaves out at once.\nAbsent decodes as false."
+          },
+          "holds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 36,
+              "minLength": 36
+            },
+            "description": "Every fleet this runner holds a frozen sandbox for, waiting for that\nfleet's next event. A fleet missing here is held nowhere on this\nrunner. Absent decodes as empty.",
+            "maxItems": 64
           },
           "selftest": {
             "oneOf": [
@@ -16771,6 +16811,13 @@
             "format": "int32",
             "description": "How long the runner waits before its next beat, in milliseconds.\n\nRequired rather than optional. The daemon owns\n[`afd_core::timing::RUNNER_OFFLINE_AFTER_MS`], so it owns the cadence\nthat keeps a host ahead of it. A runner carrying its own copy could\nnot be told when that threshold moved. The assertion beside those\nconstants is what keeps the served value under the threshold.",
             "minimum": 0
+          },
+          "release_holds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fleets among the beat's `holds` the runner should let go of: no longer\nactive, or leased by another runner since. The runner destroys their\nsandboxes. Absent decodes as empty."
           },
           "selftest_requested": {
             "type": "boolean",
@@ -17106,6 +17153,13 @@
             "description": "Monotonic guard a report must echo.",
             "minimum": 0
           },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            },
+            "description": "The fleet's earlier turns, oldest first, ahead of this event; empty\nunless the event is a chat message. Absent decodes as empty."
+          },
           "instructions": {
             "type": "string",
             "description": "The installed fleet's behaviour prose, so the sandboxed turn runs the\ninstalled behaviour rather than a generic one. Soft reasoning input —\nhard tool and secret policy stays in `policy`."
@@ -17119,15 +17173,47 @@
             "type": "string",
             "description": "Identifier for this lease."
           },
+          "limits": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SandboxLimits",
+                "description": "The sandbox to run in; null means the runner's own defaults. Absent\ndecodes as null, so a daemon that predates the field still leases."
+              }
+            ]
+          },
           "policy": {
             "$ref": "#/components/schemas/ExecutionPolicy",
             "description": "What the run is permitted to do."
+          },
+          "resume_hold": {
+            "type": "boolean",
+            "description": "True when this runner's held sandbox is the fleet's latest and this\nevent has not run before. The slot's last lease ran here, its hold had\nnot lapsed at the claim, and the event is no reclaim. Anything else\nbuilds a fresh sandbox, since the held one may predate another runner's\nrun or hold this event's first attempt. Absent decodes as false."
           },
           "secret_delivery": {
             "$ref": "#/components/schemas/SecretDelivery",
             "description": "How secrets reached this run."
           }
         }
+      },
+      "LeaseRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/leases` request.\n\nWhat a polling runner tells the daemon about itself: the fleets whose\nsandboxes it holds, so a held fleet's next event reaches it first. An empty\nor unreadable body reads as holding nothing, so a poll never fails over\nwhat it carries.",
+        "properties": {
+          "holds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 36,
+              "minLength": 36
+            },
+            "description": "Every fleet this runner holds a frozen sandbox for. Absent decodes as\nempty.",
+            "maxItems": 64
+          }
+        },
+        "additionalProperties": false
       },
       "LeaseResponse": {
         "type": "object",
@@ -19082,6 +19168,14 @@
             "description": "Monotonic guard, verified against the fleet's live sequence.",
             "minimum": 0
           },
+          "held_until_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Epoch milliseconds until which this runner holds the run's sandbox,\nfrozen, for the fleet's next event. Absent when it holds none."
+          },
           "input_tokens": {
             "type": "integer",
             "format": "int32",
@@ -19828,6 +19922,38 @@
           }
         },
         "additionalProperties": false
+      },
+      "SandboxLimits": {
+        "type": "object",
+        "description": "The sandbox a lease asks for.\n\nBounded, because the runner builds exactly what it is told. A size past\nthese bounds is a daemon fault, so the runner refuses the lease. Whether\nthis host has room for it is a separate question.",
+        "required": [
+          "cpu_millis",
+          "memory_bytes",
+          "disk_bytes"
+        ],
+        "properties": {
+          "cpu_millis": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Processor share, in thousandths of one core.",
+            "maximum": 32000,
+            "minimum": 250
+          },
+          "disk_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The workspace disk's size, in bytes.",
+            "maximum": 274877906944,
+            "minimum": 1073741824
+          },
+          "memory_bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Memory, in bytes.",
+            "maximum": 68719476736,
+            "minimum": 268435456
+          }
+        }
       },
       "SandboxTier": {
         "type": "string",
@@ -20808,6 +20934,24 @@
           }
         },
         "additionalProperties": false
+      },
+      "Turn": {
+        "type": "object",
+        "description": "One earlier exchange in the fleet's thread: what was asked, and what the\nfleet answered.",
+        "required": [
+          "message",
+          "answer"
+        ],
+        "properties": {
+          "answer": {
+            "type": "string",
+            "description": "The fleet's answer, or the fixed text a reply-less or failed run reads as."
+          },
+          "message": {
+            "type": "string",
+            "description": "The event's message, as `event::message_of` reads it."
+          }
+        }
       },
       "UpdateModelEntryRequest": {
         "type": "object",

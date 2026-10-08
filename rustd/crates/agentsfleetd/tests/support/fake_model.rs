@@ -23,6 +23,7 @@ use futures_util::stream::BoxStream;
 const TURN_USAGE: Usage = Usage {
     input: 100,
     cached_input: 0,
+    cache_written: 0,
     output: 10,
 };
 

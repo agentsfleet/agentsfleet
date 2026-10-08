@@ -6,7 +6,8 @@
 
 //! How a provider that refuses, drops, or cannot be reached ends the run.
 
-use afd_wire::report::{FailureClass, ResultOutcome};
+use crate::ResultOutcome;
+use afd_wire::report::FailureClass;
 use afr_egress::testing::CountingMint;
 use afr_providers::Error;
 use tokio_util::sync::CancellationToken;
@@ -84,7 +85,10 @@ async fn a_provider_that_cannot_be_reached_is_admitted_then_an_engine_error() {
         failure.code(),
         afd_core::error_code::INTERNAL_OPERATION_FAILED
     );
-    assert!(frames.taken().is_empty());
+    assert_eq!(
+        frames.taken(),
+        [] as [afd_wire::activity::ActivityFrame<'_>; 0]
+    );
 }
 
 /// The turn outcomes `scoped` recorded, in order.

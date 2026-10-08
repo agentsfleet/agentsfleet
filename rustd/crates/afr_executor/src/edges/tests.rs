@@ -80,7 +80,7 @@ fn output_under_the_head_is_read_whole_and_nothing_is_omitted() {
     let (head, tail, omitted) = run(16, b"short", 2);
 
     assert_eq!(head, b"short");
-    assert!(tail.is_empty());
+    assert_eq!(tail, [] as [u8; 0]);
     assert_eq!(omitted, 0);
 }
 
@@ -90,7 +90,7 @@ fn output_between_the_edges_keeps_every_byte() {
     let (read, after, omitted) = run(16, &input, 5);
 
     assert_eq!(read, input);
-    assert!(after.is_empty());
+    assert_eq!(after, [] as [u8; 0]);
     assert_eq!(omitted, 0);
 }
 
@@ -161,7 +161,7 @@ fn a_chunk_ending_on_a_complete_character_is_kept_whole_in_the_head() {
     let (head, tail, omitted) = run(4, input, 4);
 
     assert_eq!(head, input);
-    assert!(tail.is_empty());
+    assert_eq!(tail, [] as [u8; 0]);
     assert_eq!(omitted, 0);
 }
 

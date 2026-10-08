@@ -36,7 +36,7 @@ const DETAIL_TOO_LARGE: &str = "A tool-call records post is at most 262144 bytes
 /// Keeps each finished call's full arguments and output.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = "/v1/runners/me/leases/{lease_id}/tool-calls",
+    path = afd_wire::paths::LEASE_TOOL_CALLS,
     tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "runner_record_tool_calls",
     summary = "Keep each tool call's full output",
