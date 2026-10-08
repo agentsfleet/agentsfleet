@@ -23,10 +23,10 @@ export interface SvixHeaders {
 }
 
 function decodeWhsec(secret: string): Buffer {
-  // The agentsfleetd verifier (auth/crypto/svix_verify.zig) returns
-  // `.invalid_signature` for any configured secret that does NOT start with
-  // `whsec_`. Accepting a bare base64 value here would produce a plausible
-  // signature the API always rejects, surfacing as a confusing bootstrap
+  // The agentsfleetd verifier (rustd/crates/afd_webhook/src/vendor/svix.rs)
+  // refuses any configured secret that does NOT start with `whsec_`. Accepting
+  // a bare base64 value here would produce a plausible signature the API
+  // always rejects, surfacing as a confusing bootstrap
   // failure for every attachJwt caller — so require the prefix and fail loud.
   if (!secret.startsWith("whsec_")) {
     throw new Error(
