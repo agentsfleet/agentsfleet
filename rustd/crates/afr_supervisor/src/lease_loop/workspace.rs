@@ -19,6 +19,7 @@ use super::{DETAIL_RENEWAL, LeaseRun, failed};
 use crate::activity::ActivitySink;
 use crate::bundles::Bundle;
 use crate::egress::Bound;
+use crate::holds::Release;
 use crate::report::Ending;
 
 /// What a lease whose support files would not land reports.
@@ -56,6 +57,7 @@ impl LeaseRun<'_> {
         let limits = match sized(self.lease.limits, self.lessee.limits) {
             Ok(limits) => limits,
             Err(failure) => {
+                self.release_hold();
                 return self
                     .refuse(&failure, EVENT_SIZE_REFUSED, DETAIL_SIZE)
                     .into();
@@ -63,7 +65,10 @@ impl LeaseRun<'_> {
         };
         let bound = match self.bind().await {
             Ok(bound) => bound,
-            Err(refused) => return (*refused).into(),
+            Err(refused) => {
+                self.release_hold();
+                return (*refused).into();
+            }
         };
         let key = self.hold_key(limits, &bound);
         let held = self.revive(&key).await;
@@ -94,6 +99,17 @@ impl LeaseRun<'_> {
         }
     }
 
+    /// Releases the fleet's held sandbox for a lease refused before a sandbox
+    /// was chosen. Such a lease settles with no hold, so the daemon records
+    /// none and answers the fleet's next claim with `resume_hold` false: the
+    /// held sandbox could never be resumed, only wait out its idle window in
+    /// a worker's hold slot.
+    fn release_hold(&self) {
+        self.lessee
+            .holds
+            .release(self.ids.fleet.clone(), Release::Mismatch);
+    }
+
     /// The lease's egress, resolved, or the startup failure that ends the
     /// lease when a host it names cannot be admitted.
     async fn bind(&self) -> Result<Bound, Box<Ending>> {
@@ -113,7 +129,7 @@ impl LeaseRun<'_> {
         let blocked = failure.is_egress_blocked();
         let error_code = failure.code().as_str();
         let lease_id = self.ids.lease.as_str();
-        let reason = failure.to_string();
+        let reason = failure.told();
         let hosts = self.egress.hosts(&self.lease.policy.network_policy).len();
         let event = EVENT_EGRESS_REFUSED;
         let detail = if blocked {

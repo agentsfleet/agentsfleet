@@ -6,7 +6,9 @@
 //! A patch never writes a file it cannot read back whole. Landing re-reads an
 //! update through `whole`, which refuses a file longer than the executor's
 //! read cap, so a hunk that would grow a file past the cap is refused as it is
-//! planned, before anything lands, and the file is left as it was.
+//! planned, before anything lands, and the file is left as it was. Planning
+//! holds each spelling of a file apart, so hunks through a link and through
+//! its target are held to the cap again as each lands.
 
 use std::os::unix::fs::symlink;
 
@@ -152,6 +154,38 @@ async fn test_link_alias_past_read_cap_is_refused() {
             .file_type()
             .is_symlink(),
         "the link was not replaced"
+    );
+    live.stop().await;
+}
+
+/// Through a link, again: each hunk grows the file by less than the room left,
+/// so each plans under the cap, but together they cross it. The first lands;
+/// the second, re-read by the link's name, is refused as it lands, and the file
+/// is never written past one read.
+#[tokio::test]
+async fn test_link_alias_growths_past_read_cap_stop_at_landing() {
+    let live = planted().await;
+    let start = cap() - UNDER_CAP - UNDER_CAP / 2;
+    std::fs::write(live.root.join(KEEP), body(start)).unwrap();
+    symlink("keep.txt", live.root.join(ALIAS)).unwrap();
+
+    let applied = apply(
+        &live,
+        &patch(&[grow(KEEP, UNDER_CAP), grow(ALIAS, UNDER_CAP)]),
+    )
+    .await;
+
+    assert_eq!(
+        applied.error_code,
+        Some(ToolErrorCode::FileTooLarge),
+        "{applied:?}"
+    );
+    assert!(applied.text.contains(ALIAS), "{}", applied.text);
+    let after = std::fs::read(live.root.join(KEEP)).unwrap();
+    assert_eq!(
+        after.len(),
+        start + UNDER_CAP,
+        "the first hunk landed, the second did not"
     );
     live.stop().await;
 }

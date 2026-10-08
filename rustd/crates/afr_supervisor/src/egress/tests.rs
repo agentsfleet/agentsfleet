@@ -119,7 +119,7 @@ fn an_entry_keeps_its_host_and_drops_its_port_scheme_and_path() {
         false,
     );
 
-    assert_eq!(egress.hosts(&authored), [A, B, C, "[::1]", "a b"]);
+    assert_eq!(egress.hosts(&authored), [A, B, C, "::1", "a b"]);
 }
 
 /// Each posture maps to its network: the host's, none, or the resolved
@@ -237,6 +237,26 @@ async fn test_a_fleet_host_at_a_blocked_address_refuses_the_lease() {
             "no address is named: {reason}"
         );
         assert_eq!(failure.code(), INTERNAL_OPERATION_FAILED, "{failure}");
+    }
+}
+
+/// An address literal in `network.allow`, bracketed IPv6 and an IPv4-mapped
+/// spelling included, is judged as the address it is: the host's resolver
+/// parses it offline, and the lease is refused as blocked rather than as a
+/// host that would not resolve.
+#[tokio::test]
+async fn test_an_address_literal_in_network_allow_is_judged_as_an_address() {
+    for entry in [
+        "[::1]:80",
+        "http://[::ffff:169.254.169.254]/",
+        "169.254.169.254",
+    ] {
+        let failure = allow_list(&["localhost"])
+            .bind(&fleet(&[entry], false), &SystemResolver)
+            .await
+            .unwrap_err();
+
+        assert!(failure.is_egress_blocked(), "{entry}: {failure}");
     }
 }
 

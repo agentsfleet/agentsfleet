@@ -28,7 +28,7 @@ use afd_wire::policy::NetworkPolicy as FleetNetwork;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy};
 use afr_sandbox::{Allowlist, Network};
 use futures_util::future::try_join_all;
-use url::Url;
+use url::{Host, Url};
 
 use crate::error::{self, Result};
 
@@ -231,8 +231,9 @@ async fn ipv4(resolver: &dyn Resolve, host: &str, named: Named) -> Result<Vec<(S
 /// (`afd_wire::runner` `registry_entry`), and a fleet's `network.allow` refuses
 /// only whitespace (`afd_fleet_runtime` `config/raw/predicate.rs` `is_token`).
 /// The kernel set admits addresses alone, so only the host is resolved and a
-/// port, scheme or path is dropped. An entry no host can be read from is
-/// resolved as written, and refuses the lease naming it.
+/// port, scheme or path is dropped. An address literal keeps no brackets, so
+/// `[::1]:80` is resolved, and judged, as the address `::1`. An entry no host
+/// can be read from is resolved as written, and refuses the lease naming it.
 fn host_of(entry: &str) -> Cow<'_, str> {
     let url = if entry.contains(SCHEME_SEPARATOR) {
         Url::parse(entry)
@@ -240,7 +241,13 @@ fn host_of(entry: &str) -> Cow<'_, str> {
         Url::parse(&format!("{ASSUMED_SCHEME}{entry}"))
     };
     url.ok()
-        .and_then(|url| url.host_str().map(str::to_owned))
+        .and_then(|url| {
+            url.host().map(|host| match host {
+                Host::Domain(domain) => domain.to_owned(),
+                Host::Ipv4(address) => address.to_string(),
+                Host::Ipv6(address) => address.to_string(),
+            })
+        })
         .map_or(Cow::Borrowed(entry), Cow::Owned)
 }
 

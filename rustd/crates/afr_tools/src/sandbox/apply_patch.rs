@@ -267,6 +267,9 @@ async fn land(executor: &dyn Executor, planned: &Planned<'_>) -> Result<(), Tool
         } => {
             let now = whole(executor, path).await?;
             let updated = codex::updated(path, &now, chunks).map_err(invalid)?;
+            // Planning held each spelling under the cap; two spellings of one
+            // file, a link and its target, can still cross it together here.
+            fits(moved_to.unwrap_or(path), &updated.contents)?;
             write(executor, moved_to.unwrap_or(path), &updated.contents).await?;
             if moved_to.is_some() {
                 delete(executor, path).await
