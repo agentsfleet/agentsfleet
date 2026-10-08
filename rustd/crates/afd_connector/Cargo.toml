@@ -35,8 +35,8 @@ afd_dragonfly.workspace = true
 # Where a grant is sealed. The KEY-holding half: the platform app credentials
 # have to be opened to spend them at the vendor.
 afd_vault.workspace = true
-# The base64url the state payload rides in, matching `state.zig`'s wire shape
-# byte-for-byte so a round-trip started on either daemon completes on either.
+# The base64url the state payload rides in: the state travels in the
+# provider's URL, so it is encoded to need no escaping there.
 base64.workspace = true
 # The exchange POST. The same client the rest of the workspace dials vendors
 # with, so a connector adds no second HTTP stack.

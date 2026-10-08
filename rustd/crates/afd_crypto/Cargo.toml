@@ -2,7 +2,7 @@
 name = "afd_crypto"
 # One aggregated test binary; see tests/crypto_suite.rs for why.
 autotests = false
-description = "Envelope encryption and message authentication, byte-compatible with the Zig daemon's vault."
+description = "Envelope encryption and message authentication for the agentsfleetd vault's stored credentials."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -25,9 +25,9 @@ test-util = []
 hex.workspace = true
 # The wire codes a crypto failure answers. No runtime, no transport.
 afd_core.workspace = true
-# RustCrypto throughout: pure Rust, audited, no C linkage, which matches the Zig
-# daemon's no-C posture. `aes-gcm` is the same AES-256-GCM construction
-# `std.crypto.aead.aes_gcm.Aes256Gcm` implements on the Zig side.
+# RustCrypto throughout: pure Rust, audited, no C linkage, the workspace's no-C
+# posture. `aes-gcm` is the AES-256-GCM construction every stored row was
+# sealed with, and must open with.
 aes-gcm.workspace = true
 getrandom.workspace = true
 hmac.workspace = true

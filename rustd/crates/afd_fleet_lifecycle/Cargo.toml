@@ -32,7 +32,7 @@ afd_credential.workspace = true
 # Identifiers, the clock, the registry codes, and the keyset cursor the list
 # walk resumes from.
 # The retry LOOP around the install's stream setup — the counter and the
-# terminal rule, which is where the Zig shipped its bug. The delays stay
+# terminal rule, the part a hand-rolled loop gets wrong. The delays stay
 # `afd_dragonfly::Backoff`.
 backon.workspace = true
 afd_core.workspace = true
