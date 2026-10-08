@@ -6,7 +6,7 @@
 //! `struct Error { inner: Box<Inner> }` with its captured backtrace, the
 //! `From<ErrorKind>` that is the one place a kind becomes an error, the
 //! `Display` that renders `[CODE] message` plus the backtrace when one was
-//! captured, and the `source()` that skips the kind (`RUST_ERROR_STANDARD`
+//! captured (`{:#}`: the message alone), and the `source()` that skips the kind (`RUST_ERROR_STANDARD`
 //! rule 4 — the kind is not a CAUSE of this error, it IS this error). Every
 //! copy was the same because none of it depends on what went wrong.
 //!
@@ -92,13 +92,18 @@ macro_rules! error_shell {
             /// the log's `error_code` field already, and `Display` would carry
             /// a captured backtrace too, so a cause's reason (a kernel errno,
             /// a resolver's answer) is named here and nowhere else.
+            ///
+            /// Each sentence is rendered `{:#}`, which a shelled error answers
+            /// with its sentence alone, so a cause raised by another crate's
+            /// shell adds neither its code nor its backtrace. A foreign cause
+            /// renders as `{}` would: none this workspace links reads the flag.
             #[must_use]
             pub fn told(&self) -> String {
                 std::iter::successors(std::error::Error::source(self), |cause| {
                     std::error::Error::source(*cause)
                 })
-                .fold(self.inner.kind.to_string(), |told, cause| {
-                    format!("{told}: {cause}")
+                .fold(format!("{self:#}"), |told, cause| {
+                    format!("{told}: {cause:#}")
                 })
             }
         }
@@ -136,8 +141,15 @@ macro_rules! error_shell {
         // seven. Making it reachable in-process would mean restructuring the
         // capture for the tool's benefit, which that test file declines to do
         // for the same reason.
+        //
+        // `{:#}` is the sentence alone, kind rendered `{:#}` in turn so a
+        // `transparent` kind passes the flag to the shelled error it wraps:
+        // what `told()` reads, for this failure and for every cause beneath it.
         impl std::fmt::Display for $error {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                if f.alternate() {
+                    return write!(f, "{:#}", self.inner.kind);
+                }
                 write!(f, "[{}] {}", self.code().as_str(), self.inner.kind)?;
                 if self.inner.backtrace.status() == std::backtrace::BacktraceStatus::Captured {
                     write!(f, "\n{}", self.inner.backtrace)?;
