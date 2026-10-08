@@ -30,6 +30,11 @@ const DETAIL_SIZE: &str = "the lease asked for a sandbox size outside the bounds
 /// that does not resolve, resolves to IPv6 alone, or an allowlist past its cap.
 const DETAIL_EGRESS: &str =
     "the egress allowlist could not be resolved into addresses this runner can admit";
+/// What a lease reports when a host the fleet's own `network.allow` names
+/// resolves to a private or reserved address: the fleet's owner fixes this,
+/// so it is told apart from the runner-side failures above.
+const DETAIL_EGRESS_BLOCKED: &str =
+    "the fleet allows an egress host at a private or reserved address";
 const EVENT_EGRESS_REFUSED: &str = "egress_scope_refused";
 const EVENT_LANDING_FAILED: &str = "bundle_landing_failed";
 const EVENT_SANDBOX_REFUSED: &str = "sandbox_refused";
@@ -105,14 +110,25 @@ impl LeaseRun<'_> {
     /// never an address: the reason names a host, and its addresses stay on
     /// the host that resolved them.
     fn egress_refused(&self, failure: &crate::error::Error) -> Ending {
+        let blocked = failure.is_egress_blocked();
         let error_code = failure.code().as_str();
         let lease_id = self.ids.lease.as_str();
         let reason = failure.to_string();
         let hosts = self.egress.hosts(&self.lease.policy.network_policy).len();
         let event = EVENT_EGRESS_REFUSED;
-        let detail = DETAIL_EGRESS;
+        let detail = if blocked {
+            DETAIL_EGRESS_BLOCKED
+        } else {
+            DETAIL_EGRESS
+        };
         tracing::warn!(error_code, lease_id, reason, hosts, event, detail);
-        failed(FailureClass::StartupPosture, DETAIL_EGRESS)
+        // Each line named in its own call: the dashboard's copy is checked
+        // against the `failed(..)` calls this crate spells.
+        if blocked {
+            failed(FailureClass::StartupPosture, DETAIL_EGRESS_BLOCKED)
+        } else {
+            failed(FailureClass::StartupPosture, DETAIL_EGRESS)
+        }
     }
 
     /// Builds a fresh sandbox enforcing `limits` and reaching what `bound`

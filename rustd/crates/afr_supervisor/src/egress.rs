@@ -6,7 +6,12 @@
 //! [`DEFAULT_REGISTRY`] when the operator named none, plus the hosts the
 //! fleet's `network.allow` names. Each host is resolved to its IPv4 addresses
 //! here, with the host's resolver, before the sandbox is built: the sandbox
-//! resolves nothing itself. A fleet that sets `read_only` keeps its hosts out
+//! resolves nothing itself. A host the fleet names may not resolve to an
+//! address `afd_core::net` blocks (loopback, private, the tailnet's shared
+//! range, link-local and the cloud metadata service, reserved), the
+//! predicate `http_request` and the daemon's endpoint check refuse by too; a
+//! registry host is the operator's to point at its own mirror, so it is not
+//! held to it. A fleet that sets `read_only` keeps its hosts out
 //! of the kernel set, because a rule on an address cannot hold a method; it
 //! reaches them through `http_request` alone. The inference endpoint is never
 //! in the set: models are called from the supervisor, outside every sandbox.
@@ -18,6 +23,7 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 
+use afd_core::net::is_blocked;
 use afd_wire::policy::NetworkPolicy as FleetNetwork;
 use afd_wire::runner::{AssignedPolicy, NetworkPolicy};
 use afr_sandbox::{Allowlist, Network};
@@ -80,11 +86,7 @@ impl Egress {
     /// registry, then the fleet's own unless it is read-only, each cut to its
     /// host and named once, in the order first named.
     pub(crate) fn hosts(&self, fleet: &FleetNetwork<'_>) -> Vec<String> {
-        let registry: Vec<String> = if self.registry.is_empty() {
-            DEFAULT_REGISTRY.map(str::to_owned).to_vec()
-        } else {
-            self.registry.iter().map(ToString::to_string).collect()
-        };
+        let registry = self.registry();
         let fleet_hosts = if fleet.read_only {
             &[][..]
         } else {
@@ -98,12 +100,23 @@ impl Egress {
             .collect()
     }
 
+    /// The registry hosts every `allow_list_egress` lease reaches: the
+    /// operator's, or [`DEFAULT_REGISTRY`] when the operator named none.
+    fn registry(&self) -> Vec<String> {
+        if self.registry.is_empty() {
+            DEFAULT_REGISTRY.map(str::to_owned).to_vec()
+        } else {
+            self.registry.iter().map(ToString::to_string).collect()
+        }
+    }
+
     /// What a lease under `fleet` reaches, resolved through `resolver`.
     ///
     /// # Errors
-    /// A host that does not resolve, or resolves to no IPv4 address, and an
-    /// allowlist the sandbox engine will not take: each refuses the lease
-    /// before its sandbox is built.
+    /// A host that does not resolve, or resolves to no IPv4 address, a host
+    /// the fleet names that resolves to a blocked address, and an allowlist
+    /// the sandbox engine will not take: each refuses the lease before its
+    /// sandbox is built.
     pub(crate) async fn bind(
         &self,
         fleet: &FleetNetwork<'_>,
@@ -113,8 +126,17 @@ impl Egress {
             NetworkPolicy::AllowAll => Ok(Bound::Host),
             NetworkPolicy::DenyAllEgress => Ok(Bound::Isolated),
             NetworkPolicy::AllowListEgress => {
+                let registry = self.registry();
                 let hosts = self.hosts(fleet);
-                let addresses = try_join_all(hosts.iter().map(|host| ipv4(resolver, host))).await?;
+                let addresses = try_join_all(hosts.iter().map(|host| {
+                    let named = if registry.contains(host) {
+                        Named::Registry
+                    } else {
+                        Named::Fleet
+                    };
+                    ipv4(resolver, host, named)
+                }))
+                .await?;
                 Allowlist::new(addresses.into_iter().flatten().collect())
                     .map(Bound::Allowed)
                     .map_err(error::egress)
@@ -168,12 +190,26 @@ impl Resolve for SystemResolver {
     }
 }
 
-/// `host` with each IPv4 address it resolves to.
-async fn ipv4(resolver: &dyn Resolve, host: &str) -> Result<Vec<(String, Ipv4Addr)>> {
+/// Who named a host: the operator's registry, or the fleet. A host named by
+/// both is the registry's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Named {
+    Registry,
+    Fleet,
+}
+
+/// `host` with each IPv4 address it resolves to. A host the fleet named is
+/// refused whole when any address it resolves to is blocked, IPv6 included,
+/// as `http_request` refuses it: one blocked answer means the name points
+/// inside.
+async fn ipv4(resolver: &dyn Resolve, host: &str, named: Named) -> Result<Vec<(String, Ipv4Addr)>> {
     let addresses = resolver
         .resolve(host)
         .await
         .map_err(error::egress_unresolved(host))?;
+    if named == Named::Fleet && addresses.iter().any(|address| is_blocked(*address)) {
+        return Err(error::egress_blocked(host));
+    }
     let admitted: Vec<_> = addresses
         .into_iter()
         .filter_map(|address| match address {

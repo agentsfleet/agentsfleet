@@ -30,6 +30,19 @@ const UNKNOWN: &str = "unknown.example";
 /// The address every named host answers with, and a second one.
 const FIRST: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 1);
 const SECOND: Ipv4Addr = Ipv4Addr::new(192, 0, 2, 2);
+/// Hosts the resolver answers with an address no fleet may reach: the cloud
+/// metadata service, a private range, the tailnet's shared range, loopback,
+/// the metadata service in an IPv4-mapped IPv6 spelling, and a public address
+/// beside a private one.
+const METADATA: &str = "metadata.example";
+const LAN: &str = "lan.example";
+const TAILNET: &str = "tailnet.example";
+const LOOPBACK: &str = "loopback.example";
+const MAPPED: &str = "mapped.example";
+const MIXED: &str = "mixed.example";
+const METADATA_ADDRESS: Ipv4Addr = Ipv4Addr::new(169, 254, 169, 254);
+const LAN_ADDRESS: Ipv4Addr = Ipv4Addr::new(10, 1, 2, 3);
+const TAILNET_ADDRESS: Ipv4Addr = Ipv4Addr::new(100, 101, 102, 103);
 
 /// A fleet's network block allowing `hosts`, read-only or not.
 fn fleet(hosts: &[&'static str], read_only: bool) -> FleetNetwork<'static> {
@@ -62,6 +75,19 @@ fn resolver() -> FakeResolver {
         (C, &v4),
         (V6_ONLY, &[IpAddr::V6(Ipv6Addr::LOCALHOST)]),
         (CROWDED, &crowd()),
+    ])
+}
+
+/// The answers each blocked host resolves to, and one public host.
+fn blocking_resolver() -> FakeResolver {
+    FakeResolver::answering(&[
+        (METADATA, &[IpAddr::V4(METADATA_ADDRESS)]),
+        (LAN, &[IpAddr::V4(LAN_ADDRESS)]),
+        (TAILNET, &[IpAddr::V4(TAILNET_ADDRESS)]),
+        (LOOPBACK, &[IpAddr::V4(Ipv4Addr::LOCALHOST)]),
+        (MAPPED, &[IpAddr::V6(METADATA_ADDRESS.to_ipv6_mapped())]),
+        (MIXED, &[IpAddr::V4(FIRST), IpAddr::V4(LAN_ADDRESS)]),
+        (A, &[IpAddr::V4(FIRST)]),
     ])
 }
 
@@ -174,11 +200,59 @@ async fn test_egress_setup_failures_refuse_the_lease() {
     for (failure, reason) in expected {
         assert!(failure.to_string().contains(&reason), "{failure}");
         assert_eq!(failure.code(), INTERNAL_OPERATION_FAILED, "{failure}");
+        assert!(!failure.is_egress_blocked(), "{failure}");
     }
     let crowded_cause = std::error::Error::source(&crowded)
         .map(ToString::to_string)
         .unwrap_or_default();
     assert!(crowded_cause.contains("past the"), "{crowded_cause}");
+}
+
+/// A host the fleet names is refused when any address it resolves to is one
+/// no fleet may reach, IPv6 spellings and a blocked answer beside a public one
+/// included. The refusal names the host, never the address.
+#[tokio::test]
+async fn test_a_fleet_host_at_a_blocked_address_refuses_the_lease() {
+    let resolver = blocking_resolver();
+    let cases = [
+        (METADATA, IpAddr::V4(METADATA_ADDRESS)),
+        (LAN, IpAddr::V4(LAN_ADDRESS)),
+        (TAILNET, IpAddr::V4(TAILNET_ADDRESS)),
+        (LOOPBACK, IpAddr::V4(Ipv4Addr::LOCALHOST)),
+        (MAPPED, IpAddr::V6(METADATA_ADDRESS.to_ipv6_mapped())),
+        (MIXED, IpAddr::V4(LAN_ADDRESS)),
+    ];
+
+    for (host, address) in cases {
+        let failure = allow_list(&[A])
+            .bind(&fleet(&[host], false), &resolver)
+            .await
+            .unwrap_err();
+
+        assert!(failure.is_egress_blocked(), "{host}: {failure}");
+        let reason = failure.to_string();
+        assert!(reason.contains(host), "{reason}");
+        assert!(
+            !reason.contains(&address.to_string()),
+            "no address is named: {reason}"
+        );
+        assert_eq!(failure.code(), INTERNAL_OPERATION_FAILED, "{failure}");
+    }
+}
+
+/// The operator's registry may point at its own network, a package mirror on
+/// a private range say, and a host both the registry and the fleet name is
+/// the registry's.
+#[tokio::test]
+async fn test_a_registry_host_at_a_private_address_is_admitted() {
+    let bound = allow_list(&[LAN])
+        .bind(&fleet(&[LAN, A], false), &blocking_resolver())
+        .await
+        .unwrap();
+
+    let expected =
+        Allowlist::new(vec![(LAN.to_owned(), LAN_ADDRESS), (A.to_owned(), FIRST)]).unwrap();
+    assert_eq!(bound, Bound::Allowed(expected));
 }
 
 /// The host's own resolver answers a name every host carries, offline.
