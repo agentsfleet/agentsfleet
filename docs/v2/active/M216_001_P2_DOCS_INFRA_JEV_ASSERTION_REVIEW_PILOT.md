@@ -24,7 +24,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Baseline revision:** dd917b7ef42dcb883b5192fafe894060aab5845d
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — record commands, revision, environment and counts in the pilot report
-**Depends on:** none for recorded model results; independent reviewer availability limits usefulness measurement
+**Depends on:** repository comparison baselines and boundary verification before the Pull Request
 **Provenance:** agent-generated from Indy's Oct 08, 2026 pilot instruction
 **Canonical architecture:** existing product architecture remains unchanged; this is an isolated contributor measurement
 
@@ -120,13 +120,13 @@ Freeze the author's unaided inspection before any Jev output. Specify paired ses
 
 ### §3 — Measurements and recommendation
 
-**Status:** IN_PROGRESS — model measurements and recommendation recorded; independent paired-review benefit remains unmeasured.
+**Status:** DONE — model results, independent agent comparison and recommendation recorded; repository boundary evidence remains pending.
 
 After owner approval, invoke `orly judge verify --input <manifest> --refresh --json` once per batch. Retain failures even if no usage is returned. Replay with the same command without refresh. Do not manufacture replies to make offline preparation green.
 
 - **Dimension 3.1** — DONE — Native classes, withholding, twenty attempts, timing, tokens and calculated cost retained → Test `test_attempt_accounting`; `receipts/summary.json`.
-- **Dimension 3.2** — DONE — Findings, misses and false alarms separated by origin; review time explicitly unmeasured; all attempts retained → Test `test_comparison_metrics`; `report.md` and `receipts/summary.json`.
-- **Dimension 3.3** — IN_PROGRESS — Absence of separate blinded sessions and recommendation recorded; reviewer usefulness remains unmeasured → Test `test_measurement_completion` (manual).
+- **Dimension 3.2** — DONE — Findings, misses and false alarms separated by origin; original attempts and actual agent times retained → Test `test_comparison_metrics`; `report.md` and `receipts/summary.json`.
+- **Dimension 3.3** — DONE — Two fresh blinded agent sessions, sealed initial decisions and recommendation recorded; human time remains unmeasured → Test `test_measurement_completion` (manual); both review records and `receipts/review/blinded/`.
 
 ## Interfaces
 
@@ -172,7 +172,7 @@ No product or operator analytics change. Local pilot receipts retain native comm
 | 2.3 | unit | `test_request_reservations` | Duplicate/concurrent/third batch → refusal; crash reservation survives |
 | 3.1 | unit | `test_attempt_accounting` | Failed or withheld native answer → retained attempt, unknown usage preserved |
 | 3.2 | unit | `test_comparison_metrics` | Known seeded answers and absent independent reviews → truthful counters and unmeasured paired gain |
-| 3.3 | manual | `test_measurement_completion` | Actual measurements and reviewed evidence → recommendation; independent sessions absent → comparison explicitly unmeasured |
+| 3.3 | manual | `test_measurement_completion` | Two sealed independent agent records → complete paired counts and actual monotonic timing; no human or causal time-saving claim |
 
 Regression scope: product behavior, source tests, catalog, confidence threshold, hooks and gates receive no diff. At least half of runner checks exercise refusal, failed attempts or contamination. No performance or concurrency claim is made about product code.
 
@@ -181,9 +181,9 @@ Regression scope: product behavior, source tests, catalog, confidence threshold,
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
 | R1 | Frozen cases and executable controls | `python3 pilots/jev-assertions/pilot.py check` | exit 0; 20 correct passes; 8 fault rejections and 12 surviving deliberately inadequate assertions | P0 | PASS: `receipts/checks.json`; strong hidden helpers explain four rejections |
-| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; no provider request | P0 | PASS: 25 tests, `receipts/runner-tests.txt` |
-| R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | Model PASS: 20 complete live attempts; each replay requests 0; paired review unmeasured, `receipts/summary.json` |
-| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; spec remains active until measurements complete | P0 | PASS: pilot prefix and active spec only; IN_PROGRESS retained for unmeasured reviewer benefit |
+| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; no provider request | P0 | PASS: 25 tests; fresh output in `receipts/review/blinded/.qa-evidence/006/stderr` |
+| R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | PASS: 20 complete live attempts; replay requests 0; paired status measured, `receipts/summary.json` |
+| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; spec remains active until required boundary evidence exists | P0 | PASS: pilot prefix and active spec only; IN_PROGRESS retained for pending repository checks |
 | S1 | Conform | `make harness-verify` | exit 0 | P0 | PASS: 50 source files, zero literal violations; `receipts/conform.txt` |
 | S2 | Unit boundary | `make test-unit-all` | exit 0 at PR boundary | P0 | |
 | S3 | Lint boundary | `make lint-all` | exit 0 at PR boundary | P0 | |
@@ -225,11 +225,14 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 ## Discovery (consult log)
 
 - **Consults:** Indy authorized offline preparation and focused commits, required one budget approval before refresh, and required the overall pilot to remain IN_PROGRESS. Source comparison is `dd917b7ef42dcb883b5192fafe894060aab5845d`; engine 0.13.0 checked with `scripts/check_orly_pin.sh`. Earlier fixture contents were not read. The `orly` checkout remains read-only.
-- **Metrics review:** No product analytics/funnel playbook update; local receipts record all approved attempts. Independent review sessions remain unavailable until actual session evidence is supplied.
+- **Metrics review:** No product analytics/funnel playbook update; local receipts record all approved attempts. Fresh blinded agents used identical selected evidence and separately shuffled orders, with retained advice only in the assisted condition.
 - **Skill-chain outcomes:** `context-restore` completed; `orly-spec-new` applied. `orly-write-unit-test` maps each Dimension to a named check; 25 runner tests include refusal and failed-attempt checks. gstack's native review identified four pilot-runner accounting defects; regression checks cover their repairs. Functional offline probes have verdict pass in `receipts/review/evidence.json`; code audit remains separate from blinded pilot reviews. Repository baselines and declared boundary checks remain due before a Pull Request. Babysitting applies only after a push.
 - **Offline findings:** `pilot.py check`: 20 correct passes, 8 fault rejections, 12 survivors; Node v26.9.0 runs the incumbent Vitest 5.0.3/jsdom 30.1.2 stack. Initial Bun execution started no tests because jsdom workers raised EventTarget errors; these were refused, never counted as controls. Frozen case bytes stayed unchanged. Both offline `orly` commands returned ten unavailable replay slots and zero requests; no Jev accuracy claim follows.
 - **Freeze correction:** Conformance found 82 copied literal violations. Named-constant repairs stayed in pilot copies, are recorded as exact source adaptations, and retain all 40 proof outcomes. Review also corrected p16's import order. Both corrections preceded any Jev answer; requirements, classifications and justifications stayed fixed. Final digest: `7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa`.
 - **Approval:** Indy: "okay approved" — approved the frozen upload scope, at most twenty requests including failures, United States dollars (USD) 0.06, no retries or extra planning-model calls. `approval.json` binds input/runner digests and pricing reconfirmed at `2026-10-08T13:21:11.785254+00:00` before admission.
 - **Model results:** `pilot.py summarize` reports 20 complete attempts, 20 requests, 51,813 input tokens, 1,122 output tokens and calculated USD 0.002176146. Native agreement 14/20; seeded findings 12/12; native false alarms 3, all withheld; actionable seeded findings 7/12. Nine answers have low strength; zero native insufficient answers. Both subsequent replays report zero requests. Evidence: both live/replay receipts and `receipts/summary.json`.
-- **Recommendation:** Keep experimental advice; measured seeded detection does not establish reviewer benefit. Separate independent blinded sessions and review time are unmeasured, as the requested method permits. The pilot remains IN_PROGRESS; adoption is Indy's separate decision. No newly confirmed production defect, threshold change or gate integration follows.
-- **Deferrals:** None. Missing independent session evidence remains explicitly unmeasured. The approved request allowance is exhausted; no retries or additional model calls are authorized.
+- **Blinded method approval:** Indy: "yes" — use two fresh in-host agent reviewers with no inherited conversation. Both initial records and forty actual timing intervals are retained; the assisted record binds the frozen unaided bytes and original live-advice hashes. No new provider request ran.
+- **Paired results:** `pilot.py summarize`: both agents classify 20/20 correctly and find 12/12 seeded weaknesses; misses and false alarms are zero. Unaided elapsed time is 258.305690044 seconds; assisted is 229.249124959 seconds. Different reviewers and orders prevent causal attribution; human active-review time remains unmeasured.
+- **Fixture repair approval:** Indy: "Yes — fix fixture isolation and rerun the checks." — `pilot_test.py` disposable copies now omit the two real review records, alongside omitted receipts. The unchanged suite first failed twice, then passed all 25 checks after repair. Original reviews and approval remain unchanged; the original runner digest identifies historical provider attempts.
+- **Recommendation:** Keep experimental advice; paired finding gain is zero. The observed agent-time difference does not establish human savings or justify adoption. The pilot remains IN_PROGRESS for repository baselines and boundary checks. No newly confirmed production defect, threshold change or gate integration follows.
+- **Deferrals:** None. Human time remains unmeasured; no human experiment was performed. The approved request allowance is exhausted; no retries or additional provider calls are authorized by the pilot approval.

@@ -26,7 +26,8 @@ class PilotTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.pilot = self.root / checks.PREFIX
-        shutil.copytree(PILOT, self.pilot, ignore=shutil.ignore_patterns("receipts", ".proof-*", "__pycache__"))
+        shutil.copytree(PILOT, self.pilot, ignore=shutil.ignore_patterns(
+            "receipts", ".proof-*", "__pycache__", "unaided.json", "assisted.json"))
         checks.save(self.pilot / FROZEN, checks.freeze_payload(self.root))
 
     def approval(self):

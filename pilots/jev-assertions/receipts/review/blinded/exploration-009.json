@@ -1,0 +1,802 @@
+{
+  "observationCapture": "008",
+  "observationArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot.py",
+    "summarize"
+  ],
+  "observed": {
+    "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+    "model": "jev-1.13.0",
+    "frozen_cases": 20,
+    "measurement_status": "measured",
+    "reserved_requests": 20,
+    "reported_requests": 20,
+    "unreconciled_request_reservations": 0,
+    "live_case_slots_recorded": 20,
+    "native": {
+      "cases": 20,
+      "available": 20,
+      "unavailable": 0,
+      "native_matches": 14,
+      "confirmed_findings": 12,
+      "false_alarms": 3,
+      "finding_misses": 0,
+      "native_misses": 0,
+      "unavailable_weaknesses": 0,
+      "low_strength": 9,
+      "matching_native_withheld_by_strength": 3,
+      "confident_confirmed_findings": 7
+    },
+    "by_origin": {
+      "seeded-control": {
+        "cases": 16,
+        "available": 16,
+        "unavailable": 0,
+        "native_matches": 10,
+        "confirmed_findings": 12,
+        "false_alarms": 3,
+        "finding_misses": 0,
+        "native_misses": 0,
+        "unavailable_weaknesses": 0,
+        "low_strength": 9,
+        "matching_native_withheld_by_strength": 3,
+        "confident_confirmed_findings": 7
+      },
+      "source-derived-control": {
+        "cases": 4,
+        "available": 4,
+        "unavailable": 0,
+        "native_matches": 4,
+        "confirmed_findings": 0,
+        "false_alarms": 0,
+        "finding_misses": 0,
+        "native_misses": 0,
+        "unavailable_weaknesses": 0,
+        "low_strength": 0,
+        "matching_native_withheld_by_strength": 0,
+        "confident_confirmed_findings": 0
+      }
+    },
+    "real_defects": [],
+    "paired_review": {
+      "status": "measured",
+      "sessions": [
+        {
+          "condition": "unaided",
+          "cases": 20,
+          "available": 20,
+          "unavailable": 0,
+          "native_matches": 20,
+          "confirmed_findings": 12,
+          "false_alarms": 0,
+          "finding_misses": 0,
+          "native_misses": 0,
+          "unavailable_weaknesses": 0,
+          "low_strength": 0,
+          "matching_native_withheld_by_strength": 0,
+          "confident_confirmed_findings": 12,
+          "review_seconds": 258.305690044
+        },
+        {
+          "condition": "assisted",
+          "cases": 20,
+          "available": 20,
+          "unavailable": 0,
+          "native_matches": 20,
+          "confirmed_findings": 12,
+          "false_alarms": 0,
+          "finding_misses": 0,
+          "native_misses": 0,
+          "unavailable_weaknesses": 0,
+          "low_strength": 0,
+          "matching_native_withheld_by_strength": 0,
+          "confident_confirmed_findings": 12,
+          "review_seconds": 229.249124959
+        }
+      ],
+      "pairs": [
+        {
+          "id": "p01",
+          "unaided": {
+            "id": "p01",
+            "classification": "weak",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p01/test.tsx",
+                "line": 21,
+                "detail": "Renders the required VALUE and LABEL and clicks the button at line 23; lines 19-20 spy on the clipboard writer."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p01/test.tsx",
+                "line": 25,
+                "detail": "toHaveBeenCalledTimes(1) proves only one writeText call, without checking its argument. A single write of the label would satisfy this assertion even though the requirement demands the value."
+              }
+            ],
+            "review_seconds": 12.901785834
+          },
+          "assisted": {
+            "id": "p01",
+            "classification": "weak",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p01/test.tsx:21 renders the supplied value and label and :23 clicks the button, but pilots/jev-assertions/fixtures/p01/test.tsx:25 checks only one clipboard call. A write of the label instead of the value still satisfies this call-count assertion."
+            ],
+            "review_seconds": 13.164770583,
+            "elapsed_ns": 13164770583,
+            "frozen_at": "2026-10-08T17:24:33.614551+00:00"
+          }
+        },
+        {
+          "id": "p02",
+          "unaided": {
+            "id": "p02",
+            "classification": "exact",
+            "finding": false,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p02/test.tsx",
+                "line": 4,
+                "detail": "Sets NOW to the required fixed timestamp."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p02/test.tsx",
+                "line": 7,
+                "detail": "Calls the relevant behavior with a timestamp exactly 5,000 milliseconds earlier."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p02/test.tsx",
+                "line": 8,
+                "detail": "toBe compares the observed return value against the independent literal 5 seconds ago; just now cannot pass."
+              }
+            ],
+            "review_seconds": 11.694470292
+          },
+          "assisted": {
+            "id": "p02",
+            "classification": "exact",
+            "finding": false,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p02/test.tsx:4 fixes the required clock, :7 calls formatTimeRelative at the exact 5,000-millisecond boundary, and pilots/jev-assertions/fixtures/p02/test.tsx:8 asserts the independent exact literal \"5 seconds ago\". The incorrect \"just now\" result is rejected."
+            ],
+            "review_seconds": 7.398888167,
+            "elapsed_ns": 7398888167,
+            "frozen_at": "2026-10-08T17:26:03.650889+00:00"
+          }
+        },
+        {
+          "id": "p03",
+          "unaided": {
+            "id": "p03",
+            "classification": "insufficient",
+            "finding": false,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p03/test.tsx",
+                "line": 6,
+                "detail": "Calls cn with the required inputs, then gives the actual result to checkClasses at line 7."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p03/test.tsx",
+                "line": 3,
+                "detail": "Imports checkClasses from ../../helpers/check-classes, but that helper source is absent from the selected packet. Its assertion strength is unknown; this does not establish an inadequate assertion."
+              }
+            ],
+            "review_seconds": 12.079303458
+          },
+          "assisted": {
+            "id": "p03",
+            "classification": "insufficient",
+            "finding": false,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p03/test.tsx:6 calls the required class combination and :7 delegates its check to checkClasses imported at pilots/jev-assertions/fixtures/p03/test.tsx:3. The selected evidence does not contain that helper's assertions, so their precision cannot be assessed; omitted context alone does not prove an inadequate assertion."
+            ],
+            "review_seconds": 10.978400167,
+            "elapsed_ns": 10978400167,
+            "frozen_at": "2026-10-08T17:27:29.970118+00:00"
+          }
+        },
+        {
+          "id": "p04",
+          "unaided": {
+            "id": "p04",
+            "classification": "wrong_target",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p04/test.tsx",
+                "line": 5,
+                "detail": "Executes the required formatElapsed(59_600), but its actual result is never asserted on."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p04/test.tsx",
+                "line": 6,
+                "detail": "The sole assertion checks formatCount(1_234_567) against 1,234,567. It observes numeric count formatting rather than elapsed-time rounding or the required 1m 0s result."
+              }
+            ],
+            "review_seconds": 11.49878225
+          },
+          "assisted": {
+            "id": "p04",
+            "classification": "wrong_target",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p04/test.tsx:5 executes formatElapsed(59_600), but pilots/jev-assertions/fixtures/p04/test.tsx:6 asserts the unrelated formatCount(1_234_567) result. It never observes the elapsed string or distinguishes required rounding from flooring."
+            ],
+            "review_seconds": 8.086705375,
+            "elapsed_ns": 8086705375,
+            "frozen_at": "2026-10-08T17:27:11.010070+00:00",
+            "initial_classification": "wrong"
+          }
+        },
+        {
+          "id": "p05",
+          "unaided": {
+            "id": "p05",
+            "classification": "missing",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p05/test.tsx",
+                "line": 19,
+                "detail": "Creates a writeText spy and installs it as the clipboard boundary at line 20."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p05/test.tsx",
+                "line": 21,
+                "detail": "Renders CopyButton with the required VALUE and LABEL, defined at lines 5-6, and clicks it at line 23."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p05/test.tsx",
+                "line": 25,
+                "detail": "The test ends after the click without any assertion on writeText calls or their payload. Writing the label instead of the required value is not checked."
+              }
+            ],
+            "review_seconds": 15.832476792
+          },
+          "assisted": {
+            "id": "p05",
+            "classification": "missing",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p05/test.tsx:19 creates a clipboard spy, :21 renders the required value and label, and :23 clicks the button. The test ends at pilots/jev-assertions/fixtures/p05/test.tsx:25 without checking the spy or its argument, so no assertion verifies the required clipboard result."
+            ],
+            "review_seconds": 7.647403292,
+            "elapsed_ns": 7647403292,
+            "frozen_at": "2026-10-08T17:25:24.979206+00:00"
+          }
+        },
+        {
+          "id": "p06",
+          "unaided": {
+            "id": "p06",
+            "classification": "exact",
+            "finding": false,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p06/test.tsx",
+                "line": 5,
+                "detail": "Calls cn with the two required class strings."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p06/test.tsx",
+                "line": 6,
+                "detail": "Compares actual with the independent exact literal text-eyebrow text-muted-foreground using toBe; returning only the color cannot pass."
+              }
+            ],
+            "review_seconds": 11.812574209
+          },
+          "assisted": {
+            "id": "p06",
+            "classification": "exact",
+            "finding": false,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p06/test.tsx:5 calls cn with the required font-size and color tokens; pilots/jev-assertions/fixtures/p06/test.tsx:6 requires the independent exact string \"text-eyebrow text-muted-foreground\", so a color-only result fails."
+            ],
+            "review_seconds": 6.102966125,
+            "elapsed_ns": 6102966125,
+            "frozen_at": "2026-10-08T17:24:44.262081+00:00"
+          }
+        },
+        {
+          "id": "p07",
+          "unaided": {
+            "id": "p07",
+            "classification": "weak",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p07/test.tsx",
+                "line": 5,
+                "detail": "Calls formatElapsed(59_600), as required."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p07/test.tsx",
+                "line": 6,
+                "detail": "toMatch(/^[0-9hms ]+$/) restricts only the characters in a nonempty duration-like string. The incorrect 59s matches it, so it does not prove the required exact result 1m 0s or nearest-second rounding."
+              }
+            ],
+            "review_seconds": 13.123377917
+          },
+          "assisted": {
+            "id": "p07",
+            "classification": "weak",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p07/test.tsx:5 calls formatElapsed(59_600), while pilots/jev-assertions/fixtures/p07/test.tsx:6 checks only a broad duration-character pattern. Both the required \"1m 0s\" and incorrect \"59s\" match, so the assertion does not prove rounding or the exact result."
+            ],
+            "review_seconds": 8.513043958,
+            "elapsed_ns": 8513043958,
+            "frozen_at": "2026-10-08T17:27:45.473670+00:00"
+          }
+        },
+        {
+          "id": "p08",
+          "unaided": {
+            "id": "p08",
+            "classification": "insufficient",
+            "finding": false,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p08/test.tsx",
+                "line": 8,
+                "detail": "Exercises the required five-second input with the fixed NOW from line 5, then passes actual to checkRelative at line 9."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p08/test.tsx",
+                "line": 3,
+                "detail": "checkRelative is imported from ../../helpers/check-relative; the selected packet does not contain that helper. Its assertion semantics cannot be inspected, so inadequacy is not established."
+              }
+            ],
+            "review_seconds": 11.236954125
+          },
+          "assisted": {
+            "id": "p08",
+            "classification": "insufficient",
+            "finding": false,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p08/test.tsx:8 executes the required relative-time boundary, and :9 passes the result to checkRelative imported at pilots/jev-assertions/fixtures/p08/test.tsx:3. The selected evidence omits checkRelative's body, so whether it asserts the exact required text cannot be determined; this omission alone is not an assertion defect."
+            ],
+            "review_seconds": 7.884188042,
+            "elapsed_ns": 7884188042,
+            "frozen_at": "2026-10-08T17:26:36.632283+00:00"
+          }
+        },
+        {
+          "id": "p09",
+          "unaided": {
+            "id": "p09",
+            "classification": "wrong_target",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p09/test.tsx",
+                "line": 22,
+                "detail": "Renders the button with the required VALUE and LABEL and clicks it at line 24; the clipboard spy is installed at lines 20-21."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p09/test.tsx",
+                "line": 26,
+                "detail": "The only assertion observes the button name Copied and data-outcome=\"copied\", rather than the writeText argument. A copied status does not establish that the required value, rather than the label, reached the clipboard."
+              }
+            ],
+            "review_seconds": 14.623551708
+          },
+          "assisted": {
+            "id": "p09",
+            "classification": "wrong_target",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p09/test.tsx:24 clicks the required CopyButton, but pilots/jev-assertions/fixtures/p09/test.tsx:26 asserts the button's copied outcome and accessible name rather than the clipboard argument. The required value can be replaced by the label while this presentation-state assertion still passes."
+            ],
+            "review_seconds": 7.070734167,
+            "elapsed_ns": 7070734167,
+            "frozen_at": "2026-10-08T17:26:25.427377+00:00",
+            "initial_classification": "wrong"
+          }
+        },
+        {
+          "id": "p10",
+          "unaided": {
+            "id": "p10",
+            "classification": "missing",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p10/test.tsx",
+                "line": 5,
+                "detail": "Calls cn with the exact inputs in the requirement."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p10/test.tsx",
+                "line": 6,
+                "detail": "Discards the returned class string with void actual; there is no assertion that both classes survive or that the exact required string is returned."
+              }
+            ],
+            "review_seconds": 12.082576291
+          },
+          "assisted": {
+            "id": "p10",
+            "classification": "missing",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p10/test.tsx:5 calls the required semantic class combination, and pilots/jev-assertions/fixtures/p10/test.tsx:6 discards actual. There is no assertion requiring text-eyebrow to remain alongside the color or requiring the exact returned string."
+            ],
+            "review_seconds": 6.8490145,
+            "elapsed_ns": 6849014500,
+            "frozen_at": "2026-10-08T17:27:57.952397+00:00"
+          }
+        },
+        {
+          "id": "p11",
+          "unaided": {
+            "id": "p11",
+            "classification": "weak",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p11/test.tsx",
+                "line": 7,
+                "detail": "Exercises the required five-second boundary using the fixed NOW from line 4."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p11/test.tsx",
+                "line": 8,
+                "detail": "expect(typeof actual).toBe(\"string\") checks only the return type; the incorrect result just now is also a string and would pass. No assertion requires 5 seconds ago."
+              }
+            ],
+            "review_seconds": 11.493680334
+          },
+          "assisted": {
+            "id": "p11",
+            "classification": "weak",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p11/test.tsx:4 fixes the required clock and :7 calls formatTimeRelative exactly 5,000 milliseconds earlier. pilots/jev-assertions/fixtures/p11/test.tsx:8 checks only the string type, which accepts both \"5 seconds ago\" and the incorrect \"just now\"."
+            ],
+            "review_seconds": 6.869380458,
+            "elapsed_ns": 6869380458,
+            "frozen_at": "2026-10-08T17:25:52.591840+00:00"
+          }
+        },
+        {
+          "id": "p12",
+          "unaided": {
+            "id": "p12",
+            "classification": "exact",
+            "finding": false,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p12/test.tsx",
+                "line": 5,
+                "detail": "Defines the independent required clipboard value; the different label is defined at line 6."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p12/test.tsx",
+                "line": 22,
+                "detail": "Renders CopyButton with the required props, using the clipboard spy installed at lines 20-21, then clicks it at line 24."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p12/test.tsx",
+                "line": 26,
+                "detail": "toHaveBeenCalledWith(VALUE) checks the exact required writeText argument. A write of the label alone cannot satisfy it; the subsequent Copied lookup does not replace this payload assertion."
+              }
+            ],
+            "review_seconds": 13.322965
+          },
+          "assisted": {
+            "id": "p12",
+            "classification": "exact",
+            "finding": false,
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p12/test.tsx:5 defines the independent expected clipboard value; pilots/jev-assertions/fixtures/p12/test.tsx:22 renders that value with a different label, :24 clicks it, and :26 asserts writeText was called with the value. A label-only write cannot satisfy that assertion."
+            ],
+            "review_seconds": 11.1874295,
+            "elapsed_ns": 11187429500,
+            "frozen_at": "2026-10-08T17:23:47.506873+00:00",
+            "advice_status": "complete"
+          }
+        },
+        {
+          "id": "p13",
+          "unaided": {
+            "id": "p13",
+            "classification": "exact",
+            "finding": false,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p13/test.tsx",
+                "line": 5,
+                "detail": "Exercises formatElapsed with the required 59,600-millisecond input."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p13/test.tsx",
+                "line": 6,
+                "detail": "toBe checks actual against the independent exact literal 1m 0s, rejecting 59s and other well-shaped but incorrect results."
+              }
+            ],
+            "review_seconds": 11.8175025
+          },
+          "assisted": {
+            "id": "p13",
+            "classification": "exact",
+            "finding": false,
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p13/test.tsx:5 calls formatElapsed(59_600); pilots/jev-assertions/fixtures/p13/test.tsx:6 compares its return to the independent literal \"1m 0s\", rejecting the incorrectly floored \"59s\"."
+            ],
+            "review_seconds": 46.728471042,
+            "elapsed_ns": 46728471042,
+            "frozen_at": "2026-10-08T17:23:19.609029+00:00",
+            "advice_status": "complete"
+          }
+        },
+        {
+          "id": "p14",
+          "unaided": {
+            "id": "p14",
+            "classification": "wrong_target",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p14/test.tsx",
+                "line": 5,
+                "detail": "Computes the result for the required text-eyebrow and text-muted-foreground inputs but never asserts on actual."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p14/test.tsx",
+                "line": 6,
+                "detail": "The only assertion observes a separate cn(\"a\", \"b\") call and expects a b. That generic concatenation result does not observe retention of the required semantic size and color classes."
+              }
+            ],
+            "review_seconds": 11.59546875
+          },
+          "assisted": {
+            "id": "p14",
+            "classification": "wrong_target",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p14/test.tsx:5 executes the required semantic class combination, but pilots/jev-assertions/fixtures/p14/test.tsx:6 asserts only the different cn(\"a\", \"b\") result. That assertion does not observe whether text-eyebrow survives with text-muted-foreground."
+            ],
+            "review_seconds": 22.948985042,
+            "elapsed_ns": 22948985042,
+            "frozen_at": "2026-10-08T17:24:15.421687+00:00",
+            "initial_classification": "wrong"
+          }
+        },
+        {
+          "id": "p15",
+          "unaided": {
+            "id": "p15",
+            "classification": "missing",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p15/test.tsx",
+                "line": 4,
+                "detail": "NOW supplies the required fixed timestamp."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p15/test.tsx",
+                "line": 7,
+                "detail": "Calls formatTimeRelative for exactly 5,000 milliseconds earlier with that NOW."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p15/test.tsx",
+                "line": 8,
+                "detail": "void actual discards the result; the linked test has no assertion requiring 5 seconds ago."
+              }
+            ],
+            "review_seconds": 12.306385667
+          },
+          "assisted": {
+            "id": "p15",
+            "classification": "missing",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p15/test.tsx:7 calls formatTimeRelative at the required 5,000-millisecond boundary, and pilots/jev-assertions/fixtures/p15/test.tsx:8 discards the value with void actual. No assertion checks the required \"5 seconds ago\" result."
+            ],
+            "review_seconds": 7.217830333,
+            "elapsed_ns": 7217830333,
+            "frozen_at": "2026-10-08T17:26:57.136399+00:00"
+          }
+        },
+        {
+          "id": "p16",
+          "unaided": {
+            "id": "p16",
+            "classification": "insufficient",
+            "finding": false,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p16/test.tsx",
+                "line": 22,
+                "detail": "Renders the required VALUE and LABEL, clicks at line 24, and passes the installed writeText spy and VALUE to checkClipboard at line 26."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p16/test.tsx",
+                "line": 4,
+                "detail": "checkClipboard is imported from ../../helpers/check-copy, but this helper is not included in the packet. Passing the spy and expected value does not reveal what it asserts; assertion strength and any inadequacy remain unsupported."
+              }
+            ],
+            "review_seconds": 12.614175542
+          },
+          "assisted": {
+            "id": "p16",
+            "classification": "insufficient",
+            "finding": false,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p16/test.tsx:24 clicks the required CopyButton and :26 passes the spy and expected value to checkClipboard imported at pilots/jev-assertions/fixtures/p16/test.tsx:4. Because the selected evidence omits checkClipboard's body, those arguments do not reveal which assertions it makes; no inadequate assertion is established from the omission alone."
+            ],
+            "review_seconds": 17.994058833,
+            "elapsed_ns": 17994058833,
+            "frozen_at": "2026-10-08T17:28:21.134088+00:00"
+          }
+        },
+        {
+          "id": "p17",
+          "unaided": {
+            "id": "p17",
+            "classification": "weak",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p17/test.tsx",
+                "line": 7,
+                "detail": "Calls cn with text-eyebrow and the required color class, defined at line 4."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p17/test.tsx",
+                "line": 8,
+                "detail": "toContain(COLOR_CLASS) accepts a result containing only text-muted-foreground. It neither asserts text-eyebrow retention nor the required exact two-class result."
+              }
+            ],
+            "review_seconds": 11.53792775
+          },
+          "assisted": {
+            "id": "p17",
+            "classification": "weak",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p17/test.tsx:7 calls the required class combination, but pilots/jev-assertions/fixtures/p17/test.tsx:8 requires only the color substring. The incorrect color-only string still passes, so retention of text-eyebrow and the exact result are unproved."
+            ],
+            "review_seconds": 8.18923775,
+            "elapsed_ns": 8189237750,
+            "frozen_at": "2026-10-08T17:25:37.736345+00:00"
+          }
+        },
+        {
+          "id": "p18",
+          "unaided": {
+            "id": "p18",
+            "classification": "missing",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p18/test.tsx",
+                "line": 5,
+                "detail": "Calls formatElapsed(59_600), the required input."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p18/test.tsx",
+                "line": 6,
+                "detail": "The result is discarded with void actual; lines 4-7 contain no assertion on the required exact string 1m 0s."
+              }
+            ],
+            "review_seconds": 21.6791195
+          },
+          "assisted": {
+            "id": "p18",
+            "classification": "missing",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p18/test.tsx:5 calls formatElapsed(59_600), and pilots/jev-assertions/fixtures/p18/test.tsx:6 merely discards the returned value with void actual. No assertion requires \"1m 0s\" or rejects \"59s\"."
+            ],
+            "review_seconds": 7.739180917,
+            "elapsed_ns": 7739180917,
+            "frozen_at": "2026-10-08T17:25:11.581396+00:00"
+          }
+        },
+        {
+          "id": "p19",
+          "unaided": {
+            "id": "p19",
+            "classification": "wrong_target",
+            "finding": true,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p19/test.tsx",
+                "line": 7,
+                "detail": "Calls formatTimeRelative for the required five-second boundary, but actual is not used by the assertion."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p19/test.tsx",
+                "line": 8,
+                "detail": "The assertion observes coerceDate(NOW).getTime() and checks it against NOW.getTime(). This checks date coercion of NOW rather than the relative-time string or the five-second boundary result."
+              }
+            ],
+            "review_seconds": 11.89856725
+          },
+          "assisted": {
+            "id": "p19",
+            "classification": "wrong_target",
+            "finding": true,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p19/test.tsx:7 executes the required relative-time boundary, but pilots/jev-assertions/fixtures/p19/test.tsx:8 asserts only coerceDate(NOW).getTime(). That observes date coercion rather than the formatted relative result, so it cannot distinguish \"5 seconds ago\" from \"just now\"."
+            ],
+            "review_seconds": 6.683065083,
+            "elapsed_ns": 6683065083,
+            "frozen_at": "2026-10-08T17:26:14.390741+00:00",
+            "initial_classification": "wrong"
+          }
+        },
+        {
+          "id": "p20",
+          "unaided": {
+            "id": "p20",
+            "classification": "insufficient",
+            "finding": false,
+            "evidence": [
+              {
+                "path": "pilots/jev-assertions/fixtures/p20/test.tsx",
+                "line": 6,
+                "detail": "Calls formatElapsed(59_600) and passes its actual result to checkElapsed at line 7."
+              },
+              {
+                "path": "pilots/jev-assertions/fixtures/p20/test.tsx",
+                "line": 3,
+                "detail": "checkElapsed is imported from ../../helpers/check-elapsed, whose source is absent from the selected packet. Whether it checks the exact required result or a weaker property cannot be assessed; no inadequacy is established by this omission."
+              }
+            ],
+            "review_seconds": 13.154044875
+          },
+          "assisted": {
+            "id": "p20",
+            "classification": "insufficient",
+            "finding": false,
+            "advice_status": "complete",
+            "evidence": [
+              "pilots/jev-assertions/fixtures/p20/test.tsx:6 executes formatElapsed(59_600), then :7 delegates validation to checkElapsed imported at :3. The selected evidence does not include checkElapsed, so its assertion could be exact, broad, or absent; missing helper context alone does not establish an inadequate assertion."
+            ],
+            "review_seconds": 9.995371625,
+            "elapsed_ns": 9995371625,
+            "frozen_at": "2026-10-08T17:24:57.820761+00:00"
+          }
+        }
+      ]
+    },
+    "known_usage": {
+      "input_tokens": 51813,
+      "output_tokens": 1122
+    },
+    "usage_unknown_slots": 0,
+    "known_cost_usd": "0.002176146",
+    "reserved_cost_upper_usd": "0.05505024",
+    "ceiling_usd": "0.06"
+  },
+  "hypothesis": "The repaired real summary retains all original counts. Revalidate the exact targeted seal-and-finding command on the current fixture setup to close its older input snapshot.",
+  "nextCapture": "009",
+  "nextArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot_test.py",
+    "PilotTests.test_review_contamination_seal",
+    "PilotTests.test_review_findings_are_separate_from_classifications"
+  ]
+}
