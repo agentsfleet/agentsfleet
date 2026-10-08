@@ -1,0 +1,110 @@
+{
+  "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+  "commands": {
+    "unit": [
+      "make",
+      "test-unit-all"
+    ],
+    "integration": [
+      "make",
+      "test-integration-rustd"
+    ]
+  },
+  "environment": {
+    "root": "/var/folders/sy/ny52vqjd3j56w4sfbmn3vd7w0000gn/T/jev-m216-baseline-z1k187sx",
+    "checkout": "/var/folders/sy/ny52vqjd3j56w4sfbmn3vd7w0000gn/T/jev-m216-baseline-z1k187sx/repo",
+    "revision": "dd917b7ef42dcb883b5192fafe894060aab5845d",
+    "compose_project": "jev-m216-baseline-z1k187sx",
+    "ports": {
+      "postgres": 31500,
+      "qstash": 31502,
+      "dragonfly_base": 31503
+    }
+  },
+  "unit": {
+    "exit_code": 2,
+    "passed": 10613,
+    "failed": 1,
+    "rust_passed": 4405,
+    "rust_ignored": 924,
+    "app_passed": 3642,
+    "website_passed": 142,
+    "command_line_passed": 1778,
+    "command_line_skipped": 16,
+    "design_system_passed": 646,
+    "design_system_failed": 1,
+    "zig": "command completed successfully; count not reported",
+    "open_file_limit": 65536,
+    "decisive_output": [
+      "\u2713 [rustd] unit: runner \u2014 1135 passed",
+      "\u2713 [rustd] unit: daemon \u2014 132 passed",
+      "\u2713 [rustd] unit: daemon libraries \u2014 3138 passed",
+      " Test Files  399 passed (399)",
+      "      Tests  3642 passed (3642)",
+      " Test Files  22 passed (22)",
+      "      Tests  142 passed (142)",
+      " 1778 pass",
+      " 16 skip",
+      " 0 fail",
+      "enforce-coverage: floor function=100.00% line=100.00%",
+      "enforce-coverage: actual function=100.00% line=100.00%",
+      "enforce-coverage: PASS",
+      " Test Files  1 failed | 59 passed (60)",
+      "      Tests  1 failed | 646 passed (647)"
+    ],
+    "failure": {
+      "file": "ui/packages/design-system/src/design-system/CopyButton.test.tsx",
+      "line": 71,
+      "test": "announces the failure in a live region, not by an icon swap alone",
+      "expected": "text matches /copy failed/i",
+      "received": "empty string"
+    },
+    "focused_rerun": {
+      "command": [
+        "bun",
+        "run",
+        "test",
+        "src/design-system/CopyButton.test.tsx"
+      ],
+      "exit_code": 0,
+      "passed": 7,
+      "failed": 0
+    }
+  },
+  "integration": {
+    "exit_code": 0,
+    "passed": 899,
+    "failed": 0,
+    "regular": 897,
+    "exclusive": 2,
+    "decisive_output": [
+      "\u2713 [rustd] integration suite \u2014 897 passed",
+      "\u2713 [rustd] integration suite (exclusive) \u2014 2 passed"
+    ]
+  },
+  "earlier_unit_attempt": {
+    "exit_code": 2,
+    "passed_before_abort": 354,
+    "failed": 2,
+    "open_file_limit": 256,
+    "reason": "Too many open files (os error 24)"
+  },
+  "raw_logs": {
+    "unit.log": {
+      "path": "/var/folders/sy/ny52vqjd3j56w4sfbmn3vd7w0000gn/T/jev-m216-baseline-z1k187sx/unit.log",
+      "sha256": "c0659208b251c5f12ff358d51f2a14f506d78b56c29cde70c7ed768d5c80db05"
+    },
+    "unit-retry.log": {
+      "path": "/var/folders/sy/ny52vqjd3j56w4sfbmn3vd7w0000gn/T/jev-m216-baseline-z1k187sx/unit-retry.log",
+      "sha256": "f19c6d91b929ab5428037642e7b9a711bcc4a08a589739e3fa4fe39179162107"
+    },
+    "integration.log": {
+      "path": "/var/folders/sy/ny52vqjd3j56w4sfbmn3vd7w0000gn/T/jev-m216-baseline-z1k187sx/integration.log",
+      "sha256": "3857b33e2de7909584727abcb5e04ca45e23adc4f90d02eb551323713212f887"
+    },
+    "copybutton-probe.log": {
+      "path": "/var/folders/sy/ny52vqjd3j56w4sfbmn3vd7w0000gn/T/jev-m216-baseline-z1k187sx/copybutton-probe.log",
+      "sha256": "06429eeb1e0259a5cb4414fb9d0a127c8d4c53f75566527b2cf276607287fff9"
+    }
+  }
+}

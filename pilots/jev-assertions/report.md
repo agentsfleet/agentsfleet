@@ -9,7 +9,8 @@ Adoption remains Kishore's separate decision.
 
 **Overall status: IN_PROGRESS.** The approved model measurement is complete.
 Separate blinded agent sessions are complete. Repository-wide checks and
-comparison baselines remain due before a Pull Request.
+the final test delta remain due before a Pull Request. Comparison baselines
+are recorded below, including the failed unit run.
 
 Source revision: `dd917b7ef42dcb883b5192fafe894060aab5845d`.
 Frozen input digest: `7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa`.
@@ -207,10 +208,33 @@ retains an initial conformance timeout and completed audit. Pre-advice code
 review repaired four accounting/evidence issues with regression checks in
 [pilot_test.py](pilot_test.py). Outside review-model calls were skipped under
 the spending restriction; native code audits are separate from blinded reviews.
-Full unit/lint/datastore integration lanes, baselines and test delta remain due
-before a Pull Request. These Section checks establish no repository-wide result.
-The diff adds only contributor pilot artifacts; product behavior, architecture,
-version, question catalog, threshold, hooks and gates are preserved.
+Final unit/lint/datastore integration checks and test delta remain due before
+a Pull Request. These Section checks establish no repository-wide result.
+The pilot accompanies the owner's authorized orly 0.14.0 consumer update.
+Product behavior, architecture, product version, question catalog, threshold,
+hooks and gates are preserved.
+
+### Repository comparison baseline
+
+The [baseline receipt](receipts/review/boundary-baseline.json) records revision
+`dd917b7ef42dcb883b5192fafe894060aab5845d`, commands, environment, output and raw-log hashes.
+An isolated checkout ran `make test-unit-all`; its owned datastore project ran
+`make test-integration-rustd` on separate ports from the final environment.
+
+The unit command returned exit 2: 10,613 passes and one failure.
+Rust passed 4,405 tests with 924 ignored; the app passed 3,642 and website 142.
+Command-line tests passed 1,778 with 16 skipped; design-system tests passed 646 with one failure.
+The Zig command completed successfully without a reported test count.
+Coverage floors passed for the completed app, website and command-line checks.
+
+The failed clipboard test read an empty live region before its expected error text.
+Its focused rerun passed all seven tests; that rerun does not replace the full unit result.
+An earlier unit attempt hit the process's 256-file limit; its two failures remain saved.
+The full retry used a 65,536-file limit. No test or gate was changed.
+
+Integration returned exit 0: 899 passes, zero failures, including 897 regular and two exclusive checks.
+Raw logs remain in the receipt's named local verification directory.
+The final Pull Request gate must run every declared check and return green.
 
 Four correlated families and deliberately balanced seeded variants cannot
 estimate production defect prevalence or calibrate the confidence threshold.
