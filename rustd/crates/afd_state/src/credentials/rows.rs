@@ -79,9 +79,9 @@ impl FromRow<'_, PgRow> for CliCredentialRow {
     fn from_row(row: &PgRow) -> sqlx::Result<Self> {
         // Liveness is the NULLNESS of the timestamp, never its value. A row
         // revoked with a future instant is still revoked here, and reading the
-        // instant would invite a clock comparison the Zig lookup does not make
-        // either — `revoked_at IS NULL` is what its own partial unique index
-        // is built on.
+        // instant would invite a clock comparison the schema does not make
+        // either — `revoked_at IS NULL` is what `schema/250_cli_credentials.sql`
+        // builds its partial unique index on.
         let revoked_at: Option<i64> = row.try_get("revoked_at")?;
         Ok(Self {
             tenant: row.try_get(COLUMN_TENANT_ID)?,

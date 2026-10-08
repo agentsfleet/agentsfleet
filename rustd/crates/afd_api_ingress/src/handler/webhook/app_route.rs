@@ -1,10 +1,10 @@
 //! `POST /v1/ingress/{provider}` — one App's deliveries, fanned out.
 //!
-//! The port of `ingress/github.zig`. Where [`super::github_route`] serves a
-//! fleet whose id the URL carries, this serves an INSTALLATION whose fleets
-//! have to be looked up: a provider App posts every event for every repository
-//! in an organisation to one URL, signed with one secret that belongs to this
-//! deployment rather than to any workspace.
+//! Where [`super::github_route`] serves a fleet whose id the URL carries, this
+//! serves an INSTALLATION whose fleets have to be looked up: a provider App
+//! posts every event for every repository in an organisation to one URL,
+//! signed with one secret that belongs to this deployment rather than to any
+//! workspace.
 //!
 //! # Why almost every answer here is a 200
 //!
@@ -19,17 +19,14 @@
 //! The exceptions are the two things a sender can actually fix: a body past the
 //! cap, and a signature that did not verify.
 //!
-//! # What this slice does not carry, and where it went
+//! # Why repair traffic is dropped here
 //!
-//! `github.zig` intercepts `deployment_status` and repair-branch traffic before
-//! routing, writing repair evidence through `repair_link.zig` and
-//! `production_repair_result.zig`. Neither has a Rust home yet — the reader is
-//! `afd_runner::sweep::repair`, and the WRITER is unported — so those events
-//! fall through to the ordinary classification and are dropped as unsupported.
+//! Repair evidence — `deployment_status` and repair-branch traffic — has a
+//! reader, `afd_runner::sweep::repair`, and no writer, so those events fall
+//! through to the ordinary classification and are dropped as unsupported.
 //! Dropping is the safe direction: the repair sweeper waits rather than acting
-//! on evidence it never received. It lands with the repair-evidence port, not
-//! here, and until then `deployment_status` is a documented gap rather than a
-//! silent one.
+//! on evidence it never received. Until a writer lands, `deployment_status` is
+//! a documented gap rather than a silent one.
 
 use std::sync::Arc;
 
@@ -58,15 +55,14 @@ const EVENT_DROPPED: &str = "app_ingress_dropped";
 
 /// The one provider this daemon serves an App ingress for.
 ///
-/// `webhook_verify.zig` keys its descriptor table by this same word, and
-/// [`afd_webhook::Scheme::for_source`] resolves the signature scheme from it.
+/// [`afd_webhook::Scheme::for_source`] resolves the signature scheme from this
+/// word.
 const PROVIDER_GITHUB: &str = "github";
 
 /// The vault key the GitHub App's own webhook secret is stored under.
 ///
-/// `webhook_verify.zig:54`'s `GITHUB_APP_IDENTITY`, kept byte-for-byte: the
-/// secret is stored once by an operator and read by whichever daemon is serving
-/// during a cutover, so the key name is a stored-data contract.
+/// An operator stores the secret once under this exact name and every request
+/// reads it back by the same name, so renaming it strands the stored secret.
 const APP_IDENTITY_GITHUB: &str = "github-app";
 
 /// The delivery kind an App sends to prove the endpoint answers.

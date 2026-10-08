@@ -1,14 +1,14 @@
 //! The bookkeeping two migrators share: what applied, and what failed.
 //!
-//! Both tables are created here with `IF NOT EXISTS` and the same column types
-//! the Zig daemon writes (`pool_migrations.zig:38-57`), because the same
-//! database is migrated by whichever binary a deploy happens to run. A column
-//! that differed by width or nullability would show up as a constraint
-//! violation on the first row the other binary wrote.
+//! Both tables are created here with `IF NOT EXISTS` and column types that
+//! match the rows already in every deployed `audit.schema_migrations`, because
+//! the same database is migrated by whichever replica a deploy happens to boot
+//! first. A column that differed by width or nullability would show up as a
+//! constraint violation on the first row written next to the existing ones.
 //!
 //! `applied_at` and `failed_at` are `BIGINT` milliseconds since the epoch, not
-//! `timestamptz`. That is the Zig daemon's choice and it is now a data format,
-//! so it stays.
+//! `timestamptz`. That is a data format every deployed ledger already has, so
+//! it stays.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -167,7 +167,7 @@ impl Ledger {
 ///
 /// Runs under the migration lock, never before it: `CREATE TABLE IF NOT
 /// EXISTS` is not race-safe, so two fresh-database boots that skipped the lock
-/// for "just the DDL" can still collide (`pool_migrations.zig:160-163`).
+/// for "just the DDL" can still collide.
 ///
 /// # Errors
 /// Returns a query error when any of the three statements fails.
@@ -308,11 +308,10 @@ pub async fn clear_failure(connection: &mut PoolConnection<Postgres>, version: i
 
 /// Milliseconds since the epoch, from the workspace clock.
 ///
-/// A private copy of this used to map a pre-epoch clock to `0`. The Zig
-/// daemon's `clock.zig` returns the NEGATIVE reading for the same host and says
-/// why in its own words — a silent epoch-0 return corrupts `UUIDv7` ordering —
-/// so the two binaries answered a broken host differently while writing to the
-/// same `audit.schema_migrations` table. [`afd_core::clock::now`] is the single
+/// Not a private reading: a pre-epoch host clock must come back NEGATIVE here,
+/// because a silent epoch-0 return corrupts `UUIDv7` ordering, and a ledger
+/// that answered a broken host differently from the identifiers minted beside
+/// it would be lying about order. [`afd_core::clock::now`] is the single
 /// reading both the ledger and everything after it share.
 fn now_millis() -> i64 {
     afd_core::clock::now().as_millis()

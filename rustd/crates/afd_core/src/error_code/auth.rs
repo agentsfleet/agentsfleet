@@ -9,11 +9,11 @@ use super::ErrorCode;
 
 /// The principal authenticated, and is short a capability the route requires.
 ///
-/// `ERR_INSUFFICIENT_SCOPE` in the Zig registry. A 403, never a 401: the caller
-/// proved who they are and the answer is that who they are is not enough, so
-/// re-authenticating cannot help and telling them to would send them in a
-/// circle. The response names a scope from the route's own list, because a code
-/// a caller can act on beats one they have to open a ticket about.
+/// A 403, never a 401: the caller proved who they are and the answer is that
+/// who they are is not enough, so re-authenticating cannot help and telling
+/// them to would send them in a circle. The response names a scope from the
+/// route's own list, because a code a caller can act on beats one they have to
+/// open a ticket about.
 pub const AUTH_INSUFFICIENT_SCOPE: ErrorCode = ErrorCode::declare("UZ-AUTH-022");
 
 /// No credential was presented, or the one presented proved nothing.
@@ -125,8 +125,7 @@ pub const INVALID_NONCE: ErrorCode = ErrorCode::declare("UZ-AUTH-020");
 /// distinction is load-bearing rather than tidy: the runner client counts
 /// consecutive auth rejects toward a self-termination ceiling and resets that
 /// counter on transport-class failures, so answering a Postgres blip with a
-/// reject would walk a healthy fleet's runners to shutdown
-/// (`runner_bearer.zig`'s `test "maps a lookup failure to UZ-AUTH-004"`).
+/// reject would walk a healthy fleet's runners to shutdown.
 pub const AUTH_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-AUTH-004");
 
 /// The command-line credential resolved to a row whose `revoked_at` is set.

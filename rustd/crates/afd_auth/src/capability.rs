@@ -1,16 +1,15 @@
 //! What a person may do, asked of whoever owns the answer.
 //!
-//! The Rust spelling of Zig's `scopes.ScopeFn`, and it carries the same rule
-//! `docs/AUTH.md` states twice: **a credential proves WHO, the provider answers
-//! WHAT.** No credential class grants anything of its own. Narrowing a person
-//! at the identity provider narrows every credential they hold, on the next
-//! request past the freshness window, with no deploy and no backfill.
+//! This seam carries the rule `docs/AUTH.md` states twice: **a credential
+//! proves WHO, the provider answers WHAT.** No credential class grants anything
+//! of its own. Narrowing a person at the identity provider narrows every
+//! credential they hold, on the next request past the freshness window, with
+//! no deploy and no backfill.
 //!
 //! # Why this is a seam and not a call
 //!
 //! It reaches the network, and a middleware's branches must be provable without
-//! one. Zig injects a function pointer for exactly this reason; the trait is the
-//! same seam with the argument types written down.
+//! one. The trait is that seam with the argument types written down.
 //!
 //! # The three outcomes, and why one of them is not an error
 //!
@@ -56,8 +55,8 @@ pub trait CapabilitySource: Send + Sync + std::fmt::Debug {
 /// empty-set source, and the difference is the whole point: an unconfigured
 /// provider is an outage every gate reports as such, while an empty set would
 /// authenticate a caller and then refuse them at every gate as though they had
-/// been narrowed to nothing. `clerk_scope_resolver.zig` makes the same choice
-/// by treating an absent secret as a fetch failure.
+/// been narrowed to nothing. An absent provider secret is a fetch failure, not
+/// an empty answer.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoCapabilitySource;
 

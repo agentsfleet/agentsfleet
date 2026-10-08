@@ -206,7 +206,7 @@ fn a_stale_delivery_is_refused_as_stale_not_as_a_bad_signature() {
 #[test]
 fn patch_1_a_secret_without_the_whsec_prefix_is_refused() {
     // UPSTREAM accepts a bare secret: `strip_prefix(PREFIX).unwrap_or(secret)`.
-    // The Zig requires the prefix, and the Zig is the oracle.
+    // This daemon requires the prefix (PATCH 1 in vendor/svix.rs).
     let bare = SECRET
         .strip_prefix("whsec_")
         .expect("the fixture carries the prefix");
@@ -218,8 +218,8 @@ fn patch_1_a_secret_without_the_whsec_prefix_is_refused() {
 
 #[test]
 fn patch_3_an_unpadded_secret_is_accepted() {
-    // UPSTREAM decodes with padded standard base64 only. The Zig falls back to
-    // unpadded, and an operator's already-stored secret must survive cutover.
+    // UPSTREAM decodes with padded standard base64 only. This daemon falls back
+    // to unpadded, because an operator's already-stored secret must keep working.
     let encoded = SECRET
         .strip_prefix("whsec_")
         .expect("the fixture carries the prefix");

@@ -3,8 +3,7 @@
 //!
 //! The published list is `docs/architecture/runner_execution.md` §"Tool
 //! catalog", one entry per tool. A lease's `ExecutionPolicy.tools` selects from
-//! it; a name with no handler here refuses the lease, never a quieter tool set,
-//! the disposition `src/runner/engine/tool_bridge.zig` carries today.
+//! it; a name with no handler here refuses the lease, never a quieter tool set.
 
 use std::sync::Arc;
 

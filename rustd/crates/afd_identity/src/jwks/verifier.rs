@@ -78,9 +78,8 @@ impl<S: KeySetSource> JwksVerifier<S> {
 
     /// Fetches the key set once, so boot can refuse a provider it cannot use.
     ///
-    /// The Zig daemon's `checkJwksConnectivity`, which is wired only to
-    /// `cmd/doctor.zig:283` and not to serve. §7 calls this at boot instead:
-    /// a key set with no key this daemon can verify against would otherwise
+    /// A boot check rather than a separate diagnostic command, because a key
+    /// set with no key this daemon can verify against would otherwise
     /// 401 every session token while `agt_t` and `afc_` kept working — the
     /// "signed in, but nothing loads" signature `docs/AUTH.md` records.
     ///
@@ -128,9 +127,8 @@ impl<S: KeySetSource> JwksVerifier<S> {
         let now = self.clock.now().as_seconds();
         let exp = claims.exp.ok_or(VerifyError::MissingClaim)?;
         // `exp` is seconds since the epoch; the clock reads milliseconds.
-        // Comparing in seconds is what the Zig daemon does
-        // (`jwks_standard_claims.zig`: `if (exp <= now_s)`), including the
-        // boundary: a token expiring exactly now is expired.
+        // Compared in seconds, and the boundary is inclusive: a token expiring
+        // exactly now is expired.
         if exp <= now {
             return Err(VerifyError::Expired);
         }

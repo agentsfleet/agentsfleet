@@ -17,18 +17,12 @@
 //! seeding its own default — and over the dead pool the same read is a 503, not
 //! a `None`, so the router suite cannot reach it either.
 //!
-//! `tenant_provider.zig` met the same wall and its
-//! `tenant_provider_dispatch_test.zig` records the reasoning verbatim: a live
-//! test "needs a globally-empty `core.platform_provider_defaults`, which races
-//! every other integration test's seeding on the shared pool", and
-//! `applyPlatform` is file-private so no unit test can call it either. Boxed in
-//! on both sides, it settled for reading its own source text and asserting the
-//! arm still names the right constant.
+//! A live test would need a globally-empty `core.platform_provider_defaults`,
+//! which races every other integration test's seeding on the shared pool.
 //!
-//! The port is not boxed in, because [`TenantProviders`] is a TRAIT where the
-//! Zig had a private function. Substituting one method reaches the real arm
-//! through the real router — so the divergence from the Zig here is that this
-//! grades the daemon rather than the file, and the text pin is not ported.
+//! [`TenantProviders`] is a TRAIT, so substituting one method reaches the real
+//! arm through the real router — this grades the daemon rather than a source
+//! file.
 
 use afd_api::services::{TenantModelEntries, TenantProviders};
 use afd_core::clock::UnixMillis;

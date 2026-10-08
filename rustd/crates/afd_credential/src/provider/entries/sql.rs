@@ -1,9 +1,8 @@
 //! Every statement the tenant model registry runs, and nothing else.
 //!
-//! Ports of `state/tenant_model_entries/sql.zig` and the display rate read from
-//! `state/model_library/sql.zig`. Collected here for the reason
-//! [`super::super::sql`] gives: REVIEW reading these side by side against the
-//! Zig is the only enforcement of row-equivalence, and a statement inside a
+//! The registry rows and the display rate read from `core.model_library`.
+//! Collected here for the reason [`super::super::sql`] gives: REVIEW reads each
+//! statement side by side with the schema it touches, and a statement inside a
 //! function body cannot be read that way.
 //!
 //! Separate from that module rather than appended to it because both would then
@@ -16,8 +15,8 @@
 //! Four columns — `id`, `model_id`, `secret_ref`, `created_at` — and every read
 //! and both `RETURNING` clauses use the same spelling. `tenant_id` is the
 //! predicate rather than a column anyone reads back, and `updated_at` reaches no
-//! caller, so neither is projected: a narrower row than the Zig's, carrying
-//! exactly what the wire and the cursor need.
+//! caller, so neither is projected: the row carries exactly what the wire and
+//! the cursor need.
 
 /// The columns every read and both writes project.
 ///
@@ -34,8 +33,7 @@ macro_rules! projection {
 /// The projection and the table, which every read opens with.
 ///
 /// Named so the column list and the table cannot drift between the two page
-/// statements and the by-id read — the same seam
-/// `state/tenant_model_entries/sql.zig` draws with its own `SELECT_PROJECTION`.
+/// statements and the by-id read.
 macro_rules! select_projection {
     () => {
         concat!(
@@ -59,7 +57,7 @@ macro_rules! select_for_tenant {
 /// and ends in the row id, which is not decoration: two entries sharing a
 /// creation millisecond need a tiebreak, or the seek below skips one of them.
 ///
-/// The Zig's note on the collation applies unchanged — the spec writes the key
+/// The collation is native on purpose — the spec writes the key
 /// as `id COLLATE "C" DESC`, `id` is a `UUID` column, and casting it to text to
 /// honour that literally would make the index unusable for the sort. Canonical
 /// lowercase `UUIDv7` sorts identically by byte and by ASCII, so the native
@@ -176,8 +174,7 @@ DELETE FROM core.tenant_model_entries
 /// This is a DISPLAY read and deliberately fills no cache. Admitting rows from
 /// here into the billing rate cache would let a later charge accept an entry
 /// whose catalogue generation nothing checked, and would be a second way to
-/// fill one cache — see `state/model_rate_batch.zig`, which exists as its own
-/// module so there is no cache in scope to populate by accident.
+/// fill one cache. No cache is in scope here to populate by accident.
 pub const SELECT_RATES_FOR_PAIRS: &str = "\
 SELECT provider, model_id, context_cap_tokens,
        input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok

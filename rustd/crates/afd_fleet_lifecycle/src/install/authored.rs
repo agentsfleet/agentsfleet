@@ -16,11 +16,11 @@ use super::row::Entry;
 
 /// The most bytes an authored document may carry.
 ///
-/// `markdown_limits.zig`'s value. The refusal SENTENCES say 64KB and this says
-/// two hundred; the mismatch is in the Zig too, and it is the NUMBER that is
-/// load-bearing — a client is refused at this bound whatever the prose claims.
-/// Ported as-is rather than reconciled, because a client already sitting between
-/// the two would change class if either moved.
+/// Two hundred KiB, while the refusal SENTENCES say 64KB. It is the NUMBER that
+/// is load-bearing — a client is refused at this bound whatever the prose
+/// claims. The two stay unreconciled because a client already sitting between
+/// them would change class if either moved; `afd_api_wire` holds the same bound
+/// for a patch as `FLEET_MARKDOWN_MAX_BYTES`.
 const MAX_MARKDOWN_LEN: usize = 200 * 1024;
 
 /// The daily ceiling a generated `TRIGGER.md` declares.

@@ -7,11 +7,10 @@
 //!
 //! # Platform credentials are vault ROWS, not environment knobs
 //!
-//! `serve_broker.zig`'s rule, kept: each connector's platform credential is one
-//! row in the admin workspace — `github-app`, `zoho-app`, and so on — so adding
-//! a connector adds a row an operator writes through the product, never a
-//! deployment variable, a schema change, or an edit here. The one knob is WHICH
-//! workspace holds them.
+//! Each connector's platform credential is one row in the admin workspace —
+//! `github-app`, `zoho-app`, and so on — so adding a connector adds a row an
+//! operator writes through the product, never a deployment variable, a schema
+//! change, or an edit here. The one knob is WHICH workspace holds them.
 //!
 //! # An unconfigured connector is not a boot refusal
 //!
@@ -34,9 +33,8 @@ use afd_credential::vault::Vault;
 ///
 /// A deadline at the call site, per Invariant 4, and this is the call site: the
 /// broker maps any failure to a transient refusal, so what it needs from a hung
-/// token endpoint is a BOUND, not a taxonomy. Ten seconds, matching
-/// `serve_broker.zig`'s `MINT_DEADLINE_MS` — a cold-cache round trip to a
-/// vendor, not an interactive one.
+/// token endpoint is a BOUND, not a taxonomy. Ten seconds — a cold-cache round
+/// trip to a vendor, not an interactive one.
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Builds the broker this deployment mints through.

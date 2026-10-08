@@ -1,11 +1,6 @@
 //! `fleet.runner_affinity` and `fleet.runner_leases` — the claim, the fence,
 //! and the row that records who owns a fleet's work.
 //!
-//! Text began as a copy of the retired Zig daemon's `fleet/sql.zig` and
-//! `fleet/sql_lease_row.zig`, which is why some `$n` orders look odd. The
-//! candidate scan and the lease insert have since moved on, and each says how
-//! beside its text.
-//!
 //! # The claim is the whole concurrency design
 //!
 //! [`CLAIM_AFFINITY_SLOT`] is one conditional UPSERT and it carries three jobs
@@ -216,10 +211,9 @@ LIMIT $4";
 
 /// What one lease authorises a mint to reach.
 ///
-/// Text from `http/handlers/runner/sql.zig`'s `SELECT_LEASE_SCOPE_FOR_MINT`,
-/// with this crate's explicit casts. Every clause in the `WHERE` is an
-/// authorisation, and the reason they are all in the statement is that the wire
-/// carries no workspace at all: a prompt-injected child has nothing to forge,
+/// Every clause in the `WHERE` is an authorisation, and the reason they are all
+/// in the statement is that the wire carries no workspace at all: a
+/// prompt-injected child has nothing to forge,
 /// because a `lease_id` that is foreign, expired or cancelled resolves to no
 /// row rather than to another tenant's workspace.
 ///

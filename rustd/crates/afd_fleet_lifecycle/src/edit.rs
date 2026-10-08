@@ -2,10 +2,9 @@
 //!
 //! # No row lock, and no transaction
 //!
-//! `patch_txn.zig` opens a transaction, takes `SELECT … FOR UPDATE`, sets three
-//! `SET LOCAL` timeouts, and classifies `55P03` so a lock race reads as a 503.
-//! All of that exists to make a read-modify-write safe. None of it is needed
-//! once the compare-and-set is expressed as a PREDICATE: the read runs
+//! A locked read-modify-write needs a transaction, `SELECT … FOR UPDATE`, lock
+//! timeouts, and a `55P03` classifier so a lock race reads as a 503. None of
+//! it is needed once the compare-and-set is expressed as a PREDICATE: the read runs
 //! unlocked, and the `UPDATE` proceeds only while the columns still hold what
 //! the caller read. A concurrent write makes it match no row — the same answer
 //! the lock would have produced, without holding one across a YAML reparse.
@@ -60,10 +59,10 @@ const REACHABLE_ACTIVE: [&str; 2] = [FleetStatus::Stopped.as_str(), FleetStatus:
 
 /// Where a PATCH's new configuration comes from — never both at once.
 ///
-/// The Zig carries `config_json` and `trigger_markdown` as two optional fields
-/// and refuses the both-set case at the door, at runtime. Here the ambiguity
-/// cannot be constructed: both drive `core.fleets.config_json`, so they are one
-/// choice, and the edge resolves it once while reading the body.
+/// Two optional fields would need the both-set case refused at runtime. Here
+/// the ambiguity cannot be constructed: both drive `core.fleets.config_json`,
+/// so they are one choice, and the edge resolves it once while reading the
+/// body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigSource {
     /// A configuration document, replacing the stored one directly.
@@ -76,8 +75,8 @@ pub enum ConfigSource {
 ///
 /// Deliberately smaller than [`FleetStatus`]: `paused` belongs to the platform's
 /// anomaly gate and `installing` to the install, so neither is spellable here. A
-/// caller cannot forge a system-halt provenance, and `patch_body.validateBody`'s
-/// hand-written allow-list has nothing left to check.
+/// caller cannot forge a system-halt provenance, and no hand-written allow-list
+/// is needed to stop one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Requested {
     /// Resume, or finish an install by hand.
@@ -119,9 +118,9 @@ pub struct Patch {
 impl Patch {
     /// Whether this asks for nothing.
     ///
-    /// An empty body is a 200 that touches no row — `patch.zig`'s behaviour, and
-    /// worth keeping: a dashboard saving an untouched form should not make this
-    /// daemon read one. Answered by the caller before this crate is reached.
+    /// An empty body is a 200 that touches no row: a dashboard saving an
+    /// untouched form should not make this daemon read one. Answered by the
+    /// caller before this crate is reached.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.config.is_none() && self.status.is_none() && self.source_markdown.is_none()

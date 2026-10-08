@@ -103,9 +103,6 @@ impl Resolution for Platform {
 /// `None`, the lease carries no `inference_host`, and the egress allowlist
 /// therefore admits nothing for it. Fail-closed at the run rather than
 /// fail-closed at boot.
-///
-/// The Zig applies no check on this path at all — `hostFromUrl` takes whatever
-/// the column held. Validating here is stricter, and free.
 fn dialled(base_url: Option<&str>) -> Option<Dialled> {
     let url = base_url?;
     let host = endpoint::validate(url).ok()?;

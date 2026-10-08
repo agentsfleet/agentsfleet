@@ -2,16 +2,15 @@
 //!
 //! # The standard names are the configuration; the vendor names are a bridge
 //!
-//! The daemon this replaces is configured with `GRAFANA_OTLP_*` — a vendor's
-//! identity spelled into the daemon's own environment. That works while there
-//! is one backend and makes moving to a second one a code change.
+//! `GRAFANA_OTLP_*` spells a vendor's identity into the daemon's own
+//! environment. That works while there is one backend and makes moving to a
+//! second one a code change.
 //!
 //! This build reads the OpenTelemetry specification's own names, so the
 //! deployment says WHERE to send and nothing about who receives. The vendor
-//! spellings are still accepted, because a rollback to the Zig binary during
-//! the cutover has to keep exporting from an environment nobody re-wrote. They
-//! retire with that binary, and where both are set the standard name wins —
-//! otherwise the alias would silently outrank the thing it is an alias for.
+//! spellings are still accepted, so an environment that sets only them keeps
+//! exporting. Where both are set the standard name wins — otherwise the alias
+//! would silently outrank the thing it is an alias for.
 //!
 //! # The credential is never a value this module prints
 //!

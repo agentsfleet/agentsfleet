@@ -1,8 +1,5 @@
 //! Per-user, per-workspace dashboard preference reads and writes, plus the one
 //! round trip the onboarding checklist is derived from.
-//!
-//! Byte-identical to `state/user_preferences/sql.zig` and
-//! `state/workspace_onboarding/sql.zig`, per this module's cutover rule.
 
 /// The internal user a Clerk subject maps to.
 ///

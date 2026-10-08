@@ -9,10 +9,9 @@
 //! event with a named label.
 //!
 //! A tenant with no wallet row is an operator gap — a tenant that was never
-//! provisioned. The Zig admits it (`getBilling` answers null and
-//! `balanceCoversEstimate` returns true), and that is right: refusing every
-//! event for an unprovisioned tenant turns a billing-setup omission into a
-//! total outage for a fleet that is otherwise healthy.
+//! provisioned. The gate admits it, and that is right: refusing every event
+//! for an unprovisioned tenant turns a billing-setup omission into a total
+//! outage for a fleet that is otherwise healthy.
 //!
 //! Both are `Ok`. Neither is an `Err`, because `Err` here means one thing only
 //! — the datastore would not answer — which is the distinction the gate's

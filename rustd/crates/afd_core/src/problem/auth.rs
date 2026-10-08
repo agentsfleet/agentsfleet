@@ -48,7 +48,7 @@ pub(super) const AUTH: &[Problem] = &[
         hint: "Session was not found. It may have expired or been invalidated.",
         // The whole device-flow family renders in a terminal rather than in
         // the dashboard, so none of these carries a sentence written for a
-        // person — the Zig entries say the same in their reachability notes.
+        // person.
         user_message: None,
     },
     Problem {

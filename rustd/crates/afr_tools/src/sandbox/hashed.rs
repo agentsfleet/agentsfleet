@@ -1,18 +1,17 @@
-//! `file_read_hashed` and `file_edit_hashed`: Hashline, as nullclaw's tools
-//! of the same names do it (`oss/zig/nullclaw/src/tools/file_read_hashed.zig`
-//! and `file_edit_hashed.zig`), because those are the tools the published
-//! page names and the Zig runner wired, and a tag read under one runner must
-//! edit under the other.
+//! `file_read_hashed` and `file_edit_hashed`: Hashline, line tags a model
+//! reads a file through and names its edits by, the two tools the published
+//! page names.
 //!
 //! A read tags every line `L<n>:<hhh>|<line>`: three hex digits of a hash
 //! over the line and the one before it, so a tag names a line by its text and
-//! its neighbour, not its number alone. An edit names a line, or a range, by
-//! tag. The tag is looked for within a radius of the line it was read at, so
-//! an edit lands after lines moved above it, and is refused when no line in
-//! reach carries the tag or two do. Twelve bits name a line well, not
-//! uniquely: a line that changed can still match another line in reach whose
-//! text hashes alike, about one stale edit in forty, and that line is edited.
-//! The width is nullclaw's, so the tags stay the same under either runner.
+//! its neighbour, not its number alone. The hash is FNV-1a, 32 bits, over the
+//! trimmed parent and line, kept to twelve bits. An edit names a line, or a
+//! range, by tag. The tag is looked for within fifty lines of the line it was
+//! read at, so an edit lands after lines moved above it, and is refused when
+//! no line in reach carries the tag or two do. Twelve bits name a line well,
+//! not uniquely: a line that changed can still match another line in reach
+//! whose text hashes alike, about one stale edit in forty, and that line is
+//! edited.
 
 use std::fmt::Write as _;
 
@@ -26,8 +25,8 @@ use crate::catalog::{Entry, FILE_EDIT_HASHED, FILE_READ_HASHED};
 use crate::handler::Handler;
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
 
-/// Fowler–Noll–Vo 1a, 32 bits: nullclaw's hash, so a tag reads the same
-/// under either runner.
+/// Fowler–Noll–Vo 1a, 32 bits: the tag hash, taken over the trimmed line
+/// before, [`BETWEEN`], and the trimmed line.
 const FNV_OFFSET: u32 = 0x811c_9dc5;
 const FNV_PRIME: u32 = 0x0100_0193;
 /// The bits of the hash a tag keeps: twelve, as three hex digits.
@@ -43,8 +42,7 @@ const TAG_START: char = 'L';
 const TAG_SEPARATOR: char = ':';
 /// What parts a tag from its line in a read.
 const TAG_END: char = '|';
-/// How far either side of its read line a tag is looked for: nullclaw's
-/// `RADIUS`.
+/// How far either side of its read line a tag is looked for, in lines.
 const RADIUS: usize = 50;
 /// The argument an edit's start and end tags are named by.
 const TARGET: &str = "target";
@@ -167,7 +165,8 @@ async fn edit(context: &ToolContext<'_, '_>, arguments: &Range) -> Answer {
 }
 
 /// `text` with lines `from..=to` replaced by `new_text`, which gets a newline
-/// after it when lines follow and it ends without one, as nullclaw splices.
+/// after it when lines follow and it ends without one, so the next line stays
+/// its own.
 fn spliced(text: &str, lines: &[Line<'_>], from: usize, to: usize, new_text: &str) -> String {
     let before_at = lines.get(from).map_or(0, |line| line.start);
     let after_at = lines
@@ -195,8 +194,8 @@ struct Line<'text> {
     text: &'text str,
 }
 
-/// `text`'s lines as nullclaw collects them: split on `\n`, so a file that
-/// ends in one ends in an empty line, and tags match across runners.
+/// `text`'s lines, split on `\n`, so a file that ends in one ends in an empty
+/// line, which a read tags like any other.
 fn lines(text: &str) -> Vec<Line<'_>> {
     let mut start = 0;
     text.split('\n')

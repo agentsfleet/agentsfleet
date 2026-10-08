@@ -14,23 +14,21 @@
 //! account; [`crate::error::Error`] is the redacted one, and
 //! `OidcFlow` is the single boundary between them.
 //!
-//! Two mappings there are worth naming, because both are Zig parity:
+//! Two mappings there are worth naming:
 //!
 //! - **Expiry survives** as its own code. It leaks nothing — the holder already
 //!   proved possession of a validly-signed token — and the remedy differs.
 //! - **A key-set failure becomes `Unavailable`, not a rejection.**
-//!   `bearer_or_api_key.zig:99-102` maps `JwksFetchFailed` and `JwksParseFailed`
-//!   to `ERR_AUTH_UNAVAILABLE`, because a provider outage is not evidence about
-//!   the caller's token.
+//!   [`VerifyError::KeySetUnavailable`] answers `UZ-AUTH-004`, because a
+//!   provider outage is not evidence about the caller's token.
 
 use crate::credential::Presented;
 
 /// What a token said, once its signature and standard claims checked out.
 ///
-/// Only the fields this daemon acts on. `bearer_or_api_key.zig` frees the rest
-/// (`issuer`, `org_id`, `audience`) immediately after verification, under a
-/// comment explaining they would otherwise leak; here they are simply never
-/// constructed.
+/// Only the fields this daemon acts on. The issuer, organisation and audience
+/// claims are checked by the verifier and never constructed here, so nothing
+/// downstream can log them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedClaims {
     /// The `sub` claim — the provider's identifier for the person.
@@ -105,10 +103,9 @@ pub enum VerifyError {
     KeySetUnavailable,
     /// This deployment has no identity provider configured.
     ///
-    /// A REJECTION, not an outage, and that is Zig parity:
-    /// `bearer_or_api_key.zig:95-98` answers `ERR_UNAUTHORIZED` for
-    /// `self.verifier orelse`. An operator who never configured an issuer has
-    /// not suffered an outage, and telling a caller to retry would be a lie.
+    /// A REJECTION, not an outage: [`Self::is_provider_fault`] answers `false`
+    /// for it. An operator who never configured an issuer has not suffered an
+    /// outage, and telling a caller to retry would be a lie.
     #[error("no identity provider is configured")]
     NotConfigured,
 }
@@ -170,15 +167,13 @@ impl<V: TokenVerifier> TokenVerifier for std::sync::Arc<V> {
 /// The verifier a deployment with no identity provider holds.
 ///
 /// Not a stub and not a test double — it is what `OIDC_ISSUER` being unset
-/// MEANS, expressed as a type. The Zig daemon spells the same thing as
-/// `verifier: ?*oidc.Verifier` and an `orelse` at the one call site, which is
-/// an optional every reader has to trace to find out what happens when it is
-/// null. Here the answer is the type's whole body.
+/// MEANS, expressed as a type. An `Option<Verifier>` would be an optional
+/// every reader has to trace to find out what happens when it is `None`. Here
+/// the answer is the type's whole body.
 ///
 /// It is also what makes Dimension 4.1's second half structural rather than
 /// procedural: with no verifier configured, an `agt_t` or `afc_` credential is
-/// still resolved, because those classes never consult a verifier at all. In
-/// the Zig daemon that holds because two `if`s sit above the `orelse`.
+/// still resolved, because those classes never consult a verifier at all.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoVerifier;
 

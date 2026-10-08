@@ -22,11 +22,7 @@
 //!
 //! # Characters, not bytes
 //!
-//! `approval_gate_prose.zig` walks bytes for both, because Zig has no char
-//! iterator to hand: it needs a hand-written `bidiOverrideLen` decoding
-//! `E2 80 AA..AE`, a `sanitizedLen` pre-pass so the allocation is exact, and a
-//! `needsSanitizing` pre-check so the common path does not pay for either.
-//! Rust iterates `char`s — the UTF-8 decoding belongs to the iterator, the
+//! Both checks iterate `char`s: the UTF-8 decoding belongs to the iterator, the
 //! ranges are written as the code points they are, and "what if a multi-byte
 //! sequence straddles the cap" is unrepresentable rather than defended against.
 //!
@@ -329,9 +325,9 @@ mod tests {
 
     #[test]
     fn a_cap_never_lands_inside_a_character() {
-        // The hazard a byte-count truncation carries and this one cannot: the
-        // Zig needs `truncateUtf8` for exactly this, and a slice cut off a
-        // character boundary would panic here rather than mangle silently.
+        // The hazard a byte-count truncation carries and this one cannot: a
+        // slice cut off a character boundary would panic here rather than
+        // mangle silently.
         let multibyte = "é".repeat(MAX_PROPOSED_ACTION_BYTES);
 
         // Every cap from "nothing fits" through several whole characters,

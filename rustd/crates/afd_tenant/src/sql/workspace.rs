@@ -4,10 +4,10 @@
 //!
 //! The effective tenant and the workspace match resolve TOGETHER. A reader
 //! expects two statements — resolve who the caller is, then check the row — and
-//! the pre-merge Zig shape spent two to three sequential round trips on exactly
-//! that. Folding them is what makes an ownership check affordable on EVERY
-//! workspace request, which is in turn what makes it affordable as a shared
-//! layer rather than as something each handler decides whether to pay for.
+//! that spends two to three sequential round trips. Folding them is what makes
+//! an ownership check affordable on EVERY workspace request, which is in turn
+//! what makes it affordable as a shared layer rather than as something each
+//! handler decides whether to pay for.
 //!
 //! # The authority order lives in the `COALESCE`
 //!
@@ -19,15 +19,13 @@
 //!
 //! # What is deliberately not here
 //!
-//! `common_authz_sql.zig` has a second copy of the verdict statement carrying
-//! `set_config('app.current_tenant_id', …)` in its select list, for Row-Level
-//! Security. Nothing reads that setting: this repository declares no
-//! `ROW LEVEL SECURITY` policy and no `current_setting('app.current_tenant_id')`
-//! anywhere, so it is written at three sites and read at zero. It is left
-//! unported as a declared divergence — the milestone's Discovery log carries
-//! the evidence. Re-adding it would also need a transaction, because `sqlx`
-//! returns a connection to the pool between requests and a session-level
-//! setting would leak one tenant's identifier onto the next request.
+//! The verdict statement does not carry `set_config('app.current_tenant_id', …)`
+//! for Row-Level Security. Nothing would read that setting: this repository
+//! declares no `ROW LEVEL SECURITY` policy and no
+//! `current_setting('app.current_tenant_id')` anywhere. Adding it would also
+//! need a transaction, because `sqlx` returns a connection to the pool between
+//! requests and a session-level setting would leak one tenant's identifier onto
+//! the next request.
 
 /// May this principal open this workspace, and with which role?
 ///
@@ -78,16 +76,16 @@ LIMIT 1";
 
 /// Does the tenant a session claims actually exist?
 ///
-/// `sql.zig`'s `TENANT_EXISTS`, and asked for `lifecycle.zig`'s reason: a
-/// stale session can name a deleted tenant, and refusing it here with the
-/// session sentence beats letting the insert's foreign key answer as a 500.
+/// Asked because a stale session can name a deleted tenant, and refusing it
+/// here with the session sentence beats letting the insert's foreign key
+/// answer as a 500.
 pub const SELECT_TENANT_EXISTS: &str = "\
 SELECT 1 FROM core.tenants WHERE id = $1::uuid LIMIT 1";
 
 /// One workspace row.
 ///
-/// `sql.zig`'s `INSERT_WORKSPACE`, casts and all: both identity columns are
-/// UUID and the driver sends text. No `ON CONFLICT` clause on purpose — the
+/// The casts are load-bearing: both identity columns are UUID and the driver
+/// sends text. No `ON CONFLICT` clause on purpose — the
 /// near-twin in the signup path swallows the collision, while this one needs
 /// `uq_workspaces_tenant_id_name` to surface so the caller hears "taken".
 pub const INSERT_WORKSPACE: &str = "\

@@ -64,11 +64,10 @@ async fn test_bundle_fetch_by_hash() {
 
 /// A path segment that cannot be a digest never reaches the object store.
 ///
-/// The check `bundles.zig` spells as an `isContentHash` guard the handler must
-/// remember to call, and this spells as a type the key builder cannot be handed
-/// without. The traversal case is the one it exists for: a key is rebuilt
-/// server-side from a validated digest, so there is no path from request bytes
-/// to a storage key at all.
+/// The check is a type the key builder cannot be handed without, rather than a
+/// guard the handler must remember to call. The traversal case is the one it
+/// exists for: a key is rebuilt server-side from a validated digest, so there
+/// is no path from request bytes to a storage key at all.
 #[tokio::test]
 async fn test_bundle_ref_that_is_not_a_digest_is_refused() {
     let router = Fleet::new()

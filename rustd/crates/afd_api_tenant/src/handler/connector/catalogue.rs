@@ -31,10 +31,9 @@ use crate::services::{Services, WorkspaceConnectors as _};
 
 /// One catalogue row, as the wire renders it.
 ///
-/// The shape and its two archetype spellings are `afd_api_wire::connector`'s. Both
-/// strings are `registry.zig`'s `@tagName(spec.archetype)`, so they are a wire
-/// contract the dashboard switches on rather than a description this surface
-/// is free to improve.
+/// The shape and its two archetype spellings are `afd_api_wire::connector`'s.
+/// Both strings are a wire contract the dashboard switches on rather than a
+/// description this surface is free to improve.
 fn entry(row: Catalogued) -> CatalogueEntry<'static> {
     CatalogueEntry {
         id: Cow::Borrowed(row.provider.id()),
@@ -51,9 +50,9 @@ fn entry(row: Catalogued) -> CatalogueEntry<'static> {
 
 /// `GET …/connectors`.
 ///
-/// A bare array rather than an envelope, matching `catalog.zig`: the list is
-/// the registry's own length — five today — so there is nothing to page and no
-/// cursor for an envelope to carry.
+/// A bare array rather than an envelope: the list is the registry's own length
+/// — five today — so there is nothing to page and no cursor for an envelope to
+/// carry.
 ///
 /// # Errors
 /// Reports a datastore that would not answer.
@@ -125,7 +124,7 @@ mod tests {
 
     /// The archetype is the registry's, spelled as the wire contract.
     ///
-    /// Both strings are `registry.zig`'s `@tagName(spec.archetype)` — the
+    /// Both strings are `afd_api_wire::connector`'s archetype constants — the
     /// dashboard switches on them to decide which connect flow to start, so a
     /// GitHub row rendered as `oauth2` would start a consent round-trip for a
     /// connector that installs an App instead.

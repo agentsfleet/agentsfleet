@@ -56,7 +56,7 @@ pub(super) const BALANCE: Gate = Gate {
 
 /// The fleet's own declared ceiling. Fails OPEN, mirroring [`BALANCE`] — a
 /// budget gate stricter than the credit gate above it would be an inconsistent
-/// guarantee, which is the reasoning `budget.zig` gives for its own posture.
+/// guarantee.
 pub(super) const BUDGET: Gate = Gate {
     event: "lease_budget_unavailable",
     on_fault: OnFault::Admit,

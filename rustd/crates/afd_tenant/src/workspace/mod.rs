@@ -2,12 +2,12 @@
 //!
 //! # Why this is a service and not a helper each handler calls
 //!
-//! `authorizeWorkspace` is a Zig function called by hand at the top of every
-//! workspace handler. That is the shape this crate exists to break: a rule
-//! enforced by remembering to call something is a rule with one exception per
-//! author. What lives here is the DECISION — one statement, one verdict, no
-//! HTTP — and `afd_api` mounts it as a layer in front of every route whose
-//! template carries a workspace, so no handler is in a position to forget it.
+//! A check called by hand at the top of every workspace handler is the shape
+//! this crate exists to break: a rule enforced by remembering to call something
+//! is a rule with one exception per author. What lives here is the DECISION —
+//! one statement, one verdict, no HTTP — and `afd_api` mounts it as a layer in
+//! front of every route whose template carries a workspace, so no handler is in
+//! a position to forget it.
 //!
 //! # `Ok(None)` is not `Err`
 //!
@@ -203,10 +203,9 @@ struct TenantBinds<'a> {
 impl<'a> TenantBinds<'a> {
     /// What this person binds.
     ///
-    /// Never empty, unlike the Zig `principalTenantBinds` it replaces: that one
-    /// answers null for a runner so its callers can deny without a round trip,
-    /// and here a runner never reaches this function at all — it was refused one
-    /// frame up, by not being a `Person`. The type says so, so there is no arm.
+    /// Never empty, and there is no runner arm: a runner never reaches this
+    /// function at all — it was refused one frame up, by not being a `Person`.
+    /// The type says so, so there is no null answer for a caller to deny on.
     fn of(person: &'a Person) -> Self {
         Self {
             subject: reads_user_row(person).then(|| person.subject().as_str()),

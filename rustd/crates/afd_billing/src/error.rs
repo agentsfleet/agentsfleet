@@ -142,18 +142,16 @@ const DETAIL_OPERATION_FAILED: &str = "The billing operation could not be comple
 
 /// The sentence a tenant with no wallet row earns.
 ///
-/// The em-dash sentence is `tenant_billing.zig`'s, byte for byte: the row is
-/// written in the tenant-create transaction, so its absence is a bootstrap
-/// invariant broken by surgery or a defect, and the sentence says whose problem
-/// that is. Carried across from `afd_tenant` unchanged when the reader moved.
+/// The row is written in the tenant-create transaction, so its absence is a
+/// bootstrap invariant broken by surgery or a defect, and the sentence says
+/// whose problem that is.
 const DETAIL_WALLET_MISSING: &str = "Tenant billing row missing — bootstrap invariant violated";
 
 /// The refusal for a charges cursor this daemon never issued.
 ///
-/// Lower-case and terse where the keyset cursor's refusals are sentences,
-/// because this is `tenant_billing.zig`'s exact spelling and a cursor may be
-/// judged by either binary mid-cutover. Re-authoring it here would have made
-/// the two daemons answer differently for one condition.
+/// Lower-case and terse where the keyset cursor's refusals are sentences: a
+/// cursor is this daemon's own receipt handed back, and the refusal describes
+/// nothing about its format to whoever is probing it.
 const DETAIL_CURSOR_INVALID: &str = "invalid cursor";
 
 /// The sentence an unreachable datastore earns.

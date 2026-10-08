@@ -54,7 +54,7 @@ const KEY_INSERT_ID: &str = "$insert_id";
 const HASH_SEPARATOR: &[u8] = &[0];
 
 impl Telemetry {
-    /// Every property this event carries, in the order the Zig writes them.
+    /// Every property this event carries, in the order they are written.
     #[expect(
         clippy::too_many_lines,
         reason = "one arm per event, each a flat list of keys: splitting it would put half an event's contract in another file, which is exactly the drift the property-key constants above exist to prevent"
@@ -127,9 +127,8 @@ impl Telemetry {
             } => {
                 put("session_id", session_id.as_str().into());
                 put(KEY_REQUEST_ID, request_id.as_str().into());
-                // Also a property, not only the attribution: the Zig writes it
-                // both ways, and a dashboard that groups by it reads the
-                // property rather than the person.
+                // Also a property, not only the attribution: a dashboard that
+                // groups by it reads the property rather than the person.
                 put("distinct_id", actor.as_str().into());
             }
             Self::AuthRejected { reason, request_id } => {

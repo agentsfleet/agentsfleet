@@ -5,10 +5,10 @@
 //! `M-MOCKABLE-SYSCALLS` names the category — anything "reliant on external
 //! state" — and all three seams are that.
 //!
-//! These are what make Dimension 4.1 provable. The Zig middlewares reach the
-//! same place with a hand-written `MockLookup` per test file; one shared set
-//! here means the routing table is exercised against the same directory the
-//! liveness branches are, rather than against three that could disagree.
+//! These are what make Dimension 4.1 provable. One shared set, rather than a
+//! hand-written mock per test file, means the routing table is exercised
+//! against the same directory the liveness branches are, rather than against
+//! three that could disagree.
 //!
 //! Every controller follows `M-SERVICES-CLONE`, so the handle a test keeps and
 //! the one the registry holds are the same state.

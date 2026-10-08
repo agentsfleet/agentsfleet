@@ -150,9 +150,9 @@ pub struct ToolCallProgress<'a> {
 //
 // The variant name IS the wire discriminator, so the enum is the single source
 // for the vocabulary and there are no re-spelled kind strings. Each payload is
-// a named struct rather than an inline variant body, matching the Zig union
-// field for field — the encoding is identical either way, and the named form
-// is what lets each payload carry its own fixture.
+// a named struct rather than an inline variant body — the encoding is identical
+// either way, and the named form is what lets each payload carry its own
+// fixture.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "snake_case")]
@@ -222,9 +222,8 @@ pub struct ActivityRequest<'a> {
 /// `202`, because the frames were received and not yet read by anybody. The
 /// publish is best-effort and a subscriber seeing a frame is a separate event
 /// from this call returning.
-// The one field `service_activity.zig` answers, so a runner pointed at either
-// daemon reads one shape. The first port of the verb dropped it and answered
-// a bare status; the document gate is what noticed.
+// One field, so the runner's client has a body to decode rather than a bare
+// status; the published API document pins it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActivityAccepted {

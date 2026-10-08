@@ -256,9 +256,8 @@ fn installation_id(stored: &Value) -> Option<u64> {
 ///
 /// A 401 or 404 is the installation being gone, which is a reconnect. Anything
 /// at or above 500 is the vendor, which is worth retrying. Every other status,
-/// and every failure to read what came back, is permanent — the same split
-/// `integration_github.zig` makes, expressed against `octocrab`'s typed status
-/// rather than a raw `u16`.
+/// and every failure to read what came back, is permanent. The split reads
+/// `octocrab`'s typed status rather than a raw `u16`.
 fn classify(error: &octocrab::Error) -> Outcome {
     let octocrab::Error::GitHub { source, .. } = error else {
         // No status at all: a transport failure, a timeout, a body that would

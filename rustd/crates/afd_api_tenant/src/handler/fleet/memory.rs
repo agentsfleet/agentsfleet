@@ -1,8 +1,7 @@
 //! What a fleet remembers, over HTTP: read a page of it, or forget one.
 //!
-//! The port of `http/handlers/memory/handler.zig`. Everything that turns a URL
-//! into values is [`super::memory_request`]; everything that turns rows into a
-//! reply is here.
+//! Everything that turns a URL into values is [`super::memory_request`];
+//! everything that turns rows into a reply is here.
 //!
 //! # Two routes, two capabilities, and no store verb between them
 //!
@@ -19,7 +18,7 @@
 //! Whether the fleet is the workspace's, and whether it may read the
 //! workspace's shared entries, is a read of `core.fleets` the memory store
 //! makes itself (`afd_memory::Memories`) rather than an opening call every
-//! handler has to remember, the shape `helpers.zig` has. [`WorkspaceContext`]
+//! handler has to remember. [`WorkspaceContext`]
 //! here is this handler saying WHICH workspace it acts in, never deciding
 //! whether it may. A page holds the workspace's shared entries too when the
 //! fleet may read them, each naming its writer.
@@ -203,8 +202,7 @@ pub(crate) async fn forget<D: Services>(
 /// `(created_at, key, fleet)`. This surface cannot over-fetch the way the fleets list
 /// does — `LIMIT` is the caller's own number and there is no spare row to peek
 /// with — so a caller who asks for exactly as many entries as remain spends one
-/// more request to learn there are none. That is `handler.zig`'s behaviour and
-/// a client walking either daemon sees the same page sequence.
+/// more request to learn there are none.
 fn next_cursor(entries: &[Record], limit: i64) -> Option<String> {
     let full = usize::try_from(limit).is_ok_and(|asked| entries.len() == asked);
     full.then(|| entries.last()).flatten().map(|last| {

@@ -16,10 +16,9 @@ use crate::openapi_contract::{SCHEMA_PREFIX, document};
 
 /// The lease's egress rules and the runner's posture are two schemas.
 ///
-/// Both Rust types are named `NetworkPolicy`, after the two Zig types they
-/// port, and utoipa keys components by name alone. Before the aliases the
-/// document said a run's egress rules were a three-word string, and every
-/// reference still resolved.
+/// Both Rust types are named `NetworkPolicy`, and utoipa keys components by
+/// name alone. Without the aliases the document would say a run's egress rules
+/// were a three-word string, and every reference would still resolve.
 #[test]
 fn test_the_run_egress_rules_and_the_runner_posture_are_two_schemas() {
     let document = document();

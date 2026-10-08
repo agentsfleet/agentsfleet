@@ -62,16 +62,14 @@ fn test_the_docs_link_is_derived_from_the_code() {
     );
 }
 
-/// Client-facing problem metadata keeps a floor now that the byte-for-byte
-/// snapshot is gone.
+/// Client-facing problem metadata keeps a floor.
 ///
-/// The retired Zig table pinned every status, title and sentence verbatim; it
-/// could do that because it was an INDEPENDENT record of a second binary. With
-/// that binary gone there is nothing independent left to compare against, and a
-/// table copied from `entries()` would only assert that `entries()` equals
-/// itself (RULE TCF). What survives an accidental edit is the SHAPE each entry
-/// must hold, which is what this asserts — a status a client can act on, prose
-/// that is present and is not a placeholder, and a hint an integrator can read.
+/// There is no independent record of every status, title and sentence to pin
+/// `entries()` against, and a table copied from `entries()` would only assert
+/// that `entries()` equals itself (RULE TCF). What survives an accidental edit
+/// is the SHAPE each entry must hold, which is what this asserts — a status a
+/// client can act on, prose that is present and is not a placeholder, and a
+/// hint an integrator can read.
 #[test]
 fn test_every_entry_holds_the_shape_a_client_can_act_on() {
     for entry in entries() {

@@ -1,18 +1,10 @@
 //! `billing.*` and the two `core` tables a money decision reads.
 //!
-//! Text is byte-identical to the Zig originals, which are scattered across
-//! `state/sql.zig` (the wallet and the workspace→tenant hop),
-//! `fleet/sql_budget_drain.zig` (the apportioning drain),
-//! `state/fleet_telemetry_store.zig` (the ledger insert, written inline at its
-//! call site) and `state/model_library/sql.zig` (the rate read, assembled there
-//! from six `++` fragments). Collected here for the reason [`super`] gives:
-//! REVIEW reading these side by side against the Zig is the ONLY enforcement of
-//! row-equivalence, and a statement assembled from fragments in another file
-//! cannot be read that way.
-//!
-//! Where a statement was built by concatenation upstream it is written out
-//! flat here. That is not a rewrite — the bytes Postgres receives are the same
-//! — and it is what makes the side-by-side read possible at all.
+//! The wallet and the workspace→tenant hop, the apportioning drain, the ledger
+//! insert and the rate read. Collected here for the reason [`super`] gives: a
+//! review of this module reads every statement the money path can run, and a
+//! statement assembled from fragments in another file cannot be read that way.
+//! So every statement is written out flat, never concatenated.
 
 /// The tenant a workspace belongs to.
 ///
@@ -51,8 +43,7 @@ LIMIT 1";
 
 /// Credit drained by one fleet inside two windows, apportioned by run span.
 ///
-/// The subtlest statement in the money path, and the comment above it in
-/// `sql_budget_drain.zig` is longer than the SQL. The problem it solves: ONE
+/// The subtlest statement in the money path. The problem it solves: ONE
 /// ledger row holds a whole run's accumulated spend, a run may last twelve
 /// hours, and the daily window is a rolling twenty-four — so "which window does
 /// this spend fall in" is not a question one timestamp can answer.
@@ -137,8 +128,7 @@ ON CONFLICT (event_id, charge_type, fleet_id) DO NOTHING";
 
 /// A model's rates, and the catalogue generation they were read at.
 ///
-/// Assembled in the Zig from six `++` fragments; written flat here. Two
-/// properties of its shape are load-bearing and neither is obvious:
+/// Two properties of its shape are load-bearing and neither is obvious:
 ///
 /// The join is driven FROM the singleton revision row, not from the catalogue.
 /// A `LEFT JOIN` this way round still yields the generation on one row when the
@@ -162,8 +152,7 @@ m.cached_input_nanos_per_mtok, m.output_nanos_per_mtok
 
 /// The `billing.usage_ledger.charge_type` values this crate writes and counts.
 ///
-/// `fleet_telemetry_store.zig`'s `ChargeType`. Two spellings, declared once
-/// (RULE UFS): the budget drain counts BOTH, so a charge type spelled
+/// Two spellings, declared once (RULE UFS): the budget drain counts BOTH, so a charge type spelled
 /// differently at the insert than at the drain is spend that never reaches a
 /// ceiling.
 pub mod charge {
@@ -178,11 +167,10 @@ pub mod charge {
 
 /// The `billing.usage_ledger.posture` values, as the resolver spells them.
 ///
-/// `tenant_provider.zig`'s `Mode.label`. The column is written by this codebase
-/// only, so an unknown spelling read back is a data-integrity fault to surface
-/// rather than a value to guess at — which is what `Mode.parse` refuses to do
-/// and what the previous per-file helpers got wrong, silently attributing every
-/// unrecognised posture to `platform`.
+/// The column is written by this codebase only, so an unknown spelling read
+/// back is a data-integrity fault to surface rather than a value to guess at —
+/// which is what [`crate::Posture::parse`] refuses to do. A guess would
+/// silently attribute every unrecognised posture to `platform`.
 pub mod posture {
     /// The platform supplies the provider key; token cost is charged here.
     pub const PLATFORM: &str = "platform";

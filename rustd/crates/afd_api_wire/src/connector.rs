@@ -31,8 +31,8 @@ use serde::Serialize;
 
 /// What a workspace holding a landed grant is told.
 ///
-/// `oauth_status.zig`'s `STATUS_CONNECTED`, kept byte-for-byte: the dashboard
-/// switches on this string and a cutover has both daemons answering the route.
+/// The dashboard switches on this string, so it is the wire spelling and does
+/// not change.
 pub const STATUS_CONNECTED: &str = "connected";
 
 /// What a workspace holding nothing is told — see [`STATUS_CONNECTED`].
@@ -40,9 +40,8 @@ pub const STATUS_NOT_CONNECTED: &str = "not_connected";
 
 /// The wire spelling of a connector whose flow is a consent hop.
 ///
-/// `registry.zig` renders `@tagName(spec.archetype)`, so these two strings are
-/// its variant names and are a wire contract the dashboard switches on rather
-/// than a description this surface is free to improve.
+/// This and [`ARCHETYPE_APP_INSTALL`] are wire spellings the dashboard switches
+/// on rather than descriptions this surface is free to improve.
 pub const ARCHETYPE_OAUTH2: &str = "oauth2";
 
 /// The wire spelling of a connector whose flow is an App installation.
@@ -98,8 +97,7 @@ pub struct ConsentRedirect<'a> {
 /// this is written. An error would tell a person their connect did not work
 /// when it did, and the next thing they would do is press Connect again.
 // The value is [`STATUS_CONNECTED`], the word a status read answers once the
-// grant has landed. `callback.zig` answers the same one field for the same
-// reason.
+// grant has landed.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Connected<'a> {

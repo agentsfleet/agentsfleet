@@ -19,9 +19,6 @@
 //! - Opening an envelope is [`Vault`]'s alone, because [`Vault`] is the half
 //!   that holds the key. This module is on that half deliberately, so the
 //!   read-and-delete half's inability to decrypt stays a property of its type.
-//!
-//! `crypto_store.zig`'s `load` is the same verb, reached the same way, and the
-//! Zig webhook lookup calls it for exactly this reason.
 
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;

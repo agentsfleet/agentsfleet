@@ -6,9 +6,8 @@
 //! and the team it was installed on. The other three OAuth connectors answer
 //! the ordinary `{access_token, refresh_token, expires_in}` triple RFC 6749
 //! describes, and differ only in the extra fields their handle carries —
-//! Zoho's data-centre base, Jira's cloud id. `oauth_refresh.zig` reaches the
-//! same two-shape split, and says the same thing about why: a new refresh
-//! provider is a small delta rather than a copied file.
+//! Zoho's data-centre base, Jira's cloud id. Splitting by shape keeps a new
+//! provider a small delta, its extra fields, rather than a copied file.
 //!
 //! # `ok:false` is a REFUSED exchange, not an unreadable one
 //!

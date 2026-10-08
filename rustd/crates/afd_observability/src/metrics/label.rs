@@ -12,9 +12,9 @@
 //!
 //! # Absence is not a member
 //!
-//! Where the Zig carries a `not_applicable` member, the Rust carries an
-//! `Option` and records nothing for `None`. Both express "no cache decision was
-//! made"; only one of them stops that non-decision from occupying a series.
+//! "No cache decision was made" is an `Option` that records nothing for
+//! `None`, never a `not_applicable` member: a member would make that
+//! non-decision occupy a series.
 
 pub mod cost;
 pub mod fleet;

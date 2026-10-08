@@ -7,12 +7,10 @@
 //!
 //! # Why the route's facts are captured at mount time
 //!
-//! `route_table.zig` switches on the route inside `dispatch`, on every request,
-//! to find out which middleware chain to run. Nothing about that switch can
-//! change between requests: a route's guard and scope rung are constants in the
-//! table. Here [`Gate`] captures them while the router is being built, so the
-//! request path reads a `Copy` struct it already holds instead of re-deciding
-//! what it is.
+//! A route's guard and scope rung are constants in the table, so nothing about
+//! them can change between requests. [`Gate`] captures them while the router
+//! is being built, so the request path reads a `Copy` struct it already holds
+//! instead of re-deciding what it is.
 //!
 //! # What is deliberately NOT memoised
 //!
@@ -137,9 +135,8 @@ fn authentication_refusal<D>(refusal: afd_auth::Error, gate: &Gate<D>) -> Respon
 /// Writes a refusal, and logs it against the same request id the caller sees.
 ///
 /// One function for both checks, so an authentication refusal and a capability
-/// refusal cannot end up shaped differently — which is the drift twelve
-/// hand-written `ctx.fail` call sites across four Zig middleware files exist to
-/// demonstrate.
+/// refusal cannot end up shaped differently, the drift a hand-written refusal
+/// at each call site invites.
 fn refuse<D>(
     code: afd_core::error_code::ErrorCode,
     detail: impl Into<String>,

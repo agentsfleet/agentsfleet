@@ -25,7 +25,7 @@
 //! # Why both probes, in one test
 //!
 //! `/healthz` is asserted at every step, not once at the end. The whole reason
-//! `health.zig` keeps the two apart is that a liveness probe going red gets the
+//! the two probes stay apart is that a liveness probe going red gets the
 //! process KILLED, which does nothing about Postgres and drops every request
 //! the instance was serving. A test that only checked liveness after recovery
 //! would miss precisely the window that matters.

@@ -3,11 +3,10 @@
 //! One pipeline, each step refusing with what it found: the method; where
 //! each placeholder stands; HTTPS; the host in the allowlist; an address
 //! literal outside the private ranges; each credential bound to this host; the
-//! host's origin rules; and `read_only`. The steps are the Zig runner's
-//! (`policy_http_request.zig`), stricter where a host serving many tenants
-//! needs it: a misplaced placeholder refuses under every policy, not only
-//! under `read_only`, and an allowlisted host still never reaches a private
-//! address (the resolver in `network.rs` holds that line for names).
+//! host's origin rules; and `read_only`. Two steps are strict because one host
+//! serves many tenants: a misplaced placeholder refuses under every policy,
+//! not only under `read_only`, and an allowlisted host still never reaches a
+//! private address (the resolver in `network.rs` holds that line for names).
 
 use std::borrow::Cow;
 use std::fmt;

@@ -10,10 +10,9 @@
 //! # The injection surface, and how it is closed by the type system
 //!
 //! An ORDER BY clause cannot be a bind parameter — Postgres will not take one —
-//! so it is interpolated into the statement, and the Zig comments say at every
-//! call site that the value "comes from `sortSpecFor`'s fixed allowlist, never
-//! from user input". That is a promise a reader has to verify by following the
-//! value back.
+//! so it is interpolated into the statement. A comment at every call site saying
+//! the value comes from a fixed allowlist would be a promise a reader has to
+//! verify by following the value back.
 //!
 //! Here it is not a promise. [`SortOrder::order_by`] is a method on a `Copy`
 //! enum, and the only way to obtain one of those enums is
@@ -33,11 +32,10 @@
 //!
 //! # The cursor's wire form is a DATA FORMAT
 //!
-//! Both binaries issue and accept these strings, and a dashboard holds one
-//! across a deploy that may land it on either. So the two forms are spelled
-//! exactly as `keyset_cursor.zig` spells them — `{millis}:{id}` for a
-//! timestamp boundary, and `s:{base64url}:{id}` for a text one, the encoding
-//! being what stops a name containing a colon from corrupting the boundary.
+//! A dashboard holds one of these strings across a deploy, so its spelling is
+//! fixed: `{millis}:{id}` for a timestamp boundary, and `s:{base64url}:{id}`
+//! for a text one, the encoding being what stops a name containing a colon
+//! from corrupting the boundary.
 
 pub mod struct_cursor;
 

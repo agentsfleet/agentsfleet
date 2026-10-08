@@ -2,19 +2,16 @@
 //!
 //! Split from [`super`] along the seam `handler/event/query.rs` already draws:
 //! the rules here, the three verbs beside it. Five parameters, one closed
-//! vocabulary, and a cursor whose wire form is shared with a daemon that is
-//! still issuing them.
+//! vocabulary, and a cursor spelled in the clear.
 //!
 //! # The cursor is spelled in the clear, and that is not this file's choice
 //!
-//! `keyset_cursor.zig` writes `{millis}:{id}` with no encoding, and the
-//! approvals inbox is one of the endpoints that issues it — unlike the event
-//! listings, which wrap the same pair in base64url through a different Zig
-//! module. Two forms in one product is inherited rather than chosen;
-//! `docs/REST_API_DESIGN_GUIDELINES.md` §9 settles which one this endpoint
-//! keeps, because a dashboard holds a cursor across a deploy that may land it
-//! on either daemon. So this reads [`afd_core::paging::Cursor`], which is the
-//! type that spells the Zig form.
+//! The approvals inbox issues `{millis}:{id}` with no encoding, unlike the
+//! event listings, which wrap the same pair in base64url.
+//! `docs/REST_API_DESIGN_GUIDELINES.md` §9 settles which form this endpoint
+//! keeps: a dashboard holds a cursor across a deploy, so the published form
+//! cannot change under it. So this reads [`afd_core::paging::Cursor`], the type
+//! that spells the clear form.
 //!
 //! # The status vocabulary is every state a row can be in
 //!
@@ -46,10 +43,10 @@ const QUERY_GATE_KIND: &str = "gate_kind";
 const QUERY_LIMIT: &str = "limit";
 const QUERY_CURSOR: &str = "cursor";
 
-/// The page size when the caller names none (`approvals/list.zig:20`).
+/// The page size when the caller names none.
 const DEFAULT_LIMIT: u32 = 50;
 
-/// The largest page any caller may ask for (`approvals/list.zig:21`).
+/// The largest page any caller may ask for.
 const MAX_LIMIT: u32 = 200;
 
 /// The inbox's bound on `?limit`.
@@ -67,7 +64,7 @@ const DETAIL_GATE_KIND: &str =
 
 /// The refusal a page size outside the served band earns.
 ///
-/// The Zig's sentence, kept verbatim: it is already on the wire.
+/// Kept verbatim: it is already on the wire.
 const DETAIL_LIMIT: &str = "limit must be between 1 and 200";
 
 /// The refusal a cursor this daemon did not mint earns.
@@ -130,7 +127,7 @@ pub(super) struct Listing {
 impl Listing {
     /// The listing's parameters, or the first refusal they earn.
     ///
-    /// The order is the Zig's: `limit`, then `cursor`, then the three filters.
+    /// The order is `limit`, then `cursor`, then the three filters.
     ///
     /// # Which parameters are decoded, and why not all of them
     ///

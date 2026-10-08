@@ -10,11 +10,10 @@
 //! 3. [`super`] does meaning: that two webhook triggers may not share a source,
 //!    that a repository binding is optional as a whole, that a name is a slug.
 //!
-//! `config_parser.zig` and its four helpers interleave all three across nine
-//! hundred lines — `obj.get(key) orelse return error`, a `switch` per value, a
-//! bounds check written out per list, an `alloc.dupe` per string and an
-//! `errdefer` behind each to unwind a partial struct. Stages 1 and 2 are
-//! entirely mechanical, and both are things a crate does from a declaration.
+//! Stages 1 and 2 are entirely mechanical — fetch a key or fail, branch per
+//! value, write a bounds check per list, unwind a partial struct — and both
+//! are things a crate does from a declaration. Keeping them apart from stage 3
+//! is what stops the three interleaving.
 //!
 //! # Every field is an `Option`, and that is the mechanism
 //!
@@ -22,7 +21,7 @@
 //! never raise "missing field" — a deserialize failure is therefore only ever a
 //! SHAPE failure. Requiredness is decided one layer up, where a `None` becomes
 //! [`Error::MissingRequiredField`]. The two failure classes have no code path
-//! to each other, which is what stops the collapse the Zig makes at seven sites.
+//! to each other, so a wrong-typed value can never report as a missing key.
 //!
 //! [`Error::MissingRequiredField`]: crate::error::Error::MissingRequiredField
 //!
@@ -30,10 +29,10 @@
 //!
 //! Because a bound belongs beside the field it bounds, and because garde makes
 //! forgetting one a COMPILE error: every field must carry an attribute, even if
-//! that attribute is `skip`. A hand-written checker cannot enforce that — the
-//! Zig leaves `tools` and `credentials` unbounded and nothing notices.
-//! `garde::Report` also names the exact path it refused (`tools[3]`), which is
-//! more than either the Zig's error value or a checker of ours would carry.
+//! that attribute is `skip`. A hand-written checker cannot enforce that: a list
+//! it forgot would stay unbounded and nothing would notice. `garde::Report`
+//! also names the exact path it refused (`tools[3]`), which is more than a
+//! checker of ours would carry.
 //!
 //! # `flatten` is how an unknown key is caught
 //!
@@ -65,9 +64,8 @@ const MAX_REPOSITORIES: usize = 64;
 const MAX_REPOSITORY_LEN: usize = 255;
 /// Most tools one fleet may declare.
 ///
-/// The Zig bounds `events`, `repositories` and the trigger set, and leaves
-/// `tools` and `credentials` unbounded — both are stored and both are re-read
-/// by the fleet page, so an unbounded one is a persistence-amplification
+/// `tools` and `credentials` are both stored and both re-read by the fleet
+/// page, so leaving either unbounded would be a persistence-amplification
 /// channel with no gate in front of it.
 const MAX_TOOLS: usize = 128;
 /// Longest one tool name may be.

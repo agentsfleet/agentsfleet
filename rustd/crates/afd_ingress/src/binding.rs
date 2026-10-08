@@ -11,12 +11,11 @@
 //!
 //! # Why the FIRST webhook trigger, still
 //!
-//! `serve_webhook_lookup.zig` takes `LIMIT 1` over the trigger array and says
-//! why in its own header: the `{source}` URL segment that would let one fleet
-//! carry two webhook sources "lands with the install + list response slice",
-//! and until then the URL carries `fleet_id` alone. The rule is unchanged and
-//! the reason is unchanged; what moved is where it is written, from a
-//! sub-select into [`Binding::resolve`], where a test can reach it.
+//! The per-fleet webhook URL carries `fleet_id` alone, with no `{source}`
+//! segment that would let one fleet carry two webhook sources, so a fleet
+//! answers with its first webhook trigger. The rule is written in
+//! [`Binding::resolve`] rather than in a SQL sub-select, where a test can reach
+//! it.
 //!
 //! `Trigger::parse_set` already refuses two webhook triggers that share one
 //! source, so "the first" is unambiguous whenever a fleet declares more than
@@ -165,9 +164,9 @@ impl Binding {
     ///
     /// `false` is not a refusal on this surface. A webhook to a paused fleet is
     /// answered 200 with an ignore reason, because a sender's retry queue adds
-    /// nothing for a fleet somebody paused on purpose — the rework that retired
-    /// `UZ-WH-003` (`error_entries.zig:135`). The steer ingress, where a person
-    /// is waiting for an answer, refuses loudly with `UZ-AGT-012` instead.
+    /// nothing for a fleet somebody paused on purpose. The steer ingress, where
+    /// a person is waiting for an answer, refuses loudly with `UZ-AGT-012`
+    /// instead.
     #[must_use]
     pub const fn is_runnable(&self) -> bool {
         self.status.is_runnable()
@@ -181,9 +180,9 @@ impl Binding {
 
     /// The vault key holding this fleet's shared secret.
     ///
-    /// `credential_name ?? source`, which is the Zig's rule verbatim: the
-    /// override exists so two fleets on one provider can hold different
-    /// secrets, and its absence means the provider's own name IS the key.
+    /// `credential_name ?? source`: the override exists so two fleets on one
+    /// provider can hold different secrets, and its absence means the
+    /// provider's own name IS the key.
     #[must_use]
     pub fn credential_name(&self) -> &str {
         self.trigger
@@ -195,10 +194,8 @@ impl Binding {
     /// The scheme this delivery is verified under, when the daemon ships one.
     ///
     /// `None` is a source no scheme is declared for, which the ingress answers
-    /// as [`afd_webhook::Refusal::Unconfigured`] — never as a pass. The Zig
-    /// carries the same fail-closed note on the same branch: *"always populate
-    /// the scheme when the provider is recognized, so the middleware fails
-    /// closed with UZ-WH-020"*.
+    /// as [`afd_webhook::Refusal::Unconfigured`] — never as a pass, so an
+    /// unrecognised provider fails closed.
     #[must_use]
     pub fn scheme(&self) -> Option<Scheme> {
         Scheme::for_source(self.source())
@@ -217,8 +214,8 @@ impl Binding {
 
     /// Whether this trigger's allow-list admits `event`.
     ///
-    /// An absent list fires on every event, which is `github_filter.zig`'s rule
-    /// and the shape [`Webhook::events`] already documents.
+    /// An absent list fires on every event, which is the shape
+    /// [`Webhook::events`] already documents.
     ///
     /// There is deliberately no empty-list arm. The schema bounds the list at
     /// `min = 1`, so `Some([])` is a state [`FleetConfig::stored`] refuses
@@ -238,11 +235,7 @@ impl Binding {
     ///
     /// The App-ingress counterpart to [`Self::admits`], and it answers the
     /// OPPOSITE way when the list is absent: no list is no subscription, where
-    /// no event list is every event. That asymmetry is deliberate and it is
-    /// `SELECT_APP_INGRESS_TARGETS`'s, written out — its repository clause is an
-    /// `EXISTS` over `COALESCE(trigger->'repositories', '[]')`, which matches
-    /// nothing when the key is absent, while its event clause is
-    /// `NOT (trigger ? 'events') OR …`, which matches everything.
+    /// no event list is every event. That asymmetry is deliberate.
     ///
     /// The reason the two differ: one App delivery is offered to every fleet in
     /// the workspace, so a fleet that named no repository has not opted in to
@@ -250,10 +243,9 @@ impl Binding {
     /// reached at `/v1/webhooks/{fleet_id}` was addressed on purpose, so its
     /// silence about events means "all of them".
     ///
-    /// Compared case-insensitively, as the SQL's `lower(…) = lower(…)` does:
-    /// GitHub treats `Owner/Repo` and `owner/repo` as one repository, and a
-    /// subscription that missed on case would fail in a way an author could
-    /// stare straight at without seeing.
+    /// Compared case-insensitively: GitHub treats `Owner/Repo` and
+    /// `owner/repo` as one repository, and a subscription that missed on case
+    /// would fail in a way an author could stare straight at without seeing.
     #[must_use]
     pub fn serves_repository(&self, repository: &str) -> bool {
         self.trigger.repositories.as_deref().is_some_and(|allowed| {

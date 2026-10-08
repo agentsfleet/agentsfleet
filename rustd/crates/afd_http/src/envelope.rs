@@ -8,7 +8,7 @@
 //! # What is deliberately NOT on the wire
 //!
 //! `Problem::hint` is operator-facing — it tells whoever runs this what to go
-//! and look at — and the Zig envelope has never serialised it. Putting it in a
+//! and look at — and the envelope never serialises it. Putting it in a
 //! client response would leak internal remediation advice to whoever can
 //! provoke an error, so the omission is a decision and
 //! `test_hint_never_reaches_the_client` is what keeps it one.
@@ -44,11 +44,10 @@ pub struct ProblemResponse {
 
 /// The standing answer a 409 on an approval gate reports.
 ///
-/// Five members rather than one nested object, because that is what
-/// `approvals/resolve.zig` writes and what the dashboard already reads off the
-/// body — it renders the outcome and the resolver from the top level,
-/// so nesting them would leave a client that predates this daemon showing two
-/// undefined values.
+/// Five members rather than one nested object, because the dashboard reads
+/// them off the top level of the body — it renders the outcome and the
+/// resolver from there, so nesting them would leave it showing two undefined
+/// values.
 #[derive(Debug, Clone)]
 pub struct Resolution {
     /// The gate that was answered.
@@ -126,8 +125,7 @@ impl ProblemResponse {
     /// The names are the whole remedy. A caller told only that "secrets are
     /// missing" has to diff the bundle's declared list against their own vault
     /// by hand, which is work this daemon has already done to raise the
-    /// refusal. `create_fleet_bundle.zig` carries the same list for the same
-    /// reason.
+    /// refusal.
     #[must_use]
     pub fn missing_secrets(
         code: ErrorCode,
@@ -164,7 +162,7 @@ impl ProblemResponse {
         StatusCode::from_u16(self.problem.status()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
     }
 
-    /// The wire body, in the field order the Zig envelope writes.
+    /// The wire body, in the envelope's fixed field order.
     ///
     /// Built as a map rather than a `#[derive(Serialize)]` struct, for two
     /// reasons that happen to point the same way. `serde_derive` is a syn-2
@@ -230,10 +228,8 @@ pub struct Refused {
 impl IntoResponse for ProblemResponse {
     fn into_response(self) -> Response {
         // `Value::to_string` cannot fail — it writes to a String — so there is
-        // no serialisation-failure arm here. The Zig writer has one because
-        // `std.json.fmt` writes to a fixed response buffer that can run out;
-        // reproducing it in Rust would be a branch nothing can reach, which is
-        // dead code wearing a safety jacket.
+        // no serialisation-failure arm here. One would be a branch nothing
+        // can reach, which is dead code wearing a safety jacket.
         let refused = Refused {
             code: self.problem.code(),
             detail: self.detail.clone(),

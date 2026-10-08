@@ -1,10 +1,10 @@
 //! The tenant's workspace directory: the list, and the create beside it.
 //!
-//! # Why the list is two statements where the Zig one is one
+//! # Why the list is two statements
 //!
-//! `tenant_workspaces.zig` folds the tenant resolve into the page select with
-//! a lateral join and a marker row, so a tenant with zero workspaces still
-//! answers its own identifier. Here the resolve is [`super::Workspaces::
+//! The tenant resolve could be folded into the page select with a lateral join
+//! and a marker row, so a tenant with zero workspaces still answers its own
+//! identifier. Here the resolve is [`super::Workspaces::
 //! tenant_of`] — the ONE statement every tenant route shares — and the page
 //! select takes the resolved tenant as a bind. A second spelling of the
 //! authority order to save one round trip would be two places for that order
@@ -38,7 +38,7 @@ const CONTEXT_TENANT: &str = "check tenant exists";
 ///
 /// Must equal the name in `schema/210_workspaces.sql`, because classification
 /// is by exact constraint: a rename landing on one side turns a duplicate-name
-/// conflict into a 500 — the regression `lifecycle.zig`'s comment records.
+/// conflict into a 500.
 const NAME_CONSTRAINT: &str = "uq_workspaces_tenant_id_name";
 
 /// How many generated names the create tries before reporting the collision.
@@ -63,9 +63,9 @@ pub struct WorkspaceRow {
 
 /// One page of the walk, and whether a row exists beyond it.
 ///
-/// `more` is decided by fetching one row past the limit, the way the Zig
-/// handler does — so the cursor is emitted only when a next page actually has
-/// something on it, not merely when this one is full.
+/// `more` is decided by fetching one row past the limit, so the cursor is
+/// emitted only when a next page actually has something on it, not merely
+/// when this one is full.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspacePage {
     /// The rows on this page, oldest first.
@@ -172,10 +172,9 @@ impl Workspaces {
         now: UnixMillis,
     ) -> Result<Created> {
         let mut connection = self.database.acquire().await?;
-        // Asked before the insert for `lifecycle.zig`'s reason: a stale
-        // session can name a deleted tenant, and this sentence beats the
-        // foreign key's 500. The race between check and insert stays — Zig
-        // has the same one — and loses only a clearer refusal.
+        // Asked before the insert because a stale session can name a deleted
+        // tenant, and this sentence beats the foreign key's 500. The race
+        // between check and insert stays, and loses only a clearer refusal.
         let exists: Option<(i32,)> = sqlx::query_as(sql::SELECT_TENANT_EXISTS)
             .bind(tenant.as_str())
             .fetch_optional(connection.as_mut())

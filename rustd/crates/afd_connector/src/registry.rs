@@ -3,21 +3,17 @@
 //!
 //! # Two archetypes, and a new provider is data rather than code
 //!
-//! `registry.zig`'s whole design claim, and it is kept: adding a connector is
-//! one arm in each match below plus a parse hook, never a new route or a new
-//! flow. What changes is where the totality comes from — the Zig proves its
-//! table's invariants in a `comptime` block that raises `@compileError`, and
-//! here the same facts are the language's: a [`Provider`] variant with no arm
-//! does not compile, and two variants cannot share a name.
+//! Adding a connector is one arm in each match below plus a parse hook, never
+//! a new route or a new flow. The totality is the language's: a [`Provider`]
+//! variant with no arm does not compile, and two variants cannot share a name.
 //!
 //! # The state domains must not collide, and that is checked
 //!
 //! A state's HMAC is domain-separated by [`StateBinding::domain_prefix`] and
 //! its single-use nonce namespaced by [`StateBinding::nonce_prefix`]. Two
 //! providers sharing either would let one connector's signed state verify — and
-//! be consumed — under another's callback. The Zig enforces it at comptime over
-//! its table; the suite at the foot of this file enforces it over the enum,
-//! which is the same guarantee one build stage later.
+//! be consumed — under another's callback. The suite in `registry/tests.rs`
+//! enforces the distinction over every pair of variants.
 
 use crate::provider::Provider;
 
@@ -49,9 +45,9 @@ const PROMPT_CONSENT: &str = "consent";
 
 /// How long a connect round-trip may take before its state stops verifying.
 ///
-/// `state.zig`'s `DEFAULT_TTL_SECONDS`. Ten minutes is a browser journey
-/// through a provider's consent screen with room for a person to read it, and
-/// it bounds how long a leaked state is worth anything.
+/// Ten minutes is a browser journey through a provider's consent screen with
+/// room for a person to read it, and it bounds how long a leaked state is
+/// worth anything.
 pub const STATE_TTL_SECONDS: u32 = 600;
 
 /// The domain one provider's install state is signed and remembered in.
@@ -101,11 +97,10 @@ pub struct Oauth2Flow {
     pub scope_delimiter: char,
     /// The provider-specific authorize parameters beyond the shared five.
     ///
-    /// Pairs rather than a pre-encoded tail, which is where this departs from
-    /// `oauth2.zig`'s `authorize_extra_query`: a raw string has to be
-    /// concatenated past the encoder, so it is the one part of the URL nothing
-    /// checks. As pairs they go through the same `append_pair` as everything
-    /// else and cannot carry an unescaped `&` into the query.
+    /// Pairs rather than a pre-encoded tail: a raw string has to be
+    /// concatenated past the encoder, so it would be the one part of the URL
+    /// nothing checks. As pairs they go through the same `append_pair` as
+    /// everything else and cannot carry an unescaped `&` into the query.
     pub extra_query: &'static [(&'static str, &'static str)],
     /// Whether the vendor issues a refresh token the broker re-mints from.
     pub refresh: bool,
@@ -115,7 +110,7 @@ pub struct Oauth2Flow {
 ///
 /// The user-authorization leg proves the person can reach the installation
 /// before the callback writes its handle, which is why the two are not one
-/// flow with a flag — see `github/callback.zig`'s ownership check.
+/// flow with a flag — see [`crate::github`] for the ownership check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AppInstall {
     /// Where the browser is sent to authorize the person.
@@ -294,8 +289,8 @@ impl Provider {
 
     /// The domain this provider's install state is signed and remembered in.
     ///
-    /// Byte-identical to the Zig's prefixes: a connect started on one daemon
-    /// and completed on the other during a cutover must verify, and the domain
+    /// Fixed strings, never derived: a connect started on one daemon and
+    /// completed on another, or across a deploy, must verify, and the domain
     /// is what the signature binds.
     #[must_use]
     pub const fn state_binding(self) -> StateBinding {

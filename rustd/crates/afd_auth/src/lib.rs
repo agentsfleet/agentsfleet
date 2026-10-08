@@ -12,11 +12,11 @@
 //! See `docs/AUTH.md` §Scope catalogue for the vocabulary and the provisioning
 //! grants.
 //!
-//! # The shape, and why it is not the Zig daemon's
+//! # The shape
 //!
-//! `bearer_or_api_key.zig` routes with a chain of `if`, and the three classes
-//! it routes to are three hand-written procedures differing only in constants.
-//! Both facts follow from one root cause, so both are fixed by one change:
+//! Routing with a chain of `if` to three hand-written procedures differing
+//! only in constants has one root cause, so one shape fixes both: a prefix
+//! table and one procedure driven by per-class constants.
 //!
 //! ```text
 //!   Authorization: Bearer …
@@ -44,9 +44,9 @@
 //!   require_scope             any-of, hierarchy-expanded, 403 UZ-AUTH-022
 //! ```
 //!
-//! The three traits are the seams, and they are seams for the reason Zig's
-//! injected `LookupFn` and `ScopeFn` are: each reaches a network or a
-//! datastore, and an authentication decision must be provable without either.
+//! The three traits are the seams, and they are seams for one reason: each
+//! reaches a network or a datastore, and an authentication decision must be
+//! provable without either.
 //! Under `test-util` this crate ships in-memory implementations of all three,
 //! so every branch above is exercised with no runtime dependency at all.
 

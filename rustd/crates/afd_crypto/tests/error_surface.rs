@@ -76,7 +76,8 @@ fn test_every_error_answers_exactly_one_accessor() {
     }
 }
 
-/// Each kind maps to the registry code the Zig daemon reports for it.
+/// Each kind maps to its registry code: a malformed envelope to `UZ-VAULT-001`,
+/// every other failure to `UZ-INTERNAL-003`.
 #[test]
 fn test_error_codes_match_the_registry() {
     for (label, error) in one_of_each() {

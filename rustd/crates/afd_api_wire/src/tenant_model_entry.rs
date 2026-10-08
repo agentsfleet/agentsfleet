@@ -15,11 +15,11 @@
 //!
 //! # Two nulls stay on the wire, and the rest are omitted
 //!
-//! The Zig serializes this page with `emit_null_optional_fields = false`, so an
-//! absent `provider` or `base_url` is omitted rather than sent as null — that
-//! is the shape the dashboard's union narrows on. `total` and `next_cursor` are
-//! the exception: `docs/REST_API_DESIGN_GUIDELINES.md` §3 requires both to be
-//! PRESENT on every page including the last, so they are always emitted.
+//! An absent `provider` or `base_url` is omitted rather than sent as null —
+//! that is the shape the dashboard's union narrows on. `total` and
+//! `next_cursor` are the exception: `docs/REST_API_DESIGN_GUIDELINES.md` §3
+//! requires both to be PRESENT on every page including the last, so they are
+//! always emitted.
 //!
 //! `total` is always null, and that is not a gap. Counting a keyset page costs
 //! the scan the pagination exists to avoid, and §3 declares null to mean "not
@@ -144,9 +144,6 @@ pub struct StoredModelEntry<'a> {
     pub created_at: i64,
 }
 
-// Unknown fields are IGNORED, matching `innerCreateModelEntry`'s
-// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-// serde attribute.
 /// Registers a model against a stored credential.
 ///
 /// agentsfleet ignores fields it does not know, instead of refusing the
@@ -267,12 +264,9 @@ mod tests {
 
     /// A key this build does not carry is refused, not quietly dropped.
     ///
-    /// This asserted the opposite until Sep 2026, on a parity argument that no
-    /// longer holds: the Zig client set `.ignore_unknown_fields = true`, so the
-    /// absence of `deny_unknown_fields` here was the matching leniency. The
-    /// direction has since flipped — `afd_wire` DEFINES this request and the
-    /// runner conforms to the published document — so leniency here is not
-    /// parity with anything, it is a typo silently changing what was asked for.
+    /// `afd_wire` DEFINES this request and clients conform to the published
+    /// document, so leniency here would let a typo silently change what was
+    /// asked for.
     #[test]
     fn a_create_body_refuses_a_field_this_daemon_does_not_know() {
         let refused = serde_json::from_str::<super::CreateModelEntryRequest>(

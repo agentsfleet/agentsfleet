@@ -5,17 +5,14 @@
 //! the admin CRUD is M179's surface. What lives here is one bounded page walk
 //! in the catalogue's normalized order.
 //!
-//! # The declared deviation: no response cache
+//! # No response cache
 //!
-//! `model_library.zig` serves this read through a revision-keyed in-process
-//! page cache, so a hit costs one statement (the revision) and a miss two.
-//! This port serves every read from the page statement directly: the wire —
-//! envelope, refusals, validators — is identical, and the cache is a
-//! performance subsystem the cutover oracle cannot see. It lands as a
-//! follow-up against a benchmark rather than inside the port; the milestone's
-//! Discovery log carries the decision. One visible edge moves with it: a
-//! catalogue whose REVISION row alone is unreadable answered `UZ-LIBRARY-004`
-//! there and simply serves here, because nothing reads the revision.
+//! Every read is served from the page statement directly, with no
+//! revision-keyed in-process page cache in front of it. Such a cache is a
+//! performance subsystem the wire — envelope, refusals, validators — cannot
+//! see, so it waits for a benchmark that asks for it. Because nothing reads
+//! the revision, a catalogue whose REVISION row alone is unreadable still
+//! serves.
 
 pub mod cursor;
 

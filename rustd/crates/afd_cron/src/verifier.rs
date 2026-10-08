@@ -43,8 +43,8 @@ const EXPECTED_ISSUER: &str = "Upstash";
 
 /// The longest token this daemon will read.
 ///
-/// `QStashVerifier.zig`'s `MAX_TOKEN_BYTES`. A bound on the work one
-/// unauthenticated request can ask of the base64 decoder.
+/// A bound on the work one unauthenticated request can ask of the base64
+/// decoder.
 pub const MAX_TOKEN_BYTES: usize = 8 * 1024;
 
 /// Why a fire was not believed.

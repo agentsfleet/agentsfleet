@@ -113,8 +113,8 @@ mod tests {
 
     #[test]
     fn an_unclosed_block_names_the_fence_rather_than_a_key() {
-        // The Zig answers `MissingRequiredField` here, which is advice to add
-        // a key to a document whose actual fault is a missing fence.
+        // `MissingRequiredField` here would be advice to add a key to a
+        // document whose actual fault is a missing fence.
         let failure = parse_trigger("---\nname: probe\n").expect_err("unclosed");
 
         assert!(matches!(failure.kind(), ErrorKind::FrontmatterMissing));

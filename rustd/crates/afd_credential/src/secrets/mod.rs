@@ -114,7 +114,7 @@ impl core::fmt::Debug for Declared {
 impl Vault {
     /// Resolve `names` in `workspace_id` and route each to its channel.
     ///
-    /// ONE vault read for the whole set. The Zig's per-name loop cost a round
+    /// ONE vault read for the whole set. A per-name loop would cost a round
     /// trip per declared credential, which for a fleet declaring six is six
     /// times the latency for a set the statement can fetch at once.
     ///
@@ -203,9 +203,9 @@ impl Declared {
 
 /// The credential stored under `name`, if the batch read returned one.
 ///
-/// Linear, mirroring the Zig's `findEntry` and for its reason: the declared set
-/// is bounded by what a fleet author wrote in one file, and comparing a handful
-/// of names is cheaper than building a map to look them up in.
+/// Linear, deliberately: the declared set is bounded by what a fleet author
+/// wrote in one file, and comparing a handful of names is cheaper than building
+/// a map to look them up in.
 fn find<'a>(held: &'a [Held], name: &str) -> Option<&'a Held> {
     held.iter().find(|entry| &*entry.name == name)
 }

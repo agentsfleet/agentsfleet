@@ -1,6 +1,6 @@
 //! The `resource:action` capability vocabulary.
 //!
-//! Mirrors what the retired daemon's `auth/scopes.zig` declared, which was canon. One explicit
+//! The catalogue `docs/AUTH.md` §Scope catalogue documents. One explicit
 //! scope per capability, and the `read < write < admin` hierarchy stored as
 //! DATA in [`HIERARCHY`] rather than inferred from the string — Sentry's
 //! `SENTRY_SCOPE_HIERARCHY_MAPPING` shape. A held scope is expanded to its
@@ -20,17 +20,17 @@
 //! [`Scope::wire`] and [`Scope::bit`] are exhaustive matches, so a new variant
 //! fails to compile until it is given both a claim value and a bit. [`ALL`]
 //! must then list it, and `KNOWN_BITS` — asserted at compile time against the
-//! union of every entry in [`ALL`] — fails until it does. The Zig side reaches
-//! the same guarantee with a comptime assertion over its `WIRE` table; here the
-//! compiler does it without one.
+//! union of every entry in [`ALL`] — fails until it does. The exhaustive
+//! matches give the guarantee a hand-written table would need a separate
+//! assertion for.
 
 use afd_core::error_code::{self, ErrorCode};
 
 /// The error code a gate answers with when the principal is short a capability.
 ///
-/// `UZ-AUTH-022` in the Zig registry (`ERR_INSUFFICIENT_SCOPE`). It is a 403
-/// and not a 401: the caller proved who they are, and the answer is that who
-/// they are is not enough.
+/// `UZ-AUTH-022`, declared as [`error_code::AUTH_INSUFFICIENT_SCOPE`]. It is a
+/// 403 and not a 401: the caller proved who they are, and the answer is that
+/// who they are is not enough.
 pub const INSUFFICIENT_SCOPE: ErrorCode = error_code::AUTH_INSUFFICIENT_SCOPE;
 
 /// One capability. Every gate names one or more of these.
@@ -156,8 +156,8 @@ impl Scope {
     /// provider (RULE UFS).
     ///
     /// An exhaustive match rather than a table scan: a new variant fails to
-    /// compile here until it is given a claim value, which is the check the
-    /// Zig side spends a comptime assertion on.
+    /// compile here until it is given a claim value, a check a table would
+    /// need a separate assertion for.
     #[must_use]
     pub const fn wire(self) -> &'static str {
         match self {
@@ -397,12 +397,12 @@ pub fn signup_owner_claim() -> String {
 ///
 /// # Delimiter
 ///
-/// A single ASCII space, and nothing else — matching the Zig daemon's
-/// `tokenizeScalar(u8, raw, ' ')`. A tab or a newline is NOT a delimiter, so a
-/// claim containing one is a single token that names no scope and grants
-/// nothing. That is the fail-closed direction, and it is a deliberate parity
-/// choice rather than an oversight: splitting on all whitespace here would make
-/// the Rust daemon grant a capability from a claim the Zig daemon refuses.
+/// A single ASCII space, and nothing else — `split(' ')`, not
+/// `split_whitespace()`. A tab or a newline is NOT a delimiter, so a claim
+/// containing one is a single token that names no scope and grants nothing.
+/// That is the fail-closed direction, and it is deliberate rather than an
+/// oversight: splitting on all whitespace would grant a capability from a
+/// claim the identity provider's template never produces.
 ///
 /// Unknown strings are ignored — they grant nothing (deny by absence).
 #[must_use]

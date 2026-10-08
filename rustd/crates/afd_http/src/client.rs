@@ -84,8 +84,7 @@ impl ClientAddress {
     /// Decides the effective address from the peer and the two headers.
     ///
     /// Pure, and taking three optional strings rather than a request, so the
-    /// whole trust model is exercised without one — the property the Zig
-    /// `deriveClientIp` split itself out of its middleware to get.
+    /// whole trust model is exercised without one.
     #[must_use]
     pub fn derive(peer: Option<&str>, forwarded_for: Option<&str>, proxy: Option<&str>) -> Self {
         let chain = forwarded_for.and_then(leftmost_entry);

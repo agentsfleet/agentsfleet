@@ -1,22 +1,17 @@
 //! The live tail over HTTP: one fleet's activity, or a whole workspace's.
 //!
-//! The port of `fleets/events_stream.zig` and `workspaces/events_stream.zig`,
-//! and the shape is not theirs. That daemon hands the socket to a detached
-//! thread because a parked handler-pool thread would black-hole its queue's
-//! share of every later request; here a stream is a `Stream`, the response body
-//! polls it, and nothing is parked. What survives the port is every OBSERVABLE
-//! decision: which frames are sent, in what order, numbered how, and what a
+//! A stream is a `Stream` and the response body polls it, so no thread is
+//! parked for the life of a connection. The decisions a caller can observe are
+//! fixed here: which frames are sent, in what order, numbered how, and what a
 //! caller at the ceiling is told.
 //!
 //! # The ceiling is claimed inside the handler, not before the ownership check
 //!
-//! The daemon this ports claims its registry slot before authorizing, so a
-//! tab-storm is shed for the cost of one lock. Here the ownership layer is a
-//! `tower` layer and has already run by the time a handler body starts, so a
-//! refused stream costs one indexed point lookup more than it does there. That
-//! is the price of having ONE ownership check for every workspace route rather
-//! than a second copy inside this one — and a point lookup is not what a
-//! tab-storm is made of.
+//! The ownership layer is a `tower` layer and has already run by the time a
+//! handler body starts, so a stream refused at the ceiling has still cost one
+//! indexed point lookup. That is the price of having ONE ownership check for
+//! every workspace route rather than a second copy inside this one — and a
+//! point lookup is not what a tab-storm is made of.
 //!
 //! # Why the slot rides the stream
 //!

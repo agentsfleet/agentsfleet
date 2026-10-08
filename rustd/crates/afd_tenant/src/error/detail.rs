@@ -1,27 +1,23 @@
 //! The sentences this plane's refusals carry.
 //!
-//! Every one is pinned byte-for-byte to the Zig handler it was ported from
-//! — `session_helpers.zig`, `api_keys.zig`, `cli_credentials.zig` — because a
-//! dashboard branches on some of them and a client prints the rest.
+//! Every one is pinned byte for byte, because a dashboard branches on some of
+//! them and a client prints the rest.
 
-/// `problem_response.zig`'s `internalDbUnavailable` detail.
+/// The detail a caller is told when the database cannot be reached.
 pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE;
 
-/// `problem_response.zig`'s `internalDbError` detail.
+/// The detail a caller is told when a statement would not run.
 pub use afd_core::error::DETAIL_DATABASE_ERROR;
 
 /// A queue outage, shaped like its database counterpart above.
 ///
-/// Zig has no byte-identical original: its lease path collapses every Dragonfly
-/// failure to a no-work reply rather than surfacing one, so no `hx.fail` in
-/// that family ever writes this sentence. It exists because a detail is not
-/// optional here, and answering "Database unavailable" for a Dragonfly outage
-/// would send an operator to the wrong datastore. The CODE stays
-/// `UZ-INTERNAL-003`, which is what the Zig assign path logs — no new registry
-/// entry, so the ERROR REGISTRY gate does not fire.
+/// It exists because a detail is not optional here, and answering "Database
+/// unavailable" for a Dragonfly outage would send an operator to the wrong
+/// datastore. The CODE stays `UZ-INTERNAL-003`, so the sentence names the
+/// datastore without a new registry entry.
 pub const DETAIL_QUEUE_UNAVAILABLE: &str = "Queue unavailable";
 
-/// `session_helpers.zig`'s refusal for a public key this daemon will not store.
+/// The device-flow refusal for a public key this daemon will not store.
 pub const DETAIL_SESSION_PUBLIC_KEY: &str = "The supplied public_key is malformed";
 
 /// Its refusal for a credential label that is not one.
@@ -119,15 +115,14 @@ pub const DETAIL_UNKNOWN_SUBJECT: &str = "Authenticated subject has no user reco
 /// The create verb's refusal for a name carrying a character it will not store.
 ///
 /// Control characters, bidirectional overrides and the line separators — the
-/// set `workspaces/lifecycle.zig` refuses, because each of them lets a name
-/// lie about itself in a list or a log line.
+/// set the workspace-name parser refuses, because each of them lets a name lie
+/// about itself in a list or a log line.
 pub const DETAIL_WORKSPACE_NAME_INVALID: &str = "Workspace name contains unsupported characters";
 
 /// Its refusal for a name past the cap.
 ///
 /// The sentence says "characters" where the rule counts Unicode code points,
-/// and stays that way: it is `lifecycle.zig`'s spelling, and a client may be
-/// matching on it mid-cutover.
+/// and stays that way: a client may be matching on it.
 pub const DETAIL_WORKSPACE_NAME_TOO_LONG: &str = "Workspace name must be 128 characters or fewer";
 
 /// Its refusal for a name this tenant already uses.
@@ -135,30 +130,28 @@ pub const DETAIL_WORKSPACE_NAME_EXISTS: &str = "A workspace with this name alrea
 
 /// Its refusal for a tenant claim naming no tenant row.
 ///
-/// A 401 rather than a 403, as `lifecycle.zig` answers: the session itself is
-/// stale — its tenant is gone — so re-authenticating is exactly the remedy.
+/// A 401 rather than a 403: the session itself is stale — its tenant is gone —
+/// so re-authenticating is exactly the remedy.
 pub const DETAIL_WORKSPACE_TENANT_VANISHED: &str = "Tenant on session does not exist";
 
 /// The catalogue read's report of a page statement that would not answer.
 ///
-/// `model_library.zig`'s `S_PAGE_BUILD_FAILED`, under the library family's
-/// own transient code rather than the generic internal one.
+/// Answered under the library family's own transient code rather than the
+/// generic internal one.
 pub const DETAIL_LIBRARY_PAGE_UNAVAILABLE: &str = "Failed to build the catalogue page";
 
 /// The billing surface's report of a wallet row that is not there.
 ///
-/// The em-dash sentence is `tenant_billing.zig`'s, byte for byte: the row is
-/// written in the tenant-create transaction, so its absence is a bootstrap
-/// invariant broken by surgery or a defect, and the sentence says whose problem
-/// that is.
+/// The row is written in the tenant-create transaction, so its absence is a
+/// bootstrap invariant broken by surgery or a defect, and the em-dash sentence
+/// says whose problem that is.
 pub const DETAIL_BILLING_WALLET_MISSING: &str =
     "Tenant billing row missing — bootstrap invariant violated";
 
 /// Its refusal for a charges cursor it never issued.
 ///
 /// Lower-case and terse where the keyset cursor's refusals are sentences,
-/// because this is `tenant_billing.zig`'s exact spelling and a cursor may be
-/// judged by either binary mid-cutover.
+/// because this exact spelling is on the wire and a client may match on it.
 pub const DETAIL_CHARGES_CURSOR_INVALID: &str = "invalid cursor";
 
 /// The refusal an invite that can no longer be accepted earns: never issued,

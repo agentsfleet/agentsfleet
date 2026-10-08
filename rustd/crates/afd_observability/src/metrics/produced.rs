@@ -20,16 +20,15 @@
 //! # A row is a "not yet", never a "never"
 //!
 //! A row here is a family whose mechanism this daemon does not run YET — the
-//! repair-result ingress with no Rust home, the unported account teardown —
-//! and it leaves this file in the same commit that adds its producer.
+//! repair-result ingress, the account teardown — and it leaves this file in
+//! the same commit that adds its producer.
 //!
 //! A family whose mechanism this architecture will not have at all does not
-//! belong here: it leaves the CENSUS. Eleven were struck on that rule —
-//! the eight `agentsfleet_redis_pool_*` families, because the Zig hand-rolled
-//! a pool to serialise one command per socket and the multiplexed async client
-//! has no such limit, so what the pool existed to solve stopped being a problem
-//! rather than being ported; and the three `agentsfleet_sensitive_*` erasure
-//! families, because no request- or response-buffer erasure path exists here.
+//! belong here: it leaves the CENSUS. Eleven were struck on that rule — the
+//! eight `agentsfleet_redis_pool_*` families, because the multiplexed async
+//! client has no per-socket pool for them to measure; and the three
+//! `agentsfleet_sensitive_*` erasure families, because no request- or
+//! response-buffer erasure path exists here.
 //! Excusing those forever would have made this ledger a list of two different
 //! things, and a to-do list that also holds never-do items stops being read.
 

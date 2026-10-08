@@ -90,7 +90,7 @@ pub struct BundleStoreConfig {
 }
 
 impl BundleStoreConfig {
-    /// The account-scoped endpoint `r2.zig` builds from the same account id.
+    /// The account-scoped R2 endpoint, built from the account id.
     #[must_use]
     pub fn endpoint(&self) -> String {
         format!("https://{}.r2.cloudflarestorage.com", self.account_id)
@@ -147,11 +147,10 @@ impl BootConfig {
     /// The key a device-flow verification code's digest is taken under.
     ///
     /// Held as the raw configured BYTES rather than as a decoded key, and that
-    /// is a wire-format fact rather than an oversight: the Zig daemon keys its
-    /// HMAC with the sixty-four hexadecimal characters as text, both binaries
-    /// write the same session blob, and a Lua script compares the two digests
-    /// as strings. Decoding here would silently invalidate every session the
-    /// other binary approved.
+    /// is a wire-format fact rather than an oversight: the HMAC is keyed with
+    /// the sixty-four hexadecimal characters as text, and a Lua script compares
+    /// the stored and presented digests as strings. Decoding here would change
+    /// every digest and silently invalidate every pending session.
     #[must_use]
     pub const fn session_code_pepper(&self) -> &SecretBytes {
         &self.session_code_pepper
@@ -177,12 +176,9 @@ impl BootConfig {
 
     /// The identity provider, which every boot has.
     ///
-    /// Not optional: `runtime_validate.zig` refuses to boot without
-    /// `OIDC_ISSUER` and `OIDC_AUDIENCE`, and a daemon that answered a tenant
-    /// request differently from the one it replaces would be a cutover
-    /// divergence discovered in production. A deployment that wants only the
-    /// runner plane still configures a provider; what it does not do is serve
-    /// the tenant surface.
+    /// Not optional: boot refuses without `OIDC_ISSUER` and `OIDC_AUDIENCE`.
+    /// A deployment that wants only the runner plane still configures a
+    /// provider; what it does not do is serve the tenant surface.
     #[must_use]
     pub const fn identity(&self) -> &IdentityConfig {
         &self.identity
@@ -262,11 +258,11 @@ impl BootConfig {
 
     /// The Fleet Bundle snapshot store, when this deployment has one.
     ///
-    /// Optional where [`Self::identity`] is not, and `serve_r2.zig` draws the
-    /// same line: it builds an R2 client only when all four knobs are present
-    /// and serves everything else regardless. Most deployments run fleets with
-    /// no support files and never reach the verb, so refusing to boot would
-    /// take the whole product down for an endpoint nobody called.
+    /// Optional where [`Self::identity`] is not: an R2 client is built only
+    /// when all four knobs are present, and everything else is served
+    /// regardless. Most deployments run fleets with no support files and never
+    /// reach the verb, so refusing to boot would take the whole product down
+    /// for an endpoint nobody called.
     #[must_use]
     pub const fn bundles(&self) -> Option<&BundleStoreConfig> {
         self.bundles.as_ref()

@@ -1,13 +1,10 @@
 //! Boot: what happens between a resolved environment and a served port.
 //!
-//! The order is `cmd/serve.zig`'s, because the order is the part that carries
-//! meaning — pools before Dragonfly before the router, and nothing listening until
-//! all of them answered. What is NOT ported is the shape: `serve.zig` is one
-//! function holding a defer chain that teardown has to unwind in exactly the
-//! right sequence, and the sequence is only correct because the declarations
-//! happen to be in the right order. Here the ordering lives in types:
-//! [`Supervisor::shutdown`] consumes itself, so nothing borrowed can be dropped
-//! early, and [`Daemon::run`] tears down on every path out.
+//! The order carries meaning — pools before Dragonfly before the router, and
+//! nothing listening until all of them answered. Teardown ordering lives in
+//! types rather than in declaration order: [`Supervisor::shutdown`] consumes
+//! itself, so nothing borrowed can be dropped early, and [`Daemon::run`] tears
+//! down on every path out.
 //!
 //! # Why hyper directly rather than `axum::serve`
 //!
@@ -19,9 +16,8 @@
 //! # Every connection is a supervised child of the accept loop
 //!
 //! A connection task is spawned per accepted socket and given the same
-//! cancellation token. `serve.zig` has no equivalent because httpz owns its own
-//! worker pool; here the alternative would be `tokio::spawn`, which detaches —
-//! and a detached connection can outlive the pools it reads through. That is
+//! cancellation token. The alternative would be `tokio::spawn`, which detaches
+//! — and a detached connection can outlive the pools it reads through. That is
 //! the unsupervised spawn path Dimension 7.5 says does not exist.
 
 mod accept;
@@ -64,7 +60,7 @@ pub const PORT_KNOB: &str = "PORT";
 
 /// What the daemon binds when neither `--port` nor `PORT` says otherwise.
 ///
-/// `http/server.zig`'s default, kept.
+/// Port 3000, the one the tunnel dials — see [`dual_stack_listener`].
 pub const DEFAULT_PORT: u16 = 3000;
 
 /// Everything boot opened, in the order it opened it.
@@ -85,7 +81,7 @@ pub struct Booted {
     pub drain: Drain,
 }
 
-/// Opens everything the daemon serves through, in `cmd/serve.zig`'s order.
+/// Opens everything the daemon serves through, in dependency order.
 ///
 /// # Errors
 /// Returns the first stage that could not complete. Environment faults are
@@ -228,18 +224,14 @@ fn report_workers(supervisor: &Supervisor, analytics: &Analytics) {
 /// private network resolves a `.internal` name to a 6PN address, which is
 /// **IPv6 only** — so a listener bound to `0.0.0.0` refuses the tunnel's
 /// connection and the edge answers 502 while the machine still reports healthy,
-/// because Fly's readiness probe reaches port 3000 over IPv4. That asymmetry is
-/// why the bug shipped twice: the Zig daemon defaulted its interface to `"::"`
-/// after the same incident, and the port to Rust dropped the default. The file
-/// that carried that default is gone, so its path is not cited here — a path a
-/// reader cannot open is a worse record than the sentence itself.
+/// because Fly's readiness probe reaches port 3000 over IPv4. That asymmetry
+/// hides the fault: every health check passes while the tunnel is refused.
 ///
 /// # Why one bind serves both stacks
 ///
 /// An `AF_INET6` socket accepts IPv4 through v4-mapped addresses unless
 /// `IPV6_V6ONLY` is set, and Linux leaves that option off by default
-/// (`net.ipv6.bindv6only` is 0). That is what the Zig daemon relied on — it
-/// reasoned about the option explicitly and concluded it had none to set — and
+/// (`net.ipv6.bindv6only` is 0). That default is what this bind relies on, and
 /// it is what keeps Fly's IPv4 readiness probe answered by the same listener
 /// the tunnel reaches over IPv6. `std` offers no way to set the option anyway:
 /// it must be changed between `socket()` and `bind()`, and `bind` does both.

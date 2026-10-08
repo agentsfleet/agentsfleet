@@ -15,21 +15,18 @@
 //!
 //! # Nulls do NOT stay on the wire here, and that is the documented shape
 //!
-//! Every other module in this crate serializes an absent optional as `null`,
-//! because the Zig emitter does. The secret list is the exception:
-//! `respondSecretList` passes `.emit_null_optional_fields = false` so each row
-//! carries only its own kind's descriptors, and the dashboard's `Secret` union
-//! narrows on exactly that — a `provider: null` on a `custom_secret` would be a
-//! field the union says that variant does not have.
+//! Every other module in this crate serializes an absent optional as `null`.
+//! The secret list is the exception: a row omits an absent descriptor
+//! (`skip_serializing_if`) so it carries only its own kind's descriptors, and
+//! the dashboard's `Secret` union narrows on exactly that — a `provider: null`
+//! on a `custom_secret` would be a field the union says that variant does not
+//! have.
 
 use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
-// Unknown fields are IGNORED, matching `innerStoreSecret`'s
-// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-// serde attribute.
 /// Stores one secret under a name you choose.
 ///
 /// agentsfleet ignores fields it does not know, instead of refusing the
@@ -193,10 +190,7 @@ mod tests {
     /// Both halves matter and they pull opposite ways. A stray key BESIDE
     /// `data` is a caller mistake and is refused. Keys INSIDE `data` are the
     /// secret itself — arbitrary, provider-shaped, and stored verbatim — so
-    /// `deny_unknown_fields` on the envelope must not reach into them. This
-    /// asserted leniency on the envelope too until Sep 2026, on a parity
-    /// argument with the Zig client's `ignore_unknown_fields = true` that no
-    /// longer holds now `afd_wire` defines the request.
+    /// `deny_unknown_fields` on the envelope must not reach into them.
     #[test]
     fn a_create_body_refuses_a_stray_key_beside_its_verbatim_data() {
         let refused = serde_json::from_str::<StoreSecretRequest<'_>>(

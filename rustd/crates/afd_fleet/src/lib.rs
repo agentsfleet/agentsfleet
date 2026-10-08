@@ -1,32 +1,25 @@
 //! The runner control plane: what a host may do, and what it is owed.
 //!
-//! Named for the retired daemon's `fleet/`, which is where it kept
-//! this domain. What lands first is the runner ROW — enrolment, liveness, and
+//! What lands first is the runner ROW — enrolment, liveness, and
 //! the degraded verdict — because every other verb in the plane is gated on a
 //! runner the authenticator has already proven and this crate has to be able to
 //! describe.
 //!
-//! # What this crate is, against what the Zig equivalent is
+//! # Deciding, apart from answering
 //!
-//! `service.zig` and its siblings are handlers: they hold a request context,
-//! reach into a pool, write a response, and log on the way past. The seam
-//! between "decide" and "answer over HTTP" does not exist there, which is why
-//! `assign.select` can swallow a Postgres failure and return the same `null` an
-//! idle fleet returns.
-//!
-//! Here the seam is the crate boundary. Nothing in `afd_fleet` names axum, a
-//! status code, or a response body; every operation answers a value or
-//! [`Error`], and `afd_api` decides what that becomes on the wire. The
-//! behaviour is unchanged — a transient failure still answers no-work with a
-//! backoff hint, which is Zig parity — but it is decided once, where it can be
-//! read, rather than at each `catch`.
+//! The seam between "decide" and "answer over HTTP" is the crate boundary.
+//! Nothing in `afd_fleet` names axum, a status code, or a response body; every
+//! operation answers a value or [`Error`], and `afd_api` decides what that
+//! becomes on the wire. A handler that reached into a pool and wrote its own
+//! response could swallow a Postgres failure into the same no-work answer an
+//! idle fleet gets. Here a transient failure still answers no-work with a
+//! backoff hint, but that is decided once, where it can be read.
 //!
 //! # Where the SQL lives
 //!
-//! In [`sql`], collected, because the only enforcement of verbatim-SQL parity
-//! with the Zig daemon is REVIEW reading the two side by side. That module's
-//! documentation carries the full reasoning, including why `core_api`'s
-//! inline-SQL shape does not transfer.
+//! In [`lease::sql`], beside the plane that runs it, per RULE SQLMOD. That
+//! module says why each plane keeps its own rather than sharing one for the
+//! crate.
 
 // A dependency listed but unused is supply-chain surface and compile time for
 // nothing. Gated on `not(test)` because the test build links dev-dependencies

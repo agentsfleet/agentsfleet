@@ -8,8 +8,7 @@
 //!
 //! Keys and the closed values a key is spelled WITH. Not family names — those
 //! live in `docs/metrics.census.tsv`, which is the single source of truth for
-//! the export, and a second copy here would be a second thing to drift. The
-//! Zig file carries both because it has no census reader; this crate has one.
+//! the export, and a second copy here would be a second thing to drift.
 //!
 //! Codes and attributes are still added as the milestone that emits them
 //! lands. What arrives here now is exactly what the delivery span carries and

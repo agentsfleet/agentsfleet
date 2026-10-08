@@ -10,12 +10,13 @@
 //! `current_state` needs a real index to lose against — that proof rides the
 //! integration lane.
 //!
-//! # The divergence is pinned where a client feels it
+//! # Generate-on-absent is pinned where a client feels it
 //!
 //! A create naming NOTHING — no body, `{}`, a blank, whitespace however
-//! spelled — REACHES the verb here, where the Zig daemon answers a 400. That
-//! is the generate-on-absent divergence the spec's Discovery log records, and
-//! these tests are what notice if it quietly regresses to the refusal.
+//! spelled — REACHES the verb here, and the daemon names the workspace rather
+//! than answering a 400. That is the generate-on-absent rule the spec's
+//! Discovery log records, and these tests are what notice if it quietly
+//! regresses to the refusal.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -225,9 +226,9 @@ async fn a_broken_percent_escape_refuses_the_query_string() {
 
 #[tokio::test]
 async fn choosing_no_name_reaches_the_verb_instead_of_a_400() {
-    // The divergence itself: no body, an empty object, a null, and blankness
-    // in two spellings all mean "name it for me" — the daemon generates
-    // instead of refusing. On the Zig daemon every one of these is a 400.
+    // Generate-on-absent itself: no body, an empty object, a null, and
+    // blankness in two spellings all mean "name it for me" — the daemon
+    // generates instead of refusing.
     for body in [
         "",
         "{}",
@@ -262,10 +263,8 @@ async fn a_chosen_name_reaches_the_verb() {
 
 #[tokio::test]
 async fn an_unknown_body_field_is_refused_rather_than_ignored() {
-    // This asserted the opposite until Sep 2026, when every wire type closed.
-    // The old contract came from the Zig daemon parsing with
-    // `ignore_unknown_fields = true`, which meant a client could misspell a key
-    // and watch the request succeed while the value went nowhere. A closed type
+    // Every wire type is closed. An open one lets a client misspell a key and
+    // watch the request succeed while the value goes nowhere. A closed type
     // makes that a 400 the caller can act on, and `read_body` logs the field
     // name so the operator can see which key it was.
     let response = send(

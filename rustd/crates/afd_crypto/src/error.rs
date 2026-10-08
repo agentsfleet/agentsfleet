@@ -8,9 +8,8 @@
 //!
 //! [`Error::is_open_failed`] answers one question — the envelope did not open —
 //! and deliberately cannot distinguish a wrong key from a tampered tag from a
-//! mismatched associated data. Telling those apart is a decryption oracle. The
-//! Zig daemon collapses them into `DecryptFailed` for the same reason, and both
-//! report `UZ-INTERNAL-003` on the wire.
+//! mismatched associated data. Telling those apart is a decryption oracle, so
+//! all three report `UZ-INTERNAL-003` on the wire.
 
 use afd_core::error_code::{self, ErrorCode};
 

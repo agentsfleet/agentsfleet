@@ -10,9 +10,9 @@
 //! # No vendor is dialled here
 //!
 //! Every case uses the `static` connector, whose exchange is the stored handle
-//! itself. That is deliberate and it is `credentials_mint_integration_test.zig`'s
-//! choice too: what these prove is the path INTO the exchange, and a fake HTTP
-//! endpoint would add a moving part to tests about lease scope and approvals.
+//! itself. That is deliberate: what these prove is the path INTO the exchange,
+//! and a fake HTTP endpoint would add a moving part to tests about lease scope
+//! and approvals.
 //! The exchanges themselves are proven against response fixtures in
 //! `credential::github` and `credential::oauth`.
 //!

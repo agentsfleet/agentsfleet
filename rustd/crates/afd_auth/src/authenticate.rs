@@ -1,15 +1,11 @@
 //! One procedure, three credential classes, and a table for the differences.
 //!
-//! `tenant_api_key.zig`, `cli_credential.zig` and `runner_bearer.zig` are the
-//! same procedure written three times — hash, look up, check liveness, resolve
-//! capability, build a principal. Everything that differs between them is a
-//! CONSTANT, and every constant is buried inside a hand-written body where
-//! nothing can see that its neighbour disagrees.
-//!
-//! That is not a hypothetical. `cli_credential.zig` shape-checks its value
-//! before hashing so a truncated paste costs no round trip; the other two do
-//! not, and no comment anywhere says why. The asymmetry is invisible because
-//! the three bodies are never read side by side.
+//! The tenant api-key, the command-line credential and the runner token are
+//! one procedure — hash, look up, check liveness, resolve capability, build a
+//! principal. Everything that differs between them is a CONSTANT. Written as
+//! three bodies, every constant is buried where nothing can see that its
+//! neighbour disagrees, and one class can grow a shape check the other two
+//! lack with no comment anywhere saying why.
 //!
 //! Here the differences are [`HashedClass`] constants and the procedure is
 //! [`Registry::authenticate`]. A class cannot acquire a shape check its
@@ -19,8 +15,8 @@
 //!
 //! `~/Projects/oss/core_api-develop`'s `lib-auth` supplies the vocabulary this
 //! module uses — its `FlowDelegate { opens_door, subject_is_present }` is this
-//! crate's `kind`/`authenticate`, and its `lib-auth`/`api-auth` split is the
-//! Rust spelling of Zig's `make test-auth` portability wall. Both are adopted.
+//! crate's `kind`/`authenticate`, and its `lib-auth`/`api-auth` split is why
+//! this crate cannot name `sqlx`. Both are adopted.
 //!
 //! Its `FlowBuilder` is not. That registry is a `Vec<Box<dyn FlowDelegate>>`
 //! scanned by equality (`flow.rs:58-64`), so a door nobody registered resolves
@@ -45,10 +41,9 @@ use crate::verifier::{TokenVerifier, VerifyError};
 
 /// Hex characters in every stored credential's body.
 ///
-/// All three minters draw 32 bytes and render them lower-case
-/// (`cli_credential.zig::RANDOM_BYTES`, `api_keys/tenant.zig::KEY_RANDOM_BYTES`,
-/// `runner/register.zig::TOKEN_RANDOM_BYTES`), so the number is one fact and
-/// not three (RULE UFS).
+/// All three minters draw the 32 bytes `minted::TOKEN_RANDOM_BYTES` declares
+/// and render them lower-case hex, so the number is one fact and not three
+/// (RULE UFS).
 const BODY_HEX_LEN: usize = 64;
 
 /// The person-credential classes a STORED credential can produce.
@@ -150,10 +145,10 @@ impl HashedClass {
     /// Whether `presented` has this class's shape: exact length, and a body of
     /// lower-case hexadecimal after the marker.
     ///
-    /// Mirrors `cli_credential.zig::looksWellFormed`, applied to all three
-    /// classes rather than one. It changes no verdict — a malformed value
-    /// matches no row and answers the same code either way — and saves the
-    /// round trip that could only have said so.
+    /// Applied to all three classes, so a truncated paste costs no round
+    /// trip. It changes no verdict — a malformed value matches no row and
+    /// answers the same code either way — and saves the round trip that could
+    /// only have said so.
     ///
     /// The marker itself is NOT re-checked. [`CredentialKind::of`] established
     /// it, which is what selected this class; checking it again would add a
@@ -210,9 +205,8 @@ where
     ///
     /// # Errors
     /// The plane's own refusal when the header is absent, not a `Bearer`, or
-    /// carries a blank token — one branch, as `bearer.zig` intends, and the
-    /// same one a wrong-class credential lands in, so a caller cannot tell the
-    /// two apart.
+    /// carries a blank token — one branch, and the same one a wrong-class
+    /// credential lands in, so a caller cannot tell the two apart.
     pub async fn authenticate_header(&self, header: &str) -> Result<Principal> {
         let presented = Presented::from_authorization(header).map_err(|_blank| self.refusal())?;
         self.authenticate(&presented).await
@@ -323,10 +317,10 @@ where
     ///
     /// The single boundary between [`VerifyError`] and [`Error`], which is
     /// what keeps "which failure leaks what" out of every verifier
-    /// implementation. Two mappings survive the redaction and both are Zig
-    /// parity: expiry keeps its own code because it leaks nothing and its
-    /// remedy differs, and a key-set failure is an outage rather than a
-    /// rejection because it is not evidence about the caller's token.
+    /// implementation. Two mappings survive the redaction: expiry keeps its
+    /// own code because it leaks nothing and its remedy differs, and a key-set
+    /// failure is an outage rather than a rejection because it is not evidence
+    /// about the caller's token.
     const fn redact(err: VerifyError, fallback: Error) -> Error {
         match err {
             VerifyError::Expired => Error::TokenExpired,

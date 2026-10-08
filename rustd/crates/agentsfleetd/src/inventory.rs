@@ -7,16 +7,14 @@
 //!
 //! # What is deliberately NOT here
 //!
-//! The porting ledger — which Zig thread became what, and which milestone owes
-//! the rows this build does not run yet — used to live in this file. It is
-//! project metadata, and a daemon has no use for it: renumbering a milestone
-//! would have meant editing a shipped binary, and a row that landed would have
-//! left a stale string compiled into every release.
+//! The task ledger — which milestone owes the rows this build does not run yet
+//! — is project metadata, and a daemon has no use for it: renumbering a
+//! milestone would mean editing a shipped binary, and a row that landed would
+//! leave a stale string compiled into every release.
 //!
-//! It now lives where it belongs and is still machine-checked: the table is in
-//! `docs/architecture/concurrency.md`, and `tests/daemon.rs` holds the same
-//! rows as test data and asserts every one has a disposition. Tests are not
-//! shipped, so the check survives and the binary carries nothing.
+//! It lives in `docs/architecture/concurrency.md`. What the binary owes is
+//! checked in `tests/daemon.rs`, which asserts by name that boot supervises
+//! exactly the tasks named here.
 
 /// The supervised name for the Dragonfly pub/sub pump.
 pub const HUB_PUMP: &str = "hub_pump";

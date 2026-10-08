@@ -14,10 +14,10 @@
 //! # Absent is not zero
 //!
 //! A cell that was never written, or whose publisher last failed, declines to
-//! observe rather than reporting `0`. That preserves the rule the Zig daemon
-//! ran on: a failed read is ABSENT, and a gap in a graph is the truth. A zero
-//! is a claim — "the queue is empty", "no runners are leased" — and publishing
-//! it from a failed read invents an operational fact that no one measured.
+//! observe rather than reporting `0`. A failed read is ABSENT, and a gap in a
+//! graph is the truth. A zero is a claim — "the queue is empty", "no runners
+//! are leased" — and publishing it from a failed read invents an operational
+//! fact that no one measured.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 

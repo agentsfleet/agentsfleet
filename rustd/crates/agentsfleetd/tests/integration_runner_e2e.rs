@@ -1,4 +1,4 @@
-//! §7 — the parity harness: a runner's whole loop against the daemon that ships.
+//! §7 — the end-to-end harness: a runner's whole loop against the daemon that ships.
 //!
 //! Dimensions 7.1 and 7.2, and the only suite in this workspace where the
 //! request crosses a real socket into a real `agentsfleetd-rs` process graph.
@@ -16,13 +16,11 @@
 //! plane assembles cannot round-trip through the wire types a runner parses.
 //! Every one of those is a wiring defect that only appears end to end.
 //!
-//! # Why there is no live Zig daemon on the other side
+//! # Where row shapes are checked
 //!
-//! §7 records the trade: M175 §6 deleted the Zig integration lanes, so no second
-//! daemon exists to diff rows against. What replaces the differ is
-//! [`test_seeded_row_shapes`] — the ported statements' own output, pinned as a
-//! recorded shape — and it is named as WEAKER than a cross-implementation diff
-//! rather than presented as equivalent.
+//! `test_seeded_row_shapes`, in `integration_runner_shapes.rs`, pins each
+//! statement's own output as a recorded shape: every row carries the columns
+//! its statement was written to fill.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
@@ -206,14 +204,12 @@ async fn assert_activity_degrades_gracefully(
     );
 }
 
-/// Dimension 7.2 — the ported statements fill the columns they are supposed to.
+/// Dimension 7.2 — the statements fill the columns they are supposed to.
 ///
-/// The differ M175 §6 deleted, replaced by the weaker claim §7 says it is: not
-/// "these rows equal the Zig's", which nothing can check any more, but "these
-/// rows carry every column the ported statement was written to fill". A port
-/// that drops a column from an `INSERT` list still compiles, still returns
-/// `Ok`, and still passes every behavioural assertion that reads some OTHER
-/// column — this is the test that does not.
+/// Each row must carry every column its statement was written to fill. A
+/// statement that drops a column from an `INSERT` list still compiles, still
+/// returns `Ok`, and still passes every behavioural assertion that reads some
+/// OTHER column — this is the test that does not.
 ///
 /// Four tables, because those are the four Dimension 7.2 names and they are
 /// written by

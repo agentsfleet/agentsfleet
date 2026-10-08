@@ -296,10 +296,9 @@ pub struct MemoryCaptureResponse {
 // use for one — while a person reading the list is deciding whether a lesson
 // is still current, which is the whole question `updated_at` answers.
 //
-// Field order is load-bearing. `memory/handler.zig` hands its `MemoryEntry`
-// straight to `res.json`, which emits the struct's fields in DECLARATION
-// order, and a dashboard diffing two responses byte-for-byte would see a
-// reorder as a change.
+// Field order is load-bearing. `serde_json` emits a struct's fields in
+// DECLARATION order, and a dashboard diffing two responses byte-for-byte would
+// see a reorder as a change.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -335,8 +334,8 @@ pub struct MemoriesResponse<'a> {
     /// The entries on this page, newest first.
     #[serde(borrow)]
     pub items: Vec<MemoryEntry<'a>>,
-    // The name is the one that shipped, and `handler.zig` answers the page
-    // length too.
+    // The name is the one that shipped; the value is the page length, never
+    // the fleet-wide count.
     /// How many memories this page carries. The count covers this page only,
     /// not the whole Fleet.
     pub total: usize,

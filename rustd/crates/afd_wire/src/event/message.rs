@@ -8,8 +8,8 @@ use std::borrow::Cow;
 pub const MESSAGE: &str = "message";
 
 /// The event's message: the request's `message` field when it carries one as
-/// a string, and the whole request otherwise, the fallback
-/// `src/runner/child_exec_input.zig` defines.
+/// a string, and the whole request otherwise, so a trigger payload with no
+/// `message` still reaches the model verbatim.
 #[must_use]
 pub fn message_of(request_json: &str) -> Cow<'_, str> {
     serde_json::from_str::<serde_json::Value>(request_json)

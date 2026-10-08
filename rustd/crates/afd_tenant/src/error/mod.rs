@@ -48,9 +48,9 @@ use self::kind::ErrorKind;
 ///
 /// One kind with a field rather than five kinds, because the five differ in
 /// exactly one way — the code and sentence they answer with — and a table
-/// keyed on the field says that once. The Zig store spells five error tags and
-/// `failFromStoreError` re-pairs each with its code and its sentence at a
-/// switch arm, which is the same fact written three times.
+/// keyed on the field says that once. Five error kinds, each re-paired with
+/// its code and its sentence at a switch arm, would write the same fact three
+/// times.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionField {
     /// The command line's public key, presented at creation.

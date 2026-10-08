@@ -16,8 +16,8 @@ use super::{DETAIL_BODY_REQUIRED, DETAIL_MALFORMED_JSON};
 
 /// The sentence a still-referenced delete is refused with.
 ///
-/// `secrets.zig`'s wording, plural included, because a dashboard shows this
-/// string to the operator who has to go and remove those entries.
+/// The plural is spelled out because a dashboard shows this string to the
+/// operator who has to go and remove those entries.
 pub(super) fn referenced_detail(entries: u32) -> String {
     let plural = if entries == 1 { "y" } else { "ies" };
     format!("Secret is referenced by {entries} model registry entr{plural}")

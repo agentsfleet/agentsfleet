@@ -1,10 +1,10 @@
 //! `http_request`: one HTTPS request under the network policy and the
 //! daemon's origin rules.
 //!
-//! The arguments are `NullClaw`'s (`url`, `method`, `headers`, `body`), and so
-//! is the answer's shape, `Status: N` then the body. What differs is where the
-//! policy lives: every rule is the lease's guard's (`afr_egress`), so this
-//! handler only drafts the request and words the answer.
+//! The arguments are `url`, `method`, `headers` and `body`, and the answer is
+//! `Status: N` then the body. Every policy rule is the lease's guard's
+//! (`afr_egress`), so this handler only drafts the request and words the
+//! answer.
 
 use std::collections::BTreeMap;
 

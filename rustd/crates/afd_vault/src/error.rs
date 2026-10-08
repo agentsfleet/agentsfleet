@@ -9,19 +9,18 @@
 //! # One table, not two
 //!
 //! [`Error::answer`] returns the registry code AND the sentence together, and
-//! both public accessors read from it. `secrets.zig` spells `hx.fail(code,
-//! detail)` at eleven call sites with nothing relating the two, so two handlers
-//! can describe one failure differently and both compile. Here a kind cannot
-//! take its code and its sentence from different places.
+//! both public accessors read from it. A code and a sentence passed separately
+//! at each call site would let two handlers describe one failure differently
+//! and both compile. Here a kind cannot take its code and its sentence from
+//! different places.
 //!
 //! # Why a plaintext failure and a ciphertext failure answer alike
 //!
 //! [`ErrorKind::Crypto`] covers both directions — a seal that would not produce
 //! an envelope, and an envelope that would not open. Telling them apart would
 //! be an oracle: a caller learning that the tag failed rather than the key
-//! learns something about the stored bytes. `crypto_store.zig` reports both
-//! under `UZ-INTERNAL-003` for the same reason, and the operator gets the
-//! distinction in the log instead.
+//! learns something about the stored bytes. Both report `UZ-INTERNAL-003`, and
+//! the operator gets the distinction in the log instead.
 
 use afd_core::error_code::{self, ErrorCode};
 
@@ -113,9 +112,9 @@ impl Error {
             // `WorkspaceUnknown` is here rather than under a 404 deliberately.
             // `vault.secrets.workspace_id` is a NOT NULL foreign key onto
             // `core.workspaces`, so a missing owner is a broken invariant and
-            // not a race — and `secret_reference_txn.zig` makes the same call,
-            // because the alternative reasoning ("no tenant, so no references")
-            // is exactly what once let a delete run blind over live entries.
+            // not a race. The alternative reasoning ("no tenant, so no
+            // references") is exactly what lets a delete run blind over live
+            // entries.
             ErrorKind::Query { .. } | ErrorKind::Mint { .. } | ErrorKind::WorkspaceUnknown => {
                 (error_code::INTERNAL_DB_QUERY, detail::DATABASE_ERROR)
             }

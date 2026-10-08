@@ -30,16 +30,14 @@ pub const PROVIDER_SECRET_KNOB: &str = "CLERK_SECRET_KEY";
 ///
 /// The GitHub App and the OAuth clients the credential broker mints through
 /// live as ordinary vault rows in ONE workspace, so this knob names which.
-/// Optional: a deployment that has connected no third party mints nothing, and
-/// `serve_broker.zig` reads the same value with the same default of none.
+/// Optional: a deployment that has connected no third party mints nothing.
 pub const PLATFORM_ADMIN_WORKSPACE_KNOB: &str = "PLATFORM_ADMIN_WORKSPACE_ID";
 
 /// The key a device-flow verification code's digest is taken under.
 ///
 /// Required, not optional, and it is the one login knob that is: without it the
 /// daemon would store an unpeppered digest, and a queue somebody can read would
-/// become a queue somebody can log in from. `runtime_validate.zig` refuses boot
-/// on the same knob for the same reason.
+/// become a queue somebody can log in from.
 pub const SESSION_CODE_PEPPER_KNOB: &str = "AUTH_SESSION_CODE_PEPPER";
 
 /// This deployment's bearer for the external scheduler.
@@ -52,12 +50,10 @@ pub const QSTASH_TOKEN_KNOB: &str = "QSTASH_TOKEN";
 /// Which scheduler deployment the management calls go to.
 ///
 /// Optional, and its absence resolves to [`afd_cron::qstash::API_BASE`].
-/// It exists because the vendor is regional: `qstash_client.zig` took this as a
-/// parameter and its "outbound url uses the configured api base, not a hardcoded
-/// host" test names `qstash-eu-central-1.upstash.io` as the case a hardcoded US
-/// host breaks. The operational half already carries it — `platform_secret_sync.sh`
-/// syncs `url|qstash/url` beside the token — so a deployment that set the URL and
-/// found it ignored was configuring something the daemon never read.
+/// It exists because the vendor is regional: a deployment on
+/// `qstash-eu-central-1.upstash.io` is the case a hardcoded US host breaks.
+/// `playbooks/lib/platform_secret_sync.sh` syncs `url|qstash/url` beside the
+/// token, so the value reaches the daemon wherever the token does.
 pub const QSTASH_URL_KNOB: &str = "QSTASH_URL";
 
 /// Which Slack API the answer and interim posts go to.
@@ -100,10 +96,9 @@ pub const QSTASH_NEXT_KEY_KNOB: &str = "QSTASH_NEXT_SIGNING_KEY";
 
 /// Where a person goes to approve a command-line login.
 ///
-/// Optional, with the production dashboard as its default — exactly what
-/// `runtime_loader.zig` does, and for the same reason: every deployment but a
-/// developer's own points at the same place, and refusing to boot over a knob
-/// with one sensible value would be ceremony.
+/// Optional, with the production dashboard as its default, because every
+/// deployment but a developer's own points at the same place, and refusing to
+/// boot over a knob with one sensible value would be ceremony.
 pub const APP_URL_KNOB: &str = "APP_URL";
 
 /// The dashboard [`APP_URL_KNOB`] falls back to.
@@ -118,7 +113,6 @@ pub(super) const WHY_APP_URL: &str = "an absolute http(s) URL with no credential
 /// Optional with a default, exactly as [`APP_URL_KNOB`] is and for the same
 /// reason: every deployment but a developer's own points at the same place, and
 /// refusing to boot over a knob with one sensible value would be ceremony.
-/// `runtime_loader.zig` reads the same knob with the same default.
 pub const API_URL_KNOB: &str = "API_URL";
 
 /// The deployment [`API_URL_KNOB`] falls back to.
@@ -132,7 +126,7 @@ pub(super) const POSTHOG_KEY_KNOB: &str = "POSTHOG_API_KEY";
 
 /// Where those events are ingested.
 ///
-/// `POSTHOG_HOST`, unset in every deployment the Zig runs: it hardcodes the US
+/// `POSTHOG_HOST`. Unset leaves the `posthog_rs` client on its own default
 /// ingestion host. A knob rather than a constant because a self-hosted `PostHog`
 /// and the EU region are both real, and neither is a code change.
 pub(super) const POSTHOG_HOST_KNOB: &str = "POSTHOG_HOST";
