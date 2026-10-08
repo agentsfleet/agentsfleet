@@ -108,8 +108,11 @@ copy_deploy_files() {
     /opt/agentsfleet/deploy/agentsfleet-runner.service \
     644
   runner_copy "$RUNNER_BINARY" /opt/agentsfleet/bin/agentsfleet-runner 755
-  # The staging copy under /opt is the host's; deploy.sh moves the set into
-  # the runner's incoming directory, where the runner admits it at boot.
+  # The staging copy under /opt is the host's; deploy.sh copies the set into
+  # the runner's incoming directory, where the runner admits it at boot. The
+  # host's deploy.sh refuses a directory holding more than one image, so the
+  # set an earlier deploy (or one cut short) left here goes first.
+  runner_remote "find /opt/agentsfleet/toolbox -maxdepth 1 -name 'toolbox-*' -type f -delete"
   local file
   for file in "${TOOLBOX_PATHS[@]}"; do
     runner_copy "$file" "/opt/agentsfleet/toolbox/$(basename "$file")" 644

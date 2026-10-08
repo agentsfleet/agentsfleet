@@ -98,8 +98,13 @@ verify_control_plane() {
   return 1
 }
 
+# The host's own token, proved against the control plane: `GET /v1/runners/me`
+# answers 200 only for a token the daemon accepts, and reading it moves no
+# liveness, so the check cannot mask a dead runner. The token never leaves the
+# host: the remote shell reads it from the unit's environment file, and curl's
+# error line names the status, never the header.
 verify_runner_identity() {
-  runner_remote "sudo sh -c 'set -a; . /etc/default/agentsfleet-runner; set +a; exec /usr/local/bin/agentsfleet-runner doctor >/dev/null'"
+  runner_remote "sudo sh -c 'set -a; . /etc/default/agentsfleet-runner; set +a; curl -fsS -o /dev/null -m $READYZ_TIMEOUT_SECONDS -H \"Authorization: Bearer \$AGENTSFLEET_RUNNER_TOKEN\" \"\$AGENTSFLEET_API_URL/v1/runners/me\"'"
 }
 
 main() {
