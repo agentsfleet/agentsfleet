@@ -82,7 +82,7 @@ impl<W: Wire> Scope<W> {
         allowlist: &Allowlist,
     ) -> Result<()> {
         let slot = self.claim.slot();
-        rules::apply(&mut self.netfilter, slot, &allowlist.addresses())
+        rules::apply(&mut self.netfilter, slot, allowlist.addresses())
             .map_err(netlink(Step::InstallRules))?;
         let mut route = kernel.route().map_err(netlink(Step::OpenRoute))?;
         link::join(&mut route, slot, netns).map_err(netlink(Step::Join))?;

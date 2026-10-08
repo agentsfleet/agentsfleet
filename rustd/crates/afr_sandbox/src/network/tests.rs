@@ -32,6 +32,21 @@ fn test_the_set_holds_each_address_once_in_merge_order() {
     );
 }
 
+/// Each name counts once however many addresses it resolved to, and a name
+/// sharing an address with another still counts.
+#[test]
+fn test_each_name_counts_once() {
+    let allowlist = Allowlist::new(vec![
+        entry("a.example", [10, 0, 0, 2]),
+        entry("b.example", [10, 0, 0, 2]),
+        entry("a.example", [10, 0, 0, 1]),
+    ])
+    .unwrap();
+
+    assert_eq!(allowlist.hosts(), 2);
+    assert_eq!(allowlist.addresses().len(), 2);
+}
+
 /// The sandbox's hosts file names loopback first, then every entry, so a name
 /// with two addresses has two lines and `localhost` still resolves.
 #[test]

@@ -47,11 +47,16 @@ pub enum Network<'a> {
 ///
 /// Each name's addresses are kept sorted and once each, so two resolutions
 /// that answered the same addresses in a rotated order are the same
-/// allowlist: a resolver's round-robin never makes a held sandbox look built
-/// for another one.
+/// allowlist. Its names and its distinct addresses are read once, when it is
+/// made: everything else here is derived from `entries`, so two allowlists
+/// with equal entries are equal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Allowlist {
     entries: Vec<(String, Ipv4Addr)>,
+    /// Each name once, in the order merged.
+    names: Vec<String>,
+    /// Each address once, in the order first seen: the host-side set.
+    addresses: Vec<Ipv4Addr>,
 }
 
 impl Allowlist {
@@ -69,34 +74,36 @@ impl Allowlist {
         }
         entries.sort_by_key(|(name, address)| (first_seen.get(name).copied(), *address));
         entries.dedup();
-        let allowlist = Self { entries };
-        let addresses = allowlist.addresses().len();
-        if addresses > ALLOWLIST_ADDRESSES_MAX {
-            return Err(egress_refused(EgressRefusal::TooManyAddresses(addresses)));
+        let mut seen = HashSet::with_capacity(entries.len());
+        let addresses: Vec<Ipv4Addr> = entries
+            .iter()
+            .map(|(_name, address)| *address)
+            .filter(|address| seen.insert(*address))
+            .collect();
+        if addresses.len() > ALLOWLIST_ADDRESSES_MAX {
+            let refusal = EgressRefusal::TooManyAddresses(addresses.len());
+            return Err(egress_refused(refusal));
         }
-        Ok(allowlist)
+        let mut names: Vec<(String, usize)> = first_seen.into_iter().collect();
+        names.sort_unstable_by_key(|(_name, order)| *order);
+        Ok(Self {
+            entries,
+            names: names.into_iter().map(|(name, _order)| name).collect(),
+            addresses,
+        })
     }
 
     /// How many names it admits, each counted once however many addresses
     /// it resolved to: what a log line may say of it.
     #[must_use]
     pub fn hosts(&self) -> usize {
-        let mut seen = HashSet::with_capacity(self.entries.len());
-        self.entries
-            .iter()
-            .filter(|(name, _address)| seen.insert(name.as_str()))
-            .count()
+        self.names.len()
     }
 
     /// Every distinct address, in first-seen order: the host-side set.
     #[must_use]
-    pub fn addresses(&self) -> Vec<Ipv4Addr> {
-        let mut seen = HashSet::with_capacity(self.entries.len());
-        self.entries
-            .iter()
-            .map(|(_name, address)| *address)
-            .filter(|address| seen.insert(*address))
-            .collect()
+    pub fn addresses(&self) -> &[Ipv4Addr] {
+        &self.addresses
     }
 
     /// The sandbox's `/etc/hosts`: loopback, then one `address name` line per
