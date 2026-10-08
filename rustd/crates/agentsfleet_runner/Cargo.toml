@@ -58,6 +58,9 @@ axum.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "net", "time", "sync"] }
 # The routes the fake daemon answers, spelled once.
 afd_wire.workspace = true
+# The fake daemon answers as the supervisor's own suites' healthy daemon does,
+# over the same fixture lease.
+afr_supervisor = { workspace = true, features = ["test-util"] }
 # The span, attribute and knob names the suite reads back, spelled once.
 afd_observability.workspace = true
 afd_otlp.workspace = true

@@ -52,6 +52,8 @@ mod worker_pool;
 
 #[cfg(test)]
 mod test_support;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_util;
 
 #[cfg(test)]
 #[path = "lease_telemetry_tests.rs"]

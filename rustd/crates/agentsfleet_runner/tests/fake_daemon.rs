@@ -1,9 +1,9 @@
 //! A daemon and a collector for the binary's own suite, on loopback.
 //!
 //! The daemon grants one lease, then none, and answers every other runner
-//! verb as a healthy daemon would (the replies `afr_supervisor`'s own fake
-//! daemon gives). It hands back each report the binary posts. The collector
-//! keeps every OTLP/JSON document the binary exports.
+//! verb as a healthy daemon would, through `afr_supervisor`'s own healthy
+//! daemon. It hands back each report the binary posts. The collector keeps
+//! every OTLP/JSON document the binary exports.
 #![expect(
     clippy::expect_used,
     clippy::indexing_slicing,
@@ -12,24 +12,17 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
-use afd_wire::paths::{
-    LEASE_RENEW_SUFFIX, LEASE_TOOL_CALLS_SUFFIX, RUNNER_HEARTBEATS, RUNNER_LEASES, RUNNER_MEMORY,
-    RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_REPORTS, RUNNER_SELF,
-};
+use afd_core::clock::{now, saturating_millis_signed};
+use afd_wire::paths::{RUNNER_LEASES, RUNNER_REPORTS};
+use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
+pub(crate) use afr_supervisor::test_util::{FENCING, LEASE_ID};
+use afr_supervisor::test_util::{FLEET_ID, Healthy, LEASE_JSON};
 use axum::http::{Method, header};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-/// The lease every run is granted, as the supervisor's own suites lease it.
-const LEASE_JSON: &str = include_str!("../../afr_supervisor/src/test_support/lease.json");
-/// The lease's identifier, which the report echoes.
-pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
-/// The fleet the lease runs for.
-const FLEET_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
-/// The runner the daemon names this host.
-const RUNNER_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8059";
 /// A model endpoint under a top-level domain that never resolves (RFC 2606):
 /// the turn reaches the real loop and its provider, and fails there without
 /// a packet leaving the host.
@@ -39,9 +32,7 @@ const GRANTED_FOR: Duration = Duration::from_secs(120);
 /// The media type every reply carries.
 const JSON: &str = "application/json";
 /// How often the binary is told to beat and to poll again.
-const INTERVAL_MS: u64 = 250;
-/// The posture every suite but the per-policy one assigns.
-pub(crate) const ALLOW_ALL: &str = "allow_all";
+const INTERVAL_MS: u32 = 250;
 
 /// The daemon on loopback, and what the binary sent it.
 pub(crate) struct FakeDaemon {
@@ -53,20 +44,31 @@ pub(crate) struct FakeDaemon {
 impl FakeDaemon {
     /// Serves on a free loopback port, assigning `allow_all`.
     pub(crate) async fn start() -> Self {
-        Self::assigning(ALLOW_ALL, &[]).await
+        Self::assigning(NetworkPolicy::AllowAll, &[]).await
     }
 
     /// Serves on a free loopback port, assigning `network_policy` with
     /// `registry` as its registry baseline.
-    pub(crate) async fn assigning(network_policy: &str, registry: &[&str]) -> Self {
+    pub(crate) async fn assigning(
+        network_policy: NetworkPolicy,
+        registry: &[&'static str],
+    ) -> Self {
         let (sent, reports) = mpsc::unbounded_channel();
         let granted = Arc::new(AtomicBool::new(false));
-        let assigned = Arc::new(json!({"sandbox_tier": "landlock_full",
-            "network_policy": network_policy, "registry_allowlist": registry,
-            "worker_count": 1, "extra_binds": []}));
+        let healthy = Arc::new(Healthy {
+            assigned: AssignedPolicy {
+                sandbox_tier: SandboxTier::LandlockFull,
+                network_policy,
+                registry_allowlist: registry.iter().copied().map(Into::into).collect(),
+                worker_count: 1,
+                extra_binds: Vec::new(),
+            },
+            interval_ms: INTERVAL_MS,
+            granted_until: 0,
+        });
         let app = axum::Router::new().fallback(move |request: axum::extract::Request| {
             let (sent, granted) = (sent.clone(), Arc::clone(&granted));
-            let assigned = Arc::clone(&assigned);
+            let healthy = Arc::clone(&healthy);
             async move {
                 let method = request.method().clone();
                 let path = request.uri().path().to_owned();
@@ -75,7 +77,7 @@ impl FakeDaemon {
                     .unwrap_or_default();
                 (
                     [(header::CONTENT_TYPE, JSON)],
-                    answer(&method, &path, &body, (&sent, &granted, &assigned)).to_string(),
+                    answer(&method, &path, &body, (&sent, &granted, &healthy)).to_string(),
                 )
             }
         });
@@ -93,47 +95,25 @@ impl FakeDaemon {
 }
 
 /// What the daemon keeps between calls: where reports go, whether the one
-/// lease was granted, and the policy it assigns.
-type State<'a> = (&'a mpsc::UnboundedSender<Value>, &'a AtomicBool, &'a Value);
+/// lease was granted, and the healthy daemon it answers as.
+type State<'a> = (&'a mpsc::UnboundedSender<Value>, &'a AtomicBool, &'a Healthy);
 
-/// The daemon's reply to one call.
+/// The daemon's reply to one call: the one lease the first time it is asked
+/// for, each report kept, and a healthy daemon's reply to everything else,
+/// renewals granted from now.
 fn answer(method: &Method, path: &str, body: &[u8], state: State<'_>) -> Value {
-    let (reports, granted, assigned) = state;
-    let memory = path.starts_with(RUNNER_MEMORY);
-    match path {
-        RUNNER_HEARTBEATS => json!({
-            "status": "ok",
-            "assigned_policy": assigned,
-            "degraded": false, "degraded_reason": null, "selftest_requested": false,
-            "heartbeat_interval_ms": INTERVAL_MS,
-        }),
-        RUNNER_LEASES if !granted.swap(true, Ordering::SeqCst) => {
-            json!({"lease": lease(), "retry_after_ms": null})
-        }
-        RUNNER_LEASES => json!({"lease": null, "retry_after_ms": INTERVAL_MS}),
-        RUNNER_REPORTS => {
-            let report = serde_json::from_slice(body).unwrap_or(Value::Null);
-            drop(reports.send(report));
-            json!({"ok": true})
-        }
-        RUNNER_SELF => json!({
-            "id": RUNNER_ID, "status": "active", "host_id": "host-a",
-            "sandbox_tier": "landlock_full", "last_seen_at": 0, "assigned_policy": null,
-            "achievable": null, "degraded": false, "degraded_reason": null,
-        }),
-        _ if path.ends_with(LEASE_RENEW_SUFFIX) => json!({"lease_expires_at": granted_until()}),
-        _ if path.ends_with(LEASE_TOOL_CALLS_SUFFIX) => {
-            json!({"stored_count": 1, "skipped_count": 0})
-        }
-        _ if memory && path.ends_with(RUNNER_MEMORY_RECALL_SUFFIX) => {
-            json!({"memory": [], "shared": []})
-        }
-        _ if memory && method == Method::GET => {
-            json!({"memory": [], "shared": [], "publish": false})
-        }
-        _ if memory => json!({"stored": 1, "skipped": 0}),
-        _ => json!({"ok": true}),
+    let (reports, granted, healthy) = state;
+    if path == RUNNER_LEASES && !granted.swap(true, Ordering::SeqCst) {
+        return json!({"lease": lease(), "retry_after_ms": null});
     }
+    if path == RUNNER_REPORTS {
+        drop(reports.send(serde_json::from_slice(body).unwrap_or(Value::Null)));
+    }
+    let healthy = Healthy {
+        granted_until: granted_until(),
+        ..healthy.clone()
+    };
+    healthy.reply(method.as_str(), path)
 }
 
 /// The fixture lease, for this suite's fleet, granted from now, naming a
@@ -148,11 +128,10 @@ fn lease() -> Value {
 }
 
 /// [`GRANTED_FOR`] from now, in Unix milliseconds.
-fn granted_until() -> u64 {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("the clock is past the epoch");
-    u64::try_from((now + GRANTED_FOR).as_millis()).expect("milliseconds fit in a u64")
+fn granted_until() -> i64 {
+    now()
+        .saturating_add_millis(saturating_millis_signed(GRANTED_FOR))
+        .as_millis()
 }
 
 /// An OTLP/HTTP receiver standing in for the runner collector.

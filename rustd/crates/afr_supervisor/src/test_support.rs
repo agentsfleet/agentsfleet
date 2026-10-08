@@ -31,6 +31,7 @@ use serde::Serialize;
 use tokio::sync::mpsc;
 
 use crate::client::{Call, ControlPlane, RunnerApi};
+use crate::test_util::LEASE_JSON;
 
 mod git_fixture;
 mod resolver;
@@ -43,16 +44,7 @@ pub(crate) use self::resolver::{FakeResolver, assigned};
 pub(crate) use self::rig::{Rig, daemon, position, reported};
 pub(crate) use self::sandbox::{EXECUTOR_GONE, FakeEngine, Freezer, NO_FREEZER, NO_REFILL, Writes};
 
-/// A canonical lease identifier.
-pub(crate) const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
-/// A canonical fleet identifier.
-pub(crate) const FLEET_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8058";
-/// The fencing token every fake lease carries.
-pub(crate) const FENCING: u64 = 504;
-/// The id the fake daemon names this runner by.
-pub(crate) const RUNNER_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8059";
-/// The host the fake daemon has this runner on.
-pub(crate) const RUNNER_HOST: &str = "host-7";
+pub(crate) use crate::test_util::{FENCING, FLEET_ID, LEASE_ID, RUNNER_HOST, RUNNER_ID};
 /// When every fake lease is granted until, in Unix milliseconds: thirty
 /// seconds after the fixed clock's zero.
 pub(crate) const GRANTED_UNTIL: i64 = 30_000;
@@ -155,8 +147,6 @@ pub(crate) fn lease(lease_id: &str, fleet: &str, bundle: Option<&str>) -> LeaseP
     });
     payload
 }
-
-const LEASE_JSON: &str = include_str!("test_support/lease.json");
 
 /// What the fake agent does with a run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
