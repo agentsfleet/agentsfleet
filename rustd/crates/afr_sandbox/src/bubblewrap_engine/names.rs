@@ -73,6 +73,15 @@ impl Names {
         Ok(Self::Rendered { hosts, resolv_conf })
     }
 
+    /// Renders `allowlist`'s names over the `/etc/hosts` the sandbox in `dir`
+    /// already reads. The file is truncated and written in place: the
+    /// sandbox's bind holds the file, so a file written beside it and renamed
+    /// over it would never be seen.
+    pub(super) fn rewrite(dir: &Path, allowlist: &Allowlist) -> Result<()> {
+        fs::write(dir.join(HOSTS_FILE), allowlist.hosts_file())?;
+        Ok(())
+    }
+
     /// What bubblewrap is told of them.
     pub(super) fn layout(&self) -> NetworkLayout<'_> {
         match self {

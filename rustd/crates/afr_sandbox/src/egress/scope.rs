@@ -23,6 +23,7 @@ use crate::network::Allowlist;
 const EVENT_BUILT: &str = "egress_scope_built";
 const EVENT_REFUSED: &str = "egress_scope_refused";
 const EVENT_LEFT: &str = "egress_scope_left";
+const EVENT_REFILLED: &str = "egress_scope_refilled";
 
 /// A built scope; [`Scope::remove`] is its one release.
 #[derive(Debug)]
@@ -89,6 +90,23 @@ impl<W: Wire> Scope<W> {
         kernel
             .inside(netns, || link::configure_peer(&mut kernel.route()?, slot))
             .map_err(netlink(Step::ConfigurePeer))
+    }
+
+    /// Holds the scope to `allowlist`'s addresses from now on, in place of
+    /// the ones it was built with: the set is emptied and filled in one
+    /// transaction through the socket that owns its table. The log counts the
+    /// names and gives neither them nor their addresses.
+    ///
+    /// # Errors
+    /// The kernel refused the swap; the set holds what it held before.
+    pub(crate) fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
+        let slot = self.claim.slot();
+        rules::refill(&mut self.netfilter, slot, allowlist.addresses())
+            .map_err(netlink(Step::RefillRules))?;
+        let (slot, hosts) = (slot.index(), allowlist.hosts());
+        let event = EVENT_REFILLED;
+        tracing::info!(slot, hosts, event);
+        Ok(())
     }
 
     /// Deletes the link, then the table through the socket that owns it, and

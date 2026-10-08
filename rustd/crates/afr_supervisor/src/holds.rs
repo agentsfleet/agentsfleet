@@ -63,7 +63,8 @@ pub(crate) enum Release {
     /// The runner takes no new lease, so no lease could take it: leasing
     /// stopped, or the runner is shutting down or stopped.
     Shutdown,
-    /// It would not thaw, or its executor did not answer once thawed.
+    /// It would not take its next lease's addresses, would not thaw, or its
+    /// executor did not answer once thawed.
     ThawFailed,
     /// It no longer carries the fleet's latest run: the daemon refused the
     /// report of the lease that left it, as settled without it or for good,

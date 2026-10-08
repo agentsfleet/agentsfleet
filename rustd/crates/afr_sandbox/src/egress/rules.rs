@@ -30,26 +30,28 @@ use netlink_packet_core::{
     NLM_F_ACK, NLM_F_APPEND, NLM_F_CREATE, NLM_F_EXCL, NLM_F_REQUEST, NetlinkMessage,
 };
 use netlink_packet_netfilter::nftables::{
-    ChainAttribute, ChainMessage, DataAttribute, Hook, InetHookNumber, ListAttribute,
-    NfTablesMessage, RuleAttribute, RuleMessage, SetAttribute, SetElementAttribute, SetElementList,
-    SetElementMessage, SetMessage, TableAttribute, TableFlags, TableMessage,
+    ChainAttribute, ChainMessage, Hook, InetHookNumber, NfTablesMessage, RuleAttribute,
+    RuleMessage, TableAttribute, TableFlags, TableMessage,
 };
 use netlink_packet_netfilter::none::ControlMessage;
 use netlink_packet_netfilter::{
     NetfilterHeader, NetfilterMessage, NetfilterMessageInner, NetfilterProtoFamily,
 };
 
-use self::expressions::{ACCEPT, Expression, WORD, forward, from, masquerade};
+use self::expressions::{ACCEPT, Expression, forward, from, masquerade};
 use super::netlink::{Netlink, Wire};
 use super::slot::Slot;
 
 mod expressions;
 mod host_chains;
+mod set;
 
 #[cfg(feature = "test-util")]
 pub(super) use self::expressions::DNS_PORT;
 pub(super) use self::expressions::DROP;
 pub(super) use self::host_chains::dropping_forward;
+pub(super) use self::set::refill;
+use self::set::{elements, new_set};
 
 /// One `nf_tables` message.
 pub(super) type Message = NetlinkMessage<NetfilterMessage>;
@@ -59,8 +61,6 @@ pub(super) const SET: &str = "allow";
 /// The set's number within the batch that makes it, so the rules made in the
 /// same batch find it.
 pub(super) const SET_ID: u32 = 1;
-/// The kernel's own number for the `ipv4_addr` data type.
-const IPV4_ADDR_TYPE: u32 = 7;
 /// The netfilter subsystem a batch is addressed to.
 const NFTABLES: u16 = u16_of(libc::NFNL_SUBSYS_NFTABLES);
 /// The chains, their hooks, kinds and priorities: filtering at the filter
@@ -225,41 +225,6 @@ fn new_table(table: &str, flags: TableFlags) -> Message {
     ];
     nf(
         NfTablesMessage::NewTable(TableMessage { attributes }),
-        NLM_F_CREATE | NLM_F_EXCL,
-    )
-}
-
-fn new_set(table: &str) -> Message {
-    let attributes = vec![
-        SetAttribute::Table(table.to_owned()),
-        SetAttribute::Name(SET.to_owned()),
-        SetAttribute::KeyType(IPV4_ADDR_TYPE),
-        SetAttribute::KeyLen(WORD),
-        SetAttribute::Id(SET_ID),
-    ];
-    nf(
-        NfTablesMessage::NewSet(SetMessage { attributes }),
-        NLM_F_CREATE | NLM_F_EXCL,
-    )
-}
-
-fn elements(table: &str, addresses: &[Ipv4Addr]) -> Message {
-    let keys = addresses
-        .iter()
-        .map(|address| {
-            ListAttribute::Element(vec![SetElementAttribute::Key(DataAttribute::Value(
-                address.octets().to_vec(),
-            ))])
-        })
-        .collect();
-    let attributes = vec![
-        SetElementList::Table(table.to_owned()),
-        SetElementList::Set(SET.to_owned()),
-        SetElementList::SetId(SET_ID),
-        SetElementList::Elements(keys),
-    ];
-    nf(
-        NfTablesMessage::NewSetElement(SetElementMessage { attributes }),
         NLM_F_CREATE | NLM_F_EXCL,
     )
 }

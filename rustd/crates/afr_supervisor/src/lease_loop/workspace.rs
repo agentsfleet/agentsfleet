@@ -72,7 +72,7 @@ impl LeaseRun<'_> {
             }
         };
         let key = self.hold_key(limits, &bound);
-        let held = self.revive(&key).await;
+        let held = self.revive(&key, &bound).await;
         let revived = held.is_some();
         mark_reused(revived);
         let sandbox = match held {

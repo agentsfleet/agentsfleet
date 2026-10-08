@@ -48,6 +48,7 @@ pub(super) const GETCHAIN: u16 = nftables(libc::NFT_MSG_GETCHAIN);
 pub(super) const NEWRULE: u16 = nftables(libc::NFT_MSG_NEWRULE);
 pub(super) const NEWSET: u16 = nftables(libc::NFT_MSG_NEWSET);
 pub(super) const NEWSETELEM: u16 = nftables(libc::NFT_MSG_NEWSETELEM);
+pub(super) const DELSETELEM: u16 = nftables(libc::NFT_MSG_DELSETELEM);
 /// An `nf_tables` batch's two ends, which are answered by nothing.
 const BATCH: [u16; 2] = [
     u16_of(libc::NFNL_MSG_BATCH_BEGIN),

@@ -12,6 +12,7 @@ use crate::egress_closed::allow_list_closes_dns_the_host_and_inbound;
 use crate::egress_owned::{
     host_cannot_delete_a_live_table, probe_refuses_a_dropping_forward_chain,
 };
+use crate::egress_reallow::reallow_swaps_the_set_in_place;
 use crate::lane::Lane;
 use crate::run::{expect, run, runtime, shell};
 use crate::trials::Body;
@@ -43,6 +44,10 @@ pub(crate) const TRIALS: &[(&str, Body)] = &[
     (
         "test_egress_probe_refuses_a_dropping_forward_chain",
         probe_refuses_a_dropping_forward_chain,
+    ),
+    (
+        "test_kernel_allow_list_refills_in_place",
+        reallow_swaps_the_set_in_place,
     ),
 ];
 
