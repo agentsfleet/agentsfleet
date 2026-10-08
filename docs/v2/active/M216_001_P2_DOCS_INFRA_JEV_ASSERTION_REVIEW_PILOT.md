@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M216
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — bounded contributor experiment
 **Categories:** Documentation (DOCS), Infrastructure (INFRA)
 **Batch:** B1 — independent pilot artifacts
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record comparison commit at CHORE(open)
+**Branch:** feat/m216-jev-assertion-pilot
+**Baseline revision:** dd917b7ef42dcb883b5192fafe894060aab5845d
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — record commands, revision, environment and counts in the pilot report
 **Depends on:** none; live measurement requires the explicit budget approval below
