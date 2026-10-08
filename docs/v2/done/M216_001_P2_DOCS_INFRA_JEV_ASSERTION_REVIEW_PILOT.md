@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M216
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — bounded contributor experiment
 **Categories:** Documentation (DOCS), Infrastructure (INFRA)
 **Batch:** B1 — independent pilot artifacts
