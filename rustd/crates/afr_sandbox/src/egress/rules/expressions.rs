@@ -7,20 +7,20 @@ use netlink_packet_netfilter::nftables::{
     Lookup, Meta, MetaKey, Operator, Payload, Register, Verdict, VerdictAttribute,
 };
 
-use super::{SET, SET_ID, u8_of};
+use super::{SET, SET_ID, u8_of, u32_of};
 use crate::egress::slot::{PREFIX_LEN, Slot};
 
 /// One expression in a rule.
 pub(super) type Expression = ListAttribute<ExpressionAttribute>;
 
 /// The verdicts, as the kernel numbers them.
-pub(in crate::egress) const DROP: u32 = libc::NF_DROP.unsigned_abs();
-pub(super) const ACCEPT: u32 = libc::NF_ACCEPT.unsigned_abs();
+pub(in crate::egress) const DROP: u32 = u32_of(libc::NF_DROP);
+pub(super) const ACCEPT: u32 = u32_of(libc::NF_ACCEPT);
 /// Bytes in an IPv4 address, a set key, and a 32-bit register.
 pub(super) const WORD: u32 = 4;
 /// Where a payload load starts: the network header, or the transport one.
-const NETWORK_HEADER: u32 = libc::NFT_PAYLOAD_NETWORK_HEADER.unsigned_abs();
-const TRANSPORT_HEADER: u32 = libc::NFT_PAYLOAD_TRANSPORT_HEADER.unsigned_abs();
+const NETWORK_HEADER: u32 = u32_of(libc::NFT_PAYLOAD_NETWORK_HEADER);
+const TRANSPORT_HEADER: u32 = u32_of(libc::NFT_PAYLOAD_TRANSPORT_HEADER);
 /// Offsets into an IPv4 header, and the destination port's in a TCP or UDP one.
 const SOURCE_OFFSET: u32 = 12;
 const DESTINATION_OFFSET: u32 = 16;
@@ -37,7 +37,7 @@ pub(in crate::egress) const DNS_PORT: u16 = 53;
 const CT: &str = "ct";
 const CT_DESTINATION_REGISTER: u16 = 1;
 const CT_KEY: u16 = 2;
-const CT_STATE: u32 = libc::NFT_CT_STATE.unsigned_abs();
+const CT_STATE: u32 = u32_of(libc::NFT_CT_STATE);
 /// `established` and `related`, as the state register's bits hold them.
 const ESTABLISHED_OR_RELATED: u32 = 0b110;
 /// The expression that rewrites a source to the outgoing link's address.
