@@ -1,8 +1,7 @@
 /**
  * Release-gate workflow invariants — the deployment pipeline's cache keys,
  * evidence uploads, promotion and rollout are release-critical behavior,
- * pinned here against the workflow sources. The notification verdict has its
- * own suite, `release-gate-verdict.test.ts`.
+ * pinned here against the workflow sources.
  *
  * The development pipeline spans a job graph and called stage workflows.
  * Its Bun and Playwright setup, including the cache key, lives in the shared
@@ -17,8 +16,9 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import acceptanceConfig from "../playwright.acceptance.config";
-import { REPO_ROOT, WORKFLOWS_DIR, deployDevFamily } from "./helpers/release-workflows";
 
+const REPO_ROOT = path.join(__dirname, "../../../..");
+const WORKFLOWS_DIR = path.join(REPO_ROOT, ".github/workflows");
 const POST_RELEASE_WORKFLOW = path.join(WORKFLOWS_DIR, "post-release.yml");
 const RELEASE_WORKFLOW = path.join(WORKFLOWS_DIR, "release.yml");
 const SMOKE_POST_DEPLOY_WORKFLOW = path.join(WORKFLOWS_DIR, "smoke-post-deploy.yml");
@@ -40,6 +40,16 @@ function postReleaseYaml(): string {
 
 function releaseYaml(): string {
   return fs.readFileSync(RELEASE_WORKFLOW, "utf8");
+}
+
+/** Every file of the dev pipeline (caller + called stages), concatenated. */
+function deployDevFamily(): string {
+  return fs
+    .readdirSync(WORKFLOWS_DIR)
+    .filter((f) => f.startsWith("deploy-dev") && f.endsWith(".yml"))
+    .sort()
+    .map((f) => fs.readFileSync(path.join(WORKFLOWS_DIR, f), "utf8"))
+    .join("\n");
 }
 
 function playwrightSetupAction(): string {
