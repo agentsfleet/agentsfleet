@@ -167,7 +167,6 @@ const FAILURE_PRESENTATION: Record<string, EventFailurePresentation> = {
   landlock_deny: { label: "Blocked by the sandbox policy", guidance: null },
   lease_expired: { label: "The run's lease expired", guidance: null },
   renewal_terminate: { label: "Stopped by lease renewal policy", guidance: null },
-  repository_base_required: { label: "Fleet repository base is missing", guidance: null },
 };
 
 export function failurePresentationFor(tag: string): EventFailurePresentation {
