@@ -1,0 +1,91 @@
+{
+  "comparison_revision": "eceefad0512638abb47b3d9e9667977a39316ce3",
+  "scope": "Timeout diagnostics only; original frozen inputs, approval, live receipts, reservations and blinded reviews are unchanged.",
+  "runner_digest": "dd7decdef4fdd5130cd4fb935fe9caf74b269817a7d755adb75d94889b55d924",
+  "review_comment": "https://github.com/agentsfleet/agentsfleet/pull/737#discussion_r4223898848",
+  "ledger": {
+    "rows": [
+      {
+        "changed_unit": "run_process timeout cleanup and CommandTimeoutError structured fields",
+        "test": "test_subprocess_timeout_stops_child",
+        "status": "pass"
+      },
+      {
+        "changed_unit": "judge_batch retained timeout receipt after spent reservation",
+        "test": "test_live_failure_consumes_reservation_without_retry",
+        "status": "pass"
+      }
+    ],
+    "raw_red": {
+      "path": "regression-red.txt",
+      "sha256": "0aa95f978798d84f5440f96521a80d09c56e35eb510d5c34fc28d63521062e1b",
+      "exit": 1,
+      "tests_run": 25,
+      "failed_assertions": 3
+    },
+    "raw_green": {
+      "path": ".qa-evidence/002/stderr",
+      "sha256": "6eb8a031baf7370f870e39ca448c587dd10ace69c78a796bd13b288596ead829",
+      "exit": 0,
+      "tests_run": 25,
+      "failed_assertions": 0
+    }
+  },
+  "random_order": {
+    "seed": 37,
+    "tests_run": 25,
+    "failed_assertions": 0,
+    "elapsed_seconds": 4.042,
+    "exit": 0,
+    "evidence": "Parent command result; raw regular-order output retained separately."
+  },
+  "partial_completion": [
+    {
+      "cleanup": "graceful stop",
+      "stdout": "before timeout\n",
+      "stderr": "timeout diagnostic\n",
+      "child_reaped": true
+    },
+    {
+      "cleanup": "forced kill after ignored stop",
+      "stdout": "before timeout\n",
+      "stderr": "timeout diagnostic\n",
+      "child_reaped": true
+    }
+  ],
+  "failed_live_receipt": {
+    "reserved_requests": 10,
+    "attempt_slots": 10,
+    "request_usage": null,
+    "exit": null,
+    "raw_report": null,
+    "retry": "refused before command"
+  },
+  "provider_requests": 0,
+  "native_adversarial_review": {
+    "completed": true,
+    "findings": 0,
+    "test_and_fixture_coverage": "summary/schema/hash only",
+    "outside_review": "disabled"
+  },
+  "qa": {
+    "evidence": "evidence.json",
+    "sha256": "ac44b215e8d37b33cba449dcf0878ba429e9c09cbfe5035228f971d257d9ae79",
+    "verdict": "pass",
+    "open": [],
+    "captured_input_fingerprints": 12
+  },
+  "conform": {
+    "command": [
+      "make",
+      "harness-verify"
+    ],
+    "exit": 0,
+    "raw": "conform.txt",
+    "sha256": "96cd7a63eea878a7c6cf556aae91713c8b1100d4429e818569d05f9085ca968f",
+    "verdict": "ALL GATES GREEN",
+    "limitation": "Python is excluded from the literal/logging leaves; this is not a Python literal-coverage claim."
+  },
+  "boundary": "Prior green boundary receipts are historical. Run orly gate pr on the final pushed repair revision and record its result in Pull Request session notes.",
+  "hosted": "Earlier green checks and completed review bind eceefad; fresh repair checks and review are required before owner review."
+}

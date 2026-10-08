@@ -1,0 +1,14 @@
+{
+  ".orly/orly.json": "ce257fd5655426b5e00f980e5a7eae3b1e4b2a8c78d1c48ba52462dc45ff8b20",
+  "pilots/jev-assertions/pilot.py": "4c6271e7d3943643a6609adf83cd9fea7e6a959c942a439901d37c06cf39372f",
+  "pilots/jev-assertions/pilot_checks.py": "fb32203b1025dcaadbed02d2d7a179274f794e65c2fc2739dd3fd933115a2c0e",
+  "pilots/jev-assertions/pilot_measure.py": "0b27a7486c579672542e160c958dfb8dfe605b619bc84113ee180bb2132749eb",
+  "pilots/jev-assertions/pilot_test.py": "43ba420bb7ca0371f76ccdad156ac73cd9f7017a4abfb3b24330e5797643a396",
+  "pilots/jev-assertions/freeze.json": "d686b52e6ddc7d54813d8f253e9a73b1a8f37337d60582ee6a49d967250643a5",
+  "pilots/jev-assertions/approval.json": "29bd49740f004285ac8cd2a093553536caa979075ac5e0cc4b0879aa1cce7021",
+  "pilots/jev-assertions/reviews/unaided.json": "3b18f425268844c1bd43e3e4c7a28322e8e22b611a89841671f2f4524b8ef9c5",
+  "pilots/jev-assertions/reviews/assisted.json": "8fe6db705922c37c7e313dba530bae5c60945187e17895eacdb7a09be79ef714",
+  "pilots/jev-assertions/receipts/live-a.json": "f41d1166b00c2b69ce32c7f1b337756e8828c76381c8b035bb7de387363454a6",
+  "pilots/jev-assertions/receipts/live-b.json": "4215b6c468b5085264cb2612e24d535743397cad7adec84fa0dfd26814eefa28",
+  "pilots/jev-assertions/receipts/reservations.json": "1cb619a3a3ae292fdbba6606129808b0676dbbd21a22e6db2f1f4c4ae5381143"
+}

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "id": "003",
+  "cwd": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot",
+  "argv": [
+    "python3",
+    "-c",
+    "import sys; sys.dont_write_bytecode=True; sys.path.insert(0,\"pilots/jev-assertions\"); import json; from pilot_checks import ROOT,PREFIX,verify_freeze,load; from pilot_measure import paired_reviews,runner_digest; pilot=ROOT/PREFIX; frozen=verify_freeze(); paired=paired_reviews(pilot,load(pilot/\"cases.json\")[\"cases\"]); assert paired[\"status\"]==\"measured\" and len(paired[\"pairs\"])==20; print(json.dumps({\"frozen_digest\":frozen,\"runner_digest\":runner_digest(),\"paired_status\":paired[\"status\"],\"paired_cases\":len(paired[\"pairs\"]),\"provider_requests\":0}))"
+  ],
+  "deadline": "/private/var/folders/sy/ny52vqjd3j56w4sfbmn3vd7w0000gn/T/jev-m216-timeout-review-qswvc3vn/deadline.json",
+  "timing": [
+    {
+      "guard": "qa-deadline",
+      "event": "started",
+      "version": 1,
+      "startedAt": "2026-10-08T20:57:13.384Z",
+      "deadlineAt": "2026-10-08T21:02:13.384Z",
+      "budgetMs": 300000,
+      "observedAt": "2026-10-08T20:58:04.864Z",
+      "remainingMs": 248520,
+      "expired": false
+    },
+    {
+      "guard": "qa-deadline",
+      "event": "finished",
+      "observedAt": "2026-10-08T20:58:04.906Z",
+      "deadlineAt": "2026-10-08T21:02:13.384Z",
+      "timedOut": false,
+      "exitCode": 0
+    }
+  ],
+  "startedAt": "2026-10-08T20:58:04.864Z",
+  "completedAt": "2026-10-08T20:58:04.906Z",
+  "exitCode": 0,
+  "signal": null,
+  "status": "complete",
+  "observation": {
+    "sha256": "4eb60c4a31f8b35b9bf2c36c634e4baae2ec838412ecbff111a7303cb5fea331",
+    "bytes": 256
+  },
+  "publicOutput": false,
+  "stdout": {
+    "sha256": "1f3a6a67538590cef43eb37432bc7a96da591b611a1677807d8483cd49f52691",
+    "bytes": 244
+  },
+  "stderr": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  }
+}

@@ -21,6 +21,14 @@ FILE_CAP = 256 * 1024
 PROOF_TIMEOUT = 120
 COMMAND_TIMEOUT = 600
 KILL_GRACE_SECONDS = 3
+PROCESS_TIMEOUT_MESSAGE = "Pilot command timed out; its process group was stopped"
+
+
+class CommandTimeoutError(TimeoutError):
+    def __init__(self, stdout, stderr):
+        super().__init__(PROCESS_TIMEOUT_MESSAGE)
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 def load(path):
@@ -145,11 +153,11 @@ def run_process(arguments, cwd=ROOT, env=None, timeout=COMMAND_TIMEOUT):
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGTERM)
             try:
-                process.communicate(timeout=KILL_GRACE_SECONDS)
+                stdout, stderr = process.communicate(timeout=KILL_GRACE_SECONDS)
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
-                process.communicate()
-            raise TimeoutError("Pilot command timed out; its process group was stopped") from None
+                stdout, stderr = process.communicate()
+            raise CommandTimeoutError(stdout, stderr) from None
         return process.returncode, stdout, stderr
 
 
