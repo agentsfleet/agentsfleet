@@ -1,0 +1,456 @@
+Command: ['node', 'ui/packages/design-system/node_modules/vitest/vitest.mjs', 'run', '--config', '/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/vitest.config.ts', '--root', '/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn', '--reporter=json', '--outputFile', '/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/result.json']
+Exit: 1
+JSON report written to /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/result.json
+
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (pilots/jev-assertions/proof-wcj9j2wn/vitest.config.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+Test report:
+{
+  "numTotalTestSuites": 20,
+  "numPassedTestSuites": 12,
+  "numFailedTestSuites": 8,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 20,
+  "numPassedTests": 12,
+  "numFailedTests": 8,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1791453575279,
+  "success": false,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks clipboard write",
+          "status": "passed",
+          "title": "checks clipboard write",
+          "duration": 154.80320900000004,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453576014,
+      "endTime": 1791453576168.8032,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p01/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks relative result",
+          "status": "failed",
+          "title": "checks relative result",
+          "duration": 4.569834000000014,
+          "failureMessages": [
+            "AssertionError: expected 'just now' to be '5 seconds ago' // Object.is equality\n    at /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p02/test.tsx:8:18\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3882:64"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453578428,
+      "endTime": 1791453578432.5698,
+      "status": "failed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p02/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks classes result",
+          "status": "failed",
+          "title": "checks classes result",
+          "duration": 14.00045799999998,
+          "failureMessages": [
+            "AssertionError: expected 'text-muted-foreground' to be 'text-eyebrow text-muted-foreground' // Object.is equality\n    at checkClasses (/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/helpers/check-classes.ts:5:17)\n    at /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p03/test.tsx:7:3\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453578354,
+      "endTime": 1791453578368.0005,
+      "status": "failed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p03/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks elapsed result",
+          "status": "passed",
+          "title": "checks elapsed result",
+          "duration": 2.696542000000022,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453576817,
+      "endTime": 1791453576819.6965,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p07/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks relative result",
+          "status": "failed",
+          "title": "checks relative result",
+          "duration": 5.075625000000059,
+          "failureMessages": [
+            "AssertionError: expected 'just now' to be '5 seconds ago' // Object.is equality\n    at checkRelative (/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/helpers/check-relative.ts:5:17)\n    at /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p08/test.tsx:9:3\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453579095,
+      "endTime": 1791453579100.0757,
+      "status": "failed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p08/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks clipboard write",
+          "status": "passed",
+          "title": "checks clipboard write",
+          "duration": 177.85799999999995,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453576015,
+      "endTime": 1791453576192.858,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p09/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks elapsed result",
+          "status": "passed",
+          "title": "checks elapsed result",
+          "duration": 1.9509999999999081,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453578815,
+      "endTime": 1791453578816.951,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p04/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks clipboard write",
+          "status": "passed",
+          "title": "checks clipboard write",
+          "duration": 147.19683299999997,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453576014,
+      "endTime": 1791453576161.1968,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p05/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks classes result",
+          "status": "failed",
+          "title": "checks classes result",
+          "duration": 12.775334000000043,
+          "failureMessages": [
+            "AssertionError: expected 'text-muted-foreground' to be 'text-eyebrow text-muted-foreground' // Object.is equality\n    at /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p06/test.tsx:6:18\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3882:64"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453577445,
+      "endTime": 1791453577457.7754,
+      "status": "failed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p06/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks classes result",
+          "status": "passed",
+          "title": "checks classes result",
+          "duration": 7.7657500000000255,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453577559,
+      "endTime": 1791453577566.7659,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p10/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks classes result",
+          "status": "passed",
+          "title": "checks classes result",
+          "duration": 7.177291999999966,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453576819,
+      "endTime": 1791453576826.1772,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p14/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks relative result",
+          "status": "passed",
+          "title": "checks relative result",
+          "duration": 0.8177919999999972,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453579277,
+      "endTime": 1791453579277.8179,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p15/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks relative result",
+          "status": "passed",
+          "title": "checks relative result",
+          "duration": 1.1167499999999109,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453579122,
+      "endTime": 1791453579123.1167,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p11/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks clipboard write",
+          "status": "failed",
+          "title": "checks clipboard write",
+          "duration": 147.57045800000003,
+          "failureMessages": [
+            "AssertionError: expected \"vi.fn()\" to be called with arguments: [ Array(1) ]\n\nReceived:\n\n  1st vi.fn() call:\n\n  [\n-   \"019f2866-2172-7696-9166-c69f309a559a\",\n+   \"Copy workspace ID\",\n  ]\n\n\nNumber of calls: 1\n\n    at Proxy.<anonymous> (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/index.C4tKZ0yW.js:2233:10)\n    at Proxy.<anonymous> (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/index.C4tKZ0yW.js:1944:14)\n    at Proxy.methodWrapper (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/chai@6.3.0/node_modules/chai/index.js:1737:25)\n    at /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p12/test.tsx:26:21\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453576014,
+      "endTime": 1791453576161.5706,
+      "status": "failed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p12/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks clipboard write",
+          "status": "failed",
+          "title": "checks clipboard write",
+          "duration": 101.64741700000002,
+          "failureMessages": [
+            "AssertionError: expected \"vi.fn()\" to be called with arguments: [ Array(1) ]\n\nReceived:\n\n  1st vi.fn() call:\n\n  [\n-   \"019f2866-2172-7696-9166-c69f309a559a\",\n+   \"Copy workspace ID\",\n  ]\n\n\nNumber of calls: 1\n\n    at Proxy.<anonymous> (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/index.C4tKZ0yW.js:2233:10)\n    at Proxy.<anonymous> (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/index.C4tKZ0yW.js:1944:14)\n    at Proxy.methodWrapper (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/chai@6.3.0/node_modules/chai/index.js:1737:25)\n    at checkClipboard (/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/helpers/check-copy.ts:4:21)\n    at /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p16/test.tsx:26:3\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453576910,
+      "endTime": 1791453577011.6475,
+      "status": "failed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p16/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks relative result",
+          "status": "passed",
+          "title": "checks relative result",
+          "duration": 1.11362500000007,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453579136,
+      "endTime": 1791453579137.1135,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p19/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks elapsed result",
+          "status": "failed",
+          "title": "checks elapsed result",
+          "duration": 6.879709000000048,
+          "failureMessages": [
+            "AssertionError: expected '59s' to be '1m 0s' // Object.is equality\n    at checkElapsed (/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/helpers/check-elapsed.ts:5:17)\n    at /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p20/test.tsx:7:3\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453576846,
+      "endTime": 1791453576852.8796,
+      "status": "failed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p20/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks classes result",
+          "status": "passed",
+          "title": "checks classes result",
+          "duration": 10.992375000000038,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453577461,
+      "endTime": 1791453577471.9924,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p17/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks elapsed result",
+          "status": "failed",
+          "title": "checks elapsed result",
+          "duration": 5.240083000000027,
+          "failureMessages": [
+            "AssertionError: expected '59s' to be '1m 0s' // Object.is equality\n    at /Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p13/test.tsx:6:18\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:1628:35\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:26\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3321:20\n    at new Promise (<anonymous>)\n    at runWithCancel (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3316:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3301:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3259:10)\n    at file:///Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/node_modules/.bun/vitest@5.0.3+2a630104de1c7f24/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:3882:64"
+          ],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453578430,
+      "endTime": 1791453578435.24,
+      "status": "failed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p13/test.tsx"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "checks elapsed result",
+          "status": "passed",
+          "title": "checks elapsed result",
+          "duration": 2.2610839999999826,
+          "failureMessages": [],
+          "meta": {},
+          "tags": [],
+          "benchmarks": []
+        }
+      ],
+      "startTime": 1791453577900,
+      "endTime": 1791453577902.261,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/kishore/Projects/agentsfleet-m216-jev-assertion-pilot/pilots/jev-assertions/proof-wcj9j2wn/fixtures/p18/test.tsx"
+    }
+  ]
+}

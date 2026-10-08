@@ -1,0 +1,27 @@
+{
+  "observationCapture": "004",
+  "observationArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot.py",
+    "check"
+  ],
+  "observed": {
+    "frozen_cases": 20,
+    "correct": {
+      "passed": 20
+    },
+    "faulty": {
+      "passed": 12,
+      "failed": 8
+    },
+    "provider_requests": 0,
+    "largest_state_bytes": 15010
+  },
+  "hypothesis": "Offline replay should retain the native unavailable reports and raw command output with zero provider requests under the updated freeze.",
+  "nextCapture": "005",
+  "nextArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot.py",
+    "replay"
+  ]
+}

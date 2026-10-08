@@ -1,0 +1,730 @@
+{
+  "session": "pre-advice-author-inspection",
+  "independent": false,
+  "blinded": false,
+  "advice_seen": false,
+  "review_seconds": null,
+  "reason": "Fixture author knows intended labels; this cannot measure independent reviewer improvement. Frozen before any advice command.",
+  "cases": [
+    {
+      "id": "p01",
+      "classification": "weak",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p01/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p01/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The relevant result is observed, but the assertion accepts the supplied incorrect result. Its correct and faulted copies must both pass."
+    },
+    {
+      "id": "p02",
+      "classification": "exact",
+      "finding": false,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p02/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p02/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The test exercises the required operation and compares its result with an independent literal or exact clipboard argument. Its faulted copy must fail at that assertion."
+    },
+    {
+      "id": "p03",
+      "classification": "insufficient",
+      "finding": false,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p03/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p03/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The test delegates its assertion to an imported helper whose definition is deliberately absent from selected evidence. The locally present helper is exact, but its meaning cannot be determined from the model input."
+    },
+    {
+      "id": "p04",
+      "classification": "wrong_target",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p04/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p04/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The required operation executes, but the assertion observes a different operation or visible outcome. Its faulted copy must still pass."
+    },
+    {
+      "id": "p05",
+      "classification": "missing",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p05/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p05/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The required operation executes without an assertion on its required result. Its faulted copy must still pass."
+    },
+    {
+      "id": "p06",
+      "classification": "exact",
+      "finding": false,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p06/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p06/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The test exercises the required operation and compares its result with an independent literal or exact clipboard argument. Its faulted copy must fail at that assertion."
+    },
+    {
+      "id": "p07",
+      "classification": "weak",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p07/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p07/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The relevant result is observed, but the assertion accepts the supplied incorrect result. Its correct and faulted copies must both pass."
+    },
+    {
+      "id": "p08",
+      "classification": "insufficient",
+      "finding": false,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p08/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p08/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The test delegates its assertion to an imported helper whose definition is deliberately absent from selected evidence. The locally present helper is exact, but its meaning cannot be determined from the model input."
+    },
+    {
+      "id": "p09",
+      "classification": "wrong_target",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p09/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p09/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The required operation executes, but the assertion observes a different operation or visible outcome. Its faulted copy must still pass."
+    },
+    {
+      "id": "p10",
+      "classification": "missing",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p10/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p10/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The required operation executes without an assertion on its required result. Its faulted copy must still pass."
+    },
+    {
+      "id": "p11",
+      "classification": "weak",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p11/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p11/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The relevant result is observed, but the assertion accepts the supplied incorrect result. Its correct and faulted copies must both pass."
+    },
+    {
+      "id": "p12",
+      "classification": "exact",
+      "finding": false,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p12/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p12/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The test exercises the required operation and compares its result with an independent literal or exact clipboard argument. Its faulted copy must fail at that assertion."
+    },
+    {
+      "id": "p13",
+      "classification": "exact",
+      "finding": false,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p13/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p13/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The test exercises the required operation and compares its result with an independent literal or exact clipboard argument. Its faulted copy must fail at that assertion."
+    },
+    {
+      "id": "p14",
+      "classification": "wrong_target",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p14/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p14/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The required operation executes, but the assertion observes a different operation or visible outcome. Its faulted copy must still pass."
+    },
+    {
+      "id": "p15",
+      "classification": "missing",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p15/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p15/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The required operation executes without an assertion on its required result. Its faulted copy must still pass."
+    },
+    {
+      "id": "p16",
+      "classification": "insufficient",
+      "finding": false,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p16/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p16/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/Button.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/use-resettable-timeout.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The test delegates its assertion to an imported helper whose definition is deliberately absent from selected evidence. The locally present helper is exact, but its meaning cannot be determined from the model input."
+    },
+    {
+      "id": "p17",
+      "classification": "weak",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p17/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p17/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The relevant result is observed, but the assertion accepts the supplied incorrect result. Its correct and faulted copies must both pass."
+    },
+    {
+      "id": "p18",
+      "classification": "missing",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p18/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p18/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The required operation executes without an assertion on its required result. Its faulted copy must still pass."
+    },
+    {
+      "id": "p19",
+      "classification": "wrong_target",
+      "finding": true,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p19/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p19/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The required operation executes, but the assertion observes a different operation or visible outcome. Its faulted copy must still pass."
+    },
+    {
+      "id": "p20",
+      "classification": "insufficient",
+      "finding": false,
+      "evidence": [
+        {
+          "role": "implementation",
+          "path": "pilots/jev-assertions/fixtures/p20/implementation.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "test",
+          "path": "pilots/jev-assertions/fixtures/p20/test.tsx",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/app-utils.ts",
+          "selector": {
+            "kind": "file"
+          }
+        },
+        {
+          "role": "context",
+          "path": "pilots/jev-assertions/helpers/setup.ts",
+          "selector": {
+            "kind": "file"
+          }
+        }
+      ],
+      "justification": "The test delegates its assertion to an imported helper whose definition is deliberately absent from selected evidence. The locally present helper is exact, but its meaning cannot be determined from the model input."
+    }
+  ]
+}

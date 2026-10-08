@@ -1,0 +1,15 @@
+{
+  "observationCapture": "003",
+  "observationArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot_test.py"
+  ],
+  "observed": "",
+  "hypothesis": "Moving the omitted-helper fixture import should preserve all correct and faulted control outcomes while producing an updated frozen upload inventory.",
+  "nextCapture": "004",
+  "nextArgv": [
+    "python3",
+    "pilots/jev-assertions/pilot.py",
+    "check"
+  ]
+}

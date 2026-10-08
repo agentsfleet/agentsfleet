@@ -1,0 +1,67 @@
+{
+  "frozen_digest": "7c1117c91f17918519b550dd1b27c5e04980bafe53313adac726f175bf015caa",
+  "model": "jev-1.13.0",
+  "frozen_cases": 20,
+  "measurement_status": "IN_PROGRESS",
+  "reserved_requests": 0,
+  "reported_requests": 0,
+  "unreconciled_request_reservations": 0,
+  "live_case_slots_recorded": 0,
+  "native": {
+    "cases": 20,
+    "available": 0,
+    "unavailable": 20,
+    "native_matches": 0,
+    "confirmed_findings": 0,
+    "false_alarms": 0,
+    "finding_misses": 0,
+    "native_misses": 0,
+    "unavailable_weaknesses": 12,
+    "low_strength": 0,
+    "matching_native_withheld_by_strength": 0,
+    "confident_confirmed_findings": 0
+  },
+  "by_origin": {
+    "seeded-control": {
+      "cases": 16,
+      "available": 0,
+      "unavailable": 16,
+      "native_matches": 0,
+      "confirmed_findings": 0,
+      "false_alarms": 0,
+      "finding_misses": 0,
+      "native_misses": 0,
+      "unavailable_weaknesses": 12,
+      "low_strength": 0,
+      "matching_native_withheld_by_strength": 0,
+      "confident_confirmed_findings": 0
+    },
+    "source-derived-control": {
+      "cases": 4,
+      "available": 0,
+      "unavailable": 4,
+      "native_matches": 0,
+      "confirmed_findings": 0,
+      "false_alarms": 0,
+      "finding_misses": 0,
+      "native_misses": 0,
+      "unavailable_weaknesses": 0,
+      "low_strength": 0,
+      "matching_native_withheld_by_strength": 0,
+      "confident_confirmed_findings": 0
+    }
+  },
+  "real_defects": [],
+  "paired_review": {
+    "status": "unmeasured",
+    "reason": "Separate independent blinded review sessions are unavailable"
+  },
+  "known_usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  },
+  "usage_unknown_slots": 20,
+  "known_cost_usd": "0",
+  "reserved_cost_upper_usd": "0.000",
+  "ceiling_usd": "0.06"
+}
