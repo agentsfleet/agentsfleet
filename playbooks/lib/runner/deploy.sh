@@ -59,15 +59,68 @@ verify_host_prepared() {
   runner_require_remote_tools
 }
 
+# The directory this deploy stages into on the host, under HOST_RUNS_DIR
+# (layout.sh); empty until the host makes it.
+RUN_DIR=""
+# 1 once the host's deploy.sh holds RUN_DIR. That deploy removes the directory
+# when it ends, and this script must not: a playbook cancelled mid-deploy
+# leaves the host's deploy running, still reading it.
+RUN_DIR_HANDED_OFF=0
 # The runner's environment, written here before its copy to the host. It holds
 # the runner token, so the EXIT trap removes it however the deploy ends: a copy
 # that fails exits the shell under `set -e`, and a RETURN trap never fires then.
 RUNNER_ENV_TEMP=""
+
 remove_runner_env_temp() {
   [ -z "$RUNNER_ENV_TEMP" ] || rm -f "$RUNNER_ENV_TEMP"
   RUNNER_ENV_TEMP=""
 }
-trap remove_runner_env_temp EXIT
+
+# What a deploy that stops leaves behind: the env file here, and the run
+# directory on the host until deploy.sh holds it.
+clean_up() {
+  remove_runner_env_temp
+  if [ -n "$RUN_DIR" ] && [ "$RUN_DIR_HANDED_OFF" = 0 ]; then
+    runner_remote "rm -rf '$RUN_DIR'" ||
+      echo "WARN: could not remove $RUN_DIR from $RUNNER_TARGET" >&2
+  fi
+}
+trap clean_up EXIT
+
+# The deploy files are the host's one copy, which the verify lane and a
+# release deploy read in place.
+copy_deploy_files() {
+  local entry file
+  for entry in "${HOST_DEPLOY_FILES[@]}"; do
+    file="${entry%%:*}"
+    runner_copy "$HOST_DEPLOY_SOURCE_DIR/$file" "$HOST_DEPLOY_DIR/$file" "${entry##*:}"
+  done
+}
+
+# Has the host make this deploy's run directory, and keeps its path in RUN_DIR.
+# The path comes back over SSH and is spliced into later remote commands, so
+# anything but HOST_RUNS_DIR/RUN_DIR_PREFIX and mktemp's alphanumeric suffix is
+# refused.
+make_run_dir() {
+  local made suffix
+  made="$(runner_remote "mktemp -d $HOST_RUNS_DIR/${RUN_DIR_PREFIX}XXXXXXXX")"
+  suffix="${made#"$HOST_RUNS_DIR/$RUN_DIR_PREFIX"}"
+  if [ "$suffix" = "$made" ] || [ -z "$suffix" ] || [[ "$suffix" == *[!A-Za-z0-9]* ]]; then
+    echo "ERROR: the host made no run directory under $HOST_RUNS_DIR: '$made'" >&2
+    return 1
+  fi
+  RUN_DIR="$made"
+}
+
+# Copies the binary and the toolbox set into the run directory, where the
+# host's deploy.sh reads them and no other deploy writes.
+stage_run() {
+  local file
+  runner_copy "$RUNNER_BINARY" "$RUN_DIR/$BINARY_NAME" 755
+  for file in "${TOOLBOX_PATHS[@]}"; do
+    runner_copy "$file" "$RUN_DIR/$(basename "$file")" 644
+  done
+}
 
 write_runner_environment() {
   RUNNER_ENV_TEMP="$(mktemp)"
@@ -76,32 +129,15 @@ write_runner_environment() {
     printf 'AGENTSFLEET_RUNNER_TOKEN=%s\n' "$RUNNER_TOKEN"
   } >"$RUNNER_ENV_TEMP"
   chmod 600 "$RUNNER_ENV_TEMP"
-  runner_copy "$RUNNER_ENV_TEMP" "$HOST_ENV_FILE" 600
+  runner_copy "$RUNNER_ENV_TEMP" "$RUN_DIR/$RUN_ENV_FILE_NAME" 600
   remove_runner_env_temp
 }
 
-copy_deploy_files() {
-  local entry file
-  for entry in "${HOST_DEPLOY_FILES[@]}"; do
-    file="${entry%%:*}"
-    runner_copy "$HOST_DEPLOY_SOURCE_DIR/$file" "$HOST_DEPLOY_DIR/$file" "${entry##*:}"
-  done
-  runner_copy "$RUNNER_BINARY" "$HOST_BIN_DIR/$BINARY_NAME" 755
-  # The staging copy under HOST_ROOT is the host's; deploy.sh copies the set
-  # into the runner's incoming directory, where the runner admits it at boot.
-  # The host's deploy.sh refuses a directory holding more than one image, so
-  # the set an earlier deploy (or one cut short) left here goes first.
-  runner_remote "find $HOST_TOOLBOX_DIR -maxdepth 1 -name 'toolbox-*' -type f -delete"
-  for file in "${TOOLBOX_PATHS[@]}"; do
-    runner_copy "$file" "$HOST_TOOLBOX_DIR/$(basename "$file")" 644
-  done
-}
-
 deploy_runner() {
+  RUN_DIR_HANDED_OFF=1
   runner_remote "
     set -e
-    sudo $HOST_DEPLOY_DIR/deploy.sh runner '$RUNNER_VERSION' \
-      $HOST_BIN_DIR/$BINARY_NAME $HOST_TOOLBOX_DIR
+    sudo $HOST_DEPLOY_DIR/deploy.sh runner '$RUNNER_VERSION' $RUN_DIR
   "
 }
 
@@ -114,6 +150,8 @@ main() {
   verify_host_prepared
   runner_enable_ipv4_forwarding
   copy_deploy_files
+  make_run_dir
+  stage_run
   write_runner_environment
   deploy_runner
   echo "PASS: $RUNNER_ITEM deployment completed"

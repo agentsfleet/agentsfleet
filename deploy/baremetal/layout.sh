@@ -11,16 +11,22 @@
 # shellcheck disable=SC2034  # every constant is read by the files that source this one
 
 # Everything under here belongs to the deploy user, as host preparation sets it
-# up: the playbook copies the binary, the deploy files and the toolbox set in
-# without root, and deploy.sh installs each from there as root.
+# up: the playbook copies the deploy files and each deploy's run directory in
+# without root, and deploy.sh installs from there as root.
 readonly HOST_ROOT="/opt/agentsfleet"
-readonly HOST_BIN_DIR="$HOST_ROOT/bin"
 readonly HOST_DEPLOY_DIR="$HOST_ROOT/deploy"
-readonly HOST_TOOLBOX_DIR="$HOST_ROOT/toolbox"
-readonly HOST_STAGING_DIRS="$HOST_BIN_DIR $HOST_DEPLOY_DIR $HOST_TOOLBOX_DIR"
-# The runner's environment as the playbook writes it, and the copy deploy.sh
-# installs for the unit's EnvironmentFile=.
-readonly HOST_ENV_FILE="$HOST_ROOT/.env"
+# Each deploy stages into a directory of its own under here, which the
+# playbook makes with `mktemp -d` as RUN_DIR_PREFIX and a random suffix:
+# the binary as BINARY_NAME, the toolbox set, and the runner's environment as
+# RUN_ENV_FILE_NAME. deploy.sh reads only the directory it is handed and
+# removes it when it ends, so two deploys reaching one host at once never
+# write into each other's, and the live install changes only under its lock.
+readonly HOST_RUNS_DIR="$HOST_ROOT/runs"
+readonly RUN_DIR_PREFIX="run."
+readonly RUN_ENV_FILE_NAME="runner.env"
+readonly HOST_STAGING_DIRS="$HOST_DEPLOY_DIR $HOST_RUNS_DIR"
+# Where deploy.sh installs the runner's environment for the unit's
+# EnvironmentFile=.
 readonly UNIT_ENV_FILE="/etc/default/agentsfleet-runner"
 
 readonly BINARY_NAME="agentsfleet-runner"

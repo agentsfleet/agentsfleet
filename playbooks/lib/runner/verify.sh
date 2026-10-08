@@ -18,7 +18,7 @@ readonly READYZ_TIMEOUT_SECONDS=10
 verify_files_and_service() {
   runner_remote "
     set -e
-    test \"\$(stat -c %a $HOST_ENV_FILE)\" = 600
+    test \"\$(stat -c %a $UNIT_ENV_FILE)\" = 600
     test -x $HOST_DEPLOY_DIR/deploy.sh
     test -x $INSTALL_DIR/$BINARY_NAME
     test -f $SYSTEMD_DIR/$SERVICE_NAME

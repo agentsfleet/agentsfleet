@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Self-tests for what deploy.sh checks and unpacks before it writes to the host.
+# Self-tests for what deploy.sh checks and unpacks before it writes to the
+# host, and where it stages the toolbox.
 #
 #     bash deploy/baremetal/deploy_inputs_test.sh
 #
@@ -8,6 +9,8 @@
 # abort on the non-zero returns these cases assert on. `install` is stubbed on
 # PATH and drops a sentinel, so a case can assert a refused deploy never
 # reached it: every write the deploy makes to the host goes through it first.
+# A deploy reads its inputs from a run directory, built by
+# deploy_test_support.sh as the runner playbook fills one.
 #
 # The bundle case needs GNU tar, the tar every runner host ships. It SKIPS on
 # a machine without it and hard-fails when CI is set, so the extraction is
@@ -17,16 +20,11 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
-# Where deploy.sh reads the runner's env file; a host that has one would
-# answer the env case with its own file instead of the refusal it expects.
-# Read in a subshell, under another name: layout.sh's constants are readonly,
-# and every case sources deploy.sh, which sources layout.sh again.
-# shellcheck source=./layout.sh
-host_env_file="$(source "$SCRIPT_DIR/layout.sh" && printf '%s' "$HOST_ENV_FILE")"
-readonly host_env_file
+# shellcheck source=./deploy_test_support.sh
+source "$SCRIPT_DIR/deploy_test_support.sh"
 readonly SENTINEL_INSTALL="install-ran"
-readonly FIXTURE_DIGEST="0000000000000000000000000000000000000000000000000000000000000001"
-readonly TOOLBOX_PARTS=(erofs json json.sig)
+readonly SENTINEL_COPY="cp-ran"
+readonly SENTINEL_SYSTEMCTL="systemctl-ran"
 readonly PRIVATE_DIR_MODE="drwx------"
 
 passed=0
@@ -50,20 +48,19 @@ printf '#!/usr/bin/env bash\ntouch "$SENTINEL_DIR/%s"\n' "$SENTINEL_INSTALL" >"$
 printf '#!/usr/bin/env bash\nwhile [ $# -gt 1 ] && [ "$1" != -o ]; do shift; done\ncp "$STUB_BUNDLE" "$2"\n' >"$STUB_DIR/curl"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >"$TAR_ARGS"\nexec "$REAL_TAR" "$@"\n' >"$STUB_DIR/tar"
 chmod +x "$STUB_DIR/install" "$STUB_DIR/curl" "$STUB_DIR/tar"
+# The staging case's own stubs: a deploy whose steps run out of order copies
+# the unit into place and restarts it, and both stop at a sentinel here
+# instead of on the host. Apart from STUB_DIR, whose curl copies with cp.
+readonly STAGE_STUB_DIR="$WORK_DIR/stage-bin"
+mkdir -p "$STAGE_STUB_DIR"
+printf '#!/usr/bin/env bash\ntouch "$SENTINEL_DIR/%s"\n' "$SENTINEL_COPY" >"$STAGE_STUB_DIR/cp"
+printf '#!/usr/bin/env bash\ntouch "$SENTINEL_DIR/%s"\n' "$SENTINEL_SYSTEMCTL" >"$STAGE_STUB_DIR/systemctl"
+chmod +x "$STAGE_STUB_DIR/cp" "$STAGE_STUB_DIR/systemctl"
 
-# A directory holding the toolbox set, without `skip` if given.
-toolbox_set() {
-  local dir="$1" skip="${2:-}" part
-  mkdir -p "$dir"
-  for part in "${TOOLBOX_PARTS[@]}"; do
-    [[ "$part" == "$skip" ]] || printf '%s\n' "$part" >"$dir/toolbox-$FIXTURE_DIGEST.$part"
-  done
-}
-
-# Runs deploy.sh's main in local mode with the lock taken as given, and leaves
-# any sentinel under `sentinels`.
+# Runs deploy.sh's main in local mode on `run_dir`, with the lock free and the
+# run directory taken where it lies, and leaves any sentinel under `sentinels`.
 local_deploy_status() {
-  local sentinels="$1" binary="$2" toolbox="$3"
+  local sentinels="$1" run_dir="$2"
   mkdir -p "$sentinels"
   (
     export SENTINEL_DIR="$sentinels" PATH="$STUB_DIR:$PATH"
@@ -71,7 +68,8 @@ local_deploy_status() {
     source "$DEPLOY_SH" >/dev/null 2>&1
     set +e
     acquire_deploy_lock() { :; }
-    main runner v9.9.9 "$binary" "$toolbox" >/dev/null 2>&1
+    check_run_dir() { :; }
+    main runner v9.9.9 "$run_dir" >/dev/null 2>&1
   )
 }
 
@@ -91,10 +89,9 @@ preflight
 # toolbox the previous release staged, which the runner refuses.
 test_deploy_refused_toolbox_leaves_the_host_untouched() {
   local name="test_deploy_refused_toolbox_leaves_the_host_untouched"
-  local binary="$WORK_DIR/binary" toolbox="$WORK_DIR/short-toolbox" sentinels="$WORK_DIR/toolbox-refused"
-  : >"$binary"
-  toolbox_set "$toolbox" json.sig
-  if local_deploy_status "$sentinels" "$binary" "$toolbox"; then
+  local run_dir="$WORK_DIR/${RUN_NAME_PREFIX}short-toolbox" sentinels="$WORK_DIR/toolbox-refused"
+  run_dir_with "$run_dir" json.sig
+  if local_deploy_status "$sentinels" "$run_dir"; then
     bad "$name" "a deploy whose toolbox lacks its signature exited 0"
   elif [[ -e "$sentinels/$SENTINEL_INSTALL" ]]; then
     bad "$name" "a deploy refused for its toolbox wrote to the host first"
@@ -105,15 +102,10 @@ test_deploy_refused_toolbox_leaves_the_host_untouched() {
 
 test_deploy_refused_env_leaves_the_host_untouched() {
   local name="test_deploy_refused_env_leaves_the_host_untouched"
-  local binary="$WORK_DIR/binary" toolbox="$WORK_DIR/full-toolbox" sentinels="$WORK_DIR/env-refused"
-  if [[ -e "$host_env_file" ]]; then
-    skip "$name" "$host_env_file exists here, so the deploy would not refuse it"
-    return
-  fi
-  : >"$binary"
-  toolbox_set "$toolbox"
-  if local_deploy_status "$sentinels" "$binary" "$toolbox"; then
-    bad "$name" "a deploy with no env file at $host_env_file exited 0"
+  local run_dir="$WORK_DIR/${RUN_NAME_PREFIX}no-env" sentinels="$WORK_DIR/env-refused"
+  run_dir_with "$run_dir" env
+  if local_deploy_status "$sentinels" "$run_dir"; then
+    bad "$name" "a deploy whose run directory holds no $RUN_ENV_FILE exited 0"
   elif [[ -e "$sentinels/$SENTINEL_INSTALL" ]]; then
     bad "$name" "a deploy refused for its env file wrote to the host first"
   else
@@ -140,6 +132,58 @@ test_deploy_inputs_refuse_a_placeholder_token() {
     bad "$name" "complete inputs with a real token were refused"
   elif [[ "$status_fake" -eq 0 ]]; then
     bad "$name" "the placeholder token passed the checks"
+  else
+    ok "$name"
+  fi
+}
+
+# The deploy stages the toolbox where the runner admits it at boot: under the
+# storage home the run's env file names, in toolbox/incoming, as the runner
+# lays out its ToolboxHome.
+test_deploy_stages_the_toolbox_where_the_runner_admits_it() {
+  local name="test_deploy_stages_the_toolbox_where_the_runner_admits_it"
+  local run_dir="$WORK_DIR/${RUN_NAME_PREFIX}stage" home="$WORK_DIR/storage-home" part
+  run_dir_with "$run_dir" "" "RUNNER_STORAGE_HOME=$home"
+  if ! (
+    # shellcheck source=./deploy.sh
+    source "$DEPLOY_SH" >/dev/null 2>&1
+    stage_toolbox "$run_dir" "$run_dir/$RUN_ENV_FILE" >/dev/null 2>&1
+  ); then
+    bad "$name" "a complete set was refused"
+    return
+  fi
+  for part in "${TOOLBOX_PARTS[@]}"; do
+    if [[ ! -f "$home/toolbox/incoming/toolbox-$FIXTURE_DIGEST.$part" ]]; then
+      bad "$name" "the set's .$part is not under $home/toolbox/incoming"
+      return
+    fi
+  done
+  ok "$name"
+}
+
+# A toolbox the deploy cannot stage stops it before the unit restarts, so the
+# running runner keeps serving instead of booting against a set that never
+# landed. The binary is installed first, which proves the run got that far.
+test_deploy_that_cannot_stage_its_toolbox_never_restarts_the_runner() {
+  local name="test_deploy_that_cannot_stage_its_toolbox_never_restarts_the_runner"
+  local run_dir="$WORK_DIR/${RUN_NAME_PREFIX}no-toolbox" sentinels="$WORK_DIR/stage-refused" status=0
+  mkdir -p "$run_dir" "$sentinels"
+  : >"$run_dir/$RUN_BINARY_FILE"
+  (
+    export SENTINEL_DIR="$sentinels" PATH="$STAGE_STUB_DIR:$STUB_DIR:$PATH"
+    # shellcheck source=./deploy.sh
+    source "$DEPLOY_SH" >/dev/null 2>&1
+    acquire_deploy_lock() { :; }
+    check_run_dir() { :; }
+    check_deploy_inputs() { :; }
+    main runner v9.9.9 "$run_dir" >/dev/null 2>&1
+  ) || status=$?
+  if [[ "$status" -eq 0 ]]; then
+    bad "$name" "a deploy whose toolbox never staged exited 0"
+  elif [[ ! -e "$sentinels/$SENTINEL_INSTALL" ]]; then
+    bad "$name" "the deploy stopped before it installed the binary — test harness fault, not a deploy fault"
+  elif [[ -e "$sentinels/$SENTINEL_SYSTEMCTL" ]]; then
+    bad "$name" "a deploy whose toolbox never staged still reached systemctl"
   else
     ok "$name"
   fi
@@ -179,6 +223,8 @@ test_deploy_bundle_keeps_its_directory_private() {
 test_deploy_refused_toolbox_leaves_the_host_untouched
 test_deploy_refused_env_leaves_the_host_untouched
 test_deploy_inputs_refuse_a_placeholder_token
+test_deploy_stages_the_toolbox_where_the_runner_admits_it
+test_deploy_that_cannot_stage_its_toolbox_never_restarts_the_runner
 
 if tar --version 2>/dev/null | grep -q 'GNU tar'; then
   test_deploy_bundle_keeps_its_directory_private
