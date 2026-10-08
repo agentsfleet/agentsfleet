@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "orly_version": "0.12.1",
+  "orly_version": "0.13.0",
   "packs": [
     "language.rust",
     "persona.indy",
@@ -182,7 +182,7 @@
     ".orly/docs/LIFECYCLE_PATTERNS.md": "sha256:189c9781a9289a19a4c23816891551ff2fc7dba10fc0d3bed4e30432ccecec9c",
     ".orly/docs/LOGGING_STANDARD.md": "sha256:a1dfad1dd0023b9e1068a0803029e7995d56944a9d8b6c859c0999758b91e66c",
     ".orly/docs/RELEASE_TEMPLATE.md": "sha256:53453cd3c8ce54d2c4da958e3c77189f83cffc068bc77ca7eb703ad2a571f9ca",
-    ".orly/docs/REST_API_DESIGN_GUIDELINES.md": "sha256:21100c2d9ff7faa599ddccd05a9571b64029447b58bbc759872106c991793aae",
+    ".orly/docs/REST_API_DESIGN_GUIDELINES.md": "sha256:3867c6522d96b22c9dba81bad1e07b53e09ce35585f2d3332fe0ffa9cb60e959",
     ".orly/docs/SCHEMA_CONVENTIONS.md": "sha256:03b8d6f74352e789fafffb319859d080cd556d9401b1be4e9d8f6684e4600aeb",
     ".orly/docs/TEMPLATE.md": "sha256:8a7015dfb3128f9465461a65ff12b519704927b8b965a8f8f5a58e0ac86cf83c",
     ".orly/docs/VERIFY_TIERS.md": "sha256:732c8bb93a3f84ae2851c69250040ac7ce236f830531102b2d05e4425f4361f1",
