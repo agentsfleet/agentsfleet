@@ -184,8 +184,7 @@ const _: () = assert!(
 /// The scheme prefix, including its separating space.
 ///
 /// Matched case-SENSITIVELY, as a plain `strip_prefix`. A lower-case `bearer `
-/// is refused; `docs/AUTH.md` documents the header as case-sensitive, and
-/// `tests/bearer_prefix_routing.rs` pins it.
+/// is refused, and `tests/bearer_prefix_routing.rs` pins it.
 const BEARER_SCHEME: &str = "Bearer ";
 
 /// The bytes trimmed before deciding a token is blank.

@@ -95,7 +95,7 @@ Headings are stable — specs cite them by text; insert new sections, never rena
 | Process | Role |
 |---|---|
 | **`agentsfleetd-api`** (`agentsfleetd serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Dragonfly pool, and the Vault. Steer, webhook, cron, and continuation handlers each commit an admission row and then `XADD` to `fleet:{id}:events` — single ingress, and the row is what makes the acceptance durable when the append does not land. On `lease` it does a non-blocking `XREADGROUP` to claim the next event, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `PUBLISH`er on `fleet:{id}:activity`. Never runs language-model code. |
-| **`agentsfleet-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `agt_r` token. Holds **zero datastore credentials**. A trusted supervisor runs the agent loop and holds the model key. A lease that needs one gets a sandbox (bubblewrap, Landlock, seccomp, cgroups, its own network namespace) that runs tool calls and nothing else. Credential substitution happens in the supervisor at send time ([`runner_execution.md`](./runner_execution.md#process-model)). The supervisor forwards activity frames to `agentsfleetd` over the `activity` verb. |
+| **`agentsfleet-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `agt_r` token. Holds **zero datastore credentials**. A trusted supervisor runs the agent loop and holds the model key. A lease that needs one gets a sandbox (bubblewrap, Landlock, seccomp, cgroups) that runs tool calls and nothing else. The sandbox gets a network namespace of its own unless the runner's network policy is `allow_all`. Credential substitution happens in the supervisor at send time ([`runner_execution.md`](./runner_execution.md#process-model)). The supervisor forwards activity frames to `agentsfleetd` over the `activity` verb. |
 
 | Target | Producer | Consumer |
 |---|---|---|
@@ -381,7 +381,15 @@ context_json         → handed to the runner as the conversation so far
  fleet busy, in fleet.runner_leases)
 ```
 
-The lease reply ships to the runner, whose agent loop runs the fleet's turn: it reads the failed GitHub run through `${secrets.github.token}` (run and job metadata only: a read mint carries `contents: read` and nothing else, `rustd/crates/afd_credential/src/credential/github.rs:107-119`, and job logs sit behind a redirect the runner does not follow; M206_004 widens the read), fetches Fly app logs, fetches Dragonfly cluster stats, posts a remediation message to Slack. GitHub is a **mintable integration**, so that placeholder does not resolve to a stored value. The runner's supervisor mints the lease's token through the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`). It keeps the token in the lease's egress guard ([`runner_execution.md`](./runner_execution.md#credentials)). The broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token for that lease. The App private key never leaves the daemon. (Fly/Slack remain static custom secrets until the `oauth_refresh` integration lands.) The loop's answer becomes the report (`response_text`, `tokens=1840`, `wall_ms=8210`, `time_to_first_token_ms=320`, `outcome=ok`), which the runner POSTs to `report`.
+The lease reply ships to the runner, whose agent loop runs the fleet's turn. The turn reads the failed GitHub run through `${secrets.github.token}`, fetches Fly app logs and Dragonfly cluster stats, and posts a remediation message to Slack.
+
+A read mint carries `contents: read`, plus `actions: read` and `checks: read` where the installation holds them (`READ_REACH` and `EVIDENCE_READS` in `rustd/crates/afd_credential/src/credential/github/request.rs`). Job logs sit behind a redirect, and the egress guard's client follows none (`rustd/crates/afr_egress/src/network.rs`).
+
+GitHub is a **mintable integration**, so that placeholder does not resolve to a stored value. The runner's supervisor mints the lease's token through the daemon-side credential broker over the `agt_r` plane (`POST /v1/runners/me/credentials/mint`). It keeps the token in the lease's egress guard ([`runner_execution.md`](./runner_execution.md#credentials)).
+
+The broker signs a GitHub App JWT (RS256, platform key, daemon-side) and exchanges it for a short-lived installation token for that lease. The App private key never leaves the daemon. (Fly/Slack remain static custom secrets until the `oauth_refresh` integration lands.)
+
+The loop's answer becomes the report (`response_text`, `tokens=1840`, `wall_ms=8210`, `time_to_first_token_ms=320`, `outcome=processed`), which the runner POSTs to `report`. A report's `outcome` is `processed` or `fleet_error` (`Outcome` in `rustd/crates/afd_wire/src/report.rs`).
 
 **Step 7 — UPDATE `fleet_events`** (close the same row, at `report`):
 
@@ -1257,7 +1265,11 @@ The dedupe key is the digest of the signed body. `X-GitHub-Delivery` is not used
 
 - Never touches the user's laptop directly
 - Never reads the user's local filesystem (it sees only what the SKILL.md and TRIGGER.md grant it)
-- Never escapes the sandbox — namespaces, Landlock, seccomp and cgroup v2 bound each lease's sandbox, and the agent loop runs outside it ([`runner_execution.md`](./runner_execution.md#sandbox-engines)). **Network egress** is constrained to the policy's hosts: the sandbox has its own network namespace, and the fleet's calls leave through the supervisor's egress guard, which admits only those hosts (see [`runner_fleet.md` §Egress model](./runner_fleet.md)).
+- Never escapes the sandbox — namespaces, Landlock, seccomp and cgroup v2 bound each lease's sandbox, and the agent loop runs outside it ([`runner_execution.md`](./runner_execution.md#sandbox-engines)). **Network egress** follows the runner's network policy (see [`runner_fleet.md` §Egress model](./runner_fleet.md)):
+  - `allow_all`: the sandbox shares the host's network namespace, and its egress is unrestricted.
+  - `deny_all_egress`: the sandbox reaches nothing beyond loopback.
+  - `allow_list_egress`: host-side nf_tables rules hold the sandbox to the registry baseline plus the fleet's `network.allow`.
+  - Supervisor-side tools such as `http_request` send through the egress guard (`afr_egress`), which admits only the fleet's `network.allow` hosts. Traffic from inside the sandbox never passes that guard.
 - Never holds a datastore credential — the runner reaches the platform only over the `/v1/runners` protocol
 
 ## The install failure scenario, visually

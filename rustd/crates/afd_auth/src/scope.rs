@@ -392,8 +392,12 @@ pub fn signup_owner_claim() -> String {
 
 /// Parses a space-delimited claim into a held set.
 ///
-/// The OAuth `scope` convention; the array form is pre-joined with spaces
-/// before it reaches here, so all three credential paths feed this one parser.
+/// The OAuth `scope` convention, and the one parser all three person
+/// credential paths feed. Each hands over a single string: a session token's
+/// `scopes` claim decodes as one, so an array there fails verification as
+/// [`crate::verifier::VerifyError::Malformed`], and an array under the
+/// provider's `public_metadata.scopes` reads as the unprovisioned claim, which
+/// grants nothing.
 ///
 /// # Delimiter
 ///

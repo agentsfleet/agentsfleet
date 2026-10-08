@@ -1,7 +1,7 @@
 //! `GET /v1/runners/me` — the runner's own row, read-only.
 //!
 //! Reading this does NOT bump liveness. Liveness is written by the heartbeat
-//! and by nothing else, so inspecting a host with `agentsfleet-runner status`
+//! and by nothing else, so inspecting a runner's row through this route
 //! can never mask a dead runner (`docs/AUTH.md` §Runner token). That promise is
 //! kept by the STATEMENT this reaches — `SELECT_RUNNER_SELF` has no update in
 //! it — rather than by this handler remembering not to ask for one.

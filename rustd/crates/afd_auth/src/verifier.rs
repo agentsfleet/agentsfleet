@@ -26,9 +26,9 @@ use crate::credential::Presented;
 
 /// What a token said, once its signature and standard claims checked out.
 ///
-/// Only the fields this daemon acts on. The issuer, organisation and audience
-/// claims are checked by the verifier and never constructed here, so nothing
-/// downstream can log them.
+/// Only the fields this daemon acts on. `afd_identity`'s `JwksVerifier` checks
+/// the issuer and audience claims and never constructs them here, so nothing
+/// downstream can log them. It reads no organisation claim at all.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedClaims {
     /// The `sub` claim — the provider's identifier for the person.

@@ -18,19 +18,12 @@ export const MAX_BIND_PATH_LEN = 4096;
 /** `BIND_NOTE_MAX_BYTES` (rules.rs) — one line of operator intent. */
 export const MAX_BIND_NOTE_LEN = 200;
 
-/** The first nine entries of `PROTECTED_BIND_PATHS` (rules.rs) — the
- * read-only baseline the sandbox already mounts.
- *
- * `/etc` and `/opt` left this list: they carried the host account database and
- * the daemon's own control-plane token into every lease, and nothing a lease
- * runs reads them. The individual `/etc` files a lease DOES read are named
- * instead. The executable and library trees stayed, because the engine's model
- * transport spawns `curl`. */
-/* DANGER_HOST_ — every host path a lease can reach. The daemon declares the
- * same paths, unnamed, in `PROTECTED_BIND_PATHS` (rules.rs).
- * Every baseline entry carries the prefix because every one is HOST filesystem
- * mounted into a sandbox running prompt-injectable agent code; grep
- * `DANGER_HOST_` to see the whole lease-reachable surface at once. */
+/** The first nine entries of `PROTECTED_BIND_PATHS` (rules.rs): host paths an
+ * operator bind may not overlap. `/etc` and `/opt/agentsfleet` are refused as
+ * whole trees in `SENSITIVE_PATHS` below. */
+/* DANGER_HOST_ — a host path an operator bind may not overlap. The daemon
+ * declares the same paths, unnamed, in `PROTECTED_BIND_PATHS` (rules.rs);
+ * grep `DANGER_HOST_` to see every one at once. */
 
 /** TLS trust store — the only filesystem input a credentialed dial needs.
  * PLATFORM ASSUMPTION: Debian-family and Alpine location; Red Hat family keeps
@@ -50,13 +43,8 @@ export const DANGER_HOST_NETWORK_RESOLVER_DIR = "/run/systemd/resolve";
 export const DANGER_HOST_NETWORK_HOSTS = "/etc/hosts";
 export const DANGER_HOST_NETWORK_NSSWITCH = "/etc/nsswitch.conf";
 
-/** System core: the host's executables and shared libraries — the widest
- * surface here and the one carrying real risk. `/usr` alone is tens of
- * thousands of files, all readable and executable by agent code in a lease.
- * Bound only because the engine's model transport spawns `curl`; without them
- * every lease dies at `execvp` before its first model call. They buy a working
- * product, not security, and they leave when the transport needs no
- * subprocess. */
+/** System core: the host's executables and shared libraries. An operator bind
+ * may not overlap them. */
 export const DANGER_HOST_SYSTEM_CORE = ["/usr", "/lib", "/lib64", "/bin", "/sbin"];
 
 export const BASELINE_RO_PATHS = [

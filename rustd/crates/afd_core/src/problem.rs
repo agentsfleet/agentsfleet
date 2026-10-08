@@ -18,9 +18,10 @@
 //!
 //! [`Problem::of`] answers [`Problem::UNKNOWN`] — a 500 — for a code with no
 //! entry. A response is being written at that point and there is nothing better
-//! to do than answer honestly. `test_every_declared_code_has_an_entry` is what
-//! stops that fallback from ever being reached by a code this workspace
-//! declares.
+//! to do than answer honestly.
+//! `test_every_declared_code_has_an_entry_and_no_entry_is_orphaned`, in
+//! `tests/problem.rs`, is what stops that fallback from ever being reached by
+//! a code this workspace declares.
 
 use crate::error_code::{self, ErrorCode};
 
