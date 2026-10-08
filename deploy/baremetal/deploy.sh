@@ -45,15 +45,13 @@ if [[ "$DEPLOY_EXECUTED" == 1 && -z "${_DEPLOY_UNBUFFERED:-}" ]] && command -v s
 fi
 
 readonly REPO="agentsfleet/agentsfleet"
-readonly INSTALL_DIR="/usr/local/bin"
-readonly SYSTEMD_DIR="/etc/systemd/system"
-readonly DEPLOY_DIR="/opt/agentsfleet/deploy"
-readonly ENV_FILE="/opt/agentsfleet/.env"
-readonly ENV_DEST="/etc/default/agentsfleet-runner"
-# The log line, staging the toolbox the runner admits at boot
+# The host's paths and the unit's name (layout.sh, which the runner playbook
+# reads too), the log line, staging the toolbox the runner admits at boot
 # (`install_toolbox`), and restarting and health-checking the unit
 # (`restart_services`, `verify_healthy`), beside this file on the host as in
 # the repository.
+# shellcheck source=./layout.sh
+source "$(dirname "${BASH_SOURCE[0]}")/layout.sh"
 # shellcheck source=./log.sh
 source "$(dirname "${BASH_SOURCE[0]}")/log.sh"
 # shellcheck source=./toolbox.sh
@@ -66,8 +64,6 @@ readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 # names what it deploys; the resolver rejects any other value (catches stale
 # callers still passing a retired component name).
 readonly COMPONENT_RUNNER="runner"
-readonly BINARY_NAME="agentsfleet-runner"
-readonly SERVICE_NAME="agentsfleet-runner.service"
 # The release's offline bundle is arch-specific. CI's local mode skips this —
 # it copies the right-arch binary and toolbox and passes their paths.
 case "$(uname -m)" in
@@ -197,7 +193,7 @@ fetch_release() {
 # ── Systemd sync ─────────────────────────────────────────────────────────────
 
 sync_systemd_unit() {
-  local src="${DEPLOY_DIR}/${SERVICE_NAME}"
+  local src="${HOST_DEPLOY_DIR}/${SERVICE_NAME}"
   [[ -f "$src" ]] || return 0
   cp "$src" "${SYSTEMD_DIR}/${SERVICE_NAME}"
   systemctl daemon-reload
@@ -207,7 +203,7 @@ sync_systemd_unit() {
 # Refuses the env file sync_env would install. `env_file` is injectable so
 # deploy_test.sh can read a fixture (production passes nothing).
 check_env_file() {
-  local env_file="${1:-$ENV_FILE}"
+  local env_file="${1:-$HOST_ENV_FILE}"
   [[ -f "$env_file" ]] \
     || die "missing $env_file — deploy through playbooks/lib/runner/deploy.sh"
 
@@ -234,8 +230,8 @@ check_env_file() {
 }
 
 sync_env() {
-  cp "$ENV_FILE" "$ENV_DEST"
-  log "Synced .env → ${ENV_DEST}"
+  cp "$HOST_ENV_FILE" "$UNIT_ENV_FILE"
+  log "Synced .env → ${UNIT_ENV_FILE}"
 }
 
 # Every check that can refuse this deploy, run before its first write to the
@@ -244,7 +240,7 @@ sync_env() {
 # that does not name its own version, so the host would stop serving long
 # after the deploy that broke it.
 check_deploy_inputs() {
-  local binary="$1" toolbox_dir="$2" env_file="${3:-$ENV_FILE}"
+  local binary="$1" toolbox_dir="$2" env_file="${3:-$HOST_ENV_FILE}"
   [[ -f "$binary" ]] || die "runner binary not found: $binary"
   check_toolbox_set "$toolbox_dir"
   check_env_file "$env_file"

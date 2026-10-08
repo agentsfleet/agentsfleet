@@ -26,8 +26,8 @@ install_host_dependencies() {
 prepare_host_paths() {
   runner_remote "
     set -e
-    sudo mkdir -p /opt/agentsfleet/bin /opt/agentsfleet/deploy
-    sudo chown -R '$RUNNER_USER:$RUNNER_USER' /opt/agentsfleet
+    sudo mkdir -p $HOST_STAGING_DIRS
+    sudo chown -R '$RUNNER_USER:$RUNNER_USER' $HOST_ROOT
   "
 }
 

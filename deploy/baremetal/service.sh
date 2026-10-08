@@ -7,7 +7,7 @@
 # the unit it acts on, and every bound it waits for, as arguments: deploy.sh
 # passes the production values, and service_test.sh passes ones that do not
 # wait. `log` comes from log.sh. restart_services' sweep of pre-rename units
-# also reads SYSTEMD_DIR and HOST from deploy.sh.
+# also reads SYSTEMD_DIR (layout.sh) and HOST (deploy.sh).
 
 # Bounded graceful stop. Lease reclaim (lease_expires_at + fencing_token) is
 # the safety net for a forced stop, so the timeout only gives an in-flight
