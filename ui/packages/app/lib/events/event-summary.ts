@@ -177,17 +177,17 @@ export function failureSentenceFor(tag: string): string {
   return failurePresentationFor(tag).label;
 }
 
+// startup_posture is the runner refusing the run before the fleet starts; its
+// cause says whether the fix is in the fleet's settings or on the runner.
+export const RUNNER_REFUSAL_SENTENCE =
+  "The runner refused this run before the fleet started.";
+
 /**
  * The remediation line shown under a failure sentence. Only classes the
  * operator can actually act on from the console carry one — a guidance line
  * that cannot be followed is noise, so an unmapped or unactionable class
  * returns null and renders nothing.
  */
-// startup_posture is the runner refusing the run before the fleet starts; its
-// cause says whether the fix is in the fleet's settings or on the runner.
-export const RUNNER_REFUSAL_SENTENCE =
-  "The runner refused this run before the fleet started.";
-
 export const GUIDANCE = {
   STARTUP: `${RUNNER_REFUSAL_SENTENCE} If the cause names a fleet setting, change it and retry; if it names the runner or its host, retry once.`,
 } as const;
