@@ -6,9 +6,8 @@
 # Split out of runner_test.sh when the verify-lane cases pushed that file past
 # the 350-line cap. The `op` and `tailscale` stubs plus the hermetic
 # `run_script` launcher are the entire world those suites execute in, and
-# runner_test.sh, runner_verify_test.sh and runner_host_test.sh need them
-# identically — a second copy would drift the moment one suite taught its stub
-# a new answer.
+# runner_test.sh and runner_verify_test.sh need them identically — a second
+# copy would drift the moment one suite taught its stub a new answer.
 
 set -uo pipefail
 

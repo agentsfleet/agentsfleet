@@ -8,8 +8,10 @@ source "$RUNNER_LIB_DIR/../common.sh"
 
 readonly CGROUP_ROOT="/sys/fs/cgroup"
 # The runner's host probe refuses to start without each of these
-# (`REQUIRED_CONTROLLERS` in rustd/crates/afr_sandbox/src/probe.rs);
-# runner_host_test.sh holds the two lists equal.
+# (`REQUIRED_CONTROLLERS` in rustd/crates/afr_sandbox/src/probe.rs), and the
+# Delegate= line in deploy/baremetal/agentsfleet-runner.service names the same
+# ones. No test compares the three lists, so a controller the probe gains is
+# added to all three in one change.
 readonly REQUIRED_CGROUP_CONTROLLERS="cpu io memory pids"
 # An allowlisted sandbox reaches its registries through this host: its packets
 # are forwarded from its own link out of the host's. The runner's boot probe
