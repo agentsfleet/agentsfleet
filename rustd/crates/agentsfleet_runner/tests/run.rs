@@ -22,18 +22,11 @@ use std::time::{Duration, Instant};
 use afd_observability::semconv::{ATTR_LEASE_ID, RESOURCE_SERVICE_INSTANCE_ID, SPAN_RUNNER_LEASE};
 use afd_otlp::config::{OTEL_ENDPOINT_KNOB, OTEL_PROTOCOL_KNOB};
 use afd_otlp::resource::INSTANCE_ID_KNOB;
-use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
 use serde_json::Value;
 
 use crate::fake_daemon::{ALLOW_ALL, FakeCollector, FakeDaemon, LEASE_ID};
+use crate::support::{RUN_FAILED, Runner};
 
-/// The built binary under test.
-const BINARY: &str = env!("CARGO_BIN_EXE_agentsfleet-runner");
-/// A token of the runner's shape.
-const TOKEN: &str = "agt_r_run_test";
-/// Where an instrumented build writes its coverage profile, kept across the
-/// cleared environment so the binary's own lines are measured.
-const PROFILE_KNOB: &str = "LLVM_PROFILE_FILE";
 /// The fencing token the fixture lease carries, which the report echoes.
 const FENCING: u64 = 504;
 /// How long one lease is given to settle.
@@ -42,8 +35,6 @@ const SETTLE_WITHIN: Duration = Duration::from_secs(60);
 const STOP_WITHIN: Duration = Duration::from_secs(30);
 /// How often a stopping binary is checked.
 const POLL: Duration = Duration::from_millis(50);
-/// What `run` logs when it stops on a failure.
-const RUN_FAILED: &str = "run_failed";
 /// The class of a lease refused before its turn ran.
 const STARTUP_POSTURE: &str = "startup_posture";
 /// The encoding the fake collector reads.
@@ -81,20 +72,15 @@ fn run_one_lease(
         .prefix("afr-run-")
         .tempdir_in("/tmp")
         .expect("a storage home");
-    let mut command = Command::new(BINARY);
-    command
-        .args(["run", "--unsandboxed"])
-        .env_clear()
-        .env(ENV_API_URL, &daemon.url)
-        .env(ENV_RUNNER_TOKEN, TOKEN)
-        .env(ENV_STORAGE_HOME, home.path())
-        .envs(extra.iter().copied())
+    let mut child = Runner::new(&["run", "--unsandboxed"])
+        .daemon(&daemon.url)
+        .home(home.path())
+        .envs(extra)
+        .command()
         .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-    if let Some(profile) = std::env::var_os(PROFILE_KNOB) {
-        command.env(PROFILE_KNOB, profile);
-    }
-    let mut child = command.spawn().expect("the runner binary starts");
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the runner binary starts");
     let stderr = drain_stderr(&mut child);
 
     let report = runtime.block_on(daemon.report(SETTLE_WITHIN));
