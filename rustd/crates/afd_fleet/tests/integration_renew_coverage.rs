@@ -10,7 +10,10 @@ use crate::report_seed;
 use afd_core::error_code;
 use afd_wire::report::RenewRequest;
 
-use self::report_seed::{DEEP_POOL, Held, held};
+use crate::seed::{MODEL, PROVIDER};
+use crate::support::Fixtures;
+
+use self::report_seed::{DEEP_POOL, Held, held, held_in};
 
 const ONE_NANO_DAILY_BUDGET: &str = r#"{"name":"renew-cover","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":0.000000001}}}"#;
 const DEEP_DAILY_BUDGET: &str = r#"{"name":"renew-cover","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1000}}}"#;
@@ -172,6 +175,64 @@ async fn a_fleet_killed_mid_run_with_room_still_renews() {
         .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
         .await
         .expect("a killed fleet's run with room left keeps renewing");
+
+    drop(plane);
+    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
+    held.fixtures.cleanup().await;
+}
+
+/// Tokens a renewal could not price are charged by the next renewal that can.
+///
+/// Three renewals at one instant, so no runtime accrues and every nano charged
+/// is a token's. The first prices 10k input tokens; the second reports 25k
+/// while the catalogue is offline; the third prices 40k and must charge the
+/// 30k since the first, three times the first slice. Charging the second
+/// slice's real counts at run-fee rates would move the token cursor to 25k,
+/// and the third would charge only 15k.
+///
+/// A private database, because taking the catalogue offline breaks the rate
+/// read for every test sharing it.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_renewal_during_a_catalogue_fault_charges_its_tokens_later() {
+    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let plane = held.fixtures.plane();
+    let lease_id = held.issued.lease_id.as_str();
+    set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
+    held.fixtures
+        .seed_model_rate(PROVIDER, MODEL, held.now.as_millis())
+        .await;
+    let reported = |input_tokens| RenewRequest {
+        input_tokens,
+        ..RenewRequest::default()
+    };
+
+    let (_, first) = plane
+        .renew(&held.runner, lease_id, reported(10_000), held.now)
+        .await
+        .expect("a priced renewal");
+    assert!(!first.is_zero(), "the fixture rate prices ten thousand tokens");
+
+    held.fixtures.set_catalogue_readable(false).await;
+    let (_, unpriced) = plane
+        .renew(&held.runner, lease_id, reported(25_000), held.now)
+        .await
+        .expect("a catalogue fault does not stop the run");
+    assert!(
+        unpriced.is_zero(),
+        "no runtime accrued, and no token was priced while the catalogue was offline"
+    );
+    held.fixtures.set_catalogue_readable(true).await;
+
+    let (_, later) = plane
+        .renew(&held.runner, lease_id, reported(40_000), held.now)
+        .await
+        .expect("a priced renewal");
+    assert_eq!(
+        later.as_i64(),
+        3 * first.as_i64(),
+        "the tokens the fault held are charged with the next priced slice"
+    );
 
     drop(plane);
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;

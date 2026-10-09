@@ -33,7 +33,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
 | Model registry | one row per `(model_id, secret_ref)` | `core.tenant_model_entries`, `UNIQUE (tenant_id, model_id, secret_ref)`; entries reference keys, never own material | §8.4 |
 | Rate lookup | generation-validated process cache | entry accepted only at the observed `core.model_catalogue_revision` or later; a miss loads the row | §4.2, §10 |
-| Unknown model on platform | `error.ModelNotPriced` | never a default rate: renew and settle fail closed on it, the lease-estimate gate fails open because an estimate is not a charge | §2.3, §4.2 |
+| Unknown model on platform | run-fee-only rates | never a default token rate: renew and settle charge the runtime and no tokens; the lease-estimate gate admits, because an estimate is not a charge | §2.3, §4.2 |
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired — `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a branch in the charge functions | §2.4 |
 | Posture switch | claim-time snapshot wins | posture resolved once, at gate time, before the receive deduct | §7 |
@@ -125,7 +125,8 @@ This replaced a timestamp-gated window, and the reason is worth keeping. The cut
 Two properties fall out of the removal, both load-bearing:
 
 - **The balance gate can refuse.** While the window was open, run charge was `0` for every posture, so the balance gate could never refuse anyone — `0 balance ≥ 0 charge` always covers. Both money checkpoints were effectively open for all tenants. They now bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended).
-- **An unpriceable model fails closed.** Platform posture with no catalogue row returns `error.ModelNotPriced`. Renew and settle fail closed on it; the lease-estimate gate fails open, because an estimate is not a charge.
+- **An unpriceable model is charged its runtime only.** Platform posture with no catalogue row meters at run-fee-only rates (`rustd/crates/afd_billing/src/meter.rs`): nothing published a token price, so no token is charged. The lease-estimate gate admits, because an estimate is not a charge.
+- **A catalogue fault holds tokens at renewal.** A renewal that cannot read the catalogue charges the run fee and meters no tokens, so its token cursor stays put and the next priced renewal or the report charges them (`renew_tokens_held_for_pricing`, `rustd/crates/afd_fleet/src/lease/renew.rs`). A report that cannot read it charges the final slice's runtime only (`report_rates_unverified_run_fee_only`), so tokens since the last priced slice go uncharged.
 
 Metering itself is unchanged and never stopped: telemetry rows INSERT with posture and token counts regardless of what is charged. What changed is that `credit_deducted_nanos` now carries the catalogue's number instead of zero.
 
@@ -264,9 +265,9 @@ Rates come from a process-local cache in front of `core.model_library` (`afd_bil
 
 Every admin mutation runs inside the generation transaction: lock the singleton row `FOR UPDATE`, change the catalogue, increment the generation, commit. The rows and the generation describing them therefore become visible together, and a replica that never saw the mutation still cannot serve the old rate — its entry carries the old generation and every charge compares it.
 
-`error.ModelNotPriced` under platform, not a panic and never a default rate. The upstream validators do reject an uncatalogued model — at `tenant provider create` time (`400 model_not_in_caps_catalogue`) and when the bundle's frontmatter is authored — but the catalogue can move after they ran: an admin `DELETE` of a non-default row leaves any tenant still naming that model reaching this resolve and getting a database answer of "no row".
+A model with no catalogue row meters at run-fee-only rates under platform: not a panic, and never a default token rate. The upstream validators do reject an uncatalogued model — at `tenant provider create` time (`400 model_not_in_caps_catalogue`) and when the bundle's frontmatter is authored — but the catalogue can move after they ran: an admin `DELETE` of a non-default row leaves any tenant still naming that model reaching this resolve and getting a database answer of "no row".
 
-That is an operational state, not a programmer bug, which is why this path used to panic and does not any more. A panic aborted the whole replica for one fleet's stale model, on every replica that picked the fleet up — one tenant's stale configuration taking down the daemon for everyone. The error lets each caller take its own documented posture instead: renew and settle fail closed, and the lease-estimate gate fails open, because an estimate is not a charge.
+That is an operational state, not a programmer bug, which is why this path used to panic and does not any more. A panic aborted the whole replica for one fleet's stale model, on every replica that picked the fleet up — one tenant's stale configuration taking down the daemon for everyone. Run-fee-only lets every caller go on instead: renew and settle charge the runtime and no tokens, and the lease-estimate gate admits, because an estimate is not a charge.
 
 ### 4.3 What an event costs — by shape, not by number
 
