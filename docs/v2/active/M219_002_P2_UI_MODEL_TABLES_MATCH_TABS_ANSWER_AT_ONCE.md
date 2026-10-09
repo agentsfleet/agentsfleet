@@ -23,8 +23,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Branch:** docs/event-runtime-positioning
 **Folded-into:** `M219_001`
 **Baseline revision:** 2bf456efdf7be559b6c67a2e254dc92600d257b2
-**Test Baseline:** pending — inherited from `M219_001`: one branch, measured once
-**Baseline evidence:** pending — inherited from `M219_001`
+**Test Baseline:** unit=4485 integration=899 — inherited from `M219_001`: one branch, measured once at `2bf456efd`
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M219_001-2bf456efd.md`
 **Depends on:** none. Ships in the `docs/event-runtime-positioning` Pull Request (PR) beside `M219_001`, as Indy chose for scope arriving on this branch.
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 09, 2026) from Indy's four screenshots of the dev dashboard on Oct 09, 2026.
 **Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` (the model library), `ui/packages/design-system` (table and tab primitives)
