@@ -87,7 +87,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_outbound/src/interim.rs` | EDIT | Interim lines hand raw text to the poster |
 | `rustd/crates/afd_outbound/tests/integration_slack_poster.rs` | EDIT | An answer naming the channel posts as text |
 | `rustd/crates/afd_credential/src/credential/github.rs` | EDIT | Only `metadata: read` may arrive unrequested |
-| `rustd/crates/afd_credential/src/credential/github/tests.rs` | EDIT | Unrequested-read cases |
+| `rustd/crates/afd_credential/src/credential/github/tests.rs` | EDIT | Declares the unrequested-permission cases |
+| `rustd/crates/afd_credential/src/credential/github/tests/unrequested.rs` | CREATE | Unrequested-read and `metadata` level cases |
 | `rustd/crates/afd_fleet/src/lease/coverage.rs` | EDIT | §7: the ceiling read ignores fleet status |
 | `rustd/crates/afd_fleet/src/lease/installed.rs` | EDIT | §7: a stored-config read with no status filter |
 | `rustd/crates/afd_fleet/tests/integration_renew_coverage.rs` | EDIT | §7: killed-fleet ceiling cases replace the stopped-fleet case |
@@ -171,9 +172,10 @@ Interim lines are escaped; final answers go out as written, so a model can notif
 
 `verify_permissions` passes any unrequested permission at read level. It passes only `metadata: read`; any other unrequested name, at any level, is `Overreach`. **Implementation default:** the grant row records no scope, because a workspace member already holds `FleetWrite` (`afd_http/src/auth/ownership/role.rs` withholds only secret and connector writes) and can install a write fleet directly, so a recorded scope would close no hole.
 
-- **Dimension 6.1** — An unrequested read other than `metadata` is refused → Test `verify_refuses_an_unrequested_read_other_than_metadata`
-- **Dimension 6.2** — `metadata: read` beside exactly the requested set passes → Test `verify_admits_metadata_beside_the_request`
-- **Dimension 6.3** — A live dev mint for the pull-request reviewer fleet passes the tightened check → Test `dev_mint_passes_the_tightened_verify` (manual)
+- **Dimension 6.1** — An unrequested read other than `metadata` is refused → Test `verify_refuses_an_unrequested_read_other_than_metadata` — DONE (`afd_credential/src/credential/github/tests/unrequested.rs`)
+- **Dimension 6.2** — `metadata: read` beside exactly the requested set passes → Test `verify_admits_metadata_beside_the_request` — DONE (`afd_credential/src/credential/github/tests/unrequested.rs`)
+- **Dimension 6.3** — A live dev mint for the pull-request reviewer fleet passes the tightened check → Test `dev_mint_passes_the_tightened_verify` (manual) — PENDING: needs Indy's dev GitHub App mint
+- **Dimension 6.4** — `metadata` at any level other than read is refused → Test `verify_refuses_metadata_above_read` — DONE (`afd_credential/src/credential/github/tests/unrequested.rs`)
 
 ### §7 — A stopped fleet's run keeps its ceiling
 
@@ -250,6 +252,7 @@ No HTTP route, status code or error code changes. Refusals reuse `RUN_STALE_FENC
 | 6.1 | unit | `verify_refuses_an_unrequested_read_other_than_metadata` | Response adds `administration: read` → overreach |
 | 6.2 | unit | `verify_admits_metadata_beside_the_request` | Requested set plus `metadata: read` → passes |
 | 6.3 | manual | `dev_mint_passes_the_tightened_verify` | A dev pull-request reviewer lease mints; the PR records the response's permission names |
+| 6.4 | unit | `verify_refuses_metadata_above_read` | Response carries `metadata: write` → overreach |
 | 7.1 | integration | `a_fleet_killed_mid_run_keeps_its_breached_ceiling` | Budget exhausted, status killed → renewal refused with `budget_exhausted`; red today |
 | 7.2 | integration | `a_fleet_killed_mid_run_with_room_still_renews` | Budget with room, status killed → renews |
 | 8.1 | integration | `a_renewal_during_a_catalogue_fault_charges_its_tokens_later` | Counts 10k→25k under a fault, 40k priced → the second renewal charges 30k tokens |
