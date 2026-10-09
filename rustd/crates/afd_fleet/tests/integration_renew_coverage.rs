@@ -15,14 +15,12 @@ use self::report_seed::{DEEP_POOL, Held, held};
 const ONE_NANO_DAILY_BUDGET: &str = r#"{"name":"renew-cover","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":0.000000001}}}"#;
 const DEEP_DAILY_BUDGET: &str = r#"{"name":"renew-cover","x-agentsfleet":{"triggers":[{"type":"api"}],"tools":[],"budget":{"daily_dollars":1000}}}"#;
 
-/// A status the lease plane does not treat as runnable.
+/// The status a kill leaves on the fleet row.
 ///
-/// `Leases::installed` answers `Ok(None)` for anything that is not `active`,
-/// and the suite next door already proves all four of its answers. What this
-/// spells here is the operator ACTION — a fleet taken out of service while a
-/// run holds a lease — rather than the string, so a reader sees why the
-/// renewal below is interesting.
-const FLEET_OUT_OF_SERVICE: &str = "paused";
+/// `Leases::installed` answers `Ok(None)` for it, as for every status that is
+/// not `active`. The renewal's ceiling read must not: the cases below kill a
+/// fleet while its run holds a lease and renew that lease.
+const FLEET_KILLED: &str = "killed";
 
 async fn set_fleet_config(held: &Held, config: &str) {
     let mut connection = held
@@ -75,7 +73,7 @@ async fn make_budget_unreadable(held: &Held) {
     set_fleet_config(held, "{}").await;
 }
 
-async fn take_fleet_out_of_service(held: &Held) {
+async fn kill_fleet(held: &Held) {
     let mut connection = held
         .fixtures
         .database
@@ -84,10 +82,10 @@ async fn take_fleet_out_of_service(held: &Held) {
         .expect("a pooled connection");
     sqlx::query("UPDATE core.fleets SET status = $2 WHERE id = $1::uuid")
         .bind(&held.fleet)
-        .bind(FLEET_OUT_OF_SERVICE)
+        .bind(FLEET_KILLED)
         .execute(&mut *connection)
         .await
-        .expect("the live fleet leaves the active status");
+        .expect("the live fleet is killed");
 }
 
 #[tokio::test]
@@ -126,21 +124,14 @@ async fn missing_wallet_admits_while_exhausted_and_unreadable_budgets_refuse() {
     held.fixtures.cleanup().await;
 }
 
-/// A fleet stopped mid-run does not kill the lease already in flight.
+/// A fleet killed mid-run keeps the ceiling its run was admitted under.
 ///
-/// `budget_covers` reads the ceiling live, so a fleet an operator stopped has
-/// no ceiling left to enforce and the renewal is ADMITTED. The arm is worth a
-/// test because the opposite reading is just as available: the same `None`
-/// could have been taken for "this fleet is gone, end the run", and the run's
-/// own author is still waiting on the answer.
-///
-/// It refuses FIRST, against the same breached ceiling, and only then takes
-/// the fleet out of service. Without that half the test would pass on any
-/// fleet whose budget simply had room — which is to say it would pass with the
-/// early return deleted.
+/// Refuses FIRST while the fleet is active, against the same breached ceiling,
+/// so the refusal after the kill is proved to come from that ceiling and not
+/// from the kill itself.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_fleet_stopped_mid_run_still_renews_the_lease_in_flight() {
+async fn a_fleet_killed_mid_run_keeps_its_breached_ceiling() {
     let held = held().await;
     let plane = held.fixtures.plane();
     let lease_id = held.issued.lease_id.as_str();
@@ -152,11 +143,35 @@ async fn a_fleet_stopped_mid_run_still_renews_the_lease_in_flight() {
         .expect_err("the breached ceiling refuses while the fleet is still active");
     assert_eq!(refused.code(), error_code::RUN_BUDGET_EXCEEDED);
 
-    take_fleet_out_of_service(&held).await;
+    kill_fleet(&held).await;
+    let still_refused = plane
+        .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
+        .await
+        .expect_err("a kill does not lift the ceiling of the run in flight");
+    assert_eq!(still_refused.code(), error_code::RUN_BUDGET_EXCEEDED);
+
+    drop(plane);
+    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
+    held.fixtures.cleanup().await;
+}
+
+/// A kill never cancels a run that still has room: the lease in flight renews.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_fleet_killed_mid_run_with_room_still_renews() {
+    let held = held().await;
+    let plane = held.fixtures.plane();
+    let lease_id = held.issued.lease_id.as_str();
+
+    held.fixtures
+        .seed_wallet(&held.tenant, DEEP_POOL, held.now.as_millis())
+        .await;
+    set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
+    kill_fleet(&held).await;
     plane
         .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
         .await
-        .expect("a stopped fleet leaves the run it was already holding renewable");
+        .expect("a killed fleet's run with room left keeps renewing");
 
     drop(plane);
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;

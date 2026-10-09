@@ -91,13 +91,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_credential/src/credential/github/tests/unrequested.rs` | CREATE | Unrequested-read and `metadata` level cases |
 | `rustd/crates/afd_fleet/src/lease/coverage.rs` | EDIT | §7: the ceiling read ignores fleet status |
 | `rustd/crates/afd_fleet/src/lease/installed.rs` | EDIT | §7: a stored-config read with no status filter |
+| `rustd/crates/afd_fleet/src/lease/sql/fleet.rs` | EDIT | §7: the statement that read runs |
 | `rustd/crates/afd_fleet/tests/integration_renew_coverage.rs` | EDIT | §7: killed-fleet ceiling cases replace the stopped-fleet case |
 | `rustd/crates/afd_fleet/src/lease/renew.rs` | EDIT | §8: a catalogue fault meters zero tokens and logs |
 | `rustd/crates/afd_fleet/tests/integration_renew_coverage.rs` | EDIT | §8: the late-charge case, beside the other renewal money gates |
 | `docs/architecture/connectors.md` | EDIT | Disconnect is one transaction |
 | `docs/architecture/runner_fleet.md` | EDIT | §7: kill keeps the ceiling on a run in flight |
 | `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Token verification claim matches §6 |
-| `docs/architecture/billing_and_provider_keys.md` | EDIT | §8: renewal pricing during a catalogue fault |
+| `docs/architecture/billing_and_provider_keys.md` | EDIT | §7: the ceiling read ignores status; §8: renewal pricing during a catalogue fault |
 | `docs/v2/active/M219_001_P1_API_DOCS_CLAIMED_BOUNDARIES_HOLD_IN_CODE.md` | CREATE | This spec |
 
 ## Applicable Rules
@@ -177,12 +178,12 @@ Interim lines are escaped; final answers go out as written, so a model can notif
 - **Dimension 6.3** — A live dev mint for the pull-request reviewer fleet passes the tightened check → Test `dev_mint_passes_the_tightened_verify` (manual) — PENDING: needs Indy's dev GitHub App mint
 - **Dimension 6.4** — `metadata` at any level other than read is refused → Test `verify_refuses_metadata_above_read` — DONE (`afd_credential/src/credential/github/tests/unrequested.rs`)
 
-### §7 — A stopped fleet's run keeps its ceiling
+### §7 — A stopped fleet's run keeps its ceiling — DONE
 
 `installed()` returns nothing for a fleet that is not active, and `budget_covers` then admits the renewal with no ceiling, so a killed fleet's run renews up to `MAX_RUNTIME_MS` bounded only by the tenant wallet. A stored-config read with no status filter feeds `budget_covers`; an absent row means only a purge race. A kill still never cancels a run with room left.
 
-- **Dimension 7.1** — A killed fleet past its ceiling is not renewed → Test `a_fleet_killed_mid_run_keeps_its_breached_ceiling`
-- **Dimension 7.2** — A killed fleet with room still renews → Test `a_fleet_killed_mid_run_with_room_still_renews`
+- **Dimension 7.1** — A killed fleet past its ceiling is not renewed → Test `a_fleet_killed_mid_run_keeps_its_breached_ceiling` — DONE (`afd_fleet/tests/integration_renew_coverage.rs`, live)
+- **Dimension 7.2** — A killed fleet with room still renews → Test `a_fleet_killed_mid_run_with_room_still_renews` — DONE (`afd_fleet/tests/integration_renew_coverage.rs`, live)
 
 ### §8 — A catalogue fault charges tokens late instead of never
 

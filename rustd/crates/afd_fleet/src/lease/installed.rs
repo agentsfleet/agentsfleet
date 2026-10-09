@@ -25,6 +25,9 @@ use crate::lease::store::Leases;
 /// Statement name, for the context a query failure carries.
 const CONTEXT_INSTALLED: &str = "fleet claim read";
 
+/// Statement name for the renewal's ceiling read.
+const CONTEXT_STORED_CONFIG: &str = "fleet ceiling read";
+
 /// The table a malformed value is reported against.
 const TABLE_FLEETS: &str = "core.fleets";
 
@@ -119,5 +122,27 @@ impl Leases {
             context_json: context_json.unwrap_or_else(|| FRESH_CONTEXT.to_owned()),
             bundle_content_hash,
         }))
+    }
+
+    /// The config stored for `fleet_id`, whatever the fleet's status.
+    ///
+    /// Unlike [`Self::installed`], a stopped or killed fleet still answers:
+    /// a run in flight keeps renewing under the ceiling it was admitted with,
+    /// so the ceiling has to stay readable after the fleet stops. `None` only
+    /// when the row is gone.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer and a `config_json` this
+    /// daemon cannot read, as [`Self::installed`] does.
+    pub async fn stored_config(&self, fleet_id: &Uuid7) -> Result<Option<FleetConfig>> {
+        let mut connection = self.pool().acquire().await?;
+        let document: Option<String> = sqlx::query_scalar(sql::fleet::SELECT_FLEET_CONFIG)
+            .bind(fleet_id.as_str())
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_STORED_CONFIG))?;
+        document
+            .map(|document| FleetConfig::stored(&document).map_err(Into::into))
+            .transpose()
     }
 }
