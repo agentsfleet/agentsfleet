@@ -16913,7 +16913,7 @@
       },
       "HttpRequestRule": {
         "type": "object",
-        "description": "One method and path admitted at an origin.\n\nA rule that names no field admits any body and any query string. A rule\nthat names fields, locked or permitted, admits only the top-level keys it\nnames, and no query string.",
+        "description": "One method and path admitted at an origin.\n\nA rule always checks the fields it locks. A rule that carries\n`permitted_fields` is also closed: it admits no top-level key beside its\nlocked and permitted ones, and no query string. A rule without it admits\nany other key and any query string.",
         "required": [
           "method",
           "path",
@@ -16941,11 +16941,14 @@
             "description": "Whether `path` is matched exactly or as a prefix."
           },
           "permitted_fields": {
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "type": "string"
             },
-            "description": "Fields the rule admits with any value, beside the locked ones.\n\nDefaulted, so a lease minted before the field existed still decodes. A\nrule in it that locks fields admits only those fields, so a request it\nno longer covers is refused."
+            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on a lease from a daemon older than this field. The runner then\nchecks the rule's locked fields and nothing more, as that daemon\nintended. Closing such a rule would refuse keys the older daemon never\nlisted, such as a ref's `sha` or a Pull Request's `title`, and stop\nevery write until the daemon upgrades."
           }
         }
       },

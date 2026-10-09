@@ -252,7 +252,7 @@ async fn test_history_leaves_the_repair_context_in_the_system_prompt() {
                 string_value: Some(format!("{REFS_HEADS}agentsfleet-repair/run-41").into()),
                 boolean_value: None,
             }],
-            permitted_fields: Vec::new(),
+            permitted_fields: None,
         }],
     }];
 
