@@ -16,6 +16,7 @@ use tokio::sync::watch;
 
 use crate::capability::{capability_report, selftest};
 use crate::client::{ControlPlane, Verb, endless};
+use crate::egress::Egress;
 use crate::error::Result;
 use crate::halt::Halt;
 use crate::holds::{Holds, Release};
@@ -36,7 +37,7 @@ const EVENT_RELEASE_UNREADABLE: &str = "sandbox_hold_release_unreadable";
 pub(crate) const LAST_BEAT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// What the daemon most recently told this runner.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Assignment {
     /// Whether to take work, finish it, or stop.
     pub(crate) status: HeartbeatStatus,
@@ -44,21 +45,24 @@ pub(crate) struct Assignment {
     pub(crate) workers: u32,
     /// How long until the next beat.
     pub(crate) interval: Duration,
+    /// What each lease's sandbox reaches; nothing until a policy arrives.
+    pub(crate) egress: Egress,
 }
 
 impl Assignment {
     /// What a runner assumes before its first beat is answered: no work, since
-    /// it has no policy to work under.
-    pub(crate) const fn initial() -> Self {
+    /// it has no policy to work under, and no egress.
+    pub(crate) fn initial() -> Self {
         Self {
             status: HeartbeatStatus::Ok,
             workers: 0,
             interval: Duration::from_millis(HEARTBEAT_INTERVAL_MS.unsigned_abs()),
+            egress: Egress::closed(),
         }
     }
 
     /// Whether worker number `worker` should take new work.
-    pub(crate) const fn takes_work(self, worker: u32) -> bool {
+    pub(crate) const fn takes_work(&self, worker: u32) -> bool {
         matches!(self.status, HeartbeatStatus::Ok) && worker < self.workers
     }
 }
@@ -79,11 +83,7 @@ pub(crate) struct Heartbeat<'a> {
 
 impl<'a> Heartbeat<'a> {
     /// A beat over `plane`, reporting `probe` and what `holds` holds.
-    pub(crate) const fn new(
-        plane: &'a ControlPlane,
-        probe: &'a HostProbe,
-        holds: &'a Holds,
-    ) -> Self {
+    pub(crate) fn new(plane: &'a ControlPlane, probe: &'a HostProbe, holds: &'a Holds) -> Self {
         Self {
             plane,
             probe,
@@ -98,7 +98,8 @@ impl<'a> Heartbeat<'a> {
     /// Beats once, carrying a self-test when one was asked for.
     ///
     /// A null policy is a row the daemon could not read, and the runner fails
-    /// closed on it: no workers, and no label for a self-test to run under.
+    /// closed on it: no workers, no egress, and no label for a self-test to
+    /// run under.
     pub(crate) async fn beat(&mut self) -> Result<Assignment> {
         let selftest = self
             .label
@@ -131,8 +132,9 @@ impl<'a> Heartbeat<'a> {
             workers: policy.map_or(0, |policy| WorkerCount::clamping(policy.worker_count).get()),
             interval: Duration::from_millis(u64::from(reply.heartbeat_interval_ms))
                 .max(MIN_HEARTBEAT_INTERVAL),
+            egress: policy.map_or_else(Egress::closed, Egress::assigned),
         };
-        Ok(self.last)
+        Ok(self.last.clone())
     }
 
     /// Beats until the runner stops serving, publishing each assignment.
@@ -173,8 +175,9 @@ impl<'a> Heartbeat<'a> {
                 Ok(beat) => {
                     retries = endless();
                     pause = beat.interval;
+                    let stop = beat.status == HeartbeatStatus::Stop;
                     assignment.send_replace(beat);
-                    if beat.status == HeartbeatStatus::Stop {
+                    if stop {
                         halt.stop();
                     }
                 }
@@ -235,7 +238,7 @@ impl<'a> Heartbeat<'a> {
 /// code the runner gives any identifier it cannot read. No hold is released:
 /// nothing names one.
 fn unreadable_release(named: &str, failure: afd_core::error::Error) {
-    let reason = failure.to_string();
+    let reason = failure.told();
     let error_code = crate::Error::from(failure).code().as_str();
     let fleet_id = named;
     let event = EVENT_RELEASE_UNREADABLE;

@@ -17,9 +17,8 @@ use crate::request_id::RequestId;
 
 /// The sentence a stream refused at the ceiling carries.
 ///
-/// `error_registry.zig`'s `MSG_SSE_STREAM_CAP`, and it names the INSTANCE on
-/// purpose: the ceiling is per process, so a client behind a load balancer may
-/// well get a slot on its next attempt.
+/// It names the INSTANCE on purpose: the ceiling is per process, so a client
+/// behind a load balancer may well get a slot on its next attempt.
 const DETAIL_STREAM_CEILING: &str = "Concurrent event-stream limit reached on this instance";
 
 use super::malformed;
@@ -213,9 +212,9 @@ impl Refusal {
 
     /// A 409 on an answered gate, carrying the answer that stands.
     ///
-    /// The five members `approvals/resolve.zig` writes and the dashboard reads
-    /// off the top level. Without them the operator's alert renders two
-    /// undefined values where the outcome and the resolver belong.
+    /// The five members the dashboard reads off the top level. Without them
+    /// the operator's alert renders two undefined values where the outcome and
+    /// the resolver belong.
     #[must_use]
     pub fn already_resolved(
         code: afd_core::error_code::ErrorCode,

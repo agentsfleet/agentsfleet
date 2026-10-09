@@ -31,9 +31,9 @@ pub(crate) const SESSION_PEPPER: [(&str, &str); 1] = [(
 
 /// The identity provider knobs, well-formed and never dialled.
 ///
-/// The daemon refuses to boot without a provider — `preflight` requires it the
-/// way `runtime_validate.zig` does — so every suite that expects a boot to
-/// SUCCEED, or that means to fault one specific knob, has to supply these.
+/// The daemon refuses to boot without a provider — `preflight` requires it —
+/// so every suite that expects a boot to SUCCEED, or that means to fault one
+/// specific knob, has to supply these.
 /// Declared once here because five suites need the same four values, and a
 /// second spelling of the issuer would mean a test asserting against a provider
 /// no other test configures (RULE UFS).

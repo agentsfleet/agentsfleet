@@ -25,10 +25,10 @@
 //!
 //! # Serialised, and why that is not a smell here
 //!
-//! `connector:outbound` and `connector_workers` are constants shared with the
-//! Zig daemon, so these tests cannot namespace their key the way every other
-//! integration suite does — they would be grading a stream production never
-//! reads. They take `OUTBOUND_LANE` one at a time instead. See the harness.
+//! `connector:outbound` and `connector_workers` are fixed names every replica
+//! reads (`afd_dragonfly::outbound`), so these tests cannot namespace their key
+//! the way every other integration suite does — they would be grading a stream
+//! production never reads. They take `OUTBOUND_LANE` one at a time instead. See the harness.
 
 #![expect(
     clippy::expect_used,
@@ -222,8 +222,8 @@ async fn test_the_worker_creates_the_group_it_reads_under() {
 /// "nothing pending" would leave that entry PENDING under this consumer — so
 /// every later [`OutboundReader::read_pending`] hands back the same row, and
 /// every answer queued behind it waits on one row nothing can deliver. A
-/// single write by operator tooling or by the Zig sharing this key would stop
-/// outbound answers for the whole deployment.
+/// single write by operator tooling or another writer sharing this key would
+/// stop outbound answers for the whole deployment.
 ///
 /// The first read is the BLOCKING one deliberately. `read_pending` reads what
 /// this consumer has already been handed, and a freshly written entry has been

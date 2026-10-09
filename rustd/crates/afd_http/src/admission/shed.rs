@@ -5,8 +5,7 @@
 //! parameters. What it carries instead is the shape of the ceiling it hit:
 //! `Retry-After` says when to come back, and the `X-RateLimit-*` trio says what
 //! the limit was and when it resets. That is the whole of what a client can act
-//! on, and it is exactly what `http/server.zig`'s `respondBackpressureShed`
-//! writes.
+//! on, and it is exactly what `response` writes.
 
 use afd_core::clock::{self, UnixMillis};
 use afd_core::error_code;
@@ -18,15 +17,14 @@ use super::Admission;
 use crate::envelope::ProblemResponse;
 use crate::request_id::RequestId;
 
-/// The sentence a shed carries. `error_registry.zig`'s `MSG_API_BACKPRESSURE`.
+/// The sentence a shed carries.
 pub const SHED_DETAIL: &str = "Server is at its in-flight request ceiling";
 
 /// How long a shed caller is asked to wait before retrying.
 ///
-/// `handlers/common.zig`'s `RETRY_AFTER_BRIEF_SECONDS`. Brief on purpose: the
-/// ceiling is in-flight CONCURRENCY, not a quota, so the slot a caller wants is
-/// freed by whichever request finishes next rather than by a window rolling
-/// over.
+/// Brief on purpose: the ceiling is in-flight CONCURRENCY, not a quota, so the
+/// slot a caller wants is freed by whichever request finishes next rather than
+/// by a window rolling over.
 pub const RETRY_AFTER_SECONDS: i64 = 1;
 
 /// How many concurrent requests this instance admits.
@@ -44,8 +42,7 @@ const REMAINING_NONE: usize = 0;
 /// The refusal for a request that arrived at a full instance.
 pub(super) fn response(admission: &Admission, request: &Request) -> Response {
     // Minted once and used twice — the log line and the envelope carry the SAME
-    // id, so an operator reading the log can find the client's screenshot. The
-    // Zig shed logs no id at all, which leaves its two records uncorrelated.
+    // id, so an operator reading the log can find the client's screenshot.
     let request_id = RequestId::mint();
     // Hoisted rather than written inline in the macro: `tracing`'s `log`
     // feature compiles a SECOND copy of every field expression for the `log`
@@ -58,8 +55,8 @@ pub(super) fn response(admission: &Admission, request: &Request) -> Response {
         error_code = code,
         request_id = request_id_field,
         limit,
-        // The raw path, as the Zig shed logs it. It is NOT what §6 will put on
-        // a span — a path carries workspace and fleet identifiers, and a span
+        // The raw path. It is NOT what §6 will put on a span — a path
+        // carries workspace and fleet identifiers, and a span
         // attribute is exported to a backend — but an operator reading their
         // own logs during a storm needs to know which endpoint is storming.
         path,

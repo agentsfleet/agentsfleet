@@ -6,10 +6,10 @@
 -- information about a tenant", which is what a reader assumes a table of plans,
 -- invoices, or payment methods holds. It holds a balance.
 --
--- Two-rate metering, both rates in nanos (1 nano = 1/1,000,000,000 United States
--- Dollar): events are free under both postures; stages cost $0.001 under
--- platform-managed and $0.0001 under self-managed. No plan tiers. The rate
--- constants live in state/tenant_billing.zig.
+-- Metered in nanos (1 nano = 1/1,000,000,000 United States Dollar): receiving
+-- an event is free, active runtime costs $0.0001 a second under either
+-- posture, and platform-managed runs also pay for tokens. No plan tiers. The
+-- rate constants live in `rustd/crates/afd_billing/src/nanos.rs`.
 --
 -- PRIVILEGE: `api_runtime`, the role every Hypertext Transfer Protocol handler
 -- runs as, holds the grants directly, so nothing at the database layer stops a
@@ -52,8 +52,8 @@ CREATE TABLE IF NOT EXISTS billing.tenant_wallet (
 -- path — to serve no query.
 
 -- api_runtime reads and writes the wallet directly: the starter grant at signup
--- (`state/signup_bootstrap.zig`), every metered debit, and the balance read.
--- DELETE is for account erasure.
+-- (`INSERT_WALLET` in `rustd/crates/afd_tenant/src/sql/signup.rs`), every
+-- metered debit, and the balance read. DELETE is for account erasure.
 --
 -- Moving these onto a `billing_runtime` role api_runtime must assume is
 -- deliberately not here — see the note in schema/300. The revoke without the

@@ -16,34 +16,32 @@
 //!
 //! # Three facts, three layers, decided once per route
 //!
-//! `route_table.zig` re-decides a route's middleware chain on every request,
-//! inside `dispatch`, from a switch whose answer is a constant in the table.
-//! Here the table is read while the router is BUILT: a route that is not
-//! metered has no admission layer in its stack to consult, and a route with no
-//! guard has no authenticator in its stack to reach. The request path costs
-//! what the route actually needs and not one branch more.
+//! A route's middleware chain is a constant in the table, so it is read once,
+//! while the router is BUILT, rather than re-decided on every request: a route
+//! that is not metered has no admission layer in its stack to consult, and a
+//! route with no guard has no authenticator in its stack to reach. The request
+//! path costs what the route actually needs and not one branch more.
 //!
-//! The order is the Zig daemon's, and it is load-bearing. Admission is
-//! outermost: a shed has to stay cheaper than the work it refuses, and proving
-//! a credential means a datastore round trip. Authentication and the capability
+//! The order is load-bearing. Admission is outermost: a shed has to stay
+//! cheaper than the work it refuses, and proving a credential means a datastore
+//! round trip. Authentication and the capability
 //! gate come next, so a handler never runs for a caller who should not reach
 //! it. Ownership is innermost, because it is the only one of the three that
 //! runs a statement — a caller who is over the ceiling or short a capability is
 //! refused before this daemon reaches Postgres on their behalf.
 //!
-//! Nothing is left for a handler to remember. That last layer is the one the
-//! Zig daemon never lifted: `authorizeWorkspace` is called by hand at the top
-//! of every workspace handler, and a handler that forgets is a cross-tenant
-//! read with nothing failing. Here it is mounted from the route's own template
-//! (`Ownership::of`), so forgetting is not a thing a handler can do.
+//! Nothing is left for a handler to remember. An ownership check called by hand
+//! at the top of every workspace handler would make a handler that forgets it
+//! a cross-tenant read with nothing failing. Here it is mounted from the
+//! route's own template (`Ownership::of`), so forgetting is not a thing a
+//! handler can do.
 //!
 //! # HEAD
 //!
-//! Refused for the whole daemon, in one place. agentsfleetd has never served
-//! HEAD: its matchers switch on GET, POST and DELETE, and httpz keeps a
-//! separate `_head` table it registers nothing into. axum does not work that
-//! way — `method_routing.rs` tries the `head` route and then FALLS THROUGH to
-//! `get`, so every `get()` handler answers HEAD unless something stops it.
+//! Refused for the whole daemon, in one place. agentsfleetd serves no HEAD:
+//! every route names its methods, and none names HEAD. axum would answer it
+//! anyway — `method_routing.rs` tries the `head` route and then FALLS THROUGH
+//! to `get`, so every `get()` handler answers HEAD unless something stops it.
 //!
 //! Stopping it per route would mean remembering `.head(refuse)` eighty-one
 //! times. It is one fact about the daemon, so it is one layer.

@@ -2,18 +2,11 @@
 //!
 //! # Why the model attribution is bounded by the SDK rather than derived
 //!
-//! The daemon this ports derives a model-attribution cap from its own flush
-//! ceiling: so many distinct `(provider, model)` pairs may carry exact
-//! attribution before the rest are folded. It has to, because it hand-wrote the
-//! aggregator and the ceiling is a fixed array it owns.
-//!
-//! Here the SDK is the aggregator and enforces a per-stream cardinality limit
-//! of its own, which is the same bound arrived at from the other side. What is
-//! NOT ported is the derivation, and the difference is worth naming: the Zig
-//! omits attribution when its own budget is exhausted and counts the omission,
-//! where the SDK folds the excess into `otel.metric.overflow`. This build still
-//! counts the omissions it makes for the other two reasons — an unmapped
-//! provider and a value too long to carry — so the family is fed either way.
+//! The SDK is the aggregator and enforces a per-stream cardinality limit of its
+//! own, so this module derives no cap on how many distinct `(provider, model)`
+//! pairs carry exact attribution: the SDK folds the excess into
+//! `otel.metric.overflow`. This build counts the omissions it makes for its own
+//! two reasons — an unmapped provider and a value too long to carry.
 
 use opentelemetry::KeyValue;
 use opentelemetry::metrics::{Counter, Histogram};

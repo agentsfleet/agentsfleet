@@ -2,16 +2,11 @@
 //!
 //! # Why this is not in `main.rs`
 //!
-//! It used to be. `main` read `std::env::args().nth(1)`, matched two string
-//! constants, and took the port from the `PORT` variable — a transliteration of
-//! `cmd/serve_args.zig`, which hand-parses argv because Zig ships no argument
-//! parser. Rust does, so the port that could not be given on the command line,
-//! the missing `--help`, and the missing `--version` were all self-inflicted.
-//!
-//! [`Cli`] replaces that loop, and living in the library rather than beside
-//! `main` is what makes every arm of it reachable from a suite: a binary
-//! crate's internals cannot be linked by an integration test, and the dispatch
-//! is exactly the part worth testing.
+//! [`Cli`] is a `clap` derive, so `--port`, `--help` and `--version` come with
+//! the parser rather than being hand-written. Living in the library rather
+//! than beside `main` is what makes every arm of it reachable from a suite: a
+//! binary crate's internals cannot be linked by an integration test, and the
+//! dispatch is exactly the part worth testing.
 //!
 //! # The two things `main` still owns
 //!
@@ -80,8 +75,7 @@ pub enum Command {
         /// The TCP port to bind.
         ///
         /// `0` is rejected rather than accepted as "let the kernel choose": a
-        /// daemon nobody can find the port of is not serving, and
-        /// `serve_args.zig` rejected it for the same reason.
+        /// daemon nobody can find the port of is not serving.
         #[arg(
             long,
             value_name = "PORT",
@@ -113,7 +107,7 @@ pub type RuntimeSource = fn() -> std::io::Result<tokio::runtime::Runtime>;
 /// Runs `cli` against `env`, reporting the status the process should exit with.
 ///
 /// `signal` is taken rather than built so a suite can hand it one that has
-/// already resolved. In the binary it is [`crate::signal::shutdown`], and
+/// already resolved. In the binary it is [`afd_core::signal::shutdown`], and
 /// building it costs nothing on the paths that never poll it.
 pub fn run<E, F>(cli: &Cli, env: &E, runtime: RuntimeSource, signal: F) -> u8
 where

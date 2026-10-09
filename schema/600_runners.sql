@@ -35,8 +35,8 @@
 --   registry_allowlist  yet, which the reconciliation treats as degraded and the
 --                       runner side fails closed on.
 --   worker_count        assigned concurrency for the host's worker pool.
---                       Canonical constant: DEFAULT_WORKER_COUNT
---                       (src/lib/contract/protocol.zig).
+--                       Canonical constant: DEFAULT_WORKERS
+--                       (rustd/crates/afd_core/src/limits.rs).
 --   capability_report   the runner's latest probe result, verbatim, written only
 --                       by the heartbeat path. NULL means no report yet, which
 --                       is also a degraded state.

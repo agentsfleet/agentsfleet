@@ -10,14 +10,11 @@
 //!
 //! # Why the reads are separate methods rather than one view
 //!
-//! The Zig answers `GET /v1/tenants/me/provider` with one statement and then
-//! acquires a SECOND connection to ask whether a platform default exists,
-//! because its simple-protocol connection cannot start a query while the first
-//! result set is open. That is a driver constraint, not a shape the surface
-//! wants: the two facts are independent — a tenant's own selection, and whether
-//! the deployment has a default to fall back to — and the handler composes
-//! them. Keeping them separate here means the composition is visible where it
-//! is decided, and a suite can pin either half without the other.
+//! `GET /v1/tenants/me/provider` reports two independent facts — a tenant's
+//! own selection, and whether the deployment has a default to fall back to —
+//! and the handler composes them. Keeping them separate here means the
+//! composition is visible where it is decided, and a suite can pin either half
+//! without the other.
 //!
 //! # Why there is no credential-probe verb here
 //!

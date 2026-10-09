@@ -43,8 +43,8 @@
 //! endpoint that keeps failing. Past the signature there is nothing a sender
 //! could fix by being told — a body this daemon does not act on is not the
 //! sender's mistake — so everything the wall passes is acknowledged with its
-//! reason logged. `events.zig` states the same rule: an error status "would
-//! make Slack retry-loop the same delivery".
+//! reason logged. An error status would make Slack retry-loop the same
+//! delivery.
 //!
 //! The exceptions are the three things a sender or an operator genuinely
 //! controls: a path naming no connector, a body past the cap, and a signature

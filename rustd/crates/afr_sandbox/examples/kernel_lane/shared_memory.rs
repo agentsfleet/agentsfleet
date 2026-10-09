@@ -6,7 +6,7 @@
 //! lease killed for memory at its first allocation.
 
 use afr_executor::Ending;
-use afr_sandbox::Limits;
+use afr_sandbox::{Limits, SandboxRequest};
 use libtest_mimic::Failed;
 
 use crate::exhaustion::{OK, SMALL_MEMORY};
@@ -31,8 +31,7 @@ pub(crate) fn full_shared_memory_spares_the_tenant(lane: &Lane) -> Result<(), Fa
     };
     let outcomes = in_sandbox_each(
         lane,
-        "shmfill",
-        limits,
+        SandboxRequest::new("shmfill", limits),
         &[FILL_SHARED_MEMORY, ALLOCATE_BESIDE_IT],
     )?;
     let [filled, after] = outcomes.as_slice() else {

@@ -8,13 +8,9 @@
 //!
 //! # Keyed by connector name, not by named fields
 //!
-//! `integration_ctx.zig` declares `PlatformSecrets { github, zoho, jira, linear }`
-//! as four named fields, and pays for it three times over in
-//! `integration.zig`: `selectZoho`, `selectJira` and `selectLinear` are three
-//! near-identical functions whose entire body is `return p.zoho;`. They exist
-//! only because a struct field cannot be looked up by a string, so every
-//! connector needs a function to reach its own row — and a fifth provider needs
-//! a fifth one.
+//! A struct with one named field per connector cannot be looked up by a
+//! string, so every connector would need its own near-identical accessor to
+//! reach its row — and a fifth provider a fifth one.
 //!
 //! A map keyed by the connector's declared name needs none of them. Adding a
 //! provider is a row in `connector::DECLARED` and a secret in the vault, and
@@ -131,8 +127,8 @@ impl Platform {
 /// The vault key one connector's platform credential is held under.
 ///
 /// `github-app`, `zoho-app`, and so on — the connector's own declared name plus
-/// a fixed stem, which is `serve_broker.zig`'s rule and the reason adding a
-/// connector adds a vault ROW rather than an environment knob. Two deployments
+/// a fixed stem, which is the reason adding a connector adds a vault ROW
+/// rather than an environment knob. Two deployments
 /// of this product hold different apps; neither holds a different config shape.
 const APP_KEY_STEM: &str = "-app";
 
@@ -167,8 +163,7 @@ impl Platform {
     /// Nothing here fails and nothing here refuses boot. A vault row that is
     /// absent, unreadable, or missing a field leaves that connector
     /// unconfigured, and a mint for it answers `UZ-CRED-002` — one endpoint
-    /// refusing, rather than a daemon that will not start. `serve_broker.zig`
-    /// degrades identically, and the reason is the same: a deployment that
+    /// refusing, rather than a daemon that will not start. A deployment that
     /// connected only GitHub is an ordinary deployment, not a broken one.
     ///
     /// The connector set is WALKED rather than named, so a connector added to

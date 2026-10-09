@@ -40,8 +40,7 @@ fn a_chosen_name_is_trimmed_and_kept() {
 #[test]
 fn choosing_nothing_in_any_spelling_means_generate() {
     // Empty, ASCII whitespace, and whitespace only Unicode can spell —
-    // each is "no choice", never a refusal. The divergence from the Zig
-    // 400 is deliberate and Discovery-logged.
+    // each is "no choice", never a 400.
     for blank in ["", "   ", "\t\r\n", "\u{00a0}\u{3000}"] {
         let outcome = Chosen::parse(blank).expect("blankness is not an error");
         assert!(outcome.is_none(), "{blank:?} is not a name anyone chose");

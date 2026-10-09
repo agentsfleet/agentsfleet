@@ -18,7 +18,7 @@ resolver = "3"
 members = ["crates/afd_admin", "crates/afd_admission", "crates/afd_api", "crates/afd_api_ingress", "crates/afd_api_operator", "crates/afd_api_runner", "crates/afd_api_tenant", "crates/afd_api_wire", "crates/afd_approval", "crates/afd_auth", "crates/afd_bench", "crates/afd_billing", "crates/afd_connector", "crates/afd_core", "crates/afd_credential", "crates/afd_cron", "crates/afd_crypto", "crates/afd_db", "crates/afd_dragonfly", "crates/afd_events", "crates/afd_fleet", "crates/afd_fleet_lifecycle", "crates/afd_fleet_ops", "crates/afd_fleet_runtime", "crates/afd_gate", "crates/afd_http", "crates/afd_identity", "crates/afd_ingress", "crates/afd_library", "crates/afd_mail", "crates/afd_memory", "crates/afd_observability", "crates/afd_otlp", "crates/afd_outbound", "crates/afd_runner", "crates/afd_sse", "crates/afd_state", "crates/afd_tenant", "crates/afd_validate", "crates/afd_vault", "crates/afd_webhook", "crates/afd_wire", "crates/afr_agent", "crates/afr_egress", "crates/afr_executor", "crates/afr_memory", "crates/afr_providers", "crates/afr_sandbox", "crates/afr_secrets", "crates/afr_supervisor", "crates/afr_telemetry", "crates/afr_tools", "crates/agentsfleet_runner", "crates/agentsfleetd"]
 
 [workspace.package]
-version = "0.58.0"
+version = "0.59.0"
 edition = "2024"
 # Equal to the pinned toolchain rather than trailing it (M-MSRV allows a lag for
 # published libraries; these crates have no external consumers and are built
@@ -187,8 +187,8 @@ serde_json = { version = "1.0.151", default-features = false, features = ["std",
 schemars = { version = "1.2.2", default-features = false, features = ["derive", "std"] }
 # `raw_value` carries `RawValue`, which is how the activity verb splices a
 # runner's already-JSON tool arguments into a published frame WITHOUT parsing
-# them into a tree and re-encoding it. The Zig builds and drops a whole
-# `std.json.Value` per tool call for want of this. A feature on a dependency
+# them into a tree and re-encoding it, which would build and drop a whole
+# `serde_json::Value` per tool call. A feature on a dependency
 # already resolved in the lock, not a new crate.
 # The OpenAPI document generator, and the reason it is `optional` at every
 # member that names it. `afd_wire` carries serde and serde_json deliberately
@@ -238,9 +238,8 @@ yaml_serde = { version = "0.10.7", default-features = false }
 
 # The command line, derived rather than hand-rolled.
 #
-# `serve_args.zig` hand-parsed `--port` out of argv and ported across as the
-# same loop, which is how the Rust daemon ended up reading argv[1] and NOTHING
-# else: no `--help`, no `--version`, and a port that could only arrive through
+# A hand-parsed `--port` loop over argv is how a daemon ends up reading
+# argv[1] and NOTHING else: no `--help`, no `--version`, and a port that could only arrive through
 # the environment. Every one of those is a line item clap already owns, and a
 # hand-rolled parser is precisely the invented code a Rust port exists to
 # delete.
@@ -252,8 +251,8 @@ yaml_serde = { version = "0.10.7", default-features = false }
 # container log, where escape sequences and terminal-width reflow are noise.
 clap = { version = "4.6.6", default-features = false, features = ["std", "derive", "env", "help", "usage", "error-context"] }
 
-# RustCrypto. Pure Rust with no C linkage, matching the Zig daemon's posture, and
-# the same AES-256-GCM construction `std.crypto.aead.aes_gcm.Aes256Gcm` implements.
+# RustCrypto. Pure Rust with no C linkage, the workspace's posture, and the
+# AES-256-GCM construction every stored vault row was sealed with.
 aes-gcm = { version = "0.11.1", default-features = false, features = ["aes", "alloc"] }
 hmac = { version = "0.13.0", default-features = false }
 sha2 = { version = "0.11.0", default-features = false }
@@ -401,10 +400,8 @@ rustls-pki-types = { version = "1.15.1", default-features = false, features = ["
 
 # The subject to capability-claim cache. `future` rather than `sync`: the
 # request path is asynchronous, and `try_get_with` coalesces concurrent loads
-# for the same key — which closes the caveat `clerk_scope_resolver.zig:19-22`
-# writes down and leaves open, and retires the hand-rolled `seq` counter that
-# existed only to stop an out-of-order response resurrecting a pre-revocation
-# claim. With one flight per subject there is no second response to be out of
+# for the same key, so no hand-rolled sequence counter has to stop an
+# out-of-order response resurrecting a pre-revocation claim. With one flight per subject there is no second response to be out of
 # order with.
 posthog-rs = { version = "0.25.3", default-features = false, features = ["async-client"] }
 # The workspace's first-run naming. Declared here like every other dependency:
@@ -432,10 +429,8 @@ moka = { version = "0.12.16", default-features = false, features = ["future"] }
 #     bytes equal decoded bytes and `JWKS_MAX_RESPONSE_BYTES` is a correct
 #     bound with no streaming decompressor to size.
 #
-# `form` is the credential broker's, and it is the whole reason
-# `integration_oauth_refresh.zig`'s `percentEncode` + `buildForm` — a
-# hand-written RFC 3986 unreserved-set encoder and a `allocPrint` template — do
-# not exist here. `serde_urlencoded` encodes a refresh grant whose values are
+# `form` is the credential broker's, so no hand-written RFC 3986 encoder
+# builds one here. `serde_urlencoded` encodes a refresh grant whose values are
 # provider-issued opaque bytes, where a `+` or an `&` that escapes its field
 # changes the SHAPE of the form at the token endpoint. That is not a place to
 # carry our own encoder.
@@ -450,8 +445,8 @@ gix = { version = "0.88.0", default-features = false, features = ["sha1"] }
 # substituted in one pass by the egress guard (Indy, Oct 03: "Use regex").
 regex = { version = "1.13.1", default-features = false, features = ["std", "perf"] }
 # `web_fetch` reads a page's text, never its markup: scripts, styles and tags
-# go, links keep their target. A real HTML parser rather than the tag scanner
-# the Zig tool carried.
+# go, links keep their target. A real HTML parser rather than a hand-written
+# tag scanner.
 html2text = { version = "0.17.1", default-features = false }
 
 # The model providers' wire: Anthropic Messages, OpenAI Responses and every
@@ -470,9 +465,9 @@ rig-core = { version = "=0.43.0", default-features = false }
 httpdate = { version = "1.0.3", default-features = false }
 
 # Postgres. sqlx is the DRIVER here and nothing more: `migrate` and `macros` are
-# both off, because this workspace runs the Zig daemon's own ledger
+# both off, because this workspace runs its own migrator over its own ledger
 # (`audit.schema_migrations`, versions equal to the schema slot numbers, one
-# advisory key) against databases the Zig daemon already migrated. sqlx's
+# advisory key; see `afd_db`). sqlx's
 # built-in migrator keeps a different ledger under a different lock, so enabling
 # it would mean two migrators disagreeing about the same database.
 #
@@ -499,11 +494,10 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 # existing call sites (`hub.rs`, `jwks/cache.rs`) depend on a stated feature
 # rather than on unification holding.
 tokio = { version = "1.53.2", default-features = false, features = ["rt", "sync", "time", "macros"] }
-# Redis. The crate replaces roughly three thousand lines of hand-rolled RESP
-# parsing, connection pooling and pub/sub plumbing under the retired Zig daemon's
-# `queue/`. `connection-manager` is the piece that earns it: one multiplexed
-# connection that reconnects itself, where the Zig side maintained a pool of
-# request/reply sockets behind a mutex.
+# Redis. The crate owns the RESP parsing, connection pooling and pub/sub
+# plumbing a hand-rolled client would carry. `connection-manager` is the piece
+# that earns it: one multiplexed connection that reconnects itself, rather than
+# a pool of request/reply sockets behind a mutex.
 #
 # `tokio-rustls-comp` for the same no-C posture as everything else here. The
 # local compose Redis serves a self-signed certificate, so the CA arrives by
@@ -539,10 +533,8 @@ redis = { version = "1.7.0", default-features = false, features = [
 # call: arithmetic we own is still arithmetic we maintain, and 0.1% on a p95
 # changes no decision this lane exists to inform.
 hdrhistogram = { version = "7.6.0", default-features = false }
-# The HTTP shell. axum replaces the retired Zig daemon's `http/router.zig` and the ten
-# hand-rolled `route_matchers_*.zig` files with a router that matches paths and
-# extracts parameters for us — roughly a thousand lines of matching logic that
-# stops being ours to keep correct.
+# The HTTP shell. axum is the router that matches paths and extracts
+# parameters for us — matching logic that is not ours to keep correct.
 #
 # `default-features = false` drops `form`, `multipart` and the macros: this API
 # speaks JSON, and a body format the daemon never accepts is a parser it should
@@ -585,7 +577,7 @@ axum = { version = "0.8.9", default-features = false, features = [
 # The retry LOOP, rather than the schedule. `afd_dragonfly::Backoff` computes the
 # delays and is proven on the subscription hub's reconnect; what was hand-rolled
 # beside it was the counter and the terminal rule — and the loop guard is
-# precisely where the Zig install shipped its bug, leaving the last delay
+# precisely where a hand-rolled loop goes wrong, leaving the last delay
 # unreachable. 26.9M recent downloads against tokio-retry's 10.1M, and on 1.x
 # where tokio-retry is still 0.3.
 #
@@ -720,8 +712,8 @@ octocrab = { version = "0.54.1", default-features = false, features = [
     "tracing",
 ] }
 
-# OpenTelemetry, for the push-only export the Zig daemon already does by hand
-# (`observability/otlp/`). The SDK alone: it re-exports the API types the
+# OpenTelemetry, for the push-only export `afd_otlp` builds. The SDK alone:
+# it re-exports the API types the
 # exporter names, and the OTLP TRANSPORT is added by boot, which is what knows
 # an endpoint — a transport built here for nobody would be a dependency with no
 # caller.
@@ -731,9 +723,9 @@ opentelemetry = { version = "0.32.0", default-features = false, features = ["tra
 # lock: nothing here spoke OTLP before, and this is the encoder and the client
 # that make a signal leave the process.
 #
-# `http-proto` and NOT `grpc-tonic`, deliberately. The wire path is the one the
-# Zig daemon already posts to, which means a collector configured for one
-# binary accepts the other unchanged; taking gRPC would pull tonic, prost's
+# `http-proto` and NOT `grpc-tonic`, deliberately. The daemon and the runner
+# post to the same OTLP/HTTP path, so one collector configuration accepts
+# both unchanged; taking gRPC would pull tonic, prost's
 # transport half and a second HTTP stack in for a protocol nothing downstream
 # asks for. `http-proto` still brings prost for the protobuf ENCODING, which is
 # the part that is actually needed.
@@ -800,8 +792,8 @@ opentelemetry_sdk = { version = "0.32.1", default-features = false, features = [
 
 # `CancellationToken`, which is what a supervised task is cancelled BY. Chosen
 # over a shared `AtomicBool` for one reason that matters: a token is
-# edge-triggered — `cancelled().await` wakes the instant it fires — where the
-# Zig watcher polls a flag every 100ms and pays that latency on every shutdown.
+# edge-triggered — `cancelled().await` wakes the instant it fires — where a
+# polled flag pays its polling interval on every shutdown.
 tokio-util = { version = "0.7.19", default-features = false }
 
 
@@ -809,7 +801,7 @@ tokio-util = { version = "0.7.19", default-features = false }
 # name must be the same string across restarts of one instance, or every
 # unacknowledged answer strands in a pending list nothing reads again — and
 # `HOSTNAME` is a shell variable, not an exported one, so a systemd unit sees
-# no value at all. `redis_client.zig` calls the syscall for the same reason.
+# no value at all.
 # A safe wrapper over the one call, rather than `libc` and an `unsafe` block
 # of our own.
 hostname = { version = "0.4.1", default-features = false }
@@ -905,6 +897,15 @@ tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
 libc = { version = "0.2.189", default-features = false }
+# The sandbox's egress scope speaks netlink itself: route netlink for the veth
+# pair, its addresses and its route, nf_tables for the host-side rules. Pure
+# Rust over the kernel's own protocol, so the static runner links no C library
+# and starts no `ip` or `nft` program. MIT, the rust-netlink project; the route
+# and netfilter packet crates share one `netlink-packet-core`.
+netlink-sys = { version = "0.9.0", default-features = false }
+netlink-packet-core = { version = "0.9.0", default-features = false }
+netlink-packet-route = { version = "0.33.0", default-features = false }
+netlink-packet-netfilter = { version = "0.4.0", default-features = false }
 # The sandbox's kernel lane is an example with its own `main`, so a test
 # binary cannot run it by accident; this gives it libtest's reporting and
 # filters anyway.

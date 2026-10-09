@@ -10,6 +10,8 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
+use afd_core::error_code::{Coded as _, Logged};
+
 use crate::error::{Result, program as failed};
 
 /// Where Debian and Ubuntu install `mke2fs`.
@@ -110,8 +112,7 @@ where
             tracing::debug!(program, event);
         }
         Err(error) => {
-            let error_code = error.code().as_str();
-            let reason = error.to_string();
+            let Logged { error_code, reason } = error.logged();
             let event = EVENT_PROGRAM_FAILED;
             tracing::warn!(program, error_code, reason, event);
         }

@@ -1,10 +1,11 @@
 //! Which database a role connects to, and with what limits.
 //!
-//! Every knob name here is the Zig daemon's, spelled identically
-//! (the retired daemon's `db/pool.zig`): a deployment moves between the two
-//! binaries without touching its environment, or the port is not a port.
+//! Every knob name here is one a deployment already exports (`DATABASE_URL`
+//! and its role-scoped variants, `DATABASE_POOL_SIZE` and the other limits
+//! below), so configuring a pool is a matter of the environment a deployment
+//! already has.
 //!
-//! The TLS posture a URL resolves to lives in [`tls`], with the history that
+//! The TLS posture a URL resolves to lives in [`tls`], with the reasoning that
 //! explains it.
 
 use std::time::Duration;
@@ -19,9 +20,9 @@ use afd_core::env::EnvSource;
 /// The pool's ceiling, sized the way `core_api` sizes its own.
 ///
 /// It used to be the API's in-flight ceiling over a "per-connection
-/// request-sharing factor" — 256 / 64 — ported from `pool.zig:34-40`. The 256
-/// is real and defined elsewhere; the 64 was asserted and never derived, by
-/// either implementation, and four connections is what it produced.
+/// request-sharing factor" — 256 / 64. The 256 is real and defined elsewhere;
+/// the 64 was asserted and never derived, and four connections is what it
+/// produced.
 ///
 /// Four is too few, and the failure it causes is not a slow request. sqlx opens
 /// connections lazily, so a burst against a cold pool queues behind connection
@@ -293,9 +294,9 @@ impl PoolConfig {
 }
 
 /// Reads a numeric knob, preferring the role-scoped override over the base
-/// name. Blank or unparseable is treated as absent, exactly as `pool.zig`'s
-/// `parseEnvU32` does — a typo falls back to the default rather than refusing
-/// to boot, because refusing here would take a serving daemon down over a knob.
+/// name. Blank or unparseable is treated as absent — a typo falls back to the
+/// default rather than refusing to boot, because refusing here would take a
+/// serving daemon down over a knob.
 fn read_knob<E: EnvSource + ?Sized>(env: &E, base: &str, role: DbRole) -> Option<u64> {
     let scoped = format!("{base}{}", role.knob_suffix());
     parse_knob(env, &scoped).or_else(|| parse_knob(env, base))
@@ -321,7 +322,7 @@ fn clamp_pool_size(raw: u64) -> u32 {
 ///
 /// Three answers, not two: `MIGRATE_ON_START=maybe` is a misconfiguration an
 /// operator has to see, and folding it into `No` is how a deploy silently
-/// stops migrating (`config/load.zig:52-57`).
+/// stops migrating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EnvBool {
     /// `true` in any case, or `1`.
@@ -386,8 +387,8 @@ mod pool_sizing_tests {
     /// The ceiling is a real number, not four.
     ///
     /// Four was `256 / 64`, and the 64 was a "per-connection request-sharing
-    /// factor" that neither this implementation nor the Zig it was ported from
-    /// ever derived. What four produced was a pool that spends its life below
+    /// factor" that nothing ever derived. What four produced was a pool that
+    /// spends its life below
     /// its own ceiling, which is the exact state `Db::acquire` reads as an
     /// absent datastore — so an undersized pool answered 503 while Postgres was
     /// healthy. This asserts the floor that failure sat under.

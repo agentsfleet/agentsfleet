@@ -16,16 +16,13 @@
 //!
 //! # Two failures that look alike and point opposite ways
 //!
-//! `budget.zig` is the module that got this right, and this is its rule kept
-//! rather than restated: a ceiling we could not READ is not a ceiling we may
-//! ignore, but a datastore we could not REACH must not kill every fleet on the
-//! platform. So an unreadable budget fails CLOSED and an unavailable one fails
-//! OPEN.
+//! A ceiling we could not READ is not a ceiling we may ignore, but a datastore
+//! we could not REACH must not kill every fleet on the platform. So an
+//! unreadable budget fails CLOSED and an unavailable one fails OPEN.
 //!
-//! Here that asymmetry needs no union type, because Rust already has the two
+//! That asymmetry needs no union type, because Rust already has the two
 //! channels: a fault is `Err`, and a verdict — including "the stored ceiling
-//! will not parse" — is `Ok`. The Zig needs `BudgetRead` with four arms
-//! precisely because it has only one channel to say both things through.
+//! will not parse" — is `Ok`.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -87,9 +84,8 @@ impl Verdict {
 ///
 /// Pure and total — no clock, no connection, no allocation — which is what
 /// lets every ceiling case be proven in a unit test rather than against a
-/// seeded database. `budget.zig` makes the same point about its own `covers`
-/// and then reaches for a `*pg.Conn` two functions later; here the boundary is
-/// the function signature.
+/// seeded database. The boundary is the function signature: the connection
+/// lives on [`Accounts::spend`], which only supplies the operands.
 ///
 /// The day ceiling is checked first because it is the one that always exists:
 /// `monthly_dollars` is optional, and an absent monthly ceiling means no
@@ -185,10 +181,10 @@ mod tests {
 
     #[test]
     fn the_day_ceiling_refuses_at_equality_not_past_it() {
-        // Exactly five dollars drained against a five-dollar day. The Zig
-        // spells this `spend >= cap`, so a fleet that has spent precisely its
-        // ceiling runs no further — one more run would be the first dollar of
-        // an overdraft nobody authorised.
+        // Exactly five dollars drained against a five-dollar day.
+        // `Nanos::has_reached` spells this `spend >= cap`, so a fleet that has
+        // spent precisely its ceiling runs no further — one more run would be
+        // the first dollar of an overdraft nobody authorised.
         let spend = Spend {
             day: Nanos::from_i64(5_000_000_000),
             month: Nanos::ZERO,

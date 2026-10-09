@@ -1,29 +1,27 @@
 //! The shared in-flight ceiling, and what a request gets when the instance is full.
 //!
-//! # What the Zig daemon hand-rolls, and what replaces it
+//! # Why a semaphore rather than a counter
 //!
-//! `http/server.zig`'s `dispatchApi` is a counter protocol written out by hand:
-//! `fetchAdd` to claim, compare against the ceiling, `fetchSub` in a `defer` to
-//! release, and a second store to keep a gauge in step. It is correct, and it
-//! is correct because four statements agree with each other — a release path
-//! that returns early, or a new arm that forgets the `defer`, leaks a slot and
-//! the instance walks down to serving nothing.
+//! A counter protocol written out by hand — an atomic add to claim, a compare
+//! against the ceiling, a subtract on release, and a second store to keep a
+//! gauge in step — is correct only while four statements agree with each
+//! other. A release path that returns early, or a new arm that forgets the
+//! release, leaks a slot and the instance walks down to serving nothing.
 //!
 //! Rust has the primitive: [`Semaphore::try_acquire_owned`] refuses instantly
 //! when nothing is free and otherwise hands back a permit that releases when it
 //! drops. There is no arithmetic to get wrong, no release path to forget, and
 //! the permit covers cancellation for free — a caller that hangs up mid-request
-//! drops the future, which drops the permit. Zig's `defer` cannot express that
-//! last one, because there is no future to drop.
+//! drops the future, which drops the permit.
 //!
 //! # Why the class is resolved when the route is mounted
 //!
-//! Zig switches on [`RouteClass`] on every request, inside `dispatch`. Nothing
-//! about that switch can change between requests: a route's class is a constant
-//! in the table. Here the router asks [`is_metered`] once, while it builds, and
-//! mounts this middleware only over the routes it answers `true` for — so an
-//! unmetered route reaches its handler without a branch, and cannot consult a
-//! counter because there is no counter in its stack to consult.
+//! A route's [`RouteClass`] is a constant in the table, so nothing about it can
+//! change between requests. The router asks [`is_metered`] once, while it
+//! builds, and mounts this middleware only over the routes it answers `true`
+//! for — so an unmetered route reaches its handler without a branch, and
+//! cannot consult a counter because there is no counter in its stack to
+//! consult.
 //!
 //! # Why the tower concurrency limiter is not what is underneath
 //!
@@ -56,9 +54,9 @@ pub use self::shed::{
 
 /// Requests one instance serves at once when nothing configures otherwise.
 ///
-/// `runtime_loader.zig`'s `API_MAX_IN_FLIGHT_DEFAULT`. Restated rather than
-/// derived because there is nothing to derive it from yet — the configuration
-/// loader is §7's, and it will read this constant rather than declare a second.
+/// A compiled constant: `agentsfleetd`'s `serve.rs` passes it straight to
+/// [`Admission::new`], and a configuration loader reads this constant rather
+/// than declaring a second.
 pub const DEFAULT_MAX_IN_FLIGHT: NonZeroUsize = NonZeroUsize::new(256).unwrap();
 
 /// The instance-wide in-flight ceiling, shared by every metered route.
@@ -80,10 +78,9 @@ impl Admission {
     /// # Why the ceiling cannot be zero
     ///
     /// A zero ceiling sheds every request, including the ones an operator would
-    /// use to find out why. Zig accepts it — `live > 0` is true for the first
-    /// request — so `API_MAX_IN_FLIGHT_REQUESTS=0` bricks an instance in a way
-    /// that looks like a network fault. [`NonZeroUsize`] moves that from a
-    /// silent runtime state to something §7's loader has to refuse at boot.
+    /// use to find out why, and from outside it looks like a network fault.
+    /// [`NonZeroUsize`] moves that from a silent runtime state to something
+    /// §7's loader has to refuse at boot.
     #[must_use]
     pub fn new(limit: NonZeroUsize) -> Self {
         Self {
@@ -101,10 +98,9 @@ impl Admission {
     /// Requests in flight against this gate right now.
     ///
     /// Derived from what is free rather than counted separately, so it cannot
-    /// disagree with the thing that actually decides admission. Zig keeps a
-    /// second counter for its gauge and a request that sheds still increments
-    /// it, which is why its shed log can report an `in_flight` above the
-    /// ceiling — a number no reader can act on.
+    /// disagree with the thing that actually decides admission. A second
+    /// counter would also count a request that sheds, and could report an
+    /// `in_flight` above the ceiling — a number no reader can act on.
     #[must_use]
     pub fn in_flight(&self) -> usize {
         self.limit
@@ -129,11 +125,9 @@ impl Admission {
 
 /// Whether a route of this class is counted against the in-flight ceiling.
 ///
-/// An exhaustive match, and that is the whole point. `route_admission.zig`
-/// traded its exhaustive switch for an `else` arm and rebuilt the decision as a
-/// runtime walk over two hand-maintained name lists — so a new route joined
-/// whichever list somebody remembered. Here a new [`RouteClass`] fails the
-/// build until this function says what happens to it.
+/// An exhaustive match, and that is the whole point. A catch-all arm would
+/// hand a new class whichever answer the arm gives; here a new [`RouteClass`]
+/// fails the build until this function says what happens to it.
 #[must_use]
 pub const fn is_metered(class: RouteClass) -> bool {
     match class {
@@ -144,8 +138,8 @@ pub const fn is_metered(class: RouteClass) -> bool {
         // the load.
         //
         // `Stream` is capped, but not HERE. A stream holds its slot for minutes
-        // and the Zig cap is a keyed registry that hands ownership to the
-        // streaming task (`fleets/events_stream.zig`), not a request counter.
+        // and its cap is `afd_sse::Live`, which hands the slot to the
+        // streaming task rather than counting requests.
         // Counting streams against this ceiling would let a handful of
         // dashboards close the API; a counter pretending to BE that registry
         // would be worse than either.

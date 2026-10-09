@@ -115,8 +115,8 @@ pub(crate) async fn flush_unsupervised(prepared: Option<Prepared>) {
 /// layer refuses. Both refuse boot, for the reason `telemetry::install` gives.
 pub(crate) fn attach_exports(config: &BootConfig) -> Result<Option<Prepared>, BootFailure> {
     let Some(otlp) = config.otlp() else {
-        // The Zig daemon's own event name and reason field, kept: a dashboard
-        // or an alert matching on this line matches it from either binary.
+        // The event name and reason field are load-bearing: a dashboard or an
+        // alert matches on this line.
         tracing::info!(
             reason = "no endpoint configured",
             event = "startup_otel_disabled",

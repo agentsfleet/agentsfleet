@@ -115,17 +115,15 @@ pub struct EventEnvelope<'a> {
 
 /// One event as the operator surface renders it.
 //
-// Field order is load-bearing. `events.zig` hands its `EventRow` straight to
-// `res.json(value, .{})`, which emits the struct's field set in DECLARATION
-// order, and the tenant parity suite pins key set AND order — a reordering that a
-// set comparison would call identical is one a client reading ordered columns
-// can feel. So this declaration mirrors `fleet_events_store.zig`'s `EventRow`
-// field for field.
+// Field order is load-bearing. `serde_json` emits the struct's field set in
+// DECLARATION order, and the tenant shape suite pins key set AND order — a
+// reordering that a set comparison would call identical is one a client reading
+// ordered columns can feel.
 //
 // Every optional stays on the wire as an explicit `null` rather than being
 // skipped, which is this crate's rule everywhere and the reason it declares no
-// `skip_serializing_if`: the Zig emitter writes `null` for an absent optional,
-// so a dropped key would be a byte mismatch against the daemon still serving.
+// `skip_serializing_if`: a client already parsing `null` for an absent optional
+// would see a dropped key as a byte mismatch.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -191,21 +189,19 @@ pub struct EventsResponse<'a> {
 
 /// One event as the expanded view renders it — bodies included.
 //
-// The sibling of [`EventSummary`], and the two are separate types for the
-// reason `fleet_event_detail_store.zig` is a separate file from
-// `fleet_events_store.zig`: a page of up to two hundred rows pays for every
-// column it selects, and the trigger payload and the agent's full answer are
-// wanted one row at a time.
+// The sibling of [`EventSummary`], and the two are separate types because the
+// list and the detail read different columns: a page of up to two hundred rows
+// pays for every column it selects, and the trigger payload and the agent's
+// full answer are wanted one row at a time.
 //
 // Field order is load-bearing here for the same reason it is on
 // [`EventSummary`], and the two bodies sit in the MIDDLE of the field set
 // rather than at the end — which is why this cannot be [`EventSummary`] plus
-// two fields, in this language or the one it ports.
+// two fields.
 //
 // `request_json` is the stored payload serialized to TEXT and carried as a
-// JSON string, not as an embedded object. That is what `res.json` emits for
-// the Zig row's `[]u8`, and a client parsing the string a second time is the
-// contract already in production.
+// JSON string, not as an embedded object. The store holds it as text, and a
+// client parsing the string a second time is the shape already in production.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -281,10 +277,10 @@ pub struct EventDetail<'a> {
 //
 // # `total` is always null, and is on the wire anyway
 //
-// `messages_list.zig` writes `.total = null` and has never written anything
-// else — the count would cost a second statement per page for a number the
-// view does not render. Dropping the key would be a byte mismatch against
-// the daemon still serving, so it stays, typed as the count it would hold.
+// The thread verb has only ever written `null` here — the count would cost a
+// second statement per page for a number the view does not render. Dropping
+// the key would be a byte mismatch for a client already parsing it, so it
+// stays, typed as the count it would hold.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

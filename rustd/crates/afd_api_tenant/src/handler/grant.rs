@@ -1,11 +1,8 @@
 //! A fleet's integration grants over HTTP: read them, take one back.
 //!
-//! The port of `integration_grants/workspace.zig` — `innerListGrants` and
-//! `innerRevokeGrant`, which are the only two verbs that surface ever served.
-//! There is no create here and there never was one on this path: a grant is
-//! seeded by the INSTALL (`fleets/create_grants.zig`) at the moment the fleet's
-//! declared credentials become knowable, and the retired external request route
-//! is pinned as retired by `grant_surface_integration_test.zig`.
+//! Two verbs, list and revoke. There is no create on this path: a grant is
+//! seeded by the fleet's INSTALL at the moment its declared credentials become
+//! knowable, so no caller of this surface ever names a grant into being.
 //!
 //! # Reading a grant and revoking one are separate capabilities
 //!
@@ -177,9 +174,8 @@ pub(crate) async fn revoke<D: Services>(
 /// an identifier, and one path shape answering two different ways depending on
 /// what follows it is a difference no client could act on.
 ///
-/// A divergence from the Zig, which reaches the `::uuid` cast and answers 404.
-/// Refusing here is what keeps that cast from ever being the thing that fails,
-/// leaving every error from below a genuine datastore fault.
+/// Refusing here is what keeps the store's `::uuid` cast from ever being the
+/// thing that fails, leaving every error from below a genuine datastore fault.
 fn parse_fleet(raw: &str) -> Result<Uuid7, Refusal> {
     Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
 }

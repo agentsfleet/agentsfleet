@@ -45,7 +45,7 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
 - **Never run two pushes concurrently.** Each pre-push spawns a DB-backed
   agentsfleetd test suite; two at once deadlock on the shared test Postgres at 0% CPU
   forever and block every subsequent push. Recovery: kill the stuck
-  `agentsfleetd-tests --listen` / `zig build test` processes and retry serially.
+  `agentsfleetd-tests --listen` processes and retry serially.
 - **Sandboxed agent environments break the SSH transfer.** Hook verification
   passes, then the upload dies with `Broken pipe` / `Connection closed by remote
   host` on every attempt. It is not payload size — run the push with network
@@ -73,39 +73,12 @@ follows is the repo-workflow half that page does not carry.
   (agentsfleet). CI runs the same suite against the dev deployment on PR and prod
   post-deploy.
 
-- **Daemon execute-loop without a language model:** build with
-  `-Dexecutor-provider-stub` (`build_runner.zig`). The flag is comptime-eliminated
-  in production (no env backdoor): `child_exec` emits a canned `result` frame,
-  and the integration target forks a prebuilt stub-flagged
-  `agentsfleet-runner-execstub` exe per lease. Exercised by
-  `src/runner/worker_pool_integration_test.zig`. That lane retired with the Zig
-  test lanes; the flag and the stub remain in the build graph.
-- **Cross-compile proof for the test graph:** on macOS,
-  `zig build test -Dtarget=x86_64-linux` reports a RUN-step failure (can't exec
-  a Linux ELF) — use `zig build test-bin -Dtarget=...` for a build-only EXIT=0
-  proof.
-
-
-## Dead-code auditing (`src/`)
-
-Auditing for dead `.zig` files needs **two reachability walks**, and both must
-model Zig's transitive test-block compilation. The Zig tree is the runner and
-the library it links (`src/runner`, `src/lib`); the daemon is Rust under
-`rustd/`, and `cargo`'s own dead-code lints cover it.
-
-- **PROD reach** — breadth-first from the binary entrypoint (`src/runner/main.zig`
-  via `build_runner.zig`) + the named module roots the runner's `SharedDeps`
-  wires (`log`/`contract`/`common`/…).
-- **TEST reach** — breadth-first from the test aggregators only
-  (`src/runner/tests.zig`, `src/lib/tests.zig`), following **all** `@import`s —
-  in a test build, `test {}` blocks compile, so a parent module's
-  `test { _ = @import("x_test.zig"); }` pulls the test file in *transitively*.
-
-The trap: grepping "is this `*_test.zig` imported by `tests.zig` directly?"
-produced **16 false positives** in one sweep of the old daemon tree — test
-files that ran via their parent's test block, never via the aggregator
-directly. Non-test files reachable in TEST but not PROD are production-dead
-(test-kept); `*_test.zig` files in neither walk are true orphans.
+- **Runner execute-loop without a language model:** `afr_agent`'s scripted
+  engine (`rustd/crates/afr_agent/src/scripted.rs`) runs a fixed turn — tool
+  calls, streamed text, memory items — so a sandbox or wire fault cannot hide
+  behind a model's choices. It sits behind the crate's `test-util` feature,
+  which only dev-dependencies enable (`afr_supervisor`, `afr_providers`,
+  `agentsfleetd`), so no shipped binary carries it.
 
 ## agentsfleet CLI conventions
 

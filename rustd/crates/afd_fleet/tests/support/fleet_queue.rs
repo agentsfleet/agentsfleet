@@ -78,8 +78,8 @@ pub(crate) async fn connect() -> Dragonfly {
 /// ingress appends and marks in one path, and a mark with no entry would make
 /// the assignment pass look broken when it is the fixture that is.
 ///
-/// The field names are `event_envelope.zig`'s `encodeForXAdd` argv — the
-/// producer's side of the contract `assign.rs` reads.
+/// The field names are the ones `afd_wire`'s `Entry::queued_pairs` writes —
+/// the producer's side of the entry `assign.rs` reads.
 pub(crate) async fn enqueue(
     queue: &Dragonfly,
     fleet: &str,

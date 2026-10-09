@@ -1,15 +1,13 @@
 //! Turning a credential into the row it names, behind a seam.
 //!
-//! The Rust spelling of Zig's injected `LookupFn`, and it exists for the reason
-//! that one does: the routing decision must be provable without a network or a
-//! database. `src/auth/` in the Zig tree may not import `src/db/` at all —
-//! `make test-auth` greps for it — and this crate reaches the same wall by
-//! construction, because `afd_auth` does not list `sqlx` and so cannot name it.
+//! The seam exists because the routing decision must be provable without a
+//! network or a database. This crate reaches that wall by construction:
+//! `afd_auth` does not list `sqlx` and so cannot name it.
 //!
-//! The Postgres implementations live where Zig's do: with the host
-//! (`cmd/serve_runner_lookup.zig`, `cmd/cli_credential_lookup.zig`), which for
-//! this port is §5. What ships here is the trait, the record it returns, and —
-//! under `test-util` — an in-memory directory that proves every branch.
+//! The Postgres implementation lives with the host, in
+//! `afd_state::credentials`. What ships here is the trait, the record it
+//! returns, and — under `test-util` — an in-memory directory that proves every
+//! branch.
 //!
 //! # Why the record is an enum and not a struct with optional fields
 //!
@@ -50,11 +48,11 @@ const DIGEST_BYTES: usize = 32;
 pub const DIGEST_HEX_LEN: usize = DIGEST_BYTES * 2;
 
 impl Digest {
-    /// Hashes a presented credential the way `api_key.zig::sha256Hex` does.
+    /// Hashes a presented credential as SHA-256, lower-case hex.
     ///
-    /// Over the WHOLE presented value, marker included — the Zig daemon hashes
-    /// `provided`, not the body after the prefix, and the stored column holds
-    /// that. Hashing the body alone would authenticate nothing.
+    /// Over the WHOLE presented value, marker included — that is what
+    /// [`Digest::of_minted`] stored when the credential was drawn, so the
+    /// column holds that. Hashing the body alone would authenticate nothing.
     #[must_use]
     pub fn of(presented: &Presented) -> Self {
         Self::of_minted(presented.expose())
@@ -116,10 +114,8 @@ pub enum CredentialRecord {
     /// A credential belonging to a person.
     ///
     /// Carries the identity-provider SUBJECT, never a `core.users` primary key.
-    /// All three Zig person paths store the subject in a field named `user_id`
-    /// with a comment at each site explaining the name is wrong; [`Subject`] is
-    /// the fix, and a directory implementation that hands over a row id no
-    /// longer compiles.
+    /// [`Subject`] is a distinct type, so a directory implementation that hands
+    /// over a row id does not compile.
     ///
     /// It carries no workspace ceiling, and has no field for one: a ceiling
     /// reaches a principal only from a session token's `workspace_id` claim,
@@ -165,10 +161,9 @@ pub trait CredentialDirectory: Send + Sync + std::fmt::Debug {
     /// Looks `digest` up in the store `kind` names.
     ///
     /// One method across all three stored classes rather than one trait each,
-    /// because one implementation holds one pool and runs three queries — which
-    /// is what the Zig host does with three `LookupFn`s wired from the same
-    /// `serve_boot`. Splitting it would make the plumbing three times as wide
-    /// to say the same thing.
+    /// because one implementation holds one pool and runs three queries.
+    /// Splitting it would make the plumbing three times as wide to say the
+    /// same thing.
     ///
     /// `kind` is never [`CredentialKind::OidcSessionToken`]: a session token is
     /// verified, never looked up, and the one call site proves it by dispatch.

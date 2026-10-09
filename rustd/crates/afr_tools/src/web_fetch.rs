@@ -3,7 +3,7 @@
 //! The same guard as `http_request` with less reach: one method, no header, no
 //! body, and no placeholder anywhere, so a page fetched for reading never
 //! carries a fleet's credential. An HTML page comes back as its text, through
-//! a real HTML parser rather than the tag scanner the Zig tool carried.
+//! a real HTML parser (`html2text`).
 
 use afr_egress::{Draft, Placement};
 use schemars::JsonSchema;

@@ -7,12 +7,10 @@
 //!
 //! # The encoder is `url`'s, not this crate's
 //!
-//! `oauth2.zig` hand-writes an RFC 3986 percent-encoder and calls it at four
-//! sites, and `callback.zig` carries a SECOND copy of the same loop for its
-//! relay. Neither exists here. RFC 6749 specifies the authorization
-//! request's parameters as `application/x-www-form-urlencoded` in the query,
-//! which is exactly what [`url::Url::query_pairs_mut`] writes, and the exchange
-//! body is the same encoding again. One encoder, and it is not ours to get
+//! There is no hand-written percent-encoder here. RFC 6749 specifies the
+//! authorization request's parameters as `application/x-www-form-urlencoded`
+//! in the query, which is exactly what [`url::Url::query_pairs_mut`] writes,
+//! and the exchange body is the same encoding again. One encoder, and it is not ours to get
 //! wrong — the crate audit's finding applied one surface over.
 
 use url::Url;

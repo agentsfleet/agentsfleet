@@ -6,10 +6,13 @@
 //! both on one predicate is what stops the control-plane verdict and the
 //! data-plane enforcement from disagreeing.
 //!
-//! # The five ranges std does not answer, and why they are hand-written
+//! # The six ranges std does not answer, and why they are hand-written
 //!
 //! - `0.0.0.0/8` — `Ipv4Addr::is_unspecified` is `0.0.0.0` EXACTLY, and the
 //!   whole `/8` is blocked. One octet comparison.
+//! - `192.0.0.0/24` — IETF protocol assignments (RFC 6890): NAT64 discovery,
+//!   DS-Lite and the like, which answer on the operator's own network.
+//!   `Ipv4Addr::is_reserved` does not cover it. Three octets compared.
 //! - `240.0.0.0/4` — reserved, not multicast, so `is_multicast` misses it.
 //!   Folded into one comparison with multicast and broadcast.
 //! - `100.64.0.0/10` — `Ipv4Addr::is_shared` is unstable. Tailscale numbers
@@ -32,6 +35,9 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /// First octet of `0.0.0.0/8` — "this host", blocked as a whole range.
 const V4_UNSPECIFIED_BLOCK: u8 = 0;
+
+/// The first three octets of `192.0.0.0/24`, the IETF protocol assignments.
+const V4_PROTOCOL_ASSIGNMENTS: [u8; 3] = [192, 0, 0];
 
 /// First octet at which IPv4 stops being unicast: multicast `224/4` through
 /// reserved `240/4` to the broadcast address.
@@ -74,14 +80,15 @@ pub fn is_blocked(address: IpAddr) -> bool {
     }
 }
 
-/// Loopback, RFC1918, shared address space, link-local, `0/8`, and everything
-/// from multicast up.
+/// Loopback, RFC1918, shared address space, link-local, the IETF protocol
+/// assignments, `0/8`, and everything from multicast up.
 fn is_blocked_v4(address: Ipv4Addr) -> bool {
-    let [first, second, ..] = address.octets();
+    let [first, second, third, _] = address.octets();
     address.is_loopback()
         || address.is_private()
         || address.is_link_local()
         || (first == V4_SHARED_FIRST && second & V4_SHARED_MASK == V4_SHARED_SECOND)
+        || [first, second, third] == V4_PROTOCOL_ASSIGNMENTS
         || first == V4_UNSPECIFIED_BLOCK
         || first >= V4_NON_UNICAST_FLOOR
 }

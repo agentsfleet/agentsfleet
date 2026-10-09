@@ -56,7 +56,7 @@ fn query<'p>(pairs: &'p [(&'p str, &'static str)]) -> impl Fn(&str) -> Option<&'
 }
 
 #[test]
-fn a_timestamp_cursor_round_trips_through_the_zig_spelling() {
+fn a_timestamp_cursor_round_trips_through_its_millis_spelling() {
     let cursor = Cursor::Timestamp {
         at_ms: 1_744_000_000_000,
         id: "019abc".to_owned(),

@@ -1,12 +1,6 @@
-zig-out/
-zig-cache/
-.zig-cache/
-.zig-cache-global/
-.zig-cache-local/
-zig-pkg/
 *.o
-# Toolchain version is pinned by build.zig.zon (minimum_zig_version) + the global
-# mise default; a per-checkout .mise.toml is a personal override, never committed.
+# The Rust toolchain is pinned by rustd/rust-toolchain.toml; a per-checkout
+# .mise.toml is a personal override, never committed.
 .mise.toml
 /dist/
 .env

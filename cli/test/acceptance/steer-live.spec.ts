@@ -209,7 +209,7 @@ if (!isLive) {
 
       // The cause line must be DIAGNOSABLE, which is the half that cost days:
       // `ApiError` alone is indistinguishable from a rejected credential,
-      // because nullclaw's `error_classify` collapses both into one bucket.
+      // because the retired runner's error classifier collapsed both into one bucket.
       // The runner now carries the provider's own words onto the event, so the
       // 404 and its "model not found" wording have to survive to here.
       //

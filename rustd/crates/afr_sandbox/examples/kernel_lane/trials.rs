@@ -48,7 +48,7 @@ pub(crate) const TENANT_CGROUP: &str = "0::/../tenant";
 /// Where a refusal trial points the engine's state.
 const LEASES: &str = "leases";
 
-type Body = fn(&Lane) -> Result<(), Failed>;
+pub(crate) type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Every trial, by the name the lane reports it under.
 const TRIALS: &[(&str, Body)] = &[
@@ -150,6 +150,7 @@ const TRIALS: &[(&str, Body)] = &[
 pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
     let trials = TRIALS
         .iter()
+        .chain(crate::egress::TRIALS)
         .map(|&(name, body)| {
             let lane = Arc::clone(lane);
             Trial::test(name, move || body(&lane))
@@ -256,10 +257,7 @@ fn toolbox_read_only(lane: &Lane) -> Result<(), Failed> {
     let (said, unheld, held) = runtime().block_on(async {
         let engine = BubblewrapEngine::new(config, &probe(&lane.config.probe_paths()))?;
         let unheld = Arc::strong_count(&toolbox);
-        let request = SandboxRequest {
-            lease_id: "toolbox",
-            limits: Limits::default(),
-        };
+        let request = SandboxRequest::new("toolbox", Limits::default());
         let sandbox = engine.prepare(request).await?;
         let held = Arc::strong_count(&toolbox);
         let script =
@@ -307,10 +305,7 @@ async fn starts(engine: &dyn Engine, kind: &str) -> Result<Duration, Failed> {
         let lease_id = format!("{kind}-{number}");
         let started = Instant::now();
         let sandbox = engine
-            .prepare(SandboxRequest {
-                lease_id: &lease_id,
-                limits: Limits::default(),
-            })
+            .prepare(SandboxRequest::new(&lease_id, Limits::default()))
             .await?;
         taken.push(started.elapsed());
         sandbox.destroy().await?;

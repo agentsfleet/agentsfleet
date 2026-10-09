@@ -13,6 +13,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use afd_core::error_code::{Coded as _, Logged};
+
 use super::{Manifest, Toolbox, stage};
 use crate::error::{Result, ToolboxRefusal};
 
@@ -25,6 +27,10 @@ const EVENT_RELEASED: &str = "sandbox_toolbox_released";
 const EVENT_RELEASE_FAILED: &str = "sandbox_toolbox_release_failed";
 /// The event a published image staged again is logged under.
 const EVENT_RESTAGED: &str = "sandbox_toolbox_restaged";
+/// The event a published image no admitted release names is removed under.
+const EVENT_PRUNED: &str = "sandbox_toolbox_pruned";
+/// The event an image still mounted when its host stops is logged under.
+const EVENT_UNMOUNT_FAILED: &str = "sandbox_toolbox_unmount_failed";
 /// The refusals that say the published file is not the manifest's image, so
 /// a fresh copy of the download may be.
 const REFUSALS_OF_THE_FILE: [ToolboxRefusal; 3] = [
@@ -96,9 +102,11 @@ impl<M: Mounter> Toolboxes<M> {
             None => Arc::new(self.mount(manifest, source, &image, fresh)?),
         };
         admitted.push(Arc::clone(&toolbox));
-        if let Err(stuck) = self.retain_in(&mut admitted) {
-            let error_code = stuck.code().as_str();
-            let reason = stuck.to_string();
+        let kept = self
+            .retain_in(&mut admitted)
+            .and_then(|_released| self.prune(&admitted));
+        if let Err(stuck) = kept {
+            let Logged { error_code, reason } = stuck.logged();
             let event = EVENT_RELEASE_FAILED;
             tracing::warn!(error_code, reason, event);
         }
@@ -123,16 +131,17 @@ impl<M: Mounter> Toolboxes<M> {
             .collect()
     }
 
-    /// Unmounts every admitted image and removes its published file; the
-    /// host is shutting down, and its next start stages each release it
-    /// admits again, so no image outlives the list that would let it go.
+    /// Unmounts every admitted image and keeps its published file: the next
+    /// start of the same release mounts that file in place, its digest checked
+    /// again, rather than copying the download a second time. A file no
+    /// admitted release names goes at the next admission.
     ///
     /// # Errors
     /// An unmount was refused; the images not yet unmounted stay admitted.
     pub fn close(&self) -> Result<()> {
         let mut admitted = self.admitted();
         while let Some(toolbox) = admitted.pop() {
-            if let Err(refused) = self.release(&toolbox) {
+            if let Err(refused) = self.mounter.unmount(&toolbox) {
                 admitted.push(toolbox);
                 return Err(refused);
             }
@@ -158,7 +167,7 @@ impl<M: Mounter> Toolboxes<M> {
                         .is_some_and(|refusal| REFUSALS_OF_THE_FILE.contains(&refusal)) =>
             {
                 let digest = manifest.sha256();
-                let reason = refused.to_string();
+                let reason = refused.told();
                 let event = EVENT_RESTAGED;
                 tracing::warn!(digest, reason, event);
                 fs::remove_file(image)?;
@@ -207,11 +216,71 @@ impl<M: Mounter> Toolboxes<M> {
         Ok(())
     }
 
+    /// Removes every published image under the directory that `admitted`
+    /// does not name: one an earlier start kept for a release this one no
+    /// longer admits.
+    fn prune(&self, admitted: &[Arc<Toolbox>]) -> Result<()> {
+        let kept: Vec<String> = admitted
+            .iter()
+            .map(|toolbox| super::image_name(toolbox.digest()))
+            .collect();
+        for entry in fs::read_dir(&self.dir)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            // A name that is not UTF-8 is no image's.
+            if let Some(image) = name.to_str()
+                && super::is_image_name(image)
+                && entry.file_type()?.is_file()
+                && !kept.iter().any(|keep| keep == image)
+            {
+                fs::remove_file(entry.path())?;
+                let event = EVENT_PRUNED;
+                tracing::info!(image, event);
+            }
+        }
+        Ok(())
+    }
+
     /// The admitted images, whoever last held the lock: the list stays whole
     /// even if a holder panicked, because every change to it is one push,
     /// remove or insert.
     fn admitted(&self) -> MutexGuard<'_, Vec<Arc<Toolbox>>> {
         self.admitted.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// A host's admitted images for the life of its engine.
+///
+/// They are unmounted when this drops, however that life ends. A refused
+/// unmount is logged and left: the process is ending either way, and the next
+/// start adopts or detaches what stayed.
+#[derive(Debug)]
+pub struct MountedToolboxes<M: Mounter>(Toolboxes<M>);
+
+impl<M: Mounter> MountedToolboxes<M> {
+    /// Unmounts every image now, keeping each published file, as
+    /// [`Toolboxes::close`] does.
+    ///
+    /// # Errors
+    /// An unmount was refused; dropping this tries the rest once more.
+    pub fn close(self) -> Result<()> {
+        self.0.close()
+    }
+}
+
+impl<M: Mounter> From<Toolboxes<M>> for MountedToolboxes<M> {
+    fn from(toolboxes: Toolboxes<M>) -> Self {
+        Self(toolboxes)
+    }
+}
+
+impl<M: Mounter> Drop for MountedToolboxes<M> {
+    fn drop(&mut self) {
+        if let Err(stayed) = self.0.close() {
+            let Logged { error_code, reason } = stayed.logged();
+            let event = EVENT_UNMOUNT_FAILED;
+            tracing::warn!(error_code, reason, event, "a toolbox image stayed mounted");
+        }
     }
 }
 

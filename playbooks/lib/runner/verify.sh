@@ -18,14 +18,14 @@ readonly READYZ_TIMEOUT_SECONDS=10
 verify_files_and_service() {
   runner_remote "
     set -e
-    test \"\$(stat -c %a /opt/agentsfleet/.env)\" = 600
-    test -x /opt/agentsfleet/deploy/deploy.sh
-    test -x /usr/local/bin/agentsfleet-runner
-    test -f /etc/systemd/system/agentsfleet-runner.service
-    systemctl is-enabled --quiet agentsfleet-runner.service
-    test \"\$(systemctl is-active agentsfleet-runner.service)\" = active
-    test \"\$(systemctl show agentsfleet-runner.service --property=Delegate --value)\" = yes
-    test \"\$(systemctl show agentsfleet-runner.service --property=DelegateSubgroup --value)\" = runner
+    test \"\$(stat -c %a $HOST_ENV_FILE)\" = 600
+    test -x $HOST_DEPLOY_DIR/deploy.sh
+    test -x $INSTALL_DIR/$BINARY_NAME
+    test -f $SYSTEMD_DIR/$SERVICE_NAME
+    systemctl is-enabled --quiet $SERVICE_NAME
+    test \"\$(systemctl is-active $SERVICE_NAME)\" = active
+    test \"\$(systemctl show $SERVICE_NAME --property=Delegate --value)\" = yes
+    test \"\$(systemctl show $SERVICE_NAME --property=DelegateSubgroup --value)\" = runner
   "
 }
 
@@ -33,8 +33,8 @@ verify_cgroup_controllers() {
   local report service_subtree
   report="$(runner_remote '
     set -e
-    cgroup_path="$(systemctl show agentsfleet-runner.service --property=ControlGroup --value)"
-    test "$cgroup_path" = /system.slice/agentsfleet-runner.service
+    cgroup_path="$(systemctl show '"$SERVICE_NAME"' --property=ControlGroup --value)"
+    test "$cgroup_path" = /system.slice/'"$SERVICE_NAME"'
     root_path='"$CGROUP_ROOT"'
     slice_path="$root_path/system.slice"
     service_path="$root_path$cgroup_path"
@@ -69,6 +69,19 @@ verify_cgroup_controllers() {
   done
 }
 
+# Without IPv4 forwarding the runner's egress probe fails, and the daemon marks
+# every runner assigned an allowlisted egress policy degraded and leases it
+# nothing, while the service itself reads healthy.
+verify_ipv4_forwarding() {
+  local forwarding
+  forwarding="$(runner_remote "cat '$IPV4_FORWARD_PROC'" || true)"
+  if [ "$forwarding" != 1 ]; then
+    echo "ERROR: $IPV4_FORWARD_PROC reads '${forwarding:-unreadable}', so the runner cannot enforce allowlisted egress; the runner deploy turns it on in $IPV4_FORWARD_SYSCTL_FILE, which a later sysctl.d file can override" >&2
+    return 1
+  fi
+  echo "  ✓ IPv4 forwarding: on"
+}
+
 # The runner reaches the control plane through Cloudflare, so this probe reads
 # the edge as well as the box. A cloudflared connector re-registers for a few
 # seconds after every API deploy, and Cloudflare answers 530 (error 1033 — no
@@ -98,16 +111,22 @@ verify_control_plane() {
   return 1
 }
 
+# The host's own token, proved against the control plane: `GET /v1/runners/me`
+# answers 200 only for a token the daemon accepts, and reading it moves no
+# liveness, so the check cannot mask a dead runner. The token never leaves the
+# host: the remote shell reads it from the unit's environment file, and curl's
+# error line names the status, never the header.
 verify_runner_identity() {
-  runner_remote "sudo sh -c 'set -a; . /etc/default/agentsfleet-runner; set +a; exec /usr/local/bin/agentsfleet-runner doctor >/dev/null'"
+  runner_remote "sudo sh -c 'set -a; . $UNIT_ENV_FILE; set +a; curl -fsS -o /dev/null -m $READYZ_TIMEOUT_SECONDS -H \"Authorization: Bearer \$AGENTSFLEET_RUNNER_TOKEN\" \"\$AGENTSFLEET_API_URL/v1/runners/me\"'"
 }
 
 main() {
   runner_load_target
   echo "Verifying $RUNNER_ITEM in ${ENV} via Tailscale SSH"
 
-  runner_remote "test \"\$(tailscale status --json | jq -r .Self.Online)\" = true"
+  runner_require_tailnet_online
   egress_probe_remote runner_remote
+  verify_ipv4_forwarding
   verify_files_and_service
   verify_cgroup_controllers
   verify_control_plane

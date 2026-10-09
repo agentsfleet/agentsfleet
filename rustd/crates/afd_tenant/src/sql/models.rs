@@ -1,10 +1,8 @@
 //! Statements for the model-library catalogue page — `core.model_library`.
 //!
-//! Ports of `state/model_library/sql.zig`'s §2 page statements. The
-//! normalization is SQL-side there and stays SQL-side here, for the reason
-//! that module records: folding BOTH the column and the compared value with
-//! the same `lower(normalize(…, NFKC))` expression is what makes a match
-//! independent of the script the caller typed in. `COLLATE "C"` rides every
+//! The normalization is SQL-side: folding BOTH the column and the compared
+//! value with the same `lower(normalize(…, NFKC))` expression is what makes a
+//! match independent of the script the caller typed in. `COLLATE "C"` rides every
 //! sort key and every seek operand, so the ORDER BY and the predicate that
 //! resumes it cannot compare under different rules.
 //!
@@ -17,8 +15,8 @@
 //!
 //! The projection, filter and order are spelled in FULL in both statements,
 //! the way `sql/billing.rs` spells its select list twice: `concat!` takes
-//! only literals, and the Zig comptime `++` that assembled these has no
-//! equally cheap Rust spelling. The duplication is the price of grep-able
+//! only literals, so a shared fragment held in a constant has no equally
+//! cheap Rust spelling. The duplication is the price of grep-able
 //! statements, and this comment is the marker a drift-hunting reviewer greps
 //! for.
 

@@ -6,9 +6,7 @@
 //! A connector's `client_id`/`client_secret` pair belongs to whoever RUNS this
 //! deployment, not to the workspace doing the connecting — so it is read from
 //! the admin workspace under `<provider>-app` rather than from the tenant's.
-//! `oauth2.zig`'s `loadAppCreds` reads the same bag from the same key, and the
-//! key is built in exactly one place on either daemon (RULE UFS) —
-//! [`Provider::app_key`] here, `APP_VAULT_KEY_SUFFIX` there.
+//! The key is built in exactly one place (RULE UFS): [`Provider::app_key`].
 //!
 //! # Slack's signing secret lives in the same bag, and that is why this is one
 //! module
@@ -120,10 +118,9 @@ impl PlatformApp {
     ///
     /// One listing, no decryption: [`Provider::app_key`] derives the name, and
     /// membership answers the catalogue's `configured` column without opening a
-    /// single envelope. `catalog.zig` asks the same question with a batch
-    /// existence check for the same reason — the answer is about presence, and
-    /// paying to decrypt five client secrets to render five booleans would put
-    /// plaintext in the process for a page that displays none.
+    /// single envelope. The answer is about presence, and paying to decrypt
+    /// five client secrets to render five booleans would put plaintext in the
+    /// process for a page that displays none.
     ///
     /// A deployment with no admin workspace holds no apps, which is why the
     /// caller passes an `Option` and gets an empty set rather than a refusal:

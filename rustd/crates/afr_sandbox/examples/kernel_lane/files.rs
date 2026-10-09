@@ -77,10 +77,7 @@ fn in_fresh_sandbox(
         ];
         let selection = catalog.select(&names)?;
         let engine = lane.engine();
-        let request = SandboxRequest {
-            lease_id,
-            limits: Limits::default(),
-        };
+        let request = SandboxRequest::new(lease_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let lease = Lease::default().with_image_input(true);
         let mut outputs = Vec::with_capacity(steps.len());

@@ -1,7 +1,5 @@
 //! The operator's side of an integration grant: read the fleet's, take one back.
 //!
-//! The port of `integration_grants/workspace.zig`.
-//!
 //! # Why this is here and not in `afd_gate`
 //!
 //! `afd_gate::gate::grants` reads the same table and asks a different question.
@@ -200,9 +198,9 @@ impl IntegrationGrants {
 /// method: it needs the connection and the two identifiers, and nothing else
 /// the store owns.
 ///
-/// The Zig reads `core.fleets.workspace_id` and compares it in the handler.
-/// Asking the predicate instead is the same authorization decided in the place
-/// that can enforce it, and it carries no row back to be compared wrongly.
+/// The predicate decides the authorization in the place that can enforce it,
+/// rather than reading `core.fleets.workspace_id` back and comparing it here,
+/// so no row comes back to be compared wrongly.
 async fn holds(
     connection: &mut sqlx::PgConnection,
     workspace: &Uuid7,

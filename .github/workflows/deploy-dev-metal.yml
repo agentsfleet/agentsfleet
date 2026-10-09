@@ -31,6 +31,13 @@ jobs:
           name: runner-binary
           path: dist
 
+      # The toolbox is staged beside the binary: the runner admits it at boot
+      # and refuses every lease until one is admitted.
+      - uses: actions/download-artifact@v8
+        with:
+          name: runner-toolbox
+          path: dist/toolbox
+
       - name: Load Tailscale credentials from 1Password
         uses: 1password/load-secrets-action@v5
         with:

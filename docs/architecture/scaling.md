@@ -102,7 +102,7 @@ The cutover added one hop (the runner lease request) and removed another (the in
 | API `XADD fleet:{id}:events` round-trip | ~3–10 ms (hosted regional RTT; in-region 6PN with no TLS handshake should be well under this, unmeasured) |
 | Runner's next `lease` poll picks it up | up to the retry interval before another attempt, plus request and assignment time |
 | `lease` handler: non-blocking `XREADGROUP` + gates + secret resolve + issue lease | ~ms + PG round-trips |
-| Runner forks the sandboxed child, runs NullClaw | dominated by the fleet's own runtime |
+| Runner readies the lease's sandbox and runs the agent loop ([Runner execution](./runner_execution.md#process-model)) | dominated by the fleet's own runtime |
 
 An idle runner waits up to its retry interval before the next lease attempt.
 That interval is not an end-to-end latency bound: assignment, available workers, and datastore work add delay.

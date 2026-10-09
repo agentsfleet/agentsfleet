@@ -5,7 +5,7 @@
 #
 # Split out of runner_test.sh when the verify-lane cases pushed that file past
 # the 350-line cap. The `op` and `tailscale` stubs plus the hermetic
-# `run_script` launcher are the entire world those suites execute in, and both
+# `run_script` launcher are the entire world those suites execute in, and
 # runner_test.sh and runner_verify_test.sh need them identically — a second
 # copy would drift the moment one suite taught its stub a new answer.
 
@@ -19,6 +19,16 @@ readonly DEPLOY="$RUNNER_TEST_DIR/deploy.sh"
 readonly VERIFY="$RUNNER_TEST_DIR/verify.sh"
 readonly DEPLOY_SCRIPT="$RUNNER_TEST_DIR/../../../deploy/baremetal/deploy.sh"
 readonly REPO_ROOT="$RUNNER_TEST_DIR/../../.."
+# The cgroup controllers the runner lanes require, as common.sh declares them,
+# read in a subshell so the library's `set -e` stays out of this harness. The
+# stub's cgroup report and the cases hand back exactly these.
+# shellcheck source=./common.sh
+required_controllers="$(source "$RUNNER_TEST_DIR/common.sh" && printf '%s' "$REQUIRED_CGROUP_CONTROLLERS")"
+readonly required_controllers
+if [ -z "$required_controllers" ]; then
+  printf 'FATAL: REQUIRED_CGROUP_CONTROLLERS read empty from %s\n' "$RUNNER_TEST_DIR/common.sh" >&2
+  exit 2
+fi
 passed=0
 failed=0
 work_dir="$(mktemp -d)"
@@ -82,12 +92,15 @@ case "$command" in
     ;;
   *"cgroup.subtree_control"*)
     printf '%s\n' \
-      'root_controllers=cpu memory pids' \
-      'root_subtree=cpu memory pids' \
-      'slice_controllers=cpu memory pids' \
-      'slice_subtree=cpu memory pids' \
-      'service_controllers=cpu memory pids' \
-      "service_subtree=${STUB_CGROUP_CONTROLLERS:-cpu memory pids}"
+      "root_controllers=$STUB_REQUIRED_CONTROLLERS" \
+      "root_subtree=$STUB_REQUIRED_CONTROLLERS" \
+      "slice_controllers=$STUB_REQUIRED_CONTROLLERS" \
+      "slice_subtree=$STUB_REQUIRED_CONTROLLERS" \
+      "service_controllers=$STUB_REQUIRED_CONTROLLERS" \
+      "service_subtree=${STUB_CGROUP_CONTROLLERS:-$STUB_REQUIRED_CONTROLLERS}"
+    ;;
+  "cat '/proc/sys/net/ipv4/ip_forward'")
+    printf '%s\n' "${STUB_IP_FORWARD:-1}"
     ;;
   *"/readyz"*)
     # One status per probe, last entry repeating, so a case can hand the
@@ -110,6 +123,14 @@ STUB
 chmod +x "$stub_dir/op" "$stub_dir/tailscale"
 runner_binary="$work_dir/agentsfleet-runner"
 printf 'runner\n' >"$runner_binary"
+# The toolbox a deploy ships beside the binary, as every workflow lays it out:
+# the image named by its digest, its manifest and the manifest's signature.
+readonly TOOLBOX_FIXTURE_DIGEST="0000000000000000000000000000000000000000000000000000000000000001"
+toolbox_fixture="$work_dir/toolbox"
+mkdir -p "$toolbox_fixture"
+for part in erofs json json.sig; do
+  printf '%s\n' "$part" >"$toolbox_fixture/toolbox-$TOOLBOX_FIXTURE_DIGEST.$part"
+done
 cgroup_fixture="$work_dir/cgroup"
 mkdir -p "$cgroup_fixture"
 
@@ -137,6 +158,7 @@ run_script() {
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
     READYZ_COUNTER="$readyz_counter" \
+    STUB_REQUIRED_CONTROLLERS="$required_controllers" \
     RUNNER_BINARY="$runner_binary" \
     RUNNER_VERSION=test-build \
     ALLOW_VAULT_READS=1 \

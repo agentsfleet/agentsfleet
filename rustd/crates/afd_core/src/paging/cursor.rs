@@ -1,11 +1,10 @@
 //! The keyset boundary itself — its two forms, and the string a client holds.
 //!
 //! Split from `paging.rs` at the file cap, along the line that file's own
-//! header draws: the wire form of a cursor is a DATA FORMAT both binaries
-//! issue and accept, spelled the way `keyset_cursor.zig` spells it. That is a
-//! contract of its own, and it now lives in a file of its own — while
-//! `paging.rs` keeps what a REQUEST is parsed into, which is a different job
-//! that merely holds one of these.
+//! header draws: the wire form of a cursor is a DATA FORMAT a client holds
+//! across deploys. That is a promise of its own, and it lives in a file of its
+//! own — while `paging.rs` keeps what a REQUEST is parsed into, which is a
+//! different job that merely holds one of these.
 //!
 //! Re-exported from the parent, so `afd_core::paging::Cursor` is still where
 //! every caller finds it.
@@ -83,7 +82,7 @@ impl Cursor {
         }
     }
 
-    /// Reads a cursor this daemon — or the Zig one — issued.
+    /// Reads a cursor this daemon issued.
     ///
     /// # Errors
     /// Refuses anything that is not one of the two forms, and an empty

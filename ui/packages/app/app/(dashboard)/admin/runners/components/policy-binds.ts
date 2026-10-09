@@ -1,33 +1,29 @@
 import { BIND_MODE, type BindMode, type ExtraBind } from "@/lib/api/runners-types";
 
 // The extra-bind half of the assignment form: bounds, grammar, and the
-// form-row <-> wire conversion. Mirrors `protocol_bind.zig` so the dialog
-// refuses an entry in-form rather than as a 400, and split from PolicyFields
-// so neither file carries both the four scalar fields and the bind list.
+// form-row <-> wire conversion. Mirrors the bind rules in
+// rustd/crates/afd_wire/src/runner/rules.rs so the dialog refuses an entry
+// in-form rather than as a 400, and split from PolicyFields so neither file
+// carries both the four scalar fields and the bind list.
 //
-// The rules here are a MIRROR, never the enforcement. `extraBindsValid` on the
-// daemon is the boundary; this exists so an operator hears the reason next to
-// the row they typed.
+// The rules here are a MIRROR, never the enforcement. The garde rules on
+// `ExtraBind` and `AssignedPolicy::extra_binds`
+// (rustd/crates/afd_wire/src/runner.rs) are the daemon's boundary; this exists
+// so an operator hears the reason next to the row they typed.
 
-/** `protocol_bind.MAX_EXTRA_BINDS` (UFS cross-runtime name). */
+/** `EXTRA_BINDS_MAX` in rustd/crates/afd_wire/src/runner/rules.rs. */
 export const MAX_EXTRA_BINDS = 16;
-/** `protocol_bind.MAX_BIND_PATH_LEN` — PATH_MAX on Linux. */
+/** `BIND_PATH_MAX_BYTES` (rules.rs) — PATH_MAX on Linux. */
 export const MAX_BIND_PATH_LEN = 4096;
-/** `protocol_bind.MAX_BIND_NOTE_LEN` — one line of operator intent. */
+/** `BIND_NOTE_MAX_BYTES` (rules.rs) — one line of operator intent. */
 export const MAX_BIND_NOTE_LEN = 200;
 
-/** `protocol_bind.BASELINE_RO_PATHS` — the mounts the daemon already binds.
- *
- * `/etc` and `/opt` left this list: they carried the host account database and
- * the daemon's own control-plane token into every lease, and nothing a lease
- * runs reads them. The individual `/etc` files a lease DOES read are named
- * instead. The executable and library trees stayed, because the engine's model
- * transport spawns `curl`. */
-/* DANGER_HOST_ — every host path a lease can reach. Names mirror
- * `protocol_bind_paths.zig` (RULE UFS: cross-runtime constants share a name).
- * Every baseline entry carries the prefix because every one is HOST filesystem
- * mounted into a sandbox running prompt-injectable agent code; grep
- * `DANGER_HOST_` to see the whole lease-reachable surface at once. */
+/** The first nine entries of `PROTECTED_BIND_PATHS` (rules.rs): host paths an
+ * operator bind may not overlap. `/etc` and `/opt/agentsfleet` are refused as
+ * whole trees in `SENSITIVE_PATHS` below. */
+/* DANGER_HOST_ — a host path an operator bind may not overlap. The daemon
+ * declares the same paths, unnamed, in `PROTECTED_BIND_PATHS` (rules.rs);
+ * grep `DANGER_HOST_` to see every one at once. */
 
 /** TLS trust store — the only filesystem input a credentialed dial needs.
  * PLATFORM ASSUMPTION: Debian-family and Alpine location; Red Hat family keeps
@@ -47,13 +43,8 @@ export const DANGER_HOST_NETWORK_RESOLVER_DIR = "/run/systemd/resolve";
 export const DANGER_HOST_NETWORK_HOSTS = "/etc/hosts";
 export const DANGER_HOST_NETWORK_NSSWITCH = "/etc/nsswitch.conf";
 
-/** System core: the host's executables and shared libraries — the widest
- * surface here and the one carrying real risk. `/usr` alone is tens of
- * thousands of files, all readable and executable by agent code in a lease.
- * Bound only because the engine's model transport spawns `curl`; without them
- * every lease dies at `execvp` before its first model call. They buy a working
- * product, not security, and they leave when the transport needs no
- * subprocess. */
+/** System core: the host's executables and shared libraries. An operator bind
+ * may not overlap them. */
 export const DANGER_HOST_SYSTEM_CORE = ["/usr", "/lib", "/lib64", "/bin", "/sbin"];
 
 export const BASELINE_RO_PATHS = [
@@ -64,8 +55,10 @@ export const BASELINE_RO_PATHS = [
   ...DANGER_HOST_SYSTEM_CORE,
 ];
 
-/** `protocol_bind.SENSITIVE_PATHS` — the sandbox's own floor plus the host
- * surfaces where a writable mount is host control rather than a repair. */
+/** `/usr`, the rest of `PROTECTED_BIND_PATHS`, and `SENSITIVE_BIND_PATHS`
+ * (rules.rs) — the sandbox's own floor plus the host surfaces where a
+ * writable mount is host control rather than a repair. The daemon refuses an
+ * overlap with either list as one error; this split lets the form say which. */
 export const SENSITIVE_PATHS = [
   "/usr",
   "/proc",

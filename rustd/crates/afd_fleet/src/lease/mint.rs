@@ -31,8 +31,7 @@
 //! it, so a lease expiring mid-exchange can still be handed the token it asked
 //! for. It is bounded to one request, and a re-check afterwards could only
 //! WITHHOLD a credential the vendor has already issued — the upstream token
-//! exists either way. `credentials_mint.zig` carries the same residual and the
-//! same reasoning.
+//! exists either way.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -216,9 +215,8 @@ impl Plane {
 /// matrix is provable here without a lease, a vault or a vendor.
 ///
 /// `connector` selects the FAMILY's copy. GitHub keeps two codes where the
-/// refresh connectors share one, which is `credentials_mint.zig`'s asymmetry
-/// and is kept deliberately — a Zoho refresh that failed must never tell a
-/// runner to reconnect a GitHub App.
+/// refresh connectors share one, deliberately — a Zoho refresh that failed
+/// must never tell a runner to reconnect a GitHub App.
 fn accept(outcome: Outcome, connector: Option<&dyn Connector>) -> Result<Minted> {
     let is_github =
         connector.is_some_and(|connector| matches!(connector.exchange(), Exchange::GithubApp));

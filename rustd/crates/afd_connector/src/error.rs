@@ -12,9 +12,9 @@
 //! is "try connecting again in a moment"; the second is an authorization code
 //! that will never be redeemable — spent, expired, or minted against a
 //! redirect URI this deployment did not send — and starting the flow again is
-//! the only thing that can fix it. The Zig answers `UZ-CONN-003` for the first
-//! and the provider's own exchange-failed code for the second, and that split
-//! is carried rather than collapsed.
+//! the only thing that can fix it. The table below answers
+//! `CONNECTOR_VENDOR_DEADLINE` for the first and `CONNECTOR_OAUTH_EXCHANGE_FAILED`
+//! for the second, and that split is kept apart rather than collapsed.
 //!
 //! # Nothing a PERSON did wrong is an error here
 //!

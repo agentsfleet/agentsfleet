@@ -84,10 +84,9 @@ jobs:
           restore-keys: cargo-dist-${{ matrix.arch }}-
 
       # `docker run` rather than a job `container:`, and deliberately so: JS
-      # actions cannot run inside an Alpine container on an ARM64 runner, which
-      # is the same constraint the aarch64 Zig job below documents. Driving the
-      # build through docker keeps checkout, cache and upload on the host where
-      # they work, on both architectures, with one code path.
+      # actions cannot run inside an Alpine container on an ARM64 runner.
+      # Driving the build through docker keeps checkout, cache and upload on
+      # the host where they work, on both architectures, with one code path.
       - name: Build the daemon in Alpine (musl-native)
         run: |
           mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
@@ -149,22 +148,49 @@ jobs:
           path: dist/agentsfleetd-rs-linux-${{ matrix.arch }}
           retention-days: 1
 
+  # The runner is the second binary of the same workspace, built the same way:
+  # the daemon's Alpine builder, `docker run` rather than a container job, and
+  # the same static-ELF assertion. One versions.env bump moves both.
   compile-runner-amd64:
     needs: verify-tag
     runs-on: ubuntu-latest
-    container:
-      # Pre-baked: alpine:3.21 + Zig 0.16.0 + apk deps + x86_64-linux-gnu OpenSSL
-      # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
-      image: ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r6
     steps:
       - uses: actions/checkout@v7
 
-      - name: Build (x86_64-linux)
-        run: zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
+      # Its own key: the daemon's job saves the same paths, and two jobs racing
+      # one key would each restore the other's target directory.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            .cargo-cache/registry
+            .cargo-cache/git
+            rustd/target
+          key: cargo-dist-runner-amd64-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
+          restore-keys: cargo-dist-runner-amd64-
 
-      - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
+      - name: Build the runner in Alpine (musl-native)
         run: |
-          bin=zig-out/bin/agentsfleet-runner
+          mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
+          RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
+          ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
+          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
+          echo "→ building in $BUILDER"
+          docker run --rm \
+            -v "$PWD:/w" \
+            -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \
+            -v "$PWD/.cargo-cache/git:/usr/local/cargo/git" \
+            -e GIT_COMMIT="${GITHUB_SHA::7}" \
+            -w /w/rustd \
+            "$BUILDER" \
+            sh -c '
+              set -e
+              cargo build --profile dist --bin agentsfleet-runner
+            '
+          sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
+
+      - name: Verify static ELF — zero NEEDED, no INTERP
+        run: |
+          bin=rustd/target/dist/agentsfleet-runner
           test -f "$bin"
           if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
             echo "FAIL: $bin has dynamic NEEDED entries"
@@ -175,12 +201,12 @@ jobs:
             echo "FAIL: $bin has INTERP (dynamic linker) section"
             exit 1
           fi
-          echo "✓ $bin: fully static (zero NEEDED, no INTERP)"
+          echo "✓ $bin: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
 
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
+          cp rustd/target/dist/agentsfleet-runner dist/agentsfleet-runner-linux-amd64
           chmod +x dist/agentsfleet-runner-linux-amd64
           tar czf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist agentsfleet-runner-linux-amd64
 
@@ -188,6 +214,44 @@ jobs:
         with:
           name: agentsfleet-runner-linux-amd64
           path: dist/agentsfleet-runner-linux-amd64.tar.gz
+
+      # Unpackaged, for the toolbox job's offline bundle.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agentsfleet-runner-linux-amd64-raw
+          path: dist/agentsfleet-runner-linux-amd64
+          retention-days: 1
+
+  # ── 1d. The toolbox: built, scanned, signed, bundled ─────────────────────
+  # A Debian-family builder, because `scripts/toolbox/build.sh` runs mmdebstrap
+  # as root, which the Alpine job cannot. The composite action is the one place
+  # the pipeline lives; deploy-dev-build.yml runs the same one from the branch.
+  build-toolbox-amd64:
+    needs: compile-runner-amd64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: agentsfleet-runner-linux-amd64-raw
+          path: dist
+
+      - uses: ./.github/actions/build-toolbox
+        with:
+          runner-binary: dist/agentsfleet-runner-linux-amd64
+          op-token: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          vault: ${{ vars.VAULT_PROD }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agentsfleet-runner-toolbox-amd64
+          path: dist/toolbox
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: agentsfleet-runner-bundle-linux-amd64
+          path: dist/agentsfleet-runner-bundle-linux-amd64.tar.gz
 
   # ── 1b. Runtime compat: verify release x86_64 binary runs on all target envs ──
   # Mirrors verify-runtime-compat from cross-compile.yml.
@@ -229,62 +293,6 @@ jobs:
             exit 1
           fi
           echo "✓ distroless/static-debian12: the daemon loads and reports"
-
-  # ── 1c. aarch64 binary: bare runner + docker run alpine ───────────────
-  # JS actions cannot run inside Alpine containers on ARM64 runners.
-  # Solution: use the bare ubuntu-24.04-arm runner and invoke docker run
-  # to execute the Zig build inside Alpine.
-  compile-runner-arm64:
-    needs: verify-tag
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Build aarch64-linux inside Alpine (musl-native static OpenSSL)
-        # Pre-baked image: ci-zig-alpine multi-arch manifest carries linux/arm64,
-        # so docker pulls the arm64 variant (no QEMU emulation on the native
-        # ubuntu-24.04-arm runner). Image already has openssl-libs-static, the
-        # aarch64-linux-gnu symlinks, and Zig 0.16.0 in /opt/zig on $PATH.
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/zig-out/bin"
-          docker run --rm \
-            --platform linux/arm64 \
-            -v "$GITHUB_WORKSPACE:/src:ro" \
-            -v "$GITHUB_WORKSPACE/zig-out:/zig-out" \
-            ghcr.io/agentsfleet/ci-zig-alpine:0.16.0-r6 \
-            sh -c '
-              set -e
-              cp -a /src/. /build
-              cd /build
-              echo "  compiling agentsfleet-runner (aarch64-linux)..."
-              zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
-              for bin in zig-out/bin/agentsfleet-runner; do
-                test -f "$bin"
-                if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
-                  echo "FAIL: $bin has dynamic NEEDED entries"
-                  readelf -d "$bin" | grep NEEDED
-                  exit 1
-                fi
-                if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
-                  echo "FAIL: $bin has INTERP (dynamic linker) section"
-                  exit 1
-                fi
-                echo "  ✓ $bin: fully static (zero NEEDED, no INTERP)"
-              done
-              cp zig-out/bin/agentsfleet-runner /zig-out/bin/agentsfleet-runner
-            '
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp zig-out/bin/agentsfleet-runner dist/agentsfleet-runner-linux-arm64
-          chmod +x dist/agentsfleet-runner-linux-arm64
-          tar czf dist/agentsfleet-runner-linux-arm64.tar.gz -C dist agentsfleet-runner-linux-arm64
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: agentsfleet-runner-linux-arm64
-          path: dist/agentsfleet-runner-linux-arm64.tar.gz
 
   # The macOS daemon is a download, not a deployment: production is linux, and
   # nothing in this workflow consumes this artifact except the GitHub release.
@@ -329,10 +337,12 @@ jobs:
   # ── 2. Docker: multi-arch build + push stable to GHCR ──────────────────
   push-ghcr:
     runs-on: ubuntu-latest
-    # The image carries the daemon and nothing else, so it waits on the daemon
-    # and its runtime check — not on the runner or the macOS binary, which ship
-    # in the GitHub release and never enter this image.
-    needs: [verify-tag, compile-daemon, verify-runtime-compat]
+    # The image carries the daemon alone, but the push waits on the toolbox too:
+    # everything downstream of this push deploys Fly and then metal, and the
+    # metal jobs download the toolbox artifact. A toolbox that failed to build,
+    # scan or sign must stop the release here, before Fly ships a daemon whose
+    # runners cannot follow it. The macOS binary still never gates the image.
+    needs: [verify-tag, compile-daemon, verify-runtime-compat, build-toolbox-amd64]
     permissions:
       packages: write
     steps:
@@ -444,12 +454,15 @@ jobs:
   # ── 4. GitHub Release: changelog + attach binaries ─────────────────────
   create-release:
     runs-on: ubuntu-latest
-    needs: [compile-daemon, compile-runner-amd64, compile-runner-arm64, compile-daemon-macos]
+    needs: [compile-daemon, compile-runner-amd64, build-toolbox-amd64, compile-daemon-macos]
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v7
 
+      # Every artifact into one directory: the tarballs, and the toolbox's
+      # image, manifest, signature, SBOM, scan report and public key, which
+      # the release publishes apart from the binary beside the offline bundle.
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -465,7 +478,10 @@ jobs:
         with:
           body: "[Full changelog for this release →](https://docs.agentsfleet.net/changelog)"
           generate_release_notes: true
-          files: dist/*.tar.gz
+          files: |
+            dist/*.tar.gz
+            dist/toolbox-*
+            dist/release.pub
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -760,8 +776,8 @@ jobs:
       # Placed earlier, its fail-fast curl would abort the release for exactly
       # the condition the tunnel step above exists to repair.
       #
-      # `approval-signing` is the deployment-level HMAC key. The Zig daemon read
-      # it from APPROVAL_SIGNING_SECRET in the environment; the Rust daemon
+      # `approval-signing` is the deployment-level HMAC key. The retired daemon
+      # read it from APPROVAL_SIGNING_SECRET in the environment; `agentsfleetd`
       # reads it as an admin-workspace vault row. The Fly secret staged above is
       # still set for anything reading the environment, but it is NOT what the
       # connector flow resolves — without this row every provider answers 503
@@ -791,6 +807,12 @@ jobs:
 
       - name: Extract runner binary
         run: tar -xzf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist
+
+      # The toolbox ships with the binary: a host without both refuses leases.
+      - uses: actions/download-artifact@v8
+        with:
+          name: agentsfleet-runner-toolbox-amd64
+          path: dist/toolbox
 
       - name: Load Tailscale credentials from 1Password
         uses: 1password/load-secrets-action@v5
@@ -854,6 +876,11 @@ jobs:
 
       - name: Extract runner binary
         run: tar -xzf dist/agentsfleet-runner-linux-amd64.tar.gz -C dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: agentsfleet-runner-toolbox-amd64
+          path: dist/toolbox
 
       - name: Load Tailscale credentials from 1Password
         uses: 1password/load-secrets-action@v5

@@ -235,13 +235,11 @@ async fn test_a_failed_accept_does_not_stop_the_daemon() {
 
 // ── The bind address ─────────────────────────────────────────────────────
 //
-// These are the guard the Zig daemon carried and the Rust port dropped. The
-// deployment has no public Fly service: Cloudflare Tunnel reaches
+// The deployment has no public Fly service: Cloudflare Tunnel reaches
 // `agentsfleetd-<env>.internal:3000`, Fly resolves `.internal` to a 6PN
 // address that is IPv6 only, and a listener that refuses IPv6 answers the
 // edge with 502 while every local check stays green. That asymmetry is why
-// the bug shipped twice, and why the assertion is about the SOCKET rather
-// than about a configuration string.
+// the assertion is about the SOCKET rather than about a configuration string.
 //
 // The IPv4 case is not redundant with the IPv6 one. One `AF_INET6` socket
 // serves both stacks only while `IPV6_V6ONLY` is off, which `std` gives no way

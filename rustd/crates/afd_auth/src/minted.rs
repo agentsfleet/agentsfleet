@@ -10,12 +10,11 @@
 //! one fact, which is that a credential's class is carried by its bytes.
 //!
 //! Three credential classes are drawn this way — the runner's `agt_r`, the
-//! tenant's `agt_t`, and the command line's `afc_` — and the Zig daemon draws
-//! each of them in its own file, with its own `TOKEN_RANDOM_BYTES`, its own
-//! `bytesToHex`, and its own concatenation. Three copies of one procedure is
-//! three places for a digest to be taken over the wrong bytes, and the failure
-//! has no test: it stores a value no lookup will ever match, and the class it
-//! belongs to simply cannot log in.
+//! tenant's `agt_t`, and the command line's `afc_`. Drawing each in its own
+//! file, with its own byte count, its own hex render and its own concatenation,
+//! is three places for a digest to be taken over the wrong bytes, and the
+//! failure has no test: it stores a value no lookup will ever match, and the
+//! class it belongs to simply cannot log in.
 //!
 //! Here it is one type taking the class's marker. What varies between the three
 //! is the marker and nothing else, which is what the parameter says.
@@ -26,12 +25,11 @@ use std::fmt;
 use crate::credential::CredentialKind;
 use crate::directory::Digest;
 
-/// Random bytes behind a runner token's body.
+/// Random bytes behind a credential's body, for all three classes.
 ///
-/// `register.zig`'s `TOKEN_RANDOM_BYTES`, and the same 32 the other two
-/// credential minters draw — the number `afd_auth::authenticate` already
-/// depends on, since its shape check expects exactly 64 hex characters after
-/// the marker. One constant now, where Zig has three that agree by luck.
+/// The number `afd_auth::authenticate` already depends on: its shape check
+/// expects exactly 64 hex characters after the marker. One constant, so the
+/// three classes cannot drift apart.
 const TOKEN_RANDOM_BYTES: usize = 32;
 
 /// A freshly minted runner token, and the digest that will be stored for it.

@@ -216,7 +216,8 @@ export async function createSignInTicket(
 }
 
 // Clerk propagates publicMetadata (tenant_id/role) ASYNCHRONOUSLY after the
-// bootstrap webhook's best-effort writeback (identity_events_clerk.zig writes it
+// bootstrap webhook's best-effort writeback
+// (rustd/crates/afd_api_ingress/src/handler/webhook/identity_route.rs writes it
 // catch-and-warn, so the webhook 200 does NOT prove tenant_id has landed). The
 // api-template JWT snapshots publicMetadata at mint time, so minting before
 // tenant_id propagates yields a JWT agentsfleetd rejects with UZ-AUTH-001

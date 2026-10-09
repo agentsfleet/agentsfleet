@@ -1,18 +1,16 @@
 //! Assigned policy against reported capability, resolved to the row's verdict.
 //!
 //! Pure — no clock, no rows, no datastore — so the whole matrix is a unit test
-//! and the heartbeat only orchestrates reads and writes around it. That
-//! separation is `heartbeat_reconcile.zig`'s and it is the right one; what
-//! changes here is the shape of the answer, and what the question is asked in.
+//! and the heartbeat only orchestrates reads and writes around it.
 //!
 //! # The daemon asks for OUTCOMES, not for mechanisms
 //!
-//! `heartbeat_reconcile.zig` asks a host whether it has Landlock, seccomp, the
-//! `cpu`/`memory`/`pids` cgroup controllers and a `bubblewrap` binary. Every one
-//! of those is a Linux implementation detail, and asking for them by name is
-//! what makes the control plane bubblewrap-shaped: a runner backed by a
-//! Firecracker microVM, a full virtual machine, or a managed platform isolate
-//! delivers the same ISOLATION and would fail all four questions.
+//! Landlock, seccomp, the `cpu`/`memory`/`pids` cgroup controllers and a
+//! `bubblewrap` binary are each a Linux implementation detail, and asking a
+//! host for them by name would make the control plane bubblewrap-shaped: a
+//! runner backed by a Firecracker microVM, a full virtual machine, or a
+//! managed platform isolate delivers the same ISOLATION and would fail all four
+//! questions.
 //!
 //! So the vocabulary here is [`Guarantee`] — what a tenant is promised — and
 //! [`Guarantee::proven_by`] is the only function in this crate that knows what
@@ -29,18 +27,17 @@
 //!
 //! # A verdict is one value, not two fields that must agree
 //!
-//! The Zig `Verdict` is `{ degraded: bool, reason: ?[]const u8 }`, which can
-//! spell two states that must never exist: degraded with no reason, and not
-//! degraded WITH one. Nothing prevents either; the invariant lives in the
-//! constructors and in a reader's memory. Here it is an enum, so
+//! A `bool` beside an optional reason can spell two states that must never
+//! exist: degraded with no reason, and not degraded WITH one. Here it is an
+//! enum, so
 //! [`Verdict::Healthy`] has nowhere to put a reason and [`Verdict::Degraded`]
 //! cannot omit one — `dispatch/write_rust.md` §Functional design, "two `Option`
 //! fields where exactly one is ever set is an enum".
 //!
 //! The reason strings are the operator-facing vocabulary: they land on the
 //! runner row verbatim and each names one missing mechanism, which maps to a
-//! step in the runner bootstrap playbook. They are pinned byte-for-byte
-//! against the Zig constants, because an operator greps for them.
+//! step in the runner bootstrap playbook. Change their bytes only on purpose:
+//! an operator greps for them.
 
 use afd_wire::runner::{AssignedPolicy, CapabilityReport, NetworkPolicy, SandboxTier};
 
@@ -63,7 +60,8 @@ pub const REASON_NETWORK_NEEDS_CAGE: &str = "network isolation needs a sandbox t
 
 /// Controllers a cage-building tier needs in the delegated subtree.
 ///
-/// Mirrors the runner-side enablement set (`CgroupScope`: cpu, memory, pids).
+/// A subset of the runner's own requirement, `REQUIRED_CONTROLLERS` in
+/// `afr_sandbox/src/probe.rs`: cpu, io, memory and pids.
 /// Evidence for [`Guarantee::ResourceLimits`] on a Linux host, and nothing
 /// beyond that — a substrate that caps a lease by giving it a vCPU and a memory
 /// ceiling proves the same guarantee without a cgroup anywhere.
@@ -91,8 +89,8 @@ pub enum Guarantee {
 impl Guarantee {
     /// What an operator is told when this guarantee is not proven.
     ///
-    /// Still the Zig sentence, byte-for-byte, and deliberately so: an operator
-    /// greps for these and a runbook names them. They read as mechanisms
+    /// Stable byte-for-byte, and deliberately so: an operator greps for these
+    /// and a runbook names them. They read as mechanisms
     /// because today's only substrate is a Linux host — the day a second one
     /// reports, these become the guarantee's own words and the mapping is one
     /// edit in this function.
@@ -141,7 +139,7 @@ const CAGE_GUARANTEES: [Guarantee; 4] = [
 /// Whether a runner may take work, and why not when it may not.
 ///
 /// An enum rather than a `bool` beside an `Option<&str>`, so the two illegal
-/// combinations the Zig struct can spell are unrepresentable here.
+/// combinations that pair can spell are unrepresentable here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
     /// The host proved everything its assignment demands.
@@ -184,11 +182,10 @@ impl Verdict {
 ///
 /// # Why this is an enum and not four booleans
 ///
-/// The Zig `TierNeeds` is a struct of four `bool`s, which spells sixteen
-/// states. Exactly TWO are reachable — `tierNeeds` returns all-false or
-/// all-true and nothing else — so fourteen of them exist only to be impossible.
-/// Clippy notices the shape (`struct_excessive_bools`); the fix is not to
-/// silence it but to say what is actually true, which is that a tier either
+/// Four `bool`s spell sixteen states. Exactly TWO are reachable — a tier needs
+/// every guarantee or none — so fourteen of them would exist only to be
+/// impossible. Clippy notices that shape (`struct_excessive_bools`); the fix is
+/// not to silence it but to say what is actually true, which is that a tier either
 /// builds a cage or does not (`dispatch/write_rust.md` §Functional design,
 /// "make illegal states unrepresentable").
 ///

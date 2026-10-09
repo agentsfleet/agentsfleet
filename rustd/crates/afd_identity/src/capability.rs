@@ -24,29 +24,25 @@ use afd_auth::scope::{ScopeSet, parse_claim};
 use afd_core::clock::{Clock, UnixMillis};
 
 /// How long a fetched claim is served without asking again.
-///
-/// `clerk_scope_resolver.zig`'s `DEFAULT_TTL_MS`.
 pub const DEFAULT_TTL_MS: i64 = 60 * 1_000;
 
 /// How long a claim may be served after the provider stops answering.
 ///
-/// `clerk_scope_resolver.zig`'s `DEFAULT_STALE_CEILING_MS`. Past this a claim
-/// could contradict a revocation nobody can confirm, so the answer becomes an
-/// outage.
+/// Past this a claim could contradict a revocation nobody can confirm, so the
+/// answer becomes an outage.
 pub const DEFAULT_STALE_CEILING_MS: i64 = 15 * 60 * 1_000;
 
 /// Distinct subjects held at once.
 ///
-/// `clerk_scope_resolver.zig`'s `MAX_CACHED_SUBJECTS`, far above any real
-/// operator count. Where the Zig cache drops everything at this bound, this one
-/// evicts its coldest entry.
+/// Far above any real operator count. At this bound the cache evicts its
+/// coldest entry rather than dropping everything.
 pub const MAX_CACHED_SUBJECTS: u64 = 4096;
 
 /// Reads a capability claim for a subject from the identity provider.
 ///
 /// The network seam under [`ProviderCapabilities`], separate so the cache's
-/// three windows are provable without a provider. Mirrors
-/// `clerk_scope_fetch.zig`.
+/// three windows are provable without a provider. `crate::provider` holds the
+/// implementation that asks the real one.
 pub trait ClaimSource: Send + Sync + std::fmt::Debug + 'static {
     /// Reads the space-delimited claim the provider holds for `subject`.
     ///

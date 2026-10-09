@@ -41,9 +41,8 @@ pub const fn policy_wire(policy: NetworkPolicy) -> &'static str {
 
 /// Renders a list as the JSON array a `jsonb` column takes.
 ///
-/// The statements carry the `::jsonb` cast themselves, so the bind is text —
-/// which is what the Zig does and what keeps sqlx's `json` feature off this
-/// workspace's list.
+/// The statements carry the `::jsonb` cast themselves, so the bind is text,
+/// which keeps sqlx's `json` feature off this workspace's list.
 ///
 /// Infallible in practice for every shape that reaches it: `serde_json` fails
 /// only on a serializer error or a non-string map key, and neither is

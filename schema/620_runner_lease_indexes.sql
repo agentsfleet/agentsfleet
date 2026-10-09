@@ -14,7 +14,8 @@
 CREATE INDEX IF NOT EXISTS idx_runner_leases_runner_id_status
     ON fleet.runner_leases (runner_id, status);
 
--- Reader: fleet/reclaim.zig reclaimPriorActive —
+-- Reader: the reclaim, RECLAIM_PRIOR_ACTIVE in
+-- `rustd/crates/afd_fleet/src/lease/sql/lease.rs` —
 -- WHERE fleet_id = $1 AND status = $2 ORDER BY fencing_token DESC LIMIT 1.
 -- `fleet_id` is also a cascading foreign key, so before this index every reclaim
 -- AND every fleet delete scanned the table. The trailing fencing token makes the
@@ -40,7 +41,8 @@ CREATE INDEX IF NOT EXISTS idx_runner_leases_runner_id_created_at_id
 CREATE INDEX IF NOT EXISTS idx_runner_leases_fleet_id_event_id_fencing_token
     ON fleet.runner_leases (fleet_id, event_id, fencing_token);
 
--- Reader: the retention sweep (fleet/retention_sweeper.zig), which deletes
+-- Reader: the retention sweep
+-- (`rustd/crates/afd_runner/src/sweep/retention.rs`), which deletes
 -- terminal-status rows older than the window across ALL runners — so no
 -- runner-leading index can serve it, and every one above leads with a runner or
 -- a fleet. Measured on the steady-state cycle, the one that finds nothing and

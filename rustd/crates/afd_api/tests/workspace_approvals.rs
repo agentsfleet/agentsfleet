@@ -13,16 +13,16 @@
 //! see what a fleet wants to do must not thereby be able to let it, and a
 //! single merged scope would be invisible until somebody used it.
 //!
-//! # The decision moved into its own path segment
+//! # The decision has its own path segment
 //!
-//! The Zig daemon spelled it `…/approvals/{gate_id}:approve`. The reason this
-//! router cannot is narrower than a capability argument — `Scopes::rw` pins
-//! a different capability per method on one template, so the split above is
-//! expressible either way. `matchit` simply refuses any literal after a
-//! parameter inside one segment (`tree.rs:783`, "Prefixes after route
-//! parameters are not supported"), so `{gate_id}:approve` is not a pattern it
-//! will accept. `…/approvals/{gate_id}/approve` is the served spelling, and
-//! `FleetRoute::ScheduleSync` took the same divergence for the same reason.
+//! The decision is `…/approvals/{gate_id}/approve`, not
+//! `…/approvals/{gate_id}:approve`. The reason is narrower than a capability
+//! argument — `Scopes::rw` pins a different capability per method on one
+//! template, so the split above is expressible either way. `matchit` simply
+//! refuses any literal after a parameter inside one segment (`tree.rs:783`,
+//! "Prefixes after route parameters are not supported"), so
+//! `{gate_id}:approve` is not a pattern it will accept.
+//! `FleetRoute::ScheduleSync` takes the same shape for the same reason.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,

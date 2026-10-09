@@ -2,12 +2,10 @@
 //!
 //! # The version IS the slot number
 //!
-//! `550_connector_installs.sql` applies as version 550. The retired
-//! `schema/embed.zig` stated that rule and then restated each number by hand
-//! beside each file; here [`version_of`] derives it from the filename during
-//! constant evaluation, so a version that disagrees with the file it names is
-//! not a mistake anyone can make. A filename that is not `<digits>_<name>.sql`
-//! fails the build.
+//! `550_connector_installs.sql` applies as version 550. [`version_of`] derives
+//! the number from the filename during constant evaluation, so a version that
+//! disagrees with the file it names is not a mistake anyone can make. A
+//! filename that is not `<digits>_<name>.sql` fails the build.
 //!
 //! # Why this list is written out rather than globbed
 //!

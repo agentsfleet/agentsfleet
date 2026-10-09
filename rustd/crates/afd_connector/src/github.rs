@@ -6,9 +6,7 @@
 //! user-authorization code — a bearer for the person who pressed Connect, with
 //! no installation behind it. What binds a workspace is the installation, so
 //! the token is spent on one more question before anything is sealed: which
-//! installations of this App can that person reach? `github/ownership.zig`
-//! asked the same question with the same two calls, and this is that logic on
-//! the Rust tree.
+//! installations of this App can that person reach?
 //!
 //! # Exactly one, or nothing is written
 //!
@@ -61,8 +59,8 @@ const HANDLE_CONNECTED_AT: &str = "connected_at_ms";
 
 /// The longest decimal an installation id is allowed to be on the query.
 ///
-/// `github/callback.zig`'s `MAX_INSTALLATION_ID_LEN`. GitHub's ids are far
-/// shorter; the cap is what stops a query parameter from becoming a path.
+/// GitHub's ids are far shorter; the cap is what stops a query parameter from
+/// becoming a path.
 pub const MAX_INSTALLATION_ID_LEN: usize = 32;
 
 /// One installation the person can reach.

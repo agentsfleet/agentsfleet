@@ -36,11 +36,6 @@ readonly NON_TABLE_QUALIFIED_NAMES="fleet.delivery"
 #   records that install resolves from a library tier instead.
 readonly RETIRED_TABLES="fleet.metering_periods core.fleet_bundles"
 
-# Files that belong to a sibling project rather than this repository. A page may
-# name one because the behaviour it describes lives there.
-#   NullClaw's provider routing — the fleet loop is its own codebase.
-readonly EXTERNAL_PROJECT_PATHS="compatible.zig providers/factory.zig nullclaw/src/providers/factory.zig"
-
 doc_files() {
   find "$ARCH_DIR" -name '*.md' 2>/dev/null | sort
   local extra
@@ -64,7 +59,7 @@ published_link_files() {
 # ---------------------------------------------------------------------------
 # 5. test_arch_cited_paths_resolve
 #    Pages cite files two ways: in full from the repository root, and in a
-#    readable shorthand that drops the leading directories (`http/router.zig`).
+#    readable shorthand that drops the leading directories (`lease_loop/workspace.rs`).
 #    Both are fine. A path that matches no tracked file either way is not.
 # ---------------------------------------------------------------------------
 TRACKED_FILES="$(git ls-files 2>/dev/null || true)"
@@ -77,7 +72,6 @@ while IFS= read -r entry; do
   # A `~/`-anchored path says outside this repository on its face; the operating
   # model checkout is cited that way throughout. Nothing to resolve here.
   case "$path" in "~/"*) continue;; esac
-  case " $EXTERNAL_PROJECT_PATHS " in *" $path "*) continue;; esac
   cited_paths=$((cited_paths + 1))
   # Here-strings, not pipes: `grep -q` closes the pipe on its first match, and
   # under `pipefail` that SIGPIPE becomes the pipeline's status, so every match
@@ -87,7 +81,7 @@ while IFS= read -r entry; do
   err "test_arch_cited_paths_resolve: $src cites '$path', which matches no tracked file"
   broken_paths=$((broken_paths + 1))
 done < <(doc_files | while IFS= read -r f; do
-  grep -oE '`[A-Za-z0-9_][A-Za-z0-9_./-]*\.(zig|rs|sql|ts|tsx|py|sh|mk)`' "$f" 2>/dev/null \
+  grep -oE '`[A-Za-z0-9_][A-Za-z0-9_./-]*\.(rs|sql|ts|tsx|py|sh|mk)`' "$f" 2>/dev/null \
     | tr -d '`' | sort -u | sed "s|^|$f::|" || true
 done)
 [ "$broken_paths" = 0 ] && ok "test_arch_cited_paths_resolve: all $cited_paths cited source paths resolve"
@@ -106,7 +100,7 @@ while IFS= read -r entry; do
   case " $RETIRED_TABLES " in *" $name "*) continue;; esac
   # `memory.md` reads as schema.table under the same pattern. A filename is not
   # a claim about storage, so drop anything whose tail is a file extension.
-  case "$name" in *.md|*.zig|*.sql|*.ts|*.py|*.sh|*.json|*.yaml) continue;; esac
+  case "$name" in *.md|*.rs|*.sql|*.ts|*.py|*.sh|*.json|*.yaml) continue;; esac
   grep -rqE "CREATE TABLE IF NOT EXISTS[[:space:]]+$name\b" schema/ 2>/dev/null && continue
   err "test_arch_cited_tables_exist: $src names '$name', which schema/ does not define"
   broken_tables=$((broken_tables + 1))

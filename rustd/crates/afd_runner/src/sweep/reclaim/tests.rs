@@ -31,9 +31,7 @@ fn a_cursor_resumes_after_the_row_it_recorded() {
 fn a_rewound_cursor_is_a_fresh_one() {
     // The property the sentinel exists for: a pass that reached the end of the
     // population starts the next cycle from the head, and "the head" is spelled
-    // exactly once. `reclaim_sweeper.zig` keeps a buffer, a length and an
-    // `afterId()` that substitutes a nil-UUID constant when the length is zero
-    // — three fields that have to agree, where this is one `None`.
+    // exactly once, as one `None`.
     let rewound = Cursor::default();
     let fresh = Cursor::default();
     assert_eq!(rewound.after_updated_at(), fresh.after_updated_at());

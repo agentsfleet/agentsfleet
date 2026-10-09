@@ -40,11 +40,10 @@ pub(crate) const TRACES: &str = "/v1/traces";
 pub(crate) const METRICS: &str = "/v1/metrics";
 const LOGS: &str = "/v1/logs";
 
-/// An event name the Zig daemon emits, and this one must keep.
+/// An event name a dashboard matches on.
 ///
-/// Chosen because it is a boundary pair's half and a dashboard matches on it:
-/// the port rule is that a Rust replacement keeps the Zig spelling, and the
-/// only way to grade that is to read what left the process.
+/// Chosen because it is a boundary pair's half: the only way to grade that its
+/// spelling holds is to read what left the process.
 const PORTED_EVENT: &str = "supervised_task_started";
 
 /// How long a flush is given before the assertions read what arrived.
@@ -176,8 +175,8 @@ async fn all_three_signals_reach_a_collector() {
     let bodies = bodies(&received);
     assert!(
         bodies.contains(PORTED_EVENT),
-        "the log record must carry the event name the Zig daemon emits, so a \
-         dashboard matching on it keeps matching across the swap"
+        "the log record must carry the event name, so a dashboard matching on \
+         it keeps matching"
     );
     assert!(
         bodies.contains(semconv::SCOPE_NAME),

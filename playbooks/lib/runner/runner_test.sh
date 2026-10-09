@@ -28,6 +28,8 @@ test_should_prepare_host_without_reading_runner_token() {
     bad "$name" "host preparation read a runner token"
   elif ! grep -q 'apt-get install' "$calls"; then
     bad "$name" "host preparation did not install dependencies"
+  elif ! grep -q 'net.ipv4.ip_forward = 1' "$calls"; then
+    bad "$name" "host preparation did not turn on IPv4 forwarding for allowlisted sandboxes"
   elif grep -q '/opt/agentsfleet/deploy/deploy.sh runner' "$calls"; then
     bad "$name" "host preparation deployed a runner"
   else
@@ -53,7 +55,7 @@ test_should_require_host_prepare_approval() {
 test_should_refuse_host_without_required_cgroup_support() {
   local name="test_should_refuse_host_without_required_cgroup_support"
   local output status=0
-  printf 'cpuset io\n' >"$cgroup_fixture/cgroup.controllers"
+  printf 'cpuset cpu memory pids\n' >"$cgroup_fixture/cgroup.controllers"
   output="$(
     run_script \
       ENV=dev \
@@ -69,8 +71,8 @@ test_should_refuse_host_without_required_cgroup_support() {
   elif ! grep -q '/sys/fs/cgroup/cgroup.controllers' "$calls"; then
     bad "$name" "host preparation did not check cgroup support"
     return
-  elif ! grep -Fq 'for controller in cpu memory pids; do' "$calls" ||
-    [[ "$output" != *"ERROR: required cgroup v2 controller unavailable: cpu"* ]]
+  elif ! grep -Fq "for controller in $required_controllers; do" "$calls" ||
+    [[ "$output" != *"ERROR: required cgroup v2 controller unavailable: io"* ]]
   then
     bad "$name" "host preparation did not identify every required cgroup controller"
     return
@@ -90,8 +92,8 @@ test_should_refuse_host_without_required_cgroup_support() {
     bad "$name" "runner deployment passed without required cgroup support"
   elif ! grep -q '/sys/fs/cgroup/cgroup.controllers' "$calls"; then
     bad "$name" "runner deployment did not check cgroup support"
-  elif ! grep -Fq 'for controller in cpu memory pids; do' "$calls" ||
-    [[ "$output" != *"ERROR: required cgroup v2 controller unavailable: cpu"* ]]
+  elif ! grep -Fq "for controller in $required_controllers; do" "$calls" ||
+    [[ "$output" != *"ERROR: required cgroup v2 controller unavailable: io"* ]]
   then
     bad "$name" "runner deployment did not identify every required cgroup controller"
   elif grep -q '/opt/agentsfleet' "$calls"; then
@@ -138,6 +140,18 @@ test_should_not_install_packages_during_deploy() {
     ok "$name"
   fi
 }
+# nft and ip live in /usr/sbin, which Debian leaves off a non-interactive
+# Tailscale SSH session's PATH; the host tool check puts it back before its
+# first probe, in preparation and in every deploy.
+sbin_precedes_tool_probe() {
+  awk '
+    index($0, "export PATH=\"/usr/sbin:/sbin:$PATH\"") {
+      getline
+      if (index($0, "for tool in ")) found = 1
+    }
+    END { exit !found }
+  ' "$calls"
+}
 test_should_include_sbin_when_checking_host_tools() {
   local name="test_should_include_sbin_when_checking_host_tools"
   local output status=0
@@ -145,13 +159,7 @@ test_should_include_sbin_when_checking_host_tools() {
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
     return
-  elif ! awk '
-    $0 == "    export PATH=\"/usr/sbin:/sbin:$PATH\"" {
-      getline
-      if ($0 == "    test \"$(tailscale status --json | jq -r .Self.Online)\" = true") found=1
-    }
-    END { exit !found }
-  ' "$calls"; then
+  elif ! sbin_precedes_tool_probe; then
     bad "$name" "host preparation did not expose Debian sbin tools"
     return
   fi
@@ -160,13 +168,7 @@ test_should_include_sbin_when_checking_host_tools() {
   output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! awk '
-    $0 == "    export PATH=\"/usr/sbin:/sbin:$PATH\"" {
-      getline
-      if ($0 == "    test -d /opt/agentsfleet/bin") found=1
-    }
-    END { exit !found }
-  ' "$calls"; then
+  elif ! sbin_precedes_tool_probe; then
     bad "$name" "runner deployment did not expose Debian sbin tools"
   else
     ok "$name"
@@ -247,6 +249,61 @@ test_should_declare_workflow_vault_read_approval() {
   done
   ok "$name"
 }
+test_should_copy_the_toolbox_beside_the_binary() {
+  local name="test_should_copy_the_toolbox_beside_the_binary"
+  local output status=0 part
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+    return
+  fi
+  for part in erofs json json.sig; do
+    if ! grep -q "/opt/agentsfleet/toolbox/toolbox-$TOOLBOX_FIXTURE_DIGEST.$part" "$calls"; then
+      bad "$name" "the toolbox's .$part never reached the host"
+      return
+    fi
+  done
+  if ! grep -q '/opt/agentsfleet/deploy/deploy.sh runner .* /opt/agentsfleet/toolbox' "$calls"; then
+    bad "$name" "the canonical deploy was not handed the toolbox directory"
+  else
+    ok "$name"
+  fi
+}
+test_should_clear_an_earlier_toolbox_before_staging() {
+  local name="test_should_clear_an_earlier_toolbox_before_staging"
+  local output status=0 cleared copied
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "$output"
+    return
+  fi
+  cleared="$(grep -nF "find /opt/agentsfleet/toolbox -maxdepth 1 -name 'toolbox-*' -type f -delete" "$calls" | head -1 | cut -d: -f1)"
+  copied="$(grep -nF "/opt/agentsfleet/toolbox/toolbox-$TOOLBOX_FIXTURE_DIGEST.erofs" "$calls" | head -1 | cut -d: -f1)"
+  if [ -z "$cleared" ]; then
+    bad "$name" "an earlier deploy's toolbox set is never removed from the host's staging directory"
+  elif [ -z "$copied" ] || [ "$cleared" -ge "$copied" ]; then
+    bad "$name" "the staging directory is cleared after the new set lands, not before it"
+  else
+    ok "$name"
+  fi
+}
+test_should_refuse_a_deploy_without_its_toolbox() {
+  local name="test_should_refuse_a_deploy_without_its_toolbox"
+  local signature="$toolbox_fixture/toolbox-$TOOLBOX_FIXTURE_DIGEST.json.sig"
+  local output status=0
+  mv "$signature" "$signature.aside"
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  mv "$signature.aside" "$signature"
+  if [ "$status" -eq 0 ]; then
+    bad "$name" "a deploy without the manifest's signature passed"
+  elif [[ "$output" != *"toolbox file missing"* ]]; then
+    bad "$name" "$output"
+  elif grep -q '/opt/agentsfleet/deploy/deploy.sh runner' "$calls"; then
+    bad "$name" "the refused deploy still reached the host's deploy"
+  else
+    ok "$name"
+  fi
+}
 test_should_prepare_host_without_reading_runner_token
 test_should_require_host_prepare_approval
 test_should_refuse_host_without_required_cgroup_support
@@ -259,4 +316,7 @@ test_should_use_canonical_unit_refresh
 test_should_reject_shell_unsafe_runner_inputs
 test_should_require_vault_read_approval
 test_should_declare_workflow_vault_read_approval
+test_should_copy_the_toolbox_beside_the_binary
+test_should_clear_an_earlier_toolbox_before_staging
+test_should_refuse_a_deploy_without_its_toolbox
 report_results

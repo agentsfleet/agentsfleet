@@ -2,7 +2,7 @@
 // app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events/stream.
 //
 // The handler is the trust boundary between the browser (cookie-authed via
-// Clerk) and the Zig backend (Bearer-only, aud=api.agentsfleet.net). Coverage
+// Clerk) and `agentsfleetd` (Bearer-only, aud=api.agentsfleet.net). Coverage
 // here pins the auth + error + stream-piping contract documented in
 // docs/AUTH.md "UI · SSE stream".
 

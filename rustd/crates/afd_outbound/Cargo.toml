@@ -31,9 +31,8 @@ afd_dragonfly.workspace = true
 # THE dependency that makes this crate the boundary it is: `Provider` is
 # resolved here and nowhere else on the delivery path (Invariant 9).
 afd_connector.workspace = true
-# The retry LOOP. The counter and the terminal rule are what the Zig
-# hand-rolled beside its schedule, and where its install shipped the bug that
-# left the last delay unreachable.
+# The retry LOOP. The counter and the terminal rule are the part a hand-rolled
+# loop gets wrong, in a way that leaves the last delay unreachable.
 backon.workspace = true
 # The lane map: one shard locked per dispatch or retire — see `lanes`.
 dashmap.workspace = true

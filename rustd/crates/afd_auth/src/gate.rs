@@ -20,8 +20,8 @@ use crate::scope::{INSUFFICIENT_SCOPE, Scope};
 /// It carries the whole requirement rather than one scope the caller lacks,
 /// because the gate is any-of — naming a single missing scope would tell a
 /// caller to obtain that one when any of the others would also have let them
-/// through. The Zig daemon renders the same set the same way
-/// (`"Requires scope a or b"`), and this is the text a client sees.
+/// through. The set renders as `"Requires scope a or b"`, and this is the
+/// text a client sees.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Denied {
     required: &'static [Scope],

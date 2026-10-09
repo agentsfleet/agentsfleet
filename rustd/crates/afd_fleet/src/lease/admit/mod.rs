@@ -15,15 +15,14 @@
 //! # Order is a money-safety property
 //!
 //! Every gate that can refuse PERMANENTLY runs before the debit, so a refused
-//! event is never charged. `budget.zig` states the same rule about its own
-//! position; here the order is one readable sequence rather than something
-//! inferred from statement order across a hundred and twenty lines.
+//! event is never charged. The order is one readable sequence in this module,
+//! so a reader checks the rule without inferring it from statement order.
 //!
 //! # What this pass does NOT do
 //!
-//! It does not resolve the provider. `resolveActiveProvider` reads a tenant's
-//! selection, follows it into a vault, and decrypts a key — about 1,180 lines
-//! of Zig across five modules, and none of it is a money DECISION. It arrives
+//! It does not resolve the provider. Resolving one reads a tenant's
+//! selection, follows it into a vault, and decrypts a key, and none of that is
+//! a money DECISION. It arrives
 //! here already resolved, on [`Request`], which is what lets every gate below
 //! be proven against a database with no vault in the picture.
 
@@ -98,9 +97,9 @@ pub struct Billed {
     pub model: Box<str>,
     /// What the receive charge drained.
     ///
-    /// A VALUE rather than a metric emitted here. The credit meter belongs to
-    /// §6/M181, and fusing the two is what makes `service_billing.zig` unable
-    /// to run its money path without an exporter configured.
+    /// A VALUE rather than a metric emitted here: the caller records the
+    /// credit meter, and an exporter fused into the money path would be one a
+    /// run could not be admitted without.
     pub drained: Nanos,
 }
 

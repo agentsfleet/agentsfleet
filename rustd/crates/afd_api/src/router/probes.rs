@@ -1,8 +1,8 @@
 //! Liveness and readiness, and the line between them.
 //!
-//! `handlers/health.zig` keeps these apart deliberately, and says why in its
-//! own words: dependency checks live in `/readyz` because "mixing them here
-//! would flap liveness during transient dependency outages". A liveness probe
+//! The two are kept apart deliberately: dependency checks live in `/readyz`
+//! because mixing them into `/healthz` would flap liveness during transient
+//! dependency outages. A liveness probe
 //! that goes red when Postgres blinks gets the process KILLED and restarted,
 //! which does nothing about Postgres and drops every request the instance was
 //! serving. So `/healthz` answers for the process and nothing else.
@@ -31,7 +31,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The commit this binary was built from, when the build was told.
 ///
-/// `build_options.git_commit` in the Zig daemon. A build that does not set it
+/// Stamped by this crate's `build.rs` as `GIT_COMMIT`. A build that does not set it
 /// reports `unknown` rather than failing: the field is for an operator
 /// correlating a running process with a tree, and a cargo build from a
 /// developer's working copy has no honest answer to give.
@@ -46,10 +46,9 @@ const COMMIT: &str = match option_env!("GIT_COMMIT") {
 
 /// What one readiness check found, one field per dependency.
 ///
-/// `ReadyInputs` in `health.zig`. The fields stay separate all the way to the
-/// wire because an operator's next action differs: a red database and a red
-/// queue are different incidents, and collapsing them to one boolean means
-/// reading the logs to learn which.
+/// The fields stay separate all the way to the wire because an operator's next
+/// action differs: a red database and a red queue are different incidents, and
+/// collapsing them to one boolean means reading the logs to learn which.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReadyInputs {
     /// Whether Postgres answered.
@@ -60,8 +59,8 @@ pub struct ReadyInputs {
 
 /// Whether an instance reporting `inputs` should take traffic.
 ///
-/// `health.zig::readyDecision`, and pure for the same reason it is pure there:
-/// the decision is the part worth testing, and it needs no datastore to test.
+/// Pure because the decision is the part worth testing, and it needs no
+/// datastore to test.
 #[must_use]
 pub const fn ready_decision(inputs: ReadyInputs) -> bool {
     inputs.database && inputs.queue

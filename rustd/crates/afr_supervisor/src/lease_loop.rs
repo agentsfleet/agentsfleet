@@ -17,46 +17,39 @@
 //! is waited on, and that wait is bounded: the tail is best-effort, the report
 //! is the record.
 
-use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::clock::Clock;
 use afd_core::error_code;
 use afd_core::id::Uuid7;
 use afd_core::spelling::to_spelling;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
-use afr_agent::{AgentEngine, Meter};
+use afr_agent::Meter;
 use afr_memory::Seed;
-use afr_sandbox::{Engine, Limits};
-use tokio::sync::Notify;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
 use crate::activity::{self, ActivitySink};
-use crate::bundles::BundleCache;
-use crate::client::ControlPlane;
+use crate::egress::Egress;
 use crate::error::Result;
-use crate::halt::Halt;
-use crate::holds::Holds;
-use crate::identity::{Whoami, lease_span};
+use crate::identity::lease_span;
 use crate::memory;
 use crate::renew::Renewal;
 use crate::report::Ending;
-use crate::report_spool::ReportSpool;
 use crate::turns::FleetTurns;
-use crate::workspace_clone::Mirrors;
 
 mod checkout;
 mod drive;
 mod hold;
+mod lessee;
 mod refusal;
 mod settle;
 mod workspace;
 
 use self::hold::Worked;
+pub(crate) use self::lessee::Lessee;
 use self::refusal::failed;
 
 /// How long a settled lease waits for its live tail to finish posting.
@@ -74,41 +67,12 @@ const DETAIL_STOPPED: &str = "this runner was told to stop while the run went on
 const EVENT_ACQUIRED: &str = "lease_acquired";
 const EVENT_COMPLETED: &str = "lease_completed";
 const EVENT_FAILED: &str = "lease_failed";
-/// The Zig tool bridge's spelling, kept so its dashboards still match.
+/// A fixed spelling, because dashboards and alerts match on it.
 const EVENT_UNHOSTED: &str = "tool_refused_not_hosted";
 const EVENT_UNHOSTED_PROVIDER: &str = "provider_refused_not_hosted";
 const EVENT_BUNDLE_FAILED: &str = "bundle_download_failed";
 const EVENT_HYDRATE_FAILED: &str = "memory_hydrate_failed";
 const EVENT_DRAIN_ABANDONED: &str = "activity_drain_abandoned";
-
-/// Everything a lease needs, shared by every worker.
-#[derive(Debug)]
-pub(crate) struct Lessee {
-    /// The daemon.
-    pub(crate) plane: ControlPlane,
-    /// Builds each lease's sandbox.
-    pub(crate) engine: Box<dyn Engine>,
-    /// Runs each lease's turn.
-    pub(crate) agent: Box<dyn AgentEngine>,
-    /// Where reports wait to be posted.
-    pub(crate) spool: ReportSpool,
-    /// Verified fleet bundles.
-    pub(crate) bundles: BundleCache,
-    /// Bound repositories' mirrors, fetched outside every sandbox.
-    pub(crate) mirrors: Mirrors,
-    /// What every sandbox enforces.
-    pub(crate) limits: Limits,
-    /// The wall clock the daemon's lease deadlines are written in.
-    pub(crate) clock: Arc<dyn Clock>,
-    /// Sandboxes held for their fleets' next leases.
-    pub(crate) holds: Holds,
-    /// How the runner stops.
-    pub(crate) halt: Halt,
-    /// Rung when a report stays spooled, so the drain takes it over.
-    pub(crate) held: Notify,
-    /// Which runner this is, for every lease's span.
-    pub(crate) whoami: Whoami,
-}
 
 /// One lease's identifiers, parsed once.
 pub(super) struct Ids {
@@ -122,6 +86,8 @@ pub(super) struct Ids {
 pub(super) struct LeaseRun<'a> {
     lessee: &'a Lessee,
     lease: &'a LeasePayload<'a>,
+    /// The egress the runner was assigned when the lease arrived.
+    egress: &'a Egress,
     ids: Ids,
     interrupt: CancellationToken,
     /// What the run has spent so far, read into every renewal.
@@ -135,22 +101,33 @@ struct Live {
 }
 
 impl Lessee {
-    /// Runs `lease` to its report, inside the span naming this runner and
-    /// the lease.
+    /// Runs `lease` to its report under `egress`, inside the span naming this
+    /// runner and the lease.
     ///
     /// # Errors
     /// Identifiers that are not canonical; nothing has started then. Every
     /// failure after that ends in a report, spooled or posted.
-    pub(crate) async fn run(&self, turns: &FleetTurns, lease: &LeasePayload<'_>) -> Result<()> {
+    pub(crate) async fn run(
+        &self,
+        turns: &FleetTurns,
+        lease: &LeasePayload<'_>,
+        egress: &Egress,
+    ) -> Result<()> {
         let identity = self.whoami.get(&self.plane).await;
         let span = lease_span(identity, lease);
-        self.run_lease(turns, lease).instrument(span).await
+        self.run_lease(turns, lease, egress).instrument(span).await
     }
 
-    async fn run_lease(&self, turns: &FleetTurns, lease: &LeasePayload<'_>) -> Result<()> {
+    async fn run_lease(
+        &self,
+        turns: &FleetTurns,
+        lease: &LeasePayload<'_>,
+        egress: &Egress,
+    ) -> Result<()> {
         let run = LeaseRun {
             lessee: self,
             lease,
+            egress,
             ids: Ids {
                 lease: Uuid7::parse(&lease.lease_id)?,
                 fleet: Uuid7::parse(&lease.event.fleet_id)?,

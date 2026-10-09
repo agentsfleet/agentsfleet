@@ -18,11 +18,10 @@
 //!
 //! # Field order is the contract
 //!
-//! `res.json` in `integration_grants/workspace.zig` emits `GrantRow`'s fields
-//! in DECLARATION order, and a client reading the response as a positional
-//! document would see a reorder. The order below is that one, and the absent
-//! instants serialize as explicit `null` like everything else in this crate —
-//! never `skip_serializing_if`.
+//! `GrantSummary` serializes its fields in DECLARATION order, and a client
+//! reading the response as a positional document would see a reorder. The
+//! absent instants serialize as explicit `null` like everything else in this
+//! crate — never `skip_serializing_if`.
 
 use std::borrow::Cow;
 
@@ -73,8 +72,8 @@ pub struct GrantSummary<'a> {
 //
 // `total` is the length of `items` and not a count of everything stored: the
 // list is unpaged, because a fleet holds at most one grant per service and the
-// supported-service count is what bounds it. Emitted anyway, because the Zig
-// handler emits it and a dashboard reads it.
+// supported-service count is what bounds it. Emitted anyway, because a
+// dashboard reads it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GrantsResponse<'a> {
@@ -111,9 +110,9 @@ mod tests {
 
     #[test]
     fn a_pending_grant_emits_both_instants_as_explicit_nulls() {
-        // The whole reason this crate forbids `skip_serializing_if`: the Zig
-        // emitter writes `null` for an absent optional, and a dropped key would
-        // change the document a client parses without changing any value in it.
+        // The whole reason this crate forbids `skip_serializing_if`: a dropped
+        // key would change the document a client parses without changing any
+        // value in it.
         let body = serde_json::to_string(&GrantSummary {
             id: Cow::Borrowed("01924f4e-0000-7000-8000-0000000000a1"),
             service: Cow::Borrowed("slack"),
@@ -156,8 +155,8 @@ mod tests {
     #[test]
     fn the_status_vocabulary_is_the_columns_exact_spellings() {
         // Pinned against the strings, because these are what the schema holds
-        // and what `integration_grant_lookup.zig` writes. A rename here would
-        // silently stop matching every stored row.
+        // and what `afd_approval` writes. A rename here would silently stop
+        // matching every stored row.
         assert_eq!(status::PENDING, "pending");
         assert_eq!(status::APPROVED, "approved");
         assert_eq!(status::REVOKED, "revoked");

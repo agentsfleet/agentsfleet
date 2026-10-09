@@ -12,9 +12,7 @@
 //! first is retryable and `:sync` will repair it on its own; the second is a
 //! request this daemon composed that the external scheduler will refuse again
 //! however many times it is sent, and retrying it forever would turn one bad
-//! cron expression into a permanent outbound load. The Zig collapses both onto
-//! one `error.QStashRequestFailed`, and that is the delta this port fixes
-//! rather than carries (RULE PORT).
+//! cron expression into a permanent outbound load.
 //!
 //! # Nothing an OPERATOR did wrong is an error here
 //!

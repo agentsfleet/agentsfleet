@@ -1,7 +1,7 @@
 //! The associated data every envelope operation binds.
 //!
-//! Ported byte-for-byte from `crypto_store_write.zig::buildAad`. The format is
-//! three fields joined by the ASCII unit separator:
+//! The format is three fields joined by the ASCII unit separator, and every row
+//! in `vault.secrets` was sealed under it:
 //!
 //! ```text
 //! lower(workspace_id) 0x1f key_name 0x1f kek_version
@@ -16,11 +16,10 @@
 //!
 //! # The asymmetry is deliberate
 //!
-//! `workspace_id` is lowercased; `key_name` is not. That is what the Zig
-//! implementation does — `std.ascii.allocLowerString` is applied to the
-//! workspace identifier alone — and parity means copying the asymmetry rather
-//! than tidying it. Lowercasing `key_name` here would make every row the Zig
-//! daemon wrote with an upper-case character in its name fail to open.
+//! `workspace_id` is lowercased; `key_name` is not. Stored rows were sealed with
+//! that asymmetry, so it stays rather than being tidied: lowercasing `key_name`
+//! here would make every stored row with an upper-case character in its name
+//! fail to open.
 
 use crate::KEK_VERSION;
 

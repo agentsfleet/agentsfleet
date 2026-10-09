@@ -22,13 +22,12 @@
 //!
 //! # A map, not a positional slot per name
 //!
-//! `tenant_model_entries_view.zig` allocates one slot per entry and matches
-//! rows back by index, because one credential legitimately backs several model
-//! rows and deduplicating them would cost two quadratic passes. The index
-//! arithmetic is a workaround for not having a map at hand; the GUARANTEE it
-//! buys — every entry resolves its own credential, duplicates included — is a
-//! map's by construction. So the map is what this returns, and the caller looks
-//! up per row.
+//! One credential legitimately backs several model rows, so the names asked for
+//! repeat. A positional slot per entry, matched back by index, would need
+//! deduplicating in two quadratic passes; the GUARANTEE those passes buy —
+//! every entry resolves its own credential, duplicates included — is a map's by
+//! construction. So the map is what this returns, and the caller looks up per
+//! row.
 
 use std::collections::HashMap;
 

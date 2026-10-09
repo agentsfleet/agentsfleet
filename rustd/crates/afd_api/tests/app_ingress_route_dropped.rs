@@ -133,11 +133,9 @@ async fn a_green_run_is_dropped_rather_than_woken_on() {
 
 /// A `deployment_status` delivery is acknowledged and dropped, recording nothing.
 ///
-/// The endpoint's generated description used to say this event "records the
-/// deployed commit and schedules eligible verification fleets". It does not:
-/// `github.zig` wrote repair evidence through writers that were never ported,
-/// so the delivery falls through classification and is dropped as unsupported.
-/// The description now says so, and this is the behaviour behind the sentence —
+/// No writer records a deployment, so the delivery falls through classification
+/// and is dropped as unsupported. The endpoint's generated description says so,
+/// and this is the behaviour behind the sentence —
 /// prose and route graded together, because the sentence is the part an
 /// integrator acts on.
 ///

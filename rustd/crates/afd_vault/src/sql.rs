@@ -1,10 +1,7 @@
 //! Every statement this crate runs, and nothing else.
 //!
-//! Ports of `secrets/sql.zig` and `state/secret_reference_txn.zig`. What they
-//! SELECT and what they predicate on is the original's; the only reshaping is
-//! the string form this workspace writes statements in, and the `::uuid` casts
-//! `sqlx` needs where the Zig driver sent an untyped parameter and let Postgres
-//! infer (RULE NSQ — verbatim, schema-qualified).
+//! Each is written verbatim and schema-qualified (RULE NSQ), with a `::uuid`
+//! cast wherever `sqlx` would otherwise send a parameter Postgres cannot type.
 //!
 //! # Every statement carries the workspace in its predicate
 //!
@@ -94,11 +91,11 @@ UPDATE vault.secrets SET
 /// `$1` workspace.
 ///
 /// **No ciphertext column appears here, and that is the statement's whole
-/// point.** `secret_list.zig` answers this page by reading every envelope and
-/// projecting the decrypted body per row, which costs one key unwrap and one
-/// AES-GCM open per credential on every dashboard load and puts plaintext in
-/// the process for a request that displays none of it. The four `meta_*`
-/// columns were promoted precisely so this read would not have to, and spec
+/// point.** Answering this page by reading every envelope and projecting the
+/// decrypted body per row would cost one key unwrap and one AES-GCM open per
+/// credential on every dashboard load and put plaintext in the process for a
+/// request that displays none of it. The four `meta_*` columns exist precisely
+/// so this read does not have to, and spec
 /// Invariant 3 says a list performs zero decrypts. A projection this statement
 /// cannot return is one the list does not serve — see [`crate::projection`] on
 /// `model`.

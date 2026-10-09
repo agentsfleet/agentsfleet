@@ -29,8 +29,8 @@ afd_wire.workspace = true
 afd_crypto.workspace = true
 thiserror.workspace = true
 # The credential digest. Every stored credential column holds a plain unsalted
-# SHA-256 of the presented value, so this is a parity requirement rather than a
-# choice: `api_key.zig::sha256Hex` is what the columns were written with.
+# SHA-256 of the presented value, so this is fixed by the stored rows rather
+# than chosen: a different digest would match none of them.
 sha2.workspace = true
 # Lower-case hex for the stored digest, rather than a hand-written render.
 hex.workspace = true

@@ -12,8 +12,8 @@
 //! name-taken refusal is read as "this is a reconnect", not as a failure.
 //!
 //! Two connects racing on one provider resolve to one grant — whichever wrote
-//! last — which is the same outcome `binding_tx.zig`'s advisory lock produces,
-//! reached without holding a lock across a vendor call.
+//! last — the outcome an advisory lock would give, reached without holding a
+//! lock across a vendor call.
 //!
 //! # The routing row is written AFTER the grant, never before
 //!
@@ -55,8 +55,7 @@ const HANDLE_IS_ALWAYS_SERIALIZABLE: &str =
 
 /// The last connect stamp this process handed out.
 ///
-/// `oauth_refresh.zig`'s `last_connect_stamp`, and it exists for a subtle
-/// reason worth restating: the broker's credential cache is keyed on a
+/// It exists for a subtle reason: the broker's credential cache is keyed on a
 /// fingerprint over the handle's non-rotating fields, and several of those are
 /// constants (a label) or account-scoped (a data centre). Without a strictly
 /// increasing stamp, reconnecting to a DIFFERENT account inside one millisecond

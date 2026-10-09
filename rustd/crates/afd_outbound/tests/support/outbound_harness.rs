@@ -5,10 +5,10 @@
 //! Every other integration suite in this workspace mints a per-test key prefix
 //! (`afd_dragonfly/tests/support/dragonfly_harness.rs`) so parallel targets never
 //! collide. That is not available here: `OUTBOUND_STREAM_KEY` and
-//! `OUTBOUND_CONSUMER_GROUP` are constants shared with the Zig daemon — both
-//! binaries read the same stream by name — and a test that pointed the worker
-//! at `afdt123_outbound` would be proving something about a key production
-//! never uses.
+//! `OUTBOUND_CONSUMER_GROUP` are fixed names in `afd_dragonfly::outbound` —
+//! every replica reads the same stream by name — and a test that pointed the
+//! worker at `afdt123_outbound` would be proving something about a key
+//! production never uses.
 //!
 //! So the stream is reset instead, and the tests that use it hold
 //! [`OUTBOUND_LANE`] one at a time. Serialising is the honest cost of grading
@@ -109,9 +109,9 @@ impl OutboundHarness {
     /// Deliberately NOT through `enqueue`, which cannot produce this: every
     /// field it writes is one `decode` requires. The states worth covering are
     /// the ones `enqueue` is not the author of — operator tooling, another
-    /// daemon, a format that drifted — and the queue is a shared key the Zig
-    /// writes to as well, so a foreign writer is a real deployment, not a
-    /// contrivance.
+    /// daemon, a format that drifted — and the queue is a fixed key anything
+    /// on the cluster can write to, so a foreign writer is a real deployment,
+    /// not a contrivance.
     pub(crate) async fn poison(&self) -> String {
         let mut cmd = redis::cmd("XADD");
         cmd.arg(OUTBOUND_STREAM_KEY)

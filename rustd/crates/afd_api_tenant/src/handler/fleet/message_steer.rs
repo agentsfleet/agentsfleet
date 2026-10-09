@@ -1,8 +1,7 @@
 //! A fleet's message thread over HTTP: say something.
 //!
-//! The write half of `message.rs`, split at the length cap. The port of
-//! `fleets/messages.zig`, and the only place in this daemon where a person puts
-//! work onto a fleet's stream.
+//! The write half of `message.rs`, split at the length cap, and the only place
+//! in this daemon where a person puts work onto a fleet's stream.
 //!
 //! # A steer to a stopped fleet is refused, never accepted
 //!

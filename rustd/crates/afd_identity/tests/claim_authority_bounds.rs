@@ -41,9 +41,9 @@ fn payload_with(extra: &str) -> String {
 /// other claims allowed. Nothing logged, because from the authoriser's side a
 /// dropped ceiling and an absent one are the same value.
 ///
-/// `ws_a` is not an arbitrary bad string: it is how every workspace identifier
-/// in the Zig tree's own claim fixtures is spelled, which makes it the spelling
-/// an implementer wiring this claim up is most likely to reach for first.
+/// `ws_a` is not an arbitrary bad string: it is how the dashboard's own tests
+/// spell a workspace identifier, which makes it the spelling an implementer
+/// wiring this claim up is most likely to reach for first.
 #[test]
 fn test_an_unreadable_ceiling_refuses_the_token() {
     let refused = verify(&payload_with(",\"workspace_id\":\"ws_a\""))
@@ -125,10 +125,14 @@ fn test_a_ceiling_nested_under_metadata_is_read_and_enforced() {
 
 // ── The instants a token is valid between ────────────────────────────────
 
+/// A minute, in the whole seconds `nbf` is written in: far enough either side
+/// of `NOW_S` that no rounding of the instant moves it across the boundary.
+const A_MINUTE_S: i64 = 60;
+
 /// A token whose `nbf` has not arrived is refused.
 #[test]
 fn test_a_token_that_is_not_valid_yet_is_refused() {
-    let refused = verify(&payload_with(&format!(",\"nbf\":{}", NOW_S + 60)))
+    let refused = verify(&payload_with(&format!(",\"nbf\":{}", NOW_S + A_MINUTE_S)))
         .expect_err("a token that is not valid yet is not one to act on");
 
     assert_eq!(refused, VerifyError::NotYetValid);
@@ -172,7 +176,7 @@ fn test_a_token_with_no_validity_start_verifies() {
 /// `SystemTime` with no seam.
 #[test]
 fn test_validity_start_is_decided_by_the_injected_clock() {
-    let token = payload_with(&format!(",\"nbf\":{}", NOW_S + 60));
+    let token = payload_with(&format!(",\"nbf\":{}", NOW_S + A_MINUTE_S));
 
     let refused = verify_at(&token, NOW_MS).expect_err("before the window opens");
     assert_eq!(refused, VerifyError::NotYetValid);
@@ -307,10 +311,10 @@ fn test_a_nested_ceiling_of_the_wrong_type_is_refused() {
 /// issuer, reported as a bad token.
 #[test]
 fn test_a_fractional_not_before_is_read_rather_than_refused() {
-    let refused = verify(&payload_with(&format!(",\"nbf\":{}.5", NOW_S + 60)))
+    let refused = verify(&payload_with(&format!(",\"nbf\":{}.5", NOW_S + A_MINUTE_S)))
         .expect_err("a fractional nbf in the future is still in the future");
     assert_eq!(refused, VerifyError::NotYetValid);
 
-    verify(&payload_with(&format!(",\"nbf\":{}.5", NOW_S - 60)))
+    verify(&payload_with(&format!(",\"nbf\":{}.5", NOW_S - A_MINUTE_S)))
         .expect("a fractional nbf in the past does not interfere");
 }

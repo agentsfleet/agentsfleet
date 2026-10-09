@@ -7,49 +7,35 @@ primary_region = "iad"
 [processes]
   app = "/usr/local/bin/agentsfleetd serve"
 
-# HTTP concurrency. agentsfleetd runs httpz as an evented server:
-#   API_HTTP_WORKERS — accept/event-loop threads (epoll/kqueue). Each worker
-#                      multiplexes up to API_MAX_CLIENTS (1024) idle connections
-#                      as file descriptors AND owns its OWN handler pool of
-#                      API_HTTP_THREADS threads (the pool is PER worker --
-#                      vendor/httpz/src/worker.zig). 2 workers across the 4
-#                      cores for accept parallelism, leaving cores for the
-#                      handler pool + background threads.
-#   API_HTTP_THREADS — per-worker handler-pool size. Pool threads serve
-#                      short-lived requests only: SSE streams run on dedicated
-#                      detached threads (SSE_MAX_STREAMS below) and the runner
-#                      lease is a non-blocking single poll, so neither holds a
-#                      pool thread (docs/architecture/scaling.md).
-# Total handler concurrency = WORKERS x THREADS = 2 x 32 = 64 per machine
-# (~192 across 3 machines). Both knobs default to 1 (runtime_loader.zig).
-# 64 mostly-I/O-parked handler threads sit easily in 4gb: the 16MiB stacks are
-# virtual / lazily committed, plus ~64MiB of large buffers across 2 workers.
-# Watch pool saturation via the exported runtime families in Grafana; the
+# HTTP concurrency. agentsfleetd serves on a multi-threaded tokio runtime
+# (`Runtime::new` in rustd/crates/agentsfleetd/src/main.rs), which starts one
+# worker thread per core: four on this machine size. A request and an event
+# stream are each a task, so neither pins a thread while it waits on Postgres,
+# Dragonfly or the client, and the runner lease is a single non-blocking poll
+# (docs/architecture/scaling.md). The core count sizes the runtime, and no
+# environment knob changes it. Watch saturation via the exported runtime families in Grafana; the
 # next lever is more replicas (the binding constraint per scaling.md).
 #
-# Backpressure knobs:
-#   API_MAX_IN_FLIGHT_REQUESTS — shed ceiling (default 256, runtime_loader.zig)
-#                      for API-class routes only: /healthz and /readyz are
-#                      ops-class and are NEVER shed (an overload must not
-#                      blind the operators), and the SSE stream is gated by
-#                      its own cap below, not this one. api requests
-#                      above the ceiling are answered 429 + Retry-After
-#                      instead of queueing. Concurrent dispatch is physically
-#                      bounded by WORKERS x THREADS (64 here), so the guard
-#                      fires ONLY when this knob is set BELOW that product. At
-#                      the 256 default it is a dormant incident lever by
-#                      deliberate owner choice: drop it below 64 and redeploy
-#                      to shed load fast during an overload event. Watch
+# Backpressure:
+#   In-flight request ceiling — 256 per instance, `DEFAULT_MAX_IN_FLIGHT` in
+#                      rustd/crates/afd_http/src/admission/mod.rs, installed at
+#                      boot by rustd/crates/agentsfleetd/src/serve.rs. It is a
+#                      constant: no environment knob sets it. API-class routes
+#                      only: /healthz and /readyz are ops-class and are NEVER
+#                      shed (an overload must not blind the operators), and the
+#                      SSE stream is gated by its own cap below, not this one.
+#                      API requests above the ceiling are answered 429 +
+#                      Retry-After instead of queueing. Watch
 #                      agentsfleet_api_backpressure_rejections_total.
 #   SSE_MAX_STREAMS  — concurrent event streams per instance (default 256,
 #                      agentsfleetd preflight/knobs.rs); over-cap streams get 503. Streams
-#                      run on DEDICATED detached threads (httpz
-#                      startEventStream) so a viewer's lifetime never consumes
-#                      request capacity (the old pool-poisoning defect is also
-#                      fixed at the vendor layer — shared injector queue,
-#                      vendor/httpz/CHANGES.md). Budget ~0.5 MiB + 1 client fd
-#                      per stream; the Redis side is ONE shared SubscriptionHub
-#                      pub/sub connection per instance regardless of viewers.
+#                      hold a slot of their own (rustd/crates/afd_sse/src/
+#                      ceiling.rs) rather than an admission permit, so a
+#                      viewer's lifetime never consumes request capacity.
+#                      Budget ~13 KiB of heap + 1 client fd per stream; the
+#                      Dragonfly side is ONE shared SubscriptionHub pub/sub
+#                      connection per instance regardless of viewers
+#                      (rustd/crates/afd_dragonfly/src/hub.rs).
 #                      Watch agentsfleet_sse_in_flight_streams +
 #                      agentsfleet_sse_dropped_frames_total.
 # Postgres connections this replica may open. Same reasoning as the
@@ -65,8 +51,6 @@ primary_region = "iad"
 # server can give does not serve more traffic — it answers 503 to the request
 # that needed connection eighteen.
 [env]
-  API_HTTP_THREADS = "32"
-  API_HTTP_WORKERS = "2"
   DATABASE_POOL_SIZE_API = "5"
   # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,
   # not a credential — so it lives here rather than in the 1Password-staged

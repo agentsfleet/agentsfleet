@@ -60,7 +60,7 @@ impl Runners {
     /// Reads the runner's own row.
     ///
     /// Deliberately does NOT bump `last_seen_at`: liveness is written by the
-    /// heartbeat alone, so inspecting a host with `agentsfleet-runner status`
+    /// heartbeat alone, so reading a runner's row through `GET /v1/runners/me`
     /// can never mask a dead runner (`docs/AUTH.md` §Runner token).
     ///
     /// # Errors

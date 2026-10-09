@@ -2,8 +2,7 @@
 //!
 //! Negative-heavy on purpose: the happy path is one assertion and every other
 //! case here is a way somebody could get a connect completed that they did not
-//! start. `state.zig`'s own suite proves the same set, and this mirrors it
-//! case for case so the two daemons cannot drift on what they accept.
+//! start.
 
 #![expect(
     clippy::expect_used,

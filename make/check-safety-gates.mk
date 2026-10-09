@@ -43,13 +43,15 @@ check-architecture-doc:  ## docs/architecture/ stays true — milestone refs res
 	@bash scripts/check_architecture_doc_test.sh
 	@bash scripts/check_architecture_doc.sh
 
-check-deploy-safety:  ## deploy.sh version-skip equality + deploy mutex, and shellcheck over deploy/baremetal/
+check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremetal/ (host deploy, toolbox, health check, unit)
 	@# deploy/ sits outside _shell_lint's scripts/*.sh glob, so it would otherwise
-	@# never be shellchecked. The two lock cases need flock (util-linux); they skip
-	@# on a machine without it and hard-fail when CI is set — see deploy_test.sh.
+	@# never be shellchecked. The suites are found by name, so a new one runs
+	@# without an edit here. Some cases need a Linux tool (flock, GNU tar,
+	@# systemd-analyze); each skips on a machine without it and hard-fails when
+	@# CI is set, which the scrub leaves alone.
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@$(SHELLCHECK) --severity=error -x deploy/baremetal/*.sh
-	@bash deploy/baremetal/deploy_test.sh
+	@PLAYBOOK_TEST_SCRUB="$(PLAYBOOK_TEST_SCRUB)" bash scripts/run-playbook-tests.sh deploy/baremetal
 	@# The collector stand-up's ORDER, which actionlint cannot see: an app
 	@# must exist before `flyctl secrets set --app` addresses it. This block
 	@# was once inline in both deploy workflows and one copy drifted to run

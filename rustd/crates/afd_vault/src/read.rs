@@ -4,11 +4,10 @@
 //! of a page no longer tracks the number of credentials stored, and no
 //! plaintext enters the process for a request that displays none.
 //!
-//! `secret_list.zig` reaches the same page by decrypting every row and
-//! projecting the body per row. That was the design before the four `meta_*`
-//! columns existed; they were promoted precisely so a read would not have to,
-//! and spec Invariant 3 says this one does not. [`Directory`] holds no key, so
-//! it could not decrypt even if the statement gave it something to decrypt.
+//! The four `meta_*` columns exist precisely so a read does not have to decrypt
+//! every row to project its body, and spec Invariant 3 says this one does not.
+//! [`Directory`] holds no key, so it could not decrypt even if the statement
+//! gave it something to decrypt.
 //!
 //! # A row this build cannot describe still lists
 //!

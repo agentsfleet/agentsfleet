@@ -31,7 +31,7 @@ const CONTEXT_CHARGE: &str = "usage ledger insert";
 
 /// A charge was recorded.
 ///
-/// `LOGGING_STANDARD.md` §3 `event` value, spelled as `metering.zig` spells it.
+/// `LOGGING_STANDARD.md` §3 `event` value.
 const EVENT_DEBIT: &str = "debit";
 
 /// Who and what a charge is recorded against.
@@ -39,10 +39,8 @@ const EVENT_DEBIT: &str = "debit";
 /// One struct rather than nine positional parameters, for the reason
 /// [`afd_fleet::sql::lease::LeaseRow`] is one: the insert binds sixteen values and
 /// four of them are identifiers of the same shape, which compile clean in any
-/// order. `metering.zig`'s `PreflightContext` groups the same fields for the
-/// same reason and then passes `tenant_id` alongside it rather than inside it,
-/// which is the one thing not copied here — the tenant is who is charged, so it
-/// belongs with the rest of the identity.
+/// order. `tenant_id` is inside the struct rather than a parameter beside it:
+/// the tenant is who is charged, so it belongs with the rest of the identity.
 #[derive(Debug, Clone, Copy)]
 pub struct Charged<'a> {
     /// The wallet the charge is drawn against.
@@ -83,9 +81,8 @@ impl Accounts {
     /// two charges.
     ///
     /// Answers what was drained, rather than emitting a metric: the credit
-    /// meter is §6/M181's, and fusing the two here is what makes
-    /// `service_billing.zig` unable to run its money path without an exporter
-    /// configured.
+    /// meter is §6/M181's, and fusing the two here would make the money path
+    /// unable to run without an exporter configured.
     ///
     /// # Errors
     /// Reports an entropy source that could not produce the row's identifier,
@@ -119,12 +116,11 @@ impl Accounts {
     /// amount — and because binding sixteen parameters inside a verb would push
     /// it past the function-length line for no gain.
     ///
-    /// No transaction. `metering.zig` wraps its insert in `BEGIN`/`COMMIT` with
-    /// a `tx_open` flag and two rollback call sites, which was load-bearing
-    /// when the balance drain and this row were written together. They are not:
-    /// the drain lives in the renewal CTE, so this is a single statement, and a
-    /// transaction around one statement is a round trip that buys nothing. The
-    /// debit that DOES move a balance opens a real one.
+    /// No transaction. A `BEGIN`/`COMMIT` around this insert would be
+    /// load-bearing only if the balance drain and this row were written
+    /// together. They are not: the drain lives in the renewal CTE, so this is a
+    /// single statement, and a transaction around one statement is a round trip
+    /// that buys nothing. The debit that DOES move a balance opens a real one.
     async fn record(
         &self,
         charged: Charged<'_>,

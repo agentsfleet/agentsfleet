@@ -10,15 +10,9 @@
 //!
 //! # One loop, every sweeper
 //!
-//! Each Zig sweeper carries its own `run`: a `while (!shutdown.load(.acquire))`
-//! around one bounded pass, and a `sleepInterruptible` that wakes every 100ms
-//! to re-read an atomic it usually finds unchanged. One copy of the same twenty
-//! lines per sweeper, and every one of them pays up to a tenth of a second of
-//! shutdown latency for the privilege.
-//!
-//! [`run`] is that loop, once, generic over what it drives. Cancellation is a
-//! [`CancellationToken`] selected against the sleep, so a stopping daemon
-//! interrupts the WAIT rather than waiting out a poll interval — the property
+//! [`run`] is the loop every sweeper shares, generic over what it drives.
+//! Cancellation is a [`CancellationToken`] selected against the sleep, so a
+//! stopping daemon interrupts the WAIT rather than waiting out a poll interval — the property
 //! `supervisor.rs` records for the daemon's tasks, applied to the tasks
 //! themselves.
 //!

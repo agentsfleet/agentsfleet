@@ -3,7 +3,9 @@
 
 use std::process::ExitStatus;
 
-use super::{Error, ErrorKind, ToolboxRefusal};
+#[cfg(target_os = "linux")]
+use super::Step;
+use super::{EgressRefusal, Error, ErrorKind, ToolboxRefusal};
 
 // Every lift is a `From`, so `?` does the conversion and no `map_err` appears
 // on a path that adds nothing (`docs/RUST_ERROR_STANDARD.md` rule 2).
@@ -101,14 +103,15 @@ pub(crate) fn not_ready(waited: std::time::Duration) -> impl Fn(afr_executor::Er
     move |source| ErrorKind::NotReady { waited, source }.into()
 }
 
-/// Refuses a toolbox other than the one this runner was configured for.
+/// Refuses a lease whose egress cannot be held to its policy, saying why.
+pub(crate) fn egress_refused(refusal: EgressRefusal) -> Error {
+    ErrorKind::EgressRefused { refusal }.into()
+}
+
+/// Names the netlink `step` when the kernel refuses it.
 #[cfg(target_os = "linux")]
-pub(crate) fn toolbox_unexpected(actual: &str, expected: &str) -> Error {
-    ErrorKind::ToolboxUnexpected {
-        actual: actual.to_owned(),
-        expected: expected.to_owned(),
-    }
-    .into()
+pub(crate) fn netlink(step: Step) -> impl Fn(std::io::Error) -> Error {
+    move |source| ErrorKind::Netlink { step, source }.into()
 }
 
 /// Refuses a lease whose identifier could name a directory not its own.

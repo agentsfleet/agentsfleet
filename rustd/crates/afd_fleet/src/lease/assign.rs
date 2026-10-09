@@ -49,9 +49,9 @@ const CONTEXT_CANDIDATES: &str = "lease candidate scan";
 
 /// How many ready fleets one poll will consider.
 ///
-/// `constants.zig`'s `MAX_READY_CANDIDATES_PER_POLL`. The ceiling is what makes
-/// per-poll cost independent of how many fleets exist — without it a runner
-/// polling an idle deployment pays for every fleet on it, every second.
+/// The ceiling is what makes per-poll cost independent of how many fleets
+/// exist — without it a runner polling an idle deployment pays for every fleet
+/// on it, every second.
 pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
 
 /// What one lease poll cost, gathered as it runs.

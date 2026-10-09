@@ -52,10 +52,7 @@ pub(super) fn holds(workers: usize) -> (Holds, FixedClock) {
 }
 
 pub(super) async fn sandbox(engine: &FakeEngine) -> Box<dyn Sandbox> {
-    let request = SandboxRequest {
-        lease_id: LEASE,
-        limits: Limits::default(),
-    };
+    let request = SandboxRequest::new(LEASE, Limits::default());
     engine.prepare(request).await.unwrap()
 }
 

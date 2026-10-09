@@ -1,0 +1,220 @@
+name: Build the runner's toolbox
+description: Build the toolbox image from scripts/toolbox/manifest.txt, write its SBOM, scan it, sign its release manifest with the release key, and bundle it with the runner binary.
+
+# One implementation for the release and the dev lane, so the dev runner admits
+# an image built, scanned and signed exactly as a release's is. The runner
+# admits an image only on a signature it can check offline against the public
+# key it is built with (`afr_sandbox/src/toolbox/manifest.rs`), so this action
+# refuses to sign with a key whose public half is not that one: a release that
+# passed here would otherwise ship a runner that refuses its own toolbox.
+#
+# What leaves this action, all under `output-dir`:
+#   toolbox-<sha256>.erofs            the image, named by its digest
+#   toolbox-<sha256>.json             the release manifest build.sh wrote
+#   toolbox-<sha256>.json.sig         cosign's signature over the manifest's exact bytes
+#   toolbox-<sha256>.sbom.spdx.json   Syft's Software Bill of Materials (SBOM) of the image's root
+#   toolbox-<sha256>.scan.json        Grype's findings over that SBOM
+#   release.pub                       the public half of the key that signed
+# and, at `bundle`, the offline bundle of the runner binary and those files.
+#
+# Grype reads Debian's security tracker as its Debian source, so a finding the
+# tracker marks not-affected never appears, and `--only-fixed` fails the job on
+# a Critical with a fix and nothing else; the rest ship as the scan report.
+
+inputs:
+  runner-binary:
+    description: The static runner binary the bundle carries, as built by the lane.
+    required: true
+  op-token:
+    description: 1Password service-account token.
+    required: true
+  vault:
+    description: Vault holding the toolbox release key item.
+    required: true
+  key-item:
+    description: 1Password item holding the cosign key pair, in its `private-key` and `password` fields.
+    required: false
+    default: toolbox-release-key
+  output-dir:
+    description: Where the image and its files are written.
+    required: false
+    default: dist/toolbox
+  bundle:
+    description: Where the offline bundle is written.
+    required: false
+    default: dist/agentsfleet-runner-bundle-linux-amd64.tar.gz
+
+outputs:
+  digest:
+    description: The image's SHA-256, which names every file.
+    value: ${{ steps.image.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    # The list and why each package is on it live in the script, which the
+    # kernel lane's coverage job runs too.
+    - name: Install the builder's tools
+      shell: bash
+      run: bash scripts/toolbox/install-builder-tools.sh
+
+    # build.sh prints the image's path and nothing else on stdout, as the
+    # kernel lane's `make test-runner-kernel` reads it; the digest is read off
+    # that name by the same toolbox.sh the host deploy runs.
+    - name: Build the image from the pinned manifest
+      id: image
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+      run: |
+        set -euo pipefail
+        out="$PWD/$OUTPUT_DIR"
+        image="$(sudo make --no-print-directory toolbox-image TOOLBOX_DIR="$out")"
+        sudo chown -R "$(id -u):$(id -g)" "$out"
+        # shellcheck source=deploy/baremetal/toolbox.sh
+        source deploy/baremetal/toolbox.sh
+        digest="$(toolbox_digest_of "$image")"
+        echo "digest=$digest" >> "$GITHUB_OUTPUT"
+        echo "✓ built toolbox-$digest.erofs ($(wc -c < "$image") bytes)"
+
+    # Pinned by version, and each download checked against the checksums file
+    # its project publishes beside it, so a moved tag cannot change what runs.
+    - name: Install syft, grype and cosign
+      shell: bash
+      env:
+        SYFT_VERSION: 1.54.1
+        GRYPE_VERSION: 0.120.1
+        COSIGN_VERSION: 3.1.3
+      run: |
+        set -euo pipefail
+        bin="$RUNNER_TEMP/toolbox-bin"
+        mkdir -p "$bin"
+        fetch() {
+          local url="$1" file="$2"
+          curl -fsSL -o "$file" "$url"
+        }
+        pushd "$RUNNER_TEMP" >/dev/null
+        fetch "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" syft.tar.gz
+        fetch "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_checksums.txt" syft_checksums.txt
+        mv syft.tar.gz "syft_${SYFT_VERSION}_linux_amd64.tar.gz"
+        sha256sum --check --ignore-missing syft_checksums.txt
+        tar xzf "syft_${SYFT_VERSION}_linux_amd64.tar.gz" -C "$bin" syft
+        fetch "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" grype.tar.gz
+        fetch "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_checksums.txt" grype_checksums.txt
+        mv grype.tar.gz "grype_${GRYPE_VERSION}_linux_amd64.tar.gz"
+        sha256sum --check --ignore-missing grype_checksums.txt
+        tar xzf "grype_${GRYPE_VERSION}_linux_amd64.tar.gz" -C "$bin" grype
+        fetch "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-amd64" cosign-linux-amd64
+        fetch "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign_checksums.txt" cosign_checksums.txt
+        sha256sum --check --ignore-missing cosign_checksums.txt
+        install -m 755 cosign-linux-amd64 "$bin/cosign"
+        popd >/dev/null
+        echo "$bin" >> "$GITHUB_PATH"
+
+    # Syft reads the image's own package database, so the image is mounted
+    # read-only as a host mounts it and scanned as a directory.
+    - name: Write the SBOM over the mounted image
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        DIGEST: ${{ steps.image.outputs.digest }}
+      run: |
+        set -euo pipefail
+        out="$PWD/$OUTPUT_DIR"
+        mount_point="$RUNNER_TEMP/toolbox-root"
+        mkdir -p "$mount_point"
+        sudo modprobe erofs
+        sudo mount -t erofs -o loop,ro,nosuid,nodev "$out/toolbox-$DIGEST.erofs" "$mount_point"
+        trap 'sudo umount "$mount_point"' EXIT
+        sudo -E "$(command -v syft)" scan "dir:$mount_point" \
+          -o "spdx-json=$out/toolbox-$DIGEST.sbom.spdx.json"
+        sudo chown "$(id -u):$(id -g)" "$out/toolbox-$DIGEST.sbom.spdx.json"
+        echo "✓ SBOM written for toolbox-$DIGEST"
+
+    - name: Scan the SBOM; a fixable Critical fails the build
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        DIGEST: ${{ steps.image.outputs.digest }}
+      run: |
+        set -euo pipefail
+        out="$PWD/$OUTPUT_DIR"
+        grype "sbom:$out/toolbox-$DIGEST.sbom.spdx.json" \
+          --only-fixed --fail-on critical \
+          -o table -o "json=$out/toolbox-$DIGEST.scan.json"
+
+    - name: Load the toolbox release key from 1Password
+      uses: 1password/load-secrets-action@v5
+      with:
+        export-env: true
+      env:
+        OP_SERVICE_ACCOUNT_TOKEN: ${{ inputs.op-token }}
+        COSIGN_PRIVATE_KEY: op://${{ inputs.vault }}/${{ inputs.key-item }}/private-key
+        COSIGN_PASSWORD: op://${{ inputs.vault }}/${{ inputs.key-item }}/password
+
+    # The signature is over the manifest's exact bytes, offline (no transparency
+    # log), which is what the runner checks. The public half is compared against
+    # the key compiled into the runner before anything is signed.
+    #
+    # cosign 3 signs a Sigstore bundle by default and ignores
+    # `--output-signature`; the two `=false` flags keep the bare signature file
+    # the runner verifies. The key's first line in manifest.rs carries the
+    # `pub const … = "` prefix, which `sub` strips before the comparison.
+    - name: Sign the release manifest with the key the runner is built with
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        DIGEST: ${{ steps.image.outputs.digest }}
+        RUNNER_KEY_SOURCE: rustd/crates/afr_sandbox/src/toolbox/manifest.rs
+      run: |
+        set -euo pipefail
+        out="$PWD/$OUTPUT_DIR"
+        if [ -z "${COSIGN_PRIVATE_KEY:-}" ]; then
+          echo "✗ the toolbox release key is empty — 1Password load failed or the vault lacks the key item" >&2
+          exit 1
+        fi
+        cosign public-key --key env://COSIGN_PRIVATE_KEY --outfile "$out/release.pub"
+        awk '/-----BEGIN PUBLIC KEY-----/{p=1; sub(/^.*-----BEGIN/, "-----BEGIN")} p{print} /-----END PUBLIC KEY-----/{exit}' \
+          "$RUNNER_KEY_SOURCE" > "$RUNNER_TEMP/built-in.pub"
+        if ! diff -q <(tr -d '[:space:]' < "$out/release.pub") <(tr -d '[:space:]' < "$RUNNER_TEMP/built-in.pub") >/dev/null; then
+          echo "✗ the signing key's public half is not TOOLBOX_RELEASE_PUBLIC_KEY in $RUNNER_KEY_SOURCE; the runner would refuse this toolbox" >&2
+          exit 1
+        fi
+        cosign sign-blob --yes --tlog-upload=false \
+          --new-bundle-format=false --use-signing-config=false \
+          --key env://COSIGN_PRIVATE_KEY \
+          --output-signature "$out/toolbox-$DIGEST.json.sig" \
+          "$out/toolbox-$DIGEST.json"
+        cosign verify-blob --insecure-ignore-tlog \
+          --key "$out/release.pub" \
+          --signature "$out/toolbox-$DIGEST.json.sig" \
+          "$out/toolbox-$DIGEST.json"
+        echo "✓ toolbox-$DIGEST.json signed; signature verifies against the runner's key"
+
+    - name: Bundle the binary with the toolbox for offline installs
+      shell: bash
+      env:
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        DIGEST: ${{ steps.image.outputs.digest }}
+        RUNNER_BINARY: ${{ inputs.runner-binary }}
+        BUNDLE: ${{ inputs.bundle }}
+      run: |
+        set -euo pipefail
+        staging="$RUNNER_TEMP/bundle"
+        mkdir -p "$staging"
+        install -m 755 "$RUNNER_BINARY" "$staging/agentsfleet-runner-linux-amd64"
+        # The set the host's deploy.sh checks the unpacked bundle for, through
+        # the same toolbox_set_files, which also refuses a second image here.
+        # shellcheck source=deploy/baremetal/toolbox.sh
+        source deploy/baremetal/toolbox.sh
+        set_files="$(toolbox_set_files "$OUTPUT_DIR")"
+        while IFS= read -r file; do
+          cp "$file" "$staging/"
+        done <<<"$set_files"
+        for report in sbom.spdx.json scan.json; do
+          cp "$OUTPUT_DIR/toolbox-$DIGEST.$report" "$staging/"
+        done
+        cp "$OUTPUT_DIR/release.pub" "$staging/"
+        mkdir -p "$(dirname "$BUNDLE")"
+        tar czf "$BUNDLE" -C "$staging" .
+        echo "✓ $BUNDLE ($(wc -c < "$BUNDLE") bytes)"

@@ -19,9 +19,9 @@ pub mod sweep;
 
 /// `fleet.runner_events.metadata` keys.
 ///
-/// One declaration each, imported by every writer (RULE UFS). `runner_events.zig`
-/// owns the Zig side; a key spelled inline at a second write site is how a
-/// consumer's `metadata->>'host_id'` silently stops matching.
+/// One declaration each, imported by every writer (RULE UFS): a key spelled
+/// inline at a second write site is how a consumer's `metadata->>'host_id'`
+/// silently stops matching.
 pub mod meta {
     /// The authenticated person who requested an operator mutation.
     pub const ACTOR_ID: &str = "actor_id";
@@ -49,7 +49,7 @@ pub mod meta {
     ///
     /// Spelled `event_id` in the metadata even though the enclosing row is
     /// itself a runner EVENT — the key names the agentsfleet event, not this
-    /// audit row, and `runner_events.zig` spells it the same way.
+    /// audit row.
     pub const AGENTSFLEET_EVENT_ID: &str = "event_id";
     /// Whether the lease was a fresh pull or a reclaim.
     pub const KIND: &str = "kind";
@@ -57,12 +57,10 @@ pub mod meta {
 
 /// `fleet.runner_events.event_type` values this crate writes.
 ///
-/// The Zig spells these with `@tagName(protocol.RunnerEventType.…)`, which
-/// derives the wire string from the enum's own spelling. `afd_wire`'s
-/// [`RunnerEventType`](afd_api_wire::admin::RunnerEventType) carries the same
-/// values as serde renames, so the strings come from there rather than being
-/// restated — a rename on either side then fails to compile instead of writing
-/// rows nothing queries.
+/// `afd_wire`'s [`RunnerEventType`](afd_api_wire::admin::RunnerEventType)
+/// carries these values as serde renames, so the strings come from there
+/// rather than being restated — a rename on either side then fails to compile
+/// instead of writing rows nothing queries.
 pub mod event_type {
     /// A runner was enrolled.
     pub const RUNNER_REGISTERED: &str = "runner_registered";

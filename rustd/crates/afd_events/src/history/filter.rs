@@ -119,7 +119,7 @@ fn parse_rfc3339_z(input: &str) -> Result<UnixMillis> {
 /// `*` becomes `%`; `%`, `_` and `\` are escaped so a literal one cannot become
 /// a wildcard. The backslash is the one whose absence Postgres treats as an
 /// ERROR rather than a wrong match — a pattern ending in a lone `\` is an
-/// unterminated escape sequence (SQLSTATE 22025), which reached the Zig daemon
+/// unterminated escape sequence (SQLSTATE 22025), which would reach the caller
 /// as a 500 on a filter a user is entitled to type.
 #[must_use]
 pub fn glob_to_like(glob: &str) -> String {
@@ -232,7 +232,7 @@ mod tests {
             "-5m",                       // negative window
             "abcd",                      // neither form
             "2025-01-01T00:00:00",       // no zone marker
-            "2025-01-01T00:00:00+00:00", // an offset: wider than the Zig shape
+            "2025-01-01T00:00:00+00:00", // an offset: wider than the `Z` shape
             "2025-01-01T00:00:00.5Z",    // fractional: also wider
         ] {
             assert!(parse_since(raw, now()).is_err(), "accepted {raw:?}");
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn refuses_an_impossible_calendar_date() {
-        // The declared divergence, pinned: the Zig rolls this into March.
+        // Pinned: a parser that normalises the date would roll this into March.
         parse_since("2026-02-31T00:00:00Z", now()).expect_err("the 31st of February is not a date");
     }
 
@@ -269,10 +269,10 @@ mod tests {
     }
 
     #[test]
-    fn a_prefix_escapes_the_backslash_the_zig_left_bare() {
-        // The declared divergence, pinned: a trailing lone backslash is an
-        // unterminated escape sequence, and Postgres answers SQLSTATE 22025
-        // rather than simply not matching.
+    fn a_prefix_escapes_a_trailing_backslash() {
+        // Pinned: a trailing lone backslash is an unterminated escape
+        // sequence, and Postgres answers SQLSTATE 22025 rather than simply not
+        // matching.
         assert_eq!(prefix_to_like("path\\"), "path\\\\%");
     }
 

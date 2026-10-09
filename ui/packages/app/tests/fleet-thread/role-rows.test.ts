@@ -3,6 +3,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { FleetThread } from "@/components/domain/FleetThread";
+import { RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
 
 describe("FleetThread — role rendering: row kinds and badges", () => {
   it("does not repeat the fleet name beside a reply", () => {
@@ -132,9 +133,7 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     ]);
     renderThread();
     expect(screen.getByText("GitHub App")).toBeTruthy();
-    expect(
-      screen.getByText("This fleet needs instructions before it can respond."),
-    ).toBeTruthy();
+    expect(screen.getByText(RUNNER_REFUSAL_SENTENCE)).toBeTruthy();
   });
 
   it("shows a queued reply while the operator message is being sent", () => {

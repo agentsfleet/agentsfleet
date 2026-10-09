@@ -5,22 +5,18 @@
 //! rather than a public enum, so a new internal failure mode is not a breaking
 //! change for anyone matching on it.
 //!
-//! # What the Zig control plane spells instead
+//! # Why a type rather than a log line
 //!
-//! `service.zig`, `service_billing.zig` and `assign.zig` have no error type.
-//! They answer `?T` and log on the way past — `assign.select` catches every
-//! failure eight frames down, writes a `warn`, and returns `null`, which the
-//! lease handler cannot tell apart from "there is genuinely no work". A
-//! transient Postgres blip and an idle fleet reach the caller as the same
-//! value, so the only thing that knows the difference is a log line nobody
-//! reads at request time.
+//! A lease path that answers `Option<T>` and logs on the way past cannot tell
+//! a transient Postgres blip from an idle fleet: both reach the caller as the
+//! same value, and the only thing that knows the difference is a log line
+//! nobody reads at request time.
 //!
 //! That is RULE ECL's failure exactly, and it is not fixed by adding a log. It
 //! is fixed by making the difference a TYPE the caller has to handle, which is
 //! what this file is for. The lease verb still answers no-work-with-backoff on
-//! a transient failure — that is Zig parity and it stays — but it does so at
-//! ONE place that says so, instead of at eight `catch` sites that each decided
-//! it privately.
+//! a transient failure, but it does so at ONE place that says so, instead of
+//! at every catch site deciding it privately.
 
 pub mod classify;
 pub mod detail;
@@ -44,20 +40,15 @@ pub use self::detail::{
     DETAIL_REGISTRATION_FAILED, DETAIL_REGISTRY_ALLOWLIST, DETAIL_RENEWAL_NO_CREDITS,
     DETAIL_RUNNER_NOT_FOUND, DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID,
 };
-// The mint family's sentences, listed apart from the block above only because
-// they arrived together and are read together — `credentials_mint.zig` writes
-// all ten, and every one is pinned byte-for-byte to it.
-// The device-flow login family's sentences, listed apart for the reason the
-// mint family's are: they arrive together, they are read together, and every
-// one is pinned to `session_helpers.zig`.
+// The mint family's sentences, listed apart from the block above because they
+// are read together: every one is a refusal the credential mint path answers.
 pub use self::detail::{
     DETAIL_CONNECTOR_MINT_FAILED, DETAIL_CONNECTOR_RECONNECT, DETAIL_GITHUB_RECONNECT,
     DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED, DETAIL_MINT_FAILED,
     DETAIL_MINT_UNCONFIGURED,
 };
-/// The command-line credential surface's refusals, re-exported as one group for
-/// the reason the api-key family's are: they arrive together and are read
-/// together, and each is pinned to `cli_credentials.zig`.
+/// Everything that REFUSES a request, re-exported as one group so no call site
+/// names the file the cap moved them into.
 pub(crate) use self::refuse::{
     budget_exhausted, connector_mint_failed, connector_reconnect_required, github_mint_failed,
     github_reconnect_required, grant_required, integration_not_connected, lease_lost,

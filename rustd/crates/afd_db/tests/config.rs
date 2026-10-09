@@ -1,7 +1,7 @@
 //! Dimension 2.4 (config half) — the env surface a deployment already has.
 //!
-//! Every knob name is the Zig daemon's, so these tests are the proof that a
-//! deployment's existing environment means the same thing to both binaries.
+//! Every knob name is one a deployment already exports, so these tests are the
+//! proof that an existing environment resolves the pool it describes.
 //! They run against [`MapEnv`] rather than the process environment because
 //! `std::env::set_var` is `unsafe` in edition 2024 — a parallel test suite
 //! racing on the process environment is undefined behaviour, not flakiness.
@@ -26,7 +26,7 @@ fn env_with(pairs: &[(&str, &str)]) -> MapEnv {
 
 /// The three roles read the three knobs the daemon documents, and no others.
 #[test]
-fn test_role_url_knobs_match_the_zig_daemon() {
+fn test_each_role_reads_its_documented_url_knob() {
     assert_eq!(DbRole::Default.url_knob(), "DATABASE_URL");
     assert_eq!(DbRole::Api.url_knob(), "DATABASE_URL_API");
     assert_eq!(DbRole::Migrator.url_knob(), "DATABASE_URL_MIGRATOR");
@@ -218,7 +218,7 @@ fn test_env_bool_grammar_has_three_answers() {
 ///
 /// `yes` is the case worth naming: an operator who wrote it believes
 /// migrations are on. Reading it as `false` would leave a deployment silently
-/// un-migrated, which is why `cmd/common.zig` makes it a boot error.
+/// un-migrated, which is why `afd_db::migrate_on_start` makes it a boot error.
 #[test]
 fn test_migrate_on_start_refuses_what_it_cannot_read() {
     assert!(!afd_db::migrate_on_start(&env_with(&[])).unwrap());

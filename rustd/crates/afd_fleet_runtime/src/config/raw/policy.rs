@@ -103,9 +103,8 @@ fn finite_fraction<C: ?Sized>(value: &f32, context: &C) -> garde::Result {
 /// A context knob: a number, or the word that means "let the runner decide".
 ///
 /// An untagged enum, so both spellings deserialize into one type and no caller
-/// downstream has to know that `"auto"` was ever a possibility. The Zig reads
-/// this as a `u32` with a string special-case inside the reader, which puts a
-/// wire spelling in the middle of a numeric accessor.
+/// downstream has to know that `"auto"` was ever a possibility, and no numeric
+/// accessor carries a wire spelling in its middle.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(untagged)]
 pub(crate) enum Knob {

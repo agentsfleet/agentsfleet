@@ -340,8 +340,8 @@ test_workflows_load_only_current_connector_boot_secret() {
 }
 
 # The Fly environment variable checked above is NOT what the connector flow
-# resolves. The Zig daemon read `approval_signing_secret` from the environment;
-# the Rust daemon reads an admin-workspace vault row named `approval-signing`
+# resolves. The daemon reads no environment variable for it: it reads an
+# admin-workspace vault row named `approval-signing`
 # (`afd_http::services::ingress::APPROVAL_IDENTITY`), and `state_secret` refuses
 # the whole connect with 503 UZ-CONN-001 when it is absent — for every provider,
 # before any provider bag is read, and without logging a line.
@@ -349,7 +349,7 @@ test_workflows_load_only_current_connector_boot_secret() {
 # Dev ran that way for the entire cutover: the Fly secret was set and correct,
 # the catalogue reported `configured: true` for all five providers, and every
 # connect answered 503. The check above stayed green throughout, because it
-# proves the OLD wiring. This one proves the wiring the daemon actually reads.
+# proves the Fly variable. This one proves the vault row the daemon reads.
 test_workflows_seed_the_connector_signing_row() {
   local name="workflows seed the connector signing vault row"
   local family workflow env_name
@@ -368,9 +368,9 @@ test_workflows_seed_the_connector_signing_row() {
   ok "$name"
 }
 
-# The daemon reads AGENTSFLEET_LOG_LEVEL (`agentsfleetd/src/logs.rs:44`) and
-# falls back to INFO. The dev deploy set `LOG_LEVEL` — the Zig-era spelling —
-# from the cutover until Sep 07, 2026, so dev ran at INFO the whole time and
+# The daemon reads AGENTSFLEET_LOG_LEVEL (`LOG_LEVEL_VAR`, `afd_core/src/env.rs`)
+# and falls back to INFO. The dev deploy set a bare `LOG_LEVEL`, which nothing
+# reads, from the cutover until Sep 07, 2026, so dev ran at INFO the whole time and
 # every `tracing::debug!` was unreachable. That is not a cosmetic gap: two
 # sessions of connector debugging reasoned from the ABSENCE of a debug line
 # (`secret_opened`) that could never have been emitted. A deployment that

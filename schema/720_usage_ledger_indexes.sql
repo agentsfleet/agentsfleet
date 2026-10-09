@@ -33,14 +33,14 @@ CREATE INDEX IF NOT EXISTS idx_usage_ledger_tenant_id_created_at_id
 
 -- One reader since slot 915, and the column order is now free rather than forced.
 --
--- The reader is the budget drain (`fleet/sql.zig` SELECT_BUDGET_DRAIN and
--- SELECT_BUDGET_POLICY_AND_DRAIN): WHERE workspace_id = $1 AND fleet_id = $2 AND
--- last_charged_at >= floor. It runs on every event receive and every renewal —
--- roughly every 25 seconds per live run — and this table is never pruned
--- (schema/710 grants no DELETE), so an unindexed form degrades with a fleet's
--- lifetime spend rather than with anything bounded. That is the idle-cost defect
--- `docs/architecture/scaling.md` exists to refuse. Two equalities then a range is
--- exactly the shape one index scan can serve.
+-- The reader is the budget drain (SELECT_BUDGET_DRAIN in
+-- `rustd/crates/afd_billing/src/sql.rs`): WHERE workspace_id = $1 AND
+-- fleet_id = $2 AND last_charged_at >= floor. It runs on every event receive
+-- and every renewal — roughly every 25 seconds per live run — and this table
+-- is never pruned (schema/710 grants no DELETE), so an unindexed form degrades
+-- with a fleet's lifetime spend rather than with anything bounded. That is the
+-- idle-cost defect `docs/architecture/scaling.md` exists to refuse. Two
+-- equalities then a range is exactly the shape one index scan can serve.
 --
 -- A second reader used to share it: the fleet `SET NULL`, which matched on
 -- `fleet_id` alone and so REQUIRED that column to lead. schema/915 dropped that

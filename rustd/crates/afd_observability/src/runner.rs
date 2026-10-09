@@ -59,9 +59,9 @@ use dashmap::mapref::entry::Entry;
 
 /// The `runner_id` value every runner past the slot table is attributed under.
 ///
-/// The Zig daemon's spelling, kept byte-exact: every dashboard and alert that
-/// reads this label reads it on both sides of the swap, and a renamed overflow
-/// bucket is a panel that silently stops matching.
+/// The spelling is load-bearing: every dashboard and alert that reads this
+/// label matches on it, and a renamed overflow bucket is a panel that silently
+/// stops matching.
 ///
 /// Deliberately NOT `otel.metric.overflow` — see the module note. This is a
 /// bounded-attribution decision; that is a bug indicator.
@@ -76,9 +76,8 @@ pub const SDK_OVERFLOW_MARKER: &str = "otel.metric.overflow";
 
 /// How many distinct runners get their own series.
 ///
-/// The Zig's, and the number is not the point — the bound is. Four thousand is
-/// far past any real deployment's host count and far below anything that
-/// threatens memory.
+/// The number is not the point — the bound is. Four thousand is far past any
+/// real deployment's host count and far below anything that threatens memory.
 pub const MAX_SERIES: usize = 4096;
 
 /// Milliseconds per second, for the one conversion this module performs.
@@ -117,9 +116,9 @@ struct Counters {
 
 /// The per-runner metric families this process holds.
 ///
-/// One value the daemon owns, rather than the Zig's process-global mutable
-/// arrays: a test can build its own and drive it to the cardinality edge
-/// without touching what any other test is counting.
+/// One value the daemon owns, rather than process-global state: a test can
+/// build its own and drive it to the cardinality edge without touching what any
+/// other test is counting.
 #[derive(Debug)]
 pub struct RunnerMetrics {
     /// One entry per runner, up to [`MAX_SERIES`].

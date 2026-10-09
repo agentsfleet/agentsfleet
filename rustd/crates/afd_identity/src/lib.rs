@@ -8,21 +8,18 @@
 //!
 //! # Why this is a separate crate
 //!
-//! The Zig daemon held a portability wall — its `auth/` could not import
-//! `db/`, `http/`, or any business module — enforced by a grep in a `test-auth`
-//! step that retired with the tree. Splitting the I/O out here makes the same rule a
-//! fact about the dependency graph: `afd_auth` does not list `reqwest`, `moka`
-//! or `ring`, so it cannot name them, and rustc checks that on every build
-//! rather than a script checking it on demand.
+//! Authentication keeps a portability wall: the decision logic may not import
+//! the database, the HTTP stack, or any business module. Splitting the I/O out
+//! here makes that rule a fact about the dependency graph: `afd_auth` does not
+//! list `reqwest`, `moka` or `ring`, so it cannot name them, and rustc checks
+//! that on every build rather than a script checking it on demand.
 //!
 //! It also keeps `afd_auth` provable offline. Every routing, liveness and
 //! refusal branch over there runs with no runtime, no socket and no clock — and
 //! that stays true only while the network lives somewhere else.
 //!
-//! The three Postgres `CredentialDirectory` implementations are NOT here. They
-//! belong with the host, which is where the Zig daemon keeps them
-//! (`cmd/serve_runner_lookup.zig`, `cmd/cli_credential_lookup.zig`), and for
-//! this port that is §5.
+//! The Postgres `CredentialDirectory` implementation is NOT here. It belongs
+//! with the host that owns the connection pool, in `afd_state::credentials`.
 
 // A dependency listed but unused is a supply-chain and compile-time cost with
 // no offsetting benefit. Gated on `not(test)` because the test build links

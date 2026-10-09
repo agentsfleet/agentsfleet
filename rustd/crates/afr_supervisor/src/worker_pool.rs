@@ -147,7 +147,10 @@ impl Worker {
             let hinted = reply.retry_after_ms.unwrap_or(NO_WORK_RETRY_AFTER_MS);
             return Some(Duration::from_millis(u64::from(hinted)).max(MIN_POLL_PAUSE));
         };
-        if let Err(failure) = self.lessee.run(&self.turns, &lease).await {
+        // The egress assigned when the lease arrived is the one it runs under,
+        // whatever a beat assigns while it runs.
+        let egress = self.assignment.borrow().egress.clone();
+        if let Err(failure) = self.lessee.run(&self.turns, &lease, &egress).await {
             return Some(self.failed(&failure, EVENT_LEASE_ERROR));
         }
         Some(Duration::ZERO)

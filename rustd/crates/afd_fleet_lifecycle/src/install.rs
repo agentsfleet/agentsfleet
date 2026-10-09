@@ -12,15 +12,12 @@
 //!
 //! # The flip happens here, not on a detached worker
 //!
-//! `create.zig` spawns a thread that sleeps, publishes two cosmetic frames,
-//! flips `installing` → `active`, then publishes a third. Its own comment says
-//! a failed spawn is survivable because "a later list/detail reconcile flips
-//! it". That reconcile does not exist — `list.zig` and `get.zig` are pure
-//! reads. So a spawn failure, or a restart between the 201 and the flip, strands
-//! the fleet in `installing`, where the runner's candidate query
-//! (`status = 'active'`) can never see it, permanently.
+//! A flip left to a detached worker can be lost: a failed spawn, or a restart
+//! between the 201 and the flip, strands the fleet in `installing`, where the
+//! runner's candidate query (`status = 'active'`) can never see it, and no read
+//! path flips it later.
 //!
-//! Here the flip is part of the pipeline, under the same rollback as the
+//! So the flip is part of the pipeline, under the same rollback as the
 //! stream: a fleet is installed or it is not. Two consequences, both declared in
 //! the milestone's Discovery log. The 201 reports `active` rather than
 //! `installing`, and the cosmetic `install:*` frames are not emitted — they are
@@ -50,21 +47,20 @@ use crate::{FleetStatus, Fleets, sql};
 
 /// What the stream setup waits between attempts, and how many it gets.
 ///
-/// `backon`'s builder rather than a fixed table: the Zig's `[100, 500, 1500]`
-/// means every install racing the same struggling Dragonfly retries in the same
+/// `backon`'s builder rather than a fixed table: a fixed table means every
+/// install racing the same struggling Dragonfly retries in the same
 /// millisecond — the reconnect storm that keeps it down — and `with_jitter`
 /// spreads them.
 ///
 /// Doubling from 200ms, capped at 1500ms: three sleeps come to 1.4s before
-/// jitter, inside the 2.1s wall the Zig documents. The first retry lands
-/// sooner, so a Dragonfly that blips for 150ms is caught on the second try instead
-/// of after 600ms of waiting.
+/// jitter. The first retry lands at 200ms, so a Dragonfly that blips for 150ms
+/// is caught on the second try.
 ///
 /// `max_times` is RETRIES, one fewer than the attempts, and it is derived from
 /// [`STREAM_ATTEMPTS`] rather than written as a number. That direction is the
-/// one that cannot go wrong: the Zig wrote its sleeps down and derived the
-/// count with `attempt + 1 >= len`, leaving its last entry unreachable while
-/// the comment beside it promised four tries.
+/// one that cannot go wrong: a count derived from a written list of sleeps
+/// needs a hand-written loop guard, and one off-by-one there leaves the last
+/// entry unreachable.
 fn stream_backoff() -> ExponentialBuilder {
     ExponentialBuilder::new()
         .with_min_delay(Duration::from_millis(200))
@@ -75,11 +71,8 @@ fn stream_backoff() -> ExponentialBuilder {
 
 /// How many times the stream setup is tried before the install gives up.
 ///
-/// Four attempts means three sleeps. The count is the constant and the sleeps
-/// are derived from it, which is the direction that cannot go wrong: the Zig
-/// wrote the sleeps down and derived the count with `attempt + 1 >= len`,
-/// leaving its last entry unreachable while the comment beside it promised four
-/// tries — and it shipped that way until a reviewer caught it.
+/// Four attempts means three sleeps. The count is the constant and
+/// [`stream_backoff`] derives the sleeps from it.
 const STREAM_ATTEMPTS: usize = 4;
 
 /// The context the activation flip reports a failed statement under.
@@ -150,8 +143,7 @@ impl Fleets {
     /// A fleet whose configuration names a credential nobody stored is a row
     /// that exists and cannot run: the first lease reaches for the secret, and
     /// the operator meets the failure at run time with the fleet already in
-    /// their list. `create_fleet_bundle.zig` decides the same thing in the same
-    /// place.
+    /// their list.
     ///
     /// # Why both writes ask
     ///
@@ -281,9 +273,8 @@ impl Fleets {
     /// Creates the stream and its consumer group, or spends the whole schedule.
     ///
     /// The loop AND the schedule are `backon`'s. The half most worth handing
-    /// over is the loop guard: the Zig's shipped bug was `attempt + 1 >= len`,
-    /// which left the final delay unreachable while the comment beside it
-    /// promised four tries.
+    /// over is the loop guard: a hand-written `attempt + 1 >= len` is an
+    /// off-by-one that leaves the final delay unreachable.
     ///
     /// `when` is what makes the retry mean something. Only a TRANSPORT failure
     /// is retried; a Dragonfly that answered and refused the command will refuse it

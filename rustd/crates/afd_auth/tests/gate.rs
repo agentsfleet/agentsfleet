@@ -88,9 +88,9 @@ fn test_an_unusable_claim_fails_closed() {
 /// The refusal names the whole requirement, because any one of them satisfies.
 ///
 /// Naming a single scope the caller lacks would tell them to obtain that one
-/// when another would also have worked. The rendering matches the Zig daemon's
-/// `"Requires scope a or b"` — this is client-visible text on a live surface,
-/// not an internal message.
+/// when another would also have worked. The rendering is
+/// `"Requires scope a or b"` — client-visible text on a live surface, not an
+/// internal message.
 #[test]
 fn test_a_refusal_names_every_scope_that_would_satisfy_it() {
     const ONE: &[Scope] = &[Scope::FleetRead];
@@ -125,9 +125,9 @@ fn test_a_refusal_is_an_error() {
 /// A runner holds its own plane and nothing else, and cannot be built holding
 /// anything else.
 ///
-/// The Zig daemon assigns `RUNNER_SCOPES` at its one construction site. Here
-/// the capabilities are derived from the variant, so there is no assignment to
-/// forget — which is what this asserts by constructing a runner and finding it
+/// The capabilities are derived from the variant rather than assigned at a
+/// construction site, so there is no assignment to forget — which is what this
+/// asserts by constructing a runner and finding it
 /// holds exactly `runner:self` without having been told to.
 #[test]
 fn test_a_runner_holds_only_its_own_plane_by_construction() {

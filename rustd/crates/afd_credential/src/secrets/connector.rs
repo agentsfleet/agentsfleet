@@ -2,8 +2,8 @@
 //!
 //! # A connector is a descriptor, not a branch
 //!
-//! That is `credentials/integration.zig`'s own rule and it is the reason this
-//! is a registry rather than an enum with a `match` per question. An enum reads
+//! That rule is the reason this is a registry rather than an enum with a
+//! `match` per question. An enum reads
 //! well at five connectors and costs three edits at six — the id, the spelling,
 //! and the supply — each in a different function, each easy to get right and
 //! easy to forget. A descriptor is one value in one list.
@@ -116,11 +116,6 @@ pub trait Connectors: Debug + Send + Sync {
 /// on this enum ONCE, so adding a provider that mints the way an existing one
 /// does costs no dispatch code at all, and adding a genuinely new KIND of
 /// exchange adds a variant the compiler then forces every match to answer.
-///
-/// It is also the shape `integration.zig` arrived at independently — a `Spec`
-/// whose `mint` field is a union of `static`, a GitHub-App custom mint, and an
-/// `oauth2_refresh` carrying its own `token_endpoint`. Two implementations
-/// converging on declared-data dispatch is a good sign it is the right one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exchange {
     /// Nothing to exchange: the stored handle already holds a usable token.
@@ -293,7 +288,7 @@ impl Connectors for Registry {
 /// field is not a string, one naming something this registry does not carry,
 /// and one naming an inline connector.
 ///
-/// That breadth is deliberate and it is the direction the Zig fails in too.
+/// That breadth is deliberate, and it fails in the cheaper direction.
 /// Falling through to a stored value costs a credential that could have been
 /// short-lived; falling through to a mint marker costs the runner a credential
 /// it never receives.
@@ -389,8 +384,7 @@ mod tests {
 
     #[test]
     fn every_declared_name_resolves_back_to_itself() {
-        // The Zig proves this in a `comptime` block over `toString` /
-        // `idFromString`. Here the name IS the descriptor's field, so what is
+        // The name IS the descriptor's field, so what is
         // worth proving is that the registry can find every entry it declares —
         // a descriptor absent from `DECLARED` is one nothing can ever resolve.
         for declared in DECLARED {

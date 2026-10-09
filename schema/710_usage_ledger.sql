@@ -66,7 +66,8 @@ CREATE TABLE IF NOT EXISTS billing.usage_ledger (
     event_created_at      BIGINT NOT NULL,
     created_at            BIGINT NOT NULL,
     -- The run's LAST charge instant; `created_at` is its first. The drain
-    -- apportions the accumulated total across the two (fleet/sql.zig).
+    -- apportions the accumulated total across the two (`SELECT_BUDGET_DRAIN`
+    -- in `rustd/crates/afd_billing/src/sql.rs`).
     last_charged_at       BIGINT NOT NULL,
     -- The accumulate arbiter: what makes a re-sent renewal update the existing
     -- row rather than add one, and what caps the table at three rows per event.
@@ -86,8 +87,9 @@ CREATE TABLE IF NOT EXISTS billing.usage_ledger (
 -- delete, not a workspace delete, not a handler.
 --
 -- Four readers need SELECT — the charges list, the events-list cost join
--- (`state/fleet_events_store.zig`), the per-fleet outcome reads and the fleet
--- delete path. The metered writes come from the same runtime role.
+-- (`rustd/crates/afd_events/src/history/statement.rs`), the per-fleet outcome
+-- reads and the fleet delete path. The metered writes come from the same
+-- runtime role.
 GRANT SELECT, INSERT, UPDATE ON billing.usage_ledger TO api_runtime;
 
 -- Read-only operator principals see no money rows, stated explicitly so

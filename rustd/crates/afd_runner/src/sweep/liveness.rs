@@ -160,9 +160,8 @@ impl Liveness {
         // dead, from the fleet's side.
         let Some(admin_state) = runner.admin_state else {
             // A state this daemon does not model. The runner is left exactly as
-            // it is and the pass CARRIES ON, where `liveness_sweeper.zig`
-            // returns `error.DbRowShape` and abandons the whole batch — one
-            // unreadable row there stops liveness for every other runner in it.
+            // it is and the pass CARRIES ON: abandoning the batch would let one
+            // unreadable row stop liveness for every other runner in it.
             tracing::warn!(
                 runner_id = runner.id.as_str(),
                 event = EVENT_UNMODELLED_STATE,

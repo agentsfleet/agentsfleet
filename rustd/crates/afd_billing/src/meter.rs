@@ -1,13 +1,12 @@
 //! What one metered slice is priced from: the runner's cumulative counts, and
 //! the rates they are charged at.
 //!
-//! # What this replaces, and why it is not a transliteration
+//! # Why two named fields rather than seven positional ones
 //!
-//! `renewal.zig`'s `MeterInputs` is seven flat `i64` fields — three cumulative
-//! token counts and four per-unit rates — because it exists to be splatted into
-//! a positional query and Zig has nothing cheaper to group them with. Ported
-//! literally that would put seven same-typed integers on one constructor, where
-//! any two transposed compile clean and misprice every slice from then on.
+//! A slice is priced from seven integers — three cumulative token counts and
+//! four per-unit rates — and they are bound into a positional query. Seven
+//! same-typed integers on one constructor is a shape where any two transposed
+//! compile clean and misprice every slice from then on.
 //!
 //! The four rates are already a type here ([`SliceRates`]), resolved once and
 //! shared with the pure [`slice_charge`] reference. So this module supplies the
@@ -17,18 +16,18 @@
 //!
 //! # The fail-open posture is the CALLER's, not this module's
 //!
-//! `buildMeterInputs` swallows two different failures into one run-fee-only
-//! answer and logs them apart: a catalogue generation that could not be read,
-//! and a catalogue that authoritatively carries no such model. Only the second
-//! is a fact about pricing. The first is a datastore fault, and returning a
-//! priced meter for it means a slice was charged against rates nobody verified.
+//! Two different failures can look like one run-fee-only answer: a catalogue
+//! generation that could not be read, and a catalogue that authoritatively
+//! carries no such model. Only the second is a fact about pricing. The first is
+//! a datastore fault, and returning a priced meter for it means a slice was
+//! charged against rates nobody verified.
 //!
 //! [`Accounts::meter`] separates them the way [`super`] says this module
 //! separates every gate: a MISS is a value (run-fee-only rates, which is the
 //! honest price of a model the catalogue does not carry), and a FAULT is an
 //! [`Error`](crate::Error). The decision to meter run-fee-only rather than kill
-//! a live run over a transient fault is unchanged from the Zig — but it is made
-//! once, at the verb, where it can be read, instead of inside the resolver.
+//! a live run over a transient fault is made once, at the verb, where it can
+//! be read, instead of inside the resolver.
 
 use super::rates::Posture;
 use super::{RUN_NANOS_PER_SEC, SliceRates};
@@ -54,9 +53,8 @@ pub struct Cumulative {
 impl Cumulative {
     /// The counts a runner reported, widened from the wire's `u32`.
     ///
-    /// Takes all three by name at the only place they can be built, so the
-    /// transposition the Zig's flat struct invites has one site to be wrong at
-    /// rather than every call.
+    /// Takes all three by name at the only place they can be built, so a
+    /// transposition has one site to be wrong at rather than every call.
     #[must_use]
     pub fn reported(input: u32, cached: u32, output: u32) -> Self {
         Self {
@@ -70,8 +68,7 @@ impl Cumulative {
 /// A slice's counts and the rates they price against.
 ///
 /// Built once per verb and shared by renew and settle, so the two meter
-/// identically by construction — the property `buildMeterInputs` exists to give
-/// the Zig, kept, with the grouping the Zig could not express.
+/// identically by construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Meter {
     /// What the runner has counted so far.
@@ -163,10 +160,9 @@ mod tests {
 
     /// The wire's three counts reach the three columns they name.
     ///
-    /// Cheap, and it is the whole reason this type exists: the Zig's flat
-    /// `MeterInputs` takes these as three positional `u32`s beside four
-    /// positional `i64` rates, where a transposition prices every later slice
-    /// wrong and nothing fails.
+    /// Cheap, and it is the whole reason this type exists: three positional
+    /// `u32`s beside four positional `i64` rates is a shape where a
+    /// transposition prices every later slice wrong and nothing fails.
     #[test]
     fn test_reported_counts_reach_the_fields_they_name() {
         let counts = Cumulative::reported(1, 2, 3);

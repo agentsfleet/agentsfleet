@@ -21,7 +21,7 @@ pub const DETAIL_REGISTRY_ALLOWLIST: &str = "registry_allowlist entries must be 
 /// The sentence a vanished runner earns.
 pub const DETAIL_RUNNER_NOT_FOUND: &str = "runner not found";
 
-/// `runner_patch.zig`'s refusal when a terminal runner cannot collect an ask.
+/// The refusal a self-test ask earns when its runner is terminal.
 pub const DETAIL_SELFTEST_REFUSED: &str = "revoked runners cannot be asked to self-test";
 /// The refusal a delete of a runner still in service earns.
 pub const DETAIL_RUNNER_NOT_REVOKED: &str = "active runner must be revoked before deletion";
@@ -262,7 +262,7 @@ impl Error {
             ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
             // The body's SHAPE is a fact the operator who stored it can act
             // on, so it answers the vault's own code rather than the internal
-            // family — the split `crypto_store.zig` and `vault.zig` draw.
+            // family.
             ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
             ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Admission { source } => source.code(),

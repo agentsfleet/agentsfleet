@@ -1,10 +1,9 @@
 //! The bounds an enrolment, an assignment and a capability report are declared
 //! with, and the two `custom` rules garde has no built-in for.
 //!
-//! The caps are `register.zig`'s, `protocol_policy.zig`'s and
-//! `protocol_bind.zig`'s, so a runner and either daemon agree on what is legal.
-//! The rules judge content only; each field's length is garde's own `length`,
-//! declared beside the rule.
+//! The caps are declared once here so `agentsfleet-runner` and `agentsfleetd`
+//! agree on what is legal. The rules judge content only; each field's length is
+//! garde's own `length`, declared beside the rule.
 
 use afd_validate::{ascii_digits, charset, nul_free};
 
@@ -65,8 +64,9 @@ const RELATIVE_SEGMENTS: [&str; 2] = [".", ".."];
 
 /// Every daemon-owned or sensitive subtree an operator bind must not overlap.
 ///
-/// The union of `BASELINE_RO_PATHS` and `SENSITIVE_PATHS` in
-/// `protocol_bind_paths.zig`, kept as two lists for the reason each exists.
+/// Kept as two lists with `SENSITIVE_BIND_PATHS` for the reason each exists:
+/// these are host paths an operator bind may not overlap, the other list holds
+/// host and daemon state. [`bind_path`] refuses either overlap with one error.
 const PROTECTED_BIND_PATHS: [&str; 14] = [
     "/etc/ssl/certs",
     "/run/systemd/resolve",
@@ -99,8 +99,8 @@ const SENSITIVE_BIND_PATHS: [&str; 7] = [
 ///
 /// Deliberately NOT a URL: a scheme, a path or a space is refused, because the
 /// value becomes an egress allowlist entry and a permissive parse there is a
-/// hole in the cage. A second colon lands in the port and fails its digits,
-/// as the Zig's `indexOfScalar` split does.
+/// hole in the cage. A second colon lands in the port and fails its digits:
+/// `split_once` cuts at the first colon only.
 ///
 /// # Errors
 /// [`NOT_HOST_PORT`] for an empty host, a host outside `[A-Za-z0-9_.-]`, or a

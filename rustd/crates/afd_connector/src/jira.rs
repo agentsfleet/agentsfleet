@@ -6,9 +6,8 @@
 //! sites the person authorized, and names none of them. Every later API call
 //! goes to `api.atlassian.com/ex/jira/{cloud_id}`, so a grant stored without a
 //! cloud id is a credential with nowhere to spend it — connected in the
-//! dashboard and unusable by the fleet that declared it. `jira/callback.zig`
-//! makes the same call for the same reason, and it is the one provider delta
-//! that costs a round trip.
+//! dashboard and unusable by the fleet that declared it. It is the one provider
+//! delta that costs a round trip.
 //!
 //! # The first site, and why that is the right one rather than a shortcut
 //!
@@ -65,9 +64,9 @@ pub struct Site {
 ///
 /// Takes the host a lane pinned rather than a URL, so a call site cannot hand
 /// this an endpoint of its own: where the listing lives is Atlassian's fact and
-/// belongs here, beside the fields it is parsed for. `jira/callback.zig:87`
-/// draws the same line — the path is the provider file's, the origin is the
-/// deployment's one override.
+/// belongs here, beside the fields it is parsed for. The path is this file's;
+/// the origin is the deployment's one override, applied by
+/// `endpoint::redirected`.
 ///
 /// # Errors
 /// Reports an Atlassian that could not be reached, one that answered and

@@ -60,14 +60,12 @@ fn test_open_routes_carry_no_capability() {
 
 /// HEAD is refused rather than resolved.
 ///
-/// agentsfleetd has never served HEAD: its matchers switch on GET, POST and
-/// DELETE, and httpz keeps a separate `_head` table the daemon registers
-/// nothing into. The Zig scope table would nonetheless have answered a HEAD
-/// with the WRITE rung, because HEAD is unnamed and falls to `else` — dormant
-/// there only because the request never arrives.
+/// agentsfleetd serves no HEAD: every route names its methods, and none names
+/// HEAD. The scope table resolves an unnamed method to the WRITE rung, so a
+/// HEAD that reached a handler would be gated as a write.
 ///
-/// axum's `get()` answers HEAD by default, so that dormant trap would have
-/// become live in the port. The router turns it off; this holds the table's
+/// axum's `get()` answers HEAD by default, so that trap would be live without
+/// the router's refusal. The router turns it off; this holds the table's
 /// half of that decision — HEAD is not a read rung here, it is not a route.
 #[test]
 fn test_head_never_resolves_to_a_cheaper_rung_than_a_write() {

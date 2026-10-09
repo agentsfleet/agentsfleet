@@ -2,7 +2,7 @@
 # DEV — local development
 # =============================================================================
 
-.PHONY: up down seed-models _clean _ensure-local-daemon
+.PHONY: up down seed-models _ensure-local-daemon
 
 LOCAL_UNAME_M := $(shell uname -m)
 ifeq ($(LOCAL_UNAME_M),arm64)
@@ -17,9 +17,8 @@ LOCAL_DIST_PLATFORM := x86_64
 endif
 
 # The binary the image COPYs, under the name the Dockerfile reads. That name is
-# the whole reason this rule exists: the local path used to `zig build` into
-# `dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)` while the Dockerfile — once the
-# image started carrying the Rust daemon — read
+# the whole reason this rule exists: the local build once wrote
+# `dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)` while the Dockerfile read
 # `dist/agentsfleetd-rs-linux-$(TARGETARCH)`. Two names for one slot, so
 # `make up` built one file and the image build looked for another and failed at
 # COPY. It survived locally only while a stale artifact from an earlier
@@ -78,10 +77,9 @@ _ensure-local-daemon:
 	done
 	@echo "✓ [dev] the local daemon is answering at $(LOCAL_DAEMON_URL)"
 
-down:  ## Stop all services, remove volumes, and cleanup
+down:  ## Stop all services and remove their volumes
 	@echo "Stopping all services..."
 	@docker compose down --volumes
-	@$(MAKE) _clean --no-print-directory
 	@echo "Cleanup complete."
 
 # One target for both the first fill and the monthly refresh — an empty catalogue
@@ -93,20 +91,3 @@ down:  ## Stop all services, remove volumes, and cleanup
 # diff against the live catalogue; unset means fresh-install mode.
 seed-models:  ## Seed/refresh core.model_library from the curated allowlist (APPLY=1 to write)
 	@node scripts/seed-models.mjs $(if $(APPLY),--apply,)
-
-# `zig-cache` / `.zig-cache` are Zig's DEFAULTS. Most targets override them via
-# ZIG_LOCAL_CACHE_DIR, but not all did — anything that shelled out without
-# passing the variable through landed back in `.zig-cache` (693 MB in one
-# worktree). Both are removed, and the configured cache too, which grew unbounded
-# (7.4 GB in one worktree, and the local cache is per-worktree by design). Both
-# are still removed: a bare `zig build` typed by hand, with none of the lane
-# environment set, still lands in the default path.
-#
-# The guard matters because ZIG_LOCAL_CACHE_DIR is defined in make/test.mk; an
-# unset or empty value must not turn this into `rm -rf` against the worktree.
-_clean:
-	@rm -rf zig-out zig-cache .zig-cache
-	@if [ -n "$(strip $(ZIG_LOCAL_CACHE_DIR))" ]; then \
-	  rm -rf "$(ZIG_LOCAL_CACHE_DIR)"; \
-	  echo "Removed local Zig cache: $(ZIG_LOCAL_CACHE_DIR)"; \
-	fi

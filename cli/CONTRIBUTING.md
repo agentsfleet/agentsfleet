@@ -95,7 +95,7 @@ Tests in `test/` set `AGENTSFLEET_TELEMETRY_DISABLED=1` in `beforeAll` so they h
 
 ## Cross-runtime constants
 
-Identifiers that cross the Zig/TypeScript boundary (event names, error codes, env var keys, schema versions) live in `src/constants/*.ts` and must be spelled the same as their Zig counterparts. The UFS gate (`audit-const-names.mjs`) enforces this.
+Identifiers that cross the Rust/TypeScript boundary (event names, error codes, env var keys, schema versions) live in `src/constants/*.ts` and must be spelled the same as their Rust counterparts under `rustd/crates/`. Each one names its counterpart in a `Mirrors <NAME> in <path>` comment, as `src/constants/cli-credential.ts` does.
 
 ## Style
 

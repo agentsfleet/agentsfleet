@@ -53,8 +53,8 @@ fn complete() -> MapEnv {
 
 /// Dimension 8.1 — every unset knob is named in ONE failure, not the first.
 ///
-/// This is the dimension's whole point. The Zig boot exits at the first check,
-/// so an operator missing seven knobs restarts seven times to find that out;
+/// This is the dimension's whole point. A boot that exits at the first check
+/// makes an operator missing seven knobs restart seven times to find that out;
 /// the assertion below is that one run reports all of them.
 #[test]
 fn test_preflight_lists_missing() {

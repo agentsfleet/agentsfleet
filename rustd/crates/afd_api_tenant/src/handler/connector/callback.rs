@@ -57,9 +57,8 @@ const PARAM_INSTALLATION_ID: &str = "installation_id";
 
 /// The refusal a callback carrying no state earns.
 ///
-/// `callback.zig`'s `S_MISSING_STATE`. Without one there is nothing to verify
-/// and nothing to identify the round-trip by, so it is refused before any store
-/// is asked.
+/// Without one there is nothing to verify and nothing to identify the
+/// round-trip by, so it is refused before any store is asked.
 const DETAIL_MISSING_STATE: &str = "Missing state";
 
 /// The refusal a completion carrying no authorization code earns.
@@ -70,15 +69,15 @@ const DETAIL_BAD_QUERY: &str = "Bad query string";
 
 /// The refusal a claimed installation id that is not one earns.
 ///
-/// `github/callback.zig`'s sentence. Shape only — digits, bounded — checked
-/// before any store is asked; whether the person REACHES it is the finish's.
+/// Shape only — digits, bounded — checked before any store is asked; whether
+/// the person REACHES it is the finish's.
 const DETAIL_MALFORMED_INSTALLATION: &str = "Malformed installation_id";
 
 /// The refusal a state that did not survive its checks earns.
 ///
-/// `callback.zig`'s `S_STATE_INVALID`. ONE sentence for forged, expired, spent
-/// and foreign, matching the single registry code: a caller able to tell them
-/// apart learns which check they got past, and every one has the same remedy.
+/// ONE sentence for forged, expired, spent and foreign, matching the single
+/// registry code: a caller able to tell them apart learns which check they got
+/// past, and every one has the same remedy.
 const DETAIL_STATE_INVALID: &str = "Invalid or expired connect state";
 
 /// The refusal a caller who does not hold the state's workspace earns.

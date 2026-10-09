@@ -12,11 +12,9 @@
 //! custom endpoint is announced as `custom:<url>`, which classifies as a
 //! compatible provider and honours the override.
 //!
-//! `service_endpoint.zig` needs a fourth outcome to hold that: an allocation
-//! failure building the prefixed name, degrading to the named-provider shape so
-//! the undefined pairing cannot escape. `format!` does not fail, so the branch
-//! and its reasoning are gone — the pairing is unrepresentable here rather than
-//! defended against.
+//! [`Resolved::wire`] builds the prefixed name and the URL in one place, and
+//! `format!` does not fail, so the undefined pairing is unrepresentable rather
+//! than defended against.
 
 use std::borrow::Cow;
 
@@ -51,7 +49,7 @@ impl Resolved {
                 provider: Cow::Borrowed(&self.provider),
                 base_url: None,
                 // A named provider dials a built-in host, so the allowlist has
-                // nothing extra to admit. Empty, exactly as the Zig leaves it.
+                // nothing extra to admit, and the field stays empty.
                 inference_host: "",
             },
             |dialled| Wire {
@@ -121,9 +119,9 @@ mod tests {
 
     #[test]
     fn the_url_and_the_prefixed_name_can_never_disagree() {
-        // One function produces all three, so the pairing the Zig has to defend
-        // with a degradation branch is unrepresentable here. Asserted as the
-        // relationship rather than the literal.
+        // One function produces all three, so a URL paired with an unprefixed
+        // name is unrepresentable. Asserted as the relationship rather than the
+        // literal.
         for url in [
             "https://vllm.corp/v1",
             "https://gw.example.com:8443/openai/v1",

@@ -165,9 +165,9 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
 
 /// The self read answers the row, and does NOT touch liveness.
 ///
-/// `agentsfleet-runner status` must never be able to make a dead host look
-/// alive, which is a property of the statement rather than of a handler
-/// remembering not to ask.
+/// Reading a runner's row through `GET /v1/runners/me` must never be able to
+/// make a dead host look alive, which is a property of the statement rather
+/// than of a handler remembering not to ask.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_the_self_read_never_bumps_liveness() {

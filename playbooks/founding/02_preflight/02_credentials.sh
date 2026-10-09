@@ -217,6 +217,11 @@ check_prod() {
     check_ref "op://$v/grafana-prod/instance-id"
     check_ref "op://$v/grafana-prod/api-key"
     check_ref "op://$v/cloudflare-tunnel-prod/credential"
+    # The release key signs every runner toolbox, and the runner refuses a
+    # toolbox its built-in public key does not verify
+    # (.github/actions/build-toolbox/action.yml).
+    check_ref "op://$v/toolbox-release-key/private-key"
+    check_ref "op://$v/toolbox-release-key/password"
 
     check_distinct \
       "op://$v/planetscale-prod/migrator-connection-string" \
@@ -266,6 +271,11 @@ check_dev() {
     check_ref "op://$v/cloudflare-r2/access-key-id"
     check_ref "op://$v/cloudflare-r2/secret-access-key"
     check_ref "op://$v/cloudflare-r2/bucket"
+    # Dev signs its toolbox with the production release key, read from the
+    # production vault (.github/workflows/deploy-dev-build.yml), because the
+    # runner trusts one built-in key.
+    check_ref "op://$vault_prod/toolbox-release-key/private-key"
+    check_ref "op://$vault_prod/toolbox-release-key/password"
 
     check_distinct \
       "op://$v/planetscale-dev/migrator-connection-string" \

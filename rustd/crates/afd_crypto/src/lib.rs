@@ -40,7 +40,7 @@ pub mod secret;
 /// Bytes in an AES-256 key.
 pub const KEY_LEN: usize = 32;
 
-/// Bytes in the AES-GCM nonce, matching `Aes256Gcm.nonce_length` on the Zig side.
+/// Bytes in the AES-GCM nonce, the 96-bit length AES-256-GCM is specified for.
 pub const NONCE_LEN: usize = 12;
 
 /// Bytes in the AES-GCM authentication tag, matching `Aes256Gcm.tag_length`.

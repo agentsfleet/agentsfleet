@@ -19,8 +19,7 @@ use rig_core::providers::openai::wire::{Dialect, by_name};
 use crate::registry::{Route, Wire};
 use crate::transport::Transport;
 
-/// The completion tokens a Messages turn may spend, the bound the Zig runner
-/// sent; Messages requires one.
+/// The completion tokens a Messages turn may spend; Messages requires one.
 const MAX_TOKENS: u64 = 8192;
 /// The dialect of a chat provider rig has no quirks for.
 static GATEWAY: Dialect = Dialect::gateway("gateway", "", "");

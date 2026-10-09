@@ -8,18 +8,18 @@
 //! property worth pinning, not the number. A per-row lookup is the unbounded
 //! shape this composition exists to avoid.
 //!
-//! What it replaced in the Zig was worse than a count: `projectEntry` opened an
-//! AES-GCM envelope per row, so a hundred-row page cost a hundred decryptions
-//! to render a view whose every field is metadata. The `meta_*` columns were
-//! promoted so it would not have to, and [`Directory`] cannot decrypt at all.
+//! Decrypting is the other shape it avoids: opening an AES-GCM envelope per row
+//! would cost a hundred-row page a hundred decryptions to render a view whose
+//! every field is metadata. The `meta_*` columns carry what the view needs, and
+//! [`Directory`] cannot decrypt at all.
 //!
 //! # One connection at a time, never two
 //!
 //! Each read below acquires and releases before the next begins. They are
 //! independent and could be joined concurrently, which would be faster and
 //! would also let one request hold three pool connections — the shape that
-//! deadlocks a bounded pool under load. Sequential is the deliberate answer,
-//! and it is what the Zig's read budget pins as "1 connection".
+//! deadlocks a bounded pool under load. Sequential is the deliberate answer:
+//! one connection held at a time.
 
 use std::collections::HashMap;
 
@@ -210,8 +210,8 @@ impl Providers {
 /// several model rows and the platform default is usually also one of the
 /// tenant's own, so the pairs repeat; asking for each repeat would send a
 /// longer array to answer the same question. Duplicates are dropped here and
-/// re-attached by lookup, which is what a map buys over the positional slots
-/// `tenant_model_entries_view.zig` matches back by index.
+/// re-attached by lookup, which is what a map buys over positional slots
+/// matched back by index.
 fn wanted_pairs<'a>(
     entries: &'a [Entry],
     credentials: &'a HashMap<Box<str>, Descriptor>,

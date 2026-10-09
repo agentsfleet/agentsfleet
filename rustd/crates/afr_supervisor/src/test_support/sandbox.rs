@@ -8,9 +8,11 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
-use afr_sandbox::{Engine, HostWorkspace, Limits, Sandbox, SandboxRequest};
+use afr_sandbox::{Allowlist, Engine, HostWorkspace, Limits, Network, Sandbox, SandboxRequest};
 use bytes::Bytes;
 use tokio::sync::mpsc;
+
+use crate::egress::Bound;
 
 /// How a fake executor answers a file write.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -39,6 +41,9 @@ pub(crate) enum Freezer {
     ThawsSilent,
     /// Freezes and thaws, but its executor fails every listing after.
     ThawsBroken,
+    /// Freezes, then refuses the addresses its next lease's hosts resolved
+    /// to, as a kernel refusing the swap would.
+    RefusesReallow,
     /// Its processes ended after the run, so it no longer reports running.
     Dead,
 }
@@ -64,9 +69,14 @@ pub(crate) struct FakeEngine {
     pub(crate) workspace: Option<PathBuf>,
     /// Where each prepare reports the limits it was asked to enforce.
     pub(crate) asked: Option<mpsc::UnboundedSender<Limits>>,
+    /// Where each prepare reports the network it was asked to reach.
+    pub(crate) reached: Option<mpsc::UnboundedSender<Bound>>,
     /// How many times its sandboxes were frozen, and thawed.
     pub(crate) frozen: Arc<AtomicUsize>,
     pub(crate) thawed: Arc<AtomicUsize>,
+    /// Where each sandbox reports the allowlist it was told to take, and
+    /// whether it had been thawed by then.
+    pub(crate) reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
     /// What its sandboxes do when frozen and thawed.
     pub(crate) freezer: Freezer,
 }
@@ -76,6 +86,9 @@ impl Engine for FakeEngine {
     async fn prepare(&self, request: SandboxRequest<'_>) -> afr_sandbox::Result<Box<dyn Sandbox>> {
         if let Some(asked) = &self.asked {
             let _ = asked.send(request.limits);
+        }
+        if let Some(reached) = &self.reached {
+            let _ = reached.send(bound(request.network));
         }
         if self.refuse {
             return Err(std::io::Error::other("no landlock").into());
@@ -96,6 +109,7 @@ impl Engine for FakeEngine {
             destroyed: Arc::clone(&self.destroyed),
             frozen: Arc::clone(&self.frozen),
             thawed: Arc::clone(&self.thawed),
+            reallowed: self.reallowed.clone(),
             freezer: self.freezer,
             executor: FakeExecutor {
                 written: self.written.clone(),
@@ -115,6 +129,7 @@ struct FakeSandbox {
     destroyed: Arc<AtomicUsize>,
     frozen: Arc<AtomicUsize>,
     thawed: Arc<AtomicUsize>,
+    reallowed: Option<mpsc::UnboundedSender<(Allowlist, bool)>>,
     freezer: Freezer,
     executor: FakeExecutor,
 }
@@ -153,6 +168,17 @@ impl Sandbox for FakeSandbox {
         Ok(())
     }
 
+    async fn reallow(&mut self, allowlist: &Allowlist) -> afr_sandbox::Result<()> {
+        if self.freezer == Freezer::RefusesReallow {
+            return Err(std::io::Error::other(NO_REFILL).into());
+        }
+        if let Some(reallowed) = &self.reallowed {
+            let thawed = self.executor.thawed.load(Ordering::SeqCst);
+            let _ = reallowed.send((allowlist.clone(), thawed));
+        }
+        Ok(())
+    }
+
     async fn destroy(self: Box<Self>) -> afr_sandbox::Result<()> {
         if !self.teardown_takes.is_zero() {
             tokio::time::sleep(self.teardown_takes).await;
@@ -169,6 +195,8 @@ impl Sandbox for FakeSandbox {
 const READ_ONLY: &str = "read-only workspace";
 /// What a refused freeze or thaw says.
 pub(crate) const NO_FREEZER: &str = "cgroup.freeze refused";
+/// What a refused swap of a held sandbox's addresses says.
+pub(crate) const NO_REFILL: &str = "the egress set refused its new addresses";
 /// What a broken executor says once its sandbox is thawed.
 pub(crate) const EXECUTOR_GONE: &str = "the executor died while frozen";
 
@@ -241,6 +269,16 @@ impl Executor for FakeExecutor {
             entries: Vec::new(),
             truncated: false,
         })
+    }
+}
+
+/// The network a sandbox was asked for, owned, so a test reads it back after
+/// the request is gone.
+fn bound(network: Network<'_>) -> Bound {
+    match network {
+        Network::Host => Bound::Host,
+        Network::Isolated => Bound::Isolated,
+        Network::Allowed(allowlist) => Bound::Allowed(allowlist.clone()),
     }
 }
 

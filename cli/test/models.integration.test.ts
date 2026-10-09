@@ -1,8 +1,8 @@
 // `agentsfleet models` — the CLI peer of the dashboard's model picker.
 //
 // Before this command the CLI had no way to ask what a provider or model id
-// should be: `--provider` was checked against a vendored copy of NullClaw's
-// dial tables and `--model` was checked against nothing, so the flow was
+// should be: `--provider` was checked against a vendored copy of the retired
+// runner's dial tables and `--model` was checked against nothing, so the flow was
 // "type two identifiers blind, find out at run time". These cases pin the
 // discovery surface that replaced it, against the real HTTP layer.
 

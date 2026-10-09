@@ -5,7 +5,7 @@
  * POST /v1/auth/identity-events/clerk handler so each fixture user has a
  * tenant row, default workspace, and starter credit before any spec runs.
  * The wire shape mirrors the integration test at
- * src/http/handlers/auth/identity_events_clerk_integration_test.zig (happy
+ * rustd/crates/afd_api/tests/identity_signup_live.rs (happy
  * path + replay idempotency — replaying the same user.created returns
  * `created:false` with no new rows).
  *

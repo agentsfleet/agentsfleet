@@ -12,8 +12,10 @@
 // without bringing the runtime import along.
 type Posthog = typeof import("posthog-js").default;
 
-// Signup *completion* is captured server-side by agentsfleetd (posthog-zig,
-// SignupBootstrapped) — the funnel is redirect-based, so this origin can
+// Signup *completion* belongs server-side to agentsfleetd
+// (`Telemetry::SignupBootstrapped`,
+// rustd/crates/afd_observability/src/product/telemetry.rs) — the funnel is
+// redirect-based, so this origin can
 // never observe it. No completion or lead-capture events exist here by
 // design; see docs/architecture/product_analytics.md.
 export const EVENT_SIGNUP_STARTED = "signup_started";

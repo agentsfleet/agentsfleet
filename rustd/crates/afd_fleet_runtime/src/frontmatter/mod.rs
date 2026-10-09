@@ -11,10 +11,10 @@
 //!
 //! # Why the fence rules are this fussy
 //!
-//! `config_markdown.zig`'s `findClosingDelim` requires the closing `---` to
-//! START a line and to END one — the match must be preceded by `\n` and
-//! followed by `\n`, `\r`, or the end of input. Both halves are load-bearing
-//! and each has a document that proves it:
+//! `closing_fence` requires the closing `---` to START a line and to END
+//! one — the match must be preceded by `\n` and followed by `\n`, `\r`, or the
+//! end of input. Both halves are load-bearing and each has a document that
+//! proves it:
 //!
 //! - Without the first, `separator: ---bar` inside a YAML value reads as the
 //!   close and the rest of the frontmatter spills into the prose.
@@ -25,9 +25,8 @@
 //! closing fence with TRAILING SPACES (`"---   \n"`) does not close, because
 //! the byte after the fence is a space rather than a line ending. That is
 //! stricter than most frontmatter readers and it is deliberate — a permissive
-//! pre-split would accept documents the Zig daemon refuses, which is a parity
-//! break in the direction nobody notices until a fleet installs on one daemon
-//! and not the other.
+//! pre-split would change which already-authored documents install, and in the
+//! direction nobody notices.
 
 pub mod json;
 pub mod skill;
@@ -39,9 +38,9 @@ pub use self::trigger::{ParsedTrigger, parse_trigger};
 /// The whitespace the frontmatter scan trims.
 ///
 /// Spelled as the four bytes rather than `char::is_whitespace`, which also
-/// strips vertical tab, form feed and the Unicode spaces. Instructions are
-/// compared against bytes the Zig produced, and a wider trim would silently
-/// disagree on a document containing one of them.
+/// strips vertical tab, form feed and the Unicode spaces. A wider trim would
+/// silently change the instructions of a document that begins or ends with one
+/// of them.
 pub(crate) const TRIMMED: [char; 4] = [' ', '\t', '\r', '\n'];
 
 /// The frontmatter fence, opening and closing.
@@ -159,7 +158,7 @@ mod tests {
 
     #[test]
     fn a_closing_fence_with_trailing_spaces_does_not_close() {
-        // `findClosingDelim` admits only `\n`, `\r` or end-of-input after the
+        // `closing_fence` admits only `\n`, `\r` or end-of-input after the
         // fence. Pinned because a permissive pre-split is the obvious
         // "simplification" and it changes which documents install.
         assert!(scan("---\nname: probe\n---   \nProse.\n").is_none());

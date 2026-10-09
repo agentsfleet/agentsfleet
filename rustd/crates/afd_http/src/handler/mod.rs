@@ -121,8 +121,6 @@ pub fn decoded_parameter<'q>(
 }
 
 /// The refusal a path segment naming no shipped connector earns.
-///
-/// `registry.zig`'s `UNKNOWN_PROVIDER_DETAIL_FALLBACK`.
 const DETAIL_UNKNOWN_PROVIDER: &str = "Unknown connector";
 
 /// The provider a path segment names.

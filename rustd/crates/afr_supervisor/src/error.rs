@@ -31,8 +31,8 @@ mod raise;
 #[cfg(test)]
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
-    client, config, encode, git, malformed, refused_with_body, tampered, token_refused, transport,
-    unavailable,
+    client, config, egress, egress_blocked, egress_no_ipv4, egress_unresolved, encode, git,
+    malformed, refused_with_body, tampered, token_refused, transport, unavailable,
 };
 
 /// The daemon refused the runner's token.
@@ -182,6 +182,44 @@ pub(crate) enum ErrorKind {
         #[source]
         source: afd_core::error::Error,
     },
+
+    /// A host the lease's egress allowlist names did not resolve.
+    #[error("egress host {host} could not be resolved")]
+    EgressUnresolved {
+        /// The host, as the allowlist names it.
+        host: String,
+        /// The resolver's reason.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// A host the lease's egress allowlist names resolved to no IPv4 address,
+    /// and only an IPv4 address can be admitted.
+    #[error("egress host {host} resolves to no IPv4 address")]
+    EgressNoIpv4 {
+        /// The host, as the allowlist names it.
+        host: String,
+    },
+
+    /// A host the fleet's `network.allow` names resolved to an address in
+    /// `afd_core::net`'s blocked ranges: loopback, private, shared,
+    /// link-local or reserved. The address stays out of the text, as it does
+    /// out of every egress log.
+    #[error(
+        "egress host {host} resolves to a private or reserved address, which no fleet may reach"
+    )]
+    EgressBlocked {
+        /// The host, as the allowlist names it.
+        host: String,
+    },
+
+    /// The sandbox engine would not take the lease's resolved allowlist.
+    #[error("the lease's egress allowlist was refused")]
+    Egress {
+        /// The engine's reason.
+        #[source]
+        source: afr_sandbox::Error,
+    },
 }
 
 /// The one alias every signature in this crate spells.
@@ -241,6 +279,13 @@ impl Error {
         }
     }
 
+    /// Whether a host the fleet allowed resolved to an address no fleet may
+    /// reach, which the fleet's owner fixes rather than the runner's.
+    #[must_use]
+    pub const fn is_egress_blocked(&self) -> bool {
+        matches!(self.kind(), ErrorKind::EgressBlocked { .. })
+    }
+
     /// Whether the daemon has nothing under the name asked for.
     #[must_use]
     pub const fn is_not_found(&self) -> bool {
@@ -273,6 +318,7 @@ impl Error {
             | ErrorKind::Unavailable { verb, .. }
             | ErrorKind::Refused { verb, .. }
             | ErrorKind::Malformed { verb, .. } => verb.code(),
+            ErrorKind::Egress { source } => source.code(),
             ErrorKind::Io { .. }
             | ErrorKind::Persist { .. }
             | ErrorKind::Config { .. }
@@ -282,7 +328,10 @@ impl Error {
             | ErrorKind::Task { .. }
             | ErrorKind::Git { .. }
             | ErrorKind::LeaseSize { .. }
-            | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::EgressUnresolved { .. }
+            | ErrorKind::EgressNoIpv4 { .. }
+            | ErrorKind::EgressBlocked { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 }

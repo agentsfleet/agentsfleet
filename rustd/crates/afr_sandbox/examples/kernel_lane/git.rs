@@ -99,10 +99,7 @@ fn checked_out(
         let catalog = Catalog::hosted(Arc::new(transport));
         let selection = catalog.select(&[GIT.name(), SHELL.name()])?;
         let engine = lane.engine();
-        let request = SandboxRequest {
-            lease_id,
-            limits: Limits::default(),
-        };
+        let request = SandboxRequest::new(lease_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let outputs = work(root.path(), &selection, sandbox.as_ref(), calls).await;
         sandbox.destroy().await?;

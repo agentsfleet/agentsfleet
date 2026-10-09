@@ -169,10 +169,10 @@ impl Lane {
 
     /// Flips every bit of the first ciphertext byte, so nothing can open the row.
     ///
-    /// The never-decrypt proof's teeth. `secret_list.zig` answers this row as an
-    /// opaque `custom_secret`, because its projection comes from a body it could
-    /// not decrypt. A list that reads the columns is unaffected — so the two
-    /// implementations give observably different answers here, and that
+    /// The never-decrypt proof's teeth. A list that decrypted would answer this
+    /// row as an opaque `custom_secret`, because its projection would come from
+    /// a body it could not open. A list that reads the columns is unaffected —
+    /// so the two designs give observably different answers here, and that
     /// difference is the assertion rather than a comment.
     ///
     /// XOR with 255 rather than overwriting with a fixed byte: a fixed byte is a
@@ -195,8 +195,8 @@ impl Lane {
     ///
     /// The ciphertext columns are borrowed from a row this suite sealed, so the
     /// envelope is real; the projection is supplied verbatim, which is what lets
-    /// a test say "these exact `meta_*` values list like this" without a Zig
-    /// process in the loop. `None` for `kind` seeds a row from before the
+    /// a test say "these exact `meta_*` values list like this" without a second
+    /// writer in the loop. `None` for `kind` seeds a row from before the
     /// projection columns existed.
     pub(crate) async fn seed_projected_row(
         &self,
