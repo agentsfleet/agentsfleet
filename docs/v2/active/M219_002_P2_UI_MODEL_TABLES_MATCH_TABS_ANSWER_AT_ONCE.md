@@ -125,13 +125,13 @@ The app runs on `http://localhost:3000` from `AGENTSFLEET_UI_ENV_FILE`; the brow
 
 - **Dimension 4.1** — Indy accepts the four screens on the running app → Test `indy_eyeballs_the_changed_screens` (manual)
 
-### §5 — Shared-memory access reads as two named switches
+### §5 — Shared-memory access reads as two named switches — DONE
 
-The Memory tab's two grants become a "Shared memory" group of two rows, each a label, a one-line description and a `Switch` on the right. **Use shared memory** — "See what other fleets in this workspace have shared." — is the read grant. **Share this fleet's memory** — "Let this fleet share what it learns with other fleets in this workspace." — is the publish grant. `Switch` is a new design-system primitive over `@radix-ui/react-switch`, as `RadioGroup` wraps Radix. A flip calls `setMemoryAccessAction` as today; a refusal leaves the switch where it was and shows the warning. **Implementation default:** the names Indy picked from three proposals.
+The Memory tab's two grants become a "Shared memory" fieldset of two `DashboardRow`s, each a label, a one-line description and a `Switch` on the right. **Use shared memory** — "See what other fleets in this workspace have shared." — is the read grant. **Share this fleet's memory** — "Let this fleet share what it learns with other fleets in this workspace." — is the publish grant. `Switch` is a new design-system primitive over `@radix-ui/react-switch`, as `RadioGroup` wraps Radix. A flip calls `setMemoryAccessAction` as today; a refusal leaves the switch where it was and shows the warning. **Implementation default:** the names Indy picked from three proposals.
 
-- **Dimension 5.1** — The switch states its value and flips → Test `a switch announces its state and flips on click` (`ui/packages/design-system/src/design-system/Switch.test.tsx`)
-- **Dimension 5.2** — Each grant is a named switch with what it does → Test `each shared-memory grant is a named switch with what it does` (`MemoryPanel.test.tsx`)
-- **Dimension 5.3** — A refused flip leaves the switch unchanged and says why → Test `a refused shared-memory change leaves the switch where it was` (`MemoryPanel.test.tsx`)
+- **Dimension 5.1** — The switch states its value and flips → Test `a switch announces its state and flips on click` (`ui/packages/design-system/src/design-system/Switch.test.tsx`) — DONE
+- **Dimension 5.2** — Each grant is a named switch with what it does → Test `each shared-memory grant is a named switch with what it does` (`MemoryPanel.test.tsx`) — DONE
+- **Dimension 5.3** — A refused flip leaves the switch unchanged and says why → Test `a refused shared-memory change leaves the switch where it was` (`MemoryPanel.test.tsx`) — DONE
 
 ### §6 — Packages run their latest releases — DONE
 

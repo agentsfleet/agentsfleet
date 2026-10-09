@@ -1,15 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Alert,
   Badge,
   Button,
   Card,
   ConfirmDialog,
+  DashboardRow,
+  DashboardRowGroup,
   EmptyState,
+  Label,
+  EYEBROW_CLASS,
   List,
   ListItem,
+  Switch,
+  cn,
   Time,
 } from "@agentsfleet/design-system";
 import { BrainIcon } from "lucide-react";
@@ -35,13 +41,14 @@ import {
 // leaves its list unchanged rather than treating it as a hard failure (§5).
 const NOT_FOUND = 404;
 
-export const MEMORY_ACCESS_READ_LABEL = "Read shared memory";
-export const MEMORY_ACCESS_PUBLISH_LABEL = "Publish to shared memory";
+export const MEMORY_SHARED_TITLE = "Shared memory";
+export const MEMORY_ACCESS_READ_LABEL = "Use shared memory";
+export const MEMORY_ACCESS_READ_DESCRIPTION = "See what other fleets in this workspace have shared.";
+export const MEMORY_ACCESS_PUBLISH_LABEL = "Share this fleet's memory";
+export const MEMORY_ACCESS_PUBLISH_DESCRIPTION = "Let this fleet share what it learns with other fleets in this workspace.";
 export const MEMORY_SHARED_LABEL = "shared";
 export const MEMORY_SHARED_BY_OTHER = "from another fleet";
 const MEMORY_ACCESS_ACTION = "change shared memory access";
-const MEMORY_ACCESS_ON = "On";
-const MEMORY_ACCESS_OFF = "Off";
 const VISIBILITY_WORKSPACE = "workspace";
 
 // Whether `fleetId` wrote `entry`. An older daemon names no writer, and every
@@ -100,7 +107,7 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
     <Card className="flex flex-col gap-md bg-card p-4" aria-label={MEMORY_PANEL_TITLE}>
       <span className="font-sans text-sm font-medium text-foreground">{MEMORY_PANEL_TITLE}</span>
       {access !== null && canGrant ? (
-        <AccessToggles workspaceId={workspaceId} fleetId={fleetId} initial={access} />
+        <AccessSwitches workspaceId={workspaceId} fleetId={fleetId} initial={access} />
       ) : null}
       {initial === null ? <Alert variant="warning">{MEMORY_FETCH_UNAVAILABLE}</Alert> : null}
       {notice ? <Alert variant="warning">{notice}</Alert> : null}
@@ -128,9 +135,9 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
   );
 }
 
-// The two grants as toggle buttons. Each press sends only the grant it flips,
-// and the panel shows the route's answer rather than its own guess.
-function AccessToggles({ workspaceId, fleetId, initial }: { workspaceId: string; fleetId: string; initial: MemoryAccess }) {
+// The two grants as named switches. Each flip sends only the grant it changes,
+// and the switch shows the route's answer rather than its own guess.
+function AccessSwitches({ workspaceId, fleetId, initial }: { workspaceId: string; fleetId: string; initial: MemoryAccess }) {
   const [access, setAccess] = useState<MemoryAccess>(initial);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -147,31 +154,49 @@ function AccessToggles({ workspaceId, fleetId, initial }: { workspaceId: string;
     setNotice(presentErrorString({ errorCode: result.errorCode, message: result.error, action: MEMORY_ACCESS_ACTION }));
   }
 
-  const toggles: { grant: keyof MemoryAccess; label: string }[] = [
-    { grant: "read", label: MEMORY_ACCESS_READ_LABEL },
-    { grant: "publish", label: MEMORY_ACCESS_PUBLISH_LABEL },
-  ];
   return (
     <div className="flex flex-col gap-xs">
-      <div className="flex flex-wrap items-center gap-md">
-        {toggles.map(({ grant, label }) => (
-          <Button
-            key={grant}
-            type="button"
-            size="sm"
-            variant="ghost"
-            aria-label={label}
-            aria-pressed={access[grant]}
-            disabled={saving}
-            onClick={() => void flip(grant)}
-          >
-            {label}
-            <Badge variant={access[grant] ? "cyan" : "default"}>{access[grant] ? MEMORY_ACCESS_ON : MEMORY_ACCESS_OFF}</Badge>
-          </Button>
-        ))}
-      </div>
+      <fieldset>
+        <legend className={cn("mb-xs text-muted-foreground", EYEBROW_CLASS)}>{MEMORY_SHARED_TITLE}</legend>
+        <DashboardRowGroup>
+          {ACCESS_GRANTS.map(({ grant, label, description }) => (
+            <AccessRow
+              key={grant}
+              label={label}
+              description={description}
+              checked={access[grant]}
+              disabled={saving}
+              onFlip={() => void flip(grant)}
+            />
+          ))}
+        </DashboardRowGroup>
+      </fieldset>
       {notice ? <Alert variant="warning">{notice}</Alert> : null}
     </div>
+  );
+}
+
+const ACCESS_GRANTS: { grant: keyof MemoryAccess; label: string; description: string }[] = [
+  { grant: "read", label: MEMORY_ACCESS_READ_LABEL, description: MEMORY_ACCESS_READ_DESCRIPTION },
+  { grant: "publish", label: MEMORY_ACCESS_PUBLISH_LABEL, description: MEMORY_ACCESS_PUBLISH_DESCRIPTION },
+];
+
+type AccessRowProps = { label: string; description: string; checked: boolean; disabled: boolean; onFlip: () => void };
+
+// One grant: its name labels the switch and its line describes it.
+function AccessRow({ label, description, checked, disabled, onFlip }: AccessRowProps) {
+  const switchId = useId();
+  const descriptionId = useId();
+  return (
+    <DashboardRow
+      titleAs="div"
+      className="items-center"
+      title={<Label htmlFor={switchId}>{label}</Label>}
+      description={<span id={descriptionId}>{description}</span>}
+      action={
+        <Switch id={switchId} checked={checked} disabled={disabled} onCheckedChange={onFlip} aria-describedby={descriptionId} />
+      }
+    />
   );
 }
 
