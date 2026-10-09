@@ -64,6 +64,11 @@ fn rules(binding: &RepositoryBinding, branch: Option<&str>) -> Vec<HttpRequestRu
                     boolean_value: field.boolean_value,
                 })
                 .collect(),
+            permitted_fields: rule
+                .permitted_fields
+                .iter()
+                .map(|field| field.to_string().into())
+                .collect(),
         })
         .collect()
 }
@@ -152,16 +157,21 @@ fn a_pull_request_may_only_open_from_the_branch_into_the_base_as_a_draft() {
 
 #[test]
 fn object_endpoints_are_open_because_an_unreferenced_object_changes_nothing() {
-    // Blobs, trees and commits are invisible until a ref points at them, so
-    // locking their fields would bound nothing. What this pins is that the
-    // open set is exactly those three — a fourth open POST would be a
+    // Blobs and trees are invisible until a commit and a ref point at them, so
+    // naming their fields would bound nothing. A commit is not on this list:
+    // its content is open, its identity is not (the next test). What this pins
+    // is that the open set is exactly two — a third open POST would be a
     // boundary nobody decided.
     let write = binding(&["acme/payments"], "write", Some("main"));
     let rules = rules(&write, Some(BRANCH));
 
     let open: Vec<_> = rules
         .iter()
-        .filter(|rule| rule.method == HttpMethod::Post && rule.json_fields.is_empty())
+        .filter(|rule| {
+            rule.method == HttpMethod::Post
+                && rule.json_fields.is_empty()
+                && rule.permitted_fields.is_empty()
+        })
         .map(|rule| rule.path.to_string())
         .collect();
     assert_eq!(
@@ -169,7 +179,43 @@ fn object_endpoints_are_open_because_an_unreferenced_object_changes_nothing() {
         vec![
             "/repos/acme/payments/git/blobs",
             "/repos/acme/payments/git/trees",
-            "/repos/acme/payments/git/commits",
+        ]
+    );
+}
+
+#[test]
+fn a_rule_that_names_a_field_lists_every_field_a_run_may_send() {
+    // The runner's matcher (`afr_egress::origin`) admits no top-level key a
+    // naming rule leaves out, so these lists ARE what a run can send. A commit
+    // carries no `author` or `committer`: the ref publishes whoever the commit
+    // names. A pull carries no `issue`, which would turn an existing issue
+    // into the Pull Request, and no `head_repo`, which would open it from
+    // another repository's branch.
+    let write = binding(&["acme/payments"], "write", Some("main"));
+    let rules = rules(&write, Some(BRANCH));
+
+    let permitted: Vec<(&str, Vec<&str>)> = rules
+        .iter()
+        .filter(|rule| !rule.json_fields.is_empty() || !rule.permitted_fields.is_empty())
+        .map(|rule| {
+            (
+                rule.path.as_ref(),
+                rule.permitted_fields.iter().map(|f| f.as_ref()).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        permitted,
+        vec![
+            (
+                "/repos/acme/payments/git/commits",
+                vec!["message", "tree", "parents"]
+            ),
+            ("/repos/acme/payments/git/refs", vec!["sha"]),
+            (
+                "/repos/acme/payments/pulls",
+                vec!["title", "body", "maintainer_can_modify"]
+            ),
         ]
     );
 }

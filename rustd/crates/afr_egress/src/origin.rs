@@ -2,6 +2,9 @@
 //!
 //! A host with rules is reached only by a request one rule admits: the
 //! method, the path exactly or by prefix, and every JSON field the rule locks.
+//! A rule that names fields, locked or permitted, also admits no other
+//! top-level key and no query string, so an unnamed parameter cannot widen
+//! what its locked fields bound.
 //! The rules are never re-derived here (`afd_gate::policy::egress` compiles
 //! them), so the runner and the daemon cannot disagree about what a rule
 //! means, only about whether a request matches it, which this module decides.
@@ -46,10 +49,25 @@ pub(crate) fn admits(
     }
     let path = url.path();
     let fields = body.and_then(|body| serde_json::from_str::<Fields>(body).ok());
+    let sent = Sent {
+        query: url.query().is_some(),
+        body: body.is_some(),
+        fields: fields.as_ref(),
+    };
     origin
         .requests
         .iter()
-        .any(|rule| rule_admits(rule, method, path, fields.as_ref()))
+        .any(|rule| rule_admits(rule, method, path, &sent))
+}
+
+/// What a request carries beyond its method and path.
+struct Sent<'f> {
+    /// Whether the URL has a query string, empty or not.
+    query: bool,
+    /// Whether a body was sent at all.
+    body: bool,
+    /// The body's top-level fields, when it is an object written once.
+    fields: Option<&'f Fields>,
 }
 
 /// Whether `url` is on port 443 and its path holds no escape or dot segment.
@@ -66,18 +84,41 @@ fn trusted_path(url: &Url) -> bool {
             .any(|segment| DOT_SEGMENTS.contains(&segment))
 }
 
-fn rule_admits(
-    rule: &HttpRequestRule<'_>,
-    method: &Method,
-    path: &str,
-    fields: Option<&Fields>,
-) -> bool {
+fn rule_admits(rule: &HttpRequestRule<'_>, method: &Method, path: &str, sent: &Sent<'_>) -> bool {
     *method == method_of(rule.method)
         && path_admits(rule.path_match, &rule.path, path)
-        && rule
-            .json_fields
+        && rule.json_fields.iter().all(|locked| {
+            sent.fields
+                .is_some_and(|fields| field_admits(locked, fields))
+        })
+        && (!names_fields(rule) || sends_only_named(rule, sent))
+}
+
+/// Whether `rule` names any field, which closes it to every other.
+fn names_fields(rule: &HttpRequestRule<'_>) -> bool {
+    !rule.json_fields.is_empty() || !rule.permitted_fields.is_empty()
+}
+
+/// Whether `sent` carries no query and no top-level key `rule` does not name.
+///
+/// A body that is not an object written once has keys nobody can list, so it
+/// is refused here; no body at all carries none.
+fn sends_only_named(rule: &HttpRequestRule<'_>, sent: &Sent<'_>) -> bool {
+    let keys_named = match (sent.body, sent.fields) {
+        (false, _) => true,
+        (true, Some(fields)) => fields.0.keys().all(|key| named(rule, key)),
+        (true, None) => false,
+    };
+    !sent.query && keys_named
+}
+
+/// Whether `key` is one of the fields `rule` locks or permits.
+fn named(rule: &HttpRequestRule<'_>, key: &str) -> bool {
+    rule.json_fields.iter().any(|locked| locked.name == key)
+        || rule
+            .permitted_fields
             .iter()
-            .all(|locked| fields.is_some_and(|fields| field_admits(locked, fields)))
+            .any(|permitted| permitted == key)
 }
 
 const fn method_of(method: HttpMethod) -> Method {

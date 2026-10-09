@@ -9,7 +9,8 @@
 use std::borrow::Cow;
 
 use afd_wire::policy::repository::{
-    self, FIELD_BASE, FIELD_DRAFT, FIELD_HEAD, FIELD_REF, PULLS_PATH, REFS_HEADS, REFS_PATH,
+    self, FIELD_BASE, FIELD_BODY, FIELD_DRAFT, FIELD_HEAD, FIELD_MAINTAINER_CAN_MODIFY, FIELD_REF,
+    FIELD_SHA, FIELD_TITLE, PULLS_PATH, REFS_HEADS, REFS_PATH,
 };
 use afd_wire::policy::{
     ContextBudget, ExecutionPolicy, HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch,
@@ -96,7 +97,7 @@ pub fn policy(read_only: bool) -> ExecutionPolicy<'static> {
 /// create the one named ref, open one draft against the base.
 fn github_rules() -> Vec<HttpRequestRule<'static>> {
     vec![
-        rule(HttpMethod::Get, "/", HttpPathMatch::Prefix, Vec::new()),
+        rule(HttpMethod::Get, "/", HttpPathMatch::Prefix, Vec::new(), &[]),
         rule(
             HttpMethod::Post,
             REFS_PATH,
@@ -106,6 +107,7 @@ fn github_rules() -> Vec<HttpRequestRule<'static>> {
                 Some(format!("{REFS_HEADS}{BRANCH}")),
                 None,
             )],
+            &[FIELD_SHA],
         ),
         rule(
             HttpMethod::Post,
@@ -116,6 +118,7 @@ fn github_rules() -> Vec<HttpRequestRule<'static>> {
                 locked(FIELD_BASE, Some(BASE.to_owned()), None),
                 locked(FIELD_DRAFT, None, Some(true)),
             ],
+            &[FIELD_TITLE, FIELD_BODY, FIELD_MAINTAINER_CAN_MODIFY],
         ),
     ]
 }
@@ -125,12 +128,14 @@ fn rule(
     suffix: &str,
     path_match: HttpPathMatch,
     json_fields: Vec<HttpJsonFieldRule<'static>>,
+    permitted: &[&'static str],
 ) -> HttpRequestRule<'static> {
     HttpRequestRule {
         method,
         path: repository::path(REPOSITORY, suffix).into(),
         path_match,
         json_fields,
+        permitted_fields: permitted.iter().map(|&name| name.into()).collect(),
     }
 }
 
