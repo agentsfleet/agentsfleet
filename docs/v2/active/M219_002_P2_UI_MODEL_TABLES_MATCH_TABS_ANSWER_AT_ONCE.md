@@ -35,7 +35,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Goal (testable):** A model row reads the same in the admin Model library and the workspace Models table, by a human name with its provider id on hover; a clicked fleet tab is marked pending before the server answers; invite actions sit right-aligned like every other table's, and a secret's row icons line up whatever its name's length.
 **Problem:** The Model column shows raw provider ids (`claude-fable-5`). The workspace Models table prints context as `1049k tokens` and rates as `$0.15 in · $0.03 cached · $0.50 out` while the library prints `1,048,576` and `0.15 / 0.03 / 0.50`. Fleet tabs are `?view=` queries on one server-rendered page, so a click shows nothing until the fleet and the view's data come back. The Members invite row puts "Email sent" text and a bordered icon inside the actions cell.
-**Solution summary:** One display module formats a model's name, context and rates for both tables. Each fleet tab link shows its own pending state, and the view's panel streams behind a skeleton while the header and tabs render. Invite email status moves to the Time column and the actions become a plain icon row.
+**Solution summary:** One display module formats a model's name, context and rates for both tables. Each fleet tab link shows its own pending state while the view loads. Invite email status moves to the Time column and the actions become a plain icon row.
 
 ## PR Intent & comprehension handshake
 
@@ -61,8 +61,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/{models-registry-table.test.tsx,models-registry-edit-remove.test.tsx,admin-models-ui.test.ts,admin-models-management.test.ts}` | EDIT | §1: rows found by the id's hover; formats follow the shared module |
 | `ui/packages/app/tests/timestamp-standard.test.ts` | EDIT | §1: the model library no longer calls a locale formatter, so its exemption goes |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | §2: the view renders behind a boundary keyed by the view |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation.tsx,FleetTabLink.tsx,FleetTabLink.test.tsx,FleetViewSkeleton.tsx,FleetViewSkeleton.test.tsx}` | EDIT, CREATE | §2: a pending tab and the panel's skeleton |
-| `ui/packages/app/tests/{helpers/dashboard-mocks.tsx,fleets-routes/harness.ts,fleets-routes/detail-header.test.ts,fleets-routes/detail-lifecycle.test.ts,fleets-routes/detail-viewer.test.ts,fleets-routes/detail-views.test.ts}` | EDIT | §2: the link mock answers `useLinkStatus`; route tests render the settled stream and prove the panel streams behind its skeleton |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation.tsx,FleetTabLink.tsx,FleetTabLink.test.tsx}` | EDIT, CREATE | §2: a pending tab |
+| `ui/packages/app/tests/{helpers/dashboard-mocks.tsx,fleets-routes/detail-views.test.ts}` | EDIT | §2: the link mock answers `useLinkStatus`; the route test proves the panel paints with its tabs |
 | `ui/packages/app/app/(dashboard)/settings/members/components/{TeamTable.tsx,MembersView.test.tsx}`, `ui/packages/app/tests/{helpers/members-fixtures.tsx,e2e/acceptance/team-members.spec.ts}` | EDIT | §3: email status in the Time column as "Invite emailed"; plain icon actions |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/{secret-row-cells.tsx,SecretsList.test.tsx}` | EDIT | §3: the name sits in a fixed slot that ellipsizes, its icons after it |
 | `docs/v2/active/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md` | CREATE | This spec |
@@ -98,13 +98,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.2** — Both tables print one row's context and rates identically → Test `formats context and rates the way the model library prints them` — DONE (`ui/packages/app/lib/models/display.test.ts`)
 - **Dimension 1.3** — The exact id stays on the row → Test `the model cell shows the name and keeps the id on hover` — DONE (`ui/packages/app/tests/admin-models-ui.test.ts`)
 
-### §2 — A clicked fleet tab answers at once
+### §2 — A clicked fleet tab answers at once — DONE
 
-The tab the user clicked shows its pending state through `useLinkStatus` while its navigation is in flight. `page.tsx` renders the view inside a `Suspense` boundary keyed by the view, so the header and tabs paint as soon as the fleet reads back and the panel shows a skeleton until its own data arrives. **Implementation default:** keep the views as `?view=` queries; separate routes would change every link and test for no gain the boundary does not give.
+The tab the user clicked shows its pending state through `useLinkStatus` while its navigation is in flight, and the view replaces the last one in a single paint. A panel skeleton was built and measured: React keeps a shown fallback up for at least 300 ms (`FALLBACK_THROTTLE_MS`, `react-dom` 19.3.0), which made Chat land 210 ms after its own reads, so the panel renders with its tabs. **Implementation default:** keep the views as `?view=` queries; the pulse answers the click and routes would change every link and test.
 
 - **Dimension 2.1** — A clicked tab is marked pending before the server answers → Test `a clicked fleet tab reads as loading while its view is on the way` — DONE (`FleetTabLink.test.tsx`)
-- **Dimension 2.2** — The panel's skeleton matches each view's frame → Test `every fleet view has a skeleton` — DONE (`FleetViewSkeleton.test.tsx`)
-- **Dimension 2.3** — Click to first paint, measured on the running app before and after → Test `fleet_tab_paints_before_its_data` (manual)
+- **Dimension 2.2** — A view paints in the same pass as its tabs, with no skeleton between → Test `renders fleet-local navigation with Chat as the focused default` — DONE (`tests/fleets-routes/detail-views.test.ts`)
+- **Dimension 2.3** — Click to first paint, measured on the running app before and after → Test `fleet_tab_paints_before_its_data` (manual) — DONE (Discovery: first change 375–674 ms → 5–11 ms)
 
 ### §3 — Row icons line up — DONE
 
@@ -137,7 +137,7 @@ No API, route or wire change.
 |------|-------|--------------------------------------------------------|
 | Unrecognised id shape | A provider id the name rules do not cover | `modelLabel` returns the id's last path segment unchanged; the hover still shows the full id |
 | Missing context or rates | A row with no catalogue match | The cell prints the existing empty marker, as today |
-| Slow view data | The view's API read is slow or fails | The header and tabs stay; the skeleton holds until the panel resolves or its error boundary renders |
+| Slow view data | The view's API read is slow or fails | The clicked tab pulses and the last view stays until the new one resolves or its error boundary renders |
 
 ## Invariants
 
@@ -148,7 +148,7 @@ No API, route or wire change.
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| No product or operator signal changes | not applicable | never | none | Existing tab and table events keep their names | `every fleet view has a skeleton` |
+| No product or operator signal changes | not applicable | never | none | Existing tab and table events keep their names | `renders fleet-local navigation with Chat as the focused default` |
 
 ## Test Specification (tiered)
 
@@ -158,7 +158,7 @@ No API, route or wire change.
 | 1.2 | unit | `formats context and rates the way the model library prints them` | `1048576` → `1,048,576`; rates in nanos → `0.15 / 0.03 / 0.50` |
 | 1.3 | unit | `the model cell shows the name and keeps the id on hover` | Row `claude-fable-5` → text `Fable 5`, hover title `claude-fable-5` |
 | 2.1 | unit | `a clicked fleet tab reads as loading while its view is on the way` | Link status pending → the tab carries the pending marker |
-| 2.2 | unit | `every fleet view has a skeleton` | Each of the five views → a skeleton with its frame |
+| 2.2 | unit | `renders fleet-local navigation with Chat as the focused default` | Default view → the tabs and the `Fleet summary` panel in one synchronous render |
 | 2.3 | manual | `fleet_tab_paints_before_its_data` | Click to first paint on `localhost:3000`, before and after, recorded in the PR Session Notes |
 | 3.1 | unit | `an invite row's actions are icons only, right-aligned` | Invite row → no status text in the actions cell; resend, copy, revoke as icons |
 | 3.2 | unit | `the time column says whether the invite email went` | Sent → `Invite emailed`; failed → `Email not sent` |
@@ -212,6 +212,7 @@ No API, route or wire change.
 
 - **Consults** — Indy, Oct 09, 2026, from four screenshots: the Model column should read `Fable 5` with `claude-fable-5` on hover; Events and Memory tabs take a while to load; the Models columns must match the Model library; Members icons should align like Secrets, and "Email sent" reads awkwardly. He asked to eyeball the result on `http://localhost:3000` run with `AGENTSFLEET_UI_ENV_FILE`. Then: "is it possible to align the copy clipboard icon, edit pencil" on Secrets, and how a long name should truncate.
 - **Tab reads** — Indy, Oct 09, 2026, after clicking through §2: "it seems performant now", then asked whether a tab loads only what it needs. Each tab starts only its own reads (`view-data.ts`), but every click re-reads the fleet and tenant billing, because the header renders in `page.tsx`. A `fleets/[id]/layout.tsx` holding the header would drop the billing read from every click and the fleet read from Events, at the cost of a header status that refreshes only on reload. Indy chose "Measure first": Dimension 2.3's timing decides whether the header moves.
+- **Tab timing** — Oct 09, 2026, `next dev` on `localhost:3000`, median of 5 clicks, ms. Before §2 every tab showed nothing until done: Events 390, Memory 375, Skill 385, Trigger 674, Chat 473. With the pulse and a skeleton: the tab answered in 5–11; done Events 368, Memory 374, Skill 385, Trigger 656, Chat 683. Every view lands no sooner than the fleet read (~370), which four of five tabs need, so the header stays in `page.tsx`. Indy chose "Pulse only": the skeleton goes, and Chat returns to its own read time.
 - **Metrics review** — No product event changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
