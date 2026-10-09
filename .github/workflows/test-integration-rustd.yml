@@ -153,12 +153,20 @@ jobs:
       # forward chain that drops by policy (Docker's `FORWARD` chain does, and
       # the runner's probe refuses such a host). Ubuntu's AppArmor denies
       # capabilities inside an unprivileged user namespace, and bubblewrap
-      # starts as the sandbox's own user.
+      # starts as the sandbox's own user. The toolbox is an EROFS image, and
+      # the probe reads /proc/filesystems, which lists erofs only once its
+      # module is loaded; the hosted kernel may ship it in modules-extra.
       - name: Prepare the host as a runner host
         run: |
           sudo sysctl -w net.ipv4.ip_forward=1
           sudo iptables -P FORWARD ACCEPT
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo modprobe erofs || {
+            sudo apt-get update -q
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe erofs
+          }
+          grep -qw erofs /proc/filesystems
       - name: Measure the kernel lane
         run: make test-coverage-runner-kernel
       - name: Keep the kernel lane's report for the merge
