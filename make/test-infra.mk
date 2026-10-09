@@ -122,27 +122,24 @@ export TEST_DATABASE_URL TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFL
 TEST_MAILPIT_SMTP_PORT ?= $(AGENTSFLEET_MAILPIT_SMTP_PORT)
 TEST_MAILPIT_URL ?= http://127.0.0.1:$(AGENTSFLEET_MAILPIT_UI_PORT)
 export TEST_MAILPIT_SMTP_PORT TEST_MAILPIT_URL
-# QStash local dev server (docker-compose `qstash` service). The emulator ships a
-# hardcoded local identity and rejects anything else (a different user 404s, a
-# different password 401s), so this is a fixture we reproduce, not a credential we
-# choose — and nothing it authenticates to holds real data. Derived here from its
-# two plain parts so no credential-shaped blob is stored in the repo.
-# The opt-in live QStash tests read these vars; unset (or server down) → self-skip.
-# The API BASE, `/v2` included. `QStash::upsert` composes
+# QStash (Upstash's message queue) local dev server, the docker-compose `qstash`
+# service. The opt-in live-scheduler tests read these two names directly, so they
+# are exported here beside the datastore URLs; unset, or the server down, and
+# those tests skip themselves.
+#
+# The emulator ships a hardcoded local identity and rejects anything else (a
+# different user 404s, a different password 401s), so the token is a fixture we
+# reproduce, not a credential we choose, and nothing it authenticates to holds
+# real data. It is derived from its two plain parts so no credential-shaped blob
+# is stored in the repo.
+#
+# The URL is the API base, `/v2` included. `QStash::upsert` composes
 # `{api_base}/schedules/{destination}`, matching the vendor's own
 # `https://qstash.upstash.io/v2`, so a base without the version segment 404s
-# every push — and a 404 is a refusal, so the row lands `Failed` with "not yet
-# registered" and reads exactly like a scheduler outage.
-#
-# `127.0.0.1` rather than `localhost` for the reason the datastore URLs above
-# give: measured here at 13 ms against 140 ms for the name.
-
-# The names the live-scheduler tests read. Exported here beside the datastore
-# URLs for their reason: the suites read these names directly rather than a lane
-# resolving them into a fourth spelling. `make/test-integration.mk` exported the
-# same two before M175 §6 deleted it, and nothing re-exported them afterwards
-# -- which is why the Rust port's schedule sync had "no QStash
-# fake" recorded against it while the compose service was up the whole time.
+# every push, and a 404 is a refusal: the row lands `Failed` with "not yet
+# registered" and reads exactly like a scheduler outage. `127.0.0.1` rather than
+# `localhost` for the reason the datastore URLs above give: measured here at
+# 13 ms against 140 ms for the name.
 AGENTSFLEET_QSTASH_LIVE_URL ?= http://127.0.0.1:$(AGENTSFLEET_QSTASH_HOST_PORT)/v2
 AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(shell printf '{"UserID":"%s","Password":"%s"}' defaultUser defaultPassword | base64 | tr -d '\n')
 export AGENTSFLEET_QSTASH_LIVE_URL AGENTSFLEET_QSTASH_LIVE_TOKEN

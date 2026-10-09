@@ -60,16 +60,18 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@# is to be exercised by tests would be the one module lint never sees.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
 	  cargo clippy --workspace --all-targets --all-features -- -D warnings
-	@# The configuration that ships: both binaries, no features, the `dist`
-	@# profile the deploy and release workflows build. Every other lane turns
-	@# `openapi` and `test-util` on, so an import that exists only for an
+	@# The configuration that ships: each binary, no features. Every other lane
+	@# turns `openapi` and `test-util` on, so an import that exists only for an
 	@# annotation broke the production build once without any lane noticing.
-	@# Every other lane also keeps `debug_assertions` on, so a name used only
-	@# under `cfg(debug_assertions)` reads as used — until the release build
-	@# on Linux finds it unused (agentsfleet_runner's host.rs, once). On macOS
-	@# this proves the release cfg; the Linux cfg is proved by CI's lint job.
-	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --profile dist, both binaries (no features)" -- \
-	  cargo check --profile dist -p agentsfleetd --bin agentsfleetd -p agentsfleet_runner --bin agentsfleet-runner
+	@# One invocation per binary, as the deploy builds them: a single invocation
+	@# unifies features across both dependency graphs and hides a feature only
+	@# the other binary turns on. The release cfg on Linux, where a name used only
+	@# under `cfg(debug_assertions)` turns unused, is proved by CI's
+	@# `build-daemon-musl` job, which builds both with the `dist` profile.
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
+	  cargo check -p agentsfleetd --bin agentsfleetd
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleet-runner (no features)" -- \
+	  cargo check -p agentsfleet_runner --bin agentsfleet-runner
 
 SHELLCHECK ?= shellcheck
 

@@ -62,7 +62,7 @@
 # the lane applies the schema the way a deployment does — including the ledger,
 # the advisory lock, and the refusal to run against a version this binary does
 # not know. A second path to the same schema is a second thing to drift.
-_migrate-test-db:
+_migrate-test-db: _ensure-test-infra
 	@echo "→ [infra] Applying migrations once, for the whole lane..."; \
 	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
 	  cargo run --quiet --bin agentsfleetd -- migrate \
