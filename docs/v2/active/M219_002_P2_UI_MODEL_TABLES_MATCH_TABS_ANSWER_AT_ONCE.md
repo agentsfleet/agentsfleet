@@ -61,7 +61,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/{models-registry-table.test.tsx,models-registry-edit-remove.test.tsx,admin-models-ui.test.ts,admin-models-management.test.ts}` | EDIT | §1: rows found by the id's hover; formats follow the shared module |
 | `ui/packages/app/tests/timestamp-standard.test.ts` | EDIT | §1: the model library no longer calls a locale formatter, so its exemption goes |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | §2: the view renders behind a boundary keyed by the view |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation.tsx,FleetSubnavigation.test.tsx,FleetViewSkeleton.tsx}` | EDIT, CREATE | §2: a pending tab and the panel's skeleton |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation.tsx,FleetTabLink.tsx,FleetTabLink.test.tsx,FleetViewSkeleton.tsx,FleetViewSkeleton.test.tsx}` | EDIT, CREATE | §2: a pending tab and the panel's skeleton |
+| `ui/packages/app/tests/{helpers/dashboard-mocks.tsx,fleets-routes/harness.ts,fleets-routes/detail-header.test.ts,fleets-routes/detail-lifecycle.test.ts,fleets-routes/detail-viewer.test.ts,fleets-routes/detail-views.test.ts}` | EDIT | §2: the link mock answers `useLinkStatus`; route tests render the settled stream and prove the panel streams behind its skeleton |
 | `ui/packages/app/app/(dashboard)/settings/members/components/{TeamTable.tsx,MembersView.test.tsx}`, `ui/packages/app/tests/{helpers/members-fixtures.tsx,e2e/acceptance/team-members.spec.ts}` | EDIT | §3: email status in the Time column as "Invite emailed"; plain icon actions |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/{secret-row-cells.tsx,SecretsList.test.tsx}` | EDIT | §3: the name sits in a fixed slot that ellipsizes, its icons after it |
 | `docs/v2/active/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md` | CREATE | This spec |
@@ -101,8 +102,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 The tab the user clicked shows its pending state through `useLinkStatus` while its navigation is in flight. `page.tsx` renders the view inside a `Suspense` boundary keyed by the view and its cursor, so the header and tabs paint as soon as the fleet reads back and the panel shows a skeleton until its own data arrives. **Implementation default:** keep the views as `?view=` queries; separate routes would change every link and test for no gain the boundary does not give.
 
-- **Dimension 2.1** — A clicked tab is marked pending before the server answers → Test `a clicked fleet tab reads as loading while its view is on the way`
-- **Dimension 2.2** — The panel's skeleton matches each view's frame → Test `every fleet view has a skeleton`
+- **Dimension 2.1** — A clicked tab is marked pending before the server answers → Test `a clicked fleet tab reads as loading while its view is on the way` — DONE (`FleetTabLink.test.tsx`)
+- **Dimension 2.2** — The panel's skeleton matches each view's frame → Test `every fleet view has a skeleton` — DONE (`FleetViewSkeleton.test.tsx`)
 - **Dimension 2.3** — Click to first paint, measured on the running app before and after → Test `fleet_tab_paints_before_its_data` (manual)
 
 ### §3 — Row icons line up — DONE

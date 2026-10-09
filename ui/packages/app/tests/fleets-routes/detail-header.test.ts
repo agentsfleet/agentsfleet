@@ -1,7 +1,6 @@
-import { detailResponse, happyBilling } from "./harness";
+import { detailResponse, happyBilling, renderSettled } from "./harness";
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { fetchMock } from "../helpers/dashboard-mocks";
 
@@ -46,7 +45,7 @@ describe("fleets routes — detail header and summary", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
       // mounts the app's one `TooltipProvider` above every page here, and a turn
       // rendered with a relative `Time` reads it; rendering the page on its own
@@ -112,7 +111,7 @@ describe("fleets routes — detail header and summary", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
       // mounts the app's one `TooltipProvider` above every page here, and a turn
       // rendered with a relative `Time` reads it; rendering the page on its own
@@ -164,7 +163,7 @@ describe("fleets routes — detail header and summary", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       // The provider stands in for the segment layout. `app/(dashboard)/layout.tsx`
       // mounts the app's one `TooltipProvider` above every page here, and a turn
       // rendered with a relative `Time` reads it; rendering the page on its own

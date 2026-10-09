@@ -1,4 +1,4 @@
-import { detailResponse, exhaustedBilling, happyBilling, mockFetchBilling } from "./harness";
+import { detailResponse, exhaustedBilling, happyBilling, mockFetchBilling, renderSettled } from "./harness";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { fetchMock, authMock as auth } from "../helpers/dashboard-mocks";
@@ -62,7 +62,7 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
         searchParams: Promise.resolve({ view: "events", ps: "50" }),
@@ -82,7 +82,7 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    renderToStaticMarkup(
+    await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
         // The cursor rides the same URL as the open view; the server fetches
@@ -108,17 +108,34 @@ describe("fleets routes — detail views", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    await expect(Page({
+    // The read fails inside the panel's boundary, after the header has painted;
+    // it still reaches the route's error boundary rather than a blank panel.
+    const page = await Page({
       params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       searchParams: Promise.resolve({ view: "events" }),
-    })).rejects.toThrow("history down");
+    });
+    await expect(renderSettled(page)).rejects.toThrow("history down");
+  });
+
+  it("the fleet header and tabs paint while the view's data is on the way", async () => {
+    mockFetchBilling(happyBilling);
+    const { default: Page } =
+      await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
+    // A synchronous render stops at the panel's boundary: what it shows is
+    // exactly what the user sees before the view's own reads answer.
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }) }),
+    );
+    expect(markup).toContain('aria-label="Fleet sections"');
+    expect(markup).toContain(">Loading chat</output>");
+    expect(markup).not.toContain('aria-label="Fleet summary"');
   });
 
   it("fleet Memory view renders stored entries and a fetch failure separately", async () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const emptyMarkup = renderToStaticMarkup(
+    const emptyMarkup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
         searchParams: Promise.resolve({ view: "memory" }),
@@ -133,7 +150,7 @@ describe("fleets routes — detail views", () => {
       if (url.includes("/memories")) throw new Error("memory down");
       return detailResponse();
     });
-    const unavailableMarkup = renderToStaticMarkup(
+    const unavailableMarkup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
         searchParams: Promise.resolve({ view: "memory" }),
@@ -158,7 +175,7 @@ describe("fleets routes — detail views", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
@@ -177,7 +194,7 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(exhaustedBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
@@ -190,7 +207,7 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
@@ -216,7 +233,7 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
@@ -228,7 +245,7 @@ describe("fleets routes — detail views", () => {
     mockFetchBilling(happyBilling);
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
         searchParams: Promise.resolve({ view: "skill" }),

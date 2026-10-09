@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { TabNav, type TabNavItem } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
+import { FleetTabLink } from "./FleetTabLink";
 
 // The fleet's sections, as the app's one tab style: an underline over a
 // hairline rail, the same visual Billing and the settings tabs use. They are
@@ -70,7 +70,7 @@ export function FleetSubnavigation({
       label={NAV_LABEL}
       items={items}
       activeHref={hrefFor(baseHref, activeView)}
-      linkComponent={Link}
+      linkComponent={FleetTabLink}
     />
   );
 }

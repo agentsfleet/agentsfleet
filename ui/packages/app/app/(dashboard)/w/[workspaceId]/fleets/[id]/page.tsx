@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { claims, requireCredential } from "@/lib/auth/credential";
 import { hasScope } from "@/lib/auth/platform";
 import { SCOPE } from "@/lib/auth/scopes";
@@ -41,6 +41,7 @@ import {
   resolveFleetView,
 } from "./components/FleetSubnavigation";
 import { SOURCE_FIELD } from "./components/console-copy";
+import { FleetViewSkeleton } from "./components/FleetViewSkeleton";
 import type { FleetDetail } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -97,17 +98,7 @@ export default async function FleetDetailPage({
   if (!fleetResult) notFound();
 
   const { fleet, etag } = fleetResult;
-  const content = await loadFleetView(
-    {
-      workspaceId,
-      fleet,
-      etag,
-      token,
-      eventsCursor,
-      eventsPageSize,
-    },
-    viewData,
-  );
+  const context: PageContext = { workspaceId, fleet, etag, token, eventsCursor, eventsPageSize };
   // The chat is a conversation surface, not a document: it claims the frame so
   // its composer stays on screen and only the message list scrolls. Every
   // other view is ordinary page content and scrolls with the page. The frame
@@ -156,7 +147,16 @@ export default async function FleetDetailPage({
               claimsViewport && "h-full min-h-0 overflow-clip",
             )}
           >
-            {content}
+            {/* The header and tabs paint as soon as the fleet reads back; the
+                view's own data streams in behind this boundary. Keyed by the
+                view and its page, so a tab or page change shows the skeleton
+                instead of leaving the last view on screen. */}
+            <Suspense
+              key={`${view}:${eventsCursor ?? ""}:${eventsPageSize}`}
+              fallback={<FleetViewSkeleton view={view} />}
+            >
+              <FleetViewPanel context={context} data={viewData} />
+            </Suspense>
           </div>
         </div>
       </FleetInstallGate>
@@ -169,6 +169,11 @@ async function loadFleet(workspaceId: string, id: string, token: string) {
     if (error instanceof ApiError && (error.status === 400 || error.status === 404)) return null;
     throw error;
   });
+}
+
+/** The view's panel, awaited inside the page's boundary rather than before it. */
+async function FleetViewPanel({ context, data }: { context: PageContext; data: ViewData }) {
+  return loadFleetView(context, data);
 }
 
 async function loadFleetView(

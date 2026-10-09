@@ -1,6 +1,5 @@
-import { happyBilling, mockFetchBilling } from "./harness";
+import { happyBilling, mockFetchBilling, renderSettled } from "./harness";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
 import { authMock } from "../helpers/dashboard-mocks";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 import type { WorkspaceMember } from "@/lib/api/tenant-members";
@@ -42,7 +41,7 @@ beforeEach(() => {
 async function renderChat(): Promise<ChatViewProps | undefined> {
   mockFetchBilling(happyBilling);
   const { default: Page } = await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-  renderToStaticMarkup(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, id: "zom_1" }) }));
+  await renderSettled(await Page({ params: Promise.resolve({ workspaceId: WORKSPACE_ID, id: "zom_1" }) }));
   return chatViewProps.at(-1);
 }
 
