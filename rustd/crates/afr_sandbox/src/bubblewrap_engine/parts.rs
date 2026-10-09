@@ -143,8 +143,15 @@ impl Parts {
             .open(procs)
             .map_err(cgroup(CGROUP_PROCS))?;
         let mut command = Command::new(bwrap);
+        // `--clearenv` empties only what the entry inherits. bubblewrap itself,
+        // and the monitor it leaves on the host, would otherwise carry the root
+        // runner's environment, credential included, readable through
+        // `/proc/<pid>/environ` by any host process sharing the sandbox's user.
+        // It needs none: the entry is an absolute path and the log level
+        // travels by `--setenv` (`crate::bubblewrap`).
         command
             .args(argv)
+            .env_clear()
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())

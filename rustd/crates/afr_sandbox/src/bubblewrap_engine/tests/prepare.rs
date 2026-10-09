@@ -14,8 +14,8 @@ use afr_executor::{Ending, Spawn};
 
 use super::super::{BubblewrapEngine, EVENT_DISK_BUFFERED};
 use super::support::{
-    BRIEF, FAILER, FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SLEEPER, request,
-    serve_leases,
+    BRIEF, ENV_PROBE, ENV_PROBE_INHERITED, ENV_PROBE_REPORT, ENV_PROBE_VARIABLES, FAILER,
+    FAILER_REASON, FALSE, FakeHost, IMAGE, LIMITS, POLL, SLEEPER, request, serve_leases,
 };
 use crate::cgroup::{CGROUP_PROCS, SANDBOX_LEAF};
 use crate::engine::Engine;
@@ -75,6 +75,26 @@ async fn test_a_disk_without_a_loop_device_is_logged_buffered_under_its_lease() 
         capture.only(EVENT_DISK_BUFFERED).field("lease_id"),
         Some("lease-13")
     );
+}
+
+// bubblewrap and its host-side monitor keep the environment they were started
+// with, readable through `/proc/<pid>/environ`; the runner's own carries its
+// credential, so the launcher must start with none.
+#[tokio::test]
+async fn test_bubblewrap_starts_with_an_empty_environment() {
+    assert!(
+        ENV_PROBE_VARIABLES
+            .iter()
+            .any(|name| std::env::var_os(name).is_some()),
+        "the test process sets a variable the probe can see, or this proves nothing"
+    );
+    let host = FakeHost::new(ENV_PROBE);
+
+    let refused = host.engine().prepare(request("lease-env")).await.unwrap_err();
+
+    let quoted = refused.to_string();
+    assert!(quoted.contains(ENV_PROBE_REPORT), "{quoted}");
+    assert!(!quoted.contains(ENV_PROBE_INHERITED), "{quoted}");
 }
 
 #[tokio::test]
