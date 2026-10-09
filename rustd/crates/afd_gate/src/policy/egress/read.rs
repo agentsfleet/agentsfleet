@@ -26,6 +26,7 @@ pub(super) fn rules<'a>(repository: &str) -> [HttpRequestRule<'a>; 2] {
         path: prefix.clone().into(),
         path_match: HttpPathMatch::Prefix,
         json_fields: Vec::new(),
+        permitted_fields: Vec::new(),
     })
 }
 

@@ -76,8 +76,9 @@ pub struct HttpJsonFieldRule<'a> {
 
 /// One method and path admitted at an origin.
 ///
-/// JSON rules lock selected fields; any field the rules do not name stays
-/// available for request-specific content.
+/// A rule that names no field admits any body and any query string. A rule
+/// that names fields, locked or permitted, admits only the top-level keys it
+/// names, and no query string.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpRequestRule<'a> {
@@ -91,6 +92,13 @@ pub struct HttpRequestRule<'a> {
     /// Fields whose values the rule locks.
     #[serde(borrow)]
     pub json_fields: Vec<HttpJsonFieldRule<'a>>,
+    /// Fields the rule admits with any value, beside the locked ones.
+    ///
+    /// Defaulted, so a lease minted before the field existed still decodes. A
+    /// rule in it that locks fields admits only those fields, so a request it
+    /// no longer covers is refused.
+    #[serde(borrow, default)]
+    pub permitted_fields: Vec<Cow<'a, str>>,
 }
 
 /// The provider-neutral request boundary for one exact host.

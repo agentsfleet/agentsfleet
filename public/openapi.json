@@ -16913,7 +16913,7 @@
       },
       "HttpRequestRule": {
         "type": "object",
-        "description": "One method and path admitted at an origin.\n\nJSON rules lock selected fields; any field the rules do not name stays\navailable for request-specific content.",
+        "description": "One method and path admitted at an origin.\n\nA rule that names no field admits any body and any query string. A rule\nthat names fields, locked or permitted, admits only the top-level keys it\nnames, and no query string.",
         "required": [
           "method",
           "path",
@@ -16939,6 +16939,13 @@
           "path_match": {
             "$ref": "#/components/schemas/HttpPathMatch",
             "description": "Whether `path` is matched exactly or as a prefix."
+          },
+          "permitted_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fields the rule admits with any value, beside the locked ones.\n\nDefaulted, so a lease minted before the field existed still decodes. A\nrule in it that locks fields admits only those fields, so a request it\nno longer covers is refused."
           }
         }
       },
