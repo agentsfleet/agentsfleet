@@ -103,7 +103,7 @@ describe("ProviderModelSelect", () => {
         onModelChange: vi.fn(),
       }),
     );
-    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByText("claude-sonnet-5-5")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 

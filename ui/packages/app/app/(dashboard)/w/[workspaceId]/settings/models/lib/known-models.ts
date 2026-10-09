@@ -7,11 +7,15 @@
 // custom/openai-compatible slot never uses this list (its model is always
 // free text).
 export const KNOWN_MODELS: Readonly<Record<string, readonly string[]>> = {
-  anthropic: ["claude-sonnet-5", "claude-opus-4-8", "claude-fable-5", "claude-haiku-4-5"],
-  openai: ["gpt-5.5", "gpt-5-mini"],
-  fireworks: ["accounts/fireworks/models/kimi-k2.7", "accounts/fireworks/models/glm-5.2"],
-  groq: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
-  openrouter: ["anthropic/claude-sonnet-5", "openai/gpt-5.5"],
+  anthropic: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1", "claude-haiku-5-5"],
+  openai: ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-luna"],
+  fireworks: [
+    "accounts/fireworks/models/kimi-k3",
+    "accounts/fireworks/models/glm-5p3",
+    "accounts/fireworks/models/deepseek-v4p1-flash",
+  ],
+  groq: ["openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+  openrouter: ["anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5"],
 } as const;
 
 /** Known model names for one provider; empty when the provider isn't listed. */
