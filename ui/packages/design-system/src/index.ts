@@ -74,6 +74,8 @@ export {
   RadioGroupItem,
   type RadioGroupProps,
   type RadioGroupItemProps,
+  Switch,
+  type SwitchProps,
   Accordion,
   AccordionItem,
   AccordionTrigger,
