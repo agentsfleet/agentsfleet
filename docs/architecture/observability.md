@@ -663,7 +663,7 @@ beside it carries a credential.
 
 ## Label registry — money stays in Postgres
 
-Labels are bounded at the source and again by the 256-series flush ceiling:
+Labels are bounded at the source:
 
 | Label | Allowed values and ceiling | Overflow action |
 |---|---|---|

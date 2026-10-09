@@ -55,8 +55,8 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       # Per-worktree but fixed — see the header. scripts/test-infra-ports.sh
-      # writes the value; make/test-integration.mk still discovers the live port
-      # via `docker compose port`, which now cannot disagree with the container.
+      # writes the value, and make/test-infra.mk builds the URLs from the same
+      # declared AGENTSFLEET_*_HOST_PORT values, which compose publishes verbatim.
       - "${AGENTSFLEET_PG_HOST_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data

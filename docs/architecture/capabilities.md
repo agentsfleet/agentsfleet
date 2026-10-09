@@ -63,7 +63,7 @@ Source of truth: `rustd/crates/afd_fleet_runtime/src/config/trigger.rs` (`Trigge
 
 ## 2. The platform tools the fleet can call
 
-The runner hosts every published tool; `tools:` selects which the model is offered ([`runner_execution.md`](./runner_execution.md) §"Tool catalog"). Placeholders resolve in `Authorization` only, at send time.
+The runner hosts every published tool; `tools:` selects which the model is offered ([`runner_execution.md`](./runner_execution.md) §"Tool catalog"). Placeholders resolve at send time in two places only: the `Authorization` header's value and the URL's whole host (`${secrets.NAME.host}`) (`rustd/crates/afr_egress/src/admission.rs`).
 
 ---
 

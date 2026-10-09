@@ -110,7 +110,7 @@ The producer that owns a reply surface records the reply destination on the admi
 
 The report parses the recorded connector once, so the lease's **model** provider never reaches the delivery ledger (`afd_fleet/src/lease/obligation.rs`). A job its destination refuses for good, or one out of delivery cycles, is stamped abandoned, and no scan offers it again (`afd_outbound/src/abandon.rs`).
 
-A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/leases/{lease_id}/messages` (`MESSAGES_PER_RUN_MAX`, `afd_wire/src/message_verb.rs`). The lease plane fences each line and counts it in `fleet.runner_leases.messages_posted` (`schema/929_runner_leases_messages_posted.sql`), so a reclaimed lease starts a new count. The daemon posts a line as literal text, with `&`, `<` and `>` sent as Slack entities, so a steered model cannot page the channel (`afd_outbound/src/interim.rs`). Each line is stamped `agentsfleet_interim` with `{lease_id, line}` (`afd_connector/src/slack/answered.rs`), so a repeat finds only its own line and never silences the answer.
+A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/leases/{lease_id}/messages` (`MESSAGES_PER_RUN_MAX`, `afd_wire/src/message_verb.rs`). The lease plane fences each line and counts it in `fleet.runner_leases.messages_posted` (`schema/929_runner_leases_messages_posted.sql`), so a reclaimed lease starts a new count. The daemon posts a line as literal text, with `&`, `<` and `>` sent as Slack entities (`afd_outbound/src/interim.rs`). Each line is stamped `agentsfleet_interim` with `{lease_id, line}` (`afd_connector/src/slack/answered.rs`), so a repeat finds only its own line and never silences the answer.
 
 ## 7. Four stages, four authorities
 
