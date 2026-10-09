@@ -6,14 +6,6 @@ import { FLEET_VIEW, type FleetView } from "./FleetSubnavigation";
 // boundary), so each shape stands in for that view's own frame and nothing on
 // the page jumps when the data lands.
 
-const VIEW_NAME: Record<FleetView, string> = {
-  [FLEET_VIEW.chat]: "chat",
-  [FLEET_VIEW.events]: "events",
-  [FLEET_VIEW.memory]: "memory",
-  [FLEET_VIEW.skill]: "skill",
-  [FLEET_VIEW.trigger]: "trigger",
-};
-
 const LIST_ROWS = 6;
 
 function ListShape() {
@@ -53,7 +45,8 @@ export function FleetViewSkeleton({ view }: { view: FleetView }) {
   const Shape = SHAPE[view];
   return (
     <div aria-busy="true" className="flex min-h-0 flex-1 flex-col">
-      <output className="sr-only">Loading {VIEW_NAME[view]}</output>
+      {/* A view's value is its name (`FLEET_VIEW`), so it reads as itself. */}
+      <output className="sr-only">Loading {view}</output>
       <Shape />
     </div>
   );

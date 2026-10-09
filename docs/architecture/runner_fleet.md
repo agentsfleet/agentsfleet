@@ -515,7 +515,7 @@ The daemon serves asynchronous response bodies through the shared hub, with a se
 
 ## Steer, kill, pause
 
-All three are decided by `agentsfleetd`, which owns both `core.fleets.status` and lease issuance. None cancels a lease already running: the heartbeat answers `ok` and names no lease. Renewal reads the fleet's stored config whatever its status, so a paused or killed fleet's run still stops at the budget ceiling it was admitted under (`rustd/crates/afd_fleet/src/lease/coverage.rs`).
+All three are decided by `agentsfleetd`, which owns both `core.fleets.status` and lease issuance. None cancels a lease already running: the heartbeat answers `ok` and names no lease. Renewal reads the fleet's stored config whatever its status, so a paused or killed fleet's run still stops at the fleet's stored budget ceiling (`rustd/crates/afd_fleet/src/lease/coverage.rs`). Each renewal reads that ceiling afresh: a paused or stopped fleet's config can be edited mid-run and the next renewal obeys the edit; a killed fleet's cannot be edited.
 
 - **Steer** — a human message. `agentsfleetd` enqueues a `steer` event; it is leased like any other. The current run finishes first; the steer runs next. Not an interrupt.
 - **Pause** — `agentsfleetd` sets `status=paused` and stops issuing leases for the fleet. Any in-flight lease runs to completion.

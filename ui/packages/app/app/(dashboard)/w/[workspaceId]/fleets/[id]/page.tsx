@@ -149,12 +149,10 @@ export default async function FleetDetailPage({
           >
             {/* The header and tabs paint as soon as the fleet reads back; the
                 view's own data streams in behind this boundary. Keyed by the
-                view and its page, so a tab or page change shows the skeleton
-                instead of leaving the last view on screen. */}
-            <Suspense
-              key={`${view}:${eventsCursor ?? ""}:${eventsPageSize}`}
-              fallback={<FleetViewSkeleton view={view} />}
-            >
+                view alone: a tab change shows that view's skeleton instead of
+                leaving the last view on screen, while an Events page turn keeps
+                the table up and lets its pager say it is loading. */}
+            <Suspense key={view} fallback={<FleetViewSkeleton view={view} />}>
               <FleetViewPanel context={context} data={viewData} />
             </Suspense>
           </div>

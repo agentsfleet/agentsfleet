@@ -288,9 +288,11 @@ pub(super) fn posture_of(lease: &Renewing) -> Posture {
 ///
 /// The caller meters zero counts. `RENEW_AND_METER` advances the token cursor
 /// with `GREATEST`, so zero counts leave it where the last priced slice left
-/// it, and the next priced renewal or the report charges these tokens. Real
-/// counts at run-fee rates would move the cursor past tokens charged at zero,
-/// and no later slice would charge them.
+/// it, and the next priced renewal or a priced report charges these tokens.
+/// Real counts at run-fee rates would move the cursor past tokens charged at
+/// zero, and no later slice would charge them. A report that cannot price
+/// either still settles at the run fee alone, so a fault that lasts to the
+/// end of the run leaves these tokens uncharged.
 fn hold_tokens(lease: &Renewing, lease_id: &str, cumulative: Cumulative, fault: &crate::Error) {
     let fleet = lease.fleet_id.as_str();
     let reason = fault.to_string();

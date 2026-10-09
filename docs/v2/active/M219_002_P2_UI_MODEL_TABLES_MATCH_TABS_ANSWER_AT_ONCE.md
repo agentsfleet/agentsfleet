@@ -100,7 +100,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §2 — A clicked fleet tab answers at once
 
-The tab the user clicked shows its pending state through `useLinkStatus` while its navigation is in flight. `page.tsx` renders the view inside a `Suspense` boundary keyed by the view and its cursor, so the header and tabs paint as soon as the fleet reads back and the panel shows a skeleton until its own data arrives. **Implementation default:** keep the views as `?view=` queries; separate routes would change every link and test for no gain the boundary does not give.
+The tab the user clicked shows its pending state through `useLinkStatus` while its navigation is in flight. `page.tsx` renders the view inside a `Suspense` boundary keyed by the view, so the header and tabs paint as soon as the fleet reads back and the panel shows a skeleton until its own data arrives. **Implementation default:** keep the views as `?view=` queries; separate routes would change every link and test for no gain the boundary does not give.
 
 - **Dimension 2.1** — A clicked tab is marked pending before the server answers → Test `a clicked fleet tab reads as loading while its view is on the way` — DONE (`FleetTabLink.test.tsx`)
 - **Dimension 2.2** — The panel's skeleton matches each view's frame → Test `every fleet view has a skeleton` — DONE (`FleetViewSkeleton.test.tsx`)

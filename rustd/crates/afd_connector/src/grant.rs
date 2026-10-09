@@ -15,12 +15,14 @@
 //! last — the outcome an advisory lock would give, reached without holding a
 //! lock across a vendor call.
 //!
-//! # The routing row is written AFTER the grant, never before
+//! # The grant and its routing row commit together
 //!
 //! A row saying "this Slack team belongs to this workspace" with no vaulted bot
 //! token behind it is an ingress that resolves a workspace and then cannot
-//! answer. The other order leaves a grant nothing routes to yet, which is the
-//! state a reconnect is in for a millisecond anyway.
+//! answer; a grant nothing routes to reads connected and receives nothing. So
+//! [`Grants::land`] writes both in one transaction. The grant goes first for
+//! locks, not visibility: a Disconnect (`Grants::forget`) takes the same
+//! handle's row lock first, so the two order themselves on it.
 
 pub mod holding;
 pub mod parse;
