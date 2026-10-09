@@ -34,6 +34,7 @@ import {
   StatusCell,
   rowKey,
 } from "./ModelsRegistryCells";
+import { CONTEXT_HEADER, RATES_HEADER } from "@/lib/models/display";
 
 type Props = {
   workspaceId: string;
@@ -234,14 +235,14 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     { key: "model", header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
     {
       key: "context",
-      header: "Context",
+      header: CONTEXT_HEADER,
       numeric: true,
       hideOnMobile: true,
       cell: (row) => <ContextCell row={row} platformDefault={platformDefault} />,
     },
     {
       key: "rates",
-      header: "Price / 1M",
+      header: RATES_HEADER,
       numeric: true,
       hideOnMobile: true,
       cell: (row) => <RatesCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,

@@ -48,7 +48,7 @@ function renderWithTooltipProvider(node: React.ReactElement) {
 // The catalogue is a design-system DataTable — scope a row by its (unique)
 // model_id cell and walk up to its <tr>.
 function rowFor(modelId: string): HTMLElement {
-  return screen.getByText(modelId).closest("tr")!;
+  return screen.getByTitle(modelId).closest("tr")!;
 }
 
 async function loadedEditDialog(label: string) {
@@ -262,8 +262,8 @@ describe("ModelsView", () => {
   it("renders the catalogue with no separate platform-default section", () => {
     renderWithTooltipProvider(React.createElement(ModelsView, { initial, activeDefault: null }));
     expect(screen.getByRole("heading", { level: 1, name: "Model library" })).toBeTruthy();
-    expect(screen.getByText("glm-5.2")).toBeTruthy();
-    expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
+    expect(screen.getByTitle("glm-5.2")).toBeTruthy();
+    expect(screen.getByTitle("claude-opus-4-8")).toBeTruthy();
     // The old Platform Default form (its "Default provider" select) is gone.
     expect(screen.queryByLabelText("Default provider")).toBeNull();
   });
@@ -287,7 +287,7 @@ describe("ModelsView", () => {
     fireEvent.change(dialog.getByLabelText("Model"), { target: { value: "kimi-k2.6" } });
     fireEvent.submit(screen.getByRole("dialog").querySelector("form")!);
 
-    await waitFor(() => expect(screen.getByText("kimi-k2.6")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTitle("kimi-k2.6")).toBeTruthy());
   });
 
   it("drops a deleted model from the catalogue", async () => {
@@ -298,8 +298,8 @@ describe("ModelsView", () => {
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
 
-    await waitFor(() => expect(screen.queryByText("glm-5.2")).toBeNull());
-    expect(screen.getByText("claude-opus-4-8")).toBeTruthy();
+    await waitFor(() => expect(screen.queryByTitle("glm-5.2")).toBeNull());
+    expect(screen.getByTitle("claude-opus-4-8")).toBeTruthy();
   });
 
   it("reflects an edited model's new rates in the table without a round-trip", async () => {

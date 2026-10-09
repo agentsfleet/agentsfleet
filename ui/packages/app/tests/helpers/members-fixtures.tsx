@@ -46,7 +46,7 @@ export const RELOAD_REFUSED = { ok: false, status: 503, error: "Service unavaila
 export const DUPLICATE_REFUSED = { ok: false, status: 409, errorCode: "UZ-INV-003", error: "That address already has a pending invite." };
 export const DONE = { ok: true, data: undefined };
 
-export const EMAIL_SENT = "Email sent";
+export const EMAIL_SENT = "Invite emailed";
 export const EMAIL_NOT_SENT = "Email not sent";
 export const EMAIL_NOT_SET_UP = "Email not set up";
 export const INVITE_BUTTON = "Invite";
