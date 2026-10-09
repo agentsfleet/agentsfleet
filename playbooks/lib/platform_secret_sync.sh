@@ -72,8 +72,8 @@ case "$secret_name" in
     )
     ;;
   approval-signing)
-    # The deployment-level HMAC key, read by the Rust daemon as a vault row
-    # rather than from the environment the way the Zig daemon read it. The row
+    # The deployment-level HMAC key. The daemon reads it as a vault row, never
+    # from the environment, so this sync is what puts it in reach. The row
     # name and the 1Password item name differ on purpose: the daemon's key is
     # `approval-signing` (APPROVAL_IDENTITY) while the item has always been
     # `approval-signing-secret`, and renaming either would rotate a live key.

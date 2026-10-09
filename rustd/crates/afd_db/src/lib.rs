@@ -79,7 +79,7 @@ pub const MIGRATE_ON_START_KNOB: &str = "MIGRATE_ON_START";
 /// # Errors
 /// Returns a config error when the value is neither truthy nor falsy.
 /// `MIGRATE_ON_START=yes` is not "no"; it is an operator who believes
-/// migrations are on, and `cmd/common.zig:44-48` refuses it for that reason.
+/// migrations are on, and this refuses it for that reason.
 pub fn migrate_on_start<E: EnvSource + ?Sized>(source: &E) -> Result<bool> {
     let Some(raw) = source.get(MIGRATE_ON_START_KNOB) else {
         return Ok(false);

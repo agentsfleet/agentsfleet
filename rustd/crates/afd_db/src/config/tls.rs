@@ -85,8 +85,8 @@ pub(super) fn connect_options(role: DbRole, url: &str) -> Result<PgConnectOption
     // The scheme is checked here rather than left to sqlx, which accepts
     // `mysql://host/db` and reads it as host `host`, database `db`. A
     // deployment that pasted the wrong URL then connects somewhere real and
-    // fails on the first query instead of at boot. `parseUrl` refuses anything
-    // but these two prefixes (`pool.zig:81-87`) and so does this.
+    // fails on the first query instead of at boot. `POSTGRES_SCHEMES` is the
+    // whole list of what this accepts.
     if !POSTGRES_SCHEMES
         .iter()
         .any(|scheme| url.starts_with(scheme))

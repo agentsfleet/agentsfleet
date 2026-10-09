@@ -93,7 +93,7 @@ async fn test_hashed_edit_refuses_stale_hash() {
 }
 
 #[tokio::test]
-async fn a_read_tags_every_line_as_nullclaw_prints_them() {
+async fn a_read_tags_every_line_with_its_number_and_hash() {
     let live = Live::start().await;
     std::fs::write(live.root.join(GREEK), THREE_LINES).unwrap();
     let (catalog, _sent) = hosted();
@@ -152,7 +152,7 @@ async fn a_range_is_replaced_from_target_to_end_target() {
     assert_eq!(
         std::fs::read_to_string(live.root.join(GREEK)).unwrap(),
         "alpha\nboth",
-        "nothing but the file's end follows, so no newline is added, as nullclaw splices"
+        "nothing but the file's end follows, so no newline is added"
     );
     live.stop().await;
 }

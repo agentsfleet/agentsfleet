@@ -60,10 +60,9 @@ pub(crate) use self::workspace::{create as create_workspace, list as list_worksp
 
 /// The refusal a principal with no tenant to act for earns on the reads.
 ///
-/// The byte-for-byte port of the sentence `tenant_billing.zig` and
-/// `tenant_workspaces.zig` both spell; the api-key family names what its
-/// credential cannot manage instead, and the create's 401 names the stale
-/// session — each family keeps its own words.
+/// The tenant plane's reads share this sentence; the api-key family
+/// names what its credential cannot manage instead, and the create's 401 names
+/// the stale session — each family keeps its own words.
 pub const DETAIL_TENANT_REQUIRED: &str = "Tenant context required";
 
 use std::sync::Arc;
@@ -95,7 +94,7 @@ fn one_page<'a, T>(items: Vec<T>) -> afd_api_wire::tenant::PageResponse<'a, T> {
 /// `detail` and `event` are the route family's own: the refusal a bootstrap
 /// credential earns names what it cannot do HERE, so the api-key verbs and the
 /// billing reads each hand in their sentence rather than sharing one that is
-/// wrong for somebody (the port of each Zig handler group spelling its own).
+/// wrong for somebody.
 async fn tenant_of<D: Services>(
     services: &Arc<D>,
     person: &afd_auth::principal::Person,

@@ -1,10 +1,10 @@
 //! Shared template prefixes routes are built from.
 //!
 //! Macros rather than constants, because `concat!` takes literals and Rust has
-//! no `++` for `const` strings. The effect is the one `route_template.zig`
-//! gets: a shared prefix is written once, every route under it moves together,
-//! and the result is still a compile-time literal — so no caller-supplied byte
-//! can ever reach a span attribute through here.
+//! no `++` for `const` strings. The effect: a shared prefix is written once,
+//! every route under it moves together, and the result is still a compile-time
+//! literal — so no caller-supplied byte can ever reach a span attribute through
+//! here.
 
 /// A path under one workspace.
 ///

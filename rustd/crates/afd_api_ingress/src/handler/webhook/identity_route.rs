@@ -1,8 +1,7 @@
 //! `POST /v1/auth/identity-events/clerk` — the signup event that opens an account.
 //!
-//! The port of `http/handlers/auth/identity_events_clerk.zig`. An Svix-signed
-//! `user.created` from the identity provider becomes a personal account, and a
-//! replay of the same delivery answers exactly as the first did.
+//! An Svix-signed `user.created` from the identity provider becomes a personal
+//! account, and a replay of the same delivery answers exactly as the first did.
 //!
 //! # Why this is in the ingress plane and not the tenant one
 //!
@@ -13,9 +12,9 @@
 //!
 //! # A missing secret refuses exactly as every sibling refuses it
 //!
-//! `identity_events_clerk.zig` answers 500 rather than 401 here, so that an
-//! unauthenticated caller cannot learn this deployment configured no secret.
-//! This route does NOT follow it, and the departure is deliberate.
+//! A 500 here would keep an unauthenticated caller from learning that this
+//! deployment configured no secret, and this route deliberately does not
+//! answer one.
 //!
 //! The status was never the signal: an absent secret and a bad signature both
 //! answer 401 across this whole family, and what tells them apart is the code in
@@ -25,14 +24,14 @@
 //! than the code it was meant to hide. If the leak is worth closing it is worth
 //! closing for the family, in one change, rather than here.
 //!
-//! # What is NOT ported, and why the route still serves
+//! # Why `user.deleted` is answered and not acted on
 //!
-//! The Zig branches on `user.deleted` and tears an account down. That is a
-//! destructive path with its own blast radius and it is not part of opening an
-//! account; porting it under cover of this route would land a delete nobody
-//! reviewed. It is answered as an event this daemon serves no rule for — the
-//! same 200 every other unhandled type gets — so a provider retries nothing and
-//! the gap is visible in the answer rather than hidden in a 404.
+//! Acting on `user.deleted` would tear an account down. That is a destructive
+//! path with its own blast radius and it is not part of opening an account;
+//! serving it under cover of this route would land a delete nobody reviewed.
+//! It is answered as an event this daemon serves no rule for — the same 200
+//! every other unhandled type gets — so a provider retries nothing and the gap
+//! is visible in the answer rather than hidden in a 404.
 
 use std::sync::Arc;
 
@@ -213,7 +212,7 @@ pub(crate) async fn receive<D: Services>(
     // The tenant row exists; the provider does not know about it yet. Until it
     // does, this person's next session token carries no `tenant_id` and every
     // call they make is refused for want of a tenant — so the write happens
-    // here, before the 200, exactly where `identity_events_clerk.zig` puts it.
+    // here, before the 200.
     write_back(&services, &event.data.id, &opened.tenant_id).await;
 
     // 200 either way, and the flag says which. A replay is not a conflict: the
@@ -236,9 +235,7 @@ pub(crate) async fn receive<D: Services>(
 ///
 /// Best-effort by construction, and the swallow is the point: the tenant row is
 /// already committed, so answering the delivery with this failure would refuse
-/// an account that exists and invite a retry that can only duplicate work. The
-/// Zig makes the same call at `identity_events_clerk.zig:290` and swallows it
-/// the same way.
+/// an account that exists and invite a retry that can only duplicate work.
 ///
 /// What the swallow costs is a person whose next token carries no tenant, which
 /// an operator repairs from the provider's dashboard — so the failure is LOGGED

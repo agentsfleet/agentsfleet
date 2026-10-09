@@ -26,20 +26,18 @@
 //! them would hide a cross-tenant replay attempt inside the same signal as a
 //! truncated URL.
 //!
-//! # Input is refused before the tenant is resolved, and the Zig's order differs
+//! # Input is refused before the tenant is resolved
 //!
-//! `hx.principal.tenant_id` is already on the Zig's request context, so checking
-//! it first costs that daemon nothing. Here [`tenant_of`] is a READ, so the same
-//! order would spend a pool connection to reject `?limit=0`. The refusals below
-//! that need no tenant therefore run first.
+//! [`tenant_of`] is a READ, so resolving the tenant first would spend a pool
+//! connection to reject `?limit=0`. The refusals below that need no tenant
+//! therefore run first.
 //!
-//! The observable difference is confined to one state: an authenticated
-//! principal that resolves to NO tenant row, sending a malformed request. The
-//! Zig answers 403 and this answers 400. It is declared rather than corrected
-//! because correcting it would cost a datastore round trip on every malformed
-//! request AND would make the input bounds unprovable at router tier — the
-//! suite beside this file proves them with no Postgres precisely because they
-//! are decided before one is touched.
+//! The order is observable in one state: an authenticated principal that
+//! resolves to NO tenant row, sending a malformed request, is answered 400
+//! rather than 403. Resolving first would cost a datastore round trip on every
+//! malformed request AND would make the input bounds unprovable at router tier
+//! — the suite beside this file proves them with no Postgres precisely because
+//! they are decided before one is touched.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -63,10 +61,9 @@ use crate::handler::Refusal;
 use crate::services::{Services, TenantModelEntries as _};
 
 // A query string this daemon cannot decode has no refusal on this surface:
-// `RawQuery` hands over the raw text and `parameter` cannot fail, where the
-// Zig's `req.query()` can. One fewer refusal than the catalogue page, and the
-// divergence is that a token with a stray `%` is simply not a cursor this
-// endpoint issued.
+// `RawQuery` hands over the raw text and `parameter` cannot fail. One fewer
+// refusal than the catalogue page: a token with a stray `%` is simply not a
+// cursor this endpoint issued.
 use super::tenant_of;
 
 /// The scoped events each verb's failures are logged under.
@@ -113,7 +110,7 @@ pub const DETAIL_ENTRY_NOT_FOUND: &str = "Model entry not found";
 pub const DETAIL_DELETE_ACTIVE: &str =
     "This entry is the tenant's active selection; switch to another entry first";
 
-/// This page's cursor payload, in the Zig's fixed key order.
+/// This page's cursor payload, in a fixed key order.
 ///
 /// `tenant_uuid` and `limit` ride beside the sort key because a cursor is bound
 /// to the walk that produced it. Field ORDER is the canonical key order — see

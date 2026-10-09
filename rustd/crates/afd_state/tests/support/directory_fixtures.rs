@@ -52,10 +52,9 @@ impl Fixtures {
     /// cannot run against the shared lane database for the obvious reason: the
     /// next test would find the table, or the database, gone.
     ///
-    /// This is the exception the Zig harness carried too, and it stayed one
-    /// file wide there for the same reason it is two tests wide here — a
-    /// database of your own costs forty-seven migrations, so it is worth having
-    /// only when the test is ABOUT the datastore failing.
+    /// It stays two tests wide because a database of your own costs the whole
+    /// migration chain, so it is worth having only when the test is ABOUT the
+    /// datastore failing.
     pub(crate) async fn create_disposable() -> Self {
         let lane = TestDatabase::create().await;
         let migrator = lane.open(DbRole::Migrator, &[]).await;

@@ -130,7 +130,7 @@ Caps (`rustd/crates/afd_library/src/validate.rs`): **32 support files · 64 KiB 
 At lease time (see [`data_flow.md` §"C. EXECUTE"](./data_flow.md)):
 
 - **SKILL.md / TRIGGER.md** → from the **lease** (`instructions`/`policy`, resolved from `core.fleets` fresh per lease, so they reflect any PATCH). The runner **ignores** the SKILL.md/TRIGGER.md copies inside the tar.
-- **Support files** → the runner downloads the tar via `GET /v1/runners/me/bundles/{content_hash}` (daemon proxies `r2.get`; cached at `.bundle-cache/{hash}.tar`), and untars the support files into the per-lease sandbox workspace **before** the child forks. `SKILL.md` can then reference them — a review script, a playbook, whatever the bundle shipped.
+- **Support files** → the runner downloads the tar via `GET /v1/runners/me/bundles/{content_hash}` (daemon proxies `r2.get`; verified against its hash, then cached at `<storage home>/bundles/{hash}.tar`), and writes the support files into the lease's sandbox workspace **before** the turn runs (`rustd/crates/afr_supervisor/src/lease_loop/workspace.rs`). `SKILL.md` can then reference them — a review script, a playbook, whatever the bundle shipped.
 
 ## Update + sync
 

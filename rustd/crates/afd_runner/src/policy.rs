@@ -1,24 +1,17 @@
 //! The assignment columns, and the one decoder every reader of them shares.
 //!
-//! `assigned_policy_row.zig` is the Zig equivalent and it makes the same
-//! promise: the self read, the heartbeat reply and the operator surfaces all
-//! resolve a row through ONE decoder, so none of them can invent a different
-//! answer for the same row. What changes here is what the decoder is called
-//! WITH.
+//! The self read, the heartbeat reply and the operator surfaces all resolve a
+//! row through ONE decoder, so none of them can invent a different answer for
+//! the same row.
 //!
-//! # Six loose arguments become one named row
+//! # One named row, not loose arguments
 //!
-//! `decodePolicy(alloc, tier_raw, network_raw, registry_json, worker_count_raw,
-//! extra_binds_json)` takes four string-ish arguments in an order nothing
-//! checks, and its callers fill them from positional `row.get(_, n)` indices.
-//! `self.zig` reads column 3 twice because the tier feeds both the response's
-//! own field and the decoder; `heartbeat.zig` passes a different index set
-//! entirely. Two of those arguments transposed compiles clean and produces a
-//! runner whose network policy is its registry list.
-//!
-//! Here the columns are a struct with names, filled once where the statement
-//! is read, and the decoder is a method on it. There is no argument order to
-//! get wrong because there are no arguments.
+//! A decoder that takes the columns as string arguments filled from positional
+//! `row.get(_, n)` indices compiles clean with two of them transposed, and
+//! produces a runner whose network policy is its registry list. Here the
+//! columns are [`AssignmentColumns`], a struct with names filled once where the
+//! statement is read, and the decoder is a method on it. There is no argument
+//! order to get wrong because there are no arguments.
 //!
 //! # Fail closed, with one deliberate exception
 //!
@@ -27,7 +20,7 @@
 //! which is the safe direction: a partial assignment is never silently
 //! completed with defaults.
 //!
-//! `extra_binds` is the exception, and it is Zig's. An absent list is the
+//! `extra_binds` is the exception. An absent list is the
 //! NORMAL state — every runner enrolled before the column existed reads NULL —
 //! so it resolves to empty rather than voiding the assignment. A garbled value
 //! reads the same, and neither can widen the sandbox: the operator's additions
@@ -75,7 +68,7 @@ impl AssignmentColumns {
             registry_allowlist: parse_json(self.registry_allowlist_json.as_deref()?)?,
             // Clamped on the way OUT as well as on the way in: a row edited
             // out-of-band can never size a host's worker pool outside the
-            // shared bounds, which is `clampWorkerCount`'s reason for existing.
+            // shared bounds, which is `WorkerCount::clamping`'s reason for existing.
             worker_count: WorkerCount::clamping(self.worker_count.max(0).cast_unsigned()).get(),
             extra_binds: self.extra_binds(),
         })

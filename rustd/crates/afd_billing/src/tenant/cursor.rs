@@ -7,10 +7,9 @@
 //! on the wire: the whole token is base64url-encoded, it travels under
 //! `?cursor=`, and there is no sort vocabulary beside it because the charges
 //! walk has exactly one ordering. Two formats is not a design anyone would
-//! choose fresh; it is what the Zig daemon serves, and a client holding a
-//! cursor issued by one binary must be able to spend it against the other
-//! mid-cutover. Unifying them is a post-cutover change, made when there is one
-//! daemon left to change.
+//! choose fresh, but this one is on the wire: a client holding a charges
+//! cursor must be able to spend it, so unifying the two is a breaking change
+//! to make on purpose rather than in passing.
 //!
 //! # Opaque means opaque
 //!
@@ -29,9 +28,8 @@ const SEPARATOR: char = ':';
 
 /// The longest identifier half a token may carry.
 ///
-/// UUID-format identifiers are 36 characters; 128 is the same generous cap the
-/// Zig codec applies, kept because a cursor crossing binaries mid-cutover must
-/// be judged by the same rule on both sides.
+/// UUID-format identifiers are 36 characters; 128 is a generous cap that still
+/// bounds what a decoded token can make this daemon hold.
 const ID_MAX_LEN: usize = 128;
 
 /// A decoded boundary: the last row the previous page showed.
@@ -54,7 +52,7 @@ pub fn render(recorded_at: i64, id: &str) -> String {
     BASE64.encode(format!("{recorded_at}{SEPARATOR}{id}"))
 }
 
-/// Reads a token this daemon — or the Zig one — issued.
+/// Reads a token this daemon issued.
 ///
 /// # Errors
 /// Refuses anything that is not base64url of `{integer}:{id}` with a non-empty
@@ -138,11 +136,10 @@ mod tests {
     }
 
     #[test]
-    fn the_wire_form_matches_the_zig_codec() {
-        // Pinned bytes: base64url-no-pad of "1712924400000:abc123", the exact
-        // value `fleet_telemetry_cursor.zig`'s round-trip test builds. A client
-        // holding a Zig-issued cursor must be able to spend it here
-        // mid-cutover, so the encoding is a wire fact rather than a choice.
+    fn the_wire_form_is_base64url_of_recorded_at_and_id() {
+        // Pinned bytes: base64url-no-pad of "1712924400000:abc123". A client
+        // holding an issued cursor must be able to spend it after a deploy, so
+        // the encoding is a wire fact rather than a choice.
         assert_eq!(
             render(1_712_924_400_000, "abc123"),
             "MTcxMjkyNDQwMDAwMDphYmMxMjM"

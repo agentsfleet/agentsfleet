@@ -8,23 +8,43 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use afd_core::error_code::{Coded as _, Logged};
 use afr_executor::{Client, Executor};
 use rustix::fs::{Gid, Uid};
 
-use crate::bubblewrap::{self, Layout, SOCKET_NAME};
+use crate::bubblewrap::{self, Layout, NetworkLayout, SOCKET_NAME};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup};
+use crate::egress::{self, Kernel};
 use crate::engine::{Engine, HostWorkspace, LeaseName, Limits, Sandbox, SandboxRequest};
-use crate::error::{Result, not_ready, refused, toolbox_unexpected, unconfined};
-use crate::host::HostTools;
-use crate::probe::{HostProbe, ProbePaths};
-use crate::tenant::TenantFiles;
+use crate::error::{Result, not_ready, unconfined};
+use crate::network::{Allowlist, Network};
+use crate::probe::HostProbe;
+use crate::tenant::{TenantDescriptors, TenantFiles};
 use crate::toolbox::Toolbox;
 use crate::workspace_disk::{Caching, WorkspaceDisk};
 
+mod boot;
+mod config;
+mod held;
+mod names;
 mod parts;
+mod stderr;
 mod sweep;
 
+pub use self::boot::Booted;
+pub use self::config::BubblewrapConfig;
+use self::names::{Names, join};
 use self::parts::Parts;
+
+/// The host user and group bubblewrap runs as when the runner is root.
+///
+/// `nobody` and `nogroup` on every Debian-family host, so nothing a sandbox
+/// writes is owned by an account that can log in or holds a privilege.
+pub const SANDBOX_HOST_IDS: (u32, u32) = (65_534, 65_534);
+/// How long a sandbox may take to answer before its lease is refused: the
+/// kernel lane measures executor-ready in tens of milliseconds, so this only
+/// ends a sandbox that will never answer.
+pub const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The directory each lease's executor socket is made in.
 const RUN_DIR: &str = "run";
@@ -48,46 +68,6 @@ const EVENT_HOST_REFUSED: &str = "sandbox_host_refused";
 /// Why a sandbox whose cgroup was never made cannot be frozen.
 const NO_CGROUP: &str = "it was never moved into a cgroup of its own";
 
-/// Everything the engine builds sandboxes from.
-#[derive(Debug, Clone)]
-pub struct BubblewrapConfig {
-    /// The host programs it runs.
-    pub tools: HostTools,
-    /// The mounted, verified toolbox, shared by every clone of the
-    /// configuration and unmounted by its one owner.
-    pub toolbox: Arc<Toolbox>,
-    /// The toolbox digest this runner was released with; any other is refused.
-    pub toolbox_digest: String,
-    /// The delegated cgroup each lease's cgroup is made under.
-    pub cgroup_root: PathBuf,
-    /// Where each lease's directory is made. Swept when the engine is built.
-    pub state_dir: PathBuf,
-    /// The binary that hardens and serves inside; `agentsfleet-runner`.
-    pub entry: PathBuf,
-    /// What it is told; `sandbox`.
-    pub entry_args: Vec<OsString>,
-    /// The host user and group bubblewrap runs as when the runner is root.
-    pub sandbox_ids: (u32, u32),
-    /// The log level passed to the process inside, when one is set.
-    pub log_level: Option<OsString>,
-    /// How long a sandbox may take to answer before the lease is refused.
-    pub ready_timeout: Duration,
-}
-
-impl BubblewrapConfig {
-    /// Where to probe the host this configuration builds on: its own launcher,
-    /// cgroup and state directory, so the probe checks what the engine will use.
-    #[must_use]
-    pub fn probe_paths(&self) -> ProbePaths {
-        ProbePaths {
-            bwrap: self.tools.bwrap.clone(),
-            cgroup_root: self.cgroup_root.clone(),
-            state_dir: Some(self.state_dir.clone()),
-            ..ProbePaths::default()
-        }
-    }
-}
-
 /// Builds one bubblewrap sandbox per lease.
 #[derive(Debug)]
 pub struct BubblewrapEngine {
@@ -106,43 +86,54 @@ impl BubblewrapEngine {
     ///
     /// # Errors
     /// The host lacks Landlock, seccomp, bubblewrap, the toolbox's file system
-    /// or a cgroup controller, or the toolbox is not the configured one.
+    /// or a cgroup controller, or another process owns its egress.
     pub fn new(config: BubblewrapConfig, host: &HostProbe) -> Result<Self> {
-        let checked = match host.missing() {
-            Some(missing) => Err(refused(missing)),
-            None if config.toolbox.digest() != config.toolbox_digest => Err(toolbox_unexpected(
-                config.toolbox.digest(),
-                &config.toolbox_digest,
-            )),
-            None => Ok(()),
-        };
-        if let Err(error) = checked {
-            let missing = error.missing_mechanism();
-            let error_code = error.code().as_str();
-            let reason = error.to_string();
-            let event = EVENT_HOST_REFUSED;
-            tracing::error!(
-                missing,
-                error_code,
-                reason,
-                event,
-                "this host cannot build a sandbox"
-            );
-            return Err(error);
-        }
+        Self::with_egress(config, host, egress::own_host, &egress::Host)
+    }
+
+    /// [`Self::new`], taking the host's egress with `own` and sweeping it
+    /// through `kernel`: the running host's in production, a stated one in
+    /// the suites.
+    fn with_egress(
+        config: BubblewrapConfig,
+        host: &HostProbe,
+        own: impl FnOnce() -> Result<()>,
+        kernel: &impl Kernel,
+    ) -> Result<Self> {
+        boot::admissible(host)?;
         let root = rustix::process::geteuid().is_root();
         let run_as = root.then_some(config.sandbox_ids);
         let owner = run_as.unwrap_or((
             rustix::process::getuid().as_raw(),
             rustix::process::getgid().as_raw(),
         ));
+        // Before the sweep, which would otherwise remove a second process's
+        // live links on this host.
+        if host.egress {
+            own().inspect_err(|error| {
+                let Logged { error_code, reason } = error.logged();
+                let event = EVENT_HOST_REFUSED;
+                tracing::error!(
+                    error_code,
+                    reason,
+                    event,
+                    "this host's egress is owned elsewhere"
+                );
+            })?;
+        }
         let engine = Self {
             config,
             owner,
             run_as,
         };
-        engine.sweep();
+        engine.sweep(host.egress.then_some(kernel));
         Ok(engine)
+    }
+
+    /// What it builds sandboxes from.
+    #[must_use]
+    pub const fn config(&self) -> &BubblewrapConfig {
+        &self.config
     }
 
     async fn start(&self, request: SandboxRequest<'_>) -> Result<Bubblewrapped> {
@@ -153,7 +144,10 @@ impl BubblewrapEngine {
         // this one must not inherit, and the boot sweep is what removes it.
         DirBuilder::new().mode(LEASE_DIR_MODE).create(&dir)?;
         let mut parts = Parts::new(name.as_str(), dir);
-        match self.build(&mut parts, name, request.limits).await {
+        match self
+            .build(&mut parts, name, request.limits, request.network)
+            .await
+        {
             Ok(client) => Ok(Bubblewrapped {
                 client,
                 parts,
@@ -173,6 +167,7 @@ impl BubblewrapEngine {
         parts: &mut Parts,
         name: LeaseName<'_>,
         limits: Limits,
+        network: Network<'_>,
     ) -> Result<Client> {
         let (disk, caching) = WorkspaceDisk::create(
             &self.config.tools,
@@ -196,19 +191,43 @@ impl BubblewrapEngine {
         let procs = cgroup.procs();
         let tenant = TenantFiles::open(&cgroup.tenant_procs(), &cgroup.tenant_events())?;
         let run_dir = self.run_dir(parts.dir())?;
-        let argv = bubblewrap::arguments(&Layout {
+        let names = Names::render(parts.dir(), network)?;
+        let argv = self.arguments(
+            parts,
+            &run_dir,
+            tenant.descriptors(),
+            limits,
+            names.layout(),
+        );
+        parts.spawn(&self.config.tools.bwrap, argv, &procs, tenant, self.run_as)?;
+        let client = self.ready(parts, &run_dir.join(SOCKET_NAME)).await?;
+        if let Network::Allowed(allowlist) = network {
+            parts.adopt_egress(join(procs, allowlist.clone()).await?);
+        }
+        Ok(client)
+    }
+
+    /// Bubblewrap's command line for the lease `parts` holds.
+    fn arguments(
+        &self,
+        parts: &Parts,
+        run_dir: &Path,
+        tenant: TenantDescriptors,
+        limits: Limits,
+        network: NetworkLayout<'_>,
+    ) -> Vec<OsString> {
+        bubblewrap::arguments(&Layout {
             toolbox: self.config.toolbox.root(),
             workspace: parts.workspace(),
             tmp: parts.tmp(),
-            run_dir: &run_dir,
+            run_dir,
             entry: &self.config.entry,
             entry_args: &self.config.entry_args,
             log_level: self.config.log_level.as_deref(),
-            tenant: tenant.descriptors(),
+            tenant,
             shared_memory_bytes: limits.shared_memory_bytes(),
-        });
-        parts.spawn(&self.config.tools.bwrap, argv, &procs, tenant, self.run_as)?;
-        self.ready(parts, &run_dir.join(SOCKET_NAME)).await
+            network,
+        })
     }
 
     /// The socket directory, owned by the user the sandbox runs as and no one
@@ -247,8 +266,7 @@ impl Engine for BubblewrapEngine {
                 Ok(Box::new(sandbox))
             }
             Err(error) => {
-                let error_code = error.code().as_str();
-                let reason = error.to_string();
+                let Logged { error_code, reason } = error.logged();
                 let event = EVENT_PREPARE_FAILED;
                 tracing::warn!(lease_id, error_code, reason, event);
                 Err(error)
@@ -292,6 +310,10 @@ impl Sandbox for Bubblewrapped {
 
     async fn thaw(&self) -> Result<()> {
         settle(self.parts.freezer(), Freezer::thaw).await
+    }
+
+    async fn reallow(&mut self, allowlist: &Allowlist) -> Result<()> {
+        self.parts.reallow(allowlist).await
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {

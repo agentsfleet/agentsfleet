@@ -1,7 +1,7 @@
 //! `GET /v1/runners/me` — the runner's own row, read-only.
 //!
 //! Reading this does NOT bump liveness. Liveness is written by the heartbeat
-//! and by nothing else, so inspecting a host with `agentsfleet-runner status`
+//! and by nothing else, so inspecting a runner's row through this route
 //! can never mask a dead runner (`docs/AUTH.md` §Runner token). That promise is
 //! kept by the STATEMENT this reaches — `SELECT_RUNNER_SELF` has no update in
 //! it — rather than by this handler remembering not to ask for one.
@@ -53,7 +53,7 @@ pub(crate) async fn handle<D: Services>(
         // Assembled and serialised inside this arm, so every `Cow` borrowing
         // the row is written to the wire before the row is dropped — the
         // ownership split `SelfRow` documents, held by the borrow checker
-        // rather than by the `defer q.deinit()` ordering the Zig relies on.
+        // rather than by statement order.
         Ok(row) => Json(payload(&row)).into_response(),
         Err(error) => refuse(&error, EVENT),
     }

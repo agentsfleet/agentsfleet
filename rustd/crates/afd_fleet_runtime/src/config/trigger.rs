@@ -4,12 +4,10 @@
 //!
 //! Two webhook triggers on one source, or two cron entries, are each
 //! individually well-formed and jointly meaningless: the fleet would be woken
-//! twice for one delivery, or run twice on one schedule. The Zig checks this
-//! with a nested loop inside the parse loop, comparing `activeTag` and then
-//! reaching into `existing.webhook.source` — a reach the compiler permits only
-//! because the tag was checked one line earlier. Here the check runs over
+//! twice for one delivery, or run twice on one schedule. The check runs over
 //! already-typed values, so the comparison is a `match` the compiler proves
-//! total.
+//! total rather than a reach into a variant whose tag was checked one line
+//! earlier.
 
 use std::str::FromStr;
 

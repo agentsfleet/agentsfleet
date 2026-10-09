@@ -1,11 +1,11 @@
 name: cache-prune
 
-# Reclaims Actions cache space so the Zig jobs stop evicting each other.
+# Reclaims Actions cache space so the build jobs stop evicting each other.
 #
 # GitHub gives a repository 10 GB of cache and evicts Least Recently Used (LRU)
-# once that fills. This repository runs several distinct Zig cache families
-# (unit, integration, kernel, coverage, cross-compile targets),
-# each 130-370 MB, each retained under both `refs/heads/main` and every open
+# once that fills. This repository runs several distinct cargo cache families
+# (the dist builds of each binary, unit, integration, kernel, coverage),
+# each hundreds of megabytes, each retained under both `refs/heads/main` and every open
 # Pull Request (PR) ref, and each keeping older key generations alive for their
 # `restore-keys` prefix fallback. Left alone that sits at the ceiling, so a
 # "warm cache" restore becomes a coin flip for every job — and whichever job

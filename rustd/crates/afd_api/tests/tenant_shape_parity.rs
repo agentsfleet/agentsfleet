@@ -2,9 +2,9 @@
 //!
 //! # What the oracle is, and what it is not
 //!
-//! Every shape here was ported from a Zig handler that serialises through
-//! `res.json(value, .{})`, so the emitted key set is the Zig struct's field set
-//! and the ORDER is its declaration order. This suite pins that key set: a
+//! Every shape here is an `afd_api_wire` struct the tenant handlers serialise
+//! as-is, so the emitted key set is the struct's field set and the ORDER on the
+//! wire is its declaration order. This suite pins that key set: a
 //! field added, removed or renamed on any tenant response fails here, and the
 //! author has to change the pin deliberately.
 //!
@@ -18,13 +18,13 @@
 //! see is the property those four cannot: that the shapes agree with each other
 //! about how an absent value and a page boundary are spelled.
 //!
-//! # Nulls stay on the wire here, and that is the divergence worth pinning
+//! # Nulls stay on the wire here, and that is the property worth pinning
 //!
-//! std.json emits null optionals by default, so a tenant row always carries the
-//! same keys whether or not it has been revoked — a dashboard's
+//! A tenant row serialises an absent optional as `null`, so it always carries
+//! the same keys whether or not it has been revoked — a dashboard's
 //! `"revoked_at" in row` check can feel the difference. The secret list is the
-//! one surface that opts out (`emit_null_optional_fields = false`), which is
-//! why the assertion lives here rather than being assumed everywhere.
+//! one surface that opts out (`skip_serializing_if` in `afd_api_wire::secret`),
+//! which is why the assertion lives here rather than being assumed everywhere.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -131,8 +131,7 @@ fn absent_optionals_stay_on_the_wire_as_null() {
     let document = serde_json::to_value(&never_used).expect("a wire shape serialises");
 
     // Present AND null, not omitted. A dashboard branching on
-    // `"revoked_at" in row` reads the two differently, and std.json's default
-    // is what the Zig side emits.
+    // `"revoked_at" in row` reads the two differently.
     assert_eq!(document.get("last_used_at"), Some(&Value::Null));
     assert_eq!(document.get("revoked_at"), Some(&Value::Null));
 }
@@ -170,9 +169,9 @@ fn a_minted_command_line_credential_names_its_deployment() {
 #[test]
 fn the_billing_snapshot_carries_both_spellings_of_exhaustion() {
     // `is_exhausted` restates `exhausted_at` as a boolean and BOTH travel:
-    // `tenant_billing.zig` emits the pair so a dashboard can branch without a
-    // null check. The redundancy is the contract, so the pin protects it from
-    // a tidy-up that would drop one.
+    // `BillingResponse` carries the pair so a dashboard can branch without a
+    // null check. The redundancy is deliberate, so the pin protects it from a
+    // tidy-up that would drop one.
     assert_shape(
         &BillingResponse {
             balance_nanos: 0,

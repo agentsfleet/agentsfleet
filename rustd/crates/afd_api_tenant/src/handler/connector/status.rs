@@ -11,8 +11,7 @@
 //! It removes this daemon's sealed handle and the rows routing the provider's
 //! events back, and leaves the authorization standing at the vendor. That is
 //! what makes reconnecting always available after any drift — see
-//! [`afd_connector::Grants::forget`], and `disconnect.zig` for the same rule
-//! stated from the other side.
+//! [`afd_connector::Grants::forget`].
 
 use std::sync::Arc;
 

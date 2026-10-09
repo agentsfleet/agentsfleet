@@ -4,17 +4,15 @@
 //!
 //! A connect is not one request. The exchange redeems the code, and some
 //! providers then dial a SECOND host before the grant is sealed — Jira reads
-//! the site its token is scoped to, and `github/ownership.zig` proves the
-//! person reaches the installation. A lane that redirected only the exchange
+//! the site its token is scoped to, and [`crate::github`] proves the person
+//! reaches the installation. A lane that redirected only the exchange
 //! would leave that second call dialling the real vendor from a test: a pass
 //! that proves nothing, and CI traffic arriving at Atlassian.
 //!
 //! So there is ONE knob — the endpoint [`crate::exchange::Exchange`] was
-//! pointed at — and every other host is derived from its ORIGIN.
-//! `jira/callback.zig:87` composes the same way from the same single override
-//! on the other daemon; this is that composition, shared, so the next
-//! connector with a second call gets it by calling [`redirected`] rather than
-//! by remembering that the problem exists.
+//! pointed at — and every other host is derived from its ORIGIN. The
+//! composition is shared, so the next connector with a second call gets it by
+//! calling [`redirected`] rather than by remembering that the problem exists.
 
 /// What separates a URL's scheme from its authority.
 const SCHEME_SEPARATOR: &str = "://";

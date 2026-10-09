@@ -7,22 +7,21 @@
 //!
 //! # Why this decodes the URL itself
 //!
-//! `httpz` percent-decodes a query string and a path segment and REFUSES a
-//! malformed escape; axum decodes both too, and silently leaves `%2` as the two
-//! characters `%2`. That difference is observable — `bad%2` earns a 400 from
-//! `memory_forget_integration_test.zig` and would earn a 404 here — so the
-//! decoding is done from the raw URL, once, by [`Read::parse`] and
-//! [`memory_key`]. It is also why the forget handler reads its key off
-//! [`http::Uri`] rather than axum's `Path`: by the time an extractor hands over
-//! a segment, the malformed escape it was meant to refuse is already absorbed.
+//! This surface REFUSES a malformed escape in a query string or a path segment;
+//! axum decodes both, and silently leaves `%2` as the two characters `%2`. Left
+//! to axum, `bad%2` would earn a 404 for a key nobody stored rather than the
+//! 400 it is owed — so the decoding is done from the raw URL, once, by
+//! [`Read::parse`] and [`memory_key`]. It is also why the forget handler reads
+//! its key off [`http::Uri`] rather than axum's `Path`: by the time an
+//! extractor hands over a segment, the malformed escape it was meant to refuse
+//! is already absorbed.
 //!
 //! # One decoder, two policies
 //!
-//! A raw `+` is a SPACE in a query string and a literal plus in a path. The Zig
-//! writes two loops for that, one per surface; here the difference is a single
-//! substitution applied before [`decode_bytes`] rather than a second copy of
-//! the escape reader — `%2B` contains no `+`, so substituting first cannot
-//! turn an encoded plus into a space.
+//! A raw `+` is a SPACE in a query string and a literal plus in a path. The
+//! difference is a single substitution applied before [`decode_bytes`] rather
+//! than a second copy of the escape reader — `%2B` contains no `+`, so
+//! substituting first cannot turn an encoded plus into a space.
 
 use afd_http::handler::encoding::{decode_bytes, decode_form};
 use std::borrow::Cow;
@@ -57,20 +56,20 @@ const DETAIL_KEY_ENCODING: &str = "memory key has invalid URL encoding";
 
 /// The page a caller who names no `limit` gets when LISTING.
 ///
-/// `helpers.zig`'s `DEFAULT_LIST_LIMIT`. A hundred, because a list is a person
+/// A hundred, because a list is a person
 /// scrolling what their fleet knows and the whole set is capped at a thousand.
 const LIST_LIMIT_DEFAULT: i64 = 100;
 
 /// The page a caller who names no `limit` gets when SEARCHING.
 ///
-/// `helpers.zig`'s `DEFAULT_RECALL_LIMIT`. A fifth of the list's, and the
+/// A fifth of the list's, and the
 /// asymmetry is deliberate: a search is a person looking for one entry, so the
 /// first page is what they read and the rest is paging they will not do.
 const RECALL_LIMIT_DEFAULT: i64 = 20;
 
 /// The most rows one page may carry, whatever the caller asks for.
 ///
-/// `helpers.zig`'s `MAX_RECALL_LIMIT`. CLAMPED rather than refused, which is
+/// CLAMPED rather than refused, which is
 /// this surface's own vocabulary — the workspace directory answers a 400 for
 /// the same ask, and a client sitting on either would change class if the two
 /// were made to agree.

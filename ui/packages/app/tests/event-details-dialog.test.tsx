@@ -142,8 +142,8 @@ describe("EventDetailsDialog", () => {
     expect(resultIndex).toBeGreaterThanOrEqual(0);
     expect(contextIndex).toBeGreaterThan(resultIndex);
     expect(fixIndex).toBeGreaterThan(contextIndex);
-    // No recorded cause: the guidance still names the actionable surface, and
-    // the older fall-back advice stays because nothing here says WHICH check.
+    // No recorded cause: the guidance still says the runner refused the run,
+    // and the fall-back advice stays because nothing here says WHICH check.
     expect(screen.getByText(GUIDANCE.STARTUP)).toBeTruthy();
     expect(screen.getByText(/did not record which check failed/)).toBeTruthy();
     expect(screen.queryByText("Add non-empty instructions in Skill, then save the fleet.")).toBeNull();
@@ -155,7 +155,7 @@ describe("EventDetailsDialog", () => {
   });
 
   it("shows the recorded cause in full and drops the no-cause advice", async () => {
-    const cause = "startup check 'instructions' failed: no instructions configured";
+    const cause = "this host could not build a sandbox for the run";
     await renderDialogWithBody(event({ failure_label: "startup_posture", failure_detail: cause }));
 
     // Inspect is where the whole stored value is readable — sentence AND cause.

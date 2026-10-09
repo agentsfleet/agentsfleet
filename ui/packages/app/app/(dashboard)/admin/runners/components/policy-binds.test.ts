@@ -10,10 +10,11 @@ import {
   pathsOverlap,
 } from "./policy-binds";
 
-// These rules MIRROR `protocol_bind.extraBindsValid`; the daemon stays the
-// boundary. The tests below are the mirror's proof — each one names a rule the
-// Zig side enforces, so a drift between the two shows up here rather than as a
-// 400 the operator has to decode.
+// These rules MIRROR the garde bind rules in
+// rustd/crates/afd_wire/src/runner/rules.rs; the daemon stays the boundary.
+// The tests below are the mirror's proof — each one names a rule the daemon
+// enforces, so a drift between the two shows up here rather than as a 400 the
+// operator has to decode.
 
 describe("pathsOverlap", () => {
   it("treats the same path as an overlap", () => {

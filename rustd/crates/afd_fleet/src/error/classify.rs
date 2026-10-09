@@ -8,9 +8,9 @@
 //! which sentence it reads, and whether the work can ever run again.
 //!
 //! That totality is the whole reason they are tables rather than `if` ladders.
-//! The Zig restates the pairing at every `hx.fail` call site and classifies
-//! permanence by the ORDER of arms in one `switch`, so both facts live wherever
-//! someone last wrote them down.
+//! A ladder restates the pairing at every call site and classifies permanence
+//! by the ORDER of its arms, so both facts live wherever someone last wrote
+//! them down.
 
 use afd_core::error_code::{self, ErrorCode};
 
@@ -55,8 +55,7 @@ impl Error {
     /// The registry code this failure answers with.
     ///
     /// Exhaustive, so a new kind fails the build until it is given one — the
-    /// same device `afd_auth::Error::code` uses, applied to the pairing the Zig
-    /// handlers restate at every `hx.fail` call site.
+    /// same device `afd_auth::Error::code` uses.
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.inner.kind {
@@ -84,18 +83,14 @@ impl Error {
             // caller's request being wrong. An earlier draft answered `Mint`
             // with `UUIDV7_INVALID_ID_SHAPE`, which is a 400: it told an
             // operator their enrolment was malformed while the fault was here.
-            // The queue joins these rather than getting a code of its own: the
-            // Zig assign path logs `ERR_INTERNAL_OPERATION_FAILED` for every
-            // Dragonfly failure it meets, and a new code would fire the ERROR
-            // REGISTRY gate over a registry this family does not own.
-            // Every provider-resolution failure answers the code
-            // `service_billing.zig` logs for the whole family
-            // (`ERR_INTERNAL_OPERATION_FAILED`), and the vault join them
-            // because that is what `crypto_store.zig` logs when an envelope
-            // will not open. The finer `UZ-PROVIDER-*` codes exist in the Zig
-            // registry and belong to the TENANT plane's handler, which is
-            // M178's — declaring them here for a path that cannot emit them
-            // would be an unreferenced code that looks like coverage.
+            // The queue joins these rather than getting a code of its own: a
+            // new code would fire the ERROR REGISTRY gate over a registry this
+            // family does not own. Every provider-resolution failure answers
+            // the same code, and a vault envelope that will not open joins
+            // them because which check failed is an oracle. The finer
+            // `UZ-PROVIDER-*` codes belong to the TENANT plane's handler —
+            // declaring them here for a path that cannot emit them would be an
+            // unreferenced code that looks like coverage.
             // `Envelope` is a producer writing an entry this daemon cannot
             // execute — not the asking runner's fault, so it answers as an
             // internal failure rather than a 4xx telling a healthy runner to
@@ -107,7 +102,7 @@ impl Error {
             | ErrorKind::Queue { .. }
             // A stored config this daemon cannot read joins the family for the
             // registry reason the queue does: the finer code an operator would
-            // want does not exist in the Zig registry, and minting one here
+            // want does not exist in the registry, and minting one here
             // would fire the ERROR REGISTRY gate over a registry this family
             // does not own. The parser's own error says which rule the
             // document broke, and it survives in the source chain.
@@ -115,16 +110,14 @@ impl Error {
             // A mask that cannot be built is this process failing, and the
             // message it would have guarded is not sent.
             | ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
-            // Two vault failures, two codes, matching the two the Zig logs:
-            // `crypto_store.decrypt_failed` answers the internal code above
-            // because which check failed is an oracle, while `vault.zig`'s
-            // parse failure answers this one because the body's SHAPE is a
-            // fact the operator who stored it can act on.
+            // Two vault failures, two codes: a failed decrypt answers the
+            // internal code above because which check failed is an oracle,
+            // while a body that will not parse answers this one because the
+            // body's SHAPE is a fact the operator who stored it can act on.
             ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
             // The one provider-family failure with a code of its own, because
             // it is the one an operator can ACT on: the fleet named a
-            // credential and nobody stored it. `secrets_resolve.zig` logs the
-            // same code, and the entry already exists in the Zig registry.
+            // credential and nobody stored it.
             // The six lease-lifecycle refusals, each with its own registry
             // code. None of them is an internal failure and none is a bad
             // request: they are all one fact — this runner may not do this to
@@ -150,10 +143,9 @@ impl Error {
             // the ordinary case looks like from the wire.
             ErrorKind::BundleMissing => error_code::FLEET_BUNDLE_NOT_FOUND,
             // Three ways for a snapshot to be unservable, one code, because
-            // the RUNNER acts identically on all three — it re-polls. The Zig
-            // answers `ERR_FLEET_BUNDLE_STORAGE_UNAVAILABLE` for the first two
-            // and has no third; what separates them for an operator is
-            // `detail` below and the source chain in the log.
+            // the RUNNER acts identically on all three — it re-polls. What
+            // separates them for an operator is `detail` below and the source
+            // chain in the log.
             ErrorKind::BundleUnconfigured
             | ErrorKind::BundleStorage { .. }
             | ErrorKind::BundleOversized { .. } => error_code::FLEET_BUNDLE_STORAGE_UNAVAILABLE,
@@ -163,8 +155,8 @@ impl Error {
             ErrorKind::IntegrationNotConnected => error_code::CRED_INTEGRATION_NOT_CONNECTED,
             ErrorKind::MintUnconfigured => error_code::CRED_BROKER_NOT_CONFIGURED,
             // GitHub keeps two codes where the refresh connectors share one,
-            // and the asymmetry is the Zig's: an App installation has its own
-            // reconnect semantics, and a runner that meets UZ-GH-001 knows a
+            // because an App installation has its own reconnect semantics,
+            // and a runner that meets UZ-GH-001 knows a
             // HUMAN must reinstall an App rather than that a token exchange
             // failed.
             ErrorKind::GithubReconnectRequired => error_code::GH_RECONNECT_REQUIRED,
@@ -191,8 +183,8 @@ impl Error {
     ///
     /// A rejection quotes its own detail, because the caller can act on it —
     /// that is the whole reason the kind exists. Every other kind answers a
-    /// FIXED sentence, byte-identical to the one `problem_response.zig` writes:
-    /// an internal failure that quotes its cause is an internal failure leaking
+    /// FIXED sentence declared in `detail.rs`: an internal failure that quotes
+    /// its cause is an internal failure leaking
     /// its cause to whoever provoked it, and the cause is in the log where an
     /// operator can read it beside the request id.
     ///

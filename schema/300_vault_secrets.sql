@@ -53,9 +53,9 @@ CREATE TABLE IF NOT EXISTS vault.secrets (
 -- workspace_id prefix serves the per-workspace list and the erasure cascade.
 -- A second index on the same columns would only slow every write.
 
--- api_runtime reads and writes the secret store directly. DELETE is included
--- because account erasure removes a workspace's secrets
--- (`state/account_teardown.zig`).
+-- api_runtime reads and writes the secret store directly. DELETE serves the
+-- per-secret delete (`rustd/crates/afd_vault/src/delete.rs`) and account
+-- erasure, which removes a workspace's secrets.
 --
 -- Splitting this onto a `vault_runtime` role that api_runtime must assume for
 -- the span of one transaction is deferred to its own milestone, because the

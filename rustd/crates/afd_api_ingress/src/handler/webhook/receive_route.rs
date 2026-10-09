@@ -1,10 +1,10 @@
 //! `POST /v1/webhooks/{fleet_id}` — one fleet's own deliveries, any provider.
 //!
-//! The port of `webhooks/fleet.zig`. Where [`super::github_route`] knows it is
-//! serving GitHub and can read an event kind out of a header GitHub sets, this
-//! route knows only which fleet the URL named. The provider is whatever the
-//! fleet's trigger declares, and the scheme its signature is checked under
-//! comes from that declaration rather than from anything the sender said.
+//! Where [`super::github_route`] knows it is serving GitHub and can read an
+//! event kind out of a header GitHub sets, this route knows only which fleet
+//! the URL named. The provider is whatever the fleet's trigger declares, and
+//! the scheme its signature is checked under comes from that declaration
+//! rather than from anything the sender said.
 //!
 //! # There is no allow-list check here, and that is not an omission
 //!

@@ -5,8 +5,7 @@
 //! The destination rides RAW inside the provider's own request path. A `?` in
 //! it would be read as the PROVIDER request's query and a `#` as its fragment,
 //! registering a callback silently truncated at that byte — one this daemon
-//! never meant and cannot serve. `constants.zig` refuses at construction for
-//! the same reason, and refusing beats stripping because a deployment whose
+//! never meant and cannot serve. Refusing beats stripping because a deployment whose
 //! configured URL carries a query is misconfigured, and quietly registering a
 //! different URL hides that until the first fire never arrives.
 //!
@@ -133,10 +132,10 @@ fn the_cap_is_measured_after_the_path_is_appended() {
 
 /// The ingress path is half of the claim a fire token is verified against.
 ///
-/// `cron/constants.zig`'s `ingress_path`, kept byte-for-byte. A divergence
-/// would make every schedule registered by one daemon unverifiable by the
-/// other — the failure would not appear until a fire arrived and was refused
-/// as being for somebody else's daemon.
+/// Pinned byte-for-byte: every schedule already registered carries it in its
+/// fire token's `sub` claim, so a change would make each of them unverifiable
+/// — and the failure would not appear until a fire arrived and was refused as
+/// being for somebody else's daemon.
 #[test]
 fn the_ingress_path_is_the_one_the_router_serves() {
     assert_eq!(INGRESS_PATH, "/v1/ingress/qstash/schedules");

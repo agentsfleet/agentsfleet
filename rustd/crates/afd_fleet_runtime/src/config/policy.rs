@@ -62,8 +62,7 @@ impl Dollars {
 /// An authored ceiling with the rules it must meet; its cap is the context.
 ///
 /// `finite` comes first, and it is not redundant: NaN answers FALSE to both
-/// `<= 0.0` and `> cap`, so garde's range alone admits it, and the Zig bounds
-/// this ceiling with exactly those two comparisons. garde runs the custom
+/// `<= 0.0` and `> cap`, so garde's range alone admits it. garde runs the custom
 /// rules in the order written and then the range, so the first break in the
 /// report is the reason, in the order the rules read: finite, positive, cap.
 #[derive(Debug, garde::Validate)]
@@ -198,8 +197,8 @@ impl TryFrom<raw::Network> for Network {
         Ok(Self {
             allow: entries(authored.allow),
             // Absent reads as false: the permissive value is the one an author
-            // gets by not thinking about it, which matches the Zig and is what
-            // every existing document was written against.
+            // gets by not thinking about it, and it is what every existing
+            // document was written against.
             read_only: authored.read_only.unwrap_or(false),
             read_post_paths: entries(authored.read_post_paths),
         })

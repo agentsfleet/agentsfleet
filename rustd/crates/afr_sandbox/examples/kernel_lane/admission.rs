@@ -8,7 +8,7 @@ use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use afr_sandbox::{Manifest, Toolbox, ToolboxRefusal};
+use afr_sandbox::{Manifest, Toolbox, ToolboxHome, ToolboxRefusal};
 use libtest_mimic::Failed;
 use rustix::fs::{CWD, RenameFlags};
 
@@ -23,8 +23,6 @@ const AUTHORIZED: &str = "authorized";
 const DECOY: &str = "decoy";
 /// The size of the foreign ext4 file system planted at a digest's directory.
 const EXT4_BYTES: u64 = 8 * 1024 * 1024;
-/// Where, under a trial's directory, its images are mounted.
-const MOUNTS: &str = "mounts";
 /// Where the kernel lists this process's mounts.
 pub(crate) const MOUNTINFO: &str = "/proc/self/mountinfo";
 /// The mount program, and the arguments the trials pass it: options, a file
@@ -53,7 +51,7 @@ pub(crate) fn path_swap(lane: &Lane) -> Result<(), Failed> {
     let published = small_image(dir.path(), AUTHORIZED)?;
     let decoy = small_image(dir.path(), DECOY)?;
     let manifest = lane.signer.manifest_for(&published)?;
-    let mounts = dir.path().join(MOUNTS);
+    let mounts = ToolboxHome::at(dir.path().to_owned()).mounts();
     let stop = Arc::new(AtomicBool::new(false));
     let racer = {
         let (published, decoy, stop) = (published.clone(), decoy.clone(), Arc::clone(&stop));
@@ -116,7 +114,7 @@ pub(crate) fn adoption(lane: &Lane) -> Result<(), Failed> {
     let dir = tempfile::tempdir_in("/tmp")?;
     let image = small_image(dir.path(), AUTHORIZED)?;
     let manifest = lane.signer.manifest_for(&image)?;
-    let mounts = dir.path().join(MOUNTS);
+    let mounts = ToolboxHome::at(dir.path().to_owned()).mounts();
     let root = mounts.join(manifest.sha256());
     let ext4 = dir.path().join("foreign.ext4");
     fs::File::create(&ext4)?.set_len(EXT4_BYTES)?;

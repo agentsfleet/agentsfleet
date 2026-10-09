@@ -133,8 +133,7 @@ pub(crate) async fn handle<D: Services>(
             });
             // Read here rather than reused from `services.now()`: that instant
             // was taken BEFORE the settle, and the span's end is the moment the
-            // run's record actually closed. The Zig reads its clock at the same
-            // point, for the same reason.
+            // run's record actually closed.
             delivery_of(&settled, &request).record(SystemTime::now());
             meter(&settled, &request, runner.id().as_str());
             Json(ReportResponse { ok: true }).into_response()

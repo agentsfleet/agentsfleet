@@ -9,10 +9,11 @@ x-agentsfleet:
       message: "Sweep the telemetry for new incidents"
 
   tools:
-    # Declared explicitly, because declaring nothing gets nothing. An omitted
-    # or non-array `tools` key yields ZERO tools — `runner_helpers.zig` returns
-    # an empty set rather than a default one, so a fleet that never wrote this
-    # key cannot call a single tool. There is no fallback to inherit.
+    # Declared explicitly, because there is no default set to inherit: the
+    # fleet may call exactly the tools listed here. A config with no `tools`
+    # key is refused as a missing required field, and an empty list is a fleet
+    # that only answers and cannot call a single tool
+    # (rustd/crates/afd_fleet_runtime/src/config/mod.rs).
     #
     # The memory pair is load-bearing, not a convenience: an incident stays
     # broken until a human acts on the diagnosis, so every sweep re-finds it.

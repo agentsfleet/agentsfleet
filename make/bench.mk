@@ -8,13 +8,6 @@
 # bench-lease, bench-steer, bench-outbound, bench-cardinality, bench-tail. Those are Rust,
 # they drive the production types directly rather than a URL, and they are the
 # agentsfleetd benchmarks.
-#
-# The Tier-1/Tier-2 pair this header used to describe is gone. Tier-1 was a
-# zbench runner over `tests/bench/micro.zig`, which benchmarked daemon
-# internals — the router, the error registry, the credential broker — through a
-# `bench_app` module the Zig daemon graph provided. That tree went at the
-# cutover, so the file could not compile, no build step named it, and `make
-# bench` never ran it. It is deleted rather than described.
 # =============================================================================
 
 .PHONY: bench _bench-loadgen

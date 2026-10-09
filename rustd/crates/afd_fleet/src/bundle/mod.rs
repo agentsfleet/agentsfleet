@@ -15,9 +15,8 @@
 //!
 //! [`ContentHash`] is what makes that impossible rather than merely unlikely.
 //! The key is REBUILT server-side from a validated digest, so there is no path
-//! from request bytes to a key — `bundles.zig` gets the same property from an
-//! `isContentHash` guard the handler must remember to call, and this gets it
-//! from a value the key builder cannot be handed without.
+//! from request bytes to a key. No handler has to remember to call a guard:
+//! the key builder cannot be handed anything but a digest that already parsed.
 //!
 //! # Why the object store is a `dyn`, and why that is not a trait of ours
 //!
@@ -41,14 +40,13 @@ use crate::error::{
     Error, Result, bundle_missing, bundle_oversized, bundle_storage, bundle_unconfigured, rejected,
 };
 
-/// The key layout `fleet_library/importer.zig` writes a snapshot under.
+/// The key layout `afd_library`'s `prepare` writes a snapshot under.
 ///
-/// Restated here rather than derived, because the two implementations write and
-/// read the same bucket: `prepare` puts under this prefix and this reads from
-/// it, so a divergence would be a runner that fetches nothing forever while
-/// every import reports success. RULE UFS single-sources it per implementation;
-/// what pins the two together across implementations is
-/// `test_snapshot_key_matches_the_zig_layout`.
+/// Restated here rather than derived, because the two crates write and read the
+/// same bucket: `prepare` puts under this prefix and this reads from it, so a
+/// divergence would be a runner that fetches nothing forever while every import
+/// reports success. RULE UFS single-sources it per crate; what pins the two
+/// together is `test_snapshot_key_matches_the_importer_layout`.
 const SNAPSHOT_KEY_PREFIX: &str = "fleet-bundles/sha256/";
 
 /// The extension every snapshot key ends in.
@@ -56,8 +54,9 @@ const SNAPSHOT_KEY_SUFFIX: &str = ".tar";
 
 /// The largest snapshot this daemon will hold in memory to answer one request.
 ///
-/// `importer.zig` caps a bundle's support files at 256 KiB in total, so a
-/// snapshot written by this product cannot approach this. The ceiling is not
+/// `afd_library`'s `MAX_SUPPORT_TOTAL_LEN` caps a bundle's support files at
+/// 256 KiB in total, so a snapshot written by this product cannot approach
+/// this. The ceiling is not
 /// about those: it is about the fact that the SIZE of a stored object is not a
 /// thing this daemon validated, and reading an object of unknown size into a
 /// buffer is how one misfiled upload becomes a memory fault. A megabyte is the
@@ -87,7 +86,7 @@ impl<'a> ContentHash<'a> {
     /// Exactly 64 lowercase hex characters. Uppercase is refused rather than
     /// folded, and that is deliberate: the digest is written lowercase by the
     /// importer, so accepting `A-F` would mean two spellings of one key and a
-    /// cache that answers for one of them. `bundles.zig` refuses it too.
+    /// cache that answers for one of them.
     ///
     /// # Errors
     /// Refuses anything that is not that, including — and this is the case the
@@ -163,8 +162,8 @@ impl Bundles {
 
     /// A deployment with no snapshot storage configured.
     ///
-    /// Not a failure at boot, and `serve_r2.zig` agrees: the daemon builds an
-    /// R2 client only when all four knobs are present and serves everything
+    /// Not a failure at boot: `agentsfleetd`'s `bundles.rs` builds an R2
+    /// client only when all four knobs are present and serves everything
     /// else regardless. A fleet with no support files never asks, so refusing
     /// to start would take the whole product down for a verb most deployments
     /// never reach.

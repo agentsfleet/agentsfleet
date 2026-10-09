@@ -45,12 +45,15 @@ const DECLARED: &str = "https://accounts.zoho.com/oauth/v2/token";
 const EXPIRES_IN_AN_HOUR: i64 = 3_600;
 const AN_HOUR_MS: i64 = 3_600_000;
 
+/// Four centuries, in the seconds `expires_in` is written in: forty times the
+/// ten-year ceiling `MAX_ACCESS_TTL` believes, so the refusal cannot hinge on
+/// where exactly that boundary sits.
+const FOUR_CENTURIES_S: i64 = 400 * 365 * 24 * 60 * 60;
+
 #[test]
 fn the_grant_is_form_encoded_by_the_crate_that_owns_the_encoding() {
-    // The Zig's own test, kept: these values are provider-issued opaque bytes,
-    // and every one of `+ & = %` changes the shape of the form if it escapes
-    // its field. The expected string is byte-identical to
-    // `integration_oauth_refresh.zig`'s.
+    // These values are provider-issued opaque bytes, and every one of
+    // `+ & = %` changes the shape of the form if it escapes its field.
     // Built through `reqwest` rather than through the encoder directly, so what
     // is asserted is the request this daemon would actually send.
     let request = reqwest::Client::builder()
@@ -123,8 +126,8 @@ fn an_accounts_base_moves_the_post_to_that_data_centre() {
 #[test]
 fn a_base_this_daemon_will_not_dial_refuses_before_anything_is_posted() {
     // Each of these would send THIS DEPLOYMENT'S `client_secret` somewhere it
-    // must never go, and the Zig checks none of them — it validates the path
-    // and takes the base as written. They are one test because they must all
+    // must never go, and checking only the appended path would let every one
+    // through. They are one test because they must all
     // keep answering the same way: a guard safe for four of five is not one.
     for hostile in [
         // Plaintext: the client secret on the wire in the clear.
@@ -220,8 +223,8 @@ fn a_success_body_this_daemon_cannot_read_mints_nothing() {
         // Negative, and beyond the ten-year ceiling: an expiry nothing real
         // states, which would park a dead token in the broker's cache.
         json!({"access_token": "at", "expires_in": -1}),
-        json!({"access_token": "at", "expires_in": 400 * 365 * 24 * 60 * 60_i64}),
-        // Non-finite, where the Zig's `@intFromFloat` would have trapped.
+        json!({"access_token": "at", "expires_in": FOUR_CENTURIES_S}),
+        // Beyond any integer: a float a naive cast would saturate or trap on.
         json!({"access_token": "at", "expires_in": 1e30}),
     ] {
         let outcome = granted(&answered(&malformed), "rt", NOW_MS);

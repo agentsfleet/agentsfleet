@@ -15,27 +15,25 @@
 //!
 //! # Three ways to stop, not one
 //!
-//! `serve.zig` models one — a signal arrives. exonum's loop selects over the
-//! signal AND the server's own termination, and habitat's supervisor does the
-//! same thing with a `shutdown_mode` the loop RETURNS. Both are right, and a
-//! daemon that only waits for a signal hangs when its listener dies of
-//! something else: a bind lost, an accept loop that returned an error, a
-//! runtime that shut its I/O driver. That process is unkillable except by
-//! SIGKILL and reports nothing on its way out.
+//! exonum's loop selects over the signal AND the server's own termination, and
+//! habitat's supervisor does the same thing with a `shutdown_mode` the loop
+//! RETURNS. Both are right, and a daemon that only waits for a signal hangs
+//! when its listener dies of something else: a bind lost, an accept loop that
+//! returned an error, a runtime that shut its I/O driver. That process is
+//! unkillable except by SIGKILL and reports nothing on its way out.
 //!
 //! # Why there are no shutdown flags here
 //!
-//! `serve_shutdown.zig` keeps `shutdown_requested` and `background_stop` apart
-//! so a signal arriving DURING boot cannot kill the background stack while the
-//! server may still come up and briefly serve. It needs two flags because its
-//! watcher is a separate thread polling every 100ms, so "the server stopped"
-//! and "the signal arrived" are events that race.
+//! A signal arriving DURING boot must not kill the background stack while the
+//! server may still come up and briefly serve — the half-dead-node window. A
+//! watcher thread polling for "the server stopped" and "the signal arrived"
+//! would need a flag for each, because the two events would race.
 //!
 //! Here they cannot race, because they are statements in order. A signal during
 //! boot resolves the shutdown future; the server comes up, sees an already
 //! resolved future, and stops immediately; the supervisor is cancelled after.
-//! That is precisely the property the two flags protected — the half-dead-node
-//! window — with one less piece of shared mutable state to keep consistent.
+//! That closes the half-dead-node window with no shared mutable state to keep
+//! consistent.
 
 use crate::serve::drain::{DRAIN_TIMEOUT, Drain, Settled};
 use crate::supervisor::{ShutdownReport, Supervisor};

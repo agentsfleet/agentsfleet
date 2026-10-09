@@ -6,6 +6,7 @@ use std::io::{self, BufReader};
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::Path;
 
+use afd_core::error_code::{Coded as _, Logged};
 use digest_io::IoWrapper;
 use rustix::fs::FileType;
 use rustix::mount::MountFlags;
@@ -56,9 +57,8 @@ impl Toolbox {
                 tracing::info!(digest, event);
             }
             Err(error) => {
-                let error_code = error.code().as_str();
+                let Logged { error_code, reason } = error.logged();
                 let refusal = error.toolbox_refusal().map(ToolboxRefusal::as_str);
-                let reason = error.to_string();
                 let event = EVENT_ADMISSION_FAILED;
                 tracing::error!(digest, error_code, refusal, reason, event);
             }

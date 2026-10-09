@@ -13,9 +13,12 @@ import { expandScopes } from "@/lib/auth/scopes";
  * caller's token can't reach.
  *
  * The documented session-token form is a space-delimited string
- * (`"runner:read runner:enroll model:admin"`); we also accept a JSON array to
- * mirror the backend's tolerant reader (`claims.zig` `getScopesOwned`) in case
- * the template is ever switched to array form. The held set is expanded to its
+ * (`"runner:read runner:enroll model:admin"`); we also accept a JSON array in
+ * case the template is ever switched to array form. The backend is stricter: it
+ * decodes `scopes` as a string (`Claims` in
+ * rustd/crates/afd_identity/src/jwks/claims.rs, split by `parse_claim` in
+ * rustd/crates/afd_auth/src/scope.rs) and rejects an array-form token as
+ * malformed, so that switch needs a daemon change first. The held set is expanded to its
  * downward closure (`expandScopes`) so a `model:admin` grant satisfies a
  * `model:read` check — matching the backend `requireScope` decision.
  *

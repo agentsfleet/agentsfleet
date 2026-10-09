@@ -3,8 +3,7 @@
 //! Split from [`super::gates`] on the domain seam rather than on line count: an
 //! approval rule asks a HUMAN and an anomaly rule asks nobody. They share a
 //! container in the stored document, and nothing else — different fields,
-//! different failure, different moment in the pass. `approval_gate_anomaly.zig`
-//! is its own module upstream for the same reason.
+//! different failure, different moment in the pass.
 
 use std::num::NonZeroU32;
 

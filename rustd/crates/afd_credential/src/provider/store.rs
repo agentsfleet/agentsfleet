@@ -8,12 +8,10 @@
 //!
 //! # Why the Key Encryption Key lives on the store
 //!
-//! `crypto_primitives.zig` keeps it in a file-scoped `var g_kek`, resolved at
-//! boot by `serve.run` and read back through `loadKek()` — a process global,
-//! with the failure mode a process global has: `loadKek` is fallible at every
-//! call site because the variable might not have been set yet, so every read
-//! path carries a `MissingMasterKey` arm for a condition that can only occur
-//! before the daemon serves traffic.
+//! A process global would carry the failure mode a process global has: every
+//! read is fallible because the variable might not have been set yet, so every
+//! read path would carry a "missing master key" arm for a condition that can
+//! only occur before the daemon serves traffic.
 //!
 //! Here it is a field. A [`Providers`] cannot be constructed without one, so
 //! there is no "not yet resolved" state to answer for and no arm to write: boot

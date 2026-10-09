@@ -63,10 +63,11 @@ const DEFAULT_RETRY_METHODS: ReadonlySet<string> = new Set([
  */
 const MS_PER_SECOND = 1000;
 
-// W3C Trace Context field widths, in hex characters. The server parses exactly
-// this shape (`observability/trace.zig`); anything else is ignored and it
-// starts a fresh root, so a malformed value here silently costs correlation
-// rather than breaking the request.
+// W3C Trace Context field widths, in hex characters. A Trace Context reader
+// accepts exactly this shape; anything else is ignored and it starts a fresh
+// root, so a malformed value here silently costs correlation rather than
+// breaking the request. agentsfleetd itself does not read the header yet:
+// nothing under rustd/crates parses `traceparent`.
 const TRACE_ID_HEX_LEN = 32;
 const SPAN_ID_HEX_LEN = 16;
 const TRACEPARENT_VERSION = "00";

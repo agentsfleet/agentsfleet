@@ -153,16 +153,14 @@ async fn a_name_the_provider_sends_only_half_of_is_stored_without_the_gap() {
     }
 }
 
-/// The writeback the Rust port dropped.
+/// The writeback to the identity provider.
 ///
 /// Signup is TWO writes. The tenant row is the one this daemon owns; the second
 /// tells the identity provider which tenant the account resolved to, and until
 /// it lands the person's next session token carries no `tenant_id` — so every
-/// call they make is refused for want of a tenant context. `identity_events_clerk.zig:290`
-/// made that call and the Rust route did not, for the whole of the port: it
-/// created tenants and told the provider nothing.
+/// call they make is refused for want of a tenant context.
 ///
-/// Nothing failed when it was missing, which is why this test exists rather
+/// Nothing fails when it is missing, which is why this test exists rather
 /// than a type. The write is best-effort by design — the row is already
 /// committed, so a provider outage must not turn signup into a 500 — and an
 /// omitted best-effort call produces no error, no 500, and no failing lane.

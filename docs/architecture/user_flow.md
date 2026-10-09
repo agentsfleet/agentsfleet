@@ -34,7 +34,7 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Model/cap overlay | per-field, at lease time | frontmatter `""` / `0` / absent ⇒ overlay from `tenant_model_selection` (or synth-default) | §8.7 |
 | Cap resolution time | provider-set or install time | never at trigger time — no network dependency on the hot path | §8.7 |
 | Run-chunk threshold | 0.75 × `context_cap_tokens` | L3 chunking; continuation resumes in a fresh window | §8.7 |
-| Slack surface | Rung 0, reactive only | per-channel resident fleet is the memory namespace; answers on `@mention`, never unattended. Zig-only today: the Rust daemon drops mentions until M206_002 | §8.8 |
+| Slack surface | Rung 0, reactive only | per-channel resident fleet is the memory namespace; answers on `@mention`, never unattended; shipped by M206_002 | §8.8 |
 
 ## Traps
 
@@ -199,7 +199,7 @@ A Fleet's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger 
 
 - **GitHub App trigger.** Type `webhook`, `source: github`, explicit `repositories: [owner/repo, …]`, and `events: [...]`. GitHub posts once to `POST /v1/ingress/github`; the signed delivery's installation resolves the workspace, then repository + event + approved GitHub grant select the fleet. Omitting `repositories` is fail-closed for App traffic.
 - **Manual/custom webhook trigger.** The existing fleet-addressed routes remain available: `POST /v1/webhooks/{fleet_id}` and the GitHub-specific `POST /v1/webhooks/{fleet_id}/github`. The operator registers those URLs and a workspace webhook secret with the provider. This path does not infer a fleet from an App installation and does not require `repositories`.
-- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Installing the Fleet stores one desired schedule and synchronously registers the same stable schedule identifier with QStash. QStash owns the clock and sends each signed fire to `agentsfleetd`, which appends one synthetic event with `actor=cron:<schedule_id>`. The runner and its disposable NullClaw child own no timer. `TRIGGER.md` allows at most one declarative cron entry per Fleet; the schedule API can manage additional explicit schedules within the per-Fleet limit.
+- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Installing the Fleet stores one desired schedule and synchronously registers the same stable schedule identifier with QStash. QStash owns the clock and sends each signed fire to `agentsfleetd`, which appends one synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer. `TRIGGER.md` allows at most one declarative cron entry per Fleet; the schedule API can manage additional explicit schedules within the per-Fleet limit.
 
 In addition to the declared triggers, every Fleet always accepts:
 
@@ -319,7 +319,7 @@ Single source of truth for caps: the `core.model_library` table (tenant read: be
 
 ## §8.8 Slack as a resident surface (Rung 0) — M106
 
-> **Status.** Everything below shipped in the retired Zig daemon. The Rust daemon verifies Slack's signature and echoes the `url_verification` handshake, then drops every mention (`rustd/crates/afd_api_ingress/src/handler/events.rs:88`). M206_002 restores the mention path, keeps the resident, and adds fleets that subscribe to one channel by its ID; [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) walks the zero-, one- and several-fleet cases.
+> **Status.** Shipped in `agentsfleetd` by M206_002, which also adds fleets that subscribe to one channel by its ID; [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) walks the zero-, one- and several-fleet cases.
 
 A second front door, alongside Claude / CLI / dashboard, for users who live in Slack and never author markdown. After a workspace admin connects Slack once in the dashboard (OAuth — Open Authorization; the install is a `fleet:slack` vault handle plus a generic `core.connector_installs` row mapping `team_id → workspace`), `@agentsfleet` lives in any channel it's invited to:
 

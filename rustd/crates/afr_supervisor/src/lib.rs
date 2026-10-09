@@ -34,6 +34,7 @@ mod bundles;
 mod client;
 mod credentials;
 mod drainer;
+mod egress;
 mod halt;
 mod heartbeat;
 mod holds;
@@ -51,6 +52,8 @@ mod worker_pool;
 
 #[cfg(test)]
 mod test_support;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_util;
 
 #[cfg(test)]
 #[path = "lease_telemetry_tests.rs"]
@@ -61,6 +64,7 @@ use std::sync::Arc;
 use afd_core::clock::{Clock, SystemClock};
 use afd_core::env::EnvSource;
 use afr_agent::AgentEngine;
+use afr_egress::SystemResolver;
 use afr_sandbox::{Engine, HostProbe, Limits};
 use tokio::sync::{Notify, watch};
 use tokio_util::sync::CancellationToken;
@@ -189,6 +193,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
     let lessee = Arc::new(Lessee {
         plane,
         engine,
+        resolver: Box::new(SystemResolver),
         agent,
         spool: ReportSpool::new(&home),
         bundles: BundleCache::new(&home),

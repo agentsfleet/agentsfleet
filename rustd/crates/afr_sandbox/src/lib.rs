@@ -24,6 +24,7 @@ mod harden;
 mod host;
 #[cfg(target_os = "linux")]
 mod mounts;
+mod network;
 mod probe;
 mod serve;
 mod tenant;
@@ -34,12 +35,22 @@ mod workspace_disk;
 
 #[cfg(target_os = "linux")]
 mod bubblewrap_engine;
+#[cfg(target_os = "linux")]
+mod egress;
+
+/// What the kernel lane proves egress against: the egress objects in the
+/// host's namespace, a killed run's leftovers, and a host past the sandbox's
+/// link (M-TEST-UTIL).
+#[cfg(all(target_os = "linux", feature = "test-util"))]
+pub use self::egress::far as egress_testing;
 
 #[cfg(target_os = "linux")]
-pub use self::bubblewrap_engine::{BubblewrapConfig, BubblewrapEngine};
+pub use self::bubblewrap_engine::{
+    Booted, BubblewrapConfig, BubblewrapEngine, READY_TIMEOUT, SANDBOX_HOST_IDS,
+};
 pub use self::cgroup::{
-    DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup, SANDBOX_LEAF, SANDBOX_MEMORY_RESERVE_BYTES,
-    SUBTREE_CONTROL, TENANT_LEAF,
+    DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup, MECHANISM_DELEGATED_CGROUP, SANDBOX_LEAF,
+    SANDBOX_MEMORY_RESERVE_BYTES, SELF_CGROUP_PATH, SUBTREE_CONTROL, TENANT_LEAF, delegated_root,
 };
 pub use self::engine::{
     DEFAULT_CPU_MILLIS, DEFAULT_DISK_BYTES, DEFAULT_MEMORY_BYTES, DEFAULT_PIDS, Engine,
@@ -50,6 +61,9 @@ pub use self::error::{Error, Result, ToolboxRefusal};
 pub use self::harden::{REFUSED_SYSCALLS, X32_SYSCALL_BIT};
 pub use self::harden::{WRITABLE, WRITABLE_DEVICES, capabilities_dropped, harden, single_threaded};
 pub use self::host::{HostTools, MKE2FS_PATH, MOUNT_PATH};
+pub use self::network::{
+    ALLOWLIST_ADDRESSES_MAX, Allowlist, Network, RESOLV_CONF, SANDBOX_HOSTS, SANDBOX_RESOLV_CONF,
+};
 pub use self::probe::{
     BWRAP_PATH, CGROUP_ROOT, FILESYSTEMS_PATH, HostProbe, KVM_PATH, Kvm, LSM_PATH,
     MECHANISM_BUBBLEWRAP, MECHANISM_LANDLOCK, MECHANISM_SECCOMP, MECHANISM_TOOLBOX_FILESYSTEM,
@@ -60,8 +74,9 @@ pub use self::tenant::{TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors}
 #[cfg(target_os = "linux")]
 pub use self::toolbox::KernelMounter;
 pub use self::toolbox::{
-    Manifest, Mounter, Release, TOOLBOX_KEEP_RELEASES, TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY,
-    TOOLBOX_SUFFIX, Toolbox, Toolboxes,
+    MANIFEST_SUFFIX, Manifest, MountedToolboxes, Mounter, Release, SIGNATURE_SUFFIX,
+    TOOLBOX_KEEP_RELEASES, TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY, TOOLBOX_SUFFIX, Toolbox,
+    ToolboxHome, Toolboxes,
 };
 pub use self::unsandboxed::UnsandboxedEngine;
 pub use self::warm_slots::WarmSlots;

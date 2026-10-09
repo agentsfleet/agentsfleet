@@ -12,14 +12,12 @@
 //! every statement filters on that workspace, so neither layer alone is what
 //! keeps one tenant's gallery out of another's.
 //!
-//! Being an EXTRACTOR is also a declared divergence. The Zig checks the page
-//! bounds and the cursor before it authorizes, so a caller who owns neither the
-//! workspace nor a valid `limit` is told about the limit; here ownership
-//! answers first. That is the safer order — input-validation behaviour is not
-//! something a non-owner should be able to probe — and it is the order every
-//! other workspace route in this daemon already uses, which matters more than
-//! matching a sequence whose only observable difference is which refusal a
-//! caller who is refused either way receives.
+//! Being an EXTRACTOR also fixes the order of refusals: ownership answers
+//! before the page bounds and the cursor are read, so a caller who owns neither
+//! the workspace nor a valid `limit` is told about the workspace. That is the
+//! safer order — input-validation behaviour is not something a non-owner should
+//! be able to probe — and it is the order every other workspace route in this
+//! daemon uses.
 //!
 //! # The cursor is bound to the walk that issued it
 //!
@@ -81,7 +79,7 @@ const EVENT_ONBOARD: &str = "workspace_library_onboard_failed";
 pub const DETAIL_CURSOR_MISMATCH: &str =
     "starting_after was issued for a different workspace or page size";
 
-/// This page's cursor payload, in the Zig's fixed key order.
+/// This page's cursor payload, in a fixed key order.
 ///
 /// Carries all three parts of the compound order, because all three are needed
 /// to place a row in it — plus the workspace and limit the walk was issued

@@ -23,18 +23,6 @@ a failing type is the failing test's NAME rather than a line inside a loop. Unit
 tests that must reach a private item stay in `src/` behind `#[cfg(test)]`;
 everything reachable through the public surface belongs in `tests/`.
 
-### The Zig daemon is frozen and unmeasured
-
-`src/**`, `build.zig` and `build_runner.zig` still compile, and the revision
-built from them serves `api-dev`. Nothing grades them: the Zig lint, unit,
-coverage, leak and integration lanes were deleted, along with the automatic
-deploy, on the deciding fact that there are no production users and the daemon
-is being replaced. The tree is in Codecov's `ignore` list, so it cannot move the
-published rate in either direction.
-
-Redeploying that frozen revision is a manual `workflow_dispatch` on
-`deploy-dev.yml`, and it is the rollback path the Rust cutover depends on.
-
 ## Public lanes
 
 `make test-unit-all` is the repository's unit claim. It runs
@@ -60,6 +48,13 @@ sets it.
 `make lint-all` is the lint claim: `lint-rustd` (`cargo fmt --check` plus
 `cargo clippy --workspace --all-targets -- -D warnings`), the TypeScript lints,
 the shell and OpenAPI checks, and the safety gates.
+
+`make test-runner-kernel` proves the runner's sandbox on a real Linux kernel. It
+builds the toolbox image, then runs `afr_sandbox`'s kernel lane as root with
+bubblewrap, Landlock and cgroup v2. It fails, never skips.
+
+`make check-version` is the version claim: `cli/package.json` and
+`rustd/Cargo.toml` must match `VERSION`.
 
 `lint-rustd` and `test-unit-rustd` both `cd` into `rustd/` rather than passing
 `--manifest-path`. `rust-toolchain.toml` resolves from the working directory, so
@@ -198,10 +193,9 @@ ready stream, not removing the guard.
 `afd_wire` defines the `/v1/runners` protocol. `agentsfleetd` serves it and
 publishes the shapes through `public/openapi.json` (`openapi_contract.rs`,
 `openapi_coverage.rs` and their siblings in `afd_api/tests/` grade that
-document against the routes). `agentsfleet-runner` is a client: its Zig
-structs in `src/lib/contract` conform to what is published, never the
-reverse. The runner has no test lane of its own against the daemon yet; the
-Zig structs are hand-maintained against the OpenAPI document until one exists.
+document against the routes). `agentsfleet-runner` is a client of the same
+crate: it speaks `afd_wire`'s types and nothing else, so a shape the two sides
+disagree on fails to compile ([Runner execution](./runner_execution.md#why-rust)).
 
 ## Coverage
 
@@ -244,8 +238,8 @@ fingerprints and artifacts.
 If a later change adds a genuinely untestable line, move the number in the same
 commit and say why. Do not let it drift down silently.
 
-The Zig tree, `rustd/target/`, test files and generated output are all in
-`ignore`, so the published rate describes shipped, measured code only.
+`rustd/target/`, test files and generated output are all in `ignore`, so the
+published rate describes shipped, measured code only.
 
 ## Adding a component
 

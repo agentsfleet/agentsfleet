@@ -183,9 +183,9 @@ fn a_body_that_is_not_the_event_its_header_claims_is_an_error() {
 
 #[test]
 fn the_two_policies_differ_only_on_the_pull_request_action() {
-    // The divergence `github_app.zig` states only by being a second file. A
-    // `labeled` pull request is noise to a directly-addressed fleet and is real
-    // traffic to a subscription that asked for pull_request events.
+    // The divergence `Policy` names. A `labeled` pull request is noise to a
+    // directly-addressed fleet and is real traffic to a subscription that
+    // asked for pull_request events.
     let body = pull_request_body("labeled");
 
     assert_eq!(

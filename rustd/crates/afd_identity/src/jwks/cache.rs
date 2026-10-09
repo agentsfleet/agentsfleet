@@ -12,8 +12,8 @@ use crate::jwks::source::KeySetSource;
 
 /// How long a fetched key set is served without asking again.
 ///
-/// Six hours, matching `jwks.zig`'s `cache_ttl_ms` and `docs/AUTH.md`'s
-/// "Cached for 6 h, refreshed on `kid` miss".
+/// Six hours, matching `docs/AUTH.md`'s "Cached for 6 h, refreshed on `kid`
+/// miss".
 pub const DEFAULT_TTL_MS: i64 = 6 * 60 * 60 * 1_000;
 
 /// Maximum outage tolerance after the normal refresh window.
@@ -21,10 +21,9 @@ pub const STALE_GRACE_MS: i64 = 15 * 60 * 1_000;
 
 /// Shortest interval between fetch ATTEMPTS, successful or not.
 ///
-/// `jwks.zig`'s `JWKS_REFRESH_MIN_INTERVAL_MS`. It bounds two different storms
-/// with one number: key-id misses during a rotation, and retries while the
-/// provider is down. The six-hour refresh is always far above it, so it only
-/// ever bites the miss path.
+/// It bounds two different storms with one number: key-id misses during a
+/// rotation, and retries while the provider is down. The six-hour refresh is
+/// always far above it, so it only ever bites the miss path.
 pub const REFRESH_MIN_INTERVAL_MS: i64 = 30 * 1_000;
 
 /// Why a refresh was attempted. Carried for the log line, and to decide whether

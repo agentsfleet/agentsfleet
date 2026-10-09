@@ -1,9 +1,12 @@
 //! `git`: the toolbox's git, run on the repository the supervisor checked out.
 //!
-//! The sandbox has no network, so a subcommand that reaches a remote cannot
-//! work here. It is refused with a code before anything runs, naming where a
-//! change leaves instead. The refusal is an answer, not the boundary: the
-//! boundary is the sandbox's missing network.
+//! The repository's remote is the runner's: it checked the repository out on
+//! the host, and the token that fetched it never enters the sandbox
+//! (`afr_supervisor`'s workspace clone). So a subcommand that reaches a remote
+//! cannot work here, and is refused with a code before anything runs, naming
+//! where a change leaves instead. The refusal is an answer, not the boundary:
+//! the boundary is the missing credential, and what the sandbox's network
+//! reaches is its egress policy's to say.
 //!
 //! git runs programs of its own accord: hooks, aliases that start with `!`,
 //! and commands named in configuration such as `core.fsmonitor`, set with
@@ -39,8 +42,8 @@ const VALUED_OPTIONS: [&str; 7] = [
 /// The event a refused subcommand logs under.
 const EVENT_REFUSED: &str = "git_subcommand_refused";
 /// What a refused subcommand reads back after its name.
-const NEEDS_NETWORK: &str =
-    "reaches a remote, and this sandbox has no network; a change leaves through propose_change";
+const REACHES_REMOTE: &str =
+    "reaches a remote, which only the runner reaches; a change leaves through propose_change";
 
 /// `git`'s arguments.
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -64,7 +67,8 @@ impl Handler for Git {
     const ENTRY: &'static Entry = &GIT;
     const DESCRIPTION: &'static str = "Run git on the repository checked out in the \
         workspace and read back its output and exit code. Local commands only: push, fetch, \
-        pull, remote and clone are refused, because the sandbox has no network.";
+        pull, remote and clone are refused, because only the runner reaches the repository's \
+        remote; a change leaves through propose_change.";
     type Arguments = Invocation;
 
     async fn run(&self, arguments: Invocation, context: ToolContext<'_, '_>) -> ToolOutput {
@@ -77,7 +81,7 @@ impl Handler for Git {
             tracing::info!(lease_id, subcommand, event);
             return ToolOutput::failed(
                 ToolErrorCode::SubcommandNotAllowed,
-                &format!("git {refused} {NEEDS_NETWORK}"),
+                &format!("git {refused} {REACHES_REMOTE}"),
             );
         }
         let executor = match executor_of(&context) {

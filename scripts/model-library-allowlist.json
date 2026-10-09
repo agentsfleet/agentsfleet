@@ -1,8 +1,8 @@
 {
   "_readme": [
     "Curated input for `make seed-models` (scripts/seed-models.mjs). This file is the",
-    "anti-clutter mechanism: Pioneer alone returns ~95 models including embeddings and",
-    "Gemma/Llama variants. Only what is listed here reaches core.model_library.",
+    "anti-clutter mechanism: a gateway feed such as Poe's lists 341 models, embeddings and",
+    "superseded variants among them. Only what is listed here reaches core.model_library.",
     "",
     "Scope rule: current flagship plus at most one or two tiers down. A model that a",
     "provider has superseded comes out on the next curation pass — this is not an archive.",
@@ -33,31 +33,30 @@
     "UZ-PROVIDER-004 membership check (local runtimes). It is not a price and is never",
     "billed: a local runtime is self-managed, where token cost is not charged.",
     "",
-    "Providers are keyed on nullclaw's canonical identifiers (post alias-map, see",
-    "oss/nullclaw/src/provider_names.zig): `kimi` not moonshot-cn, `xai` not grok.",
+    "Providers are keyed on the name a fleet's policy selects, which the runner resolves",
+    "through its provider registry (rustd/crates/afr_providers/src/registry.rs, over the",
+    "table it embeds, rustd/crates/afr_providers/assets/providers.json): `xai`, not its",
+    "alias `grok`.",
     "",
-    "!! base_url is LOAD-BEARING, never decorative. It is a CURATED field — the skeleton",
-    "!! generator no longer overwrites it — because several of our names collide with a",
-    "!! nullclaw alias resolving to a different continent than the one priced here (see",
-    "!! nullclaw_alias_collisions). Do not 'simplify' by dropping it: the failure is",
-    "!! silent — right price, wrong continent."
+    "!! base_url is LOAD-BEARING, never decorative. It names the endpoint these rates were",
+    "!! priced for, and scripts/check_model_allowlist.py reads it to hold the international",
+    "!! rule. The runner dials whatever its registry maps the name to, so a name whose",
+    "!! registry entry resolves to a different continent than the one priced here is",
+    "!! recorded in registry_alias_collisions. Do not 'simplify' by dropping base_url: the",
+    "!! failure is silent — right price, wrong continent."
   ],
-  "_generator": [
-    "Every field here is hand-maintained. Provider identity, aliases, dial and",
-    "display were once derived from the vendored NullClaw source by a generator;",
-    "it was deleted after a dependency bump stopped being the way this file",
-    "changes. After such a bump, diff the vendored provider list by hand and",
-    "add or retire rows here — an absent provider is caught by",
-    "_model_allowlist_check, which fails any dialable provider that is neither",
-    "priced nor carries an unpriced_reason.",
-    "base_url never gets overwritten by anything (see nullclaw_alias_collisions).",
+  "_maintenance": [
+    "Every field here is hand-maintained; nothing regenerates this file. When the",
+    "runner's provider table (rustd/crates/afr_providers/assets/providers.json) gains",
+    "or drops a name, add or remove its row here by hand. _model_allowlist_check",
+    "(scripts/check_model_allowlist.py) fails any provider listed here that is neither",
+    "priced nor carries an unpriced_reason; nothing compares this file with the table.",
+    "base_url never gets overwritten by anything (see registry_alias_collisions).",
     "",
-    "dial=native   NullClaw resolves the name; the runtime owns the endpoint.",
-    "dial=endpoint NullClaw does NOT know the name. Reachable only as an",
-    "              OpenAI-compatible custom endpoint, so base_url is mandatory",
-    "              and it is never offered as a credential provider id."
+    "dial=native   the provider is dialled by name, so the runner's registry owns the",
+    "              endpoint; a name the registry does not carry is refused at",
+    "              admission rather than dialled wrong."
   ],
-  "_generated_from": "nullclaw-2026.5.29",
   "verified_at": "2026-08-17",
   "stale_after_days": 45,
   "tiering_note": [
@@ -82,30 +81,18 @@
     "deployment_scoped": "permanent — rates vary per customer deployment, region and commitment tier, and the provider carries no single base_url.",
     "credentialed_feed": "pending — the vendor publishes rates only behind an authenticated endpoint; not verifiable during curation.",
     "no_public_rates": "pending — the vendor publishes no per-token rate table at all.",
-    "awaiting_curation": "pending — newly derived from a NullClaw bump and not yet curated. The only code that is a queue rather than a decision; the next pass either prices the provider or replaces this with the reason it cannot.",
+    "awaiting_curation": "pending — newly added from the runner's provider table and not yet curated. The only code that is a queue rather than a decision; the next pass either prices the provider or replaces this with the reason it cannot.",
     "operator_hosted": "permanent — runs on hardware the operator owns. No per-token price exists to charge against, and no vendor publishes one.",
-    "duplicate_spelling": "permanent — a second NullClaw spelling of a provider already priced under its canonical name, on the same host at the same rates. Priced once so the catalogue does not carry every model of that host twice; the canonical entry's note names the duplicate."
+    "unsupported_wire": "pending — the vendor publishes per-token rates, but the runner implements no wire that reaches it; the provider's note names the missing piece. Priced again when that wire lands.",
+    "duplicate_spelling": "permanent — a second spelling of a provider already priced under its canonical name, on the same host at the same rates. Priced once so the catalogue does not carry every model of that host twice; the canonical entry's note names the duplicate."
   },
-  "nullclaw_alias_collisions": {
+  "registry_alias_collisions": {
     "_readme": [
-      "Provider names where OUR base_url deliberately differs from what nullclaw's",
-      "same-named alias would resolve to. base_url is curated (never regenerated), so",
-      "these survive a dependency bump; before M168 the generator overwrote both of",
-      "them with the CN endpoint while the rates stayed international.",
-      "Source: oss/nullclaw/src/providers/factory.zig compat_providers table."
-    ],
-    "kimi": {
-      "ours": "https://api.moonshot.ai/v1",
-      "nullclaw_alias_resolves_to": "https://api.moonshot.cn/v1",
-      "nullclaw_alias_that_matches_ours": "kimi-intl / moonshot-intl",
-      "why_kept": "`kimi` is the name users recognise; the CN/intl split is nullclaw's internal concern and should not leak into our provider dropdown."
-    },
-    "qwen": {
-      "ours": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-      "nullclaw_alias_resolves_to": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      "nullclaw_alias_that_matches_ours": "qwen-intl / dashscope-intl",
-      "why_kept": "Same reasoning as kimi."
-    }
+      "Provider names where OUR base_url deliberately differs from where the runner's",
+      "registry sends the same name. base_url is curated, never regenerated.",
+      "Source: rustd/crates/afr_providers/assets/providers.json, embedded by",
+      "rustd/crates/afr_providers/src/registry.rs."
+    ]
   },
   "providers": {
     "anthropic": {
@@ -142,11 +129,9 @@
       "base_url": "https://generativelanguage.googleapis.com/v1beta",
       "source": "manual",
       "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
-      "models": [
-        { "model_id": "gemini-3.1-pro-preview", "context_cap_tokens": 1048576, "input": 4, "cached_input": 0.4, "output": 18, "tier": "upper", "note": "Base tier (prompts <=200k) is 2.00/0.20/12.00; above 200k doubles on all tokens." },
-        { "model_id": "gemini-3.5-flash", "context_cap_tokens": 1048576, "input": 1.5, "cached_input": 0.15, "output": 9, "note": "Also charges $1.00 per 1M tokens per HOUR of cache storage — a time-based fee with no per-mtok equivalent, not represented here." },
-        { "model_id": "gemini-3.1-flash-lite", "context_cap_tokens": 1048576, "input": 0.25, "cached_input": 0.025, "output": 1.5 }
-      ]
+      "models": [],
+      "unpriced_reason": "unsupported_wire",
+      "note": "Not dialable. The OpenAI-compatible endpoint (https://generativelanguage.googleapis.com/v1beta/openai/, https://ai.google.dev/gemini-api/docs/openai) returns each tool call's thought signature under extra_content.google.thought_signature, and \"When using Gemini 3 models, you must pass back thought signatures during function calling\" or the request fails with a 400 (https://ai.google.dev/gemini-api/docs/generate-content/thought-signatures). rig's chat wire carries no extra_content field, and rig's native Gemini wire is one the runner does not implement, so the registry has no `gemini` entry and a lease naming it is refused at admission."
     },
     "deepseek": {
       "dial": "native",
@@ -182,7 +167,7 @@
         { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
         { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
       ],
-      "note": "Keyed `glm`, not `zai`, on purpose: nullclaw's `zai` alias resolves to the CODING endpoint (api.z.ai/api/coding/paas/v4) while `glm` resolves to the general paas path priced here. GLM-5.2 is a general model, so `glm` is the alias that matches."
+      "note": "Keyed `glm`, not `zai`, on purpose: `zai` names the CODING endpoint (api.z.ai/api/coding/paas/v4, carried below as a subscription plan) while `glm` names the general paas path priced here. The runner's registry (rustd/crates/afr_providers/assets/providers.json) carries `glm` at this base URL over rig's `zai` dialect, per https://docs.z.ai/guides/develop/openai/python and https://docs.z.ai/api-reference/llm/chat-completion. The only priced GLM spelling: glm-global, zhipu and zhipu-global are the same host and carry none (duplicate_spelling)."
     },
     "minimax": {
       "dial": "native",
@@ -192,7 +177,8 @@
       "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
       "models": [
         { "model_id": "MiniMax-M3", "context_cap_tokens": 1000000, "input": 0.6, "cached_input": 0.12, "output": 2.4, "tier": "upper", "note": "Base tier (<=512k input) is 0.30/0.06/1.20; above 512k every rate doubles." }
-      ]
+      ],
+      "note": "The runner's registry carries `minimax` at this base URL over rig's `minimax` dialect, per https://platform.minimax.io/docs/api-reference/text-openai-api. The only priced MiniMax spelling: minimax-global, minimax-intl and minimax-io are the same host and carry none (duplicate_spelling)."
     },
     "qwen": {
       "dial": "native",
@@ -202,7 +188,8 @@
       "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       "models": [
         { "model_id": "qwen3.7-max", "context_cap_tokens": 1000000, "input": 2.5, "cached_input": 0.25, "output": 7.5, "note": "List price. A 50% promotional discount is live (1.25/3.75 effective) and deliberately not seeded." }
-      ]
+      ],
+      "note": "The runner's registry carries `qwen` at this base URL as a plain OpenAI-compatible gateway (rig has no DashScope dialect). Model Studio now documents a per-workspace Singapore host and says this domain \"remains fully functional\" (https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions); streaming tool calls are documented at https://www.alibabacloud.com/help/en/model-studio/qwen-function-calling. The only priced Qwen spelling: dashscope-intl and qwen-intl are the same host and carry none (duplicate_spelling). The US (Virginia) region is not carried: the registry has no entry for it, and Model Studio's pages disagree on its base URL (dashscope-us.aliyuncs.com on the compatibility page, a per-workspace us-east-1 host on the Chat Completions reference)."
     },
     "xai": {
       "dial": "native",
@@ -239,35 +226,6 @@
         { "model_id": "mistral-small-latest", "context_cap_tokens": 256000, "input": 0.15, "cached_input": 0.015, "output": 0.6 },
         { "model_id": "devstral-medium-latest", "context_cap_tokens": 256000, "input": 0.4, "cached_input": 0.04, "output": 2 },
         { "model_id": "codestral-latest", "context_cap_tokens": 128000, "input": 0.3, "cached_input": 0.03, "output": 0.9 }
-      ]
-    },
-    "pioneer": {
-      "dial": "endpoint",
-      "source": "api",
-      "base_url": "https://api.pioneer.ai",
-      "endpoint": "https://api.pioneer.ai/base-models",
-      "rate_unit": "per_million",
-      "field_map": { "model_id": "id", "context_cap_tokens": "context_window", "input": "input_price_per_million", "cached_input": "cache_read_price_per_million", "output": "output_price_per_million" },
-      "models": [
-        "claude-opus-4-8",
-        "claude-sonnet-5",
-        "claude-fable-5",
-        "claude-haiku-4-5",
-        "gpt-5.6-sol",
-        "gpt-5.6-terra",
-        "gpt-5.6-luna",
-        "gpt-5.3-codex",
-        "gemini-3.1-pro",
-        "gemini-3.5-flash",
-        "deepseek-ai/DeepSeek-V4-Pro",
-        "deepseek-ai/DeepSeek-V4-Flash",
-        "moonshotai/Kimi-K2.7-Code",
-        "zai-org/GLM-5.2",
-        "MiniMaxAI/MiniMax-M3",
-        "grok-4.5",
-        "qwen3.7-max",
-        "qwen3.7-plus",
-        "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16"
       ]
     },
     "openrouter": {
@@ -381,10 +339,7 @@
       "rate_unit": "per_token",
       "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_read", "output": "pricing.completion" },
       "models": [
-        "openai/gpt-5.1",
-        "deepseek-ai/DeepSeek-V3.2-Exp",
-        "zai-org/GLM-4.6",
-        "Qwen/Qwen3-235B-A22B-Instruct-2507"
+        "deepseek-ai/DeepSeek-V3.2-Exp"
       ]
     },
     "aws-bedrock": {
@@ -393,15 +348,9 @@
       "display": "Amazon Bedrock",
       "source": "manual",
       "source_url": "https://aws.amazon.com/bedrock/pricing/",
-      "models": [
-        { "model_id": "anthropic.claude-opus-4-6", "context_cap_tokens": 1000000, "input": 5, "cached_input": 0.5, "output": 25 },
-        { "model_id": "us.anthropic.claude-opus-4-6", "context_cap_tokens": 1000000, "input": 5, "cached_input": 0.5, "output": 25 },
-        { "model_id": "anthropic.claude-sonnet-4-6", "context_cap_tokens": 1000000, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "us.anthropic.claude-sonnet-4-6", "context_cap_tokens": 1000000, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "anthropic.claude-haiku-4-5", "context_cap_tokens": 200000, "input": 1, "cached_input": 0.1, "output": 5 },
-        { "model_id": "us.anthropic.claude-haiku-4-5", "context_cap_tokens": 200000, "input": 1, "cached_input": 0.1, "output": 5 }
-      ],
-      "note": "Both the bare model id and the `us.` regional inference profile are seeded: on-demand Bedrock requires a profile id, so that is what a caller actually sends, while the bare id is what the model card names. cached_input is the documented 90%-off cache read. Cross-region profiles bill ~10% above these; the `us.` rate is seeded because it is the modal case."
+      "models": [],
+      "unpriced_reason": "unsupported_wire",
+      "note": "Not dialable. Bedrock signs every request with AWS Signature Version 4 (https://docs.aws.amazon.com/bedrock/latest/APIReference/CommonParameters.html) and streams application/vnd.amazon.eventstream frames from /model/{modelId}/invoke-with-response-stream (https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithResponseStream.html). The runner implements neither, so the registry has no entry and a lease naming it is refused at admission."
     },
     "azure": {
       "dial": "native",
@@ -435,15 +384,9 @@
       "display": "Amazon Bedrock",
       "source": "manual",
       "source_url": "https://aws.amazon.com/bedrock/pricing/",
-      "models": [
-        { "model_id": "anthropic.claude-opus-4-6", "context_cap_tokens": 1000000, "input": 5, "cached_input": 0.5, "output": 25 },
-        { "model_id": "us.anthropic.claude-opus-4-6", "context_cap_tokens": 1000000, "input": 5, "cached_input": 0.5, "output": 25 },
-        { "model_id": "anthropic.claude-sonnet-4-6", "context_cap_tokens": 1000000, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "us.anthropic.claude-sonnet-4-6", "context_cap_tokens": 1000000, "input": 3, "cached_input": 0.3, "output": 15 },
-        { "model_id": "anthropic.claude-haiku-4-5", "context_cap_tokens": 200000, "input": 1, "cached_input": 0.1, "output": 5 },
-        { "model_id": "us.anthropic.claude-haiku-4-5", "context_cap_tokens": 200000, "input": 1, "cached_input": 0.1, "output": 5 }
-      ],
-      "note": "Both the bare model id and the `us.` regional inference profile are seeded: on-demand Bedrock requires a profile id, so that is what a caller actually sends, while the bare id is what the model card names. cached_input is the documented 90%-off cache read. Cross-region profiles bill ~10% above these; the `us.` rate is seeded because it is the modal case."
+      "models": [],
+      "unpriced_reason": "unsupported_wire",
+      "note": "Not dialable. Bedrock signs every request with AWS Signature Version 4 (https://docs.aws.amazon.com/bedrock/latest/APIReference/CommonParameters.html) and streams application/vnd.amazon.eventstream frames from /model/{modelId}/invoke-with-response-stream (https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModelWithResponseStream.html). The runner implements neither, so the registry has no entry and a lease naming it is refused at admission."
     },
     "bigmodel": {
       "dial": "native",
@@ -561,21 +504,9 @@
       "display": "Qwen",
       "source": "manual",
       "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
-      "models": [
-        { "model_id": "qwen3.7-max", "context_cap_tokens": 1000000, "input": 2.5, "cached_input": 0.25, "output": 7.5, "note": "List price. A 50% promotional discount is live (1.25/3.75 effective) and deliberately not seeded." }
-      ],
-      "note": "International endpoint for Qwen; rates mirror the `qwen` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
-    },
-    "dashscope-us": {
-      "dial": "native",
-      "base_url": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
-      "display": "Qwen",
-      "source": "manual",
-      "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
-      "models": [
-        { "model_id": "qwen3.7-max", "context_cap_tokens": 1000000, "input": 2.5, "cached_input": 0.25, "output": 7.5, "note": "List price. A 50% promotional discount is live (1.25/3.75 effective) and deliberately not seeded." }
-      ],
-      "note": "International endpoint for Qwen; rates mirror the `qwen` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `qwen` — same host, same rates. Priced once under `qwen`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
     },
     "doubao": {
       "dial": "native",
@@ -629,12 +560,9 @@
       "display": "GLM",
       "source": "manual",
       "source_url": "https://docs.z.ai/guides/overview/pricing",
-      "models": [
-        { "model_id": "glm-5.3", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
-        { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
-        { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
-      ],
-      "note": "International endpoint for GLM; rates mirror the `glm` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `glm` — same host, same rates. Priced once under `glm`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
     },
     "huggingface": {
       "dial": "native",
@@ -714,7 +642,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "llama.cpp": {
       "dial": "native",
@@ -723,7 +651,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "llamacpp": {
       "dial": "native",
@@ -732,7 +660,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "lm-studio": {
       "dial": "native",
@@ -741,7 +669,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "lmstudio": {
       "dial": "native",
@@ -750,7 +678,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "minimax-cn": {
       "dial": "native",
@@ -767,10 +695,9 @@
       "display": "MiniMax",
       "source": "manual",
       "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
-      "models": [
-        { "model_id": "MiniMax-M3", "context_cap_tokens": 1000000, "input": 0.6, "cached_input": 0.12, "output": 2.4, "tier": "upper", "note": "Base tier (<=512k input) is 0.30/0.06/1.20; above 512k every rate doubles." }
-      ],
-      "note": "International endpoint for MiniMax; rates mirror the `minimax` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `minimax` — same host, same rates. Priced once under `minimax`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
     },
     "minimax-intl": {
       "dial": "native",
@@ -778,10 +705,9 @@
       "display": "MiniMax",
       "source": "manual",
       "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
-      "models": [
-        { "model_id": "MiniMax-M3", "context_cap_tokens": 1000000, "input": 0.6, "cached_input": 0.12, "output": 2.4, "tier": "upper", "note": "Base tier (<=512k input) is 0.30/0.06/1.20; above 512k every rate doubles." }
-      ],
-      "note": "International endpoint for MiniMax; rates mirror the `minimax` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `minimax` — same host, same rates. Priced once under `minimax`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
     },
     "minimax-io": {
       "dial": "native",
@@ -789,10 +715,9 @@
       "display": "MiniMax",
       "source": "manual",
       "source_url": "https://platform.minimax.io/docs/guides/pricing-paygo",
-      "models": [
-        { "model_id": "MiniMax-M3", "context_cap_tokens": 1000000, "input": 0.6, "cached_input": 0.12, "output": 2.4, "tier": "upper", "note": "Base tier (<=512k input) is 0.30/0.06/1.20; above 512k every rate doubles." }
-      ],
-      "note": "International endpoint for MiniMax; rates mirror the `minimax` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `minimax` — same host, same rates. Priced once under `minimax`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
     },
     "minimaxi": {
       "dial": "native",
@@ -858,8 +783,7 @@
       "models": [
         "anthropic/claude-opus-4-8",
         "anthropic/claude-sonnet-5",
-        "anthropic/claude-haiku-4-5",
-        "deepseek-ai/DeepSeek-V4-Flash"
+        "anthropic/claude-haiku-4-5"
       ]
     },
     "nvidia": {
@@ -885,7 +809,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "opencode": {
       "dial": "native",
@@ -912,7 +836,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "ovh": {
       "dial": "native",
@@ -934,7 +858,7 @@
       "rate_unit": "per_token",
       "field_map": { "model_id": "id", "context_cap_tokens": "context_length", "input": "pricing.prompt", "cached_input": "pricing.input_cache_reads", "output": "pricing.completion" },
       "models": ["gpt-oss-120b", "gpt-oss-20b", "Qwen3.5-397B-A17B", "Qwen3.6-27B"],
-      "note": "Spelling twin of `ovh`; NullClaw dials both names at the same endpoint, and (provider, model_id) keys the catalogue, so each needs its own rows."
+      "note": "Spelling twin of `ovh`; the runner's registry dials both names at the same endpoint (`ovhcloud`, alias `ovh`), and (provider, model_id) keys the catalogue, so each needs its own rows."
     },
     "perplexity": {
       "dial": "native",
@@ -975,10 +899,9 @@
       "display": "Qwen",
       "source": "manual",
       "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
-      "models": [
-        { "model_id": "qwen3.7-max", "context_cap_tokens": 1000000, "input": 2.5, "cached_input": 0.25, "output": 7.5, "note": "List price. A 50% promotional discount is live (1.25/3.75 effective) and deliberately not seeded." }
-      ],
-      "note": "International endpoint for Qwen; rates mirror the `qwen` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `qwen` — same host, same rates. Priced once under `qwen`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
     },
     "qwen-portal": {
       "dial": "native",
@@ -989,17 +912,6 @@
       "unpriced_reason": "subscription_plan",
       "note": "Portal plan is a subscription; the per-token endpoint is `qwen`."
     },
-    "qwen-us": {
-      "dial": "native",
-      "base_url": "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
-      "display": "Qwen",
-      "source": "manual",
-      "source_url": "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
-      "models": [
-        { "model_id": "qwen3.7-max", "context_cap_tokens": 1000000, "input": 2.5, "cached_input": 0.25, "output": 7.5, "note": "List price. A 50% promotional discount is live (1.25/3.75 effective) and deliberately not seeded." }
-      ],
-      "note": "International endpoint for Qwen; rates mirror the `qwen` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
-    },
     "sglang": {
       "dial": "native",
       "base_url": "http://localhost:30000/v1",
@@ -1007,7 +919,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "shengsuanyun": {
       "dial": "native",
@@ -1038,7 +950,6 @@
       "models": [
         "syn:large:text",
         "hf:moonshotai/Kimi-K3",
-        "hf:zai-org/GLM-5.2",
         "hf:openai/gpt-oss-120b"
       ],
       "note": "Rates arrive currency-prefixed (\"$0.000001\"); seed-models.mjs normalises the symbol before parsing. Cache reads are keyed `input_cache_reads`, plural."
@@ -1104,7 +1015,7 @@
         "anthropic/claude-fable-5",
         "anthropic/claude-haiku-4.5"
       ],
-      "note": "Spelling twin of `vercel`; NullClaw dials both names at the same endpoint, and (provider, model_id) keys the catalogue, so each needs its own rows."
+      "note": "Spelling twin of `vercel`; the runner's registry dials both names at the same endpoint (`vercel`, alias `vercel-ai`), and (provider, model_id) keys the catalogue, so each needs its own rows."
     },
     "vertex": {
       "dial": "native",
@@ -1121,7 +1032,7 @@
       "source": "manual",
       "models": [],
       "unpriced_reason": "operator_hosted",
-      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either — NullClaw carries no model list for any local runtime, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
+      "note": "Runs on hardware the operator owns, so no per-token price exists and no vendor publishes one. The served model cannot be enumerated either, because the id is whatever the operator loaded. Making these activatable is a product decision about the local-runtime experience, not a curation gap: the runner never dials a private or loopback address (rustd/crates/afr_providers/src/registry.rs, rustd/crates/afr_egress/src/lib.rs), so the dial target has to be gated per runner before a tenant-chosen provider id can reach a loopback port. Reasoned, not priced, until that lands."
     },
     "volcengine": {
       "dial": "native",
@@ -1211,12 +1122,9 @@
       "display": "GLM",
       "source": "manual",
       "source_url": "https://docs.z.ai/guides/overview/pricing",
-      "models": [
-        { "model_id": "glm-5.3", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
-        { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
-        { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
-      ],
-      "note": "International endpoint for GLM; rates mirror the `glm` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `glm` — same host, same rates. Priced once under `glm`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
     },
     "zhipu-cn": {
       "dial": "native",
@@ -1233,12 +1141,9 @@
       "display": "GLM",
       "source": "manual",
       "source_url": "https://docs.z.ai/guides/overview/pricing",
-      "models": [
-        { "model_id": "glm-5.3", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4, "note": "Verified 2026-09-07." },
-        { "model_id": "glm-5.3-flash", "context_cap_tokens": 1000000, "input": 0.15, "cached_input": 0.03, "output": 0.5, "note": "List price. The page shows 0.075/0.015/0.25 as a 50% promotion through Sep 9 2026; seeded at list, as the Qwen rows are. Verified 2026-09-07." },
-        { "model_id": "glm-5.2", "context_cap_tokens": 1000000, "input": 1.4, "cached_input": 0.26, "output": 4.4 }
-      ],
-      "note": "International endpoint for GLM; rates mirror the `glm` entry. Priced separately because core.model_library keys on (provider, model_id) and an alias inherits no rows."
+      "models": [],
+      "unpriced_reason": "duplicate_spelling",
+      "note": "A second spelling of `glm` — same host, same rates. Priced once under `glm`, the name the runner's registry carries; this spelling has no registry entry, so a lease naming it is refused at admission."
     }
   },
   "retired": {
@@ -1249,6 +1154,7 @@
     "kimi-k2.5 / kimi-k2.6": "Superseded by K2.7-code and K3. No catalogue row exists for either — docs/architecture/billing_and_provider_keys.md named K2.6 as the platform default until M168 corrected it.",
     "glm-5 / glm-5.1": "Superseded by 5.2.",
     "minimax-m2.x": "Superseded by M3.",
-    "nvidia-nim": "No per-token pricing exists at all; credits retired Sep 2025, production requires an AI Enterprise licence."
+    "nvidia-nim": "No per-token pricing exists at all; credits retired Sep 2025, production requires an AI Enterprise licence.",
+    "pioneer": "Dropped Oct 2026. api.pioneer.ai/base-models answers 410 host_retired and points at https://api.fastino.ai/v1/base-models, whose catalogue lists encoder and decision models (GLiNER, GLiGuard, GLiDE) and none of the 19 chat models allowlisted here. The runner's registry never carried the name."
   }
 }

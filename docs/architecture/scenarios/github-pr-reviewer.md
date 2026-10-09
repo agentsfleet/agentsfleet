@@ -48,8 +48,8 @@ sequenceDiagram
   API->>PG: installation → workspace → repository/event/grant fleets
   API->>API: claim body-digest+fleet replay slot → XADD fleet:{id}:events ✅
   Runner->>API: lease → { instructions:<SKILL>, event, bundle:{hash} }
-  Runner->>R2: GET bundle tar → untar support files into sandbox
-  Runner->>GH: GET /pulls/{n}/files (Bearer ${secrets.github.token})
+  Runner->>R2: GET bundle tar (no sandbox: every tool runs in the supervisor)
+  Runner->>GH: GET /pulls/{n} (Accept: vnd.github.diff, Bearer ${secrets.github.token})
   Runner->>GH: POST /pulls/{n}/reviews (comments)
   Runner->>API: report → event processed → dashboard event stream
 ```
@@ -76,7 +76,7 @@ The runner executes the **fleet's** SKILL.md (which reflects any PATCH), not the
 
 ## 3. Connect the App, bind the repository, then receive the PR
 
-1. **Platform setup, once per environment.** The platform administrator creates the shared GitHub App with dashboard callback `/api/connectors/github/callback`, event ingress `/v1/ingress/github`, user authorization requested during installation, Pull Request, workflow-run, and deployment-status subscriptions, plus Deployments read-only permission and the existing minimum repository permissions. The trusted producer boundary this opens is [`../connectors.md`](../connectors.md) §"Trust anchors" item 5; the handler does not attest the status producer. The `github-app` admin-vault bag carries `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`. The Rust daemon reads only `client_id` and `client_secret` from it (`afd_connector/src/app.rs`); `app_slug` is stored and unread, which is why zero reachable installations refuses with `UZ-CONN-008` instead of continuing to GitHub's install page as the Zig daemon did.
+1. **Platform setup, once per environment.** The platform administrator creates the shared GitHub App with dashboard callback `/api/connectors/github/callback`, event ingress `/v1/ingress/github`, user authorization requested during installation, Pull Request, workflow-run, and deployment-status subscriptions, plus Deployments read-only permission and the existing minimum repository permissions. The trusted producer boundary this opens is [`../connectors.md`](../connectors.md) §"Trust anchors" item 5; the handler does not attest the status producer. The `github-app` admin-vault bag carries `{app_id, app_slug, private_key_pem, webhook_secret, client_id, client_secret}`. The Rust daemon reads only `client_id` and `client_secret` from it (`afd_connector/src/app.rs`); `app_slug` is stored and unread, which is why zero reachable installations refuses with `UZ-CONN-008` instead of continuing to GitHub's install page.
 2. **Workspace connection, once per GitHub installation.** John signs up, creates or selects his `agentsfleet` workspace, and starts `connector connect github`; the API creates signed single-use state bound to John and that workspace, then sends him to GitHub's USER-AUTHORIZATION URL — not an install URL. The App must already be installed on `acme/payments`; the Rust daemon reads no `app_slug` and so cannot continue to GitHub's install page, and an authorization reaching zero installations refuses with `UZ-CONN-008` rather than offering to install. The dashboard relays the same signed-in identity to the authenticated callbacks endpoint. It verifies that identity, then exchanges the one-time code, verifies John can access that installation, consumes state, and conditionally stores the workspace installation handle plus `installation_id → workspace_id` routing row. An installation already owned by another workspace returns 403 without changing either workspace.
 3. **Fleet subscription.** The installed fleet declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in `TRIGGER.md`. The App installation is the maximum repository set; this fleet list is the smaller event subscription. Omission receives no App traffic.
 4. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, claims an authenticated-body-digest/fleet replay slot, and appends the normalized event.
@@ -89,10 +89,12 @@ The manual `/v1/webhooks/{fleet_id}/github` route remains available for an opera
 
 ## 4. The run — SKILL.md drives the review
 
-A runner leases the event (one active lease per fleet). The lease carries `instructions` (the fleet's stored `SKILL.md`, resolved fresh from `core.fleets`), the PR as a twelve-field digest rather than GitHub's payload (`rustd/crates/afd_api_ingress/src/handler/webhook/github.rs`), and `bundle:{content_hash}`. The runner pulls the support tar from R2 into the sandbox, then NullClaw runs the SKILL.md prose against the digest:
+A runner leases the event (one active lease per fleet). The lease carries `instructions` (the fleet's stored `SKILL.md`, resolved fresh from `core.fleets`), the PR as a twelve-field digest rather than GitHub's payload (`rustd/crates/afd_api_ingress/src/handler/webhook/github.rs`), and `bundle:{content_hash}`. Every tool this bundle names runs in the runner's supervisor, so the lease builds no sandbox and the fetched bundle is placed nowhere ([`../runner_execution.md`](../runner_execution.md) §"A lease's sandbox today"). The model is asked:
 
-- `http_request GET api.github.com/repos/{owner}/{repo}/pulls/{n}/files` with `Authorization: Bearer ${secrets.github.token}` (substituted at the tool bridge inside the sandbox).
+- `http_request GET api.github.com/repos/{owner}/{repo}/pulls/{n}` with `Accept: application/vnd.github.diff` and `Authorization: Bearer ${secrets.github.token}`, the token minted per lease and substituted at egress (`rustd/crates/agentsfleetd/tests/integration_rust_runner_reviews.rs` asserts the `Accept` header).
 - forms findings, then `http_request POST …/pulls/{n}/reviews` with the comments. ❌ Refused at egress with `RequestPolicyNotAllowed`. The write rules admit git objects, one ref on the repair branch and a draft `/pulls` (`rustd/crates/afd_gate/src/policy/egress/write.rs`); none admits a review or an issue comment, and an origin with scoped rules denies every request no rule matches, on both runners. `rustd/crates/agentsfleetd/tests/integration_rust_runner_reviews.rs` asserts that zero POSTs reach GitHub. The bundle uses the generic `http_request` tool; there is no GitHub-specific review tool.
+
+`SKILL.md` is soft reasoning input and cannot widen anything: the egress rules come from the binding and the event's repair branch, compiled by the daemon (`rustd/crates/afd_wire/src/lease.rs`, `rustd/crates/afd_gate/src/policy/build.rs`). Step 4's "post the review" changes what the model tries, not what egress admits; a chat steer runs under the same rules.
 
 The gate + billing path is identical to every other event — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) for the credit-pool deductions and the gate.
 
@@ -111,7 +113,8 @@ repository-bound `pull_request` suite against real Postgres and Dragonfly.
 Three remain open, and the scenario is not fixed until the first two pass:
 
 - **The review post.** No egress write rule admits `/pulls/{n}/reviews` or an
-  issue comment, so the run reads the diff and cannot answer (§4).
+  issue comment, so the run reads the diff and cannot answer (§4). Parked for
+  Indy to decide after running it: `docs/v2/done/M210_002_P1_API_INFRA_RUST_RUNNER_AGENT_LOOP_AND_HOSTED_TOOLS.md`, Dimension 6.3.
 
 - **External `github-pr-reviewer` repository test.** Needs the App installed on
   a dedicated development repository and a real Pull Request. Fixture coverage

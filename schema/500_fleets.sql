@@ -69,12 +69,12 @@ CREATE TABLE IF NOT EXISTS core.fleets (
     CONSTRAINT uq_fleets_id_workspace_id_tenant_id UNIQUE (id, workspace_id, tenant_id)
 );
 
--- Reader: the runner-placement candidate scan (fleet/sql.zig), which filters
--- `z.required_tags <@ (…)` against the polling runner's labels bound as a
--- constant array — the `column <@ constant` shape GIN can serve. Kept with the
--- caveat the retired slot recorded honestly: `<@` is GIN's weak direction and
--- the empty-set majority is unselective, so confirm with EXPLAIN once placement
--- carries real data.
+-- Reader: the runner-placement candidate scan, SELECT_READY_CANDIDATES in
+-- `rustd/crates/afd_fleet/src/lease/sql/lease.rs`. It filters
+-- `z.required_tags <@ (…)` against the polling runner's labels, bound as a
+-- constant array: the `column <@ constant` shape GIN can serve. Kept with the
+-- retired slot's caveat: `<@` is GIN's weak direction and the empty-set
+-- majority is unselective, so confirm with EXPLAIN once placement has data.
 CREATE INDEX IF NOT EXISTS idx_fleets_required_tags_gin
     ON core.fleets USING gin (required_tags);
 

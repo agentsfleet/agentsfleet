@@ -29,9 +29,8 @@ use crate::provider::Provider;
 /// for JSON, while [`crate::complete`] reads every provider's answer with
 /// `serde_json`. Without this header the code IS redeemed and the grant IS
 /// issued, and the daemon then cannot read what came back — `UZ-CONN-006` over
-/// a connection the provider considers made. The Zig implementation sent it
-/// (`connectors/oauth2.zig`); the port dropped it, and the first live GitHub
-/// connect after the cutover is what found that out.
+/// a connection the provider considers made. A live GitHub connect without the
+/// header is what proved it is needed.
 const ACCEPT_JSON: &str = "application/json";
 
 /// What a provider answered the exchange with.

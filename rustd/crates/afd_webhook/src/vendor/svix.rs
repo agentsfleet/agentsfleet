@@ -24,29 +24,27 @@
 //!
 //! # LOCAL PATCHES — read these before diffing upstream
 //!
-//! The Zig daemon is the behavioural oracle for this milestone, not svix 2.1.0.
-//! It serves production, so where this and upstream disagree the divergence
-//! is listed here rather than silently absorbed.
+//! Where this file and svix 2.1.0 disagree, the divergence is listed here
+//! rather than silently absorbed, so a resync knows what to keep.
 //!
 //! 1. **`whsec_` is REQUIRED.** Upstream strips it when present and accepts a
-//!    bare secret otherwise (`strip_prefix(PREFIX).unwrap_or(secret)`); the Zig
-//!    refuses a secret without it. Accepting both would widen what this daemon
-//!    takes as a signing key relative to the daemon beside it.
+//!    bare secret otherwise (`strip_prefix(PREFIX).unwrap_or(secret)`); this
+//!    refuses a secret without it, so only a Svix-shaped value is ever taken
+//!    as a signing key.
 //! 2. **Only `svix-*` headers.** Upstream also reads the unbranded
-//!    `webhook-id` / `webhook-timestamp` / `webhook-signature` spellings. The
-//!    Zig reads neither, and accepting them here would let a delivery verify
-//!    against this daemon that the other refuses.
+//!    `webhook-id` / `webhook-timestamp` / `webhook-signature` spellings. This
+//!    reads neither, so a delivery verifies only under the headers Svix sends.
 //! 3. **Unpadded base64 secrets are accepted.** Upstream decodes with
-//!    `BASE64_STANDARD` only; the Zig tries padded, then unpadded. This is the
-//!    one place the Zig is LAXER and the port follows it, because a secret an
-//!    operator has already stored must keep working across the cutover.
+//!    `BASE64_STANDARD` only; this tries padded, then unpadded. It is the one
+//!    place this file is LAXER than upstream, because a secret an operator has
+//!    already stored without padding must keep working.
 //! 4. **The timestamp is signed as its ORIGINAL bytes.** Upstream parses the
 //!    header to an `i64` and re-renders it into the basestring, so a spelling
 //!    like `+1700000000` would be signed as `1700000000` — bytes the sender
-//!    never wrote. The Zig signs the header slice as received. This one is a
-//!    correctness fix, not merely a parity choice.
+//!    never wrote. This signs the header slice as received, which is a
+//!    correctness fix.
 //! 5. **The payload is raw bytes.** Upstream requires valid UTF-8
-//!    (`std::str::from_utf8`) and refuses otherwise; the Zig hashes the body as
+//!    (`std::str::from_utf8`) and refuses otherwise; this hashes the body as
 //!    received. A signature is over bytes, and imposing an encoding on them is
 //!    a second thing that can disagree.
 //! 6. **Comparison is over DECODED tags.** Upstream compares base64 STRINGS in
@@ -137,8 +135,8 @@ pub struct SvixHeaders<'delivery> {
 
 /// Whether a Svix delivery proves itself.
 ///
-/// Decision order is upstream's, which is also the Zig's: headers present,
-/// timestamp fresh, then the tag. Freshness precedes the tag so a replayed
+/// Decision order is upstream's: headers present, timestamp fresh, then the
+/// tag. Freshness precedes the tag so a replayed
 /// delivery costs no HMAC.
 ///
 /// `now_unix_seconds` is explicit for the reason [`freshness`] gives.

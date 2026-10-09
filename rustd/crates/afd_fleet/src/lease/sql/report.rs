@@ -1,12 +1,6 @@
 //! The terminal report: one statement that claims the lease and settles the
 //! money, and the scoped read that precedes it.
 //!
-//! Text is byte-identical to `fleet/renewal_settle.zig` and the inline load in
-//! `fleet/service_report.zig`, for the reason [`super`] gives — REVIEW reading
-//! these side by side against the Zig is the only enforcement of
-//! row-equivalence left, and a statement re-derived rather than copied cannot
-//! be read that way.
-//!
 //! # Why the claim and the settle are ONE statement
 //!
 //! They authorize each other. The fence that says this runner may report is the
@@ -73,8 +67,8 @@ SELECT status FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::u
 
 /// Claim the report and settle the final slice, atomically.
 ///
-/// `renewal_settle.zig`'s `CLAIM_SETTLE_SQL`, copied. Eight CTEs, and the
-/// ordering between them is the design:
+/// Nine common table expressions (CTEs), and the ordering between them is
+/// the design:
 ///
 /// `probe` reads the lease and the slot under `FOR UPDATE OF l, a` — that
 /// affinity lock is what serialises a racing reclaim behind this statement —
@@ -86,8 +80,10 @@ SELECT status FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::u
 /// and the row has to stay optional because a tenant with no wallet still
 /// reports. The lock makes `bal0` the LIVE balance after any wait.
 ///
+/// `calc` prices the deltas into `run_fee` and `token_cost` at the bound rates.
+///
 /// `guard` is the fence, and every write below is `FROM guard` — so a
-/// superseded holder writes nothing at all rather than some prefix of the six
+/// superseded holder writes nothing at all rather than some prefix of the five
 /// writes. `charged = LEAST(slice, bal0)` is the wallet's real delta in every
 /// interleaving, so audit rows at exhaustion sum to the actual drain and never
 /// past it.
@@ -96,6 +92,8 @@ SELECT status FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::u
 /// `ext_aff` advances the slot's. Both clamp with `GREATEST(old, $n)`, so a
 /// report carrying regressed cumulatives cannot rewind a cursor and hand the
 /// next slice a delta it already charged for.
+///
+/// `wallet` drains `slice` from the balance, floored at zero.
 ///
 /// `ledger`'s `ON CONFLICT (event_id, charge_type, fleet_id) DO UPDATE` is the dedup the
 /// spec's Dimension 3.3 names: a replayed report ACCUMULATES into the one
@@ -222,12 +220,11 @@ SELECT (SELECT charged FROM guard)          AS charged,
 
 /// Everything [`CLAIM_AND_SETTLE`] needs, by name.
 ///
-/// Seventeen positional parameters, eleven of them `bigint`, and `$3`
-/// referenced nine times — the shape [`super::lease::LeaseRow`] documents the
-/// hazard of. Six of those parameters are the three token counts and the four
-/// rates, which is where `renewal_settle.zig` splats a seven-field
-/// `MeterInputs` of bare integers; here they arrive as one
-/// [`Meter`](afd_billing::Meter), so a transposition has to get past two named
+/// Seventeen positional parameters, ten of them `bigint`, and `$3`
+/// referenced eleven times — the shape [`super::lease::LeaseRow`] documents the
+/// hazard of. Seven of those parameters are the three token counts and the four
+/// rates; they arrive as one [`Meter`](afd_billing::Meter) rather than as a
+/// flat run of bare integers, so a transposition has to get past two named
 /// types instead of past nothing.
 ///
 /// The `$n` order is written ONCE, in [`SettleRow::bind`], beside the text it
@@ -285,8 +282,7 @@ impl<'a> SettleRow<'a> {
 
 /// Record that a lease was given back.
 ///
-/// `fleet/sql.zig`'s `INSERT_RUNNER_EVENT`, which the Zig reaches through
-/// `runner_events.appendLeaseReleased`. The closing bracket of the
+/// Run by `Leases::record_released` in `finalize.rs`. The closing bracket of the
 /// `lease_acquired` row [`super::lease::INSERT_LEASE_WITH_EVENT`] writes, and
 /// deliberately a separate statement rather than a CTE on the settle: it is
 /// best-effort audit, and a datastore blip writing history must not fail a

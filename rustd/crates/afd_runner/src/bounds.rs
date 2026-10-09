@@ -4,11 +4,9 @@
 //! check from here: what its kernel can enforce, and how its own probe went.
 //! Both are stored, so both are a persistence-amplification channel if they are
 //! unbounded — a mebibyte of JSONB the runner page then re-reads on every load.
-//! Ported from `src/lib/contract/protocol_selftest.zig` and
-//! `protocol_policy.zig`'s `capabilityReportBounded`, which draw these caps
-//! from the probe's fixed vocabulary rather than from a guess. Both reports
-//! declare their bounds on the wire type with garde; the capability report has
-//! nothing more to judge, so the heartbeat validates it directly, and this
+//! The caps are drawn from the probe's fixed vocabulary rather than from a
+//! guess. Both reports declare their bounds on the wire type with garde; the
+//! capability report has nothing more to judge, so the heartbeat validates it directly, and this
 //! module keeps the verdict's one cross-field rule.
 //!
 //! # Both refusals are lenient, and that is deliberate
@@ -21,15 +19,15 @@
 //!
 //! # Why the answer is a `Result` and not a three-state enum
 //!
-//! The Zig returns `Rejection{ none, unbounded, all_ok_disagrees }`, so every
-//! caller writes a `switch` whose first arm means "carry on". That arm is the
-//! success path wearing an error's clothes, and a caller that forgets it is a
-//! caller that stores nothing. Here acceptance is `Ok(())` and the two refusals
-//! are the `Err`, so `?` carries them and the success path has no arm at all
-//! (`dispatch/write_rust.md` §Functional design).
+//! A three-state answer whose first state means "carry on" makes every caller
+//! write a match arm for it. That arm is the success path wearing an error's
+//! clothes, and a caller that forgets it is a caller that stores nothing. Here
+//! acceptance is `Ok(())` and the two refusals are the `Err`, so `?` carries
+//! them and the success path has no arm at all (`dispatch/write_rust.md`
+//! §Functional design).
 //!
-//! The distinction between the two refusals is kept for the reason the Zig
-//! keeps it: the refusing side logs WHICH, and they are different operator
+//! The two refusals stay distinct because the refusing side logs WHICH, and
+//! they are different operator
 //! problems — a bound is a runner sending too much, a disagreement is a runner
 //! claiming health its own checks contradict.
 

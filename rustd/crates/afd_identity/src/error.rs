@@ -74,10 +74,9 @@ afd_core::error_shell!(
 pub(crate) enum ErrorKind {
     /// The identity provider's backend secret is blank.
     ///
-    /// `clerk_scope_fetch.zig` treats an absent or blank secret as
-    /// `MissingSecret` for the same reason: capabilities cannot resolve at all
-    /// without it, which is an outage rather than an empty grant, and saying so
-    /// at boot beats discovering it on the first authenticated request.
+    /// Refused because capabilities cannot resolve at all without it, which is
+    /// an outage rather than an empty grant, and saying so at boot beats
+    /// discovering it on the first authenticated request.
     ///
     /// Carries no source: nothing failed underneath, the value was simply blank
     /// (`RUST_ERROR_STANDARD` rule 4's second half).

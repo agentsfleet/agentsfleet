@@ -1,9 +1,6 @@
 //! The renewal: one statement that extends both deadline rows and meters the
 //! slice between them, and the scoped read that precedes it.
 //!
-//! Text is byte-identical to `fleet/renewal.zig` and the inline load in
-//! `fleet/service_renew.zig`.
-//!
 //! # Why BOTH rows move, in one statement
 //!
 //! Reclaimability and the kill deadline live on different rows.
@@ -42,7 +39,7 @@ FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid";
 
 /// Extend both deadline rows and meter the slice, atomically.
 ///
-/// `renewal.zig`'s `RENEW_METER_SQL`, copied. The CTE chain is
+/// The CTE chain is
 /// [`super::report::CLAIM_AND_SETTLE`]'s with two differences, and both are
 /// about the cap:
 ///

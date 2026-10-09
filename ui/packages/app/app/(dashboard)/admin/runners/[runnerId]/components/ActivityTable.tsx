@@ -41,7 +41,8 @@ const EVENT_HEADLINES: Record<LifecycleEventType, string> = {
   runner_policy_assigned: "policy assigned",
 };
 
-// Metadata keys the daemon writes (fleet/runner_events.zig META_*), spelled
+// Metadata keys the daemon writes (`meta::*` in
+// rustd/crates/afd_runner/src/sql/mod.rs), spelled
 // identically here so a renamed key breaks a test rather than a rendering.
 const META_FROM_ADMIN_STATE = "from_admin_state";
 const META_TO_ADMIN_STATE = "to_admin_state";
@@ -60,8 +61,9 @@ function metaString(metadata: unknown, key: string): string | null {
 }
 
 // `last_seen_at` arrives as a JSON NUMBER — both writers build it with
-// `jsonb_build_object($key, <bigint>)` (runner/sql.zig HEARTBEAT_WITH_
-// TRANSITION_EVENT, fleet/sql.zig INSERT_OFFLINE_EVENT). Reading it through
+// `jsonb_build_object($key, <bigint>)` (`HEARTBEAT_WITH_TRANSITION_EVENT` in
+// rustd/crates/afd_runner/src/sql/runner.rs, `INSERT_OFFLINE_EVENT` in
+// rustd/crates/afd_runner/src/sql/sweep.rs). Reading it through
 // metaString returned null for every online/offline record, which is why the
 // Detail cell rendered empty for the two most common event types.
 function metaNumber(metadata: unknown, key: string): number | null {

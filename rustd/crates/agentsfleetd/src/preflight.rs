@@ -2,11 +2,11 @@
 //!
 //! # Why this collects rather than exits
 //!
-//! `serve_boot.zig` calls `std.process.exit(1)` at each check in turn, so an
-//! operator holding three unset knobs fixes one, restarts, and learns about the
-//! second. Dimension 8.1 asks for all of them in one output, and the shape that
-//! gets there is a function that RETURNS its faults instead of ending the
-//! process in the middle of one.
+//! A boot that exits at each check in turn leaves an operator holding three
+//! unset knobs to fix one, restart, and learn about the second. Dimension 8.1
+//! asks for all of them in one output, and the shape that gets there is a
+//! function that RETURNS its faults instead of ending the process in the
+//! middle of one.
 //!
 //! That is also the only shape a test can drive. `std::process::exit` inside a
 //! library is unobservable without spawning a child, so the exit lives in

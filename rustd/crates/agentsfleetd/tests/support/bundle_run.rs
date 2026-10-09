@@ -180,6 +180,7 @@ fn capable() -> afr_sandbox::HostProbe {
         kvm: afr_sandbox::Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,
+        egress: false,
     }
 }
 

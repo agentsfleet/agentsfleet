@@ -12,11 +12,8 @@
 //!
 //! `configured` is a fact about the DEPLOYMENT and `connected` a fact about the
 //! workspace, so the two come from two different vaults and neither depends on
-//! the other. Two listings answer both columns for every provider at once.
-//! `catalog.zig` reaches the same two round trips by hand-building two
-//! index-aligned key arrays with a `made` counter and a `defer` free loop; the
-//! arrays exist there because the answer has to be carried alongside a registry
-//! it cannot own, which is not a problem an owned collection has.
+//! the other. Two listings answer both columns for every provider at once, each
+//! an owned set the catalogue is joined against.
 
 use std::collections::BTreeSet;
 

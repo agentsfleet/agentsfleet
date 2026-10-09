@@ -11,10 +11,10 @@ fn blocks(address: &str) -> bool {
     is_blocked(address.parse::<IpAddr>().expect("an address literal"))
 }
 
-/// Every range the retired `ip_literal.zig` blocked, in the spellings its own
-/// suite used.
+/// Every reserved IPv4 range — loopback, private, link-local, this-network,
+/// multicast, reserved and broadcast — at its edges.
 #[test]
-fn test_v4_blocklist_matches_the_retired_ranges() {
+fn test_v4_blocklist_covers_every_reserved_range() {
     for blocked in [
         "127.0.0.1",
         "127.255.255.255",
@@ -47,6 +47,26 @@ fn test_v4_shared_address_space_is_blocked_to_its_edges() {
         assert!(blocks(blocked), "{blocked} must be blocked");
     }
     for allowed in ["100.63.255.255", "100.128.0.0"] {
+        assert!(!blocks(allowed), "{allowed} must be allowed");
+    }
+}
+
+/// The IETF protocol assignments, `192.0.0.0/24`, to its edges and through
+/// each v6 spelling, without spilling into the public addresses beside it.
+#[test]
+fn test_v4_protocol_assignments_are_blocked_to_their_edges() {
+    for blocked in [
+        "192.0.0.0",
+        "192.0.0.8",
+        "192.0.0.170",
+        "192.0.0.255",
+        "::ffff:192.0.0.170",
+        "64:ff9b::192.0.0.170",
+        "2002:c000:00aa::1",
+    ] {
+        assert!(blocks(blocked), "{blocked} must be blocked");
+    }
+    for allowed in ["191.255.255.255", "192.0.1.0", "192.0.2.1"] {
         assert!(!blocks(allowed), "{allowed} must be allowed");
     }
 }

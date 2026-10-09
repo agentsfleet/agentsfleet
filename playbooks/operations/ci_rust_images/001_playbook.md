@@ -14,8 +14,7 @@ throwaway container**, so the same packages were fetched and installed again on
 every build, of every architecture, with nothing cached between them.
 
 Baking them into a published image makes them layers: pulled once, reused by
-every build after. The same move `ci_zig_images` made for the Zig lanes, for the
-same reason.
+every build after.
 
 ## One image, not two
 
@@ -63,9 +62,9 @@ major release cannot arrive unannounced. Be precise about what that does and
 does not buy: `alpine:3.24` is itself a moving tag — it resolves to 3.24.1 today
 and will resolve to 3.24.2 — so the musl, gcc and binutils layer floats by patch
 while the compiler does not. Closing that would mean pinning `alpine@sha256:`
-and paying a commit per Alpine patch. `ci_zig_images` makes the same trade, and
-the input that decides the shipped binary is the compiler, which is pinned
-exactly. The repository holds GitHub Actions to the stricter rule
+and paying a commit per Alpine patch. The float is accepted because the input
+that decides the shipped binary is the compiler, which is pinned exactly. The
+repository holds GitHub Actions to the stricter rule
 (`audits/gh-actions-runtime.sh`), where the cost of a digest is one line.
 
 ## Why the base is Alpine and not `rust:*-alpine`
@@ -84,8 +83,7 @@ repository's toolchain from another project's release cadence.
 
 The bootstrap is not invented here. It follows rust-lang/docker-rust's own
 `Dockerfile-alpine.template` — same archive URL shape, same `--profile minimal`,
-same `--default-host` — and it is the shape `ci_zig_images` already uses next
-door: a pinned installer plus a per-architecture SHA256.
+same `--default-host`: a pinned installer plus a per-architecture SHA256.
 
 `RUSTUP_VERSION` and the two `RUSTUP_SHA256_*` values pin that installer.
 Refresh them with `./build_and_push.sh fetch-shas`, which reads the checksum

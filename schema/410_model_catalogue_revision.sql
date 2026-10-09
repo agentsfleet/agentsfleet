@@ -1,18 +1,10 @@
--- Catalogue generation counter — the one thing the response and billing caches
--- both agree on.
+-- Catalogue generation counter: one row that every catalogue mutation advances.
 --
--- The global model catalogue is read on a hot path and cached in-process, but it
--- is also admin-mutable. Without a generation, a replica can serve a page built
--- from one catalogue state while billing prices the same request from another —
--- the two caches drift independently and nothing detects it, because each is
--- internally consistent.
---
--- This row is that generation. Every request reads it after authentication and
--- BEFORE selecting a cache entry; the revision then forms part of the response
--- cache key, so a candidate built from revision N lands under a key containing N
--- and a request that has read N+1 simply looks somewhere else. That is what
--- makes a stale candidate unreachable rather than dangerous, and it is why no
--- publish-ordering protocol is needed on top (see state/model_library_cache.zig).
+-- The global model catalogue is admin-mutable. Billing reads a model's rate in
+-- the same statement as this row (`LOAD_RATE_WITH_REVISION` in
+-- `rustd/crates/afd_billing/src/sql.rs`), so the rate and the generation it was
+-- read at are one snapshot and cannot skew. The tenant page read keeps no
+-- revision-keyed cache (`rustd/crates/afd_tenant/src/models/mod.rs`).
 --
 -- A mutation locks THIS row FOR UPDATE, changes the catalogue, and increments
 -- the revision in the same transaction. The lock is what serializes concurrent

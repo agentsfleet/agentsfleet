@@ -1,23 +1,19 @@
 //! A GitHub delivery, classified and reduced to the digest a fleet reasons over.
 //!
-//! # The digest is a contract, not a convenience
+//! # The digest's field names are load-bearing
 //!
-//! `normalizer/github.zig` says it outright — *"field names match the spec's
-//! `request_json` contract; the agent reasons over these directly"*. A fleet's
-//! authored prose reads `conclusion` and `run_url`, so these field names are as
-//! load-bearing as any wire type. Forwarding GitHub's raw eighty-field payload
-//! instead would break that prose, spend the tokens to do it, and hand an
-//! attacker-influenced document straight to a model (RULE PRI).
+//! A fleet's authored prose reads `conclusion` and `run_url` directly off the
+//! event's `request_json`, so these field names are as load-bearing as any
+//! wire type. Forwarding GitHub's raw eighty-field payload instead would break
+//! that prose, spend the tokens to do it, and hand an attacker-influenced
+//! document straight to a model (RULE PRI).
 //!
-//! # What was ported and what was replaced
+//! # Decisions here, field reading in `octocrab`
 //!
-//! The DECISIONS are ported: which events wake a fleet, which are deliberately
-//! ignored, and which fields the digest carries. The MECHANISM is not.
-//! `github.zig` and `github_app.zig` walk the payload with five helpers —
-//! `objectField`, `nestedStringField`, `stringField`, `integerField`,
-//! `boolField` — and a `switch` per field, because Zig has no `derive`. That is
-//! a Zig constraint, not a design (RULE PORT). Here `octocrab`'s webhook types
-//! answer the same questions from a type declaration, and the helpers are gone.
+//! This file owns the DECISIONS: which events wake a fleet, which are
+//! deliberately ignored, and which fields the digest carries. Reading the
+//! fields is the job of `octocrab`'s webhook types, which answer each question
+//! from a type declaration rather than a hand-written walk over the payload.
 //!
 //! `octocrab` was already a workspace dependency for App JWT minting, so the
 //! typed payloads cost one direct dependency and no transitive crate at all.
@@ -28,9 +24,9 @@
 //! # Two routes, two policies, and they really do differ
 //!
 //! The manual per-fleet route and the App ingress apply DIFFERENT pull-request
-//! rules, and the Zig states that only by having two files. It is named here
-//! instead — see [`Policy`] — because a divergence a reader has to discover by
-//! opening a second file is one that gets 'fixed' by somebody who did not.
+//! rules. The difference is named here — see [`Policy`] — because a divergence
+//! a reader has to discover by opening a second file is one that gets 'fixed'
+//! by somebody who did not.
 
 /// The two flat objects a verified delivery becomes on the stream. Stream
 /// payloads rather than HTTP bodies, and wire all the same: a fleet's prose
@@ -83,7 +79,7 @@ pub(crate) enum Policy {
     /// Deliberately wider than [`Policy::Manual`]: a subscription already
     /// narrowed this delivery by repository and event, so the action filter
     /// would be a second, invisible narrowing on top of one the fleet author
-    /// wrote. `github_app.zig` behaves this way; it just never says so.
+    /// wrote.
     AppIngress,
 }
 
@@ -104,9 +100,8 @@ pub(crate) enum Ingest {
 /// The `workflow_run` fields the digest carries.
 ///
 /// A narrow reader over octocrab's untyped `workflow_run` value. Every field is
-/// `#[serde(default)]` for the same reason the Zig writes `orelse ""`: a
-/// delivery missing one is still a delivery, and refusing it would make this
-/// daemon stricter than the sender it serves.
+/// `#[serde(default)]`: a delivery missing one is still a delivery, and
+/// refusing it would make this daemon stricter than the sender it serves.
 #[derive(Debug, Default, Deserialize)]
 struct WorkflowRunBody {
     #[serde(default)]
@@ -176,9 +171,9 @@ fn workflow_run(
     let run: WorkflowRunBody =
         serde_json::from_value(payload.workflow_run.clone()).unwrap_or_default();
 
-    // Ordered as `github_app.zig` orders it: the repair branch is checked
-    // BEFORE the conclusion, so a fleet's own failed repair is reported as the
-    // loop it is rather than as an ordinary failure.
+    // The repair branch is checked BEFORE the conclusion, so a fleet's own
+    // failed repair is reported as the loop it is rather than as an ordinary
+    // failure.
     if is_repair_branch(&run.head_branch) {
         return Ingest::Ignore(REASON_REPAIR_BRANCH);
     }
@@ -255,7 +250,8 @@ fn pull_request(
 
 /// The four pull-request actions that mean there is new code to look at.
 ///
-/// `github_filter.zig`'s set, and it is the MANUAL route's alone.
+/// The MANUAL route's set alone: [`Policy::AppIngress`] accepts every action
+/// except a repair branch's.
 const fn wakes_a_fleet(action: &PullRequestWebhookEventAction) -> bool {
     matches!(
         action,
@@ -282,10 +278,7 @@ fn encoded<T: Serialize>(digest: &T) -> Ingest {
 
 /// The receipt stamp a digest carries, as RFC 3339 with a `Z` and no fraction.
 ///
-/// `formatRfc3339` computes the civil date from epoch seconds by hand —
-/// `getEpochDay`, `calculateYearDay`, `calculateMonthDay`, then a `bufPrint`
-/// with a `@panic` for a buffer it sized itself. All of that is Zig's stdlib
-/// having no date type. A timestamp this daemon cannot represent falls back to
+/// Formatted by `jiff`. A timestamp this daemon cannot represent falls back to
 /// the epoch rather than failing a delivery over a clock.
 fn receipt_stamp(received_at: UnixMillis) -> String {
     jiff::Timestamp::from_second(received_at.as_seconds())

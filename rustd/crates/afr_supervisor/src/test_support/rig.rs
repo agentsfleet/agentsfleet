@@ -4,26 +4,26 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use afd_wire::lease::{LeasePayload, LeaseResponse};
-use afd_wire::memory::{MemoryHydrateResponse, MemoryRecallResponse};
-use afd_wire::report::ReportResponse;
-use afd_wire::runner::SelfResponse;
+use afd_wire::lease::LeasePayload;
+use afd_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_sandbox::Limits;
 use tokio::sync::{Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    Answer, FakeAgent, FakeEngine, GRANTED_UNTIL, INTERVAL_MS, RUNNER_HOST, RUNNER_ID, clock,
-    drain, json, plane,
+    Answer, FakeAgent, FakeEngine, FakeResolver, GRANTED_UNTIL, INTERVAL_MS, clock, drain, json,
+    plane,
 };
 use crate::bundles::BundleCache;
 use crate::client::{Call, Verb};
+use crate::egress::Egress;
 use crate::halt::Halt;
 use crate::holds::Holds;
 use crate::identity::Whoami;
 use crate::lease_loop::Lessee;
 use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
+use crate::test_util::Healthy;
 use crate::turns::FleetTurns;
 use crate::workspace_clone::Mirrors;
 
@@ -61,6 +61,26 @@ impl Rig {
         agent: FakeAgent,
         holds: Holds,
     ) -> Self {
+        Self::build(answer, engine, agent, holds, FakeResolver::default())
+    }
+
+    /// [`Rig::new`], resolving each lease's egress through `resolver`.
+    pub(crate) fn resolving(
+        answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
+        engine: FakeEngine,
+        agent: FakeAgent,
+        resolver: FakeResolver,
+    ) -> Self {
+        Self::build(answer, engine, agent, Holds::start(clock()), resolver)
+    }
+
+    fn build(
+        answer: impl Fn(&Call) -> Answer + Send + Sync + 'static,
+        engine: FakeEngine,
+        agent: FakeAgent,
+        holds: Holds,
+        resolver: FakeResolver,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let home = StorageHome::open(root.path()).unwrap();
         let (plane, calls) = plane(answer);
@@ -74,6 +94,7 @@ impl Rig {
         let lessee = Arc::new(Lessee {
             plane,
             engine: Box::new(engine),
+            resolver: Box::new(resolver),
             agent: Box::new(agent),
             spool: ReportSpool::new(&home),
             bundles: BundleCache::new(&home),
@@ -102,11 +123,21 @@ impl Rig {
         }
     }
 
-    /// Runs one lease under a fresh turn coordinator.
+    /// Runs one lease under a fresh turn coordinator, reaching nothing.
     pub(crate) async fn run(&self, lease: &LeasePayload<'_>) -> crate::Result<()> {
+        self.run_under(lease, &Egress::closed()).await
+    }
+
+    /// Runs one lease under a fresh turn coordinator, reaching what `egress`
+    /// admits.
+    pub(crate) async fn run_under(
+        &self,
+        lease: &LeasePayload<'_>,
+        egress: &Egress,
+    ) -> crate::Result<()> {
         let (turns, coordinator) = FleetTurns::start();
         tokio::spawn(coordinator);
-        self.lessee.run(&turns, lease).await
+        self.lessee.run(&turns, lease, egress).await
     }
 
     /// Where the repository `owner/name` is served from: `<origins>/owner/name.git`.
@@ -120,63 +151,23 @@ impl Rig {
     }
 }
 
-/// The sandbox tier the fake daemon assigns and reports.
-const SANDBOX_TIER: &str = "landlock_full";
-
 /// A daemon that answers every verb the way a healthy one would; `special`
 /// answers first when it has an answer.
 pub(crate) fn daemon(
     special: impl Fn(&Call) -> Option<Answer> + Send + Sync + 'static,
 ) -> impl Fn(&Call) -> Answer + Send + Sync + 'static {
-    move |call| {
-        special(call).unwrap_or_else(|| match call.verb {
-            Verb::Hydrate => json(&MemoryHydrateResponse {
-                memory: Vec::new(),
-                shared: Vec::new(),
-                publish: false,
-            }),
-            Verb::Capture => json(&serde_json::json!({"stored": 1, "skipped": 0})),
-            Verb::Recall => json(&MemoryRecallResponse {
-                memory: Vec::new(),
-                shared: Vec::new(),
-            }),
-            Verb::Renew => json(&serde_json::json!({"lease_expires_at": GRANTED_UNTIL})),
-            Verb::Lease => json(&LeaseResponse {
-                lease: None,
-                retry_after_ms: Some(INTERVAL_MS),
-            }),
-            Verb::Heartbeat => json(&serde_json::json!({"status": "ok",
-                "assigned_policy": {"sandbox_tier": SANDBOX_TIER, "network_policy": "allow_all",
-                    "registry_allowlist": [], "worker_count": 1, "extra_binds": []},
-                "degraded": false, "degraded_reason": null, "selftest_requested": false,
-                "heartbeat_interval_ms": INTERVAL_MS})),
-            Verb::Records => json(&serde_json::json!({"stored_count": 1, "skipped_count": 0})),
-            Verb::Me => json(&SelfResponse {
-                id: RUNNER_ID.into(),
-                status: "active".into(),
-                host_id: RUNNER_HOST.into(),
-                sandbox_tier: SANDBOX_TIER.into(),
-                last_seen_at: 0,
-                assigned_policy: None,
-                achievable: None,
-                degraded: false,
-                degraded_reason: None,
-            }),
-            // No suite routes a schedule or message verb through this rig;
-            // `verbs::tests` answers those with its own replies.
-            Verb::Activity
-            | Verb::Report
-            | Verb::Bundle
-            | Verb::Mint
-            | Verb::ScheduleList
-            | Verb::ScheduleCreate
-            | Verb::ScheduleUpdate
-            | Verb::ScheduleDelete
-            | Verb::ScheduleRun
-            | Verb::ScheduleRuns
-            | Verb::Message => json(&ReportResponse { ok: true }),
-        })
-    }
+    let healthy = Healthy {
+        assigned: AssignedPolicy {
+            sandbox_tier: SandboxTier::LandlockFull,
+            network_policy: NetworkPolicy::AllowAll,
+            registry_allowlist: Vec::new(),
+            worker_count: 1,
+            extra_binds: Vec::new(),
+        },
+        interval_ms: INTERVAL_MS,
+        granted_until: GRANTED_UNTIL,
+    };
+    move |call| special(call).unwrap_or_else(|| json(&healthy.to(Some(call.verb))))
 }
 
 /// The body of the last report the daemon received.

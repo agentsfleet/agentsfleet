@@ -1,9 +1,8 @@
 //! The three windows a capability answer lives in, and the one it dies in.
 //!
-//! The port of `clerk_scope_resolver.zig`'s in-file tests, which exist there
-//! because the cache is private and its policy is observable only from inside.
-//! Here the policy is observable from outside — the claim source is a seam and
-//! the clock is injected — so the tests sit in `tests/` like everything else.
+//! The cache's policy is observable from outside — the claim source is a seam
+//! and the clock is injected — so the tests sit in `tests/` like everything
+//! else.
 //!
 //! What is being pinned is a set of choices that are easy to get backwards:
 //! a provider outage must not look like a demotion, a person the provider has

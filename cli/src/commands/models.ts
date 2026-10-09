@@ -2,10 +2,9 @@
 //
 // The CLI peer of the dashboard's model picker. Both read `GET /v1/models`;
 // this is the terminal rendering of the same rows the Add Model dialog puts in
-// a dropdown. Before it existed the CLI had no way to ask what a provider or
-// model id should be: `--provider` was checked against a vendored copy of
-// NullClaw's dial table and `--model` was checked against nothing at all, so
-// the flow was "type two identifiers blind, discover at run time".
+// a dropdown. It answers what a provider or model id should be before either
+// is typed into `--provider` or `--model`, so a wrong identifier shows up here
+// rather than at run time.
 //
 // Rates print as United States Dollars per million tokens, converted from the
 // nanos the wire carries. They are charged only under platform-managed

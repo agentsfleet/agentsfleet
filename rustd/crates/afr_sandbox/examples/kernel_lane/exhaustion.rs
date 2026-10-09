@@ -63,8 +63,7 @@ pub(crate) fn full_tmp_answers_enospc(lane: &Lane) -> Result<(), Failed> {
     };
     let outcomes = in_sandbox_each(
         lane,
-        "tmpfill",
-        limits,
+        SandboxRequest::new("tmpfill", limits),
         &[
             "dd if=/dev/zero of=/tmp/fill bs=1M count=80 2>&1",
             "echo ok",
@@ -92,8 +91,7 @@ pub(crate) fn workspace_and_tmp_share_the_disk(lane: &Lane) -> Result<(), Failed
     };
     let outcomes = in_sandbox_each(
         lane,
-        "shared",
-        limits,
+        SandboxRequest::new("shared", limits),
         &[
             "dd if=/dev/zero of=/workspace/fill bs=1M count=40 2>&1; ls -a /workspace",
             "dd if=/dev/zero of=/tmp/fill bs=1M count=40 2>&1",
@@ -165,7 +163,7 @@ pub(crate) fn oom_kills_only_the_tenant(lane: &Lane) -> Result<(), Failed> {
     let (hog, after, events) = runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest { lease_id, limits })
+            .prepare(SandboxRequest::new(lease_id, limits))
             .await?;
         let hog = run_in(sandbox.executor(), shell(HOG)).await;
         let after = run_in(sandbox.executor(), shell(&format!("echo {OK}"))).await;
@@ -245,10 +243,7 @@ pub(crate) fn workspace_disk_uses_direct_io(lane: &Lane) -> Result<(), Failed> {
     let dio = runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest {
-                lease_id,
-                limits: Limits::default(),
-            })
+            .prepare(SandboxRequest::new(lease_id, Limits::default()))
             .await?;
         // Read while the sandbox holds the device: destroy detaches it.
         let dio = fs::metadata(lane.lease_dir(lease_id).join(DISK_MOUNT)).and_then(|meta| {
@@ -286,10 +281,7 @@ pub(crate) fn disk_fill_under_memory_limit_ends_in_enospc(lane: &Lane) -> Result
     let (filled, events) = runtime().block_on(async {
         let sandbox = lane
             .engine()
-            .prepare(SandboxRequest {
-                lease_id,
-                limits: Limits::default(),
-            })
+            .prepare(SandboxRequest::new(lease_id, Limits::default()))
             .await?;
         let filled = run_in(sandbox.executor(), shell(FILL_PAST_THE_DISK)).await;
         let events = fs::read_to_string(&tenant_events).unwrap_or_default();

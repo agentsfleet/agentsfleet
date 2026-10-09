@@ -11,13 +11,10 @@ use crate::metrics::registry::{Family, Policy, Registry};
 /// Dimension 3.6 — a label nothing bounds by construction is bounded by
 /// admission, and nothing else claims a ceiling it cannot justify.
 ///
-/// This replaced a const assert over a 256-series cost budget. That budget was
-/// a static array length from the Zig aggregator, excluded from Zig's own
-/// comptime arithmetic and inapplicable to an SDK that allocates per stream.
-/// What is genuinely true is narrower and worth pinning: `runner_id` is the one
-/// census label a customer supplies, so it is the one that needs a slot table,
-/// and a cost family claiming a ceiling would be reintroducing the invented
-/// number by the back door.
+/// `runner_id` is the one census label a customer supplies, so it is the one
+/// that needs a slot table. A cost family claiming a ceiling would be claiming
+/// a number nothing enforces: the SDK allocates per stream, not from a fixed
+/// array.
 #[test]
 fn test_unbounded_labels_are_slot_admitted() {
     for family in declared().families() {

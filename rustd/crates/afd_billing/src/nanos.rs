@@ -11,17 +11,13 @@
 //!
 //! # Why not a decimal crate
 //!
-//! Asked and declined, deliberately. A fixed-point decimal is the textbook
-//! answer for money and it is the wrong answer HERE, for one reason: the only
-//! thing this arithmetic is graded on is agreeing with the daemon it replaces.
-//!
-//! An authored ceiling arrives as `f64` — `Dollars` holds one, because the
-//! authoring document spells `daily_dollars: 5.0` and the Zig parser reads a
-//! float. The Zig then computes `@round(dollars * 1e9)`. Routing that through a
-//! decimal would round a different way at the boundary and produce a ceiling
-//! one nano from the Zig's on some inputs. That is more correct in the abstract
-//! and a DIVERGENCE in the row-equivalence this milestone exists to prove
-//! (Invariant 5).
+//! A fixed-point decimal is the textbook answer for money, and it does not help
+//! HERE: the float is already in the input. An authored ceiling arrives as
+//! `f64` — `Dollars` holds one, because the authoring document spells
+//! `daily_dollars: 5.0` and it parses as a float — and [`Nanos::from_dollars`]
+//! converts it once, rounding `dollars * 1e9` to the nearest nano. Routing that
+//! through a decimal would add a second rounding at the boundary and move some
+//! ceilings by one nano.
 //!
 //! The place to argue for decimals is the schema — make the authored ceiling a
 //! decimal string and the float disappears at the source. That is a schema
@@ -121,27 +117,27 @@ impl Nanos {
 
     /// A declared ceiling, in nanos.
     ///
-    /// Total, with no guard clause, and the absent guard is the point.
-    /// `dollarsToNanos` opens with `if (!isFinite(dollars) or dollars <= 0)
-    /// return 0` because it takes a bare `f64` and a caller may hand it
-    /// anything. [`Dollars`] cannot be built from a value that is not finite,
-    /// not positive, or above its cap — `Dollars::parse` refuses all three — so
-    /// the branch here would be unreachable code asserting a property the
+    /// Total, with no guard clause, and the absent guard is the point. A
+    /// function taking a bare `f64` would have to open by mapping a non-finite
+    /// or non-positive value to zero, because a caller may hand it anything.
+    /// [`Dollars`] cannot be built from a value that is not finite, not
+    /// positive, or above its cap — `Dollars::parse` refuses all three — so
+    /// that branch here would be unreachable code asserting a property the
     /// argument already carries.
     ///
-    /// The saturating branch is absent for a different reason: Rust's
-    /// float-to-integer cast saturates by language rule, so the overflow the
-    /// Zig guards with `if (scaled >= maxInt(i64))` cannot wrap here even if a
-    /// future cap change made it reachable. Rounding is to nearest, matching
-    /// `@round`, so a ceiling of one nano is one nano rather than zero.
+    /// There is no overflow branch either, for a different reason: Rust's
+    /// float-to-integer cast saturates by language rule, so a product past
+    /// `i64::MAX` cannot wrap here even if a future cap change made it
+    /// reachable. Rounding is to nearest, so a ceiling of one nano is one nano
+    /// rather than zero.
     #[must_use]
     pub fn from_dollars(dollars: Dollars) -> Self {
         #[expect(
             clippy::cast_possible_truncation,
             reason = "the float-to-integer cast saturates by language rule, \
-                      which is exactly what the Zig spells as its \
-                      `scaled >= maxInt(i64)` branch; `Dollars` bounds the \
-                      input four orders of magnitude below that point anyway"
+                      so a product past `i64::MAX` clamps rather than wraps; \
+                      `Dollars` bounds the input four orders of magnitude \
+                      below that point anyway"
         )]
         Self((dollars.dollars() * NANOS_PER_USD_F64).round() as i64)
     }
@@ -172,8 +168,7 @@ impl Nanos {
     /// Whether spending has reached `ceiling`.
     ///
     /// Refused AT equality, not past it: a fleet that has spent exactly its
-    /// `daily_dollars` runs no further. `covers` in `budget.zig` spells the
-    /// same comparison as `spend >= dollarsToNanos(cap)`.
+    /// `daily_dollars` runs no further.
     #[must_use]
     pub const fn has_reached(self, ceiling: Self) -> bool {
         self.0 >= ceiling.0
@@ -201,9 +196,8 @@ pub struct SliceRates {
 ///
 /// Pure, total, and the reference the SQL is pinned against. Every division
 /// truncates toward zero, which is what Postgres `bigint` division does for
-/// non-negative operands and what Zig's `@divTrunc` does — the three agree only
-/// because all three truncate, so a change to rounding here is a change to the
-/// money in three places.
+/// non-negative operands — the two agree only because both truncate, so a
+/// change to rounding here is a change to the money in two places.
 #[must_use]
 pub const fn slice_charge(
     rates: SliceRates,

@@ -96,7 +96,7 @@ fn a_published_call_id_description_names_its_bound() {
     }
 }
 
-/// The acknowledgement is the one field `service_activity.zig` writes.
+/// The acknowledgement is exactly the one field `ActivityAccepted` declares.
 #[test]
 fn test_the_acknowledgement_is_exactly_ok_true() {
     assert_eq!(

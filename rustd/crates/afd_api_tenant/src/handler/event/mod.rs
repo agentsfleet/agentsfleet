@@ -1,10 +1,9 @@
 //! The narrative log over HTTP: a workspace's history, a fleet's, and one
 //! event expanded.
 //!
-//! The port of `workspaces/events.zig`, `fleets/events.zig` and
-//! `fleets/event_detail.zig`. The parameters those three read live in the
-//! `query` module beside this one; what is here is the three verbs and how a
-//! stored row becomes the wire's.
+//! The parameters the two listings read live in the `query` module beside this
+//! one; what is here is the three verbs and how a stored row becomes the
+//! wire's.
 //!
 //! # Two listings, one statement
 //!
@@ -12,9 +11,7 @@
 //! free or fixed, and the console's Live Wall drills from the first to the
 //! second without changing endpoint. They bind one statement through
 //! [`crate::services::WorkspaceEvents`], so the two cannot disagree about a
-//! fleet's history —
-//! which is what eight concatenated statement variants in the Zig store
-//! eventually would.
+//! fleet's history.
 //!
 //! # Rows are borrowed onto the wire, never copied
 //!

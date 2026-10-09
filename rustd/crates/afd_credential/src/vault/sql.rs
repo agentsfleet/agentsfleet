@@ -1,28 +1,23 @@
 //! The two statements that read `vault.secrets`, and nothing else.
 //!
-//! Both are copied from `secrets/sql.zig`, which is the one part of this port's
-//! SQL that was already collected upstream. They live in their own module
-//! rather than beside the provider's because their CALLERS are different: the
-//! provider opens one named row, and the secrets map opens the set a fleet
-//! declared. [`super`] explains why the split falls on domain rather than on
-//! line count.
+//! They live in their own module rather than beside the provider's because
+//! their CALLERS are different: the provider opens one named row, and the
+//! secrets map opens the set a fleet declared. [`super`] explains why the split
+//! falls on domain rather than on line count.
 
 /// One credential's envelope, as the six ciphertext columns plus its version.
 ///
-/// Column order is load-bearing and copied rather than tidied: it is the order
-/// `crypto_store.zig::openEnvelopeAt` reads, which is the order
+/// Column order is load-bearing rather than tidied: it is the order
 /// [`afd_crypto::envelope::Envelope::from_parts`] takes its arguments in.
 ///
 /// `workspace_id` is cast, and the cast is NOT optional.
 ///
 /// An earlier revision of this statement omitted it, on the stated grounds that
 /// `vault.secrets.workspace_id` is `text`. It is not — `schema/300_vault_secrets.sql`
-/// declares it `UUID NOT NULL` — and the omission was carried over from
-/// `secrets/sql.zig`, where it is harmless for a reason that does not transfer:
-/// the Zig driver sends an UNTYPED parameter and lets Postgres infer `uuid`,
-/// while `sqlx` binds a `&str` as `text`. So the comparison arrives as
-/// `uuid = text`, Postgres finds no operator, and EVERY vault read fails at
-/// runtime with a query error.
+/// declares it `UUID NOT NULL` — and `sqlx` binds a `&str` as `text` rather
+/// than leaving the parameter untyped for Postgres to infer. So without the
+/// cast the comparison arrives as `uuid = text`, Postgres finds no operator,
+/// and EVERY vault read fails at runtime with a query error.
 ///
 /// It failed silently in exactly the way this crate is most exposed to: the
 /// unit lane never opens a connection, so nothing type-checked it, and the
@@ -49,9 +44,9 @@ SELECT key_name, created_at,
 ///
 /// The rotation write-back is the only path in this crate that WRITES a stored
 /// credential, and it must not clobber a handle an administrator replaced while
-/// the exchange was in flight. `FOR UPDATE` is what makes its guard real: the
-/// Zig reads, compares and writes with no lock at all, so a reconnect landing
-/// between its read and its write is silently overwritten with a refresh token
+/// the exchange was in flight. `FOR UPDATE` is what makes its guard real: a
+/// read, compare and write with no lock at all would let a reconnect landing
+/// between the read and the write be silently overwritten with a refresh token
 /// belonging to the grant that was just replaced.
 ///
 /// `$1` workspace, `$2` key name.
@@ -63,11 +58,10 @@ FOR UPDATE";
 
 /// Replaces one credential's envelope in place.
 ///
-/// The envelope columns and `updated_at` only. `secrets/sql.zig`'s
-/// `UPDATE_SECRET` also rewrites the four `meta_*` projection columns, and this
-/// deliberately does not: those describe the SHAPE of the stored handle — its
-/// kind, its provider, whether it carries a key — and a refresh-token rotation
-/// changes none of them. Rewriting them would mean re-deriving a projection
+/// The envelope columns and `updated_at` only. The four `meta_*` projection
+/// columns are deliberately left alone: those describe the SHAPE of the stored
+/// handle — its kind, its provider, whether it carries a key — and a
+/// refresh-token rotation changes none of them. Rewriting them would mean re-deriving a projection
 /// from a body whose shape is known not to have changed, which is a second
 /// place for the projection to come to disagree with the row beside it.
 ///

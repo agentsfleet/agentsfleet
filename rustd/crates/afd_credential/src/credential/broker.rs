@@ -3,19 +3,13 @@
 //!
 //! # `moka` is both, in one call
 //!
-//! The Zig spends three files here — `broker.zig` holds the cache and the
-//! dispatch, `broker_key.zig` builds a separator-joined key out of two Wyhash
-//! fingerprints, and `broker_flight.zig` is a per-key in-flight set with a
-//! mutex, a bounded loser wait, and a poll loop — because `cache.zig` caches
-//! and does not single-flight.
-//!
-//! [`moka::future::Cache`]'s entry API does both at once: exactly one caller
-//! per key resolves the init future and the rest park on it. That is not a
-//! convenience. Two cold misses on a ROTATING refresh provider both post the
-//! same refresh token, and a provider with reuse detection revokes the whole
-//! token family — the tenant's connection dies for everyone. The Zig's
-//! hand-rolled guard exists for that case, and `or_try_insert_with` is the same
-//! guarantee without the poll loop, the timeout, or the residual-key cleanup a
+//! [`moka::future::Cache`]'s entry API caches and single-flights at once:
+//! exactly one caller per key resolves the init future and the rest park on
+//! it. That is not a convenience. Two cold misses on a ROTATING refresh
+//! provider both post the same refresh token, and a provider with reuse
+//! detection revokes the whole token family — the tenant's connection dies for
+//! everyone. `or_try_insert_with` is the guarantee that case needs, without a
+//! hand-rolled in-flight set's poll loop, timeout, or residual-key cleanup a
 //! minter that died mid-flight leaves behind.
 //!
 //! `try` is the load-bearing half: a REFUSAL is handed to every waiter and
@@ -36,14 +30,13 @@
 //!   miss, which the connect callbacks guarantee by stamping a fresh
 //!   `connected_at_ms` on every stored handle.
 //!
-//! The digest is SHA-256 over the canonical JSON of those two things, and the
-//! reason it is a real hash rather than the Zig's seeded Wyhash is what
-//! `broker_key.zig` learned the hard way: its first spelling joined repository
-//! names on a separator, so `["acme/a","acme/b"]` and the single spliced name
-//! `"acme/a<SEP>acme/b"` hashed identically — a deterministic alias, needing no
-//! collision, that served one fleet's broad-scope token to another. JSON is
-//! self-delimiting, so no framing rule has to be got right; SHA-256 needs no
-//! per-process seed to keep a digest from being precomputed.
+//! The digest is SHA-256 over the canonical JSON of those two things. A key
+//! that joined repository names on a separator would make `["acme/a","acme/b"]`
+//! and the single spliced name `"acme/a<SEP>acme/b"` hash identically — a
+//! deterministic alias, needing no collision, that serves one fleet's
+//! broad-scope token to another. JSON is self-delimiting, so no framing rule
+//! has to be got right; SHA-256 needs no per-process seed to keep a digest from
+//! being precomputed.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -66,8 +59,8 @@ use crate::secrets::connector::{Connector, Connectors, Exchange, FIELD_INTEGRATI
 /// Re-mint this many milliseconds BEFORE the upstream expiry.
 ///
 /// A token handed to a tool call has to outlive the call, and the daemon cannot
-/// know how long that is. The slack is the Zig's and the direction is the only
-/// safe one: too much costs a re-mint, too little costs a 401 mid-run.
+/// know how long that is. Erring early is the only safe direction: too much
+/// slack costs a re-mint, too little costs a 401 mid-run.
 const EXPIRY_SKEW_MS: i64 = 60_000;
 
 /// How many live tokens the process will hold.
@@ -359,7 +352,7 @@ fn stored(handle: &Value) -> Outcome {
             Outcome::Ok(Minted {
                 token: Zeroizing::new(token.to_owned()),
                 // A stored credential has no upstream expiry this daemon knows
-                // of. The far-future sentinel is `integration.zig`'s.
+                // of, so it carries the far-future sentinel.
                 expires_at_ms: i64::MAX,
                 rotated_refresh_token: None,
             })

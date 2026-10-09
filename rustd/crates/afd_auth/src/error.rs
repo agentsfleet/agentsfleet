@@ -1,10 +1,9 @@
 //! Why a credential was refused, with its registry code attached.
 //!
-//! The Zig daemon spells a refusal as a pair of arguments at a call site —
-//! `ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN)` — twelve
-//! times across four middleware files. Nothing relates the two arguments, so
-//! the pairing is a convention each site restates, and the detail strings are
-//! per-file constants that happen to agree.
+//! A refusal spelled as a pair of arguments at each call site — a code and a
+//! detail sentence — pairs them by convention, and every site restates the
+//! convention. Nothing relates the two arguments, so the detail strings end up
+//! as per-file constants that happen to agree.
 //!
 //! Here the code and the detail are PROPERTIES OF THE REFUSAL. A caller
 //! constructs the reason; it cannot construct a reason paired with the wrong
@@ -14,10 +13,9 @@
 //!
 //! # The detail strings are client-visible, so they are pinned
 //!
-//! Parity in this milestone is behavioural, and what a client reads is
-//! behaviour. Every string below is byte-identical to the Zig constant it
-//! replaces, and `test_detail_matches_zig` reads the Zig sources and fails if
-//! either side moves.
+//! What a client reads is behaviour. Every string below is pinned by
+//! `tests/auth_error_taxonomy.rs`, which fails if a sentence moves without
+//! the pinned list moving with it.
 //!
 //! # Why so many refusals collapse onto one code
 //!
@@ -44,23 +42,23 @@ use afd_core::error_code::{self, ErrorCode};
 /// cannot quietly introduce a second error type without saying so.
 pub type Result<T, E = Error> = core::result::Result<T, E>;
 
-/// The Zig `S_INVALID_OR_MISSING_TOKEN`, shared by the three tenant-plane
-/// classes. One spelling, because three copies is three chances to drift and
-/// the difference would be visible to a client (RULE UFS).
+/// The refusal shared by the three tenant-plane classes. One spelling,
+/// because three copies is three chances to drift and the difference would be
+/// visible to a client (RULE UFS).
 const S_INVALID_OR_MISSING_TOKEN: &str = "Invalid or missing token";
-/// The Zig `S_AUTH_UNAVAILABLE`.
+/// The detail for an outage in whatever judges the credential.
 const S_AUTH_UNAVAILABLE: &str = "Authentication service unavailable";
-/// `bearer_or_api_key.zig`'s expiry detail, lower-cased exactly as it is there.
+/// The expiry detail, lower-cased: clients match on it as written.
 const S_TOKEN_EXPIRED: &str = "token expired";
-/// `tenant_api_key.zig`'s revocation detail.
+/// The tenant api-key revocation detail.
 const S_APIKEY_REVOKED: &str = "API key has been revoked";
-/// `cli_credential.zig`'s `S_REVOKED_MESSAGE`.
+/// The command-line credential revocation detail.
 const S_CLI_CREDENTIAL_REVOKED: &str = "Command-line credential has been revoked";
-/// `runner_bearer.zig`'s `S_INVALID_OR_MISSING_TOKEN` — a DIFFERENT sentence
-/// from the tenant plane's, naming the runner token, and kept distinct because
-/// the runner client reads it.
+/// The runner plane's refusal — a DIFFERENT sentence from the tenant plane's,
+/// naming the runner token, and kept distinct because the runner client reads
+/// it.
 const S_INVALID_RUNNER_TOKEN: &str = "Invalid or missing runner token";
-/// `runner_bearer.zig`'s `S_RUNNER_ADMIN_STATE_BLOCKED`.
+/// The detail when a known runner's administrative state bars the plane.
 const S_RUNNER_STATE_BLOCKED: &str = "Runner admin state blocks runner-plane access";
 
 /// A credential was not accepted, and why.
@@ -108,7 +106,7 @@ impl Error {
     ///
     /// Exhaustive, so a new variant fails to compile until it is given one —
     /// the same device [`crate::scope::Scope::wire`] uses, applied to the
-    /// pairing the Zig call sites restate by hand.
+    /// code-to-detail pairing.
     #[must_use]
     pub const fn code(self) -> ErrorCode {
         match self {
@@ -122,8 +120,8 @@ impl Error {
         }
     }
 
-    /// The sentence a client reads, pinned byte-for-byte against the Zig
-    /// daemon's constant.
+    /// The sentence a client reads, pinned byte-for-byte by
+    /// `tests/auth_error_taxonomy.rs`.
     ///
     /// Equal to `to_string()` and present so a test can assert the pinning
     /// without allocating, and so the pinning is a named property rather than

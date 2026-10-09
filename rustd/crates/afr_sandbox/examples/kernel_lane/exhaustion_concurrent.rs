@@ -78,7 +78,9 @@ async fn fill(engine: &BubblewrapEngine, lane: &Lane, lease_id: &str) -> Result<
         memory_bytes: MEMORY,
         ..Limits::default()
     };
-    let sandbox = engine.prepare(SandboxRequest { lease_id, limits }).await?;
+    let sandbox = engine
+        .prepare(SandboxRequest::new(lease_id, limits))
+        .await?;
     let executor = sandbox.executor();
     let seen = async {
         let tmp = run_within(executor, shell(FILL_TMP), FILL_TIMEOUT).await?;

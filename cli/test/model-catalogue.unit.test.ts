@@ -1,7 +1,7 @@
 // Unit tests for lib/model-catalogue.ts — the CLI's only source of provider
 // and model truth now that constants/providers.ts is gone.
 //
-// The retired design was a 116-entry copy of NullClaw's dial tables plus a
+// The retired design was a 116-entry copy of the retired runner's dial tables plus a
 // parity test that watched the copy drift. These tests assert the properties
 // that replaced it: the accepted set comes from the wire, paging is followed to
 // the end, the catalogue owns case-folding, and both degradations (unreachable,

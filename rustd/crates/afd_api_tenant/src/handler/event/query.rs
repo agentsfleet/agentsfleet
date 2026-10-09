@@ -4,24 +4,22 @@
 //! parameters, two mutual exclusions, and a window that resolves against the
 //! clock. The handlers beside it read a page and render it.
 //!
-//! # The refusals are the Zig's sentences, not this crate's
+//! # The refusals are this module's sentences, not `afd_events`'s
 //!
 //! `afd_events::Error` carries a sentence for a cursor it did not mint, and it
-//! is not the one already in production — and `parse_since` answers with the
+//! is not the one this surface publishes — and `parse_since` answers with the
 //! same variant a bad cursor does, so one sentence could not serve both. The
 //! parse happens HERE, at two call sites that each know which parameter they
 //! were reading, so each names its own refusal. `docs/REST_API_DESIGN_GUIDELINES.md`
 //! §9 is what settles it: these strings are already on the wire.
 //!
-//! # Order of refusals, and where it stops being the Zig's
+//! # Order of refusals
 //!
 //! Within this file the order is `limit`, then the two exclusions, then the
-//! drill-down's shape, then the window, then the cursor — the order
-//! `events.zig` refuses in. What differs by construction is that the Zig
-//! decodes the cursor INSIDE the store, after authorizing the workspace, so a
-//! request that is both unauthorized and badly paged answers 403 there and 400
-//! here. The ownership check is a mounted LAYER in this daemon and runs before
-//! any handler does; that is the port's design and not this file's choice.
+//! drill-down's shape, then the window, then the cursor. Ownership answers
+//! before any of them: the check is a mounted LAYER in this daemon and runs
+//! before any handler does, so a request that is both unauthorized and badly
+//! paged answers 403.
 
 use std::borrow::Cow;
 
@@ -132,8 +130,7 @@ pub(super) struct WorkspaceListing {
 impl WorkspaceListing {
     /// The workspace listing's parameters.
     ///
-    /// The drill-down is validated between the exclusions and the window,
-    /// which is where `workspaces/events.zig` validates it.
+    /// The drill-down is validated between the exclusions and the window.
     ///
     /// # Errors
     /// A [`Refusal`] naming the parameter that refused.

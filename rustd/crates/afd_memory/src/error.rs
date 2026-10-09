@@ -1,8 +1,8 @@
 //! The one error type this crate returns, and what each failure tells a caller.
 //!
-//! The memory operator surface answers `UZ-MEM-*` codes with sentences pinned
-//! to the retired daemon's `memory/handler.zig`; the runner plane's verbs answer
-//! the internal database codes they always did. Both are decided in one table,
+//! The memory operator surface answers `UZ-MEM-*` codes with the sentences
+//! pinned in [`detail`]; the runner plane's verbs answer the internal database
+//! codes. Both are decided in one table,
 //! [`Error::answer`], so a new kind fails the build until it has both.
 
 use afd_core::error_code::{self, ErrorCode};

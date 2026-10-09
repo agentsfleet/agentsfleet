@@ -59,10 +59,7 @@ pub(crate) fn shell_calls(
             .tool(SHELL.name())
             .ok_or("the runner hosts shell")?;
         let engine = lane.engine();
-        let request = SandboxRequest {
-            lease_id,
-            limits: Limits::default(),
-        };
+        let request = SandboxRequest::new(lease_id, Limits::default());
         let sandbox = engine.prepare(request).await?;
         let lease = Lease::default();
         let mut outputs = Vec::with_capacity(calls.len());

@@ -11,11 +11,10 @@
 //! # The cross-workspace claim is asserted as a caller sees it
 //!
 //! `grant_sql::REVOKE_GRANT` carries a join to `core.fleets` that the scope read
-//! before it has already made redundant, and that redundancy is deliberate. Its
-//! own half is proven where the statement text is reachable —
-//! `integration_grants/workspace.zig` runs exactly this text with a foreign
-//! workspace. What is proven HERE is the guarantee the two halves exist for: a
-//! revoke naming somebody else's workspace changes no row.
+//! before it has already made redundant, and that redundancy is deliberate. The
+//! statement text is crate-private, so what is proven HERE is the guarantee the
+//! two halves exist for: a revoke naming somebody else's workspace changes no
+//! row.
 
 #![expect(
     clippy::expect_used,

@@ -5,9 +5,8 @@
 //! Telemetry is the one subsystem whose failure must never become the
 //! application's failure. An exporter that blocks makes a slow collector look
 //! like a slow API, and an exporter that retries forever makes an unreachable
-//! collector look like an outage. The Zig daemon states the same rule as a
-//! bounded buffer plus a drop counter, and reaching for the same shape here is
-//! not a port — it is the only shape that has the property.
+//! collector look like an outage. A bounded buffer plus a drop counter is the
+//! only shape that has the property.
 //!
 //! The bounded buffer is the SDK's batch processor, which hands spans to a
 //! background task and drops them when its queue is full. What the SDK does not

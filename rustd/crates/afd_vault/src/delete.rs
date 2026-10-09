@@ -23,13 +23,10 @@
 //!
 //! # Why the transaction needs no `open` flag
 //!
-//! `secret_reference_txn.zig` carries a `Txn` with a boolean and an `abort`
-//! that has to be idempotent, and its own module comment warns that `errdefer`
-//! is the wrong tool because every handler holding one returns `void` — two
-//! call sites had a rollback that was decoration. [`sqlx::Transaction`] rolls
-//! back when it is DROPPED, so every early return here rolls back by the
-//! language's rules rather than by a discipline each caller has to keep. There
-//! is no flag, no idempotent abort, and no path that can forget.
+//! [`sqlx::Transaction`] rolls back when it is DROPPED, so every early return
+//! here rolls back by the language's rules rather than by a discipline each
+//! caller has to keep. There is no flag, no idempotent abort, and no path that
+//! can forget.
 
 use afd_core::id::Uuid7;
 use sqlx::{Acquire as _, Row as _, Transaction};

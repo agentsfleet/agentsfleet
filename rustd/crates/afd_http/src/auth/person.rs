@@ -123,9 +123,9 @@ impl ClassPolicy for DashboardClass {
     const ADMITS: &'static [PersonCredential] = &[PersonCredential::SessionToken {
         workspace_scope: None,
     }];
-    /// A 401 rather than a 403, matching the Zig refusal: the caller has not
-    /// PROVEN the thing this route needs proven, and a capability they could be
-    /// granted would not change it.
+    /// A 401 rather than a 403: the caller has not PROVEN the thing this route
+    /// needs proven, and a capability they could be granted would not change
+    /// it.
     const CODE: ErrorCode = error_code::AUTH_UNAUTHORIZED;
     const DETAIL: &'static str = DETAIL_NOT_DASHBOARD;
     const EVENT: &'static str = "session_credential_required";
@@ -135,8 +135,8 @@ impl ClassPolicy for DashboardClass {
 ///
 /// Admits exactly what [`DashboardClass`] admits and is a separate policy,
 /// because the two refuse differently — 403 with its own sentence, where the
-/// dashboard answers 401 with another — and both spellings are pinned to the
-/// Zig handlers a client already branches on.
+/// dashboard answers 401 with another — and both spellings are pinned,
+/// because a client already branches on them.
 ///
 /// # Why minting costs a browser session every time
 ///

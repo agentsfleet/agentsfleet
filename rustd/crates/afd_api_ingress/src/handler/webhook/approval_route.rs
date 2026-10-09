@@ -1,8 +1,7 @@
 //! `POST /v1/webhooks/{fleet_id}/approval` — an approver's answer, arriving.
 //!
-//! The port of `webhooks/approval.zig`. A person pressed approve or deny on a
-//! Slack message and Slack posted the interactive payload here; this resolves
-//! the gate the fleet is parked on.
+//! A person pressed approve or deny on a Slack message and Slack posted the
+//! interactive payload here; this resolves the gate the fleet is parked on.
 //!
 //! # This route writes a ROW where every other one in this family writes a
 //! stream entry
@@ -16,11 +15,10 @@
 //!
 //! # The fleet in the URL is a FILTER, not a lookup
 //!
-//! `approval.zig` binds it into the resolving statement's `WHERE`, so a payload
+//! The fleet id is bound into the resolving statement's `WHERE`, so a payload
 //! naming a gate that belongs to another fleet resolves nothing rather than
-//! resolving someone else's gate. The same binding happens here, and it is the
-//! reason the path carries a fleet id at all for a body that already names its
-//! own action.
+//! resolving someone else's gate. That binding is the reason the path carries
+//! a fleet id at all for a body that already names its own action.
 
 use std::sync::Arc;
 
@@ -47,9 +45,8 @@ const EVENT_RESOLVE: &str = "approval_webhook_resolve_failed";
 
 /// What an approver's answer is recorded as having come from.
 ///
-/// `approval_gate_resolver.zig`'s `SLACK_WEBHOOK`, kept byte-for-byte: the
-/// audit column is read by operators and by the dashboard, and a value that
-/// changed during a cutover would split one gate's history across two spellings.
+/// The audit column is read by operators and by the dashboard, and a value
+/// that changed would split one gate's history across two spellings.
 const BY_SLACK_WEBHOOK: &str = "slack:webhook";
 
 /// The answer meaning the gate may proceed.
@@ -71,10 +68,10 @@ const DETAIL_INVALID_DECISION: &str = "The decision must be approve or deny.";
 /// The refusal a payload naming no gate of this fleet's earns.
 const DETAIL_NOT_FOUND: &str = "No pending approval matches this action for this fleet.";
 
-/// The payload Slack posts, as `approval.zig` reads it.
+/// The payload Slack posts, reduced to the two fields this route reads.
 ///
-/// Unknown fields are ignored rather than refused, which is the port's rule and
-/// not laxity: Slack adds fields to interactive payloads without notice, and a
+/// Unknown fields are ignored rather than refused, which is a rule and not
+/// laxity: Slack adds fields to interactive payloads without notice, and a
 /// daemon that refused an unrecognised one would go down on a vendor's release
 /// note.
 #[derive(Debug, Deserialize)]
@@ -169,8 +166,8 @@ pub(crate) async fn receive<D: Services>(
     // A gate somebody already answered is answered 200 rather than 409 here,
     // where the dashboard's own route answers 409. Slack retries a non-2xx and
     // retrying cannot change an already-resolved gate, so a conflict status
-    // would buy a retry storm and no new information — which is `approval.zig`'s
-    // own choice: it logs `already_resolved` and answers `resolved` either way.
+    // would buy a retry storm and no new information. Both outcomes answer
+    // `resolved`.
     match resolution {
         Resolution::Resolved(_) | Resolution::AlreadyResolved(_) => {}
         Resolution::NotFound => {

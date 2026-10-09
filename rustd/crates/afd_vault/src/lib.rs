@@ -33,10 +33,9 @@
 //! - [`sql::SELECT_SECRET_PROJECTIONS`] projects no ciphertext column, pinned
 //!   by a unit test, so there is nothing to decrypt even if a key appeared.
 //!
-//! `crypto_store.zig` reaches the same guarantee with a `decrypt_tally` counter
-//! and a `noteDecrypt` funnel every decrypt site must remember to call. A
-//! counter proves what happened on the run that was measured; a missing field
-//! proves what can happen at all.
+//! Both are structural rather than counted. A decrypt counter would prove what
+//! happened on the run that was measured; a missing field proves what can
+//! happen at all.
 //!
 //! [`Vault::load`] is the one verb that DOES open an envelope, and it is not on
 //! this surface at all: no route reaches it, and it answers one name rather
@@ -117,11 +116,11 @@ impl Directory {
 ///
 /// # Why the Key Encryption Key is a field, and behind an `Arc`
 ///
-/// `crypto_primitives.zig` keeps it in a file-scoped `var g_kek`, set at boot
-/// and read back through a fallible `loadKek()` — so every write path carries a
-/// `MissingMasterKey` arm for a condition that can only occur before the daemon
-/// serves traffic. Here it is a field: a [`Vault`] cannot be constructed
-/// without one, so there is no "not yet resolved" state and no arm to write.
+/// A process-wide key set at boot and read back through a fallible accessor
+/// would give every write path an error arm for a condition that can only
+/// occur before the daemon serves traffic. Here it is a field: a [`Vault`]
+/// cannot be constructed without one, so there is no "not yet resolved" state
+/// and no arm to write.
 ///
 /// `Arc` rather than a clone, because [`Kek`] is `Clone` and cloning it would
 /// copy thirty-two bytes of key material into every request-path handle, each

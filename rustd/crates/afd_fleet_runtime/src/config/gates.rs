@@ -2,19 +2,18 @@
 //!
 //! # Two thresholds that are not money
 //!
-//! `config_gates.zig` bounds `threshold_count` — a count of repeated actions —
-//! and `threshold_window_s` — a span of seconds — and reports both failures as
-//! `InvalidBudget` against `MAX_BUDGET_UNITS`, a constant named for dollars.
-//! An operator reading that error is told their spend ceiling is wrong when
+//! `threshold_count` is a count of repeated actions and `threshold_window_s` a
+//! span of seconds. Reporting either as a budget failure, against a constant
+//! named for dollars, would tell an operator their spend ceiling is wrong when
 //! their anomaly rule is. Both bounds are named for what they bound here, and
 //! answer [`Error::InvalidThreshold`].
 //!
 //! # Zero is unrepresentable rather than rejected
 //!
-//! A threshold of zero would trip on the first action forever. The Zig checks
-//! `n > 0` at parse and then carries a `u32` that could still be zero to every
-//! later reader. [`NonZeroU32`] carries the proof instead, so the anomaly
-//! evaluator has no zero case to consider and no branch to forget.
+//! A threshold of zero would trip on the first action forever. A plain `u32`
+//! checked once at parse could still be zero to every later reader;
+//! [`NonZeroU32`] carries the proof instead, so the anomaly evaluator has no
+//! zero case to consider and no branch to forget.
 
 use crate::config::anomaly::AnomalyRule;
 use crate::config::raw;
@@ -270,7 +269,7 @@ mod tests {
         let rendered = format!("{failure:?}");
         assert!(
             rendered.contains("approve") && rendered.contains("auto_kill"),
-            "serde names the accepted spellings where the Zig names none: {rendered}"
+            "serde should name the accepted spellings: {rendered}"
         );
     }
 

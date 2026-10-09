@@ -1,16 +1,15 @@
 //! Which claim shapes this daemon reads, proved on tokens it actually signed.
 //!
-//! The `jwks_test_fixtures.zig` tokens verify a real signature over a real key,
-//! which is what makes the negative paths in `jwks_verify_negative_paths`
+//! The recorded tokens in `jwks_verify_negative_paths` verify a real signature
+//! over a real key, which is what makes the negative paths there
 //! meaningful — but they carry ONE payload, so no fixture can say what happens
 //! to an array audience, or to a tenant claim at the top level rather than
 //! nested. Reading claims off an unsigned token would prove nothing, because
 //! this verifier refuses to read claims for a decision before the signature
 //! verifies (which is itself a property, pinned over there).
 //!
-//! So these tests sign. The key is the Zig tree's own throwaway
-//! `TEST_KEY_PKCS1_B64` from `auth/crypto/rs256_sign.zig` — generated offline,
-//! never used in production, and already embedded there to drive the signer.
+//! So these tests sign, with the throwaway `TEST_KEY_PKCS1_B64` in
+//! `support::signing` — generated offline and never used in production.
 //! `ring` signs as well as verifies, so this needs no crate the library does
 //! not already link.
 #![expect(
@@ -50,7 +49,7 @@ fn test_a_numeric_private_header_parameter_does_not_reject_a_clerk_token() {
 
 /// The tenant claim is read from `metadata`, which is where it actually is.
 ///
-/// `clerk_metadata_payload.zig` writes two keys into `public_metadata`, and the
+/// The signup writeback puts two keys into `public_metadata`, and the
 /// session-token template projects `metadata.tenant_id`. A reader that looked
 /// only at the top level would find the tenant on NO production token — every
 /// dashboard session would authenticate and then be refused for having no
@@ -73,9 +72,8 @@ fn test_the_tenant_claim_is_read_from_the_nested_metadata_object() {
 
 /// A top-level projection wins over the nested one.
 ///
-/// The order `claims.zig::getClerkTenantId` walks, and it is the order that
-/// lets a template start projecting to the top level without both readers
-/// having to change at once.
+/// That order lets a template start projecting to the top level without both
+/// readers having to change at once.
 #[test]
 fn test_a_top_level_tenant_claim_wins_over_the_nested_one() {
     let claims = verify(&format!(
@@ -169,9 +167,9 @@ fn test_a_non_object_payload_is_malformed() {
 
 /// The capability claim is read at the top level, and nowhere else.
 ///
-/// `claims.zig` records why: an earlier ladder tried `OAuth2`'s `scope` BEFORE
-/// this one, so a token carrying a standard `scope` claim would silently have
-/// supplied a different capability set on the authorisation path.
+/// A ladder that tried `OAuth2`'s `scope` BEFORE this one would let a token
+/// carrying a standard `scope` claim silently supply a different capability
+/// set on the authorisation path.
 #[test]
 fn test_the_capability_claim_is_read_from_one_place_only() {
     let held = verify(&format!(

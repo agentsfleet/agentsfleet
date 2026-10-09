@@ -5,17 +5,14 @@
 //! A boolean would collapse the two failures that matter most to tell apart:
 //! a 429 is worth retrying in a moment and a `channel_not_found` never will
 //! be. Retrying the second costs the vendor three requests and the operator a
-//! log line per attempt, and still ends where it started. `post.zig` reached
-//! the same three and this is the same table.
+//! log line per attempt, and still ends where it started.
 //!
 //! # Dispatch is a match over a closed enum, not a registry lookup
 //!
-//! `worker.zig` compares the job's provider string against each connector's id
-//! and falls through to a warn. Here the string is parsed to a
-//! [`Provider`] once and the match over it is total, so a connector added to
-//! the enum without a poster does not compile. That is the same claim its
-//! comment makes — "adding Grafana/Jira/Linear is one more arm here" — with the
-//! compiler holding it instead of a reviewer.
+//! The job's provider string is parsed to a [`Provider`] once and the match
+//! over it is total, so a connector added to the enum without a poster does
+//! not compile: adding a connector is one more arm, with the compiler holding
+//! that instead of a reviewer.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -113,8 +110,7 @@ pub struct Posters<S> {
 /// Returns [`Verdict::Permanent`] for a provider string this build ships no
 /// connector for, and for one it ships no poster for yet. Both are the same
 /// answer for the same reason: the job cannot be delivered by any retry, and
-/// leaving it unacknowledged would redeliver it forever. The Zig drops an
-/// unknown provider for exactly this reason.
+/// leaving it unacknowledged would redeliver it forever.
 pub async fn dispatch<S: Deliver>(
     posters: &Posters<S>,
     job: &OutboundDelivery,
@@ -195,9 +191,10 @@ pub async fn deliver_with_retry<S: Deliver>(
 
 /// Logs a job nothing can deliver and calls it permanent.
 ///
-/// The event is the Zig's spelling (`LOGGING_STANDARD` §8A EVENT-COMPAT) and
-/// `reason` is what separates the two cases it now covers — a provider no
-/// connector answers to, and one that connects but has no answer surface yet.
+/// The event name stays fixed so dashboards and alerts keep matching
+/// (`LOGGING_STANDARD` §8A EVENT-COMPAT), and `reason` is what separates the
+/// two cases it covers — a provider no connector answers to, and one that
+/// connects but has no answer surface yet.
 fn unroutable(job: &OutboundDelivery, reason: &'static str) -> Verdict {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();

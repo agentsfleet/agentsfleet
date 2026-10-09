@@ -12,10 +12,9 @@ pub const ACTOR: &str = "actor";
 /// How the event entered the system.
 ///
 /// The constant is named for the concept and its VALUE is the wire
-/// spelling, which are deliberately different words. `event_envelope.zig`
-/// shipped `type`, entries written under that name are what a stream can
-/// still hold, and a reader is not free to prefer a nicer name — the pair
-/// below is the same shape for the same reason.
+/// spelling, which are deliberately different words. Entries already in a
+/// stream were written under `type`, and a reader is not free to prefer a
+/// nicer name — the pair below is the same shape for the same reason.
 pub const EVENT_TYPE: &str = "type";
 /// The workspace the fleet belongs to.
 pub const WORKSPACE_ID: &str = "workspace_id";

@@ -15,9 +15,9 @@
 //!
 //! # Nulls stay on the wire
 //!
-//! No `skip_serializing_if`, for this crate's usual reason: the Zig emitter
-//! writes `null` for an absent optional on a SUCCESS body, and dropping the key
-//! would be a shape change a client can see.
+//! No `skip_serializing_if`, for this crate's usual reason: an absent optional
+//! on a SUCCESS body is written as `null`, and dropping the key would be a
+//! shape change a client can see.
 
 use std::borrow::Cow;
 
@@ -40,9 +40,8 @@ pub type Triggers = Option<Box<RawValue>>;
 
 /// `POST /v1/workspaces/{workspace_id}/fleets` — install one.
 //
-// Unknown fields are IGNORED, matching `create.zig`'s
-// `.ignore_unknown_fields = true`, and the parity is kept by the ABSENCE of a
-// serde attribute.
+// Unknown fields are refused with a 400, like every request body in this
+// module.
 //
 // Exactly one library id is required. Both fields are optional HERE because
 // the refusal for neither and the refusal for both are different sentences,
@@ -135,7 +134,7 @@ pub struct FleetSummary<'a> {
 pub struct FleetsResponse<'a> {
     /// The fleets on this page.
     pub items: Vec<FleetSummary<'a>>,
-    // `list.zig` answers the page length, and the name is the one that shipped.
+    // The page length, under the `total` name clients already read.
     /// How many Fleets this page carries. The count covers this page only, not
     /// the whole workspace.
     pub total: usize,
@@ -245,8 +244,8 @@ pub enum PatchedFleetResponse<'a> {
     Unchanged {
         /// The fleet the request named.
         fleet_id: Cow<'a, str>,
-        // The literal `@as(?i64, null)` the Zig answers, kept because a
-        // client distinguishes "no write" from a revision by it.
+        // Serialized as a literal `null` because a client distinguishes
+        // "no write" from a revision by it.
         /// Always `null` on this response. Use it to tell "no write" apart
         /// from a revision number.
         config_revision: Option<i64>,
@@ -276,9 +275,8 @@ pub enum PatchedFleetResponse<'a> {
 /// The largest authored document a fleet patch may carry.
 ///
 /// Two hundred KiB, while the refusal SENTENCE this route answers with says
-/// 64KiB. The mismatch is in the Zig too and it is the NUMBER that is
-/// load-bearing: a client sitting between the two would change class if either
-/// moved, so both are ported as they stand. Do not reconcile them without a
+/// 64KiB. It is the NUMBER that is load-bearing: a client sitting between the
+/// two would change class if either moved. Do not reconcile them without a
 /// decision about that client.
 pub const FLEET_MARKDOWN_MAX_BYTES: usize = 200 * 1024;
 

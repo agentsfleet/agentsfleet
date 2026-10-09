@@ -12,8 +12,8 @@ use crate::error_code;
 /// and a shared constant they never reach would read as one they might.
 const TITLE_REQUEST_FAILED: &str = "Request failed";
 
-/// Reused title, shared with the provider family's own missing-secret refusal
-/// exactly as `error_entries.zig` shares `S_TITLE_SECRET_NOT_FOUND`.
+/// Reused title. The provider family's own missing-secret refusal, in
+/// `integration.rs`, answers the same words.
 const TITLE_SECRET_NOT_FOUND: &str = "Secret not found";
 
 /// This family's entries, in `REGISTRY` order.
@@ -90,12 +90,11 @@ pub(super) const REQUEST: &[Problem] = &[
     // about who reads it rather than an omission: every one of these is
     // rendered in a PROVIDER's delivery log — GitHub's, Slack's, Svix's — to an
     // operator debugging an integration, and never in this product's console.
-    // The retired Zig entries marked every one of them `reachable: no` for the
-    // same reason. The last three are narrower still: they are never rendered as a
-    // problem at all, because the App ingress names them as the REASON in a
-    // 200 rather than raising them. They are declared here so the table stays
-    // total over the registry — a code with no entry resolves to UNKNOWN and
-    // would answer 500 if one ever were raised.
+    // The last three are narrower still: they are never rendered as a problem
+    // at all, because the App ingress names them as the REASON in a 200 rather
+    // than raising them. They are declared here so the table stays total over
+    // the registry — a code with no entry resolves to UNKNOWN and would answer
+    // 500 if one ever were raised.
     Problem {
         code: error_code::WEBHOOK_FLEET_NOT_FOUND,
         status: 404,
@@ -160,9 +159,9 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        // 409, not 400: the Zig answers `conflict` and a status is a property
-        // of the CODE — the two binaries disagreeing about it is what sends a
-        // client down a branch the other daemon never produces.
+        // 409, not 400: the request is well formed and the fleet's current
+        // state refuses it. A status is a property of the CODE, so every route
+        // that raises this one answers 409.
         code: error_code::SCHEDULE_LIMIT_REACHED,
         status: 409,
         title: "Schedule limit reached",
@@ -307,7 +306,7 @@ pub(super) const REQUEST: &[Problem] = &[
         hint: "Required environment variables are missing. Run 'agentsfleetd doctor' to see which ones.",
         // Pre-listen: this is reported to the product analytics and to stderr,
         // never as an HTTP response, so there is no dashboard to render a
-        // sentence into. The Zig entry carries the same reachability note.
+        // sentence into.
         user_message: None,
     },
     Problem {

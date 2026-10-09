@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# Run every playbooks/**/*_test.sh concurrently, bounded, with ordered output.
+# Run every *_test.sh under the given roots concurrently, bounded, with
+# ordered output.
+#
+#     bash scripts/run-playbook-tests.sh [root ...]   (default root: playbooks)
+#
+# `make check-playbooks` runs it over playbooks/ and `make check-deploy-safety`
+# over deploy/baremetal/, so a suite added under either is picked up by its
+# name alone.
 #
 # Each test file is a self-contained bash process — own mktemp work_dir, own
 # stub PATH, own trap cleanup — so nothing about correctness depends on the
@@ -30,15 +37,18 @@ log_dir="$(mktemp -d)"
 cleanup() { rm -rf -- "$log_dir"; }
 trap cleanup EXIT INT TERM
 
+roots=(playbooks)
+[ "$#" -eq 0 ] || roots=("$@")
+
 # `while read` rather than mapfile: mapfile is bash 4+, and this has to run on
 # whatever bash a CI image happens to ship.
 tests=()
 while IFS= read -r test_script; do
   tests+=("$test_script")
-done < <(find playbooks -type f -name '*_test.sh' | sort)
+done < <(find "${roots[@]}" -type f -name '*_test.sh' | sort)
 
 if [ "${#tests[@]}" -eq 0 ]; then
-  echo "✗ [playbooks] no shell regression tests found" >&2
+  echo "✗ no shell regression tests found under ${roots[*]}" >&2
   exit 1
 fi
 
@@ -68,6 +78,6 @@ for test_script in "${tests[@]}"; do
 done
 
 if [ "$failed" -ne 0 ]; then
-  printf '\n✗ [playbooks] %d regression test file(s) failed\n' "$failed" >&2
+  printf '\n✗ %d regression test file(s) failed under %s\n' "$failed" "${roots[*]}" >&2
   exit 1
 fi

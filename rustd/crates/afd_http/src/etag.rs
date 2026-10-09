@@ -1,4 +1,4 @@
-//! The shared conditional-GET verdict — `http/etag.zig`'s comparison half.
+//! The shared conditional-GET verdict: the comparison half of the `ETag` rule.
 //!
 //! The DIGEST moved to [`afd_core::etag`] when a second caller appeared:
 //! `afd_fleet_lifecycle` compares a tag inside the row lock a conditional write

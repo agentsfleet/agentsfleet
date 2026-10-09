@@ -11,10 +11,10 @@
 //! is really a template, a stream that is really long-lived, a scope ladder
 //! that never asks for MORE on a read than on the write beside it.
 //!
-//! The last of those is the one worth having. `route_admission.zig` gave up
-//! its exhaustive match for an `else` arm and rebuilt the check as a runtime
-//! walk over two hand-maintained name lists; the whole point of folding four
-//! tables into one is that no list survives to drift.
+//! The last of those is the one worth having. A table that answered with an
+//! `else` arm would need a runtime walk over hand-maintained name lists to
+//! catch a missed route; the whole point of keeping every fact in one
+//! `RouteMeta` is that no list survives to drift.
 //!
 //! The scope ladder — each method's rung, in order — is `route_meta_scopes.rs`.
 #![cfg(feature = "test-util")]
@@ -27,12 +27,12 @@ use afd_api::route::{
 };
 use afd_api::{Guard, Route, RouteClass};
 
-/// The route count the Zig union carries. Stated as a number because the point
-/// of the port was to keep the surface, not to quietly shed part of it: a
-/// family that lost a route would otherwise pass every other test here.
-const ZIG_ROUTE_COUNT: usize = 81;
+/// The route count the surface is pinned to. Stated as a number so the surface
+/// cannot quietly shed part of itself: a family that lost a route would
+/// otherwise pass every other test here.
+const PINNED_ROUTE_COUNT: usize = 81;
 
-/// Routes the Zig serves that this daemon deliberately does not table.
+/// Routes the pinned count includes that this daemon deliberately does not table.
 ///
 /// One: `/v1/fleets/streams`, dropped by Indy's call while merging M179 —
 /// see `afd_api::route::runner_ops` for the reasoning and M179's Dimension 4.4
@@ -41,18 +41,17 @@ const ZIG_ROUTE_COUNT: usize = 81;
 /// test, which is the whole reason the count is pinned.
 const DECLARED_DIVERGENCES: usize = 1;
 
-/// Verbs the Zig union folds into one member that this union spells apart.
+/// Verbs the pinned count holds as one member that this union spells apart.
 ///
-/// One: the runner record's retirement. `routes.zig` dispatches `DELETE
-/// /v1/fleets/runners/{id}` inside `fleet_runner_patch`, so it is no member of
-/// that union, and here it is `RunnerOpsRoute::Delete` with its own meta.
+/// One: the runner record's retirement. `DELETE /v1/fleets/runners/{id}` is
+/// counted with the runner patch in the pinned count, and here it is
+/// `RunnerOpsRoute::Delete` with its own meta.
 const VERB_SPLITS: usize = 1;
 
-/// Routes this daemon serves that the Zig one never did.
+/// Routes this daemon serves beyond the pinned count.
 ///
 /// Nineteen: `GET /v1/users/me`, plus the owned library collection and its
-/// removal — the Zig daemon had no removal to port, because slot 460 withheld
-/// the grant — plus the eight team-account routes: an account's invites, one
+/// removal, plus the eight team-account routes: an account's invites, one
 /// invite, sending its email again, its members, one member, the invites
 /// waiting for the caller, accepting one, and a workspace's member names —
 /// plus the two tool-call record routes: the runner's post of each call in
@@ -62,14 +61,14 @@ const VERB_SPLITS: usize = 1;
 /// to its thread through: the schedules, one schedule, one schedule's runs, and
 /// the messages.
 ///
-/// A term of its own rather than a smaller [`ZIG_ROUTE_COUNT`], which is not
-/// ours to edit: an addition hidden inside it would make the next one
-/// indistinguishable from a route the port dropped.
+/// A term of its own rather than a larger [`PINNED_ROUTE_COUNT`]: an addition
+/// hidden inside the pin would make the next one indistinguishable from a
+/// dropped route.
 const POST_PORT_ADDITIONS: usize = 19;
 
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize =
-    ZIG_ROUTE_COUNT - DECLARED_DIVERGENCES + VERB_SPLITS + POST_PORT_ADDITIONS;
+    PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES + VERB_SPLITS + POST_PORT_ADDITIONS;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.
@@ -89,8 +88,8 @@ fn test_every_route_is_walked_exactly_once() {
     assert_eq!(
         walked.len(),
         RUST_ROUTE_COUNT,
-        "the walk covers {} routes; the Zig union carried {ZIG_ROUTE_COUNT} and \
-         this daemon declares {DECLARED_DIVERGENCES} of them unported — a route \
+        "the walk covers {} routes; the pinned count is {PINNED_ROUTE_COUNT} and \
+         this daemon declares {DECLARED_DIVERGENCES} of them untabled — a route \
          was dropped or added without the count moving with it",
         walked.len()
     );
@@ -168,10 +167,10 @@ fn test_templates_may_repeat_but_the_pairs_are_known() {
 /// Only the two Server-Sent Events tails are exempt from the request ceiling,
 /// and only the two probes are exempt from shedding.
 ///
-/// This is the check `route_admission.zig` needed two hand-maintained name
-/// lists to make. Here the default is not a fallthrough — every route states
-/// its class — so what is left to prove is the POLICY: that the exemptions are
-/// the ones we meant, and that nothing quietly joined them.
+/// Every route states its class, so the default is not a fallthrough and no
+/// hand-maintained name list is needed. What is left to prove is the POLICY:
+/// that the exemptions are the ones we meant, and that nothing quietly joined
+/// them.
 #[test]
 fn test_only_probes_and_streams_escape_the_request_ceiling() {
     let ops: Vec<Route> = Route::all()
@@ -202,9 +201,9 @@ fn test_only_probes_and_streams_escape_the_request_ceiling() {
 ///
 /// The one property that, if it broke, would break silently and in exactly the
 /// wrong direction: a route deriving `Ownership::None` by accident serves one
-/// tenant's rows to another with nothing failing. That is the failure
-/// `cross_workspace_idor_test.zig` exists because of, and it is why the derived
-/// answer is checked against the template here rather than trusted.
+/// tenant's rows to another with nothing failing. That cross-workspace read is
+/// why the derived answer is checked against the template here rather than
+/// trusted.
 ///
 /// The check is deliberately written the OTHER way round from the derivation:
 /// this asks `str::contains` at runtime, where `Ownership::of` walks bytes in a

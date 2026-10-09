@@ -128,7 +128,7 @@ fn should_report_each_event_under_its_published_name() {
             },
         ),
     ];
-    assert_eq!(named.len(), 11, "the ported event set is eleven events");
+    assert_eq!(named.len(), 11, "the event set is eleven events");
     for (name, telemetry) in named {
         assert_eq!(telemetry.name(), name);
         assert_eq!(telemetry.event().event_name(), name);
@@ -167,8 +167,8 @@ fn should_attribute_instance_events_to_nobody() {
     }
 }
 
-/// A person's event names them, both as the attribution and where the Zig
-/// also wrote them as a property.
+/// A person's event names them, both as the attribution and as a
+/// `distinct_id` property.
 #[test]
 fn should_attribute_a_persons_event_to_that_person() {
     let login = Telemetry::AuthLoginCompleted {
@@ -182,15 +182,15 @@ fn should_attribute_a_persons_event_to_that_person() {
     assert_eq!(
         text(&event, "distinct_id"),
         ACTOR,
-        "the Zig writes it as a property too, and a dashboard groups by it"
+        "it is written as a property too, and a dashboard groups by it"
     );
 }
 
 /// A refusal with no workspace OMITS the key rather than sending null.
 ///
-/// The two Zig structs `ApiError` and `ApiErrorWithContext` are this one
-/// variant, and the difference between them is exactly this key's presence. A
-/// `null` would make every pre-workspace refusal a cohort under one filter.
+/// One `ApiError` variant covers refusals with and without a workspace, and the
+/// difference is exactly this key's presence. A `null` would make every
+/// pre-workspace refusal a cohort under one filter.
 #[test]
 fn should_omit_the_workspace_when_a_refusal_happened_before_one_was_known() {
     let anonymous = Telemetry::ApiError {

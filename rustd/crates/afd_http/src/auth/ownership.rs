@@ -1,13 +1,11 @@
-//! Is this HTTP resource yours — the authorization half Zig left in handlers.
+//! Is this HTTP resource yours — the ownership half of authorization.
 //!
-//! # What this replaces
+//! # Why ownership is a layer
 //!
-//! `authorizeWorkspace` is a function each workspace handler calls at its top,
-//! by hand, before touching a row. Around a hundred and sixty-five handlers
-//! call it. A handler that does not is a cross-tenant read, and nothing fails
-//! when somebody forgets — no test, no type, no table row says the call should
-//! have been there. `cross_workspace_idor_test.zig` exists because that has
-//! already happened once.
+//! Left to the handlers, ownership is a call each workspace handler makes at
+//! its top, by hand, before touching a row. A handler that forgets it is a
+//! cross-tenant read, and nothing fails — no test, no type, no table row says
+//! the call should have been there.
 //!
 //! Here it is a LAYER, mounted from [`Ownership`] which is derived from the
 //! route's own template. A handler cannot forget it, because a handler is not
@@ -45,12 +43,11 @@ use crate::services::{Services, WorkspaceOwnership as _};
 
 /// The refusal a caller reads for a workspace that is not theirs.
 ///
-/// `Workspace access denied` under `UZ-AUTH-001`, pinned byte-for-byte to the
-/// Zig handlers: a 403, not a 404, and the SAME answer for a workspace that
-/// belongs to somebody else and one that does not exist. The status is a
-/// parity requirement rather than a preference — a dashboard branches on it —
-/// and the collapse is what keeps the endpoint from being an oracle for which
-/// workspace identifiers are real.
+/// `Workspace access denied` under `UZ-AUTH-001`: a 403, not a 404, and the
+/// SAME answer for a workspace that belongs to somebody else and one that does
+/// not exist. The status is a requirement rather than a preference — a
+/// dashboard branches on it — and the collapse is what keeps the endpoint from
+/// being an oracle for which workspace identifiers are real.
 const DETAIL_NOT_YOURS: &str = "Workspace access denied";
 
 /// The refusal for a path segment that is not an identifier.

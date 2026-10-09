@@ -6,7 +6,7 @@
 //! with a gap, and two callbacks racing through that gap both see the slot and
 //! both complete — which is the whole failure single-use exists to prevent.
 //! `DEL` answers how many keys it removed, so exactly one caller can ever see
-//! `1`. `state.zig` reaches the same conclusion and says so in the same words.
+//! `1`.
 //!
 //! # Nothing here decides anything
 //!
@@ -23,8 +23,8 @@ use crate::registry::{STATE_TTL_SECONDS, StateBinding};
 
 /// Bytes of entropy behind a nonce, rendered as twice as many hex characters.
 ///
-/// `state.zig`'s `NONCE_BYTES`. Sixteen is the width a value that must not be
-/// guessed inside a ten-minute window needs, with room to spare.
+/// Sixteen is the width a value that must not be guessed inside a ten-minute
+/// window needs, with room to spare.
 const NONCE_BYTES: usize = 16;
 
 /// What is stored at the slot, which is never read — only its presence counts.

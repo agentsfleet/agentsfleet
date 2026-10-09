@@ -1,18 +1,19 @@
-// Cross-cutting failure-mode coverage. Error codes mirror the Zig
-// backend's error registry (src/errors/error_entries{,_runtime}.zig) so
-// tests reflect real production failure shapes rather than invented ones.
+// Cross-cutting failure-mode coverage. Error codes mirror the daemon's
+// error registry (rustd/crates/afd_core/src/error_code/) so tests reflect
+// real production failure shapes rather than invented ones.
 //
 // Each scenario answers: "if the user hits this exact UZ-XXX-NNN response
 // in the wild, does the CLI surface it clearly and exit non-zero, or does
 // it succeed silently / crash?"
 //
 // Surveyed codes used here:
-//   UZ-AUTH-003       (401, token expired)              error_entries.zig:78
-//   UZ-AUTH-004       (503, auth service unavailable)   error_entries.zig:80
-//   UZ-WORKSPACE-002  (402, workspace paused)           error_entries.zig:102
-//   UZ-AGT-006        (409, fleet name conflict)       error_entries.zig:180
-//   UZ-EXEC-013       (500, runner fleet run failed)    error_entries_runtime.zig:56
-//   UZ-INTERNAL-001   (503, database unavailable)       error_entries.zig:61
+//   UZ-AUTH-003       (401, token expired)              error_code/auth.rs:34
+//   UZ-AUTH-004       (503, auth service unavailable)   error_code/auth.rs:129
+//   UZ-AGT-006        (409, fleet name conflict)        error_code/fleet.rs:128
+//   UZ-RUN-011        (runner lost its lease)           error_code/fleet.rs:59
+//   UZ-INTERNAL-001   (503, database unavailable)       error_code/request.rs:191
+//   UZ-WORKSPACE-002  (402, workspace paused)           not declared by the
+//                     daemon; its case covers how any 402 envelope reads
 
 import { describe, test, expect } from "bun:test";
 
@@ -121,7 +122,7 @@ describe("failure modes — install surface (server)", () => {
 });
 
 describe("failure modes — runtime / observability surface", () => {
-  test("install succeeds, but logs subsequently surface a runner failure event with UZ-EXEC-013 (the 'nullclaw errored out' shape)", async () => {
+  test("install succeeds, but logs subsequently surface a runner failure event with UZ-RUN-011 (the runner lost its lease)", async () => {
     await authedScope(async () => {
       const templateId = "runner-test";
       const routes: MockRoutes = {
@@ -146,8 +147,8 @@ describe("failure modes — runtime / observability surface", () => {
                 created_at: 1700000000000,
                 actor: "fleet",
                 status: "fleet_error",
-                error_code: "UZ-EXEC-013",
-                response_text: "Runner fleet run failed: nullclaw worker exited with signal SIGSEGV before claiming the fleet",
+                error_code: "UZ-RUN-011",
+                response_text: "Runner fleet run failed: the runner lost its lease before the run finished",
               },
             ],
             next_cursor: null,
@@ -174,8 +175,8 @@ describe("failure modes — runtime / observability surface", () => {
         );
         expect(logsCode).toBe(0);
         const logsText = logsOut.read();
-        // Captain's "nullclaw errored out" scenario: install returned 201,
-        // but the worker died after the fact and the failure surfaces only
+        // A runner that dies mid-run: install returned 201,
+        // but the runner died after the fact and the failure surfaces only
         // via events. The user MUST see the failure message in `logs`
         // output — otherwise the silent-success illusion is the bug.
         //
@@ -185,7 +186,7 @@ describe("failure modes — runtime / observability surface", () => {
         // Surfacing the status itself when response_text is set is a
         // separate UX concern; this test pins what the user sees today.
         expect(logsText).toContain("Runner fleet run failed");
-        expect(logsText).toContain("nullclaw");
+        expect(logsText).toContain("lost its lease");
       });
     });
   });

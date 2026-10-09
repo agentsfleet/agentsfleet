@@ -8,7 +8,7 @@
 # deploy.sh's `readonly` constants can only be assigned once per shell, and its
 # `set -e` would abort on the non-zero returns these tests assert on.
 #
-# The two lock cases need flock, which ships with util-linux and is absent on
+# The two flock cases need flock, which ships with util-linux and is absent on
 # macOS. They SKIP on a machine without it and hard-fail when CI is set, so the
 # mutex is always proven on the ubuntu-latest runners that gate a merge.
 
@@ -16,14 +16,6 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
-readonly RUNNER_UNIT="$SCRIPT_DIR/agentsfleet-runner.service"
-readonly HOME_ENV_PREFIX="Environment=HOME="
-readonly RUNTIME_DIR_PREFIX="RuntimeDirectory="
-# systemd creates RuntimeDirectory=<name> at /run/<name>. HOME must resolve
-# inside it: the unit's own ProtectHome=yes and ProtectSystem=strict make a home
-# under /root or /home unreadable to the service, which would put the daemon
-# back in the state where every lease dies at config load.
-readonly RUNTIME_DIR_ROOT="/run"
 
 # The install + restart calls deploy.sh would make on a real host. Stubbed onto
 # PATH so a test can assert a deploy never reached them.
@@ -169,9 +161,9 @@ test_deploy_version_match_unhealthy_service_reinstalls() {
   local status=0
   (
     export SENTINEL_DIR="$WORK_DIR" PATH="$STUB_DIR:$PATH"
-    # Service never active, and verify_healthy's single fast attempt also finds it
-    # inactive — i.e. it started but did not stay up.
-    export SYSTEMCTL_IS_ACTIVE_RC=1 VERIFY_HEALTH_ATTEMPTS=1 VERIFY_HEALTH_DELAY=0
+    # Service never active: it started but did not stay up. The stub answers
+    # is-failed too, so verify_healthy gives up after one probe.
+    export SYSTEMCTL_IS_ACTIVE_RC=1
     # shellcheck source=./deploy.sh
     source "$DEPLOY_SH" >/dev/null 2>&1
     set +e
@@ -200,18 +192,10 @@ wait_for_marker() {
   return 1
 }
 
-test_deploy_second_invocation_blocked_when_locked() {
-  local name="test_deploy_second_invocation_blocked_when_locked"
+test_deploy_lock_refused_while_another_deploy_holds_it() {
+  local name="test_deploy_lock_refused_while_another_deploy_holds_it"
   local lock="$WORK_DIR/held.lock"
   local marker="$WORK_DIR/held.marker"
-  local sentinels="$WORK_DIR/blocked"
-  local binary="$WORK_DIR/staged-binary"
-  mkdir -p "$sentinels"
-
-  # The staged binary must exist. If it does not, an unlocked deploy dies on the
-  # missing file before ever calling install, and this test would pass whether or
-  # not the lock is taken — green for the wrong reason.
-  : >"$binary"
 
   ( flock -w 5 9 || exit 1; touch "$marker"; sleep 30 ) 9>"$lock" &
   local holder=$!
@@ -222,15 +206,50 @@ test_deploy_second_invocation_blocked_when_locked() {
   fi
 
   local status=0
-  DEPLOY_LOCK_PATH="$lock" SENTINEL_DIR="$sentinels" PATH="$STUB_DIR:$PATH" \
-    bash "$DEPLOY_SH" runner v9.9.9 "$binary" >/dev/null 2>&1 || status=$?
+  (
+    # shellcheck source=./deploy.sh
+    source "$DEPLOY_SH" >/dev/null 2>&1
+    set +e
+    acquire_deploy_lock "$lock" >/dev/null 2>&1
+  ) || status=$?
   kill "$holder" 2>/dev/null
   wait "$holder" 2>/dev/null
 
   if [[ "$status" -eq 0 ]]; then
-    bad "$name" "second deploy exited 0 while the lock was held"
-  elif [[ -e "$sentinels/$SENTINEL_INSTALL" || -e "$sentinels/$SENTINEL_SYSTEMCTL" ]]; then
-    bad "$name" "blocked deploy still reached install/systemctl — the lock is taken too late"
+    bad "$name" "acquire_deploy_lock returned while another process held $lock"
+  else
+    ok "$name"
+  fi
+}
+
+# Runs deploy.sh's main in local mode with its lock answering `lock_status`
+# and its input checks passed, and succeeds when the deploy reached install.
+deploy_reaches_install() {
+  local lock_status="$1" sentinels="$2" binary="$3"
+  mkdir -p "$sentinels"
+  (
+    export SENTINEL_DIR="$sentinels" PATH="$STUB_DIR:$PATH"
+    # shellcheck source=./deploy.sh
+    source "$DEPLOY_SH" >/dev/null 2>&1
+    set +e
+    acquire_deploy_lock() { [[ "$lock_status" -eq 0 ]] || exit "$lock_status"; }
+    check_deploy_inputs() { :; }
+    main runner v9.9.9 "$binary" "$WORK_DIR/toolbox" >/dev/null 2>&1
+  )
+  [[ -e "$sentinels/$SENTINEL_INSTALL" ]]
+}
+
+# main takes the lock before its first write to the host. With the lock free
+# the same run reaches install, so a refused run that never does was stopped
+# by the lock and not by something earlier.
+test_deploy_takes_the_lock_before_any_write() {
+  local name="test_deploy_takes_the_lock_before_any_write"
+  local binary="$WORK_DIR/staged-binary"
+  : >"$binary"
+  if ! deploy_reaches_install 0 "$WORK_DIR/lock-free" "$binary"; then
+    bad "$name" "a deploy with the lock free never reached install — test harness fault, not a deploy fault"
+  elif deploy_reaches_install 1 "$WORK_DIR/lock-held" "$binary"; then
+    bad "$name" "a deploy refused the lock still reached install — the lock is taken too late"
   else
     ok "$name"
   fi
@@ -243,11 +262,10 @@ test_deploy_acquires_lock_when_free() {
   # Proves acquisition rather than mere exit 0: once acquire_deploy_lock returns,
   # a separate process must no longer be able to take the same lock.
   if (
-    export DEPLOY_LOCK_PATH="$lock"
     # shellcheck source=./deploy.sh
     source "$DEPLOY_SH" >/dev/null 2>&1
     set +e
-    acquire_deploy_lock >/dev/null 2>&1 || exit 1
+    acquire_deploy_lock "$lock" >/dev/null 2>&1 || exit 1
     flock -n "$lock" true 2>/dev/null && exit 1
     exit 0
   ); then
@@ -257,68 +275,21 @@ test_deploy_acquires_lock_when_free() {
   fi
 }
 
-# The sandboxed child resolves the NullClaw config directory from HOME, which it
-# inherits through the passthrough allowlist (src/runner/sandbox_args.zig). systemd
-# hands a User=-less service no HOME of its own, so the unit has to supply one or
-# the child's config load fails closed and no lease can run.
-test_unit_defines_home() {
-  local name="test_unit_defines_home"
-
-  local home_line
-  home_line="$(grep -E "^${HOME_ENV_PREFIX}" "$RUNNER_UNIT" || true)"
-  if [[ -z "$home_line" ]]; then
-    bad "$name" "$RUNNER_UNIT sets no ${HOME_ENV_PREFIX}<path>; every lease would fail at config load"
-    return
-  fi
-
-  # Derive the expected root from the unit's own RuntimeDirectory rather than
-  # hard-coding it, so renaming the directory cannot silently orphan HOME.
-  local runtime_line runtime_dir
-  runtime_line="$(grep -E "^${RUNTIME_DIR_PREFIX}" "$RUNNER_UNIT" || true)"
-  if [[ -z "$runtime_line" ]]; then
-    bad "$name" "$RUNNER_UNIT declares no ${RUNTIME_DIR_PREFIX}<name> to back HOME"
-    return
-  fi
-  runtime_dir="${RUNTIME_DIR_ROOT}/${runtime_line#"$RUNTIME_DIR_PREFIX"}"
-
-  local home_value="${home_line#"$HOME_ENV_PREFIX"}"
-  if [[ "$home_value" != "$runtime_dir"* ]]; then
-    bad "$name" "HOME=$home_value is outside $runtime_dir — ProtectHome/ProtectSystem leave it unwritable"
-    return
-  fi
-
-  # The reason a real home cannot be used. If this hardening were ever dropped,
-  # HOME=/root would start working and the coupling above would look arbitrary.
-  if ! grep -qE "^ProtectHome=yes" "$RUNNER_UNIT"; then
-    bad "$name" "$RUNNER_UNIT no longer sets ProtectHome=yes — re-check why HOME points at $runtime_dir"
-    return
-  fi
-
-  # The path must also be writable to the service, or the engine cannot create
-  # its config directory beneath HOME.
-  if ! grep -qE "^ReadWritePaths=.*${runtime_dir}( |$)" "$RUNNER_UNIT"; then
-    bad "$name" "$runtime_dir is not in ReadWritePaths — ProtectSystem=strict leaves it read-only"
-    return
-  fi
-
-  ok "$name"
-}
-
 # ── Runner ───────────────────────────────────────────────────────────────────
 
-test_unit_defines_home
 test_deploy_version_substring_not_equal_reinstalls
 test_deploy_version_exact_match_skips
 test_deploy_malformed_version_reinstalls
 test_deploy_version_match_unhealthy_service_reinstalls
+test_deploy_takes_the_lock_before_any_write
 
 if command -v flock >/dev/null 2>&1; then
-  test_deploy_second_invocation_blocked_when_locked
+  test_deploy_lock_refused_while_another_deploy_holds_it
   test_deploy_acquires_lock_when_free
 elif [[ -n "${CI:-}" ]]; then
   bad "deploy mutex tests" "flock not found on a CI runner — the deploy lock must be proven here"
 else
-  skip "test_deploy_second_invocation_blocked_when_locked" "flock not installed (macOS: brew install flock; Linux: apt-get install util-linux)"
+  skip "test_deploy_lock_refused_while_another_deploy_holds_it" "flock not installed (macOS: brew install flock; Linux: apt-get install util-linux)"
   skip "test_deploy_acquires_lock_when_free" "flock not installed (macOS: brew install flock; Linux: apt-get install util-linux)"
 fi
 

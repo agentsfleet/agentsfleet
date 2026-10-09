@@ -33,7 +33,7 @@ Each trap is enforced in its owner section; this list is the index.
 - Generic connect plumbing does not imply generic event behavior — inbound routing follows the provider's real shape (§The registry).
 - A watchdog arms exactly ONE call at a time; sharing an instance across concurrent requests leaves one call unbounded (§Bounded outbound).
 - No pool slot rides a vendor call — credentials load under a short acquire released before the exchange (§Bounded outbound).
-- The App private key and webhook secret never enter the lease, runner environment, sandboxed child, logs, or response frames (§GitHub App).
+- The App private key and webhook secret never enter the lease, runner environment, sandbox, logs, or response frames (§GitHub App).
 
 ## Terminology (binding)
 
@@ -72,7 +72,7 @@ The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `Co
 - **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET` or `DELETE /v1/workspaces/{ws}/connectors/{provider}`, and authenticated `POST /v1/connectors/{provider}/callback` use the same matchers for every provider. The dashboard owns `/api/connectors/{provider}/callback`. The old API `GET` callback only relays browsers to that dashboard route. `DELETE` requires `connector:write`, removes only `agentsfleet` state, and returns 204 when repeated. Provider authorization remains active outside `agentsfleet`.
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers match exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
 - **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, or a flow whose embedded provider id disagrees with its entry — all compile-time errors, not review vigilance.
-- **A callback's write is atomic; Disconnect's is ordered, not atomic — and the difference is deliberate.** A completing callback commits its routing row and its sealed grant in ONE transaction, so a connect that cannot seal its grant leaves no routing row behind. Disconnect is NOT one transaction (`afd_connector/src/grant/holding.rs`: *"Not a transaction, and that is the honest shape rather than a compromise"*): it deletes the routing rows first and the vault handle second, chosen so the intermediate state is a handle nothing routes to rather than rows pointing at a credential that is gone. **The consequence, stated rather than implied:** nothing serialises a callback against an in-flight Disconnect, so a callback committing between those two deletes can leave a connection the Disconnect believed it had removed. No advisory lock exists in this tree; the retired Zig daemon took one, and even there it could not cover the vault write (M187_001 §3.3 — Indy, Sep 07, 2026: "Why do you need the advisory lock").
+- **A callback's write is atomic; Disconnect's is ordered, not atomic — and the difference is deliberate.** A completing callback commits its routing row and its sealed grant in ONE transaction, so a connect that cannot seal its grant leaves no routing row behind. Disconnect is NOT one transaction (`afd_connector/src/grant/holding.rs`: *"Not a transaction, and that is the honest shape rather than a compromise"*): it deletes the routing rows first and the vault handle second, chosen so the intermediate state is a handle nothing routes to rather than rows pointing at a credential that is gone. **The consequence, stated rather than implied:** nothing serialises a callback against an in-flight Disconnect, so a callback committing between those two deletes can leave a connection the Disconnect believed it had removed. No advisory lock exists in this tree, and a Postgres lock could not cover the vault write anyway (M187_001 §3.3 — Indy, Sep 07, 2026: "Why do you need the advisory lock").
 - **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live with the GitHub connector in `rustd/crates/afd_credential/`. Slack keeps `POST /v1/connectors/slack/events` because its challenge, retry, timestamp, channel, and thread semantics are load-bearing; that route verifies the signature, answers the challenge, and admits a mention as one `slack_mention` event on the fleet it routes to (`rustd/crates/afd_api_ingress/src/handler/mention.rs:195`); a mention no subscribed fleet takes reaches the channel's resident, installed on the first one ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §4). Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
@@ -156,7 +156,7 @@ one-time code → GitHub user token
 
 **Disconnect** and every authenticated provider callback completion write in one transaction per provider and workspace: the vault handle and the reverse-routing rows are deleted or written together, or neither is. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
 
-The user token is discarded after the current callback, always: the Rust daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page — the divergence from Zig recorded in M187_001's Discovery, where the token was held in Dragonfly under a second single-use state. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
+The user token is discarded after the current callback, always: the Rust daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page, as M187_001's Discovery records. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
 
 ```
 workspace vault                          core.connector_installs
@@ -180,7 +180,7 @@ triggers:
     repositories: [acme/payments]
 ```
 
-For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository.
+For App traffic, `repositories` is fail-closed: omission means the fleet receives no App delivery. The omission remains valid for the existing manual per-fleet GitHub route, whose URL already identifies the target fleet. This distinction prevents an App installed across an organisation from waking every GitHub fleet for every repository. The repository match is case-insensitive, as GitHub's is. `events` answers the other way from `repositories`: a trigger with no `events` list admits every event (`rustd/crates/afd_ingress/src/binding.rs`).
 
 ### What the event belongs to
 
@@ -218,24 +218,24 @@ This gives each layer one job:
 
 ### Where a grant comes from
 
-A grant is **originated at install**, from the bundle fields the catalogue already
-stores: installing a fleet that declares a required credential writes a `pending`
-`core.integration_grants` row and raises an approval gate carrying the bundle's
-stated reason. The seed runs synchronously in the create handler beside
-`INSERT core.fleets` — deliberately not in the install-step progression, whose
-every sub-step is best-effort by design, and where a failed seed would flip the
-fleet to `active` carrying no grant.
+A grant is **originated at install**: installing a fleet that declares a
+credential whose stored handle is mintable writes an `approved`
+`core.integration_grants` row and raises no approval card, because choosing the
+fleet is the answer (`rustd/crates/afd_fleet_lifecycle/src/install/grants.rs`).
+The write runs after the fleet is flipped `active` and is best-effort: a failed
+write is logged, the install stands, and the lease path asks for the grant the
+first time a delivery needs it (`rustd/crates/afd_fleet/src/lease/deliver.rs`).
 
-The decision then belongs to the approval-gate machine this codebase already
-ships: an inbox, a detail page with an evidence tree, resolve buttons, a webhook,
+When the lease path has to ask (a fleet installed before install-time grants, a
+credential added by a later edit, or an install-time write that failed), the
+decision belongs to the approval-gate machine this codebase already ships: an inbox, a detail page with an evidence tree, resolve buttons, a webhook,
 a timeout sweeper, and an append-only audit. **A gate is a per-event decision; a
 grant is the standing answer that outlives the run.** The gate asks; the grant
 remembers. Resolving the gate as approved flips the grant and the gate in one
 statement, so the two cannot disagree; any non-approval outcome drives the grant
 to `revoked` rather than back to `pending`, which nothing would re-raise.
 
-Origination sits inside the middleware chain, and that placement is
-load-bearing. The App ingress query inner-joins on `status = 'approved'`, so a
+Where origination runs is load-bearing. The App ingress query inner-joins on `status = 'approved'`, so a
 fleet that cannot obtain a grant writes no event, takes no lease, and reports
 nothing — it goes silently inert rather than failing visibly. An origination
 path reachable only with a credential the fleet does not hold produces exactly
@@ -244,7 +244,8 @@ that silence.
 A lease is the last checkpoint: a credential that resolves to a mintable handle
 with no approved grant **parks the event** rather than dropping the credential
 and issuing a lease that can never mint. The delivery stays leasable, so the
-next poll re-evaluates it and an approval takes effect with no redeploy.
+next poll re-evaluates it and an approval takes effect with no redeploy. A
+grant a person revoked ends the event with `grant_denied` instead of parking it.
 
 An incoming delivery follows this order:
 
@@ -254,6 +255,7 @@ GitHub App delivery
         │
         ▼
 verify platform webhook signature BEFORE reading routing fields
+  (a `ping` answers `pong` only after the signature verifies)
         │
         ▼
 installation.id → core.connector_installs → workspace
@@ -269,7 +271,7 @@ active fleets in that workspace
 authenticated-body-digest/fleet replay slot → XADD fleet:{id}:events
 ```
 
-Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails, its slot is released and a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are appended again.
+Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only. If one fan-out leg fails before its admission row commits, a redelivery completes that leg without duplicating successful fleets — the fleets that already admitted answer `replayed`, and only the ones that did not are appended again. More than 100 matching fleets (`MAX_FANOUT`) refuses the whole delivery rather than waking an arbitrary hundred (`rustd/crates/afd_ingress/src/app.rs`).
 
 **That redelivery is not GitHub's.** GitHub states plainly that it "does not automatically redeliver failed webhook deliveries": a delivery fails when the receiver is down or takes longer than **ten seconds** to answer, and recovering it is a manual click in the App's delivery log or an operator script walking the REST API for failed deliveries. This page previously credited the recovery to "GitHub's retry", which does not exist, and the correction matters because it moves the boundary of what is recoverable:
 
@@ -280,11 +282,13 @@ Multiple fleets may intentionally subscribe to the same repository and event. Re
 
 So the durable-acceptance guarantee covers work this deployment ACCEPTED, and the window before acceptance is the one place a GitHub event can be lost outright. Two consequences follow. The ten-second budget is a hard deadline rather than a target, and it is shared across signature verification, fleet resolution, and one admission per subscribed fleet — fan-out width spends it. And deduplication is still worth every line, because the redelivery it absorbs is a *human* clicking Redeliver with no idea whether the first attempt landed, which is exactly when a duplicate review would otherwise appear on a pull request.
 
+`deployment_status` and repair-branch deliveries are classified unsupported and dropped until the repair-evidence writer is ported; the repair sweeper waits rather than acting on evidence it never received (`rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`).
+
 Slack is the contrast and the reason this page cannot generalise: its retry semantics are load-bearing precisely because Slack does retry.
 
 ### Credential use remains separate from event receipt
 
-Receiving a signed event does not hand GitHub credentials to a fleet. When a leased fleet later calls the GitHub API through `${secrets.github.token}`, the runner-token plane asks `agentsfleetd` to mint. The daemon derives the fleet and workspace from the lease, rechecks the approved integration grant, loads the workspace installation handle, signs with the platform private key, exchanges for a short-lived installation token, and returns that token for the tool call. The App private key and webhook secret never enter the lease, runner environment, sandboxed child, logs, or response frames.
+Receiving a signed event does not hand GitHub credentials to a fleet. When a leased fleet later calls the GitHub API through `${secrets.github.token}`, the runner-token plane asks `agentsfleetd` to mint. The daemon derives the fleet and workspace from the lease, rechecks the approved integration grant, loads the workspace installation handle, signs with the platform private key, exchanges for a short-lived installation token, and returns that token for the tool call. The runner keeps the token for the lease, mints again 30 s before it expires, and masks it out of every response a tool returns (`rustd/crates/afr_egress/src/vault.rs`). The App private key and webhook secret never enter the lease, runner environment, sandbox, logs, or response frames.
 
 ### Provider impact
 
@@ -318,7 +322,7 @@ Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502
 ## Adding a provider (the recipe)
 
 1. Provider id as a `common` constant (RULE UFS) — it is simultaneously the route segment, the vault-key stem (`<provider>-app`, `fleet:<provider>`), and the registry id.
-2. One `Archetype` arm in the registry — `Oauth2Flow` (endpoints, scopes, delimiter, extra query, refresh) or `AppInstall` (authorize + token endpoints) — plus the provider's arm in `complete::read`, which is where its answer is parsed into a grant. The hook-function shape (`post_auth`, `build_install_url`) was the Zig registry's; this tree dispatches on the archetype enum and matches per provider.
+2. One `Archetype` arm in the registry — `Oauth2Flow` (endpoints, scopes, delimiter, extra query, refresh) or `AppInstall` (authorize + token endpoints) — plus the provider's arm in `complete::read`, which is where its answer is parsed into a grant. The registry holds no per-provider hook functions: it dispatches on the archetype enum and matches per provider.
 3. One `ConnectorSpec` entry in the registry.
 4. Provision the `<provider>-app` bag in the admin vault. (An operator-supplied vendor key with no browser round-trip — Datadog/Grafana/Fly's shape — isn't a connector at all; it's a plain workspace secret, `agentsfleet secret create`, never a registry entry.)
 5. Tests: the generic-route suites already cover the flow; add hook-level tests for the provider's parse/persist deltas.

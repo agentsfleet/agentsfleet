@@ -7,8 +7,7 @@
 //!    without a process to kill.
 //! 2. **Spawned** — the binary, with a real signal sent to it. This is the only
 //!    way to observe an exit CODE, and the only way to observe that `--port`
-//!    reaches the listener: the port is what a caller has to connect to, and
-//!    the Zig daemon's `--port` did not survive the port to Rust at all. Every
+//!    reaches the listener: the port is what a caller has to connect to. Every
 //!    one of these fails against a daemon that reads only `PORT`.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by

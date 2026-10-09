@@ -14,9 +14,7 @@
 //! `is_success()` would collapse the two failures a caller acts on differently:
 //! a vendor that could not be reached is retryable and `:sync` repairs it on
 //! its own, while a vendor that answered 400 will answer 400 again forever and
-//! retrying is an outbound load with no end. [`crate::Error`] keeps them apart
-//! and the Zig's single `error.QStashRequestFailed` does not — the delta this
-//! port closes rather than carries (RULE PORT).
+//! retrying is an outbound load with no end. [`crate::Error`] keeps them apart.
 
 use url::Url;
 
@@ -24,12 +22,10 @@ use crate::error::{self, Result};
 
 /// Where the scheduler's management calls go when a deployment names no base.
 ///
-/// A DEFAULT, not a constant the client reaches for directly. `qstash_client.zig`
-/// took its base as a parameter and pinned that with a regression test — "outbound
-/// url uses the configured api base, not a hardcoded host" — because a hardcoded
-/// US host is a bug this product already shipped once and fixed in M105. A
-/// deployment on another region names its own base; this value is what a
-/// deployment that names none falls back to.
+/// A DEFAULT, not a constant the client reaches for directly: the client takes
+/// its base as a parameter, because a hardcoded US host breaks every deployment
+/// in another region. Such a deployment names its own base; this value is what
+/// a deployment that names none falls back to.
 pub const API_BASE: &str = "https://qstash.upstash.io/v2";
 
 /// The path a schedule is created under, before the destination.
@@ -49,9 +45,9 @@ const CONTENT_TYPE_JSON: &str = "application/json";
 
 /// The path the signed fire arrives back on.
 ///
-/// `cron/constants.zig`'s `ingress_path`, kept byte-for-byte: it is half of the
-/// `sub` claim a fire token is verified against, so a divergence here would
-/// make every schedule registered by one daemon unverifiable by the other.
+/// Pinned byte-for-byte: it is half of the `sub` claim a fire token is verified
+/// against, so a change here would make every schedule already registered
+/// unverifiable.
 pub const INGRESS_PATH: &str = "/v1/ingress/qstash/schedules";
 
 /// The longest destination this daemon will register.
@@ -72,8 +68,7 @@ pub enum InvalidDestination {
 /// [`InvalidDestination`] rather than a silently truncated URL. The destination
 /// rides RAW inside the provider's own request path, so a `?` or `#` here would
 /// be read as the provider request's query or fragment and register a callback
-/// this daemon never meant — `constants.zig` refuses at construction for
-/// exactly this reason, and so does this.
+/// this daemon never meant.
 pub fn destination_url(api_url: &str) -> Result<String, InvalidDestination> {
     let parsed = Url::parse(api_url).map_err(|_unparsed| InvalidDestination::Unusable)?;
 

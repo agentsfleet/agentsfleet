@@ -7,30 +7,16 @@ import {
   readFailureLabel,
   readOutcome,
 } from "./fleetMessageReaders";
-import { failureSentenceFor, outcomeFor } from "@/lib/events/event-summary";
+import {
+  failureSentenceFor,
+  outcomeFor,
+  RUNNER_REFUSAL_SENTENCE,
+} from "@/lib/events/event-summary";
 
+// The runner is the only writer of startup_posture: it ends a lease under that
+// class when it refuses the run before the fleet starts, and its cause line
+// says why. So every startup failure reads as the runner's refusal.
 const STARTUP_FAILURE_TAG = "startup_posture";
-const CHAT_STARTUP_FAILURE_LABEL =
-  "This fleet needs instructions before it can respond.";
-const RUNNER_REFUSAL_SENTENCE =
-  "The runner refused this run before the fleet started.";
-
-// Cause lines the runner emits when IT refuses a startup_posture lease before
-// the fleet ever runs — mirrored verbatim from the runner's own cause lines,
-// the single source for telling a runner-side refusal apart from a fleet with
-// no instructions. Matching is exact: any other detail keeps the
-// needs-instructions sentence.
-export const RUNNER_REFUSAL_DETAILS = [
-  "sandbox could not be established on this runner",
-  "strict egress policy is not implemented on this runner",
-  "the child could not be enrolled in the resource-control domain",
-  "sandbox setup aborted before the fleet started",
-  "failed to serialize the lease for the child",
-  // `lease_run.zig` DETAIL_BUNDLE_MATERIALIZE. Missing, it fell through to the
-  // needs-instructions sentence and sent an operator to rewrite a fleet whose
-  // instructions were fine — the runner had failed to fetch its bundle.
-  "fleet bundle download or extraction failed before start",
-] as const;
 
 // Failure copy for the chat surface. Startup-posture failures get concise
 // chat-specific wording; every other tag reuses the event-summary sentence.
@@ -52,28 +38,14 @@ export function eventOutcome(event: FleetEvent): string {
   );
 }
 
-// The sentence depends on the cause, not only the tag: a startup_posture
-// failure whose detail is one of the runner's refusal lines was refused by the
-// runner, not starved of instructions.
-function chatFailureSentenceFor(tag: string, cause: string | null): string {
-  if (tag !== STARTUP_FAILURE_TAG) return failureSentenceFor(tag);
-  if (cause === null) return CHAT_STARTUP_FAILURE_LABEL;
-  if (isRunnerRefusal(cause)) return RUNNER_REFUSAL_SENTENCE;
-  // An internal identifier names no cause a user can act on, so it cannot
-  // support the claim that their fleet lacks instructions. The one thing it does
-  // establish is that the runner failed before the fleet ran — report that.
-  // Without this arm a runner-side fault (a daemon that cannot load its config,
-  // say) is shown to the user as their own misconfiguration.
-  if (isInternalIdentifier(cause)) return RUNNER_REFUSAL_SENTENCE;
-  return CHAT_STARTUP_FAILURE_LABEL;
-}
-
-function isRunnerRefusal(cause: string): boolean {
-  return (RUNNER_REFUSAL_DETAILS as readonly string[]).includes(cause);
+function chatFailureSentenceFor(tag: string): string {
+  return tag === STARTUP_FAILURE_TAG
+    ? RUNNER_REFUSAL_SENTENCE
+    : failureSentenceFor(tag);
 }
 
 // Cause lines written for operators are prose and always contain whitespace
-// ("sandbox could not be established on this runner"). A single bare token —
+// ("this host could not build a sandbox for the run"). A single bare token —
 // `FleetInitFailed` — is an internal error name that leaked through a layer
 // which should have mapped it, and it is never shown to the user.
 function isInternalIdentifier(cause: string): boolean {
@@ -90,10 +62,9 @@ function formatFailureOutcome(
   if (tag === "runner_crash") {
     return outcomeFor({ status: "fleet_error", failure_label: tag, failure_detail: cause });
   }
-  const sentence = chatFailureSentenceFor(tag, cause);
-  // The sentence is classified from the raw cause, but only prose is shown: an
-  // internal identifier appended after an em-dash reads as diagnostic detail
-  // while telling the user nothing.
+  const sentence = chatFailureSentenceFor(tag);
+  // Only prose is shown after the sentence: an internal identifier appended
+  // after an em-dash reads as diagnostic detail while telling the user nothing.
   const shown = cause !== null && !isInternalIdentifier(cause) ? cause : null;
   return shown ? `${sentence} — ${shown}` : sentence;
 }

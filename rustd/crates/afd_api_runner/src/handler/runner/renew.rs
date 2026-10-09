@@ -7,8 +7,7 @@
 //! body therefore meters at zero tokens — run fee only — rather than refusing:
 //! the alternative kills a healthy child over a serialization disagreement,
 //! and the runtime is genuinely owed either way. `UZ-RUN-013` exists in the
-//! registry for this and is deliberately never ANSWERED, only logged, which is
-//! the Zig's behaviour too.
+//! registry for this and is deliberately never ANSWERED, only logged.
 //!
 //! # Why the lease id comes off the path
 //!

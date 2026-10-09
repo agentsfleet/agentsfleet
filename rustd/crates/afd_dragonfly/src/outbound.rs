@@ -61,10 +61,11 @@ pub(super) const CMD_XACK: &str = "XACK";
 /// ONE stream for every provider, not one per provider: the ordering guarantee
 /// that matters is per destination thread, delivery is serial, and a stream per
 /// provider would multiply consumer groups without buying anything. A DATA
-/// FORMAT shared with the Zig daemon — both binaries read this key.
+/// FORMAT — every replica reads this key, and so do the entries already on it.
 pub const OUTBOUND_STREAM_KEY: &str = "connector:outbound";
 
-/// The consumer group the workers read under. Shared with the Zig daemon.
+/// The consumer group the workers read under. A DATA FORMAT for the same
+/// reason as [`OUTBOUND_STREAM_KEY`].
 pub const OUTBOUND_CONSUMER_GROUP: &str = "connector_workers";
 
 /// The job's fields on the wire, named once each. A DATA FORMAT: a reader
@@ -78,9 +79,9 @@ pub(super) const FIELD_FLEET_ID: &str = "fleet_id";
 pub(super) const FIELD_EVENT_ID: &str = "event_id";
 /// See [`FIELD_PROVIDER`].
 pub(super) const FIELD_ANSWER: &str = "answer";
-/// See [`FIELD_PROVIDER`]. Added after the Zig daemon retired, so an entry
-/// it wrote carries none and is dropped as undecodable — every such entry was
-/// owed to a model provider and could not be delivered anyway.
+/// See [`FIELD_PROVIDER`]. Required: an entry without it is dropped as
+/// undecodable by `reader::decode`, because a job with no destination cannot
+/// be delivered anyway.
 pub(super) const FIELD_DESTINATION: &str = "destination";
 
 /// Read id meaning "entries never delivered to any consumer".
@@ -105,7 +106,7 @@ const XGROUP_CREATE: &str = "CREATE";
 /// Creates the stream alongside the group when the stream does not exist yet.
 const XGROUP_MKSTREAM: &str = "MKSTREAM";
 
-/// The prefix an outbound consumer name is built on. Shared with the Zig.
+/// The prefix an outbound consumer name is built on.
 const CONSUMER_PREFIX: &str = "agentsfleetd";
 
 /// What an instance with no name of its own reads under.
@@ -147,7 +148,7 @@ pub fn outbound_consumer() -> String {
             // cannot name itself shares one pending list. Correctness survives
             // — a redelivered answer lands in the destination's own thread —
             // but an operator reading two instances' work under one consumer
-            // deserves to know why. The Zig logs the same fallback.
+            // deserves to know why.
             tracing::warn!(
                 fallback = CONSUMER_FALLBACK_HOST,
                 event = "consumer_id_hostname_fallback"

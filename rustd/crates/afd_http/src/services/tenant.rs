@@ -149,12 +149,10 @@ impl TenantWorkspaces for afd_tenant::workspace::Workspaces {
 
 /// A person's command-line credentials — mint and revoke, and nothing else.
 ///
-/// No list verb, deliberately: `cli_credentials.zig` serves `POST` and
-/// `DELETE` only. Its module comment describes a `GET` that would show which
-/// terminals hold a credential, and `route_table_invoke.zig` admits `POST`
-/// alone — so the list is documented and not served. It is not ported here
-/// because there is nothing to port; adding one would be a new endpoint in a
-/// milestone whose rule is parity.
+/// No list verb, deliberately: `TenantRoute::CliCredentials` admits `POST` and
+/// `TenantRoute::CliCredential` admits `DELETE`, and nothing else. A `GET` that
+/// showed which terminals hold a credential would be a new endpoint, not a verb
+/// this trait is missing.
 pub trait TerminalCredentials: Send + Sync + std::fmt::Debug + 'static {
     /// Resolves a proven subject to the user row these verbs write against.
     ///

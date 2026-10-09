@@ -5,7 +5,8 @@
 //! have reached the wire, credentials in place, and answers what its closure
 //! says, so a suite proves both what was sent and that nothing was.
 //! [`closed`] is a guard that admits nothing, for a suite whose tools never
-//! send.
+//! send. [`FakeResolver`] answers names from a table, for a suite that drives
+//! resolution without DNS.
 
 use std::borrow::Cow;
 use std::fmt;
@@ -22,6 +23,10 @@ use crate::egress::Egress;
 use crate::error::{Error, Result};
 use crate::mint::{Mint, Minted};
 use crate::transport::{Inbound, Outbound, Transport};
+
+mod resolver;
+
+pub use self::resolver::FakeResolver;
 
 /// What a refusing test mint answers with: [`CountingMint::never`] and the
 /// closed guard behind [`closed`].

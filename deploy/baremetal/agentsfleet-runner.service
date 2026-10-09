@@ -1,6 +1,7 @@
 # agentsfleet Runner — host-resident execution-plane daemon.
-# Leases work from the agentsfleetd control plane over HTTPS, runs each event in a
-# forked sandboxed child, and reports back. Holds zero datastore credentials.
+# Leases work from the agentsfleetd control plane over HTTPS, runs each lease's
+# turn in a bubblewrap sandbox of its own, and reports back. Holds zero datastore
+# credentials.
 #
 # Install:
 #   sudo cp agentsfleet-runner.service /etc/systemd/system/
@@ -14,9 +15,24 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/agentsfleet-runner
+# The toolbox is an EROFS image, and the runner's probe reads /proc/filesystems,
+# which lists erofs only once its module is loaded: a fresh or rebooted host
+# would refuse at every start. `+` runs it with full privileges, whatever
+# hardening this unit gains; `-` lets a host without modprobe, or with erofs
+# built in, start anyway, and the probe names erofs if it is truly missing.
+ExecStartPre=-+/usr/sbin/modprobe erofs
+# `run` supervises this host's leases; the binary's other entries are `probe`
+# and the `sandbox` the engine starts inside each sandbox.
+ExecStart=/usr/local/bin/agentsfleet-runner run
 Restart=always
 RestartSec=5
+# 77 (EX_NOPERM, `EXIT_TOKEN_REFUSED` in agentsfleet_runner's host.rs) is the
+# runner stopping because the control plane refused its token: the runner is
+# cordoned, drained, revoked or deleted, and no restart changes that answer.
+# Each restart would boot, admit the toolbox and dial again only to be
+# refused. After an uncordon, start it again with
+# `sudo systemctl restart agentsfleet-runner`.
+RestartPreventExitStatus=77
 # A stopped runner's in-flight lease is reclaimed by the control plane
 # (lease_expires_at + fencing_token), so a bounded stop never loses or
 # double-runs work; the timeout just lets an in-flight child finish.
@@ -37,42 +53,59 @@ KillMode=mixed
 #                          authenticates with it directly and NEVER self-registers.
 #                          The token resolves the runner row server-side, so no
 #                          host identifier is read from this file.
-#   (optional) RUNNER_STORAGE_HOME — host-local root for per-lease scratch
-#                          workspaces and the bundle cache (a disk fact the
-#                          control plane cannot know); defaults sanely when unset
+#   (optional) RUNNER_STORAGE_HOME — host-local root for lease sandboxes, the
+#                          report spool, the bundle cache and the toolbox (a disk
+#                          fact the control plane cannot know); defaults to
+#                          /var/lib/agentsfleet-runner when unset, which
+#                          StateDirectory= below creates. A different root must
+#                          exist and be added to ReadWritePaths below, which
+#                          ProtectSystem=strict leaves read-only otherwise.
+#   (optional) OTEL_EXPORTER_OTLP_ENDPOINT — the runner collector the runner
+#                          exports its spans and metrics to; unset exports nothing
 # Bootstrap order (chicken-and-egg): the updated agentsfleetd (with the platform-
 # admin enrollment gate) must be deployed FIRST; only then can an admin mint a
 # `agt_r` for this host. Until that's done, DEV_RUNNER_READY stays `false`.
 EnvironmentFile=-/etc/default/agentsfleet-runner
 
+# Each host publishes its own metric series: the exported resource carries
+# service.instance.id, and %H is this host's name.
+Environment=OTEL_SERVICE_INSTANCE_ID=%H
+
 # Ensure the sandbox runtime directory exists.
 RuntimeDirectory=agentsfleet
 RuntimeDirectoryMode=0755
 
-# systemd supplies no HOME to a service that declares no User=. This value is the
-# DAEMON's only — it is deliberately not forwarded to the sandboxed child, and the
-# comment that once claimed otherwise described the bug rather than the design.
-# A child that inherited this path resolved its config directory onto
-# /run/agentsfleet, which no bind list carries and no landlock rule covers, so
-# every lease died at AccessDenied before its first model call. The child's home is
-# assigned instead (contract.protocol.CHILD_HOME), on the per-lease tmpfs floor
-# bwrap builds and landlock grants write to. It points at the runtime directory
-# above rather than a real home because ProtectHome=yes makes /root and /home
-# unreadable here and ProtectSystem=strict leaves only the ReadWritePaths writable.
+# systemd supplies no HOME to a service that declares no User=, so anything the
+# runner starts on the host that resolves a configuration directory from HOME
+# would find none. This value is the runner's own: bubblewrap starts every
+# sandbox with --clearenv, so nothing inside a sandbox inherits it. It points at
+# the runtime directory above rather than a real home because ProtectHome=yes
+# makes /root and /home unreadable here and ProtectSystem=strict leaves only the
+# ReadWritePaths writable.
 Environment=HOME=/run/agentsfleet
 
-# Security hardening — the runner forks bwrap user-namespace sandboxes per lease
-# (no suid needed). Mirrors the isolation the standalone sandbox sidecar carried before
-# the engine folded into the runner.
+# Security hardening — the runner starts a bwrap user-namespace sandbox per lease
+# (no suid needed), as an unprivileged host user, and hardens further from inside.
 NoNewPrivileges=yes
 ProtectSystem=strict
-# Delegate only this service's subtree. The daemon creates each execution cgroup
-# beneath it; it never receives a writable host-wide cgroup mount.
-Delegate=cpu memory pids
+# Delegate only this service's subtree. The runner creates each lease's cgroup
+# beneath it; it never receives a writable host-wide cgroup mount. The host probe
+# requires all four controllers (`afr_sandbox::REQUIRED_CONTROLLERS`): io bounds
+# a lease's workspace disk throughput.
+Delegate=cpu io memory pids
 DelegateSubgroup=runner
 CPUAccounting=yes
+IOAccounting=yes
 MemoryAccounting=yes
 TasksAccounting=yes
+# The storage home holds every lease's sandbox, the report spool, the bundle
+# cache and the mounted toolbox, so it must be writable under ProtectSystem=strict.
+# StateDirectory= creates /var/lib/agentsfleet-runner (root, 0755) when it is
+# missing, on a fresh host or after an operator wipes it, and makes it
+# writable. A plain ReadWritePaths entry instead fails the unit with
+# 226/NAMESPACE before the runner starts, so `StorageHome::open`
+# (`afr_supervisor`), which makes the directories beneath it, never runs.
+StateDirectory=agentsfleet-runner
 ReadWritePaths=/run/agentsfleet /sys/fs/cgroup/system.slice/agentsfleet-runner.service /tmp
 ProtectHome=yes
 

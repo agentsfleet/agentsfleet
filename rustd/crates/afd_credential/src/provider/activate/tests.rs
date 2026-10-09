@@ -47,8 +47,8 @@ fn a_blank_or_padded_model_is_refused_rather_than_trimmed() {
 
 #[test]
 fn a_blank_override_does_not_fall_through_to_the_credential() {
-    // The Zig computes `input.model orelse probed.model` and then checks
-    // the RESULT, so an empty override is a refusal rather than a reason
-    // to use the credential's. Kept: a client that sent a field meant it.
+    // The override wins whenever it is present and the RESULT is checked, so
+    // an empty override is a refusal rather than a reason to use the
+    // credential's: a client that sent a field meant it.
     assert_eq!(effective_model(Some(""), Some(FROM_CREDENTIAL)), None);
 }

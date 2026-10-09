@@ -1,26 +1,22 @@
 //! Wall-clock time, as a seam rather than a global.
 //!
-//! Mirrors `src/lib/common/clock.zig`, which is the Zig daemon's answer to the
-//! same problem, and keeps the two binaries agreeing on what an instant IS: a
-//! signed count of milliseconds since the Unix epoch. That is not a storage
-//! preference. Every timestamp column in `schema/` is `BIGINT`, every timestamp
-//! field in [`afd_wire`] is `i64`, and a `UUIDv7` carries a 48-bit big-endian
-//! millisecond field in its own layout — so epoch-milliseconds is already the
-//! type three separate contracts are written in.
+//! An instant IS a signed count of milliseconds since the Unix epoch. That is
+//! not a storage preference. Every timestamp column in `schema/` is `BIGINT`,
+//! every timestamp field in [`afd_wire`] is `i64`, and a `UUIDv7` carries a
+//! 48-bit big-endian millisecond field in its own layout — so epoch-milliseconds
+//! is already the type three separate formats are written in.
 //!
 //! [`afd_wire`]: https://docs.rs/afd_wire
 //!
 //! # Why there is no monotonic clock here
 //!
-//! `clock.zig` exposes `nowMonotonicMillis` beside `nowMillis`, and both are
-//! `i64` — which means nothing stops a caller subtracting one from the other
-//! and getting a number that means nothing. Rust can refuse that outright:
-//! elapsed time is [`std::time::Instant`], which has no epoch, no
-//! serialization, and no way to become an `i64`. The one Zig caller of the
-//! monotonic clock is a deadline loop (`credentials/broker_flight.zig`), and a
-//! deadline in this workspace is `tokio::time::timeout` at the call site
-//! (Invariant 4). So the monotonic half is not ported: it is replaced by types
-//! that already exist, and leaving it out is what makes the mistake unwritable.
+//! A monotonic reading and a wall-clock reading sharing one integer type lets a
+//! caller subtract one from the other and get a number that means nothing. Rust
+//! can refuse that outright: elapsed time is [`std::time::Instant`], which has
+//! no epoch, no serialization, and no way to become an `i64`. A deadline in
+//! this workspace is `tokio::time::timeout` at the call site (Invariant 4). So
+//! there is no monotonic half here: types that already exist cover it, and
+//! leaving it out is what makes the mistake unwritable.
 //!
 //! # Why a clock lives in a crate that claims to do no input/output
 //!
@@ -33,11 +29,10 @@
 //!
 //! # How to use it
 //!
-//! Prefer the parameter to the trait. The Zig daemon's eight production
-//! `nowSeconds` callers all do the same thing — read the clock at the edge and
-//! hand the value to a pure function (`isTimestampFreshAt`, `verifyAt`,
-//! `processAt(request, now_s, now_ms)`) — and that shape needs no seam at all,
-//! because the decision under test takes the instant as an argument. Reach for
+//! Prefer the parameter to the trait. Most callers read the clock once at the
+//! edge and hand the value to a pure function — the shape [`millis_at`] has
+//! beside [`now`] — and that needs no seam at all, because the decision under
+//! test takes the instant as an argument. Reach for
 //! [`Clock`] only where a long-lived owner reads the clock repeatedly and
 //! threading a parameter through every call would be worse than injecting the
 //! source once: a JWKS cache deciding whether its entry is stale, a sweeper
@@ -56,9 +51,9 @@ const MILLIS_PER_SECOND: i64 = 1_000;
 /// an elapsed-time measurement. The wrapper is what makes the second kind of
 /// comparison fail to compile instead of failing in production.
 ///
-/// Signed, and negative values are representable, because the Zig daemon's
-/// reading is signed and a host whose clock is set before 1970 must produce the
-/// SAME number in both binaries — see [`now`].
+/// Signed, and negative values are representable, because a host whose clock is
+/// set before 1970 must read as the pre-epoch instant it is, never as the epoch
+/// — see [`now`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnixMillis(i64);
 
@@ -82,10 +77,9 @@ impl UnixMillis {
     /// The same instant in whole seconds, truncated toward zero.
     ///
     /// `exp`, `nbf` and `iat` are seconds in every JWT, and webhook signature
-    /// windows are seconds on the wire. Truncating (rather than flooring) is
-    /// what `clock.zig`'s `nowSeconds` does — `@divTrunc`, not `@divFloor` —
-    /// and the two disagree for pre-epoch values, which is precisely where a
-    /// silent divergence between the binaries would hide.
+    /// windows are seconds on the wire. Truncation and flooring disagree only
+    /// for pre-epoch values, which is precisely where a silent change of
+    /// rounding would hide; the pre-epoch rows in `tests/clock.rs` pin it.
     #[must_use]
     pub const fn as_seconds(self) -> i64 {
         self.0 / MILLIS_PER_SECOND
@@ -114,18 +108,16 @@ impl UnixMillis {
 ///
 /// # A clock set before 1970
 ///
-/// Returns a NEGATIVE reading, matching `clock.zig`: its `nowNanos` builds
-/// `ts.sec * ns_per_s + ts.nsec` straight from `clock_gettime`, so a pre-epoch
-/// host yields a negative number there too. `SystemTime::duration_since` calls
-/// that an error and hands back the magnitude, so the sign is restored here.
+/// Returns a NEGATIVE reading. `SystemTime::duration_since` calls a pre-epoch
+/// instant an error and hands back the magnitude, so the sign is restored here.
 ///
 /// The obvious alternative — map the error to `0` — is the one thing this must
-/// not do, and `clock.zig` says why in its own words: *"a silent epoch-0 return
-/// would corrupt `UUIDv7` timestamp ordering (the ids stay unique, but stop
-/// sorting by mint time)"*. Two hosts, one with a broken clock, would mint ids
-/// that interleave wrongly and rows that claim to predate the epoch by
-/// different amounts. A wrong-but-consistent answer is recoverable; two
-/// binaries disagreeing about the same broken host is not.
+/// not do: a silent epoch-0 return would corrupt `UUIDv7` timestamp ordering
+/// (the ids stay unique, but stop sorting by mint time). Two hosts, one with a
+/// broken clock, would mint ids that interleave wrongly and rows that claim to
+/// predate the epoch by different amounts. A negative reading is wrong but
+/// honest, and recoverable; an epoch-0 reading hides the broken clock behind a
+/// real instant.
 #[must_use]
 pub fn now() -> UnixMillis {
     millis_at(SystemTime::now())
@@ -135,11 +127,9 @@ pub fn now() -> UnixMillis {
 ///
 /// PURE — it reads no clock, which is what lets the pre-epoch branch be proven
 /// at all. A host clock cannot be set before 1970 on demand from inside a test,
-/// and that branch is precisely the one carrying a parity claim against the Zig
-/// daemon, so leaving it unreachable would mean the claim was never checked.
-/// The shape is the daemon's own: `isTimestampFreshAt` beside
-/// `isTimestampFresh`, the decision taken as an argument and the clock read by
-/// a one-line wrapper.
+/// so a branch only the real clock could reach would carry a claim nobody ever
+/// checked. The decision takes the instant as an argument and [`now`] is the
+/// one-line wrapper that reads the clock.
 #[must_use]
 pub fn millis_at(instant: SystemTime) -> UnixMillis {
     let millis = match instant.duration_since(UNIX_EPOCH) {

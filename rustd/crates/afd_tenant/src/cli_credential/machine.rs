@@ -2,18 +2,15 @@
 //!
 //! # This does not police the caller's taste
 //!
-//! An earlier version of this file accepted `[A-Za-z0-9._-]` and refused
-//! everything else, transliterated from `isValidMachineName` in
-//! `cli_credential.zig`. That refused `Kishore's MacBook Pro`, `本社-サーバ`,
-//! and `agent:build-7` — a person's actual hostname, in other words — and it
-//! refused them for a reason that does not survive contact with the code: the
-//! grammar was a shell-safety rule applied to a string that never reaches a
-//! shell.
+//! A grammar of `[A-Za-z0-9._-]` would refuse `Kishore's MacBook Pro`,
+//! `本社-サーバ`, and `agent:build-7` — a person's actual hostname, in other
+//! words — and it would refuse them for a reason that does not survive contact
+//! with the code: that grammar is a shell-safety rule, and this string never
+//! reaches a shell.
 //!
-//! It was also inconsistent with this very codebase. A WORKSPACE name accepts
-//! any Unicode and rejects only control and bidi characters. Same product, same
-//! kind of field, two rules, and the stricter one was the one nobody had a
-//! reason for.
+//! It would also be inconsistent with this very codebase. A WORKSPACE name
+//! accepts any Unicode and rejects only control and bidi characters. Same
+//! product, same kind of field, so one rule.
 //!
 //! So what is left here is what the STORE actually needs, and nothing about
 //! what a name ought to look like:

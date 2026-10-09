@@ -3,8 +3,8 @@
  * (vitest excludes tests/e2e/** as test FILES, so the greps must live here):
  *
  *  - the shared TRIGGER.md fixture carries every frontmatter key the daemon's
- *    importer requires (name, triggers, tools, budget — see
- *    fleet_runtime/config_parser.zig);
+ *    importer requires (name, triggers, tools, budget — see `FleetConfig` in
+ *    rustd/crates/afd_fleet_runtime/src/config/mod.rs);
  *  - no spec re-grows a private bundle builder — the drifted copies are how
  *    installs started failing with UZ-BUNDLE-001;
  *  - no test waits on `networkidle`, which is unreachable while the Clerk

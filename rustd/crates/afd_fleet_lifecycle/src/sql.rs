@@ -1,10 +1,5 @@
 //! Every statement this crate runs, and nothing else.
 //!
-//! Ports of `http/handlers/fleets/sql.zig`, plus the two install-source reads
-//! from `fleet_library/sql.zig`. What they SELECT and what they predicate on is
-//! the original's; the only reshaping is the string form this workspace writes
-//! statements in.
-//!
 //! # Every statement carries the workspace in its predicate
 //!
 //! Not one of them trusts the handler to have checked first. A fleet id
@@ -180,12 +175,10 @@ RETURNING id";
 ///
 /// `$1` fleet · `$2` workspace.
 ///
-/// No `FOR UPDATE`, and that is the whole design. `patch_txn.zig` locks the row
-/// for the duration of a read-modify-write; here the compare-and-set lives in
+/// No `FOR UPDATE`, and that is the whole design. The compare-and-set lives in
 /// [`PATCH_FLEET`]'s own predicate, so this read needs no lock to be safe — a
-/// concurrent write simply makes the UPDATE match no row. What that removes is
-/// a transaction, three `SET LOCAL` timeouts, a `55P03` classification, and a
-/// row lock held across a YAML reparse on every conditional save.
+/// concurrent write simply makes the UPDATE match no row. A conditional save
+/// therefore opens no transaction and holds no row lock across a YAML reparse.
 pub(crate) const SELECT_FLEET_EDITABLE: &str = "\
 SELECT name, status, source_markdown, trigger_markdown FROM core.fleets \
 WHERE id = $1::uuid AND workspace_id = $2::uuid";

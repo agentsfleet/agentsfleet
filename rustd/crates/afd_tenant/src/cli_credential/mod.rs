@@ -17,30 +17,23 @@
 //! again — its revoke now finds the winner's row and its insert succeeds. Last
 //! login wins, which is what "one live credential per machine" means.
 //!
-//! The Zig original took a transaction-scoped advisory lock instead
-//! (`pg_advisory_xact_lock(hashtextextended(user || ':' || machine, 0))`),
-//! which works and costs two things: a Postgres-specific mechanism in the
+//! A transaction-scoped advisory lock
+//! (`pg_advisory_xact_lock(hashtextextended(user || ':' || machine, 0))`)
+//! would also work, and costs two things: a Postgres-specific mechanism in the
 //! domain layer, and a 64-bit hash of a concatenated pair, so two unrelated
 //! users can collide onto one lock key and serialise against each other for no
 //! reason. The retry needs neither, and the index it leans on is the one that
-//! was deciding the outcome anyway.
+//! decides the outcome anyway.
 //!
 //! # Why the revoke and the insert are one transaction
 //!
 //! A re-login that fails must leave the operator holding the credential they
 //! arrived with. Revoking first and inserting second is only safe if the two
 //! commit together, and here they do — the transaction guard rolls back when it
-//! is dropped, on every path including a `?` that returns early.
-//!
-//! That is worth stating because the Zig original could not rely on it. There,
-//! the rollback is an `errdefer` that must be registered before the first
-//! statement inside the transaction — registered later, a failure strands an
-//! open transaction on a pooled connection — and it must call the driver's
-//! `rollback()` rather than `exec("ROLLBACK")`, because `exec` short-circuits
-//! once the connection is in FAIL state and would leave the session stuck in an
-//! aborted transaction. Two ordering rules a reader has to know and a writer
-//! has to remember. `sqlx::Transaction`'s `Drop` is the same guarantee with
-//! nothing to remember, so this module states the intent and the type keeps it.
+//! is dropped, on every path including a `?` that returns early. A hand-placed
+//! rollback would be an ordering rule every writer has to remember;
+//! `sqlx::Transaction`'s `Drop` makes it a property of the type, so this
+//! module states the intent and the type keeps it.
 //!
 //! # The digest is derived, never accepted
 //!

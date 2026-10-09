@@ -57,17 +57,16 @@ fn test_a_malformed_token_is_refused_before_any_key_is_read() {
     );
 }
 
-// ── The recorded divergence, made visible ────────────────────────────────
+// ── The verifiable key-size floor ────────────────────────────────────────
 
 /// A 1024-bit key is refused, and refused LOUDLY at parse rather than silently
 /// at verification.
 ///
-/// `jwks_crypto.zig` accepts moduli from 1024 bits up; this daemon verifies
-/// with `RSA_PKCS1_2048_8192_SHA256`, whose floor is 2048. The divergence is
-/// recorded in the milestone spec. What this pins is that it cannot fail
-/// quietly: a key set carrying only such a key is `KeySetUnavailable`, which
-/// `prime()` turns into a boot refusal — not a 401 on every session token while
-/// `agt_t` and `afc_` keep working.
+/// This daemon verifies with `RSA_PKCS1_2048_8192_SHA256`, whose floor is 2048
+/// bits. What this pins is that a smaller key cannot fail quietly: a key set
+/// carrying only such a key is `KeySetUnavailable`, which `prime()` turns into
+/// a boot refusal — not a 401 on every session token while `agt_t` and `afc_`
+/// keep working.
 #[test]
 fn test_a_key_below_the_verifiable_floor_is_refused_at_parse() {
     let short_modulus = URL_SAFE_NO_PAD.encode([0xAB_u8; 128]); // 1024 bits
@@ -130,18 +129,10 @@ fn test_the_key_set_url_is_derived_from_the_issuer() {
     assert_eq!(jwks_url(Some(""), Some("  ")), None);
 }
 
-// ── Parity ───────────────────────────────────────────────────────────────
+// ── The fixture key ──────────────────────────────────────────────────────
 
 /// The shared key really is 2048-bit, so the floor this daemon enforces is not
 /// being dodged by the fixture that proves the happy path.
-///
-/// This stood beside a byte-for-byte comparison against
-/// the retired daemon's `auth/jwks_test_fixtures.zig`, which the tree's deletion
-/// takes with it: once there is no second implementation, "my fixtures equal
-/// theirs" has nothing to compare against and freezing it would assert a
-/// constant against itself. The fixtures above ARE those bytes, copied while
-/// the tree stood and recorded as such in this file's header; what survives is
-/// the property that made them worth sharing.
 #[test]
 fn test_the_shared_key_meets_the_modulus_floor() {
     let modulus = URL_SAFE_NO_PAD

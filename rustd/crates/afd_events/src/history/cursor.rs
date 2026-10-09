@@ -103,7 +103,7 @@ mod tests {
     /// `assert_eq!(.., Ok(..))` shape `afd_core::paging` uses for its own
     /// cursor is unavailable here.
     fn decoded(raw: &str) -> Cursor {
-        Cursor::decode(raw).expect("a cursor this test built or the Zig issued")
+        Cursor::decode(raw).expect("a cursor this test built or spelled out")
     }
 
     #[test]
@@ -113,14 +113,14 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_zig_daemons_bytes() {
-        // base64url of `1735689600000:01HZQ8P0X3` — a cursor the OTHER daemon
-        // issued. This is the assertion that makes the format a data format
-        // rather than an implementation detail: a dashboard holding this
-        // string across a deploy must land on either binary and page on.
-        let issued_by_zig = "MTczNTY4OTYwMDAwMDowMUhaUThQMFgz";
+    fn reads_a_cursor_issued_before_a_deploy() {
+        // base64url of `1735689600000:01HZQ8P0X3`, spelled out as bytes rather
+        // than built by `encode`. This is the assertion that makes the format a
+        // data format rather than an implementation detail: a dashboard holding
+        // this string across a deploy must land on the new binary and page on.
+        let issued_earlier = "MTczNTY4OTYwMDAwMDowMUhaUThQMFgz";
         assert_eq!(
-            decoded(issued_by_zig),
+            decoded(issued_earlier),
             Cursor::after(1_735_689_600_000, "01HZQ8P0X3")
         );
     }

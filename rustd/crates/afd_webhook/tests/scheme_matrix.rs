@@ -262,8 +262,8 @@ fn a_refusal_carries_its_registry_code_and_a_stable_sentence() {
     assert_eq!(Refusal::Signature.code().as_str(), "UZ-WH-010");
     assert_eq!(Refusal::StaleTimestamp.code().as_str(), "UZ-WH-011");
 
-    // Byte-identical to the Zig daemon's, which a provider's delivery log shows
-    // to an operator debugging their integration.
+    // Pinned byte-for-byte: a provider's delivery log shows these to an
+    // operator debugging their integration.
     assert_eq!(
         Refusal::Unconfigured.detail(),
         "Webhook credential not configured"

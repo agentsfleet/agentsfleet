@@ -13,9 +13,8 @@ use afd_core::id::Uuid7;
 /// The readiness index would not answer.
 ///
 /// These five are `LOGGING_STANDARD.md` §3 `event` values — `snake_case`
-/// `verb_noun`, one declaration each (RULE UFS), and byte-identical to the
-/// spellings `assign.zig` emits so a dashboard built against the Zig daemon
-/// keeps matching after the cutover.
+/// `verb_noun`, one declaration each (RULE UFS). Dashboards match on these
+/// spellings, so changing one is an operator-visible change.
 pub(super) const EVENT_READY_PEEK_FAILED: &str = "assign_ready_peek_failed";
 
 /// An entry no reader can decode was acknowledged and discarded.

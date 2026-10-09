@@ -13,9 +13,7 @@
 //!
 //! Fail-closed, and not a degradation: without the secret there is nothing to
 //! check a signature against, and accepting unverified deliveries on a public
-//! endpoint would be strictly worse than serving none. `approval.zig` reaches
-//! the same conclusion from its own side — *"No signing secret configured —
-//! reject (fail-closed, no insecure fallback)"*.
+//! endpoint would be strictly worse than serving none.
 
 use std::sync::Arc;
 
@@ -35,9 +33,9 @@ const EVENT_PLATFORM: &str = "webhook_platform_secret_failed";
 
 /// The header an approval callback carries its proof in.
 ///
-/// `approval.zig`'s `x-signature`, kept byte-for-byte: the sender is a Slack
-/// app an operator configured against the running daemon, and a header name is
-/// a wire contract that cannot change during a cutover.
+/// The sender is a Slack app an operator configured against the running
+/// daemon, so the name is fixed on the wire: renaming it would refuse every
+/// callback until the operator reconfigured the app.
 pub const HEADER_APPROVAL_SIGNATURE: &str = "x-signature";
 
 /// The header an approval callback carries its signed instant in.
@@ -53,7 +51,8 @@ pub(crate) const APPROVAL_IDENTITY: &str = "approval-signing";
 /// body back. The scheme and its two header names are parameters rather than
 /// resolved from a source, because the two callers differ in exactly that — an
 /// App delivery is read under the provider's own headers, and an approval
-/// callback under the ones `approval.zig` published.
+/// callback under [`HEADER_APPROVAL_SIGNATURE`] and
+/// [`HEADER_APPROVAL_TIMESTAMP`].
 ///
 /// # Errors
 /// `UZ-WH-020` for a deployment with no usable secret, `UZ-WH-010` for a
@@ -218,8 +217,8 @@ pub(crate) async fn verified_app<D: Services>(
 /// Proves an approval callback against the deployment's approval secret.
 ///
 /// Verified under [`Scheme::SlackV0`], which is not an approximation: the
-/// construction `approval.zig` computes is `v0` `:` timestamp `:` body behind a
-/// `v0=` prefix, byte-for-byte the Slack scheme, because the sender IS Slack —
+/// construction is `v0` `:` timestamp `:` body behind a `v0=` prefix,
+/// byte-for-byte the Slack scheme, because the sender IS Slack —
 /// an interactive payload from a button an approver pressed. Only the header
 /// names differ, and this daemon publishes its own for them.
 ///

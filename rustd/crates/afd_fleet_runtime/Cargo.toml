@@ -40,8 +40,8 @@ serde.workspace = true
 # first. Without it the answer follows hash order and two runs can disagree.
 #
 # The frontmatter converter leans on the same feature for a second reason: the
-# JSON it builds carries the AUTHORED key order, matching the insertion-ordered
-# map the Zig converter writes from.
+# JSON it builds carries the AUTHORED key order, so a stored document lists its
+# keys as its author wrote them.
 serde_json.workspace = true
 # The YAML tokeniser, resolving nothing — see the rationale in the workspace
 # manifest. This crate is the only one that names it.
