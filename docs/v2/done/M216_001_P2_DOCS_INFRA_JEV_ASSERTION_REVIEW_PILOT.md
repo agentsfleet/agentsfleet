@@ -10,67 +10,51 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M216_001: Measure Jev assertion advice on frozen reviewer cases
+# M216_001: Complete the Jev measurement and remove its pilot directory
 
 **Prototype:** v2.0.0
 **Milestone:** M216
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — bounded contributor experiment
 **Categories:** Documentation (DOCS), Infrastructure (INFRA)
 **Batch:** B1 — independent pilot artifacts
 **Branch:** feat/m216-jev-assertion-pilot
 **Baseline revision:** dd917b7ef42dcb883b5192fafe894060aab5845d
 **Test Baseline:** unit=10613 integration=899 — unit comparison retains one failure
-**Baseline evidence:** pilots/jev-assertions/report.md
+**Baseline evidence:** https://github.com/agentsfleet/agentsfleet/blob/8704a47c9c6ab020b93944d87948eef9ad34b735/pilots/jev-assertions/report.md
 **Depends on:** recorded comparison baselines and green declared repository checks; owner review before merge
 **Provenance:** agent-generated from Indy's Oct 08, 2026 pilot instruction
 **Canonical architecture:** existing product architecture remains unchanged; this is an isolated contributor measurement
 
 ## Overview
 
-**Goal (testable):** Twenty frozen cases distinguish exact, weak, wrong_target, missing and insufficient assertions, retain every approved Jev attempt, and accompany a verified orly 0.14.0 consumer pin.
-**Problem:** Passing tests can accept incorrect results; model advice has not been measured on this fresh `agentsfleet` sample.
-**Solution summary:** Copy four real behaviors into isolated pilot fixtures, establish expected classifications and executable counterexamples offline, then measure the existing `verify.assertion` question after one owner-approved upload and budget checkpoint. Keep all model results advisory. Required measurements, the recommendation and the timeout-diagnostics repair are complete. The final pushed repair must pass fresh repository and hosted checks before owner review.
+**Goal (testable):** Retain the completed Jev measurement in Git history, remove the entire pilot directory, and verify the orly 0.14.0 consumer pin.
+**Problem:** The completed contributor experiment leaves a runner, copied fixtures and raw receipts that Indy requires removed from the repository tree.
+**Solution summary:** Delete `pilots/` without relocating its contents. Keep the completed measurement at immutable revision `8704a47c9c6ab020b93944d87948eef9ad34b735`, update current checking instructions and retain the engine pin. Model advice remains experimental; fresh repository and hosted checks cover the resulting branch before owner review.
 
 ## PR Intent & comprehension handshake
 
-- **PR title (eventual):** Measure Jev assertion advice and upgrade orly to 0.14.0
-- **Intent:** Give reviewers evidence about whether Jev helps identify inadequate assertions without changing product behavior or gate authority.
-- **Handshake:** Prepare offline first; submit exactly two ten-item manifests only after approval; keep seeded controls separate from real defects. ASSUMPTIONS I'M MAKING: four correlated behavior families are suitable for a small pilot; unavailable independent blinded reviews yield an explicitly unmeasured paired comparison.
+- **PR title (eventual):** Upgrade orly to 0.14.0 and retire the Jev pilot
+- **Intent:** Ship the verified engine pin with the completed experiment removed and its historical evidence still reviewable.
+- **Handshake:** ASSUMPTIONS I'M MAKING: the removal covers all of `pilots/`; Git history retains the evidence; this Pull Request remains open for Indy.
 
 ## Implementing agent — read these first
 
 1. `.orly/LOCAL.md` and `.orly/dispatch/lifecycle.md` — project commands and lifecycle timing.
-2. `ui/packages/design-system/src/design-system/CopyButton.test.tsx` — exact clipboard-value starting control.
-3. `ui/packages/design-system/src/utils.test.ts` and `ui/packages/design-system/src/design-system/time-utils.test.ts` — class merging and relative-time controls.
-4. `ui/packages/app/lib/events/run-figures-format.test.ts` — elapsed-time rounding control.
-5. https://docs.typesafe.ai/models — model, context limit and input pricing; refresh the documented price before live admission.
+2. `.orly/orly.json` and `scripts/check_orly_pin.sh` — preserve the installed version and declared checks.
+3. https://github.com/agentsfleet/agentsfleet/tree/8704a47c9c6ab020b93944d87948eef9ad34b735/pilots/jev-assertions — immutable completed experiment, not a current command surface.
 
 ## Files Changed (blast radius)
 
-All paths below are relative to this repository. The pilot prefix is `pilots/jev-assertions/`; no production, catalog, threshold, hook or gate edits are authorized.
-Indy's subsequent overnight instruction also authorizes the managed engine pin update in this workstream.
-Indy's subsequent removal instruction authorizes deleting the entire pilot directory and updating this spec's references and verification scope.
+All current paths below are relative to this repository. Indy authorized the engine update and then removal of the completed pilot.
+No production, catalog, threshold, hook or gate edits are authorized.
 
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md` → `docs/v2/active/M216_001_P2_DOCS_INFRA_JEV_ASSERTION_REVIEW_PILOT.md` → eventual same basename in `done/` | CREATE / MOVE / EDIT | Lifecycle and measured evidence |
-| `pilots/jev-assertions/README.md`, `report.md` | CREATE / EDIT | Protocol, checking commands and concise results |
-| `pilots/jev-assertions/cases.json`, `freeze.json` | CREATE | Preregistered answer ledger and immutable byte inventory |
-| `pilots/jev-assertions/manifests/a.json`, `manifests/b.json` | CREATE | Ten neutral identifiers per upload |
-| `pilots/jev-assertions/pilot.py`, `pilot_checks.py`, `pilot_measure.py`, `pilot_test.py` | CREATE | Minimal checking, bounded command execution, accounting and negative tests |
-| `pilots/jev-assertions/vitest.config.ts`, `helpers/setup.ts` | CREATE | Execute copied tests with the incumbent React test stack |
-| `pilots/jev-assertions/helpers/Button.tsx`, `utils.ts`, `use-resettable-timeout.ts`, `app-utils.ts` | CREATE | Complete necessary copied helper evidence |
-| `pilots/jev-assertions/helpers/check-{copy,classes,relative,elapsed}.ts` | CREATE | Executable assertion helpers deliberately omitted only in insufficient inputs |
-| `pilots/jev-assertions/fixtures/p01/` through `fixtures/p20/`, each containing only `implementation.tsx` and `test.tsx` | CREATE | Twenty isolated cases; paths enumerate p01–p20 with the same two leaf names |
-| `pilots/jev-assertions/reviews/unaided-author.json`, `reviews/session-template.json` | CREATE | Frozen pre-advice inspection and independent review record shape |
-| `pilots/jev-assertions/receipts/{checks,offline-a,offline-b,live-a,live-b,replay-a,replay-b,summary}.json` | CREATE | Reproducible attempt and proof receipts |
-| `pilots/jev-assertions/receipts/{correct,faulty,runner-tests,conform,secret-scan}.txt` | CREATE | Raw local checking output |
-| `pilots/jev-assertions/receipts/review/` | CREATE | Repository-required review probe receipts and checkpoints; results stay in `report.md` |
 | `.orly/orly.json` | EDIT | Update the managed engine pin to published 0.14.0 through `orly update --no-hooks`. |
-| `pilots/jev-assertions/approval.json`, `receipts/reservations.json`, `reviews/{unaided,assisted}.json` | CREATE after corresponding real evidence exists | One actual approval, append-only request reservations and actual blinded reviews |
 | `pilots/` | DELETE | Remove all pilot-only files; retain historical evidence at immutable commit `8704a47c9c6ab020b93944d87948eef9ad34b735`. |
 
 Temporary proof copies and dependency installation outputs are disposable local runtime state, never committed. Existing `orly` replay files remain local private cache, not model inputs or deliverables.
@@ -83,6 +67,8 @@ Temporary proof copies and dependency installation outputs are disposable local 
 - `.orly/dispatch/verify.md`: focused proofs establish Sections; declared repository checks remain due before the Pull Request (PR).
 
 ## Applicable Gates
+
+Source-specific rows describe the historical pilot. The final branch contains only the spec and engine pin; its declared checks still apply.
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
@@ -101,6 +87,10 @@ Temporary proof copies and dependency installation outputs are disposable local 
 - Supabase's local `oss/js/supabase/packages/dev-tools/vitest.config.ts`: isolated jsdom setup; use the discovered local reference location without cloning.
 
 ## Sections (implementation slices)
+
+Sections 1–3 and their named proofs describe completed historical work at the immutable revision linked above.
+Their relative evidence paths resolve inside that revision's pilot directory, including the historical Test Specification and Discovery records.
+They are not commands or files required in the current checkout. Sections 4–5 define the final tree.
 
 ### §1 — Frozen offline evidence
 
@@ -141,20 +131,18 @@ After owner approval, invoke `orly judge verify --input <manifest> --refresh --j
 
 ### §5 — Remove the completed pilot directory
 
-**Status:** IN_PROGRESS — owner-requested directory removal; no replacement runner or fixture location.
+**Status:** DONE — the complete pilot directory is removed; no replacement runner or fixture location.
 
-- **Dimension 5.1** — IN_PROGRESS — Remove the complete pilot directory, preserve the engine pin and point historical evidence to its immutable revision → Test `test_pilot_directory_removed` (manual).
+- **Dimension 5.1** — DONE — Remove the complete pilot directory, preserve the engine pin and point historical evidence to its immutable revision → Test `test_pilot_directory_removed` (manual).
 
 ## Interfaces
 
-`python3 pilots/jev-assertions/pilot.py check|replay|live|summarize`
-
-- `check` runs executable proofs and validates frozen manifests locally; `replay` makes no provider request.
-- `live` requires a separately recorded approval and private one-shot reservation ledger; only the existing `orly` command uploads selected source.
-- Cases record identifier, family, origin, requirement, full source revision, source references, expected class, justification, missing context and proof expectations.
-- Manifests contain only stage, neutral identifier, unchanged question, requirement and evidence selectors. Neither labels nor justifications are model inputs.
+No pilot runner is exposed in the current checkout. Historical check, replay, live and summarize interfaces remain in the immutable revision.
+The installed `orly` commands and managed configuration keep their existing interfaces; only the engine pin changes to 0.14.0.
 
 ## Failure Modes
+
+The first five rows describe the historical measurement; the last row covers current directory removal.
 
 | Mode | Cause | Handling (system response + caller observation) |
 |------|-------|------------------------------------------------|
@@ -163,19 +151,23 @@ After owner approval, invoke `orly judge verify --input <manifest> --refresh --j
 | No approval / quota exhausted / duplicate launch | Missing bound approval or spent reservation | Refuse before upload; `test_live_approval`, `test_request_reservations` |
 | Process crash or unavailable provider | Timeout, invalid reply, interrupted batch or missing usage | Keep reservation, failure and timeout output; no retry; unknown usage stays unknown; `test_attempt_accounting`, `test_live_failure_consumes_reservation_without_retry` |
 | Reviewer contamination / missing session | Author knows labels, reused session, advice disclosed early | Paired comparison remains unmeasured; `test_comparison_metrics` |
+| Incomplete removal or dangling caller | Retained pilot file, moved copy or active reference | Fail `test_pilot_directory_removed`; remove the file or correct the caller before pushing |
 
 ## Invariants
+
+Items 1–4 and 6 describe the completed measurement at its immutable revision. Its approval permits no additional provider requests.
 
 1. Frozen files and uploads are immutable after registration: hashes are checked before proofs, replay and live admission.
 2. Model inputs omit expected classes, justifications and review decisions: admission compares exact allowed manifest fields and fixture-only references.
 3. Total provider requests ≤20, including failed attempts: exclusive creation and locked append-only batch reservations; each batch is admitted once.
 4. Proposed ceiling is United States dollars (USD) 0.06 at the documented USD 0.042 per million input tokens, output free: reserve 65,536 input tokens per admitted request, giving a conservative twenty-request bound of USD 0.05505024. Approval must confirm pricing; unsupported pricing refuses live admission.
-5. Production preservation: diff paths are limited to this spec, pilot artifacts and the authorized engine pin; faults execute only in temporary fixture copies.
+5. Final-tree preservation: the branch differs from its comparison only in this spec and the authorized engine pin; no pilot files remain.
 6. Native answers, uncertainty and availability remain distinct: summarize original receipt fields and retain unmeasured usage without zero substitution.
 
 ## Metrics & Observability
 
-No product or operator analytics change. Local pilot receipts retain native command output, case identifiers, result classes, timing, usage and calculated cost; selected source is uploaded solely after approval and secret scanning. The runner never resolves credentials. Proof: `test_attempt_accounting` and `test_live_approval`.
+No product or operator analytics change. The historical receipts retain native output, timing, usage, spending and original approval at the immutable revision.
+Removal makes no provider request and adds no telemetry. Proof: `test_pilot_directory_removed`; historical `test_attempt_accounting` and `test_live_approval`.
 
 ## Test Specification (tiered)
 
@@ -200,20 +192,27 @@ Regression scope: product behavior, source tests, catalog, confidence threshold,
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
-| R1 | Frozen cases and executable controls | `python3 pilots/jev-assertions/pilot.py check` | exit 0; 20 correct passes; 8 fault rejections and 12 surviving deliberately inadequate assertions | P0 | ✅ 20 correct passes, 8 rejections, 12 survivors; `receipts/checks.json` |
-| R2 | Admission and accounting refusals | `python3 pilots/jev-assertions/pilot_test.py` | exit 0; timeout output retained; no provider request | P0 | ✅ 25 passed, zero failed; graceful/forced timeout output retained; zero provider requests; `receipts/review/timeout/verification.json` |
-| R3 | Offline replay and final truthful measurement | `python3 pilots/jev-assertions/pilot.py replay` and `python3 pilots/jev-assertions/pilot.py summarize` | Replay requests 0; summary retains twenty slots, unavailable attempts and paired-review status | P0 | ✅ 20 complete attempts, replay requests 0, paired status measured; `receipts/summary.json` |
-| R4 | Scope and lifecycle | `git diff --name-only origin/main...HEAD` | Only Files Changed paths; completed spec in done with boundary evidence | P0 | ✅ Pilot prefix, completed spec and engine pin only; `receipts/review/boundary-verification.json` |
-| S1 | Conform | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN; 50 source files, zero literal violations; `receipts/conform.txt` |
-| S2 | Unit boundary | `make test-unit-all` | exit 0 at PR boundary | P0 | ✅ exit 0: 10614 passed, zero failed; `receipts/review/boundary-verification.json` |
-| S3 | Lint boundary | `make lint-all` | exit 0 at PR boundary | P0 | ✅ exit 0: all declared lint checks green; `receipts/review/boundary-verification.json` |
-| S4 | Integration boundary | `make test-integration-rustd` | exit 0 at PR boundary in isolated datastore environment | P0 | ✅ exit 0: 899 passed, zero failed; `receipts/review/boundary-verification.json` |
-| S5 | Version preservation | `make check-version` | exit 0 | P0 | ✅ all versions match 0.58.0 |
-| S6 | No secrets | `gitleaks protect --staged --redact --no-banner` | exit 0 | P0 | ✅ no leaks found; `receipts/secret-scan.txt` |
+| R1 | Complete pilot removal | `test ! -e pilots` and `git ls-files --cached pilots` | exit 0; zero tracked pilot files | P0 | ✅ Directory absent; zero tracked pilot files; 220 files remain in historical revision |
+| R2 | Scope and lifecycle | `git diff --name-only origin/main` | Only the spec and managed pin; completed spec in done before the final push | P0 | ✅ Net scope is the managed pin and this completed spec |
+| R3 | Consumer pin | `orly doctor` and `bash scripts/check_orly_pin.sh` | exit 0; installed engine and pin equal 0.14.0 | P0 | ✅ Both exit 0; installed 0.14.0 matches the pin |
+| S1 | Conform | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN; no source files in final diff scope |
+| S2 | Unit boundary | `make test-unit-all` | exit 0 at Pull Request boundary | P0 | Fresh final gate due; earlier 10614 passed is historical |
+| S3 | Lint boundary | `make lint-all` | exit 0 at Pull Request boundary | P0 | Fresh final gate due |
+| S4 | Integration boundary | `make test-integration-rustd` | exit 0 when applicable; engine may skip when the final branch has no code | P0 | Fresh gate determines applicability; earlier 899 passed is historical |
+| S5 | Version preservation | `make check-version` | exit 0 | P0 | Fresh final gate due |
+| S6 | No secrets | `gitleaks protect --staged --redact --no-banner` | exit 0 | P0 | Fresh scan due |
 
 ## Dead Code Sweep
 
-N/A — no production files or symbols deleted or renamed. Temporary proof copies are scoped runtime resources cleaned by their context manager.
+| File to delete | Verify | Expected |
+|---|---|---|
+| `pilots/` | `test ! -e pilots`; `git ls-files --cached pilots` | exit 0; zero tracked paths |
+
+| Deleted symbol/import | Grep | Expected |
+|---|---|---|
+| Pilot directory and its unique runner modules | `git grep -n -w -e jev-assertions -e pilot_checks.py -e pilot_measure.py -e pilot_test.py` | Only this spec's removal description and explicitly historical references |
+
+No production symbol is removed. No copied test, helper, receipt, alternate runner directory or orphan configuration is retained.
 
 ## Out of Scope
 
@@ -224,6 +223,8 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 
 ## Product Clarity (authoring record)
 
+The original measurement rationale follows. Sections 4–5 and the current Acceptance Rubric define the final tree and its checks.
+
 1. **Successful user moment:** A reviewer sees a weak test pass an incorrect copied value, then can assess Jev's actual usefulness with traceable evidence.
 2. **Preserved user behaviour:** Every product caller and existing verification command retains its behavior.
 3. **Optimal-way check:** Existing advice and source tests supply the smallest relevant measurement; independent reviewer availability limits the paired result.
@@ -233,18 +234,19 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 7. **Fit with existing features:** Measures the existing assertion question while preserving its advisory authority.
 8. **Surface order:** N/A — internal pilot; command-line checking only.
 9. **Dashboard restraint:** N/A — no product interface or quality badge.
-10. **Confused-user next step:** Run the report's checking commands and inspect the named evidence receipt.
+10. **Confused-user next step:** Inspect the archived report; run the current pin checks and repository Make commands from the Acceptance Rubric.
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Offline evidence, authorized measurement and truthful reporting are separate dependency-ordered Sections.
+- **Chosen shape:** Retain the completed measurement in Git history, remove its entire directory and ship the verified engine pin.
 - **Alternatives considered:** Direct custom provider integration duplicates the pinned command and its scanner; manual batch execution cannot enforce a cross-run request ceiling.
-- **Patch-vs-refactor verdict:** A pilot addition is sufficient. Quality ceiling: a larger evaluator cannot create independent reviewers or enlarge this approved sample; no product refactor is justified.
-- **Surface-area checklist:** OpenAPI no; product command-line interface no; user docs no; engine version yes, product version no; schema/removal no; rule conflict no. The explicit consumer pin update accompanies the pilot.
+- **Patch-vs-refactor verdict:** Directory removal is sufficient. Quality ceiling: an alternate runner or evaluator adds upkeep; no product refactor is justified.
+- **Surface-area checklist:** OpenAPI no; product command-line interface no; user docs no; engine version yes, product version no; schema no; spec amended for removal. The consumer pin accompanies pilot retirement.
 
 ## Discovery (consult log)
 
 - **Removal instruction:** Indy: "Well the pilot directory must be removed." Remove `pilots/` from the same branch and Pull Request. Keep the completed measurement evidence in Git history, retain the 0.14.0 pin and revise current verification commands so they require no removed runner. Quality ceiling: deletion removes the upkeep; relocating the experiment adds none of the requested value. Surface-area checklist: OpenAPI no; product command-line interface no; user docs no; engine pin retained, product version unchanged; schema no; spec amended to match the removal instruction.
+- **Removal proof:** Repository-wide word-boundary search for the pilot directory and unique runner filenames has only this spec's six historical/removal reference lines. The complete directory and all 220 tracked files are absent; all seven original record hashes still match their blobs at `8704a47c9c6ab020b93944d87948eef9ad34b735`. Parsed configuration differs from the comparison only in `orly_version`; `orly doctor` and `scripts/check_orly_pin.sh` pass. No product test or runtime symbol changes; the 25 pilot-only checks leave with their runner. The exact pushed removal revision must pass its own final gate and hosted review, recorded in Pull Request Session Notes.
 
 - **Consults:** Indy authorized offline preparation and focused commits, required one budget approval before refresh, and required the overall pilot to remain IN_PROGRESS. Source comparison is `dd917b7ef42dcb883b5192fafe894060aab5845d`; engine 0.13.0 checked with `scripts/check_orly_pin.sh`. Earlier fixture contents were not read. The `orly` checkout remains read-only.
 - **Metrics review:** No product analytics/funnel playbook update; local receipts record all approved attempts. Fresh blinded agents used identical selected evidence and separately shuffled orders, with retained advice only in the assisted condition.
