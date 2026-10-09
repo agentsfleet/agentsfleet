@@ -90,7 +90,11 @@ async fn test_bubblewrap_starts_with_an_empty_environment() {
     );
     let host = FakeHost::new(ENV_PROBE);
 
-    let refused = host.engine().prepare(request("lease-env")).await.unwrap_err();
+    let refused = host
+        .engine()
+        .prepare(request("lease-env"))
+        .await
+        .unwrap_err();
 
     let quoted = refused.to_string();
     assert!(quoted.contains(ENV_PROBE_REPORT), "{quoted}");

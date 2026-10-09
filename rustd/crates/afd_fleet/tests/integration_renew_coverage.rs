@@ -211,7 +211,10 @@ async fn a_renewal_during_a_catalogue_fault_charges_its_tokens_later() {
         .renew(&held.runner, lease_id, reported(10_000), held.now)
         .await
         .expect("a priced renewal");
-    assert!(!first.is_zero(), "the fixture rate prices ten thousand tokens");
+    assert!(
+        !first.is_zero(),
+        "the fixture rate prices ten thousand tokens"
+    );
 
     held.fixtures.set_catalogue_readable(false).await;
     let (_, unpriced) = plane

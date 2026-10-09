@@ -52,8 +52,8 @@ fn verify_refuses_metadata_above_read() {
     // `metadata` grant at any other level is a stranger like the rest.
     let binding = binding(Access::Read);
     let request = scoped(&binding);
-    let mut asked = serde_json::to_value(request.permissions())
-        .expect("the request's permissions serialise");
+    let mut asked =
+        serde_json::to_value(request.permissions()).expect("the request's permissions serialise");
     asked["metadata"] = json!("write");
 
     assert_eq!(
