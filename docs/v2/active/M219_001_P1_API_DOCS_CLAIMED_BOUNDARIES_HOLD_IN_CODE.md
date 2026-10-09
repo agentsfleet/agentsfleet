@@ -84,8 +84,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/model-library-allowlist.json` | EDIT | §9: current lineups and first-party rates, verified Oct 09, 2026 |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/lib/known-models.ts`, `ui/packages/app/tests/{provider-model-select,models-registry-edit-remove}.test.tsx` | EDIT | §9: the dashboard's fallback list names current models |
 | `docs/architecture/connectors.md` | EDIT | Disconnect is one transaction |
-| `docs/architecture/runner_fleet.md` | EDIT | §7: kill keeps the ceiling on a run in flight |
-| `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Token verification claim matches §6 |
+| `docs/architecture/{runner_fleet.md,lease_flow.md}` | EDIT | §7: kill keeps the ceiling on a run in flight; §4: the GitHub write set names its fields |
+| `docs/architecture/scenarios/{github-pr-reviewer.md,production-deploy-repair.md}` | EDIT | Token verification claim matches §6; the repair rules name their fields (§4) |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | §7: the ceiling read ignores status; §8: renewal pricing during a catalogue fault |
 | `docs/v2/active/M219_001_P1_API_DOCS_CLAIMED_BOUNDARIES_HOLD_IN_CODE.md` | CREATE | This spec |
 
@@ -225,7 +225,7 @@ No HTTP route, status code or error code changes. Refusals reuse `RUN_STALE_FENC
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `renew_tokens_held_for_pricing` (§8 only) | ops | A renewal's catalogue read fails | `fleet_id`, `lease_id`, `reason` | No token counts or prices beyond the fault reason | `a_catalogue_fault_logs_the_held_tokens` |
+| `renew_tokens_held_for_pricing` (§8 only) | ops | A renewal's catalogue read fails | `fleet_id`, `lease_id`, the three held token counts, `error_code`, `reason` | Counts only: no prompt text and no prices | `a_catalogue_fault_logs_the_held_tokens` |
 | All other Sections: no product or operator signal changes | not applicable | never | none | Existing refusal events keep their names | `test_memory_routes_refuse_a_superseded_active_lease` |
 
 ## Test Specification (tiered)
@@ -280,7 +280,7 @@ Regression: the existing memory, mint, connect-roundtrip, egress and Slack poste
 
 ## Dead Code Sweep
 
-N/A — no files deleted. `literal` moves from `interim.rs` to `slack.rs`; R4 proves one copy remains.
+`literal` and its unit tests move from `interim.rs` and `interim/tests.rs` to `slack/escape.rs`; R4 proves one copy remains.
 
 ## Out of Scope
 
