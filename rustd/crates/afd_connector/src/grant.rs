@@ -162,39 +162,23 @@ impl Grants {
         // The routing row says which workspace an account's inbound events
         // belong to; the vaulted grant is the credential outbound spends. They
         // describe the same installation and a reader that saw one without the
-        // other would be wrong in a way nothing surfaces.
-        //
-        // Vault first leaves a sealed grant nothing routes: status reads
-        // CONNECTED, inbound resolves no workspace, and the callback state is
-        // already spent — no signal, no retry.
-        //
-        // Routing first is worse on the path that matters more. On a FIRST
-        // connect the survivor is a routing row with no grant, which reads as
-        // not connected and is true. On a RECONNECT there is already a grant,
-        // so a failed replace leaves routing naming the new installation while
-        // the vault still holds the old account's credential: status reads
-        // connected, and inbound and outbound then speak to different accounts
-        // under one workspace. That state is silent, which is what makes it
-        // worse than either loud half.
+        // other would be wrong in a way nothing surfaces: a sealed grant
+        // nothing routes reads CONNECTED while inbound resolves no workspace,
+        // and on a RECONNECT a routing row naming the new installation beside
+        // the old account's credential has inbound and outbound speaking to
+        // different accounts under one workspace.
         //
         // So they commit together or not at all. `sqlx::Transaction` rolls back
         // when it is DROPPED, so every `?` below unwinds both writes without a
         // rollback path of its own — the argument `crate::delete`'s note makes
         // about compensating rollbacks being decoration.
+        //
+        // The grant is written FIRST inside it, and that order is about locks,
+        // not visibility: a Disconnect (`Grants::forget`) takes the same row's
+        // lock first, so the two serialise on it and neither can hold a routing
+        // row the other is waiting for.
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_INSTALL))?;
-
-        if let Some(install) = grant.install.as_ref() {
-            Self::route_in(
-                &mut transaction,
-                workspace,
-                provider,
-                install,
-                now,
-                &self.entropy,
-            )
-            .await?;
-        }
 
         match self
             .vault
@@ -208,6 +192,18 @@ impl Grants {
                     .await?;
             }
             Err(other) => return Err(other.into()),
+        }
+
+        if let Some(install) = grant.install.as_ref() {
+            Self::route_in(
+                &mut transaction,
+                workspace,
+                provider,
+                install,
+                now,
+                &self.entropy,
+            )
+            .await?;
         }
 
         transaction.commit().await.map_err(query(CONTEXT_INSTALL))?;

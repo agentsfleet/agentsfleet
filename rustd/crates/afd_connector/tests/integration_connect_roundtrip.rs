@@ -38,6 +38,8 @@
 
 #[path = "integration_connect_roundtrip/cases.rs"]
 mod cases;
+#[path = "integration_connect_roundtrip/disconnect.rs"]
+mod disconnect;
 #[path = "integration_connect_roundtrip/vendor.rs"]
 mod vendor;
 
@@ -93,6 +95,8 @@ pub(crate) struct Round {
     pub(crate) connectors: Connectors,
     pub(crate) admin: Uuid7,
     pub(crate) workspace: Uuid7,
+    /// The tenant both workspaces belong to.
+    tenant: String,
     vault: Vault,
     database: Db,
     _lane: TestDatabase,
@@ -124,6 +128,7 @@ impl Round {
             connectors,
             admin: Uuid7::parse(&admin).expect("a minted id is a v7 spelling"),
             workspace: Uuid7::parse(&workspace).expect("a minted id is a v7 spelling"),
+            tenant,
             vault,
             database,
             _lane: lane,
@@ -142,6 +147,12 @@ impl Round {
             )
             .expect("the fixture bag seals");
         insert_secret(&self.database, self.admin.as_str(), &name, &sealed).await;
+    }
+
+    /// The grant store the connectors write through, for verbs a round trip
+    /// does not drive: a direct land, and Disconnect.
+    pub(crate) fn grants(&self) -> Grants {
+        Grants::new(self.vault.clone(), self.database.clone(), Entropy::new())
     }
 
     /// The grant this connect landed, opened back out of the vault.
