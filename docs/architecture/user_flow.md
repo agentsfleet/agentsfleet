@@ -26,10 +26,10 @@ Every row is extracted from the §-numbered sections below; the owner column nam
 | Deployment posture | hosted-only in v2 | no `--self-host` flag, no self-host runbook; validation on non-Fly hosts is v3 | §8.0.1 |
 | Fleet definition | `SKILL.md` required, `TRIGGER.md` optional | a missing trigger yields a default manual/API trigger with no tools, secrets, or network | §8.1, §8.2.2 |
 | Preflight | `agentsfleet doctor --json`, health only | `server_reachable` · `workspace_selected` · `workspace_binding_valid`; the only sanctioned preflight surface | §8.2.2 |
-| Create guarantee | stream + consumer group before 201 | the 201 carries `fleet_id` + `webhook_urls:{<source>:<url>}` per declared webhook trigger | §8.2.2 |
+| Create guarantee | stream + consumer group before 201 | created synchronously by the create call; response shape in the API reference | §8.2.2 |
 | Trigger declarations | 1–8 entries, unique on `(type, source)` | GitHub App triggers require explicit `repositories` (fail-closed); at most one declarative cron | §8.3 |
 | Cron authority | QStash owns the clock | one stable schedule id registered synchronously at install; the runner owns no timer | §8.3 |
-| `type: api` | reserved, not accepted in v1 | admission lands with the workspace-API-tokens spec | §8.3 |
+| `type: api` | accepted | the trigger a bundle with no `TRIGGER.md` installs with; no ingress route of its own | §8.3 |
 | Steer | always accepted | same single-ingress `XADD` with `actor=steer:<user>` | §8.3 |
 | Model/cap overlay | per-field, at lease time | frontmatter `""` / `0` / absent ⇒ overlay from `tenant_model_selection` (or synth-default) | §8.7 |
 | Cap resolution time | provider-set or install time | never at trigger time — no network dependency on the hot path | §8.7 |
@@ -62,7 +62,6 @@ The dual-posture model/cap resolution diagram lives in §8.7 — it is that sect
 | Hosted-only v2 | launch claim is "OSS + self-managed + markdown-defined", not "self-hostable"; integration burden earns v3 | §8.0.1 |
 | The CLI is the install surface | deterministic, scriptable, host-neutral; the bundle stays portable markdown | §8.0 |
 | Upload-bundle picker deferred | Indy-acked 2026-06-20; library + GitHub + paste ship first | §8.2.3 |
-| `type: api` deferred | rides the `/v1/auth/tokens` surface; webhook + cron cover the wedge | §8.3 |
 | Visible sentinels (`""`, `0`) in self-managed frontmatter | a human can spot "inherits from tenant config" at a glance; absent-key is the safety net | §8.7 |
 | `/credentials` page removed outright, not redirected | provider keys live on `/settings/models`; custom secrets on `/secrets` | §8.7 |
 
@@ -151,14 +150,7 @@ agentsfleet whoami                 # who that credential belongs to
 agentsfleet connector status github --json
 ```
 
-Login closes by naming the person it signed in. It costs no extra request: the
-credential it just minted is proven against `GET /v1/users/me`, and that read
-answers with the person, the tenant, the credential class and the scopes held.
-The same route backs `agentsfleet whoami` and the `auth status` reachability
-check. It is the one route on the tenant plane that requires no capability
-scope, which is what lets it answer "does this credential authenticate" for
-every signed-in person — the check previously read `GET /v1/tenants/me/billing`
-and so reported anyone without `billing:read` as rejected.
+Login proves the new credential against `GET /v1/users/me`, which needs no capability scope ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Users).
 
 `agentsfleet doctor --json` is the readiness gate (§8.2.2 step 2): on any miss it prints the explicit fix commands and stops. The commands are deliberately separate so a user with most of the chain already in place skips what they already have.
 
@@ -166,13 +158,10 @@ and so reported anyone without `billing:read` as rejected.
 
 1. The user picks a catalogue library entry (`agentsfleet install --library <id>`) or authors `SKILL.md` and `TRIGGER.md` for a local bundle (§8.0) — optionally with a coding agent (Claude Code, Amp, Codex CLI, OpenCode) helping draft the markdown.
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity + workspace health only — `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It does **not** carry provider posture or balance; those live in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (balance and exhaustion state), read separately once health passes. The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface for health — no parallel `preflight` command exists.
-3. The user (or coding agent) creates the Fleet from an onboarded library entry:
-   - **Platform library entry** — `POST /v1/workspaces/{ws}/fleets` with `{platform_library_id, name?}`.
-   - **Tenant library entry** — `POST /v1/workspaces/{ws}/fleets` with `{tenant_library_id, name?}` after the local/GitHub source has been onboarded through `POST /v1/workspaces/{ws}/fleet-libraries` or the dashboard.
-   - **Existing Fleet edit** — `agentsfleet fleet update <fleet_id> --from <path>` PATCHes `source_markdown` / `trigger_markdown` in place; it is not a create path.
-4. The API reads the library entry's `SKILL.md` / `TRIGGER.md`, parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a library entry lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no secrets, and no network. The 201 response carries `fleet_id` and `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared by `TRIGGER.md` or the library entry's metadata. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
+3. Create from an onboarded entry: `POST /v1/workspaces/{ws}/fleets` ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Fleets); `agentsfleet fleet update <id> --from <path>` edits in place.
+4. The API reads the library entry's `SKILL.md` / `TRIGGER.md`, parses frontmatter, derives `name` + `config_json`, persists the Fleet row, and synchronously creates the events stream + consumer group before returning 201. When a library entry lacks `TRIGGER.md`, the API generates a default manual/API trigger with no tools, no secrets, and no network. See [`data_flow.md`](./data_flow.md) for the create-to-lease sequence.
 5. The API stores the Fleet config, linked secret reference, approval policy, trigger declarations (`triggers: [...]` array), and optional bundle snapshot reference.
-6. **Provider wiring follows the trigger surface.** For the GitHub App path, a workspace administrator connects GitHub once. `agentsfleet` signs state bound to the selected workspace; GitHub returns `installation_id` plus a one-time user-authorization code; `agentsfleetd` exchanges that code and verifies the user can access the installation before storing its workspace route. An installation already owned by another workspace is rejected without reassignment. The administrator selects the maximum repositories during App installation, and each fleet declares its smaller `repositories` + `events` subscription; GitHub then delivers automatically to `/v1/ingress/github`. Other custom webhooks retain the printed per-fleet URL and operator-run provider registration. The platform holds its own App identity and secrets, never a user's Personal Access Token (PAT).
+6. **Provider wiring follows the trigger surface.** A GitHub App trigger needs a one-time workspace connection, and a custom webhook keeps its printed per-fleet URL; the platform holds its own App secrets, never a user's Personal Access Token (PAT) ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution").
 7. Future triggers are served with no restart and no watcher thread. Creation made the Fleet's events stream + consumer group up front (step 4). Each later trigger `XADD`s to the canonical stream name `fleet:{id}:events`, and the control plane hands that event to whichever `agentsfleet-runner` leases next (`POST /v1/runners/me/leases`).
 
 After creation, the Fleet is no longer tied to the interactive Claude session that created it.
@@ -197,19 +186,17 @@ Two first scenarios anchor the product flow:
 
 A Fleet's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger entries (unique on `(type, source)` tuple). Each entry is one of:
 
-- **GitHub App trigger.** Type `webhook`, `source: github`, explicit `repositories: [owner/repo, …]`, and `events: [...]`. GitHub posts once to `POST /v1/ingress/github`; the signed delivery's installation resolves the workspace, then repository + event + approved GitHub grant select the fleet. Omitting `repositories` is fail-closed for App traffic.
+- **GitHub App trigger.** Type `webhook`, `source: github`, explicit `repositories` and `events`; omitting `repositories` is fail-closed for App traffic ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution").
 - **Manual/custom webhook trigger.** The existing fleet-addressed routes remain available: `POST /v1/webhooks/{fleet_id}` and the GitHub-specific `POST /v1/webhooks/{fleet_id}/github`. The operator registers those URLs and a workspace webhook secret with the provider. This path does not infer a fleet from an App installation and does not require `repositories`.
 - **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression, plus `timezone` and `message`. Installing the Fleet stores one desired schedule and synchronously registers the same stable schedule identifier with QStash. QStash owns the clock and sends each signed fire to `agentsfleetd`, which appends one synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer. `TRIGGER.md` allows at most one declarative cron entry per Fleet; the schedule API can manage additional explicit schedules within the per-Fleet limit.
 
 In addition to the declared triggers, every Fleet always accepts:
 
-- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or types into the dashboard's chat composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages` and `XADD`s directly to `fleet:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use. The dashboard names every send with an `operation_id` (a UUID v7) and keeps it in a per-user, per-fleet ledger of unresolved sends, mirrored to `localStorage`, until the 202 arrives; a retry, a Resend, or a Resend after reload carries the same id. The daemon keys it as `<fleet_id>:<operation_id>`, answers a repeat with the first event off the insert's conflict — even when the paused or budget check would refuse new work — and refuses the same id with a different message or from another sender (`UZ-AGT-016`). The repeat is checked against the digest and fleet that insert returns, never a second read. The 202 says `replayed: true` when it answers an earlier send. A `message` or `operation_id` holding NUL is refused 400, because Postgres `text` and `jsonb` cannot store it. Every send ends visibly. One unanswered after 30 seconds reads "Couldn't confirm" with Resend. Another tab's send stays hidden while that tab holds its Web Lock, and shows Resend once the tab is gone. A dismissal is a tombstone every tab keeps for a day, so no late write brings the send back. A `UZ-AGT-016` refusal is final: its notice offers Send as new, under a fresh id, and never Resend. A replayed answer whose event the page never loaded reads the event's detail and settles its row; one the page already holds settles from its own frames. A running event the page has not heard from in 45 seconds is read once, so a lost completion still ends its row.
+- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or types into the dashboard's chat composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages` and `XADD`s directly to `fleet:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use. The dashboard names every send with an `operation_id` (a UUID v7) and keeps it in a per-user, per-fleet ledger of unresolved sends, mirrored to `localStorage`, until the 202 arrives; a retry, a Resend, or a Resend after reload carries the same id. A resend under the same id returns the first event ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Fleet messages). Every send ends visibly. One unanswered after 30 seconds reads "Couldn't confirm" with Resend. Another tab's send stays hidden while that tab holds its Web Lock, and shows Resend once the tab is gone. A dismissal is a tombstone every tab keeps for a day, so no late write brings the send back. A `UZ-AGT-016` refusal is final: its notice offers Send as new, under a fresh id, and never Resend. A replayed answer whose event the page never loaded reads the event's detail and settles its row; one the page already holds settles from its own frames. A running event the page has not heard from in 45 seconds is read once, so a lost completion still ends its row.
 
 All actors flow through the same runtime path. The Fleet's in-run fleet loop does not branch on actor type — the same `http_request`-driven evidence gathering and Slack post happen regardless of how the work was triggered. The "morning health check" steer that ships as the create-time smoke test produces a real first-pass evidence sweep, not a canned response — the SKILL.md prose is what dictates behaviour, not the actor field.
 
-`type: api` (catch-all JSON ingress at `POST /v1/fleets/{id}/events`) is reserved by the architecture but **not accepted in `TRIGGER.md` in v1** — admission lands with the workspace-API-tokens spec that builds the `/v1/auth/tokens` surface. Webhook and cron cover the wedge.
-
-Beyond the three trigger ingresses, the runtime emits its own `system:*` events on the activity channel when state changes apply (`config_updated` after a PATCH reload; more kinds to follow). These are not triggers — they are the runtime telling the user "what I just had to apply got applied" — see [`data_flow.md`](./data_flow.md). They surface in the same activity tail and in `agentsfleet events {id} --actor=system`, so the user sees them alongside the work the fleet does.
+`type: api` is accepted, and it is the trigger a bundle with no `TRIGGER.md` installs with (`rustd/crates/afd_fleet_lifecycle/src/install/authored.rs`). It has no ingress route of its own.
 
 ## §8.4 Working from Claude or the dashboard
 
@@ -226,9 +213,9 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
 
 - The **Trigger panel** renders one card per declared trigger. A GitHub App card shows connector state plus repository/event subscriptions and routes a disconnected workspace to Connect GitHub. Custom providers retain registration guidance and copyable per-fleet URLs. The dashboard never asks for or stores a user's provider PAT.
-- The **chat surface** (composed via `@assistant-ui/react`) shows webhook / cron / continuation events as system chips and each fleet reply as assistant-ui message parts: a Thought chip that reads "Thinking · 3.2s" while the fleet reasons and folds to "Thought · 8.5s" when the answer starts, then the tool rows, then the answer. Tool calls render the way Codex's terminal does. Each has a `•` that shimmers while it runs and ends as a green `✓`, or red beside "(failed)" or the command's exit code. A bold verb and target follow (`Requested POST https://…`, `Edited deploy.yaml (+2 −1)`, `Remembered deploy-window`), with three dim lines of its scrubbed output under a `└` rail and "+N lines · show all". Consecutive calls that only look (file reads, memory searches, web fetches and searches, schedule listings) fold under one "Explored" row ("Read a.md, b.md", "Search deploy window in memory"). An edit shows its diff unless the runner may have cut its text, a call cut off by a crash or kill reads "Interrupted", and once the turn has ended "show all" opens the call's full output. A call still open when its turn ends is marked interrupted as a guess: its own late completion replaces the guess, and the browser reads the event's saved trace to settle it, retrying a read that fails. A cell shows only what the runner recorded: dropped arguments read "(arguments not recorded)", and arguments it cannot name show as they came. The rows come from the live frames while the fleet works, and from the event's saved trace after a reload. A running reply reads "Working (1m 05s)"; a settled one ends with "Worked for 41s · 12.4k tokens · $0.03". The steer composer at the bottom turns user input into an event on the fleet's stream; a send the server refuses leaves the thread and its text returns to the composer with Resend. Saved history remains usable while the live stream connects, with explicit connection context above it.
+- The **chat surface** shows trigger events as system chips and each reply as its thinking, its tool calls and its answer, read from the live frames while the fleet works and from the event's saved trace after a reload. A send the server refuses leaves the thread, and its text returns to the composer with Resend.
 - The **workspace switcher** requires a name while the server owns workspace identity. The browser never automatically repeats a failed POST. It reports the failure and walks the tenant workspace endpoint's stable cursor pages to refresh the complete list. The CLI handles an uncertain response or registered name conflict with one encoded exact-name GET, then selects the authoritative match without replaying the POST. For login tokens, both create and list resolve the database subject mapping before a stale signed tenant claim and return that tenant identifier. Tenant API keys instead remain bound to the tenant recorded on the key, even if the creator's user mapping later changes. These rules prevent local state from mixing tenants without letting an API key cross its issuing boundary. A deliberate same-name retry cannot create another row because the tenant/name unique index returns a registered `409 Conflict`.
-- The **authenticated frame** is owned by the server-rendered `ShellFrame`. It keeps route content and desktop navigation useful while narrow client controls load. Mobile navigation, workspace menus, the account menu, and closed route tools load independently after focus, eligible pointer intent, or click. A failed tool load leaves its trigger available with an explicit retry. Visible tables, cards, and selectors never wait for those closed tools.
+- The **authenticated frame** is shell-first ([`web_app.md`](./web_app.md) §"The five statements").
 
 This matters because the fleet is not replacing Claude. It extends Claude from an interactive assistant into a durable operational worker — and the dashboard mirrors the same primitives so a user who lives in the browser sees an equivalent surface.
 
@@ -294,14 +281,14 @@ tenant provider → (nothing — synth-default                → agentsfleet te
                                                                  context_cap_tokens, secret_ref}
 
 trigger fires  → lease resolve:                            → lease resolve:
-                   resolveActiveProvider()                    resolveActiveProvider()
+                   Providers::resolve()                       Providers::resolve()
                      no row → synth-default                    follows secret_ref to vault
                    frontmatter has resolved cap →              returns mode=self_managed + cap + key
                    use it directly.                          frontmatter sentinels overlay:
                                                                model "" or absent → overlay
                                                                cap 0   or absent → overlay
 
-createExecution → context_cap_tokens=1048576                  → context_cap_tokens=1048576
+lease render    → context_cap_tokens=1048576                  → context_cap_tokens=1048576
                   model=accounts/fireworks/models/kimi-k3       model=accounts/.../kimi-k3
                   api_key=<from admin workspace vault>          api_key=<fw_LIVE_…>
 
@@ -313,7 +300,7 @@ L3 run chunking
 
 The parser-side companion to this rule landed with M49: `x-agentsfleet.model` and `x-agentsfleet.context.*` are now first-class fields on `FleetConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`rustd/crates/afd_wire/src/policy.rs`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 
-Single source of truth for caps: the `core.model_library` table (tenant read: bearer-authed `GET /v1/models`; the former public cap.json route is retired). Resolved server-side at `tenant provider create` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §10 for the library shape and §1 for the full self-managed posture.
+Caps are resolved at install or provider-set time, never at trigger time ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read").
 
 **Dashboard equivalent — the Models page (`/settings/models`).** A browser user manages the same self-managed posture there instead of the CLI. The **active-model row** shows the resolved `provider` · `model` with a LIVE/DEFAULT pill (the dashboard read of `tenant provider show`). The secret-driven **switch-list** flips the active provider in one click. It calls the same self-managed provider-set as `tenant provider create`, keyed off the server-projected secret `kind` (see [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.3). The row's **Edit** replaces the credential whole via PUT (§8.3), prefilled from the projected row — provider, base URL, and model are editable, and the key is re-entered because a stored secret is never readable. The `/credentials` page was removed outright (not redirected) — provider keys live here; custom (non-provider) secrets moved to the standalone Secrets & ENVs page (`/secrets`).
 
@@ -321,10 +308,5 @@ Single source of truth for caps: the `core.model_library` table (tenant read: be
 
 > **Status.** Shipped in `agentsfleetd` by M206_002, which also adds fleets that subscribe to one channel by its ID; [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) walks the zero-, one- and several-fleet cases.
 
-A second front door, alongside Claude / CLI / dashboard, for users who live in Slack and never author markdown. After a workspace admin connects Slack once in the dashboard (OAuth — Open Authorization; the install is a `fleet:slack` vault handle plus a generic `core.connector_installs` row mapping `team_id → workspace`), `@agentsfleet` lives in any channel it's invited to:
-
-1. A user `@mentions` it; the signed events ingress (`POST /v1/connectors/slack/events`) resolves `(team_id, channel_id)` and lands a `slack:<user>` event via the webhook-producer XADD shape (signature-authed, no principal).
-2. The first mention in a channel materializes a **durable per-channel resident fleet**, so every later mention in any thread of that channel routes to the same fleet. The mechanics — which insert path, the code-set reactive config, the binding row — are in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md) §2.
-3. The run hydrates and captures that channel's memory via the existing `/v1/runners/me/memory/{fleet_id}` loop ([`runner_fleet.md`](./runner_fleet.md) §Memory continuity) — so the bot **learns the channel**, and memory persists thread→thread because the resident fleet (not the thread) is the namespace. The answer posts back in-thread.
-
-The bot is **reactive** by design — it answers on mention, never acts unattended. Converting a recurring need into a durable teammate that wakes on a real source and acts with approval is **Rung 1** (the follow-on; out of scope of M106). Canonical spec: `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`.
+After a workspace admin connects Slack once, an `@mention` lands as one `slack_mention` admission and routes to a fleet subscribed to that channel, or else to the channel's resident fleet ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §"4. Routing a mention"; channel memory: [`memory.md`](./memory.md) §"4. The M106 channel pattern").
+The bot answers on mention and never acts unattended; acting unattended with approval is Rung 1 ([`high_level.md`](./high_level.md) §"5.2 Slack-resident channel bot — the on-ramp (M106)").

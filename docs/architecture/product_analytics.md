@@ -7,16 +7,12 @@ store. Two halves write into one PostHog project:
 | Half | Owner | Captures |
 |---|---|---|
 | **Client activation events** | `ui/packages/app` (`posthog-js`) | User-driven dashboard actions (catalog below), autocapture, pageviews, `identify` on Clerk sign-in, `reset` on sign-out. |
-| **Server conversion truth** | agentsfleetd (`posthog-rs`, `rustd/crates/afd_observability/src/product/telemetry.rs`) | Five state-owning events, and only these five: `FleetTriggered`, `FleetCompleted`, `SignupBootstrapped`, `WorkspaceCreated`, `ServerStarted`. |
+| **Server conversion truth** | agentsfleetd (`posthog-rs`, `rustd/crates/afd_observability/src/product/telemetry.rs`) | Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry". |
 
 Client events stitch to the same person via `identify(clerk_user_id)`. A
-conversion that completes server-side — signup completion, workspace creation,
-fleet runs — is captured server-side only. Browser events get ad-blocked and
+conversion that completes server-side — workspace creation, fleet runs — is
+captured server-side only. Browser events get ad-blocked and
 lost on tab close, so the backend is authoritative for them.
-
-`rustd/crates/afd_observability/src/product/telemetry.rs` declares more event types than the five above. A declared
-type with no capture site fires nothing; read the capture sites, not the
-declarations, when asking what reaches PostHog.
 
 ## Client event rules
 
@@ -75,5 +71,5 @@ on the next session.
 `ui/packages/website` emits `signup_started` + `navigation_clicked` only. The
 funnel is redirect-based — signup completes on the app origin under Clerk, and
 the deliberate localStorage-only persistence (the cookie-less posture) does not
-cross subdomains — so signup *completion* deliberately has no client event;
-`SignupBootstrapped` (server) is the conversion truth.
+cross subdomains — so signup *completion* deliberately has no client event.
+Server events: [observability.md](./observability.md) §"PostHog is product analytics, not operations telemetry".
