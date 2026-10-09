@@ -67,7 +67,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_vault/src/delete.rs` | EDIT | `delete_in` on a caller's transaction; `delete` wraps it |
 | `rustd/crates/afd_connector/src/grant/holding.rs` | EDIT | `forget` is one transaction; its "different stores" note is corrected |
 | `rustd/crates/afd_connector/src/grant.rs` | EDIT | `land` writes the vault row before routing, as its module note already says |
-| `rustd/crates/afd_connector/tests/integration_connect_roundtrip/cases.rs` | EDIT | Refused-delete and racing-reconnect cases |
+| `rustd/crates/afd_connector/tests/integration_connect_roundtrip/disconnect.rs` | CREATE | Refused-delete and racing-reconnect cases |
+| `rustd/crates/afd_connector/tests/integration_connect_roundtrip.rs` | EDIT | The fixture exposes its tenant and a grant store |
 | `rustd/crates/afd_wire/src/policy.rs` | EDIT | `HttpRequestRule` gains `permitted_fields`, serde-defaulted |
 | `rustd/crates/afr_egress/src/origin.rs` | EDIT | A rule naming fields admits only those keys and no query string |
 | `rustd/crates/afr_egress/src/origin/tests.rs` | EDIT | Unlisted key, query string and admitted-draft cases |
@@ -133,12 +134,12 @@ Report and renew admit a request only when the lease's stored token equals the p
 - **Dimension 2.3** — Minting refuses an active lease the fleet has moved past → Test `test_mint_refuses_a_superseded_active_lease` — DONE (`afd_fleet/tests/integration_credential_mint/cases.rs`, live)
 - **Dimension 2.4** — A fence read with a negative column is a corrupt sequence, never a fence → Test `a_negative_column_is_a_corrupt_sequence` — DONE (`afd_fleet/src/lease/fence/tests.rs`)
 
-### §3 — Disconnect commits both stores or neither
+### §3 — Disconnect commits both stores or neither — DONE
 
 `forget` deletes routing rows in one commit and the vault handle in another; `land` writes routing before the vault row. Both stores are one Postgres. `afd_vault` gains `Directory::delete_in` on a caller's transaction. `forget` runs one transaction: vault delete first, routing rows second, then commit. `land` writes the vault row before routing. Both paths take the vault row lock first, so they serialize and cannot deadlock. **Implementation default:** no advisory lock, because the row lock already orders the two.
 
-- **Dimension 3.1** — A refused vault delete leaves the routing rows in place → Test `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows`
-- **Dimension 3.2** — A reconnect racing a Disconnect ends with routing rows exactly when a handle exists → Test `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither`
+- **Dimension 3.1** — A refused vault delete leaves the routing rows in place → Test `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows` — DONE (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
+- **Dimension 3.2** — A reconnect racing a Disconnect ends with routing rows exactly when a handle exists → Test `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` — DONE (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
 
 ### §4 — A locked GitHub write rule admits only what it names
 
@@ -296,7 +297,7 @@ N/A — no files deleted. `literal` moves from `interim.rs` to `slack.rs`; R4 pr
 
 ## Discovery (consult log)
 
-- **Consults** — Review of `docs/event-runtime-positioning` at `bbf220b27` (Oct 09, 2026): adversarial and red-team passes raised the findings; five verification agents read each code path and confirmed, refuted or narrowed it. Refuted: a killed fleet posting messages (`message.rs` refuses it). Narrowed: §1 is unreachable from inside the sandbox; §6 is not a cross-role escalation. Indy chose to fold the security findings into the positioning work, then on Oct 09, 2026 chose "Fold now (Recommended)" for Slack answer escaping, which M212 had left for later with the quote "slack escaping skip follow up spec, let me test and fix it later". Agent choice with evidence: §6 verify only. Indy then chose the branch, §7 and §8 together:
+- **Consults** — Review of `docs/event-runtime-positioning` at `bbf220b27` (Oct 09, 2026): adversarial and red-team passes raised the findings; five verification agents read each code path and confirmed, refuted or narrowed it. Refuted: a killed fleet posting messages (`message.rs` refuses it). Narrowed: §1 is unreachable from inside the sandbox; §6 is not a cross-role escalation. Indy chose to fold the security findings into the positioning work, then on Oct 09, 2026 chose "Fold now (Recommended)" for Slack answer escaping, which M212 had left for later with the quote "slack escaping skip follow up spec, let me test and fix it later". M187_001 §3.3 (Indy, Sep 07, 2026: "Why do you need the advisory lock") still holds: §3 adds none. The premise recorded beside it, that a Postgres lock could not cover the vault write, was false, because both stores are one Postgres (`afd_vault/src/write.rs`). Agent choice with evidence: §6 verify only. Indy then chose the branch, §7 and §8 together:
   > Indy (2026-10-09 13:03): "I think fix all the M219 + 1, 2, 3 in this PR and push, so we can test" — context: 1 = this spec ships on `docs/event-runtime-positioning`; 2 = §7, a killed fleet keeps its ceiling; 3 = §8, a catalogue fault charges tokens late.
 - **Metrics review** — One operator warning in §8; no analytics or funnel playbook update required, because no product event changes.
 - **Skill-chain outcomes** — pending.
