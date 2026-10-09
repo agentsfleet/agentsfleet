@@ -15,17 +15,51 @@
 /// itself. Slack documents exactly these three as the text to escape.
 const SLACK_ENTITIES: [(char, &str); 3] = [('&', "&amp;"), ('<', "&lt;"), ('>', "&gt;")];
 
+/// The most characters a message's `text` may carry; Slack documents 40,000.
+const TEXT_MAX_CHARS: usize = 40_000;
+
+/// What ends a text cut to fit.
+const TRUNCATED: &str = "… (truncated)";
+
 /// `text` with every character Slack reads as markup replaced by its entity,
 /// so no post notifies anyone or renders as a link it did not spell out.
+///
+/// Cut to Slack's limit after escaping, since escaping lengthens the text,
+/// and only between whole entities, so a cut never leaves half of `&lt;`.
 pub(super) fn literal(text: &str) -> String {
-    text.chars()
-        .fold(String::with_capacity(text.len()), |mut out, c| {
-            match SLACK_ENTITIES.iter().find(|(markup, _)| *markup == c) {
-                Some((_, entity)) => out.push_str(entity),
-                None => out.push(c),
-            }
-            out
-        })
+    let escaped_chars: usize = text.chars().map(width).sum();
+    let budget = if escaped_chars <= TEXT_MAX_CHARS {
+        usize::MAX
+    } else {
+        TEXT_MAX_CHARS - TRUNCATED.chars().count()
+    };
+    let mut used = 0;
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        used += width(c);
+        if used > budget {
+            out.push_str(TRUNCATED);
+            break;
+        }
+        match entity(c) {
+            Some(entity) => out.push_str(entity),
+            None => out.push(c),
+        }
+    }
+    out
+}
+
+/// The entity Slack shows `c` as itself through, when `c` is markup.
+fn entity(c: char) -> Option<&'static str> {
+    SLACK_ENTITIES
+        .iter()
+        .find(|(markup, _)| *markup == c)
+        .map(|(_, entity)| *entity)
+}
+
+/// How many characters `c` takes once escaped (an entity is ASCII).
+fn width(c: char) -> usize {
+    entity(c).map_or(1, str::len)
 }
 
 #[cfg(test)]

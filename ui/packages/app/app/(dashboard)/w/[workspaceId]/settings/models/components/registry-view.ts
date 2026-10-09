@@ -5,6 +5,7 @@
 
 import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import type { TenantModelEntry } from "@/lib/types";
+import { modelSortKey } from "@/lib/models/display";
 
 export type SortState = { key: "model" | "provider"; dir: "ascending" | "descending" } | null;
 
@@ -19,9 +20,10 @@ export function computeNextSort(cur: SortState, key: string): SortState | null {
   return { key, dir: cur.dir === "ascending" ? "descending" : "ascending" };
 }
 
-/** Pure — the sort comparator's per-row key, single call site per column. */
+/** Pure — the sort comparator's per-row key, single call site per column. The
+ * model column sorts by the name it shows, as the model library does. */
 export function sortValueFor(entry: TenantModelEntry, key: "model" | "provider"): string {
-  return key === "model" ? entry.model_id : (entry.provider ?? "");
+  return key === "model" ? modelSortKey(entry.model_id) : (entry.provider ?? "");
 }
 
 /**

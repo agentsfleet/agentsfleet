@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { usdPerMtokToNanos } from "@/lib/api/admin-model-library-types";
-import { EMPTY_VALUE, formatContextTokens, formatRatesPerMtok, modelLabel } from "./display";
+import { EMPTY_VALUE, formatContextTokens, formatRatesPerMtok, modelLabel, modelSortKey } from "./display";
 
 describe("model display", () => {
   it("names a provider id the way its provider markets the model", () => {
@@ -21,13 +21,28 @@ describe("model display", () => {
       ["MiniMax-M3", "MiniMax M3"],
       ["qwen/qwen3.8-max", "Qwen3.8 Max"],
       ["deepseek-flash", "DeepSeek Flash"],
+      ["gpt-4o", "GPT-4o"],
+      ["gpt-4o-2024-08-06", "GPT-4o 2024-08-06"],
+      ["claude-haiku-4-5-20251001", "Haiku 4.5 20251001"],
+      ["sonar", "Sonar"],
+      ["deepseek", "DeepSeek"],
     ];
     for (const [id, name] of cases) expect(modelLabel(id), id).toBe(name);
   });
 
   it("keeps an id with no word structure as its last segment", () => {
     expect(modelLabel("syn:large:text")).toBe("syn:large:text");
-    expect(modelLabel("sonar")).toBe("sonar");
+    // A version-shaped word reads as written: OpenAI spells its o-series lowercase.
+    expect(modelLabel("o3")).toBe("o3");
+    expect(modelLabel("gpt-")).toBe("GPT");
+  });
+
+  it("sorts a model column by the name it shows, then the id", () => {
+    const ids = ["accounts/fireworks/models/kimi-k3", "claude-opus-5-5", "anthropic/claude-opus-5.5", "deepseek-flash"];
+    const sorted = [...ids].sort((a, b) => modelSortKey(a).localeCompare(modelSortKey(b)));
+    expect(sorted.map(modelLabel)).toEqual(["DeepSeek Flash", "Kimi K3", "Opus 5.5", "Opus 5.5"]);
+    // Two ids that read alike keep a fixed order, by id.
+    expect(sorted.slice(2)).toEqual(["anthropic/claude-opus-5.5", "claude-opus-5-5"]);
   });
 
   it("formats context and rates the way the model library prints them", () => {

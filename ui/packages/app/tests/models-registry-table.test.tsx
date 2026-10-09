@@ -339,7 +339,7 @@ describe("ModelsRegistryTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /view details for claude-sonnet-5/i }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "claude-sonnet-5" })).toBeTruthy();
+    expect(within(dialog).getByRole("heading", { name: "Sonnet 5" })).toBeTruthy();
   });
 
   it("row actions are inline icon buttons — view/switch/edit/remove, no dropdown menu; switch absent and remove disabled on the active row", async () => {
@@ -645,12 +645,12 @@ describe("ModelsRegistryTable", () => {
     expect(computeNextSort({ key: "model", dir: "descending" }, "model")).toEqual({ key: "model", dir: "ascending" });
   });
 
-  it("sortValueFor reads model_id for the model column and provider (or '') for the provider column", async () => {
+  it("sortValueFor reads the shown name for the model column and provider (or '') for the provider column", async () => {
     const { sortValueFor } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
     );
     const e = entry({ model_id: "claude-sonnet-5", provider: "anthropic" });
-    expect(sortValueFor(e, "model")).toBe("claude-sonnet-5");
+    expect(sortValueFor(e, "model")).toBe("Sonnet 5 claude-sonnet-5");
     expect(sortValueFor(e, "provider")).toBe("anthropic");
     expect(sortValueFor(entry({ provider: undefined }), "provider")).toBe("");
   });

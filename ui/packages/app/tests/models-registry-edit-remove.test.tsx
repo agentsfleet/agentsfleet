@@ -15,7 +15,7 @@ function withTooltipProvider(node: React.ReactElement): React.ReactElement {
 /** A model the static known-models list offers for "anthropic": the option an
  *  Edit picks while the catalogue is empty. */
 const FALLBACK_MODEL = "claude-opus-5-5";
-
+const FALLBACK_OPTION = "Opus 5.5 claude-opus-5-5"; // the name the option shows, then the id
 
 const listModelEntriesActionMock = vi.fn();
 const listSecretsActionMock = vi.fn();
@@ -116,7 +116,7 @@ describe("Row actions — Edit", () => {
     // so ProviderModelSelect falls back to the static known-models list for
     // "anthropic" — a <Select>, not a free-text input.
     await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: FALLBACK_MODEL }));
+    await user.click(await screen.findByRole("option", { name: FALLBACK_OPTION }));
     await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
@@ -130,7 +130,7 @@ describe("Row actions — Edit", () => {
     const { dialog, onSaved, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: FALLBACK_MODEL }));
+    await user.click(await screen.findByRole("option", { name: FALLBACK_OPTION }));
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
     await waitFor(() => expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: FALLBACK_MODEL }));
@@ -158,7 +158,7 @@ describe("Row actions — Edit", () => {
     const { dialog, onSaved, onCommitted, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: FALLBACK_MODEL }));
+    await user.click(await screen.findByRole("option", { name: FALLBACK_OPTION }));
     await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
@@ -192,7 +192,7 @@ describe("Row actions — Edit", () => {
     const { dialog, onSaved, onCommitted, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: FALLBACK_MODEL }));
+    await user.click(await screen.findByRole("option", { name: FALLBACK_OPTION }));
     await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 

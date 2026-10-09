@@ -46,9 +46,11 @@ export function SecretNameCell({ secret, pending, onRename }: {
       {/* The name is the interpolation key in ${secrets.<name>.<field>}; copying it
           avoids silent typos. It sits in one fixed slot that ellipsizes a long
           name (the full name is the hover and what Copy copies), so the copy and
-          rename icons after it line up on every row. */}
+          rename icons after it line up on every row. On a phone the slot gives
+          way and the name takes what the row has left, or the row would push
+          its actions behind a horizontal scroll. */}
       <div className="flex min-w-0 items-center gap-1">
-        <span className="block min-w-trim max-w-trim truncate font-mono text-mono leading-mono" title={secret.name}>
+        <span className="block min-w-0 truncate font-mono text-mono leading-mono sm:min-w-trim sm:max-w-trim" title={secret.name}>
           {secret.name}
         </span>
         <CopyButton value={secret.name} label={`Copy secret name: ${secret.name}`} />

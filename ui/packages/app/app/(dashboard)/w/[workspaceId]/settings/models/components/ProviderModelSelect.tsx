@@ -13,6 +13,7 @@ import { modelsForProvider, uniqueModelIds } from "@/lib/api/model-library-types
 import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { knownModelsFor } from "../lib/known-models";
+import { modelLabel } from "@/lib/models/display";
 
 const CATALOGUE_LOADING_PLACEHOLDER = "Loading models…";
 
@@ -81,11 +82,22 @@ export default function ProviderModelSelect({
             <SelectValue placeholder="Select a model" />
           </SelectTrigger>
           <SelectContent>
-            {optionIds.map((m) => (
-              <SelectItem key={m} value={m}>
-                {m}
-              </SelectItem>
-            ))}
+            {/* The name the tables show, with the id the entry stores beside
+                it, so what is picked and what the table lists read alike. */}
+            {optionIds.map((m) => {
+              const name = modelLabel(m);
+              return (
+                <SelectItem key={m} value={m}>
+                  {name === m ? (
+                    m
+                  ) : (
+                    <>
+                      {name} <span className="font-mono text-mono leading-mono text-muted-foreground">{m}</span>
+                    </>
+                  )}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       ) : (

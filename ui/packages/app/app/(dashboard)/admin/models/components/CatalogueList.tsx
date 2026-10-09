@@ -13,7 +13,14 @@ import {
 } from "@agentsfleet/design-system";
 import { CoinsIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
 import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library";
-import { CONTEXT_HEADER, RATES_HEADER, formatContextTokens, formatRatesPerMtok, modelLabel } from "@/lib/models/display";
+import {
+  CONTEXT_HEADER,
+  RATES_HEADER,
+  formatContextTokens,
+  formatRatesPerMtok,
+  modelLabel,
+  modelSortKey,
+} from "@/lib/models/display";
 import { presentErrorString } from "@/lib/errors";
 import {
   default as EditModelDialogDynamic,
@@ -115,7 +122,7 @@ function buildColumns({
 }): DataTableColumn<AdminModel>[] {
   return [
     { key: "provider", header: "Provider", sortValue: (m) => m.provider, cell: (m) => <Badge variant="cyan">{m.provider}</Badge> },
-    { key: "model", header: "Model", sortValue: (m) => m.model_id, cell: (m) => <ModelCell model={m} active={active} /> },
+    { key: "model", header: "Model", sortValue: (m) => modelSortKey(m.model_id), cell: (m) => <ModelCell model={m} active={active} /> },
     {
       key: "context",
       header: CONTEXT_HEADER,

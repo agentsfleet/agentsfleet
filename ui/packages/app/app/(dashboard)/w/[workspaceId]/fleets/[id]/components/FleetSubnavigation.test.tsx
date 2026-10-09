@@ -1,8 +1,20 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+
+// Every tab's link status, settled unless a case says a navigation is in flight.
+const linkStatus = vi.hoisted(() => ({ pending: false }));
+
+vi.mock("next/link", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/link")>();
+  return { ...actual, useLinkStatus: () => linkStatus };
+});
+
 import { FleetSubnavigation, FLEET_VIEW, resolveFleetView } from "./FleetSubnavigation";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  linkStatus.pending = false;
+  cleanup();
+});
 
 describe("FleetSubnavigation", () => {
   it("renders all fleet-local sections with one current page", () => {
@@ -31,5 +43,14 @@ describe("FleetSubnavigation", () => {
     expect(resolveFleetView(undefined)).toBe(FLEET_VIEW.chat);
     expect(resolveFleetView(FLEET_VIEW.chat)).toBe(FLEET_VIEW.chat);
     expect(resolveFleetView("unknown")).toBeNull();
+  });
+
+  it("every fleet tab is a link that says when its view is on the way", () => {
+    linkStatus.pending = true;
+    render(<FleetSubnavigation workspaceId="ws_1" fleetId="fleet_1" activeView={FLEET_VIEW.chat} />);
+    for (const name of ["Chat", "Events", "Memory", "Skill", "Trigger"]) {
+      const label = screen.getByRole("link", { name }).querySelector("[data-pending]");
+      expect(label?.getAttribute("data-pending"), name).toBe("true");
+    }
   });
 });
