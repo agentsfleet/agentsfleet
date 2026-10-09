@@ -15,6 +15,11 @@ After=network.target
 
 [Service]
 Type=simple
+# The toolbox is an EROFS image, and the runner's probe reads /proc/filesystems,
+# which lists erofs only once its module is loaded: a fresh or rebooted host
+# would refuse at every start. `+` runs it with full privileges, whatever
+# hardening this unit gains.
+ExecStartPre=+/usr/sbin/modprobe erofs
 # `run` supervises this host's leases; the binary's other entries are `probe`
 # and the `sandbox` the engine starts inside each sandbox.
 ExecStart=/usr/local/bin/agentsfleet-runner run
