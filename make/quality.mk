@@ -60,11 +60,16 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@# is to be exercised by tests would be the one module lint never sees.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
 	  cargo clippy --workspace --all-targets --all-features -- -D warnings
-	@# The configuration that ships: no features at all. Every other lane turns
+	@# The configuration that ships: both binaries, no features, the `dist`
+	@# profile the deploy and release workflows build. Every other lane turns
 	@# `openapi` and `test-util` on, so an import that exists only for an
 	@# annotation broke the production build once without any lane noticing.
-	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
-	  cargo check -p agentsfleetd --bin agentsfleetd
+	@# Every other lane also keeps `debug_assertions` on, so a name used only
+	@# under `cfg(debug_assertions)` reads as used — until the release build
+	@# on Linux finds it unused (agentsfleet_runner's host.rs, once). On macOS
+	@# this proves the release cfg; the Linux cfg is proved by CI's lint job.
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --profile dist, both binaries (no features)" -- \
+	  cargo check --profile dist -p agentsfleetd --bin agentsfleetd -p agentsfleet_runner --bin agentsfleet-runner
 
 SHELLCHECK ?= shellcheck
 
