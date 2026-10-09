@@ -28,7 +28,7 @@ mod lapse;
 #[path = "integration_held_sandbox/poll.rs"]
 mod poll;
 #[path = "integration_held_sandbox/report.rs"]
-mod report;
+pub(crate) mod report;
 #[path = "integration_held_sandbox/resume.rs"]
 mod resume;
 #[path = "integration_held_sandbox/unleasable.rs"]

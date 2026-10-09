@@ -53,6 +53,11 @@ pub(crate) fn closed_refusal(
     url: &Url,
     body: Option<&str>,
 ) -> Option<String> {
+    // A path `admits` refuses before reading any rule is no rule's to explain:
+    // blaming a key or the query would send the model to fix the wrong thing.
+    if !trusted_path(url) {
+        return None;
+    }
     let path = url.path();
     let rule = origin.requests.iter().find(|rule| {
         *method == method_of(rule.method)
@@ -64,8 +69,17 @@ pub(crate) fn closed_refusal(
     }
     let fields = body.and_then(|body| serde_json::from_str::<Fields>(body).ok())?;
     let key = fields.0.keys().find(|key| !named(rule, key))?;
+    Some(key_refused(key))
+}
+
+/// The sentence naming the first key a closed rule does not list.
+///
+/// The key is the model's own input, so it is cut to [`KEY_ECHO_MAX`]
+/// characters and quoted with its escapes: a newline, a quote or a backtick in
+/// it cannot reshape the refusal the model reads.
+fn key_refused(key: &str) -> String {
     let shown: String = key.chars().take(KEY_ECHO_MAX).collect();
-    Some(format!("it sends `{shown}`, which this rule does not list"))
+    format!("it sends {shown:?}, which this rule does not list")
 }
 
 /// Whether `origin`'s rules admit `method` at `url` carrying `body`.
@@ -127,9 +141,9 @@ fn rule_admits(rule: &HttpRequestRule<'_>, method: &Method, path: &str, sent: &S
 
 /// Whether `rule` lists its whole key set, which closes it to every other.
 ///
-/// A rule without `permitted_fields` came from a daemon that predates them,
-/// and is enforced as that daemon meant it: locked fields checked, nothing
-/// else (`afd_wire::policy::HttpRequestRule`).
+/// A rule without `permitted_fields` is open: a read today's daemon writes, or
+/// any rule from a daemon older than the field. Its locked fields are checked
+/// and nothing else (`afd_wire::policy::HttpRequestRule`).
 const fn closed(rule: &HttpRequestRule<'_>) -> bool {
     rule.permitted_fields.is_some()
 }
