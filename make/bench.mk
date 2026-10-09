@@ -127,33 +127,38 @@ BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo
 
 .PHONY: bench-steer bench-lease bench-outbound bench-cardinality bench-tail bench-compare
 
-# Every lane seeds rows, so each migrates first, as the integration lane does
-# (`_migrate-test-db`, make/test-integration-rustd.mk). Without it a fresh
-# worktree's datastores have no schema and the seed fails on `core.tenants`.
+# On the rig every lane resets and migrates first, as the integration lane
+# does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`). The migration gives a
+# fresh worktree the schema its seed needs (`core.tenants`); the reset clears
+# the readiness marks the integration suite leaves in `fleet:ready`, which a
+# lease run would otherwise meet in every idle window. Only the rig: a dev or
+# prod profile points at a deployed database, and a bench never resets or
+# migrates one.
+BENCH_MIGRATE := $(if $(filter rig,$(PROFILE)),$(TEST_STATE_DEP) _migrate-test-db)
 
 # The lease lane runs two populations: the contended window it always ran, then
 # a drain through the full lease and report verbs, whose idle cost it prints as
 # `idle_statements_per_poll=` — the line a reader, or a rubric, greps for.
-bench-lease: _ensure-test-infra _migrate-test-db  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statements per poll (PROFILE=rig [BENCH_FLEETS=n] [BENCH_RUNNERS=n])
+bench-lease: _ensure-test-infra $(BENCH_MIGRATE)  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statements per poll (PROFILE=rig [BENCH_FLEETS=n] [BENCH_RUNNERS=n])
 	@echo "→ [bench-lease] profile=$(PROFILE)"
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) lease
 
-bench-steer: _ensure-test-infra _migrate-test-db  ## Steer ingress: accepted rate, p95, readiness depth (PROFILE=rig [BENCH_FLEETS=n] [BENCH_CONCURRENCY=n])
+bench-steer: _ensure-test-infra $(BENCH_MIGRATE)  ## Steer ingress: accepted rate, p95, readiness depth (PROFILE=rig [BENCH_FLEETS=n] [BENCH_CONCURRENCY=n])
 	@echo "→ [bench-steer] profile=$(PROFILE)"
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) steer
 
-bench-outbound: _ensure-test-infra _migrate-test-db  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
+bench-outbound: _ensure-test-infra $(BENCH_MIGRATE)  ## Delivery ceiling: rate, p95, head-of-line and retry cost (PROFILE=rig [BENCH_JOBS=n] [BENCH_SLOW_FRACTION=0..1])
 	@echo "→ [bench-outbound] profile=$(PROFILE)"
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) outbound
 
-bench-cardinality: _ensure-test-infra _migrate-test-db  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
+bench-cardinality: _ensure-test-infra $(BENCH_MIGRATE)  ## Cost per idle fleet up a ladder (PROFILE=rig [BENCH_FLEETS=n], rig cap 1000000)
 	@echo "→ [bench-cardinality] profile=$(PROFILE)"
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) cardinality
 
 # The live tail's ladders: viewers on one fleet × payload size, then open
 # streams. The only lane that also needs the pub/sub hub, which it opens from
 # the same Dragonfly the others use.
-bench-tail: _ensure-test-infra _migrate-test-db  ## Live tail: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
+bench-tail: _ensure-test-infra $(BENCH_MIGRATE)  ## Live tail: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
 	@echo "→ [bench-tail] profile=$(PROFILE)"
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) tail
 
