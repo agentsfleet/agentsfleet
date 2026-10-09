@@ -76,9 +76,14 @@ export function ModelCell({
             the same thing twice and pushed the model id out of view. */}
         <LockIcon size={12} className="shrink-0 text-muted-foreground" aria-label="Managed by a platform admin" />
         {platformDefault ? (
-          <span className="truncate text-muted-foreground" title={platformDefault.model}>
-            {modelLabel(platformDefault.model)}
-          </span>
+          <>
+            <span className="truncate text-muted-foreground" title={platformDefault.model}>
+              {modelLabel(platformDefault.model)}
+            </span>
+            {/* The id is one hover away on a pointer; on touch or a keyboard the
+                copy button is the way to it, as on every entry row. */}
+            <CopyButton value={platformDefault.model} label={`Copy model id: ${platformDefault.model}`} />
+          </>
         ) : null}
       </span>
     );

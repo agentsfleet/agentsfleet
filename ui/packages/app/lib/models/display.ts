@@ -36,6 +36,12 @@ const VERSION_PART = /^\d{1,2}$/;
 const VERSION_TOKEN = /^[a-z]?\d+(\.\d+)*$/i;
 /** A parameter count: `120b`, `397B`. */
 const SIZE_TOKEN = /^\d+(\.\d+)?[bmk]$/i;
+/** OpenAI's version after `gpt`: `5`, `6.1`, `4o`. */
+const GPT_VERSION = /^\d+(\.\d+)*[a-z]?$/i;
+/** A release date an id ends with, `-YYYY-MM-DD`, kept whole as one word. */
+const TRAILING_DATE = /-(\d{4}-\d{2}-\d{2})$/;
+/** An id that is one plain word, which reads title-cased: `sonar` → `Sonar`. */
+const PLAIN_WORD = /^[a-z]+$/i;
 
 /** Words written in capitals, wherever they appear in an id. */
 const ACRONYMS = new Set(["gpt", "glm", "oss", "ocr", "tee"]);
@@ -70,22 +76,37 @@ function joinVersionParts(words: string[]): string[] {
  *
  * `claude-fable-5` → `Fable 5`, `claude-opus-5-5` → `Opus 5.5`,
  * `accounts/fireworks/models/glm-5p3-flash` → `GLM 5.3 Flash`,
- * `gpt-6.1-sol` → `GPT-6.1 Sol`. An id with no word structure (`syn:large:text`)
+ * `gpt-6.1-sol` → `GPT-6.1 Sol`, `gpt-4o-2024-08-06` → `GPT-4o 2024-08-06`,
+ * `sonar` → `Sonar`. An id with no word structure (`syn:large:text`, `o3`)
  * comes back as its last path segment.
  */
 export function modelLabel(modelId: string): string {
   const segment = modelId.slice(modelId.lastIndexOf(PATH_SEPARATOR) + 1);
-  if (!segment.includes(WORD_SEPARATOR) || segment.includes(":")) return segment;
+  if (segment.includes(":")) return segment;
+  if (!segment.includes(WORD_SEPARATOR)) return PLAIN_WORD.test(segment) ? casedWord(segment) : segment;
+  const dated = TRAILING_DATE.exec(segment);
+  if (!dated) return wordsLabel(segment);
+  return `${wordsLabel(segment.slice(0, dated.index))} ${dated[1]}`;
+}
+
+/** The label of an id's hyphenated words, its release date already set aside. */
+function wordsLabel(segment: string): string {
   const isClaude = segment.toLowerCase().startsWith(CLAUDE_PREFIX);
   const bare = (isClaude ? segment.slice(CLAUDE_PREFIX.length) : segment).replace(FIREWORKS_POINT, "$1.$2");
   const split = bare.split(WORD_SEPARATOR).filter(Boolean);
   const words = isClaude ? joinVersionParts(split) : split;
   const cased = words.map(casedWord);
   // OpenAI's names keep the hyphen between GPT and its version: "GPT-6.1 Sol".
-  if (words[0]?.toLowerCase() === GPT && words[1] !== undefined && VERSION_TOKEN.test(words[1])) {
+  if (words[0]?.toLowerCase() === GPT && words[1] !== undefined && GPT_VERSION.test(words[1])) {
     return [`${cased[0]}${WORD_SEPARATOR}${cased[1]}`, ...cased.slice(2)].join(" ");
   }
   return cased.join(" ");
+}
+
+/** What a Model column sorts by: the name it shows, then the id, so two ids
+ * that read alike keep a fixed order. */
+export function modelSortKey(modelId: string): string {
+  return `${modelLabel(modelId)} ${modelId}`;
 }
 
 /** A token count grouped in threes with commas, by a fixed rule so the server and the browser agree. */

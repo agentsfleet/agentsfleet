@@ -200,10 +200,12 @@ describe("SecretsList name cell", () => {
   it("a long secret name ellipsizes and keeps its icons in line", () => {
     const longName = "billing-warehouse-replica-read-only-credentials-for-the-nightly-export";
     renderList([{ ...providerSecret(CREATED_MS), name: longName }]);
-    // The name sits in a fixed slot that truncates; the full name is its hover.
+    // From sm up the name sits in one fixed slot, as wide on every row, that
+    // truncates; the full name is its hover. On a phone the slot gives way.
     const slot = screen.getByTitle(longName);
     expect(slot.className).toContain("truncate");
-    expect(slot.className).toContain("max-w-trim");
+    expect(slot.className).toContain("sm:min-w-trim");
+    expect(slot.className).toContain("sm:max-w-trim");
     // Copy and rename follow the slot in the same row, so every row lines them up.
     const iconRow = slot.parentElement!;
     expect(within(iconRow).getByRole("button", { name: `Copy secret name: ${longName}` })).toBeTruthy();
