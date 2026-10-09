@@ -186,6 +186,13 @@ impl Error {
                 error_code::CONNECTOR_INSTALLATION_OWNERSHIP,
                 detail::INSTALLATION_OWNERSHIP,
             ),
+            // A Disconnect the vault refused because a model entry still names
+            // the credential: the caller's to correct, so it answers the
+            // vault's own conflict rather than an operation failure.
+            ErrorKind::Vault { source } if source.referenced_by().is_some() => (
+                error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
+                detail::GRANT_STILL_REFERENCED,
+            ),
             ErrorKind::Queue { .. }
             | ErrorKind::Vault { .. }
             | ErrorKind::Entropy { .. }

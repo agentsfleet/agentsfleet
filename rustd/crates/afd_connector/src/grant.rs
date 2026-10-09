@@ -20,9 +20,9 @@
 //! A row saying "this Slack team belongs to this workspace" with no vaulted bot
 //! token behind it is an ingress that resolves a workspace and then cannot
 //! answer; a grant nothing routes to reads connected and receives nothing. So
-//! [`Grants::land`] writes both in one transaction. The grant goes first for
-//! locks, not visibility: a Disconnect (`Grants::forget`) takes the same
-//! handle's row lock first, so the two order themselves on it.
+//! [`Grants::land`] writes both in one transaction, after taking its turn on
+//! the workspace row; a Disconnect (`Grants::forget`) takes the same turn
+//! first, so the two never interleave, even on a first connect.
 
 pub mod holding;
 pub mod parse;
@@ -175,12 +175,12 @@ impl Grants {
         // rollback path of its own — the argument `crate::delete`'s note makes
         // about compensating rollbacks being decoration.
         //
-        // The grant is written FIRST inside it, and that order is about locks,
-        // not visibility: a Disconnect (`Grants::forget`) takes the same row's
-        // lock first, so the two serialise on it and neither can hold a routing
-        // row the other is waiting for.
+        // A Disconnect (`Grants::forget`) takes turns with it on the workspace
+        // row (`sql::LOCK_WORKSPACE`), which exists before the first connect
+        // writes anything; the grant then goes first, as in `forget`.
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_INSTALL))?;
+        Self::take_turn(&mut transaction, workspace, CONTEXT_INSTALL).await?;
 
         match self
             .vault
@@ -215,6 +215,22 @@ impl Grants {
             provider = provider.id(),
             event = "connector_connected",
         );
+        Ok(())
+    }
+
+    /// Waits for, then holds, `workspace`'s turn to change a connection: the
+    /// first statement of a landing and of a Disconnect (`sql::LOCK_WORKSPACE`).
+    /// The lock lasts until the caller's transaction ends.
+    pub(super) async fn take_turn(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        context: &'static str,
+    ) -> Result<()> {
+        sqlx::query(sql::LOCK_WORKSPACE)
+            .bind(workspace.as_str())
+            .execute(&mut **transaction)
+            .await
+            .map_err(query(context))?;
         Ok(())
     }
 

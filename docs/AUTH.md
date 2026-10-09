@@ -1096,11 +1096,11 @@ The rows themselves:
 - **Per-install handle** `<provider>` in the **workspace** vault — Slack `{integration, bot_token, bot_user_id, team_id, team_name, scopes}`; GitHub `{integration, installation_id}`; the refresh providers `{integration, refresh_token, access_token, expires_at_ms, …provider-instance fields}` (Jira adds `cloud_id`/`site_url`, Zoho `accounts_base`). Datadog/Grafana/Fly write **no** per-install handle at all — not being connectors, their keys live as ordinary named workspace secrets instead. This is the credential the broker/worker mints or reads from. RULE VLT — the token lives only here. (The `integration` field names the connector; see the M108 refactor note on renaming it to `connector`.)
 - **`core.connector_installs`** — the non-secret external-account routing map: Slack stores `team_id → workspace_id`; GitHub stores `installation_id → workspace_id`. Tokens and App secrets never live here.
 
-Every authenticated callback completion and Disconnect uses the same transaction-scoped PostgreSQL advisory lock for its provider and workspace. The transaction commits or rolls back every connector row together. A callback cannot restore a partial binding after Disconnect finishes.
+Every authenticated callback completion and Disconnect first locks its workspace's row (`core.workspaces`, `FOR NO KEY UPDATE`), so the two take turns per workspace, even on a first connect, before any connector row exists. The transaction commits or rolls back every connector row together. A callback cannot restore a partial binding after Disconnect finishes.
 
 ### Disconnect and retry
 
-`DELETE /v1/workspaces/{ws}/connectors/{provider}` requires `connector:write`. It takes the same provider/workspace writer lock as authenticated callback completions, then deletes the workspace handle and reverse-routing rows in one database transaction. A missing handle or routing row still returns 204.
+`DELETE /v1/workspaces/{ws}/connectors/{provider}` requires `connector:write`. It takes the same workspace-row lock as authenticated callback completions, then deletes the workspace handle and reverse-routing rows in one database transaction. A missing handle or routing row still returns 204. A handle that a model registry entry still names is not deleted: the request answers 409 `UZ-VAULT-004` and the connection is left as it was.
 
 Disconnect changes only `agentsfleet`. It does not revoke provider authorization, uninstall a GitHub App, or change repository access. The dashboard can therefore show **Not connected → Connect** and rerun provider authorization after internal state loss.
 

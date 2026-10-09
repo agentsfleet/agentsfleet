@@ -136,10 +136,10 @@ Report and renew admit a request only when the lease's stored token equals the p
 
 ### §3 — Disconnect commits both stores or neither — DONE
 
-`forget` deletes routing rows in one commit and the vault handle in another; `land` writes routing before the vault row. Both stores are one Postgres. `afd_vault` gains `Directory::delete_in` on a caller's transaction. `forget` runs one transaction: vault delete first, routing rows second, then commit. `land` writes the vault row before routing. Both paths take the vault row lock first, so they serialize and cannot deadlock. **Implementation default:** no advisory lock, because the row lock already orders the two.
+`forget` deletes routing rows in one commit and the vault handle in another; `land` writes routing before the vault row. Both stores are one Postgres. `afd_vault` gains `Directory::delete_in` on a caller's transaction. `forget` runs one transaction: vault delete first, routing rows second, then commit. `land` writes the vault row before routing. Both paths first lock the workspace row (`core.workspaces`, `FOR NO KEY UPDATE`), so they take turns even on a first connect, when no vault row exists yet to lock. **Implementation default:** no advisory lock (Indy, M187_001: "Why do you need the advisory lock"); the workspace row exists before either write.
 
 - **Dimension 3.1** — A refused vault delete leaves the routing rows in place → Test `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows` — DONE (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
-- **Dimension 3.2** — A reconnect racing a Disconnect ends with routing rows exactly when a handle exists → Test `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` — DONE (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
+- **Dimension 3.2** — A reconnect or a first connect racing a Disconnect waits its turn, then ends with routing rows exactly when a handle exists → Test `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` with `a_disconnect_racing_a_first_connect_waits_its_turn` — DONE (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
 
 ### §4 — A locked GitHub write rule admits only what it names — DONE
 
@@ -239,7 +239,7 @@ No HTTP route, status code or error code changes. Refusals reuse `RUN_STALE_FENC
 | 2.3 | integration | `test_mint_refuses_a_superseded_active_lease` | Same setup → mint answers lease not found; the live holder still mints |
 | 2.4 | unit | `a_negative_column_is_a_corrupt_sequence` | Token −1 or live sequence −1 → `INTERNAL_DB_QUERY`, no fence |
 | 3.1 | integration | `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows` | Model entry references the grant key → `forget` errs, routing row present |
-| 3.2 | integration | `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` | Vault row held `FOR UPDATE`, `land` and `forget` both waiting, then released → routing rows present iff the handle is |
+| 3.2 | integration | `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` | Vault row (reconnect) or workspace row (first connect) held, `land` then `forget` queued behind it, released → `land` lands, `forget` answers Disconnected, routing rows present iff the handle is |
 | 4.1 | unit | `should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule` | `{"issue":7}` on `/pulls` and `/pulls?draft=false` → refused |
 | 4.2 | unit | `should_refuse_a_commit_that_names_its_own_identity` | `author`, `committer` or `signature` on `/git/commits` → refused |
 | 4.3 | unit | `should_admit_the_draft_pull_request_a_binding_authorises` | title, body, head, base, `draft:true` → admitted |
@@ -307,7 +307,7 @@ Regression: the existing memory, mint, connect-roundtrip, egress and Slack poste
 ## Decomposition & alternatives (patch vs refactor)
 
 - **Chosen shape:** One Section per boundary, so each fix and its test review alone; §7 and §8 last because they wait on a decision.
-- **Alternatives considered:** An advisory lock for §3 (rejected: the vault row lock already orders both paths); a schema column for §6 (rejected: closes no hole); a separate Slack spec (rejected by Indy's fold decision).
+- **Alternatives considered:** An advisory lock for §3 (rejected: the workspace row lock orders both paths, a first connect included); a schema column for §6 (rejected: closes no hole); a separate Slack spec (rejected by Indy's fold decision).
 - **Patch-vs-refactor verdict:** this is a **patch** because every boundary has a correct owner that admits too much; none needs a new layer.
 
 ## Discovery (consult log)
