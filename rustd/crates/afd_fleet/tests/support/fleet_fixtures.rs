@@ -224,10 +224,12 @@ impl Fixtures {
         };
         let migrator = self.lane.open(DbRole::Migrator, &[]).await;
         let mut connection = migrator.acquire().await.expect("a migrator connection");
-        sqlx::query(AssertSqlSafe(format!("ALTER TABLE core.{from} RENAME TO {to}")))
-            .execute(&mut *connection)
-            .await
-            .expect("the migrator owns the catalogue table");
+        sqlx::query(AssertSqlSafe(format!(
+            "ALTER TABLE core.{from} RENAME TO {to}"
+        )))
+        .execute(&mut *connection)
+        .await
+        .expect("the migrator owns the catalogue table");
         drop(connection);
         migrator.close().await;
     }
