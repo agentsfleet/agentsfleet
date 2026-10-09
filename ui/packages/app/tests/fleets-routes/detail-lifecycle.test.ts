@@ -1,6 +1,5 @@
-import { detailResponse, happyBilling } from "./harness";
+import { detailResponse, happyBilling, renderSettled } from "./harness";
 import { describe, expect, it } from "vitest";
-import { renderToStaticMarkup } from "react-dom/server";
 import { fetchMock } from "../helpers/dashboard-mocks";
 
 describe("fleets routes — detail lifecycle states", () => {
@@ -44,7 +43,7 @@ describe("fleets routes — detail lifecycle states", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
@@ -95,7 +94,7 @@ describe("fleets routes — detail lifecycle states", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
@@ -149,7 +148,7 @@ describe("fleets routes — detail lifecycle states", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
@@ -202,7 +201,7 @@ describe("fleets routes — detail lifecycle states", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
       }),
@@ -229,7 +228,7 @@ describe("fleets routes — detail lifecycle states", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
+    const markup = await renderSettled(
       await Page({
         params: Promise.resolve({ workspaceId: "ws_1", id: "zom_1" }),
         searchParams: Promise.resolve({ view: "trigger" }),
