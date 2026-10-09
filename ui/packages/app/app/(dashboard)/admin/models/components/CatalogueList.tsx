@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Badge,
   ConfirmDialog,
+  CopyButton,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -18,6 +19,7 @@ import {
   RATES_HEADER,
   formatContextTokens,
   formatRatesPerMtok,
+  modelIdCopyLabel,
   modelLabel,
   modelSortKey,
 } from "@/lib/models/display";
@@ -38,11 +40,15 @@ function isDefault(m: AdminModel, active: PlatformKey | null): boolean {
 
 function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey | null }) {
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex min-w-0 items-center gap-2">
       {/* The marketed name reads; the provider id, which fleet configs and
-          provider dashboards use, is one hover away. */}
-      <span className="truncate" title={model.model_id}>
-        {modelLabel(model.model_id)}
+          provider dashboards use, is one hover away, and the copy button
+          reaches it on touch or a keyboard, as on the workspace table. */}
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate" title={model.model_id}>
+          {modelLabel(model.model_id)}
+        </span>
+        <CopyButton value={model.model_id} label={modelIdCopyLabel(model.model_id)} />
       </span>
       {isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
     </span>

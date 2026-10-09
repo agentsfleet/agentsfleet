@@ -91,8 +91,12 @@ export function designSystemStub() {
       ),
     SelectTrigger: ({ children, id, ...rest }: React.PropsWithChildren<{ id?: string }> & Record<string, unknown>) =>
       React.createElement("span", { "data-select-trigger": "1", id, ...rest }, children),
-    SelectValue: ({ placeholder }: { placeholder?: string }) =>
-      React.createElement("span", { "data-select-placeholder": "1" }, placeholder),
+    // Children stand in for the picked value, as Radix renders them; the
+    // placeholder shows only when there are none.
+    SelectValue: ({ placeholder, children, className }: React.PropsWithChildren<{ placeholder?: string; className?: string }>) =>
+      children
+        ? React.createElement("span", { "data-select-value": "1", className }, children)
+        : React.createElement("span", { "data-select-placeholder": "1" }, placeholder),
     SelectContent: ({ children }: React.PropsWithChildren) =>
       React.createElement("span", { "data-select-content": "1" }, children),
     SelectItem: ({ children, value }: React.PropsWithChildren<{ value: string }>) =>

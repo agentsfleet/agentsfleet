@@ -9,10 +9,11 @@ import { ArrowLeftRightIcon, EyeIcon, LockIcon, PencilIcon, Trash2Icon } from "l
 import { type LibraryModel, providerLabel } from "@/lib/api/model-library-types";
 import {
   EMPTY_VALUE,
-  type RateFields,
   formatContextTokens,
   formatRatesPerMtok,
+  modelIdCopyLabel,
   modelLabel,
+  type RateFields,
 } from "@/lib/models/display";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 
@@ -70,20 +71,20 @@ export function ModelCell({
 }) {
   if (row.kind === "default") {
     return (
-      <span className="inline-flex min-w-0 items-center gap-2">
+      <span className="flex min-w-0 items-center gap-2">
         {/* The lock is the whole statement: this row is the platform default
             and a tenant admin cannot edit it. The word "Default" beside it said
             the same thing twice and pushed the model id out of view. */}
         <LockIcon size={12} className="shrink-0 text-muted-foreground" aria-label="Managed by a platform admin" />
         {platformDefault ? (
-          <>
+          // The id is one hover away on a pointer; on touch or a keyboard the
+          // copy button is the way to it, spaced as on every entry row.
+          <span className="flex min-w-0 items-center gap-1">
             <span className="truncate text-muted-foreground" title={platformDefault.model}>
               {modelLabel(platformDefault.model)}
             </span>
-            {/* The id is one hover away on a pointer; on touch or a keyboard the
-                copy button is the way to it, as on every entry row. */}
-            <CopyButton value={platformDefault.model} label={`Copy model id: ${platformDefault.model}`} />
-          </>
+            <CopyButton value={platformDefault.model} label={modelIdCopyLabel(platformDefault.model)} />
+          </span>
         ) : null}
       </span>
     );
@@ -96,7 +97,7 @@ export function ModelCell({
       <span className="truncate" title={row.entry.model_id}>
         {modelLabel(row.entry.model_id)}
       </span>
-      <CopyButton value={row.entry.model_id} label={`Copy model id: ${row.entry.model_id}`} />
+      <CopyButton value={row.entry.model_id} label={modelIdCopyLabel(row.entry.model_id)} />
     </span>
   );
 }

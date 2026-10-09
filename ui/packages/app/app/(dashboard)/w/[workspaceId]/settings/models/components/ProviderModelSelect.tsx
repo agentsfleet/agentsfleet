@@ -16,6 +16,9 @@ import { knownModelsFor } from "../lib/known-models";
 import { modelLabel } from "@/lib/models/display";
 
 const CATALOGUE_LOADING_PLACEHOLDER = "Loading models…";
+const SELECT_PLACEHOLDER = "Select a model";
+// An id beside or under its name reads as a quiet reference, a size below the name.
+const MODEL_ID_CLASS = "font-mono text-label leading-label text-muted-foreground";
 
 export type ProviderModelSelectProps = {
   id: string;
@@ -79,25 +82,16 @@ export default function ProviderModelSelect({
       ) : optionIds.length > 0 ? (
         <Select value={model} onValueChange={onModelChange}>
           <SelectTrigger id={id} aria-label={label}>
-            <SelectValue placeholder="Select a model" />
+            <SelectValue placeholder={SELECT_PLACEHOLDER} className="min-w-0 truncate">
+              {model ? <ModelValue modelId={model} /> : null}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {/* The name the tables show, with the id the entry stores beside
-                it, so what is picked and what the table lists read alike. */}
-            {optionIds.map((m) => {
-              const name = modelLabel(m);
-              return (
-                <SelectItem key={m} value={m}>
-                  {name === m ? (
-                    m
-                  ) : (
-                    <>
-                      {name} <span className="font-mono text-mono leading-mono text-muted-foreground">{m}</span>
-                    </>
-                  )}
-                </SelectItem>
-              );
-            })}
+            {optionIds.map((m) => (
+              <SelectItem key={m} value={m}>
+                <ModelOption modelId={m} />
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       ) : (
@@ -111,5 +105,30 @@ export default function ProviderModelSelect({
         />
       )}
     </div>
+  );
+}
+
+// An option names the model the way the tables do, with the id the entry
+// stores on its own line, so a long id never pushes the name off the list.
+function ModelOption({ modelId }: { modelId: string }) {
+  const name = modelLabel(modelId);
+  if (name === modelId) return modelId;
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span>{name}</span>{" "}
+      <span className={MODEL_ID_CLASS}>{modelId}</span>
+    </span>
+  );
+}
+
+// The closed picker keeps one line: the name, then the id until the trigger
+// runs out of room.
+function ModelValue({ modelId }: { modelId: string }) {
+  const name = modelLabel(modelId);
+  if (name === modelId) return modelId;
+  return (
+    <>
+      {name} <span className={MODEL_ID_CLASS}>{modelId}</span>
+    </>
   );
 }

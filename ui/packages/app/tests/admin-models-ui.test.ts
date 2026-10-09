@@ -163,6 +163,8 @@ describe("CatalogueList — rows + rates + empty state", () => {
     expect(cell.textContent).toBe("GLM 5.2");
     // Actions still name the row by its id, which is what a reader acts on.
     expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
+    // Touch and keyboard reach the id through its copy button, as on the workspace table.
+    expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Copy model id: glm-5.2" })).toBeTruthy();
   });
 
   it("sorts each catalogue data column from its header arrow", () => {

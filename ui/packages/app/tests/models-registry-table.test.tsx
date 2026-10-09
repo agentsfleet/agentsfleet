@@ -650,7 +650,7 @@ describe("ModelsRegistryTable", () => {
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
     );
     const e = entry({ model_id: "claude-sonnet-5", provider: "anthropic" });
-    expect(sortValueFor(e, "model")).toBe("Sonnet 5 claude-sonnet-5");
+    expect(sortValueFor(e, "model")).toBe("Sonnet 5\tclaude-sonnet-5");
     expect(sortValueFor(e, "provider")).toBe("anthropic");
     expect(sortValueFor(entry({ provider: undefined }), "provider")).toBe("");
   });
