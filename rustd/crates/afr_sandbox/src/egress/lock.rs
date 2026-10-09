@@ -17,10 +17,11 @@ use std::fs::{self, File, TryLockError};
 use std::path::Path;
 use std::sync::{Mutex, PoisonError};
 
-use crate::error::{EgressRefusal, Result, egress_refused};
+use crate::error::{EgressRefusal, Error, Result, egress_refused};
 
-/// The lock file, in the runner's runtime directory on the host.
-const HOST_LOCK: &str = "/run/agentsfleet/egress.lock";
+/// The runner's runtime directory on the host, and the lock file in it.
+const RUNTIME_DIR: &str = "/run/agentsfleet";
+const LOCK_FILE: &str = "egress.lock";
 
 /// The lock this process holds, once taken. Every engine the process builds
 /// shares it, as they share the slot claims.
@@ -33,26 +34,30 @@ static HELD: Mutex<Option<File>> = Mutex::new(None);
 pub(crate) fn own_host() -> Result<()> {
     let mut held = HELD.lock().unwrap_or_else(PoisonError::into_inner);
     if held.is_none() {
-        *held = Some(take(Path::new(HOST_LOCK))?);
+        *held = Some(take(Path::new(RUNTIME_DIR))?);
     }
     Ok(())
 }
 
-/// Opens `path`, making it and its directory when absent, and locks it for
+/// Opens the lock file in `dir`, making both when absent, and locks it for
 /// this open file alone, without waiting.
-fn take(path: &Path) -> Result<File> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir)?;
-    }
+fn take(dir: &Path) -> Result<File> {
+    fs::create_dir_all(dir)?;
     let file = File::options()
         .create(true)
         .truncate(false)
         .write(true)
-        .open(path)?;
-    match file.try_lock() {
-        Ok(()) => Ok(file),
-        Err(TryLockError::WouldBlock) => Err(egress_refused(EgressRefusal::HeldElsewhere)),
-        Err(TryLockError::Error(error)) => Err(error.into()),
+        .open(dir.join(LOCK_FILE))?;
+    file.try_lock().map_err(refused)?;
+    Ok(file)
+}
+
+/// Why the lock was not taken: another process holds it, or the call itself
+/// failed, which is that failure and never a holder.
+fn refused(failed: TryLockError) -> Error {
+    match failed {
+        TryLockError::WouldBlock => egress_refused(EgressRefusal::HeldElsewhere),
+        TryLockError::Error(error) => error.into(),
     }
 }
 

@@ -225,6 +225,7 @@ fn each_refusal_is_spelled_apart_from_every_other() {
         ToolboxRefusal::Length,
         ToolboxRefusal::Digest,
         ToolboxRefusal::NotAFile,
+        ToolboxRefusal::Unstaged,
     ];
     let mut spelled: Vec<&str> = all.iter().map(|refusal| refusal.as_str()).collect();
 

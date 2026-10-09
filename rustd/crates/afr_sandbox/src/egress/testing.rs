@@ -39,31 +39,28 @@ pub(super) const GETLINK: u16 = libc::RTM_GETLINK;
 pub(super) const SETLINK: u16 = libc::RTM_SETLINK;
 pub(super) const NEWADDR: u16 = libc::RTM_NEWADDR;
 pub(super) const NEWROUTE: u16 = libc::RTM_NEWROUTE;
+/// An `nf_tables` message's type holds the subsystem in its high byte and the
+/// message in its low.
+const NFTABLES: libc::c_int = libc::NFNL_SUBSYS_NFTABLES << 8;
 /// The `nf_tables` messages a scope sends, by type.
-pub(super) const NEWTABLE: u16 = nftables(libc::NFT_MSG_NEWTABLE);
-pub(super) const GETTABLE: u16 = nftables(libc::NFT_MSG_GETTABLE);
-pub(super) const DELTABLE: u16 = nftables(libc::NFT_MSG_DELTABLE);
-pub(super) const NEWCHAIN: u16 = nftables(libc::NFT_MSG_NEWCHAIN);
-pub(super) const GETCHAIN: u16 = nftables(libc::NFT_MSG_GETCHAIN);
-pub(super) const NEWRULE: u16 = nftables(libc::NFT_MSG_NEWRULE);
-pub(super) const NEWSET: u16 = nftables(libc::NFT_MSG_NEWSET);
-pub(super) const NEWSETELEM: u16 = nftables(libc::NFT_MSG_NEWSETELEM);
-pub(super) const DELSETELEM: u16 = nftables(libc::NFT_MSG_DELSETELEM);
+pub(super) const NEWTABLE: u16 = u16_of(NFTABLES | libc::NFT_MSG_NEWTABLE);
+pub(super) const GETTABLE: u16 = u16_of(NFTABLES | libc::NFT_MSG_GETTABLE);
+pub(super) const DELTABLE: u16 = u16_of(NFTABLES | libc::NFT_MSG_DELTABLE);
+pub(super) const NEWCHAIN: u16 = u16_of(NFTABLES | libc::NFT_MSG_NEWCHAIN);
+pub(super) const GETCHAIN: u16 = u16_of(NFTABLES | libc::NFT_MSG_GETCHAIN);
+pub(super) const NEWRULE: u16 = u16_of(NFTABLES | libc::NFT_MSG_NEWRULE);
+pub(super) const NEWSET: u16 = u16_of(NFTABLES | libc::NFT_MSG_NEWSET);
+pub(super) const NEWSETELEM: u16 = u16_of(NFTABLES | libc::NFT_MSG_NEWSETELEM);
+pub(super) const DELSETELEM: u16 = u16_of(NFTABLES | libc::NFT_MSG_DELSETELEM);
 /// An `nf_tables` batch's two ends, which are answered by nothing.
 const BATCH: [u16; 2] = [
     u16_of(libc::NFNL_MSG_BATCH_BEGIN),
     u16_of(libc::NFNL_MSG_BATCH_END),
 ];
 
-/// An `nf_tables` message's type: the subsystem in the high byte, the
-/// message in the low.
-const fn nftables(message: libc::c_int) -> u16 {
-    u16_of(libc::NFNL_SUBSYS_NFTABLES << 8 | message)
-}
-
 /// Which protocol a socket speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Protocol {
+pub(crate) enum Protocol {
     Route,
     Netfilter,
 }
@@ -82,7 +79,7 @@ struct State {
 
 /// The kernel a test states; clones share one state.
 #[derive(Debug, Clone, Default)]
-pub(super) struct Fake(Arc<Mutex<State>>);
+pub(crate) struct Fake(Arc<Mutex<State>>);
 
 impl Fake {
     /// Every `message_type` on `protocol` answers `errno`.
@@ -92,7 +89,7 @@ impl Fake {
     }
 
     /// No socket on `protocol` opens.
-    pub(super) fn closed(self, protocol: Protocol) -> Self {
+    pub(crate) fn closed(self, protocol: Protocol) -> Self {
         self.state().closed.push(protocol);
         self
     }
@@ -121,7 +118,7 @@ impl Fake {
     }
 
     /// Every request received, in order, a batch's two ends left out.
-    pub(super) fn seen(&self) -> Vec<(Protocol, u16)> {
+    pub(crate) fn seen(&self) -> Vec<(Protocol, u16)> {
         self.state().seen.clone()
     }
 
@@ -195,7 +192,7 @@ impl Kernel for Fake {
 
 /// One socket to the fake kernel.
 #[derive(Debug)]
-pub(super) struct FakeWire {
+pub(crate) struct FakeWire {
     protocol: Protocol,
     kernel: Fake,
     replies: VecDeque<Vec<u8>>,

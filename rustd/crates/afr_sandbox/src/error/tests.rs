@@ -134,4 +134,20 @@ fn test_each_netlink_step_keeps_its_sentence() {
         assert_eq!(failure.detail(), format!("the kernel refused {sentence}"));
         assert_eq!(failure.netlink_step(), Some(step));
     }
+    assert_eq!(
+        egress_refused(EgressRefusal::NoSlot).netlink_step(),
+        None,
+        "a refusal the kernel never made names no step"
+    );
+}
+
+/// The far host's step, which only the kernel lane raises, reads as its own
+/// phrase too.
+#[cfg(all(target_os = "linux", feature = "test-util"))]
+#[test]
+fn test_the_far_hosts_step_keeps_its_sentence() {
+    let failure = super::netlink(super::Step::Far)(std::io::Error::from_raw_os_error(libc::EPERM));
+
+    // pin test: literal is the contract
+    assert_eq!(failure.detail(), "the kernel refused the far host's link");
 }

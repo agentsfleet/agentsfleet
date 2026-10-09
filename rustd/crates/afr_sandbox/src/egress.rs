@@ -24,7 +24,6 @@ use std::path::Path;
 
 use afd_core::error_code::{Coded as _, Logged};
 
-use self::kernel::Kernel;
 use self::slot::{Claim, LINK_PREFIX, Slot, TABLE_PREFIX};
 use crate::error::{EgressRefusal, Result, Step, egress_refused};
 use crate::network::Allowlist;
@@ -39,7 +38,7 @@ mod rules;
 mod scope;
 mod slot;
 
-pub(crate) use self::kernel::Host;
+pub(crate) use self::kernel::{Host, Kernel};
 pub(crate) use self::lock::own_host;
 pub(crate) use self::scope::Scope;
 
@@ -175,7 +174,7 @@ fn objects(kernel: &impl Kernel) -> Result<(Vec<String>, Vec<String>)> {
 }
 
 #[cfg(test)]
-mod testing;
+pub(crate) mod testing;
 
 #[cfg(test)]
 #[path = "egress/tests.rs"]

@@ -1,5 +1,8 @@
-use netlink_packet_netfilter::NetfilterProtoFamily;
-use netlink_packet_netfilter::nftables::InetHookNumber;
+use netlink_packet_netfilter::nftables::{
+    ChainAttribute, ChainMessage, Hook, HookNumber, InetHookNumber, NfTablesMessage,
+    TableAttribute, TableMessage,
+};
+use netlink_packet_netfilter::{NetfilterHeader, NetfilterMessage, NetfilterProtoFamily};
 
 use super::super::expressions::{ACCEPT, DROP};
 use super::dropping;
@@ -61,4 +64,30 @@ fn test_chains_that_cannot_drop_the_sandboxs_forwarding_pass() {
         let shown = format!("{message:?}");
         assert_eq!(dropping(message), None, "{shown}");
     }
+}
+
+/// A dropping forward chain is named whatever order its attributes come in,
+/// and a table listed in a family that carries IPv4 is no chain at all.
+#[test]
+fn test_a_chain_is_named_from_its_attributes_and_a_table_is_not_one() {
+    let inet = || NetfilterHeader::new(NetfilterProtoFamily::Inet, 0, 0);
+    let name_first = NfTablesMessage::NewChain(ChainMessage {
+        attributes: vec![
+            ChainAttribute::Name("forward".to_owned()),
+            ChainAttribute::Table("filter".to_owned()),
+            ChainAttribute::Hook(vec![Hook::Number(HookNumber::Inet(
+                InetHookNumber::Forward,
+            ))]),
+            ChainAttribute::Policy(DROP),
+        ],
+    });
+    let table = NfTablesMessage::NewTable(TableMessage {
+        attributes: vec![TableAttribute::Name("filter".to_owned())],
+    });
+
+    let chain = dropping(NetfilterMessage::new(inet(), name_first));
+    let not_a_chain = dropping(NetfilterMessage::new(inet(), table));
+
+    assert_eq!(chain.as_deref(), Some("inet filter forward"));
+    assert_eq!(not_a_chain, None);
 }

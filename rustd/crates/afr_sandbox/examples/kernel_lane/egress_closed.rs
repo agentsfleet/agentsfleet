@@ -128,13 +128,15 @@ fn while_far_knocks<T>(
 /// An allowlisted sandbox gets no answer from the resolver port of a listed
 /// address, though the same address answers on another port; cannot reach
 /// the runner's host, which the lane itself reaches; and accepts no
-/// connection from outside, though its own listener answers locally.
+/// connection from outside, though its own listener answers locally and the
+/// far host's connections reach the runner's host.
 pub(crate) fn allow_list_closes_dns_the_host_and_inbound(lane: &Lane) -> Result<(), Failed> {
     let far = Far::start()?;
     let allowlist = Far::allowlist(FAR_NAME)?;
     answer_on_host(HOST_PORT)?;
     let host_side = SocketAddr::from((FAR_HOST_SIDE, HOST_PORT));
     let host_answers = read_from(host_side)?;
+    let far_answers = far.connect_from(host_side);
     let scripts = closed_paths();
     let before = objects()?;
     let runtime = runtime();
@@ -166,6 +168,10 @@ pub(crate) fn allow_list_closes_dns_the_host_and_inbound(lane: &Lane) -> Result<
     expect(
         host_answers == HOST_GREETING,
         format!("the host's listener answers the host: {host_answers:?}"),
+    )?;
+    expect(
+        far_answers.as_deref().ok() == Some(HOST_GREETING),
+        format!("the far host's own connections reach the host: {far_answers:?}"),
     )?;
     expect(
         inbound.is_err() && listened == format!("{SANDBOX_GREETING}\n{NONE_INBOUND}"),
