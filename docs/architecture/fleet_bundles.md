@@ -11,7 +11,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Definition layers | 2 | immutable library entry (content-addressed snapshot) vs live Fleet (`PATCH`-editable); the runner executes the fleet's copy | §Two layers |
-| Onboard | fetch → validate → re-pack | `canonicalTar()` builds agentsfleet's own tar; the runner untars without re-validating; GitHub is never a runtime dependency | §Onboard |
+| Onboard | fetch → validate → re-pack | `afd_library::snapshot::canonical_snapshot` builds agentsfleet's own tar; the runner untars without re-validating; GitHub is never a runtime dependency | §Onboard |
 | Catalog tiers | 2 tables | `core.fleet_library` (slug id, platform, runtime-owned since M128) · `core.tenant_fleet_library` (UUIDv7, deduped on `(workspace_id, content_hash)`) | §Two-tier Fleet library catalog |
 | Tenant entry removal | hard `DELETE`, workspace-scoped | `delete_workspace_library_entry` removes one row; no soft-delete column, no marker, no visibility flip; slot 917 grants the privilege slot 460 withheld | §Two-tier Fleet library catalog |
 | Publish gate | `visibility` ∈ {`draft`, `public`} | every write stages to `draft`; gallery, bundles list, and install-by-id all require `public` AND `content_hash IS NOT NULL` | §The publish gate |
@@ -60,7 +60,7 @@ agentsfleetd
    1. fetch     GET api.github.com/repos/{owner}/{repo}/tarball/{ref}   (GitHub tarball API)
    2. validate  strip GitHub's wrapper dir; reject symlinks / ".." / absolute / dotfiles;
                 cap 16 MiB decompressed, 4096 entries
-   3. RE-PACK   canonicalTar(): a NEW deterministic tar — root-level, no wrapper,
+   3. RE-PACK   canonical_snapshot(): a NEW deterministic tar — root-level, no wrapper,
                 no symlinks — SKILL.md, optional TRIGGER.md, then each support file
    4. hash      content_hash = sha256(skill + trigger + support files)
    5. store     R2 + Postgres (below)
@@ -75,7 +75,7 @@ Fleet library entries onboard into one of two catalog tiers, each its own table:
 - **Platform tier — `core.fleet_library`** (slug id, e.g. `github-pr-reviewer`). The global shop-window; a platform operator holding the `platform-library:write` scope owns its whole lifecycle from `/admin/fleet-libraries`. **Runtime-owned since M128: no migration seeds it.** A row is born when an operator adds a repository, and the bundle's `SKILL.md` frontmatter supplies its id, name, description, credentials, tools, and hosts.
 - **Tenant tier — `core.tenant_fleet_library`** (UUIDv7 id + `workspace_id` FK CASCADE). A workspace's own library entries; a tenant admin holding `library:write` onboards via `POST /v1/workspaces/{ws}/fleet-libraries`, deduped on `(workspace_id, content_hash)`. Reachable from the Command-Line Interface (CLI) since M199 — `agentsfleet library create` posts that body in all three source kinds. Before it, the route was served but only the dashboard called it, so a tenant entry's identifier could not be produced from a terminal and `agentsfleet library` (which read the platform catalogue alone) could not list one.
 
-A workspace also reads and removes its own entries, on a second collection. `GET /v1/workspaces/{ws}/library-entries` answers that workspace's tenant rows alone, and carries no platform row. `DELETE /v1/workspaces/{ws}/library-entries/{entry_id}` removes one. Both require the `library:write` scope and ownership of the workspace in the path. The removal is a hard delete. It is idempotent: removing an entry already gone answers 204, and so does one naming another workspace's entry, because every statement is scoped by `workspace_id`.
+A workspace lists and hard-deletes its own entries on a second collection (API reference › Fleet library); removal is workspace-scoped and idempotent.
 
 Slot 460's header argued that an onboarded entry is "retired by visibility" and withheld the `DELETE` privilege. **That position is superseded.** Slot 917 grants `DELETE` on `core.tenant_fleet_library` to `api_runtime`, and records the reversal in its own header. Three facts settle it. An entry is not a fleet, so nothing is running to protect. Install copies the bundle onto the fleet row, so no foreign key points back. A retired-but-present row would still hold its half of the `(workspace_id, content_hash)` key, which would block re-onboarding the same bundle.
 
@@ -100,7 +100,7 @@ The platform tier has a lifecycle, carried by `core.fleet_library.visibility`. T
 
 The operator's curated fields — `name` (since M130), `description`, and `required_credentials_reasons` (the install gate's "why this fleet needs your token" copy) — are deliberately **absent from the `ON CONFLICT` update list**, so a bundle refetch can never clobber what an operator wrote. A first import still seeds all three from the bundle; only the conflict path preserves the operator's. `required_credentials_reasons` is the one exception to "left alone". The refetch **prunes** it to the credentials the incoming bundle actually declares. The map is keyed by credential name, and a departed credential would otherwise leave a dead key that every dialog save faithfully round-trips (M130 §4).
 
-**The operator owns the row's identity (M130).** `PATCH /v1/admin/fleet-libraries/{id}` accepts `name`, `source_repo`, and `source_ref` alongside the curated copy. A **changed** source sets `content_hash = NULL` and `visibility = 'draft'` atomically. Change is detected against the stored row inside the statement (`UPDATE_CATALOG_IDENTITY`), never against field presence. The stored tar was built from the old repository, and a row must never advertise a source it is not serving. Re-sending an unchanged source is a no-op, so a copy-only save cannot withdraw a live fleet. The slug is immutable (it is the primary key, and installs reference it as `platform_library_id`); repointing validates through the same `github_source.parseOwnerRepo` the import path uses, so the edit path and the add path cannot drift on what counts as a repository. Workspaces already running the fleet are untouched throughout — their installs pinned their own `content_hash`.
+**The operator owns the row's identity (M130).** `PATCH /v1/admin/fleet-libraries/{id}` accepts `name`, `source_repo`, and `source_ref` alongside the curated copy. A **changed** source sets `content_hash = NULL` and `visibility = 'draft'` atomically. Change is detected against the stored row inside the statement (`UPDATE_CATALOG_IDENTITY`), never against field presence. The stored tar was built from the old repository, and a row must never advertise a source it is not serving. Re-sending an unchanged source is a no-op, so a copy-only save cannot withdraw a live fleet. The slug is immutable (it is the primary key, and installs reference it as `platform_library_id`); repointing validates through the same `afd_library::github::Repository::parse` the import path uses, so the edit path and the add path cannot drift on what counts as a repository. Workspaces already running the fleet are untouched throughout — their installs pinned their own `content_hash`.
 
 The catalog id comes from the bundle's frontmatter `name:`, **not** the repository path. A repository declaring a name another repository already owns is refused (`UZ-CATALOG-004`) rather than silently swapping the bundle every workspace installs; overwriting takes an explicit `replace`.
 
@@ -145,7 +145,7 @@ At lease time (see [`data_flow.md` §"C. EXECUTE"](./data_flow.md)):
 
 - **The stored tar is agentsfleet's canonical re-pack, never GitHub's archive.** Safe-by-construction so the runner untars without re-validating.
 - **The runner's behaviour comes from the fleet's live SKILL.md, not the library entry's.** A PATCH takes effect on the next lease; the tar's onboard-time copies are inert.
-- **Secrets never enter R2 or the snapshot.** Credentials are vault refs (`fleet:<source>`), resolved at lease and delivered inline; the tar carries only author-authored files.
+- **Secrets never enter R2 or the snapshot.** Credentials are vault refs named by the fleet's declared credentials (`Installed::credential_names`), resolved at lease and delivered inline; the tar carries only author-authored files.
 - **Content-addressing makes onboarding idempotent.** Re-onboarding identical bytes reuses the same R2 object and (per workspace, for the tenant tier) the same library row.
 - **Removing a tenant entry is permanent, and cannot disturb an installed fleet.** No tombstone survives it, so re-onboarding the same bytes mints a new row with a new identifier. The fleet keeps its own copy and its own `bundle_content_hash`.
 - **A platform fleet is never born in SQL.** No migration inserts into `core.fleet_library`; a row exists only because an operator added a repository (M128).

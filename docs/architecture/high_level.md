@@ -185,7 +185,7 @@ Primary job:
 
 Trigger modes:
 
-- **Webhook.** A workspace connection is accepted only after the GitHub user-authorization callback proves access to the claimed installation; cross-workspace reassignment is refused. GitHub Actions then posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`). The receiver verifies the platform App signature, maps the installation to a workspace, and wakes only fleets explicitly subscribed to that repository and event with an approved GitHub grant. The manual fleet-addressed route remains available for custom hooks. Both paths write `actor=webhook:github`.
+- **Webhook.** GitHub Actions posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`), which wakes only fleets subscribed to that repository and event ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet execution"). An App delivery lands as `actor=github-app`; the manual fleet-addressed route lands as `actor=webhook:github`.
 - **Cron.** A periodic production health check, stored by `agentsfleet` and synchronously registered with Upstash QStash; each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer or local scheduler state ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 - **Steer.** A direct operator instruction via `agentsfleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
@@ -217,13 +217,11 @@ What does not change: the runtime architecture, the sandbox boundary, the trigge
 
 ### 6.2 Slack Rung 1 — hired durable agents
 
-Where the human front door points after the CLI/dashboard wedge. Rung 0 is specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. M206 specs the first hired-agent slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
+Where the human front door points after the CLI/dashboard wedge. M206 specs the first hired-agent slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
 
 The ladder's boundary is **agency, not memory**. Rung 0 is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 
 - **Rung 1 — hired durable agents (follow-on).** From the same Slack surface, a recurring need converts into a durable agent that subscribes to a real source (e.g. Zoho Desk), wakes unattended, and takes **gated** write actions with approval — the existing event-driven runtime. The Slack surface adds library-install + per-integration OAuth connectors + the Slack-user → `approval:resolve` allowlist. Depends on M103 (Fleet library) + M105 (schedules).
-
-**Why this is not "a chat UI over tools"** ([`high_level.md`](./high_level.md) §1): Rung 0 is the acquisition on-ramp, deliberately reactive — its job is to be useful enough to convert to the durable agent. The durable runtime is still the product; agency (acting unattended) is what the operator hires and what a reactive channel bot structurally cannot do. Memory is free at both rungs.
 
 ### 6.3 Security Reviewer — a prebuilt fleet
 
@@ -235,7 +233,4 @@ A customer-facing prebuilt fleet whose job is **security testing on the customer
 - **Dashboard token model** — see [`web_app.md`](./web_app.md) §"Where this is headed — a Backend-for-Frontend".
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
 - **Trust-scoped sticky affinity** — still deferred. Once runners can be local / low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility before the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility. M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.
-
 - **Fleet keys as a first-class principal** — deferred to v2.1.
-- **Fleet keys as a first-class principal** — deferred to v2.1.
-- **Trust-scoped sticky affinity** — once runners can be low-trust (laptops, untrusted hosts), affinity must gate on trust class, tenant/workspace scope, and sandbox tier *before* the sticky preference, never as an override of eligibility. Its own security workstream.
