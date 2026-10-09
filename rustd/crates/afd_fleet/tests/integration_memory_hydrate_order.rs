@@ -29,11 +29,11 @@ const CLOCK_SKEW_MS: i64 = 1_000;
 /// [`CLOCK_SKEW_MS`] before the held lease — and moves the live sequence to it.
 const INSERT_EARLIER_SUCCESSOR: &str = "\
 INSERT INTO fleet.runner_leases \
-  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor, event_type, \
+  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt, actor, event_type, \
    event_created_at, posture, provider, model, metered_input_tokens, \
    metered_cached_tokens, metered_output_tokens, last_metered_at, fencing_token, \
    lease_expires_at, status, created_at, updated_at) \
-SELECT $2::uuid, runner_id, fleet_id, workspace_id, tenant_id, event_id, actor, \
+SELECT $2::uuid, runner_id, fleet_id, workspace_id, tenant_id, event_id, receipt, actor, \
    event_type, event_created_at, posture, provider, model, 0, 0, 0, last_metered_at, \
    fencing_token + 1, lease_expires_at, status, created_at - $3, updated_at \
 FROM fleet.runner_leases WHERE id = $1::uuid \
