@@ -200,7 +200,7 @@ fn a_rule_that_names_a_field_lists_every_field_a_run_may_send() {
         .map(|rule| {
             (
                 rule.path.as_ref(),
-                rule.permitted_fields.iter().map(|f| f.as_ref()).collect(),
+                rule.permitted_fields.iter().map(AsRef::as_ref).collect(),
             )
         })
         .collect();
