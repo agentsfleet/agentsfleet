@@ -206,6 +206,9 @@ describe("SecretsList name cell", () => {
     expect(slot.className).toContain("truncate");
     expect(slot.className).toContain("sm:min-w-trim");
     expect(slot.className).toContain("sm:max-w-trim");
+    // Below sm the slot may shrink: no unprefixed floor holds it at the trim width.
+    expect(slot.classList.contains("min-w-0")).toBe(true);
+    expect(slot.classList.contains("min-w-trim")).toBe(false);
     // Copy and rename follow the slot in the same row, so every row lines them up.
     const iconRow = slot.parentElement!;
     expect(within(iconRow).getByRole("button", { name: `Copy secret name: ${longName}` })).toBeTruthy();

@@ -57,7 +57,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `ui/packages/app/lib/models/display.ts`, `ui/packages/app/lib/models/display.test.ts` | CREATE | §1: a model's name, context and rates, formatted once |
 | `ui/packages/app/app/(dashboard)/admin/models/components/CatalogueList.tsx` | EDIT | §1: the library reads through the display module |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/{ModelsRegistryCells.tsx,ModelsRegistryTable.tsx}` | EDIT | §1: the workspace table reads through it too |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/{ModelsRegistryCells.tsx,ModelsRegistryTable.tsx,registry-view.ts,ModelDetailsDialog.tsx}` | EDIT | §1: the workspace table and its details dialog read through it too |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect.tsx`, `ui/packages/app/tests/{provider-model-select.test.tsx,helpers/models-component-mocks.tsx}` | EDIT | §1: the picker names a model as the tables do, the id on its own line, the closed value one truncating line |
 | `ui/packages/app/tests/{models-registry-table.test.tsx,models-registry-edit-remove.test.tsx,admin-models-ui.test.ts,admin-models-management.test.ts}` | EDIT | §1: rows found by the id's hover; formats follow the shared module |
 | `ui/packages/app/tests/timestamp-standard.test.ts` | EDIT | §1: the model library no longer calls a locale formatter, so its exemption goes |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation.tsx,FleetTabLink.tsx,FleetTabLink.test.tsx}` | EDIT, CREATE | §2: a pending tab |
@@ -97,7 +98,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — A model reads the same in both tables — DONE
 
-`display.ts` turns a provider id into the name the provider markets (`claude-fable-5` → `Fable 5`, `accounts/fireworks/models/glm-5p3-flash` → `GLM 5.3 Flash`), formats context with pinned `en-US` grouping, and prints rates as `in / cached / out` at two decimals. Both tables render the name with the exact id on hover and keep sorting and labels on the id. **Implementation default:** derive the name from the id rather than add a column, because the catalogue has no display field and the id stays one hover away.
+`display.ts` turns a provider id into the name the provider markets (`claude-fable-5` → `Fable 5`, `accounts/fireworks/models/glm-5p3-flash` → `GLM 5.3 Flash`), formats context with pinned `en-US` grouping, and prints rates as `in / cached / out` at two decimals. Both tables render the name with the exact id on hover, sort by the name and then the id (`modelSortKey`), and keep accessible labels on the id. **Implementation default:** derive the name from the id rather than add a column, because the catalogue has no display field and the id stays one hover away.
 
 - **Dimension 1.1** — Provider ids read as marketed names → Test `names a provider id the way its provider markets the model` — DONE (`ui/packages/app/lib/models/display.test.ts`)
 - **Dimension 1.2** — Both tables print one row's context and rates identically → Test `formats context and rates the way the model library prints them` — DONE (`ui/packages/app/lib/models/display.test.ts`)
@@ -162,7 +163,7 @@ No API, route or wire change.
 ## Invariants
 
 1. One formatter per value — both tables import `display.ts`; R1 counts no second `formatRates` definition under `ui/packages/app/app`.
-2. Sorting and accessible names use the provider id — `sortValue` and `label` read `model_id`, never the display name.
+2. Both tables sort one way — by `modelSortKey`, the shown name then the id, so "GPT-5" precedes "GPT-5 Mini" under `localeCompare` and code-point order alike (`a name sorts before a longer name it starts, under either table's comparison`); accessible labels read `model_id`.
 
 ## Metrics & Observability
 

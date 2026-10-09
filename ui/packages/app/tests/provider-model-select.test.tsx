@@ -78,10 +78,22 @@ describe("ProviderModelSelect", () => {
       }),
     );
     // Provider-scoped → only the anthropic model is an option.
-    expect(screen.getByText("a1")).toBeTruthy();
-    expect(screen.queryByText("o1")).toBeNull();
+    expect(screen.getByRole("option", { name: "a1" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "o1" })).toBeNull();
     // Custom label is applied.
     expect(screen.getByLabelText("Pick model")).toBeTruthy();
+  });
+
+  it("a picked model reads as one truncating line, and each option lists its id under the name", () => {
+    catalogueState.models = [cap("claude-sonnet-5", "anthropic"), cap("openai/gpt-5-mini", "openai")];
+    render(React.createElement(ProviderModelSelect, { id: "m", model: "claude-sonnet-5", onModelChange: vi.fn() }));
+
+    const value = document.querySelector("[data-select-value]");
+    expect(value?.textContent).toBe("Sonnet 5 claude-sonnet-5");
+    expect(value?.className).toContain("min-w-0");
+    expect(value?.className).toContain("truncate");
+    const option = screen.getByRole("option", { name: "GPT-5 Mini openai/gpt-5-mini" });
+    expect(option.querySelector(".flex-col")?.lastElementChild?.textContent).toBe("openai/gpt-5-mini");
   });
 
   it("renders a provider-agnostic option list when no provider is given", () => {

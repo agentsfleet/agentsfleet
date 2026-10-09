@@ -45,6 +45,17 @@ describe("model display", () => {
     expect(sorted.slice(2)).toEqual(["anthropic/claude-opus-5.5", "claude-opus-5-5"]);
   });
 
+  it("a name sorts before a longer name it starts, under either table's comparison", () => {
+    const ids = ["openai/gpt-5-mini", "openai/gpt-5", "azure/gpt-5", "openai/gpt-5.1"];
+    const expected = ["azure/gpt-5", "openai/gpt-5", "openai/gpt-5-mini", "openai/gpt-5.1"];
+    // The workspace table sorts with localeCompare; the library's DataTable
+    // compares the key's code points. Both must agree on the order.
+    const byLocale = [...ids].sort((a, b) => modelSortKey(a).localeCompare(modelSortKey(b)));
+    const byCodePoint = [...ids].sort((a, b) => (modelSortKey(a) < modelSortKey(b) ? -1 : 1));
+    expect(byLocale).toEqual(expected);
+    expect(byCodePoint).toEqual(expected);
+  });
+
   it("formats context and rates the way the model library prints them", () => {
     // Pin test: the literals are the library's rendered cells.
     expect(formatContextTokens(1_048_576)).toBe("1,048,576");

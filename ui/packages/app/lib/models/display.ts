@@ -103,10 +103,20 @@ function wordsLabel(segment: string): string {
   return cased.join(" ");
 }
 
+/** Sorts below a space under both code-point order and the locale collation
+ * `localeCompare` uses, so "GPT-5" ends before "GPT-5 Mini" begins. Control
+ * characters below it are ignored by the collation and would not. */
+const SORT_KEY_SEPARATOR = "\t";
+
 /** What a Model column sorts by: the name it shows, then the id, so two ids
  * that read alike keep a fixed order. */
 export function modelSortKey(modelId: string): string {
-  return `${modelLabel(modelId)} ${modelId}`;
+  return `${modelLabel(modelId)}${SORT_KEY_SEPARATOR}${modelId}`;
+}
+
+/** What a model id's copy button announces, the same on every table. */
+export function modelIdCopyLabel(modelId: string): string {
+  return `Copy model id: ${modelId}`;
 }
 
 /** A token count grouped in threes with commas, by a fixed rule so the server and the browser agree. */
