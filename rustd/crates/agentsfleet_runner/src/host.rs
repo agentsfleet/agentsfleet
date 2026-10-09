@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use afd_core::error_code::{self, Coded, ErrorCode};
-use afr_sandbox::{Engine, HostProbe, ProbePaths};
+use afr_sandbox::{Engine, HostProbe};
 use afr_supervisor::StorageHome;
 
 /// The event every failure that stops `run` is logged under.
@@ -98,7 +98,7 @@ impl Host {
     /// logged, as the exit status.
     #[cfg(not(target_os = "linux"))]
     pub(crate) fn bubblewrap(_home: &StorageHome) -> Result<Self, ExitCode> {
-        let probe = afr_sandbox::probe(&ProbePaths::default());
+        let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
         Err(cannot_sandbox(
             probe.missing().unwrap_or(afr_sandbox::MECHANISM_BUBBLEWRAP),
         ))
@@ -113,7 +113,7 @@ impl Host {
     #[cfg(debug_assertions)]
     pub(crate) fn unsandboxed(home: &StorageHome) -> Result<Self, ExitCode> {
         let engine = afr_sandbox::UnsandboxedEngine::new(home.sandboxes()).or_exit()?;
-        let probe = afr_sandbox::probe(&ProbePaths::default());
+        let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
         Ok(Self::new(engine, probe, None))
     }
 }
