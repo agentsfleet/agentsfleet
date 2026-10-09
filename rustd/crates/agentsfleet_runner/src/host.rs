@@ -15,14 +15,10 @@ use afd_core::error_code::{self, Coded, ErrorCode};
 use afr_sandbox::{Engine, HostProbe, ProbePaths};
 use afr_supervisor::StorageHome;
 
-#[cfg(target_os = "linux")]
-use afd_core::error_code::Logged;
-#[cfg(target_os = "linux")]
-use afr_sandbox::{KernelMounter, Toolboxes};
-
 /// The event every failure that stops `run` is logged under.
 pub(crate) const EVENT_RUN_FAILED: &str = "run_failed";
 /// Why `run` stopped when the host lacks a mechanism every sandbox needs.
+#[cfg(not(target_os = "linux"))]
 const CANNOT_SANDBOX: &str = "this host cannot build a sandbox";
 /// The status `run` exits with when the daemon refused the runner's token
 /// (`EX_NOPERM`). The unit names it in `RestartPreventExitStatus`: restarting
@@ -39,32 +35,32 @@ pub(crate) struct Host {
     /// What this host's kernel can enforce, as every heartbeat states it.
     pub(crate) probe: HostProbe,
     /// The toolbox images the engine's sandboxes run on, unmounted when this
-    /// is dropped: after serving ends, or on any boot failure past admission.
-    pub(crate) mounted: Mounted,
+    /// is dropped, after serving ends; none for an engine that mounts none.
+    pub(crate) mounted: Option<Mounted>,
 }
 
-/// The toolbox images a host admitted; none for an engine that mounts none.
-pub(crate) struct Mounted {
-    #[cfg(target_os = "linux")]
-    toolboxes: Option<Toolboxes<KernelMounter>>,
-}
-
-/// Unmounts what was admitted. A refusal is logged and left: the process is
-/// ending either way, and the next start adopts or detaches what stayed.
+/// The toolbox images a host admitted, unmounted when dropped.
 #[cfg(target_os = "linux")]
-impl Drop for Mounted {
-    fn drop(&mut self) {
-        let Some(Err(stayed)) = self.toolboxes.as_ref().map(Toolboxes::close) else {
-            return;
-        };
-        let Logged { error_code, reason } = stayed.logged();
-        let event = EVENT_RUN_FAILED;
-        tracing::warn!(error_code, reason, event, "a toolbox image stayed mounted");
-    }
-}
+pub(crate) type Mounted = afr_sandbox::MountedToolboxes<afr_sandbox::KernelMounter>;
+/// Off Linux no image is ever mounted, so there is never one to hold.
+#[cfg(not(target_os = "linux"))]
+pub(crate) type Mounted = std::convert::Infallible;
 
 impl Host {
-    /// The bubblewrap engine this host builds sandboxes with.
+    /// A host leasing with `engine`, on a kernel `probe` describes, its
+    /// sandboxes running on `mounted`. A release build off Linux builds no
+    /// engine at all, so it has no caller there.
+    #[cfg(any(target_os = "linux", debug_assertions))]
+    fn new(engine: impl Engine + 'static, probe: HostProbe, mounted: Option<Mounted>) -> Self {
+        Self {
+            engine: Box::new(engine),
+            probe,
+            mounted,
+        }
+    }
+
+    /// The bubblewrap engine this host builds sandboxes with, booted over the
+    /// release a deploy staged (`afr_sandbox`'s `BubblewrapEngine::boot`).
     ///
     /// # Errors
     /// The reason it cannot, already logged, as the exit status.
@@ -76,44 +72,23 @@ impl Host {
 
         use afd_core::env::ProcessEnv;
         use afr_sandbox::{
-            BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, Release, SELF_CGROUP_PATH,
-            delegated_root,
+            BubblewrapEngine, CGROUP_ROOT, Release, SELF_CGROUP_PATH, delegated_root,
         };
 
         let own = File::open(SELF_CGROUP_PATH).map_err(|error| io_failed(&error))?;
         let cgroup_root = delegated_root(BufReader::new(own), Path::new(CGROUP_ROOT)).or_exit()?;
-        let probe = afr_sandbox::probe(&ProbePaths {
-            cgroup_root: cgroup_root.clone(),
-            state_dir: Some(home.sandboxes()),
-            ..ProbePaths::default()
-        });
-        if let Some(missing) = probe.missing() {
-            return Err(cannot_sandbox(missing));
-        }
         let release = Release::signed_by_release(env!("CARGO_PKG_VERSION")).or_exit()?;
-        let toolbox_home = home.toolbox();
-        let toolboxes = Toolboxes::open(
-            toolbox_home.images(),
-            KernelMounter::new(toolbox_home.mounts()),
+        let entry = std::env::current_exe().map_err(|error| io_failed(&error))?;
+        let host = BubblewrapEngine::boot(
+            cgroup_root,
+            home.sandboxes(),
+            entry,
+            &release,
+            &home.toolbox(),
+            &ProcessEnv,
         )
         .or_exit()?;
-        // Admission mounts only what it admits, so a refusal leaves nothing to
-        // unmount; past it, every early return drops `mounted`.
-        let toolbox = toolboxes
-            .admit_incoming(&release, &toolbox_home.incoming())
-            .or_exit()?;
-        let mounted = Mounted {
-            toolboxes: Some(toolboxes),
-        };
-        let entry = std::env::current_exe().map_err(|error| io_failed(&error))?;
-        let config =
-            BubblewrapConfig::for_host(toolbox, cgroup_root, home.sandboxes(), entry, &ProcessEnv);
-        let engine = BubblewrapEngine::new(config, &probe).or_exit()?;
-        Ok(Self {
-            engine: Box::new(engine),
-            probe,
-            mounted,
-        })
+        Ok(Self::new(host.engine, host.probe, Some(host.toolboxes)))
     }
 
     /// No bubblewrap engine exists off Linux.
@@ -138,14 +113,8 @@ impl Host {
     #[cfg(debug_assertions)]
     pub(crate) fn unsandboxed(home: &StorageHome) -> Result<Self, ExitCode> {
         let engine = afr_sandbox::UnsandboxedEngine::new(home.sandboxes()).or_exit()?;
-        Ok(Self {
-            engine: Box::new(engine),
-            probe: afr_sandbox::probe(&ProbePaths::default()),
-            mounted: Mounted {
-                #[cfg(target_os = "linux")]
-                toolboxes: None,
-            },
-        })
+        let probe = afr_sandbox::probe(&ProbePaths::default());
+        Ok(Self::new(engine, probe, None))
     }
 }
 
@@ -188,6 +157,7 @@ pub(crate) fn io_failed(failure: &std::io::Error) -> ExitCode {
 }
 
 /// Logs a host that lacks `missing`, which every sandbox needs.
+#[cfg(not(target_os = "linux"))]
 fn cannot_sandbox(missing: &'static str) -> ExitCode {
     let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let reason = CANNOT_SANDBOX;

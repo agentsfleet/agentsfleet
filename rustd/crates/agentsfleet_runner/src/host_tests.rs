@@ -8,7 +8,9 @@ use afr_supervisor::StorageHome;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
 
-use super::{EVENT_RUN_FAILED, EXIT_FAILED, EXIT_TOKEN_REFUSED, OrExit as _, exit_status};
+use super::{
+    EVENT_RUN_FAILED, EXIT_FAILED, EXIT_TOKEN_REFUSED, OrExit as _, exit_status, io_failed,
+};
 
 /// The field every runner log line names its event in.
 const EVENT_FIELD: &str = "event";
@@ -53,6 +55,27 @@ fn test_a_step_run_cannot_go_on_from_logs_why_without_its_code() {
         "the sentence, then its cause, and no code: {told}"
     );
     assert_eq!(stopped, Err(ExitCode::from(EXIT_FAILED)));
+}
+
+/// An input/output failure no runner crate raised is logged under `run_failed`
+/// as the system tells it, and ends `run` with the status systemd restarts
+/// after.
+#[test]
+fn test_an_io_failure_is_logged_as_the_system_tells_it() {
+    let failure = std::io::Error::other("the runtime would not start");
+    let lines = Lines::default();
+    let journal = tracing_subscriber::registry().with(lines.clone());
+
+    let status = tracing::subscriber::with_default(journal, || io_failed(&failure));
+
+    let failed = lines.only(EVENT_RUN_FAILED);
+    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    assert_eq!(failed.get("error_code").map(String::as_str), Some(code));
+    assert_eq!(
+        failed.get("reason").map(String::as_str),
+        Some("the runtime would not start")
+    );
+    assert_eq!(status, ExitCode::from(EXIT_FAILED));
 }
 
 /// Every line logged while it is the scoped subscriber, each field by name.
