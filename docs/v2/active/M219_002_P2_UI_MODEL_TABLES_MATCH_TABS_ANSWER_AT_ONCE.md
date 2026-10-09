@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
   sequencing signal. A section that contradicts these rules loses — delete it.
 -->
 
-# M219_002: The two model tables read alike, fleet tabs answer at once, and invite actions line up
+# M219_002: The two model tables read alike, fleet tabs answer at once, invite actions line up, and memory access reads as switches
 
 **Prototype:** v2.0.0
 **Milestone:** M219
@@ -19,7 +19,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** IN_PROGRESS
 **Priority:** P2 — dashboard polish Indy reported while eyeballing the branch; no boundary or money path changes
 **Categories:** UI
-**Batch:** B1 — the four Sections touch different screens and ship together
+**Batch:** B1 — the Sections touch different screens and ship together
 **Branch:** docs/event-runtime-positioning
 **Folded-into:** `M219_001`
 **Baseline revision:** 2bf456efdf7be559b6c67a2e254dc92600d257b2
@@ -33,9 +33,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** A model row reads the same in the admin Model library and the workspace Models table, by a human name with its provider id on hover; a clicked fleet tab is marked pending before the server answers; invite actions sit right-aligned like every other table's, and a secret's row icons line up whatever its name's length.
+**Goal (testable):** A model row reads the same in the admin Model library and the workspace Models table, by a human name with its provider id on hover; a clicked fleet tab is marked pending before the server answers; invite actions sit right-aligned like every other table's, a secret's row icons line up whatever its name's length; a fleet's shared-memory grants read as two named switches; and every npm package runs its latest release.
 **Problem:** The Model column shows raw provider ids (`claude-fable-5`). The workspace Models table prints context as `1049k tokens` and rates as `$0.15 in · $0.03 cached · $0.50 out` while the library prints `1,048,576` and `0.15 / 0.03 / 0.50`. Fleet tabs are `?view=` queries on one server-rendered page, so a click shows nothing until the fleet and the view's data come back. The Members invite row puts "Email sent" text and a bordered icon inside the actions cell.
-**Solution summary:** One display module formats a model's name, context and rates for both tables. Each fleet tab link shows its own pending state while the view loads. Invite email status moves to the Time column and the actions become a plain icon row.
+**Solution summary:** One display module formats a model's name, context and rates for both tables. Each fleet tab link shows its own pending state while the view loads. Invite email status moves to the Time column and the actions become a plain icon row. The memory grants become a design-system `Switch` each, named and described, and the four packages move to their latest releases.
 
 ## PR Intent & comprehension handshake
 
@@ -47,7 +47,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 1. `ui/packages/app/app/(dashboard)/admin/models/components/CatalogueList.tsx` — the library's columns; its context and rate formats are the ones both tables keep.
 2. `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryCells.tsx` — the workspace table's cells and its own `formatContext` and `formatRates`, which §1 replaces.
-3. `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` — one server render per tab; §2 moves the view behind a boundary.
+3. `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` — one server render per tab; §2 leaves it as it is and marks the clicked tab.
 4. `ui/packages/app/app/(dashboard)/settings/members/components/TeamTable.tsx` and `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx` — the invite actions and the row actions they should match.
 5. `.orly/dispatch/write_ts_adhere_bun.md` — design-system primitives and token utilities only.
 
@@ -60,11 +60,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/{ModelsRegistryCells.tsx,ModelsRegistryTable.tsx}` | EDIT | §1: the workspace table reads through it too |
 | `ui/packages/app/tests/{models-registry-table.test.tsx,models-registry-edit-remove.test.tsx,admin-models-ui.test.ts,admin-models-management.test.ts}` | EDIT | §1: rows found by the id's hover; formats follow the shared module |
 | `ui/packages/app/tests/timestamp-standard.test.ts` | EDIT | §1: the model library no longer calls a locale formatter, so its exemption goes |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | §2: the view renders behind a boundary keyed by the view |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation.tsx,FleetTabLink.tsx,FleetTabLink.test.tsx}` | EDIT, CREATE | §2: a pending tab |
 | `ui/packages/app/tests/{helpers/dashboard-mocks.tsx,fleets-routes/detail-views.test.ts}` | EDIT | §2: the link mock answers `useLinkStatus`; the route test proves the panel paints with its tabs |
 | `ui/packages/app/app/(dashboard)/settings/members/components/{TeamTable.tsx,MembersView.test.tsx}`, `ui/packages/app/tests/{helpers/members-fixtures.tsx,e2e/acceptance/team-members.spec.ts}` | EDIT | §3: email status in the Time column as "Invite emailed"; plain icon actions |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/{secret-row-cells.tsx,SecretsList.test.tsx}` | EDIT | §3: the name sits in a fixed slot that ellipsizes, its icons after it |
+| `ui/packages/design-system/src/design-system/{Switch.tsx,Switch.test.tsx,index.ts}`, `ui/packages/design-system/src/{index.ts,index.test.ts}` | CREATE, EDIT | §5: a `Switch` primitive over `@radix-ui/react-switch` |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{MemoryPanel.tsx,MemoryPanel.test.tsx}` | EDIT | §5: each grant a named switch with its description |
+| `package.json`, `bun.lock`, `cli/{package.json,bun.lock}`, `ui/packages/{app,design-system,website}/package.json` | EDIT | §6: every package on its latest release; §5 adds `@radix-ui/react-switch` |
+| `ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.tsx` | EDIT | §6: a tab click reports one source change on Radix tabs 1.1.22 |
+| `ui/packages/app/AGENTS.md` | EDIT | §6: Next 16.4 rewrites its managed `nextjs-agent-rules` block |
 | `docs/v2/active/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md` | CREATE | This spec |
 
 ## Applicable Rules
@@ -77,7 +81,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
 | UI / DESIGN TOKEN | Yes | Only design-system components and token classes; no raw `<button>` or `*-[...]` |
-| File & Function Length (≤350/≤50/≤70) | Yes | `ModelsRegistryCells.tsx` shrinks; `page.tsx` moves the view load into its own component |
+| File & Function Length (≤350/≤50/≤70) | Yes | `ModelsRegistryCells.tsx` shrinks; the memory rows are their own component |
 | UFS | Yes | ui/ manual pass: repeated literals become constants |
 | MILESTONE-ID | Yes | No milestone identifiers in code or test names |
 | SPEC TEMPLATE | Yes | `bash .orly/audits/spec-template.sh --staged` on every spec edit |
@@ -87,6 +91,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Formats:** the library's own cells in `CatalogueList.tsx` — pinned `en-US` grouping and two-decimal rates.
 - **Row actions:** `SecretsList.tsx` — ghost `IconAction`s in a right-aligned row, destructive last.
 - **Pending navigation:** Next.js `useLinkStatus` (`next/link`), which marks the one link whose navigation is in flight.
+- **Switch:** `RadioGroup.tsx` in the design system — a Radix primitive composed with token classes and a client boundary.
 
 ## Sections (implementation slices)
 
@@ -119,6 +124,21 @@ The invite email status moves into the Time column under the dates, reading "Inv
 The app runs on `http://localhost:3000` from `AGENTSFLEET_UI_ENV_FILE`; the browse tool captures each changed screen for the PR, and Indy reviews the running app.
 
 - **Dimension 4.1** — Indy accepts the four screens on the running app → Test `indy_eyeballs_the_changed_screens` (manual)
+
+### §5 — Shared-memory access reads as two named switches
+
+The Memory tab's two grants become a "Shared memory" group of two rows, each a label, a one-line description and a `Switch` on the right. **Use shared memory** — "See what other fleets in this workspace have shared." — is the read grant. **Share this fleet's memory** — "Let this fleet share what it learns with other fleets in this workspace." — is the publish grant. `Switch` is a new design-system primitive over `@radix-ui/react-switch`, as `RadioGroup` wraps Radix. A flip calls `setMemoryAccessAction` as today; a refusal leaves the switch where it was and shows the warning. **Implementation default:** the names Indy picked from three proposals.
+
+- **Dimension 5.1** — The switch states its value and flips → Test `a switch announces its state and flips on click` (`ui/packages/design-system/src/design-system/Switch.test.tsx`)
+- **Dimension 5.2** — Each grant is a named switch with what it does → Test `each shared-memory grant is a named switch with what it does` (`MemoryPanel.test.tsx`)
+- **Dimension 5.3** — A refused flip leaves the switch unchanged and says why → Test `a refused shared-memory change leaves the switch where it was` (`MemoryPanel.test.tsx`)
+
+### §6 — Packages run their latest releases — DONE
+
+Every npm dependency in `cli`, `ui/packages/app`, `ui/packages/design-system` and `ui/packages/website` moves to its latest release, keeping its pin style, and the root `playwright-core` override follows Playwright to 1.64.0. `typescript-jsapi` stays on TypeScript 6, the alias Indy accepted on Jul 30, 2026 (`M151_001`). Radix tabs 1.1.22 focuses a trigger on mousedown, so one click selects its tab twice before a re-render; `LibrarySourceTabs` now reports only a real change of source.
+
+- **Dimension 6.1** — No package reports an update → Test `bun_outdated_reports_only_the_jsapi_alias` (package audit) — DONE
+- **Dimension 6.2** — One click on a source tab is one source change → Test `tells the caller when the operator changes source` (`ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.test.tsx`) — DONE
 
 ## Interfaces
 
@@ -164,6 +184,11 @@ No API, route or wire change.
 | 3.2 | unit | `the time column says whether the invite email went` | Sent → `Invite emailed`; failed → `Email not sent` |
 | 3.3 | unit | `a long secret name ellipsizes and keeps its icons in line` | A 60-character name → the slot truncates with the full name as its title; copy and rename sit in the same row |
 | 4.1 | manual | `indy_eyeballs_the_changed_screens` | Indy reviews the running app; his reply is recorded in Discovery |
+| 5.1 | unit | `a switch announces its state and flips on click` | Off switch → `role="switch"`, `aria-checked="false"`; click → `onCheckedChange(true)`, `aria-checked="true"`; click → back to false |
+| 5.2 | unit | `each shared-memory grant is a named switch with what it does` | Access `{read: true, publish: false}` → switch "Use shared memory" checked, "Share this fleet's memory" unchecked, each described by its line |
+| 5.3 | unit | `a refused shared-memory change leaves the switch where it was` | Action refused with 403 → the switch stays unchecked and enabled, and a warning alert shows |
+| 6.1 | package audit | `bun_outdated_reports_only_the_jsapi_alias` | `bun outdated` in the four packages → only `typescript` (the `typescript-jsapi` alias) |
+| 6.2 | unit | `tells the caller when the operator changes source` | Click Upload, then GitHub → `onSourceChange` called exactly twice |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -213,6 +238,8 @@ No API, route or wire change.
 - **Consults** — Indy, Oct 09, 2026, from four screenshots: the Model column should read `Fable 5` with `claude-fable-5` on hover; Events and Memory tabs take a while to load; the Models columns must match the Model library; Members icons should align like Secrets, and "Email sent" reads awkwardly. He asked to eyeball the result on `http://localhost:3000` run with `AGENTSFLEET_UI_ENV_FILE`. Then: "is it possible to align the copy clipboard icon, edit pencil" on Secrets, and how a long name should truncate.
 - **Tab reads** — Indy, Oct 09, 2026, after clicking through §2: "it seems performant now", then asked whether a tab loads only what it needs. Each tab starts only its own reads (`view-data.ts`), but every click re-reads the fleet and tenant billing, because the header renders in `page.tsx`. A `fleets/[id]/layout.tsx` holding the header would drop the billing read from every click and the fleet read from Events, at the cost of a header status that refreshes only on reload. Indy chose "Measure first": Dimension 2.3's timing decides whether the header moves.
 - **Tab timing** — Oct 09, 2026, `next dev` on `localhost:3000`, median of 5 clicks, ms. Before §2 every tab showed nothing until done: Events 390, Memory 375, Skill 385, Trigger 674, Chat 473. With the pulse and a skeleton: the tab answered in 5–11; done Events 368, Memory 374, Skill 385, Trigger 656, Chat 683. Every view lands no sooner than the fleet read (~370), which four of five tabs need, so the header stays in `page.tsx`. Indy chose "Pulse only": the skeleton goes, and Chat returns to its own read time.
+- **Shared-memory switches** — Indy, Oct 09, 2026: "i think we must keep it simple and have it NAME PROPERLY PROPOSE FIRST, SO INDY APPROVES", with a screenshot of on/off switches. Three name sets were proposed; he picked "Use shared memory" / "Share this fleet's memory" and chose to ship it here as §5.
+- **Packages** — Indy, Oct 09, 2026: "can we check and update all the packages you have (npm) to the latest in ui/packages/app, cli, design-system, website?", then asked for it in this PR (§6). The new releases are one to four days old; `posthog-js` 1.438.5 was hours old.
 - **Metrics review** — No product event changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.

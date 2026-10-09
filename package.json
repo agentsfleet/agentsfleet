@@ -8,7 +8,7 @@
   ],
   "devDependencies": {},
   "overrides": {
-    "playwright-core": "1.63.0"
+    "playwright-core": "1.64.0"
   },
   "version": "0.28.2"
 }
