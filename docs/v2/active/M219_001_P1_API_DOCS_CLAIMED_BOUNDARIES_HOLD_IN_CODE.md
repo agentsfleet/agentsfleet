@@ -55,22 +55,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` | EDIT | The launcher starts with an empty environment |
-| `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/prepare.rs` | EDIT | Empty-environment test |
-| `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/support.rs` | EDIT | A fake launcher that reports its inherited environment |
+| `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/{prepare.rs,support.rs}` | EDIT | Empty-environment test, over a fake launcher that reports its inherited environment |
 | `rustd/crates/afd_fleet/src/lease/fence.rs` | EDIT | Fence reads return the lease's own token beside the live sequence |
-| `rustd/crates/afd_fleet/src/lease/memory.rs` | EDIT | Capture, recall and hydrate decide through `fence_holds` |
+| `rustd/crates/afd_fleet/src/lease/memory.rs`, `rustd/crates/afd_fleet/src/error/{detail.rs,refuse.rs}` | EDIT | Capture, recall and hydrate decide through `fence_holds`; the stale-fence sentence and fenced event name every verb |
 | `rustd/crates/afd_fleet/src/lease/sql/lease.rs` | EDIT | The mint scope read requires the lease to hold the live sequence |
-| `rustd/crates/afd_fleet/tests/integration_memory_capture.rs` | EDIT | The test admitting a token above the live sequence is inverted; superseded-lease cases |
-| `rustd/crates/afd_fleet/tests/integration_credential_mint/cases.rs` | EDIT | A superseded active lease mints nothing |
-| `rustd/crates/afd_fleet/tests/integration_credential_mint.rs` | EDIT | The fixture lease's token is a named constant; a helper moves the sequence past it |
+| `rustd/crates/afd_fleet/tests/{integration_memory_capture.rs,integration_memory_hydrate_order.rs,fleet_suite.rs}` | EDIT, CREATE | The test admitting a token above the live sequence is inverted; superseded-lease cases; hydrate trusts the higher token over the clock |
+| `rustd/crates/afd_fleet/tests/{integration_credential_mint.rs,integration_credential_mint/cases.rs}` | EDIT | A superseded active lease mints nothing; the fixture lease's token is a named constant, and a helper moves the sequence past it |
 | `rustd/crates/afd_fleet/src/lease/fence/tests.rs` | CREATE | The fence rule and its corrupt-column refusal, without a database |
-| `rustd/crates/afd_vault/src/delete.rs` | EDIT | `delete_in` on a caller's transaction; `delete` wraps it |
-| `rustd/crates/afd_connector/src/grant/holding.rs` | EDIT | `forget` is one transaction; its "different stores" note is corrected |
+| `rustd/crates/afd_vault/src/{delete.rs,error.rs}` | EDIT | `delete_in` on a caller's transaction; `delete` wraps it; a referenced-refusal sample behind `test-util` |
+| `rustd/crates/afd_connector/src/{grant/holding.rs,error.rs,error/raise.rs}`, `rustd/crates/afd_connector/{Cargo.toml,tests/error_surface.rs}` | EDIT | `forget` is one transaction; its "different stores" note is corrected; a referenced refusal carries its count |
 | `rustd/crates/afd_connector/src/grant.rs` | EDIT | `land` writes the vault row before routing, as its module note already says |
-| `rustd/crates/afd_connector/tests/integration_connect_roundtrip/disconnect.rs` | CREATE | Refused-delete and racing-reconnect cases |
-| `rustd/crates/afd_connector/tests/integration_connect_roundtrip.rs` | EDIT | The fixture exposes its tenant and a grant store |
+| `rustd/crates/afd_connector/tests/{integration_connect_roundtrip.rs,integration_connect_roundtrip/disconnect.rs}` | EDIT, CREATE | Refused-delete and racing-reconnect cases, holding the production workspace lock; the fixture exposes its tenant and a grant store |
+| `rustd/crates/afd_api_tenant/src/handler/{connector/status.rs,secret.rs}`, `rustd/crates/afd_api/tests/{integration_connector_status.rs,integration_connector_status/checks.rs}`, `rustd/crates/afd_api_runner/src/handler/runner/credential.rs`, `rustd/crates/afd_core/src/problem/request.rs` | EDIT | A referenced Disconnect answers 409 with `current_state`; Disconnect, mint and vault delete document their 409s; the `UZ-VAULT-004` sentence fits both verbs |
 | `rustd/crates/afd_wire/src/{policy.rs,policy/repository.rs}` | EDIT | `HttpRequestRule` gains serde-defaulted `permitted_fields`; named field constants and the commits path |
-| `rustd/crates/afr_egress/src/{origin.rs,origin/tests.rs,fixture.rs}` | EDIT | A rule naming fields admits only those keys and no query; unlisted-key, query and admitted-draft cases; the fixture permits what the gate does |
+| `rustd/crates/afr_egress/src/{origin.rs,origin/tests.rs,origin/tests/closed.rs,admission.rs,admission/tests.rs,fixture.rs}` | EDIT, CREATE | A closed rule admits only its keys and no query, and names the key it refused, escaped and capped; the fixture permits what the gate does |
 | `rustd/crates/afd_gate/src/policy/egress/{write.rs,read.rs,tests.rs}` | EDIT | Permitted fields per endpoint, commits name theirs, read rules name none; the open set is blobs and trees |
 | `rustd/crates/afr_agent/src/{loop/history_tests.rs,prompt/tests.rs}` | EDIT | Rule literals carry the new field |
 | `public/openapi.json` | EDIT | `HttpRequestRule` publishes `permitted_fields`; regenerated by `agentsfleetd openapi` |
@@ -79,9 +77,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_credential/src/credential/{github.rs,github/tests.rs,github/tests/unrequested.rs}` | EDIT, CREATE | Only `metadata: read` may arrive unrequested; unrequested-read and `metadata` level cases |
 | `rustd/crates/afd_fleet/src/lease/{coverage.rs,installed.rs,sql/fleet.rs}` | EDIT | §7: the ceiling read is a stored-config read with no status filter |
 | `rustd/crates/afd_fleet/src/lease/{renew.rs,renew/tests.rs}` | EDIT, CREATE | §8: a catalogue fault meters zero tokens and logs the held counts |
-| `rustd/crates/afd_fleet/tests/integration_renew_coverage.rs` | EDIT | §7: killed-fleet ceiling cases replace the stopped-fleet case; §8: the late-charge case |
+| `rustd/crates/afd_fleet/tests/{integration_renew_coverage.rs,integration_held_sandbox.rs,integration_held_sandbox/report.rs}` | EDIT | §7: killed-fleet ceiling cases replace the stopped-fleet case; §8: the late-charge case and the report-time uncharged-token line |
 | `rustd/crates/afd_fleet/tests/support/{fleet_report_seed.rs,fleet_fixtures.rs}` | EDIT | §8: `held_in` over a private database, which can take its catalogue offline |
 | `scripts/model-library-allowlist.json` | EDIT | §9: current lineups and first-party rates, verified Oct 09, 2026 |
+| `make/bench.mk` | EDIT | Bench lanes reset and migrate only a rig whose `BENCH_TARGET_OWNED` is exactly `owned` |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/lib/known-models.ts`, `ui/packages/app/tests/{provider-model-select,models-registry-edit-remove}.test.tsx` | EDIT | §9: the dashboard's fallback list names current models |
 | `docs/architecture/connectors.md` | EDIT | Disconnect is one transaction |
 | `docs/architecture/{runner_fleet.md,lease_flow.md}` | EDIT | §7: kill keeps the ceiling on a run in flight; §4: the GitHub write set names its fields |
@@ -143,11 +142,11 @@ Report and renew admit a request only when the lease's stored token equals the p
 
 ### §4 — A locked GitHub write rule admits only what it names — DONE
 
-The matcher compares method, path and locked fields, and passes any other body key and any query string. `HttpRequestRule` gains `permitted_fields`. A rule that names fields admits a body whose top-level keys are all locked or permitted, and a URL with no query. `/pulls` permits `title`, `body` and `maintainer_can_modify` beside its three locked fields; `/git/refs` permits `sha` beside `ref`; `/git/commits` permits `message`, `tree` and `parents`, so GitHub attributes every commit to the App. **Implementation default:** commits leave the "objects are open" set, because a ref publishes the commit's stated identity. An older runner ignores the new field and stays as open as today; runners deploy with the daemon. A newer runner reading a lease minted before the field existed admits only that lease's locked keys, so it refuses the request.
+The matcher compares method, path and locked fields, and passes any other body key and any query string. `HttpRequestRule` gains `permitted_fields`. A rule that names fields admits a body whose top-level keys are all locked or permitted, and a URL with no query. `/pulls` permits `title`, `body` and `maintainer_can_modify` beside its three locked fields; `/git/refs` permits `sha` beside `ref`; `/git/commits` permits `message`, `tree` and `parents`, so GitHub attributes every commit to the App. **Implementation default:** commits leave the "objects are open" set, because a ref publishes the commit's stated identity. An older runner ignores the new field and stays as open as today; runners deploy with the daemon. A newer runner reading a lease minted before the field existed checks only that lease's locked fields, as that daemon meant.
 
-- **Dimension 4.1** — An unlisted key or a query string under a locked rule is refused → Test `should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule` — DONE (`afr_egress/src/origin/tests.rs`)
-- **Dimension 4.2** — A commit naming its own author, committer or signature is refused → Test `should_refuse_a_commit_that_names_its_own_identity` — DONE (`afr_egress/src/origin/tests.rs`)
-- **Dimension 4.3** — The draft Pull Request a binding authorises is still admitted → Test `should_admit_the_draft_pull_request_a_binding_authorises` — DONE (`afr_egress/src/origin/tests.rs`)
+- **Dimension 4.1** — An unlisted key or a query string under a locked rule is refused → Test `should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule` — DONE (`afr_egress/src/origin/tests/closed.rs`)
+- **Dimension 4.2** — A commit naming its own author, committer or signature is refused → Test `should_refuse_a_commit_that_names_its_own_identity` — DONE (`afr_egress/src/origin/tests/closed.rs`)
+- **Dimension 4.3** — The draft Pull Request a binding authorises is still admitted → Test `should_admit_the_draft_pull_request_a_binding_authorises` — DONE (`afr_egress/src/origin/tests/closed.rs`)
 - **Dimension 4.4** — The gate authors exactly the fields each locked rule permits, and only blobs and trees stay open → Test `a_rule_that_names_a_field_lists_every_field_a_run_may_send` — DONE (`afd_gate/src/policy/egress/tests.rs`)
 
 ### §5 — A final Slack answer posts as literal text — DONE
@@ -192,22 +191,22 @@ A renewal whose catalogue read fails meters at run-fee rates with the real count
 
 ```
 afd_wire::policy::HttpRequestRule
-  + permitted_fields: Vec<String>   // #[serde(default)]; empty = today's behaviour for a rule with no locked fields
+  + permitted_fields: Option<Vec<String>>   // #[serde(default)]; None = open, Some([]) = locked fields only
 afd_vault::Directory
   + delete_in(&self, tx: &mut Transaction, workspace, name) -> Result<Deleted>
 afd_fleet (§7)  Leases::stored_config(&Uuid7) -> Result<Option<FleetConfig>>
 Slack chat.postMessage body: `text` is entity-escaped for & < >; `metadata` unchanged
 ```
 
-No HTTP route, status code or error code changes. Refusals reuse `RUN_STALE_FENCING_TOKEN`, `lease_not_found`, `budget_exhausted` and the egress refusal codes.
+No route or error code changes. A referenced Disconnect's 409 gains `current_state: "referenced"`; Disconnect, mint and vault delete document their 409s. Refusals reuse `RUN_STALE_FENCING_TOKEN`, `lease_not_found`, `budget_exhausted` and the egress refusal codes.
 
 ## Failure Modes
 
 | Mode | Cause | Handling (system response + what the caller observes) |
 |------|-------|--------------------------------------------------------|
 | Stale holder | A runner presents a token that is not its lease's, or holds a lease the fleet moved past | Memory verbs refuse with the stale-fence code; mint answers lease not found; nothing is read, stored or minted |
-| Vault delete refused | A model entry still references the grant key | `forget` rolls back; routing rows stay; Disconnect reports the refusal |
-| Concurrent Connect and Disconnect | Callback and Disconnect run together | The vault row lock serializes them; the end state has routing rows only with a handle |
+| Vault delete refused | A model entry still references the grant key | `forget` rolls back; routing rows stay; Disconnect answers 409 `UZ-VAULT-004` with `current_state: "referenced"` |
+| Concurrent Connect and Disconnect | Callback and Disconnect run together | The workspace row lock serializes them; the end state has routing rows only with a handle |
 | Unlisted request shape | A tool sends a field or query a locked rule does not name | Egress refuses before the request leaves the sandbox; the tool reads the refusal |
 | Markup in an answer | Model output carries `<!channel>` or `<url\|label>` | Posted as entities; Slack renders the characters |
 | GitHub returns another ambient read | A token response lists an unrequested read besides `metadata` | Mint refuses as overreach and logs it; 6.3 proves the live response first |
@@ -216,8 +215,8 @@ No HTTP route, status code or error code changes. Refusals reuse `RUN_STALE_FENC
 ## Invariants
 
 1. Only the holder's exact, current token passes a fenced verb — every fenced read decides through `fence_holds`; R2 counts no other comparison.
-2. Routing rows exist only beside a vault handle — `land` and `forget` each run in one transaction that locks the vault row first.
-3. A rule that names fields admits nothing it does not name — the matcher rejects any key outside the locked and permitted sets and any query string.
+2. Routing rows exist only beside a vault handle — `land` and `forget` each run in one transaction that locks the workspace row first (`sql::LOCK_WORKSPACE`).
+3. A closed rule admits nothing it does not name — with `permitted_fields` present, the matcher rejects any key outside the locked and permitted sets and any query string; an absent list leaves a read, or an older daemon's rule, open.
 4. Model text reaches Slack only through `literal` — the poster is the one path to `chat.postMessage`.
 5. bubblewrap's environment is exactly what `--setenv` names — `Parts::spawn` clears it before exec.
 

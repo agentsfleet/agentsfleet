@@ -36,7 +36,7 @@ const EVENT_CAPTURED: &str = "memory_captured";
 
 /// A memory verb was fenced out — a superseded lease, or a token not the
 /// lease's own — and nothing was read or written.
-const EVENT_FENCED: &str = "memory_push_fenced";
+const EVENT_FENCED: &str = "memory_verb_fenced";
 
 impl Plane {
     /// The memory window that seeds one run.

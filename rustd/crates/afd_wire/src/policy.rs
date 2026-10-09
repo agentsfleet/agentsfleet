@@ -101,8 +101,8 @@ pub struct HttpRequestRule<'a> {
     /// and on every rule from a daemon older than this field. The runner then
     /// checks the rule's locked fields and nothing more. Closing an older
     /// daemon's write rule would refuse keys it never listed, such as a ref's
-    /// `sha` or a Pull Request's `title`, and stop every write until the
-    /// daemon upgrades.
+    /// `sha` or a Pull Request's `title`. Every write would then stop until
+    /// the daemon upgrades.
     #[serde(borrow, default)]
     pub permitted_fields: Option<Vec<Cow<'a, str>>>,
 }

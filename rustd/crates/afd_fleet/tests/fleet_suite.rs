@@ -70,6 +70,8 @@ mod integration_ledger_reads;
 mod integration_ledger_scope;
 #[path = "integration_memory_capture.rs"]
 mod integration_memory_capture;
+#[path = "integration_memory_hydrate_order.rs"]
+mod integration_memory_hydrate_order;
 #[path = "integration_money_gates.rs"]
 mod integration_money_gates;
 #[path = "integration_recovery_budget.rs"]

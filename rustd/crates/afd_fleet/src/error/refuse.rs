@@ -15,7 +15,7 @@
 
 use super::{Error, ErrorKind};
 
-/// Refuses a report from a holder the fleet has already superseded.
+/// Refuses a lease verb from a holder the fleet has already superseded.
 ///
 /// The six builders here and below carry no payload, which is what distinguishes
 /// them from every other kind in this file: each names ONE outcome of one

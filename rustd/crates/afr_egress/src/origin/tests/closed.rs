@@ -1,10 +1,12 @@
 //! Closed rules: a rule that lists its permitted fields admits no other key
 //! and no query, and says which it refused.
 
-use afd_wire::policy::{HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch};
+use afd_wire::policy::{
+    HttpJsonFieldRule, HttpMethod, HttpOriginPolicy, HttpPathMatch, HttpRequestRule,
+};
 use reqwest::Method;
 
-use super::super::{QUERY_REFUSED, admits, closed_refusal};
+use super::super::{KEY_ECHO_MAX, QUERY_REFUSED, admits, closed_refusal};
 use super::{origin, rule, url};
 
 /// The rule `afd_gate` compiles for a Pull Request: three locked fields and
@@ -153,7 +155,7 @@ fn should_say_which_key_or_query_a_closed_rule_refused() {
 
     assert_eq!(
         closed_refusal(&pulls, &Method::POST, &at, Some(issue)).as_deref(),
-        Some("it sends `issue`, which this rule does not list")
+        Some(r#"it sends "issue", which this rule does not list"#)
     );
     let queried = url("https://api.github.com/repos/acme/widgets/pulls?draft=false");
     assert_eq!(
@@ -165,5 +167,73 @@ fn should_say_which_key_or_query_a_closed_rule_refused() {
     assert_eq!(
         closed_refusal(&pulls, &Method::POST, &elsewhere, Some(issue)),
         None
+    );
+}
+
+#[test]
+fn should_echo_a_refused_key_escaped_and_cut_to_its_cap() {
+    let pulls = draft_pull_request();
+    let at = url("https://api.github.com/repos/acme/widgets/pulls");
+    let long = "k".repeat(KEY_ECHO_MAX + 36);
+    let body = format!(r#"{{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"{long}":1}}"#);
+    assert_eq!(
+        closed_refusal(&pulls, &Method::POST, &at, Some(&body)),
+        Some(format!(
+            "it sends \"{}\", which this rule does not list",
+            "k".repeat(KEY_ECHO_MAX)
+        ))
+    );
+
+    // A key written to break out of the sentence reads back as its escapes.
+    let hostile = r#"{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"x`\n\"y":1}"#;
+    let said = closed_refusal(&pulls, &Method::POST, &at, Some(hostile)).expect("a key to blame");
+    assert!(!said.contains('\n'), "{said}");
+    assert_eq!(said, r#"it sends "x`\n\"y", which this rule does not list"#);
+}
+
+#[test]
+fn should_not_blame_a_key_for_a_path_admits_refuses_before_any_rule() {
+    let pulls = draft_pull_request();
+    let issue = r#"{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"issue":7}"#;
+    // The closed rule's path, on a port `trusted_path` refuses: the request
+    // was never a rule's to admit, so no key is the reason.
+    let off_port = url("https://api.github.com:8443/repos/acme/widgets/pulls");
+    assert!(!admits(&pulls, &Method::POST, &off_port, Some(issue)));
+    assert_eq!(closed_refusal(&pulls, &Method::POST, &off_port, Some(issue)), None);
+}
+
+/// One `POST /repos/acme/widgets/git/refs` rule as a lease carries it, locking
+/// `ref`, with `permitted` spliced in as written on the wire.
+fn decoded_ref_rule(permitted: &str) -> HttpOriginPolicy<'static> {
+    let json = format!(
+        r#"{{"method":"post","path":"/repos/acme/widgets/git/refs","path_match":"exact",
+            "json_fields":[{{"name":"ref","string_value":"refs/heads/run-1","boolean_value":null}}]{permitted}}}"#
+    );
+    let rule: HttpRequestRule<'static> =
+        serde_json::from_str(Box::leak(json.into_boxed_str())).expect("the rule decodes");
+    origin(vec![rule])
+}
+
+#[test]
+fn should_read_an_absent_list_as_open_and_an_empty_one_as_closed() {
+    let at = url("https://api.github.com/repos/acme/widgets/git/refs");
+    let locked_only = r#"{"ref":"refs/heads/run-1"}"#;
+    let with_sha = r#"{"ref":"refs/heads/run-1","sha":"abc"}"#;
+
+    // Absent: the locked field is checked and any other key passes.
+    let open = decoded_ref_rule("");
+    assert_eq!(open.requests[0].permitted_fields, None);
+    assert!(admits(&open, &Method::POST, &at, Some(with_sha)));
+
+    // Present but empty: the rule admits its locked field alone, and no query.
+    let shut = decoded_ref_rule(r#","permitted_fields":[]"#);
+    assert_eq!(shut.requests[0].permitted_fields, Some(Vec::new()));
+    assert!(admits(&shut, &Method::POST, &at, Some(locked_only)));
+    assert!(!admits(&shut, &Method::POST, &at, Some(with_sha)));
+    let queried = url("https://api.github.com/repos/acme/widgets/git/refs?x=1");
+    assert!(!admits(&shut, &Method::POST, &queried, Some(locked_only)));
+    assert_eq!(
+        closed_refusal(&shut, &Method::POST, &at, Some(with_sha)).as_deref(),
+        Some(r#"it sends "sha", which this rule does not list"#)
     );
 }

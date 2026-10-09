@@ -135,7 +135,10 @@ BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo
 # or prod profile points at a deployed database, and a rig whose
 # BENCH_TARGET_OWNED is overridden is not this run's to reset (see above), so a
 # bench never resets or migrates either.
-BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(filter owned,$(BENCH_TARGET_OWNED))),$(TEST_STATE_DEP) _migrate-test-db)
+# Exactly the one word: `filter` alone finds `owned` anywhere in the value, so
+# an override of "owned no" would still claim the rig.
+BENCH_RIG_OWNED := $(and $(filter owned,$(BENCH_TARGET_OWNED)),$(filter 1,$(words $(BENCH_TARGET_OWNED))))
+BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_STATE_DEP) _migrate-test-db)
 
 # The lease lane runs two populations: the contended window it always ran, then
 # a drain through the full lease and report verbs, whose idle cost it prints as

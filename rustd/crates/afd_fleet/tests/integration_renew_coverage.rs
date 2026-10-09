@@ -5,11 +5,13 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use crate::integration_held_sandbox::report::processed;
 use crate::queue;
 use crate::report_seed;
 use afd_core::error_code;
 use afd_core::test_util::trace::Capture;
-use afd_wire::report::RenewRequest;
+use afd_fleet::lease::Plane;
+use afd_wire::report::{RenewRequest, ReportRequest};
 
 use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
@@ -217,22 +219,7 @@ async fn a_renewal_during_a_catalogue_fault_charges_its_tokens_later() {
         "the fixture rate prices ten thousand tokens"
     );
 
-    held.fixtures.set_catalogue_readable(false).await;
-    let log = Capture::install();
-    let (_, unpriced) = plane
-        .renew(&held.runner, lease_id, reported(25_000), held.now)
-        .await
-        .expect("a catalogue fault does not stop the run");
-    // The renewal itself says it held the tokens, not only the helper it calls.
-    let warned = log.only("renew_tokens_held_for_pricing");
-    assert_eq!(warned.field("input_tokens"), Some("25000"));
-    assert_eq!(warned.field("lease_id"), Some(lease_id));
-    drop(log);
-    assert!(
-        unpriced.is_zero(),
-        "no runtime accrued, and no token was priced while the catalogue was offline"
-    );
-    held.fixtures.set_catalogue_readable(true).await;
+    renew_through_a_catalogue_fault(&held, &plane, reported(25_000)).await;
 
     let (_, later) = plane
         .renew(&held.runner, lease_id, reported(40_000), held.now)
@@ -247,4 +234,66 @@ async fn a_renewal_during_a_catalogue_fault_charges_its_tokens_later() {
     drop(plane);
     queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
     held.fixtures.cleanup().await;
+}
+
+/// A report the catalogue fault reaches says which tokens go uncharged.
+///
+/// The final slice settles at the run fee alone, so this line is the only
+/// record of what went unbilled: it carries the run's totals and its lease.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged() {
+    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
+    // A priced model, so the refusal below is the fault and not a missing rate.
+    held.fixtures
+        .seed_model_rate(PROVIDER, MODEL, held.now.as_millis())
+        .await;
+    let report = ReportRequest {
+        input_tokens: 12_000,
+        cached_input_tokens: 3_000,
+        output_tokens: 500,
+        ..processed(&held, None)
+    };
+
+    held.fixtures.set_catalogue_readable(false).await;
+    let log = Capture::install();
+    held.fixtures
+        .plane()
+        .report(&held.runner, &report, held.now)
+        .await
+        .expect("a catalogue fault does not stop the report");
+    let warned = log.only("report_rates_unverified_run_fee_only");
+    assert_eq!(warned.field("input_tokens"), Some("12000"));
+    assert_eq!(warned.field("cached_input_tokens"), Some("3000"));
+    assert_eq!(warned.field("output_tokens"), Some("500"));
+    assert_eq!(warned.field("lease_id"), Some(held.issued.lease_id.as_str()));
+    drop(log);
+    held.fixtures.set_catalogue_readable(true).await;
+
+    queue::clear_ready(held.fixtures.queue(), &held.fleet).await;
+    held.fixtures.cleanup().await;
+}
+
+/// Renews `held`'s lease for `request` with the catalogue offline, and checks
+/// the renewal charged nothing and said itself that it held those tokens —
+/// not only the pricing helper it calls.
+async fn renew_through_a_catalogue_fault(held: &Held, plane: &Plane, request: RenewRequest) {
+    let lease_id = held.issued.lease_id.as_str();
+    let held_tokens = request.input_tokens.to_string();
+    held.fixtures.set_catalogue_readable(false).await;
+    let log = Capture::install();
+    let (_, unpriced) = plane
+        .renew(&held.runner, lease_id, request, held.now)
+        .await
+        .expect("a catalogue fault does not stop the run");
+    let warned = log.only("renew_tokens_held_for_pricing");
+    assert_eq!(warned.field("input_tokens"), Some(held_tokens.as_str()));
+    assert_eq!(warned.field("lease_id"), Some(lease_id));
+    drop(log);
+    assert!(
+        unpriced.is_zero(),
+        "no runtime accrued, and no token was priced while the catalogue was offline"
+    );
+    held.fixtures.set_catalogue_readable(true).await;
 }

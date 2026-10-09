@@ -518,7 +518,7 @@ The daemon serves asynchronous response bodies through the shared hub, with a se
 All three are decided by `agentsfleetd`, which owns both `core.fleets.status` and lease issuance. None cancels a lease already running: the heartbeat answers `ok` and names no lease. Renewal reads the fleet's stored config whatever its status, so a paused or killed fleet's run still stops at the fleet's stored budget ceiling (`rustd/crates/afd_fleet/src/lease/coverage.rs`). Each renewal reads that ceiling afresh: a paused or stopped fleet's config can be edited mid-run and the next renewal obeys the edit; a killed fleet's cannot be edited.
 
 - **Steer** — a human message. `agentsfleetd` enqueues a `steer` event; it is leased like any other. The current run finishes first; the steer runs next. Not an interrupt.
-- **Pause** — `agentsfleetd` sets `status=paused` and stops issuing leases for the fleet. Any in-flight lease runs to completion.
+- **Pause** — `agentsfleetd` sets `status=paused` and stops issuing leases for the fleet. A lease in flight runs on as under Kill, below: to its own end, its fleet's budget ceiling, or `MAX_RUNTIME_MS`.
 - **Kill** — `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` with `status: killed` sets `status=killed` and stops issuing leases for the fleet. It writes nothing to `fleet.runner_leases` (`rustd/crates/afd_fleet_lifecycle/src/sql.rs`), so a lease in flight runs to its own end, its fleet's budget ceiling, or `MAX_RUNTIME_MS`, and its report settles like any other.
 
 No cancel channel exists: a revocation carried on the heartbeat, or a dedicated low-latency channel, is unbuilt.
