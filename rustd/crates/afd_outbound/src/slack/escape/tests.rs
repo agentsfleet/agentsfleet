@@ -1,4 +1,4 @@
-//! What a line looks like once it is literal Slack text.
+//! What a post looks like once it is literal Slack text.
 
 use super::literal;
 

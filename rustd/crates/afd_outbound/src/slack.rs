@@ -41,6 +41,12 @@
 //! ([`Deliver::redeliver`]) first asks the thread whether that marker is
 //! already there — see `afd_connector::slack::holds_answer` for what the
 //! check can and cannot promise.
+//!
+//! # Every text goes out literal
+//!
+//! [`SlackPoster::post`] escapes the text it sends (`escape`) and leaves the
+//! job's answer as the fleet wrote it, so an answer that names the channel
+//! shows the name and pages nobody.
 
 use afd_connector::slack::{AnswerMarker, Part, Stamp, Thread};
 use afd_connector::{Grants, Provider};
@@ -51,6 +57,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::poster::{Deliver, Verdict};
 
+mod escape;
 mod verdict;
 
 use self::verdict::{classify, destination, failed, verdict_of};
@@ -193,10 +200,11 @@ impl SlackPoster {
 
     /// The POST itself, with no pool connection held — see the module note.
     async fn post(&self, job: &OutboundDelivery, inputs: &Inputs) -> Verdict {
+        let text = escape::literal(&job.answer);
         let body = serde_json::to_vec(&Message {
             channel: &inputs.destination.channel_id,
             thread_ts: &inputs.destination.thread_ts,
-            text: &job.answer,
+            text: &text,
             metadata: inputs.marker.metadata(),
         });
         let Ok(body) = body else {

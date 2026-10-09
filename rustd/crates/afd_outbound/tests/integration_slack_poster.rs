@@ -210,3 +210,28 @@ async fn a_vendor_that_is_briefly_unwell_is_retried() {
     let _sent = received(&slack);
     fixture.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_answer_naming_the_channel_posts_as_text() {
+    // The final answer is model output exactly as an interim line is, so a
+    // steered fleet must not page the channel with it, nor dress a link's
+    // target in a label it chose.
+    let fixture = Fixture::create().await;
+    fixture.seed().await;
+    fixture.seal_grant(BOT_TOKEN).await;
+    let slack = slack_answering(200, r#"{"ok":true}"#).await;
+    let paging = afd_dragonfly::OutboundDelivery {
+        answer: "<!channel> <https://x.example|docs>".to_owned(),
+        ..fixture.job()
+    };
+
+    let verdict = fixture.poster(&slack.api_base()).deliver(&paging).await;
+
+    assert_eq!(verdict, Verdict::Delivered);
+    assert_eq!(
+        received(&slack).field("text"),
+        Some("&lt;!channel&gt; &lt;https://x.example|docs&gt;")
+    );
+    fixture.cleanup().await;
+}
