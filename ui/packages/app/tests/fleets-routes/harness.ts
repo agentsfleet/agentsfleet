@@ -1,5 +1,3 @@
-import type { ReactElement } from "react";
-import { prerender } from "react-dom/static";
 import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { NANOS_PER_USD } from "@/lib/types";
@@ -129,25 +127,6 @@ export function detailResponse(over: Record<string, unknown> = {}) {
     },
     json: async () => detailBody(over),
   };
-}
-
-/**
- * The fleet detail page streams its view panel behind a Suspense boundary, and
- * `renderToStaticMarkup` stops at the fallback. `prerender` waits for every
- * boundary. An error inside one rejects here, as it reaches the route's error
- * boundary in the app. Dropping React's comment markers leaves the markup
- * `renderToStaticMarkup` gives for the settled tree.
- */
-export async function renderSettled(element: ReactElement): Promise<string> {
-  let failure: unknown;
-  const { prelude } = await prerender(element, {
-    onError: (error) => {
-      failure ??= error;
-    },
-  });
-  if (failure !== undefined) throw failure;
-  const html = await new Response(prelude).text();
-  return html.replace(/<!--.*?-->/g, "");
 }
 
 export function mockFetchBilling(billing: BillingSnapshot, missingStatus = 404) {
