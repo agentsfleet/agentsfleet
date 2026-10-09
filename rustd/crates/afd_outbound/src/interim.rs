@@ -28,11 +28,9 @@
 //!
 //! # A line is posted as literal text
 //!
-//! Slack reads `<!channel>`, `<!here>` and `<@U…>` in a message's text as
-//! notifications. A line is model output, and the model reads the thread it
-//! answers, so whoever writes in that thread could steer it into paging the
-//! channel up to eight times a run. Every `&`, `<` and `>` goes out as Slack's
-//! entity for it, and the thread shows the line exactly as the fleet wrote it.
+//! A steered line could otherwise page the channel up to eight times a run.
+//! The poster escapes every text it sends (`crate::slack`), so a line is handed
+//! over as the fleet wrote it and escaped exactly once.
 
 use afd_connector::Provider;
 use afd_connector::slack::Part;
@@ -51,10 +49,6 @@ const UNQUEUED: &str = "0-0";
 
 /// Logged once per line, delivered or not; the text is never logged.
 const EVENT_POSTED: &str = "fleet_message_posted";
-
-/// Each character Slack reads as markup, and the entity that shows it as
-/// itself. Slack documents exactly these three as the text to escape.
-const SLACK_ENTITIES: [(char, &str); 3] = [('&', "&amp;"), ('<', "&lt;"), ('>', "&gt;")];
 
 /// One line, fenced, counted and scrubbed by the lease plane, ready to post.
 ///
@@ -118,7 +112,7 @@ impl Interjector {
             workspace_id,
             fleet_id,
             event_id,
-            answer: literal(&text),
+            answer: text,
         };
         let posters = Posters {
             slack: Line {
@@ -148,19 +142,6 @@ impl Interjector {
     }
 }
 
-/// `text` with every character Slack reads as markup replaced by its entity,
-/// so no line notifies anyone or renders as a link it did not spell out.
-fn literal(text: &str) -> String {
-    text.chars()
-        .fold(String::with_capacity(text.len()), |mut out, c| {
-            match SLACK_ENTITIES.iter().find(|(markup, _)| *markup == c) {
-                Some((_, entity)) => out.push_str(entity),
-                None => out.push(c),
-            }
-            out
-        })
-}
-
 /// The Slack poster, posting under one line's marker part.
 #[derive(Debug)]
 struct Line<'p> {
@@ -177,6 +158,3 @@ impl Deliver for Line<'_> {
         self.slack.redeliver_part(job, Some(&self.part))
     }
 }
-
-#[cfg(test)]
-mod tests;
