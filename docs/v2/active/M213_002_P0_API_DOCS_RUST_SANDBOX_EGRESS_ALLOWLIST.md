@@ -135,7 +135,7 @@ At lease bind the supervisor merges the runner's `registry_allowlist` — or, wh
 `runner_fleet.md` §Egress model describes the Rust scope with its Rust names, keeping the dated decisions. `runner_execution.md` drops the non-goal "No runner crate builds the per-lease network allowlist". On M213_001's docs branch, `runners.mdx` stops saying allowlist egress is not enforced, and names the host requirement (nftables in the kernel) and what a degraded runner shows when the probe fails.
 
 - **Dimension 3.1** — DONE — The architecture check passes and no page says allowlist egress is unenforced → Test `test_egress_pages_describe_enforcement`
-- **Dimension 3.2** — The docs branch carries the runner page change, and its checks pass → Test `test_docs_branch_carries_egress_page`
+- **Dimension 3.2** — DONE — The docs branch carries the runner page change, and its checks pass ([agentsfleet/docs#213](https://github.com/agentsfleet/docs/pull/213), stacked on #212: Greptile Review and gitleaks pass) → Test `test_docs_branch_carries_egress_page`
 
 ## Interfaces
 
