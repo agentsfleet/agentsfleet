@@ -1,7 +1,0 @@
-test_review_contamination_seal (__main__.PilotTests.test_review_contamination_seal) ... ok
-test_review_findings_are_separate_from_classifications (__main__.PilotTests.test_review_findings_are_separate_from_classifications) ... ok
-
-----------------------------------------------------------------------
-Ran 2 tests in 0.113s
-
-OK
