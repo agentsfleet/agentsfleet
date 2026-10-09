@@ -22,7 +22,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Renewal refused on empty wallet | `UZ-RUN-012` | coverage re-check on `/renew`; reachable for any exhausted tenant now that pricing comes from the catalogue | §Money gates |
 | Readiness recovery bound | `min-idle + ceil(active_fleets / 100) × interval` | `SWEEP_BATCH_LIMIT` = 100, keyset cursor on `(updated_at, id)`; ≈6 min at 100 fleets, ≈15 at 1 000, ≈55 at 5 000 | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
-| Control protocol | five verbs | register · heartbeat · lease · report · activity; `me` resolves from the token | §The control protocol |
+| Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runners** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
 | Runner "status" | three separate categories | `admin_state` enum + derived liveness + append-only `fleet.runner_events` | §Runner state |
@@ -207,15 +207,7 @@ The layout makes the "runner holds zero datastore credentials" guarantee **struc
 
 ## The control protocol — `/v1/runners`
 
-Five verbs. `agentsfleetd` translates them into the Postgres writes and Dragonfly stream operations the worker did directly, so the runner never sees a datastore.
-
-| Verb | Path | Auth | Handler | Purpose |
-|---|---|---|---|---|
-| `register` | `POST /v1/runners` | `Bearer` JWT carrying the `runner:enroll` scope | `afd_api_runner`'s enrolment handler | platform admin mints a durable `runner_token` (`agt_r`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `agt_t` api_key → `403`. Called from the **dashboard "Add runner"** (a session-authed server action) — **not** the runner CLI, and never the host. The operator installs the once-revealed `agt_r` (M84_001) |
-| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer agt_r` | `afd_api_runner`'s heartbeat handler | liveness; reply carries `status` (`ok` / `drain` / `stop` on the wire, and always `ok` from this daemon, because a cordoned, drained or revoked runner is refused before the handler with `UZ-RUN-009`), the assigned policy, the `degraded` verdict, and `heartbeat_interval_ms` — the cadence the host beats at, **required** on every reply (M205). No lease list rides it |
-| `lease` | `POST /v1/runners/me/leases` | `Bearer agt_r` | `afd_api_runner`'s lease handler | non-blocking poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
-| `report` | `POST /v1/runners/me/reports` | `Bearer agt_r` | `afd_api_runner`'s report handler | terminal result for a lease; `agentsfleetd` persists + `XACK`s after a fencing check |
-| `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer agt_r` | `afd_api_runner`'s activity handler | write-only progress stream for the live tail; best-effort, no ack |
+`agentsfleetd` translates the runner's calls into the Postgres writes and Dragonfly stream operations the worker did directly, so the runner never sees a datastore. The routes, their methods and their request and reply shapes are the API reference's **Runners** group on docs.agentsfleet.net, generated from `public/openapi.json`; this doc does not restate them. The shape that matters here: one enrolment route, `POST /v1/runners`, called by an operator (§Registering a runner); every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
 
 `me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). `register` is gated by the `runner:enroll` scope — grantable on its own, because enrolling a host into the shared fleet is the one capability that exposes every tenant's secrets to it — so a token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
 

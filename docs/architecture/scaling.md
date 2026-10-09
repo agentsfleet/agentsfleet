@@ -270,8 +270,8 @@ Dragonfly — `make bench-<lane> PROFILE=rig` — and the committed result sits 
 it in `bench/baselines/`. Absolute rates move with hardware; the shapes below
 do not. A baseline that moves takes its row here with it in the same commit.
 The steer, delivery and cardinality rows were re-measured at `774f99cbd`; the
-lease and live-tail rows come from the result files stamped `e2d250172`, the
-revision the drain and the tail lane were built on. Latency columns moved with
+lease rows come from the result file stamped `c82badcb5`, and the live-tail rows
+from `e2d250172`, the revision the tail lane was built on. Latency columns moved with
 host load between runs on this shared machine; the counts beside them did not.
 
 Statement and commit counts are Postgres's own: `pg_stat_statements` calls
@@ -282,10 +282,9 @@ says why each correction is there.
 
 | Path | What it costs | The number that decides |
 |------|---------------|-------------------------|
-| Idle lease poll | 1.00 Dragonfly command, 0 Postgres round trips (93 249 polls, index depth 0, after the lane force-clears the index) | Idle cost scales with runners, not fleets — while the index is empty. See "Idle poll after a drain" for what an index the lease path left behind costs. |
-| Contended lease | 582 leases/s; 11.3 Postgres round trips per issued lease; 21.9% of polls find nothing; p95 22.9 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | The candidate loop tries up to 64 fleets in turn, so a lease costs about eleven round trips under contention. This is the refactor's target. |
-| Lease through report (drain) | 78.7 Postgres statements and 51.1 commits per lease issued, the polls that missed and the report included; 26.0 Dragonfly commands per lease; 125 leases/s; lease p95 70.2 ms, report p95 15.3 ms; all 200 events processed once, 2 ledger rows each (200 fleets, 8 runners, the drain half of `make bench-lease`) | What one event costs the scheduler and the ledger end to end through `Plane::lease` and `Plane::report`, counted by Postgres rather than by the lane. |
-| Idle poll after a drain | 47.5 Postgres statements, 38.5 commits and 26.0 Dragonfly commands per poll, with all 200 marks still in the readiness index (305 polls, nothing force-cleared; the drain half of `make bench-lease` prints `idle_statements_per_poll=`) | The lease never clears a mark, so after every fleet drains each poll still claims fleets that have no work. The idle-poll row above reads zero only because its window empties the index by hand. |
+| Idle lease poll | 1.00 Dragonfly command, 0 Postgres statements and 0 commits per poll (75 382 polls after a 200-fleet drain, readiness index empty, nothing force-cleared) | Idle cost scales with runners, not fleets. The lease clears a drained fleet's readiness mark, so once work runs out the index is empty and an idle poll never reaches Postgres. |
+| Contended lease | 1 928 leases/s; 2.4 Postgres round trips per issued lease; 27.8% of polls find nothing; p95 7.8 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | A lease costs about two round trips under contention, down from 11.3 at `e2d250172`. |
+| Lease through report (drain) | 50.0 Postgres statements and 26.8 commits per lease issued, the polls that missed and the report included; 14.1 Dragonfly commands per lease; 172 leases/s; lease p95 56.5 ms, report p95 21.5 ms; all 200 events processed once, 2 ledger rows each (200 fleets, 8 runners, the drain half of `make bench-lease`) | What one event costs the scheduler and the ledger end to end through `Plane::lease` and `Plane::report`, counted by Postgres rather than by the lane. |
 | Steer ingress | 3.04 Dragonfly commands per steer, 1.94 Postgres transactions; 1 639/s at p95 7.4 ms (8 submitters, 50 fleets) | Ingress writes the admission ledger, about two Postgres transactions per steer. The readiness index fills to the population and holds until a runner drains it. |
 | Delivery, healthy | 49.6 jobs/s per worker with one 250 ms destination in sixteen | Ten times the five-per-second estimate the refactor argument was made from — but see the next row. |
 | Delivery, head-of-line | the OTHER fifteen destinations' p95 3 752 ms against the slow one's 3 758 ms | With 6% of jobs slow, the healthy 94% wait exactly as long. One stream, one worker, one queue position at a time. |
@@ -295,12 +294,10 @@ says why each correction is there.
 | Live tail streams | 13.5 KB of heap per open, idle per-fleet stream, flat from 64 to 4 096 streams (13 800 / 13 494 / 13 521 / 13 529 B), so 4 096 streams hold about 53 MiB; one frame sent to every stream arrives at p95 0.18 / 0.14 / 0.14 / 0.13 ms, none lost (`make bench-tail`, after the hub shared each frame; 21.7 KB per stream before) | Flat per stream: at the `SSE_MAX_STREAMS` default of 256 that is 3.3 MiB. Memory and latency bind nothing up to 4 096 streams; file descriptors bind first. |
 
 Two of those rows change what the section below assumes. The idle row says the
-per-poll bound holds all the way up: cost tracks runner count and never fleet
-count, which is what makes the "idle deployment" line in the sizing procedure a
-measurement rather than an argument. The drain row qualifies it: that bound
-holds only while the readiness index is empty, and today the lease path never
-empties it, so a deployment whose fleets have all gone quiet pays the
-after-drain row on every poll until a mark is cleared. The head-of-line row says the delivery
+per-poll bound holds all the way up, after every fleet has drained included:
+cost tracks runner count and never fleet count, which is what makes the "idle
+deployment" line in the sizing procedure a measurement rather than an argument.
+The head-of-line row says the delivery
 worker's ceiling is not its rate but its ORDERING — a single slow vendor sets
 the latency for every vendor — and that is a shape a replica count cannot fix.
 
