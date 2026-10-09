@@ -14,14 +14,16 @@ use rustix::fs::{Gid, Uid};
 
 use crate::bubblewrap::{self, Layout, NetworkLayout, SOCKET_NAME};
 use crate::cgroup::{DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup};
+use crate::egress::{self, Kernel};
 use crate::engine::{Engine, HostWorkspace, LeaseName, Limits, Sandbox, SandboxRequest};
-use crate::error::{Result, not_ready, refused, unconfined};
+use crate::error::{Result, not_ready, unconfined};
 use crate::network::{Allowlist, Network};
 use crate::probe::HostProbe;
 use crate::tenant::{TenantDescriptors, TenantFiles};
 use crate::toolbox::Toolbox;
 use crate::workspace_disk::{Caching, WorkspaceDisk};
 
+mod boot;
 mod config;
 mod held;
 mod names;
@@ -29,6 +31,7 @@ mod parts;
 mod stderr;
 mod sweep;
 
+pub use self::boot::Booted;
 pub use self::config::BubblewrapConfig;
 use self::names::{Names, join};
 use self::parts::Parts;
@@ -83,21 +86,21 @@ impl BubblewrapEngine {
     ///
     /// # Errors
     /// The host lacks Landlock, seccomp, bubblewrap, the toolbox's file system
-    /// or a cgroup controller.
+    /// or a cgroup controller, or another process owns its egress.
     pub fn new(config: BubblewrapConfig, host: &HostProbe) -> Result<Self> {
-        if let Some(missing) = host.missing() {
-            let error = refused(missing);
-            let Logged { error_code, reason } = error.logged();
-            let event = EVENT_HOST_REFUSED;
-            tracing::error!(
-                missing,
-                error_code,
-                reason,
-                event,
-                "this host cannot build a sandbox"
-            );
-            return Err(error);
-        }
+        Self::with_egress(config, host, egress::own_host, &egress::Host)
+    }
+
+    /// [`Self::new`], taking the host's egress with `own` and sweeping it
+    /// through `kernel`: the running host's in production, a stated one in
+    /// the suites.
+    fn with_egress(
+        config: BubblewrapConfig,
+        host: &HostProbe,
+        own: impl FnOnce() -> Result<()>,
+        kernel: &impl Kernel,
+    ) -> Result<Self> {
+        boot::admissible(host)?;
         let root = rustix::process::geteuid().is_root();
         let run_as = root.then_some(config.sandbox_ids);
         let owner = run_as.unwrap_or((
@@ -107,7 +110,7 @@ impl BubblewrapEngine {
         // Before the sweep, which would otherwise remove a second process's
         // live links on this host.
         if host.egress {
-            crate::egress::own_host().inspect_err(|error| {
+            own().inspect_err(|error| {
                 let Logged { error_code, reason } = error.logged();
                 let event = EVENT_HOST_REFUSED;
                 tracing::error!(
@@ -123,8 +126,14 @@ impl BubblewrapEngine {
             owner,
             run_as,
         };
-        engine.sweep(host.egress);
+        engine.sweep(host.egress.then_some(kernel));
         Ok(engine)
+    }
+
+    /// What it builds sandboxes from.
+    #[must_use]
+    pub const fn config(&self) -> &BubblewrapConfig {
+        &self.config
     }
 
     async fn start(&self, request: SandboxRequest<'_>) -> Result<Bubblewrapped> {

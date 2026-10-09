@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use afd_core::test_util::trace::Capture;
 
+use super::super::BubblewrapEngine;
 use super::super::parts::Parts;
 
 /// How long a test waits for a release handed to the blocking pool.
@@ -16,7 +17,9 @@ const PATIENCE: Duration = Duration::from_secs(10);
 /// How often it looks.
 const POLL: Duration = Duration::from_millis(10);
 use super::support::{FakeHost, IMAGE, SLEEPER, request};
+use crate::egress::testing::{Fake, Protocol};
 use crate::engine::Engine;
+use crate::error::{EgressRefusal, egress_refused};
 
 #[tokio::test]
 async fn test_parts_with_no_sandbox_never_report_an_exit() {
@@ -128,6 +131,64 @@ fn test_the_boot_sweep_removes_what_a_previous_run_left() {
     assert_eq!(
         capture.only("sandbox_sweep_failed").field("lease_id"),
         Some("lease-5")
+    );
+}
+
+/// A host whose egress another runner process owns builds no engine, sweeps
+/// nothing, and says why: the lock is taken before the sweep, which would
+/// otherwise remove that process's live links.
+#[test]
+fn test_a_host_whose_egress_is_owned_elsewhere_is_refused_before_its_sweep() {
+    let mut host = FakeHost::new(SLEEPER);
+    host.probe.egress = true;
+    let kernel = Fake::default();
+    let capture = Capture::install();
+
+    let refused = BubblewrapEngine::with_egress(
+        host.config.clone(),
+        &host.probe,
+        || Err(egress_refused(EgressRefusal::HeldElsewhere)),
+        &kernel,
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        refused.egress_refusal(),
+        Some(&EgressRefusal::HeldElsewhere)
+    );
+    assert!(
+        kernel.seen().is_empty(),
+        "nothing listed: {:?}",
+        kernel.seen()
+    );
+    assert!(
+        capture
+            .only("sandbox_host_refused")
+            .field("reason")
+            .is_some_and(|reason| reason.contains("another runner process"))
+    );
+}
+
+/// An egress sweep the kernel will not list for is logged, and the engine is
+/// built and the leases swept all the same.
+#[test]
+fn test_an_egress_sweep_that_cannot_list_still_sweeps_the_leases() {
+    let mut host = FakeHost::new(SLEEPER);
+    host.probe.egress = true;
+    let left = host.lease_dir("lease-6");
+    fs::create_dir_all(&left).unwrap();
+    let blind = Fake::default().closed(Protocol::Netfilter);
+    let capture = Capture::install();
+
+    BubblewrapEngine::with_egress(host.config.clone(), &host.probe, || Ok(()), &blind).unwrap();
+
+    let failed = capture.only("sandbox_sweep_failed");
+    assert!(!left.exists(), "the lease was swept");
+    assert_eq!(failed.field("lease_id"), None, "the egress sweep failed");
+    assert!(
+        failed
+            .field("reason")
+            .is_some_and(|reason| reason.contains("listing egress tables"))
     );
 }
 

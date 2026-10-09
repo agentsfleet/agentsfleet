@@ -9,9 +9,11 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use afd_core::test_util::trace::Capture;
+
 use crate::error::ToolboxRefusal;
 use crate::toolbox::testing::{Signer, facts, manifest_bytes, open};
-use crate::toolbox::{Manifest, image_name};
+use crate::toolbox::{Manifest, MountedToolboxes, image_name};
 
 /// An image, its download, and the manifest naming it.
 struct Release {
@@ -300,4 +302,34 @@ fn should_remove_an_image_no_admitted_release_names() {
     let images = dir.path().join("images");
     assert!(!images.join(image_name(one.manifest.sha256())).exists());
     assert!(images.join(image_name(two.manifest.sha256())).exists());
+}
+
+/// Images still admitted when a host's guard drops are unmounted, and one the
+/// kernel will not unmount is logged and left mounted.
+#[test]
+fn should_unmount_on_drop_and_log_an_image_that_stays() {
+    let dir = tempfile::tempdir().unwrap();
+    let signer = Signer::new();
+    let [one, two] = [1, 2].map(|n| release(&signer, dir.path(), n));
+    let (closing, closed_by) = open(&dir.path().join("closing"));
+    closing.admit(&one.manifest, &one.source).unwrap();
+    let (stuck, stuck_by) = open(&dir.path().join("stuck"));
+    stuck.admit(&two.manifest, &two.source).unwrap();
+    stuck_by.refuse_unmounts.store(true, Ordering::SeqCst);
+    let capture = Capture::install();
+
+    drop(MountedToolboxes::from(closing));
+    drop(MountedToolboxes::from(stuck));
+
+    assert_eq!(
+        *closed_by.unmounted.lock().unwrap(),
+        [one.manifest.sha256()]
+    );
+    assert!(stuck_by.unmounted.lock().unwrap().is_empty());
+    let stayed = capture.only("sandbox_toolbox_unmount_failed");
+    assert!(
+        stayed
+            .field("reason")
+            .is_some_and(|reason| reason.contains("busy"))
+    );
 }

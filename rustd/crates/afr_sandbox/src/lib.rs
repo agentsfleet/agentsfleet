@@ -46,7 +46,7 @@ pub use self::egress::far as egress_testing;
 
 #[cfg(target_os = "linux")]
 pub use self::bubblewrap_engine::{
-    BubblewrapConfig, BubblewrapEngine, READY_TIMEOUT, SANDBOX_HOST_IDS,
+    Booted, BubblewrapConfig, BubblewrapEngine, READY_TIMEOUT, SANDBOX_HOST_IDS,
 };
 pub use self::cgroup::{
     DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup, MECHANISM_DELEGATED_CGROUP, SANDBOX_LEAF,
@@ -74,8 +74,9 @@ pub use self::tenant::{TENANT_EVENTS_FLAG, TENANT_PROCS_FLAG, TenantDescriptors}
 #[cfg(target_os = "linux")]
 pub use self::toolbox::KernelMounter;
 pub use self::toolbox::{
-    MANIFEST_SUFFIX, Manifest, Mounter, Release, SIGNATURE_SUFFIX, TOOLBOX_KEEP_RELEASES,
-    TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY, TOOLBOX_SUFFIX, Toolbox, ToolboxHome, Toolboxes,
+    MANIFEST_SUFFIX, Manifest, MountedToolboxes, Mounter, Release, SIGNATURE_SUFFIX,
+    TOOLBOX_KEEP_RELEASES, TOOLBOX_PREFIX, TOOLBOX_RELEASE_PUBLIC_KEY, TOOLBOX_SUFFIX, Toolbox,
+    ToolboxHome, Toolboxes,
 };
 pub use self::unsandboxed::UnsandboxedEngine;
 pub use self::warm_slots::WarmSlots;
