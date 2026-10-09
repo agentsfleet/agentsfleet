@@ -55,7 +55,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | File | Action | Why |
 |------|--------|-----|
 | `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` | EDIT | The launcher starts with an empty environment |
-| `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/prepare.rs` | EDIT | Empty-environment and log-level tests |
+| `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/prepare.rs` | EDIT | Empty-environment test |
+| `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/support.rs` | EDIT | A fake launcher that reports its inherited environment |
 | `rustd/crates/afd_fleet/src/lease/fence.rs` | EDIT | Fence reads return the lease's own token beside the live sequence |
 | `rustd/crates/afd_fleet/src/lease/memory.rs` | EDIT | Capture, recall and hydrate decide through `fence_holds` |
 | `rustd/crates/afd_fleet/src/lease/sql/lease.rs` | EDIT | The mint scope read requires the lease to hold the live sequence |
@@ -114,12 +115,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Sections (implementation slices)
 
-### §1 — The sandbox launcher inherits no environment
+### §1 — The sandbox launcher inherits no environment — DONE
 
 bubblewrap starts from the supervisor's environment today, so the host-side monitor's `/proc/<pid>/environ` holds what the root runner was started with. `Parts::spawn` clears the environment before exec. bubblewrap needs none: the entry is an absolute path, and the log level already travels by `--setenv`. **Implementation default:** clear in `Parts::spawn` rather than per caller, because it is the one place every engine spawn passes through.
 
-- **Dimension 1.1** — The launcher sees no inherited variable → Test `test_bubblewrap_starts_with_an_empty_environment`
-- **Dimension 1.2** — A configured log level still reaches the entry → Test `test_bubblewrap_passes_the_log_level_by_setenv`
+- **Dimension 1.1** — The launcher sees no inherited variable → Test `test_bubblewrap_starts_with_an_empty_environment` — DONE (`afr_sandbox/src/bubblewrap_engine/tests/prepare.rs`, Linux)
+- **Dimension 1.2** — A configured log level still reaches the entry → Test `test_the_command_is_the_bound_runner_told_to_serve` — DONE (`afr_sandbox/src/bubblewrap/tests.rs`, existing)
 
 ### §2 — Memory and minting accept only the holder's own token
 
@@ -218,7 +219,7 @@ No HTTP route, status code or error code changes. Refusals reuse `RUN_STALE_FENC
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | unit | `test_bubblewrap_starts_with_an_empty_environment` | A fake launcher prints an inherited marker and fails → the refusal reason carries no marker; red today |
-| 1.2 | unit | `test_bubblewrap_passes_the_log_level_by_setenv` | Log level set → argv carries `--setenv RUST_LOG <level>` |
+| 1.2 | unit | `test_the_command_is_the_bound_runner_told_to_serve` | Log level set → argv carries `--setenv AGENTSFLEET_LOG_LEVEL <level>` |
 | 2.1 | integration | `test_memory_capture_refuses_a_token_that_is_not_the_holders` | Live token + 1 and `u64::MAX` → stale-fence refusal, store empty; the live token stores |
 | 2.2 | integration | `test_memory_routes_refuse_a_superseded_active_lease` | `fencing_seq` bumped, lease still active → capture, recall and hydrate refused |
 | 2.3 | integration | `test_mint_refuses_a_superseded_active_lease` | Same setup → mint answers lease not found; the live holder still mints |
