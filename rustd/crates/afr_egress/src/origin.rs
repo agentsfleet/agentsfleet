@@ -2,7 +2,7 @@
 //!
 //! A host with rules is reached only by a request one rule admits: the
 //! method, the path exactly or by prefix, and every JSON field the rule locks.
-//! A rule that names fields, locked or permitted, also admits no other
+//! A rule that lists its permitted fields is closed: it admits no other
 //! top-level key and no query string, so an unnamed parameter cannot widen
 //! what its locked fields bound.
 //! The rules are never re-derived here (`afd_gate::policy::egress` compiles
@@ -91,12 +91,16 @@ fn rule_admits(rule: &HttpRequestRule<'_>, method: &Method, path: &str, sent: &S
             sent.fields
                 .is_some_and(|fields| field_admits(locked, fields))
         })
-        && (!names_fields(rule) || sends_only_named(rule, sent))
+        && (!closed(rule) || sends_only_named(rule, sent))
 }
 
-/// Whether `rule` names any field, which closes it to every other.
-fn names_fields(rule: &HttpRequestRule<'_>) -> bool {
-    !rule.json_fields.is_empty() || !rule.permitted_fields.is_empty()
+/// Whether `rule` lists its whole key set, which closes it to every other.
+///
+/// A rule without `permitted_fields` came from a daemon that predates them,
+/// and is enforced as that daemon meant it: locked fields checked, nothing
+/// else (`afd_wire::policy::HttpRequestRule`).
+const fn closed(rule: &HttpRequestRule<'_>) -> bool {
+    rule.permitted_fields.is_some()
 }
 
 /// Whether `sent` carries no query and no top-level key `rule` does not name.
@@ -118,6 +122,7 @@ fn named(rule: &HttpRequestRule<'_>, key: &str) -> bool {
         || rule
             .permitted_fields
             .iter()
+            .flatten()
             .any(|permitted| permitted == key)
 }
 

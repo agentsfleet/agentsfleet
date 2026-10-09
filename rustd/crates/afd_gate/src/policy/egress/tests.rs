@@ -64,11 +64,12 @@ fn rules(binding: &RepositoryBinding, branch: Option<&str>) -> Vec<HttpRequestRu
                     boolean_value: field.boolean_value,
                 })
                 .collect(),
-            permitted_fields: rule
-                .permitted_fields
-                .iter()
-                .map(|field| field.to_string().into())
-                .collect(),
+            permitted_fields: rule.permitted_fields.as_ref().map(|fields| {
+                fields
+                    .iter()
+                    .map(|field| field.to_string().into())
+                    .collect()
+            }),
         })
         .collect()
 }
@@ -170,7 +171,7 @@ fn object_endpoints_are_open_because_an_unreferenced_object_changes_nothing() {
         .filter(|rule| {
             rule.method == HttpMethod::Post
                 && rule.json_fields.is_empty()
-                && rule.permitted_fields.is_empty()
+                && rule.permitted_fields.is_none()
         })
         .map(|rule| rule.path.to_string())
         .collect();
@@ -197,11 +198,15 @@ fn a_rule_that_names_a_field_lists_every_field_a_run_may_send() {
 
     let permitted: Vec<(&str, Vec<&str>)> = rules
         .iter()
-        .filter(|rule| !rule.json_fields.is_empty() || !rule.permitted_fields.is_empty())
+        .filter(|rule| rule.permitted_fields.is_some())
         .map(|rule| {
             (
                 rule.path.as_ref(),
-                rule.permitted_fields.iter().map(AsRef::as_ref).collect(),
+                rule.permitted_fields
+                    .iter()
+                    .flatten()
+                    .map(AsRef::as_ref)
+                    .collect(),
             )
         })
         .collect();

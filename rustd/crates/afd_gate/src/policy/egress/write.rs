@@ -75,20 +75,20 @@ pub(super) fn rules<'a>(
 
     let mut rules: Vec<HttpRequestRule<'a>> = OPEN_OBJECT_PATHS
         .iter()
-        .map(|suffix| exact_post(repository, suffix, Vec::new(), &[]))
+        .map(|suffix| exact_post(repository, suffix, Vec::new(), None))
         .collect();
 
     rules.push(exact_post(
         repository,
         COMMITS_PATH,
         Vec::new(),
-        &COMMIT_FIELDS,
+        Some(&COMMIT_FIELDS),
     ));
     rules.push(exact_post(
         repository,
         REFS_PATH,
         vec![locked(FIELD_REF, format!("{REFS_HEADS}{branch}"))],
-        &REF_FIELDS,
+        Some(&REF_FIELDS),
     ));
     rules.push(exact_post(
         repository,
@@ -102,13 +102,14 @@ pub(super) fn rules<'a>(
                 boolean_value: Some(true),
             },
         ],
-        &PULL_FIELDS,
+        Some(&PULL_FIELDS),
     ));
     Ok(rules)
 }
 
 /// One POST admitted at an exact path, with `fields` locked and `permitted`
-/// admitted beside them.
+/// admitted beside them. `permitted` present closes the rule to those keys;
+/// absent leaves an open object path open to any body.
 ///
 /// Exact rather than prefix, unlike the read rules: a prefix at `/git/refs`
 /// would admit paths beneath it, and this rule's whole purpose is that exactly
@@ -117,14 +118,14 @@ fn exact_post<'a>(
     repository: &str,
     suffix: &str,
     fields: Vec<HttpJsonFieldRule<'a>>,
-    permitted: &[&'static str],
+    permitted: Option<&[&'static str]>,
 ) -> HttpRequestRule<'a> {
     HttpRequestRule {
         method: HttpMethod::Post,
         path: repository::path(repository, suffix).into(),
         path_match: HttpPathMatch::Exact,
         json_fields: fields,
-        permitted_fields: permitted.iter().map(|&name| name.into()).collect(),
+        permitted_fields: permitted.map(|names| names.iter().map(|&name| name.into()).collect()),
     }
 }
 

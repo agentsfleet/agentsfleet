@@ -97,7 +97,13 @@ pub fn policy(read_only: bool) -> ExecutionPolicy<'static> {
 /// create the one named ref, open one draft against the base.
 fn github_rules() -> Vec<HttpRequestRule<'static>> {
     vec![
-        rule(HttpMethod::Get, "/", HttpPathMatch::Prefix, Vec::new(), &[]),
+        rule(
+            HttpMethod::Get,
+            "/",
+            HttpPathMatch::Prefix,
+            Vec::new(),
+            None,
+        ),
         rule(
             HttpMethod::Post,
             REFS_PATH,
@@ -107,7 +113,7 @@ fn github_rules() -> Vec<HttpRequestRule<'static>> {
                 Some(format!("{REFS_HEADS}{BRANCH}")),
                 None,
             )],
-            &[FIELD_SHA],
+            Some(&[FIELD_SHA]),
         ),
         rule(
             HttpMethod::Post,
@@ -118,24 +124,26 @@ fn github_rules() -> Vec<HttpRequestRule<'static>> {
                 locked(FIELD_BASE, Some(BASE.to_owned()), None),
                 locked(FIELD_DRAFT, None, Some(true)),
             ],
-            &[FIELD_TITLE, FIELD_BODY, FIELD_MAINTAINER_CAN_MODIFY],
+            Some(&[FIELD_TITLE, FIELD_BODY, FIELD_MAINTAINER_CAN_MODIFY]),
         ),
     ]
 }
 
+/// One rule; `permitted` present closes it to those keys beside its locked
+/// ones, as the daemon writes every rule that locks a field.
 fn rule(
     method: HttpMethod,
     suffix: &str,
     path_match: HttpPathMatch,
     json_fields: Vec<HttpJsonFieldRule<'static>>,
-    permitted: &[&'static str],
+    permitted: Option<&[&'static str]>,
 ) -> HttpRequestRule<'static> {
     HttpRequestRule {
         method,
         path: repository::path(REPOSITORY, suffix).into(),
         path_match,
         json_fields,
-        permitted_fields: permitted.iter().map(|&name| name.into()).collect(),
+        permitted_fields: permitted.map(|names| names.iter().map(|&name| name.into()).collect()),
     }
 }
 

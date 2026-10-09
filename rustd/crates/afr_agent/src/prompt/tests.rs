@@ -50,7 +50,7 @@ fn locked_ref(repository_name: &str) -> HttpRequestRule<'static> {
             string_value: Some(format!("{REFS_HEADS}{BRANCH}").into()),
             boolean_value: None,
         }],
-        permitted_fields: Vec::new(),
+        permitted_fields: None,
     }
 }
 
