@@ -6,6 +6,10 @@
 //!   <home>/bundles/<hash>.tar     fleet bundles, verified before they are kept
 //!   <home>/git/<workspace>/<owner>/<name>.git
 //!                                 a bare mirror per bound repository
+//!   <home>/toolbox/incoming/      the release a deploy staged: image, manifest
+//!                                 and signature (`deploy/baremetal/toolbox.sh`)
+//!   <home>/toolbox/images/        admitted images, published by digest
+//!   <home>/toolbox/mounts/        where each admitted image is mounted
 //! ```
 //!
 //! What a crashed runner left under `sandboxes` is swept by the engine built on
@@ -16,12 +20,15 @@
 use std::fs;
 use std::path::PathBuf;
 
+use afr_sandbox::ToolboxHome;
+
 use crate::error::Result;
 
 const SANDBOXES: &str = "sandboxes";
 const SPOOL: &str = "spool";
 const BUNDLES: &str = "bundles";
 const MIRRORS: &str = "git";
+const TOOLBOX: &str = "toolbox";
 
 /// The storage root, with its directories made.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +51,7 @@ impl StorageHome {
         ] {
             fs::create_dir_all(directory)?;
         }
+        ToolboxHome::open(home.root.join(TOOLBOX))?;
         Ok(home)
     }
 
@@ -67,6 +75,13 @@ impl StorageHome {
     /// Where bound repositories are mirrored, outside every sandbox.
     pub(crate) fn mirrors(&self) -> PathBuf {
         self.root.join(MIRRORS)
+    }
+
+    /// Where the toolbox is kept: the release a deploy stages, the images
+    /// admitted from it, and their mounts.
+    #[must_use]
+    pub fn toolbox(&self) -> ToolboxHome {
+        ToolboxHome::at(self.root.join(TOOLBOX))
     }
 }
 

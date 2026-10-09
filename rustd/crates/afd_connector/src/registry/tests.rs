@@ -2,10 +2,9 @@ use super::{Archetype, Provider};
 
 /// No two providers share a state domain or a nonce namespace.
 ///
-/// The invariant `registry.zig` spends a comptime double loop on, and it is
-/// worth the same care here: a shared pair lets one connector's signed
-/// state verify AND consume under another's callback, which is a
-/// cross-connector grant with nothing in the types to notice.
+/// Worth a double loop: a shared pair lets one connector's signed state
+/// verify AND consume under another's callback, which is a cross-connector
+/// grant with nothing in the types to notice.
 #[test]
 fn no_two_providers_share_a_state_domain_or_nonce_namespace() {
     for (index, one) in Provider::ALL.iter().copied().enumerate() {
@@ -39,9 +38,9 @@ fn every_state_binding_names_both_of_its_halves() {
 
 /// Every OAuth 2.0 connector asks for something.
 ///
-/// `registry.zig` raises `@compileError` on an oauth2 entry with no scopes,
-/// because an authorize URL carrying none is a consent screen that grants
-/// nothing and a token that opens nothing. The App-install archetype is
+/// An oauth2 entry with no scopes fails here, because an authorize URL
+/// carrying none is a consent screen that grants nothing and a token that
+/// opens nothing. The App-install archetype is
 /// exempt by construction — a GitHub App carries its own permissions.
 #[test]
 fn every_oauth_connector_asks_for_at_least_one_scope() {
@@ -110,9 +109,9 @@ fn only_atlassian_among_the_connectors_follows_the_standard_delimiter() {
 
 /// Slack's token is long-lived; the other three OAuth connectors refresh.
 ///
-/// Pinned because the flag decides whether the credential broker holds a
-/// re-mint entry for the provider — the drift `registry.zig` guards with a
-/// comptime check against `credentials/integration.zig`.
+/// Pinned because the flag decides whether the credential broker in
+/// `afd_credential` holds a re-mint entry for the provider, and the two must
+/// not drift.
 #[test]
 fn only_slack_among_the_oauth_connectors_holds_a_long_lived_token() {
     for provider in Provider::ALL.iter().copied() {

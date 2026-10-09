@@ -26,10 +26,10 @@ const EXPECTED: &[Endpoint] = &[
     ("/v1/fleets/runners/{runner_id}", Verb::Delete),
     ("/v1/fleets/runners/{runner_id}/events", Verb::Get),
     ("/v1/fleets/runners/{runner_id}/leases", Verb::Get),
-    // `/v1/fleets/streams` is absent on purpose. The Zig serves it; this
-    // daemon does not, by Indy's call while merging M179 into M178 — see
-    // `route::runner_ops` for the reasoning. A declared divergence, so it is
-    // missing from this inventory rather than exempted from it.
+    // `/v1/fleets/streams` is absent on purpose: this daemon does not serve it,
+    // by Indy's call while merging M179 into M178 — see `route::runner_ops`
+    // for the reasoning. A declared divergence, so it is missing from this
+    // inventory rather than exempted from it.
 ];
 
 fn actual() -> BTreeSet<Endpoint> {

@@ -48,9 +48,9 @@ const EVENT_STEP_FAILED: &str = "report_finalize_step_failed";
 impl Plane {
     /// Announce a report that committed, and clear what it leaves behind.
     ///
-    /// The order is the Zig's `finalize` minus the two writes that moved into
-    /// the transaction: announce the ending, acknowledge the stream entry, then
-    /// close the lease's own history.
+    /// The writes that commit with the money already ran inside the
+    /// transaction. What is left runs in this order: announce the ending,
+    /// acknowledge the stream entry, then close the lease's own history.
     pub(super) async fn announce(
         &self,
         runner_id: &Uuid7,

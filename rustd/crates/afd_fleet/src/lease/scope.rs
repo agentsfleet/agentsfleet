@@ -18,9 +18,9 @@
 //!
 //! A `config_json` this daemon cannot parse yields `None` for the binding, and
 //! a repository-scoped mint refuses on `None` rather than minting the
-//! installation's full scope. That is the direction `credentials_mint_scope.zig`
-//! fails in too, and it is the only safe one: the binding is what NARROWS the
-//! request, so its absence must never be the permissive branch.
+//! installation's full scope. That is the only safe direction: the binding is
+//! what NARROWS the request, so its absence must never be the permissive
+//! branch.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

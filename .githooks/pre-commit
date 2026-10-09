@@ -17,9 +17,7 @@
 # fires exactly once per commit; it fires inside the gate call, not twice.
 #
 # Surfaces:
-#   - check-documentation-rules (*.zig too — it reads command help text out of
-#                               the source; there is no Zig lane)
-#   - lint-website             (ui/packages/website/*)
+#   - lint-website            (ui/packages/website/*)
 #   - lint-app                 (ui/packages/app/*, design-system/* triggers both)
 #   - lint-design-system       (ui/packages/design-system/*)
 #   - lint-cli                 (cli/*)
@@ -160,8 +158,6 @@ staged_rustd=0
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
-    *.zig)
-      needs_check_documentation=1 ;;
     *.rs|rustd/*)
       # Deliberately routes to NOTHING at commit time — an arm rather than an
       # absence, so somebody looking for the Rust lane reads why it is not here
@@ -207,7 +203,7 @@ while IFS= read -r f; do
     *.json|*.yaml|*.yml)
       # Catch-all for stray config/manifest files staged outside a known
       # surface prefix (root-level `package.json`, `docker-compose.yml`,
-      # `build.zig.zon`, ad-hoc CI overlays, etc.). These can't affect
+      # ad-hoc CI overlays, etc.). These can't affect
       # workflow YAML, so route them through harness-verify only —
       # actionlint + the make-target-ref sweep cost ~30s and would
       # always be wasted work for these files.

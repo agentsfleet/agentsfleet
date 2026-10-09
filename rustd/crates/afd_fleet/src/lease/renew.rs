@@ -18,10 +18,9 @@
 //! read is not a ceiling it may ignore, and unlike an outage it will not clear
 //! on its own.
 //!
-//! The Zig reaches the same two postures inside `budgetRefusal` and
-//! `creditsCover`, at their `catch` sites. Here they are the shape of this
-//! file — each gate answers a value or an [`Error`](crate::Error), and the
-//! posture is applied once, where a reader can see both halves at once.
+//! The two postures are the shape of this file: each gate answers a value or
+//! an [`Error`](crate::Error), and the posture is applied once, where a reader
+//! can see both halves at once.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -64,9 +63,8 @@ pub struct Renewing {
 
 /// What the extend-and-meter statement decided.
 ///
-/// A three-variant enum, matching `renewal.zig`'s tagged union — the one place
-/// the Zig already had the right shape, because it needed to carry the cap on
-/// one arm and nothing on another. Kept, with the payload typed.
+/// A three-variant enum, because only the variant that drained a slice has a
+/// deadline and a charge to read; the other two carry nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Renewed {
     /// Both rows advanced. Carries the new deadline and what the slice drained.

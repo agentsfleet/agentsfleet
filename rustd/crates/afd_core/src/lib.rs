@@ -45,6 +45,8 @@ pub mod money;
 pub mod net;
 pub mod paging;
 pub mod problem;
+#[cfg(feature = "signal")]
+pub mod signal;
 pub mod spelling;
 // The `tracing` capture every crate's suites share. Behind `test-util` so a
 // production build links none of it.

@@ -11,8 +11,8 @@
 //! On the completion leg the grant is sealed and the connection is live by
 //! the time the destination is built, so failing the request would tell a
 //! person their connect did not work when it did, and the next thing they
-//! would do is press Connect again. `callback.zig` answers `200` with
-//! `{"status":"connected"}` there for exactly that reason, and so does this.
+//! would do is press Connect again. So this answers `200` with
+//! `{"status":"connected"}` there.
 //!
 //! On the relay leg nothing has landed yet: the browser arrived carrying the
 //! provider's code and this daemon could not name the dashboard page to hand

@@ -1,7 +1,6 @@
 //! The workspace's dashboard preferences over HTTP, and the onboarding
 //! checklist derived from them.
 //!
-//! The port of `workspaces/preferences.zig` and `workspaces/onboarding.zig`.
 //! Three verbs across three templates, and every one of them answers with a
 //! whole bag or a whole checklist — there is no read of a single key, because
 //! the dashboard holds this state in one piece and a fragment would make it

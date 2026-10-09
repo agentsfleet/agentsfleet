@@ -10,12 +10,11 @@ primary_region = "iad"
 [processes]
   app = "/usr/local/bin/agentsfleetd serve"
 
-# Match production's per-worker ceiling so development exposes saturation
-# before release. Server-Sent Events (SSE) use dedicated threads.
-# Backpressure: API_MAX_IN_FLIGHT_REQUESTS (default 256) sheds 429 only for
-# API-class routes (/healthz and /readyz are ops-class and never shed;
-# SSE answers to its own cap) and only when set BELOW WORKERS x THREADS (32
-# here). SSE_MAX_STREAMS (default 256) caps event streams per instance.
+# HTTP concurrency and backpressure match production, which explains each
+# (deploy/fly/agentsfleetd-prod/fly.toml): a tokio runtime sized by the core
+# count, a constant 256-request in-flight ceiling for API-class routes
+# (`DEFAULT_MAX_IN_FLIGHT`, rustd/crates/afd_http/src/admission/mod.rs), and
+# SSE_MAX_STREAMS (default 256) for Server-Sent Events (SSE) streams.
 # Postgres connections this replica may open, measured against the cluster's
 # own ceiling rather than left to the code's default.
 #
@@ -38,8 +37,6 @@ primary_region = "iad"
 # 6432: client connections to a pooler are cheap, and it is the bouncer's
 # `default_pool_size` that then counts against the 25.
 [env]
-  API_HTTP_THREADS = "32"
-  API_HTTP_WORKERS = "1"
   DATABASE_POOL_SIZE_API = "8"
   API_URL = "https://api-dev.agentsfleet.net"
   APP_URL = "https://app-dev.agentsfleet.net"

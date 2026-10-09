@@ -1,15 +1,13 @@
 //! Every shared fact about a route, in one place.
 //!
-//! # What this replaces
+//! # Why one match states every fact
 //!
-//! Four total switches over one union, in four files: `route_table.zig` (the
-//! middleware chain), `route_scopes.zig` (required capabilities),
-//! `route_admission.zig` (shed class) and `route_template.zig` (the span
-//! template). Adding an endpoint meant editing four files, and the compiler
-//! caught only three of those omissions — `route_admission.zig` had traded its
-//! exhaustive match for an `else` arm and rebuilt the check as a runtime test
-//! over two hand-maintained name lists. [`Route::meta`] states all four facts
-//! at once, so a new route fails the build until every one of them is chosen.
+//! A route carries four facts: its middleware chain, the capabilities it
+//! requires, its shed class and its span template. [`Route::meta`] states all
+//! four at once in one exhaustive match, so a new route fails the build until
+//! every one of them is chosen. Four separate switches would each need its own
+//! edit, and any one that took a catch-all arm would turn a forgotten route
+//! into a silent default.
 //!
 //! # Why the enum nests
 //!
@@ -19,20 +17,19 @@
 //! levels: a new family and a new route within a family each fail the build
 //! until matched.
 //!
-//! Two of those families are splits the Zig union did not draw, and both follow
-//! a seam that was already there. `workspace`/`fleet` divides on whether a route
-//! is addressed by a fleet id; `runner`/`runner_ops` divides on the GUARD — a
-//! runner speaking for itself versus a tenant operator looking at runners. Each
-//! half then states its guard once instead of restating it per arm.
+//! Two of those splits follow a seam worth naming. `workspace`/`fleet` divides
+//! on whether a route is addressed by a fleet id; `runner`/`runner_ops` divides
+//! on the GUARD — a runner speaking for itself versus a tenant operator looking
+//! at runners. Each half then states its guard once instead of restating it per
+//! arm.
 //!
 //! # Why identity carries no payload
 //!
-//! The Zig union puts path parameters in the route itself
-//! (`poll_auth_session: []const u8`), so every metadata switch is
-//! payload-shaped and its own exhaustiveness test has to fabricate values with
-//! `@unionInit(Route, f.name, undefined)` that it must never read. Here a
-//! route is only an identity; parameters are the extractor's job at the
-//! handler. There is nothing to fabricate, so nothing to get wrong.
+//! A route is only an identity; path parameters are the extractor's job at the
+//! handler. A route that carried its parameters would make every metadata
+//! match payload-shaped, and an exhaustiveness test would have to fabricate
+//! values it must never read. There is nothing to fabricate, so nothing to get
+//! wrong.
 
 mod admin;
 mod auth;
@@ -103,16 +100,13 @@ impl RouteMeta {
 
 /// Which object named in the path must belong to the caller.
 ///
-/// # The half of authorization the Zig daemon never lifted out of its handlers
+/// # Why ownership is a fact about the route
 ///
 /// Capability and ownership are independent questions — "may you do this kind
-/// of thing" and "is this particular thing yours" — and only the first is in
-/// the Zig route table. The second is `authorizeWorkspace`, called BY HAND at
-/// the top of each workspace handler. Around a hundred and sixty-five handlers
-/// call it; a handler that does not is a cross-tenant read, and nothing fails
-/// when somebody forgets, because nothing anywhere says the call should have
-/// been there. `cross_workspace_idor_test.zig` exists because that has already
-/// happened once.
+/// of thing" and "is this particular thing yours". Left to each handler, the
+/// ownership check is a call made BY HAND at the top of every workspace
+/// handler; a handler that forgets it is a cross-tenant read, and nothing
+/// fails, because nothing anywhere says the call should have been there.
 ///
 /// Here it is a fact about the ROUTE, read by the router while it mounts and
 /// enforced by a layer in front of every handler that needs it. A handler
@@ -240,10 +234,9 @@ pub enum RouteClass {
 
 /// The capability a route requires, which some routes vary by method.
 ///
-/// `HEAD` is deliberately absent. agentsfleetd has never served it — the Zig
-/// matchers switch on GET, POST and DELETE only — so the router refuses it
-/// rather than letting a method with no rung here fall through to a write
-/// scope, which is what the Zig `else` arm would have done had it ever routed.
+/// `HEAD` is deliberately absent. agentsfleetd does not serve it, so the
+/// router refuses it rather than letting a method with no rung here fall
+/// through to a write scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scopes {
     /// The same requirement whatever the method.

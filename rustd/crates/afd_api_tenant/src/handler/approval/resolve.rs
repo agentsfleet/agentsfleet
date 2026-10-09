@@ -34,8 +34,8 @@ const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
 
 /// `POST /v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}`.
 ///
-/// Two segments where the Zig daemon spelled one — see the route table on why
-/// the decision moved out of the gate id's segment.
+/// The decision is its own segment rather than a suffix on the gate id's — see
+/// the route table on why.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}/{decision}",
@@ -103,8 +103,7 @@ pub(crate) async fn resolve<D: Services>(
         .into_response()),
         // A 409 carrying the standing answer, not merely the fact of one.
         // `current_state` tells a client to stop retrying; the attribution
-        // beside it is what the dashboard renders and what
-        // `approvals/resolve.zig` has always sent. The resolver is not
+        // beside it is what the dashboard renders. The resolver is not
         // interpolated into the SENTENCE — a subject is an entity value, and
         // the detail rules keep those out of `detail` — so it rides the
         // envelope as an extension instead.

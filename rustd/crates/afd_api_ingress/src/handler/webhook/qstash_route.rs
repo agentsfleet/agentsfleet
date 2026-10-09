@@ -43,7 +43,7 @@ const EVENT_DROPPED: &str = "schedule_fire_dropped";
 
 /// The header the scheduler carries its signed token in.
 ///
-/// `cron/constants.zig`'s `signature_header`, kept byte-for-byte.
+/// Fixed by the sender: Upstash `QStash` signs every delivery under this name.
 const HEADER_SIGNATURE: &str = "upstash-signature";
 
 /// The header naming which schedule fell due.

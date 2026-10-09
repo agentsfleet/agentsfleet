@@ -103,3 +103,36 @@ pub(crate) fn git(
         .into()
     }
 }
+
+/// Reports an egress host the resolver could not resolve.
+pub(crate) fn egress_unresolved(host: &str) -> impl FnOnce(std::io::Error) -> Error {
+    move |source| {
+        ErrorKind::EgressUnresolved {
+            host: host.to_owned(),
+            source,
+        }
+        .into()
+    }
+}
+
+/// Reports an egress host that resolved to IPv6 addresses alone.
+pub(crate) fn egress_no_ipv4(host: &str) -> Error {
+    ErrorKind::EgressNoIpv4 {
+        host: host.to_owned(),
+    }
+    .into()
+}
+
+/// Reports a fleet egress host that resolved to an address no fleet may
+/// reach.
+pub(crate) fn egress_blocked(host: &str) -> Error {
+    ErrorKind::EgressBlocked {
+        host: host.to_owned(),
+    }
+    .into()
+}
+
+/// Reports a resolved allowlist the sandbox engine would not take.
+pub(crate) fn egress(source: afr_sandbox::Error) -> Error {
+    ErrorKind::Egress { source }.into()
+}

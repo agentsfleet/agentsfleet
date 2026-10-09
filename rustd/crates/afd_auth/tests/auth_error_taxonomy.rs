@@ -1,32 +1,18 @@
 //! Every refusal carries its registry code and the sentence a client reads.
 //!
-//! The Zig daemon spells a refusal as a pair of arguments at a call site —
-//! `ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN)` — twelve
-//! times across four middleware files. Nothing relates the two, so nothing can
-//! check that the pairing is the same at every site, and the detail strings are
-//! per-file constants that happen to agree.
-//!
-//! This file checks what those twelve sites cannot: that the pairing is a
-//! function, that no two refusals collapse onto one another by accident, and —
-//! the part that is genuinely parity rather than hygiene — that every sentence
-//! a client reads is byte-identical to the Zig constant it replaces.
+//! This file checks that the pairing is a function, that no two refusals
+//! collapse onto one another by accident, and that every sentence a client
+//! reads is pinned, so changing one is a visible decision.
 use std::collections::BTreeSet;
 
 use afd_auth::error::{Error, Unavailable};
 
-/// Every client-visible refusal sentence the Zig auth tree carried at sunset.
+/// Every client-visible refusal sentence, pinned.
 ///
-/// FROZEN, not read. the retired daemon's `auth/` tree was walked whole at test time —
-/// the strings are spread across four middlewares and which file held which was
-/// never a fact worth encoding — and every sentence below was found there as a
-/// quoted literal on the tree's last standing day. The tree is deleted in this
-/// milestone, so the values are pinned and the assertion is unchanged.
-///
-/// A detail string is as client-visible as a status code. What made these worth
-/// asserting was never that Zig held them: it is that a person editing one is
-/// changing what a client reads, and that should cost them an edit here saying
-/// so, rather than passing as a typo fix.
-const ZIG_AUTH_SENTENCES: &[&str] = &[
+/// A detail string is as client-visible as a status code. A person editing one
+/// is changing what a client reads, and that should cost them an edit here
+/// saying so, rather than passing as a typo fix.
+const PINNED_AUTH_SENTENCES: &[&str] = &[
     "Invalid or missing token",
     "token expired",
     "Authentication service unavailable",
@@ -65,7 +51,8 @@ fn test_every_refusal_has_exactly_one_code_and_one_sentence() {
     }
 }
 
-/// The codes are the ones the Zig registry declares, spelled identically.
+/// Each refusal answers its registry code, spelled exactly as a client matches
+/// it.
 #[test]
 fn test_each_refusal_answers_the_documented_registry_code() {
     for (err, code) in [
@@ -81,25 +68,24 @@ fn test_each_refusal_answers_the_documented_registry_code() {
     }
 }
 
-/// Every sentence a client reads is one the shipped daemon carried.
+/// Every sentence a client reads is one of the pinned sentences.
 ///
-/// This is the assertion that makes the port's behavioural parity checkable
-/// rather than asserted. Changing a sentence here without a matching edit to
-/// [`ZIG_AUTH_SENTENCES`] is changing what a client reads, which is a behaviour
-/// change and therefore a decision, not a tidy-up.
+/// Changing a sentence here without a matching edit to
+/// [`PINNED_AUTH_SENTENCES`] is changing what a client reads, which is a
+/// behaviour change and therefore a decision, not a tidy-up.
 #[test]
-fn test_every_client_visible_sentence_is_pinned_to_the_zig_daemons() {
+fn test_every_client_visible_sentence_is_pinned() {
     for err in Error::ALL {
         assert!(
-            ZIG_AUTH_SENTENCES.contains(&err.detail()),
-            "{err:?} says {:?}, which the shipped daemon never said",
+            PINNED_AUTH_SENTENCES.contains(&err.detail()),
+            "{err:?} says {:?}, which no pinned sentence says",
             err.detail()
         );
     }
     // Total in both directions: a sentence pinned here that no variant answers
     // with is a stale expectation, and would let a real one be deleted unseen.
     assert_eq!(
-        ZIG_AUTH_SENTENCES.len(),
+        PINNED_AUTH_SENTENCES.len(),
         Error::ALL.len(),
         "the pinned sentences and the refusals they pin are no longer one-to-one"
     );
@@ -107,9 +93,9 @@ fn test_every_client_visible_sentence_is_pinned_to_the_zig_daemons() {
 
 /// The runner plane's sentence is deliberately NOT the tenant plane's.
 ///
-/// `runner_bearer.zig` names the runner token; `bearer_or_api_key.zig` does
-/// not. Collapsing them would be a readable simplification and a behaviour
-/// divergence, so it is pinned rather than left to review.
+/// The runner plane's refusal names the runner token and the tenant plane's
+/// does not. Collapsing them would be a readable simplification and a
+/// client-visible change, so it is pinned rather than left to review.
 #[test]
 fn test_the_runner_plane_names_the_runner_token_in_its_refusal() {
     assert_eq!(

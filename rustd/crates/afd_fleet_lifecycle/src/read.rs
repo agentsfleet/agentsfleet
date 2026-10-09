@@ -2,15 +2,12 @@
 //!
 //! # The page decides `more` by over-fetching, not by being full
 //!
-//! `list.zig` emits a continuation token whenever the page came back FULL, so
-//! the last page of an exactly-divisible walk hands the client a cursor that
-//! resolves to nothing. Here the walk asks for one row past the limit and keeps
-//! the limit, so [`FleetPage::more`] is a fact rather than a guess — the same
-//! correction the workspace directory took, and it costs one row per page.
-//!
-//! A client following the Zig token still terminates; it just spends one extra
-//! request discovering that. A client following this one stops immediately.
-//! Recorded as a declared divergence rather than a fix nobody can see.
+//! A token emitted whenever the page came back FULL hands the last page of an
+//! exactly-divisible walk a cursor that resolves to nothing, and costs its
+//! client one extra request to discover that. Here the walk asks for one row
+//! past the limit and keeps the limit, so [`FleetPage::more`] is a fact rather
+//! than a guess — the same rule the workspace directory follows, and it costs
+//! one row per page. A client following this cursor stops on the last page.
 
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
@@ -41,9 +38,8 @@ const COLUMN_STATUS: &str = "status";
 /// `RawValue`. Parsing it here would be a full deserialize whose only product
 /// is a re-serialize into the same bytes.
 ///
-/// Validity is therefore the wire layer's question, and its answer matches the
-/// Zig's: text that will not parse renders as `null`, exactly as
-/// `parseFromSlice(...) catch null` does.
+/// Validity is therefore the wire layer's question: text that will not parse
+/// renders as `null`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Triggers(Box<str>);
 

@@ -1,16 +1,13 @@
 //! `fleet.runner_affinity` — the per-fleet lease SLOT: the atomic claim, the
 //! monotonic fencing source, and the sticky-routing hint, all on one row.
 //!
-//! `affinity.zig` is the original. What is ported is the GUARANTEE — exactly
-//! one of N racing runners wins a fleet, and the winner carries a token that is
-//! strictly greater than every token issued before it. Two things are
-//! deliberately NOT ported. Zig answers with a `union(enum) { won, taken }`
-//! because it has no nullable struct return, where here "no slot won" is an
-//! absence and says so as [`Option::None`]. And Zig passes a `*pg.Conn` into
-//! each function because the caller is the only thing that can own one — here
-//! the verbs are methods on [`Leases`], which owns the pool and keeps it
-//! `pub(crate)`, so nothing outside this crate can run a statement that is not
-//! in [`crate::sql`].
+//! The GUARANTEE is that exactly one of N racing runners wins a fleet, and the
+//! winner carries a token that is strictly greater than every token issued
+//! before it. "No slot won" is an absence and says so as [`Option::None`]
+//! rather than as a second variant a caller must remember to match. The verbs
+//! are methods on [`Leases`], which owns the pool and keeps it `pub(crate)`, so
+//! nothing outside this crate can run a statement that is not in
+//! [`crate::lease::sql`].
 //!
 //! # Why the token is a type
 //!

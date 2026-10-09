@@ -1,10 +1,10 @@
 //! The router: what it serves, what it refuses, and what it does not claim.
 //!
 //! The assertion that matters most here is a NEGATIVE one. axum answers HEAD
-//! with the GET handler unless something stops it, and the Zig scope table
+//! with the GET handler unless something stops it, and the scope table
 //! resolves an unnamed method to the WRITE rung — so a HEAD that reached the
-//! router would have been answered by a read handler behind a write gate.
-//! Dormant in Zig because the request never arrives; live in axum by default.
+//! router would be answered by a read handler behind a write gate. axum makes
+//! that live by default, which is why the router refuses HEAD outright.
 //!
 //! What the two probes report is `router_probes.rs`, which sends through the
 //! helper here.

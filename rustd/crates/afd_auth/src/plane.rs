@@ -21,9 +21,9 @@
 //! # Why the refusal differs by plane
 //!
 //! An `agt_t` presented to the runner plane answers `UZ-RUN-001`, not
-//! `UZ-AUTH-002`. That is `runner_bearer.zig`'s behaviour and it is not
-//! cosmetic: the runner client classifies its own plane's codes, and a
-//! tenant-plane code arriving there is a category error it has no branch for.
+//! `UZ-AUTH-002`. That is not cosmetic: the runner client classifies its own
+//! plane's codes, and a tenant-plane code arriving there is a category error
+//! it has no branch for.
 
 use crate::credential::CredentialKind;
 use crate::error::Error;

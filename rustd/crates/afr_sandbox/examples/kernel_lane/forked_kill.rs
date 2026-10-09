@@ -37,10 +37,7 @@ pub(crate) fn forked_oom(lane: &Lane) -> Result<(), Failed> {
         fs::read_to_string(path.join(MEMORY_EVENTS)).unwrap_or_default()
     };
     let (hog, sandbox_events, tenant_events) = runtime().block_on(async {
-        let request = SandboxRequest {
-            lease_id: LEASE,
-            limits,
-        };
+        let request = SandboxRequest::new(LEASE, limits);
         let sandbox = lane.engine().prepare(request).await?;
         let hog = run_in(sandbox.executor(), shell(FORKED_HOG)).await;
         let counted = (events(SANDBOX_LEAF), events(TENANT_LEAF));

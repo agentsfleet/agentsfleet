@@ -12,11 +12,10 @@
 --
 -- Provider values are app-enforced named constants, not a SQL CHECK (RULE STS).
 -- GitHub's is `PROVIDER_GITHUB` in
--- `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`. The Zig
--- constants this line used to name went with the Zig daemon, and the providers
--- they covered (slack, zoho, jira, linear) currently have no named constant in
--- any language -- so for those, nothing enforces the vocabulary. The fix is a
--- constant beside the GitHub one, never a CHECK here.
+-- `rustd/crates/afd_api_ingress/src/handler/webhook/app_route.rs`. The other
+-- providers this table holds (slack, zoho, jira, linear) have no named constant
+-- in any language, so nothing enforces their vocabulary. The fix is a constant
+-- beside the GitHub one, never a CHECK here.
 
 CREATE TABLE IF NOT EXISTS core.connector_installs (
     id                  UUID   PRIMARY KEY,

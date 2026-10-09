@@ -1,18 +1,11 @@
 //! The CLI device-flow session blob, and the one transition that must be atomic.
 //!
-//! # The script lives here, and is proven identical to the Zig one
+//! # The script lives here
 //!
-//! `session/verify_consume.lua` is this crate's own copy, included from this
-//! crate's own tree — because M181 deleted the Zig daemon tree at cutover, and
-//! a crate that reaches into a directory scheduled for deletion stops building
-//! the day it goes. Reaching across was the first shape and it was wrong for
-//! exactly that reason.
-//!
-//! What keeps the two honest while both exist is a test, not a path:
-//! `test_the_verify_script_matches_the_zig_daemons` compares the two files
-//! BYTE FOR BYTE and fails on any drift. Both binaries therefore send the same
-//! script, and when the Zig copy is deleted the test goes with it, leaving this
-//! one as the source of truth rather than a fork nobody noticed.
+//! `session/verify_consume.lua` is included from this crate's own tree with
+//! `include_str!`, so the bytes every replica sends are the bytes in this
+//! crate and nowhere else: a crate that reached into another directory for
+//! them would stop building the day that directory moved.
 //!
 //! Dragonfly evaluates a script body to completion against a single-threaded
 //! server, so read-check-write inside `EVAL` has no window. The same sequence
@@ -73,8 +66,7 @@ const SESSION_KEY_GLOB: &str = "auth:session:*";
 ///
 /// A hint rather than a bound — Dragonfly may answer with more, and
 /// [`Dragonfly::scan_keys`] takes whatever comes rather than sizing a buffer for
-/// it, which is the one place the Zig scan can fail on a page it did not
-/// expect.
+/// it, so a page larger than the hint cannot fail the scan.
 const SCAN_PAGE_HINT: usize = 100;
 
 /// Where a session lives, keyed by its id.
@@ -82,22 +74,19 @@ pub const SESSION_KEY_PREFIX: &str = "auth:session:";
 
 /// How long a session survives without being touched.
 ///
-/// Five minutes, matching `SESSION_TTL_SECONDS` on the Zig side. It is a
-/// device-flow window, not a session lifetime: long enough to paste a code,
-/// short enough that an abandoned one is gone before anyone finds it.
+/// Five minutes. It is a device-flow window, not a session lifetime: long
+/// enough to paste a code, short enough that an abandoned one is gone before
+/// anyone finds it.
 pub const SESSION_TTL: Duration = Duration::from_secs(300);
 
-/// The atomic transition. Byte-identical to the Zig daemon's copy, which a
-/// test asserts for as long as that copy exists.
+/// The atomic transition, as the bytes this crate ships.
 const VERIFY_AND_CONSUME_LUA: &str = include_str!("session/verify_consume.lua");
 
 /// The atomic `pending` -> `verification_pending` transition.
 ///
-/// Not byte-pinned to the Zig copy, and deliberately: that one is assembled
-/// from four concatenated Zig string literals with the tag names spliced in,
-/// so there is no single file to compare against. What the two share is the
-/// state machine, and `test_approve_refuses_a_session_past_pending` is what
-/// holds this copy to it.
+/// The state machine is the thing under test: a session past `pending` must
+/// be refused here, and the approval tests in this crate's integration lane
+/// hold the script to that.
 const APPROVE_LUA: &str = include_str!("session/approve.lua");
 
 /// The owner-checked abort, for both the single delete and the bulk sweep.
@@ -394,8 +383,8 @@ impl SessionStore {
 
     /// Aborts every in-flight session `owner` holds, answering how many.
     ///
-    /// Scans rather than reading an index, exactly as the Zig daemon does,
-    /// because there is no per-owner index to read: sessions are keyed by their
+    /// Scans rather than reading an index, because there is no per-owner
+    /// index to read: sessions are keyed by their
     /// own id and live five minutes, so the set walked here is bounded by that
     /// window rather than by how long the tenant has existed.
     ///
@@ -482,12 +471,10 @@ pub enum ApproveOutcome {
 
 /// Why a session was aborted.
 ///
-/// A closed set rather than a caller-supplied string, which is the one place
-/// this deliberately diverges from the Zig store. There the reason is a
-/// `[]const u8` the handler passes and the audit sink separately re-derives, so
-/// the stored reason and the audited one are two spellings that agree by
-/// convention. Here they are one value, and a reason nobody has declared cannot
-/// be written.
+/// A closed set rather than a caller-supplied string: a free-form reason the
+/// handler passes and the audit sink separately re-derives is two spellings
+/// that agree by convention. Here they are one value, and a reason nobody has
+/// declared cannot be written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbortReason {
     /// A person cancelled their own login.

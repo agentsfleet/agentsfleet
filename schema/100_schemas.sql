@@ -13,8 +13,9 @@ CREATE SCHEMA IF NOT EXISTS vault;
 CREATE SCHEMA IF NOT EXISTS memory;
 
 -- Migration bookkeeping and the immutable operator audit trail. The tables
--- themselves are created by the migration runner (db/pool_migrations.zig) before
--- any slot executes, so this slot declares only the schema.
+-- themselves are created by the migration runner
+-- (`rustd/crates/afd_db/src/migrate/ledger.rs`) before any slot executes, so
+-- this slot declares only the schema.
 CREATE SCHEMA IF NOT EXISTS audit;
 
 -- The `ops_ro` schema is deliberately absent. It was created, granted, and

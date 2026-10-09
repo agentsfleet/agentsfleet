@@ -79,6 +79,15 @@ pub(super) fn failed(failure: &afr_executor::Error) -> ToolOutput {
     }
 }
 
+/// The refusal for a file at `path` longer than one read carries: the one
+/// wording for a file found that long and for a patch that would make it so.
+pub(super) fn too_long(path: &str) -> ToolOutput {
+    ToolOutput::failed(
+        ToolErrorCode::FileTooLarge,
+        &format!("{path} {LONGER_THAN} {MAX_READ_BYTES} bytes"),
+    )
+}
+
 /// The whole of `path` as text, or the refusal: a file longer than one read
 /// carries cannot be edited whole, so it is refused rather than cut, and so
 /// is one that is not text, which an edit would write back mangled.
@@ -88,10 +97,7 @@ pub(super) async fn whole(executor: &dyn Executor, path: &str) -> Result<String,
         .await
         .map_err(|failure| failed(&failure))?;
     if fetched.truncated {
-        return Err(ToolOutput::failed(
-            ToolErrorCode::FileTooLarge,
-            &format!("{path} {LONGER_THAN} {MAX_READ_BYTES} bytes"),
-        ));
+        return Err(too_long(path));
     }
     String::from_utf8(fetched.data.to_vec()).map_err(|_bytes| {
         ToolOutput::failed(

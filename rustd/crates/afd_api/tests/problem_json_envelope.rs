@@ -1,11 +1,10 @@
-//! Dimension 5.4 — error responses match the shape the Zig daemon emits.
+//! Dimension 5.4 — error responses keep the envelope clients already read.
 //!
-//! The envelope is a contract with clients that already exist: the dashboard
-//! reads `user_message`, the CLI reads `error_code`, and support reads
-//! `request_id` off a screenshot. Every assertion here is against
-//! the retired daemon's `http/handlers/problem_response.zig` and its test file, so
-//! a change that looks harmless from inside Rust fails here rather than in
-//! somebody's browser.
+//! The envelope is a fixed surface for clients that already exist: the
+//! dashboard reads `user_message`, the CLI reads `error_code`, and support reads
+//! `request_id` off a screenshot. Every assertion here pins a field one of them
+//! reads, so a change that looks harmless from inside Rust fails here rather
+//! than in somebody's browser.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -99,8 +98,8 @@ async fn test_the_docs_link_is_the_registry_entry_for_that_code() {
 /// `hint` is operator-facing and never reaches a client.
 ///
 /// It tells whoever runs this what to go and look at. On the wire it would be
-/// internal remediation advice handed to anyone who can provoke an error, and
-/// the Zig envelope has never carried it.
+/// internal remediation advice handed to anyone who can provoke an error, so
+/// the envelope does not carry it.
 #[tokio::test]
 async fn test_hint_never_reaches_the_client() {
     for problem in afd_core::problem::entries() {
@@ -216,8 +215,8 @@ async fn test_user_message_is_verbatim_or_absent() {
 
 /// A long detail travels whole.
 ///
-/// The Zig writer truncates nothing, and a detail cut mid-sentence is how the
-/// one line explaining a failure loses the part that explained it.
+/// Nothing truncates it: a detail cut mid-sentence is how the one line
+/// explaining a failure loses the part that explained it.
 #[tokio::test]
 async fn test_a_long_detail_is_not_truncated() {
     let detail = "d".repeat(LONG_DETAIL_BYTES);

@@ -183,10 +183,7 @@ async fn a_spool_that_will_not_read_is_retried_rather_than_abandoned() {
 async fn parked(engine: &FakeEngine) -> Holds {
     let holds = Holds::start(clock());
     holds.resize(2);
-    let request = SandboxRequest {
-        lease_id: LEASE_ID,
-        limits: Limits::default(),
-    };
+    let request = SandboxRequest::new(LEASE_ID, Limits::default());
     let key = HoldKey {
         fleet: Uuid7::parse(FLEET_ID).unwrap(),
         workspace: FLEET_ID.to_owned(),

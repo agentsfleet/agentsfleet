@@ -80,8 +80,7 @@ impl Rewrite {
         // where one was sent, the stored one otherwise. Checking the
         // replacement `SKILL.md` against that rather than against what is
         // stored now is what makes renaming both documents in one request a
-        // legal edit — the Zig does the same, and it is the only reason a
-        // rename is possible at all.
+        // legal edit, and it is the only reason a rename is possible at all.
         if let Some(replacement) = &skill {
             let target = trigger.as_ref().map_or(current.name.as_str(), |reparsed| {
                 reparsed.config().name().as_str()

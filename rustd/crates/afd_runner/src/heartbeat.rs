@@ -10,9 +10,8 @@
 //!
 //! # Why the split is a function and not a comment
 //!
-//! `heartbeat.zig` makes the same choice and spells it as five `catch` blocks
-//! that each log and carry on. Nothing relates them, so "this write is
-//! best-effort" is a property a reader reconstructs from the shape of five
+//! Five error handlers that each log and carry on would leave "this write is
+//! best-effort" a property a reader reconstructs from the shape of five
 //! bodies. Here it is [`best_effort`] — one function, named, with the reason in
 //! its documentation, and a call site that reads as a decision rather than as
 //! an omission.

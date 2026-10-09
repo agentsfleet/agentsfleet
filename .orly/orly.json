@@ -40,7 +40,6 @@
   },
   "surfaces": {
     "user": [
-      "src/",
       "cli/",
       "ui/packages/app/",
       "ui/packages/website/",

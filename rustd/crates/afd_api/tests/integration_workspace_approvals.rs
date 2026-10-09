@@ -154,7 +154,7 @@ async fn assert_approval_resolution(
     );
     // The resolver rides the envelope as an extension and stays OUT of the
     // sentence: a subject is an entity value, and the detail rules keep those
-    // out of `detail`. `approvals/resolve.zig` draws the same line.
+    // out of `detail`.
     assert!(
         !refused
             .get("detail")

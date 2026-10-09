@@ -7,11 +7,10 @@
 
 /// Records which workspace a provider account's inbound events belong to.
 ///
-/// `slack/sql.zig`'s `UPSERT_INSTALL`, kept statement-for-statement. The
-/// conflict target is the provider and the account rather than the workspace,
-/// because an account can be MOVED: a Slack team reinstalled into a different
-/// workspace must re-point, not accumulate a second row that two readers would
-/// resolve differently.
+/// The conflict target is the provider and the account rather than the
+/// workspace, because an account can be MOVED: a Slack team reinstalled into a
+/// different workspace must re-point, not accumulate a second row that two
+/// readers would resolve differently.
 pub const UPSERT_INSTALL: &str = "\
 INSERT INTO core.connector_installs \
   (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at) \
@@ -27,9 +26,8 @@ ON CONFLICT (provider, external_account_id) DO UPDATE SET \
 /// [`UPSERT_INSTALL`]'s exclusive twin. The conflict arm updates the row only
 /// when the existing row already names this workspace — a reconnect refreshes
 /// it — and touches nothing otherwise, so a zero row count is the signal that
-/// another workspace holds the installation. `github/sql.zig` answered the
-/// same question with `RETURNING` on a guarded upsert; the count is the same
-/// fact without a second round trip.
+/// another workspace holds the installation. The row count answers that
+/// without a `RETURNING` clause or a second round trip.
 pub const CLAIM_INSTALL: &str = "\
 INSERT INTO core.connector_installs \
   (id, provider, external_account_id, workspace_id, installed_by, scopes, created_at, updated_at) \

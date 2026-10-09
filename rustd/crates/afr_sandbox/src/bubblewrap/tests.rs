@@ -6,7 +6,7 @@
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
 
-use super::{Layout, arguments};
+use super::{Layout, NetworkLayout, arguments};
 use crate::tenant::TenantDescriptors;
 
 /// What a test's `/dev/shm` may hold.
@@ -23,6 +23,10 @@ fn argv() -> Vec<String> {
 }
 
 fn with_level(level: Option<&str>) -> Vec<String> {
+    with_network(level, NetworkLayout::Isolated)
+}
+
+fn with_network(level: Option<&str>, network: NetworkLayout<'_>) -> Vec<String> {
     let entry_args = [OsString::from("sandbox")];
     arguments(&Layout {
         toolbox: Path::new("/srv/toolbox/abc"),
@@ -34,6 +38,7 @@ fn with_level(level: Option<&str>) -> Vec<String> {
         log_level: level.map(OsStr::new),
         tenant: TENANT,
         shared_memory_bytes: SHARED_MEMORY_BYTES,
+        network,
     })
     .into_iter()
     .map(|part| part.into_string().unwrap_or_default())
@@ -213,6 +218,7 @@ fn test_the_entry_reads_back_the_tenant_descriptors_it_was_named() {
         log_level: None,
         tenant: TENANT,
         shared_memory_bytes: SHARED_MEMORY_BYTES,
+        network: NetworkLayout::Isolated,
     });
     // The last mention: the first is the entry's own read-only bind.
     let entry = argv
@@ -223,4 +229,61 @@ fn test_the_entry_reads_back_the_tenant_descriptors_it_was_named() {
     let parsed = TenantDescriptors::parse_from(argv[entry..].iter().cloned());
 
     assert_eq!(parsed.ok(), Some(TENANT), "the flags round-trip");
+}
+
+/// Each policy gets its namespace: `allow_all` shares the host's, and every
+/// other one — the fail-closed answer to no assignment among them, which the
+/// supervisor hands the engine as `Isolated` — gets one of its own.
+#[test]
+fn test_bubblewrap_network_flag_per_policy() {
+    let allowed = NetworkLayout::Allowed {
+        hosts: Path::new("/srv/leases/l1/hosts"),
+        resolv_conf: Path::new("/srv/leases/l1/resolv.conf"),
+    };
+    let unshares = |network| {
+        with_network(None, network)
+            .iter()
+            .filter(|part| *part == "--unshare-net")
+            .count()
+    };
+
+    assert_eq!(unshares(NetworkLayout::Host), 0);
+    assert_eq!(unshares(NetworkLayout::Isolated), 1);
+    assert_eq!(unshares(allowed), 1);
+}
+
+/// An allowlisted sandbox reads the rendered names and the resolver-less
+/// resolver file; a host-network one reads the host's own, when the host has
+/// them; an isolated one keeps the image's.
+#[test]
+fn test_resolver_files_follow_the_network() {
+    let allowed = with_network(
+        None,
+        NetworkLayout::Allowed {
+            hosts: Path::new("/srv/leases/l1/hosts"),
+            resolv_conf: Path::new("/srv/leases/l1/resolv.conf"),
+        },
+    );
+    let host = with_network(None, NetworkLayout::Host);
+    let isolated = with_network(None, NetworkLayout::Isolated);
+
+    assert_eq!(
+        after(&allowed, "--ro-bind", "/srv/leases/l1/hosts"),
+        ["--ro-bind", "/srv/leases/l1/hosts", "/etc/hosts"]
+    );
+    assert_eq!(
+        after(&allowed, "--ro-bind", "/srv/leases/l1/resolv.conf"),
+        [
+            "--ro-bind",
+            "/srv/leases/l1/resolv.conf",
+            "/etc/resolv.conf"
+        ]
+    );
+    for path in ["/etc/hosts", "/etc/resolv.conf"] {
+        assert_eq!(
+            after(&host, "--ro-bind-try", path),
+            ["--ro-bind-try", path, path]
+        );
+        assert!(!isolated.iter().any(|part| part == path), "{isolated:?}");
+    }
 }

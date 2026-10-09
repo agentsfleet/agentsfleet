@@ -2,10 +2,9 @@
 //!
 //! # The whole point is what is absent
 //!
-//! `dispatch` in `http/server.zig` says it in a comment: "The raw path is
-//! deliberately not carried into the span: it holds real workspace, fleet, and
-//! lease identifiers. The matched route's template does." Both halves matter,
-//! and for different reasons.
+//! The raw path is deliberately not carried into the span: it holds real
+//! workspace, fleet, and lease identifiers. The matched route's template is.
+//! Both halves matter, and for different reasons.
 //!
 //! Privacy: a concrete path is tenant data, and a span attribute is exported to
 //! a third-party backend. Cardinality: a route dimension with one value per
@@ -24,8 +23,7 @@
 //! template by definition, and the alternatives are both worse: a span with the
 //! raw path is the leak this module exists to prevent, and a span with a
 //! constant placeholder buys a dimension where every unmatched request looks
-//! like every other. Zig arrives at the same place by 404-ing before it opens a
-//! trace at all.
+//! like every other.
 
 use afd_observability::semconv;
 use axum::extract::{MatchedPath, Request};

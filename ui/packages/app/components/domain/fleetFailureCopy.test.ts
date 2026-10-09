@@ -1,24 +1,20 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { MessageState } from "@assistant-ui/react";
 import {
   AGENTSFLEET_EVENT_STATUS,
   type FleetEvent,
 } from "@/lib/streaming/fleet-stream-row";
-import {
-  eventOutcome,
-  messageOutcome,
-  RUNNER_REFUSAL_DETAILS,
-} from "./fleetFailureCopy";
+import { eventOutcome, messageOutcome } from "./fleetFailureCopy";
 
-// The two startup_posture sentences this module must keep apart: the fleet
-// that never got instructions, and the runner that refused before the fleet
-// ever ran. Both spelled here verbatim so a rewording breaks a test.
-const NEEDS_INSTRUCTIONS =
-  "This fleet needs instructions before it can respond.";
+// The runner is the only writer of startup_posture, so every startup failure
+// reads as its refusal, whatever cause line rides beside it.
 const RUNNER_REFUSED = "The runner refused this run before the fleet started.";
 const UNFINISHED_REPLY = "This fleet couldn’t complete the reply.";
+// Cause lines in the runner's own shape: prose naming what it refused on.
+const BUNDLE_REFUSAL = "the fleet bundle could not be fetched and verified";
+const SANDBOX_REFUSAL = "this host could not build a sandbox for the run";
+// A cause no runner build sends today, e.g. one carried by a pre-Rust row.
+const UNLISTED_CAUSE = "no instructions configured";
 
 function failedEvent(overrides: Partial<FleetEvent> = {}): FleetEvent {
   return {
@@ -50,8 +46,8 @@ function failedMessage(
 }
 
 describe("fleetFailureCopy — startup_posture sentences", () => {
-  it.each([...RUNNER_REFUSAL_DETAILS])(
-    "reads a runner refusal from the detail: %s",
+  it.each([BUNDLE_REFUSAL, SANDBOX_REFUSAL, UNLISTED_CAUSE])(
+    "reads every startup cause as the runner's refusal: %s",
     (detail) => {
       expect(eventOutcome(failedEvent({ failureDetail: detail }))).toBe(
         `${RUNNER_REFUSED} — ${detail}`,
@@ -59,64 +55,38 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
     },
   );
 
-  it("reads a runner refusal out of the em-dash in the outcome when no detail rides beside it", () => {
-    const [detail] = RUNNER_REFUSAL_DETAILS;
-    expect(eventOutcome(failedEvent({ outcome: `failed — ${detail}` }))).toBe(
-      `${RUNNER_REFUSED} — ${detail}`,
+  it("reads the cause out of the em-dash in the outcome when no detail rides beside it", () => {
+    expect(eventOutcome(failedEvent({ outcome: `failed — ${BUNDLE_REFUSAL}` }))).toBe(
+      `${RUNNER_REFUSED} — ${BUNDLE_REFUSAL}`,
     );
   });
 
-  it("routes a message's refusal detail through the same sentence", () => {
-    const [detail] = RUNNER_REFUSAL_DETAILS;
-    expect(messageOutcome(failedMessage(detail))).toBe(
-      `${RUNNER_REFUSED} — ${detail}`,
+  it("routes a message's cause through the same sentence", () => {
+    expect(messageOutcome(failedMessage(SANDBOX_REFUSAL))).toBe(
+      `${RUNNER_REFUSED} — ${SANDBOX_REFUSAL}`,
     );
   });
 
-  it("keeps the needs-instructions sentence verbatim for a non-refusal detail", () => {
-    expect(
-      eventOutcome(failedEvent({ failureDetail: "no instructions configured" })),
-    ).toBe(`${NEEDS_INSTRUCTIONS} — no instructions configured`);
+  it("states the refusal alone when no cause was recorded", () => {
+    expect(eventOutcome(failedEvent())).toBe(RUNNER_REFUSED);
+    expect(messageOutcome(failedMessage(null))).toBe(RUNNER_REFUSED);
   });
 
   // Reported live on the dev fleet: the runner could not load its config inside
-  // the sandbox, and the user was told their fleet lacked instructions — with a
-  // raw Zig error name pasted after the em-dash. The fleet was configured
-  // correctly; the fault was entirely runner-side.
-  it("test_unrecognised_cause_is_not_blamed_on_the_fleet: an internal identifier reads as a runner failure", () => {
-    expect(eventOutcome(failedEvent({ failureDetail: "FleetInitFailed" }))).toBe(
-      RUNNER_REFUSED,
-    );
-    expect(messageOutcome(failedMessage("FleetInitFailed"))).toBe(RUNNER_REFUSED);
-  });
-
+  // the sandbox, and a raw error identifier was pasted after the em-dash.
   it("test_raw_error_identifier_never_shown: no internal identifier survives into the sentence", () => {
     for (const identifier of [
       "FleetInitFailed",
       "SandboxEstablishFailed",
       "UZ-EXEC-012",
     ]) {
-      const rendered = eventOutcome(failedEvent({ failureDetail: identifier }));
-      expect(rendered).not.toContain(identifier);
+      expect(eventOutcome(failedEvent({ failureDetail: identifier }))).toBe(RUNNER_REFUSED);
+      expect(messageOutcome(failedMessage(identifier))).toBe(RUNNER_REFUSED);
       // It also must not leak through the em-dash-embedded path.
       expect(
         eventOutcome(failedEvent({ outcome: `failed — ${identifier}` })),
-      ).not.toContain(identifier);
+      ).toBe(RUNNER_REFUSED);
     }
-  });
-
-  it("test_missing_instructions_keeps_its_sentence: a genuine fleet-config cause still names the fleet", () => {
-    // The inverse guard: prose causes are unaffected by the identifier rule, so
-    // a fleet that really has no instructions still says so.
-    expect(
-      eventOutcome(failedEvent({ failureDetail: "no instructions configured" })),
-    ).toBe(`${NEEDS_INSTRUCTIONS} — no instructions configured`);
-    expect(eventOutcome(failedEvent())).toBe(NEEDS_INSTRUCTIONS);
-  });
-
-  it("keeps the needs-instructions sentence verbatim when no detail was recorded", () => {
-    expect(eventOutcome(failedEvent())).toBe(NEEDS_INSTRUCTIONS);
-    expect(messageOutcome(failedMessage(null))).toBe(NEEDS_INSTRUCTIONS);
   });
 
   it("leaves every other failure tag on the shared event-summary sentence", () => {
@@ -146,82 +116,5 @@ describe("fleetFailureCopy — startup_posture sentences", () => {
       failureLabel: "runner_crash",
       failureDetail: "UnexpectedFault",
     }))).toBe(UNFINISHED_REPLY);
-  });
-
-  // The refusal list is a hand-copy of cause lines the runner emits, in another
-  // language, matched by exact string. Nothing but this test connects the two:
-  // reword a line on the runner side and every refusal silently reverts to
-  // "this fleet needs instructions" — the exact bug the split was written to
-  // fix, reappearing with no failing test to announce it.
-  //
-  // Derived from the runner source rather than from a second copy of the list,
-  // so the assertion cannot pass by agreeing with itself.
-  it("carries exactly the runner's own startup-posture refusal lines", () => {
-    const runnerRoot = resolve(process.cwd(), "../../../src/runner");
-    const sources = readdirSync(runnerRoot, { recursive: true, encoding: "utf8" })
-      .filter((name) => name.endsWith(".zig"))
-      .map((name) => readFileSync(join(runnerRoot, name), "utf8"));
-    const all = sources.join("\n");
-
-    // Every `DETAIL_*` literal the runner declares, by name.
-    const literals = new Map<string, string>();
-    for (const match of all.matchAll(/const (DETAIL_\w+) = "([^"]*)"/g)) {
-      const name = match[1];
-      const text = match[2];
-      if (name === undefined || text === undefined) continue;
-      literals.set(name, text);
-    }
-    expect(literals.size).toBeGreaterThan(0);
-
-    // Only the ones emitted under `.startup_posture`. A cause line raised under
-    // another class — `landlock_deny`, say — is not a refusal to start and must
-    // NOT appear in the chat copy's list.
-    //
-    // Two emission shapes, and the guard must know both. The supervisor raises
-    // through `failedDetailed(alloc, .startup_posture, DETAIL_X)`; the lease
-    // runner refuses BEFORE the fork through `reportStartupFailure(..., DETAIL_X)`,
-    // which hard-codes the class. Scanning only the first is how the bundle
-    // line went missing: the guard passed while the copy was wrong.
-    const refusals = new Set<string>();
-    const emissions = [
-      /failedDetailed\([^,]+,\s*\.startup_posture,\s*(?:\w+\.)?(DETAIL_\w+)\s*\)/g,
-      /reportStartupFailure\([^;]*?,\s*(DETAIL_\w+)\s*\)/g,
-    ];
-    for (const match of emissions.flatMap((pattern) => [...all.matchAll(pattern)])) {
-      const name = match[1];
-      if (name === undefined) continue;
-      const literal = literals.get(name);
-      expect(literal, `${name} is emitted but never declared`).toBeDefined();
-      if (literal !== undefined) refusals.add(literal);
-    }
-
-    expect([...refusals].sort()).toEqual([...RUNNER_REFUSAL_DETAILS].sort());
-  });
-
-  // The internal-identifier rule keys on whitespace: operator-facing cause lines
-  // are prose, a bare token is a leaked error name. That holds for every cause
-  // the runner declares today — but nothing stopped a future one-word cause from
-  // being added, at which point it would be silently suppressed AND misread as a
-  // runner refusal. Derived from the runner source so the guard cannot drift.
-  it("every runner cause line is prose, so the internal-identifier rule cannot misfire", () => {
-    const runnerRoot = resolve(process.cwd(), "../../../src/runner");
-    const all = readdirSync(runnerRoot, { recursive: true, encoding: "utf8" })
-      .filter((name) => name.endsWith(".zig"))
-      .map((name) => readFileSync(join(runnerRoot, name), "utf8"))
-      .join("\n");
-
-    const offenders: string[] = [];
-    for (const match of all.matchAll(/const (DETAIL_\w+) = "([^"]*)"/g)) {
-      const name = match[1];
-      const text = match[2];
-      if (name === undefined || text === undefined) continue;
-      if (!/\s/.test(text)) offenders.push(`${name} = "${text}"`);
-    }
-
-    expect(
-      offenders,
-      "a single-word cause line would be treated as an internal identifier: " +
-        "hidden from the user and reported as a runner refusal. Reword it as prose.",
-    ).toEqual([]);
   });
 });

@@ -1,9 +1,9 @@
 //! Applying the canonical migrations, once each, in order, under one lock.
 //!
-//! The shape is the Zig migrator's because the ledger is shared: take the
+//! The order is fixed by the ledger every deployment already has: take the
 //! advisory lock, create the bookkeeping tables under it, reap versions that
 //! left the canonical list, read what is already applied, then apply the rest
-//! one transaction at a time. What differs is where the guarantees live —
+//! one transaction at a time. The guarantees live in the types —
 //! [`MigrationLock`] owns the session that holds the lock, [`Migration`]
 //! derives its version from its filename, and a statement list that might be a
 //! truncated string literal cannot be constructed at all.
@@ -151,9 +151,9 @@ impl Migrator {
         tracing::info!(event = "migrate_lock_acquired");
 
         // The lock is released on every path out of the body, including the
-        // error ones. `defer` in Zig; here the body is a separate future whose
-        // result is held until after the release — a `Drop` impl cannot do it,
-        // because releasing is asynchronous and `Drop` cannot await.
+        // error ones. The body is a separate future whose result is held until
+        // after the release — a `Drop` impl cannot do it, because releasing is
+        // asynchronous and `Drop` cannot await.
         let outcome = self.apply_all(guard.connection()).await;
         guard.release().await;
         outcome

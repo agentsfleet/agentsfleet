@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
 use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
-use afd_wire::lease::LeasePayload;
+use afd_wire::lease::{LeasePayload, SandboxLimits};
 use bytes::Bytes;
 use futures_util::FutureExt as _;
 
@@ -47,7 +47,7 @@ pub(super) struct Counted {
 }
 
 impl Counted {
-    fn of(engine: &FakeEngine) -> Self {
+    pub(super) fn of(engine: &FakeEngine) -> Self {
         Self {
             prepared: Arc::clone(&engine.prepared),
             destroyed: Arc::clone(&engine.destroyed),
@@ -152,6 +152,29 @@ async fn test_processed_lease_parks_its_sandbox_frozen() {
         renewals.iter().all(|at| *at < report_at),
         "a hold never extends the lease: no renewal after its report {renewals:?}"
     );
+}
+
+/// A lease refused before its sandbox is chosen, here by a size past every
+/// bound, settles with no hold, so the daemon would never let the fleet's
+/// held sandbox be resumed after it: the refusal releases it at once.
+#[tokio::test(start_paused = true)]
+async fn test_a_lease_refused_at_startup_releases_the_fleets_hold() {
+    let capture = Capture::install();
+    let (rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
+    rig.run(&lease(LEASE_ID, FLEET_ID, None)).await.unwrap();
+
+    let mut refused = resumed(NEXT_LEASE_ID, FLEET_ID);
+    refused.limits = Some(SandboxLimits {
+        cpu_millis: 0,
+        memory_bytes: 0,
+        disk_bytes: 0,
+    });
+    rig.run(&refused).await.unwrap();
+    settled(&rig).await;
+
+    assert_eq!(releases(&capture), [released(FLEET_ID, Release::Mismatch)]);
+    let (_prepared, _frozen, _thawed, destroyed) = counted.read();
+    assert_eq!(destroyed, 1, "the held sandbox is torn down");
 }
 
 #[tokio::test(start_paused = true)]

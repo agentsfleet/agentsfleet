@@ -58,7 +58,7 @@ const CONTEXT_WRITE: &str = "write a schedule";
 ///
 /// Long enough for an upstream round trip and its retries, short enough that a
 /// syncer killed mid-push does not strand a schedule for a person watching the
-/// list. `FireStore.zig` uses the same window.
+/// list.
 pub const SYNC_LEASE_MS: i64 = 30_000;
 
 /// What a schedule is created from.

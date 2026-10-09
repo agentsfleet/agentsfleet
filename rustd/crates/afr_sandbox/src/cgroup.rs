@@ -22,8 +22,10 @@ use crate::engine::Limits;
 use crate::error::{Result, cgroup, cgroup_left};
 use crate::probe::REQUIRED_CONTROLLERS;
 
+mod delegated;
 mod freezer;
 
+pub use self::delegated::{MECHANISM_DELEGATED_CGROUP, SELF_CGROUP_PATH, delegated_root};
 pub use self::freezer::Freezer;
 
 /// The file that enables controllers for a cgroup's children.

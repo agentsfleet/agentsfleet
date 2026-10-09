@@ -1,7 +1,7 @@
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
-use afr_sandbox::{HostProbe, Kvm};
+use afr_sandbox::{HostProbe, Kvm, REQUIRED_CONTROLLERS};
 
-use super::{capability_report, probe_answer, selftest};
+use super::{CGROUP_OFF, CGROUP_ON, capability_report, probe_answer, selftest};
 
 fn probe(kvm: Kvm, toolbox_filesystem: bool) -> HostProbe {
     HostProbe {
@@ -17,6 +17,7 @@ fn probe(kvm: Kvm, toolbox_filesystem: bool) -> HostProbe {
         kvm,
         toolbox_filesystem,
         workspace_direct_io: None,
+        egress: false,
     }
 }
 
@@ -80,6 +81,7 @@ fn every_missing_mechanism_fails_its_own_check() {
         kvm: Kvm::Absent,
         toolbox_filesystem: false,
         workspace_direct_io: None,
+        egress: false,
     };
 
     let report = selftest(&bare, SandboxTier::DevNone, NetworkPolicy::AllowAll);
@@ -94,17 +96,28 @@ fn every_missing_mechanism_fails_its_own_check() {
 }
 
 #[test]
-fn the_report_carries_the_wire_mechanisms_without_egress() {
+fn the_report_carries_the_wire_mechanisms() {
     let probe = probe(Kvm::Usable, true);
 
     let report = capability_report(&probe);
 
     assert!(report.landlock && report.seccomp && report.bubblewrap);
-    assert!(
-        !report.egress_enforcement,
-        "a sandbox here has no network to enforce"
-    );
     assert_eq!(report.cgroup_controllers.len(), 4);
+}
+
+/// Egress enforcement is the probe's measurement, never a constant: a host
+/// whose probe built and removed a scope reports it, and one whose probe
+/// failed does not, so the daemon degrades an `allow_list_egress` runner
+/// that cannot hold a sandbox to its allowlist.
+#[test]
+fn test_egress_probe_reports_enforcement() {
+    let measured = |egress| HostProbe {
+        egress,
+        ..probe(Kvm::Usable, true)
+    };
+
+    assert!(capability_report(&measured(true)).egress_enforcement);
+    assert!(!capability_report(&measured(false)).egress_enforcement);
 }
 
 /// The probe command answers with the heartbeat's report and every check, so
@@ -146,6 +159,7 @@ fn test_direct_io_check_follows_the_probe() {
     let stated = |workspace_direct_io| {
         let probe = HostProbe {
             workspace_direct_io,
+            egress: false,
             ..probe(Kvm::Usable, true)
         };
         selftest(&probe, SandboxTier::LandlockFull, NetworkPolicy::AllowAll)
@@ -170,4 +184,18 @@ fn test_direct_io_check_follows_the_probe() {
     );
     let (ok, detail) = check(&buffered, "workspace_direct_io");
     assert!(!ok && detail.contains("falls back to buffered"));
+}
+
+/// The cgroup check's two sentences name every controller the sandbox
+/// requires, so the prose cannot drift from the set it reports on.
+#[test]
+fn the_cgroup_check_names_every_required_controller() {
+    for sentence in [CGROUP_ON, CGROUP_OFF] {
+        let words: Vec<&str> = sentence
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .collect();
+        for controller in REQUIRED_CONTROLLERS {
+            assert!(words.contains(&controller), "{sentence} names {controller}");
+        }
+    }
 }

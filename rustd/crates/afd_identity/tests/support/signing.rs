@@ -1,4 +1,4 @@
-//! Signing real tokens with the Zig tree's throwaway key.
+//! Signing real tokens with a throwaway test key.
 //!
 //! Shared because reading claims off an UNSIGNED token would prove nothing —
 //! this verifier refuses to read a claim for a decision before the signature
@@ -6,9 +6,8 @@
 //! One fixture, so two test targets cannot drift in what they consider a
 //! well-formed token.
 //!
-//! The key is `auth/crypto/rs256_sign.zig`'s `TEST_KEY_PKCS1_B64` — generated
-//! offline, never used in production, and already embedded there to drive the
-//! signer. `claim_shapes` pins that byte-for-byte.
+//! The key, `TEST_KEY_PKCS1_B64`, was generated offline and is never used in
+//! production.
 //!
 //! The allow sits HERE rather than on each suite that includes it. Every test
 //! file carries its own copy for its own body, but `identity_suite` declares
@@ -38,8 +37,6 @@ pub(crate) const NOW_MS: i64 = 1_704_067_400_000;
 pub(crate) const NOW_S: i64 = NOW_MS / 1_000;
 
 /// A throwaway 2048-bit RSA key as PKCS#1 DER, base64 without PEM armor.
-///
-/// `auth/crypto/rs256_sign.zig`'s `TEST_KEY_PKCS1_B64`, pinned to it below.
 pub(crate) const TEST_KEY_PKCS1_B64: &str = "MIIEowIBAAKCAQEAxBs4iJWrDhpuy4GQyfrQhtnrXhzEM86cswmwrs9ouW5S4cCi+yzb+xsMZrK2n1AkVkep6c56My6P/13awSMYdtejrSs/b71W+iE83XSWPJJI4sjzUJ0UEU/AQMiMW6LVmWU55n25NyhVOrLxqO3DI5Kb6qlCxDL1yXgyKEmls1e0qXQD2kigsJp6QhcxXgPhAX6wUL0nhSUACPFG468iRU3DLR66dAsTcy7FjNWxh8ljC8ScM9Rm6yNo9i9CGTQQIRwAolMpIMcSxpBKEIhZpwkiEgtwkSvI1s+u5GxSZ6IyBM9tooyb1TlRsWhYm9pkrroGeG0Y3YSdZawXOWrEUwIDAQABAoIBAFC5J8dJXJU8mjjZB6GsxeOMlo8x5i2xMd2c8oayx9f0qtdUtYIREChIFQ29KOFhWuPNMgsVPEYPN6UVnDN+X9ajozNoJv+2/7OMtQIvuJwMV0ZLE6UuU5Fgs7G3G9eoqqYu/et7+x7SUmsMN9+ip33gHqA0tlAO7g/Vk0f0MOomSYGg85ClU9tUVqWS9WOZk7dDcF0zmXDG2aoZEE0oSV62ysQqtkX6ClC2XX4ZtiaBrPGEMB5yxNr6uPiHj7p0IAJtpxRa7jJ5ylWMYqqYGVsGBRkxYsFIDfXs79oxrs9Jf93wZ7A/yyhgWgU9B05LiO8jZ29VlMyu2BqgvP6ITzECgYEA+0UWu8O9vKEMOq2w8AZh9rDQL/L/mJNVFwKok6j6uBQgdvgN5M/ga8tfXj+PR8slFBhydDj80lESxNWwgTzcn7bNglSxdV4A+gCa01o5W6XE0mSe/hug+7pIR2wO9UYNT0gh10Av0xyUn62dLq2qBT60D0HzX57x5Axv6+Ua3TkCgYEAx8xKLWD18oavkQKucVXR/vTb8OWX6qrKG6IFEtzxOAyaRXN7y/cB7rJdl91ytTvZ4djc3lz+Zj9n3DU3HTtj85MktyomawKNpSif4BMx1MzS7cMX24y8ixBzHhroCObu4h200AIWEs3/4HhafTBVLj8tY65WiPfvqrYQPuKAOesCgYEAh3K2zoC1xvkJnpgCyWCnblPh5fcX0Seatsy4EuEERjaTSY5t7uogD/uRbTzV/92CH1MOX5hYsQcDFxgaDZDBXVctcRQ2lQ4XeKzayRPZ142Ei+Wxz0kVfpzsWZPmfFFG23YGyAHRxfuiInF0SbVT8X/bkF38047a1hPeQUs/MAECgYBQLQebPCyWHTw4ycWsz06MrD/SZJ/Y2J5wBk1Y63aVEmGZ+ySzjbSlz8fFGGVemtztR3Qie1jPOSR5dpVeUqXiaaqzIeP2zzh+DVZSugEmLud55+8b+Fb0yy4W558za1BzRo53Zk7rTuUec82ELTARdeLF/IDXR/9SFutgAM6J7wKBgF/WfKsWeV++aRYXS7vsJqq9xM+P1y9JNcIUtItVA7eYe9vbm8/mQ5e1Qln45k1EgzzkcYBBVbuTF5d92xMAHLfdZUjRCDMc752b9B6i1pgPUnd8w1YDoYK7V/wVavOhXuNPc+btdItLFps0+eOa2NCmJ7G4ekqIAvrTRwmwKlJa";
 
 pub(crate) const KID: &str = "signing-fixture";

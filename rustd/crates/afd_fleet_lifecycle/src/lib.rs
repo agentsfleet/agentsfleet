@@ -153,13 +153,12 @@ impl Fleets {
 
 /// Where a fleet stands in its life.
 ///
-/// A closed enum rather than the `[]const u8` the Zig passes around, and the
-/// difference shows up twice: the status machine in [`sql::PATCH_FLEET`] binds
-/// these as parameters, so a typo is a compile error rather than a predicate
-/// that silently matches no row; and [`Requested`] — what an API caller may ASK
-/// for — is a separate, smaller type, so `paused` is not a value a request can
-/// spell at all. The Zig checks that by hand in `patch_body.validateBody` and
-/// would still compile without the check.
+/// A closed enum rather than a string, and that pays twice: the status machine
+/// in [`sql::PATCH_FLEET`] binds these as parameters, so a typo is a compile
+/// error rather than a predicate that silently matches no row; and
+/// [`Requested`] — what an API caller may ASK for — is a separate, smaller type,
+/// so `paused` is not a value a request can spell at all, and no hand-written
+/// check has to stand guard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FleetStatus {
     /// The row exists; its stream may not yet.

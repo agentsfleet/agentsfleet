@@ -3,32 +3,30 @@
 //! Same shape as [`crate::runner::Runners`] and [`crate::lease::Leases`], for
 //! the same reason: the pool is OWNED here and [`Accounts::pool`] is
 //! `pub(crate)`, so nothing outside this crate can run a money statement that
-//! is not in [`crate::sql`], and the side-by-side parity read of that
-//! module stays meaningful (Invariant 5).
+//! is not in [`crate::sql`], and a review of that module reads every statement
+//! the money path can run (Invariant 5).
 //!
-//! # Why there is no rate cache, when the Zig has one
+//! # Why there is no rate cache
 //!
-//! `model_rate_cache.zig` is three hundred lines: a fixed-capacity table, a
-//! hand-written `hash`/`eql` over the `(provider, model)` pair, an essay
-//! proving the key cannot collide, and a generation stored beside every entry
-//! so a caller never accepts a rate older than the catalogue revision it
-//! observed. That machinery is answering a real question — a stale rate prices
-//! a charge wrong, silently — and it exists because the Zig's
-//! `resolveRenewSliceRates` reads the generation in ONE statement and then
-//! looks the rate up separately, so a cache hit is what saves the second.
+//! A rate cache earns its keep when the catalogue generation is read in ONE
+//! statement and the rate looked up separately, so a cache hit saves the
+//! second round trip. It then needs a fixed-capacity table, a hash over the
+//! `(provider, model)` pair, and a generation stored beside every entry so a
+//! caller never accepts a rate older than the catalogue revision it observed.
+//! That machinery answers a real question — a stale rate prices a charge
+//! wrong, silently.
 //!
-//! But the Zig ALSO has `LOAD_RATE_WITH_REVISION`, which returns the rate and
-//! the generation it was read at in a single snapshot. Reading through that
-//! statement every time costs ONE round trip — fewer than the Zig's cached path
-//! — and there is then no generation to compare, no entry to evict, and no
-//! window in which a resident rate can be older than the catalogue. The cache's
-//! entire purpose is to avoid a read that this shape does not perform.
+//! [`crate::sql::LOAD_RATE_WITH_REVISION`] returns the rate and the generation
+//! it was read at in a single snapshot. Reading through that statement every
+//! time costs ONE round trip, and there is then no generation to compare, no
+//! entry to evict, and no window in which a resident rate can be older than
+//! the catalogue. A cache's entire purpose is to avoid a read that this shape
+//! does not perform.
 //!
 //! So the issue-time gate reads fresh. §3's renewal path prices a slice per
 //! renewal rather than once per lease, and may want a cache for LATENCY — but
-//! it would be an optimisation over a correct read, not the coherence mechanism
-//! it is upstream, and it should be added with a measurement rather than
-//! inherited with a port.
+//! it would be an optimisation over a correct read, not a coherence mechanism,
+//! and it should be added with a measurement.
 
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;

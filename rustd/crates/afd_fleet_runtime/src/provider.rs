@@ -11,9 +11,8 @@
 //! PARSING needs from a provider.
 //!
 //! It is not a client. Nothing here opens a socket, and nothing here verifies
-//! a signature. `webhook_verify.zig` fuses the two — the same const table holds
-//! the header names and the HMAC comparison — and the cost is that a pure
-//! config parse drags the verification path in behind it.
+//! a signature. Holding the header names apart from the HMAC comparison is what
+//! lets a pure config parse run without the verification path behind it.
 //!
 //! # Where the provider CRATES go, and why not here
 //!

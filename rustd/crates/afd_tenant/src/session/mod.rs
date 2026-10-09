@@ -11,11 +11,10 @@
 //!
 //! # Why the orchestration is a service and not a handler
 //!
-//! `sessions.zig` is six handlers, and every one of them re-derives the same
-//! four things from an `httpz.Request` before it can do anything: the peer
-//! address, the user agent, a redaction buffer, and a scratch struct declared
-//! `undefined` and filled on the next line. The rules about WHICH of those a
-//! given verb needs live in whichever handler was written last.
+//! Six handlers that each re-derive the same things from a request before they
+//! can do anything — the peer address, the user agent, a redaction buffer —
+//! leave the rules about WHICH of those a given verb needs in whichever handler
+//! was written last.
 //!
 //! Here a verb takes what it needs as parameters of types that already parsed
 //! ([`input`]), and the HTTP layer is what turns a request into them. Nothing
@@ -278,8 +277,7 @@ impl Sessions {
     /// Cancels every in-flight login `owner` holds, answering their ids.
     ///
     /// The ids rather than a count, so the caller can write one audit record
-    /// per aborted session — the observer-callback-through-`*anyopaque` shape
-    /// the Zig store needs for the same thing, expressed as a return value.
+    /// per aborted session without the store taking an observer callback.
     ///
     /// # Errors
     /// Reports a queue that would not answer.
@@ -324,8 +322,7 @@ fn session_ttl_millis() -> i64 {
 
 /// Refuses a session id that is not a version 7 identifier.
 ///
-/// Answered as "not found" rather than "malformed", which is the Zig
-/// `formatSessionKey` behaviour and the right one: a caller holding a
+/// Answered as "not found" rather than "malformed", because a caller holding a
 /// syntactically wrong id and one holding a well-formed id for a session that
 /// expired are in the same position, and telling them apart would make the poll
 /// an oracle for the id shape.

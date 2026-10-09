@@ -19,9 +19,9 @@ pub use afd_core::paging::struct_cursor::Foreign;
 
 /// Cursor payload version, shared across every struct cursor issued.
 ///
-/// Re-exported rather than declared: `http/pagination.zig` owns one number for
-/// every struct cursor, and a second declaration here is how two payloads end
-/// up on different generations.
+/// Re-exported rather than declared: `afd_core::paging::struct_cursor` owns one
+/// number for every struct cursor, and a second declaration here is how two
+/// payloads end up on different generations.
 pub const CURSOR_VERSION: u8 = struct_cursor::VERSION;
 
 /// The catalogue page's cursor payload, in the spec's fixed key order.
@@ -57,7 +57,7 @@ pub fn render(cursor: &Cursor) -> String {
     struct_cursor::render(cursor)
 }
 
-/// Reads a token this daemon — or the Zig one — issued.
+/// Reads a token this daemon issued.
 ///
 /// # Errors
 /// Refuses anything that is not this payload in canonical form, and a
@@ -89,10 +89,10 @@ mod tests {
     }
 
     #[test]
-    fn the_wire_form_is_the_zig_codec_s() {
-        // Pinned bytes: what `std.json.Stringify` emits for THIS payload,
-        // base64url without padding. A client holding a Zig-issued cursor must
-        // be able to spend it here mid-cutover, so the field order is a wire
+    fn the_wire_form_is_compact_json_in_field_order() {
+        // Pinned bytes: THIS payload as compact JSON in declared field order,
+        // base64url without padding. A client holding an issued cursor must
+        // be able to spend it after a deploy, so the field order is a wire
         // fact rather than a choice — which is why the pin lives beside the
         // struct and not with the codec that encodes it.
         use base64::Engine as _;

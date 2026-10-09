@@ -7,7 +7,7 @@
 //! credential. A NUL is masked in the same pass because no stored trace or
 //! record may hold one. A stream is scrubbed across its chunk boundaries: the
 //! tail that could still be the start of a secret is held back until the next
-//! chunk settles it, the shape `src/runner/engine/stream_redactor.zig` carries.
+//! chunk settles it.
 
 use std::borrow::Cow;
 use std::fmt;

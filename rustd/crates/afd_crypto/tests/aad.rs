@@ -1,11 +1,11 @@
-//! Dimension 1.2 — the associated data is byte-identical to the daemon's.
+//! Dimension 1.2 — the associated data is byte-identical to what stored rows bind.
 //!
-//! This is the one place envelope parity actually breaks. The primitive is a
+//! This is the one place the envelope can silently break. The primitive is a
 //! standard covered by published vectors; the layout is six fixed-width
-//! components. What is bespoke — and therefore what drifts — is the string the
-//! two implementations agree to authenticate. A single tidy-up here makes every
-//! row the Zig daemon ever wrote fail to open, with no compile error and no
-//! type change to notice.
+//! components. What is bespoke — and therefore what drifts — is the string every
+//! stored row authenticates. A single tidy-up here makes every row already in
+//! `vault.secrets` fail to open, with no compile error and no type change to
+//! notice.
 //!
 //! The format, written out:
 //!
@@ -23,16 +23,16 @@ use afd_crypto::aad::Aad;
 
 /// The exact bytes, spelled out rather than rebuilt with the same code twice.
 #[test]
-fn test_aad_matches_zig_format() {
+fn test_aad_matches_the_stored_byte_format() {
     let aad = Aad::new("ws_0123", "openai");
     assert_eq!(aad.as_bytes(), b"ws_0123\x1fopenai\x1f2");
 }
 
 /// The asymmetry, which is the part a cleanup would "fix" and thereby break.
 ///
-/// `std.ascii.allocLowerString` is applied to the workspace identifier ALONE on
-/// the Zig side. Lowercasing the key name too would look tidier and would orphan
-/// every credential stored under a name containing a capital letter.
+/// Lowercasing applies to the workspace identifier ALONE. Lowercasing the key
+/// name too would look tidier and would orphan every credential stored under a
+/// name containing a capital letter.
 #[test]
 fn test_aad_lowercases_workspace_but_not_key_name() {
     let aad = Aad::new("WS_ABC", "MixedCaseName");

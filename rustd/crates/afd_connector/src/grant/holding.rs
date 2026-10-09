@@ -11,9 +11,8 @@
 //! # Answering a question about a connection rarely opens an envelope
 //!
 //! The catalogue answer comes from [`afd_vault::Directory`], which holds no
-//! key: it asks which names exist and nothing else. `catalog.zig` decrypts
-//! every credential a workspace holds to answer the same question, which is
-//! what made its own budget comment necessary.
+//! key: it asks which names exist and nothing else, so rendering the catalogue
+//! decrypts no credential the workspace holds.
 //!
 //! Two reads DO open one row each, and they are opening it for different
 //! things. [`Grants::connection`] opens a handle to read the label a person
@@ -30,7 +29,7 @@
 //! provider's events back, and it revokes nothing at the vendor. That is the
 //! property that makes reconnecting always available: a person whose token was
 //! revoked upstream, or whose install drifted, presses Connect again and the
-//! flow starts clean. `disconnect.zig` states the same rule.
+//! flow starts clean.
 
 use std::collections::BTreeSet;
 
@@ -235,8 +234,8 @@ impl Grants {
     /// Not a transaction, and that is the honest shape rather than a
     /// compromise: the two writes are in different stores, so a transaction
     /// over the pool would cover the rows and not the vault row it is ordered
-    /// against. `binding_tx.zig` takes an advisory lock to make the pair look
-    /// atomic and still cannot include the vault write.
+    /// against. An advisory lock could make the pair look atomic and still
+    /// could not include the vault write.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a vault that refused the

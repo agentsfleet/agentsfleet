@@ -34,8 +34,8 @@ use crate::{Result, error};
 
 /// The cap one preference value may hold.
 ///
-/// An opaque blob with no ceiling is free tenant storage. One kibibyte is the
-/// Zig bound and the TypeScript client's, mirrored verbatim.
+/// An opaque blob with no ceiling is free tenant storage. One kibibyte is
+/// also the TypeScript client's bound, so the two refuse the same values.
 pub const MAX_PREF_VALUE_BYTES: usize = 1024;
 
 /// The actor prefix a steer event carries.

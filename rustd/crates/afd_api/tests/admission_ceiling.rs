@@ -152,10 +152,8 @@ async fn test_a_completed_request_returns_its_slot() {
 
 /// A caller who hangs up mid-request gives its slot back too.
 ///
-/// Zig's `defer` runs on every RETURN path, which is why this case does not
-/// exist there — the request either answers or the thread unwinds. Here the
-/// future can simply be dropped, and the permit has to survive that: a
-/// dashboard closing a tab must not cost the instance a slot permanently.
+/// A request future can simply be dropped, and the permit has to survive that:
+/// a dashboard closing a tab must not cost the instance a slot permanently.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_an_abandoned_request_returns_its_slot() {
     let fixture = Fixture::empty(ceiling());
@@ -189,13 +187,14 @@ fn test_only_the_api_class_is_metered() {
     );
 }
 
-/// The default ceiling is the one the Zig loader hands the daemon.
+/// The default ceiling is 256 requests in flight, the one `agentsfleetd` serves
+/// under.
 #[test]
-fn test_the_default_ceiling_matches_the_zig_loader() {
+fn test_the_default_ceiling_is_256_in_flight_requests() {
     assert_eq!(
         DEFAULT_MAX_IN_FLIGHT.get(),
         256,
-        "runtime_loader.zig's API_MAX_IN_FLIGHT_DEFAULT"
+        "afd_http::admission::DEFAULT_MAX_IN_FLIGHT"
     );
     assert_eq!(Admission::new(DEFAULT_MAX_IN_FLIGHT).limit().get(), 256);
 }

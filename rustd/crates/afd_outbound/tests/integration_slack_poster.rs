@@ -1,11 +1,11 @@
 //! The one poster this build ships, against the two stores it actually holds.
 //!
-//! `dispatch` routes exactly one provider — `outbound/worker.zig:124` does the
-//! same and says so — and `integration_worker.rs` drives it through a stub
-//! `Deliver`, because what that suite grades is the consumer group and the
-//! retry loop. So `SlackPoster` itself ran no covered lines: the address read
-//! that finds where an answer goes, the vault read that opens the bot token,
-//! and the POST that carries it were all unproven.
+//! `dispatch` routes exactly one provider (`src/poster.rs`), and
+//! `integration_worker.rs` drives it through a stub `Deliver`, because what
+//! that suite grades is the consumer group and the retry loop. So `SlackPoster`
+//! itself ran no covered lines: the address read that finds where an answer
+//! goes, the vault read that opens the bot token, and the POST that carries it
+//! were all unproven.
 //!
 //! # Why a loopback Slack rather than a stubbed client
 //!

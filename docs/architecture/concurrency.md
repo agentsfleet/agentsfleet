@@ -9,9 +9,8 @@ split). Channel and stream **names** are canonical in `data_flow.md`; this file
 owns the thread/lock/shutdown layer on top of them.
 
 The concurrency rules `C1–C5` are the system's concrete invariants and bind both
-planes. Their statement beside the Allocator rules `A1–A6` lives in the Zig
-discipline façade (`.orly/dispatch/write_zig.md`); the control plane holds the same
-five in Rust, where the compiler carries three of them.
+planes. Both planes are Rust on tokio, where the compiler carries three of the
+five.
 
 ---
 
@@ -22,14 +21,14 @@ Every row is extracted from the sections below; the owner column names the secti
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Concurrency rules | C1–C5 | declared producer/consumer, receiver owns the payload · stop→join→drop · no blocking under a consumer's lock · one documented lock per aggregate · task/thread-confined by default | §The five invariants |
-| Long-lived work | supervised control-plane tasks, async connections, and runner threads | each with a declared spawn point, protection, and stop path | §Thread map |
+| Long-lived work | supervised control-plane tasks, async connections, and runner tasks | each with a declared spawn point, protection, and stop path | §Thread map |
 | Shutdown flags | none | the half-dead-node window the two flags protected is an ordering here, not shared mutable state | §Why there is no signal watcher |
-| Registered locks | 8 | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
-| Deadline ownership | runner: exactly one scheduler per process root · control plane: one deadline per call site | registrations target a connection *generation*, never a descriptor; arming is fail-CLOSED everywhere | §The deadline-ownership invariant |
+| Registered locks | 14 | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
+| Deadline ownership | one deadline per call site, on both planes | `tokio::time::timeout` or the HTTP client's own timeout; no shared registration map | §The deadline-ownership invariant |
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
-| Test handshake | handshakes, never sleeps | channels and `CancellationToken` on the control plane, `common.Event` on the runner; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
-| Discipline scope | one roster line per folder | enforcement scope is data, not logic; RULE NLR owns files outside the roster | §Expanding the discipline base |
+| Test handshake | handshakes, never sleeps | channels, `Notify` and `CancellationToken` on both planes; `start_paused` pays no wall clock for a join timeout | §Shutdown choreography |
+| Discipline scope | no roster | C1–C5 hold at review; RULE NLR owns cleanup of the files a change touches | §Expanding the discipline base |
 
 ## Traps
 
@@ -39,7 +38,6 @@ Each trap is enforced in its owner section; this list is the index.
 - Never issue an `SSUBSCRIBE`/`SUNSUBSCRIBE` from anywhere but the hub's control task; a subscriber enqueues a command and the dispatch task sends a signal instead, and the enqueue is what may happen under the channel map's lock because it cannot block (§Lock-invariant registry).
 - Never await a round trip on the hub's dispatch task; a subscribe that waits there holds every frame behind it (§Thread map).
 - Never do a blocking wire send while holding the map lock — the C3 fix that ended the hub hazard (§Lock-invariant registry).
-- A scheduler callback is a bounded, non-reentrant leaf — it must never call back into scheduler barriers (§Lock-invariant registry).
 - Never free shared state before its tasks and threads have joined; a timed-out drain never proceeds to free (§Shutdown choreography).
 - New cross-boundary channels declare one producer and one consumer, and the payload's ownership at the boundary; reshaping existing ones is a separate judgment with this doc as input (§Channel inventory).
 - Channel and stream *names* are canonical in `data_flow.md`, not here (preamble).
@@ -48,10 +46,9 @@ Each trap is enforced in its owner section; this list is the index.
 
 1. **C1 — declared producer and consumer, receiver owns the payload.** Every
    channel that crosses a task or thread boundary has a single declared producer
-   and a declared consumer, and ownership at the boundary is unambiguous: on the
-   control plane the value moves to the receiver and the compiler is the proof;
-   on the runner the payload carries its own allocator and the receiver frees it
-   in a `defer` at the top of the handler. A channel read by several consumers
+   and a declared consumer, and ownership at the boundary is unambiguous: on both
+   planes the value moves to the receiver and the compiler is the proof. A
+   channel read by several consumers
    hands each of them its own copy and tells a slow one what it missed.
 2. **C2 — stop → join → drop.** Shutdown signals stop, joins the worker, and
    only then releases shared state. A bounded drain that times out never frees
@@ -63,19 +60,15 @@ Each trap is enforced in its owner section; this list is the index.
    exactly one lock whose doc comment states precisely what it protects and any
    ordering constraint, and the guard's scope is visible where it is taken.
 5. **C5 — confined by default.** State touched by one task or thread carries no
-   lock but says so; on the control plane an exclusive borrow is the statement,
-   on the runner it is a `// only touched by thread X` comment plus
-   `*Locked`-suffixed lock-required entry points.
+   lock but says so; on both planes an exclusive borrow is the statement.
 
 The control plane's primitives are tokio's: `CancellationToken` for stop,
 `tokio::select!` to race I/O against it, `tokio::time::timeout` for a deadline,
 `broadcast` and `mpsc` for fan-out and commands, `tokio::sync::Mutex` where a
 guard is held across an await and `std::sync::Mutex` where a leaf map is not.
-The runner's are in [`lib/common/sync.zig`](../../src/lib/common/sync.zig):
-`Mutex` (arg-free `lock`/`unlock` over `std.Io.Mutex`), `Condition`, a rebuilt
-`WaitGroup`, and `Event` — the one-shot, poll-based replacement for the
-`std.Thread.ResetEvent` that Zig 0.16 removed, used for deterministic
-stop→join handshakes in lifecycle tests.
+The runner uses the same primitives: `CancellationToken` for stop, a `watch`
+channel for the heartbeat's assignment, and a `JoinSet` for its workers
+(`rustd/crates/afr_supervisor/src/worker_pool.rs`).
 
 ---
 
@@ -126,14 +119,18 @@ no unsupervised spawn path here to arrive as anything else.
 
 ### `agentsfleet-runner` (execution plane)
 
-Rooted at `src/runner/main.zig`, isolated from datastore code (enforced by
-`_runner_isolation_check`).
+Rooted at `rustd/crates/agentsfleet_runner/src/main.rs`; no runner crate links a
+datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
+`afr_supervisor::run` composes the long-lived work, and no state is shared behind
+a lock between those tasks (`rustd/crates/afr_supervisor/src/lib.rs`).
 
-| Thread | Spawned by | Touches | Protection | Stop path |
+| Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
-| execution workers (N) | `runner/daemon/worker_pool.workerLoop` | **no shared mutable state by construction** — each worker owns its lease/child; all workers borrow the ONE process scheduler | none needed (C5 by construction); scheduler access is internally locked | `stop_requested` / `drain_requested` flags → each drains its child → joined |
-| deadline scheduler worker | `runner/daemon/runner_deadline.Owned.start` (M139) | the earliest-deadline `std.Treap` + registration map — never a socket | `scheduler.mutex`; interruption reaches a transport only through its owner's generation check | `stop()` refuses new arms, drains, quiesces callbacks; `deinit` joins **after** `runLoop` has joined every worker (LIFO defer in `main.zig`) |
-| netns setup | `runner/network/EgressScope` (`ChildNetnsSetup.run`) | the child's network namespace during setup | scoped to one child launch | joined before the child executes |
+| heartbeat | `afr_supervisor::run`, beside the drain and the pool under one `tokio::join!` | the assignment it publishes | a `watch` channel; no lock | the halt token → returns → joined |
+| report spool drain | `afr_supervisor::run` | the storage home's `spool/` | file work on the blocking pool | the halt token → returns → joined |
+| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its lease and that lease's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | leasing stops → polling stops → leases in flight run to their reports → the set drains |
+| hold keeper | `Holds::start` | the frozen sandboxes held for their fleet's next lease | owned by the keeper task, reached by message | `holds.shutdown()` after the join destroys every hold |
+| executor link (one per sandbox) | `afr_executor`'s client | one sandbox's executor connection | owned by the link task | ends with its sandbox |
 
 ---
 
@@ -171,9 +168,7 @@ The daemon listener supports HTTP/1.1 and h2c independently of the browser-facin
 ## Lock-invariant registry
 
 Every lock in the discipline base, exactly what it protects, and its ordering
-constraint. Each is documented at its declaration (C4); on the runner the roster
-grep (`test_base_mutexes_documented`) holds the count of declarations equal to
-the count of invariant comments.
+constraint. Each is documented at its declaration (C4).
 
 | Lock | Declared at | Protects | Ordering |
 |---|---|---|---|
@@ -183,9 +178,14 @@ the count of invariant comments.
 | repair pacing | `afd_runner`'s repair-verification dispatcher | the interval the dispatcher shortens while a backlog drains | leaf — held alone |
 | Capability caches | `afd_identity`'s `ProviderCapabilities` | separate Moka stores for fresh claims and last confirmed claims; each is bounded to 4096 subjects | conditional per-key invalidation precedes `try_get_with`, which coalesces concurrent fetches; failed refreshes retain the original stale timestamp, and unknown subjects clear the fallback |
 | JWKS cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
-| `WaitGroup.mutex` | `lib/common/sync.zig` | the counting barrier's `count`; `start`/`finish`/`wait` are all guarded | leaf — held alone |
-| `scheduler.mutex` | `lib/call_deadline/scheduler.zig` | deadlines, registrations, lifecycle state, worker handle, identifier allocation | released around every target callback — a callback is a bounded, non-reentrant leaf that must never call back into scheduler barriers |
-| `SocketOwner.mutex` | `lib/call_deadline/SocketOwner.zig` | generation, handle, and the interrupted flag together; held across the `shutdown(2)` so a completing attempt cannot swap in a recycled descriptor between check and syscall | leaf — held alone; taken from the scheduler worker inside a callback and from the owning caller, never nested with another lock |
+| run ledger | `afr_agent`'s `Ledger` | one run's open calls and the counter they share | taken to open a call and again to end it, never across its handler, so a child's call can open and end inside its parent's `delegate` |
+| child registry | `afr_agent`'s nested `Registry` | one run's children, and the running and started counts that bound them | leaf — held alone |
+| process events | `afr_executor`'s events `Shared` | one process's output state, shared by its two ends | leaf — held alone |
+| admitted toolboxes | `afr_sandbox`'s `Toolboxes` | the images one host has admitted, oldest first | leaf — held alone |
+| lease memory | `afr_tools`'s `Lease::memory` (tokio) | the fleet's memory backend for one lease | held for one read or write, never across a call |
+| lease egress | `afr_tools`'s `Lease::egress` (tokio) | the lease's policy and the credentials it has minted | held to admit or mask, never across a send |
+| exec sessions | `afr_tools`'s `Sessions` | one lease's open sessions and the places reserved for those still starting | leaf; each session's process sits behind its own tokio lock, held by the one call reading it |
+| mirror locks | `afr_supervisor`'s `Mirrors` | the map of one lock per repository mirror | held only to fetch that mirror's tokio lock, which is held across the mirror's fetch and checkout |
 
 The load-bearing ordering rule (the C3 fix that ended the hub's
 blocking-write-under-the-map-mutex hazard): the pub/sub socket is behind no lock
@@ -195,26 +195,20 @@ still locked, deliberately — that ordering is what stops an `Unsubscribe`
 overtaking the `Subscribe` of a reader arriving on the same channel — and it is
 safe only because the queue is unbounded and the send therefore cannot block.
 
-### The deadline-ownership invariant (M139)
+### The deadline-ownership invariant
 
-Every network call is bounded, and the two planes bound it in different places.
-On the control plane the deadline is at the call site — a `tokio::time::timeout`
-around the operation, and a `select!` against the cancellation token for anything
-long-lived — so there is no shared registration map to keep consistent and no
-generation check to get wrong. Postgres stays outside any scheduler on purpose:
-the pool's acquire and connect timeouts already bound it.
+Every network call is bounded, and both planes bound it at the call site. On the
+control plane that is a `tokio::time::timeout` around the operation, and a
+`select!` against the cancellation token for anything long-lived, so there is no
+shared registration map to keep consistent and no generation check to get wrong.
+Postgres stays outside any scheduler on purpose: the pool's acquire and connect
+timeouts already bound it.
 
-The runner owns exactly **one** `ProcessScheduler`
-(`daemon/runner_deadline.zig`) and passes it explicitly to every network owner —
-there is no hidden global and no per-call watchdog thread. A registration
-targets a `SocketOwner` **connection generation**, never a descriptor number:
-the owner advances the generation before an attempt becomes interruptible and
-validates it under its own lock at fire time, so a late fire against a replaced
-connection returns `stale` and touches nothing. `Guard.finish()` and
-`Scheduler.stop()` are quiescence barriers — after either returns, the selected
-callbacks are neither running nor eligible to run, which is what makes a
-stack-local owner safe to leave scope. Arming is fail-CLOSED: a scheduler that
-cannot arm refuses the call; no path falls through to an unbounded run.
+The runner bounds each call in the HTTP client that makes it: the control-plane
+client's `CALL_TIMEOUT` (`rustd/crates/afr_supervisor/src/client/http.rs`), the
+egress transport's request and connect timeouts
+(`rustd/crates/afr_egress/src/network.rs`), and the model providers' connect and
+read timeouts (`rustd/crates/afr_providers/src/connect.rs`).
 
 ---
 
@@ -249,17 +243,14 @@ that a teardown had to hold by hand.
    ordering — asserted as an observation by `Arc::strong_count` after teardown in
    `test_shutdown_joins_all_tasks`.
 
-On the runner the same three steps are a LIFO defer chain at the root: the
-scheduler is constructed after — and therefore torn down before — anything that
-still arms into it, and `runner/main.zig` deinits it after `runLoop` has joined
-every worker. `Scheduler.stop()` rejects new arms, interrupts and drains pending
-registrations, and waits for in-flight callbacks; network users then finish their
-guards before their owners deinit, and only then does scheduler storage deinit.
+On the runner the same three steps are `afr_supervisor::run`. The heartbeat, the
+spool drain and the worker pool run under one `tokio::join!` until the halt token
+fires, and leases in flight run to their reports. Then every held sandbox is
+destroyed, and only after that does `run` return
+(`rustd/crates/afr_supervisor/src/lib.rs`).
 
-Handshakes, not sleeps, in every one of these tests. The runner's is
-`common.Event` (`sync.zig`) — `set()` on one side, bounded `timedWait()` on the
-other; the control plane's are channels and `CancellationToken`. The
-abandoned-task assertions run under `#[tokio::test(start_paused)]`, so a
+Handshakes, not sleeps, in every one of these tests: channels, `Notify` and
+`CancellationToken` on both planes. The abandoned-task assertions run under `#[tokio::test(start_paused)]`, so a
 ten-second join timeout costs no wall clock: with every task parked the runtime
 advances to the next deadline itself.
 
@@ -278,12 +269,12 @@ future; the server comes up, sees it resolved, and stops. Same property, one les
 piece of shared mutable state, and no 100 ms of shutdown latency paid on every
 task. `test_boot_window_sigterm` fails if the `select!` arms are swapped.
 
-### Why the control plane has no central deadline scheduler
+### Why neither plane has a central deadline scheduler
 
 A treap-backed registration map and a worker thread exist so one thread can
-interrupt another's blocked socket, and the runner needs exactly that. On the
-control plane `tokio::time::timeout` at the call site is the same guarantee with
-no shared map to keep consistent and no generation check to get wrong, and
+interrupt another's blocked socket. On tokio, `tokio::time::timeout` or a
+client's own timeout at the call site is the same guarantee with no shared map
+to keep consistent and no generation check to get wrong, and
 `CancellationToken` is edge-triggered, so a task selecting over its own I/O and
 `cancelled()` is interrupted mid-read.
 
@@ -291,24 +282,13 @@ no shared map to keep consistent and no generation check to get wrong, and
 
 ## Expanding the discipline base (roster)
 
-**The mechanical half of these rules is currently unenforced.** A path roster
-and a Python checker at the repository root once blocked, inside a roster
-prefix, on a freeing deinit that omitted its `self.* = undefined` poison (A5) or
-an owned-slice pub fn that omitted its ownership phrase (A5). Both retired with
-the Zig daemon, by which point no make target invoked either. What
-`lint-runner-fmt` runs over the Zig tree today is `zig fmt --check` and nothing
-more, so A1-A6 are review rules until something mechanises them again.
+**No check mechanises C1–C5 beyond the compiler.** The compiler carries three
+of the five on both planes; the other two hold at review.
 
-**There is no roster to append to.** Widening the scope used to be one line of
-data — a path prefix added to the roster, `make lint-all`, fix what the check
-surfaced — and that procedure is gone with the file it edited. Until something
-mechanises A1-A6 again, every folder is in scope and none of them is checked:
-the rules hold at review, and RULE NLR (touch-it-fix-it) owns cleanup of the
+**There is no roster to append to.** Every folder under `rustd/` is in scope and
+none is checked by a roster, and RULE NLR (touch-it-fix-it) owns cleanup of the
 individual files a change touches.
 
-**Restoring the mechanical half is a real piece of work, not a line of data.**
-It means a checker that reads today's tree, a make target that invokes it, and a
-Continuous Integration (CI) job that runs the target — the three things whose
-absence is what retired the old one. Write it against the Zig tree only if that
-tree is staying; the runner is the last of it, and a checker outliving its
-subject is how this section came to describe a file nobody could edit.
+**A mechanical half is a real piece of work, not a line of data.** It means a
+checker that reads `rustd/`, a make target that invokes it, and a Continuous
+Integration (CI) job that runs the target.

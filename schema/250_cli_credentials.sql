@@ -48,11 +48,10 @@
 -- (RULE NDC), and this repository rebuilds its schema from empty, so adding it
 -- if a reader ever arrives costs one line.
 --
--- (`240` carries `last_used_at` and DOES stamp it on the authentication path —
--- see `cmd/api_key_lookup.zig`, which mitigates the write with FOR UPDATE SKIP
--- LOCKED and a swallowed error. The comment in `240` claiming the column stays
--- NULL predates that and is stale. Noted here so this file's silence is read as
--- a decision rather than an oversight.)
+-- (`240` carries `last_used_at`, and nothing writes it: the key lookup,
+-- `SELECT_TENANT_API_KEY` in `rustd/crates/afd_state/src/sql.rs`, reads without
+-- stamping, as `240`'s own comment says. Noted here so this file's silence is
+-- read as a decision rather than an oversight.)
 --
 -- Unlike `240`, there is likewise no `active` column: revocation is held once,
 -- by `revoked_at`, and the partial unique index below reads it directly.

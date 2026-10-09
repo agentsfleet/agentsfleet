@@ -3,11 +3,11 @@
 //! # One instant in, two floors out
 //!
 //! Both windows derive from ONE caller-supplied instant, and this module never
-//! reads a clock. `budget.zig` makes the same rule and says why: a day floor
-//! and a month floor read from two separate `nowMillis()` calls can straddle a
-//! tick, so a run could be measured against a day window that opened after the
-//! month window it is nested in. Taking the instant as an argument also means
-//! every test pins time by value rather than by mocking a clock.
+//! reads a clock: a day floor and a month floor read from two separate clock
+//! calls can straddle a tick, so a run could be measured against a day window
+//! that opened after the month window it is nested in. Taking the instant as an
+//! argument also means every test pins time by value rather than by mocking a
+//! clock.
 //!
 //! # The two windows are different KINDS of question, and only one is a calendar
 //!
@@ -17,11 +17,11 @@
 //! calendar boundary that the product deliberately does not have.
 //!
 //! The monthly ceiling IS a calendar question — it opens at the first instant
-//! of the UTC month — and that is the one `jiff` is here for. `clock.zig`
-//! answers it by hand, walking epoch-day → year-day → month-day and subtracting
-//! the zero-based day index, and it carries a leap-February test to prove the
-//! walk. A ceiling that opens on the wrong day is one nobody can reconcile
-//! against an invoice, so the walk is imported rather than re-derived.
+//! of the UTC month — and that is the one `jiff` is here for. Answering it by
+//! hand means walking epoch-day → year-day → month-day and subtracting the
+//! zero-based day index, with a leap-February test to prove the walk. A ceiling
+//! that opens on the wrong day is one nobody can reconcile against an invoice,
+//! so the walk is imported rather than re-derived.
 
 use afd_core::clock::UnixMillis;
 use jiff::Timestamp;
@@ -29,7 +29,8 @@ use jiff::tz::TimeZone;
 
 /// The rolling daily window's width.
 ///
-/// `budget.zig`'s `ROLLING_DAY_MS`, which is `std.time.ms_per_day`.
+/// One day of milliseconds, taken from `afd_core::timing::DAY_MS` rather than
+/// declared a second time.
 const ROLLING_DAY_MS: i64 = afd_core::timing::DAY_MS;
 
 /// Where each spend window opens.
@@ -60,9 +61,8 @@ impl Windows {
 ///
 /// Total, and the two fallbacks are deliberate rather than defensive:
 ///
-/// A non-positive instant answers the epoch, which is `startOfUtcMonthMillis`'s
-/// own `if (now_ms <= 0) return 0` — there is no month before the epoch to
-/// name, and the Zig chose clamping over trapping.
+/// A non-positive instant answers the epoch: there is no month before the
+/// epoch to name, so the floor clamps rather than traps.
 ///
 /// An instant no calendar can place answers the epoch too. That widens the
 /// month window to everything ever recorded, which makes the gate STRICTER, and
@@ -95,9 +95,8 @@ mod tests {
 
     /// 2026-07-10T16:04:00Z, and the first instant of its month.
     ///
-    /// The same pair `clock.zig`'s own test pins, carried across so the two
-    /// implementations are asserted against one literal rather than against
-    /// each other's arithmetic.
+    /// Pinned as literals, so the floor is asserted against a fixed value
+    /// rather than against the arithmetic under test.
     const MID_JULY_2026: i64 = 1_783_699_440_000;
     const JULY_2026_START: i64 = 1_782_864_000_000;
 

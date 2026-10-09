@@ -5,10 +5,10 @@
 //! Nothing about either answer is the handler's to improvise. An orchestrator's
 //! liveness check reads the status word and nothing else; its readiness check
 //! reads three booleans by name; the dashboard's status page reads all of it.
-//! `health.zig` fixed both shapes and every one of those readers parses them,
-//! which makes them contracts in exactly the sense the rest of this crate is:
-//! a field renamed inside a handler-local `json!` breaks a reader no build can
-//! see, and a field renamed here fails the build.
+//! Every one of those readers parses the shapes declared here, which makes them
+//! wire commitments in exactly the sense the rest of this crate is: a field
+//! renamed inside a handler-local `json!` breaks a reader no build can see, and
+//! a field renamed here fails the build.
 //!
 //! # Borrowed, like the rest of this crate
 //!
@@ -64,13 +64,13 @@ mod tests {
 
     use super::{Liveness, Readiness};
 
-    /// The liveness document is the four fields in the order `health.zig`
-    /// writes them.
+    /// The liveness document is the four fields in the order [`Liveness`]
+    /// declares them.
     ///
-    /// Asserted as bytes: a probe is read by tools that were pointed at the
-    /// Zig daemon, and a reordered key is a diff in every one of their logs.
+    /// Asserted as bytes: a probe is read by tools that log the body verbatim,
+    /// and a reordered key is a diff in every one of their logs.
     #[test]
-    fn test_liveness_is_the_four_fields_in_the_zig_order() {
+    fn test_liveness_is_the_four_fields_in_declaration_order() {
         let alive = Liveness {
             status: Cow::Borrowed("ok"),
             service: Cow::Borrowed("agentsfleetd"),

@@ -8,10 +8,9 @@
 //!
 //! # Both wire shapes are `serde` types, not field lookups
 //!
-//! `post.zig` walks `std.json.Value` with a `strField` helper because Zig has
-//! no derive. Here the destination (`afd_connector::slack::Thread`, the one
-//! type the mention producer writes and this reads) and Slack's answer are each
-//! a struct with `Deserialize` on it, so the shape is stated once and the
+//! The destination (`afd_connector::slack::Thread`, the one type the mention
+//! producer writes and this reads) and Slack's answer are each a struct with
+//! `Deserialize` on it, so the shape is stated once and the
 //! "present but empty", "present but not a string" and "absent" cases are the
 //! deserializer's problem rather than three hand-written guards that have to
 //! agree.
@@ -141,8 +140,8 @@ impl SlackPoster {
     /// Binds the poster to the grant store and an HTTP client.
     ///
     /// `api_base` is [`afd_connector::slack::SLACK_API_BASE`] in a
-    /// deployment and a loopback in a test — the same seam `post.zig` carries
-    /// for the same reason. The client is shared with the rest of the
+    /// deployment and a loopback in a test, so a test reaches a real socket
+    /// without reaching Slack. The client is shared with the rest of the
     /// workspace rather than built here, so a connector adds no second HTTP
     /// stack.
     #[must_use]

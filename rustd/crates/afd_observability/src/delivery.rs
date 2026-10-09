@@ -18,9 +18,7 @@
 //! The request that carries the report is not the parent of the run — it
 //! arrives after the run has already finished. Making it one would produce a
 //! child whose start precedes its parent's by the whole length of the run,
-//! which every trace backend reads as a clock fault. The Zig daemon reaches
-//! the same place from the other side: it generates a fresh trace context
-//! because it has no parent available at all.
+//! which every trace backend reads as a clock fault.
 //!
 //! # Nothing here reads a payload
 //!

@@ -2,16 +2,13 @@
 //!
 //! # One table, not four
 //!
-//! The Zig daemon keeps four total switches over the same `Route` union, in
-//! four files — `route_table.zig` (middleware chain), `route_scopes.zig`
-//! (required capabilities), `route_admission.zig` (shed class) and
-//! `route_template.zig` (span template). Each is individually reasonable and
-//! together they are a hazard: adding an endpoint means editing four files,
-//! and the compiler only catches three of those omissions, because the
-//! admission table gave up its exhaustive match for an `else` arm and rebuilt
-//! the check as a runtime test over two hand-maintained name lists.
+//! Every route carries four facts: its middleware chain, its required
+//! capabilities, its shed class and its span template. Four separate switches
+//! over the route enum would be individually reasonable and together a hazard:
+//! adding an endpoint would mean editing four places, and any one that fell
+//! back to a wildcard arm would turn a missed edit into a runtime surprise.
 //!
-//! [`route`] folds all four into one [`RouteMeta`] per route. A new variant
+//! [`route`] holds all four in one [`RouteMeta`] per route. A new variant
 //! fails the build until every fact about it is stated, in one place, with no
 //! list to keep in step.
 #![forbid(unsafe_code)]

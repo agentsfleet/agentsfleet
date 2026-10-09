@@ -7,16 +7,15 @@
 //! from the thing it is checking — a test that read the enum to decide what the
 //! enum should contain would pass for any enum at all.
 //!
-//! So the list below is written out, from the spec's Interfaces block and
-//! `route_template.zig`. Both halves fail: a path this milestone owns that is
-//! missing from the table, and a path in the table's tenant and workspace
-//! families that nobody put in the inventory. The second half is what stops a
-//! route being quietly widened during the port.
+//! So the list below is written out, from the spec's Interfaces block. Both
+//! halves fail: a path this milestone owns that is missing from the table, and
+//! a path in the table's tenant and workspace families that nobody put in the
+//! inventory. The second half is what stops a route being quietly widened.
 //!
 //! # Methods are part of the inventory
 //!
 //! A path served for GET and not for DELETE is a different surface from one
-//! served for both, and the Zig matchers switch on method — so an inventory of
+//! served for both, and the router dispatches on method — so an inventory of
 //! paths alone would let a verb go missing without a failure. What is checked
 //! here is the SCOPE RUNG per method, because that is the route table's own
 //! answer to "which methods does this path distinguish", and it is the fact a
@@ -52,9 +51,7 @@ const INVENTORY: &[&str] = &[
     "/v1/api-keys/{id}",
     "/v1/cli-credentials",
     "/v1/cli-credentials/{id}",
-    // Added after the port rather than carried across it: the Zig daemon served
-    // no identity read, and the command-line client had been probing the
-    // billing snapshot in its place. Listed here beside the tenant plane's own
+    // The caller's identity read. Listed here beside the tenant plane's own
     // rows because it is read for the caller itself, like every path above it.
     "/v1/users/me",
     // §3 — workspace fleets and install.
@@ -103,11 +100,11 @@ const INVENTORY: &[&str] = &[
 const DEFERRED_TO_M180: &[&str] = &[
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules",
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}",
-    // `/sync`, where the Zig daemon spells it `{schedule_id}:sync`. The router
+    // `/sync` as its own segment rather than `{schedule_id}:sync`: the router
     // cannot carry a literal after a parameter inside one segment, so the verb
-    // became its own — the same divergence the approval decision took, argued
-    // at `FleetRoute::ScheduleSync`. This roster is the gate that would catch
-    // the two spellings drifting apart again.
+    // is a segment of its own — the same shape the approval decision takes,
+    // argued at `FleetRoute::ScheduleSync`. This roster is the gate that would
+    // catch the two spellings drifting apart.
     "/v1/workspaces/{workspace_id}/fleets/{fleet_id}/schedules/{schedule_id}/sync",
     "/v1/workspaces/{workspace_id}/connectors",
     "/v1/workspaces/{workspace_id}/connectors/{provider}",

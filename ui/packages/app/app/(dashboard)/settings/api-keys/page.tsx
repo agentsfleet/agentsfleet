@@ -9,12 +9,13 @@ export const dynamic = "force-dynamic";
 export default async function ApiKeysPage() {
   const token = await requireCredential();
 
-  // RBAC guard via defense-in-depth: the dashboard session token carries no
-  // role claim (AUTH.md — role lives only in the api-template token the backend
-  // verifies), so we mirror route_table.zig's operator() policy by letting the
-  // backend arbitrate. A `user`-role principal gets 403 — render this same
-  // page with the operator-only notice inline rather than redirecting to a
-  // route that no longer exists.
+  // Role-based access control (RBAC) guard via defense-in-depth: the dashboard
+  // session token carries no role claim (AUTH.md — role lives only in the
+  // api-template token the backend verifies), so the backend arbitrates.
+  // `GET /v1/api-keys` requires the `apikey:read` scope (`TenantRoute::ApiKeys`
+  // in rustd/crates/afd_http/src/route/tenant.rs). A principal without it gets
+  // 403 — render this same page with the operator-only notice inline rather
+  // than redirecting to a route that no longer exists.
   let data = null;
   let operatorOnly = false;
   try {

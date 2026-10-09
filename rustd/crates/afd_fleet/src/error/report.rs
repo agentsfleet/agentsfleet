@@ -34,7 +34,8 @@ pub(crate) fn envelope_malformed(field: &'static str) -> Error {
     Error::new(ErrorKind::EnvelopeMalformed { field })
 }
 
-/// Refuses a request the caller can correct, quoting the Zig detail verbatim.
+/// Refuses a request the caller can correct, quoting the detail the call site
+/// chose from `detail.rs`.
 pub(crate) fn rejected(detail: &'static str) -> Error {
     Error::new(ErrorKind::Rejected { detail })
 }

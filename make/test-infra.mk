@@ -171,8 +171,8 @@ QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QS
 # The names the live-scheduler tests read. Exported here beside the datastore
 # URLs for their reason: the suites read these names directly rather than a lane
 # resolving them into a fourth spelling. `make/test-integration.mk` exported the
-# same two before M175 §6 deleted it with the Zig gating, and nothing re-exported
-# them afterwards -- which is why the Rust port's schedule sync had "no QStash
+# same two before M175 §6 deleted it, and nothing re-exported them afterwards
+# -- which is why the Rust port's schedule sync had "no QStash
 # fake" recorded against it while the compose service was up the whole time.
 AGENTSFLEET_QSTASH_LIVE_URL ?= $(QSTASH_DEV_URL_LOCAL)
 AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(QSTASH_DEV_TOKEN_LOCAL)
@@ -218,7 +218,7 @@ _ensure-test-infra:
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave
 # fixture rows behind (paused agents, lingering secrets) that break subsequent runs.
 # Uses the same teardown.sql as the PlanetScale playbook for consistency.
-# Redis is flushed in the same reset: fixture agent ids are fixed, so streams,
+# Dragonfly is flushed in the same reset: fixture ids are fixed, so streams,
 # consumer groups, and unacked PEL entries persist across runs — and the strand
 # recovery path (own-PEL read + reclaim sweep) makes that stale state reachable,
 # replaying prior-run events into a freshly reset DB (shared-tenant balance drift).
@@ -236,10 +236,10 @@ _reset-test-db: _ensure-test-infra
 	@$(TEST_DRAGONFLY_CONTROL) reset >/dev/null
 	@echo "✓ [infra] Dragonfly flushed"
 
-# Every integration target starts by dropping schemas and flushing Redis,
+# Every integration target starts by dropping schemas and flushing Dragonfly,
 # because several suites leave fixture rows behind that break the next run. That
 # is the right default for a gate and the wrong one for an edit-run-edit loop,
-# where the reset plus re-migrate dominates a narrow `-Dtest-filter` run.
+# where the reset plus re-migrate dominates a run filtered to one test.
 #
 # KEEP_TEST_STATE=1 swaps the reset for a plain infra check. It is deliberately
 # opt-in and never set by CI: a green run under it proves nothing about a clean

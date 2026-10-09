@@ -89,10 +89,9 @@ fn a_repeated_runner_reuses_its_series() {
 
 #[test]
 fn concurrent_first_records_of_one_runner_produce_one_series() {
-    // The race the Zig's compare-and-swap slot claim exists for, and the reason
-    // the capacity check sits under the WRITE lock here: two threads meeting an
-    // unknown runner must not both admit it, or the table holds a duplicate and
-    // its bound means one less than it says.
+    // The race the capacity check sits under the WRITE lock for: two threads
+    // meeting an unknown runner must not both admit it, or the table holds a
+    // duplicate and its bound means one less than it says.
     let metrics = Arc::new(RunnerMetrics::new());
     let contenders: Vec<_> = (0..16)
         .map(|_| {
@@ -211,10 +210,9 @@ fn test_a_runner_with_room_is_labelled_with_its_own_id() {
 
 /// Past the bound, a runner is attributed to `_other`.
 ///
-/// The spelling is the assertion. It is the Zig daemon's, kept byte-exact,
-/// because every dashboard and alert reading this label reads it on both sides
-/// of the swap — a renamed overflow bucket is a panel that silently stops
-/// matching.
+/// The spelling is the assertion, because every dashboard and alert reading
+/// this label matches on it — a renamed overflow bucket is a panel that
+/// silently stops matching.
 #[test]
 fn test_runner_admission_other_spelling() {
     let metrics = RunnerMetrics::new();

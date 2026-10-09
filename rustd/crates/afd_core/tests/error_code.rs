@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use afd_core::error_code::{self, Coded, ErrorCode, REGISTRY};
+use afd_core::error_code::{self, Coded, ErrorCode, Logged, REGISTRY};
 use afd_core::limits::WorkerCount;
 
 /// Catches a code declared twice under two names, or a typo'd spelling that
@@ -163,15 +163,35 @@ fn test_lookup_finds_declared_codes_only() {
     }
 }
 
-/// Code that logs a failure from any crate reads the same code the crate's
-/// own accessor answers, through the trait every error shell implements.
+/// Code that logs a failure from any crate reads the same code and reason the
+/// crate's own accessors answer, through the trait every error shell
+/// implements.
 #[test]
 fn test_every_shelled_error_names_its_code_through_the_trait() {
-    fn named(failure: &impl Coded) -> ErrorCode {
-        failure.code()
+    fn named(failure: &impl Coded) -> (ErrorCode, String) {
+        (failure.code(), failure.told())
     }
     let failure = WorkerCount::new(0).unwrap_err();
 
-    assert_eq!(named(&failure), failure.code());
-    assert_eq!(named(&failure).as_str(), "UZ-REQ-001");
+    let (code, told) = named(&failure);
+
+    assert_eq!(code, failure.code());
+    assert_eq!(code.as_str(), "UZ-REQ-001");
+    assert_eq!(told, failure.told());
+    assert!(
+        !told.contains(code.as_str()) && failure.to_string().contains(&told),
+        "the reason is the shown failure without its code: {told}"
+    );
+}
+
+/// A log line's two failure fields are the code and the reason the trait
+/// answers, under the names the line carries them.
+#[test]
+fn test_logged_carries_the_code_and_reason_under_their_field_names() {
+    let failure = WorkerCount::new(0).unwrap_err();
+
+    let Logged { error_code, reason } = failure.logged();
+
+    assert_eq!(error_code, failure.code().as_str());
+    assert_eq!(reason, failure.told());
 }

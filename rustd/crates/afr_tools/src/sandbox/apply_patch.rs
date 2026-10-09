@@ -12,18 +12,20 @@
 //! its file again and applying its chunks to what is there, as Codex lands
 //! each hunk. A write the executor refuses partway, or an update that no
 //! longer applies to the file it lands on, is reported, and the hunks before
-//! it stay landed.
+//! it stay landed. A hunk whose result is longer than one read carries is
+//! refused as it is planned: landing re-reads a file whole, so a later hunk on
+//! a file an earlier one grew past the cap would leave the patch half landed.
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
-use afr_executor::Executor;
+use afr_executor::{Executor, MAX_READ_BYTES};
 use bytes::Bytes;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::executor_of;
-use super::files::{Answer, failed, inside, settled, whole};
+use super::files::{Answer, failed, inside, settled, too_long, whole};
 use crate::catalog::{APPLY_PATCH, Entry};
 use crate::handler::Handler;
 use crate::runtime::{ToolContext, ToolErrorCode, ToolOutput};
@@ -192,6 +194,7 @@ async fn plan<'hunk>(
     match hunk {
         Hunk::AddFile { path, contents } => {
             let path = inside(named(path))?;
+            fits(path, contents)?;
             overlay.leave(path, Some(contents.clone()));
             Ok(Planned::Add { path, contents })
         }
@@ -220,6 +223,7 @@ async fn plan<'hunk>(
                 .filter(|to| key(to) != key(path));
             let original = overlay.text(executor, path).await?;
             let updated = codex::updated(path, &original, chunks).map_err(invalid)?;
+            fits(moved_to.unwrap_or(path), &updated.contents)?;
             overlay.update(path, moved_to, &updated.contents);
             Ok(Planned::Update {
                 path,
@@ -235,6 +239,16 @@ async fn plan<'hunk>(
 /// A hunk's path as text; the patch was text, so it always is.
 fn named(path: &Path) -> &str {
     path.to_str().unwrap_or_default()
+}
+
+/// Refuses a hunk leaving `text` at `path` when `whole` could not read it
+/// back: `land` re-reads every update, so the cap on a read is the cap on a
+/// write, and the refusal reads as a read's does.
+fn fits(path: &str, text: &str) -> Result<(), ToolOutput> {
+    if u64::try_from(text.len()).unwrap_or(u64::MAX) > MAX_READ_BYTES {
+        return Err(too_long(path));
+    }
+    Ok(())
 }
 
 /// Lands one planned hunk. An update applies its chunks to its file as it is
@@ -253,6 +267,9 @@ async fn land(executor: &dyn Executor, planned: &Planned<'_>) -> Result<(), Tool
         } => {
             let now = whole(executor, path).await?;
             let updated = codex::updated(path, &now, chunks).map_err(invalid)?;
+            // Planning held each spelling under the cap; two spellings of one
+            // file, a link and its target, can still cross it together here.
+            fits(moved_to.unwrap_or(path), &updated.contents)?;
             write(executor, moved_to.unwrap_or(path), &updated.contents).await?;
             if moved_to.is_some() {
                 delete(executor, path).await
@@ -319,3 +336,7 @@ mod chunk_tests;
 #[cfg(test)]
 #[path = "apply_patch/link_tests.rs"]
 mod link_tests;
+
+#[cfg(test)]
+#[path = "apply_patch/size_tests.rs"]
+mod size_tests;

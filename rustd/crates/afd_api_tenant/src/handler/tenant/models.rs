@@ -1,10 +1,8 @@
 //! `GET /v1/models` — the priced catalogue, served conditionally.
 //!
-//! The port of `model_library.zig`'s read half: the bounds, the normalized
-//! provider filter, the struct cursor with its two distinct refusals, and the
-//! validators on both answers. The revision-keyed response CACHE is the one
-//! piece deliberately not ported — the milestone's Discovery log carries the
-//! decision — so every request here builds its page; the wire is identical.
+//! The bounds, the normalized provider filter, the struct cursor with its two
+//! distinct refusals, and the validators on both answers. There is no
+//! revision-keyed response cache: every request builds its page.
 //!
 //! The page is serialized ONCE: those bytes are what the `ETag` hashes and what
 //! the response writes, so the tag and the body cannot disagree about a
@@ -260,7 +258,7 @@ mod tests {
 
     #[test]
     fn the_version_stamp_renders_epoch_ms_as_a_utc_date() {
-        // The seed timestamp `model_library_page.zig` pins: 2025-04-29 UTC.
+        // Midnight UTC on 2025-04-29, in epoch milliseconds.
         assert_eq!(version_stamp(1_745_884_800_000), "2025-04-29");
     }
 

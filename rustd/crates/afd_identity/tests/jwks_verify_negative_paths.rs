@@ -1,11 +1,9 @@
 //! Dimension 4.2 — bad signature, expired, wrong audience and wrong issuer each
 //! refuse, and a key-id miss triggers EXACTLY ONE refresh.
 //!
-//! Every token here is one the Zig daemon signs and verifies. The fixtures are
-//! copied from the retired daemon's `auth/jwks_test_fixtures.zig` and pinned to it
-//! by `test_the_fixtures_are_the_zig_daemons`, so these are real RS256
-//! signatures over a real 2048-bit key — not a Rust-side key pair that would
-//! only prove this implementation agrees with itself.
+//! Every token here is a real RS256 signature over a real 2048-bit key,
+//! recorded as constants rather than signed at test time, so a pass does not
+//! rest on this workspace's own signing code agreeing with itself.
 //!
 //! Nothing here opens a socket or reads a wall clock. The key set arrives
 //! through [`StaticKeySet`], which counts its reads, and time arrives through
@@ -26,7 +24,7 @@ use afd_identity::{JwksVerifier, StaticKeySet, VerifierConfig, jwks_url};
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-// ── The Zig daemon's fixtures, pinned below ──────────────────────────────
+// ── The recorded fixtures ────────────────────────────────────────────────
 
 /// Base64url modulus of the shared 2048-bit RSA test key.
 const TEST_RSA_N: &str = "7ZUw6J4OYDXLJPGWADVw2-IgBawVd55H1Xh4R_FFFFYVNdG2O7EcTvBlFZhRzxDW9uL-SvxCt6slRDXDlZo9fmSI9yki7z8RAJZokcekxdP8za5w7g4QAoFeSieDhWWChkzHJ-vDGkrr0SAn8n4lIwpya-vCbO1eXmmz4Ay0pjenWyyGB1j371Zk2JGkAEJB347oJcVDMqVDt3d-TR0fyyspVw0nNxdDkZgNuB0EXOuEV4WvWgj0dtzwURhTI82AfpgheV23Kz7np9EoPxAhkfuslAjpRfqlRCXOOfmik-T6nvCe-fFPmHRwIY_zc1VrtwjKF0TjeALm4CCj_0pjRQ";
@@ -67,8 +65,7 @@ fn now_before_expiry() -> Arc<dyn Clock> {
 
 /// A one-key key set over the shared modulus, published under `kid`.
 ///
-/// The single spelling of the envelope, exactly as `jwks_test_fixtures.zig`
-/// builds it with `rsaKeySet` (RULE UFS).
+/// The single spelling of the envelope (RULE UFS).
 fn key_set(kid: &str) -> String {
     format!(
         "{{\"keys\":[{{\"kty\":\"RSA\",\"kid\":\"{kid}\",\"use\":\"sig\",\"alg\":\"RS256\",\"n\":\"{TEST_RSA_N}\",\"e\":\"AQAB\"}}]}}"
@@ -140,9 +137,9 @@ fn test_expiry_is_decided_by_the_clock_and_not_by_the_signature() {
 
 /// A token expiring exactly now is expired.
 ///
-/// `jwks_standard_claims.zig` writes `if (exp <= now_s)`, and the boundary is
-/// worth pinning: `<` instead of `<=` would honour a token for one more second
-/// than the issuer said, on every request, forever.
+/// The verifier compares `exp <= now`, and the boundary is worth pinning: `<`
+/// instead of `<=` would honour a token for one more second than the issuer
+/// said, on every request, forever.
 #[test]
 fn test_a_token_expiring_exactly_now_is_expired() {
     let at_the_boundary = Arc::new(FixedClock::at(UnixMillis::from_millis(

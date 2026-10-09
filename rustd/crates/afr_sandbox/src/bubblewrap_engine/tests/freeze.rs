@@ -6,9 +6,13 @@
 )]
 
 use std::fs;
+use std::os::unix::fs::MetadataExt as _;
 
 use super::support::{FakeHost, SLEEPER, request, serve_leases};
+use crate::bubblewrap_engine::names::Names;
 use crate::engine::Engine;
+use crate::error::EgressRefusal;
+use crate::network::{Allowlist, Network};
 
 /// The lease the test prepares.
 const LEASE: &str = "lease-21";
@@ -41,4 +45,43 @@ async fn test_a_prepared_sandbox_freezes_and_thaws_through_its_lease_cgroup() {
         ("1", "0"),
         "the freeze and the thaw each reach the lease's own cgroup"
     );
+}
+
+/// A sandbox built to no allowlist has no addresses to replace: asking it to
+/// take an allowlist is refused, never taken as done.
+#[tokio::test]
+async fn test_a_sandbox_built_to_no_allowlist_refuses_new_addresses() {
+    let host = FakeHost::new(SLEEPER);
+    let server = serve_leases(host.config.state_dir.clone());
+    let mut sandbox = host.engine().prepare(request(LEASE)).await.unwrap();
+
+    let refused = sandbox.reallow(&Allowlist::new(Vec::new()).unwrap()).await;
+    let _left = sandbox.destroy().await;
+    server.abort();
+
+    assert_eq!(
+        refused.unwrap_err().egress_refusal(),
+        Some(&EgressRefusal::NoScope)
+    );
+}
+
+/// A held sandbox's names are rewritten in the file its bind already holds:
+/// the same file, now naming the new addresses.
+#[test]
+fn test_rewritten_names_land_in_the_file_the_sandbox_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let name = "a.example".to_owned();
+    let first = Allowlist::new(vec![(name.clone(), [10, 0, 0, 1].into())]).unwrap();
+    let moved = Allowlist::new(vec![(name, [10, 0, 0, 2].into())]).unwrap();
+    let Names::Rendered { hosts, .. } =
+        Names::render(dir.path(), Network::Allowed(&first)).unwrap()
+    else {
+        unreachable!("an allowlist renders its names")
+    };
+    let before = std::fs::metadata(&hosts).unwrap().ino();
+
+    Names::rewrite(dir.path(), &moved).unwrap();
+
+    assert_eq!(std::fs::metadata(&hosts).unwrap().ino(), before);
+    assert_eq!(std::fs::read_to_string(&hosts).unwrap(), moved.hosts_file());
 }

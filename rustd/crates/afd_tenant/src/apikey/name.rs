@@ -64,9 +64,8 @@ fn proved<T: Validate<Context = ()>>(field: T, named: ApiKeyField) -> Result<T> 
 /// A description that passed its bound.
 ///
 /// Absent and empty are the same thing on the wire and in the column: the
-/// statement binds `''` for a key with no description, which is what the Zig
-/// `body.description orelse ""` does. So this holds a `&str` rather than an
-/// `Option`, and the absence is resolved at the edge.
+/// statement binds `''` for a key with no description. So this holds a `&str`
+/// rather than an `Option`, and the absence is resolved at the edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Validate)]
 #[garde(transparent)]
 pub struct Description<'a>(#[garde(length(bytes, max = DESCRIPTION_MAX))] &'a str);

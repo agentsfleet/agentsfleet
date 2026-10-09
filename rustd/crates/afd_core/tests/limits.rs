@@ -13,9 +13,9 @@ use afd_core::limits::{self, WorkerCount};
 /// the same class.
 const FAR_ABOVE_CEILING: u32 = 1_000;
 
-/// Catches the divergence that would matter: refusing an assignment the Zig
-/// daemon clamps and echoes back, which would leave a runner unenrolled where
-/// today it enrolls with a corrected count.
+/// Catches the regression that would matter: refusing an out-of-range
+/// assignment instead of clamping it, which would leave a runner unenrolled
+/// where today it enrolls with a corrected count.
 #[test]
 fn should_clamp_rather_than_refuse_on_the_assignment_path() {
     assert_eq!(WorkerCount::clamping(0).get(), limits::MIN_WORKERS);

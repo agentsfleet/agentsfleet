@@ -1,6 +1,5 @@
 //! The statements the background sweepers run.
 //!
-//! Copied from `fleet/sql.zig`, where the same four serve the liveness sweeper.
 //! They live in their own module rather than beside the runner store's for the
 //! reason [`super`] gives: the split is by CALLER, and nothing on a request
 //! path runs any of these.
@@ -250,7 +249,7 @@ WHERE l.id = d.id";
 
 /// One batch of repair verifications whose wait is over, claimed for dispatch.
 ///
-/// Text from `state/repair_sql.zig`. Every clause is load-bearing:
+/// Every clause is load-bearing:
 ///
 /// - `verifier_event_id IS NULL` — the intent has not yet produced an event.
 ///   That column is what makes the whole loop idempotent: once it is set, this

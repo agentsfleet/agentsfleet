@@ -1,8 +1,5 @@
 //! The approval inbox over HTTP: read the queue, read one gate, answer it.
 //!
-//! The port of `approvals/list.zig`, `approvals/detail.zig` and
-//! `approvals/resolve.zig`.
-//!
 //! # Reading the queue and answering it are separate capabilities
 //!
 //! `ApprovalRead` reaches the list and the detail; `ApprovalResolve` is what
@@ -150,8 +147,8 @@ pub(crate) async fn list<D: Services>(
 /// A short page is the last page, so it hands back no cursor: issuing one would
 /// send a client back for rows the store already said were not there. A FULL
 /// page is not proof that more exist — the boundary case answers an empty page
-/// next — and that is the same trade `approvals/list.zig` makes, deliberately,
-/// because the alternative is reading one row further on every request.
+/// next — and that trade is deliberate, because the alternative is reading one
+/// row further on every request.
 fn next_cursor(gates: &[GateRow], limit: i64) -> Option<String> {
     let last = gates.last()?;
     (i64::try_from(gates.len()).is_ok_and(|read| read == limit)).then(|| {

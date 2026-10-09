@@ -8,9 +8,9 @@
 //!
 //! # The guard is a lock, not a comparison
 //!
-//! `oauth_refresh.zig` reads the handle, compares its refresh token against the
-//! one the exchange posted, and writes — with no lock across the three. An
-//! administrator reconnecting the integration in that window has their new
+//! Reading the handle, comparing its refresh token against the one the exchange
+//! posted, and writing — with no lock across the three — leaves a window. An
+//! administrator reconnecting the integration in it would have their new
 //! handle silently overwritten with a refresh token belonging to the grant they
 //! just replaced, which kills the connection they were repairing.
 //!

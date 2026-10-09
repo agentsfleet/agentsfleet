@@ -5,9 +5,9 @@
 //! this PROVIDER may carry an endpoint at all; this asks whether a given URL is
 //! safe to reach. A credential can satisfy either and fail the other.
 //!
-//! Order inside the check is the Zig's and is deliberate: scheme first because
-//! it is the cheapest and an `http` URL is refused whatever its host, then the
-//! SSRF classification of whatever the parser actually resolved.
+//! Order inside the check is deliberate: scheme first because it is the
+//! cheapest and an `http` URL is refused whatever its host, then the SSRF
+//! classification of whatever the parser actually resolved.
 
 use url::{Host, Url};
 
@@ -49,9 +49,9 @@ pub(crate) fn validate(url: &str) -> Result<Box<str>, Rejection> {
 
 /// The host as the egress allowlist spells it.
 ///
-/// An IPv6 literal is re-bracketed, because that is what
-/// `execution_policy.zig::hostFromUrl` produces and the value goes to a stock
-/// Zig runner. Everything else is the parser's own rendering.
+/// An IPv6 literal is re-bracketed, because the runner's egress admission
+/// compares allowlist entries against `Url::host_str`, which spells an IPv6
+/// host in brackets. Everything else is the parser's own rendering.
 fn render(host: &Host<&str>) -> Box<str> {
     match host {
         Host::Ipv6(address) => format!("[{address}]").into_boxed_str(),

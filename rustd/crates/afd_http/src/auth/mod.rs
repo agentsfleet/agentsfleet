@@ -10,10 +10,10 @@
 //! > A runner token must never satisfy a tenant route, and a user/tenant token
 //! > must never satisfy a runner route.
 //!
-//! In the Zig daemon that is enforced by WHICH middleware is mounted where —
-//! `runnerBearer` on `/v1/runners/me/*` and `bearer_or_api_key` everywhere
-//! else. Mount one of them a route too wide and the boundary is gone with no
-//! test failing, because nothing anywhere states the pairing.
+//! Left to WHICH middleware is mounted where — a runner bearer on
+//! `/v1/runners/me/*` and a tenant bearer everywhere else — that boundary is
+//! one over-wide mount from gone, with no test failing, because nothing
+//! anywhere states the pairing.
 //!
 //! Here it is [`plane_of`]: a total match from [`Guard`] to
 //! [`afd_auth::Plane`], read by the router while it mounts. A new guard fails
@@ -126,9 +126,8 @@ where
     async fn authenticate(&self, plane: Plane, header: Option<&str>) -> Result<Principal, Error> {
         match header {
             Some(value) => self.of(plane).authenticate_header(value).await,
-            // The same refusal a wrong-class credential gets. `bearer.zig`
-            // makes the same collapse, and it is the one an unauthenticated
-            // caller must not be able to distinguish.
+            // The same refusal a wrong-class credential gets: the one an
+            // unauthenticated caller must not be able to distinguish.
             None => Err(plane.refusal()),
         }
     }

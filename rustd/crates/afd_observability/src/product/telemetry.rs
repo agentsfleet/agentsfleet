@@ -187,8 +187,8 @@ impl Telemetry {
     /// The event name `PostHog` receives.
     ///
     /// Byte-stable: these are what the funnels and alerts on the other end
-    /// match on, so they are the Zig spellings and stay that way until an
-    /// observability migration says otherwise.
+    /// match on, so they stay as spelled until an observability migration says
+    /// otherwise.
     #[must_use]
     pub const fn name(&self) -> &'static str {
         match *self {

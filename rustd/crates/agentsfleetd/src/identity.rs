@@ -1,17 +1,14 @@
 //! The identity provider this deployment has, or the refusal it has instead.
 //!
 //! Two seams — what a person may do, and whether a session token is genuine —
-//! and both are reachable only when an operator has configured a provider. The
-//! Zig daemon spells that as `verifier: ?*oidc.Verifier` plus an `orelse` at
-//! each call site, which is an optional every reader has to trace to find out
-//! what an unset knob actually does.
+//! and both are reachable only when an operator has configured a provider.
 //!
-//! Here each is an enum with two variants, and the answer is the variant's own
-//! body. An unconfigured provider is an OUTAGE — `UZ-AUTH-004`, 503 — never an
+//! Each is an enum with two variants, so what an unset knob does is the
+//! variant's own body rather than an optional every call site has to trace. An
+//! unconfigured provider is an OUTAGE — `UZ-AUTH-004`, 503 — never an
 //! empty capability set: an empty set would authenticate a caller and then
 //! refuse them at every gate as though they had been narrowed to nothing, which
-//! is indistinguishable from a real demotion. `clerk_scope_resolver.zig` makes
-//! the same choice by treating an absent secret as a fetch failure.
+//! is indistinguishable from a real demotion.
 //!
 //! # What the runner plane consults: neither seam
 //!
@@ -19,9 +16,9 @@
 //! the credential class, so neither seam is read on any `/v1/runners/me`
 //! request. That is why an unbuildable provider degrades the tenant surface
 //! alone and never the runner plane. It is NOT a licence to boot without one:
-//! `preflight` requires the provider knobs the way `runtime_validate.zig`
-//! does, so the unconfigured variants below are reachable only from a
-//! construction failure, never from an operator who set nothing.
+//! `preflight` requires the provider knobs, so the unconfigured variants below
+//! are reachable only from a construction failure, never from an operator who
+//! set nothing.
 
 use std::sync::Arc;
 use std::time::Duration;

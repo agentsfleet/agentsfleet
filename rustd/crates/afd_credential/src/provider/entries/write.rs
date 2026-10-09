@@ -16,12 +16,10 @@
 //!
 //! # Rollback is the language's, not a discipline
 //!
-//! `secret_reference_txn.zig` carries an open flag and an idempotent `abort`,
-//! and its own comment warns that `errdefer` is the wrong tool because the
-//! handlers holding one return `void` — two call sites had a rollback that
-//! never ran. A [`sqlx::Transaction`] rolls back when it is DROPPED, so every
-//! early return below rolls back by the language's rules. There is no flag and
-//! no path that can forget.
+//! A hand-kept open flag and an explicit `abort` is a rollback a call site can
+//! forget to run. A [`sqlx::Transaction`] rolls back when it is DROPPED, so
+//! every early return below rolls back by the language's rules. There is no
+//! flag and no path that can forget.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

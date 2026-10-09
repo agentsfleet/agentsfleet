@@ -2,7 +2,7 @@
 //! the host side before the turn runs, so the token that fetched them never
 //! enters the sandbox (`crate::workspace_clone`).
 
-use afd_core::error_code::Coded;
+use afd_core::error_code::{Coded, Logged};
 use afd_core::id::Uuid7;
 use afd_wire::report::FailureClass;
 use afr_sandbox::Sandbox;
@@ -76,18 +76,10 @@ impl LeaseRun<'_> {
                 Ok(())
             }
             Err(failure) => {
-                let code = failure.code().as_str();
+                let Logged { error_code, reason } = failure.logged();
                 let detail = DETAIL_CHECKOUT;
-                let reason = failure.to_string();
                 let event = EVENT_CHECKOUT_FAILED;
-                tracing::warn!(
-                    error_code = code,
-                    lease_id,
-                    repository,
-                    reason,
-                    event,
-                    detail
-                );
+                tracing::warn!(error_code, lease_id, repository, reason, event, detail);
                 Err(Box::new(failed(
                     FailureClass::StartupPosture,
                     DETAIL_CHECKOUT,

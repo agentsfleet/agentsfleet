@@ -9,10 +9,9 @@
 //! # The token is `u64`, and the column is not
 //!
 //! `fencing_seq` is server-issued and monotonic, so no value this daemon writes
-//! is negative. One edited out of band could be, and `liveLeaseSeq` guards it
-//! with an explicit `if (raw < 0) return error.InvalidFencingSeq` because Zig's
-//! `@intCast` would TRAP and take the daemon down. [`u64::try_from`] is the
-//! same check without the trap to avoid, and its `Err` is the same refusal.
+//! is negative. One edited out of band could be, and [`u64::try_from`] refuses
+//! it: its `Err` becomes the `sequence_corrupt` refusal rather than a token
+//! that wrapped to a huge positive value.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

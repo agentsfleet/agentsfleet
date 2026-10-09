@@ -247,7 +247,7 @@ async fn an_edit_needs_old_text_and_finds_it_or_changes_nothing() {
     live.stop().await;
 }
 
-/// An edit replaces the first occurrence, as nullclaw's `file_edit` did.
+/// An edit replaces the first occurrence and leaves any later one alone.
 #[tokio::test]
 async fn an_edit_replaces_the_first_occurrence_only() {
     let live = Live::start().await;

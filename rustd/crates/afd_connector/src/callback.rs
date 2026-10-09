@@ -10,18 +10,15 @@
 //! the one the code was minted for — a mismatch fails as `redirect_uri_mismatch`
 //! at the vendor and reads to an operator like a rotated client secret.
 //!
-//! `connect.zig` builds the first with `CALLBACK_PATH_FMT` and `callback.zig`
-//! the second with `CALLBACK_RELAY_PATH_FMT`, two format strings in two files
-//! spelling one path. Here the path is named once and both are derived from it,
-//! so they cannot drift.
+//! The path is named once, in `RELAY_PATH` and `RELAY_LEAF`, and both are
+//! derived from it, so they cannot drift.
 //!
 //! # The encoder is `url`'s, for the reason [`crate::oauth`]'s is
 //!
-//! `callback.zig` carries its own `percentEncode` loop and an
-//! `appendRelayParam` that scans the buffer it is building to decide between
-//! `?` and `&`. Neither exists here: [`url::Url::query_pairs_mut`] is the same
-//! encoder the authorize URL is composed through, and it cannot emit a `&` that
-//! splits a parameter.
+//! There is no hand-written percent-encoder and no scan of the buffer to decide
+//! between `?` and `&`: [`url::Url::query_pairs_mut`] is the same encoder the
+//! authorize URL is composed through, and it cannot emit a `&` that splits a
+//! parameter.
 
 use afd_core::id::Uuid7;
 use url::Url;
@@ -38,8 +35,7 @@ use crate::provider::Provider;
 /// encodes every item it is handed, so a slash INSIDE one is not a separator
 /// but data, and the minted redirect URI came out as
 /// `/api%2Fconnectors/github/callback` — a path the dashboard does not mount
-/// and a vendor refuses with `redirect_uri_mismatch`. `callback.zig` built the
-/// same route from a format string, which is why the Zig daemon never had it.
+/// and a vendor refuses with `redirect_uri_mismatch`.
 const RELAY_PATH: [&str; 2] = ["api", "connectors"];
 
 /// The trailing segment of the relay path — see [`RELAY_PATH`].

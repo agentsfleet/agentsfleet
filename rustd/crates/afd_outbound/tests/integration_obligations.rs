@@ -24,7 +24,7 @@
 //!
 //! # Serialised on the shared stream, like its neighbour
 //!
-//! `OUTBOUND_STREAM_KEY` is a constant shared with the Zig daemon and cannot be
+//! `OUTBOUND_STREAM_KEY` is a fixed name every replica reads and cannot be
 //! namespaced per test — see `support/outbound_harness.rs` for the full reason.
 //! Every test here takes [`OUTBOUND_LANE`] for the same reason that file does.
 

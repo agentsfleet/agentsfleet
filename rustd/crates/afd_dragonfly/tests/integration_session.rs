@@ -203,8 +203,8 @@ async fn test_session_missing_and_unapproved_are_distinct() {
     cleanup(&harness, &pending_id).await;
 }
 
-/// The blob round-trips through Dragonfly unchanged, which is what lets the Zig
-/// daemon read what this writes.
+/// The blob round-trips through Dragonfly unchanged, which is what lets every
+/// replica read what any one of them writes.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Dragonfly: make test-integration-rustd"]
 async fn test_session_blob_round_trips() {

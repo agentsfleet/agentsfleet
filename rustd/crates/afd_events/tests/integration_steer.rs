@@ -14,17 +14,14 @@
 //! # The idempotency clause, and why this file does not assert it
 //!
 //! Dimension 5.3 was written as "duplicate → idempotent per the documented
-//! dedup". There is no such dedup, in either daemon or in the contract:
+//! dedup". There is no such dedup, in the daemon or in the published API:
 //!
-//! - the retired daemon's `http/handlers/fleets/messages.zig:119` called
-//!   `xaddFleetEvent` unconditionally — one append per request, no key
-//!   consulted, no prior request remembered;
 //! - `public/openapi/paths/fleet-messages.yaml` documents a 202 carrying a
 //!   `<MILLISECONDS>-<SEQUENCE>` `event_id` and defines no idempotency key,
 //!   request or header;
 //! - `FleetStreams::append_once` — the workspace's ONE deduplicating append —
 //!   exists for the repair path's crash-shaped retries and is not on this
-//!   route in either implementation.
+//!   route.
 //!
 //! So the honest reading is that two identical steers are two messages a person
 //! sent twice, and the daemon delivers both. That is asserted here POSITIVELY

@@ -37,9 +37,8 @@
 //!
 //! [`provider::Provider`] is a closed enum and [`registry::Archetype`] is a
 //! closed enum over it, so adding a connector is an arm in each match plus its
-//! grant parse — never a new route and never new flow code. `registry.zig`
-//! makes the same claim and enforces it at `comptime`; here it is the
-//! language's, one build stage earlier.
+//! grant parse — never a new route and never new flow code. The compiler
+//! enforces it: a match missing the new variant does not build.
 //!
 //! # The order is the security property
 //!

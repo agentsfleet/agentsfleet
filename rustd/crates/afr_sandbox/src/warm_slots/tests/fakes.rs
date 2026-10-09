@@ -74,6 +74,9 @@ impl Sandbox for Named {
     async fn thaw(&self) -> Result<()> {
         Ok(())
     }
+    async fn reallow(&mut self, _allowlist: &crate::Allowlist) -> Result<()> {
+        Ok(())
+    }
     async fn destroy(self: Box<Self>) -> Result<()> {
         assert!(!self.panics, "a teardown that panics");
         self.destroyed.fetch_add(1, Ordering::SeqCst);

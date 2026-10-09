@@ -74,11 +74,10 @@ impl HmacSha256Tag {
     /// is why [`HmacSha256Tag::compute`] can take a fixed array and this can take a
     /// slice with no second implementation between them.
     ///
-    /// `parts` are fed in order with no separator, matching what the Zig
-    /// daemon signs. Both binaries write the same Dragonfly blob and a Lua script
-    /// compares the two hex renderings as text, so this is a DATA FORMAT and
-    /// not a choice — a separator added here would invalidate every session the
-    /// other binary approved.
+    /// `parts` are fed in order with no separator. The device-flow session
+    /// digest is stored in a Dragonfly blob and a Lua script compares the two hex
+    /// renderings as text, so this is a DATA FORMAT and not a choice — a
+    /// separator added here would invalidate every session already stored.
     ///
     /// # Panics
     /// Cannot, for the reason [`HmacSha256Tag::compute`] cannot: HMAC forbids no key

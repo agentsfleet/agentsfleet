@@ -34,8 +34,7 @@ const REF_GRACE_SECONDS: i64 = 600;
 /// The floor a reference's lifetime is clamped to, in seconds.
 ///
 /// A gate raised with a deadline already in the past would otherwise compute a
-/// negative expiry and be rejected by Dragonfly. Two hours is the Zig's
-/// `GATE_PENDING_TTL_SECONDS`.
+/// negative expiry and be rejected by Dragonfly.
 const REF_MINIMUM_SECONDS: i64 = 7_200;
 
 /// Milliseconds in a second, for the deadline-to-expiry conversion.

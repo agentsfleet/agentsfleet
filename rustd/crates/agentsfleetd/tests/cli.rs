@@ -72,10 +72,9 @@ fn status(argv: &[&str], env: &MapEnv) -> u8 {
     )
 }
 
-/// `--port` is accepted in both spellings `serve_args.zig` accepted.
+/// `--port` is accepted in both spellings, separated and `=`.
 ///
-/// The separated and the `=` form were two hand-written branches there. They
-/// are one `clap` argument here, and this pins that the port survives the swap.
+/// Both are one `clap` argument, and this pins that each reaches the port.
 #[test]
 fn test_the_port_is_given_in_either_spelling() {
     for argv in [
@@ -91,11 +90,10 @@ fn test_the_port_is_given_in_either_spelling() {
     }
 }
 
-/// Port 0 is refused, as it was in Zig, and the message says which value.
+/// Port 0 is refused, and the message says which value.
 ///
-/// `parsePortValue` returned null for 0 so that "the kernel picks" could never
-/// be an operator's answer: a daemon whose port nobody can predict is not
-/// reachable by anything configured to reach it.
+/// "The kernel picks" must never be an operator's answer: a daemon whose port
+/// nobody can predict is not reachable by anything configured to reach it.
 #[test]
 fn test_port_zero_is_refused() {
     let error = Cli::try_parse_from(["agentsfleetd", "serve", "--port", "0"])
@@ -129,9 +127,7 @@ fn test_unknown_input_is_a_usage_error() {
 
 /// `--help` and `--version` answer without doing anything.
 ///
-/// `serve_args.zig` had neither, so `agentsfleetd --version` was a usage error
-/// for the life of the Zig daemon. Pinned because it is the cheapest thing for
-/// a future refactor to drop.
+/// Pinned because it is the cheapest thing for a future refactor to drop.
 #[test]
 fn test_help_and_version_are_answered() {
     for (argv, expected) in [

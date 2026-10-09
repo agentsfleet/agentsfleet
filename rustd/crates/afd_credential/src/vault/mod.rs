@@ -1,33 +1,26 @@
 //! One store over `vault.secrets`: the row, the envelope, the plaintext.
 //!
-//! # What does NOT come across from `crypto_store.zig`
+//! # What this store leaves to others
 //!
-//! That file is two hundred and sixty-six lines and this one is a fraction of
-//! it, because most of what it does is already done elsewhere or does not
-//! belong on this path:
+//! It opens one named row, or the set a fleet declared, and nothing more:
 //!
 //! - The envelope layout, the two AEAD opens and every fixed-width length check
 //!   are [`afd_crypto::envelope::Envelope`]'s, proven against published NIST
-//!   vectors and against the Zig's own assertions.
-//! - `loadAllForWorkspace` reads a whole workspace for the credential LIST
-//!   endpoint, which this milestone does not own. Its per-row degradation — a
-//!   damaged envelope becomes a null plaintext rather than failing the read —
-//!   exists so that page still answers 200, and it is deliberately absent here:
-//!   both callers in this crate abort on an unreadable row, because a fleet
-//!   must never run with a credential it declared and cannot read.
-//! - The `decrypt_tally` and its `noteDecrypt` funnel exist to prove the
-//!   LIBRARY read paths never decrypt. Nothing in this crate is a library read
-//!   path — a lease decrypts by definition — so the tally has nothing to assert
-//!   here and is not carried.
+//!   vectors.
+//! - Reading a whole workspace for the credential LIST endpoint is not this
+//!   store's job. Both callers in this crate abort on an unreadable row,
+//!   because a fleet must never run with a credential it declared and cannot
+//!   read.
+//! - Nothing here is a read path that must prove it never decrypts — a lease
+//!   decrypts by definition — so there is no decrypt count to assert.
 //!
 //! # A missing row is `Ok(None)`, and a missing NAME is the caller's word
 //!
-//! `crypto_store.load` answers `SecretError.NotFound`, and every caller catches
-//! it and renames it: `PlatformKeyMissing` on the platform path,
-//! `SecretMissing` on the self-managed one, `CredentialNotFound` in the secrets
-//! map. Three callers wanting three words for one absence is the shape an
-//! `Option` has and an error does not, so absence arrives as `None` and the
-//! naming happens one line up instead of in a `catch` at each site.
+//! Each caller names an absence in its own word: provider resolution as a
+//! missing provider secret, the secrets map as a missing declared credential.
+//! Callers wanting different words for one absence is the shape an `Option`
+//! has and an error does not, so absence arrives as `None` and each caller
+//! names it one line up.
 
 use std::sync::Arc;
 
@@ -80,12 +73,10 @@ pub struct Held {
 ///
 /// # Why the Key Encryption Key is a field
 ///
-/// `crypto_primitives.zig` keeps it in a file-scoped `var g_kek`, resolved at
-/// boot by `serve.run` and read back through `loadKek()` — a process global,
-/// with the failure mode a process global has: `loadKek` is fallible at every
-/// call site because the variable might not have been set yet, so every read
-/// path carries a `MissingMasterKey` arm for a condition that can only occur
-/// before the daemon serves traffic.
+/// A process global would carry the failure mode a process global has: every
+/// read is fallible because the variable might not have been set yet, so every
+/// read path would carry a "missing master key" arm for a condition that can
+/// only occur before the daemon serves traffic.
 ///
 /// Here it is a field. A [`Vault`] cannot be constructed without one, so there
 /// is no "not yet resolved" state to answer for and no arm to write: boot

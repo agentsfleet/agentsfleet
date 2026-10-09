@@ -71,13 +71,9 @@ pub(crate) async fn list<D: Services>(
 
 /// `GET …/schedules/{schedule_id}`.
 ///
-/// The read half of the CRUD this section declares, and the one verb of it that
-/// did not come across in the port: `public/openapi.json` declares this GET and
-/// the published navigation lists it, while the router mounted only PATCH and
-/// DELETE — so a client following the documented API earned a 405. The Zig
-/// serves it at `handlers/schedules/api.zig:68`, and the service seam here
-/// already carried [`FleetSchedules::one`]; only the handler and its mount were
-/// missing.
+/// The read half of the schedule CRUD: `public/openapi.json` declares this GET
+/// and the published navigation lists it beside PATCH and DELETE. The service
+/// seam answers it through [`FleetSchedules::one`].
 ///
 /// A schedule belonging to another fleet answers exactly as one that never
 /// existed. Telling them apart would confirm a schedule id across a fleet

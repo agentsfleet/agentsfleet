@@ -80,8 +80,7 @@ impl IdentityWebhookSecret for Option<SecretBytes> {
 ///
 /// # Why it is a seam at all
 ///
-/// The Zig calls its provider client straight from the handler. Here it is a
-/// port for the reason every other one is: the suite that proves this route's
+/// For the reason every other seam is one: the suite that proves this route's
 /// refusal matrix runs with no provider and no socket, and a handler that
 /// reached for a client directly could not be driven by it.
 pub trait SignupMetadata: Send + Sync + std::fmt::Debug + 'static {

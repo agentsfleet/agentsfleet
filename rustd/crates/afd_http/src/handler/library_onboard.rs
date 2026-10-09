@@ -2,8 +2,8 @@
 //!
 //! `POST /v1/admin/fleet-libraries` and
 //! `POST /v1/workspaces/{workspace_id}/fleet-libraries` take the SAME body and
-//! refuse the same shapes — the Zig serves both from one `ImportRequest` and
-//! one parse. What differs is where the bundle lands, which is
+//! refuse the same shapes, so both read it through the one parse below. What
+//! differs is where the bundle lands, which is
 //! [`Destination`](afd_library::Destination)'s job and not this module's.
 //!
 //! It lives here rather than in either plane crate because a copy in each is

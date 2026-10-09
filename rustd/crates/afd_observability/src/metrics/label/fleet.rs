@@ -236,7 +236,7 @@ closed_set! {
         LeaseToFirstChunk => "lease_to_first_chunk",
         /// Producer event timestamp to first stream frame received by the daemon.
         EventToFirstChunk => "event_to_first_chunk",
-        /// Zombie execution invocation to its first safe stream chunk in Zig.
+        /// Execution invocation to its first safe stream chunk, as the runner measured it.
         ZombieToFirstChunk => "zombie_to_first_chunk",
     }
 }

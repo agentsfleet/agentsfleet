@@ -13,7 +13,6 @@
 //! log line says which failure it was. Minting a `UZ-RUN-*` code would publish
 //! it in `public/openapi.json` for a condition no client can observe.
 
-use std::fmt;
 use std::path::PathBuf;
 use std::process::ExitStatus;
 #[cfg(target_os = "linux")]
@@ -21,14 +20,20 @@ use std::time::Duration;
 
 use afd_core::error_code::{self, ErrorCode};
 
+mod egress;
 mod raise;
+mod toolbox;
 
+pub use self::egress::EgressRefusal;
+#[cfg(target_os = "linux")]
+pub use self::egress::Step;
 pub(crate) use self::raise::{
-    cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, lease_id_unsafe, not_inherited,
-    program, refused, toolbox_refused, toolbox_unreadable, unconfined,
+    cgroup, cgroup_left, cgroup_unreadable, cgroup_unsettled, egress_refused, lease_id_unsafe,
+    not_inherited, program, refused, toolbox_refused, toolbox_unreadable, unconfined,
 };
 #[cfg(target_os = "linux")]
-pub(crate) use self::raise::{not_ready, toolbox_unexpected};
+pub(crate) use self::raise::{netlink, not_ready};
+pub use self::toolbox::ToolboxRefusal;
 
 afd_core::error_shell!(
     /// A sandbox failure, with the backtrace of where it was raised.
@@ -126,16 +131,6 @@ pub(crate) enum ErrorKind {
         state: &'static str,
     },
 
-    /// The toolbox is not the image this runner was configured to run.
-    #[cfg(target_os = "linux")]
-    #[error("the toolbox is {actual}, but this runner is configured for {expected}")]
-    ToolboxUnexpected {
-        /// The digest of the image that is mounted.
-        actual: String,
-        /// The digest the configuration names.
-        expected: String,
-    },
-
     /// The executor could not be reached within the ready timeout.
     #[cfg(target_os = "linux")]
     #[error("the sandbox's executor did not answer within {waited:?}")]
@@ -189,6 +184,25 @@ pub(crate) enum ErrorKind {
     /// The unsandboxed engine was asked for in a release build.
     #[error("a release build never runs a tool call unsandboxed")]
     UnsandboxedInRelease,
+
+    /// A lease's egress cannot be held to what its policy allows, so the lease
+    /// is refused before its sandbox runs anything.
+    #[error("the lease's egress was refused: {refusal}")]
+    EgressRefused {
+        /// Why.
+        refusal: EgressRefusal,
+    },
+
+    /// A netlink request that builds or removes an egress scope failed.
+    #[cfg(target_os = "linux")]
+    #[error("the kernel refused {step}")]
+    Netlink {
+        /// What was asked of it.
+        step: Step,
+        /// The kernel's reason.
+        #[source]
+        source: std::io::Error,
+    },
 
     /// A system call the engine makes directly was refused.
     #[cfg(target_os = "linux")]
@@ -266,50 +280,24 @@ impl Error {
             _other => None,
         }
     }
-}
 
-/// Why a toolbox release was not admitted: one value per check, so a log line,
-/// the capability report and a test tell them apart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ToolboxRefusal {
-    /// The manifest's signature is not the release key's over its exact bytes.
-    Signature,
-    /// The manifest is not one admission can read.
-    Manifest,
-    /// The release is built for another architecture.
-    Architecture,
-    /// The release does not serve this runner's version.
-    RunnerVersion,
-    /// The release uses an EROFS feature this runner does not admit.
-    Features,
-    /// The image is not the length the manifest names.
-    Length,
-    /// The image's bytes do not hash to the manifest's digest.
-    Digest,
-    /// The image is not a regular file: a link, a directory or a device.
-    NotAFile,
-}
-
-impl ToolboxRefusal {
-    /// How a log line spells it.
+    /// Why the lease's egress was refused, when that is the failure.
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Signature => "signature_invalid",
-            Self::Manifest => "manifest_invalid",
-            Self::Architecture => "architecture_mismatch",
-            Self::RunnerVersion => "runner_unserved",
-            Self::Features => "features_unsupported",
-            Self::Length => "length_mismatch",
-            Self::Digest => "digest_mismatch",
-            Self::NotAFile => "not_a_file",
+    pub const fn egress_refusal(&self) -> Option<&EgressRefusal> {
+        match self.kind() {
+            ErrorKind::EgressRefused { refusal } => Some(refusal),
+            _other => None,
         }
     }
-}
 
-impl fmt::Display for ToolboxRefusal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+    /// Which netlink step the kernel refused, when that is the failure.
+    #[cfg(target_os = "linux")]
+    #[must_use]
+    pub const fn netlink_step(&self) -> Option<Step> {
+        match self.kind() {
+            ErrorKind::Netlink { step, .. } => Some(*step),
+            _other => None,
+        }
     }
 }
 

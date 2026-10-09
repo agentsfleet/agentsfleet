@@ -25,11 +25,10 @@
 //!
 //! # Why the ceiling is on the MATCHED set
 //!
-//! `github.zig` asks Postgres for `MAX_FANOUT + 1` rows and refuses the
-//! delivery when the sentinel row comes back — the ceiling is enforced on what
-//! SQL matched, because SQL did the matching. Here the document half of the
-//! match is [`Binding`]'s, so the ceiling is counted here instead. It is the
-//! same ceiling over the same set: the number of fleets one delivery wakes.
+//! The document half of the match is [`Binding`]'s, so the ceiling is counted
+//! here, after [`Binding::serves_repository`] and [`Binding::admits`] have
+//! run, rather than on the rows Postgres returns. What it bounds is the number
+//! of fleets one delivery wakes.
 //!
 //! What the ceiling is FOR is worth stating, because it is not a performance
 //! guard. One delivery becoming a hundred fleet runs is a hundred model spends
@@ -54,8 +53,8 @@ const CONTEXT_SUBSCRIBERS: &str = "resolve App ingress subscribers";
 
 /// The most fleets one App delivery may wake.
 ///
-/// `github.zig`'s `MAX_FANOUT`, unchanged. See the module note on what it
-/// protects — it is a spend bound, not a latency one.
+/// See the module note on what it protects — it is a spend bound, not a
+/// latency one.
 pub const MAX_FANOUT: usize = 100;
 
 /// Where one App delivery is going.
@@ -192,8 +191,6 @@ impl Ingress {
 /// suppressed even when it MEANT to send it twice. That is the correct trade
 /// for this surface: an App delivery is an observation of something that
 /// happened once, never a command sent twice on purpose.
-///
-/// `github.zig`'s `authenticatedReplayId`, and its name is the argument.
 #[must_use]
 pub fn replay_id(body: &[u8]) -> String {
     hex::encode(Sha256::digest(body))

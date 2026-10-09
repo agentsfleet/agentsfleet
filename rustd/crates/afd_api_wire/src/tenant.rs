@@ -42,13 +42,9 @@ pub struct MintedApiKeyResponse<'a> {
 
 /// `POST /v1/cli-credentials` — mint this machine's credential.
 //
-// Unknown fields are IGNORED, where [`MintApiKeyRequest`] beside it denies
-// them. Not an oversight and not a style drift: `cli_credentials.zig` parses
-// with `.ignore_unknown_fields = true`, and a client that has been sending a
-// field this daemon does not read would start receiving a 400 the moment an
-// attribute were added here for tidiness. Serde ignores by default, so the
-// parity is kept by the ABSENCE of an attribute — which is exactly why it is
-// written down.
+// Unknown fields are refused with a 400, as on [`MintApiKeyRequest`] beside it:
+// a field this daemon does not read is a client believing something about the
+// mint that is not true.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -116,20 +112,17 @@ pub struct ApiKeySummary<'a> {
     /// When it stopped working, if it has.
     ///
     /// Emitted as `null` rather than omitted — here and on every optional in
-    /// this module. The Zig daemon serialises through `res.json(value, .{})`,
-    /// and std.json's default emits null optionals, so a row is always the
-    /// same set of keys. Omission would be a shape change a dashboard's
-    /// `"revoked_at" in row` check can feel.
+    /// this module — so a row is always the same set of keys. Omission would
+    /// be a shape change a dashboard's `"revoked_at" in row` check can feel.
     pub revoked_at: Option<i64>,
 }
 
 /// `GET /v1/tenants/me/billing` — the wallet snapshot.
 //
-// `is_exhausted` restates `exhausted_at` as a boolean, and both travel:
-// `tenant_billing.zig` emits the pair so a dashboard can branch without a
-// null-check, and parity keeps the redundancy. `updated_at` and
-// `exhausted_at` are instants in milliseconds; the `_ms` suffix the domain
-// types carry stops at the wire because the Zig field names are the format.
+// `is_exhausted` restates `exhausted_at` as a boolean, and both travel so a
+// dashboard can branch without a null-check. `updated_at` and `exhausted_at`
+// are instants in milliseconds; the `_ms` suffix the domain types carry stops
+// at the wire because these field names are the published format.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BillingResponse {
@@ -146,8 +139,8 @@ pub struct BillingResponse {
 
 /// One ledger row as the charges list shows it.
 ///
-/// Field-for-field the Zig `TelemetryRow`, in its order — the struct is
-/// serialized straight to JSON there, so the row IS the wire shape.
+/// Field order is wire order — the struct is serialized straight to JSON, so
+/// the row IS the wire shape.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChargeSummary<'a> {
@@ -203,10 +196,10 @@ pub struct ChargeSummary<'a> {
 
 /// `GET /v1/tenants/me/billing/charges` — one page of the ledger.
 //
-// Two keys, not [`PageResponse`]'s three: the Zig handler answers
-// `{items, next_cursor}` with no `total`, and parity pins the ABSENCE the
-// same way it pins a presence. Folding this into the shared envelope would
-// put a key on the wire the daemon being replaced never sent.
+// Two keys, not [`PageResponse`]'s three: the ledger walk answers
+// `{items, next_cursor}` with no `total`, and the ABSENCE is pinned the same
+// way a presence is. Folding this into the shared envelope would add a key to
+// a published shape.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChargesResponse<'a> {
@@ -219,11 +212,8 @@ pub struct ChargesResponse<'a> {
 
 // Generic over the item, because the envelope is the same for every paged
 // resource on these planes and a per-resource copy is a per-resource chance
-// for the keys to drift apart. The three keys are pinned to what
-// `api_keys/list.zig` answers and to the integration test that counts them. An
-// earlier shape here said `data` with a `has_more` beside it, which read well
-// and was nobody's wire format: parity is with the daemon being replaced, not
-// with the envelope one would design today.
+// for the keys to drift apart. The three keys are pinned by the integration
+// test that counts them.
 /// One page of a list, in the envelope every list on this API shares.
 ///
 /// Each page carries three keys: `items`, `total` and `next_cursor`. A

@@ -29,9 +29,8 @@
 //!
 //! [`Stated`] is what the daemon and the workspace assert, and a human may read
 //! it as fact. [`Claim`] is what a language model wrote, and they may not.
-//! `approval_gate_detail.zig` keeps that boundary with a comment; here it is
-//! the type signature of everything downstream, including the renderer that
-//! lands in a later milestone.
+//! That boundary is the type signature of everything downstream, including the
+//! renderer that lands in a later milestone.
 
 mod anomaly;
 mod claim;

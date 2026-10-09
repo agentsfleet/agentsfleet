@@ -12,17 +12,18 @@ use afd_core::clock::{FixedClock, SystemClock, UnixMillis};
 use afd_core::error_code::INTERNAL_OPERATION_FAILED;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture;
-use afd_wire::runner::HeartbeatStatus;
+use afd_wire::runner::{HeartbeatStatus, NetworkPolicy};
 use afr_sandbox::{Engine as _, HostProbe, Kvm, Limits, SandboxRequest};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use super::{Assignment, EVENT_RELEASE_UNREADABLE, Heartbeat, MIN_HEARTBEAT_INTERVAL};
 use crate::client::{Call, Verb};
+use crate::egress::Egress;
 use crate::error;
 use crate::halt::Halt;
 use crate::holds::{BuiltUnder, HoldKey, Holds, Release};
-use crate::test_support::{Answer, FakeEngine, INTERVAL_MS, drain, json, plane};
+use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, plane};
 
 /// The fleet whose sandbox the runner holds.
 pub(super) const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
@@ -56,6 +57,7 @@ pub(super) fn probe() -> HostProbe {
         kvm: Kvm::Absent,
         toolbox_filesystem: true,
         workspace_direct_io: None,
+        egress: false,
     }
 }
 
@@ -105,10 +107,7 @@ pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
 /// Parks a sandbox `engine` builds for [`FLEET`], and answers whether `holds`
 /// held it rather than destroying it.
 pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> bool {
-    let request = SandboxRequest {
-        lease_id: LEASE,
-        limits: Limits::default(),
-    };
+    let request = SandboxRequest::new(LEASE, Limits::default());
     let key = HoldKey {
         fleet: Uuid7::parse(FLEET).unwrap(),
         workspace: LEASE.to_owned(),
@@ -142,7 +141,14 @@ async fn a_null_policy_fails_closed_and_a_self_test_waits_for_one() {
     let unreadable = heartbeat.beat().await.unwrap();
 
     assert_eq!(unassigned.workers, 0, "no policy, no work");
+    assert_eq!(unassigned.egress, Egress::closed(), "no policy, no egress");
     assert_eq!(assigned.workers, 3);
+    assert_eq!(
+        assigned.egress,
+        test_support::assigned(NetworkPolicy::AllowAll, &[]),
+        "the assigned posture reaches the leases"
+    );
+    assert_eq!(unreadable.egress, Egress::closed());
     assert_eq!(assigned.interval, Duration::from_millis(2000));
     assert_eq!(unreadable.status, HeartbeatStatus::Drain);
     assert_eq!(

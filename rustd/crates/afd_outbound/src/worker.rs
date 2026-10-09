@@ -75,10 +75,9 @@ use crate::poster::{Deliver, Posters};
 /// never returns is a task the supervisor cannot join even when it wins the
 /// race — the select would be waiting on a future that is not going to
 /// complete. Five seconds is long enough that an idle deployment issues twelve
-/// commands a minute rather than the Zig's two hundred and forty, and short
-/// enough that nothing waits on it: cancellation does not wait out the
-/// interval, because the token is raced against the read rather than checked
-/// between reads.
+/// commands a minute, and short enough that nothing waits on it: cancellation
+/// does not wait out the interval, because the token is raced against the read
+/// rather than checked between reads.
 pub const BLOCK_INTERVAL: usize = 5_000;
 
 /// The longest a read parks, as a [`Duration`].
@@ -326,8 +325,8 @@ async fn pause(token: &CancellationToken) -> ControlFlow<()> {
 /// Logs a failure the loop is choosing to continue past.
 ///
 /// One site, so every swallowed failure is logged the same way and none is
-/// swallowed silently — the failure mode `worker.zig`'s per-call `catch` blocks
-/// each have to remember on their own. The lanes report through it too.
+/// swallowed silently, with no call site left to remember it on its own. The
+/// lanes report through it too.
 pub(crate) fn report(event: &'static str, failure: &crate::Error) {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let error_code = failure.code().as_str();

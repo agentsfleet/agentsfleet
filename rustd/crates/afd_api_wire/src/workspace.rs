@@ -6,9 +6,9 @@
 //! security-bound exception `docs/REST_API_DESIGN_GUIDELINES.md` grants:
 //! browser and command-line clients persist the authoritative tenant with the
 //! workspace list, so a refreshed identity cannot mix local state from two
-//! tenants. `total` is always `null` here — `tenant_workspaces.zig` never
-//! counts — and stays on the wire anyway, because removing a key a client can
-//! see is a shape change.
+//! tenants. `total` is always `null` here — the list never counts — and stays
+//! on the wire anyway, because removing a key a client can see is a shape
+//! change.
 
 use std::borrow::Cow;
 
@@ -16,10 +16,9 @@ use serde::{Deserialize, Serialize};
 
 /// `POST /v1/workspaces` — create one.
 //
-// Unknown fields are IGNORED, like the command-line credential mint and for
-// its reason: `lifecycle.zig` parses with `.ignore_unknown_fields = true`,
-// and the parity is kept by the ABSENCE of a serde attribute. `name` is
-// optional twice over — absent, `null`, or blank all mean "name it for me".
+// Unknown fields are refused with a 400, like the command-line credential
+// mint. `name` is optional twice over — absent, `null`, or blank all mean
+// "name it for me".
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -37,7 +36,6 @@ pub struct CreatedWorkspaceResponse<'a> {
     pub workspace_id: Cow<'a, str>,
     /// Its name — echoed when chosen, revealed when generated.
     pub name: Cow<'a, str>,
-    // In the body as `lifecycle.zig` writes it.
     /// The correlation token for this request, repeated in the body.
     pub request_id: Cow<'a, str>,
     /// The tenant it was created in — the daemon's resolution, never a claim.

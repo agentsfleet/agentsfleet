@@ -257,8 +257,8 @@ describe("test_library_trace_and_stage_schema — traceparent propagation", () =
     await request("/v1/models", {}, "tok");
 
     const sent = sentTraceparent(0);
-    // `00-<32 hex>-<16 hex>-01`, the exact shape observability/trace.zig parses.
-    // A value it cannot parse is ignored server-side, which costs correlation
+    // `00-<32 hex>-<16 hex>-01`, the exact W3C `traceparent` shape. A Trace
+    // Context reader ignores a value it cannot parse, which costs correlation
     // silently — so the shape is asserted rather than merely present.
     expect(sent).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
   });

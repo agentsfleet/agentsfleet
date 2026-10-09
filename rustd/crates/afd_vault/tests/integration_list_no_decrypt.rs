@@ -5,10 +5,8 @@
 //!
 //! # How zero decrypts is proven, without counting anything
 //!
-//! `crypto_store.zig` proves it with a `decrypt_tally` counter and a
-//! `noteDecrypt` funnel every decrypt site must remember to call. A counter
-//! proves what happened on the run that was measured, and only if nobody
-//! forgot the funnel.
+//! A decrypt counter would prove what happened on the run that was measured,
+//! and only if every decrypt site remembered to bump it.
 //!
 //! Here it is proven twice, and neither proof is a count:
 //!
@@ -17,10 +15,10 @@
 //!   fixture builds one from the pool alone to make that visible at the call
 //!   site — see [`Lane::keyless_directory`].
 //! - **By observation.** A row whose ciphertext has been CORRUPTED still lists
-//!   with its full projection. `secret_list.zig` answers that same row as an
-//!   opaque `custom_secret`, because its projection comes from a body it could
-//!   not open. The two implementations therefore give different answers on this
-//!   row, and the difference is the assertion.
+//!   with its full projection. A list that decrypted would answer that same row
+//!   as an opaque `custom_secret`, because its projection would come from a body
+//!   it could not open. The two designs give different answers on this row, and
+//!   the difference is the assertion.
 //!
 //! The second is what makes this more than a restatement of the type: it would
 //! fail the moment anything on this path opened an envelope, however it was
@@ -111,8 +109,7 @@ async fn a_row_whose_ciphertext_cannot_open_still_lists_with_its_full_projection
     // The observable half of the never-decrypt proof. Nothing can open this row
     // any more — the fixture flipped a byte of its ciphertext, so the
     // authentication tag will refuse it under any key. A list that decrypted
-    // would have to degrade it to an opaque `custom_secret`, which is exactly
-    // what the Zig list does with it.
+    // would have to degrade it to an opaque `custom_secret`.
     let lane = Lane::create().await;
     lane.store("anthropic-prod", PROVIDER_KEY).await;
     lane.corrupt_ciphertext("anthropic-prod").await;

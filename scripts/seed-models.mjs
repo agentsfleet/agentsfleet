@@ -29,27 +29,14 @@ const APPLY = process.argv.includes("--apply");
 /**
  * How to reach Postgres. Defaults to a local `psql`, which takes the connection
  * URL as its first argument. Set SEED_PSQL to a full command that ALREADY targets
- * the right database and the URL is not appended — that is how the integration
- * lane reaches the compose container, where no host psql exists:
+ * the right database and the URL is not appended — the way to reach the local
+ * compose container from a machine with no host psql:
  *
  *   SEED_PSQL="docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb"
  */
 const PSQL = (process.env.SEED_PSQL ?? "").trim();
 const PSQL_ARGV = PSQL ? PSQL.split(/\s+/) : ["psql"];
 const PSQL_TAKES_URL = !PSQL;
-// Read api-source providers from committed fixtures instead of the network.
-// Integration tests use this: seeding all 16 providers deterministically still
-// exercises the field mapping, the per-token conversion, and the real SQL path,
-// without going red because Pioneer had a bad afternoon.
-const FIXTURES = process.argv.includes("--fixtures")
-  ? join(ROOT, "tests", "fixtures", "model-library")
-  : null;
-// Regenerate the committed SQL fixture the Zig integration tests self-seed from.
-// CI's zig container has neither node nor psql, so the tests cannot run this
-// script — they exec the committed file statement-by-statement instead. The
-// timestamp is pinned to the allowlist's verified_at so regeneration is
-// byte-identical and the fixture never churns without a real rate change.
-const EMIT_FIXTURE = process.argv.includes("--emit-fixture-sql");
 
 const NANOS_PER_USD = 1_000_000_000;
 const PER_TOKEN_TO_PER_MTOK = 1_000_000;
@@ -77,18 +64,18 @@ const dig = (obj, path) => path.split(".").reduce((o, k) => (o == null ? o : o[k
  * than allowlisted. Strip the symbol and the separators; anything still
  * non-numeric stays NaN and is rejected on purpose.
  */
-export const rate = (raw) => (typeof raw === "string" ? Number(raw.replace(/[$£€,\s]/g, "")) : Number(raw));
+const rate = (raw) => (typeof raw === "string" ? Number(raw.replace(/[$£€,\s]/g, "")) : Number(raw));
 
 /**
  * The cache-read rate to seed, given the parsed cache value and the input rate.
- * Exported so the three "no cache discount" spellings are covered by a test
- * rather than only by whatever the committed fixture happens to contain.
+ * A missing, unparseable, zero or negative cache price seeds the input rate:
+ * none of them is a discount.
  */
-export const cachedOrInput = (cachedParsed, input) =>
+const cachedOrInput = (cachedParsed, input) =>
   Number.isFinite(cachedParsed) && cachedParsed > 0 ? cachedParsed : input;
 
 /** Whether a parsed row is billable. Finite is not the same as billable. */
-export const isBillable = (input, output, ctx) =>
+const isBillable = (input, output, ctx) =>
   [input, output, ctx].every(Number.isFinite) && input > 0 && output > 0 && ctx > 0;
 
 function fail(msg) {
@@ -118,14 +105,9 @@ function fromManual(provider, cfg) {
  * than silently dropped — that is usually a retirement worth acting on.
  */
 async function fromApi(provider, cfg) {
-  let body;
-  if (FIXTURES) {
-    body = JSON.parse(readFileSync(join(FIXTURES, `${provider}.json`), "utf8"));
-  } else {
-    const res = await fetch(cfg.endpoint, { headers: { accept: "application/json" } });
-    if (!res.ok) fail(`${provider}: ${cfg.endpoint} returned ${res.status}`);
-    body = await res.json();
-  }
+  const res = await fetch(cfg.endpoint, { headers: { accept: "application/json" } });
+  if (!res.ok) fail(`${provider}: ${cfg.endpoint} returned ${res.status}`);
+  const body = await res.json();
   // Fail on empty, not just non-array: `{ data: [] }`, `{}`, and `[]` are all
   // "valid" shapes that would seed ZERO rows for this provider while the run
   // reports success — and a tenant later cannot activate any of its models.
@@ -195,7 +177,7 @@ async function collect(allowlist) {
     if (cfg.source === "manual") {
       rows.push(...fromManual(provider, cfg));
     } else if (cfg.source === "api") {
-      console.log(FIXTURES ? `→ reading ${provider} fixture` : `→ fetching ${provider} (${cfg.endpoint})`);
+      console.log(`→ fetching ${provider} (${cfg.endpoint})`);
       rows.push(...(await fromApi(provider, cfg)));
     } else {
       fail(`${provider}: unknown source "${cfg.source}" (expected "manual" or "api")`);
@@ -211,6 +193,15 @@ async function collect(allowlist) {
  * snapshot. No DATABASE_URL (or no psql) is not an error — it just means every
  * row reads as new, which is exactly the fresh-install case.
  */
+/**
+ * What a failed psql said, without the command line `execFileSync` puts in
+ * its message: psql's stderr when it was captured, else its exit status.
+ */
+function psqlFailure(err) {
+  const said = typeof err.stderr === "string" ? err.stderr.trim() : "";
+  return said || `psql exited with status ${err.status ?? "unknown"}`;
+}
+
 function readLive() {
   const url = process.env.DATABASE_URL;
   if (!url && PSQL_TAKES_URL) {
@@ -226,7 +217,9 @@ function readLive() {
     const args = PSQL_TAKES_URL ? [...pre, url] : pre;
     raw = execFileSync(bin, [...args, "-At", "-F", "\t", "-c", sql], { encoding: "utf8" });
   } catch (err) {
-    fail(`could not read core.model_library (${PSQL_ARGV.join(" ")}): ${err.message}`);
+    // Never err.message: it repeats the command line, and the URL argument
+    // carries the database password.
+    fail(`could not read core.model_library (${PSQL_ARGV.join(" ")}): ${psqlFailure(err)}`);
   }
   const live = new Map();
   for (const line of raw.split("\n").filter(Boolean)) {
@@ -299,7 +292,7 @@ function idFor(provider, modelId) {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-7${h.slice(12, 15)}-8${h.slice(15, 18)}-${h.slice(18, 30)}`;
 }
 
-export function emit(rows, allowlist, stamp, opts = {}) {
+function emit(rows, allowlist, stamp) {
   const lines = [
     `-- core.model_library seed / refresh`,
     `-- Generated by scripts/seed-models.mjs on ${stamp}`,
@@ -313,16 +306,14 @@ export function emit(rows, allowlist, stamp, opts = {}) {
     `-- the allowlist are never touched.`,
     ``,
   ];
-  if (!opts.no_transaction) {
-    lines.push(`BEGIN;`, ``);
-    // Same order every catalogue mutation uses (schema/410_model_catalogue_revision.sql):
-    // lock the singleton, change the catalogue, increment the generation, commit.
-    // The lock is what serialises this against a concurrent admin mutation — two
-    // writers cannot both read generation N and both write N+1.
-    lines.push(`-- Serialise against concurrent catalogue mutations (schema/410).`);
-    lines.push(`SELECT revision FROM core.model_catalogue_revision WHERE id = 1 FOR UPDATE;`);
-    lines.push(``);
-  }
+  lines.push(`BEGIN;`, ``);
+  // Same order every catalogue mutation uses (schema/410_model_catalogue_revision.sql):
+  // lock the singleton, change the catalogue, increment the generation, commit.
+  // The lock is what serialises this against a concurrent admin mutation — two
+  // writers cannot both read generation N and both write N+1.
+  lines.push(`-- Serialise against concurrent catalogue mutations (schema/410).`);
+  lines.push(`SELECT revision FROM core.model_catalogue_revision WHERE id = 1 FOR UPDATE;`);
+  lines.push(``);
   rows.forEach((r) => {
     if (r.tier) lines.push(`-- ${sqlComment(r.provider)}/${sqlComment(r.model_id)}: upper tier seeded (see allowlist)`);
     lines.push(`-- source: ${sqlComment(r.source_url)}`);
@@ -347,30 +338,27 @@ export function emit(rows, allowlist, stamp, opts = {}) {
     lines.push(`  updated_at = EXCLUDED.updated_at;`);
     lines.push(``);
   });
-  if (!opts.no_transaction) {
-    // Bump the generation in the SAME transaction as the rows it describes, so
-    // they become visible together. Without this the rows land and every replica
-    // keeps serving whatever it already cached: `rateAtRevision` accepts a cached
-    // entry whose stored generation is >= the one it reads, so an unchanged
-    // generation means a CHANGED rate is never re-read. New rows are unaffected
-    // (a miss loads), which is exactly why the gap stayed invisible — it only
-    // bites on the monthly rate refresh this script exists for.
-    lines.push(`-- Make the new rows and the generation describing them visible together.`);
-    lines.push(`DO $$`);
-    lines.push(`BEGIN`);
-    lines.push(`  UPDATE core.model_catalogue_revision`);
-    lines.push(`     SET revision = revision + 1, updated_at = ${stamp.ms}`);
-    lines.push(`   WHERE id = 1;`);
-    // The singleton is seeded by schema slot 410 and never deleted, so a missing
-    // row means the schema was not applied — fail rather than write rates into a
-    // catalogue nothing can invalidate.
-    lines.push(`  IF NOT FOUND THEN`);
-    lines.push(`    RAISE EXCEPTION 'core.model_catalogue_revision singleton missing — schema slot 410 not applied';`);
-    lines.push(`  END IF;`);
-    lines.push(`END $$;`);
-    lines.push(``);
-    lines.push(`COMMIT;`);
-  }
+  // Bump the generation in the SAME transaction as the rows it describes, so
+  // they become visible together: the admin API's catalogue writes do the same
+  // (rustd/crates/afd_admin/src/model.rs), and the billing read returns a rate
+  // with the generation it was read at in one snapshot
+  // (`LOAD_RATE_WITH_REVISION`, rustd/crates/afd_billing/src/sql.rs), so no
+  // reader pairs a new rate with the old generation.
+  lines.push(`-- Make the new rows and the generation describing them visible together.`);
+  lines.push(`DO $$`);
+  lines.push(`BEGIN`);
+  lines.push(`  UPDATE core.model_catalogue_revision`);
+  lines.push(`     SET revision = revision + 1, updated_at = ${stamp.ms}`);
+  lines.push(`   WHERE id = 1;`);
+  // The singleton is seeded by schema slot 410 and never deleted, so a missing
+  // row means the schema was not applied — fail rather than write rates into a
+  // catalogue whose generation cannot move.
+  lines.push(`  IF NOT FOUND THEN`);
+  lines.push(`    RAISE EXCEPTION 'core.model_catalogue_revision singleton missing — schema slot 410 not applied';`);
+  lines.push(`  END IF;`);
+  lines.push(`END $$;`);
+  lines.push(``);
+  lines.push(`COMMIT;`);
   return lines.join("\n");
 }
 
@@ -387,64 +375,52 @@ function warnStale(allowlist, nowMs) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-//
-// Guarded so the helpers above can be imported and tested directly. Without it,
-// `import`ing this file to unit-test `rate()` would read the allowlist, fetch
-// every api provider, and try to reach Postgres.
-if (import.meta.main) {
 
-  const allowlist = JSON.parse(readFileSync(ALLOWLIST, "utf8"));
-  const nowMs = Date.now();
-  const stamp = Object.assign(new Date(nowMs).toISOString().slice(0, 10), { ms: nowMs });
+const allowlist = JSON.parse(readFileSync(ALLOWLIST, "utf8"));
+const nowMs = Date.now();
+const stamp = Object.assign(new Date(nowMs).toISOString().slice(0, 10), { ms: nowMs });
 
-  const wanted = await collect(allowlist);
-  console.log(`→ ${wanted.length} allowlisted rows across ${Object.keys(allowlist.providers).length} providers`);
+const wanted = await collect(allowlist);
+console.log(`→ ${wanted.length} allowlisted rows across ${Object.keys(allowlist.providers).length} providers`);
 
-  if (EMIT_FIXTURE) {
-    const { writeFileSync } = await import("node:fs");
-    const fixed_ms = Date.parse(allowlist.verified_at);
-    const fixture_stamp = Object.assign(allowlist.verified_at, { ms: fixed_ms });
-    const out = join(ROOT, "tests", "fixtures", "model-library", "seed.sql");
-    // No BEGIN/COMMIT: the Zig tests exec one statement at a time.
-    writeFileSync(out, emit(wanted, allowlist, fixture_stamp, { no_transaction: true }) + "\n");
-    console.log(`→ wrote ${out} (${wanted.length} rows, stamp ${allowlist.verified_at})`);
-    process.exit(0);
-  }
+const delta = diff(wanted, readLive());
+report(delta);
+warnStale(allowlist, nowMs);
 
-  const delta = diff(wanted, readLive());
-  report(delta);
-  warnStale(allowlist, nowMs);
+if (!delta.added.length && !delta.changed.length) {
+  console.log("\n✓ catalogue already matches the allowlist — nothing to emit");
+  process.exit(0);
+}
 
-  if (!delta.added.length && !delta.changed.length) {
-    console.log("\n✓ catalogue already matches the allowlist — nothing to emit");
-    process.exit(0);
-  }
-
-  if (!APPLY) {
-    console.log("\n  Re-run with APPLY=1 to write these changes to the database.");
-    process.exit(0);
-  }
-  if (PSQL_TAKES_URL && !process.env.DATABASE_URL) fail("APPLY=1 needs DATABASE_URL (or SEED_PSQL)");
-  {
-    const [bin, ...pre] = PSQL_ARGV;
-    const args = PSQL_TAKES_URL ? [...pre, process.env.DATABASE_URL] : pre;
-    // Only the rows the diff named: upserting all 77 would bump updated_at_ms on
-    // unchanged rows and destroy it as a per-row drift signal.
-    const toWrite = [...delta.added, ...delta.changed.map((c) => c.row)];
+if (!APPLY) {
+  console.log("\n  Re-run with APPLY=1 to write these changes to the database.");
+  process.exit(0);
+}
+if (PSQL_TAKES_URL && !process.env.DATABASE_URL) fail("APPLY=1 needs DATABASE_URL (or SEED_PSQL)");
+{
+  const [bin, ...pre] = PSQL_ARGV;
+  const args = PSQL_TAKES_URL ? [...pre, process.env.DATABASE_URL] : pre;
+  // Only the rows the diff named: upserting every allowlisted row would bump
+  // updated_at_ms on unchanged rows and destroy it as a per-row drift signal.
+  const toWrite = [...delta.added, ...delta.changed.map((c) => c.row)];
+  try {
     execFileSync(bin, [...args, "-v", "ON_ERROR_STOP=1", "-f", "-"], {
       input: emit(toWrite, allowlist, stamp),
       stdio: ["pipe", "inherit", "inherit"],
     });
+  } catch (err) {
+    // psql's own stderr is already on the terminal; the thrown message would
+    // repeat the command line, password included.
+    fail(`could not apply the catalogue (${PSQL_ARGV.join(" ")}): ${psqlFailure(err)}`);
   }
-  console.log(`✓ applied — ${delta.added.length} added, ${delta.changed.length} updated`);
-  // No restart. This transaction bumped core.model_catalogue_revision alongside
-  // the rows, which is the same protocol the admin API uses, so every replica
-  // invalidates on its next read: `rateAtRevision` rejects a cached entry whose
-  // stored generation is older than the one it reads, and a miss loads the row it
-  // asked about. The old advice here was to restart agentsfleetd — correct while
-  // this script wrote rows without touching the generation, and misleading now.
-  console.log(
-    `\n  ✓ Catalogue generation bumped in the same transaction — no restart needed.\n` +
-      `    Replicas invalidate on their next read (state/model_rate_cache.zig).`,
-  );
 }
+console.log(`✓ applied — ${delta.added.length} added, ${delta.changed.length} updated`);
+// No restart. This transaction bumped core.model_catalogue_revision alongside
+// the rows, the same protocol the admin API uses. agentsfleetd holds no rate
+// cache: every lookup reads the rate and the revision together in one
+// statement (`LOAD_RATE_WITH_REVISION`, rustd/crates/afd_billing/src/sql.rs),
+// so each replica prices from the new rows on its next read.
+console.log(
+  `\n  ✓ Catalogue generation bumped in the same transaction — no restart needed.\n` +
+    `    Every replica reads the new rates on its next lookup (rustd/crates/afd_billing/src/sql.rs).`,
+);

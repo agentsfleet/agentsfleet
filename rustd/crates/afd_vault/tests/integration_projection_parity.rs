@@ -12,11 +12,11 @@
 //! this can prove the statement wrote both of what it produced.
 //!
 //! **Cross-daemon.** A row another daemon wrote lists identically from here.
-//! There is no Zig process in this lane, so the fixture writes the exact column
-//! values `metadata.zig::project` produces for a given body, and the assertion
-//! is that this list reads them back verbatim. That is the honest form of the
-//! claim: what is under test is the READER's agreement with a column set, and a
-//! subprocess would add a build dependency without adding a fact.
+//! The fixture writes the exact column values for a given body verbatim, and
+//! the assertion is that this list reads them back unchanged. That is the
+//! honest form of the claim: what is under test is the READER's agreement with
+//! a column set, and running a second writer would add a build dependency
+//! without adding a fact.
 //!
 //! A row from BEFORE the projection columns existed is the third case, and it
 //! is not a failure — it lists as an opaque credential, because that is what
@@ -166,9 +166,9 @@ async fn a_replace_rewrites_both_halves_or_neither() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs the lane's Postgres"]
 async fn a_row_another_daemon_projected_lists_identically_from_here() {
-    // The cross-daemon half. These are the exact column values
-    // `metadata.zig::project` writes for each body, supplied verbatim; the
-    // assertion is that this reader agrees with them.
+    // The cross-daemon half. These are the column values a writer projects
+    // for each body, supplied verbatim; the assertion is that this reader
+    // agrees with them.
     let lane = Lane::create().await;
     lane.store("seed", PROVIDER_KEY).await;
 

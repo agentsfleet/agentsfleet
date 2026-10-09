@@ -19,9 +19,9 @@
 -- Every write stages to 'draft'; publishing is an explicit, reversible PATCH.
 -- Three readers gate on it — the workspace gallery, GET /v1/fleets/bundles, and
 -- the resolve-by-id install path — so an unpublished fleet is unreachable rather
--- than merely unlisted. Canonical constants: fleet_library/library_store.zig
--- (VISIBILITY_DRAFT / VISIBILITY_PUBLIC). Value sets are app-enforced per RULE
--- STS, and no statement in this directory writes them.
+-- than merely unlisted. Canonical constants: VISIBILITY_DRAFT / VISIBILITY_PUBLIC
+-- in `rustd/crates/afd_library/src/catalogue/mod.rs`. Value sets are
+-- app-enforced per RULE STS, and no statement in this directory writes them.
 --
 -- A row that is 'public' but holds NO bundle cannot lie to a tenant: all three
 -- tenant-facing reads filter on `content_hash IS NOT NULL` as well as on

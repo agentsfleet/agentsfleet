@@ -2,7 +2,7 @@
 // app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/events.
 //
 // The non-stream sibling of sse-route.test.ts: same Clerk trust boundary
-// (cookie-authed browser → Bearer-only Zig backend), but a buffered JSON
+// (cookie-authed browser → Bearer-only `agentsfleetd`), but a buffered JSON
 // events page instead of a piped stream. Coverage pins the auth, query
 // forwarding, and error-passthrough behavior the reconnect backfill
 // (fleet-stream-registry) depends on.

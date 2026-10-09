@@ -6,27 +6,20 @@
 //! one, [`landing`] says where the person goes afterwards, and [`status`]
 //! reads or forgets what landed. Per-provider difference
 //! lives in `afd_connector`'s registry and nowhere here — adding a connector is
-//! an arm in that crate's matches, never a file in this directory. The Zig
-//! daemon carries `connectors/slack/`, `connectors/jira/`, `connectors/zoho/`,
-//! `connectors/linear/` and `connectors/github/` for the same five, each with
-//! its own callback file.
+//! an arm in that crate's matches, never a file in this directory.
 //!
 //! # The provider segment is parsed once, at the edge
 //!
-//! Every handler below takes a [`Provider`], never a `&str`. `registry.lookup`
-//! is re-run at the top of each Zig handler and each one has to remember to
-//! answer `respondUnknown` when it misses; here the miss is one function and
-//! the enum is what travels inward.
+//! Every handler below takes a [`Provider`], never a `&str`. An unknown
+//! provider is answered once, by `provider_of`, so no handler has to remember
+//! to refuse a miss, and the enum is what travels inward.
 //!
 //! # A refusal names the provider to the OPERATOR, not to the person
 //!
-//! `connect.zig` and `callback.zig` interpolate the display name into the
-//! problem detail — *"Slack connect is not configured"* — because the sentence
-//! a person reads and the line an operator greps are the same string there.
-//! They are not here: the person gets the registry code, and `provider` is a
-//! field on the `tracing` event. So the detail is the Zig's own fallback
-//! wording, and nothing has to build a sentence per provider to say what the
-//! log already says structurally.
+//! The sentence a person reads and the line an operator greps are different
+//! strings: the person gets the registry code and one provider-neutral detail,
+//! and `provider` is a field on the `tracing` event. Nothing has to build a
+//! sentence per provider to say what the log already says structurally.
 
 pub(crate) mod callback;
 pub(crate) mod catalogue;
@@ -56,14 +49,14 @@ const EVENT_SECRET: &str = "connector_state_secret_failed";
 
 /// The refusal a provider this deployment has not been set up for earns.
 ///
-/// `callback.zig`'s `NOT_CONFIGURED_FALLBACK`. An operator's fault rather than
-/// a tenant's, which is why [`error_code::CONNECTOR_NOT_CONFIGURED`] is a 503.
+/// An operator's fault rather than a tenant's, which is why
+/// [`error_code::CONNECTOR_NOT_CONFIGURED`] is a 503.
 pub(crate) const DETAIL_NOT_CONFIGURED: &str = "Connector is not configured";
 
 /// What this deployment signs connector install states with.
 ///
-/// The SAME secret the approval callback is verified against, which is the
-/// Zig's `approval_signing_secret` serving both surfaces. One secret because
+/// The SAME secret the approval callback is verified against, the platform
+/// secret [`APPROVAL_IDENTITY`] names, serving both surfaces. One secret because
 /// there is one deployment-level HMAC key, and a second name for it would be a
 /// second thing for an operator to rotate.
 ///

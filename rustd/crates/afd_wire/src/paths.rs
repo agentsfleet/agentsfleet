@@ -1,8 +1,8 @@
 //! Wire paths, the runner token prefix, and the lease wire version.
 //!
-//! Single-sourced here for the same reason `protocol.zig` single-sources them:
-//! the router and every client must spell a path identically, and a path built
-//! by concatenation at two call sites is two paths that drift.
+//! Single-sourced here because the router and every client must spell a path
+//! identically, and a path built by concatenation at two call sites is two
+//! paths that drift.
 //!
 //! Each route is composed with `concatcp!` from the segments below, so the
 //! daemon's router, its published API document and the runner's client read

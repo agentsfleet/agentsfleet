@@ -45,9 +45,9 @@
 //!
 //! # One decrypt, and none on the refusals a client provokes
 //!
-//! The Zig decrypts twice — once to map errors before locking, once inside the
-//! transaction. Here the outcome variants carry that mapping out of the single
-//! transaction, so the in-transaction read is the only read. The two credential
+//! The outcome variants carry the error mapping out of the single transaction,
+//! so the in-transaction read is the only read — nothing decrypts before the
+//! lock to map errors early. The two credential
 //! rungs are decided from `meta_provider` and `meta_has_key` on the row already
 //! locked, so the most-walked refusals — a name nobody stored, a credential
 //! that is not a provider key — never open an envelope at all.

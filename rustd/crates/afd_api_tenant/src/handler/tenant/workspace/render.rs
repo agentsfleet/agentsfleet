@@ -47,7 +47,7 @@ pub(super) fn page_response<'page>(
     Ok(WorkspacesResponse {
         items,
         tenant_id: Cow::Borrowed(accounts.home.as_str()),
-        // Never counted — `tenant_workspaces.zig` answers a literal null.
+        // Never counted: the directory answers a literal null.
         total: None,
         next_cursor,
     })

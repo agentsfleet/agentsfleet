@@ -32,11 +32,10 @@
 //!
 //! # Nothing here is hand-decoded
 //!
-//! `repair_branch.zig` hand-writes the hex and base64 conversions because Zig
-//! has neither in a form it can call. That is a constraint of the original,
-//! not a property of the design: `uuid` and `base64` are already workspace
-//! dependencies, they are tested far past what this module could justify
-//! testing, and using them is what keeps the encoding the same on both sides.
+//! The hex and base64 conversions are the `uuid` and `base64` crates'. Both
+//! are already workspace dependencies, they are tested far past what this
+//! module could justify testing, and using them is what keeps the encoding the
+//! same on both sides.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;

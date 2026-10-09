@@ -5,9 +5,31 @@ set -euo pipefail
 RUNNER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../common.sh
 source "$RUNNER_LIB_DIR/../common.sh"
+# The host's paths, the unit's name and the files of the host deploy, as the
+# host's deploy.sh reads them too.
+# shellcheck source=../../../deploy/baremetal/layout.sh
+source "$RUNNER_LIB_DIR/../../../deploy/baremetal/layout.sh"
 
 readonly CGROUP_ROOT="/sys/fs/cgroup"
-readonly REQUIRED_CGROUP_CONTROLLERS="cpu memory pids"
+# The runner's host probe refuses to start without each of these
+# (`REQUIRED_CONTROLLERS` in rustd/crates/afr_sandbox/src/probe.rs), and the
+# Delegate= line in deploy/baremetal/agentsfleet-runner.service names the same
+# ones. No test compares the three lists, so a controller the probe gains is
+# added to all three in one change.
+readonly REQUIRED_CGROUP_CONTROLLERS="cpu io memory pids"
+# An allowlisted sandbox reaches its registries through this host: its packets
+# are forwarded from its own link out of the host's. The runner's boot probe
+# reads the setting and reports egress unenforced without it.
+readonly IPV4_FORWARD_PROC="/proc/sys/net/ipv4/ip_forward"
+readonly IPV4_FORWARD_SYSCTL_FILE="/etc/sysctl.d/60-agentsfleet-runner.conf"
+# What a runner host must have on PATH: bubblewrap for each lease's sandbox, nft
+# and ip for its egress boundary, and the curl and jq the checks in this
+# directory run on the host. Host preparation installs them.
+readonly RUNNER_HOST_TOOLS="bwrap nft ip curl jq"
+# Debian omits sbin from non-interactive Tailscale SSH sessions even though
+# nftables installs nft there. Expands on the host, not here.
+# shellcheck disable=SC2016
+readonly RUNNER_REMOTE_SBIN_PATH='export PATH="/usr/sbin:/sbin:$PATH"'
 
 runner_read_required() {
   local ref="$1"
@@ -112,6 +134,25 @@ runner_remote() {
   tailscale ssh "$RUNNER_TARGET" "$command"
 }
 
+# Fails, naming the first one missing, unless every RUNNER_HOST_TOOLS tool is
+# on the host's PATH.
+runner_require_remote_tools() {
+  runner_remote "
+    $RUNNER_REMOTE_SBIN_PATH
+    for tool in $RUNNER_HOST_TOOLS; do
+      if ! command -v \"\$tool\" >/dev/null; then
+        echo \"ERROR: required host tool missing: \$tool\" >&2
+        exit 1
+      fi
+    done
+  "
+}
+
+# Fails unless the host reports itself online on the tailnet.
+runner_require_tailnet_online() {
+  runner_remote "test \"\$(tailscale status --json | jq -r .Self.Online)\" = true"
+}
+
 runner_verify_host_cgroup_capability() {
   runner_remote "
     set -e
@@ -129,6 +170,18 @@ runner_verify_host_cgroup_capability() {
     echo "ERROR: cgroup v2 controller check failed for $RUNNER_TARGET" >&2
     return 1
   }
+}
+
+# Turns IPv4 forwarding on where it survives a reboot, and reads it back.
+# Preparation and every deploy run it, so a host prepared before forwarding was
+# part of preparation gains it at its next deploy.
+runner_enable_ipv4_forwarding() {
+  runner_remote "
+    set -e
+    echo 'net.ipv4.ip_forward = 1' | sudo tee '$IPV4_FORWARD_SYSCTL_FILE' >/dev/null
+    sudo sysctl -q -p '$IPV4_FORWARD_SYSCTL_FILE'
+    test \"\$(cat '$IPV4_FORWARD_PROC')\" = 1
+  "
 }
 
 runner_copy() {

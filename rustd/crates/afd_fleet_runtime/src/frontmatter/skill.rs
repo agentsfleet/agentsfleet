@@ -2,22 +2,21 @@
 //!
 //! # Permissive at the top level, strict about the three it needs
 //!
-//! `parseSkillMetadata` accepts unknown top-level keys in silence, because a
+//! [`parse_skill`] accepts unknown top-level keys in silence, because a
 //! `SKILL.md` is a portable document other skill hosts also read and this
 //! daemon has no standing to refuse their vocabulary. What it does insist on
 //! is `name`, `description` and `version` — the three the install stores and
 //! the dashboard shows — with `name` held to the same kebab slug a fleet name
 //! is, and `version` to `MAJOR.MINOR.PATCH`.
 //!
-//! # Divergence 5, following the one this crate already declared
+//! # A wrong-typed optional is refused, never dropped
 //!
-//! The Zig DROPS a wrong-typed optional and reports nothing: `author: 42`
-//! stores no author, `tags: "one"` stores no tags, and the document installs
-//! looking fine. [`crate::error`]'s divergence 2 already refused that reading
-//! for `skill`, on the grounds that a field silently lost is worse than a field
-//! refused with a position. The same rule is applied here rather than kept for
-//! one field, because the Zig's own version of it is incoherent — a non-array
-//! `tags` is ignored while a non-string ELEMENT of `tags` is a hard error.
+//! `author: 42` and `tags: "one"` answer a shape error rather than installing a
+//! document that looks fine with no author or no tags. [`crate::error`]'s
+//! verdict 2 applies the same rule to `skill`, on the grounds that a field
+//! silently lost is worse than a field refused with a position. It covers every
+//! optional key here, so a non-array `tags` and a non-string ELEMENT of `tags`
+//! refuse alike.
 //!
 //! What is preserved: an EMPTY optional string still reads as absent. That is
 //! a normalisation rather than a dropped value, and an author who typed
@@ -261,9 +260,6 @@ mod tests {
         // reaches the arity check as a string. The refusal names the SHAPE,
         // which is the honest answer: the document did not write a version, it
         // wrote a number.
-        //
-        // The Zig's spelling is `MissingRequiredField`, which says a key is
-        // absent when it is plainly present. Same verdict, better sentence.
         let source = "---\nname: probe\ndescription: A probe.\nversion: 1.0\n---\n";
         let failure = parse_skill(source).expect_err("a numeric version");
         assert!(
@@ -300,8 +296,8 @@ mod tests {
 
     #[test]
     fn a_wrong_typed_tag_element_is_refused() {
-        // Parity with the Zig's verdict, reached by serde's own shape failure
-        // — which names the offending index where `InvalidTagFormat` does not.
+        // Refused by serde's own shape failure, which names the offending
+        // index.
         let source =
             "---\nname: probe\ndescription: A probe.\nversion: 1.0.0\ntags: [one, 42]\n---\n";
         let failure = parse_skill(source).expect_err("a numeric tag");
@@ -311,7 +307,7 @@ mod tests {
 
     #[test]
     fn a_wrong_typed_tags_key_is_refused_rather_than_dropped() {
-        // DIVERGENCE 5. The Zig silently stores no tags here.
+        // Storing no tags here would lose the field in silence.
         let source = "---\nname: probe\ndescription: A probe.\nversion: 1.0.0\ntags: one\n---\n";
         let failure = parse_skill(source).expect_err("a scalar tags");
 

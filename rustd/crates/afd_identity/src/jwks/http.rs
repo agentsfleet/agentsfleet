@@ -1,14 +1,13 @@
 //! Reading a key set over the network.
 //!
-//! The port of `auth/jwks_fetch.zig` and `oidc.zig`'s URL resolution, and the
-//! only file in this crate that opens a socket.
+//! Fetching the key set and resolving its URL from the issuer. The only file in
+//! this crate that opens a socket.
 //!
 //! # One code path decides the URL
 //!
-//! `oidc.zig::resolveJwksUrl` exists because a runtime loader and a `doctor`
-//! command that derived the URL separately could test a different endpoint than
-//! the daemon fetched — the issuer/key-set drift bug class. [`jwks_url`] is the
-//! single resolver here for the same reason.
+//! A runtime loader and a `doctor` command that derived the URL separately
+//! could test a different endpoint than the daemon fetched — the issuer/key-set
+//! drift bug class. [`jwks_url`] is the single resolver for that reason.
 
 use afd_auth::verifier::VerifyError;
 
@@ -16,8 +15,7 @@ use crate::jwks::source::{KeySetSource, MAX_REDIRECTS, MAX_RESPONSE_BYTES};
 
 /// Appended to an issuer to form its key-set endpoint.
 ///
-/// The `OpenID` Connect convention for publishing signing keys, and
-/// `oidc.zig`'s `WELL_KNOWN_JWKS_SUFFIX`.
+/// The `OpenID` Connect convention for publishing signing keys.
 const WELL_KNOWN_SUFFIX: &str = "/.well-known/jwks.json";
 
 /// What the body buffer starts at before the capped read grows it.
@@ -97,7 +95,7 @@ impl HttpKeySet {
     /// claim about itself, and this daemon bounds what it actually reads. No
     /// content-encoding is ever negotiated (see the `reqwest` note in the
     /// workspace manifest), so these bytes are the decoded bytes and the cap
-    /// means what `jwks_fetch.zig` says it means.
+    /// bounds what [`MAX_RESPONSE_BYTES`] says it bounds.
     async fn read_capped(mut response: reqwest::Response) -> Result<Vec<u8>, VerifyError> {
         let mut body = Vec::with_capacity(INITIAL_BODY_BYTES);
         loop {

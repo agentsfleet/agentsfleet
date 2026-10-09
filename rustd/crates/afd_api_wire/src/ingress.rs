@@ -15,8 +15,8 @@
 //! [`WorkflowRunDigest`] and [`PullRequestDigest`] are what a verified GitHub
 //! delivery BECOMES on the fleet's event stream. They are wire all the same, and
 //! more strictly so than a response: a fleet's prose reads these field names, so
-//! renaming one silently changes what every fleet sees. `normalizer/github.zig`
-//! is the shape of record and the field order is part of it.
+//! renaming one silently changes what every fleet sees. The struct is the shape
+//! of record, and its field order is part of it.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -239,8 +239,7 @@ pub struct MentionThread {
 
 /// The flat object a `workflow_run` becomes on the stream.
 ///
-/// Field names and order are `normalizer/github.zig`'s `Normalized`, kept
-/// exactly: a fleet's prose reads them.
+/// Field names and order are the stream's format: a fleet's prose reads them.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowRunDigest<'a> {
@@ -273,7 +272,7 @@ pub struct WorkflowRunDigest<'a> {
 
 /// The flat object a `pull_request` becomes on the stream.
 ///
-/// `github_app.zig`'s `PullRequest`, field for field.
+/// Field names and order are the stream's format, as on [`WorkflowRunDigest`].
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
 pub struct PullRequestDigest<'a> {

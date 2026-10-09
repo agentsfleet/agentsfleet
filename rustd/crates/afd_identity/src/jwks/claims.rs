@@ -20,8 +20,8 @@ pub(crate) const CLAIM_TENANT_ID: &str = "tenant_id";
 const CLAIM_WORKSPACE_ID: &str = "workspace_id";
 /// The object the provider nests its metadata claims under.
 ///
-/// `clerk_metadata_payload.zig` writes exactly two keys into `public_metadata`,
-/// and the session-token template projects `metadata.tenant_id` — so on a real
+/// `crate::metadata` writes exactly two keys into `public_metadata`, and the
+/// session-token template projects `metadata.tenant_id` — so on a real
 /// deployment the tenant is NESTED, and a reader that only looked at the top
 /// level would find it on no production token at all.
 const CLAIM_METADATA: &str = "metadata";
@@ -53,21 +53,20 @@ pub(crate) struct Claims {
     rest: serde_json::Map<String, serde_json::Value>,
     /// The capability claim, top level ONLY.
     ///
-    /// `claims.zig` is emphatic about this: an earlier ladder tried `OAuth2`'s
-    /// `scope` BEFORE this one, so a token carrying a standard `scope` claim
-    /// would silently have supplied a different capability set. One place, and
-    /// a reader that cannot say which value it trusted is the bug.
+    /// A ladder that tried `OAuth2`'s `scope` BEFORE this one would let a token
+    /// carrying a standard `scope` claim silently supply a different capability
+    /// set. One place, and a reader that cannot say which value it trusted is
+    /// the bug.
     pub(crate) scopes: Option<String>,
 }
 
 impl Claims {
     /// The raw string of `name`, read top-level first and then under `metadata`.
     ///
-    /// The ladder `claims.zig::getClerkTenantId` walks, and in that order: a
-    /// top-level projection wins over the nested one, so a template that starts
-    /// projecting to the top level does not need both readers changed at once.
-    /// One function rather than one per claim, so the two readers below cannot
-    /// drift in WHERE they look.
+    /// A top-level projection wins over the nested one, so a template that
+    /// starts projecting to the top level does not need both readers changed at
+    /// once. One function rather than one per claim, so the two readers below
+    /// cannot drift in WHERE they look.
     fn raw_claim(&self, name: &str) -> Option<&str> {
         self.rest
             .get(name)

@@ -12,8 +12,8 @@
 //!
 //! # The sentences are the assertion
 //!
-//! The limit refusals and the tenant sentence are the Zig handler's bytes, and
-//! a dashboard mid-cutover may be matching on them. Each is asserted against
+//! The limit refusals and the tenant sentence are already on the wire, and a
+//! dashboard may be matching on them. Each is asserted against
 //! the constant the handler answers with rather than a respelling here
 //! (RULE UFS).
 #![cfg(feature = "test-util")]
@@ -117,7 +117,7 @@ async fn both_reads_need_the_billing_scope() {
         assert_eq!(
             detail_of(response).await,
             DETAIL_SCOPE,
-            "{path}: the whole requirement is named, as the Zig daemon words it"
+            "{path}: the whole requirement is named in the detail"
         );
     }
 }
@@ -195,11 +195,11 @@ async fn an_empty_cursor_is_the_first_page() {
     assert_reached_the_verb(response, "empty cursor").await;
 }
 
-/// A token the ZIG daemon issued parses at this boundary — the mid-cutover
+/// A base64url `<millis>:<id>` token parses at this boundary — the cursor
 /// claim, made where a client would actually present it.
 #[tokio::test]
-async fn a_zig_issued_cursor_is_accepted() {
+async fn a_millis_and_id_cursor_is_accepted() {
     let path = format!("{CHARGES}?cursor=MTcxMjkyNDQwMDAwMDphYmMxMjM");
     let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
-    assert_reached_the_verb(response, "zig cursor").await;
+    assert_reached_the_verb(response, "millis:id cursor").await;
 }

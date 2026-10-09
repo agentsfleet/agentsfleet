@@ -1,13 +1,12 @@
 //! The three authored strings whose shape is load-bearing, as types that
 //! cannot hold a bad one.
 //!
-//! Each is checked ONCE here and never again. `config_validate.zig` answers
-//! `void` on success, so what it validates stays a `[]const u8` afterwards and
-//! every later reader is free to re-check it or to forget to — the check and
-//! the value are separate things that travel apart. A constructor returning
-//! `Result` welds them: interior code that holds a [`FleetName`] holds proof of
-//! the check, and the defensive re-reads have nothing left to defend
-//! (`dispatch/write_rust.md` §Functional design, `M-STRONG-TYPES-GUARD`).
+//! Each is checked ONCE here and never again. A validator that answers
+//! nothing on success leaves the value a plain string, and every later reader
+//! is free to re-check it or to forget to. A constructor returning `Result`
+//! welds the check to the value: interior code that holds a [`FleetName`]
+//! holds proof of the check, and the defensive re-reads have nothing left to
+//! defend (`dispatch/write_rust.md` §Functional design, `M-STRONG-TYPES-GUARD`).
 //!
 //! # Why the character rules are not regular expressions
 //!

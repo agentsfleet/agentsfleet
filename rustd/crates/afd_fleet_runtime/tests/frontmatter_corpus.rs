@@ -1,10 +1,7 @@
 //! The committed frontmatter corpus, and the verdict each document earns.
 //!
 //! Every document under `tests/fixtures/fleetbundle/` is loaded here and pinned
-//! to the verdict this parser reaches. The corpus was once a two-parser oracle,
-//! a Zig suite reading the same bytes and pinning the same verdicts; that suite
-//! retired with the Zig daemon, so this file is now the only reader and the
-//! table below is the whole claim.
+//! to the verdict this parser reaches. The table below is the whole claim.
 //!
 //! # Mapping
 //!
@@ -19,11 +16,10 @@
 //!
 //! # Why the JSON is compared as values and not as bytes
 //!
-//! `yaml_frontmatter.zig` writes `", "` between entries and `": "` after a key;
-//! serde writes neither. Nothing downstream can see the difference — the bytes
-//! are bound as `$6::jsonb` and Postgres normalises whitespace and key order on
-//! the way in — so asserting on spacing would pin a property the product does
-//! not have. What must agree is the VALUE, and that is what is asserted.
+//! serde writes no space after `,` or `:`. Nothing downstream can see spacing —
+//! the bytes are bound as `$6::jsonb` and Postgres normalises whitespace and key
+//! order on the way in — so asserting on it would pin a property the product
+//! does not have. What must agree is the VALUE, and that is what is asserted.
 
 #![expect(
     clippy::expect_used,
@@ -43,46 +39,44 @@ const RETIRED_GATE: &str = "approval card";
 /// The two documents every first-party bundle ships.
 const BUNDLE_DOCUMENTS: [&str; 2] = ["SKILL.md", "TRIGGER.md"];
 
-/// What the corpus expects one document to answer, in the ZIG's vocabulary.
+/// What the corpus expects one document to answer, at the grain the table
+/// grades.
 ///
-/// The corpus is `config_markdown.zig`'s oracle, so the verdict a row asserts
-/// is the `FleetConfigError` that parser reaches. The Rust error set is FINER
-/// — a missing fence, unreadable YAML, a duplicated key and a wrong-typed
-/// field are four variants here and one there — so [`zig_class`] folds the
-/// Rust answer back into the Zig's vocabulary before comparing. Asserting the
-/// Rust variant directly would pin this suite to a spelling the oracle does
-/// not have, and would go green on a document the Zig refuses for a different
-/// reason entirely.
+/// The error set is FINER than this — a missing fence, unreadable YAML, a
+/// duplicated key and a wrong-typed field are four variants — so
+/// [`corpus_class`] folds each refusal onto one of these before comparing.
+/// Asserting the variant directly would pin this table to wording that changes
+/// whenever a message is sharpened, when what the corpus guards is which
+/// documents open and which are refused for which coarse reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Verdict {
     /// The document parses.
     Accepts,
-    /// `FleetConfigError.MissingRequiredField` — the Zig's catch-all, standing
-    /// for an absent key AND for every way a document can fail to open.
+    /// The document could not be opened or read: an absent key, a missing or
+    /// unclosed fence, unreadable YAML, a duplicated key, a wrong-typed value.
     MissingRequiredField,
-    /// `FleetConfigError.RuntimeKeysOutsideBlock`.
+    /// A runtime key sits at the top level instead of under `x-agentsfleet`.
     RuntimeKeysOutsideBlock,
-    /// `FleetConfigError.UnknownRuntimeKey`.
+    /// A key under `x-agentsfleet` is not one the daemon knows.
     UnknownRuntimeKey,
 }
 
-/// The Zig class a Rust refusal folds onto.
+/// The verdict a refusal folds onto.
 ///
-/// The four that collapse are the milestone's declared divergence, restated as
-/// a function so the collapse is visible rather than implied: the Zig maps a
-/// missing fence, a tokeniser failure, a duplicated key and a non-scalar key
-/// all onto `MissingRequiredField`, and so does this — for the purpose of
-/// grading the corpus, and nowhere else.
+/// A function so the collapse is visible rather than implied: a missing fence,
+/// a tokeniser failure, a duplicated key and a non-scalar key all fold onto
+/// `MissingRequiredField` — for the purpose of grading the corpus, and nowhere
+/// else. [`Class`] owns which kind lands in which group.
 ///
 /// [`None`] for a class no corpus row expects, so the caller can name the
 /// document rather than fold it into a verdict it did not earn.
-fn zig_class(failure: &Error) -> Option<Verdict> {
+fn corpus_class(failure: &Error) -> Option<Verdict> {
     match failure.class() {
         Class::Document => Some(Verdict::MissingRequiredField),
         Class::RuntimeKeyOutsideBlock => Some(Verdict::RuntimeKeysOutsideBlock),
         Class::UnknownRuntimeKey => Some(Verdict::UnknownRuntimeKey),
-        // Classes the Zig also spells separately. A corpus row reaching one is
-        // a row whose expectation somebody has to write down.
+        // Classes with no verdict of their own here. A corpus row reaching one
+        // is a row whose expectation somebody has to write down.
         Class::InvalidCredentialRef | Class::Semantic => None,
     }
 }
@@ -102,8 +96,8 @@ const CORPUS_CASES: [(&str, Kind, Verdict); 19] = [
     ("skill/full.md", Kind::Skill, Verdict::Accepts),
     // The fixture's own comment says it tests an absent `name`. It does not:
     // its `description` value carries a second `": "` — "the required name:
-    // field." — which is not a plain scalar, so BOTH daemons refuse it while
-    // tokenising, before any key is looked for. The verdict is parity and the
+    // field." — which is not a plain scalar, so the parser refuses it while
+    // tokenising, before any key is looked for. The verdict stands and the
     // row belongs here; the fixture is a corpus bug reported separately, and
     // `skill::tests::a_missing_name_names_the_key` covers what it meant to.
     (
@@ -170,11 +164,11 @@ fn verdict_of(relative: &str, kind: Kind) -> Verdict {
             Err(failure) => failure,
         },
     };
-    zig_class(&failure)
+    corpus_class(&failure)
         .unwrap_or_else(|| panic!("{relative} refused with an unclassified error: {failure}"))
 }
 
-/// Every corpus document earns the verdict the Zig suite pins for it.
+/// Every corpus document earns the verdict its row pins for it.
 ///
 /// One test over the whole table rather than one per file, because a fixture
 /// added to the corpus and not to this list is the failure worth catching, and
@@ -193,8 +187,8 @@ fn test_fleet_frontmatter_corpus_parity() {
 /// The templated bundles parse once their placeholders are filled.
 ///
 /// `context_cap_tokens: {{context_cap_tokens}}` is UNQUOTED, so the raw
-/// document is a flow-mapping token and a genuine parse error. The Zig suite
-/// substitutes before parsing and so does this one — a harness that forgot
+/// document is a flow-mapping token and a genuine parse error. This suite
+/// substitutes before parsing (`support::fixture`) — a harness that forgot
 /// would report a corpus regression that is really a missing substitution.
 #[test]
 fn the_templated_bundles_parse_once_their_placeholders_are_filled() {

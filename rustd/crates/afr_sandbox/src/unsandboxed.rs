@@ -14,7 +14,8 @@ use tokio::task::JoinHandle;
 
 use crate::bubblewrap::SOCKET_NAME;
 use crate::engine::{Engine, HostWorkspace, Sandbox, SandboxRequest};
-use crate::error::{ErrorKind, Result, unconfined};
+use crate::error::{EgressRefusal, ErrorKind, Result, egress_refused, unconfined};
+use crate::network::Allowlist;
 
 /// The workspace directory inside each lease's scratch directory.
 const WORKSPACE_DIR: &str = "workspace";
@@ -123,6 +124,12 @@ impl Sandbox for Unconfined {
 
     async fn thaw(&self) -> Result<()> {
         Err(unconfined(NO_FREEZER))
+    }
+
+    /// Refused: it shares the host's network and holds nothing to an
+    /// allowlist.
+    async fn reallow(&mut self, _allowlist: &Allowlist) -> Result<()> {
+        Err(egress_refused(EgressRefusal::NoScope))
     }
 
     async fn destroy(self: Box<Self>) -> Result<()> {

@@ -187,26 +187,6 @@ fn test_a_host_without_landlock_refuses_every_lease() {
     assert_eq!(refused.missing_mechanism(), Some("landlock"));
 }
 
-#[test]
-fn test_a_toolbox_other_than_the_configured_one_is_refused() {
-    let mut host = FakeHost::new(SLEEPER);
-    host.config.toolbox_digest = "another".to_owned();
-    let capture = Capture::install();
-
-    let refused = BubblewrapEngine::new(host.config.clone(), &host.probe).unwrap_err();
-
-    assert!(
-        refused.to_string().contains("configured for another"),
-        "{refused}"
-    );
-    assert!(
-        capture
-            .only("sandbox_host_refused")
-            .field("error_code")
-            .is_some()
-    );
-}
-
 #[tokio::test]
 async fn test_a_sandbox_that_dies_reports_it_is_no_longer_running() {
     let host = FakeHost::new(BRIEF);

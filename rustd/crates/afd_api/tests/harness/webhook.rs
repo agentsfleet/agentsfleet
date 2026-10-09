@@ -134,8 +134,8 @@ pub(crate) fn signature_at(
 
 /// An approval callback's headers: its proof and the instant that proof covers.
 ///
-/// The names are `approval.zig`'s, read from the handler rather than spelled
-/// again here — a header name is a wire contract, and two spellings of one
+/// The names are `afd_api_ingress`'s own constants, read from the handler
+/// rather than spelled again here — a header name is a wire contract, and two spellings of one
 /// contract is the defect this indirection prevents.
 pub(crate) fn approval_headers<'d>(
     signature: &'d str,

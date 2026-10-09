@@ -66,6 +66,17 @@ uuid.workspace = true
 landlock.workspace = true
 libc.workspace = true
 seccompiler.workspace = true
+# The egress scope: the veth pair, its addresses and its route over route
+# netlink, the host-side allowlist over nf_tables.
+netlink-sys.workspace = true
+netlink-packet-core.workspace = true
+netlink-packet-route.workspace = true
+netlink-packet-netfilter.workspace = true
+
+[features]
+# M-TEST-UTIL. What the kernel lane proves egress against: the host's egress
+# objects, a killed run's leftovers, and a host past the sandbox's link.
+test-util = []
 
 [dev-dependencies]
 afd_core = { workspace = true, features = ["test-util"] }
@@ -84,6 +95,12 @@ tempfile.workspace = true
 # The checkout's interrupt in the kernel lane.
 tokio-util.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }
+
+# The kernel lane proves egress with the `test-util` far host; run without it,
+# it refuses to build rather than skip those trials.
+[[example]]
+name = "kernel_lane"
+required-features = ["test-util"]
 
 # Confines a child process and reads back what it said; it has its own `main`
 # because confinement cannot be undone inside a harness with tests left to run.

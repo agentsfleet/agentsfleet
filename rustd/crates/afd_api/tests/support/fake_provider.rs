@@ -27,14 +27,13 @@
 //! first connect, so the assertion carrying the property is that the token
 //! endpoint was asked exactly once.
 //!
-//! # A SEQUENCE of answers, which is the reference implementation's shape
+//! # A SEQUENCE of answers
 //!
-//! `oauth_providers_integration_test.zig`'s `FakeProvider` holds
-//! `bodies: []const []const u8` and a cursor, so consecutive requests get
-//! consecutive answers — it is how that suite drives Jira's token call and its
-//! site listing from one server. The same shape is what lets a reconnect here
-//! be one server issuing two different tokens rather than two servers, which
-//! keeps the exchange count continuous across both halves of that test.
+//! [`FakeProvider`] holds the answers it was built from and a cursor, so
+//! consecutive requests get consecutive answers. That shape is what lets a
+//! reconnect here be one server issuing two different tokens rather than two
+//! servers, which keeps the exchange count continuous across both halves of
+//! that test.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

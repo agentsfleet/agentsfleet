@@ -15,10 +15,10 @@
 //!
 //! `vault.secrets` carries `meta_provider` and `meta_has_key` beside the
 //! ciphertext precisely so a caller can ask what KIND of credential a row holds
-//! without holding it. `tenant_provider.zig` decrypts to answer this; reading
-//! the metadata instead means the refusal path never has a plaintext key in
-//! memory at all — one fewer place a key exists, on the path most likely to be
-//! walked by a client getting it wrong. The activation transaction asks this
+//! without holding it. Reading the metadata instead of decrypting means the
+//! refusal path never has a plaintext key in memory at all — one fewer place a
+//! key exists, on the path most likely to be walked by a client getting it
+//! wrong. The activation transaction asks this
 //! of the meta columns on the vault row it has already locked, so the answer
 //! costs no extra statement.
 

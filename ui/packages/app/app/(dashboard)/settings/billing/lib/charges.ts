@@ -58,7 +58,8 @@ export function displayModelName(model: string): string {
   return modelId.replaceAll(/[-_]/g, " ");
 }
 
-// recorded_at is epoch **milliseconds** (src/state/tenant_billing.zig `*_at_ms`).
+// recorded_at is epoch **milliseconds** (`ChargeSummary::recorded_at` in
+// rustd/crates/afd_api_wire/src/tenant.rs, read from the ledger's `created_at`).
 // "Jun 15, 2026 · 17:33" mirrors the ledger date format in the approved mockup —
 // the en-US date format already yields "MMM DD, YYYY"; the mono separator joins
 // the 24h time. Two formatters avoid an untestable formatToParts fallback.

@@ -10,10 +10,8 @@
 //! reach this type: the stream would not answer, the group could not be
 //! created, the dedicated connection would not open.
 //!
-//! `worker.zig` reaches the same split by returning `Outcome` from every
-//! delivery path and swallowing its Dragonfly errors into a `catch` that logs. The
-//! difference is that here the two categories have different types, so a raise
-//! site cannot put a delivery failure where a loop failure goes.
+//! The two categories have different types, so a raise site cannot put a
+//! delivery failure where a loop failure goes.
 
 use afd_core::error_code::{self, ErrorCode};
 

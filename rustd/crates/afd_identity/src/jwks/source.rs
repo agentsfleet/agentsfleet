@@ -2,9 +2,8 @@
 //!
 //! The seam exists so Dimension 4.2's hardest claim — *a key-id miss triggers
 //! EXACTLY ONE refresh* — is a counter a test reads, not a behaviour inferred
-//! from network traces. It also lets the whole verifier run against the Zig
-//! daemon's own fixtures, which is what makes the two binaries' signature
-//! verification comparable at all.
+//! from network traces. It also lets the whole verifier run against pinned
+//! key-set fixtures with no network at all.
 
 use afd_auth::verifier::VerifyError;
 
@@ -26,29 +25,25 @@ pub trait KeySetSource: Send + Sync + std::fmt::Debug {
 
 /// Upper bound on a key-set document, in bytes.
 ///
-/// `jwks_fetch.zig`'s `JWKS_MAX_RESPONSE_BYTES`, and the same number for the
-/// same reason: real key sets are a few kilobytes, and the URL is
-/// config-controlled rather than trusted. The Zig comment is careful that the
-/// cap counts DECOMPRESSED bytes, because a few kilobytes of deflated zeroes
-/// inflates past any wire limit. This daemon never negotiates a
-/// content-encoding (see the `reqwest` note in the workspace manifest), so wire
-/// bytes and decoded bytes are the same bytes and the cap is correct with no
-/// streaming decompressor to size.
+/// Real key sets are a few kilobytes, and the URL is config-controlled rather
+/// than trusted. The cap must count DECOMPRESSED bytes, because a few
+/// kilobytes of deflated zeroes inflates past any wire limit. This daemon never
+/// negotiates a content-encoding (see the `reqwest` note in the workspace
+/// manifest), so wire bytes and decoded bytes are the same bytes and the cap is
+/// correct with no streaming decompressor to size.
 pub const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 
 /// Redirects followed before giving up.
 ///
-/// `jwks_fetch.zig`'s `MAX_REDIRECTS`: identity providers commonly front a key
-/// set with one hop, and three covers a chained content-delivery redirect
-/// without following forever.
+/// Identity providers commonly front a key set with one hop, and three covers a
+/// chained content-delivery redirect without following forever.
 pub const MAX_REDIRECTS: usize = 3;
 
 /// A source that answers from bytes already in hand.
 ///
-/// Ships in the library rather than behind `test-util` because it is what the
-/// Zig daemon's `inline_jwks_json` config knob is: a deployment — and every
-/// integration harness — may pin a key set instead of fetching one. Counting
-/// its reads is what proves the refresh policy.
+/// Ships in the library rather than behind `test-util` because a deployment —
+/// and every integration harness — may pin a key set instead of fetching one.
+/// Counting its reads is what proves the refresh policy.
 #[derive(Debug)]
 pub struct StaticKeySet {
     document: std::sync::Mutex<Box<[u8]>>,
