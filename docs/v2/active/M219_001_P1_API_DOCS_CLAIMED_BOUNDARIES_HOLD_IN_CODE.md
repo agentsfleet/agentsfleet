@@ -1,0 +1,298 @@
+<!--
+SPEC AUTHORING RULES (load-bearing — the one comment that survives):
+- Body order = the executing agent's read order. Fill via the orly-spec-new
+  skill (authoring order lives there); after filling, DELETE every "tpl:"
+  guidance comment — the SPEC TEMPLATE GATE blocks tpl residue, unfilled
+  {slots}, and missing required sections (.orly/audits/spec-template.sh --staged).
+- No time/effort/hour/day estimates anywhere. No effort columns, complexity
+  ratings, percentage-complete, implementation dates, assigned owners.
+- Priority (P0/P1/P2/P3) is the only sizing signal; Dependencies are the only
+  sequencing signal. A section that contradicts these rules loses — delete it.
+-->
+
+# M219_001: The sandbox, fence, connector, egress, Slack and token boundaries hold in code
+
+**Prototype:** v2.0.0
+**Milestone:** M219
+**Workstream:** 001
+**Date:** Oct 09, 2026
+**Status:** IN_PROGRESS
+**Priority:** P1 — boundaries the architecture pages promise to operators and tenants, read against code and found open
+**Categories:** API (the Rust daemon and runner crates), DOCS (the architecture pages whose claims these fixes make true)
+**Batch:** B1 — every Section is independent of the others; §7 and §8 share one test file
+**Branch:** docs/event-runtime-positioning
+**Baseline revision:** 2bf456efdf7be559b6c67a2e254dc92600d257b2
+**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Depends on:** none. It ships in the `docs/event-runtime-positioning` Pull Request (PR) beside the positioning work, at Indy's direction; that branch's first commit predates this spec, so `spec.ordering` needs Indy's override at the PR gate.
+**Provenance:** LLM-drafted (Claude Opus 5.5, Oct 09, 2026) from the `/review` of `docs/event-runtime-positioning` at `bbf220b27`: the adversarial and red-team passes, then five verification agents that read each finding's code path at that revision.
+**Canonical architecture:** `docs/architecture/runner_execution.md` §Isolation, `docs/architecture/connectors.md`, `docs/AUTH.md`
+
+---
+
+## Overview
+
+**Goal (testable):** Each boundary an architecture page states holds against a caller that obeys the wire format but not the happy path: a superseded runner, a racing Disconnect, an unlisted request field, model-written markup, an unrequested token permission.
+**Problem:** Six boundaries are weaker in code than on the page. A host process sharing the sandbox user can read the runner's credential from the launcher. A runner that lost a fleet can still reach its memory and mint its tokens. A Disconnect racing a reconnect can strand routing rows or a live handle. Locked GitHub write rules admit fields and query strings they never name. A final Slack answer renders model-written markup. Token verification accepts any unrequested read.
+**Solution summary:** Six local fixes, one per boundary, each with a test that fails on today's code, plus two money fixes: a stopped fleet's run keeps its ceiling (§7), and a catalogue fault charges tokens late instead of never (§8). No schema change, no endpoint change; one additive wire field (§4).
+
+## PR Intent & comprehension handshake
+
+- **PR title (eventual):** feat: position agentsfleet as an event runtime, and close the boundaries its docs claim
+- **Intent (one sentence):** What the docs promise about isolation, fencing, connectors, egress, Slack and tokens becomes what the code enforces, each proven by a test that fails today.
+- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+
+## Implementing agent — read these first
+
+1. `rustd/crates/afd_fleet/src/lease/standing.rs` — `fence_holds`, the one fence rule report and renew already use; §2 routes memory and minting through it.
+2. `rustd/crates/afd_vault/src/write.rs` — `create_in` on a caller's transaction and the note that vault and connector rows share one Postgres; §3 mirrors it for delete.
+3. `rustd/crates/afd_gate/src/policy/egress/write.rs` — the module note on why objects are open and refs are locked; §4 narrows "open" for commits and records why.
+4. `rustd/crates/afd_outbound/src/interim.rs` — `literal` and `SLACK_ENTITIES`, the escaping §5 moves to the poster.
+5. `docs/AUTH.md` — token minting and credential verification invariants; §2 and §6 change both.
+
+## Files Changed (blast radius)
+
+| File | Action | Why |
+|------|--------|-----|
+| `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` | EDIT | The launcher starts with an empty environment |
+| `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/prepare.rs` | EDIT | Empty-environment and log-level tests |
+| `rustd/crates/afd_fleet/src/lease/fence.rs` | EDIT | Fence reads return the lease's own token beside the live sequence |
+| `rustd/crates/afd_fleet/src/lease/memory.rs` | EDIT | Capture, recall and hydrate decide through `fence_holds` |
+| `rustd/crates/afd_fleet/src/lease/sql/lease.rs` | EDIT | The mint scope read requires the lease to hold the live sequence |
+| `rustd/crates/afd_fleet/tests/integration_memory_capture.rs` | EDIT | The test admitting a token above the live sequence is inverted; superseded-lease cases |
+| `rustd/crates/afd_fleet/tests/integration_credential_mint/cases.rs` | EDIT | A superseded active lease mints nothing |
+| `rustd/crates/afd_vault/src/delete.rs` | EDIT | `delete_in` on a caller's transaction; `delete` wraps it |
+| `rustd/crates/afd_connector/src/grant/holding.rs` | EDIT | `forget` is one transaction; its "different stores" note is corrected |
+| `rustd/crates/afd_connector/src/grant.rs` | EDIT | `land` writes the vault row before routing, as its module note already says |
+| `rustd/crates/afd_connector/tests/integration_connect_roundtrip/cases.rs` | EDIT | Refused-delete and racing-reconnect cases |
+| `rustd/crates/afd_wire/src/policy.rs` | EDIT | `HttpRequestRule` gains `permitted_fields`, serde-defaulted |
+| `rustd/crates/afr_egress/src/origin.rs` | EDIT | A rule naming fields admits only those keys and no query string |
+| `rustd/crates/afr_egress/src/origin/tests.rs` | EDIT | Unlisted key, query string and admitted-draft cases |
+| `rustd/crates/afd_gate/src/policy/egress/write.rs` | EDIT | Permitted fields per endpoint; commits name theirs |
+| `rustd/crates/afd_outbound/src/slack.rs` | EDIT | The poster escapes every answer; `literal` lives here |
+| `rustd/crates/afd_outbound/src/interim.rs` | EDIT | Interim lines hand raw text to the poster |
+| `rustd/crates/afd_outbound/tests/integration_slack_poster.rs` | EDIT | An answer naming the channel posts as text |
+| `rustd/crates/afd_credential/src/credential/github.rs` | EDIT | Only `metadata: read` may arrive unrequested |
+| `rustd/crates/afd_credential/src/credential/github/tests.rs` | EDIT | Unrequested-read cases |
+| `rustd/crates/afd_fleet/src/lease/coverage.rs` | EDIT | §7: the ceiling read ignores fleet status |
+| `rustd/crates/afd_fleet/src/lease/installed.rs` | EDIT | §7: a stored-config read with no status filter |
+| `rustd/crates/afd_fleet/tests/integration_renew_coverage.rs` | EDIT | §7: killed-fleet ceiling cases replace the stopped-fleet case |
+| `rustd/crates/afd_fleet/src/lease/renew.rs` | EDIT | §8: a catalogue fault meters zero tokens and logs |
+| `rustd/crates/afd_fleet/tests/integration_renew_coverage.rs` | EDIT | §8: the late-charge case, beside the other renewal money gates |
+| `docs/architecture/connectors.md` | EDIT | Disconnect is one transaction |
+| `docs/architecture/runner_fleet.md` | EDIT | §7: kill keeps the ceiling on a run in flight |
+| `docs/architecture/scenarios/github-pr-reviewer.md` | EDIT | Token verification claim matches §6 |
+| `docs/architecture/billing_and_provider_keys.md` | EDIT | §8: renewal pricing during a catalogue fault |
+| `docs/v2/active/M219_001_P1_API_DOCS_CLAIMED_BOUNDARIES_HOLD_IN_CODE.md` | CREATE | This spec |
+
+## Applicable Rules
+
+- **`.orly/docs/greptile-learnings/RULES.md`** — One owner per resource (OWN): the vault row orders Connect against Disconnect. Distinguish error classes (ECL): a catalogue fault is not an unpriced model. Escape control characters in emission (ESC) and prompt-injection resistance from user input (PRI): §5. A test that cannot fail is not a test (TCF): every inverted pinning test is red on today's code. Test naming (TST-NAM), literals as named constants (UFS: field names in §4, the event in §8), No Legacy Retained (NLR: wrong comments corrected in the commit that fixes the code), orphan sweep (ORP).
+- `.orly/dispatch/write_rust.md` — ERR-RS and UFS fire on every `*.rs` edit; reviews cite `M-STRONG-TYPES-GUARD` (§4's field sets) and `M-MOCKABLE-SYSCALLS` (§1's launcher seam).
+- `.orly/dispatch/write_sql.md` — §2 changes two fence reads and the mint scope read; §3 moves a delete into a transaction.
+- `docs/AUTH.md` — §2 and §6 change who may mint and what a minted token may carry.
+- `.orly/docs/LOGGING_STANDARD.md` §8A — §8's warning is a literal `tracing::warn!` with a named event.
+- `docs/RUST_ERROR_STANDARD.md` — no new error type; refusals reuse existing codes.
+
+## Applicable Gates
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| File & Function Length (≤350/≤50/≤70) | Yes | `holding.rs` and `origin.rs` grow; a file nearing 350 lines splits by concern |
+| UFS / LOGGING / RUST ERR | Yes | Permitted field names are constants beside the locked ones; one event constant for §8 |
+| MILESTONE-ID | Yes | No milestone identifiers in code or test names |
+| SCHEMA | No | No migration; §3 reorders writes inside existing tables |
+| Auth (`write_auth`) | Yes, §2 and §6 | `docs/AUTH.md` read before the edit; its minting and verification text updated in the same commit |
+| SPEC TEMPLATE | Yes | `bash .orly/audits/spec-template.sh --staged` on every spec edit |
+
+## Prior-Art / Reference Implementations
+
+- **Fence:** `sql/report.rs` and `standing.rs` — the stored token must equal the presented one and be at or above the live sequence; §2 makes memory and minting say the same thing.
+- **Transactional vault write:** `afd_vault/src/write.rs` `create_in`, already used by `land`; §3 adds its delete twin.
+- **Escaping:** `afd_outbound/src/interim.rs` `literal`, already proven by `an_interim_line_naming_the_channel_posts_as_text`.
+- **Environment discipline:** `afr_executor/src/server/launch.rs`, which clears the environment for every tool spawn; §1 applies it one level up.
+
+## Sections (implementation slices)
+
+### §1 — The sandbox launcher inherits no environment
+
+bubblewrap starts from the supervisor's environment today, so the host-side monitor's `/proc/<pid>/environ` holds what the root runner was started with. `Parts::spawn` clears the environment before exec. bubblewrap needs none: the entry is an absolute path, and the log level already travels by `--setenv`. **Implementation default:** clear in `Parts::spawn` rather than per caller, because it is the one place every engine spawn passes through.
+
+- **Dimension 1.1** — The launcher sees no inherited variable → Test `test_bubblewrap_starts_with_an_empty_environment`
+- **Dimension 1.2** — A configured log level still reaches the entry → Test `test_bubblewrap_passes_the_log_level_by_setenv`
+
+### §2 — Memory and minting accept only the holder's own token
+
+Report and renew admit a request only when the lease's stored token equals the presented one and is at or above the fleet's live sequence (`fence_holds`). Capture and recall check only `presented < live`, hydrate checks only that the lease exists, and minting checks neither. The fence reads return the lease's own token; every memory verb decides through `fence_holds`; the mint scope read joins `fleet.runner_affinity` and requires the lease's token to be at or above `fencing_seq`. The affinity row stays the authority. No wire change: the runner already presents its token.
+
+- **Dimension 2.1** — Capture refuses a token above the live sequence → Test `test_memory_capture_refuses_a_token_that_is_not_the_holders`
+- **Dimension 2.2** — Capture, recall and hydrate refuse an active lease the fleet has moved past → Test `test_memory_routes_refuse_a_superseded_active_lease`
+- **Dimension 2.3** — Minting refuses an active lease the fleet has moved past → Test `test_mint_refuses_a_superseded_active_lease`
+
+### §3 — Disconnect commits both stores or neither
+
+`forget` deletes routing rows in one commit and the vault handle in another; `land` writes routing before the vault row. Both stores are one Postgres. `afd_vault` gains `Directory::delete_in` on a caller's transaction. `forget` runs one transaction: vault delete first, routing rows second, then commit. `land` writes the vault row before routing. Both paths take the vault row lock first, so they serialize and cannot deadlock. **Implementation default:** no advisory lock, because the row lock already orders the two.
+
+- **Dimension 3.1** — A refused vault delete leaves the routing rows in place → Test `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows`
+- **Dimension 3.2** — A reconnect racing a Disconnect ends with routing rows exactly when a handle exists → Test `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither`
+
+### §4 — A locked GitHub write rule admits only what it names
+
+The matcher compares method, path and locked fields, and passes any other body key and any query string. `HttpRequestRule` gains `permitted_fields`. A rule that names fields admits a body whose top-level keys are all locked or permitted, and a URL with no query. `/pulls` permits `title`, `body` and `maintainer_can_modify` beside its three locked fields; `/git/refs` permits `sha` beside `ref`; `/git/commits` permits `message`, `tree` and `parents`, so GitHub attributes every commit to the App. **Implementation default:** commits leave the "objects are open" set, because a ref publishes the commit's stated identity. An older runner ignores the new field and stays as open as today; runners deploy with the daemon.
+
+- **Dimension 4.1** — An unlisted key or a query string under a locked rule is refused → Test `should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule`
+- **Dimension 4.2** — A commit naming its own author, committer or signature is refused → Test `should_refuse_a_commit_that_names_its_own_identity`
+- **Dimension 4.3** — The draft Pull Request a binding authorises is still admitted → Test `should_admit_the_draft_pull_request_a_binding_authorises`
+
+### §5 — A final Slack answer posts as literal text
+
+Interim lines are escaped; final answers go out as written, so a model can notify a channel or mask a link's target. `literal` and `SLACK_ENTITIES` move into `slack.rs`; `SlackPoster::post` escapes every answer; interim delivery hands raw text over so nothing is escaped twice. The stored copy the dashboard shows stays raw. Indy chose to fold this in on Oct 09, 2026 (Discovery).
+
+- **Dimension 5.1** — An answer carrying a channel mention and a masked link posts as entities → Test `an_answer_naming_the_channel_posts_as_text`
+- **Dimension 5.2** — An interim line is escaped exactly once → Test `an_interim_line_naming_the_channel_posts_as_text`
+
+### §6 — An installation token carries nothing unrequested but metadata
+
+`verify_permissions` passes any unrequested permission at read level. It passes only `metadata: read`; any other unrequested name, at any level, is `Overreach`. **Implementation default:** the grant row records no scope, because a workspace member already holds `FleetWrite` (`afd_http/src/auth/ownership/role.rs` withholds only secret and connector writes) and can install a write fleet directly, so a recorded scope would close no hole.
+
+- **Dimension 6.1** — An unrequested read other than `metadata` is refused → Test `verify_refuses_an_unrequested_read_other_than_metadata`
+- **Dimension 6.2** — `metadata: read` beside exactly the requested set passes → Test `verify_admits_metadata_beside_the_request`
+- **Dimension 6.3** — A live dev mint for the pull-request reviewer fleet passes the tightened check → Test `dev_mint_passes_the_tightened_verify` (manual)
+
+### §7 — A stopped fleet's run keeps its ceiling
+
+`installed()` returns nothing for a fleet that is not active, and `budget_covers` then admits the renewal with no ceiling, so a killed fleet's run renews up to `MAX_RUNTIME_MS` bounded only by the tenant wallet. A stored-config read with no status filter feeds `budget_covers`; an absent row means only a purge race. A kill still never cancels a run with room left.
+
+- **Dimension 7.1** — A killed fleet past its ceiling is not renewed → Test `a_fleet_killed_mid_run_keeps_its_breached_ceiling`
+- **Dimension 7.2** — A killed fleet with room still renews → Test `a_fleet_killed_mid_run_with_room_still_renews`
+
+### §8 — A catalogue fault charges tokens late instead of never
+
+A renewal whose catalogue read fails meters at run-fee rates with the real counts, so the token cursor moves past tokens charged at zero. It meters zero counts instead: the run fee is charged, the cursor stays, and the next priced renewal or the report charges the tokens. A warning names the fault. **Preparation:** find or add a catalogue fault seam the integration lane can trigger; without one, 8.1 runs at the plane with a failing catalogue.
+
+- **Dimension 8.1** — Tokens reported during a catalogue fault are charged at the next priced renewal → Test `a_renewal_during_a_catalogue_fault_charges_its_tokens_later`
+- **Dimension 8.2** — The fault is logged with its event → Test `a_catalogue_fault_logs_the_held_tokens`
+
+## Interfaces
+
+```
+afd_wire::policy::HttpRequestRule
+  + permitted_fields: Vec<String>   // #[serde(default)]; empty = today's behaviour for a rule with no locked fields
+afd_vault::Directory
+  + delete_in(&self, tx: &mut Transaction, workspace, name) -> Result<Deleted>
+afd_fleet (§7)  Leases::stored_config(&Uuid7) -> Result<Option<FleetConfig>>
+Slack chat.postMessage body: `text` is entity-escaped for & < >; `metadata` unchanged
+```
+
+No HTTP route, status code or error code changes. Refusals reuse `RUN_STALE_FENCING_TOKEN`, `lease_not_found`, `budget_exhausted` and the egress refusal codes.
+
+## Failure Modes
+
+| Mode | Cause | Handling (system response + what the caller observes) |
+|------|-------|--------------------------------------------------------|
+| Stale holder | A runner presents a token that is not its lease's, or holds a lease the fleet moved past | Memory verbs refuse with the stale-fence code; mint answers lease not found; nothing is read, stored or minted |
+| Vault delete refused | A model entry still references the grant key | `forget` rolls back; routing rows stay; Disconnect reports the refusal |
+| Concurrent Connect and Disconnect | Callback and Disconnect run together | The vault row lock serializes them; the end state has routing rows only with a handle |
+| Unlisted request shape | A tool sends a field or query a locked rule does not name | Egress refuses before the request leaves the sandbox; the tool reads the refusal |
+| Markup in an answer | Model output carries `<!channel>` or `<url\|label>` | Posted as entities; Slack renders the characters |
+| GitHub returns another ambient read | A token response lists an unrequested read besides `metadata` | Mint refuses as overreach and logs it; 6.3 proves the live response first |
+| Catalogue unavailable (§8) | The pricing read fails during renewal | Run fee charged, tokens held at the cursor, warning logged; the run continues |
+
+## Invariants
+
+1. Only the holder's exact, current token passes a fenced verb — every fenced read decides through `fence_holds`; R2 counts no other comparison.
+2. Routing rows exist only beside a vault handle — `land` and `forget` each run in one transaction that locks the vault row first.
+3. A rule that names fields admits nothing it does not name — the matcher rejects any key outside the locked and permitted sets and any query string.
+4. Model text reaches Slack only through `literal` — the poster is the one path to `chat.postMessage`.
+5. bubblewrap's environment is exactly what `--setenv` names — `Parts::spawn` clears it before exec.
+
+## Metrics & Observability
+
+| Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
+|----------------|-------|------------|--------------------|---------------|------------|
+| `renew_tokens_held_for_pricing` (§8 only) | ops | A renewal's catalogue read fails | `fleet_id`, `lease_id`, `reason` | No token counts or prices beyond the fault reason | `a_catalogue_fault_logs_the_held_tokens` |
+| All other Sections: no product or operator signal changes | not applicable | never | none | Existing refusal events keep their names | `test_memory_routes_refuse_a_superseded_active_lease` |
+
+## Test Specification (tiered)
+
+| Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
+|-----------|------|------|---------------------------------------------|
+| 1.1 | unit | `test_bubblewrap_starts_with_an_empty_environment` | A fake launcher prints an inherited marker and fails → the refusal reason carries no marker; red today |
+| 1.2 | unit | `test_bubblewrap_passes_the_log_level_by_setenv` | Log level set → argv carries `--setenv RUST_LOG <level>` |
+| 2.1 | integration | `test_memory_capture_refuses_a_token_that_is_not_the_holders` | Live token + 1 and `u64::MAX` → stale-fence refusal, store empty; the live token stores |
+| 2.2 | integration | `test_memory_routes_refuse_a_superseded_active_lease` | `fencing_seq` bumped, lease still active → capture, recall and hydrate refused |
+| 2.3 | integration | `test_mint_refuses_a_superseded_active_lease` | Same setup → mint answers lease not found; the live holder still mints |
+| 3.1 | integration | `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows` | Model entry references the grant key → `forget` errs, routing row present |
+| 3.2 | integration | `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` | Vault row held `FOR UPDATE`, `land` and `forget` both waiting, then released → routing rows present iff the handle is |
+| 4.1 | unit | `should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule` | `{"issue":7}` on `/pulls` and `/pulls?draft=false` → refused |
+| 4.2 | unit | `should_refuse_a_commit_that_names_its_own_identity` | `author`, `committer` or `signature` on `/git/commits` → refused |
+| 4.3 | unit | `should_admit_the_draft_pull_request_a_binding_authorises` | title, body, head, base, `draft:true` → admitted |
+| 5.1 | integration | `an_answer_naming_the_channel_posts_as_text` | Answer `<!channel> <https://x.example\|docs>` → wire text `&lt;!channel&gt; &lt;https://x.example\|docs&gt;` |
+| 5.2 | integration | `an_interim_line_naming_the_channel_posts_as_text` | Interim `<!channel>` → `&lt;!channel&gt;`, not `&amp;lt;` |
+| 6.1 | unit | `verify_refuses_an_unrequested_read_other_than_metadata` | Response adds `administration: read` → overreach |
+| 6.2 | unit | `verify_admits_metadata_beside_the_request` | Requested set plus `metadata: read` → passes |
+| 6.3 | manual | `dev_mint_passes_the_tightened_verify` | A dev pull-request reviewer lease mints; the PR records the response's permission names |
+| 7.1 | integration | `a_fleet_killed_mid_run_keeps_its_breached_ceiling` | Budget exhausted, status killed → renewal refused with `budget_exhausted`; red today |
+| 7.2 | integration | `a_fleet_killed_mid_run_with_room_still_renews` | Budget with room, status killed → renews |
+| 8.1 | integration | `a_renewal_during_a_catalogue_fault_charges_its_tokens_later` | Counts 10k→25k under a fault, 40k priced → the second renewal charges 30k tokens |
+| 8.2 | unit | `a_catalogue_fault_logs_the_held_tokens` | Fault injected → one `renew_tokens_held_for_pricing` warning |
+
+Regression: the existing memory, mint, connect-roundtrip, egress and Slack poster suites pass unchanged; `a_fleet_stopped_mid_run_still_renews_the_lease_in_flight` is replaced by 7.1 and 7.2.
+
+## Acceptance Rubric (single scoring surface)
+
+| # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
+|---|--------------------------------|---------------------|----------|----------|-----------------|
+| R1 | The launcher clears its environment (§1) | `git grep -c 'env_clear()' -- rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` | `1` | P0 | |
+| R2 | No fenced verb compares tokens by hand (§2) | `git grep -nE 'token < live\|presented < live' -- rustd/crates/afd_fleet/src` | no output | P0 | |
+| R3 | No "different stores" reasoning survives (§3) | `git grep -n 'different stores' -- rustd/crates/afd_connector docs/architecture/connectors.md` | no output | P0 | |
+| R4 | One escaping function, owned by the poster (§5) | `git grep -n 'fn literal' -- rustd/crates/afd_outbound/src` | one line, in `slack.rs` | P0 | |
+| R5 | This spec's diff stays inside Files Changed | `git diff --name-only $(git log --diff-filter=A --format=%H -- 'docs/v2/*/M219_001_*.md' \| tail -1)..HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
+| S2 | Lint passes | `make lint-all` | exit 0 | P0 | |
+| S3 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
+| S4 | Integration passes | `make test-integration-rustd` | exit 0 | P0 | |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+
+**Grading protocol (VERIFY):** run each Verify command verbatim; Graded = ✅/❌ plus one decisive output line. Repository-command rows point at the final `orly gate pr` results in PR Session Notes.
+
+## Dead Code Sweep
+
+N/A — no files deleted. `literal` moves from `interim.rs` to `slack.rs`; R4 proves one copy remains.
+
+## Out of Scope
+
+- A host user per lease, which would end the shared sandbox uid; §1 removes what that uid could read.
+- Recording an approved scope on the grant row (§6 explains why it closes no hole).
+- Pricing a run whose final report meets a catalogue fault; §8 covers renewals only.
+- The deploy drain and its cancellation behaviour, which Indy chose to leave as they are on Oct 09, 2026.
+
+---
+
+## Product Clarity (authoring record)
+
+1. **Successful user moment** — An operator reads a boundary in the architecture docs, and the test named beside it fails on the old code and passes on the new.
+2. **Preserved user behaviour** — Draft pull requests, memory, Connect and Disconnect, Slack answers and minting work as today for every caller on the happy path; kill still never cancels a run with room.
+3. **Optimal-way check** — Each fix sits at the one place the boundary is decided, not at its callers.
+4. **Rebuild-vs-iterate** — Iterate; each boundary already has an owner that is close to right.
+5. **What we build** — Six fixes, their tests, and the doc lines that describe them; two more on Indy's yes.
+6. **What we do NOT build** — Per-lease host users, grant scope columns, report-time repricing.
+7. **Fit with existing features** — Compounds with the report and renew fence; must not destabilize the pull-request reviewer's draft flow (4.3 and 6.3 guard it).
+8. **Surface order** — N/A — no new surface; Slack answers render masked links as text.
+9. **Dashboard restraint** — N/A — no dashboard change.
+10. **Confused-user next step** — An egress refusal names the rule and the field; a Slack answer shows the characters the model wrote.
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** One Section per boundary, so each fix and its test review alone; §7 and §8 last because they wait on a decision.
+- **Alternatives considered:** An advisory lock for §3 (rejected: the vault row lock already orders both paths); a schema column for §6 (rejected: closes no hole); a separate Slack spec (rejected by Indy's fold decision).
+- **Patch-vs-refactor verdict:** this is a **patch** because every boundary has a correct owner that admits too much; none needs a new layer.
+
+## Discovery (consult log)
+
+- **Consults** — Review of `docs/event-runtime-positioning` at `bbf220b27` (Oct 09, 2026): adversarial and red-team passes raised the findings; five verification agents read each code path and confirmed, refuted or narrowed it. Refuted: a killed fleet posting messages (`message.rs` refuses it). Narrowed: §1 is unreachable from inside the sandbox; §6 is not a cross-role escalation. Indy chose to fold the security findings into the positioning work, then on Oct 09, 2026 chose "Fold now (Recommended)" for Slack answer escaping, which M212 had left for later with the quote "slack escaping skip follow up spec, let me test and fix it later". Agent choice with evidence: §6 verify only. Indy then chose the branch, §7 and §8 together:
+  > Indy (2026-10-09 13:03): "I think fix all the M219 + 1, 2, 3 in this PR and push, so we can test" — context: 1 = this spec ships on `docs/event-runtime-positioning`; 2 = §7, a killed fleet keeps its ceiling; 3 = §8, a catalogue fault charges tokens late.
+- **Metrics review** — One operator warning in §8; no analytics or funnel playbook update required, because no product event changes.
+- **Skill-chain outcomes** — pending.
+- **Deferrals** — none.
