@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — every Section is independent of the others; §7 and §8 share one test file
 **Branch:** docs/event-runtime-positioning
 **Baseline revision:** 2bf456efdf7be559b6c67a2e254dc92600d257b2
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=4485 integration=899 — Rust unit 4485 passed, 0 failed, 924 ignored; Rust integration 897 + 2 exclusive passed at `2bf456efd`; the TypeScript lanes and the branch counts are in the evidence report
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M219_001-2bf456efd.md`
 **Depends on:** none. It ships in the `docs/event-runtime-positioning` Pull Request (PR) beside the positioning work, at Indy's direction; that branch's first commit predates this spec, so `spec.ordering` needs Indy's override at the PR gate.
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 09, 2026) from the `/review` of `docs/event-runtime-positioning` at `bbf220b27`: the adversarial and red-team passes, then five verification agents that read each finding's code path at that revision.
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Isolation, `docs/architecture/connectors.md`, `docs/AUTH.md`
@@ -87,7 +87,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/{runner_fleet.md,lease_flow.md}` | EDIT | §7: kill keeps the ceiling on a run in flight; §4: the GitHub write set names its fields |
 | `docs/architecture/scenarios/{github-pr-reviewer.md,production-deploy-repair.md}` | EDIT | Token verification claim matches §6; the repair rules name their fields (§4) |
 | `docs/architecture/billing_and_provider_keys.md` | EDIT | §7: the ceiling read ignores status; §8: renewal pricing during a catalogue fault |
-| `docs/v2/active/M219_001_P1_API_DOCS_CLAIMED_BOUNDARIES_HOLD_IN_CODE.md` | CREATE | This spec |
+| `docs/v2/active/M219_001_P1_API_DOCS_CLAIMED_BOUNDARIES_HOLD_IN_CODE.md`, `playbooks/operations/acceptance/baselines/M219_001-2bf456efd.md` | CREATE | This spec, and its test baseline and delta report |
 
 ## Applicable Rules
 
