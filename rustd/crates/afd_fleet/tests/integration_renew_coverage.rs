@@ -8,6 +8,7 @@
 use crate::queue;
 use crate::report_seed;
 use afd_core::error_code;
+use afd_core::test_util::trace::Capture;
 use afd_wire::report::RenewRequest;
 
 use crate::seed::{MODEL, PROVIDER};
@@ -217,10 +218,16 @@ async fn a_renewal_during_a_catalogue_fault_charges_its_tokens_later() {
     );
 
     held.fixtures.set_catalogue_readable(false).await;
+    let log = Capture::install();
     let (_, unpriced) = plane
         .renew(&held.runner, lease_id, reported(25_000), held.now)
         .await
         .expect("a catalogue fault does not stop the run");
+    // The renewal itself says it held the tokens, not only the helper it calls.
+    let warned = log.only("renew_tokens_held_for_pricing");
+    assert_eq!(warned.field("input_tokens"), Some("25000"));
+    assert_eq!(warned.field("lease_id"), Some(lease_id));
+    drop(log);
     assert!(
         unpriced.is_zero(),
         "no runtime accrued, and no token was priced while the catalogue was offline"

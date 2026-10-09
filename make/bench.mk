@@ -131,10 +131,11 @@ BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo
 # does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`). The migration gives a
 # fresh worktree the schema its seed needs (`core.tenants`); the reset clears
 # the readiness marks the integration suite leaves in `fleet:ready`, which a
-# lease run would otherwise meet in every idle window. Only the rig: a dev or
-# prod profile points at a deployed database, and a bench never resets or
-# migrates one.
-BENCH_MIGRATE := $(if $(filter rig,$(PROFILE)),$(TEST_STATE_DEP) _migrate-test-db)
+# lease run would otherwise meet in every idle window. Only an owned rig: a dev
+# or prod profile points at a deployed database, and a rig whose
+# BENCH_TARGET_OWNED is overridden is not this run's to reset (see above), so a
+# bench never resets or migrates either.
+BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(filter owned,$(BENCH_TARGET_OWNED))),$(TEST_STATE_DEP) _migrate-test-db)
 
 # The lease lane runs two populations: the contended window it always ran, then
 # a drain through the full lease and report verbs, whose idle cost it prints as

@@ -37,6 +37,37 @@ const DOT_SEGMENTS: [&str; 2] = [".", ".."];
 /// What a body a rule can read is.
 const ONE_OBJECT: &str = "a JSON object whose keys are each written once";
 
+/// The most of a refused key a refusal repeats back to the model.
+const KEY_ECHO_MAX: usize = 64;
+
+/// Why a closed rule refused a request its method and path match: a query.
+const QUERY_REFUSED: &str = "it carries a query string, which this rule does not admit";
+
+/// Why a closed rule at `method` and `url`'s path refused this request, said
+/// so the model can correct it: the query string, or the first top-level key
+/// the rule does not list. `None` when no closed rule covers that method and
+/// path, or the body names no key to blame.
+pub(crate) fn closed_refusal(
+    origin: &HttpOriginPolicy<'_>,
+    method: &Method,
+    url: &Url,
+    body: Option<&str>,
+) -> Option<String> {
+    let path = url.path();
+    let rule = origin.requests.iter().find(|rule| {
+        *method == method_of(rule.method)
+            && path_admits(rule.path_match, &rule.path, path)
+            && closed(rule)
+    })?;
+    if url.query().is_some() {
+        return Some(QUERY_REFUSED.to_owned());
+    }
+    let fields = body.and_then(|body| serde_json::from_str::<Fields>(body).ok())?;
+    let key = fields.0.keys().find(|key| !named(rule, key))?;
+    let shown: String = key.chars().take(KEY_ECHO_MAX).collect();
+    Some(format!("it sends `{shown}`, which this rule does not list"))
+}
+
 /// Whether `origin`'s rules admit `method` at `url` carrying `body`.
 pub(crate) fn admits(
     origin: &HttpOriginPolicy<'_>,

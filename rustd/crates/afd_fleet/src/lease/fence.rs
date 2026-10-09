@@ -33,6 +33,10 @@ const CONTEXT_FENCE: &str = "live fence lookup";
 /// authority and the lease's own token is only the fallback for a fleet whose
 /// slot row is gone.
 ///
+/// Where one runner briefly holds two live leases on the fleet — a superseded
+/// one and its successor — the highest token wins: tokens rise with every
+/// issue, where `created_at` is one daemon replica's clock.
+///
 /// `$1` runner, `$2` fleet, `$3` the active status, `$4` now.
 const SELECT_LIVE_FENCE_BY_FLEET: &str = "\
 SELECT l.fencing_token AS own, COALESCE(a.fencing_seq, l.fencing_token) AS live_seq
@@ -40,7 +44,7 @@ FROM fleet.runner_leases l
 LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
 WHERE l.runner_id = $1::uuid AND l.fleet_id = $2::uuid
   AND l.status = $3 AND l.lease_expires_at > $4
-ORDER BY l.created_at DESC
+ORDER BY l.fencing_token DESC
 LIMIT 1";
 
 /// The same fence, addressed by lease id when the caller already holds one.

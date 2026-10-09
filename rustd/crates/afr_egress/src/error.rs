@@ -109,7 +109,10 @@ pub(crate) enum ErrorKind {
     },
 
     /// The host's origin rules admit no request of this shape.
-    #[error("no request rule at {host} admits {method} {path} with this body")]
+    #[error(
+        "no request rule at {host} admits {method} {path} with this body{}",
+        .why.as_deref().map(|why| format!(": {why}")).unwrap_or_default()
+    )]
     RequestPolicyNotAllowed {
         /// The URL's host.
         host: String,
@@ -117,6 +120,8 @@ pub(crate) enum ErrorKind {
         method: String,
         /// The URL's path.
         path: String,
+        /// What a closed rule at this method and path refused, when one did.
+        why: Option<String>,
     },
 
     /// The daemon would not mint the credential.

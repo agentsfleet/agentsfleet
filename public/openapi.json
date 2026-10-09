@@ -4523,6 +4523,16 @@
               }
             }
           },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
           "413": {
             "description": "The payload is over this route's ceiling",
             "content": {
@@ -6207,6 +6217,26 @@
               }
             }
           },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
           "429": {
             "description": "The instance is at its ceiling",
             "content": {
@@ -6305,6 +6335,26 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -6423,6 +6473,26 @@
           },
           "403": {
             "description": "The credential is good and lacks the capability this route requires",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -16958,7 +17028,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on a lease from a daemon older than this field. The runner then\nchecks the rule's locked fields and nothing more, as that daemon\nintended. Closing such a rule would refuse keys the older daemon never\nlisted, such as a ref's `sha` or a Pull Request's `title`, and stop\nevery write until the daemon upgrades."
+            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on a lease from a daemon older than this field. The runner then\nchecks the rule's locked fields and nothing more, as that daemon\nintended. Closing such a rule would refuse keys that daemon never\nlisted, such as a ref's `sha` or a Pull Request's `title`. Every write\nwould then stop until the daemon upgrades."
           }
         }
       },
