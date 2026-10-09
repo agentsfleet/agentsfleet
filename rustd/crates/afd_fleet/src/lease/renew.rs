@@ -42,6 +42,10 @@ const CONTEXT_LOAD: &str = "renew lease load";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_RENEW: &str = "renew and meter";
 
+/// Logged when a renewal could not price its tokens and left them for a later
+/// slice to charge.
+const EVENT_TOKENS_HELD: &str = "renew_tokens_held_for_pricing";
+
 /// The lease a renewal is about, as the row holds it.
 #[derive(Debug, Clone)]
 pub struct Renewing {
@@ -255,8 +259,13 @@ impl Plane {
         {
             Ok(meter) => meter,
             // Fail open, for the reason the report's twin does: a catalogue
-            // that will not answer must not kill a run in flight.
-            Err(_unverified) => self.accounts.run_fee_meter(cumulative),
+            // that will not answer must not kill a run in flight. The tokens
+            // are held for a priced slice rather than charged at zero; see
+            // `hold_tokens`.
+            Err(fault) => {
+                hold_tokens(&lease, lease_id, cumulative, &crate::Error::from(fault));
+                self.accounts.run_fee_meter(Cumulative::default())
+            }
         };
         match self.leases.extend(lease_id, runner_id, meter, now).await? {
             Renewed::Extended {
@@ -273,3 +282,36 @@ impl Plane {
 pub(super) fn posture_of(lease: &Renewing) -> Posture {
     Posture::parse(&lease.posture).unwrap_or(Posture::Platform)
 }
+
+/// Says that a renewal metered the run fee and none of `cumulative`, because
+/// the catalogue could not price it.
+///
+/// The caller meters zero counts. `RENEW_AND_METER` advances the token cursor
+/// with `GREATEST`, so zero counts leave it where the last priced slice left
+/// it, and the next priced renewal or the report charges these tokens. Real
+/// counts at run-fee rates would move the cursor past tokens charged at zero,
+/// and no later slice would charge them.
+fn hold_tokens(lease: &Renewing, lease_id: &str, cumulative: Cumulative, fault: &crate::Error) {
+    let fleet = lease.fleet_id.as_str();
+    let reason = fault.to_string();
+    let code = fault.code().as_str();
+    let Cumulative {
+        input,
+        cached,
+        output,
+    } = cumulative;
+    tracing::warn!(
+        error_code = code,
+        fleet_id = fleet,
+        lease_id,
+        input_tokens = input,
+        cached_input_tokens = cached,
+        output_tokens = output,
+        reason,
+        event = EVENT_TOKENS_HELD,
+        "the catalogue could not be read; the run fee is charged and the tokens wait for a priced slice"
+    );
+}
+
+#[cfg(test)]
+mod tests;
