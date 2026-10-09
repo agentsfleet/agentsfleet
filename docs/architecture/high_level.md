@@ -217,7 +217,7 @@ What does not change: the runtime architecture, the sandbox boundary, the trigge
 
 ### 6.2 Slack Rung 1 — hired durable agents
 
-Where the human front door points after the CLI/dashboard wedge. M206 specs the first hired-agent slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
+Where the human front door points after the CLI/dashboard wedge. M206 built the first hired-agent slice, a fleet attached to one channel whose writes are bounded to one draft Pull Request per request; its live drill is pending. **The follow-on is direction, not a commitment.**
 
 The ladder's boundary is **agency, not memory**. Rung 0 is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 

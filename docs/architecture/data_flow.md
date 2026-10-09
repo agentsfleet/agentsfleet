@@ -843,7 +843,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 
 Failure mode: a dead lease holder blocks its fleet until `lease_expires_at`; reclaim then re-leases with a higher fencing token. Recovery latency = TTL plus poll density (the S0 lazy-reclaim SLA). Tightening it is M80_006.
 
-One PR through one lease, its records, timers and reply limits: [lease_flow.md](./lease_flow.md) §"4. How AGENT BOB 01 can reply".
+One PR through one lease: its records and timers in [lease_flow.md §1](./lease_flow.md#1-from-start-a-fleet-to-a-lease), its reply limits in [§4](./lease_flow.md#4-how-agent-bob-01-can-reply), and what bounds the host in [§7](./lease_flow.md#7-where-the-image-lives-and-what-bounds-a-bare-metal-host).
 
 ## What the coding fleet never does
 

@@ -154,7 +154,7 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | **Trigger panel** | The `/fleets/{id}` card showing trigger setup. [(more)](./user_flow.md#84-working-from-claude-or-the-dashboard) |
 | **Free usage** | The starter grant: a balance that drains. [(more)](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window) |
 | **Cron trigger** | An Upstash QStash schedule; QStash owns the clock. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **Run** | One agent-loop pass over one lease. [(more)](./capabilities.md#4-context-lifecycle-keeping-a-long-incident-reasoning-past-the-models-working-memory-limit) |
+| **Run** | One agent-loop pass over one lease. [(more)](./capabilities.md#4-context-lifecycle--keeping-a-long-incident-reasoning-past-the-models-working-memory-limit) |
 | **Egress guard** | Supervisor guard that admits requests and injects secrets. [(more)](./runner_execution.md#credentials) |
 | **Self-managed provider keys** | The tenant stores and activates its own provider key. [(more)](./billing_and_provider_keys.md#1-the-two-postures) |
 | **Bastion** | Post-launch: one fleet for triage and customer comms. [(more)](./high_level.md#61-bastion--one-surface-for-internal-triage-and-customer-comms) |

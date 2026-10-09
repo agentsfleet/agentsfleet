@@ -75,8 +75,8 @@ Thread A stored `prod=aurora`. Thread B — a different thread, possibly days la
 
 - **Memory scope = channel = audience boundary.** The resident fleet (keyed by its `fleet_id`), not the thread, is the namespace — so memory crosses threads and never bleeds across channels.
 - **One reasoning loop.** A Slack mention is one more producer into the same ingress; the lease/execute/report path never branches on actor type.
-- **Reactive is not a second runtime.** Read-only, mention-only, never unattended — the on-ramp to the durable hired teammate (Rung 1), not "a chat UI over tools."
+- **Reactive is not a second runtime.** Read-only, mention-only, never unattended — the on-ramp to the durable hired agent (Rung 1), not "a chat UI over tools."
 
 ## 7. What is NOT in this scenario (Rung 1)
 
-Hired durable teammates, source webhooks (Zoho Desk / Statuspage), write actions, approval gating, interactivity buttons, slash commands, and direct messages — the follow-on milestone. The reactive bot's limit (no system access) is the conversion lever to that durable teammate.
+Hired durable agents, source webhooks (Zoho Desk / Statuspage), write actions, approval gating, interactivity buttons, slash commands, and direct messages — the follow-on milestone. The reactive bot's limit (no system access) is the conversion lever to that durable agent.
