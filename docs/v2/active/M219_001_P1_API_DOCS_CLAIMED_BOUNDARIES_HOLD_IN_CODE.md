@@ -62,6 +62,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/sql/lease.rs` | EDIT | The mint scope read requires the lease to hold the live sequence |
 | `rustd/crates/afd_fleet/tests/integration_memory_capture.rs` | EDIT | The test admitting a token above the live sequence is inverted; superseded-lease cases |
 | `rustd/crates/afd_fleet/tests/integration_credential_mint/cases.rs` | EDIT | A superseded active lease mints nothing |
+| `rustd/crates/afd_fleet/tests/integration_credential_mint.rs` | EDIT | The fixture lease's token is a named constant; a helper moves the sequence past it |
+| `rustd/crates/afd_fleet/src/lease/fence/tests.rs` | CREATE | The fence rule and its corrupt-column refusal, without a database |
 | `rustd/crates/afd_vault/src/delete.rs` | EDIT | `delete_in` on a caller's transaction; `delete` wraps it |
 | `rustd/crates/afd_connector/src/grant/holding.rs` | EDIT | `forget` is one transaction; its "different stores" note is corrected |
 | `rustd/crates/afd_connector/src/grant.rs` | EDIT | `land` writes the vault row before routing, as its module note already says |
@@ -122,13 +124,14 @@ bubblewrap starts from the supervisor's environment today, so the host-side moni
 - **Dimension 1.1** — The launcher sees no inherited variable → Test `test_bubblewrap_starts_with_an_empty_environment` — DONE (`afr_sandbox/src/bubblewrap_engine/tests/prepare.rs`, Linux)
 - **Dimension 1.2** — A configured log level still reaches the entry → Test `test_the_command_is_the_bound_runner_told_to_serve` — DONE (`afr_sandbox/src/bubblewrap/tests.rs`, existing)
 
-### §2 — Memory and minting accept only the holder's own token
+### §2 — Memory and minting accept only the holder's own token — DONE
 
 Report and renew admit a request only when the lease's stored token equals the presented one and is at or above the fleet's live sequence (`fence_holds`). Capture and recall check only `presented < live`, hydrate checks only that the lease exists, and minting checks neither. The fence reads return the lease's own token; every memory verb decides through `fence_holds`; the mint scope read joins `fleet.runner_affinity` and requires the lease's token to be at or above `fencing_seq`. The affinity row stays the authority. No wire change: the runner already presents its token.
 
-- **Dimension 2.1** — Capture refuses a token above the live sequence → Test `test_memory_capture_refuses_a_token_that_is_not_the_holders`
-- **Dimension 2.2** — Capture, recall and hydrate refuse an active lease the fleet has moved past → Test `test_memory_routes_refuse_a_superseded_active_lease`
-- **Dimension 2.3** — Minting refuses an active lease the fleet has moved past → Test `test_mint_refuses_a_superseded_active_lease`
+- **Dimension 2.1** — Capture refuses a token above the live sequence → Test `test_memory_capture_refuses_a_token_that_is_not_the_holders` — DONE (`afd_fleet/tests/integration_memory_capture.rs`, live)
+- **Dimension 2.2** — Capture, recall and hydrate refuse an active lease the fleet has moved past → Test `test_memory_routes_refuse_a_superseded_active_lease` — DONE (`afd_fleet/tests/integration_memory_capture.rs`, live)
+- **Dimension 2.3** — Minting refuses an active lease the fleet has moved past → Test `test_mint_refuses_a_superseded_active_lease` — DONE (`afd_fleet/tests/integration_credential_mint/cases.rs`, live)
+- **Dimension 2.4** — A fence read with a negative column is a corrupt sequence, never a fence → Test `a_negative_column_is_a_corrupt_sequence` — DONE (`afd_fleet/src/lease/fence/tests.rs`)
 
 ### §3 — Disconnect commits both stores or neither
 
@@ -223,6 +226,7 @@ No HTTP route, status code or error code changes. Refusals reuse `RUN_STALE_FENC
 | 2.1 | integration | `test_memory_capture_refuses_a_token_that_is_not_the_holders` | Live token + 1 and `u64::MAX` → stale-fence refusal, store empty; the live token stores |
 | 2.2 | integration | `test_memory_routes_refuse_a_superseded_active_lease` | `fencing_seq` bumped, lease still active → capture, recall and hydrate refused |
 | 2.3 | integration | `test_mint_refuses_a_superseded_active_lease` | Same setup → mint answers lease not found; the live holder still mints |
+| 2.4 | unit | `a_negative_column_is_a_corrupt_sequence` | Token −1 or live sequence −1 → `INTERNAL_DB_QUERY`, no fence |
 | 3.1 | integration | `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows` | Model entry references the grant key → `forget` errs, routing row present |
 | 3.2 | integration | `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` | Vault row held `FOR UPDATE`, `land` and `forget` both waiting, then released → routing rows present iff the handle is |
 | 4.1 | unit | `should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule` | `{"issue":7}` on `/pulls` and `/pulls?draft=false` → refused |
