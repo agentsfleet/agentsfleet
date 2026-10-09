@@ -14,7 +14,7 @@ const items: { q: string; a: ReactNode }[] = [
   FAQ_WEDGE_ITEM,
   {
     q: "What is agentsfleet?",
-    a: "agentsfleet is an open-source runtime for AI agents that wake on production events: an incident, a failed deploy, a pull request. An agent investigates with your logs, metrics, and code, and prepares a fix, on the platform’s model or a key you bring. A fleet is an agent you configure for a job. You choose what it can access and review the results.",
+    a: "agentsfleet is an open-source runtime for AI agents that wake on production events: an incident, a failed deploy, a failing workflow. An agent investigates with your logs, metrics, and code and, when a fix is warranted, prepares one for you to approve. Runs use the platform’s model or your own model key (self-managed). A fleet is an agent you configure for a job. You choose what it can access and review the results.",
   },
   {
     q: "What does self-managed mean?",

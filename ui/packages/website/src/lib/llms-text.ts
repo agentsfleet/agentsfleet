@@ -14,7 +14,7 @@ export const MARKETING_POSITIONING_SUMMARY =
   "Open-source runtime for AI agents that wake on production events: they investigate with your logs, metrics, and code, produce an evidence-backed result, and require human approval before configured repair work can merge or ship.";
 
 export const LLMS_FULL_INTRO =
-  "agentsfleet is an open-source runtime for AI agents that wake on production events. Each agent starts on an event — a pull request, an incident, a deploy — reads only the sources you allow-list, and returns an evidence-backed result, on the platform’s model or a key you bring. Some runs end with diagnosis; configured repair work waits for human approval before anything merges or ships.";
+  "agentsfleet is an open-source runtime for AI agents that wake on events from production and your repositories. Each agent starts on one — an incident, a failed deploy, a pull request — reads only the sources you allow-list, and returns an evidence-backed result. Runs use the platform’s model or your own model key. Some runs end with diagnosis; configured repair work waits for human approval before anything merges or ships.";
 
 export type LlmsTextInputs = {
   docsUrl: string;

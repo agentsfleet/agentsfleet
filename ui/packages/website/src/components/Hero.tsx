@@ -43,7 +43,7 @@ function HeroHeading() {
       </a>
       <DisplayXL data-testid="hero-headline" className="max-w-tagline">{HERO_HEADLINE}</DisplayXL>
       <p className="font-sans text-body-lg leading-body-lg text-text-muted max-w-narrow">
-        {HERO_LEDE_PARTS.intro} <strong className="font-medium text-text">{HERO_LEDE_PARTS.agent}</strong>{" "}
+        {HERO_LEDE_PARTS.intro} <strong className="font-medium text-text">{HERO_LEDE_PARTS.trigger}</strong>{" "}
         {HERO_LEDE_PARTS.middle} <strong className="font-medium text-text">{HERO_LEDE_PARTS.sources}</strong>{" "}
         {HERO_LEDE_PARTS.outro}
       </p>

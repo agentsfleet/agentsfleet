@@ -5,22 +5,25 @@ export const PRODUCT_NAME = "agentsfleet";
 
 export const HERO_HEADLINE = "AI agents that wake when production breaks.";
 
+const PILLAR_TRIGGER = "wakes on a production event";
+const PILLAR_SOURCES = "logs, metrics, and code";
+const PILLAR_CONTROL = "You control access and decide what ships.";
+
 // Tokens that must survive in the hero copy (marketing-spec.test.ts pins
-// presence). They double as the "Pillars" bullets in llms-full.txt, so keep
-// them phrase-shaped and meaningful, not single words.
-export const PILLAR_TOKENS = [
-  "wakes on a production event",
-  "logs, metrics, and code",
-  "You control access and decide what ships.",
-] as const;
+// presence, Hero.test.tsx that each one renders). They double as the "Pillars"
+// bullets in llms-full.txt, so keep them phrase-shaped and meaningful, not
+// single words.
+export const PILLAR_TOKENS = [PILLAR_TRIGGER, PILLAR_SOURCES, PILLAR_CONTROL] as const;
 
 // Lead with what starts the agent, then its sources, then the control boundary.
+// Hero.tsx emphasises `trigger` and `sources`: both are pillar tokens, so the
+// emphasis lands on what sets an agent apart rather than on its name.
 export const HERO_LEDE_PARTS = {
-  intro: "An",
-  agent: "agentsfleet agent",
-  middle: "wakes on a production event and investigates with your",
-  sources: "logs, metrics, and code",
-  outro: "to explain what went wrong and prepare a fix, on the platform’s model or a key you bring. You control access and decide what ships.",
+  intro: "An agent",
+  trigger: PILLAR_TRIGGER,
+  middle: "and investigates with your",
+  sources: PILLAR_SOURCES,
+  outro: `to explain what went wrong and, when a fix is warranted, prepare one. ${PILLAR_CONTROL}`,
 } as const;
 
 export const HERO_PRIMARY_LABEL = "Request early access";
@@ -66,7 +69,7 @@ export const SOURCE_CATEGORIES: readonly SourceCategory[] = [
 export const FLEETS_SECTION_HEADING = "Meet the fleet.";
 
 export const FLEETS_SECTION_LEDE =
-  "Start with a job you want off your plate. Configure a prebuilt fleet for your stack, or connect a channel teammate in Slack. Explore the workflows below; hosted access is through the waitlist.";
+  "Start with a job you want off your plate. Configure a prebuilt fleet for your stack, or connect a channel agent in Slack. Explore the workflows below; hosted access is through the waitlist.";
 
 export type FleetIntegration = {
   label: string;
@@ -112,9 +115,9 @@ export const PREBUILT_FLEETS: readonly PrebuiltFleet[] = [
   },
   {
     id: "slack-teammate",
-    category: "Channel teammate",
+    category: "Channel agent",
     name: "Slack Teammate",
-    description: "Connect Slack for a teammate that carries channel memory across threads.",
+    description: "Connect Slack for an agent that carries channel memory across threads.",
     trigger: "An @agentsfleet mention in a channel where the bot is invited.",
     output: "An in-thread answer informed by that channel’s saved context.",
     control: "Mention-only and read-only. It never acts unattended or changes your systems.",
@@ -168,14 +171,14 @@ export const FLEET_PILLARS: readonly FleetPillar[] = [
     eyebrow: "Compounding",
     title: "Context for the next job",
     description:
-      "Saved fleet memory carries useful context into later runs. The Slack teammate keeps channel context across threads, without reading other channels’ memory.",
+      "Saved fleet memory carries useful context into later runs. The Slack agent keeps channel context across threads, without reading other channels’ memory.",
   },
   {
     id: "proactive",
     eyebrow: "Proactive",
     title: "Starts when you choose",
     description:
-      "Configure supported events, schedules, or a manual request. Inspect the run history to understand what happened. The Slack channel teammate stays mention-only.",
+      "Configure supported events, schedules, or a manual request. Inspect the run history to understand what happened. The Slack channel agent stays mention-only.",
   },
 ] as const;
 
