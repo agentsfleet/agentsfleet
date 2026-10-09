@@ -30,7 +30,7 @@ mod stage;
 #[cfg(test)]
 mod testing;
 
-pub use self::holds::{Mounter, TOOLBOX_KEEP_RELEASES, Toolboxes};
+pub use self::holds::{MountedToolboxes, Mounter, TOOLBOX_KEEP_RELEASES, Toolboxes};
 pub use self::incoming::{MANIFEST_SUFFIX, SIGNATURE_SUFFIX};
 #[cfg(target_os = "linux")]
 pub use self::kernel_mounter::KernelMounter;

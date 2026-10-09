@@ -29,6 +29,8 @@ const EVENT_RELEASE_FAILED: &str = "sandbox_toolbox_release_failed";
 const EVENT_RESTAGED: &str = "sandbox_toolbox_restaged";
 /// The event a published image no admitted release names is removed under.
 const EVENT_PRUNED: &str = "sandbox_toolbox_pruned";
+/// The event an image still mounted when its host stops is logged under.
+const EVENT_UNMOUNT_FAILED: &str = "sandbox_toolbox_unmount_failed";
 /// The refusals that say the published file is not the manifest's image, so
 /// a fresh copy of the download may be.
 const REFUSALS_OF_THE_FILE: [ToolboxRefusal; 3] = [
@@ -225,14 +227,15 @@ impl<M: Mounter> Toolboxes<M> {
         for entry in fs::read_dir(&self.dir)? {
             let entry = entry?;
             let name = entry.file_name();
-            let Some(name) = name.to_str() else {
-                continue;
-            };
-            let image = super::is_image_name(name) && entry.file_type()?.is_file();
-            if image && !kept.iter().any(|keep| keep == name) {
+            // A name that is not UTF-8 is no image's.
+            if let Some(image) = name.to_str()
+                && super::is_image_name(image)
+                && entry.file_type()?.is_file()
+                && !kept.iter().any(|keep| keep == image)
+            {
                 fs::remove_file(entry.path())?;
                 let event = EVENT_PRUNED;
-                tracing::info!(image = name, event);
+                tracing::info!(image, event);
             }
         }
         Ok(())
@@ -243,6 +246,41 @@ impl<M: Mounter> Toolboxes<M> {
     /// remove or insert.
     fn admitted(&self) -> MutexGuard<'_, Vec<Arc<Toolbox>>> {
         self.admitted.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// A host's admitted images for the life of its engine.
+///
+/// They are unmounted when this drops, however that life ends. A refused
+/// unmount is logged and left: the process is ending either way, and the next
+/// start adopts or detaches what stayed.
+#[derive(Debug)]
+pub struct MountedToolboxes<M: Mounter>(Toolboxes<M>);
+
+impl<M: Mounter> MountedToolboxes<M> {
+    /// Unmounts every image now, keeping each published file, as
+    /// [`Toolboxes::close`] does.
+    ///
+    /// # Errors
+    /// An unmount was refused; dropping this tries the rest once more.
+    pub fn close(self) -> Result<()> {
+        self.0.close()
+    }
+}
+
+impl<M: Mounter> From<Toolboxes<M>> for MountedToolboxes<M> {
+    fn from(toolboxes: Toolboxes<M>) -> Self {
+        Self(toolboxes)
+    }
+}
+
+impl<M: Mounter> Drop for MountedToolboxes<M> {
+    fn drop(&mut self) {
+        if let Err(stayed) = self.0.close() {
+            let Logged { error_code, reason } = stayed.logged();
+            let event = EVENT_UNMOUNT_FAILED;
+            tracing::warn!(error_code, reason, event, "a toolbox image stayed mounted");
+        }
     }
 }
 

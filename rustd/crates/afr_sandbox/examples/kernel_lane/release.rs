@@ -7,7 +7,9 @@ use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use afr_sandbox::{Manifest, Release};
+use afr_sandbox::{
+    MANIFEST_SUFFIX, Manifest, Release, SIGNATURE_SUFFIX, TOOLBOX_PREFIX, TOOLBOX_SUFFIX,
+};
 use aws_lc_rs::encoding::AsDer as _;
 use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1_SIGNING, EcdsaKeyPair, KeyPair as _};
@@ -53,19 +55,42 @@ impl Signer {
         Ok(Release::signed_by(key.as_ref(), RUNNER_VERSION))
     }
 
-    /// `bytes`, signed and verified as a host verifies a release manifest.
-    pub(crate) fn verified(&self, bytes: &[u8]) -> Result<Manifest, Failed> {
+    /// `bytes`' signature, as `cosign sign-blob` writes it: base64 DER.
+    fn sign(&self, bytes: &[u8]) -> Result<String, Failed> {
         let signature = self
             .0
             .sign(&SystemRandom::new(), bytes)
             .map_err(|_unspecified| Failed::from("a signature"))?;
-        let encoded = base64::engine::general_purpose::STANDARD.encode(signature.as_ref());
-        Ok(self.release()?.verify(bytes, encoded.as_bytes())?)
+        Ok(base64::engine::general_purpose::STANDARD.encode(signature.as_ref()))
+    }
+
+    /// `bytes`, signed and verified as a host verifies a release manifest.
+    pub(crate) fn verified(&self, bytes: &[u8]) -> Result<Manifest, Failed> {
+        Ok(self
+            .release()?
+            .verify(bytes, self.sign(bytes)?.as_bytes())?)
     }
 
     /// The manifest the build wrote beside `image`, signed with this key.
     pub(crate) fn manifest_beside(&self, image: &Path) -> Result<Manifest, Failed> {
         self.verified(&fs::read(image.with_extension(JSON))?)
+    }
+
+    /// Stages `image` in `incoming` as a deploy does: the image, the manifest
+    /// the build wrote beside it and that manifest's signature with this key,
+    /// each named for `digest`.
+    pub(crate) fn stage(&self, image: &Path, digest: &str, incoming: &Path) -> Result<(), Failed> {
+        let manifest = fs::read(image.with_extension(JSON))?;
+        let named = incoming.join(format!("{TOOLBOX_PREFIX}{digest}"));
+        let mut staged = named.clone().into_os_string();
+        staged.push(MANIFEST_SUFFIX);
+        fs::write(&staged, &manifest)?;
+        staged.push(SIGNATURE_SUFFIX);
+        fs::write(&staged, self.sign(&manifest)?)?;
+        let mut copied = named.into_os_string();
+        copied.push(TOOLBOX_SUFFIX);
+        fs::copy(image, copied)?;
+        Ok(())
     }
 
     /// A manifest naming `image` as this host's release, signed with this key.

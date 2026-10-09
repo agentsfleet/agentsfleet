@@ -9,8 +9,8 @@ use std::sync::Arc;
 use afd_core::env::ProcessEnv;
 use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
-    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, KernelMounter, Manifest, ProbePaths,
-    REQUIRED_CONTROLLERS, SUBTREE_CONTROL, ToolboxHome, Toolboxes, probe,
+    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, KernelMounter, Manifest, MountedToolboxes,
+    ProbePaths, REQUIRED_CONTROLLERS, SUBTREE_CONTROL, ToolboxHome, probe,
 };
 use libtest_mimic::Failed;
 
@@ -63,7 +63,7 @@ pub(crate) struct Lane {
     /// image it runs on.
     pub(crate) signer: Signer,
     pub(crate) manifest: Manifest,
-    toolboxes: Toolboxes<KernelMounter>,
+    toolboxes: MountedToolboxes<KernelMounter>,
     state: tempfile::TempDir,
 }
 
@@ -210,38 +210,37 @@ pub(crate) fn main() -> ExitCode {
     conclusion.exit_code()
 }
 
-/// Admits the lane's image the way a host does: its manifest checked against
-/// the lane's key, the image staged, then admitted by descriptor.
+/// Boots the lane the way a host boots: the image staged as a deploy stages
+/// it, its manifest checked against the lane's key, the image admitted by
+/// descriptor and the engine built over it, so the lane proves the boot
+/// production runs and not a second spelling of it.
 fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
-    let cgroup_root = paths.cgroup_root;
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
         .tempdir_in(STATE_PARENT)?;
     let signer = Signer::new()?;
     let manifest = signer.manifest_beside(image)?;
     let home = ToolboxHome::open(state.path().join(TOOLBOX_DIR))?;
-    let toolboxes = Toolboxes::open(home.images(), KernelMounter::new(home.mounts()))?;
-    let toolbox = toolboxes.admit(&manifest, image)?;
-    let image = LaneImage {
-        path: image.to_owned(),
-        digest: toolbox.digest().to_owned(),
-    };
+    signer.stage(image, manifest.sha256(), &home.incoming())?;
     let entry = install_entry(state.path())?;
-    // The constructor a runner host builds with, so the lane proves the
-    // configuration production runs and not a second spelling of it.
-    let config = BubblewrapConfig::for_host(
-        toolbox,
-        cgroup_root,
+    let booted = BubblewrapEngine::boot(
+        paths.cgroup_root,
         state.path().join(LEASES_DIR),
         entry,
+        &signer.release()?,
+        &home,
         &ProcessEnv,
-    );
+    )?;
+    let image = LaneImage {
+        path: image.to_owned(),
+        digest: booted.engine.config().toolbox.digest().to_owned(),
+    };
     Ok(Lane {
-        config,
+        config: booted.engine.config().clone(),
         image,
         signer,
         manifest,
-        toolboxes,
+        toolboxes: booted.toolboxes,
         state,
     })
 }

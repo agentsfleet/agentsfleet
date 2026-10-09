@@ -15,7 +15,7 @@ use afd_core::error_code::{Coded as _, Logged};
 
 use super::BubblewrapEngine;
 use crate::cgroup::LeaseCgroup;
-use crate::egress;
+use crate::egress::{self, Kernel};
 use crate::error::Result;
 use crate::workspace_disk::WorkspaceDisk;
 
@@ -26,9 +26,12 @@ const EVENT_SWEEP_FAILED: &str = "sandbox_sweep_failed";
 
 impl BubblewrapEngine {
     /// Removes every lease a previous run left, logging each one, and, on a
-    /// host that holds sandboxes to allowlists, every egress table and link.
-    pub(super) fn sweep(&self, egress: bool) {
-        if egress && let Err(error) = egress::sweep(&egress::Host) {
+    /// host that holds sandboxes to allowlists, every egress table and link
+    /// `kernel` lists.
+    pub(super) fn sweep(&self, kernel: Option<&impl Kernel>) {
+        if let Some(kernel) = kernel
+            && let Err(error) = egress::sweep(kernel)
+        {
             let Logged { error_code, reason } = error.logged();
             let event = EVENT_SWEEP_FAILED;
             tracing::warn!(
