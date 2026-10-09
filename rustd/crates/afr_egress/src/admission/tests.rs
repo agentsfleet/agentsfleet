@@ -155,7 +155,8 @@ fn should_refuse_a_request_no_origin_rule_admits() {
         Some(shown(&raise::request_policy_not_allowed(
             GITHUB,
             "GET",
-            "/repos/acme/other/pulls"
+            "/repos/acme/other/pulls",
+            None
         )))
     );
 }

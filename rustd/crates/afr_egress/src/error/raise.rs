@@ -62,12 +62,19 @@ pub(crate) fn credential_host_not_allowed(name: &str, host: &str) -> Error {
     })
 }
 
-/// No rule at `host` admits `method` `path` with this body.
-pub(crate) fn request_policy_not_allowed(host: &str, method: &str, path: &str) -> Error {
+/// No rule at `host` admits `method` `path` with this body; `why` is what a
+/// closed rule there refused, when one did (`crate::origin::closed_refusal`).
+pub(crate) fn request_policy_not_allowed(
+    host: &str,
+    method: &str,
+    path: &str,
+    why: Option<String>,
+) -> Error {
     Error::from(ErrorKind::RequestPolicyNotAllowed {
         host: host.to_owned(),
         method: method.to_owned(),
         path: path.to_owned(),
+        why,
     })
 }
 
@@ -118,7 +125,7 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ("secret not found", Error::secret_not_found("n", "f")),
         (
             "request policy not allowed",
-            request_policy_not_allowed("h.example", "POST", "/"),
+            request_policy_not_allowed("h.example", "POST", "/", None),
         ),
         (
             "mint refused",

@@ -93,8 +93,13 @@ pub(super) async fn request_token(
     };
 
     if let Err(overreach) = granted.verify(binding, request.permissions()) {
+        // Names and levels only, never the token: which permission tripped the
+        // check is what an operator needs to tell a new ambient grant from a
+        // mis-scoped installation.
         tracing::warn!(
             ?overreach,
+            granted = ?granted.permissions,
+            requested = ?request.permissions(),
             event = "github_mint_overreach",
             "discarding a GitHub token whose reach does not match the fleet's binding"
         );

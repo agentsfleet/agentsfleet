@@ -14,12 +14,14 @@ fn verify_refuses_an_unrequested_read_other_than_metadata() {
     for access in [Access::Read, Access::Write] {
         let binding = binding(access);
         let request = scoped(&binding);
-        let mut asked = serde_json::to_value(request.permissions())
-            .expect("the request's permissions serialise");
+        // A fresh grant per stranger, so each pass grants exactly one: the
+        // second must be refused on its own, not beside the first.
         for stranger in ["administration", "secrets"] {
+            let mut asked = serde_json::to_value(request.permissions())
+                .expect("the request's permissions serialise");
             asked[stranger] = json!("read");
             assert_eq!(
-                granted(asked.clone(), repositories()).verify(&binding, request.permissions()),
+                granted(asked, repositories()).verify(&binding, request.permissions()),
                 Err(Overreach::Permissions),
                 "{access:?} binding granted {stranger}: read"
             );
