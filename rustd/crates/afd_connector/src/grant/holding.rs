@@ -227,9 +227,9 @@ impl Grants {
     /// both live in this Postgres and either alone is a state a reader cannot
     /// detect: rows naming an account with no credential behind them, or a
     /// credential a second workspace can claim the account away from while it
-    /// still mints. The handle's row lock is taken FIRST, as
-    /// [`Grants::land`] takes it first, so a Disconnect and a callback for the
-    /// same provider serialise on that one row and cannot deadlock.
+    /// still mints. It takes its turn on the workspace row first, as
+    /// [`Grants::land`] does, so a Disconnect and a callback serialise even on
+    /// a first connect, before any handle row exists to lock.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a vault that refused the
@@ -239,6 +239,7 @@ impl Grants {
     pub async fn forget(&self, workspace: &Uuid7, provider: Provider) -> Result<Forgotten> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_FORGET))?;
+        Self::take_turn(&mut transaction, workspace, CONTEXT_FORGET).await?;
         let forgotten = match SecretName::parse(provider.grant_key()) {
             Ok(name) => match self
                 .vault

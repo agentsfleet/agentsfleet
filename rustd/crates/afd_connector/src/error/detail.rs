@@ -46,3 +46,11 @@ pub const INSTALLATION_OWNERSHIP: &str = "GitHub installation ownership could no
 /// exchange failed sends them to a credential that is working.
 pub const INSTALLATION_LISTING_FAILED: &str =
     "GitHub would not list the installations for this authorization";
+
+/// What a caller is told when a Disconnect is refused because a model entry
+/// still names the connection's credential.
+///
+/// Says what to do, because the refusal leaves the connection exactly as it
+/// was: the entry goes first, then the Disconnect.
+pub const GRANT_STILL_REFERENCED: &str =
+    "A model entry still names this connection's credential; remove that entry, then disconnect";
