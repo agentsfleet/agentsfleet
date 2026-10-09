@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M216
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P2 — bounded contributor experiment
 **Categories:** Documentation (DOCS), Infrastructure (INFRA)
 **Batch:** B1 — independent pilot artifacts
@@ -52,6 +52,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 All paths below are relative to this repository. The pilot prefix is `pilots/jev-assertions/`; no production, catalog, threshold, hook or gate edits are authorized.
 Indy's subsequent overnight instruction also authorizes the managed engine pin update in this workstream.
+Indy's subsequent removal instruction authorizes deleting the entire pilot directory and updating this spec's references and verification scope.
 
 | File | Action | Why |
 |------|--------|-----|
@@ -70,6 +71,7 @@ Indy's subsequent overnight instruction also authorizes the managed engine pin u
 | `pilots/jev-assertions/receipts/review/` | CREATE | Repository-required review probe receipts and checkpoints; results stay in `report.md` |
 | `.orly/orly.json` | EDIT | Update the managed engine pin to published 0.14.0 through `orly update --no-hooks`. |
 | `pilots/jev-assertions/approval.json`, `receipts/reservations.json`, `reviews/{unaided,assisted}.json` | CREATE after corresponding real evidence exists | One actual approval, append-only request reservations and actual blinded reviews |
+| `pilots/` | DELETE | Remove all pilot-only files; retain historical evidence at immutable commit `8704a47c9c6ab020b93944d87948eef9ad34b735`. |
 
 Temporary proof copies and dependency installation outputs are disposable local runtime state, never committed. Existing `orly` replay files remain local private cache, not model inputs or deliverables.
 
@@ -137,6 +139,12 @@ After owner approval, invoke `orly judge verify --input <manifest> --refresh --j
 
 - **Dimension 4.1** — DONE — The installed engine and managed pin equal 0.14.0; existing configuration and hooks survive the update → Test `test_orly_014_pin` (manual).
 
+### §5 — Remove the completed pilot directory
+
+**Status:** IN_PROGRESS — owner-requested directory removal; no replacement runner or fixture location.
+
+- **Dimension 5.1** — IN_PROGRESS — Remove the complete pilot directory, preserve the engine pin and point historical evidence to its immutable revision → Test `test_pilot_directory_removed` (manual).
+
 ## Interfaces
 
 `python3 pilots/jev-assertions/pilot.py check|replay|live|summarize`
@@ -184,6 +192,7 @@ No product or operator analytics change. Local pilot receipts retain native comm
 | 3.3 | manual | `test_measurement_completion` | Two sealed independent agent records → complete paired counts and actual monotonic timing; no human or causal time-saving claim |
 | 3.4 | unit | `test_live_failure_consumes_reservation_without_retry` | Real child prints to both streams before timeout → exact persisted failed receipt and spent reservation; no second launch. `test_subprocess_timeout_stops_child` additionally proves graceful and forced cleanup retain both streams |
 | 4.1 | manual | `test_orly_014_pin` | Published 0.14.0 install, `orly doctor` and `bash scripts/check_orly_pin.sh` → matching engine/pin, current managed files and preserved commands, surfaces and hooks |
+| 5.1 | manual | `test_pilot_directory_removed` | `test ! -e pilots`, empty staged pilot inventory and repository-wide reference search → no pilot files or active callers; historical references name immutable commit `8704a47c9c6ab020b93944d87948eef9ad34b735` |
 
 Regression scope: product behavior, source tests, catalog, confidence threshold, hooks and gates receive no diff. At least half of runner checks exercise refusal, failed attempts or contamination. No performance or concurrency claim is made about product code.
 
@@ -234,6 +243,8 @@ N/A — no production files or symbols deleted or renamed. Temporary proof copie
 - **Surface-area checklist:** OpenAPI no; product command-line interface no; user docs no; engine version yes, product version no; schema/removal no; rule conflict no. The explicit consumer pin update accompanies the pilot.
 
 ## Discovery (consult log)
+
+- **Removal instruction:** Indy: "Well the pilot directory must be removed." Remove `pilots/` from the same branch and Pull Request. Keep the completed measurement evidence in Git history, retain the 0.14.0 pin and revise current verification commands so they require no removed runner. Quality ceiling: deletion removes the upkeep; relocating the experiment adds none of the requested value. Surface-area checklist: OpenAPI no; product command-line interface no; user docs no; engine pin retained, product version unchanged; schema no; spec amended to match the removal instruction.
 
 - **Consults:** Indy authorized offline preparation and focused commits, required one budget approval before refresh, and required the overall pilot to remain IN_PROGRESS. Source comparison is `dd917b7ef42dcb883b5192fafe894060aab5845d`; engine 0.13.0 checked with `scripts/check_orly_pin.sh`. Earlier fixture contents were not read. The `orly` checkout remains read-only.
 - **Metrics review:** No product analytics/funnel playbook update; local receipts record all approved attempts. Fresh blinded agents used identical selected evidence and separately shuffled orders, with retained advice only in the assisted condition.
