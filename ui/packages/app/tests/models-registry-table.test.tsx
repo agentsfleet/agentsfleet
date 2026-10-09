@@ -10,7 +10,7 @@ const MODEL_REGISTRY_HEADER_ORDER = [
   "Provider",
   "Model",
   "Context",
-  "Price / 1M",
+  "Rates $/1M (in / cached / out)",
   "Status",
   "Actions",
 ] as const;
@@ -331,7 +331,7 @@ describe("ModelsRegistryTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalled());
-    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy();
   });
 
   it("View details opens the read-only dialog straight from the inline icon button", async () => {
@@ -368,10 +368,10 @@ describe("ModelsRegistryTable", () => {
     const rows = screen.getAllByRole("row");
     const defaultRow = within(rows[1]!);
     expect(defaultRow.getByLabelText(PLATFORM_LOCK)).toBeTruthy();
-    expect(defaultRow.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(defaultRow.getByTitle("claude-sonnet-5")).toBeTruthy();
     expect(defaultRow.getByText("Anthropic")).toBeTruthy();
-    expect(defaultRow.getByText("200k tokens")).toBeTruthy();
-    await waitFor(() => expect(defaultRow.getByText("$3.00 in · $0.30 cached · $15.00 out")).toBeTruthy());
+    expect(defaultRow.getByText("200,000")).toBeTruthy();
+    await waitFor(() => expect(defaultRow.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
   });
 
   it("default row renders server-provided rates when the public catalogue is unavailable", async () => {
@@ -388,8 +388,8 @@ describe("ModelsRegistryTable", () => {
 
     const rows = screen.getAllByRole("row");
     const defaultRow = within(rows[1]!);
-    expect(defaultRow.getByText("200k tokens")).toBeTruthy();
-    expect(defaultRow.getByText("$3.00 in · $0.30 cached · $15.00 out")).toBeTruthy();
+    expect(defaultRow.getByText("200,000")).toBeTruthy();
+    expect(defaultRow.getByText("3.00 / 0.30 / 15.00")).toBeTruthy();
   });
 
   it("default row degrades to '—' when no platform default identity rides the list", async () => {
@@ -412,11 +412,11 @@ describe("ModelsRegistryTable", () => {
       ]),
     );
 
-    await waitFor(() => expect(screen.getByText("$3.00 in · $0.30 cached · $15.00 out")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
     const rows = screen.getAllByRole("row");
     // Row order: header, Default, sonnet (priced), local (unpriced).
     const localRow = within(rows[3]!);
-    expect(localRow.getByText("32k tokens")).toBeTruthy();
+    expect(localRow.getByText("32,000")).toBeTruthy();
     // A tenant entry is self-managed by definition, so an unpriced row is "not
     // applicable", not a lookup miss — and a price here would imply agentsfleet
     // is charging it when the tenant's own provider bills them directly.
@@ -439,8 +439,8 @@ describe("ModelsRegistryTable", () => {
       ]),
     );
 
-    expect(screen.getByText("200k tokens")).toBeTruthy();
-    expect(screen.getByText("$3.00 in · $0.30 cached · $15.00 out")).toBeTruthy();
+    expect(screen.getByText("200,000")).toBeTruthy();
+    expect(screen.getByText("3.00 / 0.30 / 15.00")).toBeTruthy();
   });
 
   it("shows the 'no key · local' badge on an entry with no key, and the endpoint host in the Provider cell", async () => {
@@ -486,9 +486,9 @@ describe("ModelsRegistryTable", () => {
     await user.click(screen.getByRole("button", { name: "Load more" }));
 
     expect(listModelEntriesActionMock).toHaveBeenCalledWith("cur-2");
-    expect(await screen.findByText("gpt-5")).toBeTruthy();
+    expect(await screen.findByTitle("gpt-5")).toBeTruthy();
     // Prior rows RETAINED, not replaced.
-    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy();
     // Last page reached — the affordance and its disclosure both retire.
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
   });
@@ -502,7 +502,7 @@ describe("ModelsRegistryTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Load more" }));
 
-    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy();
     // The preserved 503 keeps its specific instruction.
     expect(await screen.findByText("Models are temporarily unavailable. Your entries are safe.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
@@ -528,7 +528,7 @@ describe("ModelsRegistryTable", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Load more" }));
-    expect(await screen.findByText("gpt-5")).toBeTruthy();
+    expect(await screen.findByTitle("gpt-5")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
   });
 
@@ -541,7 +541,7 @@ describe("ModelsRegistryTable", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Load more" }));
     expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
-    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy();
   });
 
   it("a thrown non-Error still reports the failure, with no fabricated detail", async () => {
@@ -580,7 +580,7 @@ describe("ModelsRegistryTable", () => {
     expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
     // Retained rows survive a second failure — a failed re-read never blanks
     // the table it was meant to refresh.
-    expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
+    expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
@@ -662,23 +662,13 @@ describe("ModelsRegistryTable", () => {
         entry({ id: "e2", model_id: "m2", context_cap_tokens: 500 }),
       ]),
     );
-    expect(screen.getByText("200k tokens")).toBeTruthy();
-    expect(screen.getByText("500 tokens")).toBeTruthy();
+    expect(screen.getByText("200,000")).toBeTruthy();
+    expect(screen.getByText("500")).toBeTruthy();
   });
 
   it("renders an explicit 0-token cap as '0', not '—' (nullish guard, not falsy)", async () => {
     await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: 0 })]));
-    expect(screen.getByText("0 tokens")).toBeTruthy();
-  });
-
-  it("formatRates still names unavailable rates for its remaining direct callers", async () => {
-    // The entry-row path now routes a missing rate to "Billed by provider", so
-    // the null arm survives only for callers outside that path (the admin
-    // catalogue presentation). Pin it directly so the guard cannot rot unseen.
-    const { formatRates } = await import(
-      "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryCells"
-    );
-    expect(formatRates(null)).toBe("Rates unavailable");
+    expect(screen.getByText("0")).toBeTruthy();
   });
 
   it("renders a dash for absent context and names who bills", async () => {

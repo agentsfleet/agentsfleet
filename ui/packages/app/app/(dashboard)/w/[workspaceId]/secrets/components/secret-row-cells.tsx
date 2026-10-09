@@ -42,19 +42,22 @@ export function SecretNameCell({ secret, pending, onRename }: {
   onRename: (name: string) => void;
 }) {
   return (
-    <div className="flex min-w-0 items-start gap-1">
-      <div className="min-w-0">
-        {/* The name is the interpolation key in ${secrets.<name>.<field>}; copying it avoids silent typos. */}
-        <div className="flex min-w-0 items-center gap-1">
-          <div className="truncate font-mono text-mono leading-mono">{secret.name}</div>
-          <CopyButton value={secret.name} label={`Copy secret name: ${secret.name}`} />
-        </div>
-        <div className="text-label leading-label text-muted-foreground">{SECRET_ROW_DESCRIPTION}</div>
-        <div className="sm:hidden text-label leading-label text-muted-foreground">Created <SecretCreatedCell secret={secret} /></div>
+    <div className="min-w-0">
+      {/* The name is the interpolation key in ${secrets.<name>.<field>}; copying it
+          avoids silent typos. It sits in one fixed slot that ellipsizes a long
+          name (the full name is the hover and what Copy copies), so the copy and
+          rename icons after it line up on every row. */}
+      <div className="flex min-w-0 items-center gap-1">
+        <span className="block min-w-trim max-w-trim truncate font-mono text-mono leading-mono" title={secret.name}>
+          {secret.name}
+        </span>
+        <CopyButton value={secret.name} label={`Copy secret name: ${secret.name}`} />
+        <IconAction type="button" variant="ghost" onClick={() => onRename(secret.name)} disabled={pending} label={`Rename secret ${secret.name}`} title="Rename">
+          <PencilLineIcon size={14} />
+        </IconAction>
       </div>
-      <IconAction type="button" variant="ghost" onClick={() => onRename(secret.name)} disabled={pending} label={`Rename secret ${secret.name}`} title="Rename">
-        <PencilLineIcon size={14} />
-      </IconAction>
+      <div className="text-label leading-label text-muted-foreground">{SECRET_ROW_DESCRIPTION}</div>
+      <div className="sm:hidden text-label leading-label text-muted-foreground">Created <SecretCreatedCell secret={secret} /></div>
     </div>
   );
 }

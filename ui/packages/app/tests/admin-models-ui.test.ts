@@ -48,7 +48,7 @@ function renderWithTooltipProvider(node: React.ReactElement) {
 // The catalogue is a design-system DataTable — scope a row by its (unique)
 // model_id cell and walk up to its <tr>.
 function rowFor(modelId: string): HTMLElement {
-  return screen.getByText(modelId).closest("tr")!;
+  return screen.getByTitle(modelId).closest("tr")!;
 }
 
 async function loadedEditDialog(label: string) {
@@ -152,8 +152,17 @@ describe("CatalogueList — rows + rates + empty state", () => {
   it("renders a priced row per catalogue model with $/1M rates", () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByTestId("data-table")).toBeTruthy();
-    expect(screen.getByText("glm-5.2")).toBeTruthy();
+    expect(screen.getByTitle("glm-5.2")).toBeTruthy();
     expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
+  });
+
+  it("the model cell shows the name and keeps the id on hover", () => {
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    // The marketed name reads; the provider id a fleet config needs is the hover.
+    const cell = screen.getByTitle("glm-5.2");
+    expect(cell.textContent).toBe("GLM 5.2");
+    // Actions still name the row by its id, which is what a reader acts on.
+    expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
   });
 
   it("sorts each catalogue data column from its header arrow", () => {

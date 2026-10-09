@@ -485,7 +485,7 @@ describe("Row actions — Remove", () => {
 
     await waitFor(() => expect(deleteModelEntryActionMock).toHaveBeenCalledWith("e2"));
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText("claude-sonnet-5")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy());
   });
 
   it("surfaces a delete error inside the confirm dialog and still refreshes behind it", async () => {

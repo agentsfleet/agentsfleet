@@ -7,7 +7,13 @@ import {
 } from "@agentsfleet/design-system";
 import { ArrowLeftRightIcon, EyeIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { type LibraryModel, providerLabel } from "@/lib/api/model-library-types";
-import { nanosToUsdPerMtok } from "@/lib/api/admin-model-library-types";
+import {
+  EMPTY_VALUE,
+  type RateFields,
+  formatContextTokens,
+  formatRatesPerMtok,
+  modelLabel,
+} from "@/lib/models/display";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 
 // Presentational cells + row actions for ModelsRegistryTable, split out so the
@@ -17,15 +23,7 @@ import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 export type RegistryRow = { kind: "default" } | { kind: "entry"; entry: TenantModelEntry };
 
 const PLATFORM_UNAVAILABLE_NOTE = "No default is configured.";
-// Threshold + divisor for the "k" context abbreviation (200000 → "200k").
-const TOKENS_PER_K = 1000;
-const EMPTY_VALUE = "—";
 const RATES_UNAVAILABLE = "Rates unavailable";
-const CONTEXT_UNIT = "tokens";
-const RATE_IN = "in";
-const RATE_CACHED = "cached";
-const RATE_OUT = "out";
-const RATE_SEPARATOR = " · ";
 const NUMERIC_CELL_CLASS = "font-mono text-mono leading-mono tabular-nums text-muted-foreground";
 // Self-managed rows are billed by the tenant's own provider account — token
 // rates apply only under platform-managed posture (schema/003_model_library.sql).
@@ -36,22 +34,6 @@ const RATES_NOT_APPLICABLE = "Billed by provider";
 export function rowKey(row: RegistryRow): string {
   return row.kind === "default" ? "default" : row.entry.id;
 }
-
-// `context_cap_tokens` is an optional `u32` on the wire — the
-// only real-world absent case is "not in the catalogue" (undefined). Guard
-// on nullishness, not falsiness, so a (semantically invalid but not
-// impossible) explicit 0 still renders as "0" rather than "—".
-export function formatContext(tokens: number | undefined): string {
-  if (tokens == null) return EMPTY_VALUE;
-  // Plain digits, no locale formatter: the timestamp standard greps every line
-  // for one, and the "k" abbreviation already carries the magnitude.
-  const size = tokens >= TOKENS_PER_K ? `${Math.round(tokens / TOKENS_PER_K)}k` : String(tokens);
-  // The bare number carried no unit while the header's unit described the
-  // PRICE line below it, so the two lines borrowed one label between them.
-  return `${size} ${CONTEXT_UNIT}`;
-}
-
-type RateFields = Pick<LibraryModel, "input_nanos_per_mtok" | "cached_input_nanos_per_mtok" | "output_nanos_per_mtok">;
 
 /** The library row pricing (provider, model_id) — null when the library
  * doesn't price it (custom endpoints, or the library fetch failed). */
@@ -79,20 +61,6 @@ function rowRateFor(row: TenantModelEntry | TenantPlatformDefault): RateFields |
   };
 }
 
-/** "in / cached / out" per-1M line — the admin catalogue's presentation; the
- * column header carries the "$/1M" unit so the cell stays compact. */
-export function formatRates(rate: RateFields | null): string {
-  if (!rate) return RATES_UNAVAILABLE;
-  const usd = (nanos: number) => `$${nanosToUsdPerMtok(nanos).toFixed(2)}`;
-  // Each number says which it is. "3.00 / 0.30 / 15.00" needed the header to
-  // decode it, and the header was already carrying the context unit too.
-  return [
-    `${usd(rate.input_nanos_per_mtok)} ${RATE_IN}`,
-    `${usd(rate.cached_input_nanos_per_mtok)} ${RATE_CACHED}`,
-    `${usd(rate.output_nanos_per_mtok)} ${RATE_OUT}`,
-  ].join(RATE_SEPARATOR);
-}
-
 export function ModelCell({
   row,
   platformDefault,
@@ -108,17 +76,21 @@ export function ModelCell({
             the same thing twice and pushed the model id out of view. */}
         <LockIcon size={12} className="shrink-0 text-muted-foreground" aria-label="Managed by a platform admin" />
         {platformDefault ? (
-          <span className="truncate font-mono text-mono leading-mono text-muted-foreground">{platformDefault.model}</span>
+          <span className="truncate text-muted-foreground" title={platformDefault.model}>
+            {modelLabel(platformDefault.model)}
+          </span>
         ) : null}
       </span>
     );
   }
-  // The model id is what a user pastes into fleet config and into provider
-  // dashboards. It is truncated here, so the clipboard is the only way to get it
-  // out whole.
+  // The marketed name reads, as in the model library. The id is what a user
+  // pastes into fleet config and provider dashboards: it is the hover, and the
+  // clipboard carries it whole.
   return (
     <span className="flex min-w-0 items-center gap-1">
-      <span className="truncate font-mono text-mono leading-mono">{row.entry.model_id}</span>
+      <span className="truncate" title={row.entry.model_id}>
+        {modelLabel(row.entry.model_id)}
+      </span>
       <CopyButton value={row.entry.model_id} label={`Copy model id: ${row.entry.model_id}`} />
     </span>
   );
@@ -189,7 +161,7 @@ function identityFor(
   };
 }
 
-/** The context window, on its own so its number carries its own unit. */
+/** The context window in tokens, grouped as the model library prints it. */
 export function ContextCell({
   row,
   platformDefault,
@@ -200,7 +172,7 @@ export function ContextCell({
   const identity = identityFor(row, platformDefault);
   return (
     <span className={NUMERIC_CELL_CLASS}>
-      {identity ? formatContext(identity.context) : EMPTY_VALUE}
+      {identity ? formatContextTokens(identity.context) : EMPTY_VALUE}
     </span>
   );
 }
@@ -221,7 +193,7 @@ export function RatesCell({
   // A tenant entry is self-managed by definition — the platform row is the only
   // platform-managed one — so an unpriced entry is "not applicable", not a miss.
   const rateLine = rate
-    ? formatRates(rate)
+    ? formatRatesPerMtok(rate)
     : row.kind === "entry"
       ? RATES_NOT_APPLICABLE
       : RATES_UNAVAILABLE;
