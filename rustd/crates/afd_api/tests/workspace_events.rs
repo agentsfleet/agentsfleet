@@ -18,9 +18,9 @@
 //! rendered row and the `404` an absent event earns all need a statement that
 //! ran, and live in the `#[ignore]`d lane `make test-integration-rustd` runs.
 //!
-//! An EMPTY path segment is absent for another reason: it reaches no handler in
-//! either daemon — `Path::param` refuses one at the Zig matcher, axum answers a
-//! bare 404 for a trailing one — so the empty-`event_id` guard pins nothing.
+//! An EMPTY path segment is absent for another reason: it reaches no handler —
+//! axum answers a bare 404 for a trailing one — so the empty-`event_id` guard
+//! pins nothing.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -75,7 +75,7 @@ const NO_SCOPES: ScopeSet = ScopeSet::from_scopes(&[]);
 /// on, a code their client branches on, a sentence a person reads.
 type Refusal = (StatusCode, &'static str, ErrorCode);
 
-/// The ownership layer's refusal, byte-for-byte as the Zig handlers spell it.
+/// The ownership layer's refusal, byte for byte as a client sees it.
 const NOT_YOURS: Refusal = (
     StatusCode::FORBIDDEN,
     "Workspace access denied",
@@ -273,8 +273,7 @@ async fn an_event_id_is_looked_up_up_to_the_length_bound_and_not_past_it() {
 /// reaching `UZ-AGT-015` needs a statement that RAN and found nothing, which is
 /// a live-Postgres fact. What holds with no datastore is that the code exists,
 /// is a 404, and is not the fleet's — an operator reading it should not have to
-/// guess which of the two was missing. `event_detail.zig` asserts this pair for
-/// exactly that reason.
+/// guess which of the two was missing.
 #[test]
 fn the_absent_event_code_is_the_events_own_and_not_the_fleets() {
     assert_ne!(
@@ -314,9 +313,8 @@ async fn the_templates_carry_only_the_methods_they_document() {
 /// declares are still resolvable that way.
 ///
 /// Driven over a router built from those templates rather than the served one,
-/// for the reason `event_detail.zig` gives for asserting against `router.match`
-/// instead of over HTTP: the live tail never closes its connection, so asking
-/// the real route a question hangs the suite. Reading the templates off
+/// because the live tail never closes its connection, so asking the real route
+/// a question hangs the suite. Reading the templates off
 /// [`FleetRoute`] is what makes this fail when somebody edits either row.
 #[tokio::test]
 async fn the_expanded_reads_template_does_not_shadow_the_live_tail() {

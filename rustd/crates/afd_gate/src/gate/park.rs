@@ -14,25 +14,16 @@
 //! question whose answer has nowhere to land. The caller answers no-work and
 //! the next poll tries again.
 //!
-//! # Two writes, where `approval_gate_park.zig` makes four
+//! # No pending summary, no staged notification
 //!
-//! The Zig also writes `fleet:gate:pending:{fleet}:{action}` — a three-field
-//! summary of the detail — and `fleet:gate:notify:{fleet}:{action}`, a rendered
-//! Slack message staged "for the provider to pick up". **Nothing reads either
-//! one.** Not the daemon, not the sweeper, not the resolver, not the tenant
-//! plane, not the web application: the pending key has one writer and one
-//! `DEL`, and the notify key has one writer and no reader at all. They are the
-//! residue of the gate's original design, in which the event loop blocked on
-//! `BRPOP fleet:gate:response:{action}` until a human answered — a shape the
-//! async gate replaced, and whose reader went with it.
-//!
-//! So they are not ported, and this is not a judgment about whether
-//! notification should be staged in Dragonfly. It is that porting a write with no
-//! reader would add two round trips to every park, two key shapes for the
-//! sweeper and the resolver to agree on, and a `DEL` on the refusal path, to
-//! reproduce bytes no code has ever read. Registered as a divergence rather
-//! than done quietly, because "row-equivalent" is this milestone's graded
-//! claim and a Dragonfly key is not a row.
+//! A park writes no `fleet:gate:pending:{fleet}:{action}` summary and no
+//! `fleet:gate:notify:{fleet}:{action}` Slack message for a provider to pick
+//! up, because **nothing would read either one** — not the daemon, not the
+//! sweeper, not the resolver, not the tenant plane, not the web application.
+//! A write with no reader would add two round trips to every park, two key
+//! shapes for the sweeper and the resolver to agree on, and a `DEL` on the
+//! refusal path. Whether notification should be staged in Dragonfly at all is
+//! a separate question this module does not answer.
 
 use std::borrow::Cow;
 

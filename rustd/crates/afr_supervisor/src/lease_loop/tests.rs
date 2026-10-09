@@ -13,6 +13,7 @@ use tokio::time::Instant;
 
 use super::ACTIVITY_DRAIN_WAIT;
 use crate::client::{Call, Verb};
+use crate::egress::Egress;
 use crate::error;
 use crate::renew::RENEWAL_TICK;
 use crate::report_spool::ReportSpool;
@@ -304,7 +305,7 @@ async fn a_renewal_refused_before_the_fleet_is_free_never_starts_the_run() {
     let _busy = turns.claim(&Uuid7::parse(FLEET_ID).unwrap()).await;
 
     rig.lessee
-        .run(&turns, &lease(LEASE_ID, FLEET_ID, None))
+        .run(&turns, &lease(LEASE_ID, FLEET_ID, None), &Egress::closed())
         .await
         .unwrap();
 
@@ -384,7 +385,7 @@ async fn a_lease_arriving_as_the_pool_shuts_down_is_reported_not_run() {
     drop(coordinator);
 
     rig.lessee
-        .run(&turns, &lease(LEASE_ID, FLEET_ID, None))
+        .run(&turns, &lease(LEASE_ID, FLEET_ID, None), &Egress::closed())
         .await
         .unwrap();
 

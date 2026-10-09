@@ -117,6 +117,7 @@ impl FakeHost {
             kvm: Kvm::Absent,
             toolbox_filesystem: true,
             workspace_direct_io: None,
+            egress: false,
         };
         let config = BubblewrapConfig {
             tools: HostTools {
@@ -125,7 +126,6 @@ impl FakeHost {
                 mount: PathBuf::from(TRUE),
             },
             toolbox: Arc::new(Toolbox::at(base.join("toolbox"), DIGEST.to_owned())),
-            toolbox_digest: DIGEST.to_owned(),
             cgroup_root,
             state_dir: base.join("leases"),
             entry: PathBuf::from(TRUE),
@@ -179,8 +179,5 @@ pub(super) fn serve_leases(state_dir: PathBuf) -> JoinHandle<()> {
 }
 
 pub(super) fn request(lease_id: &str) -> SandboxRequest<'_> {
-    SandboxRequest {
-        lease_id,
-        limits: LIMITS,
-    }
+    SandboxRequest::new(lease_id, LIMITS)
 }

@@ -1,9 +1,7 @@
 //! The workspace directory over HTTP: the tenant's list, and the create.
 //!
-//! The port of `tenant_workspaces.zig` and `workspaces/lifecycle.zig`,
-//! sentence for sentence — with one Discovery-logged divergence: a create
-//! naming nothing gets a GENERATED name where the Zig daemon answers a 400,
-//! because "create me a workspace" was never a naming decision.
+//! A create naming nothing gets a GENERATED name rather than a 400, because
+//! "create me a workspace" was never a naming decision.
 
 use std::sync::Arc;
 
@@ -46,14 +44,14 @@ pub const DETAIL_CREATE_BODY: &str = "Malformed JSON";
 
 /// The create's refusal for a session resolving to no tenant.
 ///
-/// A 401 where the list's is a 403 — `lifecycle.zig`'s split, kept: a list
-/// caller lacks a context, a create caller's session has gone stale under it.
+/// A 401 where the list's is a 403: a list caller lacks a context, a create
+/// caller's session has gone stale under it.
 pub const DETAIL_CREATE_NO_TENANT: &str = "Missing tenant context on session";
 
 /// The state a name-conflict 409 names in its envelope.
 const STATE_NAME_EXISTS: &str = "name_exists";
 
-/// The body an empty POST reads as — `req.body() orelse "{}"`, ported.
+/// The body an empty POST reads as: no body is the empty object.
 const EMPTY_OBJECT: &[u8] = b"{}";
 
 /// `GET /v1/tenants/me/workspaces` — one page, oldest first.

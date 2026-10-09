@@ -1,8 +1,7 @@
 //! One fleet over HTTP: read it, edit it, purge it.
 //!
-//! The port of `fleets/get.zig`, `patch.zig` and `delete.zig`. Everything here
-//! is addressed by a fleet id as well as a workspace id, which is the line
-//! [`super`] splits on and the same line the route table draws.
+//! Everything here is addressed by a fleet id as well as a workspace id, which
+//! is the line [`super`] splits on and the same line the route table draws.
 //!
 //! # 403 and 404 are separate axes
 //!

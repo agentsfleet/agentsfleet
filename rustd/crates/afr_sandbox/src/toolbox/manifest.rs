@@ -19,13 +19,13 @@ use crate::error::{Result, ToolboxRefusal, toolbox_refused, toolbox_unreadable};
 
 /// The key every release manifest is signed with.
 ///
-/// The public half `cosign generate-key-pair` writes. A fixture: its private
-/// half signed the interop fixture beside the tests and was then discarded, so
-/// no host admits a real image under it; the release key replaces it before
-/// the runner composes a toolbox.
+/// The public half `cosign generate-key-pair` wrote for the release key. Its
+/// private half and password are the vault's `toolbox-release-key` item,
+/// which `.github/actions/build-toolbox` signs with after checking that its
+/// public half is this one.
 pub const TOOLBOX_RELEASE_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELVQWBgCxq2ODgOCaj/XkI/Vlvbjz
-NE5hNFWfWCzZc7dlzHFBosEsGA1965zFODW/81o74kL/hvsesQ2gmbWd8A==
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE1gWHep+vAnoPv9dHXvsf+YVjdcxH
+X9Uwa+eLToHNFEG0sSzhyinf4yg1h2STC3EeThtX1E8N2qwR5D+IFZZZXw==
 -----END PUBLIC KEY-----
 ";
 /// The EROFS features a release may use: the ones the build's pinned

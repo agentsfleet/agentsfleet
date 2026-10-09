@@ -13,16 +13,16 @@
 //! Rather than a bespoke strict parser, [`parse`] decodes permissively,
 //! re-encodes canonically, and requires the result to equal the input byte for
 //! byte — reordered keys, added whitespace, `1.0` for `1` all differ after the
-//! round trip and are refused. A cursor a ZIG daemon issued is canonical under
-//! the same rule, so it survives the cutover.
+//! round trip and are refused. A token any build of this daemon issued is
+//! canonical under the same rule, so a client's token survives a deploy.
 //!
 //! # One generation number, not one per payload
 //!
-//! `http/pagination.zig` owns a single version across every struct cursor it
-//! issues, and [`VERSION`] is that number. A payload reports the generation it
-//! was decoded under through [`StructCursor::generation`] rather than declaring
-//! a constant of its own, so two payloads cannot drift onto different numbers
-//! and leave a reader guessing which one a token belongs to.
+//! [`VERSION`] is a single number across every struct cursor this daemon
+//! issues. A payload reports the generation it was decoded under through
+//! [`StructCursor::generation`] rather than declaring a constant of its own, so
+//! two payloads cannot drift onto different numbers and leave a reader guessing
+//! which one a token belongs to.
 //!
 //! # Two refusals, deliberately distinct
 //!
@@ -83,7 +83,7 @@ pub fn render<C: StructCursor>(cursor: &C) -> String {
     BASE64.encode(json)
 }
 
-/// Reads a token this daemon — or the Zig one — issued.
+/// Reads a token this daemon issued.
 ///
 /// # Errors
 /// Refuses anything that is not unpadded base64url of the canonical JSON form,
@@ -145,10 +145,10 @@ mod tests {
 
     #[test]
     fn the_wire_form_is_unpadded_base64url_of_declaration_order_json() {
-        // Pinned bytes: what `std.json.Stringify` emits for this payload,
-        // base64url without padding. A client holding a Zig-issued cursor must
-        // be able to spend it here mid-cutover, so the encoding is a wire fact
-        // rather than a choice.
+        // Pinned bytes: declaration-order JSON with no whitespace, base64url
+        // without padding. A client holding a token across a deploy must still
+        // be able to spend it, so the encoding is a wire fact rather than a
+        // choice.
         use base64::Engine as _;
         let json = "{\"v\":2,\"id\":\"0195b4ba-8d3a-7f13-8abc-cd0000000002\",\"limit\":50}";
         let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json);

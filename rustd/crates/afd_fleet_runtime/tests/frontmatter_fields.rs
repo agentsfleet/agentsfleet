@@ -70,7 +70,7 @@ fn the_full_trigger_carries_every_authored_block() {
 /// `tool_window: auto` resolves to the runner's zero sentinel, not to a refusal.
 ///
 /// The one place the corpus exercises a knob that takes a WORD where its
-/// siblings take a number, and the answer is the Zig's: zero means auto.
+/// siblings take a number, and the runner reads zero as auto.
 #[test]
 fn an_auto_tool_window_resolves_to_the_zero_sentinel() {
     let parsed =
@@ -106,7 +106,7 @@ fn the_full_skill_carries_every_optional_field() {
 /// bundles before them happened to declare a single tool each — an accident of
 /// the roster, not a property of a first-party bundle. `incident-responder`
 /// declares `memory_store` and `memory_recall` beside `http_request`, both of
-/// which the runner builds (`src/runner/engine/tool_builders.zig`). What the
+/// which the runner hosts (`afr_tools/src/catalog.rs`). What the
 /// roster actually shares is the reach: every one of them talks to its service
 /// over `http_request` rather than a bespoke tool.
 #[test]

@@ -1,27 +1,26 @@
 //! What was presented, and which class it belongs to.
 //!
-//! This module holds the routing decision that
-//! the retired daemon's `auth/middleware/bearer_or_api_key.zig:74-124` spells as a
-//! chain of `if`, and it is the reason that chain does not survive the port.
+//! This module holds the routing decision: which credential class a presented
+//! value belongs to.
 //!
-//! # The chain was never the problem
+//! # Why a table and not a chain of `if`
 //!
-//! Deleting the `if` and leaving everything else would buy nothing. The chain
-//! exists because the three credential classes it routes to are three
-//! hand-written procedures that differ only in constants — so routing to them
-//! has to be hand-written too, and has to be kept in the same order as a
-//! paragraph of `docs/AUTH.md`.
+//! A branch chain exists when the credential classes it routes to are
+//! hand-written procedures that differ only in constants — routing to them
+//! then has to be hand-written too, and kept in the same order as a paragraph
+//! of `docs/AUTH.md`.
 //!
 //! [`CredentialKind::of`] is a walk over a table. There is no branch to put in
 //! the wrong order because there is no branch, and a new class is one row.
 //!
-//! # The property the chain holds by accident
+//! # The property a chain would hold by accident
 //!
-//! `agt_t` and `agt_r` differ in one byte. Nothing in the Zig chain says two
-//! markers must not be prefixes of one another — it holds because of the order
-//! somebody wrote the branches in, and a future `agt_` class would break it
-//! silently by being tested first. The table is asserted PREFIX-FREE at compile
-//! time, so the property is a build failure rather than a review question.
+//! `agt_t` and `agt_r` differ in one byte. A branch chain says nothing about
+//! two markers not being prefixes of one another — it holds because of the
+//! order somebody wrote the branches in, and a future `agt_` class would break
+//! it silently by being tested first. The table is asserted PREFIX-FREE at
+//! compile time, so the property is a build failure rather than a review
+//! question.
 //!
 //! # The session token is the fall-through because it has no marker
 //!
@@ -70,9 +69,9 @@ pub enum CredentialKind {
     OidcSessionToken,
 }
 
-/// the retired daemon's `auth/middleware/tenant_api_key.zig`'s `TENANT_KEY_PREFIX`.
+/// The marker a tenant api-key carries.
 pub const TENANT_API_KEY_PREFIX: &str = "agt_t";
-/// the retired daemon's `auth/cli_credential.zig`'s `PREFIX`.
+/// The marker a credential minted by `agentsfleet login` carries.
 pub const CLI_CREDENTIAL_PREFIX: &str = "afc_";
 /// The runner wire's token prefix, the one the runner presents.
 pub use afd_wire::paths::RUNNER_TOKEN_PREFIX;
@@ -184,28 +183,27 @@ const _: () = assert!(
 
 /// The scheme prefix, including its separating space.
 ///
-/// Matched case-SENSITIVELY, as `bearer.zig`'s
-/// `startsWith(u8, auth, "Bearer ")` does. Leniency here would accept a header
-/// the Zig daemon refuses, which is a behaviour divergence and therefore a bug.
+/// Matched case-SENSITIVELY, as a plain `strip_prefix`. A lower-case `bearer `
+/// is refused, and `tests/bearer_prefix_routing.rs` pins it.
 const BEARER_SCHEME: &str = "Bearer ";
 
-/// The bytes `bearer.zig` trims before deciding a token is blank.
+/// The bytes trimmed before deciding a token is blank.
 const BLANK_BYTES: [char; 4] = [' ', '\t', '\r', '\n'];
 
 /// A credential exactly as the caller sent it.
 ///
 /// Guards two invariants (`M-STRONG-TYPES-GUARD`), and neither is decorative:
 ///
-/// - **Non-blank.** `bearer.zig` answers `null` for a header whose token is
-///   empty or all whitespace, so every caller maps that to one 401 branch.
-///   Refusing it in the constructor means no later code has to remember.
+/// - **Non-blank.** A header whose token is empty or all whitespace is one
+///   401 branch for every caller. Refusing it in the constructor means no
+///   later code has to remember.
 /// - **Never rendered.** `Debug` prints the length and nothing else. A bearer
 ///   value in a log IS the credential, and a `#[derive(Debug)]` on any struct
 ///   that transitively holds one is how it gets there.
 ///
-/// The value is stored untrimmed. `parseBearerToken` returns the raw slice and
-/// only trims to decide blankness, so trimming here would hash different bytes
-/// than the Zig daemon hashes.
+/// The value is stored untrimmed. Whitespace is consulted only to decide
+/// blankness; [`crate::directory::Digest::of`] hashes the raw bytes, so a
+/// stored digest matches exactly what the minter rendered.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Presented(Box<str>);
 
@@ -218,8 +216,7 @@ impl Presented {
     /// Wraps the token half of an `Authorization: Bearer <token>` header.
     ///
     /// # Errors
-    /// Returns [`Blank`] when the value is empty or only whitespace — the
-    /// condition `bearer.zig`'s `parseBearerToken` answers `null` for.
+    /// Returns [`Blank`] when the value is empty or only whitespace.
     pub fn new(raw: &str) -> Result<Self, Blank> {
         if raw.trim_matches(BLANK_BYTES).is_empty() {
             return Err(Blank);

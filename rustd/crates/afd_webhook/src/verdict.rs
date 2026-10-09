@@ -8,9 +8,8 @@
 //! where THIS side is broken: a secret the operator never configured.
 //!
 //! Keeping them apart is what stops an operator's alert on `Error` from firing
-//! every time an internet scanner probes `/v1/webhooks/{id}` — RULE ECL, and the
-//! same split `slack_sig.zig` draws with its `Verdict` enum for its own
-//! non-authorizing reasons (RULE TGU).
+//! every time an internet scanner probes `/v1/webhooks/{id}` — RULE ECL, with
+//! the non-authorizing reasons carried as [`Verdict`] values (RULE TGU).
 
 use afd_core::error_code::{self, ErrorCode};
 
@@ -56,12 +55,9 @@ pub enum Refusal {
 impl Refusal {
     /// The registry code this refusal answers with.
     ///
-    /// Unified on the `UZ-WH-*` family across every path on this surface. The
-    /// Zig daemon answers three families here — `UZ-APPROVAL-003` for approval
-    /// deliveries and `UZ-SLK-010`/`UZ-SLK-011` for Slack — and collapsing them
-    /// is a deliberate divergence recorded in the milestone's Interfaces block,
-    /// not an oversight in the port. A rollback to the Zig daemon answers the
-    /// old codes, which is why the cutover milestone has to say so.
+    /// Unified on the `UZ-WH-*` family across every path on this surface,
+    /// approval and Slack deliveries included: a sender learns the same three
+    /// codes whichever provider it is.
     #[must_use]
     pub const fn code(self) -> ErrorCode {
         match self {
@@ -73,10 +69,10 @@ impl Refusal {
 
     /// The sentence the sender is told.
     ///
-    /// Byte-identical to the Zig daemon's, which is a compatibility statement
-    /// rather than a style one: a provider's delivery log shows this string to
-    /// an operator debugging their integration, and two daemons answering the
-    /// same rejection with different prose would read as two different bugs.
+    /// Pinned byte-for-byte, as a compatibility statement rather than a style
+    /// one: a provider's delivery log shows this string to an operator
+    /// debugging their integration, and a sentence that changes between
+    /// releases reads as a new bug.
     #[must_use]
     pub const fn detail(self) -> &'static str {
         match self {

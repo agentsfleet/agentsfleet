@@ -1,12 +1,7 @@
 //! Dimension 4.1 — which credential class a presented value routes to, and
 //! what each class does with it.
 //!
-//! The Zig daemon proves this with three `MockLookup` types in three test
-//! files, each exercising one middleware. The routing DECISION — which of them
-//! runs — is covered by `bearer_or_api_key_test.zig` alone, against a chain
-//! whose correctness depends on the order somebody wrote it in.
-//!
-//! Here routing and resolution are one procedure, so one file covers both, and
+//! Routing and resolution are one procedure, so one file covers both, and
 //! the properties worth pinning are the ones an `if`-chain gets by accident:
 //! that markers cannot shadow one another, that a plane refuses a foreign class
 //! before it costs a round trip, and that a deployment with no identity
@@ -86,7 +81,7 @@ fn block_on<F: Future>(future: F) -> F::Output {
 
 // ── Classification ───────────────────────────────────────────────────────
 
-/// The property the Zig chain holds by authoring order rather than by rule.
+/// No marker shadows another, by rule rather than by authoring order.
 ///
 /// `agt_t` and `agt_r` differ in one byte. A first-match walk over a table that
 /// was NOT prefix-free would classify one as the other depending on which row
@@ -146,7 +141,7 @@ fn test_the_prefix_table_and_the_catalogue_agree() {
 ///
 /// A class two planes both accept would be a runner token that satisfies a
 /// tenant route; a class no plane accepts would be a credential nothing can
-/// ever authenticate. In the Zig daemon both are wiring questions.
+/// ever authenticate.
 #[test]
 fn test_planes_partition_the_catalogue() {
     for kind in CredentialKind::ALL {
@@ -211,10 +206,9 @@ fn test_the_tenant_plane_refuses_a_runner_token_without_a_lookup() {
 /// The dimension's own wording: a deployment with NO identity provider still
 /// resolves `agt_t` and `afc_`.
 ///
-/// In the Zig daemon this holds because two `if`s sit above the `orelse`, so it
-/// is a claim about statement order. Here the prefixed classes never consult a
-/// verifier at all, so there is no order for a future edit to disturb —
-/// [`NoVerifier`] is the whole configuration and the test still passes.
+/// The prefixed classes never consult a verifier at all, so there is no
+/// statement order for a future edit to disturb — [`NoVerifier`] is the whole
+/// configuration and the test still passes.
 #[test]
 fn test_a_deployment_with_no_identity_provider_still_resolves_both_stored_classes() {
     let tenant_key = present(&format!("{TENANT_API_KEY_PREFIX}{BODY}"));
@@ -264,7 +258,7 @@ fn test_a_deployment_with_no_identity_provider_refuses_a_session_token() {
 // ── One procedure, three classes ─────────────────────────────────────────
 
 /// A malformed body is refused before the round trip that could only have said
-/// the same thing — for all three classes, not just the one Zig checks.
+/// the same thing — for all three classes.
 #[test]
 fn test_a_malformed_body_costs_no_round_trip_in_any_class() {
     for (plane, marker, expected) in [
@@ -510,8 +504,7 @@ fn test_a_usable_header_reaches_the_same_verdict_as_its_credential() {
 /// [`NoCapabilitySource`] is what an unconfigured provider client IS, and the
 /// difference from an empty set is the whole point: an empty set would
 /// authenticate the caller and then refuse them at every gate as though they
-/// had been narrowed to nothing. `clerk_scope_resolver.zig` makes the same
-/// choice by treating an absent secret as a fetch failure.
+/// had been narrowed to nothing.
 #[test]
 fn test_an_unconfigured_provider_is_an_outage_for_a_person_credential() {
     let credential = present(&format!("{CLI_CREDENTIAL_PREFIX}{BODY}"));
@@ -545,10 +538,11 @@ fn test_a_digest_renders_as_the_hex_a_credential_column_stores() {
             .as_str()
             .bytes()
             .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)),
-        "lower-case hex, the form `api_key.zig::sha256Hex` writes: {digest}"
+        "lower-case hex, the form the credential column stores: {digest}"
     );
-    // Over the WHOLE presented value, marker included — the Zig daemon hashes
-    // `provided`, so hashing the body alone would authenticate nothing.
+    // Over the WHOLE presented value, marker included — that is what the
+    // stored digest covers, so hashing the body alone would authenticate
+    // nothing.
     assert_ne!(digest, Digest::of(&present(BODY)));
 }
 
@@ -712,18 +706,18 @@ fn test_a_presented_credential_never_renders_its_value() {
     assert!(!presented.is_empty());
 }
 
-/// The header parse matches `bearer.zig` exactly, including its case
-/// sensitivity — leniency here would accept what the Zig daemon refuses.
+/// The header parse is exact: the scheme is case-sensitive and the value is
+/// kept untrimmed, so a credential hashes to the bytes the client sent.
 #[test]
-fn test_the_header_parse_matches_the_zig_daemons() {
+fn test_the_header_parse_is_case_sensitive_and_untrimmed() {
     assert_eq!(
         Presented::from_authorization("Bearer abc")
             .expect("a token")
             .expose(),
         "abc"
     );
-    // Untrimmed: the Zig daemon hashes the raw slice, so trimming here would
-    // hash different bytes than the column holds.
+    // Untrimmed: the stored digest is over the raw value, so trimming here
+    // would hash different bytes than the column holds.
     assert_eq!(
         Presented::from_authorization("Bearer  abc ")
             .expect("a token")

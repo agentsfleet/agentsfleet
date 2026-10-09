@@ -18,13 +18,11 @@
 //! `api_error`. Reading the code rather than the status is what keeps a 403
 //! from the scope rung apart from a 403 the gate raised.
 //!
-//! # This is new emission, and it is deliberate
+//! # The names are the funnels' names
 //!
-//! The daemon this ports DECLARES all three of these events and captures none
-//! of them — `telemetry_events.zig` has the structs, and the only references
-//! outside it are in `telemetry_test.zig`. The event names, property keys and
-//! shapes are still the Zig's, so nothing downstream has to learn a new one;
-//! what changes is that they now fire.
+//! The event names, property keys and shapes are the ones
+//! `afd_observability::product::Telemetry` declares, and the funnels and
+//! alerts downstream match on them byte for byte.
 
 use std::sync::Arc;
 

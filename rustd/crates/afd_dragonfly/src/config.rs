@@ -1,11 +1,9 @@
 //! Which Dragonfly a role talks to, and how long it may take.
 //!
 //! One URL knob, not one per role. The two roles dial the SAME cluster and
-//! differ only in the tag they log under, so a second name bought a second way
-//! to misconfigure the same endpoint and nothing else. The knobs were the Zig
-//! daemon's, spelled identically so a deployment could move between the two
-//! binaries without touching its environment; that daemon is retired, which is
-//! what freed these names to say what they now connect to.
+//! differ only in the tag they log under, so a second name would buy a second
+//! way to misconfigure the same endpoint and nothing else. The knob names say
+//! what they connect to: `DRAGONFLY_URL` and the `DRAGONFLY_*` limits below.
 
 use std::path::PathBuf;
 use std::time::Duration;

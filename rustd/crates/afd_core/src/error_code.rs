@@ -1,11 +1,8 @@
 //! The `UZ-*` codes a client matches on, declared once each.
 //!
-//! Until the Zig daemon retired, its `errors/error_registry.zig` was the
-//! registry of record and this module was a checked subset of it — the codes
-//! the port had reached. That tree is gone, and this is now the registry of
-//! record for the whole product. Adding a code here is a public-contract
-//! decision: `REGISTRY` is what a client matches on, and
-//! `test_error_registry_unique` is what holds the list to one spelling each.
+//! This module is the registry of record for the whole product. Adding a code
+//! here is a public-contract decision: `REGISTRY` is what a client matches on,
+//! and `test_error_registry_unique` is what holds the list to one spelling each.
 //!
 //! Codes are added here as the milestone that emits them lands, never
 //! speculatively: an unreferenced code is dead code that looks like coverage.
@@ -66,6 +63,32 @@ impl ErrorCode {
 pub trait Coded: std::error::Error {
     /// The registry code this failure answers with.
     fn code(&self) -> ErrorCode;
+
+    /// The failure's own sentence, then each cause beneath it: what a log's
+    /// `reason` carries beside `error_code`, without the code a second time
+    /// or a captured backtrace.
+    fn told(&self) -> String;
+
+    /// Both fields a failure's log line carries, read once:
+    /// `let Logged { error_code, reason } = failure.logged();`, then the
+    /// `tracing` call at the call site, where the logging audit reads it.
+    fn logged(&self) -> Logged {
+        Logged {
+            error_code: self.code().as_str(),
+            reason: self.told(),
+        }
+    }
+}
+
+/// What a failure's log line says about it, named as the line's fields are
+/// (`LOGGING_STANDARD` §5 and §8A), so destructuring binds the locals the
+/// `tracing` call takes by shorthand.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Logged {
+    /// The registry code, as the `error_code` field spells it.
+    pub error_code: &'static str,
+    /// [`Coded::told`]: the failure's sentence, then each cause beneath it.
+    pub reason: String,
 }
 
 impl Display for ErrorCode {
@@ -124,7 +147,7 @@ pub use self::request::*;
 /// Every code this crate declares, in declaration order.
 ///
 /// The exhaustive list the registry tests walk. A code added above without a
-/// row here is invisible to the uniqueness and Zig-parity checks, which is why
+/// row here is invisible to the uniqueness and problem-entry checks, which is why
 /// `test_error_registry_unique` also asserts the count.
 pub const REGISTRY: &[ErrorCode] = &[
     UUIDV7_INVALID_ID_SHAPE,

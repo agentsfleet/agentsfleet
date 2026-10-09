@@ -76,9 +76,13 @@ impl Sweep for Arc<Counting> {
 /// two spellings of it read as two different expectations in a failure log.
 const CANCELLED_RETURNS: &str = "a cancelled sweeper returns";
 
+/// Twelve of `Counting`'s 5 ms intervals: enough passes that one failed pass
+/// stopping the loop shows as a count of one.
+const SEVERAL_INTERVALS: Duration = Duration::from_millis(60);
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_cancelled_sweeper_stops_without_waiting_out_its_interval() {
-    // The property the Zig's 100ms poll cannot have: cancellation is selected
+    // The property a poll loop cannot have: cancellation is selected
     // AGAINST the wait, so a sweeper with a ten-minute interval stops now. If
     // this were a poll loop the join below would hang until the interval
     // elapsed, and the test would time out rather than fail.
@@ -102,8 +106,7 @@ async fn a_failing_pass_does_not_stop_the_sweeper() {
     let token = CancellationToken::new();
     let task = tokio::spawn(run(Arc::clone(&sweeper), token.clone()));
 
-    // Long enough for several intervals to elapse.
-    tokio::time::sleep(Duration::from_millis(60)).await;
+    tokio::time::sleep(SEVERAL_INTERVALS).await;
     let survived = sweeper.passes();
     token.cancel();
     task.await.expect(CANCELLED_RETURNS);

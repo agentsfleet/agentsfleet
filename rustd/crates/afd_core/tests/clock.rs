@@ -51,13 +51,13 @@ fn test_two_readings_do_not_go_backward() {
     assert!(second >= first, "{second:?} preceded {first:?}");
 }
 
-/// Seconds truncate toward zero, which is what `clock.zig`'s `nowSeconds` does.
+/// Seconds truncate toward zero.
 ///
-/// `@divTrunc`, not `@divFloor`. The two agree for every instant after 1970 and
-/// disagree for every instant before it, so a floor here would be a divergence
-/// that no test using a present-day timestamp could ever see.
+/// Truncation and flooring agree for every instant after 1970 and disagree for
+/// every instant before it, so a floor here would be a divergence that no test
+/// using a present-day timestamp could ever see.
 #[test]
-fn test_seconds_truncate_toward_zero_like_the_zig_daemon() {
+fn test_seconds_truncate_toward_zero_for_pre_epoch_instants() {
     for (millis, expected) in [
         (0_i64, 0_i64),
         (999, 0),
@@ -174,17 +174,17 @@ fn test_a_fixed_clock_can_step_backward() {
     );
 }
 
-/// A clock set before 1970 reads NEGATIVE, the way `clock.zig` does.
+/// A clock set before 1970 reads NEGATIVE.
 ///
-/// This is the parity claim, and it is the reason [`millis_at`] takes the
-/// instant instead of reading the clock: no test can set the host clock back to
-/// 1969, so a branch that only the real clock could reach would carry an
-/// unchecked claim about how two binaries answer the same broken host.
+/// This is the reason [`millis_at`] takes the instant instead of reading the
+/// clock: no test can set the host clock back to 1969, so a branch that only
+/// the real clock could reach would carry an unchecked claim about how a broken
+/// host is read.
 ///
 /// The tempting alternative — map the failure to `0` — is what `afd_db` did
-/// privately before this module existed, and `clock.zig` rejects it in its own
-/// words: *"a silent epoch-0 return would corrupt `UUIDv7` timestamp ordering."*
-/// Zero is a real instant, one second into 1970; the reading it replaces is not.
+/// privately before this module existed, and it is wrong because a silent
+/// epoch-0 return would corrupt `UUIDv7` timestamp ordering. Zero is a real
+/// instant, one second into 1970; the reading it replaces is not.
 #[test]
 fn test_a_pre_epoch_clock_reads_negative_rather_than_zero() {
     use std::time::{Duration, UNIX_EPOCH};
@@ -212,7 +212,7 @@ fn test_a_pre_epoch_clock_reads_negative_rather_than_zero() {
     assert_eq!(
         reading.as_seconds(),
         -1,
-        "and the seconds view truncates toward zero, as the Zig daemon does"
+        "and the seconds view truncates toward zero"
     );
 }
 

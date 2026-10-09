@@ -80,10 +80,9 @@ impl OutboundReader {
 
     /// The next undelivered entry, parking up to `block_ms` for one to arrive.
     ///
-    /// The park is the point: the Zig polls every 250 ms because its pooled
-    /// connections could not hold a `BLOCK`, and pays that latency on every
-    /// answer plus a command per interval forever. Here the server holds the
-    /// read open and answers the instant an entry lands.
+    /// The park is the point: a poll loop pays its interval in latency on
+    /// every answer plus a command per interval forever. Here the server holds
+    /// the read open and answers the instant an entry lands.
     ///
     /// `block_ms` bounds it anyway, because a read that never returns is a
     /// task that cannot be joined: the caller races this against its
@@ -180,8 +179,7 @@ impl OutboundReader {
 /// format that drifted. `None` rather than an error, because the caller's only
 /// sane response is the same either way: acknowledge it and move on, since
 /// redelivering something undeliverable forever is the one outcome worse than
-/// dropping it. The Zig raises `RedisUnexpectedResponse` here and its worker
-/// then swallows it, which is the same decision spelled twice.
+/// dropping it.
 fn decode(entry: &redis::streams::StreamId) -> Option<OutboundDelivery> {
     let field = |name: &str| entry.get::<String>(name);
     let delivery = OutboundDelivery {

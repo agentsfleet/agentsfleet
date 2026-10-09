@@ -94,7 +94,8 @@ export const UNROUTABLE_API_URL = "http://127.0.0.1:1";
 
 // Per-environment API + dashboard URLs. Dashboard URLs derive from the
 // acceptance API target — no separate skip-gating env var needed.
-//   - PROD dashboard mirrors `runtime_loader.zig`'s `APP_URL` default.
+//   - PROD dashboard mirrors `APP_URL_DEFAULT` in
+//     `rustd/crates/agentsfleetd/src/preflight/knobs.rs`.
 //   - DEV dashboard is the Vercel-deploy URL used by the dev workflow
 //     (per `playbooks/founding/04_deploy_dev/001_playbook.md` +
 //     `playbooks/operations/credential_rotation/02_service_health.sh`).

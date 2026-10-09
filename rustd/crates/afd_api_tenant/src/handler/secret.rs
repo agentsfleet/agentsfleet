@@ -1,23 +1,21 @@
 //! The workspace's secrets over HTTP: store, list, replace, delete.
 //!
-//! The port of `fleets/secrets.zig` and `fleets/secret_list.zig`. Four verbs
-//! across two templates, and not one of them returns a stored value: a secret
-//! is write-only by contract, so there is no read handler here to have got
-//! wrong.
+//! Four verbs across two templates, and not one of them returns a stored value:
+//! a secret is write-only by contract, so there is no read handler here to have
+//! got wrong.
 //!
 //! # The handler validates nothing, and that is the design
 //!
-//! `innerStoreSecret` opens with an identifier check, a name check and a shape
-//! check, and `innerReplaceSecret` repeats two of the three — a third verb that
-//! forgot either would compile. Here each check is a CONSTRUCTOR:
+//! A store needs an identifier check, a name check and a shape check, and a
+//! replace needs two of the three; checks a handler has to remember are checks
+//! a third verb could forget and still compile. Here each check is a CONSTRUCTOR:
 //! [`SecretName::parse`] and [`SecretBody::parse`] answer with this daemon's
 //! own registry codes, so the refusal a caller sees comes from the same table
 //! whichever verb they reached it through.
 //!
 //! # Ownership is not checked here either
 //!
-//! Every Zig handler in this family opens with a `workspace_guards.enforce`
-//! call. Here it is a LAYER mounted from the route's own template, so
+//! It is a LAYER mounted from the route's own template, so
 //! [`WorkspaceContext`] is a handler saying which workspace it is acting in —
 //! never a handler deciding whether it may.
 

@@ -8,12 +8,11 @@
 //!
 //! # Two rules, and they are one function
 //!
-//! The Zig splits them across two files: `base_url_guard.validate` answers
-//! whether a URL is safe, and `secret_probe.validateSecretEndpoint` answers
-//! whether this PROVIDER may carry one at all. Both are pure, both are always
-//! called together, and the second is meaningless without the first — a named
-//! provider that smuggles a `base_url` widens the egress allowlist without
-//! going through the compatible path, which is a bypass rather than a typo.
+//! One answers whether a URL is safe, the other whether this PROVIDER may carry
+//! one at all. Both are pure, both are always called together, and the second
+//! is meaningless without the first — a named provider that smuggles a
+//! `base_url` widens the egress allowlist without going through the compatible
+//! path, which is a bypass rather than a typo.
 //!
 //! [`resolve`] is the pair, stated once. [`validate`] stays a separate function
 //! rather than being inlined into it, because the egress allowlist needs the bare
@@ -22,39 +21,40 @@
 //!
 //! # The parse is `url`'s, not thirty hand-written lines
 //!
-//! `base_url_guard.zig` scans for `://`, finds the first `/?#`, takes the last
-//! `@`, and looks for a `:` unless the authority opens with `[` — a URL parser,
-//! written by hand, in the one place where disagreeing with the client that
-//! will actually dial the address is a security hole. This uses `url` 2.5.8,
+//! Scanning for `://`, the first `/?#`, the last `@` and a `:` outside `[...]`
+//! is a URL parser written by hand, in the one place where disagreeing with the
+//! client that will actually dial the address is a security hole. This uses
+//! `url` 2.5.8,
 //! already in the lock, and gets a TYPED [`Host`] out of it: an IP literal
 //! arrives as an `Ipv4Addr` or `Ipv6Addr` and goes straight to the classifier
 //! with no string round trip, and bracket stripping, zone ids, percent-encoded
 //! authorities and userinfo are all handled by something maintained.
 //!
 //! The one thing kept by hand is how an IPv6 host is RENDERED back. `url` hands
-//! it over unbracketed and `execution_policy.zig::hostFromUrl` produces the
-//! bracketed form, and this value travels to a stock Zig runner as its
-//! egress-allowlist entry. Normalisation is otherwise safe here, which was
-//! checked rather than assumed: the runner compares allowlist entries with
-//! `std.ascii.eqlIgnoreCase` at all three of its matching sites, so a
-//! lower-cased host still matches.
+//! it over unbracketed, and this value travels to the runner as its
+//! egress-allowlist entry, where `afr_egress` compares it against
+//! `Url::host_str` — the bracketed form. Normalisation is otherwise safe here,
+//! which was checked rather than assumed: the runner compares hosts with
+//! `eq_ignore_ascii_case` at every site that matches one, so a lower-cased host
+//! still matches.
 //!
-//! # Three verdicts differ from the hand-written guard, and all three are it
+//! # Three verdicts follow the client that will dial
 //!
-//! Every one is a case where the Zig disagrees with what an HTTP client would
-//! actually dial, which is the only thing this guard is for — a verdict about a
-//! host nobody will connect to protects nothing.
+//! Each is a URL whose verdict turns on what an HTTP client would actually
+//! dial, which is the only thing this guard is for — a verdict about a host
+//! nobody will connect to protects nothing.
 //!
-//! - `https:///just/a/path` — the Zig calls it malformed. A client following
-//!   WHATWG skips the extra slash and dials `just`, and so does this. The SSRF
-//!   check still runs on that host, so `https:///169.254.169.254` is refused
-//!   exactly as the two-slash spelling is.
-//! - `https://256.1.1.1/v1` — the Zig's `parseIpv4` fails, concludes "not a
-//!   literal", and passes it through as a NAME. WHATWG reads a four-part
-//!   all-numeric host as an IPv4 attempt and refuses the out-of-range octet, so
-//!   this refuses it too. The safe direction, and the one a client takes.
+//! - `https:///just/a/path` — looks malformed, but a client following WHATWG
+//!   skips the extra slash and dials `just`, and so does this. The SSRF check
+//!   still runs on that host, so `https:///169.254.169.254` is refused exactly
+//!   as the two-slash spelling is.
+//! - `https://256.1.1.1/v1` — not a valid IPv4 literal, and a check that only
+//!   classifies valid literals would pass it through as a NAME. WHATWG reads a
+//!   four-part all-numeric host as an IPv4 attempt and refuses the out-of-range
+//!   octet, so this refuses it too. The safe direction, and the one a client
+//!   takes.
 //! - A schemeless host reports `InvalidScheme` rather than the parser's own
-//!   "relative URL" — the diagnosis an operator can act on, and the Zig's.
+//!   "relative URL" — the diagnosis an operator can act on.
 
 /// The provider id that opts a credential into a custom OpenAI-compatible
 /// endpoint.
@@ -137,9 +137,9 @@ pub(super) fn resolve<'a>(
 
 /// The bare host of a safe `https` endpoint.
 ///
-/// Order matters and is the Zig's: scheme first because it is the cheapest
-/// check and an `http` URL is refused whatever its host, then the SSRF
-/// classification of whatever the parser resolved.
+/// Order matters: scheme first because it is the cheapest check and an `http`
+/// URL is refused whatever its host, then the SSRF classification of whatever
+/// the parser resolved.
 ///
 /// Owned rather than borrowed from the input, because the parser normalises and
 /// the result is no longer a slice of what came in. That is the honest

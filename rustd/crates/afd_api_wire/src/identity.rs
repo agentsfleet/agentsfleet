@@ -11,12 +11,11 @@
 //! # `display_name` is omitted rather than null
 //!
 //! The divergence from [`super::tenant`]'s always-emit rule is deliberate and
-//! narrow. That rule exists for byte equality with a Zig emitter this route
-//! never had, and the guidelines ask new surfaces to omit an absent optional
-//! and keep `null` for a value somebody explicitly cleared. Nobody clears a
-//! display name here — it was either supplied at signup or never was — so the
-//! key is absent, matching [`super::tenant_model_entry`], the other surface
-//! with no Zig original.
+//! narrow. That rule keeps every row of a tenant list the same set of keys,
+//! and the guidelines ask a surface to omit an absent optional and keep `null`
+//! for a value somebody explicitly cleared. Nobody clears a display name here
+//! — it was either supplied at signup or never was — so the key is absent,
+//! matching [`super::tenant_model_entry`].
 //!
 //! # No credential material, structurally
 //!

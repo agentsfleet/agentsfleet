@@ -16,9 +16,8 @@
 //! # The view is composed from two independent facts
 //!
 //! What this tenant selected, and whether the deployment has an active
-//! platform default to fall back on. The Zig reads them on two connections
-//! because its driver cannot nest a query inside an open result set; here they
-//! are two seam reads and the composition is visible where it is decided:
+//! platform default to fall back on. They are two seam reads and the
+//! composition is visible where it is decided:
 //!
 //!   row?                → the stored row, whatever its mode
 //!   no row + default    → the live default, rendered as platform mode
@@ -70,7 +69,7 @@ pub const DETAIL_SECRET_NOT_FOUND: &str = "credential row not found in vault";
 /// One sentence for two shapes — a body that will not read as a credential,
 /// and a row whose metadata says it is not a provider key — because to a
 /// caller they are the same repair: store a provider credential under that
-/// name. The Zig answers this code for both.
+/// name.
 pub const DETAIL_SECRET_DATA_MALFORMED: &str =
     "credential JSON missing required field (provider, or api_key for a named provider)";
 
@@ -85,9 +84,8 @@ pub const DETAIL_MALFORMED_BODY: &str = "Malformed JSON";
 
 /// What the empty view renders when nothing is configured anywhere.
 ///
-/// The Zig serves empty strings rather than a 404 or a hardcoded model, so the
-/// dashboard shows "not configured" instead of a stale default. Kept to the
-/// byte.
+/// Empty strings rather than a 404 or a hardcoded model, so the dashboard shows
+/// "not configured" instead of a stale default.
 const NOT_CONFIGURED: &str = "";
 
 /// `GET /v1/tenants/me/provider` — the persisted selection, never a key.

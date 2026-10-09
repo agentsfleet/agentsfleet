@@ -38,7 +38,7 @@ export const RUNNER_ADMIN_STATES = [
 ] as const;
 
 // Canonical Stripe-style paging parameter names — spelled identically to the
-// daemon's `QUERY_STARTING_AFTER` / `QUERY_LIMIT` (http/pagination.zig).
+// daemon's `QUERY_STARTING_AFTER` / `QUERY_LIMIT` (rustd/crates/afd_core/src/paging.rs).
 export const QUERY_STARTING_AFTER = "starting_after";
 
 export const QUERY_LIMIT = "limit";
@@ -78,8 +78,9 @@ export interface RunnerListResponse {
   next_cursor: string | null;
 }
 
-// One check's verdict — mirrors `protocol_selftest.SelftestCheck`. The same
-// `{name, ok, detail}` triple `agentsfleet-runner doctor` speaks, so an operator
+// One check's verdict, the TypeScript shape of `SelftestCheck`
+// (rustd/crates/afd_wire/src/runner/selftest.rs). `agentsfleet-runner probe`
+// prints the same `{name, ok, detail}` triple under `checks`, so an operator
 // reads one vocabulary across both surfaces. `detail` is prose even when `ok`.
 export interface SelftestCheck {
   name: string;

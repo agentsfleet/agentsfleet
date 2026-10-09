@@ -8,8 +8,7 @@ use crate::error::MetadataUnwritten;
 /// Pinned as rendered bytes because the KEYS are a wire contract with an
 /// external service: the session-token template projects `metadata.tenant_id`,
 /// so a renamed field here does not fail a build, it mints tokens that every
-/// gate refuses. `clerk_metadata_payload.zig` renders the same two keys under
-/// the same object.
+/// gate refuses.
 #[test]
 fn the_payload_names_the_two_keys_the_provider_merges_on() {
     // `ok()` rather than a panic helper: this crate's tests carry no

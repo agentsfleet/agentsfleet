@@ -147,12 +147,10 @@ impl RepositoryBinding {
 ///
 /// # Why it is a serde type and not a writer
 ///
-/// `repository_binding_json.zig` hand-writes this object a byte at a time —
-/// `writeAll("{\"")`, a hand-rolled `writeJsonEscaped` per entry, a manual
-/// comma between them — because Zig has no serializer to reach for. The
-/// escaping, the separator placement and the optional trailing member are all
-/// hazards this derive does not have. What survives from there is the SHAPE,
-/// which is a contract: the mint reads these three key names.
+/// A writer that builds this object a byte at a time owns the escaping, the
+/// separator placement and the optional trailing member, and each is a hazard
+/// this derive does not have. What is fixed is the SHAPE: the mint reads these
+/// three key names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Recorded<'a> {
     /// The repositories, verbatim.
@@ -166,8 +164,8 @@ pub struct Recorded<'a> {
     access: Access,
     /// The base a write binding opens against.
     ///
-    /// Omitted rather than null when absent, which is the shape the Zig writes
-    /// and therefore the shape the mint's matcher already reads.
+    /// Omitted rather than null when absent, which is the shape the mint's
+    /// matcher reads.
     #[serde(skip_serializing_if = "Option::is_none")]
     base: Option<&'a str>,
 }

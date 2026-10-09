@@ -21,8 +21,9 @@ import { FIXTURE_KEY } from "./constants";
 
 // One spelling each for the statuses and failure classes this module reads
 // (RULE UFS). The event statuses mirror `lib/api/events.ts:EventStatus`; the
-// failure labels mirror `afd_wire::report::FailureClass`, serialised
-// snake_case, and the runner's `execution_result.zig` agrees by test.
+// failure labels mirror `afd_wire::report::FailureClass`
+// (rustd/crates/afd_wire/src/report.rs), serialised snake_case — the one type
+// the daemon and the runner both build against.
 export const EVENT_STATUS = {
   received: "received",
   processed: "processed",

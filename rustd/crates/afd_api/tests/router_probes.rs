@@ -105,7 +105,7 @@ fn test_ready_decision_needs_every_dependency() {
     ] {
         assert!(
             !ready_decision(inputs),
-            "{inputs:?} must not be ready: health.zig's readyDecision is an AND"
+            "{inputs:?} must not be ready: ready_decision is an AND"
         );
     }
 }

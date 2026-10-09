@@ -2,15 +2,13 @@
 //!
 //! # Two strategies, one interface
 //!
-//! A tenant's provider comes from one of two places, and the Zig writes each as
-//! its own function: `resolvePlatformDefault` reads the active platform row and
-//! loads a key out of the ADMIN workspace, `resolveSelfManaged` reads the
-//! tenant's selection and loads a key out of the TENANT's workspace. Both then
-//! do the same three things — open a vault row, read its JSON, own the result —
-//! and both write that part out again, with their own `errdefer` ladder and
-//! their own `secureZero`.
+//! A tenant's provider comes from one of two places: the platform default reads
+//! the active platform row and loads a key out of the ADMIN workspace, and a
+//! self-managed selection reads the tenant's row and loads a key out of the
+//! TENANT's workspace. Both then do the same three things — open a vault row,
+//! read its JSON, own the result.
 //!
-//! Here the difference is a [`Resolution`]: a value that knows WHICH row
+//! The difference is a [`Resolution`]: a value that knows WHICH row
 //! carries its key and what that row's body means. The part they share — open
 //! the row — is written once, in [`vault`], and runs between the two halves of
 //! the trait:
@@ -38,8 +36,8 @@
 //!
 //! # Where this crate keeps it, and where it may have to move
 //!
-//! The Zig keeps provider resolution in `state/`, which is `afd_state` here.
-//! It is in `afd_fleet` instead because its only caller this milestone is the
+//! A read of shared tenant state like this one would normally sit in `afd_state`.
+//! It is in this crate instead because its only caller this milestone is the
 //! lease verb, and because the rich refusal classification it produces
 //! ([`crate::Error::is_config_permanent`]) is this crate's error type. M178's
 //! tenant plane resolves the same credentials for `PUT /v1/tenants/me/provider`
@@ -156,10 +154,9 @@ fn credential<T: DeserializeOwned>(body: &[u8], field: &'static str) -> Result<T
 impl Providers {
     /// The provider `tenant_id`'s next run dials with.
     ///
-    /// Resolved fresh, with no cache. `model_rate_cache.zig`'s reasoning does
-    /// not transfer here and neither does its machinery: a platform default is
-    /// meant to change under a running fleet, and a cache is precisely what
-    /// would stop the next lease from seeing it.
+    /// Resolved fresh, with no cache: a platform default is meant to change
+    /// under a running fleet, and a cache is precisely what would stop the next
+    /// lease from seeing it.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and every way a stored
@@ -178,8 +175,7 @@ impl Providers {
     /// Which of the two ways `tenant_id` resolves.
     ///
     /// A tenant with NO selection row and a tenant with an explicit `platform`
-    /// row take the same arm, and that collapse is the Zig's: `if (row == null
-    /// or row.?.mode == .platform)`. The explicit row exists so the dashboard
+    /// row take the same arm. The explicit row exists so the dashboard
     /// can tell "never configured" from "explicitly reset", which is a display
     /// distinction and not a resolution one.
     async fn strategy(&self, tenant_id: &Uuid7) -> Result<Strategy> {

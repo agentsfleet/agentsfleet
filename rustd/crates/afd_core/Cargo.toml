@@ -19,6 +19,9 @@ categories.workspace = true
 # production binary reads the process environment and nothing else, and
 # emits through the subscriber boot installs, never through a test's.
 test-util = ["dep:tracing", "dep:tracing-subscriber"]
+# `signal::shutdown`, the stop both binaries wait on. Behind a flag so the
+# value layer links no runtime for the crates that never stop a process.
+signal = ["dep:tokio"]
 
 [dependencies]
 # `paging::Page::parse` reads `?limit` through `afd_validate::Limit` with the
@@ -26,7 +29,7 @@ test-util = ["dep:tracing", "dep:tracing-subscriber"]
 afd_validate.workspace = true
 serde.workspace = true
 # The strong `ETag` digest (`crate::etag`). A wire encoding rather than a
-# transport concern: a client cache may hold a tag the Zig daemon computed, and
+# transport concern: a client cache holds a tag across requests, and
 # both the HTTP edge and the store that compares one inside a row lock have to
 # spell it the same way.
 sha2.workspace = true
@@ -57,6 +60,12 @@ tracing-subscriber = { workspace = true, optional = true }
 # `Uuid::parse_str` normalises case and this product rejects it. See the
 # workspace manifest for the full rationale.
 uuid.workspace = true
+# `signal` only: SIGTERM and SIGINT through the runtime both binaries run.
+tokio = { workspace = true, optional = true, features = ["signal"] }
+
+[dev-dependencies]
+# The degraded-stop suite drives `signal::stop_on_kind` on a runtime of its own.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 
 [lints]
 workspace = true

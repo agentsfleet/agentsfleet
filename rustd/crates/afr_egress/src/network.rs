@@ -9,22 +9,21 @@
 //! request somewhere admission never saw), sends HTTPS only, gives up after a
 //! fixed time, and reads at most [`RESPONSE_MAX_BYTES`] of a response.
 //!
-//! This is where the runner departs from `NullClaw` on purpose: `NullClaw` lets
-//! an allowlisted host resolve to a private address, and a runner serving many
-//! tenants on one host does not.
+//! The refusal holds for an allowlisted host too: a runner serves many tenants
+//! on one host, so an allowlist entry never grants a private address.
 
 use std::error::Error as StdError;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afd_core::net::is_blocked;
-use reqwest::dns::{Addrs, Name, Resolve, Resolving};
+use reqwest::dns::{self, Addrs, Name, Resolving};
 use reqwest::header::{CONTENT_TYPE, HeaderName, LOCATION};
 use reqwest::redirect::Policy;
 use reqwest::{Client, ClientBuilder, Response, Url};
 
 use crate::error::{Error, Result, raise};
+use crate::resolve::{BlockedAddress, Resolve, SystemResolver, unblocked};
 use crate::transport::{Inbound, Outbound, Transport};
 
 /// The most of one response a tool reads: the published tools page's 1 MiB.
@@ -54,7 +53,7 @@ impl Network {
     /// # Errors
     /// The TLS backend or the client refused the configuration.
     pub fn new() -> Result<Self> {
-        Self::build(Client::builder())
+        Self::build(Client::builder(), Arc::new(SystemResolver))
     }
 
     /// A client that reaches each `(host, address)` at that address and
@@ -71,11 +70,11 @@ impl Network {
             .fold(Client::builder(), |builder, (host, address)| {
                 builder.resolve(host, *address)
             });
-        Self::build(builder.add_root_certificate(root))
+        Self::build(builder.add_root_certificate(root), Arc::new(SystemResolver))
     }
 
-    fn build(builder: ClientBuilder) -> Result<Self> {
-        let client = guarded(builder)
+    fn build(builder: ClientBuilder, resolver: Arc<dyn Resolve>) -> Result<Self> {
+        let client = guarded_by(builder, resolver)
             .https_only(true)
             .timeout(TIMEOUT)
             .connect_timeout(CONNECT_TIMEOUT)
@@ -162,37 +161,44 @@ pub fn blocked_address(failed: &(dyn StdError + 'static)) -> bool {
 /// through it, so a tenant's `custom:` endpoint and a tool's URL meet the
 /// same refusal.
 pub fn guarded(builder: ClientBuilder) -> ClientBuilder {
+    guarded_by(builder, Arc::new(SystemResolver))
+}
+
+/// [`guarded`], looking each name up through `resolver` rather than the
+/// host's own, and holding the answer to the same rule ([`unblocked`]).
+pub fn guarded_by(builder: ClientBuilder, resolver: Arc<dyn Resolve>) -> ClientBuilder {
     builder
-        .dns_resolver(Arc::new(Guarded))
+        .dns_resolver(Arc::new(Guarded { resolver }))
         .no_proxy()
         .redirect(Policy::none())
 }
 
 /// A resolver that refuses a name any of whose addresses is blocked.
 #[derive(Debug)]
-struct Guarded;
-
-/// The guard's refusal, which `send` reads back out of reqwest's error.
-#[derive(Debug, thiserror::Error)]
-#[error("the name resolves to an address this runner never reaches")]
-struct BlockedAddress;
+struct Guarded {
+    resolver: Arc<dyn Resolve>,
+}
 
 /// What a resolver hands reqwest when it refuses.
 type Unresolved = Box<dyn StdError + Send + Sync>;
 
-impl Resolve for Guarded {
+impl dns::Resolve for Guarded {
     fn resolve(&self, name: Name) -> Resolving {
-        Box::pin(guarded_lookup(name.as_str().to_owned()))
+        let resolver = Arc::clone(&self.resolver);
+        let host = name.as_str().to_owned();
+        Box::pin(async move { guarded_lookup(&*resolver, &host).await })
     }
 }
 
-/// Every address `host` resolves to, unless any of them is blocked.
-async fn guarded_lookup(host: String) -> Result<Addrs, Unresolved> {
-    let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
-    if addresses.iter().any(|address| is_blocked(address.ip())) {
-        return Err(Box::new(BlockedAddress));
-    }
-    Ok(Box::new(addresses.into_iter()))
+/// Every address `host` resolves to through `resolver`, unless any of them is
+/// blocked. The port is reqwest's to fill in.
+async fn guarded_lookup(resolver: &dyn Resolve, host: &str) -> Result<Addrs, Unresolved> {
+    let addresses = unblocked(resolver.resolve(host).await?)?;
+    Ok(Box::new(
+        addresses
+            .into_iter()
+            .map(|address| SocketAddr::new(address, 0)),
+    ))
 }
 
 /// A response body read up to a cap.

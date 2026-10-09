@@ -15,7 +15,8 @@ export type ApiError = {
 // ── Fleets ──
 
 // Server projects `config_json->'x-agentsfleet'->'triggers'` into the list-row
-// response (`src/http/handlers/fleets/list.zig` FleetListItem). One entry
+// response (`page_columns!` in rustd/crates/afd_fleet_lifecycle/src/sql.rs,
+// served as `FleetSummary` in rustd/crates/afd_api_wire/src/fleet.rs). One entry
 // per declared trigger from `TRIGGER.md`. Tagged union by `type` — webhook
 // carries source + events; cron carries the raw schedule expression; mention
 // carries the chat provider and the one channel it answers in.
@@ -35,12 +36,11 @@ export type Fleet = {
   created_at: number;
   updated_at: number;
   triggers?: FleetTrigger[];
-  // Lifetime server-truth aggregates, already served per row
-  // (`list.zig:173-175`) and previously dropped by the client. `budget_used_nanos`
+  // Lifetime server-truth aggregates, served per row (`FleetSummary` in
+  // rustd/crates/afd_api_wire/src/fleet.rs). `budget_used_nanos`
   // is the summed `credit_deducted_nanos` — cost is never token×rate math on the
-  // client (Inv.2). The wall's tile footer reads both; a fleet the server did not
-  // send them for (an older daemon) leaves them undefined, which the tile renders
-  // as a dash, not a zero.
+  // client (Inv.2). The wall's tile footer reads both; a response that omits
+  // them leaves them undefined, which the tile renders as a dash, not a zero.
   budget_used_nanos?: number;
   events_processed?: number;
 };
@@ -118,7 +118,7 @@ export type InstallFleetResponse = {
 // The platform catalog and per-workspace tenant entries, unioned by the
 // workspace gallery. Object storage holds the canonical tar; these rows are
 // metadata only, never support-file bytes or an object-store key. Mirrors
-// agentsfleetd `http/handlers/library/gallery.zig` (GalleryEntry).
+// agentsfleetd's `GalleryCard` in rustd/crates/afd_api_wire/src/workspace_library.rs.
 
 // The catalog tier of a library entry. The install flow keys the create body off it:
 // platform → `platform_library_id`, tenant → `tenant_library_id`.
@@ -353,7 +353,7 @@ export const SECRET_FIELD = {
 // flag before submit; the server re-checks and also blocks SSRF-unsafe hosts.
 export const HTTPS_SCHEME_PREFIX = "https://" as const;
 
-// Mirrors `ChargeType` enum in src/state/fleet_telemetry_store.zig — every
+// Mirrors `charge::RECEIVE` / `charge::STAGE` in rustd/crates/afd_billing/src/sql.rs — every
 // metered event yields up to two rows, one per charge_type. Use this rather
 // than typing "receive" / "stage" inline so a future rename catches every
 // callsite via the type.

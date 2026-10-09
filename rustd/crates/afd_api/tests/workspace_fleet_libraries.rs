@@ -293,9 +293,9 @@ async fn test_a_cursor_minted_under_another_page_size_is_refused_too() {
 
 #[tokio::test]
 async fn test_an_empty_resume_token_starts_the_walk_rather_than_refusing_it() {
-    // `?starting_after=` is not a malformed cursor, it is no cursor — the same
-    // reading the Zig gives it, and the difference between a first page and a
-    // 400 for a client that always sends the parameter.
+    // `?starting_after=` is not a malformed cursor, it is no cursor — and that
+    // reading is the difference between a first page and a 400 for a client
+    // that always sends the parameter.
     let path = format!("{}?starting_after=", owned());
     let reached = send(LIBRARY_READ, Method::GET, &path, Some(TENANT_KEY), "").await;
 

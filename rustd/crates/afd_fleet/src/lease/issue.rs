@@ -157,6 +157,6 @@ impl Leases {
 
 /// A lease was written and handed to a runner.
 ///
-/// `LOGGING_STANDARD.md` §3 `event` value, spelled as `service.zig` spells it
-/// so a dashboard built against the Zig daemon keeps matching after cutover.
+/// `LOGGING_STANDARD.md` §3 `event` value. Dashboards match on this spelling,
+/// so changing it is an operator-visible change.
 const EVENT_LEASE_ISSUED: &str = "lease_issued";

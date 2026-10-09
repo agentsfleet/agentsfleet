@@ -1,43 +1,38 @@
 //! Who the caller is, once a credential has been proven.
 //!
-//! This is a deliberate DIVERGENCE from the retired daemon's `auth/principal.zig`
-//! rather than a port of it, and the reason is that the Zig shape encodes its
-//! rules in comments that the compiler cannot read.
+//! The shape is an enum with data rather than a flat record, because a flat
+//! record encodes its rules in comments the compiler cannot read.
 //!
-//! # What the flat record could not say
+//! # What a flat record cannot say
 //!
-//! `AuthPrincipal` is one struct with a `mode` tag and five optional fields
-//! whose validity depends on that tag — `runner_id` and `runner_degraded` are
-//! documented "set only when `mode == .runner`", `workspace_scope_id` is set
-//! only on the session-token path, and `tenant_id` must be null for a runner
-//! and non-null for everyone else. Every one of those is a rule a construction
-//! site has to remember. A runner principal carrying a `tenant_id` compiles,
-//! and it would satisfy a tenant route's ownership check.
+//! One struct with a `mode` tag and five optional fields whose validity
+//! depends on that tag — a runner id and a degraded flag "set only for a
+//! runner", a workspace ceiling set only on the session-token path, and a
+//! tenant id that must be null for a runner and non-null for everyone else —
+//! makes every one of those a rule a construction site has to remember. A
+//! runner principal carrying a tenant id compiles, and it would satisfy a
+//! tenant route's ownership check.
 //!
 //! Here the tag carries its own data, so the illegal combinations cannot be
 //! spelled: a [`Runner`] has no tenant field to set, and a workspace ceiling
 //! exists only inside the credential that can actually carry one.
 //!
-//! # `user_id` was never a user id
+//! # A subject is not a user id
 //!
-//! All three person credentials store the identity provider's SUBJECT in a
-//! field called `user_id`. The session-token path assigns `verified.subject`;
-//! the CLI path assigns `row.oidc_subject` under a comment explaining that it
-//! is "the SUBJECT as `user_id`, not the `core.users` row"; the api-key path
-//! assigns `row.user_id`, which its own comment notes "is `created_by` — the
-//! provider's subject claim". Three sites, one misleading name, and a comment
-//! at each explaining the name is wrong.
+//! All three person credentials resolve to the identity provider's SUBJECT:
+//! `sub` on a session token, `oidc_subject` on a command-line credential row,
+//! and `created_by` on an api-key row. Storing that in a field called
+//! `user_id` needs a comment at each site explaining the name is wrong.
 //!
 //! [`Subject`] is that fix. A provider subject and a `core.users` primary key
-//! are different types now, so handing one to something expecting the other
-//! stops compiling instead of resolving the wrong person's capabilities.
+//! are different types, so handing one to something expecting the other stops
+//! compiling instead of resolving the wrong person's capabilities.
 //!
 //! # What a runner may do is not a field
 //!
-//! The Zig runner path sets `.scopes = scopes.RUNNER_SCOPES` by hand. Here a
-//! runner's capabilities are computed from its variant, so there is no
-//! assignment to get wrong and no way to construct a runner holding a tenant
-//! capability.
+//! A runner's capabilities are computed from its variant
+//! ([`crate::scope::RUNNER_SCOPES`]), so there is no assignment to get wrong
+//! and no way to construct a runner holding a tenant capability.
 
 use afd_core::id::Uuid7;
 
@@ -48,7 +43,7 @@ use crate::scope::{RUNNER_SCOPES, ScopeSet};
 ///
 /// Opaque to this daemon: it is the provider's identifier for a person, it is
 /// what the scope resolver is keyed on, and it is NOT a `core.users` row id.
-/// Those two were the same field in the Zig daemon and are two types here.
+/// Those two are distinct types so they cannot be confused.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Subject(Box<str>);
 
@@ -189,8 +184,7 @@ impl Person {
 /// A host runner — a machine, not a person.
 ///
 /// It has no tenant field because it holds no tenant authority: secret delivery
-/// to a runner is placement, not a standing grant. In the Zig daemon that was
-/// `tenant_id = null` written by hand at the one construction site.
+/// to a runner is placement, not a standing grant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Runner {
     runner: Uuid7,
@@ -202,10 +196,10 @@ impl Runner {
     ///
     /// `degraded` is the reconciled verdict carried out of the same lookup that
     /// proved the token, so the lease gate needs no second read of the row.
-    /// It is a plain `bool` and not an `Option`: the Zig field was optional
-    /// with "null reads as degraded" enforced at every READER, which is one
-    /// `orelse false` away from inverting a fail-closed rule. Resolving it once,
-    /// here, leaves no reader able to get it wrong.
+    /// It is a plain `bool` and not an `Option`: an optional field with "null
+    /// reads as degraded" enforced at every READER is one `unwrap_or(false)`
+    /// away from inverting a fail-closed rule. Resolving it once, here, leaves
+    /// no reader able to get it wrong.
     #[must_use]
     pub const fn new(runner: Uuid7, degraded: bool) -> Self {
         Self { runner, degraded }

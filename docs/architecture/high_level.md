@@ -58,7 +58,7 @@ If a user can get the same value by opening Claude locally and asking "what shou
 Three structural pillars carry v2:
 
 - **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
-- **Self-managed provider keys.** Operators bring their own large-language-model provider key. The control plane resolves it and the runner's NullClaw child uses it for the inference call only. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
+- **Self-managed provider keys.** Operators bring their own large-language-model provider key. The control plane resolves it and the runner's supervisor uses it for the inference call only; it never enters a sandbox. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
 - **Markdown-defined.** Operational behaviour lives in `SKILL.md`, optional `TRIGGER.md`, and optional support files carried by a Fleet Bundle, not in a typed workflow engine. Iteration is editing prose and policy, not redeploying code.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
@@ -186,14 +186,14 @@ Primary job:
 Trigger modes:
 
 - **Webhook.** A workspace connection is accepted only after the GitHub user-authorization callback proves access to the claimed installation; cross-workspace reassignment is refused. GitHub Actions then posts a completed failed `workflow_run` to the shared GitHub App ingress (`POST /v1/ingress/github`). The receiver verifies the platform App signature, maps the installation to a workspace, and wakes only fleets explicitly subscribed to that repository and event with an approved GitHub grant. The manual fleet-addressed route remains available for custom hooks. Both paths write `actor=webhook:github`.
-- **Cron.** A periodic production health check, stored by `agentsfleet` and synchronously registered with Upstash QStash; each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner's disposable NullClaw child owns no timer or local scheduler state.
+- **Cron.** A periodic production health check, stored by `agentsfleet` and synchronously registered with Upstash QStash; each signed QStash fire arrives at `agentsfleetd` as a synthetic event with `actor=cron:<schedule_id>`. The runner owns no timer or local scheduler state ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 - **Steer.** A direct operator instruction via `agentsfleet steer <fleet_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
 All three flow through the same reasoning loop. The fleet does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.
 
 ### 5.2 Slack-resident channel bot — the on-ramp (M106)
 
-The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired teammate (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable teammate, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in the retired Zig daemon; the Rust daemon drops mentions until M206_002 restores them. The hired-teammate Rung 1 is the follow-on, and M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
+The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired teammate (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable teammate, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. The hired-teammate Rung 1 is the follow-on, and M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
 
 ## 6. Where this points after v2
 
@@ -217,7 +217,7 @@ What does not change: the runtime architecture, the sandbox boundary, the trigge
 
 ### 6.2 Slack Rung 1 — hired durable teammates
 
-Where the human front door points after the CLI/dashboard wedge. Rung 0 shipped in the retired Zig daemon as `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md`, and the Rust daemon has not ported it. M206 specs the first hired-teammate slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
+Where the human front door points after the CLI/dashboard wedge. Rung 0 is specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. M206 specs the first hired-teammate slice: a fleet attached to one channel, whose writes are bounded to one draft Pull Request per request. **The follow-on is direction, not a commitment.**
 
 The ladder's boundary is **agency, not memory**. Rung 0 is described in [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md).
 

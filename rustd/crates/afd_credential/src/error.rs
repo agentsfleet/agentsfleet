@@ -104,14 +104,13 @@ impl Error {
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Directory { .. } => (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR),
-            // The provider family answers one code, matching what
-            // `service_billing.zig` logs for the whole of it. The finer
-            // `UZ-PROVIDER-*` codes belong to the tenant plane's handler;
+            // The provider family answers one code for the whole of it. The
+            // finer `UZ-PROVIDER-*` codes belong to the tenant plane's handler;
             // declaring them on a path that cannot emit them would be an
             // unreferenced code that looks like coverage.
             //
-            // `Vault` joins them because that is what `crypto_store.zig` logs
-            // when an envelope will not open.
+            // `Vault` joins them: an envelope that will not open answers the
+            // same internal code.
             ErrorKind::ProviderMalformed { .. }
             | ErrorKind::ProviderSecretMissing
             | ErrorKind::ProviderPlatformKeyMissing
@@ -121,11 +120,10 @@ impl Error {
                 error_code::INTERNAL_OPERATION_FAILED,
                 DETAIL_PROVIDER_UNRESOLVED,
             ),
-            // Two vault failures, two codes, matching the two the Zig logs:
-            // an envelope that will not open answers the internal code above
-            // because WHICH check failed is an oracle, while a body whose
-            // shape is wrong answers this one — the shape is a fact the
-            // operator who stored it can act on.
+            // Two vault failures, two codes: an envelope that will not open
+            // answers the internal code above because WHICH check failed is an
+            // oracle, while a body whose shape is wrong answers this one — the
+            // shape is a fact the operator who stored it can act on.
             ErrorKind::VaultDataInvalid => (error_code::VAULT_DATA_INVALID, DETAIL_VAULT_INVALID),
             // A failure of this instance rather than of its input: the host
             // could not draw entropy, or the mint could not encode it. Not the

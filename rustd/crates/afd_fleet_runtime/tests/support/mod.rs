@@ -1,9 +1,8 @@
 //! Shared scaffolding for this crate's corpus targets.
 //!
-//! Both corpus suites read the SAME files the Zig suite reads, from the same
-//! place on disk, so the corpus stays one oracle rather than two that can
-//! drift. What lives here is only the reading — each suite owns its own
-//! assertions.
+//! Both corpus suites read the SAME files from the same place on disk, so the
+//! corpus stays one oracle rather than two that can drift. What lives here is
+//! only the reading — each suite owns its own assertions.
 
 #![allow(
     dead_code,
@@ -14,22 +13,21 @@ use std::path::PathBuf;
 
 /// The corpus root, relative to this crate.
 ///
-/// The Zig suite resolves it from the repository root because `zig build` sets
-/// the working directory there; cargo sets it to the package, so the walk up is
-/// spelled out rather than assumed.
+/// The fixtures live at the repository root and cargo runs a test from the
+/// package directory, so the walk up is spelled out rather than assumed.
 const CORPUS: &str = "../../../tests/fixtures/fleetbundle";
 
 /// The placeholder the `platform-ops` and `steer-probe` documents carry in
 /// place of a model.
 const MODEL_PLACEHOLDER: &str = "{{model}}";
 
-/// The value the Zig suite substitutes for [`MODEL_PLACEHOLDER`].
+/// The value [`fixture`] substitutes for [`MODEL_PLACEHOLDER`].
 pub(crate) const MODEL_VALUE: &str = "accounts/fireworks/models/kimi-k2.6";
 
 /// The placeholder standing in for a context ceiling.
 const CONTEXT_CAP_PLACEHOLDER: &str = "{{context_cap_tokens}}";
 
-/// The value the Zig suite substitutes for [`CONTEXT_CAP_PLACEHOLDER`].
+/// The value [`fixture`] substitutes for [`CONTEXT_CAP_PLACEHOLDER`].
 const CONTEXT_CAP_VALUE: &str = "256000";
 
 /// The one tool every first-party bundle declares.
@@ -61,7 +59,7 @@ pub(crate) fn raw_fixture(relative: &str) -> String {
         .unwrap_or_else(|_missing| panic!("corpus fixture {} should be readable", path.display()))
 }
 
-/// One fixture's bytes, with the Zig suite's placeholder substitutions applied.
+/// One fixture's bytes, with the corpus's placeholder substitutions applied.
 ///
 /// Three documents carry `{{…}}` templates and are not standalone-parseable —
 /// `context_cap_tokens: {{context_cap_tokens}}` is UNQUOTED, so raw it is a

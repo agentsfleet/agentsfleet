@@ -1,8 +1,8 @@
 //! Bounded numbers policy is expressed in, with their clamps.
 //!
-//! Ported from `src/lib/contract/protocol_policy.zig`, where the worker-pool
-//! bounds are single-sourced so "a fat-fingered value can never fork unbounded
-//! children on one host". The clamp is applied on BOTH sides — the control
+//! The worker-pool bounds are single-sourced here so a fat-fingered value can
+//! never fork unbounded children on one host. The clamp is applied on BOTH
+//! sides — the control
 //! plane at assignment, the host at apply — which only works if both sides read
 //! the same numbers, so they get a type rather than a pair of loose constants.
 
@@ -29,8 +29,8 @@ impl WorkerCount {
     ///
     /// Use this where a caller can be told it is wrong — an operator-facing
     /// form, a configuration read. On the assignment path use
-    /// [`WorkerCount::clamping`], which is what the Zig daemon does and
-    /// therefore what parity requires.
+    /// [`WorkerCount::clamping`]: a runner is enrolled with a corrected count
+    /// rather than refused.
     ///
     /// # Errors
     /// Returns an out-of-range error naming the bound and the offending value.
@@ -80,8 +80,8 @@ impl Default for WorkerCount {
 
 impl<'de> Deserialize<'de> for WorkerCount {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        // Clamping, not rejecting: this is the wire path, and the Zig daemon
-        // clamps a stored or transmitted value rather than refusing the runner.
+        // Clamping, not rejecting: this is the wire path, and a stored or
+        // transmitted value is corrected rather than the runner refused.
         Ok(Self::clamping(u32::deserialize(deserializer)?))
     }
 }

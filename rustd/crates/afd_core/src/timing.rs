@@ -15,8 +15,7 @@
 //! spans it is moved by, and they stay in the units the rows are in.
 //!
 //! The relationships between them are load-bearing, and each is asserted below
-//! rather than left to a comment — the Zig file uses a `comptime` block for the
-//! same reason, and a `const` assertion is this language's spelling of it.
+//! in a `const` block rather than left to a comment.
 
 /// How long an issued lease or affinity claim stays valid before the slot
 /// becomes reclaimable, and the increment each renewal adds.

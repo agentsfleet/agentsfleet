@@ -35,13 +35,12 @@ pub enum RunnerOpsRoute {
     Leases,
 }
 
-// `/v1/fleets/streams` is deliberately absent. The Zig daemon serves it —
-// `routes.zig`'s `fleet_streams_list`, a per-instance operator diagnostic over
-// its SSE registry — and this daemon does not, by Indy's call while merging
-// M179 into M178: nothing consumes it (no UI, no CLI, absent from the public
-// OpenAPI document by its own carve-out), and porting it would mean carrying a
-// live-stream census whose only reader is the endpoint itself. A declared
-// divergence, recorded in M179's Dimension 4.4 rather than left to be noticed.
+// `/v1/fleets/streams`, a per-instance operator diagnostic over the
+// Server-Sent Events (SSE) streams, is deliberately absent, by Indy's call
+// while merging M179 into M178: nothing consumes it (no UI, no CLI, absent from
+// the public OpenAPI document by its own carve-out), and serving it would mean
+// carrying a live-stream census whose only reader is the endpoint itself.
+// Recorded in M179's Dimension 4.4 rather than left to be noticed.
 
 impl RunnerOpsRoute {
     /// Every operator route over runners.

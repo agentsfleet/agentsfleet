@@ -1,9 +1,8 @@
 //! Asking the identity provider what a person may do.
 //!
-//! The port of `auth/clerk_scope_fetch.zig`. It is the only thing under
-//! [`crate::capability`] that opens a socket, and it is separate from the cache
-//! for that reason: the cache's three windows are provable without a provider,
-//! and this is provable without a cache.
+//! The only thing under [`crate::capability`] that opens a socket, and it is
+//! separate from the cache for that reason: the cache's three windows are
+//! provable without a provider, and this is provable without a cache.
 //!
 //! # Every shape that is not a present string grants nothing
 //!
@@ -36,8 +35,7 @@ impl ProviderSecret {
     ///
     /// # Errors
     /// Returns [`ErrorKind::BlankSecret`](crate::error::Error) when the value is empty or only whitespace.
-    /// `clerk_scope_fetch.zig` treats an absent or blank secret as
-    /// `MissingSecret` for the same reason: capabilities cannot resolve at all
+    /// A blank secret is refused because capabilities cannot resolve at all
     /// without it, which is an outage rather than an empty grant, and saying so
     /// at boot beats discovering it on the first authenticated request.
     pub fn new(raw: &str) -> Result<Self> {
@@ -75,9 +73,9 @@ impl Drop for ProviderSecret {
 
 /// Upper bound on a user document, in bytes.
 ///
-/// `clerk_scope_fetch.zig`'s `USER_MAX_RESPONSE_BYTES`. Smaller than the key
-/// set's cap because a user document is smaller, and the bound exists for the
-/// same reason: the response is not this daemon's to trust.
+/// Smaller than the key set's cap because a user document is smaller, and the
+/// bound exists for the same reason: the response is not this daemon's to
+/// trust.
 pub const USER_MAX_RESPONSE_BYTES: usize = 64 * 1024;
 
 /// The claim a subject resolves to when the provider knows them and an operator
@@ -167,9 +165,8 @@ impl ProviderClaims {
     ///
     /// A 404 is deliberately distinct: it says the person is GONE, which is
     /// permanent, while everything else says this daemon could not find out,
-    /// which is not. `clerk_scope_fetch.zig::mapStatus` draws the same line,
-    /// and it is extracted here for the same reason — every branch is provable
-    /// without standing up a listener.
+    /// which is not. Extracted so every branch is provable without standing up
+    /// a listener.
     #[must_use]
     pub const fn classify(status: u16) -> Option<ClaimUnavailable> {
         match status {

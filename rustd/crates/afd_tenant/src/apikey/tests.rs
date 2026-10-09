@@ -26,7 +26,6 @@ fn boundary_row() -> KeyRow {
 /// `key_name` walk handed back a cursor the paging layer refuses on the
 /// next request — page two never arrived, and nothing failed loudly because
 /// the refusal reads as a client sending something malformed.
-/// `list.zig:122` switches on the same key; this is that switch.
 #[test]
 fn a_cursor_carries_the_boundary_its_own_sort_seeks_on() {
     let row = boundary_row();

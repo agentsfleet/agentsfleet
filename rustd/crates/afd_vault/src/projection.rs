@@ -1,8 +1,8 @@
 //! What a stored credential IS, read off its body and never off its name.
 //!
 //! Pure over a parsed JSON object: no pool, no key, no allocation the caller
-//! does not keep. Ported from `secrets/metadata.zig`, whose classification rules
-//! are the wire contract the dashboard's `SECRET_KIND` union is written against.
+//! does not keep. Its classification rules are what the dashboard's
+//! `SECRET_KIND` union is written against, so they are a wire fact.
 //!
 //! # There is no field for the key, and that is the guarantee
 //!
@@ -13,7 +13,7 @@
 //! `M-STRONG-TYPES-GUARD` applied to a confidentiality invariant: the compiler
 //! refuses, rather than a reviewer noticing.
 //!
-//! # Why `model` is projected by the Zig daemon and not here
+//! # Why `model` is not projected
 //!
 //! `schema/300_vault_secrets.sql` declares four `meta_*` columns and `model` is
 //! not among them, so the only way to answer it on a list is to decrypt every
@@ -100,11 +100,9 @@ impl Kind {
 /// [`crate::SecretBody`] and consumed by the statement beside it. Exporting it
 /// would offer callers a projection they have no way to obtain and no use for.
 ///
-/// Owned rather than borrowed from the parse. `metadata.zig` borrows into its
-/// `std.json.Parsed` arena and every caller has to dupe before that arena is
-/// freed; a body here is at most four kilobytes, so owning the two short
-/// strings costs less than the lifetime it would otherwise thread through the
-/// write path.
+/// Owned rather than borrowed from the parse: a body is at most four kilobytes,
+/// so owning the two short strings costs less than the lifetime a borrow would
+/// thread through the write path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Projection {
     /// What the credential is.

@@ -100,8 +100,9 @@ variants — `Copy`, `const fn code()`, `const fn detail()`, `pub const ALL` —
 `afd_http`'s guard returns it on every request that fails to authenticate. It has
 no source to skip and no backtrace to box, so the hull would add a heap
 allocation and a `Backtrace::capture()` to the hottest refusal path in the
-product, buy nothing, and cost the exhaustive `ALL` walk that pins each detail
-string byte-for-byte against its Zig constant. `afd_sse::Error` is the same shape
+product, buy nothing, and cost the exhaustive `ALL` walk that pins each
+client-visible detail string byte-for-byte
+(`rustd/crates/afd_auth/tests/auth_error_taxonomy.rs`). `afd_sse::Error` is the same shape
 for the same reason. A crate on THIS side of the line must say which property put
 it there, in its own module note — being a plain enum today is not the argument.
 

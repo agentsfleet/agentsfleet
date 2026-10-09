@@ -23,8 +23,7 @@ pub(super) const INTEGRATION: &[Problem] = &[
         status: 503,
         title: "Credential broker not configured",
         hint: "The on-demand credential broker is not configured on this deployment. An operator must set it up before runners can mint credentials.",
-        // Runner-only mint endpoint; the Zig entry carries the same
-        // reachability note, and nothing in `ui/packages/app` fetches it.
+        // Runner-only mint endpoint; nothing in `ui/packages/app` fetches it.
         user_message: None,
     },
     Problem {
@@ -279,9 +278,8 @@ pub(super) const INTEGRATION: &[Problem] = &[
         status: 429,
         title: "Too many requests",
         hint: "The API is at its request limit. Wait for the Retry-After delay, then retry.",
-        // No dashboard sentence, and the Zig entry says why in its own
-        // reachability note: a shed happens before routing, so nothing that
-        // renders a problem page is ever reached to render this one.
+        // No dashboard sentence: a shed happens before routing, so nothing
+        // that renders a problem page is ever reached to render this one.
         user_message: None,
     },
     Problem {
@@ -290,13 +288,12 @@ pub(super) const INTEGRATION: &[Problem] = &[
         // backpressure means "you are asking too fast" and this means "this
         // instance cannot hold another stream". `public/openapi/paths/fleets.yaml`
         // documents the 503 to clients, so the status is a published contract
-        // and not a call this port gets to make.
+        // and not a call this daemon gets to make.
         status: 503,
         title: "Activity stream capacity reached",
         hint: "The API is at its activity-stream limit. Close unused dashboard tabs or retry shortly.",
         // A refused SSE connect surfaces to a browser as a stream-level
-        // reconnect, never as a rendered problem page — the Zig entry carries
-        // the same reachability note.
+        // reconnect, never as a rendered problem page.
         user_message: None,
     },
 ];

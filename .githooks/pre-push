@@ -29,11 +29,6 @@
 # Secure Shell (SSH) session idle during the heavier lanes, which github.com
 # routinely dropped at pack-write time even though every test passed locally.
 # Any lane needing live datastores belongs on the CI side of that line.
-#
-# There is no Zig dispatch here. The Zig integration and memory-leak lanes
-# retired with the rest of the Zig gating, and the daemon itself is frozen —
-# `*.zig` reaches only `check-documentation-rules` in pre-commit, which reads
-# command help text out of that source.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"

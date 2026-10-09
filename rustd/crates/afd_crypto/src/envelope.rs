@@ -3,7 +3,7 @@
 //! # Layout
 //!
 //! Six components, which are the six ciphertext columns of `vault.secrets` in
-//! the order `crypto_store.zig::openEnvelopeAt` reads them:
+//! the order an open reads them:
 //!
 //! | Component | Bytes | Produced by |
 //! |---|---|---|
@@ -114,7 +114,7 @@ impl Sealer {
 
     /// One AES-256-GCM operation, returning ciphertext, nonce and tag apart.
     ///
-    /// Detached rather than appended: the Zig daemon stores the tag in its own
+    /// Detached rather than appended: `vault.secrets` stores the tag in its own
     /// column, so a combined ciphertext-plus-tag buffer would have to be split
     /// again on the way out and would invite an off-by-one at the seam.
     fn encrypt(&self, key: &[u8; KEY_LEN], aad: &Aad, plaintext: &[u8]) -> Result<Encrypted> {

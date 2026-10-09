@@ -3,8 +3,9 @@
 -- The value is opaque to the server. It stores whatever small JSON the client
 -- wrote and never interprets it beyond the key allowlist and a byte cap, both
 -- enforced in the application — no CHECK here, because SQL cannot reference the
--- Zig and TypeScript key registry and a schema-side list would drift from it
--- (RULE STS).
+-- key registry (`PrefKey` in `rustd/crates/afd_tenant/src/preference/mod.rs`,
+-- mirrored by `ui/packages/app/lib/api/preferences-types.ts`) and a schema-side
+-- list would drift from it (RULE STS).
 --
 -- Scope is (user, workspace) rather than user alone: onboarding progress is a
 -- property of a workspace, so a second workspace starts its checklist fresh.

@@ -2,18 +2,16 @@
 //!
 //! # Why these live here and not in `afd_auth`
 //!
-//! `src/auth/` in the Zig tree may not import `src/db/`, and `make test-auth`
-//! greps to keep it that way; `afd_auth` reaches the same wall by construction,
-//! because it does not list `sqlx` and so cannot name it. The concrete lookups
-//! therefore live with the host, and this crate is where they land.
+//! `afd_auth` cannot reach the database by construction: it does not list
+//! `sqlx`, and so cannot name it. The concrete lookups therefore live with the
+//! host, and this crate is where they land.
 //!
 //! # One implementation, three statements
 //!
-//! Zig wires three separate `LookupFn` pointers from one `serve_boot`, each
-//! carrying its own `Ctx` struct holding the same pool. Here it is one type
-//! holding one pool and one `resolve` that dispatches on the class, because the
-//! class is already an enum the caller has in hand — the plumbing was three
-//! times as wide to say the same thing.
+//! One type holding one pool, and one `resolve` that dispatches on the class,
+//! because the class is already an enum the caller has in hand; three lookup
+//! types over the same pool would be three times the plumbing to say the same
+//! thing.
 //!
 //! # The distinction the whole trait exists for
 //!

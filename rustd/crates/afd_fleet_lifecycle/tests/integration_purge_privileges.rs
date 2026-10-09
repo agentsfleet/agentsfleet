@@ -2,13 +2,10 @@
 //!
 //! # Why this file exists
 //!
-//! `schema_privilege_test.zig` asserted this and was deleted with the Zig daemon
-//! tree in `2f0021d1b`. Nothing replaced it, and in the fifteen days that
-//! followed the purge shipped a `DELETE FROM memory.memory_entries` that
-//! `api_runtime` has never been entitled to run. No suite caught it, for the
-//! reason `9e247bd92` wrote down when it built the original: these tests connect
-//! as the database owner, which bypasses grants entirely, so they stay green
-//! whether or not the runtime role can reach the table at all.
+//! The purge once shipped a `DELETE FROM memory.memory_entries` that
+//! `api_runtime` has never been entitled to run, and no suite caught it. A test
+//! that connects as the database owner bypasses grants entirely, so it stays
+//! green whether or not the runtime role can reach the table at all.
 //!
 //! Every test here therefore meets the grants a request meets, and asserts on
 //! what Postgres then does — never on `has_table_privilege`. The two can

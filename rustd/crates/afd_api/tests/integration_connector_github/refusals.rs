@@ -68,9 +68,9 @@ async fn a_claim_the_token_does_not_open_is_refused_as_ownership() {
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_listing_of_none_binds_nothing() {
     // The App is installed nowhere this person reaches, so there is nothing to
-    // restore. The Zig daemon sent the browser on to GitHub's install page
-    // here; the Rust tree carries no App slug, so the person is refused and
-    // told to install the App first. `docs/AUTH.md` carries the divergence.
+    // restore. There is no App slug to send the browser on to GitHub's install
+    // page with, so the person is refused and told to install the App first.
+    // `docs/AUTH.md` records the rule.
     let fixture = github_fixture().await;
     let installation = fresh_installation();
     let provider = FakeProvider::answering_with_reads(&[EXCHANGE], vec![listing_none()]).await;

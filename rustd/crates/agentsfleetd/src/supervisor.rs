@@ -13,27 +13,22 @@
 //! becomes a type — [`Supervisor`] owns every handle, and the only way to get
 //! at what a task borrowed is to go through a shutdown that joined it.
 //!
-//! # Two flags in Zig, a sequence here
+//! # A sequence, not shutdown flags
 //!
-//! `serve_shutdown.zig` keeps `shutdown_requested` and `background_stop` apart
-//! so a signal arriving DURING boot cannot kill the background stack while the
-//! server may still come up and briefly serve. It needs two flags because its
-//! watcher is a separate thread polling every 100ms, so "the server stopped"
-//! and "the signal arrived" are events that race.
-//!
-//! Here they do not race, because they are statements in order: await the
-//! server's own graceful shutdown, and only then cancel the supervisor. A
-//! signal during boot leaves this token untouched, the server comes up, stops
-//! immediately because its shutdown future has already resolved, and the
-//! background stack is cancelled after — which is the property those two flags
-//! were protecting. One fewer piece of shared mutable state, and the ordering
-//! is readable in the function that performs it.
+//! A signal arriving DURING boot must not kill the background stack while the
+//! server may still come up and briefly serve. "The server stopped" and "the
+//! signal arrived" do not race here, because they are statements in order:
+//! await the server's own graceful shutdown, and only then cancel the
+//! supervisor. A signal during boot leaves this token untouched, the server
+//! comes up, stops immediately because its shutdown future has already
+//! resolved, and the background stack is cancelled after. No shared mutable
+//! state, and the ordering is readable in the function that performs it.
 //!
 //! # Why the token rather than a shared bool
 //!
 //! [`CancellationToken`] is edge-triggered: `cancelled().await` wakes the
-//! instant it fires. The Zig watcher polls at 100ms and pays that latency on
-//! every shutdown, on every task. It also composes — a task selecting over its
+//! instant it fires, where a polled flag pays its polling interval on every
+//! shutdown, on every task. It also composes — a task selecting over its
 //! own I/O and `cancelled()` is interrupted mid-read, which is what Dimension
 //! 7.5 asks to be PROVEN rather than assumed.
 

@@ -18,10 +18,6 @@ pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001")
 
 /// A report arrived from a holder the fleet has already superseded.
 ///
-/// `ERR_RUN_STALE_FENCING_TOKEN`. Referenced from the Zig registry, never
-/// declared here as a new code (RULE ERR) — `error_registry.zig:206` owns the
-/// value.
-///
 /// A 409, and the conflict is literal: two runners each believe they hold one
 /// fleet, and the fence says which of them is right. The refused report writes
 /// NOTHING — the flip, the settle and the tally all ride one guarded statement,
@@ -30,9 +26,6 @@ pub const RUN_INVALID_RUNNER_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-001")
 pub const RUN_STALE_FENCING_TOKEN: ErrorCode = ErrorCode::declare("UZ-RUN-005");
 
 /// No lease with that id belongs to the presenting runner.
-///
-/// `ERR_RUN_LEASE_NOT_FOUND`. Referenced from the Zig registry
-/// (`error_registry.zig:207`).
 ///
 /// One code for two facts, deliberately: a lease that never existed and a lease
 /// belonging to ANOTHER runner both answer this. The load is scoped by
@@ -50,9 +43,6 @@ pub const RUN_ADMIN_STATE_BLOCKED: ErrorCode = ErrorCode::declare("UZ-RUN-009");
 
 /// The lease reached the hard ceiling on how long one run may take.
 ///
-/// `ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME`. Referenced from the Zig registry
-/// (`error_registry.zig:210`).
-///
 /// Distinct from [`RUN_LEASE_LOST`] even though both are 409s and both end the
 /// run: this one says the runner did nothing wrong and its result is still
 /// wanted — it stops the child and reports. Lost says the lease is somebody
@@ -62,9 +52,6 @@ pub const RUN_LEASE_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN
 
 /// The lease moved to another runner before this renewal.
 ///
-/// `ERR_RUN_LEASE_LOST`. Referenced from the Zig registry
-/// (`error_registry.zig:211`).
-///
 /// Reached when the fence no longer holds or the row is no longer `active`, and
 /// also when the lease row advanced but the affinity slot did not — a
 /// half-applied renewal is reported LOST rather than renewed, because the slot
@@ -72,9 +59,6 @@ pub const RUN_LEASE_EXCEEDED_MAX_RUNTIME: ErrorCode = ErrorCode::declare("UZ-RUN
 pub const RUN_LEASE_LOST: ErrorCode = ErrorCode::declare("UZ-RUN-011");
 
 /// The tenant's credit pool cannot fund another slice of this run.
-///
-/// `ERR_RUN_LEASE_RENEWAL_NO_CREDITS`. Referenced from the Zig registry
-/// (`error_registry.zig:212`).
 ///
 /// A 402, for the reason [`RUN_BUDGET_EXCEEDED`] is one: the runner classifies
 /// a renew refusal by status AND code. The two 402s are different pools — this
@@ -84,22 +68,18 @@ pub const RUN_LEASE_RENEWAL_NO_CREDITS: ErrorCode = ErrorCode::declare("UZ-RUN-0
 
 /// No runner row matches an operator-supplied runner id.
 ///
-/// `ERR_RUNNER_NOT_FOUND` in the Zig registry. Unlike
-/// [`RUN_INVALID_RUNNER_TOKEN`], the caller has already authenticated on the
-/// operator plane, so naming the missing resource is safe and actionable.
+/// Unlike [`RUN_INVALID_RUNNER_TOKEN`], the caller has already authenticated on
+/// the operator plane, so naming the missing resource is safe and actionable.
 pub const RUNNER_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-RUN-014");
 
 /// A runner still in service cannot have its record retired.
 ///
-/// `ERR_RUNNER_MUST_REVOKE_FIRST` in the Zig registry. The destructive step is
-/// the revoke; deleting merely retires a row the revoke already made inert, so
-/// a delete that arrives first is refused rather than escalated.
+/// The destructive step is the revoke; deleting merely retires a row the revoke
+/// already made inert, so a delete that arrives first is refused rather than
+/// escalated.
 pub const RUNNER_MUST_REVOKE_FIRST: ErrorCode = ErrorCode::declare("UZ-RUN-016");
 
 /// A fleet has reached a spend ceiling its own author declared.
-///
-/// `ERR_RUN_BUDGET_EXCEEDED`. Referenced from the Zig registry, never declared
-/// here as a new code (RULE ERR) — `error_registry.zig:216` owns the value.
 ///
 /// One code for both ceilings and both gates. `daily_dollars` and
 /// `monthly_dollars` answer the same code because an operator acts identically
@@ -111,9 +91,8 @@ pub const RUN_BUDGET_EXCEEDED: ErrorCode = ErrorCode::declare("UZ-RUN-015");
 
 /// An operator asked a revoked runner to self-test.
 ///
-/// `ERR_RUN_SELFTEST_REFUSED` in the Zig registry. Revocation is terminal and
-/// the runner will never heartbeat to collect the request, so this is a
-/// conflict rather than a malformed action.
+/// Revocation is terminal and the runner will never heartbeat to collect the
+/// request, so this is a conflict rather than a malformed action.
 pub const RUN_SELFTEST_REFUSED: ErrorCode = ErrorCode::declare("UZ-RUN-018");
 
 /// The event a run is answering came from nowhere a message can go.
@@ -142,9 +121,6 @@ pub const AGENTSFLEET_CREDENTIAL_MISSING: ErrorCode = ErrorCode::declare("UZ-AGT
 
 /// This workspace already holds a fleet under the requested name.
 ///
-/// `ERR_AGENTSFLEET_NAME_EXISTS`. Referenced from the Zig registry
-/// (`error_registry.zig:89`), never declared new here (RULE ERR).
-///
 /// Only ever answered for a name the CALLER chose. An install that named
 /// nothing takes the library entry's own name, and a collision there is
 /// re-drawn with a suffix rather than reported — "taken" would name a conflict
@@ -153,8 +129,8 @@ pub const AGENTSFLEET_NAME_EXISTS: ErrorCode = ErrorCode::declare("UZ-AGT-006");
 
 /// A fleet's authored configuration is not one this daemon can store.
 ///
-/// `ERR_AGENTSFLEET_INVALID_CONFIG` (`error_registry.zig:90`; `UZ-AGT-007` is
-/// retired, superseded by `UZ-VAULT-002`).
+/// `UZ-AGT-007` stays unassigned; its case answers
+/// [`VAULT_DATA_TOO_LARGE`](crate::error_code::VAULT_DATA_TOO_LARGE).
 ///
 /// One code for every way `TRIGGER.md` can be unusable — a missing fence,
 /// unreadable YAML, a field of the wrong type, a gate condition that parses to
@@ -166,8 +142,6 @@ pub const AGENTSFLEET_INVALID_CONFIG: ErrorCode = ErrorCode::declare("UZ-AGT-008
 
 /// No fleet with that id lives in this workspace.
 ///
-/// `ERR_AGENTSFLEET_NOT_FOUND` (`error_registry.zig:91`).
-///
 /// A 404 that deliberately collapses two cases: an id naming nothing, and an id
 /// naming a fleet another workspace owns. Every statement on this surface is
 /// workspace-scoped in its predicate, so the daemon does not learn which of the
@@ -178,8 +152,6 @@ pub const AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-009");
 
 /// The fleet's current status does not permit the requested transition.
 ///
-/// `ERR_AGENTSFLEET_ALREADY_TERMINAL` (`error_registry.zig:92`).
-///
 /// A 409, and it covers both halves of the same refusal: a transition the
 /// status machine does not allow from where the row stands, and a delete of a
 /// fleet that has not been killed first. Both are "the state refuses you", and
@@ -188,8 +160,6 @@ pub const AGENTSFLEET_ALREADY_TERMINAL: ErrorCode = ErrorCode::declare("UZ-AGT-0
 
 /// A Fleet Bundle's two documents disagree about the fleet's name.
 ///
-/// `ERR_AGENTSFLEET_NAME_MISMATCH` (`error_registry.zig:93`).
-///
 /// Checked at the WRITE boundary rather than at read time, because a bundle
 /// whose `SKILL.md` and `TRIGGER.md` name different fleets has no single
 /// identity to store — and storing one of the two would make whichever lost a
@@ -197,8 +167,6 @@ pub const AGENTSFLEET_ALREADY_TERMINAL: ErrorCode = ErrorCode::declare("UZ-AGT-0
 pub const AGENTSFLEET_NAME_MISMATCH: ErrorCode = ErrorCode::declare("UZ-AGT-011");
 
 /// The install could not be finished, and nothing was kept.
-///
-/// `ERR_AGENTSFLEET_INSTALL_ROLLED_BACK` (`error_registry.zig:95`).
 ///
 /// The promise this code carries is the one the caller can act on: retrying is
 /// safe, because the row was removed. It is answered only after the rollback
@@ -210,8 +178,6 @@ pub const AGENTSFLEET_INSTALL_ROLLED_BACK: ErrorCode = ErrorCode::declare("UZ-AG
 
 /// The fleet's source moved on since the editor read it.
 ///
-/// `ERR_AGENTSFLEET_SOURCE_STALE` (`error_registry.zig:96`).
-///
 /// A 412 whose response carries the CURRENT `ETag`, so an editor holding a
 /// stale one can re-read, re-apply and retry without a second round trip to
 /// discover what it should have sent. Raised only when the caller supplied an
@@ -221,8 +187,6 @@ pub const AGENTSFLEET_SOURCE_STALE: ErrorCode = ErrorCode::declare("UZ-AGT-014")
 
 /// The fleet will not take new work, so a steer was refused rather than taken.
 ///
-/// `ERR_AGENTSFLEET_PAUSED_INGRESS` (`error_registry.zig:94`).
-///
 /// A 409 carrying `current_state`, and the status is the whole point: a
 /// message accepted for a stopped fleet would be a 202 whose run never
 /// happens, and a person watching for their answer would wait forever. The
@@ -231,11 +195,11 @@ pub const AGENTSFLEET_PAUSED_INGRESS: ErrorCode = ErrorCode::declare("UZ-AGT-012
 
 /// No event under that identifier, in that fleet, in that workspace.
 ///
-/// `ERR_EVENT_NOT_FOUND` (`error_registry.zig:97`). One code for three facts —
-/// no such event, an event of another fleet, an event of another workspace —
-/// because the statement carries the scope as a predicate and hands back one
-/// empty result for all three. A code that told them apart would be disclosing
-/// across a tenant boundary what a caller is not entitled to ask.
+/// One code for three facts — no such event, an event of another fleet, an
+/// event of another workspace — because the statement carries the scope as a
+/// predicate and hands back one empty result for all three. A code that told
+/// them apart would be disclosing across a tenant boundary what a caller is not
+/// entitled to ask.
 pub const EVENT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
 
 /// A steer's `operation_id` names a message this fleet already admitted with
@@ -244,8 +208,7 @@ pub const EVENT_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-015");
 /// A 409 carrying `current_state: "admitted"`. The id is the caller's name for
 /// ONE message, repeated only on its retries, so the same id with another body
 /// is a client that reused it — and answering the first message's event would
-/// tell that client its second message was delivered when it never ran. No
-/// Zig predecessor: the retired daemon had no operation id.
+/// tell that client its second message was delivered when it never ran.
 pub const AGENTSFLEET_OPERATION_CONFLICT: ErrorCode = ErrorCode::declare("UZ-AGT-016");
 
 /// No kept record for that tool call, on that event, in that fleet and
@@ -260,8 +223,6 @@ pub const TOOL_CALL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-017");
 
 /// The fleet a memory request names is not one this workspace holds.
 ///
-/// `ERR_MEM_AGENTSFLEET_NOT_FOUND` (`error_registry.zig:154`).
-///
 /// A 404 collapsing the same two cases [`AGENTSFLEET_NOT_FOUND`] collapses, for
 /// the same reason: an id naming nothing and an id naming another workspace's
 /// fleet are one answer, and telling them apart would make the endpoint an
@@ -272,8 +233,6 @@ pub const TOOL_CALL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AGT-017");
 pub const MEM_AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MEM-002");
 
 /// The durable memory store would not answer.
-///
-/// `ERR_MEM_UNAVAILABLE` (`error_registry.zig:155`).
 ///
 /// A 503 where a refused statement elsewhere answers
 /// [`INTERNAL_DB_QUERY`](crate::error_code::INTERNAL_DB_QUERY), and the
@@ -286,8 +245,6 @@ pub const MEM_AGENTSFLEET_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-MEM-002"
 pub const MEM_UNAVAILABLE: ErrorCode = ErrorCode::declare("UZ-MEM-003");
 
 /// The fleet is holding nothing under the key a forget named.
-///
-/// `ERR_MEM_ENTRY_NOT_FOUND` (`error_registry.zig:156`).
 ///
 /// A 404 rather than a silent 204, and that is the whole of why the code
 /// exists: an operator removing a lesson the fleet learned wrong has to find

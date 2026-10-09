@@ -15,38 +15,28 @@ impl Error {
     /// The question the admission pass turns on, and the reason it is one
     /// method rather than a `match` at the call site: a permanent fault earns
     /// the terminal `gate_blocked` row, and a transient one leaves the delivery
-    /// leasable for the next poll. `resolveTenant` decides the same thing with
-    /// a four-arm `switch` and an `else`, which is how the classification came
-    /// to be a property of the arm ORDER instead of a property of the failure.
+    /// leasable for the next poll. A `match` with a catch-all arm would make
+    /// the classification a property of the arm ORDER instead of a property of
+    /// the failure.
     ///
     /// Exhaustive, so a new kind fails the build until it is classified — the
     /// same device [`Error::code`] uses.
     ///
-    /// # A deliberate divergence from the Zig
+    /// # Why a refused endpoint is permanent
     ///
-    /// [`ErrorKind::ProviderEndpoint`] answers `true`, and the Zig's
-    /// `resolveTenant` answers the equivalent `false`: `SecretEndpointInvalid`
-    /// is absent from its permanent list and falls through its `else`, so a
-    /// stored endpoint that fails the SSRF guard is re-polled forever. The
-    /// event never terminates, no terminal row is written, and the only trace
-    /// is a warn line repeating at the poll interval.
-    ///
-    /// That is a latent defect rather than a decision — a stored URL pointing
-    /// at the metadata service does not become safe by being retried — and the
-    /// reason it is corrected here rather than copied is that the row-parity it
-    /// would cost is documentary. The dual-run differ went with the Zig
-    /// integration lanes, so nothing compares the two daemons' rows at runtime;
-    /// what grades Invariant 5 is REVIEW reading the ported SQL side by side,
-    /// and this changes no statement. Registered as a divergence beside the
-    /// issue-time debit (Indy, this stream).
+    /// [`ErrorKind::ProviderEndpoint`] answers `true`. Classified transient, a
+    /// stored endpoint that fails the SSRF guard would be re-polled forever:
+    /// the event never terminates, no terminal row is written, and the only
+    /// trace is a warn line repeating at the poll interval. A stored URL
+    /// pointing at the metadata service does not become safe by being retried,
+    /// so it earns the terminal row (Indy, decided beside the issue-time
+    /// debit).
     #[must_use]
     pub const fn is_config_permanent(&self) -> bool {
         match self.inner.kind {
             // A declared credential nobody stored, and a stored body that is
             // not an addressable object, are both things a human has to go and
-            // fix. `resolveSecretsMap`'s `error.CredentialNotFound` reaches
-            // `blockEvent` through the fleet loop's own permanent arm, so this
-            // classification is the Zig's rather than a correction to it.
+            // fix.
             | ErrorKind::VaultDataInvalid
             // A document that will not parse does not become parseable by
             // being read again. Every poll would re-read the same bytes, fail

@@ -164,9 +164,9 @@ fn ask<'a>(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_cold_callers_cost_exactly_one_upstream_mint() {
-    // Dimension 4.5, and the reason the Zig hand-rolls a flight guard: two cold
-    // misses on a ROTATING provider both post the same refresh token, and a
-    // provider with reuse detection then revokes the whole family. The latency
+    // Dimension 4.5, and the reason the broker single-flights: two cold misses
+    // on a ROTATING provider both post the same refresh token, and a provider
+    // with reuse detection then revokes the whole family. The latency
     // is what guarantees the contenders overlap rather than queueing.
     let vendor = Counting::new(Answer::Token { rotates: false }, Duration::from_millis(50));
     let broker = Arc::new(broker(&vendor));

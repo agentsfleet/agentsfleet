@@ -5,8 +5,10 @@ export type EventsQuery = {
   cursor?: string;
   actor?: string;
   // Prefix filter on the event actor — the server matches `actor LIKE '<prefix>%'`
-  // (events.zig). Mutually exclusive with `actor`; the server 400s if both are
-  // sent. Onboarding uses `actor_prefix=steer:` to detect the first steer.
+  // (`prefix_to_like` in rustd/crates/afd_events/src/history/filter.rs).
+  // Mutually exclusive with `actor`; the server 400s if both are sent
+  // (`DETAIL_ACTOR_AMBIGUOUS` in
+  // rustd/crates/afd_api_tenant/src/handler/event/query.rs). Onboarding uses `actor_prefix=steer:` to detect the first steer.
   actor_prefix?: string;
   since?: string;
   fleet_id?: string;

@@ -39,7 +39,7 @@ pub(super) fn dashboard(raw: &str, faults: &mut Vec<Fault>) -> Option<Dashboard>
 /// SOME set is a fault per missing knob, and that is the case this function
 /// exists for: a half-configured store boots fine and then fails at the first
 /// bundle fetch, which is the furthest possible point from the mistake — the
-/// same rule `cmd/doctor.zig` records for a half-configured identity provider.
+/// same rule `identity` below applies to a half-configured identity provider.
 pub(super) fn bundle_store<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
@@ -71,13 +71,11 @@ pub(super) fn bundle_store<E: EnvSource + ?Sized>(
 /// Resolves the identity provider, which every boot must have.
 ///
 /// Returns `None` after pushing a fault for each knob that is unset or
-/// unusable. There is no "configured nothing" answer: `runtime_validate.zig`
-/// exits with `fatal: OIDC is required — set OIDC_ISSUER and OIDC_AUDIENCE`,
-/// and this daemon replaces that one. `cmd/doctor.zig` records the narrower
-/// half of the same rule — "reject at boot (e.g. `OIDC_JWKS_URL` set but
-/// `OIDC_ISSUER` missing)" — because a half-configured provider fails at the
-/// first tenant request rather than at boot, which is the furthest possible
-/// point from the mistake.
+/// unusable. There is no "configured nothing" answer: boot refuses without
+/// `OIDC_ISSUER` and `OIDC_AUDIENCE`. A half-configured provider — say
+/// `OIDC_JWKS_URL` set but `OIDC_ISSUER` missing — is refused here too,
+/// because it would otherwise fail at the first tenant request rather than at
+/// boot, which is the furthest possible point from the mistake.
 pub(super) fn identity<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,

@@ -38,7 +38,8 @@ async fn store_holding(body: &[u8]) -> Bundles {
 fn test_content_hash_admits_only_a_lowercase_digest() {
     ContentHash::parse(EMPTY_SHA256).expect("a canonical digest is a content hash");
 
-    // Every rejection `bundles.zig`'s own unit test names, in its order.
+    // The short, the long, the uppercase, and the path-carrying: each is a
+    // spelling that must never reach a storage key.
     for refused in [
         "",
         &EMPTY_SHA256[..63],
@@ -54,13 +55,13 @@ fn test_content_hash_admits_only_a_lowercase_digest() {
 }
 
 #[test]
-fn test_snapshot_key_matches_the_zig_layout() {
+fn test_snapshot_key_matches_the_importer_layout() {
     let hash = ContentHash::parse(EMPTY_SHA256).expect("the fixture digest is canonical");
-    // `importer.zig`'s SNAPSHOT_KEY_PREFIX ++ hash ++ SNAPSHOT_KEY_SUFFIX,
+    // The key `afd_library`'s `prepare` writes — prefix, hash, `.tar` —
     // written out rather than assembled from the constants above: a test that
     // rebuilds the key the same way the code does would pass through any change
-    // to either, and the whole point of this one is that the two
-    // implementations address the same bucket.
+    // to either, and the whole point of this one is that the importer and this
+    // reader address the same bucket.
     assert_eq!(
         hash.snapshot_key().as_ref(),
         "fleet-bundles/sha256/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.tar"

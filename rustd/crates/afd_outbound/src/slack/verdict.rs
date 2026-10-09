@@ -29,8 +29,8 @@ pub(super) fn destination(job: &OutboundDelivery) -> Result<Thread, Verdict> {
 /// `Ok` for the one success. `Err` carries the event name, which the caller
 /// pairs with [`verdict_of`]. Split because the two are different facts: the
 /// verdict decides what happens next, and the event is what an operator greps
-/// — and §8A asks a port to keep the Zig's event spellings, which a verdict
-/// enum has no room to carry.
+/// — and §8A keeps event spellings fixed so dashboards keep matching, which a
+/// verdict enum has no room to carry.
 pub(super) fn classify(status: u16, payload: &str) -> Result<Verdict, &'static str> {
     if status == STATUS_TOO_MANY_REQUESTS || status >= STATUS_SERVER_ERROR_FLOOR {
         return Err("slack_post_retryable");

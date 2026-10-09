@@ -221,9 +221,8 @@ fn every_paged_envelope_spells_its_continuation_the_same_way() {
 /// The collection envelopes name their rows for what the route returns.
 ///
 /// `ChargesResponse` and `PageResponse` say `items`; the catalogue says
-/// `models`. That inconsistency is the Zig surface's and is kept deliberately —
-/// renaming one would break a shipped client — so it is pinned rather than
-/// quietly harmonised.
+/// `models`. That inconsistency is kept deliberately — renaming one would break
+/// a shipped client — so it is pinned rather than quietly harmonised.
 #[test]
 fn the_row_field_keeps_each_envelopes_own_spelling() {
     let catalogue = CatalogueResponse {

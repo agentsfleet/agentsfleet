@@ -1,7 +1,7 @@
 import { ev, mockStream, renderThread } from "./harness";
 import { describe, expect, it } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
-import { OUTCOME } from "@/lib/events/event-summary";
+import { OUTCOME, RUNNER_REFUSAL_SENTENCE } from "@/lib/events/event-summary";
 import { FleetThread } from "@/components/domain/FleetThread";
 
 describe("FleetThread — role rendering: activity groups and traces", () => {
@@ -141,7 +141,7 @@ describe("FleetThread — role rendering: activity groups and traces", () => {
     expect(screen.queryByText("Details")).toBeNull();
     // The ink sits on the failure line, beside its mark, not on the words' span.
     const failure = screen
-      .getByText(/This fleet needs instructions before it can respond/)
+      .getByText(RUNNER_REFUSAL_SENTENCE, { exact: false })
       .closest("[data-failed-outcome]") as HTMLElement;
     expect(failure.className).toMatch(/text-label/);
     expect(failure.className).toMatch(/font-medium/);

@@ -45,8 +45,8 @@ DIST_ARCH_PAIRS ?= amd64:x86_64 arm64:aarch64
 
 # The builder image, baked once. Docker's own layer cache makes this a no-op
 # after the first run, so it is an honest prerequisite rather than a cost.
-# Versions live beside the Dockerfile, in the playbook that owns publishing it —
-# the same shape `ci_zig_images` uses, so there is one place a base moves.
+# Versions live beside the Dockerfile, in the playbook that owns publishing it,
+# so there is one place a base moves.
 BUILDER_DIR := playbooks/operations/ci_rust_images
 BUILDER_RUST_VERSION := $(shell sed -n 's/^RUST_VERSION=//p' $(BUILDER_DIR)/versions.env)
 BUILDER_ALPINE_SERIES := $(shell sed -n 's/^ALPINE_SERIES=//p' $(BUILDER_DIR)/versions.env)
@@ -113,20 +113,17 @@ push: _docker_login ## Push production image (expects prebuilt binaries in dist/
 push-dev: _docker_login  ## Push development image to registry (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_DEV_TAGS),--push)
 
-sync-version: ## Propagate VERSION → build.zig.zon + cli/package.json (cli.js reads pkg.version at runtime)
+sync-version: ## Propagate VERSION → rustd/Cargo.toml + cli/package.json (cli.js reads pkg.version at runtime)
 	@set -e; \
 	V="$$(cat VERSION)"; \
-	perl -i -pe 's/\.version = "[^"]+"/.version = "'"$$V"'"/;' build.zig.zon; \
 	perl -i -pe 's/"version": "[^"]+"/"version": "'"$$V"'"/;' cli/package.json; \
 	perl -i -pe 's/^version = "[^"]+"/version = "'"$$V"'"/;' rustd/Cargo.toml; \
-	echo "✓ version $$V synced → build.zig.zon, cli/package.json, rustd/Cargo.toml (cli.js reads it at runtime)"
+	echo "✓ version $$V synced → cli/package.json, rustd/Cargo.toml (cli.js reads it at runtime)"
 
-check-version: ## Verify build.zig.zon, cli/package.json and rustd/Cargo.toml match VERSION
+check-version: ## Verify cli/package.json and rustd/Cargo.toml match VERSION
 	@set -e; \
 	V="$$(cat VERSION)"; \
 	FAIL=0; \
-	grep -q "\.version = \"$$V\"" build.zig.zon \
-		|| { printf 'DRIFT  build.zig.zon: %s\n' "$$(grep '\.version' build.zig.zon | head -1 | xargs)"; FAIL=1; }; \
 	grep -q "\"version\": \"$$V\"" cli/package.json \
 		|| { printf 'DRIFT  cli/package.json: %s\n' "$$(grep '"version"' cli/package.json | head -1 | xargs)"; FAIL=1; }; \
 	grep -q "^version = \"$$V\"" rustd/Cargo.toml \

@@ -1,15 +1,11 @@
-//! Every statement this crate runs, collected, and nothing else.
-//!
-//! Text is byte-identical to `fleet_runtime/sql.zig`'s operator-side
-//! statements, and to `integration_grants/workspace.zig` for the grant half.
-//! Row-equivalence is the cutover invariant, so a statement is copied rather
-//! than re-derived; where a `$n` order looks odd, it is odd in the original too.
+//! Every statement the gate half of this crate runs, and nothing else; the
+//! grant half's statements live in [`super::grant_sql`].
+
 /// One page of a workspace's gates, NEWEST first.
 ///
-/// Copied from `fleet_runtime/sql.zig`'s `SELECT_GATE_PAGE`. The fleet name is
-/// joined rather than stored on the gate: an inbox row names the fleet a person
-/// is being asked about, and a denormalised copy would go stale the moment the
-/// fleet is renamed.
+/// The fleet name is joined rather than stored on the gate: an inbox row names
+/// the fleet a person is being asked about, and a denormalised copy would go
+/// stale the moment the fleet is renamed.
 ///
 /// `COALESCE(z.name, '')` because the column is nullable and an inbox row with
 /// a null name would be a card with a blank heading rather than an unnamed one.
@@ -99,8 +95,7 @@ WHERE g.id = $1::uuid AND g.workspace_id = $2::uuid";
 
 /// Resolves one gate, and any integration grant the decision implies.
 ///
-/// Copied from `fleet_runtime/sql.zig`'s `RESOLVE_GATE`. Two things about it
-/// are load-bearing:
+/// Two things about it are load-bearing:
 ///
 /// The `WHERE status = $6` on the UPDATE is the whole race decision. Two
 /// operators answering one gate at the same instant both run this statement,

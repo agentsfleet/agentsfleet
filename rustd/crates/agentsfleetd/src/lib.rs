@@ -39,7 +39,6 @@ pub mod plane;
 pub mod preflight;
 pub mod probes;
 pub mod serve;
-pub mod signal;
 pub mod supervisor;
 pub mod sweepers;
 pub mod telemetry;

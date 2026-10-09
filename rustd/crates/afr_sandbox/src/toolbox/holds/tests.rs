@@ -4,51 +4,27 @@
 )]
 
 use std::fs;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
-use super::{Mounter, Toolboxes};
-use crate::error::{Result, ToolboxRefusal};
-use crate::toolbox::testing::{Signer, facts, manifest_bytes, sha256};
-use crate::toolbox::{Manifest, Toolbox, image_name};
+use afd_core::test_util::trace::Capture;
 
-/// Mounts nothing; checks the image's length and digest as admission does,
-/// records what it was asked to mount and unmount, and refuses unmounts while
-/// told to.
-#[derive(Debug, Default)]
-struct Recorder {
-    mounted: Mutex<Vec<String>>,
-    unmounted: Mutex<Vec<String>>,
-    refuse_unmounts: AtomicBool,
-}
-
-impl Mounter for Arc<Recorder> {
-    fn mount(&self, manifest: &Manifest, image: &Path) -> Result<Toolbox> {
-        let bytes = fs::read(image)?;
-        manifest.check_length(u64::try_from(bytes.len()).unwrap())?;
-        manifest.check_digest(&sha256(&bytes))?;
-        let digest = manifest.sha256().to_owned();
-        self.mounted.lock().unwrap().push(digest.clone());
-        Ok(Toolbox::at(image.with_extension("mnt"), digest))
-    }
-
-    fn unmount(&self, toolbox: &Toolbox) -> Result<()> {
-        if self.refuse_unmounts.load(Ordering::SeqCst) {
-            return Err(std::io::Error::other("busy").into());
-        }
-        self.unmounted
-            .lock()
-            .unwrap()
-            .push(toolbox.digest().to_owned());
-        Ok(())
-    }
-}
+use crate::error::ToolboxRefusal;
+use crate::toolbox::testing::{Signer, facts, manifest_bytes, open};
+use crate::toolbox::{Manifest, MountedToolboxes, image_name};
 
 /// An image, its download, and the manifest naming it.
 struct Release {
     manifest: Manifest,
     source: std::path::PathBuf,
+}
+
+/// Rewrites the published image at `path` in place, as rot or an edit would.
+fn edit_in_place(path: &Path, bytes: Vec<u8>) {
+    fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+    fs::write(path, bytes).unwrap();
 }
 
 /// Image `n`, downloaded under `dir`.
@@ -60,16 +36,6 @@ fn release(signer: &Signer, dir: &Path, n: u8) -> Release {
         manifest: signer.manifest(&bytes),
         source,
     }
-}
-
-fn open(dir: &Path) -> (Toolboxes<Arc<Recorder>>, Arc<Recorder>) {
-    let recorder = Arc::new(Recorder::default());
-    let images = dir.join("images");
-    fs::create_dir_all(&images).unwrap();
-    (
-        Toolboxes::open(images, Arc::clone(&recorder)).unwrap(),
-        recorder,
-    )
 }
 
 /// Dimension 8.2: a bad signature, a wrong length, the wrong architecture
@@ -275,7 +241,7 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
         .path()
         .join("images")
         .join(image_name(one.manifest.sha256()));
-    fs::write(&published, vec![9_u8; 64]).unwrap();
+    edit_in_place(&published, vec![9_u8; 64]);
 
     toolboxes.admit(&one.manifest, &one.source).unwrap();
 
@@ -283,7 +249,7 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
     assert_eq!(recorder.mounted.lock().unwrap().len(), 2);
     fs::write(&one.source, vec![9_u8; 64]).unwrap();
     toolboxes.close().unwrap();
-    fs::write(&published, vec![9_u8; 64]).unwrap();
+    edit_in_place(&published, vec![9_u8; 64]);
     assert_eq!(
         toolboxes
             .admit(&one.manifest, &one.source)
@@ -291,5 +257,79 @@ fn should_stage_again_a_published_image_that_is_not_the_manifests() {
             .toolbox_refusal(),
         Some(ToolboxRefusal::Digest),
         "a download that is not the image either is refused, once"
+    );
+}
+
+/// A restart of the same release mounts the image the last start published,
+/// without its download: closing unmounts and keeps the file.
+#[test]
+fn should_admit_after_a_restart_without_copying_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let signer = Signer::new();
+    let one = release(&signer, dir.path(), 1);
+    let (toolboxes, _recorder) = open(dir.path());
+    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.close().unwrap();
+    fs::remove_file(&one.source).unwrap();
+
+    let (restarted, recorder) = open(dir.path());
+    restarted
+        .admit(&one.manifest, &dir.path().join("gone"))
+        .unwrap();
+
+    assert_eq!(
+        recorder.mounted.lock().unwrap().len(),
+        1,
+        "mounted in place"
+    );
+    assert_eq!(restarted.digests(), [one.manifest.sha256()]);
+}
+
+/// A start that admits a new release removes the image an earlier start kept
+/// for the old one, so kept files never pile up across deploys.
+#[test]
+fn should_remove_an_image_no_admitted_release_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let signer = Signer::new();
+    let [one, two] = [1, 2].map(|n| release(&signer, dir.path(), n));
+    let (toolboxes, _recorder) = open(dir.path());
+    toolboxes.admit(&one.manifest, &one.source).unwrap();
+    toolboxes.close().unwrap();
+
+    let (restarted, _recorder) = open(dir.path());
+    restarted.admit(&two.manifest, &two.source).unwrap();
+
+    let images = dir.path().join("images");
+    assert!(!images.join(image_name(one.manifest.sha256())).exists());
+    assert!(images.join(image_name(two.manifest.sha256())).exists());
+}
+
+/// Images still admitted when a host's guard drops are unmounted, and one the
+/// kernel will not unmount is logged and left mounted.
+#[test]
+fn should_unmount_on_drop_and_log_an_image_that_stays() {
+    let dir = tempfile::tempdir().unwrap();
+    let signer = Signer::new();
+    let [one, two] = [1, 2].map(|n| release(&signer, dir.path(), n));
+    let (closing, closed_by) = open(&dir.path().join("closing"));
+    closing.admit(&one.manifest, &one.source).unwrap();
+    let (stuck, stuck_by) = open(&dir.path().join("stuck"));
+    stuck.admit(&two.manifest, &two.source).unwrap();
+    stuck_by.refuse_unmounts.store(true, Ordering::SeqCst);
+    let capture = Capture::install();
+
+    drop(MountedToolboxes::from(closing));
+    drop(MountedToolboxes::from(stuck));
+
+    assert_eq!(
+        *closed_by.unmounted.lock().unwrap(),
+        [one.manifest.sha256()]
+    );
+    assert!(stuck_by.unmounted.lock().unwrap().is_empty());
+    let stayed = capture.only("sandbox_toolbox_unmount_failed");
+    assert!(
+        stayed
+            .field("reason")
+            .is_some_and(|reason| reason.contains("busy"))
     );
 }

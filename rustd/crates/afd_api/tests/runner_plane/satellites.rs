@@ -127,9 +127,8 @@ async fn runner_memory_routes_validate_and_render() {
 /// A batch of live-tail frames is acknowledged with `{"ok":true}`, not a bare
 /// 202.
 ///
-/// The body is what `service_activity.zig` answers, and the first port of the
-/// verb dropped it. A generated client types a 202 with no content as
-/// returning nothing, so the assertion is on the bytes, not the status alone.
+/// A generated client types a 202 with no content as returning nothing, so the
+/// assertion is on the bytes, not the status alone.
 #[tokio::test]
 async fn runner_activity_is_acknowledged_with_a_body() {
     let router = Fleet::new()

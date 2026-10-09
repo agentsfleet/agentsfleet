@@ -4,11 +4,9 @@
 //!
 //! A MISSING key means the document is incomplete and the fix is to add a
 //! line. A MALFORMED one means the line is there and its value is the wrong
-//! shape. `config_parser.zig` collapses the second into the first at seven
-//! sites — `name: 123`, a non-array `triggers`, a non-object `budget` and a
-//! non-object `network` all answer `MissingRequiredField` — which tells an
-//! author to add a key they can plainly see. `InvalidFieldType` was in the
-//! same error set the whole time.
+//! shape. Answering `name: 123`, a non-array `triggers`, a non-object `budget`
+//! or a non-object `network` with `MissingRequiredField` would tell an author
+//! to add a key they can plainly see.
 //!
 //! Here the split is STRUCTURAL rather than a rule authors follow. Every field
 //! of the deserialized schema is an `Option`, so serde is never asked for a
@@ -20,9 +18,7 @@
 //! neither has a code path to the other's constructor.
 //!
 //! A shape failure carries serde's own message and position, which names the
-//! offending field AND the line and column it sits on. The Zig answers a bare
-//! error value beside a scoped log line, so the useful half lands in a log an
-//! API caller never reads.
+//! offending field AND the line and column it sits on.
 //!
 //! # This crate declares no `UZ-` code, and that is the rule
 //!
@@ -48,36 +44,29 @@
 //! to write on a finer code — and the detail they need is in the message, which
 //! is where the structure below goes.
 //!
-//! # Divergence from the Zig daemon, declared
-//!
-//! Four verdicts here differ from `config_parser.zig` on the same input. They
-//! are in the milestone's divergence register rather than absorbed silently,
-//! because a document that parses on one daemon and not the other is a
-//! cutover question:
+//! # Four verdicts a reader might guess wrong
 //!
 //! 1. A wrong-typed `name`, `triggers`, `tools`, `network` or `budget` answers
-//!    [`InvalidFieldType`](Error::InvalidFieldType) where the Zig answers
-//!    `MissingRequiredField`.
-//! 2. A non-string `skill` answers [`InvalidFieldType`](Error::InvalidFieldType).
-//!    The Zig returns `null` — it DROPS the field and reports nothing, so a
-//!    fleet silently loses its skill reference. Its sibling `model` already
-//!    answers a shape error for the identical input.
-//! 3. A gate rule's failure keeps its own class. The Zig maps every error out
-//!    of `parseGatePolicy` onto `MissingRequiredField`, so a `threshold_count`
-//!    of zero reports as a missing field.
+//!    [`InvalidFieldType`](Error::InvalidFieldType), never
+//!    `MissingRequiredField`: the key is there, so the fix is its value.
+//! 2. A non-string `skill` answers [`InvalidFieldType`](Error::InvalidFieldType)
+//!    rather than being dropped, so a fleet never silently loses its skill
+//!    reference. Its sibling `model` answers the same shape error for the
+//!    identical input.
+//! 3. A gate rule's failure keeps its own class: a `threshold_count` of zero
+//!    answers [`InvalidThreshold`](Error::InvalidThreshold), not a missing field.
 //! 4. An out-of-range anomaly threshold answers
-//!    [`InvalidThreshold`](Error::InvalidThreshold), not `InvalidBudget`. The
-//!    Zig bounds a COUNT OF ACTIONS by `MAX_BUDGET_UNITS` — a constant named
-//!    for dollars — and reports it with the budget's error (RULE UFS).
+//!    [`InvalidThreshold`](Error::InvalidThreshold), not `InvalidBudget`. It
+//!    bounds a COUNT OF ACTIONS, so it borrows neither a constant nor an error
+//!    named for dollars (RULE UFS).
 //!
 //! # The frontmatter half, and why it adds three kinds
 //!
-//! `config_markdown.zig` funnels every way a `TRIGGER.md` can fail to open
-//! onto `MissingRequiredField` — no fence, an unclosed fence, a YAML syntax
-//! error and a duplicated key all answer "a required key is absent". None of
-//! the three kinds here is about a key at all, and the Zig's sentence sends an
-//! author hunting for something to add when the document is already too long or
-//! malformed somewhere with a line number.
+//! A `TRIGGER.md` can fail to open four ways — no fence, an unclosed fence, a
+//! YAML syntax error, a duplicated key — and none of them is an absent key.
+//! Answering "a required key is absent" would send an author hunting for
+//! something to add when the document is already too long or malformed
+//! somewhere with a line number.
 //!
 //! The wire answer is unchanged: every variant here still reaches a caller as
 //! `UZ-AGT-008`, because the mapping happens at the HTTP boundary and this
@@ -211,9 +200,8 @@ pub(crate) enum ErrorKind {
     ///
     /// An unrecognised trigger `type` is deliberately NOT here. serde's own
     /// unknown-variant failure names the accepted spellings — "expected one of
-    /// `webhook`, `cron`, `api`" — where the Zig's `InvalidTriggerType` names
-    /// none of them, so keeping a variant for it would replace a better message
-    /// with a worse one.
+    /// `webhook`, `cron`, `api`" — and a variant of ours would replace that
+    /// message with one naming none of them.
     #[error("the trigger set is not usable: {reason}")]
     InvalidTriggerSet {
         /// Which rule it broke.
@@ -237,8 +225,7 @@ pub(crate) enum ErrorKind {
     /// A field is outside the bounds its schema declares.
     ///
     /// Carries `garde`'s report, which names the exact PATH it refused —
-    /// `x-agentsfleet.tools[3]` rather than "tools". The Zig answers a bare
-    /// `InvalidFieldType` and puts the index in a log line beside it.
+    /// `x-agentsfleet.tools[3]` rather than "tools".
     #[error("the stored configuration is outside its bounds")]
     OutOfBounds {
         /// Every bound the document broke, with the path of each.
@@ -247,17 +234,16 @@ pub(crate) enum ErrorKind {
 
     /// The document carries no well-formed frontmatter block.
     ///
-    /// Either no opening `---`, or an opening fence that never closes. The Zig
-    /// answers `MissingRequiredField` for both, which reads as advice to add a
-    /// key when the actual fix is a fence.
+    /// Either no opening `---`, or an opening fence that never closes. Its own
+    /// kind because the fix is a fence, and `MissingRequiredField` would read
+    /// as advice to add a key.
     #[error("the document has no frontmatter block between `---` fences")]
     FrontmatterMissing,
 
     /// The frontmatter is not YAML this daemon can tokenise.
     ///
-    /// Carries the parser's own message, which names the line and column. The
-    /// Zig collapses this onto `MissingRequiredField` and puts nothing in the
-    /// caller's reach.
+    /// Carries the parser's own message, which names the line and column the
+    /// author has to look at.
     ///
     #[error("the frontmatter is not readable YAML")]
     FrontmatterUnreadable {
@@ -267,9 +253,8 @@ pub(crate) enum ErrorKind {
 
     /// One mapping declares the same key twice.
     ///
-    /// The pinned `zig-yaml` fork refuses this too — `DuplicateMapKey` — so
-    /// the VERDICT is parity; only the sentence is new. Named because a
-    /// document long enough to repeat a key is long enough to need the name.
+    /// Named because a document long enough to repeat a key is long enough to
+    /// need the name.
     #[error("`{key}` is declared twice in the same block")]
     DuplicateKey {
         /// The key authored more than once.
@@ -304,9 +289,10 @@ impl Error {
     ///
     /// The kinds are crate-private, so this is how the grouping is asked for —
     /// and it belongs here rather than in the caller that wants it. The
-    /// corpus suite folds a Rust refusal onto the Zig class that answers the
-    /// same document, and deriving that fold from a variant list held OUTSIDE
-    /// this crate would let a new kind silently join the wrong group.
+    /// corpus suite (`tests/frontmatter_corpus.rs`) folds each refusal onto the
+    /// coarse verdict its table grades, and deriving that fold from a variant
+    /// list held OUTSIDE this crate would let a new kind silently join the
+    /// wrong group.
     #[must_use]
     pub fn class(&self) -> Class {
         match self.kind() {
@@ -326,21 +312,21 @@ impl Error {
 /// The class of defect a refusal belongs to.
 ///
 /// Deliberately coarse: it exists so a caller can GROUP refusals without
-/// reaching into the kinds, and every group here is one the Zig daemon also
-/// spells separately. A finer split belongs in the message, which is where the
-/// structure already is.
+/// reaching into the kinds, and each group is one an author fixes differently
+/// from its neighbours. A finer split belongs in the message, which is where
+/// the structure already is.
 ///
 /// Deliberately NOT `#[non_exhaustive]`: the corpus suite folds each class onto
-/// the Zig verdict that answers the same document, and a new class must break
-/// that match until somebody decides which verdict it earns. A catch-all arm is
+/// the verdict its table pins for a document, and a new class must break that
+/// match until somebody decides which verdict it earns. A catch-all arm is
 /// exactly the silence this grading exists to prevent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Class {
     /// The document could not be opened, tokenised, or read into the schema.
     ///
-    /// The four kinds the Zig folds onto `MissingRequiredField` plus the two it
-    /// already spelled that way — the milestone's declared divergence, stated
-    /// once here rather than restated by each caller that grades it.
+    /// The three frontmatter kinds plus a missing key and a wrong-shaped value:
+    /// every way a document fails before a rule about its meaning is asked,
+    /// grouped once here rather than by each caller that grades it.
     Document,
     /// A runtime key was authored at the top level instead of under
     /// `x-agentsfleet`.

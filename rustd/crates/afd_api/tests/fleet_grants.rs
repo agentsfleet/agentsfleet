@@ -6,8 +6,8 @@
 //! exactly what the edge owes — the guard, the two SEPARATE capabilities this
 //! surface splits, the ownership layer, the path parsing, and the transport
 //! class an outage answers with. Whether a revoke actually moves a row is the
-//! statement's claim, and `integration_grants/workspace.zig` runs that exact
-//! text against live Postgres to make it.
+//! statement's claim, and `afd_approval/tests/integration_grants.rs` runs that
+//! exact text against live Postgres to make it.
 //!
 //! # Reading a grant and revoking one are different capabilities
 //!
@@ -220,9 +220,9 @@ async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
 ///
 /// A 400 and the sibling detail route's sentence, not a 404: one path shape
 /// answering two different ways depending on what follows it is a difference no
-/// client could act on. The Zig reaches its `::uuid` cast here and answers 404;
-/// refusing at the door is what keeps that cast from ever being the thing that
-/// fails, leaving every error from below a genuine datastore fault.
+/// client could act on. Refusing at the door is what keeps the statement's
+/// `::uuid` cast from ever being the thing that fails, leaving every error from
+/// below a genuine datastore fault.
 #[tokio::test]
 async fn a_fleet_id_that_is_not_an_identifier_is_refused_at_the_door() {
     let base = format!("/v1/workspaces/{OWNED_WORKSPACE}/fleets/not-a-uuid/integration-grants");
@@ -278,8 +278,8 @@ async fn a_grant_id_that_is_not_an_identifier_reads_as_absent() {
 ///
 /// The whole surface is one GET and one DELETE. A grant is seeded by the
 /// install and answered through the approval inbox, so a POST that created one
-/// here would be a second origination path for a standing human decision — the
-/// exact thing `create_grants.zig` exists to keep singular.
+/// here would be a second origination path for a standing human decision, and
+/// that path is kept singular on purpose.
 #[tokio::test]
 async fn the_templates_carry_only_the_methods_they_document() {
     for (method, path) in [

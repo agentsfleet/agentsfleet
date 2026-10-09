@@ -18,19 +18,23 @@ pub mod fixture;
 pub mod testing;
 
 mod admission;
+mod allowlist;
 mod egress;
 mod mint;
 mod network;
 mod origin;
 mod placeholder;
 mod refusal;
+mod resolve;
 mod transport;
 mod vault;
 
 pub use self::admission::{Draft, Placement};
+pub use self::allowlist::allowlist_host;
 pub use self::egress::Egress;
 pub use self::error::{Error, Result};
 pub use self::mint::{Mint, Minted};
-pub use self::network::{Network, RESPONSE_MAX_BYTES, blocked_address, guarded};
+pub use self::network::{Network, RESPONSE_MAX_BYTES, blocked_address, guarded, guarded_by};
 pub use self::refusal::Refusal;
+pub use self::resolve::{BlockedAddress, Resolve, SystemResolver, unblocked};
 pub use self::transport::{Inbound, Outbound, Transport};

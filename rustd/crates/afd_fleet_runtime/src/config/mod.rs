@@ -12,10 +12,8 @@
 //!
 //! [`FleetConfig`] is `Send + Sync` and holds no borrow of the document it was
 //! read from, so a claim can parse it once and hand every downstream gate an
-//! `Arc` of the same value. The Zig cannot: `fleet_session.zig` parses at
-//! claim, and `credentials_mint_scope.zig` parses the WHOLE config again on
-//! every mint request just to read one field off it — a full document parse
-//! per request, on a path that already holds the answer.
+//! `Arc` of the same value. A gate that needs one field reads it off that
+//! value rather than parsing the whole document again per request.
 
 mod anomaly;
 mod attach;
@@ -56,11 +54,9 @@ const BUDGET: &str = "budget";
 ///
 /// One list, read for one purpose: naming a runtime key found at the TOP level,
 /// which is an author who forgot to indent. The accepted set itself is the
-/// [`raw::Runtime`] struct, so the two cannot drift into disagreement the way
-/// the Zig's twin arrays can — `ensureRuntimeKeysNotAtTopLevel` and
-/// `ensureKnownRuntimeKeys` each carry their own copy of these twelve strings,
-/// and the file says in a comment that they must mirror each other.
-/// `every_runtime_key_is_accepted_by_the_schema` proves this one still does.
+/// [`raw::Runtime`] struct, so there is no second copy of these twelve strings
+/// to drift into disagreement with it.
+/// `every_runtime_key_is_accepted_by_the_schema` proves this list still agrees.
 const RUNTIME_KEYS: [&str; 12] = [
     TRIGGERS,
     TOOLS,

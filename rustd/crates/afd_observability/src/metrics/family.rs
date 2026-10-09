@@ -8,12 +8,10 @@
 //! `impl CounterMetric for Counter`, `impl Metric for Counter`). Kind is
 //! carried by WHICH TRAIT a type implements, never by a field somebody sets.
 //!
-//! The Zig daemon did the opposite, and it is worth naming why that is not
-//! copied. `MetricMeta` carried `kind`, `monotonic`, `max_series`, `streamed`,
-//! `cost`, `evented` and `live_read` as data — a configuration record for an
-//! aggregator we hand-wrote because Zig has no OpenTelemetry SDK. Every one of
-//! those fields selected a branch in code we owned. Here the SDK is the
-//! aggregator, so the record describes a machine that no longer exists.
+//! No family carries `kind`, `monotonic` or `max_series` as data. Such a record
+//! earns its place only when hand-written aggregation code branches on it; here
+//! the OpenTelemetry SDK is the aggregator, so there is no branch for a field to
+//! select.
 //!
 //! # What the traits buy that a field cannot
 //!

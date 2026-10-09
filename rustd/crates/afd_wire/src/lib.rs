@@ -6,8 +6,8 @@
 //!
 //! These types ARE the wire. `agentsfleetd` publishes them through
 //! `public/openapi.json` (the `openapi` feature derives the schemas), and
-//! `agentsfleet-runner` is a client of that document: its Zig structs in
-//! `src/lib/contract` conform to what is published here, never the reverse.
+//! `agentsfleet-runner` is a client of that document: the `afr_*` crates
+//! decode these same types, so what is published here is what both sides speak.
 //!
 //! # Borrowed, not owned
 //!
@@ -20,13 +20,13 @@
 //!
 //! # Primitives, not validated newtypes
 //!
-//! Identifiers are `Cow<'a, str>` and counts are plain integers, matching the
-//! Zig structs field for field — this crate does NOT depend on `afd_core`.
-//! Validation belongs at the service boundary, and doing it at parse would
-//! break the thing this layer exists to guarantee: `afd_core::limits::WorkerCount`
-//! clamps on deserialize, so a payload carrying `worker_count: 168` would decode
-//! to `64` and re-serialize to `64` — a byte mismatch against a fixture the Zig
-//! daemon, which clamps at assignment rather than at parse, emits as `168`.
+//! Identifiers are `Cow<'a, str>` and counts are plain integers — this crate
+//! does NOT depend on `afd_core`. Validation belongs at the service boundary,
+//! and doing it at parse would break the thing this layer exists to guarantee:
+//! `afd_core::limits::WorkerCount` clamps on deserialize, so a payload carrying
+//! `worker_count: 168` would decode to `64` and re-serialize to `64` — a byte
+//! mismatch against a fixture that carries `168`, because the daemon clamps at
+//! assignment rather than at parse.
 //!
 //! # `skip_serializing_if` is for receivers that refuse unknown fields
 //!
@@ -39,10 +39,9 @@
 //!
 //! # Version
 //!
-//! This is the CURRENT lease shape only. The Zig daemon carries a superseded
-//! version-one lease alongside it; the port does not, and the fixture manifest
-//! records that exclusion so an accidental re-admission fails a test rather than
-//! quietly growing a second implementation.
+//! This is the CURRENT lease shape only. One lease version is on the wire, and
+//! a second lease type here would be a second implementation of the same verb
+//! rather than a field added to this one.
 
 // A dependency listed but unused is a supply-chain and compile-time cost with no
 // offsetting benefit, and an unused-but-linked runtime is how this crate would

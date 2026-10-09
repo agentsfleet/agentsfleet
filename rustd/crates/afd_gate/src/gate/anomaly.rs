@@ -81,9 +81,8 @@ impl Gates {
 
     /// This action's count inside `window_s`, or `None` if it cannot be read.
     ///
-    /// The fail-open decision, taken HERE and once, rather than at each of the
-    /// three `catch return true` sites the Zig's balance gate spreads its own
-    /// version across.
+    /// The fail-open decision, taken HERE and once, rather than at each site
+    /// that reads a count.
     async fn count(&self, key: &str, window_s: u32) -> Option<i64> {
         match self.queue().increment_in_window(key, window_s).await {
             Ok(count) => Some(count),

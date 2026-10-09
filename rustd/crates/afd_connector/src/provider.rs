@@ -1,15 +1,12 @@
 //! Which third parties a workspace can connect to, as a closed set.
 //!
-//! # An enum where the Zig has a table scan
+//! # An enum, so no consumer holds a string that might name a connector
 //!
-//! `registry.zig` holds a `[_]ConnectorSpec` and answers `lookup(provider)` by
-//! walking it with `std.mem.eql`, so every consumer holds a `[]const u8` that
-//! MIGHT name a connector. Here the route segment is parsed into a [`Provider`]
-//! once, at the edge, and everything inward takes the enum — which is what
-//! makes the archetype dispatch a total match rather than a scan that can
-//! answer null. `dispatch/write_rust.md`'s "parse, don't validate" is the rule,
-//! and the Zig's comptime uniqueness checks become the language's own: two
-//! variants cannot share a name.
+//! The route segment is parsed into a [`Provider`] once, at the edge, and
+//! everything inward takes the enum — which is what makes the archetype
+//! dispatch a total match rather than a lookup that can answer nothing.
+//! `dispatch/write_rust.md`'s "parse, don't validate" is the rule, and
+//! uniqueness is the language's own: two variants cannot share a name.
 //!
 //! # The ids are a stored-data contract, not a spelling
 //!
@@ -47,9 +44,8 @@ macro_rules! catalogue {
         ///
         /// Five, and the count is deliberate rather than incidental: api-key
         /// providers (Datadog, Grafana, Fly) are workspace secrets referenced
-        /// as `${secrets.<name>.<field>}` and were never connectors —
-        /// `registry.zig` records the same decision where it dropped its
-        /// `api_key` archetype.
+        /// as `${secrets.<name>.<field>}` and are not connectors, so there is
+        /// no `api_key` archetype.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub enum Provider {
             $($(#[doc = $doc])+ $variant,)+
@@ -97,8 +93,7 @@ catalogue! {
 
 /// What a `<provider>-app` vault key ends in.
 ///
-/// The one site that spells it (RULE UFS), the way `oauth2.zig`'s
-/// `APP_VAULT_KEY_SUFFIX` is the one site on the other daemon.
+/// The one site that spells it (RULE UFS).
 const APP_KEY_SUFFIX: &str = "-app";
 
 impl Provider {
@@ -128,9 +123,9 @@ impl Provider {
 
     /// The workspace vault key this provider's grant is sealed under.
     ///
-    /// The bare id: `crypto_store.zig` stores the connector handle under the
-    /// provider name, and the runner plane's `afd_credential::vault` opens it
-    /// by that name when a fleet declares the integration.
+    /// The bare id: the connector handle is stored under the provider name,
+    /// and the runner plane's `afd_credential::vault` opens it by that name
+    /// when a fleet declares the integration.
     #[must_use]
     pub const fn grant_key(self) -> &'static str {
         self.id()
@@ -150,9 +145,8 @@ mod tests {
 
     /// Every id round-trips through the parse it is matched by.
     ///
-    /// The property `registry.zig` gets from a comptime duplicate scan: no two
-    /// entries answer one segment. Here the enum gives it, and this pins that
-    /// the parse actually reads the same string the id renders.
+    /// No two entries answer one segment. The enum gives that, and this pins
+    /// that the parse actually reads the same string the id renders.
     #[test]
     fn every_provider_parses_from_the_id_it_renders() {
         for provider in Provider::ALL.iter().copied() {
@@ -203,9 +197,8 @@ mod tests {
 
     /// The catalogue is exactly the five, and a sixth updates this pin.
     ///
-    /// `registry.zig` carries the same test for the same reason: the registry
-    /// IS the provider catalogue, so its size is a product fact rather than an
-    /// implementation detail.
+    /// The registry IS the provider catalogue, so its size is a product fact
+    /// rather than an implementation detail.
     #[test]
     fn the_catalogue_is_the_five_shipped_connectors() {
         assert_eq!(Provider::ALL.len(), 5);

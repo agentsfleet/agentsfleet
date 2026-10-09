@@ -22,9 +22,8 @@
 //!   base64url(workspace "|" subject_tag "|" nonce "|" exp_ms) "." hex(mac)
 //! ```
 //!
-//! Inherited from `state.zig` because the format is sound, NOT because a
-//! cutover depends on it — nothing is in production, so there are no in-flight
-//! connects to preserve. A wire format on this port stands on its own merits.
+//! The format stands on its own merits, not on anything that depends on it:
+//! nothing is in production, so there are no in-flight connects to preserve.
 //!
 //! And a caution for whoever reads the HMAC and infers more from it than is
 //! there: the signature is not what makes this safe. An opaque random token
@@ -92,7 +91,7 @@ pub struct Minted {
 /// Distinguished for the LOG and collapsed for the answer: an operator reading
 /// why a connect failed needs these apart, and a caller replaying states must
 /// not learn which check they got past. The caller answers one code for all of
-/// them — `callback.zig` answers one `UZ-CONN-002` for the same reason.
+/// them, and logs [`Rejected::reason`] to keep the distinction for itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rejected {
     /// Not the shape a state has: no tag separator, or not four fields.

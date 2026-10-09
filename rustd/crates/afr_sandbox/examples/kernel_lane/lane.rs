@@ -1,18 +1,16 @@
 //! What the lane needs before any trial runs, and the engine every trial uses.
 
-use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Duration;
 
-use afd_core::env::LOG_LEVEL_VAR;
-use afr_sandbox::bubblewrap::SANDBOX_SUBCOMMAND;
+use afd_core::env::ProcessEnv;
+use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
-    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostTools, KernelMounter, Manifest,
-    ProbePaths, REQUIRED_CONTROLLERS, SUBTREE_CONTROL, Toolboxes, probe,
+    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, KernelMounter, Manifest, MountedToolboxes,
+    ProbePaths, REQUIRED_CONTROLLERS, SUBTREE_CONTROL, ToolboxHome, probe,
 };
 use libtest_mimic::Failed;
 
@@ -22,21 +20,23 @@ use crate::release::Signer;
 pub(crate) const TOOLBOX_VARIABLE: &str = "AFR_TOOLBOX_IMAGE";
 /// The delegated cgroup every lease's cgroup is made under.
 const LANE_CGROUP: &str = "/sys/fs/cgroup/afr-kernel-lane";
-/// The unprivileged host user and group bubblewrap runs as: `nobody`.
-pub(crate) const SANDBOX_IDS: (u32, u32) = (65_534, 65_534);
+/// The unprivileged host user and group bubblewrap runs as, as on a host.
+pub(crate) const SANDBOX_IDS: (u32, u32) = afr_sandbox::SANDBOX_HOST_IDS;
 /// The cap on user namespaces; zero means bubblewrap cannot start.
 const MAX_USER_NAMESPACES: &str = "/proc/sys/user/max_user_namespaces";
 /// Ubuntu's `AppArmor` switch that forbids unprivileged user namespaces.
 const APPARMOR_USERNS: &str = "/proc/sys/kernel/apparmor_restrict_unprivileged_userns";
+/// What a host that does not forward IPv4 lacks: an allowlisted sandbox's
+/// traffic is forwarded from its link, so the egress trials need it on.
+const FORWARDING_OFF: &str = "forwarding: net.ipv4.ip_forward is not 1";
 /// Where each run's leases and toolbox mount live; short, for socket paths.
 pub(crate) const STATE_PREFIX: &str = "afr-lane-";
 /// Where, under the lane's state, each lease's directory is made; apart from
 /// the toolbox mount, so no lease name can land on it.
 const LEASES_DIR: &str = "leases";
-/// Where, under the lane's state, the toolbox image is staged and kept, and
-/// where it is mounted.
+/// Where, under the lane's state, the toolbox image is staged, kept and
+/// mounted, as a host keeps it.
 const TOOLBOX_DIR: &str = "toolbox";
-const MOUNTS_DIR: &str = "mounts";
 /// The lane binary's name where the sandbox binds it from.
 const ENTRY_NAME: &str = "agentsfleet-runner";
 /// Readable and executable by everyone, writable by nobody but root.
@@ -54,8 +54,6 @@ pub(crate) const STATE_FREE_BYTES_MIN: u64 = 6 << 30;
 const MIB: u64 = 1 << 20;
 /// The state directory: traversable, but listable and writable by root only.
 const STATE_MODE: u32 = 0o711;
-/// How long a sandbox may take to answer.
-const READY_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Everything a trial builds sandboxes with.
 pub(crate) struct Lane {
@@ -65,7 +63,7 @@ pub(crate) struct Lane {
     /// image it runs on.
     pub(crate) signer: Signer,
     pub(crate) manifest: Manifest,
-    toolboxes: Toolboxes<KernelMounter>,
+    toolboxes: MountedToolboxes<KernelMounter>,
     state: tempfile::TempDir,
 }
 
@@ -119,6 +117,9 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     }
     if fs::read_to_string(APPARMOR_USERNS).is_ok_and(|on| on.trim() == "1") {
         gaps.push(format!("user namespaces: {APPARMOR_USERNS} is 1"));
+    }
+    if !forwarding_on() {
+        gaps.push(FORWARDING_OFF.to_owned());
     }
     if toolbox.is_none() {
         gaps.push(format!("{TOOLBOX_VARIABLE}: names no toolbox image"));
@@ -209,41 +210,37 @@ pub(crate) fn main() -> ExitCode {
     conclusion.exit_code()
 }
 
-/// Admits the lane's image the way a host does: its manifest checked against
-/// the lane's key, the image staged, then admitted by descriptor.
+/// Boots the lane the way a host boots: the image staged as a deploy stages
+/// it, its manifest checked against the lane's key, the image admitted by
+/// descriptor and the engine built over it, so the lane proves the boot
+/// production runs and not a second spelling of it.
 fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
-    let cgroup_root = paths.cgroup_root;
     let state = tempfile::Builder::new()
         .prefix(STATE_PREFIX)
         .tempdir_in(STATE_PARENT)?;
     let signer = Signer::new()?;
     let manifest = signer.manifest_beside(image)?;
-    let mounter = KernelMounter::new(state.path().join(MOUNTS_DIR));
-    let toolboxes = Toolboxes::open(state.path().join(TOOLBOX_DIR), mounter)?;
-    let toolbox = toolboxes.admit(&manifest, image)?;
+    let home = ToolboxHome::open(state.path().join(TOOLBOX_DIR))?;
+    signer.stage(image, manifest.sha256(), &home.incoming())?;
+    let entry = install_entry(state.path())?;
+    let booted = BubblewrapEngine::boot(
+        paths.cgroup_root,
+        state.path().join(LEASES_DIR),
+        entry,
+        &signer.release()?,
+        &home,
+        &ProcessEnv,
+    )?;
     let image = LaneImage {
         path: image.to_owned(),
-        digest: toolbox.digest().to_owned(),
-    };
-    let entry = install_entry(state.path())?;
-    let config = BubblewrapConfig {
-        tools: HostTools::default(),
-        toolbox_digest: image.digest().to_owned(),
-        toolbox,
-        cgroup_root,
-        state_dir: state.path().join(LEASES_DIR),
-        entry,
-        entry_args: vec![OsString::from(SANDBOX_SUBCOMMAND)],
-        sandbox_ids: SANDBOX_IDS,
-        log_level: std::env::var_os(LOG_LEVEL_VAR),
-        ready_timeout: READY_TIMEOUT,
+        digest: booted.engine.config().toolbox.digest().to_owned(),
     };
     Ok(Lane {
-        config,
+        config: booted.engine.config().clone(),
         image,
         signer,
         manifest,
-        toolboxes,
+        toolboxes: booted.toolboxes,
         state,
     })
 }

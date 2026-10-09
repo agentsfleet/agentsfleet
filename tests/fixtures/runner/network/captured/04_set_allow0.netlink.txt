@@ -1,1 +1,0 @@
-family 1 allow0 uz_egress 0

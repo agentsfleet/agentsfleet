@@ -7,34 +7,31 @@
 //! here — a fourth refresh provider is a row in that table and no code in this
 //! file.
 //!
-//! # What the crates took over
+//! # What the crates own
 //!
-//! `integration_oauth_refresh.zig` is 245 lines, and most of them are
-//! re-derivations:
+//! Most of a refresh grant is encoding and parsing, and none of it is written
+//! by hand here:
 //!
-//! - `percentEncode` + `isUnreserved` + `buildForm` — an RFC 3986 encoder and a
-//!   format template. `reqwest`'s `form` feature serialises the grant through
+//! - The form. `reqwest`'s `form` feature serialises the grant through
 //!   `serde_urlencoded`. This matters beyond tidiness: the values are
 //!   provider-issued opaque bytes, and a `&` or `=` that escapes its field
 //!   changes the SHAPE of the form the token endpoint parses.
-//! - `isValidTokenPath` — a hand-written check that a handle's path carries no
-//!   query, fragment or whitespace, guarding where platform credentials get
-//!   `POST`ed. The URL parser answers that, and answers it the way the client
-//!   that will actually dial the address does.
-//! - `intValue`'s float arm, with its `MAX_SAFE_FLOAT_I64` guard against
-//!   `@intFromFloat` panicking on a hostile provider float. `Duration`'s own
-//!   checked constructor rejects the same inputs and cannot trap.
+//! - The token path. A handle's path must carry no query, fragment or
+//!   whitespace, because it decides where platform credentials get `POST`ed.
+//!   The URL parser answers that, and answers it the way the client that will
+//!   actually dial the address does.
+//! - A float `expires_in`. `Duration`'s own checked constructor rejects a
+//!   hostile provider float and cannot trap.
 //!
-//! # The one thing this refuses that the Zig does not
+//! # The accounts base is checked, never trusted
 //!
 //! `accounts_base` is a field on the VAULT HANDLE — Zoho's multi-data-centre
 //! shape, where a token is redeemable only at the accounts server it was issued
-//! by. The Zig shape-checks the path appended to it and never checks the base
-//! at all, so a handle written with an attacker's host would POST this
-//! deployment's `client_secret` to that host. Here the composed endpoint goes
-//! through [`crate::provider::validate_endpoint`] — the same `https`-and-SSRF
-//! guard a tenant's `base_url` passes — and a refused one fails the mint
-//! rather than dialling.
+//! by. Checking only the path appended to it would let a handle written with an
+//! attacker's host POST this deployment's `client_secret` to that host. Here
+//! the composed endpoint goes through [`crate::provider::validate_endpoint`] —
+//! the same `https`-and-SSRF guard a tenant's `base_url` passes — and a refused
+//! one fails the mint rather than dialling.
 
 use afd_core::credential::FIELD_REFRESH_TOKEN;
 use std::time::Duration;
@@ -80,7 +77,7 @@ const ERROR_INVALID_GRANT: &str = "invalid_grant";
 ///
 /// Deliberately short. An assumed lifetime that is too long caches a dead token
 /// and a child meets a 401 mid-run; one that is too short re-mints early, which
-/// costs a round trip. The floor is the safe direction and it is the Zig's.
+/// costs a round trip. The floor is the safe direction.
 const DEFAULT_ACCESS_TTL: Duration = Duration::from_mins(5);
 
 /// The longest `expires_in` this daemon will believe: ten years.
@@ -93,7 +90,7 @@ const MAX_ACCESS_TTL: Duration = Duration::from_hours(10 * 365 * 24);
 /// The form body of an RFC 6749 §6 refresh grant.
 ///
 /// Client authentication rides the BODY rather than a `Basic` header, which is
-/// what all three declared providers accept and what the Zig posts.
+/// what all three declared providers accept.
 //
 // `struct_field_names` is silenced rather than obeyed: `grant_type` is RFC
 // 6749's own field name and it is what serde puts on the wire, so renaming it

@@ -73,10 +73,9 @@ const CURSOR_START_ID: &str = "00000000-0000-0000-0000-000000000000";
 
 /// Where a pass stopped, so the next one resumes rather than restarts.
 ///
-/// An `Option` of the pair, where `reclaim_sweeper.zig` carries a fixed
-/// `[36]u8` buffer, a length, and an `afterId()` that substitutes a nil-UUID
-/// constant when the length is zero. The `None` IS that substitution, and
-/// `rewind` is `= None` rather than three field assignments that have to agree.
+/// An `Option` of the pair: `None` is the head of the population, which
+/// [`CURSOR_START_ID`] spells for the statement, and a rewind is `= None`
+/// rather than several field assignments that have to agree.
 #[derive(Debug, Clone, Default)]
 struct Cursor(Option<(i64, String)>);
 

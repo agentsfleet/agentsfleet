@@ -67,7 +67,7 @@ REMOVED_COMMANDS = {
     "agentsfleet tenant provider add": "agentsfleet tenant provider create",
 }
 
-SCAN_SUFFIXES = {".zig", ".ts", ".tsx", ".js", ".jsx", ".yaml", ".yml", ".md"}
+SCAN_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".yaml", ".yml", ".md"}
 
 
 @dataclass(frozen=True)

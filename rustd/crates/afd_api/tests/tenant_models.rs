@@ -127,8 +127,8 @@ async fn an_oversized_provider_filter_is_refused() {
 
 #[tokio::test]
 async fn a_whitespace_provider_normalizes_to_absent() {
-    // `?provider=%20%20` is the same request as omitting the filter — the
-    // Zig normalizer's rule, proven by reaching the verb.
+    // `?provider=%20%20` is the same request as omitting the filter — a blank
+    // filter normalises to absent, proven by reaching the verb.
     let path = format!("{MODELS}?provider=%20%20");
     let response = read(&path, Some(TENANT_KEY)).await;
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);

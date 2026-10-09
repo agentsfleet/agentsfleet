@@ -16,7 +16,8 @@ use super::Target;
 /// One frame as the dashboard reads it.
 ///
 /// Tagged by `kind`, which is the discriminator `events.ts` switches on. The
-/// payload field names are the Zig's, because the consumer is unchanged.
+/// payload field names are the ones it reads, so renaming one is a dashboard
+/// change.
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(super) enum Published<'a> {
@@ -73,9 +74,8 @@ impl<'a> Published<'a> {
     /// The dashboard's shape for one wire frame.
     ///
     /// Total over [`ActivityFrame`], so a frame variant added upstream fails to
-    /// compile here until its channel name is decided — which is the property
-    /// the Zig gets from its exhaustive `switch` and the reason this is a match
-    /// rather than a serde re-tag.
+    /// compile here until its channel name is decided — which is the reason
+    /// this is a match rather than a serde re-tag.
     ///
     /// # Errors
     /// Reports arguments that are not well-formed JSON. Only the started frame

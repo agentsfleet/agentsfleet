@@ -189,10 +189,9 @@ impl Scheme {
 
     /// Whether `presented` proves `body` was signed with `secret`.
     ///
-    /// The whole decision for the hex-digest family, in the order the Zig
-    /// decides it: an unusable secret first, then freshness (so a stale
-    /// delivery never costs a tag computation), then the prefix, then the
-    /// constant-time comparison.
+    /// The whole decision for the hex-digest family, in order: an unusable
+    /// secret first, then freshness (so a stale delivery never costs a tag
+    /// computation), then the prefix, then the constant-time comparison.
     ///
     /// `now_unix_seconds` is explicit for the reason [`freshness`] gives.
     pub fn verify_at(
@@ -247,8 +246,9 @@ impl Scheme {
 ///
 /// Length is checked by `from_slice`, so a digest of the wrong width is refused
 /// rather than compared against a truncated expectation. `hex::decode` is
-/// case-INSENSITIVE where the providers all emit lowercase; accepting both is
-/// what the Zig's `hexToBytes` does too, so this is parity rather than laxity.
+/// case-INSENSITIVE where the providers all emit lowercase. Accepting both
+/// widens nothing a forger can use: the decoded bytes still have to match the
+/// tag.
 fn decode_tag(digest: &str) -> Option<HmacSha256Tag> {
     let bytes = hex::decode(digest).ok()?;
     HmacSha256Tag::from_slice(&bytes).ok()

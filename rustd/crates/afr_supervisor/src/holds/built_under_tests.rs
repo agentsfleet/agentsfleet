@@ -1,11 +1,18 @@
 //! A hold's policy key: the same lease policy files the same key, and a
 //! change to any field it carries files another.
+#![expect(
+    clippy::unwrap_used,
+    reason = "test module: an allowlist the test built itself is under its cap"
+)]
 
 use std::borrow::Cow;
+use std::net::Ipv4Addr;
 
 use afd_wire::policy::{ExecutionPolicy, RepositoryAccess, RepositoryBinding};
+use afr_sandbox::Allowlist;
 
 use super::BuiltUnder;
+use crate::egress::Bound;
 use crate::test_support::{FLEET_ID, LEASE_ID, lease};
 
 /// A host the fixture lease does not reach.
@@ -26,7 +33,7 @@ type Change = fn(&mut ExecutionPolicy<'static>);
 fn key(change: Change) -> BuiltUnder {
     let mut policy = lease(LEASE_ID, FLEET_ID, None).policy;
     change(&mut policy);
-    BuiltUnder::of(&policy)
+    BuiltUnder::of(&policy, &Bound::Isolated)
 }
 
 /// A binding with `access` to `repositories` on `branch`.
@@ -95,4 +102,33 @@ fn a_change_to_the_repository_binding_files_another_key() {
     for (index, change) in changes.into_iter().enumerate() {
         assert_ne!(key(change), key(bound), "binding change {index}");
     }
+}
+
+/// The runner's egress is part of the key: the same lease policy under
+/// another network the runner was assigned files another key.
+#[test]
+fn a_change_to_the_runners_egress_files_another_key() {
+    let policy = lease(LEASE_ID, FLEET_ID, None).policy;
+    let under = |egress: Bound| BuiltUnder::of(&policy, &egress);
+
+    assert_eq!(under(Bound::Host), under(Bound::Host));
+    assert_ne!(under(Bound::Host), under(Bound::Isolated));
+}
+
+/// An allowlisted egress files its key by the names it reaches: the same
+/// names at new addresses file the same key, so the hold is kept and its
+/// sandbox takes the new addresses; another name files another key.
+#[test]
+fn an_allowlist_files_its_key_by_name_not_address() {
+    let policy = lease(LEASE_ID, FLEET_ID, None).policy;
+    let reaching = |names: &[&str], last: u8| {
+        let entries = names
+            .iter()
+            .map(|name| ((*name).to_owned(), Ipv4Addr::new(192, 0, 2, last)))
+            .collect();
+        BuiltUnder::of(&policy, &Bound::Allowed(Allowlist::new(entries).unwrap()))
+    };
+
+    assert_eq!(reaching(&[HOST], 1), reaching(&[HOST], 2));
+    assert_ne!(reaching(&[HOST], 1), reaching(&[HOST, REPOSITORY], 1));
 }

@@ -71,9 +71,9 @@ async fn code_of(response: axum::response::Response) -> String {
 
 /// Dimension 1.1 — every state a presented runner credential can be in.
 ///
-/// The four rows are the matrix `runner_bearer.zig` spells across three `if`
-/// chains: a credential that matches nothing, one whose row is no longer live,
-/// one from the other plane entirely, and none at all. All four answer 401, and
+/// The four rows are the runner guard's whole matrix: a credential that matches
+/// nothing, one whose row is no longer live, one from the other plane entirely,
+/// and none at all. All four answer 401, and
 /// the CODE is what tells them apart — which is the part a runner branches on.
 #[tokio::test]
 async fn test_runner_bearer_state_matrix() {

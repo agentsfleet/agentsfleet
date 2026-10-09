@@ -82,12 +82,11 @@ fn an_api_only_fleet_resolves_to_nothing() {
     assert!(read(api, FleetStatus::Active.as_str()).is_none());
 }
 
-/// The `LIMIT 1` rule, moved out of a sub-select and now assertable.
+/// The first-webhook-trigger rule, asserted where it lives.
 ///
 /// Two triggers with different sources is a document the schema accepts, and
 /// the URL carries `fleet_id` alone — so SOMETHING has to decide, and it must
-/// be the same something every time. Declaration order is that rule, and it is
-/// the Zig's.
+/// be the same something every time. Declaration order is that rule.
 #[test]
 fn the_first_webhook_trigger_declared_is_the_one_that_binds() {
     let two = r#"[
@@ -369,9 +368,8 @@ fn a_repository_list_serves_only_what_it_names() {
 
 /// GitHub treats `Owner/Repo` and `owner/repo` as one repository.
 ///
-/// The Zig compares with `lower(…) = lower(…)` in SQL for this reason. A
-/// case-sensitive match here would drop deliveries for a subscription an author
-/// could stare straight at without seeing what was wrong.
+/// A case-sensitive match here would drop deliveries for a subscription an
+/// author could stare straight at without seeing what was wrong.
 #[test]
 fn the_repository_match_ignores_case() {
     let github = r#"[{"type":"webhook","source":"github","repositories":["Owner/Repo"]}]"#;

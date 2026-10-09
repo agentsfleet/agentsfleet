@@ -6,8 +6,7 @@
 //! product charges the run fee and nothing else — resolvable with no statement
 //! at all. Under `platform` the token cost is ours to charge, so the rate comes
 //! from the catalogue. Splitting that at the top means the cheap posture stays
-//! provable without a database, which is `tenant_billing_rates.zig`'s own
-//! reasoning and worth keeping.
+//! provable without a database.
 //!
 //! # An estimate is not a charge
 //!
@@ -51,11 +50,10 @@ const CACHED_TOKENS_AT_ISSUE: i64 = 0;
 
 /// Who supplies the provider key, and therefore who pays for tokens.
 ///
-/// `tenant_provider.zig`'s `Mode`. Parsing is deliberately exact and fallible:
-/// the column is written only by this codebase, so an unknown spelling is a
-/// data-integrity fault to surface rather than a value to guess at. Guessing is
-/// what the Zig's retired per-file helpers did — every unrecognised string
-/// became `platform`, silently attributing a self-managed run to platform
+/// Parsing is deliberately exact and fallible: the column is written only by
+/// this codebase, so an unknown spelling is a data-integrity fault to surface
+/// rather than a value to guess at. A guess of `platform` for every
+/// unrecognised string would silently attribute a self-managed run to platform
 /// spend.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Posture {
@@ -178,7 +176,7 @@ impl Accounts {
     /// in a single snapshot — so there is no window for the counter to advance
     /// between reading it and reading the rate, and no cache to hold a rate
     /// under a generation it does not belong to. See [`super::store`] for why
-    /// the Zig's rate cache does not come across.
+    /// no rate cache sits in front of it.
     ///
     /// `Ok(None)` is the join's null half: the revision row answered and the
     /// catalogue carried no matching model. The `LEFT JOIN` is driven from the

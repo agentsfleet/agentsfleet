@@ -195,14 +195,10 @@ services:
       GITHUB_APP_PRIVATE_KEY: local-dev-private-key
       # Override DB/Redis to use compose service names instead of localhost.
       DATABASE_URL_API: postgresql://agentsfleet:agentsfleet@postgres:5432/agentsfleetdb?application_name=api&sslmode=disable
-      # No path segment. `redis_config.zig:109` takes `hostpath[0..slash_pos]`
-      # and never reads what follows, so the `/api` this line carried since
-      # M92 selected nothing — the Zig daemon has always used db 0. redis-rs
-      # parses that same segment as a database INDEX and refuses `api` with
-      # `Invalid database number`, so the suffix booted one daemon by being
-      # ignored and blocked the other by being read. Dropped rather than
-      # spelled `/0`: db 0 is the default, and a segment nothing selects is
-      # the thing that made this ambiguous.
+      # No path segment. redis-rs parses a URL path as a database INDEX, so a
+      # name such as `/api` refuses boot with `Invalid database number`. The
+      # daemon never issues `SELECT` and lives in db 0, the default, so the
+      # URL names no database rather than spelling `/0`.
       # The cluster seed. Plaintext on purpose: the socket never leaves this
       # container's loopback, and TLS is proven by the trust suite.
       DRAGONFLY_URL: redis://:agentsfleet@127.0.0.1:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}

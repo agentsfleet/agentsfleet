@@ -23,17 +23,13 @@
 //!
 //! # Every spelling here is declared once
 //!
-//! `approval_gate_async.zig` packs the reference into `"action_id|deadline_ms"`
-//! and splits it back apart by hand, because Zig has no serializer and a
-//! pipe-delimited pair is the cheapest thing to write. Nothing else reads that
-//! key — one writer, one reader, both on the lease path — so the format was
-//! never a contract, only the shape a hand-rolled encoder happened to produce.
+//! The reference IS a serde type, so there is no separator to choose, no
+//! hand-written split, and no question of what an id containing the separator
+//! does: a `#[serde(try_from)]` runs the SAME domain validation on every read.
+//! One writer and one reader touch that key, both on the lease path.
 //!
-//! Here the reference IS a serde type. The separator, the split, the "what if
-//! an id contains a pipe" question and the two functions that answered it are
-//! all gone; what is left is a `#[serde(try_from)]` that runs the SAME domain
-//! validation on every read. Likewise the two stored vocabularies below are
-//! `#[serde(rename)]` declarations read through
+//! Likewise the two stored vocabularies below are `#[serde(rename)]`
+//! declarations read through
 //! [`afd_core::spelling::from_spelling`], not `match` arms — see that module
 //! for why a second copy of a variant's name is the failure with no test.
 
@@ -46,10 +42,10 @@ use crate::gate::decision::Answer;
 /// The gate one event is waiting on.
 ///
 /// Serialised through [`Stored`], which is what makes the identifier a real
-/// [`Uuid7`] rather than "whatever thirty-six bytes were in the key". The Zig
-/// carries `[36]u8` plus a length and validates only that length, so a
-/// reference could name a spelling `core.fleet_approval_gates` never wrote and
-/// nothing would notice until the row lookup missed.
+/// [`Uuid7`] rather than "whatever thirty-six bytes were in the key". A
+/// reference checked only for its length could name a spelling
+/// `core.fleet_approval_gates` never wrote, and nothing would notice until the
+/// row lookup missed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "Stored", into = "Stored")]
 pub struct GateRef {
@@ -247,7 +243,7 @@ mod tests {
             Evaluation::Pending
         );
         // The boundary is exclusive — at exactly the deadline it is still
-        // pending, which is the Zig's `now_ms > deadline_ms`.
+        // pending; only an instant past it expires.
         assert_eq!(
             evaluate(&reference, None, UnixMillis::from_millis(DEADLINE)),
             Evaluation::Pending

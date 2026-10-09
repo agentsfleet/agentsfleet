@@ -33,11 +33,9 @@ fn spawn_observer(supervisor: &mut Supervisor, name: &'static str) -> Arc<Atomic
 
 /// Dimension 7.2 — a signal during boot stops the daemon, and says it was one.
 ///
-/// The Zig daemon needs two flags for this because its watcher is a separate
-/// thread polling every 100ms, so "the signal arrived" and "the server
-/// stopped" are events that race. Here the signal future is already resolved
-/// when `run` polls it, so there is nothing to race: the daemon must report
-/// `Signalled` even though the server was equally ready to finish.
+/// The signal future is already resolved when `run` polls it, so there is
+/// nothing to race: the daemon must report `Signalled` even though the server
+/// was equally ready to finish.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_boot_window_sigterm() {
     install_subscriber();
@@ -78,7 +76,7 @@ async fn test_boot_window_sigterm() {
     assert!(
         !was_polled.load(Ordering::SeqCst),
         "the signal had already arrived, so the server must never have been polled — \
-         that window is exactly what the two Zig flags exist to protect"
+         a server polled now would briefly serve on a node being torn down"
     );
     assert!(
         outcome.is_clean(),
@@ -88,9 +86,8 @@ async fn test_boot_window_sigterm() {
 
 /// A server that ends on its own is reported as such, and still tears down.
 ///
-/// The case `serve.zig` does not model: a lost bind or an accept loop that
-/// returned. A daemon that only waits for a signal hangs here, and a hung
-/// process explains nothing on its way out.
+/// A lost bind, or an accept loop that returned. A daemon that only waits for
+/// a signal hangs here, and a hung process explains nothing on its way out.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_a_server_that_stops_on_its_own_is_named_and_torn_down() {
     install_subscriber();
@@ -150,9 +147,8 @@ async fn test_an_unclean_teardown_is_reported_not_swallowed() {
 /// Asserted by NAME rather than by count: a task quietly added to or dropped
 /// from boot is exactly the drift a count would wave through.
 ///
-/// What each Zig thread became is in `docs/architecture/concurrency.md`. It is
-/// not duplicated here, and was briefly: a porting ledger is prose about a
-/// migration, and prose in a table of tuples is harder to read, harder to
+/// Which task owns which job is in `docs/architecture/concurrency.md`, and is
+/// not duplicated here: prose in a table of tuples is harder to read, harder to
 /// change, and no more true than the document.
 #[test]
 fn test_the_daemon_supervises_what_it_claims() {

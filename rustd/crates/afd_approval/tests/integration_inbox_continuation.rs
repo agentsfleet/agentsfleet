@@ -184,17 +184,15 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 ///
 /// # This test exists to stop a well-meaning sweeper from breaking it
 ///
-/// The Zig daemon spawns an approval-gate sweeper
-/// (`cmd/serve_background.zig:49`) that flips `pending` → `timed_out` every
-/// sixty seconds. This daemon does not: `Inbox::expire` has no production
-/// caller. That gap reads like an omission, and the obvious "fix" is to wire the
-/// sweeper — which would take the 10:00 gate at 11:00 and make the 14:00
-/// approval answer `AlreadyResolved` instead of resuming anything.
+/// `Inbox::expire` flips `pending` → `timed_out`, and this daemon spawns no
+/// sweeper that calls it: it has no production caller. That gap reads like an
+/// omission, and the obvious "fix" is to wire a sweeper — which would take the
+/// 10:00 gate at 11:00 and make the 14:00 approval answer `AlreadyResolved`
+/// instead of resuming anything.
 ///
 /// So the absence is load-bearing for as long as a human is the approver, and
 /// this is the test that says so. Wiring a sweeper is a PRODUCT decision about
-/// whether an unanswered approval should lapse — not a parity chore — and it
-/// fails here first.
+/// whether an unanswered approval should lapse, and it fails here first.
 ///
 /// # The late-answer inconsistency this used to name is gone
 ///

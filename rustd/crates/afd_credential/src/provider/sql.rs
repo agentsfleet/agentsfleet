@@ -1,18 +1,10 @@
 //! Every statement the provider surface runs, and nothing else.
 //!
 //! Four are resolution's reads; the write half of the selection row joined
-//! them when the tenant surface landed. Text is byte-identical to the Zig
-//! originals where an original exists.
+//! them when the tenant surface landed.
 //!
-//! Text is byte-identical to the Zig originals, which live in
-//! `state/tenant_provider_resolver.zig` (the selection row and the platform
-//! default, written inline at their call sites), `state/secret_probe.zig` (the
-//! tenant→workspace bridge, also inline) and `secrets/sql.zig` (the envelope
-//! read, which is the one that was already collected upstream).
-//!
-//! Collected here for the reason [`super`] gives: REVIEW reading these side by
-//! side against the Zig is the ONLY enforcement of row-equivalence, and three
-//! of the four cannot be read that way while they sit in a function body.
+//! Collected here so REVIEW can read every statement side by side with the
+//! schema it touches, which a statement sitting in a function body hides.
 
 /// The tenant's own provider selection, or nothing.
 ///
@@ -138,10 +130,10 @@ FOR UPDATE OF s"
 
 /// The credential's shape and envelope, locked, in one statement.
 ///
-/// Four jobs that were four round trips in `tenant_provider.zig`: bridge the
-/// tenant to its primary workspace, take the reference lock, read the metadata
-/// the write ladder's two credential rungs are decided from, and hand back the
-/// envelope columns to open. The join is the same earliest-named-workspace
+/// Four jobs in one round trip: bridge the tenant to its primary workspace,
+/// take the reference lock, read the metadata the write ladder's two
+/// credential rungs are decided from, and hand back the envelope columns to
+/// open. The join is the same earliest-named-workspace
 /// bridge `signup_bootstrap_store` uses.
 ///
 /// `FOR UPDATE OF s` locks the returned `vault.secrets` row and NOTHING else:
@@ -197,11 +189,10 @@ pub const LOCK_CREDENTIAL_FOR_REFERENCE: &str = concat!("SELECT 1", bridge_and_l
 
 /// The registry entry an activation guarantees exists for its pair.
 ///
-/// The invariant `tenant_model_entries.zig::ensureEntry` enforces, kept where
-/// every activation passes: the active `(model, secret_ref)` pair always has a
-/// matching row, so the registry's list stays a pure read rather than
-/// synthesising one. `DO NOTHING` because re-activating an unchanged pair is
-/// not an error and must not bump anything.
+/// The invariant is kept where every activation passes: the active
+/// `(model, secret_ref)` pair always has a matching row, so the registry's
+/// list stays a pure read rather than synthesising one. `DO NOTHING` because
+/// re-activating an unchanged pair is not an error and must not bump anything.
 ///
 /// The table carries TWO unique indexes — the `id` primary key and the
 /// `(tenant_id, model_id, secret_ref)` domain key — and `ON CONFLICT` across
@@ -242,10 +233,8 @@ ON CONFLICT (tenant_id, model_id, secret_ref) DO NOTHING";
 /// than defensive. `core.model_library.context_cap_tokens` is `INTEGER NOT
 /// NULL` with NO nonnegative constraint — RULE STS keeps bounds in the
 /// application, not in a SQL `CHECK` — so a negative ceiling is a row the
-/// schema permits. `model_rate_cache.zig` clamps it with `@max(cap, 0)` at
-/// every read, and without the same clamp here a `-1` catalogue row would be
-/// STORED as `-1` by this daemon and as `0` by the Zig one: a divergence in
-/// the rows themselves, which the state-handoff lane compares.
+/// schema permits. Without the clamp here a `-1` catalogue row would be STORED
+/// as `-1`, a ceiling every later read of the selection would have to correct.
 ///
 /// It cannot be delegated to [`super::cap`] the way the reset's write is:
 /// that ceiling arrives as a `u32` the caller already narrowed, while this one

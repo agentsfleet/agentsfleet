@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md) · User-facing: [docs.agentsfleet.net/fleets/tools](https://docs.agentsfleet.net/fleets/tools) (the tool inventory) and [docs.agentsfleet.net/concepts/context-lifecycle](https://docs.agentsfleet.net/concepts/context-lifecycle) (§4 as a user reads it).
 >
-> **Scope:** the platform *guarantees* below are binding and unchanged by the M80_002 cutover. The *mechanism* now runs on the split — `agentsfleetd` (control plane) assigns work + resolves policy on `lease`; the host-resident `agentsfleet-runner`'s sandboxed child enforces the hard layer. See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
+> **Scope:** the platform *guarantees* below are binding and unchanged by the M80_002 cutover. The *mechanism* now runs on the split — `agentsfleetd` (control plane) assigns work + resolves policy on `lease`; the host-resident `agentsfleet-runner` enforces the hard layer in its supervisor and the lease's sandbox ([`runner_execution.md`](./runner_execution.md#process-model)). See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
 
 A Fleet's capabilities split into two layers: what the language model is told it can do (a soft layer the model can ignore or get wrong), and what the platform actually enforces (a hard layer the model cannot escape from inside the sandbox). Both matter; the second is what makes the first safe.
 
@@ -14,13 +14,13 @@ Every row is extracted from the numbered sections below; the owner column names 
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Capability layers | 2 | `SKILL.md` + support files are advisory; `TRIGGER.md` + install-derived policy are binding, enforced in the sandboxed child | §1 |
+| Capability layers | 2 | `SKILL.md` + support files are advisory; `TRIGGER.md` + install-derived policy are binding, enforced by the runner | §1 |
 | `trigger.type` vs `event_type` | orthogonal fields | different tables (`TRIGGER.md` frontmatter vs `core.fleet_events`), never the same value | §1.1 |
 | Tool primitives | `http_request` · `file_read/write/edit` · `git` · the four `memory_*` tools · `shell` (gated) | reachable only through the fleet's `tools:` allowlist | §2 |
-| Mintable integrations | short-lived tokens, minted at the bridge | GitHub App: daemon-signed RS256 JWT exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §2, §3 |
+| Mintable integrations | short-lived tokens, minted per lease | GitHub App: daemon-signed RS256 JWT exchanged for a ≤ 1 h installation token; the App private key never leaves the daemon | §2, §3 |
 | Vault secret shapes | 2 | static (stores the value, resolved at lease) vs mintable (stores a handle, never a token) | §3 |
 | Context lifecycle | 3 layers | `memory_checkpoint_every: 5` · `tool_window: auto` (30 / 20 / 10 by context cap) · `stage_chunk_threshold: 0.75` | §4 |
-| Layer 3 authority | observability only | the runtime logs `chunk_threshold_breached` but cannot interrupt the model loop; the fleet's prose owns the wrap-up | §4 |
+| Layer 3 authority | enforced | past the threshold the runner logs `context_cap_reached`, offers no more tools and asks for the answer; the fleet's prose owns the snapshot | §4 |
 | Runaway bound | `budget` caps + lease runtime deadline | there is no enforced continuation-chain counter | §4 |
 | Memory hygiene | `core` pinned; `daily` expires | `daily` rows older than 72 h are deleted on the next capture push; re-storing a key is an upsert | §4 |
 | Cap resolution | install or provider-set time | from the model library, never at trigger time; `""` / `0` are the self-managed overlay sentinels | §4 |
@@ -34,17 +34,17 @@ Each trap is enforced in its owner section; this list is the index — §5 (What
 - A fleet's own schedules go through a runner verb onto `agentsfleetd`'s schedule plane — QStash still owns the clock, and the runner receives only the resulting event (§2).
 - The runtime cannot force a chunk; do not design as if a mid-loop interrupt exists (§4).
 - A fleet that hoards everything as `core` defeats the pinning — an over-cap all-`core` set evicts the coldest `core` (§4).
-- The GitHub App private key never rides the lease envelope, the `secrets_map`, or the sandbox child (§3, §5).
+- The GitHub App private key never rides the lease envelope, the `secrets_map`, or the runner (§3, §5).
 
 ## 1. Reasoning + tool inventory (declared in the fleet's own files)
 
 | File | What it carries | Enforced by |
 |---|---|---|
 | `SKILL.md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose. Required for every local install and every Fleet Bundle. | The language model reading its own prompt — soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
-| `TRIGGER.md` | Optional policy file. When present, carries the `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs. When absent, install creates the default manual/API trigger with no tools, no credentials, and no network. | Code-enforced inside the runner's sandboxed child — the language model cannot escape these |
+| `TRIGGER.md` | Optional policy file. When present, carries the `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs. When absent, install creates the default manual/API trigger with no tools, no credentials, and no network. | Code-enforced by the runner, outside the model's reach — the language model cannot escape these |
 | Fleet Bundle support files | Optional files such as `SOUL.md`, provider playbooks, scripts, examples, and assets. These are materialized into the sandbox workspace for the installed bundle. | File access only. They do not grant tools, network, approvals, or secrets unless `TRIGGER.md` / install metadata declares those grants. |
 
-The split matters. `SKILL.md` and bundle support files are *advisory* — the model reads them and tries to comply. `TRIGGER.md` and install-derived policy are *binding* — the runner's sandboxed child refuses tool calls that would violate them, regardless of what the model wants.
+The split matters. `SKILL.md` and bundle support files are *advisory* — the model reads them and tries to comply. `TRIGGER.md` and install-derived policy are *binding* — the runner offers the model only the policy's tools and refuses any call outside them, regardless of what the model wants ([`runner_execution.md`](./runner_execution.md#tool-catalog)).
 
 ### 1.1 `trigger.type` vs `event_type` — orthogonal fields, common confusion
 
@@ -63,11 +63,11 @@ Source of truth: `rustd/crates/afd_fleet_runtime/src/config/trigger.rs` (`Trigge
 
 ## 2. The platform tools the fleet can call
 
-These are the tool primitives NullClaw exposes. The fleet's `tools:` allowlist gates which of them are reachable for a given fleet.
+These are the platform tools the runner hosts. The fleet's `tools:` allowlist gates which of them are reachable for a given fleet.
 
 | Tool | Purpose | Visible to the fleet (host) |
 |---|---|---|
-| `http_request` | GET / POST to allow-listed hosts. Placeholders like `${secrets.NAME.FIELD}` are substituted at the tool bridge after sandbox entry. For a **mintable integration** (e.g. GitHub), the placeholder resolves to a short-lived token **minted on demand** at the bridge through the credential broker — not a stored value. | The fleet sees placeholders only; it never sees raw secret bytes. |
+| `http_request` | GET / POST to allow-listed hosts, sent by the runner's supervisor. Placeholders like `${secrets.NAME.FIELD}` are substituted at send time, in the `Authorization` header only. For a **mintable integration** (e.g. GitHub), the placeholder resolves to a short-lived token the lease mints through the credential broker — not a stored value ([`runner_execution.md`](./runner_execution.md#credentials)). | The fleet sees placeholders only; it never sees raw secret bytes. |
 | `file_read` / `file_write` / `file_edit` | Read or change files inside the runner workspace. A fleet receives only the file tools listed in its policy. | Yes, when explicitly enabled. |
 | `git` | Inspect and change the repository inside the runner workspace. Network access and GitHub credentials remain separate controls. | Yes, when explicitly enabled. |
 | `memory_store` / `memory_recall` / `memory_list` / `memory_forget` | Durable scratchpad keyed by string. Survives run boundaries and full restart. The "where I am" snapshot mechanism. Store writes or replaces a key, and `visibility: workspace` shares it with the workspace when the fleet holds the publish grant; recall searches key and content, asking `agentsfleetd` a capped number of times when the window falls short; list filters; forget hides one of the fleet's own keys for the rest of the run, and the stored copy stays until a store under that key replaces it, including a copy a mid-run checkpoint already saved. A fleet holding the read grant also recalls and lists the workspace's shared entries, each naming its writer. | Yes — the fleet reads and writes its own, and reads shared entries it is granted. |
@@ -75,7 +75,7 @@ These are the tool primitives NullClaw exposes. The fleet's `tools:` allowlist g
 | `cron_add` / `cron_list` / `cron_update` / `cron_remove` / `cron_run` / `cron_runs` / `schedule` | The fleet's own schedules, through the lease's schedules verb. A fleet lists every schedule of its fleet, each naming its source, and creates, changes, deletes and runs now only those it made, at most 16. `schedule` is one follow-up at a moment: a schedule that retires after its first fire. | The fleet reads every schedule of its own fleet and changes only its own. |
 | `message` | One line to the thread the event came from, before the answer, through the lease's messages verb. `agentsfleetd` holds the channel credential, masks the fleet's declared secrets, and posts it under its own marker; at most 8 a run. An event from no thread answers `UZ-RUN-019`. | It says what it chooses; it never holds the channel credential. |
 
-Scheduled wakes were not a child tool until Oct 02, 2026. A Fleet declares its primary cron in `TRIGGER.md`, or an operator manages schedules through the schedule API / `agentsfleet schedule`; `agentsfleetd` stores the schedule and QStash owns the clock. The Rust runner adds the fleet itself as a third author: `cron_*` and `schedule` call a runner verb onto the same schedule plane, so a fleet can plan its own follow-ups while the runner still owns no timer and receives only the resulting event. Every fire, from QStash or a run-now, records the actor `cron:<schedule_id>`. A run-now obeys the fire's gates, and a run a schedule started cannot run one, so a fleet cannot wake itself in a loop. The Zig runner refuses those tools. The full catalog, with the runtime each tool executes in, is [Runner execution](./runner_execution.md) §"Tool catalog".
+Scheduled wakes became fleet tools on Oct 02, 2026. A Fleet declares its primary cron in `TRIGGER.md`, or an operator manages schedules through the schedule API / `agentsfleet schedule`; `agentsfleetd` stores the schedule and QStash owns the clock. The runner adds the fleet itself as a third author: `cron_*` and `schedule` call a runner verb onto the same schedule plane, so a fleet can plan its own follow-ups while the runner still owns no timer and receives only the resulting event. Every fire, from QStash or a run-now, records the actor `cron:<schedule_id>`. A run-now obeys the fire's gates, and a run a schedule started cannot run one, so a fleet cannot wake itself in a loop. The full catalog, with the runtime each tool executes in, is [Runner execution](./runner_execution.md) §"Tool catalog".
 
 ---
 
@@ -84,12 +84,12 @@ Scheduled wakes were not a child tool until Oct 02, 2026. A Fleet declares its p
 | Capability | What it does | Primary owner |
 |---|---|---|
 | Work assignment + kill | `agentsfleetd` assigns the next event on `lease` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per lease), and propagates kill via heartbeat-carried lease revocation. | agentsfleetd control plane |
-| Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` — `secrets_map`, `network_policy`, `tools` list, and `context` knobs. The tool bridge substitutes secrets inside the runner's sandboxed child. `network_policy` is `deny_all` (no egress) or network-enabled, where egress is constrained to an operator-declared host allowlist (see [`runner_fleet.md` §Egress model](./runner_fleet.md)). | Lease ExecutionPolicy |
+| Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` — `secrets_map`, `network_policy`, `tools` list, and `context` knobs. The runner's supervisor substitutes secrets at send time, outside the sandbox. `network_policy` is `deny_all` (no egress) or network-enabled, where egress is constrained to an operator-declared host allowlist (see [`runner_fleet.md` §Egress model](./runner_fleet.md)). | Lease ExecutionPolicy |
 | Event stream + history | Every steer / webhook / cron event lands on `fleet:{id}:events` with actor provenance. `core.fleet_events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub App + manual) | The GitHub callback first proves user access to the claimed installation and refuses cross-workspace reassignment. The App receiver then verifies the platform webhook signature, resolves installation → workspace, filters explicit repository/event/grant fleet subscriptions, and applies authenticated-body-digest/fleet replay protection before queueing. The manual fleet-addressed receiver remains available with its workspace webhook secret. Both normalise into `actor=webhook:github`. | App ingress + webhook receiver |
-| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. Two shapes: a **static** secret stores the value itself (resolved at lease, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`) — never a token — which the credential broker exchanges for a short-lived token on demand. The tool bridge substitutes at sandbox entry. | Vault + secret resolution |
-| Integration credential broker | A daemon-side broker mints a short-lived, workspace-scoped token on demand for a mintable integration, dispatching through a config-driven **integration registry** — adding an integration is a data descriptor, not a new minting branch. For the **GitHub App** integration the daemon signs an App JSON Web Token (JWT) with RS256 using the platform-held App private key, then exchanges it at GitHub for a ≤1h installation access token. That private key is a **platform** secret resolved daemon-side from the `agentsfleet-admin` workspace vault via `crypto_store.load` — the same scalable model as the platform LLM key (real bytes in `vault.secrets` under the admin workspace, not env; only the `ENCRYPTION_MASTER_KEY` KEK lives in env). The App private key never leaves the daemon — neither the lease envelope, the `secrets_map`, nor the sandbox child ever carries it. | Credential broker (daemon-side) |
-| Provider config (self-managed) | Per-tenant posture choice between platform-managed inference and self-managed provider key. Tenant-scoped `core.tenant_model_selection` row carries `mode / provider / model / context_cap_tokens / secret_ref`; the user-named secret pointed to by `secret_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → lease `ExecutionPolicy` → runner's sandboxed child → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2. | Provider resolution path |
+| Secret vault (`vault.secrets`) | Stores opaque-JSON-object secrets, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. Two shapes: a **static** secret stores the value itself (resolved at lease, shipped inline); a **mintable integration** stores only a *handle* (e.g. `{integration:"github", installation_id}`) — never a token — which the credential broker exchanges for a short-lived token on demand. The runner's supervisor substitutes it at send time. | Vault + secret resolution |
+| Integration credential broker | A daemon-side broker mints a short-lived, workspace-scoped token on demand for a mintable integration, dispatching through a config-driven **integration registry** — adding an integration is a data descriptor, not a new minting branch. For the **GitHub App** integration the daemon signs an App JSON Web Token (JWT) with RS256 using the platform-held App private key, then exchanges it at GitHub for a ≤1h installation access token. That private key is a **platform** secret resolved daemon-side from the `agentsfleet-admin` workspace vault via `crypto_store.load` — the same scalable model as the platform LLM key (real bytes in `vault.secrets` under the admin workspace, not env; only the `ENCRYPTION_MASTER_KEY` KEK lives in env). The App private key never leaves the daemon — neither the lease envelope, the `secrets_map`, nor the runner ever carries it. | Credential broker (daemon-side) |
+| Provider config (self-managed) | Per-tenant posture choice between platform-managed inference and self-managed provider key. Tenant-scoped `core.tenant_model_selection` row carries `mode / provider / model / context_cap_tokens / secret_ref`; the user-named secret pointed to by `secret_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → lease `ExecutionPolicy` → runner's supervisor → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2. | Provider resolution path |
 | Approval gating | A gated event parks at lease until a workspace member approves it in the dashboard, through the API, or with `agentsfleet approvals approve`; gates judge whole events, never individual tool calls, and nothing is sent to Slack today (`rustd/crates/afd_gate/src/gate/park.rs:17-35`). The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
 | Budget caps | Daily and monthly dollar hard caps; further runs are blocked at the first trip. Configured per-fleet in `TRIGGER.md`. | Billing gate |
 | Per-run context lifecycle | Rolling tool-result window, memory-store nudge, run chunking, and continuation events. See §4. | Context lifecycle |
@@ -98,7 +98,7 @@ Scheduled wakes were not a child tool until Oct 02, 2026. A Fleet declares its p
 
 ## 4. Context lifecycle — keeping a long incident reasoning past the model's working-memory limit
 
-Every fleet reasoning loop lives inside a single `runner.execute` call. As the fleet makes tool calls, each result lands in the language model's context window. On a long-running incident (thirty-plus tool calls), this can exhaust the window. The platform layers three independent mechanisms — defence in depth, not override — to keep the fleet reasoning past the limit.
+Every fleet reasoning loop lives inside one run of the runner's agent loop ([`runner_execution.md`](./runner_execution.md#process-model)). As the fleet makes tool calls, each result lands in the language model's context window. On a long-running incident (thirty-plus tool calls), this can exhaust the window. The platform layers three independent mechanisms — defence in depth, not override — to keep the fleet reasoning past the limit.
 
 ### The three knobs
 
@@ -133,13 +133,13 @@ x-agentsfleet:
 `x-agentsfleet.context.*` knobs are parsed into `FleetConfig`, carried in the
 lease `ExecutionPolicy`, and applied by the engine's `ContextBudget` on every
 run. Operator overrides take effect; absent or zero fields fall through to
-the runtime defaults below via `applyContextDefaults`.
+the runtime defaults below, resolved at lease (`rustd/crates/afd_gate/src/policy/context.rs`).
 
 ### How the three layers compose (defence-in-depth, not override)
 
 ```mermaid
 flowchart TD
-    Start([Run opens — runner.execute]) --> Tool1[tool call 1<br/>result added to context]
+    Start([Run opens — the agent loop starts]) --> Tool1[tool call 1<br/>result added to context]
     Tool1 --> Tool2[tool calls 2-4]
     Tool2 --> L1{N tool calls?}
     L1 -->|yes| Checkpoint[L1 fires:<br/>fleet calls memory_store<br/>'findings_so_far']
@@ -150,7 +150,7 @@ flowchart TD
     L2 -->|no| Fill
     Drop --> Fill[continue tool calls]
     Fill --> L3{context fill<br/>over stage_chunk_threshold?}
-    L3 -->|yes| Chunk[L3 fires observability:<br/>runtime logs chunk_threshold_breached<br/>SKILL.md prose tells the fleet to<br/>snapshot via memory_store + wrap up]
+    L3 -->|yes| Chunk[L3 fires:<br/>runner logs context_cap_reached,<br/>offers no more tools and<br/>asks the fleet to answer now]
     L3 -->|no| Tool4[tool call N+1]
     Tool4 --> L1
     Chunk --> NextStage([Next trigger:<br/>fleet recalls snapshot<br/>via memory hydration])
@@ -161,15 +161,15 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the fleet works. Forces the fleet to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.fleet_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every LLM round-trip the runtime computes context fill (prompt tokens / cap); when it crosses the threshold it emits a `chunk_threshold_breached` observability log. It does **not** force a chunk — NullClaw exposes no mid-loop interrupt, so the runtime can see the fill but cannot halt the loop. The fleet owns the decision: its `SKILL.md` prose tells it to write a durable snapshot (`memory_store`) and wrap up the run as its context fills. A subsequent run picks up where it left off, possibly on a different runner. The runner parent hydrates that fleet's prior memory over the `agt_r` plane, category-pinned so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the fleet holds no datastore credential). The fleet then recalls the snapshot from its in-run store.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. After every model turn the runner compares the prompt's tokens with that fraction of `context_cap_tokens`. Past it, the runner logs `context_cap_reached` and offers no more tools. It tells the model to answer with what it has and say what was not done (`rustd/crates/afr_agent/src/context.rs`). A cap of 0, which the daemon could not resolve, never trips. The fleet's `SKILL.md` prose tells it to write a durable snapshot (`memory_store`) before then, as its context fills. A subsequent run picks up where it left off, possibly on a different runner. The runner's supervisor hydrates that fleet's prior memory over the `agt_r` plane, category-pinned so `core` entries hydrate before any recency windowing (see [*Memory continuity*](./runner_fleet.md); the fleet holds no datastore credential). The fleet then recalls the snapshot from its in-run store.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 
 ### Bounding a runaway run
 
-Because the runtime cannot force a chunk (above), there is no enforced continuation-chain counter. A single run that will not wrap up is instead bounded by the guards that *are* enforced: the fleet's `budget` caps (`daily_dollars` / `monthly_dollars`) and the lease's runtime kill-deadline. Those stop a runaway run regardless of whether the fleet chooses to snapshot.
+Layer 3 ends a run's tool calls once its context fills (above), but there is no enforced continuation-chain counter. A chain of runs that will not wrap up is bounded by the guards that *are* enforced: the fleet's `budget` caps (`daily_dollars` / `monthly_dollars`) and the lease's runtime kill-deadline. Those stop a runaway run regardless of whether the fleet chooses to snapshot.
 
-`chunk_threshold_breached` is observability only — it tells an operator a run is getting large, nothing more. Resume a wrapped-up incident by steering a fresh message that calls `memory_recall` against whatever snapshot key the fleet's own `SKILL.md` prose chose (the runtime never invents the key shape).
+`context_cap_reached` tells an operator a run hit its cap, and the answer that follows says what was not done. Resume a wrapped-up incident by steering a fresh message that calls `memory_recall` against whatever snapshot key the fleet's own `SKILL.md` prose chose (the runtime never invents the key shape).
 
 ### Defaults — the user shouldn't have to do token math
 
@@ -211,6 +211,6 @@ The selection is deterministic and documented so a confused "why does my fleet r
 - Never logs raw secret bytes
 - Never echoes secrets in the fleet's context
 - Never persists secrets in `core.fleet_events`
-- Never lets the GitHub App private key leave the daemon — it is platform-side; the lease envelope, the `secrets_map`, and the sandbox child never carry it
+- Never lets the GitHub App private key leave the daemon — it is platform-side; the lease envelope, the `secrets_map`, and the runner never carry it
 - Never lets the fleet reach a host outside its `network.allow` list
 - Never lets the fleet exceed its `budget` caps without trip-blocking

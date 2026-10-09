@@ -2,8 +2,7 @@
 //!
 //! Every statement here is runner-scoped: a runner principal authorises only
 //! verbs about itself, so each carries `runner_id` in its predicate and can
-//! never resolve another runner's row. Text is byte-identical to
-//! `http/handlers/runner/sql.zig`; what differs is how the wide ones are bound.
+//! never resolve another runner's row.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -44,9 +43,9 @@ FROM inserted";
 /// # Why this one gets a struct and most statements do not
 ///
 /// It takes SEVENTEEN positional parameters, `$8` is referenced four times, and
-/// the `VALUES` list mentions `$13` after `$16`. The Zig call site passes a flat
-/// seventeen-element tuple; it is correct, and confirming that it is correct
-/// means counting arguments against the statement text. Two same-typed
+/// the `VALUES` list mentions `$13` after `$16`. A flat seventeen-argument bind
+/// is correct only as far as someone counts arguments against the statement
+/// text. Two same-typed
 /// arguments transposed — `host_id` and `token_hash` are both text, and one is
 /// a CREDENTIAL — compiles clean and writes the wrong column.
 ///
@@ -74,9 +73,8 @@ pub struct RegisterRow<'a> {
     /// Operator labels, already rendered as a JSON array.
     ///
     /// Text rather than a `serde_json::Value` because the statement casts
-    /// `$6::jsonb` itself and sqlx's `json` feature is off in this workspace —
-    /// binding the rendered text is what the Zig does, and it keeps the feature
-    /// set unchanged.
+    /// `$6::jsonb` itself and sqlx's `json` feature is off in this workspace;
+    /// binding the rendered text keeps the feature set unchanged.
     pub labels_json: &'a str,
     /// Liveness at enrolment — always [`super::LAST_SEEN_NEVER`], so the fleet
     /// read derives `registered` rather than a fabricated `online`.

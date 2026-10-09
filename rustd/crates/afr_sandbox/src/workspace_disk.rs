@@ -14,6 +14,7 @@ use std::io::ErrorKind;
 use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
 
+use afd_core::error_code::{Coded as _, Logged};
 use rustix::fs::{Gid, Uid};
 
 use crate::error::Result;
@@ -124,9 +125,8 @@ impl WorkspaceDisk {
         #[cfg(not(target_os = "linux"))]
         let undone = self.remove_files();
         if let Err(leftover) = undone {
-            let error_code = leftover.code().as_str();
+            let Logged { error_code, reason } = leftover.logged();
             let path = mount_point.display();
-            let reason = leftover.to_string();
             let event = EVENT_DISK_LEFT;
             tracing::warn!(
                 error_code,

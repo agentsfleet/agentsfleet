@@ -1,12 +1,8 @@
 //! Dimensions 4.3 and 4.4 — the ladder, and what a gate does with it.
 //!
-//! Every assertion the retired daemon's `auth/scopes_test.zig` made, run against
-//! the Rust catalogue with the same inputs. The Zig suite is the oracle for the
-//! same reason it is in `afd_crypto` and `afd_db`: it encodes what the deployed
-//! daemon already enforces, so re-running its claims proves more than a fixture
-//! written here could. The catalogue is a wire contract shared verbatim with
-//! the identity provider, and a divergence is a capability granted by one
-//! binary and refused by the other.
+//! The catalogue's claim values are shared verbatim with the identity
+//! provider's token template, so a spelling that drifts here is a capability
+//! the provider grants and this daemon refuses, or the reverse.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -134,13 +130,12 @@ fn test_an_unparseable_claim_grants_nothing_rather_than_failing() {
     );
 }
 
-/// The delimiter is one ASCII space, matching `tokenizeScalar(u8, raw, ' ')`.
+/// The delimiter is one ASCII space.
 ///
 /// Splitting on all whitespace would be the friendlier parse and the wrong one:
-/// the Rust daemon would then grant a capability from a tab-separated claim
-/// that the Zig daemon reads as one unknown token and refuses. Two binaries
-/// disagreeing about a capability is worse than both refusing a malformed
-/// claim, so this pins the stricter, shared behaviour.
+/// it would grant a capability from a tab-separated claim, a shape the token
+/// template never writes. Granting from a shape nobody wrote is worse than
+/// refusing a malformed claim, so this pins the stricter behaviour.
 #[test]
 fn test_only_a_space_delimits_a_claim() {
     let both = ScopeSet::from_scopes(&[Scope::FleetRead, Scope::SecretRead]);
@@ -296,8 +291,8 @@ fn test_iteration_agrees_with_membership() {
 
 /// `docs/AUTH.md`'s Scope catalogue lists every claim value this crate defines.
 ///
-/// Mirrors the Zig test of the same claim, and reads the catalogue rather than
-/// a hand-typed list so a scope added here fails the moment the doc goes stale.
+/// Reads the catalogue rather than a hand-typed list so a scope added here
+/// fails the moment the doc goes stale.
 #[test]
 fn test_every_claim_value_appears_in_the_auth_doc() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

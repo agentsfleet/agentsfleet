@@ -17,8 +17,8 @@ use afd_billing::budget::{self, Verdict};
 
 /// The credit pool cannot cover this run.
 ///
-/// `LOGGING_STANDARD.md` §3 `event` values, spelled as `service_billing.zig`
-/// spells them so a dashboard built against the Zig daemon keeps matching.
+/// `LOGGING_STANDARD.md` §3 `event` values. Dashboards match on these
+/// spellings, so changing one is an operator-visible change.
 const EVENT_BALANCE_EXHAUSTED: &str = "lease_balance_exhausted";
 
 /// The fleet has reached its own ceiling.

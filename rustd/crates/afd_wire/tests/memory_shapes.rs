@@ -47,9 +47,9 @@ fn test_a_capture_reply_round_trips() {
 
 /// A fleet with no grant hydrates in the shape every runner already parses.
 ///
-/// The Zig runner that ships reads this reply strictly, so a field it does not
-/// know would leave every lease with empty memory. `shared` and `publish`
-/// appear only once a grant makes them mean something.
+/// `agentsfleet-runner` reads this reply strictly, so a field it does not know
+/// would leave every lease with empty memory. `shared` and `publish` appear
+/// only once a grant makes them mean something.
 #[test]
 fn test_a_hydrate_reply_without_grants_keeps_the_shape_runners_parse() {
     let reply = MemoryHydrateResponse {

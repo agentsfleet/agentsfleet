@@ -121,8 +121,8 @@ jobs:
       # any step had repaired the tunnel, and its fail-fast curl would abort
       # the deploy for a reason the next step exists to fix.
       #
-      # `approval-signing` is the deployment-level HMAC key. The Zig daemon read
-      # it from APPROVAL_SIGNING_SECRET in the environment; the Rust daemon
+      # `approval-signing` is the deployment-level HMAC key. The retired daemon
+      # read it from APPROVAL_SIGNING_SECRET in the environment; `agentsfleetd`
       # reads it as an admin-workspace vault row, and nothing carried the value
       # across at cutover — so every connector answered 503 UZ-CONN-001 on a
       # deployment whose Fly secret was set and correct.

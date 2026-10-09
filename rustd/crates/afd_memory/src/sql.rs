@@ -1,10 +1,8 @@
 //! `memory.memory_entries` — every statement the Postgres store runs.
 //!
-//! The runner-plane writes are byte-identical to `memory/sql.zig` apart from
-//! the two columns slot 926 added, and [`ASSUME_MEMORY_ROLE`], which is
-//! `SET LOCAL` where the Zig is `SET`: Postgres restores the role at COMMIT or
-//! ROLLBACK, so there is no reset to fail and no connection can return to the
-//! pool running as `memory_runtime`.
+//! [`ASSUME_MEMORY_ROLE`] is `SET LOCAL` rather than `SET`: Postgres restores
+//! the role at COMMIT or ROLLBACK, so there is no reset to fail and no
+//! connection can return to the pool running as `memory_runtime`.
 //!
 //! Every read returns the same seven columns in the same order — writer, key,
 //! content, category, visibility, created, updated — so one decoder reads them
