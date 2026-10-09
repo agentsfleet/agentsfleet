@@ -10,13 +10,19 @@ use netlink_packet_core::{
     ErrorMessage, NLM_F_ACK, NLM_F_REQUEST, NetlinkBuffer, NetlinkHeader, NetlinkMessage,
     NetlinkPayload,
 };
+use netlink_packet_netfilter::nftables::{
+    InetHookNumber, NfTablesMessage, TableAttribute, TableFlags, TableMessage,
+};
+use netlink_packet_netfilter::{NetfilterHeader, NetfilterMessage, NetfilterProtoFamily};
 use netlink_packet_route::RouteNetlinkMessage;
+use netlink_packet_route::address::AddressMessage;
 use netlink_packet_route::link::LinkMessage;
 use netlink_sys::protocols::NETLINK_ROUTE;
 
 use super::{Netlink, Wire, encode, frames, split};
-use crate::egress::link::name_of;
-use crate::egress::testing::{ack, answering, done, new_link as named, refusal};
+use crate::egress::link::{index_named, name_of};
+use crate::egress::rules::{self, DROP};
+use crate::egress::testing::{ack, answering, chain, done, new_link as named, refusal};
 
 /// A wire that answers with the datagrams a test scripted, and keeps what was
 /// sent.
@@ -50,6 +56,14 @@ fn request(flags: u16) -> NetlinkMessage<RouteNetlinkMessage> {
     let mut message = NetlinkMessage::from(RouteNetlinkMessage::GetLink(LinkMessage::default()));
     message.header.flags = flags;
     message
+}
+
+/// A no-op, which the kernel may send in the middle of any conversation.
+fn noop() -> Vec<u8> {
+    encode(NetlinkMessage::<RouteNetlinkMessage>::new(
+        NetlinkHeader::default(),
+        NetlinkPayload::Noop,
+    ))
 }
 
 /// Every request asking an acknowledgement waits for one, however the replies
@@ -95,6 +109,22 @@ fn test_a_refusal_answers_its_errno() {
         .unwrap_err();
 
     assert_eq!(refused.raw_os_error(), Some(libc::EEXIST));
+}
+
+/// Only an acknowledgement or a refusal answers a request that asked for one:
+/// any other reply is passed over, and the wait goes on to the real answer.
+#[test]
+fn test_only_an_acknowledgement_ends_the_wait_for_one() {
+    let mut netlink = scripted(vec![
+        answering(1, named("afv1")),
+        answering(1, refusal(libc::EPERM)),
+    ]);
+
+    let refused = netlink
+        .acknowledged(vec![request(NLM_F_REQUEST | NLM_F_ACK)])
+        .unwrap_err();
+
+    assert_eq!(refused.raw_os_error(), Some(libc::EPERM));
 }
 
 /// A conversation reads only the replies numbered as its own requests: what an
@@ -172,6 +202,62 @@ fn test_a_dump_gathers_until_done() {
 
     assert_eq!(names, ["lo", "afv1", "afv2"]);
     assert_eq!(refused.unwrap_err().raw_os_error(), Some(libc::EPERM));
+}
+
+/// A no-op between the answers is passed over, by a fetch and by a dump.
+#[test]
+fn test_a_noop_is_passed_over_by_a_fetch_and_a_dump() {
+    let found = scripted(vec![answering(1, [noop(), named("afv3")].concat())])
+        .fetch(request(0))
+        .unwrap();
+    let listed = [named("lo"), noop(), named("afv1"), done()].concat();
+    let names: Vec<_> = scripted(vec![answering(1, listed)])
+        .dump(request(0))
+        .unwrap()
+        .into_iter()
+        .filter_map(name_of)
+        .collect();
+
+    assert_eq!(name_of(found).as_deref(), Some("afv3"));
+    assert_eq!(names, ["lo", "afv1"]);
+}
+
+/// An answer of another kind than the one asked for is never read as it: a
+/// link lookup answered by an address is no link's index, and a table listing
+/// passes over a chain and reads a table's name wherever it sits.
+#[test]
+fn test_an_answer_of_another_kind_is_never_read_as_the_one_asked_for() {
+    let address = RouteNetlinkMessage::NewAddress(AddressMessage::default());
+    let looked_up = answering(1, encode(NetlinkMessage::from(address)));
+    let flags_first = NfTablesMessage::NewTable(TableMessage {
+        attributes: vec![
+            TableAttribute::Flags(TableFlags::Owner),
+            TableAttribute::Name("afegress2".to_owned()),
+        ],
+    });
+    let table = NetfilterMessage::new(
+        NetfilterHeader::new(NetfilterProtoFamily::Inet, 0, 0),
+        flags_first,
+    );
+    let beside = chain(
+        NetfilterProtoFamily::Inet,
+        "afegress3",
+        "forward",
+        InetHookNumber::Forward,
+        DROP,
+    );
+    let listed = [
+        encode(NetlinkMessage::from(table)),
+        encode(NetlinkMessage::from(beside)),
+        done(),
+    ]
+    .concat();
+
+    let not_a_link = index_named(&mut scripted(vec![looked_up]), "afv4").unwrap_err();
+    let tables = rules::names(&mut scripted(vec![answering(1, listed)]), "afegress").unwrap();
+
+    assert_eq!(not_a_link.kind(), io::ErrorKind::InvalidData);
+    assert_eq!(tables, ["afegress2"]);
 }
 
 /// A socket that fails, fails the conversation.

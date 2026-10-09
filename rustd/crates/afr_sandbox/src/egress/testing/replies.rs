@@ -6,12 +6,11 @@
     reason = "test support: a message the test built itself parses"
 )]
 
-use std::fmt::Debug;
 use std::num::NonZeroI32;
 
 use netlink_packet_core::{
     DoneMessage, ErrorMessage, NLMSG_ALIGNTO, NetlinkBuffer, NetlinkDeserializable, NetlinkHeader,
-    NetlinkMessage, NetlinkPayload, NetlinkSerializable,
+    NetlinkMessage, NetlinkPayload, NetlinkSerializable, Parseable as _,
 };
 use netlink_packet_netfilter::nftables::{
     ChainAttribute, ChainMessage, Hook, HookNumber, InetHookNumber, NfTablesMessage,
@@ -99,16 +98,13 @@ pub(in crate::egress) fn chain(
     )
 }
 
-/// `message` as the kernel would read it back.
+/// `message` as the kernel would read it back: its header, then its payload
+/// read as the message that header names.
 pub(in crate::egress) fn round_trip<I>(message: NetlinkMessage<I>) -> I
 where
-    I: NetlinkSerializable + NetlinkDeserializable + Debug,
+    I: NetlinkSerializable + NetlinkDeserializable,
 {
-    match NetlinkMessage::<I>::deserialize(&encode(message))
-        .unwrap()
-        .payload
-    {
-        NetlinkPayload::InnerMessage(inner) => inner,
-        other => unreachable!("not an inner message: {other:?}"),
-    }
+    let bytes = encode(message);
+    let read = NetlinkBuffer::new_checked(bytes.as_slice()).unwrap();
+    I::deserialize(&NetlinkHeader::parse(&read).unwrap(), read.payload()).unwrap()
 }

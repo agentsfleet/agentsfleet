@@ -227,21 +227,17 @@ pub(super) fn frames(datagram: &[u8]) -> impl Iterator<Item = io::Result<&[u8]>>
 
 /// The first message in `rest`, and what follows its padding.
 fn frame(rest: &[u8]) -> io::Result<(&[u8], &[u8])> {
+    // `new_checked` refuses a length shorter than a header or longer than
+    // `rest`, so the split below always lands inside it.
     let length = NetlinkBuffer::new_checked(rest)
         .map_err(io::Error::other)?
         .length();
     let length = usize::try_from(length).map_err(io::Error::other)?;
-    let (message, after) = rest.split_at_checked(length).ok_or_else(truncated)?;
+    let (message, after) = rest
+        .split_at_checked(length)
+        .ok_or(io::ErrorKind::UnexpectedEof)?;
     let padding = length.next_multiple_of(usize::from(NLMSG_ALIGNTO)) - length;
     Ok((message, after.get(padding..).unwrap_or_default()))
-}
-
-/// A message longer than the datagram that carried it.
-fn truncated() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::UnexpectedEof,
-        "a netlink message ran past its datagram",
-    )
 }
 
 /// The kernel's refusal, when `error` is one; an acknowledgement is not.

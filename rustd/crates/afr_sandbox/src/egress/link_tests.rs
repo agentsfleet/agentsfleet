@@ -9,11 +9,13 @@ use std::os::fd::{AsFd as _, AsRawFd as _};
 
 use netlink_packet_core::{NLM_F_ACK, NLM_F_CREATE, NLM_F_EXCL, NLM_F_REQUEST};
 use netlink_packet_route::RouteNetlinkMessage;
-use netlink_packet_route::address::AddressAttribute;
-use netlink_packet_route::link::{InfoData, InfoVeth, LinkAttribute, LinkFlags, LinkInfo};
+use netlink_packet_route::address::{AddressAttribute, AddressMessage};
+use netlink_packet_route::link::{
+    InfoData, InfoVeth, LinkAttribute, LinkFlags, LinkInfo, LinkMessage,
+};
 use netlink_packet_route::route::{RouteAddress, RouteAttribute};
 
-use super::{address, configure_peer, default_route, join, names, pair, remove, up};
+use super::{address, configure_peer, default_route, join, name_of, names, pair, remove, up};
 use crate::egress::slot::Slot;
 use crate::egress::testing::{
     DELLINK, Fake, GETLINK, NEWADDR, NEWLINK, NEWROUTE, Protocol, SETLINK, round_trip,
@@ -140,4 +142,20 @@ fn test_only_prefixed_links_are_listed() {
     let listed = names(&mut kernel.open_route(), "afv").unwrap();
 
     assert_eq!(listed, ["afv3", "afv12"]);
+}
+
+/// Only a link carries a name, read wherever among its attributes it sits.
+#[test]
+fn test_a_name_is_read_from_a_link_alone() {
+    let mut link = LinkMessage::default();
+    link.attributes = vec![
+        LinkAttribute::Mtu(1500),
+        LinkAttribute::IfName("afv2".to_owned()),
+    ];
+
+    let named = name_of(RouteNetlinkMessage::NewLink(link));
+    let address = name_of(RouteNetlinkMessage::NewAddress(AddressMessage::default()));
+
+    assert_eq!(named.as_deref(), Some("afv2"));
+    assert_eq!(address, None);
 }

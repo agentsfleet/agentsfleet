@@ -3,7 +3,10 @@
     reason = "test module: a precondition that fails should fail the test loudly"
 )]
 
-use super::take;
+use std::fs::TryLockError;
+use std::io;
+
+use super::{refused, take};
 use crate::error::EgressRefusal;
 
 /// A second holder is refused while the first holds the lock, and saying so
@@ -12,12 +15,12 @@ use crate::error::EgressRefusal;
 #[test]
 fn test_a_second_holder_is_refused_until_the_first_lets_go() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("run").join("egress.lock");
+    let run = dir.path().join("run");
 
-    let first = take(&path).unwrap();
-    let refused = take(&path).unwrap_err();
+    let first = take(&run).unwrap();
+    let refused = take(&run).unwrap_err();
     drop(first);
-    let again = take(&path);
+    let again = take(&run);
 
     assert_eq!(
         refused.egress_refusal(),
@@ -33,5 +36,23 @@ fn test_an_unopenable_lock_file_is_an_error() {
     let blocker = dir.path().join("not-a-directory");
     std::fs::write(&blocker, "").unwrap();
 
-    take(&blocker.join("egress.lock")).unwrap_err();
+    take(&blocker).unwrap_err();
+}
+
+/// A lock call that fails for any reason but another holder is that failure,
+/// its system cause kept, and never a refusal naming a holder that may not
+/// exist.
+#[test]
+fn test_a_failed_lock_call_is_its_own_error() {
+    let failed = refused(TryLockError::Error(io::Error::from_raw_os_error(
+        libc::ENOLCK,
+    )));
+    let held = refused(TryLockError::WouldBlock);
+
+    let cause = std::error::Error::source(&failed)
+        .and_then(|source| source.downcast_ref::<io::Error>())
+        .and_then(io::Error::raw_os_error);
+    assert_eq!(failed.egress_refusal(), None);
+    assert_eq!(cause, Some(libc::ENOLCK));
+    assert_eq!(held.egress_refusal(), Some(&EgressRefusal::HeldElsewhere));
 }
