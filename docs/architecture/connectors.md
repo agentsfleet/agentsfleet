@@ -17,7 +17,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Trust anchors | 6 | signed single-use state bound to workspace and starter identity (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures · the standing integration grant | §Trust anchors |
 | GitHub App URLs | 2, different jobs | `/api/connectors/github/callback` on the dashboard (browser install) vs `/v1/ingress/github` on the API (machine events) | §GitHub App |
 | Disconnect | internal state only | `DELETE` removes the workspace handle and routing rows; provider authorization remains active | §The registry |
-| Binding writes | callback and Disconnect atomic | each commits the sealed grant and the routing rows in one transaction, taking the grant's row lock first, so the two serialise | §The registry |
+| Binding writes | callback and Disconnect atomic | each commits the sealed grant and the routing rows in one transaction, taking the workspace row lock first, so the two serialise even before a grant exists | §The registry |
 | App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
 | Outbound HTTP | a deadline on every vendor call | refusal is `UZ-CONN-003` (502); token exchange 10 s · Slack post 5 s · thread re-read 1.5 s · answer check 3 s | §Bounded outbound |
 | Front-door failures | 404 vs 503 | unknown provider → `UZ-CONN-004`; registry id with no `<provider>-app` bag → `UZ-CONN-001`, fail-loud | §Unknown vs unconfigured |
@@ -152,7 +152,7 @@ one-time code → GitHub user token
                          other workspace: 403, no mutation
 ```
 
-A callback completion writes the vault handle and the reverse-routing rows in one transaction. **Disconnect** deletes both in one transaction too, and the two serialise on the handle's row (§"The registry: a provider is a data entry"). Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
+A callback completion writes the vault handle and the reverse-routing rows in one transaction. **Disconnect** deletes both in one transaction too, and the two serialise on the workspace row, which exists before a first Connect writes a handle (§"The registry: a provider is a data entry"). A handle a model entry still names is not deleted: Disconnect answers 409 `UZ-VAULT-004` with `current_state: "referenced"`. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
 
 The user token is discarded after the current callback, always: the Rust daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page, as M187_001's Discovery records. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
 

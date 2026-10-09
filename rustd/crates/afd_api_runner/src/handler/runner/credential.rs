@@ -48,7 +48,8 @@ const DETAIL_MALFORMED: &str = "Malformed mint request body";
         "Issued at the moment a tool needs one, scoped to what the lease ",
         "already proved. The body names no workspace. The credential is ",
         "minted against the lease the caller holds, so a runner cannot ask ",
-        "for material outside its own run. ",
+        "for material outside its own run. An uninstalled or revoked GitHub ",
+        "App returns 409 `UZ-GH-001`; reconnect GitHub before the next mint.",
     ),
     request_body = MintCredentialRequest,
     responses(
@@ -57,6 +58,7 @@ const DETAIL_MALFORMED: &str = "Malformed mint request body";
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),

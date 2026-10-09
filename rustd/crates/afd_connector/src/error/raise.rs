@@ -116,6 +116,13 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             query("reading the connector row")(sqlx::Error::RowNotFound),
         ),
         ("vault", ErrorKind::Vault { source: vault }.into()),
+        (
+            "vault referenced",
+            ErrorKind::Vault {
+                source: afd_vault::error::still_referenced_sample(2),
+            }
+            .into(),
+        ),
         ("queue", ErrorKind::Queue { source: queue }.into()),
         ("queue gone", ErrorKind::Queue { source: queue_gone }.into()),
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),

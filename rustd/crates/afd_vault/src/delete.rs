@@ -86,10 +86,11 @@ impl Directory {
 
     /// [`Self::delete`] inside the caller's transaction.
     ///
-    /// The secret's row lock is taken first, so a caller that writes other rows
-    /// in the same transaction orders itself against every writer of this
-    /// credential by that one lock. A connector's Disconnect does exactly that:
-    /// the handle and the routing rows go together or not at all.
+    /// The secret's row lock is taken here, which orders writers of a row that
+    /// exists. A caller that must also order against a writer about to CREATE
+    /// the row takes its own lock first: a connector's Disconnect holds the
+    /// workspace row (`afd_connector::sql::LOCK_WORKSPACE`), so the handle and
+    /// the routing rows go together or not at all, even beside a first Connect.
     ///
     /// # Errors
     /// As [`Self::delete`]. The transaction is the caller's to commit; dropping
