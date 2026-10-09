@@ -187,7 +187,8 @@ fn should_echo_a_refused_key_escaped_and_cut_to_its_cap() {
 
     // A key written to break out of the sentence reads back as its escapes.
     let hostile = r#"{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"x`\n\"y":1}"#;
-    let said = closed_refusal(&pulls, &Method::POST, &at, Some(hostile)).expect("a key to blame");
+    // `None` reads as empty and fails the exact match below.
+    let said = closed_refusal(&pulls, &Method::POST, &at, Some(hostile)).unwrap_or_default();
     assert!(!said.contains('\n'), "{said}");
     assert_eq!(said, r#"it sends "x`\n\"y", which this rule does not list"#);
 }
@@ -208,6 +209,10 @@ fn should_not_blame_a_key_for_a_path_admits_refuses_before_any_rule() {
 
 /// One `POST /repos/acme/widgets/git/refs` rule as a lease carries it, locking
 /// `ref`, with `permitted` spliced in as written on the wire.
+#[expect(
+    clippy::expect_used,
+    reason = "a rule written in this file must decode, or the suite should stop"
+)]
 fn decoded_ref_rule(permitted: &str) -> HttpOriginPolicy<'static> {
     let json = format!(
         r#"{{"method":"post","path":"/repos/acme/widgets/git/refs","path_match":"exact",
@@ -226,12 +231,18 @@ fn should_read_an_absent_list_as_open_and_an_empty_one_as_closed() {
 
     // Absent: the locked field is checked and any other key passes.
     let open = decoded_ref_rule("");
-    assert_eq!(open.requests[0].permitted_fields, None);
+    assert_eq!(
+        open.requests.first().map(|rule| &rule.permitted_fields),
+        Some(&None)
+    );
     assert!(admits(&open, &Method::POST, &at, Some(with_sha)));
 
     // Present but empty: the rule admits its locked field alone, and no query.
     let shut = decoded_ref_rule(r#","permitted_fields":[]"#);
-    assert_eq!(shut.requests[0].permitted_fields, Some(Vec::new()));
+    assert_eq!(
+        shut.requests.first().map(|rule| &rule.permitted_fields),
+        Some(&Some(Vec::new()))
+    );
     assert!(admits(&shut, &Method::POST, &at, Some(locked_only)));
     assert!(!admits(&shut, &Method::POST, &at, Some(with_sha)));
     let queried = url("https://api.github.com/repos/acme/widgets/git/refs?x=1");
