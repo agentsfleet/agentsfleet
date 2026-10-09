@@ -175,7 +175,8 @@ fn should_echo_a_refused_key_escaped_and_cut_to_its_cap() {
     let pulls = draft_pull_request();
     let at = url("https://api.github.com/repos/acme/widgets/pulls");
     let long = "k".repeat(KEY_ECHO_MAX + 36);
-    let body = format!(r#"{{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"{long}":1}}"#);
+    let body =
+        format!(r#"{{"head":"agentsfleet-repair/run-1","base":"dev","draft":true,"{long}":1}}"#);
     assert_eq!(
         closed_refusal(&pulls, &Method::POST, &at, Some(&body)),
         Some(format!(
@@ -199,7 +200,10 @@ fn should_not_blame_a_key_for_a_path_admits_refuses_before_any_rule() {
     // was never a rule's to admit, so no key is the reason.
     let off_port = url("https://api.github.com:8443/repos/acme/widgets/pulls");
     assert!(!admits(&pulls, &Method::POST, &off_port, Some(issue)));
-    assert_eq!(closed_refusal(&pulls, &Method::POST, &off_port, Some(issue)), None);
+    assert_eq!(
+        closed_refusal(&pulls, &Method::POST, &off_port, Some(issue)),
+        None
+    );
 }
 
 /// One `POST /repos/acme/widgets/git/refs` rule as a lease carries it, locking

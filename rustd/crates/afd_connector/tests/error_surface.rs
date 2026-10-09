@@ -142,9 +142,16 @@ fn only_a_referenced_refusal_carries_a_count_and_the_vault_conflict() {
                 "{error}"
             );
             assert_eq!(error.detail(), detail::GRANT_STILL_REFERENCED);
-            assert!(!error.is_retryable(), "the entry must go before a retry can pass");
+            assert!(
+                !error.is_retryable(),
+                "the entry must go before a retry can pass"
+            );
         } else {
-            assert_eq!(error.referenced_by(), None, "{label} claims a count it has none of");
+            assert_eq!(
+                error.referenced_by(),
+                None,
+                "{label} claims a count it has none of"
+            );
         }
     }
 }
