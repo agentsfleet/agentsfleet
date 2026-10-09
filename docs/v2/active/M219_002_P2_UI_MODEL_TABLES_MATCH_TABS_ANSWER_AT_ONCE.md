@@ -211,6 +211,7 @@ No API, route or wire change.
 ## Discovery (consult log)
 
 - **Consults** — Indy, Oct 09, 2026, from four screenshots: the Model column should read `Fable 5` with `claude-fable-5` on hover; Events and Memory tabs take a while to load; the Models columns must match the Model library; Members icons should align like Secrets, and "Email sent" reads awkwardly. He asked to eyeball the result on `http://localhost:3000` run with `AGENTSFLEET_UI_ENV_FILE`. Then: "is it possible to align the copy clipboard icon, edit pencil" on Secrets, and how a long name should truncate.
+- **Tab reads** — Indy, Oct 09, 2026, after clicking through §2: "it seems performant now", then asked whether a tab loads only what it needs. Each tab starts only its own reads (`view-data.ts`), but every click re-reads the fleet and tenant billing, because the header renders in `page.tsx`. A `fleets/[id]/layout.tsx` holding the header would drop the billing read from every click and the fleet read from Events, at the cost of a header status that refreshes only on reload. Indy chose "Measure first": Dimension 2.3's timing decides whether the header moves.
 - **Metrics review** — No product event changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
