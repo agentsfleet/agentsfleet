@@ -97,11 +97,12 @@ pub struct HttpRequestRule<'a> {
     /// them the rule's whole key set. Present but empty closes the rule to
     /// its locked fields alone.
     ///
-    /// Absent on a lease from a daemon older than this field. The runner then
-    /// checks the rule's locked fields and nothing more, as that daemon
-    /// intended. Closing such a rule would refuse keys that daemon never
-    /// listed, such as a ref's `sha` or a Pull Request's `title`. Every write
-    /// would then stop until the daemon upgrades.
+    /// Absent on a rule that locks nothing, as today's daemon writes a read,
+    /// and on every rule from a daemon older than this field. The runner then
+    /// checks the rule's locked fields and nothing more. Closing an older
+    /// daemon's write rule would refuse keys it never listed, such as a ref's
+    /// `sha` or a Pull Request's `title`, and stop every write until the
+    /// daemon upgrades.
     #[serde(borrow, default)]
     pub permitted_fields: Option<Vec<Cow<'a, str>>>,
 }

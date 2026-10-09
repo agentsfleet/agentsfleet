@@ -4470,7 +4470,7 @@
           "Runners"
         ],
         "summary": "Mint a credential for a declared tool",
-        "description": "Issued at the moment a tool needs one, scoped to what the lease already proved. The body names no workspace. The credential is minted against the lease the caller holds, so a runner cannot ask for material outside its own run. ",
+        "description": "Issued at the moment a tool needs one, scoped to what the lease already proved. The body names no workspace. The credential is minted against the lease the caller holds, so a runner cannot ask for material outside its own run. An uninstalled or revoked GitHub App returns 409 `UZ-GH-001`; reconnect GitHub before the next mint.",
         "operationId": "runner_mint_credential",
         "requestBody": {
           "content": {
@@ -4525,6 +4525,16 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -9796,7 +9806,7 @@
           "Connectors"
         ],
         "summary": "Disconnect a provider from a workspace",
-        "description": "Removes the workspace's connector handle and event-routing records from `agentsfleet`. Provider authorization remains active outside `agentsfleet`. Repeating this request returns 204. Use Connect to authorize the provider again. ",
+        "description": "Removes the workspace's connector handle and event-routing records from `agentsfleet`. Provider authorization remains active outside `agentsfleet`. Repeating this request returns 204. Use Connect to authorize the provider again. A model entry that still names the connection's credential returns 409 `UZ-VAULT-004` and leaves the connection as it was.",
         "operationId": "connector_disconnect",
         "parameters": [
           {
@@ -14421,7 +14431,7 @@
           "Secrets"
         ],
         "summary": "Delete a secret from the workspace vault",
-        "description": "Idempotent — returns 204 whether or not the secret existed. ",
+        "description": "Idempotent — returns 204 whether or not the secret existed. A secret that model registry entries still name returns 409 `UZ-VAULT-004`, and its detail counts those entries.",
         "operationId": "delete_workspace_secret",
         "parameters": [
           {
@@ -14479,6 +14489,16 @@
           },
           "404": {
             "description": "No such resource, or none this caller may see",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The request conflicts with the resource's current state",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -17028,7 +17048,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on a lease from a daemon older than this field. The runner then\nchecks the rule's locked fields and nothing more, as that daemon\nintended. Closing such a rule would refuse keys that daemon never\nlisted, such as a ref's `sha` or a Pull Request's `title`. Every write\nwould then stop until the daemon upgrades."
+            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on a rule that locks nothing, as today's daemon writes a read,\nand on every rule from a daemon older than this field. The runner then\nchecks the rule's locked fields and nothing more. Closing an older\ndaemon's write rule would refuse keys it never listed, such as a ref's\n`sha` or a Pull Request's `title`, and stop every write until the\ndaemon upgrades."
           }
         }
       },

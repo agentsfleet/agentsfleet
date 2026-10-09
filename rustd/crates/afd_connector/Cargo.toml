@@ -19,7 +19,7 @@ categories.workspace = true
 # already going wrong. It also unlocks `test_util::FakeSlack`, the one loopback
 # Slack this crate's thread reader, `afd_outbound`'s poster and `afd_api`'s
 # mention suites are proven against.
-test-util = ["afd_core/test-util", "afd_db/test-util", "afd_dragonfly/test-util", "dep:axum"]
+test-util = ["afd_core/test-util", "afd_db/test-util", "afd_dragonfly/test-util", "afd_vault/test-util", "dep:axum"]
 
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.

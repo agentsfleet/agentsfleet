@@ -130,9 +130,11 @@ async fn a_disconnect_racing_a_first_connect_waits_its_turn() {
     // No handle exists yet, so nothing in the vault can order these two. Both
     // must queue on the workspace row; a path that skipped it would not wait,
     // and could delete routing rows the connect commits mid-Disconnect.
+    // The production statement itself, so the hold cannot drift from the lock
+    // both writers take.
     let (mut holder, holder_pid) = hold(
         &round,
-        "SELECT 1 FROM core.workspaces WHERE id = $1::uuid FOR NO KEY UPDATE",
+        afd_connector::sql::LOCK_WORKSPACE,
         &[round.workspace.as_str()],
     )
     .await;
