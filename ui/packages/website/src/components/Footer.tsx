@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { List, ListItem } from "@agentsfleet/design-system";
 import { WAITLIST_URL, DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
-import { LOOP_ANCHOR_ID, PRODUCT_NAME } from "../lib/marketing-copy";
+import { HERO_HEADLINE, LOOP_ANCHOR_ID, PRODUCT_NAME } from "../lib/marketing-copy";
 import { SUPPORT_EMAIL } from "../lib/contact";
 import { trackNavigationClicked } from "../analytics/posthog";
 
@@ -16,8 +16,8 @@ const EXTERNAL_REL = "noopener noreferrer";
 const FOOTER_SURFACE = "footer";
 // Read once when the page loads: a render must not read the clock.
 const COPYRIGHT_YEAR = new Date().getFullYear();
-const FOOTER_TAGLINE =
-  "AI agents that wake on production events, investigate with your logs, metrics, and code, and prepare fixes. You control access and decide what ships.";
+// A short brand line: the hero lede already carries sources and control in full.
+const FOOTER_TAGLINE = `${HERO_HEADLINE} You decide what ships.`;
 
 export default function Footer() {
   return (

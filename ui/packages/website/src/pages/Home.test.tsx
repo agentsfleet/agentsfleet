@@ -34,10 +34,10 @@ describe("Home", () => {
     expect(h1).toHaveTextContent(HERO_HEADLINE);
   });
 
-  it("renders the hero lede naming the agent and its sources", () => {
+  it("renders the hero lede naming the trigger and its sources", () => {
     renderHome();
     const hero = screen.getByTestId("hero");
-    expect(within(hero).getByText(HERO_LEDE_PARTS.agent)).toBeInTheDocument();
+    expect(within(hero).getByText(HERO_LEDE_PARTS.trigger)).toBeInTheDocument();
     expect(within(hero).getByText(HERO_LEDE_PARTS.sources)).toBeInTheDocument();
     expect(hero.textContent).toMatch(/you control access and decide what ships/i);
   });

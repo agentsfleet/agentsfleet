@@ -41,7 +41,7 @@ function SlackExample() {
       <figcaption className="mb-6 text-body-sm text-text-muted">Illustrative example · Slack Teammate</figcaption>
       <p className="font-medium text-text">You mention @agentsfleet in your channel.</p>
       <blockquote className="my-4 border-l-2 border-pulse pl-4 text-text-muted">What did we learn from the last checkout incident?</blockquote>
-      <p className="text-text">Your teammate answers in the thread using that channel’s saved context.</p>
+      <p className="text-text">Your agent answers in the thread using that channel’s saved context.</p>
       <p className="mt-4 text-body-sm text-text-muted">Invite it to the channel and mention it when you need help. It stays read-only and does not read other channels’ memory.</p>
     </figure>
   );
