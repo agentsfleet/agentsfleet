@@ -26,7 +26,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | SSE sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
 | Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
-| Cancel latency | none: a running lease is never cancelled | kill and pause write only `core.fleets.status`; the run ends on its own or at `MAX_RUNTIME_MS` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
+| Cancel latency | none: a running lease is never cancelled | kill and pause write only `core.fleets.status`; the run ends on its own, at its fleet's stored budget ceiling, or at `MAX_RUNTIME_MS` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
 | Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
 | Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §"C. EXECUTE" step 4 |
 | Tenant isolation | application-enforced + namespacing | every workspace route passes an ownership check before its handler runs; Dragonfly keys namespaced by unguessable fleet UUID. This repository declares no `ROW LEVEL SECURITY` policy | §Multi-tenancy boundary |

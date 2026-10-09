@@ -64,7 +64,7 @@ Thread A stored `prod=aurora`. Thread B — a different thread, possibly days la
 
 | Step | Status |
 |---|---|
-| Memory hydrate/capture loop (keyed by `fleet_id`) | ✅ lease-scoped (`rustd/crates/afd_fleet/src/lease/memory.rs:45-50`) |
+| Memory hydrate/capture loop (keyed by `fleet_id`) | ✅ lease-scoped (`Plane::hydrate` in `rustd/crates/afd_fleet/src/lease/memory.rs`) |
 | Single ingress / lease / execute / report | ✅ one `slack_mention` admission per Slack event (`rustd/crates/afd_api_ingress/src/handler/mention.rs`) |
 | Slack OAuth install — vault handle + generic `core.connector_installs` | ✅ |
 | Signed events ingress + `(team,channel)→fleet` routing (`core.connector_channels`) | ✅ (`rustd/crates/afd_ingress/src/slack/route.rs`) |

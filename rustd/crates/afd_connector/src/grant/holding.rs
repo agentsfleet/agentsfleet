@@ -259,9 +259,14 @@ impl Grants {
             .map_err(query(CONTEXT_FORGET))?;
         transaction.commit().await.map_err(query(CONTEXT_FORGET))?;
 
+        // `delete_in` leaves logging to its caller, so this line also says
+        // whether a credential went: the vault's own `secret_deleted` is not
+        // emitted on this path.
+        let credential_removed = matches!(forgotten, Forgotten::Disconnected);
         tracing::info!(
             workspace_id = workspace.as_str(),
             provider = provider.id(),
+            credential_removed,
             event = "connector_disconnected",
         );
         Ok(forgotten)

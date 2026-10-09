@@ -1,9 +1,11 @@
 //! The claim read: what a fleet IS, at the moment a runner takes its slot.
+//! Beside it, the renewal's ceiling read ([`Leases::stored_config`]), which
+//! reads the same stored config whatever the fleet's status.
 //!
-//! One statement, run once per claim. [`super::assign`] has already decided
-//! WHICH fleet; this reads the installed shape that fleet's lease is built
-//! from — the config the gates judge against, the prose the run is given, the
-//! bundle it materialises, and the session it continues.
+//! The claim read is one statement, run once per claim. [`super::assign`] has
+//! already decided WHICH fleet; this reads the installed shape that fleet's
+//! lease is built from — the config the gates judge against, the prose the run
+//! is given, the bundle it materialises, and the session it continues.
 //!
 //! # Why the config is re-read per lease and never cached
 //!
@@ -124,17 +126,19 @@ impl Leases {
         }))
     }
 
-    /// The config stored for `fleet_id`, whatever the fleet's status.
+    /// The config stored for `fleet_id` now, whatever the fleet's status.
     ///
-    /// Unlike [`Self::installed`], a stopped or killed fleet still answers:
-    /// a run in flight keeps renewing under the ceiling it was admitted with,
-    /// so the ceiling has to stay readable after the fleet stops. `None` only
-    /// when the row is gone.
+    /// The renewal's ceiling read, beside the claim read above. Unlike
+    /// [`Self::installed`], a stopped or killed fleet still answers: a run in
+    /// flight keeps renewing under the fleet's stored ceiling, so the ceiling
+    /// has to stay readable after the fleet stops. A paused or stopped fleet's
+    /// config can still be edited mid-run and the next renewal reads the edit;
+    /// a killed fleet's cannot. `None` only when the row is gone.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a `config_json` this
     /// daemon cannot read, as [`Self::installed`] does.
-    pub async fn stored_config(&self, fleet_id: &Uuid7) -> Result<Option<FleetConfig>> {
+    pub(crate) async fn stored_config(&self, fleet_id: &Uuid7) -> Result<Option<FleetConfig>> {
         let mut connection = self.pool().acquire().await?;
         let document: Option<String> = sqlx::query_scalar(sql::fleet::SELECT_FLEET_CONFIG)
             .bind(fleet_id.as_str())

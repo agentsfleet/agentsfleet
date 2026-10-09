@@ -74,7 +74,7 @@ function joinVersionParts(words: string[]): string[] {
  * comes back as its last path segment.
  */
 export function modelLabel(modelId: string): string {
-  const segment = modelId.split(PATH_SEPARATOR).pop() ?? modelId;
+  const segment = modelId.slice(modelId.lastIndexOf(PATH_SEPARATOR) + 1);
   if (!segment.includes(WORD_SEPARATOR) || segment.includes(":")) return segment;
   const isClaude = segment.toLowerCase().startsWith(CLAUDE_PREFIX);
   const bare = (isClaude ? segment.slice(CLAUDE_PREFIX.length) : segment).replace(FIREWORKS_POINT, "$1.$2");

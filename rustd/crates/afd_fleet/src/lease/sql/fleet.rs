@@ -32,7 +32,7 @@ WHERE f.id = $1::uuid";
 /// A fleet's stored config, whatever its status.
 ///
 /// The renewal's ceiling read. No status filter, because a fleet an operator
-/// stopped or killed mid-run keeps the ceiling its run was admitted under.
+/// stopped or killed mid-run still has a stored ceiling for its run to obey.
 ///
 /// `$1` fleet.
 pub const SELECT_FLEET_CONFIG: &str = "\

@@ -1,5 +1,6 @@
-//! Writing a bound repository — objects freely, the ref and the Pull Request
-//! locked to exactly what this lease authorised.
+//! Writing a bound repository — blobs and trees freely, a commit without an
+//! identity of its own, the ref and the Pull Request locked to exactly what
+//! this lease authorised.
 //!
 //! # A scoped token bounds WHERE, not WHAT
 //!
@@ -9,9 +10,9 @@
 //! the card said "one branch, one draft Pull Request in the bound repository",
 //! and the only way that sentence is true is if no other request is admitted.
 //!
-//! # Objects are open; the ref is not
+//! # Blobs and trees are open; the ref is not
 //!
-//! Blobs, trees and commits are UNREFERENCED until something points at them, so
+//! Blobs and trees are UNREFERENCED until something points at them, so
 //! creating one changes nothing an observer can see and locking their fields
 //! would bound nothing real. Publishing is the ref creation — so that is the
 //! rule that pins an exact value, and `/pulls` pins three.

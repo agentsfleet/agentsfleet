@@ -94,6 +94,11 @@ impl Fence {
         fence_holds(self.own, self.live_seq, presented)
     }
 
+    /// The lease's own token, for the line a refusal logs.
+    pub(crate) const fn own(self) -> i64 {
+        self.own
+    }
+
     /// The fleet's live sequence, for the line a refusal logs.
     pub(crate) const fn live_seq(self) -> i64 {
         self.live_seq

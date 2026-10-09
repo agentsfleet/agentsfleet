@@ -186,7 +186,8 @@ fn object_endpoints_are_open_because_an_unreferenced_object_changes_nothing() {
 #[test]
 fn a_rule_that_names_a_field_lists_every_field_a_run_may_send() {
     // The runner's matcher (`afr_egress::origin`) admits no top-level key a
-    // naming rule leaves out, so these lists ARE what a run can send. A commit
+    // naming rule leaves out, so these lists, beside each rule's locked
+    // fields, are what a run can send. A commit
     // carries no `author` or `committer`: the ref publishes whoever the commit
     // names. A pull carries no `issue`, which would turn an existing issue
     // into the Pull Request, and no `head_repo`, which would open it from

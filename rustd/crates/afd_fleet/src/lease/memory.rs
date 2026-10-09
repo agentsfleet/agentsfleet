@@ -1,7 +1,7 @@
 //! The runner's memory verbs: what a run is seeded with, what it learned, and
 //! what it asks for past its window.
 //!
-//! # They authorize differently, and every check is the fleet's own `WHERE`
+//! # They authorize differently
 //!
 //! Hydrate asks "does this runner hold a live lease on this fleet, and has no
 //! reclaim moved the fleet past it" — a read of a fleet's own memory by the
@@ -12,9 +12,13 @@
 //! runner cannot reach one fleet's memory holding another's lease; and the
 //! token is fenced by the rule report and renew apply — it must be the lease's
 //! own, and the lease must still hold the fleet — so a holder a reclaim has
-//! superseded reads and writes nothing, whatever token it presents. Both checks are the `WHERE` of the fence statements in
-//! [`crate::lease::fence`]. Past the fence, memory is `afd_memory`'s: the
-//! grants, the store and the window are decided there.
+//! superseded reads and writes nothing, whatever token it presents.
+//!
+//! The fence statements in [`crate::lease::fence`] scope the lease to this
+//! runner and fleet; [`Fence::current`] and [`Fence::holds`] then apply the
+//! supersession and own-token rule report and renew share. Past the fence,
+//! memory is `afd_memory`'s: the grants, the store and the window are decided
+//! there.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -30,7 +34,8 @@ use crate::lease::pull::Plane;
 /// A run's memory was persisted.
 const EVENT_CAPTURED: &str = "memory_captured";
 
-/// A superseded holder reached memory, and nothing was read or written.
+/// A memory verb was fenced out — a superseded lease, or a token not the
+/// lease's own — and nothing was read or written.
 const EVENT_FENCED: &str = "memory_push_fenced";
 
 impl Plane {
@@ -162,16 +167,20 @@ impl Plane {
 
 /// The refusal a fenced memory verb answers, logged once for every caller.
 ///
-/// `token` is what the request presented; a hydrate presents none.
+/// `token` is what the request presented; a hydrate presents none. `own`
+/// beside it tells a superseded lease (`own` below `live_seq`) from a token
+/// that is not the lease's.
 fn superseded(fleet_id: &Uuid7, token: Option<u64>, fence: Fence) -> crate::Error {
     let fleet = fleet_id.as_str();
+    let own = fence.own();
     let live_seq = fence.live_seq();
     tracing::debug!(
         fleet_id = fleet,
         fencing_token = token,
+        own,
         live_seq,
         event = EVENT_FENCED,
-        "a superseded holder reached memory; nothing was read or stored"
+        "a superseded lease, or a token not its own, reached memory; nothing was read or stored"
     );
     stale_fence()
 }
