@@ -19,7 +19,7 @@
 use std::str::FromStr;
 use std::time::Duration;
 
-use afd_core::env::EnvSource;
+use afd_core::env::{EnvSource, optional};
 use opentelemetry_otlp::Protocol;
 
 use crate::error::{Refused, Result};
@@ -100,18 +100,6 @@ const WHY_ENDPOINT: &str = "an http or https URL with a host and no query, such 
 /// The two schemes an HTTP exporter posts over.
 const SCHEME_HTTP: &str = "http";
 const SCHEME_HTTPS: &str = "https";
-
-/// One optional knob, absent when it is unset or blank.
-///
-/// Blank is treated as absent rather than as a value, because an environment
-/// that exports a variable to the empty string is an environment that meant
-/// to unset it.
-#[must_use]
-pub fn optional<E: EnvSource + ?Sized>(env: &E, knob: &str) -> Option<Box<str>> {
-    let value = env.get(knob)?;
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.into())
-}
 
 /// The encoding a signal is posted in.
 ///

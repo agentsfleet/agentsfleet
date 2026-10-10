@@ -37,6 +37,7 @@
 )]
 
 pub mod capability;
+pub mod direct;
 pub mod error;
 pub mod jwks;
 mod jwt;
@@ -44,6 +45,7 @@ pub mod metadata;
 pub mod provider;
 
 pub use crate::capability::ProviderCapabilities;
+pub use crate::direct::direct;
 pub use crate::error::{ClaimUnavailable, Error, MetadataUnwritten, Result};
 pub use crate::jwks::http::{HttpKeySet, jwks_url};
 pub use crate::jwks::key_set::{JwkKeySet, SigningKey};

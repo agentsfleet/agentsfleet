@@ -65,3 +65,8 @@ workspace = true
 [[test]]
 name = "identity_suite"
 path = "tests/identity_suite.rs"
+
+# Its own binary: the one test that writes the process environment.
+[[test]]
+name = "direct_client"
+path = "tests/direct_client.rs"

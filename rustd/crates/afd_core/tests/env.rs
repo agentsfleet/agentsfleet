@@ -56,3 +56,17 @@ fn test_reading_does_not_mutate_the_environment() {
         "a read must not add or remove a variable"
     );
 }
+
+/// A knob is trimmed, and a blank one reads as unset, so a padded value and an
+/// exported-empty variable mean the same thing whichever reader asks.
+#[cfg(feature = "test-util")]
+#[test]
+fn test_an_optional_knob_is_trimmed_and_blank_is_unset() {
+    use afd_core::env::{MapEnv, optional};
+
+    let env = MapEnv::from_pairs([("PADDED", " value "), ("BLANK", " \t ")]);
+
+    assert_eq!(optional(&env, "PADDED").as_deref(), Some("value"));
+    assert_eq!(optional(&env, "BLANK"), None);
+    assert_eq!(optional(&env, ABSENT), None);
+}
