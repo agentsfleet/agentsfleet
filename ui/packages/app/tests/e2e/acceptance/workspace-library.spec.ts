@@ -21,7 +21,7 @@ import * as fsSync from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY, JWT_CACHE_PATH } from "./fixtures/constants";
 import { getDefaultWorkspaceId, skillMd, triggerMd } from "./fixtures/seed";
 import { CLI_KEY_PREFIX, cleanWorkspaceLibraryEntries } from "./fixtures/teardown";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
@@ -66,8 +66,7 @@ function uniqueName(prefix: string): string {
 }
 
 function sessionJwtFor(key: string): string {
-  const cachePath = path.join(process.cwd(), ".fixture-jwts.json");
-  const cache = JSON.parse(fsSync.readFileSync(cachePath, "utf8")) as Record<
+  const cache = JSON.parse(fsSync.readFileSync(JWT_CACHE_PATH, "utf8")) as Record<
     string,
     { sessionJwt?: string }
   >;

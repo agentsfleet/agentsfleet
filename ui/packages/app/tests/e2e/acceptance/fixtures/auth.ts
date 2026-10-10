@@ -39,11 +39,10 @@ import type { Browser, BrowserContext, Page } from "@playwright/test";
 import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { createSignInTicket } from "./clerk-admin";
 import { recordBrowserSession } from "./browser-sessions";
-import { VERCEL_BYPASS_STATE_FILENAME, type FixtureKey } from "./constants";
+import { JWT_CACHE_PATH, VERCEL_BYPASS_STATE_FILENAME, type FixtureKey } from "./constants";
 
 export type { FixtureKey } from "./constants";
 
-const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
 interface FixtureCacheEntry {
   email: string;
