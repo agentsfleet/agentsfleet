@@ -12,6 +12,7 @@
 )]
 
 use afd_core::env::MapEnv;
+use afd_core::test_util::trace::Capture;
 use afd_db::{Db, DbRole, PoolConfig};
 use afd_events::{fleet_counters, fleet_counters_best_effort};
 
@@ -60,4 +61,21 @@ async fn a_refused_read_reports_the_datastore() {
         error.is_pool_unavailable(),
         "the pool's refusal is reported as the datastore's, got {error:?}"
     );
+}
+
+/// The refusal is logged under its registry code, with a `reason` that does
+/// not repeat it and carries no captured backtrace.
+#[tokio::test]
+async fn an_unread_counter_reason_carries_no_code_prefix() {
+    let capture = Capture::install();
+
+    let counters = fleet_counters_best_effort(&refusing_pool(), FLEET_ID).await;
+
+    assert_eq!(counters, None);
+    let logged = capture.only("fleet_counters_unread");
+    assert!(logged.field("error_code").is_some(), "{logged:?}");
+    assert_eq!(logged.field("fleet_id"), Some(FLEET_ID));
+    let reason = logged.field("reason").expect("a refused read says why");
+    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
+    assert!(!reason.contains('\n'), "a backtrace rode along: {reason}");
 }
