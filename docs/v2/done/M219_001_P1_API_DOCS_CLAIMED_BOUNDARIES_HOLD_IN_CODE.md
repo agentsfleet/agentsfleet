@@ -122,71 +122,71 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 bubblewrap starts from the supervisor's environment today, so the host-side monitor's `/proc/<pid>/environ` holds what the root runner was started with. `Parts::spawn` clears the environment before exec. bubblewrap needs none: the entry is an absolute path, and the log level already travels by `--setenv`. **Implementation default:** clear in `Parts::spawn` rather than per caller, because it is the one place every engine spawn passes through.
 
-- **Dimension 1.1** — The launcher sees no inherited variable → Test `test_bubblewrap_starts_with_an_empty_environment` — DONE (`afr_sandbox/src/bubblewrap_engine/tests/prepare.rs`, Linux)
-- **Dimension 1.2** — A configured log level still reaches the entry → Test `test_the_command_is_the_bound_runner_told_to_serve` — DONE (`afr_sandbox/src/bubblewrap/tests.rs`, existing)
+- **Dimension 1.1** — DONE — The launcher sees no inherited variable → Test `test_bubblewrap_starts_with_an_empty_environment` (`afr_sandbox/src/bubblewrap_engine/tests/prepare.rs`, Linux)
+- **Dimension 1.2** — DONE — A configured log level still reaches the entry → Test `test_the_command_is_the_bound_runner_told_to_serve` (`afr_sandbox/src/bubblewrap/tests.rs`, existing)
 
 ### §2 — Memory and minting accept only the holder's own token — DONE
 
 Report and renew admit a request only when the lease's stored token equals the presented one and is at or above the fleet's live sequence (`fence_holds`). Capture and recall check only `presented < live`, hydrate checks only that the lease exists, and minting checks neither. The fence reads return the lease's own token; every memory verb decides through `fence_holds`; the mint scope read joins `fleet.runner_affinity` and requires the lease's token to be at or above `fencing_seq`. The affinity row stays the authority. No wire change: the runner already presents its token.
 
-- **Dimension 2.1** — Capture refuses a token above the live sequence → Test `test_memory_capture_refuses_a_token_that_is_not_the_holders` — DONE (`afd_fleet/tests/integration_memory_capture.rs`, live)
-- **Dimension 2.2** — Capture, recall and hydrate refuse an active lease the fleet has moved past → Test `test_memory_routes_refuse_a_superseded_active_lease` — DONE (`afd_fleet/tests/integration_memory_capture.rs`, live)
-- **Dimension 2.3** — Minting refuses an active lease the fleet has moved past → Test `test_mint_refuses_a_superseded_active_lease` — DONE (`afd_fleet/tests/integration_credential_mint/cases.rs`, live)
-- **Dimension 2.4** — A fence read with a negative column is a corrupt sequence, never a fence → Test `a_negative_column_is_a_corrupt_sequence` — DONE (`afd_fleet/src/lease/fence/tests.rs`)
+- **Dimension 2.1** — DONE — Capture refuses a token above the live sequence → Test `test_memory_capture_refuses_a_token_that_is_not_the_holders` (`afd_fleet/tests/integration_memory_capture.rs`, live)
+- **Dimension 2.2** — DONE — Capture, recall and hydrate refuse an active lease the fleet has moved past → Test `test_memory_routes_refuse_a_superseded_active_lease` (`afd_fleet/tests/integration_memory_capture.rs`, live)
+- **Dimension 2.3** — DONE — Minting refuses an active lease the fleet has moved past → Test `test_mint_refuses_a_superseded_active_lease` (`afd_fleet/tests/integration_credential_mint/cases.rs`, live)
+- **Dimension 2.4** — DONE — A fence read with a negative column is a corrupt sequence, never a fence → Test `a_negative_column_is_a_corrupt_sequence` (`afd_fleet/src/lease/fence/tests.rs`)
 
 ### §3 — Disconnect commits both stores or neither — DONE
 
 `forget` deletes routing rows in one commit and the vault handle in another; `land` writes routing before the vault row. Both stores are one Postgres. `afd_vault` gains `Directory::delete_in` on a caller's transaction. `forget` runs one transaction: vault delete first, routing rows second, then commit. `land` writes the vault row before routing. Both paths first lock the workspace row (`core.workspaces`, `FOR NO KEY UPDATE`), so they take turns even on a first connect, when no vault row exists yet to lock. **Implementation default:** no advisory lock (Indy, M187_001: "Why do you need the advisory lock"); the workspace row exists before either write.
 
-- **Dimension 3.1** — A refused vault delete leaves the routing rows in place → Test `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows` — DONE (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
-- **Dimension 3.2** — A reconnect or a first connect racing a Disconnect waits its turn, then ends with routing rows exactly when a handle exists → Test `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` with `a_disconnect_racing_a_first_connect_waits_its_turn` — DONE (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
+- **Dimension 3.1** — DONE — A refused vault delete leaves the routing rows in place → Test `a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows` (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
+- **Dimension 3.2** — DONE — A reconnect or a first connect racing a Disconnect waits its turn, then ends with routing rows exactly when a handle exists → Test `a_reconnect_racing_a_disconnect_leaves_both_rows_or_neither` with `a_disconnect_racing_a_first_connect_waits_its_turn` (`afd_connector/tests/integration_connect_roundtrip/disconnect.rs`, live)
 
 ### §4 — A locked GitHub write rule admits only what it names — DONE
 
 The matcher compares method, path and locked fields, and passes any other body key and any query string. `HttpRequestRule` gains `permitted_fields`. A rule that names fields admits a body whose top-level keys are all locked or permitted, and a URL with no query. `/pulls` permits `title`, `body` and `maintainer_can_modify` beside its three locked fields; `/git/refs` permits `sha` beside `ref`; `/git/commits` permits `message`, `tree` and `parents`, so GitHub attributes every commit to the App. **Implementation default:** commits leave the "objects are open" set, because a ref publishes the commit's stated identity. An older runner ignores the new field and stays as open as today; runners deploy with the daemon. A newer runner reading a lease minted before the field existed checks only that lease's locked fields, as that daemon meant.
 
-- **Dimension 4.1** — An unlisted key or a query string under a locked rule is refused → Test `should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule` — DONE (`afr_egress/src/origin/tests/closed.rs`)
-- **Dimension 4.2** — A commit naming its own author, committer or signature is refused → Test `should_refuse_a_commit_that_names_its_own_identity` — DONE (`afr_egress/src/origin/tests/closed.rs`)
-- **Dimension 4.3** — The draft Pull Request a binding authorises is still admitted → Test `should_admit_the_draft_pull_request_a_binding_authorises` — DONE (`afr_egress/src/origin/tests/closed.rs`)
-- **Dimension 4.4** — The gate authors exactly the fields each locked rule permits, and only blobs and trees stay open → Test `a_rule_that_names_a_field_lists_every_field_a_run_may_send` — DONE (`afd_gate/src/policy/egress/tests.rs`)
+- **Dimension 4.1** — DONE — An unlisted key or a query string under a locked rule is refused → Test `should_refuse_an_unlisted_key_or_a_query_under_a_locked_rule` (`afr_egress/src/origin/tests/closed.rs`)
+- **Dimension 4.2** — DONE — A commit naming its own author, committer or signature is refused → Test `should_refuse_a_commit_that_names_its_own_identity` (`afr_egress/src/origin/tests/closed.rs`)
+- **Dimension 4.3** — DONE — The draft Pull Request a binding authorises is still admitted → Test `should_admit_the_draft_pull_request_a_binding_authorises` (`afr_egress/src/origin/tests/closed.rs`)
+- **Dimension 4.4** — DONE — The gate authors exactly the fields each locked rule permits, and only blobs and trees stay open → Test `a_rule_that_names_a_field_lists_every_field_a_run_may_send` (`afd_gate/src/policy/egress/tests.rs`)
 
 ### §5 — A final Slack answer posts as literal text — DONE
 
 Interim lines are escaped; final answers go out as written, so a model can notify a channel or mask a link's target. `literal` and `SLACK_ENTITIES` move into `slack/escape.rs`, a submodule of the poster, because `slack.rs` has no headroom under the length cap for them; `SlackPoster::post` escapes every answer; interim delivery hands raw text over so nothing is escaped twice. The stored copy the dashboard shows stays raw. Indy chose to fold this in on Oct 09, 2026 (Discovery). Known limit, from review cycle 2: Slack delivers inbound text with `&`, `<` and `>` already escaped and ingress hands it to the model as written, so an answer echoing thread text is escaped twice and shows a literal `&lt;`. Indy, Oct 09, 2026: "Record as a known limit saying Indy will test eyeball and then ask for a fix".
 
-- **Dimension 5.1** — An answer carrying a channel mention and a masked link posts as entities → Test `an_answer_naming_the_channel_posts_as_text` — DONE (`afd_outbound/tests/integration_slack_poster.rs`, live)
-- **Dimension 5.2** — An interim line is escaped exactly once → Test `an_interim_line_naming_the_channel_posts_as_text` — DONE (`afd_outbound/tests/integration_slack_poster/interim.rs`, live, existing)
+- **Dimension 5.1** — DONE — An answer carrying a channel mention and a masked link posts as entities → Test `an_answer_naming_the_channel_posts_as_text` (`afd_outbound/tests/integration_slack_poster.rs`, live)
+- **Dimension 5.2** — DONE — An interim line is escaped exactly once → Test `an_interim_line_naming_the_channel_posts_as_text` (`afd_outbound/tests/integration_slack_poster/interim.rs`, live, existing)
 
 ### §6 — An installation token carries nothing unrequested but metadata — DONE
 
 `verify_permissions` passes any unrequested permission at read level. It passes only `metadata: read`; any other unrequested name, at any level, is `Overreach`. **Implementation default:** the grant row records no scope, because a workspace member already holds `FleetWrite` (`afd_http/src/auth/ownership/role.rs` withholds only secret and connector writes) and can install a write fleet directly, so a recorded scope would close no hole.
 
-- **Dimension 6.1** — An unrequested read other than `metadata` is refused → Test `verify_refuses_an_unrequested_read_other_than_metadata` — DONE (`afd_credential/src/credential/github/tests/unrequested.rs`)
-- **Dimension 6.2** — `metadata: read` beside exactly the requested set passes → Test `verify_admits_metadata_beside_the_request` — DONE (`afd_credential/src/credential/github/tests/unrequested.rs`)
-- **Dimension 6.3** — A live dev mint for the pull-request reviewer fleet passes the tightened check → Test `dev_mint_passes_the_tightened_verify` (manual) — DONE (Oct 09, 2026, dev App installation `155905462`: requested `{contents: read}`, granted `{contents: read, metadata: read}`; token discarded unprinted)
-- **Dimension 6.4** — `metadata` at any level other than read is refused → Test `verify_refuses_metadata_above_read` — DONE (`afd_credential/src/credential/github/tests/unrequested.rs`)
+- **Dimension 6.1** — DONE — An unrequested read other than `metadata` is refused → Test `verify_refuses_an_unrequested_read_other_than_metadata` (`afd_credential/src/credential/github/tests/unrequested.rs`)
+- **Dimension 6.2** — DONE — `metadata: read` beside exactly the requested set passes → Test `verify_admits_metadata_beside_the_request` (`afd_credential/src/credential/github/tests/unrequested.rs`)
+- **Dimension 6.3** — DONE — A live dev mint for the pull-request reviewer fleet passes the tightened check → Test `dev_mint_passes_the_tightened_verify` (manual) (Oct 09, 2026, dev App installation `155905462`: requested `{contents: read}`, granted `{contents: read, metadata: read}`; token discarded unprinted)
+- **Dimension 6.4** — DONE — `metadata` at any level other than read is refused → Test `verify_refuses_metadata_above_read` (`afd_credential/src/credential/github/tests/unrequested.rs`)
 
 ### §7 — A stopped fleet's run keeps its ceiling — DONE
 
 `installed()` returns nothing for a fleet that is not active, and `budget_covers` then admits the renewal with no ceiling, so a killed fleet's run renews up to `MAX_RUNTIME_MS` bounded only by the tenant wallet. A stored-config read with no status filter feeds `budget_covers`; an absent row means only a purge race. A kill still never cancels a run with room left.
 
-- **Dimension 7.1** — A killed fleet past its ceiling is not renewed → Test `a_fleet_killed_mid_run_keeps_its_breached_ceiling` — DONE (`afd_fleet/tests/integration_renew_coverage.rs`, live)
-- **Dimension 7.2** — A killed fleet with room still renews → Test `a_fleet_killed_mid_run_with_room_still_renews` — DONE (`afd_fleet/tests/integration_renew_coverage.rs`, live)
+- **Dimension 7.1** — DONE — A killed fleet past its ceiling is not renewed → Test `a_fleet_killed_mid_run_keeps_its_breached_ceiling` (`afd_fleet/tests/integration_renew_coverage.rs`, live)
+- **Dimension 7.2** — DONE — A killed fleet with room still renews → Test `a_fleet_killed_mid_run_with_room_still_renews` (`afd_fleet/tests/integration_renew_coverage.rs`, live)
 
 ### §8 — A catalogue fault charges tokens late instead of never — DONE
 
 A renewal whose catalogue read fails meters at run-fee rates with the real counts, so the token cursor moves past tokens charged at zero. It meters zero counts instead: the run fee is charged, the cursor stays, and the next priced renewal or the report charges the tokens. A warning names the fault. **Preparation:** find or add a catalogue fault seam the integration lane can trigger; without one, 8.1 runs at the plane with a failing catalogue.
 
-- **Dimension 8.1** — Tokens reported during a catalogue fault are charged at the next priced renewal → Test `a_renewal_during_a_catalogue_fault_charges_its_tokens_later` — DONE (`afd_fleet/tests/integration_renew_coverage.rs`, live, private database)
-- **Dimension 8.2** — The fault is logged with its event → Test `a_catalogue_fault_logs_the_held_tokens` — DONE (`afd_fleet/src/lease/renew/tests.rs`)
+- **Dimension 8.1** — DONE — Tokens reported during a catalogue fault are charged at the next priced renewal → Test `a_renewal_during_a_catalogue_fault_charges_its_tokens_later` (`afd_fleet/tests/integration_renew_coverage.rs`, live, private database)
+- **Dimension 8.2** — DONE — The fault is logged with its event → Test `a_catalogue_fault_logs_the_held_tokens` (`afd_fleet/src/lease/renew/tests.rs`)
 
 ### §9 — The model library lists today's models at today's prices — DONE
 
 `scripts/model-library-allowlist.json` was past its 45-day staleness limit. Each priced provider is re-verified against its first-party page: new flagships added, superseded rows moved to `retired`, wrong rates fixed (`gpt-6-astra` long-context output, DeepSeek's repricing). Tiered models stay off live-priced gateways. The seeder never deletes, so removed rows stay live as unmanaged. The dashboard's fallback list names the same models. Indy read the dev diff before the apply; production is a separate approval.
 
-- **Dimension 9.1** — Every allowlisted provider is priced or carries a reason → Test `_model_allowlist_check` — DONE (`scripts/check_model_allowlist.py`: 100 providers, 31 priced, 69 reasoned)
-- **Dimension 9.2** — Dev's catalogue equals the allowlist → Test `dev_catalogue_matches_the_allowlist` (manual) — DONE (diff after apply: `0 new · 0 changed`)
-- **Dimension 9.3** — An empty catalogue still offers current models → Test `falls back to the static known-models list before free text when the catalogue has no rows for the provider` — DONE (`ui/packages/app/tests/provider-model-select.test.tsx`)
+- **Dimension 9.1** — DONE — Every allowlisted provider is priced or carries a reason → Test `_model_allowlist_check` (`scripts/check_model_allowlist.py`: 100 providers, 31 priced, 69 reasoned)
+- **Dimension 9.2** — DONE — Dev's catalogue equals the allowlist → Test `dev_catalogue_matches_the_allowlist` (manual) (diff after apply: `0 new · 0 changed`)
+- **Dimension 9.3** — DONE — An empty catalogue still offers current models → Test `falls back to the static known-models list before free text when the catalogue has no rows for the provider` (`ui/packages/app/tests/provider-model-select.test.tsx`)
 
 ## Interfaces
 
