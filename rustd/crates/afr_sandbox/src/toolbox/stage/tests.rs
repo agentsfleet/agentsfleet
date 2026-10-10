@@ -154,3 +154,21 @@ fn should_refuse_to_sweep_a_staging_path_it_cannot_read() {
 
     sweep(dir.path()).unwrap_err();
 }
+
+/// A rename the kernel refuses publishes nothing and leaves no copy behind:
+/// the copy is removed with the refusal, not left for the next start.
+#[test]
+fn should_refuse_a_publish_the_rename_cannot_make_and_leave_no_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("download");
+    fs::write(&source, image()).unwrap();
+    let manifest = Signer::new().manifest(&image());
+    let occupied = published(dir.path(), &manifest);
+    fs::create_dir_all(occupied.join("in-the-way")).unwrap();
+
+    let refused = stage(&manifest, &source, dir.path()).unwrap_err();
+
+    assert_eq!(refused.toolbox_refusal(), None, "an input/output failure");
+    assert!(occupied.join("in-the-way").is_dir(), "nothing replaced it");
+    assert_eq!(staged(dir.path()), [] as [String; 0]);
+}

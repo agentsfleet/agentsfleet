@@ -53,6 +53,14 @@ pub(crate) enum ErrorKind {
     },
 }
 
+// Each source has one meaning in this crate, so `?` lifts it and no
+// `map_err` appears where the call site adds nothing
+// (`docs/RUST_ERROR_STANDARD.md` rule 2).
+afd_core::error_lifts!(Error, ErrorKind:
+    garde::Report => Malformed,
+    aho_corasick::BuildError => Query,
+);
+
 /// The one alias every signature in this crate spells.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -103,16 +111,6 @@ impl Error {
             | ErrorKind::Unanswered { .. }) => other.to_string(),
         }
     }
-}
-
-/// An entry breaking the bounds `report` names.
-pub(crate) fn malformed(source: garde::Report) -> Error {
-    ErrorKind::Malformed { source }.into()
-}
-
-/// A recall query the matcher refused.
-pub(crate) fn query(source: aho_corasick::BuildError) -> Error {
-    ErrorKind::Query { source }.into()
 }
 
 /// A store that would take the run's memory to `needed` bytes.
