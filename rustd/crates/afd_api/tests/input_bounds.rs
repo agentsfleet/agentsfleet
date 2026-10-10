@@ -15,7 +15,6 @@
 use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -40,10 +39,10 @@ const EVERY_SCOPE: ScopeSet = ScopeSet::from_scopes(&[
 ]);
 
 /// The malformed-request code.
-const INVALID_REQUEST: &str = error_code::INVALID_REQUEST.as_str();
+const INVALID_REQUEST: &str = "UZ-REQ-001";
 
 /// The code a catalogue filter over its bound answers.
-const LIBRARY_INPUT_OUT_OF_BOUNDS: &str = error_code::LIBRARY_INPUT_OUT_OF_BOUNDS.as_str();
+const LIBRARY_INPUT_OUT_OF_BOUNDS: &str = "UZ-LIBRARY-003";
 
 /// The longest memory key, in decoded bytes.
 const MAX_KEY_LEN: usize = 255;
