@@ -37,7 +37,7 @@ export interface LaneCounts {
   readonly skipped: number;
 }
 
-export const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
+const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/approvals-live.spec.ts",
   "test/acceptance/concurrency.spec.ts",
   "test/acceptance/fleet-update-delete.spec.ts",
