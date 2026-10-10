@@ -105,7 +105,7 @@ pub struct HttpRequestRule<'a> {
     /// upgrades.
     ///
     /// A runner older than this field ignores it and reads every rule as
-    /// open, so a closed rule holds once the runners that enforce it run.
+    /// open. A closed rule holds once the runners that enforce it run.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub permitted_fields: Option<Vec<Cow<'a, str>>>,
 }
