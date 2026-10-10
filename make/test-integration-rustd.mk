@@ -62,7 +62,12 @@
 # the lane applies the schema the way a deployment does — including the ledger,
 # the advisory lock, and the refusal to run against a version this binary does
 # not know. A second path to the same schema is a second thing to drift.
-_migrate-test-db: _ensure-test-infra
+#
+# The reset is this step's own prerequisite, not a sibling a caller lists
+# beside it: `make -j` orders only what depends on what, so two siblings run
+# together and the reset can drop the schema the migration is applying.
+# Under `KEEP_TEST_STATE=1` the prerequisite is the plain infra check.
+_migrate-test-db: $(TEST_STATE_DEP)
 	@echo "→ [infra] Applying migrations once, for the whole lane..."; \
 	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
 	  cargo run --quiet --bin agentsfleetd -- migrate \

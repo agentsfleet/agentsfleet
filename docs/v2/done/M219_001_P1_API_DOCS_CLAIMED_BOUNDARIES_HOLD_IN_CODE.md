@@ -81,7 +81,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/tests/{integration_renew_coverage.rs,integration_held_sandbox.rs,integration_held_sandbox/report.rs}` | EDIT | §7: killed-fleet ceiling cases replace the stopped-fleet case; §8: the late-charge case and the report-time uncharged-token line |
 | `rustd/crates/afd_fleet/tests/support/{fleet_report_seed.rs,fleet_fixtures.rs}` | EDIT | §8: `held_in` over a private database, which can take its catalogue offline |
 | `scripts/model-library-allowlist.json` | EDIT | §9: current lineups and first-party rates, verified Oct 09, 2026 |
-| `make/bench.mk` | EDIT | Bench lanes reset and migrate only a rig whose `BENCH_TARGET_OWNED` is exactly `owned` |
+| `make/{bench,test-integration-rustd,quality}.mk`, `scripts/make_reset_order_test.sh` | EDIT, CREATE | Bench lanes reset and migrate only a rig whose `BENCH_TARGET_OWNED` is exactly `owned`; the migration depends on the reset, so `make -j` cannot run them together; a graph test holds both |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/lib/known-models.ts`, `ui/packages/app/tests/{provider-model-select,models-registry-edit-remove}.test.tsx` | EDIT | §9: the dashboard's fallback list names current models |
 | `docs/architecture/{connectors.md,capabilities.md,data_flow.md,memory.md}`, `docs/AUTH.md` | EDIT | Disconnect is one transaction; each page restating a boundary says what the code now does |
 | `docs/architecture/{runner_fleet.md,lease_flow.md}` | EDIT | §7: kill keeps the ceiling on a run in flight; §4: the GitHub write set names its fields |
