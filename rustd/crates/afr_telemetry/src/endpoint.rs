@@ -76,7 +76,7 @@ fn first_set<E: EnvSource + ?Sized>(env: &E, knobs: &[&'static str]) -> Option<&
     knobs
         .iter()
         .copied()
-        .find(|knob| afd_otlp::optional(env, knob).is_some())
+        .find(|knob| afd_core::env::optional(env, knob).is_some())
 }
 
 /// `knob` refused, for the reason `why`.

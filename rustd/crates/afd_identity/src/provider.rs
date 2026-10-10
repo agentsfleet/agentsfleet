@@ -123,12 +123,7 @@ impl ProviderClaims {
         secret: ProviderSecret,
         timeout: std::time::Duration,
     ) -> Result<Self, ClaimUnavailable> {
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            // The provider is reached directly. An environment proxy silently
-            // rerouting the call that decides what a person may do is not a
-            // convenience worth having.
-            .no_proxy()
+        let client = crate::direct(timeout)
             .build()
             .map_err(|_unbuildable| ClaimUnavailable::Unreachable)?;
         Ok(Self {

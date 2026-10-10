@@ -61,12 +61,7 @@ impl ProviderMetadata {
         secret: ProviderSecret,
         timeout: std::time::Duration,
     ) -> Result<Self, MetadataUnwritten> {
-        let client = reqwest::Client::builder()
-            .timeout(timeout)
-            // The provider is reached directly, for the reason the read gives:
-            // an environment proxy silently rerouting the call that decides
-            // what a person may do is not a convenience worth having.
-            .no_proxy()
+        let client = crate::direct(timeout)
             .build()
             .map_err(|_unbuildable| MetadataUnwritten::Unreachable)?;
         Ok(Self {

@@ -66,15 +66,8 @@ impl HttpKeySet {
     /// compile time (see the `reqwest` note in the workspace manifest), so
     /// there is no process-default to be missing.
     pub fn new(url: impl Into<String>, timeout: std::time::Duration) -> Result<Self, VerifyError> {
-        let client = reqwest::Client::builder()
-            // Every deadline in this workspace is at the call site (Invariant
-            // 4); this is the call site.
-            .timeout(timeout)
+        let client = crate::direct(timeout)
             .redirect(reqwest::redirect::Policy::limited(MAX_REDIRECTS))
-            // The identity provider is reached directly. An environment proxy
-            // silently rerouting the fetch that establishes who may act is not
-            // a convenience worth having.
-            .no_proxy()
             .build()
             .map_err(|_unbuildable| VerifyError::KeySetUnavailable)?;
         Ok(Self {
