@@ -182,7 +182,10 @@ async fn a_successful_but_overreaching_response_is_discarded() {
         assert!(warning.field(name).is_some(), "{name} in {warning:?}");
     }
     assert!(
-        warning.fields.values().all(|value| !value.contains("ghs_fixture")),
+        warning
+            .fields
+            .values()
+            .all(|value| !value.contains("ghs_fixture")),
         "{warning:?}"
     );
 }

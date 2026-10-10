@@ -136,7 +136,7 @@ The Memory tab's two grants become a "Shared memory" fieldset of two `DashboardR
 - **Dimension 5.2** — Each grant is a named switch with what it does → Test `each shared-memory grant is a named switch with what it does` (`MemoryPanel.test.tsx`) — DONE
 - **Dimension 5.3** — A refused flip leaves the switch unchanged and says why → Test `a refused shared-memory change leaves the switch where it was` (`MemoryPanel.test.tsx`) — DONE
 
-### §6 — Packages run their latest releases — IN_PROGRESS
+### §6 — Packages run their latest releases — DONE
 
 Every npm dependency in `cli`, `ui/packages/app`, `ui/packages/design-system` and `ui/packages/website` moves to its latest release, keeping its pin style, and the root `playwright-core` override follows Playwright to 1.64.0. `typescript-jsapi` stays on TypeScript 6, the alias Indy accepted on Jul 30, 2026 (`M151_001`). Radix tabs 1.1.22 focuses a trigger on mousedown, so one click selects its tab twice before a re-render; `LibrarySourceTabs` now reports only a real change of source.
 
@@ -144,7 +144,7 @@ The toolbox image moves to Debian 13.7. Its snapshot pin goes from `20260901T000
 
 - **Dimension 6.1** — No package reports an update → Test `bun_outdated_reports_only_the_jsapi_alias` (package audit) — DONE
 - **Dimension 6.2** — One click on a source tab is one source change → Test `tells the caller when the operator changes source` (`ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.test.tsx`) — DONE
-- **Dimension 6.3** — The toolbox builds from Debian 13.7 and records the snapshot it used → Test `release_manifest_names_the_image` (kernel lane, `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox.rs`) — PENDING
+- **Dimension 6.3** — The toolbox builds from Debian 13.7 and records the snapshot it used → Test `test_toolbox_carries_the_tools`, whose first step is `release_manifest_names_the_image` (kernel lane, `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox.rs`) — DONE
 
 ### §7 — A fleet card leads with its agent and what it is doing — DONE
 
@@ -201,7 +201,7 @@ No API, route or wire change.
 | 5.3 | unit | `a refused shared-memory change leaves the switch where it was` | Action refused with 403 → the switch stays unchecked and enabled, and a warning alert shows |
 | 6.1 | package audit | `bun_outdated_reports_only_the_jsapi_alias` | `bun outdated` in the four packages → only `typescript` (the `typescript-jsapi` alias) |
 | 6.2 | unit | `tells the caller when the operator changes source` | Click Upload, then GitHub → `onSourceChange` called exactly twice |
-| 6.3 | kernel lane | `release_manifest_names_the_image` | `make test-runner-kernel` builds from `manifest.txt` → the release records `snapshot` `20261010T000000Z`; that snapshot's trixie `Release` → `Version: 13.7` |
+| 6.3 | kernel lane | `test_toolbox_carries_the_tools` | `make test-runner-kernel` builds from `manifest.txt` → the release records `snapshot` `20261010T000000Z`; that snapshot's trixie `Release` → `Version: 13.7` |
 | 7.1 | unit | `leads with the agent and its status, then what it is doing, and keeps the fleet's name in the footer` | Live fleet `alpha` → first line the agent label and `Active`, then `Waiting for the next event.`, footer `alpha`; no fixed sentence |
 
 ## Acceptance Rubric (single scoring surface)
@@ -258,4 +258,5 @@ No API, route or wire change.
 - **Close-out (Oct 10, 2026)** — Indy accepted the screens ("Accepted (Recommended)"), and asked that the two known limits be recorded rather than fixed, docs be skipped under an override, and the branch be pushed and opened as a PR once green. For the fleet card he wrote "the agent slug name and status is important that must be the first line" and "Runs in loop static text doesnt have value, but rather the Waiting for the event is valuable", then picked "Footer name" (§7).
 - **Metrics review** — No product event changes.
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — Indy, Oct 10, 2026, chose "Bump snapshot in this PR", whose option read "The VM and doc fixes go to their own spec." That spec rebuilds the `afr-kernel` VM on Debian 13. It also fixes three doc drifts: `docs/architecture/runner_execution.md:164`, `.github/workflows/test-integration-rustd.yml:131` and `rustd/Cargo.toml:344`.
+- **Deferrals** — the `afr-kernel` VM rebuild on Debian 13, and three doc drifts: `docs/architecture/runner_execution.md:164`, `.github/workflows/test-integration-rustd.yml:131` and `rustd/Cargo.toml:344`. They go to their own spec, written to `docs/v2/pending/` on this branch.
+  > Indy (2026-10-10 10:00): "Bump snapshot in this PR" — context: the option he chose read "The VM and doc fixes go to their own spec."; then "all changes have to go in 1 branch/worktree".

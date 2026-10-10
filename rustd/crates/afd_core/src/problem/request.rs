@@ -74,7 +74,7 @@ pub(super) const REQUEST: &[Problem] = &[
         title: "Secret still referenced by model entries",
         hint: "Model registry entries still reference this secret. Remove them first, then retry the delete or the Disconnect. A secret delete's detail names the count.",
         user_message: Some(
-            "This key is used by one or more models in your registry. Remove those entries first, then try again.",
+            "A model in your registry still uses this credential. Remove that entry first, then try again.",
         ),
     },
     Problem {

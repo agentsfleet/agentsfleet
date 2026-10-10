@@ -15,7 +15,9 @@
 
 use std::sync::Arc;
 
+use afd_core::error_code;
 use afd_core::id::Uuid7;
+use afd_http::handler::Refusal;
 use afd_wire::memory::{MemoryCaptureResponse, MemoryPushRequest, MemoryRecallRequest};
 use axum::Json;
 use axum::body::Bytes;
@@ -24,7 +26,7 @@ use axum::response::{IntoResponse as _, Response};
 use garde::Validate as _;
 
 use crate::auth::RunnerIdentity;
-use crate::handler::{malformed, refuse};
+use crate::handler::malformed;
 use crate::services::{Leasing as _, Services};
 
 /// The scoped event a failed hydrate is logged under.
@@ -45,6 +47,10 @@ const EVENT_RECALL: &str = "runner_memory_recall_failed";
 /// The refusal a recall body this daemon cannot read, or will not search, earns.
 const DETAIL_RECALL_MALFORMED: &str = "Malformed memory recall body";
 
+/// The `current_state` a fenced memory verb names: the fleet has moved past
+/// the lease, or the token is not the lease's own.
+const STATE_SUPERSEDED: &str = "superseded";
+
 /// Seeds a run with its fleet's memory window.
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
@@ -55,7 +61,8 @@ const DETAIL_RECALL_MALFORMED: &str = "Malformed memory recall body";
     description = concat!(
         "The memory a fleet carries between runs, read at the start of one. ",
         "The runner names the fleet, and the lease it holds is what makes ",
-        "that name legitimate. ",
+        "that name legitimate. A lease the fleet has moved past returns 409 ",
+        "`UZ-RUN-005` naming `superseded`.",
     ),
     params(
         afd_http::openapi::path::FleetOnly,
@@ -86,7 +93,7 @@ pub(crate) async fn hydrate<D: Services>(
         .await
     {
         Ok(hydrated) => Json(hydrated).into_response(),
-        Err(error) => refuse(&error, EVENT_HYDRATE),
+        Err(error) => Refusal::conflict_or_at(EVENT_HYDRATE, conflict_state)(error).into_response(),
     }
 }
 
@@ -101,8 +108,8 @@ pub(crate) async fn hydrate<D: Services>(
         "Finds the fleet's entries whose key or content holds the query, ",
         "ignoring case, key matches first. A fleet granted to read shared ",
         "memory also gets the workspace's shared entries, each naming the ",
-        "fleet that wrote it. Fenced like a capture: a superseded holder is ",
-        "refused. ",
+        "fleet that wrote it. Fenced like a capture: a superseded holder gets ",
+        "409 `UZ-RUN-005` naming `superseded`.",
     ),
     request_body = MemoryRecallRequest,
     params(
@@ -142,7 +149,7 @@ pub(crate) async fn recall<D: Services>(
         .await
     {
         Ok(recalled) => Json(recalled).into_response(),
-        Err(error) => refuse(&error, EVENT_RECALL),
+        Err(error) => Refusal::conflict_or_at(EVENT_RECALL, conflict_state)(error).into_response(),
     }
 }
 
@@ -156,7 +163,8 @@ pub(crate) async fn recall<D: Services>(
     description = concat!(
         "Writes back what the run decided is worth keeping. The reply names ",
         "what was stored and what was skipped, so a runner learns which of ",
-        "its entries did not survive the bounds. ",
+        "its entries did not survive the bounds. A superseded lease, or a ",
+        "token not its own, returns 409 `UZ-RUN-005` naming `superseded`.",
     ),
     request_body = MemoryPushRequest,
     params(
@@ -205,6 +213,29 @@ pub(crate) async fn capture<D: Services>(
             skipped: counted.skipped,
         })
         .into_response(),
-        Err(error) => refuse(&error, EVENT_CAPTURE),
+        Err(error) => Refusal::conflict_or_at(EVENT_CAPTURE, conflict_state)(error).into_response(),
+    }
+}
+
+/// The state a refused memory verb is in, when the refusal is a conflict: a
+/// 409 names the state that refuses it.
+fn conflict_state(error: &afd_fleet::Error) -> Option<&'static str> {
+    (error.code() == error_code::RUN_STALE_FENCING_TOKEN).then_some(STATE_SUPERSEDED)
+}
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests {
+    use super::{STATE_SUPERSEDED, conflict_state};
+
+    /// The stale-fence refusal is a conflict naming `superseded`; a refusal
+    /// that is not a conflict names none, and renders as every other does.
+    #[test]
+    fn only_the_stale_fence_refusal_names_a_conflict_state() {
+        assert_eq!(
+            conflict_state(&afd_fleet::Error::stale_fence()),
+            Some(STATE_SUPERSEDED)
+        );
+        assert_eq!(conflict_state(&afd_fleet::Error::lease_not_found()), None);
+        assert_eq!(conflict_state(&afd_fleet::Error::mint_unconfigured()), None);
     }
 }

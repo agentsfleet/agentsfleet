@@ -36,6 +36,7 @@ RestartPreventExitStatus=77
 # A stopped runner's in-flight lease is reclaimed by the control plane
 # (lease_expires_at + fencing_token), so a bounded stop never loses or
 # double-runs work; the timeout just lets an in-flight child finish.
+# deploy.sh's DRAIN_TIMEOUT_SECONDS equals it (deploy_test.sh holds the pair).
 TimeoutStopSec=300
 KillMode=mixed
 

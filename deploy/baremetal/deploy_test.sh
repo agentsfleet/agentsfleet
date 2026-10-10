@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Self-tests for deploy.sh's version-skip equality and its deploy mutex.
+# Self-tests for deploy.sh's version-skip equality, its deploy mutex, and its
+# drain timeout against the runner unit's.
 #
 #     bash deploy/baremetal/deploy_test.sh
 #
@@ -275,8 +276,28 @@ test_deploy_acquires_lock_when_free() {
   fi
 }
 
+test_deploy_drain_waits_as_long_as_the_unit_allows() {
+  local name="test_deploy_drain_waits_as_long_as_the_unit_allows"
+  local unit drain
+  unit="$(sed -n 's/^TimeoutStopSec=//p' "$SCRIPT_DIR/agentsfleet-runner.service")"
+
+  # A shorter drain cuts a run the unit would have let finish; the two are one
+  # number kept in two files, and this case is what ties them.
+  drain="$(
+    # shellcheck source=./deploy.sh
+    source "$DEPLOY_SH" >/dev/null 2>&1
+    printf '%s' "$DRAIN_TIMEOUT_SECONDS"
+  )"
+  if [[ -n "$unit" && "$drain" == "$unit" ]]; then
+    ok "$name"
+  else
+    bad "$name" "deploy.sh drains for '$drain' s, the unit's TimeoutStopSec is '$unit'"
+  fi
+}
+
 # ── Runner ───────────────────────────────────────────────────────────────────
 
+test_deploy_drain_waits_as_long_as_the_unit_allows
 test_deploy_version_substring_not_equal_reinstalls
 test_deploy_version_exact_match_skips
 test_deploy_malformed_version_reinstalls

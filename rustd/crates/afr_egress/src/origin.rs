@@ -141,7 +141,7 @@ fn rule_admits(rule: &HttpRequestRule<'_>, method: &Method, path: &str, sent: &S
 
 /// Whether `rule` lists its whole key set, which closes it to every other.
 ///
-/// A rule without `permitted_fields` is open: a read today's daemon writes, or
+/// A rule without `permitted_fields` is open: a read, a blob or tree write, or
 /// any rule from a daemon older than the field. Its locked fields are checked
 /// and nothing else (`afd_wire::policy::HttpRequestRule`).
 const fn closed(rule: &HttpRequestRule<'_>) -> bool {

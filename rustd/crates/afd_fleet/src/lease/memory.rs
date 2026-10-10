@@ -12,13 +12,21 @@
 //! runner cannot reach one fleet's memory holding another's lease; and the
 //! token is fenced by the rule report and renew apply — it must be the lease's
 //! own, and the lease must still hold the fleet — so a holder a reclaim has
-//! superseded reads and writes nothing, whatever token it presents.
+//! already superseded reads and writes nothing, whatever token it presents.
 //!
 //! The fence statements in [`crate::lease::fence`] scope the lease to this
 //! runner and fleet; [`Fence::current`] and [`Fence::holds`] then apply the
 //! supersession and own-token rule report and renew share. Past the fence,
 //! memory is `afd_memory`'s: the grants, the store and the window are decided
 //! there.
+//!
+//! # The residual race, stated
+//!
+//! The fence is read, then memory is read or written, as two statements on
+//! two connections; report and renew instead fence inside the write. A reclaim
+//! that commits between the two lets one superseded request through, and a
+//! capture there can overwrite an entry the new holder wrote under the same
+//! key. It is bounded to one request per reclaim.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

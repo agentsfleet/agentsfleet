@@ -1,9 +1,8 @@
 //! Disconnect against the grant a connect landed: both rows go, or neither.
 //!
-//! The handle in the vault and the routing rows that send a provider account's
-//! events to a workspace describe one installation. A reader that finds one
-//! without the other is wrong in a way nothing reports, so every case here ends
-//! by asking the store whether the two still agree.
+//! The vault handle and the routing rows describe one installation, and a
+//! reader that finds one without the other is wrong in a way nothing reports.
+//! So every case ends by asking the store whether the two still agree.
 
 use std::time::Duration;
 
@@ -11,6 +10,9 @@ use afd_connector::grant::{Forgotten, Grant, Install, InstallClaim};
 use serde_json::{Map, Value};
 
 use super::*;
+
+#[path = "disconnect/rollback.rs"]
+mod rollback;
 
 /// The provider these cases connect: one with inbound routing rows.
 const PROVIDER: Provider = Provider::Slack;
@@ -44,7 +46,7 @@ async fn a_disconnect_whose_vault_delete_is_refused_keeps_its_routing_rows() {
         .await
         .expect("the first connect lands");
     // A model entry naming the grant's key is what the vault refuses a delete
-    // over; it makes the second write of a Disconnect fail on demand.
+    // over, before any write: `rollback` is the case that fails the second.
     let entry = reference_grant(&round).await;
 
     let refused = round

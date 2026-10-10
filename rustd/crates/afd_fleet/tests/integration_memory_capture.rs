@@ -84,9 +84,10 @@ async fn test_memory_capture_fencing() {
         "one delta in, one entry stored — the control the refusal below is measured against"
     );
 
-    // ── A superseded holder is refused ──────────────────────────────────────
-    // One below the live sequence, which is exactly what a holder carries after
-    // a reclaim has moved the fleet on without it.
+    // ── A token that is not the lease's own is refused ──────────────────────
+    // One below the lease's own token, which is still the live sequence: the
+    // fence refuses it as not the holder's. A reclaim that moved the fleet past
+    // the lease is `test_memory_routes_refuse_a_superseded_active_lease`.
     let superseded = run.fence.as_u64() - 1;
     let refusal = plane
         .capture(
@@ -192,6 +193,21 @@ async fn test_memory_routes_refuse_a_superseded_active_lease() {
     let fleet_id = Uuid7::parse(&run.fleet).expect("the fixture id is a v7 spelling");
     let plane = run.fixtures.plane();
     let lease = run.issued.lease_id.as_str();
+    // The control: while the fleet has not moved past it, the holder recalls
+    // and hydrates, so each refusal below is the reclaim's doing.
+    plane
+        .recall(
+            &run.runner,
+            &fleet_id,
+            &recall(lease, run.fence.as_u64()),
+            run.now,
+        )
+        .await
+        .expect("the holder recalls while the fleet has not moved past it");
+    plane
+        .hydrate(&run.runner, &fleet_id, run.now)
+        .await
+        .expect("and hydrates");
     let live = supersede(&run).await;
 
     for presented in [run.fence.as_u64(), live, u64::MAX] {
@@ -331,7 +347,7 @@ fn recall(lease_id: &str, fencing_token: u64) -> MemoryRecallRequest<'_> {
 
 /// One capture body, over one delta.
 ///
-/// A builder because three cases send the same shape and differ only in the
+/// A builder because every case sends the same shape and differs only in the
 /// token and the content — the two fields a literal per call site would let
 /// drift apart, and the exact pair every assertion above turns on.
 fn push<'a>(lease_id: &'a str, fencing_token: u64, content: &'a str) -> MemoryPushRequest<'a> {

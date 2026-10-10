@@ -23,6 +23,12 @@
 //! type. They are refusals the caller renders, because nothing failed: the
 //! state machine did its job and answered no. [`crate::state::Rejected`] and
 //! [`crate::Unknown`] are those answers.
+//!
+//! One caller-resolvable state does arrive here: the vault refusing a
+//! Disconnect's delete while a model entry still names the credential. The
+//! vault raises it as an error inside the Disconnect's transaction, so it is
+//! carried as one, and `referenced_by` lets the route render it as the 409 it
+//! is.
 
 use afd_core::error_code::{self, ErrorCode};
 

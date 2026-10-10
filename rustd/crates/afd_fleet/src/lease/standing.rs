@@ -92,7 +92,13 @@ impl LiveLease {
 /// The fence rule itself: the lease's own token is the fleet's live one, and
 /// it is the token `presented`.
 pub(crate) fn fence_holds(fence: i64, live_seq: i64, presented: u64) -> bool {
-    fence >= live_seq && u64::try_from(fence).is_ok_and(|own| own == presented)
+    fence_current(fence, live_seq) && u64::try_from(fence).is_ok_and(|own| own == presented)
+}
+
+/// Its first half, for a verb that presents no token (a hydrate): no reclaim
+/// has moved the fleet past the lease whose own token is `fence`.
+pub(crate) const fn fence_current(fence: i64, live_seq: i64) -> bool {
+    fence >= live_seq
 }
 
 impl Plane {
