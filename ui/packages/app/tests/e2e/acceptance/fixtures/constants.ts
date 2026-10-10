@@ -79,12 +79,3 @@ export const SECOND_WORKSPACE_NAME = "fixture-secondary";
 // suite runs every test carrying this tag alone, after the parallel groups.
 export const FRAME_BUDGET_TAG = "@frame-budget";
 
-/**
- * `@clerk/nextjs` major version that the harness was tested against. A bump
- * of this dependency's major is intentionally a breaking change: clerkMiddleware
- * may tighten cookie/JWT validation (e.g. start enforcing real dev-browser
- * tokens, rotate publicMetadata embedding), which would silently break or
- * silently relax the fixture wire. _smoke.spec.ts asserts the installed major
- * equals this constant so a `bun install` bump surfaces immediately.
- */
-export const CLERK_NEXTJS_PINNED_MAJOR = 7;
