@@ -142,6 +142,8 @@ MORE_READS = {
     "spawnSync sed": ("cli/test/sed.unit.test.ts", 'const CLI_ROOT = join(import.meta.dir, "..");\nspawnSync("sed", ["-n", "1p", join(CLI_ROOT, "src/commands/login.ts")]);\n', 2),
     "js helper walk": ("cli/test/walk.unit.test.ts", 'function walk(dir: string): string[] {\n  return readdirSync(dir);\n}\nconst found = walk(join(__dirname, "..", "src"));\n', 4),
     "js helper with a quoted brace": ("cli/test/brace.unit.test.ts", 'function slurp(file: string) {\n  const marker = "}";\n  return readFileSync(file, "utf8");\n}\nslurp(join(__dirname, "..", "src", "commands", "login.ts"));\n', 5),
+    "js helper copies then reads": ("cli/test/later.unit.test.ts", 'async function load(file: string) {\n  await Bun.write(destination, Bun.file(file))\n  return readFileSync(file, "utf8")\n}\nload(join(import.meta.dir, "..", "src", "commands", "login.ts"))\n', 5),
+    "js copy then a read": ("cli/test/after.unit.test.ts", 'await Bun.write(destination, Bun.file(join(import.meta.dir, "..", "bunfig.toml")))\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8")\n', 2),
     "js arrow helper": ("cli/test/arrow.unit.test.ts", 'const slurp = (file: string) => {\n  const at = join(file, "login.ts");\n  return readFileSync(at, "utf8");\n};\nslurp(join(import.meta.dir, "..", "src", "commands"));\n', 5),
 }
 

@@ -48,15 +48,15 @@ def js_literal_end(code: str, index: int) -> int | None:
     return None
 
 
-def js_block_end(code: str, open_index: int) -> int:
-    """The offset of the brace closing the one at `open_index`; a brace inside a literal is text."""
+def js_block_end(code: str, open_index: int, pair: str = "{}") -> int:
+    """The offset of the bracket closing the one at `open_index`; a bracket inside a literal is text."""
     depth, index = 0, open_index
     while index < len(code):
         end = js_literal_end(code, index)
         if end is not None:
             index = end
             continue
-        depth += {"{": 1, "}": -1}.get(code[index], 0)
+        depth += {pair[0]: 1, pair[1]: -1}.get(code[index], 0)
         if depth == 0:
             return index
         index += 1
