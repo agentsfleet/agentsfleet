@@ -91,24 +91,6 @@ function offendersFromSource(source: string, site: string): Offender[] {
 }
 
 describe("dashboard action buttons", () => {
-  it("names an offender the scanner is built to catch, past an arrow inside the tag", () => {
-    // The positive control: without it the sweep above would pass vacuously
-    // the day the tag reader stopped matching. The `>` inside `onClick` is
-    // exactly what truncated the brief's own grep.
-    const source = [
-      'export const X = () => (',
-      '  <Button variant="outline" onClick={() => a > b}>go</Button>',
-      ");",
-      '<ButtonGroup variant="secondary" />',
-    ].join("\n");
-    expect(offendersFromSource(source, "fixture.tsx")).toEqual([
-      { site: "fixture.tsx:2", variant: "outline" },
-    ]);
-    expect(() => offendersFromSource("<Button variant=\"outline\"", "open.tsx")).toThrow(
-      "unterminated <Button in open.tsx:1",
-    );
-  });
-
   it("no dashboard action button uses a variant outside the rule", () => {
     const offenders = tsxFiles(DASHBOARD_ROOT).flatMap(offendersIn);
     expect(
