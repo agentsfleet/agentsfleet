@@ -57,7 +57,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` | EDIT | The launcher starts with an empty environment |
 | `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/{prepare.rs,support.rs}` | EDIT | Empty-environment test, over a fake launcher that reports its inherited environment |
 | `rustd/crates/afd_fleet/src/lease/fence.rs` | EDIT | Fence reads return the lease's own token beside the live sequence |
-| `rustd/crates/afd_fleet/src/lease/memory.rs`, `rustd/crates/afd_fleet/src/error/{detail.rs,refuse.rs}` | EDIT | Capture, recall and hydrate decide through `fence_holds`; the stale-fence sentence and fenced event name every verb |
+| `rustd/crates/afd_fleet/src/lease/memory.rs`, `rustd/crates/afd_fleet/src/error/{detail.rs,refuse.rs,mod.rs}` | EDIT | Capture, recall and hydrate decide through `fence_holds`; the stale-fence sentence and fenced event name every verb |
 | `rustd/crates/afd_fleet/src/lease/sql/lease.rs` | EDIT | The mint scope read requires the lease to hold the live sequence |
 | `rustd/crates/afd_fleet/tests/{integration_memory_capture.rs,integration_memory_hydrate_order.rs,fleet_suite.rs}` | EDIT, CREATE | The test admitting a token above the live sequence is inverted; superseded-lease cases; hydrate trusts the higher token over the clock |
 | `rustd/crates/afd_fleet/tests/{integration_credential_mint.rs,integration_credential_mint/cases.rs}` | EDIT | A superseded active lease mints nothing; the fixture lease's token is a named constant, and a helper moves the sequence past it |
@@ -198,7 +198,7 @@ afd_fleet (§7)  Leases::stored_config(&Uuid7) -> Result<Option<FleetConfig>>
 Slack chat.postMessage body: `text` is entity-escaped for & < >; `metadata` unchanged
 ```
 
-No route or error code changes. A referenced Disconnect's 409 gains `current_state: "referenced"`; Disconnect, mint and vault delete document their 409s. Refusals reuse `RUN_STALE_FENCING_TOKEN`, `lease_not_found`, `budget_exhausted` and the egress refusal codes.
+No route or error code changes. A referenced Disconnect's 409 gains `current_state: "referenced"` and the mint's `UZ-GH-001` 409 `current_state: "reconnect_required"`; Disconnect, mint and vault delete document their 409s. Refusals reuse `RUN_STALE_FENCING_TOKEN`, `lease_not_found`, `budget_exhausted` and the egress refusal codes.
 
 ## Failure Modes
 

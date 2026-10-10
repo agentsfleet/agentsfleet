@@ -645,14 +645,13 @@ describe("ModelsRegistryTable", () => {
     expect(computeNextSort({ key: "model", dir: "descending" }, "model")).toEqual({ key: "model", dir: "ascending" });
   });
 
-  it("sortValueFor reads the shown name for the model column and provider (or '') for the provider column", async () => {
-    const { sortValueFor } = await import(
-      "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
-    );
-    const e = entry({ model_id: "claude-sonnet-5", provider: "anthropic" });
-    expect(sortValueFor(e, "model")).toBe("Sonnet 5\tclaude-sonnet-5");
-    expect(sortValueFor(e, "provider")).toBe("anthropic");
-    expect(sortValueFor(entry({ provider: undefined }), "provider")).toBe("");
+  it("compareEntries orders models as the library does and providers by name, a missing one first", async () => {
+    const { compareEntries } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view");
+    const big = entry({ model_id: "openai/gpt-oss-120b", provider: "openai" });
+    const small = entry({ model_id: "openai/gpt-oss-20b", provider: "anthropic" });
+    expect([big, small].sort((a, b) => compareEntries(a, b, "model")).map((e) => e.model_id)).toEqual(["openai/gpt-oss-20b", "openai/gpt-oss-120b"]);
+    expect(compareEntries(big, small, "provider")).toBeGreaterThan(0);
+    expect(compareEntries(entry({ provider: undefined }), small, "provider")).toBeLessThan(0);
   });
 
   it("formats the context column at and below the 'k' abbreviation threshold", async () => {

@@ -146,12 +146,12 @@ pub(crate) async fn disconnect<D: Services>(
         .connectors()
         .forget(&owned.workspace, provider)
         .await
-        .map_err(|refused| match refused.referenced_by() {
-            // The caller's to resolve, so it is a conflict naming its state,
-            // as the vault's own delete of the same credential answers.
-            Some(_) => Refusal::conflict_at(EVENT_WRITE, STATE_REFERENCED)(refused),
-            None => Refusal::at(EVENT_WRITE)(refused),
-        })?;
+        // A credential a model entry still names is the caller's to resolve,
+        // so it is a conflict naming its state, as the vault's own delete is.
+        .map_err(Refusal::conflict_or_at(
+            EVENT_WRITE,
+            |refused: &afd_connector::Error| refused.referenced_by().map(|_| STATE_REFERENCED),
+        ))?;
 
     // Both outcomes answer 204, and the value is still worth matching on: a
     // reader here can see that the two were considered and deliberately

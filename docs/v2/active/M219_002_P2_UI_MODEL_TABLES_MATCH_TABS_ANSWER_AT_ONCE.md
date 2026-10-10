@@ -65,7 +65,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/{helpers/dashboard-mocks.tsx,fleets-routes/detail-views.test.ts}` | EDIT | §2: the link mock answers `useLinkStatus`; the route test proves the panel paints with its tabs |
 | `ui/packages/app/app/(dashboard)/settings/members/components/{TeamTable.tsx,MembersView.test.tsx}`, `ui/packages/app/tests/{helpers/members-fixtures.tsx,e2e/acceptance/team-members.spec.ts}` | EDIT | §3: email status in the Time column as "Invite emailed"; plain icon actions |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/{secret-row-cells.tsx,SecretsList.test.tsx}` | EDIT | §3: the name sits in a fixed slot that ellipsizes, its icons after it |
-| `ui/packages/design-system/src/design-system/{Switch.tsx,Switch.test.tsx,index.ts}`, `ui/packages/design-system/src/{index.ts,index.test.ts}` | CREATE, EDIT | §5: a `Switch` primitive over `@radix-ui/react-switch` |
+| `ui/packages/design-system/src/design-system/{Switch.tsx,Switch.test.tsx,index.ts,DataTable.types.ts,DataTableModel.ts,DataTableModel.test.tsx}`, `ui/packages/design-system/src/{index.ts,index.test.ts}` | CREATE, EDIT | §5: a `Switch` primitive over `@radix-ui/react-switch`; §1: a `DataTable` column may bring its own `compare` |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{MemoryPanel.tsx,MemoryPanel.test.tsx}` | EDIT | §5: each grant a named switch with its description |
 | `package.json`, `bun.lock`, `cli/{package.json,bun.lock}`, `ui/packages/{app,design-system,website}/package.json` | EDIT | §6: every package on its latest release; §5 adds `@radix-ui/react-switch` |
 | `ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.tsx` | EDIT | §6: a tab click reports one source change on Radix tabs 1.1.22 |
@@ -98,7 +98,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — A model reads the same in both tables — DONE
 
-`display.ts` turns a provider id into the name the provider markets (`claude-fable-5` → `Fable 5`, `accounts/fireworks/models/glm-5p3-flash` → `GLM 5.3 Flash`), formats context with pinned `en-US` grouping, and prints rates as `in / cached / out` at two decimals. Both tables render the name with the exact id on hover, sort by the name and then the id (`modelSortKey`), and keep accessible labels on the id. **Implementation default:** derive the name from the id rather than add a column, because the catalogue has no display field and the id stays one hover away.
+`display.ts` turns a provider id into the name the provider markets (`claude-fable-5` → `Fable 5`, `accounts/fireworks/models/glm-5p3-flash` → `GLM 5.3 Flash`), formats context with pinned `en-US` grouping, and prints rates as `in / cached / out` at two decimals. Both tables render the name with the exact id on hover, sort by the name and then the id (`compareModelIds`), and keep accessible labels on the id. **Implementation default:** derive the name from the id rather than add a column, because the catalogue has no display field and the id stays one hover away.
 
 - **Dimension 1.1** — Provider ids read as marketed names → Test `names a provider id the way its provider markets the model` — DONE (`ui/packages/app/lib/models/display.test.ts`)
 - **Dimension 1.2** — Both tables print one row's context and rates identically → Test `formats context and rates the way the model library prints them` — DONE (`ui/packages/app/lib/models/display.test.ts`)
@@ -163,7 +163,7 @@ No API, route or wire change.
 ## Invariants
 
 1. One formatter per value — both tables import `display.ts`; R1 counts no second `formatRates` definition under `ui/packages/app/app`.
-2. Both tables sort one way — by `modelSortKey`, the shown name then the id, so "GPT-5" precedes "GPT-5 Mini" under `localeCompare` and code-point order alike (`a name sorts before a longer name it starts, under either table's comparison`); accessible labels read `model_id`.
+2. Both tables sort one way — through `compareModelIds`, the shown name under a numeric `en-US` collation and then the id, which the workspace table calls directly and the library's `DataTable` column passes as its `compare` (`a name sorts before a longer one it starts, and a number inside a name sorts as a number`); accessible labels read `model_id`.
 
 ## Metrics & Observability
 

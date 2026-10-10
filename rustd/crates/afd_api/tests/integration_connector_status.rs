@@ -146,7 +146,6 @@ impl Fixture {
         .expect("the routing row seeds");
     }
 
-    /// How many routing rows name `account` for this workspace.
     /// Names `provider`'s grant key from a model entry, the reference the vault
     /// refuses a delete over. Returns the entry for [`Self::drop_entry`].
     async fn reference_handle(&self, provider: Provider) -> String {
@@ -176,6 +175,7 @@ impl Fixture {
             .expect("the model entry deletes");
     }
 
+    /// How many routing rows name `account` for this workspace.
     async fn routed(&self, provider: Provider, account: &str) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(

@@ -5,7 +5,7 @@
 
 import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
 import type { TenantModelEntry } from "@/lib/types";
-import { modelSortKey } from "@/lib/models/display";
+import { compareModelIds } from "@/lib/models/display";
 
 export type SortState = { key: "model" | "provider"; dir: "ascending" | "descending" } | null;
 
@@ -20,10 +20,10 @@ export function computeNextSort(cur: SortState, key: string): SortState | null {
   return { key, dir: cur.dir === "ascending" ? "descending" : "ascending" };
 }
 
-/** Pure — the sort comparator's per-row key, single call site per column. The
- * model column sorts by the name it shows, as the model library does. */
-export function sortValueFor(entry: TenantModelEntry, key: "model" | "provider"): string {
-  return key === "model" ? modelSortKey(entry.model_id) : (entry.provider ?? "");
+/** Pure — the order two entries take under a sort column. The model column
+ * orders exactly as the model library does, through the one shared comparison. */
+export function compareEntries(a: TenantModelEntry, b: TenantModelEntry, key: "model" | "provider"): number {
+  return key === "model" ? compareModelIds(a.model_id, b.model_id) : (a.provider ?? "").localeCompare(b.provider ?? "");
 }
 
 /**

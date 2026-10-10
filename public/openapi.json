@@ -4470,7 +4470,7 @@
           "Runners"
         ],
         "summary": "Mint a credential for a declared tool",
-        "description": "Issued at the moment a tool needs one, scoped to what the lease already proved. The body names no workspace. The credential is minted against the lease the caller holds, so a runner cannot ask for material outside its own run. An uninstalled or revoked GitHub App returns 409 `UZ-GH-001`; reconnect GitHub before the next mint.",
+        "description": "Issued at the moment a tool needs one, scoped to what the lease already proved. The body names no workspace. The credential is minted against the lease the caller holds, so a runner cannot ask for material outside its own run. An uninstalled or revoked GitHub App returns 409 `UZ-GH-001` naming `reconnect_required`; reconnect GitHub before the next mint.",
         "operationId": "runner_mint_credential",
         "requestBody": {
           "content": {
