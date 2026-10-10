@@ -2,8 +2,6 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/test_search.sh
-source "$script_dir/../../lib/test_search.sh"
 repo_root="$(cd "$script_dir/../../.." && pwd)"
 script_under_test="$script_dir/02_credentials.sh"
 
@@ -256,16 +254,16 @@ test_discord_notifications_route_by_release_stage() {
   local action="$repo_root/.github/actions/notify-discord/action.yml"
   local workflow path notify_count selector_count
 
-  if ! rg --fixed-strings --quiet 'default: discord-ci-webhook' "$action" ||
-     ! rg --fixed-strings --quiet 'op://${{ inputs.vault }}/${{ inputs.webhook-item }}/credential' "$action"; then
+  if ! grep -Fq 'default: discord-ci-webhook' "$action" ||
+     ! grep -Fq 'op://${{ inputs.vault }}/${{ inputs.webhook-item }}/credential' "$action"; then
     bad "$name" "notify action does not default to the development webhook item"
     return
   fi
 
   for workflow in release.yml post-release.yml; do
     path="$repo_root/.github/workflows/$workflow"
-    notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
-    selector_count="$(rg --fixed-strings -c 'webhook-item: discord-release-webhook' "$path" || true)"
+    notify_count="$(grep -Fc 'uses: ./.github/actions/notify-discord' "$path" || true)"
+    selector_count="$(grep -Fc 'webhook-item: discord-release-webhook' "$path" || true)"
     if [ "${notify_count:-0}" -ne 1 ] || [ "${selector_count:-0}" -ne 1 ]; then
       bad "$name" "$workflow does not select the release webhook"
       return
@@ -274,11 +272,11 @@ test_discord_notifications_route_by_release_stage() {
 
   for workflow in deploy-dev.yml deploy-dev-fly.yml deploy-dev-metal.yml; do
     path="$repo_root/.github/workflows/$workflow"
-    notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
+    notify_count="$(grep -Fc 'uses: ./.github/actions/notify-discord' "$path" || true)"
     if [ "${notify_count:-0}" -ne 1 ]; then
       bad "$name" "$workflow does not invoke the Discord notification action exactly once"
       return
-    elif rg --quiet 'webhook-item:' "$path"; then
+    elif grep -Eq 'webhook-item:' "$path"; then
       bad "$name" "$workflow overrides the development webhook default"
       return
     fi
@@ -291,7 +289,7 @@ test_workflows_use_deployment_stage_without_generated_pointer() {
   local workflow
 
   for workflow in deploy-dev.yml release.yml; do
-    if ! rg --fixed-strings --quiet \
+    if ! grep -Fq \
       'STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh' \
       "$repo_root/.github/workflows/$workflow"; then
       bad "$name" "$workflow does not use the deployment credential stage"
@@ -300,7 +298,7 @@ test_workflows_use_deployment_stage_without_generated_pointer() {
   done
 
   for workflow in deploy-dev.yml deploy-dev-fly.yml release.yml; do
-    if rg --quiet 'PLATFORM_ADMIN_WORKSPACE_ID' \
+    if grep -Eq 'PLATFORM_ADMIN_WORKSPACE_ID' \
       "$repo_root/.github/workflows/$workflow"; then
       bad "$name" "$workflow still requires the post-signup workspace pointer"
       return
@@ -319,19 +317,19 @@ test_workflows_load_only_current_connector_boot_secret() {
     family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
     # The expression is literal GitHub Actions syntax.
     # shellcheck disable=SC2016
-    if ! rg --fixed-strings --quiet \
+    if ! grep -Fq \
       "APPROVAL_SIGNING_SECRET: op://\${{ vars.$vault }}/approval-signing-secret/credential" \
       <<<"$family"; then
       bad "$name" "$workflow workflow family does not load approval-signing-secret"
       return
     fi
-    if ! rg --fixed-strings --quiet \
+    if ! grep -Fq \
       'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"' \
       <<<"$family"; then
       bad "$name" "$workflow workflow family does not pass approval-signing-secret to Fly"
       return
     fi
-    if rg --quiet 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' <<<"$family"; then
+    if grep -Eq 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' <<<"$family"; then
       bad "$name" "$workflow workflow family still loads retired GitHub app boot secrets"
       return
     fi
@@ -358,7 +356,7 @@ test_workflows_seed_the_connector_signing_row() {
     env_name=dev
     [ "$workflow" = release ] && env_name=prod
     family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
-    if ! rg --fixed-strings --quiet \
+    if ! grep -Fq \
       "ENV=$env_name ./playbooks/lib/platform_secret_sync.sh approval-signing" \
       <<<"$family"; then
       bad "$name" "$workflow workflow family does not seed the approval-signing vault row"
@@ -379,13 +377,13 @@ test_dev_deploy_sets_the_daemons_own_log_level() {
   local name="dev deploy sets the daemon's own log level variable"
   local workflow="$repo_root/.github/workflows/deploy-dev-fly.yml"
 
-  if ! rg --fixed-strings --quiet 'AGENTSFLEET_LOG_LEVEL="debug"' "$workflow"; then
+  if ! grep -Fq 'AGENTSFLEET_LOG_LEVEL="debug"' "$workflow"; then
     bad "$name" "deploy-dev-fly.yml does not set AGENTSFLEET_LOG_LEVEL"
     return
   fi
   # The bare spelling is read by nothing in `rustd/`; setting it again would be
   # the same silent no-op this check exists to prevent.
-  if rg --quiet '^\s+LOG_LEVEL=' "$workflow"; then
+  if grep -Eq '^\s+LOG_LEVEL=' "$workflow"; then
     bad "$name" "deploy-dev-fly.yml still sets the dead LOG_LEVEL variable"
     return
   fi
@@ -405,14 +403,14 @@ test_issue_tracker_docs_pin_current_source_scopes() {
 
   # Backticks below are literal Markdown delimiters.
   # shellcheck disable=SC2016
-  if ! rg --fixed-strings --quiet 'scopes: "read:jira-work read:jira-user write:jira-work' "$registry" \
-    || ! rg --fixed-strings --quiet 'read:servicedesk-request write:servicedesk-request offline_access",' "$registry"; then
+  if ! grep -Fq 'scopes: "read:jira-work read:jira-user write:jira-work' "$registry" \
+    || ! grep -Fq 'read:servicedesk-request write:servicedesk-request offline_access",' "$registry"; then
     bad "$name" "Jira source scope changed"
   elif [[ "$jira_doc_text" != *'exactly `read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request`'* ]]; then
     bad "$name" "Jira registration scope is stale"
-  elif ! rg --fixed-strings --quiet 'scopes: "read,comments:create",' "$registry"; then
+  elif ! grep -Fq 'scopes: "read,comments:create",' "$registry"; then
     bad "$name" "Linear source scope changed"
-  elif ! rg --fixed-strings --quiet \
+  elif ! grep -Fq \
     'The authorization request supplies `read,comments:create`.' \
     "$linear_doc"; then
     bad "$name" "Linear registration scope is stale"

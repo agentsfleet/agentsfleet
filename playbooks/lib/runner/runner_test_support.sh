@@ -12,8 +12,6 @@
 set -uo pipefail
 
 RUNNER_TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../test_search.sh
-source "$RUNNER_TEST_DIR/../test_search.sh"
 readonly PREPARE="$RUNNER_TEST_DIR/prepare.sh"
 readonly DEPLOY="$RUNNER_TEST_DIR/deploy.sh"
 readonly VERIFY="$RUNNER_TEST_DIR/verify.sh"
