@@ -20,18 +20,4 @@ impl Error {
             _ => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
-
-    /// Whether the statement counter would not answer, which almost always
-    /// means Postgres started without `pg_stat_statements` preloaded.
-    #[must_use]
-    pub const fn is_statements_unreadable(&self) -> bool {
-        matches!(self.kind(), ErrorKind::StatementsUnreadable { .. })
-    }
-
-    /// Whether the drain refused because another platform default already
-    /// holds the provider it stages.
-    #[must_use]
-    pub const fn is_platform_default_held(&self) -> bool {
-        matches!(self.kind(), ErrorKind::PlatformDefaultHeld { .. })
-    }
 }
