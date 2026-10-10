@@ -41,6 +41,11 @@ const DATA_TABLE = '[data-testid="data-table"]';
 const FILL_GAP_PX = 48;
 // A constant name: the global teardown sweep reaps fixture library rows.
 const TABLE_FILL_TEMPLATE = "e2e-table-fill";
+// Each test seeds the library rows it reads: on a fresh deployment no other
+// project is guaranteed to have created one before this suite runs.
+const PLATFORM_ENTRY_ID = "e2e-measured-layout";
+const PLATFORM_LIBRARIES = "/v1/admin/fleet-libraries";
+const GALLERY_TEMPLATE = "e2e-measured-gallery";
 
 async function expectTableFillsPage(page: Page, path: string): Promise<void> {
   await page.goto(path);
@@ -56,6 +61,21 @@ async function expectTableFillsPage(page: Page, path: string): Promise<void> {
   // A page that grows with its rows has no definite height to give the table.
   expect(measured.pastCanvas, `${path} grows past the canvas`).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
   expect(measured.gap, `${path} leaves its table short of the page`).toBeLessThanOrEqual(FILL_GAP_PX);
+}
+
+// Onboards one platform row for the operator's library page, and removes it after.
+async function withPlatformEntry(body: () => Promise<void>): Promise<void> {
+  const operator = clientFor(FIXTURE_KEY.operator);
+  await operator.post(PLATFORM_LIBRARIES, {
+    source_kind: SOURCE_KIND_UPLOAD,
+    skill_markdown: skillMd(PLATFORM_ENTRY_ID),
+    trigger_markdown: triggerMd(PLATFORM_ENTRY_ID),
+  });
+  try {
+    await body();
+  } finally {
+    await operator.delete(`${PLATFORM_LIBRARIES}/${encodeURIComponent(PLATFORM_ENTRY_ID)}`);
+  }
 }
 
 async function expectFooterReachable(dialog: Locator, footerButton: string): Promise<void> {
@@ -93,9 +113,11 @@ test.describe("dialogs keep their footer reachable in a short window", () => {
   });
 
   test("the fleet-library edit form scrolls to its Save button", async ({ page }) => {
-    await page.goto("/admin/fleet-libraries");
-    await page.getByRole("button", { name: EDIT, exact: true }).first().click();
-    await expectFooterReachable(page.getByRole("dialog", { name: EDIT_TITLE }), "Save");
+    await withPlatformEntry(async () => {
+      await page.goto("/admin/fleet-libraries");
+      await page.getByRole("button", { name: EDIT, exact: true }).first().click();
+      await expectFooterReachable(page.getByRole("dialog", { name: EDIT_TITLE }), "Save");
+    });
   });
 });
 
@@ -114,6 +136,11 @@ test.describe("measured placement", () => {
   test("a gallery card's description stays one line however long it is", async ({ page }) => {
     await page.setViewportSize(PHONE_WINDOW);
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    await clientFor(FIXTURE_KEY.regular).post(`/v1/workspaces/${workspaceId}/fleet-libraries`, {
+      source_kind: SOURCE_KIND_UPLOAD,
+      skill_markdown: skillMd(GALLERY_TEMPLATE),
+      trigger_markdown: triggerMd(GALLERY_TEMPLATE),
+    });
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, "fleets/new"));
     const descriptions = page.locator(LIBRARY_DESCRIPTION);
@@ -158,7 +185,9 @@ test.describe("a paginating table fills the page it sits on", () => {
   });
 
   test("Platform > Fleet library fills its page", async ({ page }) => {
-    await signInAs(page, FIXTURE_KEY.operator);
-    await expectTableFillsPage(page, "/admin/fleet-libraries");
+    await withPlatformEntry(async () => {
+      await signInAs(page, FIXTURE_KEY.operator);
+      await expectTableFillsPage(page, "/admin/fleet-libraries");
+    });
   });
 });
