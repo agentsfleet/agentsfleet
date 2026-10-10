@@ -65,6 +65,7 @@ fn plane() -> ServingPlane {
         },
         analytics: Analytics::silent(),
         slack_api_base: String::new(),
+        vendor_client: reqwest::Client::new(),
         login: LoginConfig {
             code_pepper: SecretBytes::new(b"plane-test-pepper".to_vec()),
             app_url: afd_connector::Dashboard::parse("https://app.fixture.test")

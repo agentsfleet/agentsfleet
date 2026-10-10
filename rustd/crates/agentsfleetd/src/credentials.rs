@@ -37,22 +37,39 @@ use afd_credential::vault::Vault;
 /// trip to a vendor, not an interactive one.
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long one call to the external scheduler may take.
+///
+/// The scheduler is called inside a tenant's request — creating, editing or
+/// removing a schedule — and carries this deployment's bearer token. With no
+/// bound, a scheduler that accepts the connection and never answers holds that
+/// request, and the token's connection, for as long as it likes. Ten seconds,
+/// the same bound as a vendor exchange: one management round trip to a hosted
+/// API.
+const SCHEDULE_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Builds the broker this deployment mints through.
 ///
 /// Answers a broker holding NOTHING when no admin workspace is configured, and
 /// when its rows are absent or unreadable. Both are the same thing from a
 /// runner's side — no credential is minted — and the log line is what separates
 /// them for an operator.
-pub async fn resolve(vault: &Vault, admin_workspace: Option<&Uuid7>) -> Arc<Broker> {
+///
+/// `client` is the pool the broker's exchanges go out on, built by boot with
+/// [`vendor_exchange_client`] before anything is spawned.
+pub async fn resolve(
+    vault: &Vault,
+    admin_workspace: Option<&Uuid7>,
+    client: reqwest::Client,
+) -> Arc<Broker> {
     let Some(workspace) = admin_workspace else {
         tracing::info!(
             event = "credential_broker_static_only",
             "no platform admin workspace is set; no on-demand credentials will be minted"
         );
-        return broker(Platform::empty());
+        return broker(Platform::empty(), client);
     };
     let platform = Platform::load(vault, workspace).await;
-    broker(platform)
+    broker(platform, client)
 }
 
 /// The broker over whatever this deployment turned out to hold.
@@ -61,10 +78,10 @@ pub async fn resolve(vault: &Vault, admin_workspace: Option<&Uuid7>) -> Arc<Brok
 /// workspace and one whose rows would not open must produce the SAME broker —
 /// one that resolves every connector and mints for none of them — and two
 /// construction sites would be two chances for them to diverge.
-fn broker(platform: Platform) -> Arc<Broker> {
+fn broker(platform: Platform, client: reqwest::Client) -> Arc<Broker> {
     Arc::new(Broker::new(
         Arc::new(Registry::default()),
-        Arc::new(Vendors::new(platform, vendor_exchange_client())),
+        Arc::new(Vendors::new(platform, client)),
     ))
 }
 
@@ -88,18 +105,25 @@ pub fn with_exchanger(exchanger: Arc<dyn afd_credential::credential::Exchanger>)
 /// the broker holds this one privately and a shared pool would let a slow
 /// connect exchange consume the slots a credential mint needs.
 ///
-/// A builder that will not build cannot happen here — no TLS backend is
-/// selected at runtime in this workspace — but it is not worth a panic to say
-/// so, so the default client stands in and the broker's own refusals cover a
-/// client that cannot reach a vendor.
-pub(crate) fn vendor_exchange_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(EXCHANGE_TIMEOUT)
-        // The vendor is reached directly. An environment proxy silently
-        // rerouting the exchange that mints a tenant's credential is not a
-        // convenience worth having — the same call `afd_identity`'s key-set
-        // fetcher makes, for the same reason.
-        .no_proxy()
-        .build()
-        .unwrap_or_default()
+/// The vendor is reached directly: an environment proxy silently rerouting
+/// the exchange that mints a tenant's credential is not a convenience worth
+/// having, which is `afd_identity::direct`'s rule for every such client.
+///
+/// # Errors
+/// A builder that will not build, which refuses boot. A default client in its
+/// place would honour environment proxies and carry no deadline — the two
+/// things this client exists to refuse.
+pub(crate) fn vendor_exchange_client() -> reqwest::Result<reqwest::Client> {
+    afd_identity::direct(EXCHANGE_TIMEOUT).build()
+}
+
+/// The client the scheduler's management calls go out on.
+///
+/// Direct, for the reason a vendor exchange is: each call carries this
+/// deployment's scheduler bearer token, which no environment proxy should see.
+///
+/// # Errors
+/// A builder that will not build, which refuses boot.
+pub(crate) fn schedule_client() -> reqwest::Result<reqwest::Client> {
+    afd_identity::direct(SCHEDULE_TIMEOUT).build()
 }

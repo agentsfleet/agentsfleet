@@ -241,3 +241,20 @@ fn test_preflight_resolves_a_complete_environment() {
         "a resolved login pepper must not render its own material"
     );
 }
+
+/// A master key set with surrounding whitespace — a heredoc's newline — is
+/// still that key, read trimmed exactly as an unpadded one is.
+#[test]
+fn test_a_padded_master_key_still_boots() {
+    let padded = format!("  {GOOD_KEK}\n");
+    let env = env_with([
+        (DATABASE_KNOB, GOOD_DATABASE),
+        (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
+        (ENCRYPTION_MASTER_KEY_KNOB, padded.as_str()),
+    ]);
+
+    assert!(
+        preflight(&env).is_ok(),
+        "the padding is not part of the key"
+    );
+}

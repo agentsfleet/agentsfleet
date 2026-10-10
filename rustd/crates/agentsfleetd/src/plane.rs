@@ -168,15 +168,15 @@ impl ServingPlane {
             login,
             mut schedule,
             slack_api_base,
+            vendor_client,
         } = parts;
         // One object-store owner, split into the half that READS a snapshot and
         // the half that WRITES one. A deployment with no upload handle still
         // serves the catalogue; `LibraryImports::without_store` carries that
         // absence as a value, the way `Bundles::unconfigured` does.
         // The exchange dials the vendor and the Jira site listing dials it
-        // again, so both take the same handle: one pool for everything this
+        // again, so both take `vendor_client`: one pool for everything this
         // family sends outbound — see `crate::credentials`.
-        let vendor_client = crate::credentials::vendor_exchange_client();
         // One provider store, read by two planes. The lease verb resolves which
         // key a run dials with; the tenant surface reads and writes the row
         // that decides it. A `Providers` is a pool handle and an `Arc` over the
