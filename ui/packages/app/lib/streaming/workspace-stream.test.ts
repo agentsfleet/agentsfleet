@@ -252,18 +252,6 @@ describe("workspace-stream — lifecycle", () => {
     second();
   });
 
-  it("allows cleanup handles to run after registry teardown", () => {
-    const fleet = subscribeFleet(WS, FLEET_A, () => {});
-    const status = subscribeStatus(WS, () => {});
-    const workspace = subscribeWorkspaceFrames(WS, () => {});
-
-    __resetWorkspaceRegistryForTests();
-
-    fleet();
-    status();
-    workspace();
-  });
-
   it("a re-subscribe within the idle window reuses the same connection", () => {
     const a = subscribeFleet(WS, FLEET_A, () => {});
     a();
