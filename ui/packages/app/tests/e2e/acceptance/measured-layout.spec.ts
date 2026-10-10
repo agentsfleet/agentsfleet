@@ -8,11 +8,18 @@
  * Each dialog is opened in a window too short for its form. Radix locks the
  * page scroll while a dialog is open, so the footer is reachable only if the
  * dialog itself is bounded to the viewport and scrolls.
+ *
+ * A paginating table fills the page it sits on only when two halves agree: the
+ * page gives it a definite height and the table claims it. Each half once
+ * shipped broken alone (Events had a min-height shell, Platform > Fleet
+ * library a table that never grew), so the table is measured against its page.
  */
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { getDefaultWorkspaceId } from "./fixtures/seed";
+import { clientFor } from "./fixtures/api-client";
+import { getDefaultWorkspaceId, skillMd, triggerMd } from "./fixtures/seed";
+import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { workspaceHref } from "./fixtures/nav";
 import { EDIT, EDIT_TITLE } from "@/app/(dashboard)/admin/fleet-libraries/library-copy";
 import { INSPECT_RUNNER_LABEL } from "@/app/(dashboard)/admin/runners/[runnerId]/components/runner-copy";
@@ -26,6 +33,30 @@ const EDIT_POLICY = "Edit policy";
 const LIBRARY_DESCRIPTION = '[data-testid^="library-card-description-"]';
 // Sub-pixel rounding between a line box and its element's height.
 const LINE_TOLERANCE_PX = 1;
+const TALL_WINDOW = { width: 1280, height: 1400 };
+const FULL_HEIGHT_PAGE = '[data-page-layout="full-height"]';
+const DATA_TABLE = '[data-testid="data-table"]';
+// Section padding between the table's frame and the page's bottom edge. A
+// table that collapsed to its rows stops hundreds of pixels short in this window.
+const FILL_GAP_PX = 48;
+// A constant name: the global teardown sweep reaps fixture library rows.
+const TABLE_FILL_TEMPLATE = "e2e-table-fill";
+
+async function expectTableFillsPage(page: Page, path: string): Promise<void> {
+  await page.goto(path);
+  const layout = page.locator(FULL_HEIGHT_PAGE);
+  await expect(layout.locator(DATA_TABLE).first()).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+  const measured = await layout.evaluate((element, tableSelector) => {
+    const pageBox = element.getBoundingClientRect();
+    const tableBox = element.querySelector(tableSelector)!.getBoundingClientRect();
+    const contentBottom = pageBox.bottom - Number.parseFloat(getComputedStyle(element).paddingBottom);
+    const canvasBottom = element.closest("main")!.getBoundingClientRect().bottom;
+    return { pastCanvas: pageBox.bottom - canvasBottom, gap: contentBottom - tableBox.bottom };
+  }, DATA_TABLE);
+  // A page that grows with its rows has no definite height to give the table.
+  expect(measured.pastCanvas, `${path} grows past the canvas`).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
+  expect(measured.gap, `${path} leaves its table short of the page`).toBeLessThanOrEqual(FILL_GAP_PX);
+}
 
 async function expectFooterReachable(dialog: Locator, footerButton: string): Promise<void> {
   await expect(dialog).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
@@ -96,5 +127,38 @@ test.describe("measured placement", () => {
     );
     expect(overflow.length).toBeGreaterThan(0);
     for (const extra of overflow) expect(extra).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
+  });
+});
+
+test.describe("a paginating table fills the page it sits on", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize(TALL_WINDOW);
+  });
+
+  test("Configuration > Fleet library, Secrets and Events fill their pages", async ({ page }) => {
+    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    const client = clientFor(FIXTURE_KEY.regular);
+    // Both lists show an empty state instead of a table until they hold a row.
+    await client.post(`/v1/workspaces/${workspaceId}/fleet-libraries`, {
+      source_kind: SOURCE_KIND_UPLOAD,
+      skill_markdown: skillMd(TABLE_FILL_TEMPLATE),
+      trigger_markdown: triggerMd(TABLE_FILL_TEMPLATE),
+    });
+    const secrets = `/v1/workspaces/${workspaceId}/secrets`;
+    const secret = `e2e-table-fill-${crypto.randomUUID()}`;
+    await client.post(secrets, { name: secret, data: { purpose: "table fill fixture" } });
+    try {
+      await signInAs(page, FIXTURE_KEY.regular);
+      for (const surface of ["library", "secrets", "events"]) {
+        await expectTableFillsPage(page, workspaceHref(workspaceId, surface));
+      }
+    } finally {
+      await client.delete(`${secrets}/${encodeURIComponent(secret)}`);
+    }
+  });
+
+  test("Platform > Fleet library fills its page", async ({ page }) => {
+    await signInAs(page, FIXTURE_KEY.operator);
+    await expectTableFillsPage(page, "/admin/fleet-libraries");
   });
 });
