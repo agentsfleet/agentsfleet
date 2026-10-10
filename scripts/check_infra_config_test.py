@@ -17,8 +17,8 @@ sys.dont_write_bytecode = True
 
 import check_infra_config as checker
 
-UNIT = "[Unit]\nDescription=runner\n\n[Service]\nRestart=always\nRestartSec=5\nExecStart=/usr/local/bin/agentsfleet-runner\n"
-DEPLOY = "#!/usr/bin/env bash\nreadonly HEALTH_STABLE_SECONDS=30\n"
+UNIT = "[Unit]\nDescription=runner\n\n[Service]\nRestart=always\nRestartSec=5\nTimeoutStopSec=300\nExecStart=/usr/local/bin/agentsfleet-runner\n"
+DEPLOY = "#!/usr/bin/env bash\nreadonly DRAIN_TIMEOUT_SECONDS=300\nreadonly HEALTH_STABLE_SECONDS=30\n"
 
 POLICY = """\
 // The canonical tailnet policy.
@@ -142,6 +142,7 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
     def test_moved_rules_reject_seeded_violations(self) -> None:
         cases = {
             "infra-restart-window": seeded(checker.RUNNER_UNIT, "RestartSec=5", "RestartSec=1min"),
+            "infra-drain-timeout": seeded(checker.DEPLOY_SH, "DRAIN_TIMEOUT_SECONDS=300", "DRAIN_TIMEOUT_SECONDS=120"),
             "infra-tailnet-policy": seeded(checker.TAILNET_POLICY, '"grants": [', '"grants": [[['),
             "infra-tailnet-tag-owners": seeded(checker.TAILNET_POLICY, '"tag:ci": ["autogroup:admin"]', '"tag:ci": []'),
             "infra-tailnet-ci-ssh": seeded(checker.TAILNET_POLICY, '"users": ["autogroup:nonroot"]', '"users": ["root"]'),
@@ -168,6 +169,12 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         self.assertIsNone(checker.timespan_seconds("5 fortnights"))
         code, output = lint_tree(seeded(checker.RUNNER_UNIT, "RestartSec=5", "RestartSec=500ms"))
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
+
+    def test_a_stop_timeout_in_minutes_is_the_same_drain(self) -> None:
+        code, output = lint_tree(seeded(checker.RUNNER_UNIT, "TimeoutStopSec=300", "TimeoutStopSec=5min"))
+        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
+        code, output = lint_tree(seeded(checker.RUNNER_UNIT, "TimeoutStopSec=300", "TimeoutStopSec=10min"))
+        self.assertIn(f"{checker.DEPLOY_SH}:1: infra-drain-timeout: ", output)
 
     def test_the_replica_count_comes_from_the_release_workflow(self) -> None:
         code, output = lint_tree(seeded(checker.RELEASE, "DESIRED_API_MACHINES=3", "DESIRED_API_MACHINES=2"))
