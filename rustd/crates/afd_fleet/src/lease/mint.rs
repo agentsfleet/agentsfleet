@@ -9,13 +9,19 @@
 //!    nothing to forge.
 //! 2. **The standing grant, then the write gate** — both before the vault is
 //!    opened, so a request nobody approved never touches credential bytes.
-//! 3. **The exchange last**, holding no datastore connection, because a vendor
+//! 3. **The handle is held to what the workspace connected** — the name it
+//!    was asked for, and for a GitHub App the installation's routing row
+//!    ([`claim`]). The handle is bytes the workspace wrote; the row is what the
+//!    connect flow wrote once the provider proved access.
+//! 4. **The exchange last**, holding no datastore connection, because a vendor
 //!    round trip must not occupy a pooled connection.
 //!
 //! Reversing any pair weakens it. Reading the handle before the grant leaks
 //! whether an integration is connected to a fleet not permitted to use it;
 //! checking the write gate after the mint means a token was minted for a reach
 //! no human approved, and discarding it afterwards is not the same thing.
+//! Exchanging before the ownership read mints another workspace's installation
+//! token for whoever typed its id.
 //!
 //! # Every refusal is an error, not an `Ok`
 //!
@@ -38,6 +44,7 @@ use afd_core::id::Uuid7;
 use afd_wire::credentials::MintCredentialRequest;
 use serde_json::Value;
 
+use self::claim::{Claim, claim};
 use crate::error::{
     Result, connector_mint_failed, connector_reconnect_required, github_mint_failed,
     github_reconnect_required, grant_required, integration_not_connected, lease_not_found,
@@ -82,6 +89,8 @@ impl Plane {
             .await?;
 
         let handle = self.handle(&scope, &request.integration).await?;
+        self.admit_handle(&scope, &request.integration, &handle)
+            .await?;
         let outcome = self
             .broker
             .mint(Ask {
@@ -153,6 +162,30 @@ impl Plane {
         serde_json::from_slice(held.expose()).map_err(|_shape| vault_data_invalid())
     }
 
+    /// Whether this workspace may spend what its stored handle names.
+    ///
+    /// After the vault read, because the claim is IN the handle; before the
+    /// exchange, because a token minted for an installation this workspace
+    /// never connected cannot be un-minted. A miss answers the same reconnect
+    /// a handle naming no installation does, so the refusal says nothing about
+    /// whether some other workspace holds that installation.
+    async fn admit_handle(
+        &self,
+        scope: &MintScope,
+        integration: &str,
+        handle: &Value,
+    ) -> Result<()> {
+        match claim(&self.connectors, integration, handle)? {
+            Claim::Unowned => Ok(()),
+            Claim::Installation { provider, id } => self
+                .leases
+                .holds_install(&scope.workspace_id, provider, &id.to_string())
+                .await?
+                .then_some(())
+                .ok_or_else(github_reconnect_required),
+        }
+    }
+
     /// Writes a rotated refresh token back to the handle it came from.
     ///
     /// Best effort BY DESIGN, and the only step here that cannot fail the
@@ -184,6 +217,7 @@ impl Plane {
             workspace_id: &scope.workspace_id,
             name: integration,
         };
+        let workspace_id = scope.workspace_id.as_str();
         match self
             .vault
             .rotate_refresh_token(key, posted, replacement, now)
@@ -191,7 +225,7 @@ impl Plane {
         {
             Ok(outcome) => tracing::debug!(
                 event = EVENT_REFRESH_ROTATED,
-                workspace_id = scope.workspace_id.as_str(),
+                workspace_id,
                 integration,
                 ?outcome,
                 "a rotated refresh token was written back"
@@ -200,7 +234,7 @@ impl Plane {
             // this line, and the request is already successful.
             Err(failed) => tracing::warn!(
                 event = EVENT_REFRESH_ROTATED,
-                workspace_id = scope.workspace_id.as_str(),
+                workspace_id,
                 integration,
                 error = %failed,
                 "a rotated refresh token could not be written back"
@@ -235,6 +269,8 @@ fn accept(outcome: Outcome, connector: Option<&dyn Connector>) -> Result<Minted>
         Outcome::MintFailed(_) => Err(connector_mint_failed()),
     }
 }
+
+mod claim;
 
 #[cfg(test)]
 mod tests;

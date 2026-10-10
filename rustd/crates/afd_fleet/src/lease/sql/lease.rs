@@ -241,3 +241,17 @@ LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
 WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
   AND l.status = $3 AND l.lease_expires_at > $4
   AND l.fencing_token >= COALESCE(a.fencing_seq, l.fencing_token)";
+
+/// Whether a workspace connected the external account a mint is about to
+/// spend — the routing row the connect flow wrote beside the handle.
+///
+/// Keyed on all three columns, so another workspace's row for the same
+/// installation answers `false` here exactly as no row does, and the refusal
+/// cannot tell a caller which workspace holds it. The unique constraint on
+/// `(provider, external_account_id)` makes the answer one row or none.
+///
+/// `$1` provider, `$2` external account, `$3` workspace.
+pub const SELECT_CONNECTOR_INSTALL_HELD: &str = "\
+SELECT EXISTS (
+  SELECT 1 FROM core.connector_installs
+  WHERE provider = $1 AND external_account_id = $2 AND workspace_id = $3::uuid)";

@@ -29,6 +29,10 @@
 // to THIS file's directory, which the aggregator does not change.
 #[path = "integration_credential_mint/cases.rs"]
 mod cases;
+#[path = "integration_credential_mint/installation.rs"]
+mod installation;
+#[path = "integration_credential_mint/rotation.rs"]
+mod rotation;
 #[path = "integration_credential_mint/write_gate.rs"]
 mod write_gate;
 use crate::seed;
