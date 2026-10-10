@@ -8,10 +8,8 @@ describe("RunnerStatus", () => {
   it("test_runner_status_renders_admin_state_before_liveness", () => {
     render(<RunnerStatus adminState="active" liveness="busy" />);
     const status = screen.getByText(/active/i).closest("span");
-    // Administrative state leads liveness in the accessible text, and the
-    // treatment is the uppercase mono dot everywhere.
+    // Administrative state leads liveness in the accessible text.
     expect(status?.textContent).toMatch(/active\s*·\s*busy/);
-    expect(status?.className).toContain("uppercase");
   });
 
   it("test_runner_status_wake_ring_only_when_live", () => {

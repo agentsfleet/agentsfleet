@@ -51,7 +51,7 @@ const FUTURE_RUN_OFFSET_MS = 60_000;
 const HISTORY_ROOM_PX = 48;
 
 test.describe("fleet thread surface", () => {
-  // Same shape as lifecycle.spec.ts: prefix-scoped so parallel workers
+  // Prefix-scoped so parallel workers
   // sharing the regular fixture workspace never delete a sibling's fleet.
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);

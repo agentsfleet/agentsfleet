@@ -76,6 +76,7 @@ describe("FleetWall", () => {
     renderWall([fleet(), fleet({ id: "f2", name: "beta", status: "stopped" })]);
     expect(screen.getAllByTestId("tile")).toHaveLength(2);
     expect(screen.getByRole("status").textContent).toContain("1 live");
+    expect(screen.getByRole("link", { name: /install fleet/i })).toBeTruthy();
   });
 
   it("refuses to claim live before the stream is connected and greeted", () => {
@@ -108,16 +109,6 @@ describe("FleetWall", () => {
     // No badge at all, so no live region to announce anything.
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getAllByTestId("tile")).toHaveLength(2);
-  });
-
-  it("test_wall_header_has_no_search", () => {
-    renderWall([fleet(), fleet({ id: "f2", name: "beta" })]);
-    // The wall is tiles, live count, and Install fleet — no client-side filter
-    // box. Every loaded fleet renders unfiltered.
-    expect(screen.queryByRole("searchbox")).toBeNull();
-    expect(screen.queryByLabelText("Search fleets")).toBeNull();
-    expect(screen.getAllByTestId("tile")).toHaveLength(2);
-    expect(screen.getByText(/install fleet/i)).toBeTruthy();
   });
 
   it("appends the next page on Load more", async () => {

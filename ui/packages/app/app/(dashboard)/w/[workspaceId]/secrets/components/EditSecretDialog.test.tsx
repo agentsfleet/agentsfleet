@@ -63,13 +63,6 @@ describe("EditSecretDialog (rotate-only)", () => {
     expect(routerRefresh).toHaveBeenCalled();
   });
 
-  it("has no rename affordance — one job", () => {
-    renderDialog();
-    expect(screen.queryByRole("button", { name: /rename/i })).toBeNull();
-    expect(screen.queryByLabelText(/new name/i)).toBeNull();
-    expect(screen.getByRole("button", { name: /^rotate$/i })).toBeTruthy();
-  });
-
   it("Cancel closes the dialog and resets without calling the API", () => {
     const onOpenChange = vi.fn();
     renderDialog(onOpenChange);

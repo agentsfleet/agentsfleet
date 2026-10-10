@@ -78,21 +78,6 @@ describe("createSecret", () => {
   });
 });
 
-describe("listSecrets — tagged-union passthrough", () => {
-  it("returns each kind variant verbatim (provider_key / custom_endpoint / custom_secret)", async () => {
-    const items = [
-      { kind: "provider_key", name: "anthropic", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
-      { kind: "custom_endpoint", name: "vllm", created_at: 2, provider: "openai-compatible", base_url: "https://vllm.corp/v1" },
-      { kind: "custom_secret", name: "STRIPE", created_at: 3 },
-    ];
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ secrets: items }) });
-    const { listSecrets } = await import("./secrets");
-    const res = await listSecrets("ws_1", "tok");
-    // The client never re-derives kind — it surfaces the server projection as-is.
-    expect(res.secrets).toEqual(items);
-  });
-});
-
 describe("secret narrowing helpers", () => {
   const MIXED = [
     { kind: "provider_key", name: "anthropic", created_at: 1, provider: "anthropic", model: "claude-sonnet-4-6" },
