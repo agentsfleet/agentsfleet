@@ -23,6 +23,7 @@
 
 use afd_approval::{Origin, Wanted};
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_credential::secrets::Mintable;
 
@@ -57,9 +58,9 @@ impl Fleets {
             };
             if let Err(unwritten) = self.grants.grant_at_install(fleet, request, now).await {
                 let fleet_id = fleet.as_str();
-                let reason = unwritten.to_string();
+                let Logged { error_code, reason } = unwritten.logged();
                 tracing::warn!(
-                    error_code = unwritten.code().as_str(),
+                    error_code,
                     event = EVENT_REQUEST_FAILED,
                     fleet_id,
                     service,
@@ -94,7 +95,7 @@ impl Fleets {
             // fleet is already active and the delivery path asks again.
             Err(unreadable) => {
                 let workspace_id = workspace.as_str();
-                let reason = unreadable.to_string();
+                let reason = unreadable.told();
                 tracing::warn!(
                     event = EVENT_CLASSIFY_FAILED,
                     workspace_id,

@@ -35,7 +35,7 @@ impl Fleets {
         cause: &crate::Error,
     ) -> crate::Error {
         let fleet = id.as_str();
-        let reason = cause.to_string();
+        let reason = cause.told();
         let removed = async {
             let mut connection = self.database.acquire().await?;
             sqlx::query(sql::DELETE_FLEET)
@@ -56,7 +56,7 @@ impl Fleets {
                 event = "install_rolled_back",
             ),
             Err(double_fault) => {
-                let rollback_error = double_fault.to_string();
+                let rollback_error = double_fault.told();
                 tracing::error!(
                     error_code = error_code::AGENTSFLEET_INSTALL_ROLLED_BACK.as_str(),
                     fleet,
