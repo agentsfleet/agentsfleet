@@ -14,7 +14,6 @@ use std::time::Duration;
 /// A builder rather than a built client, so a caller that also bounds its
 /// redirects says so before building, and each caller keeps mapping a build
 /// failure into its own error.
-#[must_use]
 pub fn direct(timeout: Duration) -> reqwest::ClientBuilder {
     // Every deadline in this workspace is set where the call is made; the
     // caller names it, this function only refuses to go without one.

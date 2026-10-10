@@ -11,6 +11,7 @@
 
 use afd_auth::verifier::VerifyError;
 
+use crate::capped::{CapBreak, read_capped};
 use crate::jwks::source::{KeySetSource, MAX_REDIRECTS, MAX_RESPONSE_BYTES};
 
 /// Appended to an issuer to form its key-set endpoint.
@@ -82,35 +83,24 @@ impl HttpKeySet {
         &self.url
     }
 
-    /// Reads the body, refusing past the cap.
-    ///
-    /// Streamed rather than `bytes()`: a `Content-Length` is the server's
-    /// claim about itself, and this daemon bounds what it actually reads. No
-    /// content-encoding is ever negotiated (see the `reqwest` note in the
-    /// workspace manifest), so these bytes are the decoded bytes and the cap
-    /// bounds what [`MAX_RESPONSE_BYTES`] says it bounds.
-    async fn read_capped(mut response: reqwest::Response) -> Result<Vec<u8>, VerifyError> {
-        let mut body = Vec::with_capacity(INITIAL_BODY_BYTES);
-        loop {
-            let chunk = response
-                .chunk()
-                .await
-                .map_err(|_transport| VerifyError::KeySetUnavailable)?;
-            let Some(chunk) = chunk else { break };
-            if body.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
-                let cap = MAX_RESPONSE_BYTES;
-                tracing::warn!(
-                    cap,
-                    event = "jwks_response_too_large",
-                    "refusing the key set"
-                );
-                return Err(VerifyError::KeySetUnavailable);
-            }
-            body.extend_from_slice(&chunk);
-        }
-        Ok(body)
+    /// Reads the body, refusing past [`MAX_RESPONSE_BYTES`].
+    async fn read_body(response: reqwest::Response) -> Result<Vec<u8>, VerifyError> {
+        read_capped(response, MAX_RESPONSE_BYTES, INITIAL_BODY_BYTES)
+            .await
+            .map_err(|broke| {
+                if broke == CapBreak::TooLarge {
+                    let cap = MAX_RESPONSE_BYTES;
+                    tracing::warn!(
+                        cap,
+                        event = "jwks_response_too_large",
+                        "refusing the key set"
+                    );
+                }
+                VerifyError::KeySetUnavailable
+            })
     }
 }
+
 impl KeySetSource for HttpKeySet {
     async fn fetch(&self) -> Result<Vec<u8>, VerifyError> {
         let response = self
@@ -138,6 +128,6 @@ impl KeySetSource for HttpKeySet {
             tracing::warn!(url, code, event = "jwks_fetch_rejected");
             return Err(VerifyError::KeySetUnavailable);
         }
-        Self::read_capped(response).await
+        Self::read_body(response).await
     }
 }
