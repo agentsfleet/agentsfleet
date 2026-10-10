@@ -19,11 +19,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Status:** IN_PROGRESS
 **Priority:** P2 — developer tooling and doc accuracy; no product behaviour changes
 **Categories:** DOCS, INFRA
-**Batch:** B1 — one machine rebuild and three doc lines, independent of each other
+**Batch:** B1 — one machine setup and documentation corrections, independent of each other
 **Branch:** `build/m220-debian-kernel-vm`
 **Baseline revision:** `6e4a02127b4738f205c6ba1c8d42bce42413ed2e`
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** n/a — documentation and comments only; unchanged executable inputs proved against the comparison revision; user-authorized `spec.baseline` override
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M220_001-6e4a02127b4738f205c6ba1c8d42bce42413ed2e.md`
 **Depends on:** `M219_002` §6 — the toolbox already builds from the Debian 13.7 snapshot `20261010T000000Z`
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 10, 2026) from Indy's Oct 10, 2026 choice recorded in `M219_002` Discovery
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Toolbox
@@ -40,11 +40,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** build: the kernel-lane machine runs Debian 13, and toolbox docs match the image
 - **Intent (one sentence):** A developer's kernel lane runs on the same distribution as a production runner host, and a reader of the toolbox page learns what the image actually holds.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake:** Run the local sandbox kernel tests on Debian 13 and make the setup guide and toolbox descriptions match verified inputs.
+- **ASSUMPTIONS I'M MAKING:** Keep `afr-kernel`; create it because OrbStack reports it absent. Validate the guide on a second fresh machine. Extra release and external documentation are waived by Indy's session override; this spec's documentation remains in scope.
 
 ## Implementing agent — read these first
 
-1. `docs/v2/reviews/m211-toolbox-spikes.md` — records the current machine (Ubuntu 24.04.5 arm64, kernel 7.0.14-orbstack, tool versions) and what the kernel lane needs from it.
+1. `docs/v2/reviews/m211-toolbox-spikes.md` — records the original machine (Ubuntu 24.04.5 arm64, kernel 7.0.14-orbstack, tool versions) and what the kernel lane needs from it.
 2. `scripts/toolbox/install-builder-tools.sh` — the builder packages CI installs; the machine needs the same, plus Rust and bubblewrap.
 3. `make/test-unit.mk` — `test-runner-kernel` and `KERNEL_LANE_RUNNER`: what the lane runs as root on the machine.
 4. `scripts/toolbox/manifest.txt` — the toolbox's real package list, which the toolbox doc must match.
@@ -70,7 +71,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| CI/CD edit (`.github/workflows/**`) | yes — one comment line | Ask Indy in session before the edit; a "no" leaves the comment and records the reason in Discovery |
+| CI/CD edit (`.github/workflows/**`) | yes — one comment line | Approved by Indy's session authorization to override orly; the edit changes no workflow step |
 | File & Function Length (≤350/≤50/≤70) | no | Only documentation and comments change |
 
 ## Prior-Art / Reference Implementations
@@ -81,9 +82,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — The kernel-lane machine runs Debian 13
 
-`afr-kernel` is deleted and recreated as `orb create debian:trixie afr-kernel`, then given the builder tools, bubblewrap, Rust at the workspace's pinned toolchain, and passwordless sudo for the lane's `sudo -E`. The machine is disposable: nothing on it is the only copy of anything. **Implementation default:** keep the name `afr-kernel` because the session learnings and docs already call it that.
+`afr-kernel` is created as `orb create debian:trixie afr-kernel`, then given the builder tools, bubblewrap, Rust at the workspace's pinned toolchain, and passwordless sudo for the lane's `sudo -E`. OrbStack reports no existing machine, so no deletion is needed. **Implementation default:** keep the name `afr-kernel` because the session learnings and docs already call it that.
 
-- **Dimension 1.1** — The machine reports Debian 13 → Test `kernel_vm_is_debian_trixie` (manual: `orb -m afr-kernel cat /etc/debian_version` prints `13.`)
+- **Dimension 1.1** — DONE — The machine reports Debian 13 → Test `kernel_vm_is_debian_trixie` (manual: `orb -m afr-kernel cat /etc/debian_version` prints `13.`; observed `13.7`)
 - **Dimension 1.2** — The kernel lane passes on it → Test `test_toolbox_carries_the_tools` with the rest of `make test-runner-kernel` (kernel lane, run on the machine)
 
 ### §2 — The setup is written down
@@ -92,13 +93,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **Dimension 2.1** — The doc's commands recreate a machine that passes 1.1 and 1.2 → Test `kernel_vm_setup_doc_rebuilds_the_machine` (manual: follow the doc on a fresh machine name)
 
-### §3 — The docs name what the code does
+### §3 — The docs name what the code does — DONE
 
-The toolbox paragraph lists the manifest's packages and uv, and the release-record sentence names uv as the one binary from outside Debian. The CI comment says mmdebstrap. The Cargo comment names the daemon's real base image, after confirming that image ships `/usr/share/zoneinfo`.
+The toolbox paragraph lists the manifest's packages and uv with uvx. The release record pins their shared upstream uv archive, the only vendored input. The CI comment says mmdebstrap. The Cargo comment names the daemon's real base image, after confirming that image ships `/usr/share/zoneinfo`.
 
-- **Dimension 3.1** — The toolbox paragraph and release-record sentence name only the manifest's tools → Test `toolbox_doc_matches_manifest` (grep, rubric R2)
-- **Dimension 3.2** — No build comment says debootstrap → Test `no_debootstrap_mention` (grep, rubric R3)
-- **Dimension 3.3** — No comment names `debian:bookworm-slim` → Test `no_bookworm_slim_image` (grep, rubric R4)
+- **Dimension 3.1** — DONE — The toolbox paragraph and release-record sentence name only the manifest's tools → Test `toolbox_doc_matches_manifest` (grep, rubric R2)
+- **Dimension 3.2** — DONE — No build comment says debootstrap → Test `no_debootstrap_mention` (grep, rubric R3)
+- **Dimension 3.3** — DONE — No comment names `debian:bookworm-slim` → Test `no_bookworm_slim_image` (grep, rubric R4)
 
 ## Interfaces
 
@@ -139,11 +140,11 @@ N/A — no invariants: the work changes a developer machine and documentation.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | The kernel lane runs on Debian 13 (§1) | `orb -m afr-kernel cat /etc/debian_version` | starts with `13.` | P1 | |
-| R2 | The toolbox doc names only the image's tools (§3) | `git grep -n -e chromium-headless-shell -e 'Codex and Claude Code command-line tools' -e 'uv, the coding-engine command-line tools' -- docs/architecture/runner_execution.md` | no output | P1 | |
-| R3 | No build comment says debootstrap (§3) | `git grep -n debootstrap -- .github rustd scripts make` | no output | P2 | |
-| R4 | No comment names `debian:bookworm-slim` (§3) | `git grep -n 'bookworm-slim' -- rustd/Cargo.toml` | no output | P2 | |
-| R5 | This spec's diff stays inside Files Changed | `git diff --name-only $(git log --diff-filter=A --format=%H -- 'docs/v2/*/M220_001_*.md' \| tail -1)..HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R1 | The kernel lane runs on Debian 13 (§1) | `orb -m afr-kernel cat /etc/debian_version` | starts with `13.` | P1 | ✅ `13.7`; kernel-lane execution recorded separately in Dimension 1.2 |
+| R2 | The toolbox doc names only the image's tools (§3) | `git grep -n -e chromium-headless-shell -e 'Codex and Claude Code command-line tools' -e 'uv, the coding-engine command-line tools' -- docs/architecture/runner_execution.md` | no output | P1 | ✅ no matches, exit 1 |
+| R3 | No build comment says debootstrap (§3) | `git grep -n debootstrap -- .github rustd scripts make` | no output | P2 | ✅ no matches, exit 1 |
+| R4 | No comment names `debian:bookworm-slim` (§3) | `git grep -n 'bookworm-slim' -- rustd/Cargo.toml` | no output | P2 | ✅ no matches, exit 1 |
+| R5 | This spec's diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint passes | `make lint-all` | exit 0 | P0 | |
@@ -188,6 +189,13 @@ N/A — no files deleted.
 
 - **Consults** — Oct 10, 2026: Indy asked "can that be changed to use the debian latest 13?", then "Debian 13.7". The toolbox already built on trixie; the local machine and three docs did not match. `M219_002` §6 moved the snapshot; this spec carries the rest.
 - **Metrics review** — No analytics or funnel playbook update required: no product or operator signal changes.
+- **PLAN:** Existing builder and kernel targets supply the workflow; no new script or Make target is needed. Quality ceiling: a larger refactor adds no runtime or concurrency benefit to this machine and prose correction.
+- **Surface check:** OpenAPI, product command-line interface, schema and product behaviour: unchanged. Contributor docs: setup and accuracy fixes. Release/version and external docs: waived for this internal work by Indy.
+- **Discovery:** `orb -m afr-kernel cat /etc/os-release` reports `machine not found`. `scripts/toolbox/manifest.txt` installs both uv and uvx from one archive, so the spec now names both binaries.
+- **Setup regression:** The first kernel command failed with permission denied because the root toolbox build created the shared cache parent. The guide now creates Cargo's directory as the normal user before that build. The second fresh machine checks this corrected ordering.
+- **Host-tool regression:** The first complete lane passed 49 of 51 tests; the two Git trials failed with `No such file or directory`. Both call `host_git` to create their fixtures, and the fresh machine had no host Git. The guide now installs `git` alongside the other host tools; the sandbox still uses the manifest's Git.
+- **Scope-check correction:** The original R5 command starts at pending-spec creation inside M219, so it includes that workstream's later merged files. R5 now compares this branch with `origin/main`, matching the stated Files Changed check.
+- **Approval:** Indy: "You are free to override orly, orly docs can be skipped." This covers the named workflow comment edit and extra documentation gates; hooks and signing still run. Indy also requested resource care with five agents. The `spec.baseline` override avoids duplicating full suites for identical executable inputs; the final repository lanes still run.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none. This spec is the home `M219_002`'s deferral names:
   > Indy (2026-10-10 10:00): "Bump snapshot in this PR" — context: the option read "The VM and doc fixes go to their own spec."; then "all changes have to go in 1 branch/worktree", so it lands on `docs/event-runtime-positioning`.
