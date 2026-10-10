@@ -116,7 +116,7 @@ impl Keeper {
             self.retire(entry, Release::Mismatch);
             return None;
         }
-        let held_ms = self.clock.now().as_millis() - entry.since.as_millis();
+        let held_ms = self.clock.now().saturating_millis_since(entry.since);
         Some(Taken {
             sandbox: entry.sandbox,
             held_ms,
