@@ -80,3 +80,13 @@ fn test_aad_carries_utf8_key_names() {
 fn test_aad_keeps_both_separators_when_fields_are_empty() {
     assert_eq!(Aad::new("", "").as_bytes(), b"\x1f\x1f2");
 }
+
+/// A log line stays one line: the separators and any control character in a
+/// name render escaped, never raw.
+#[test]
+fn test_aad_debugs_with_its_control_characters_escaped() {
+    let rendered = format!("{:?}", Aad::new("ws_0123", "line\nbreak"));
+    assert!(!rendered.contains('\n'), "{rendered}");
+    assert!(!rendered.contains('\x1f'), "{rendered}");
+    assert!(rendered.contains("line\\nbreak"), "{rendered}");
+}
