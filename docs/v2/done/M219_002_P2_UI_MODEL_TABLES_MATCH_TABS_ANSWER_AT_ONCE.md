@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M219
 **Workstream:** 002
 **Date:** Oct 09, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — dashboard polish Indy reported while eyeballing the branch; no boundary or money path changes
 **Categories:** UI
 **Batch:** B1 — the Sections touch different screens and ship together
@@ -59,9 +59,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/models/components/CatalogueList.tsx` | EDIT | §1: the library reads through the display module |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/{ModelsRegistryCells.tsx,ModelsRegistryTable.tsx,registry-view.ts,ModelDetailsDialog.tsx}` | EDIT | §1: the workspace table and its details dialog read through it too |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect.tsx`, `ui/packages/app/tests/{provider-model-select.test.tsx,helpers/models-component-mocks.tsx}` | EDIT | §1: the picker names a model as the tables do, the id on its own line, the closed value one truncating line |
-| `ui/packages/app/tests/{models-registry-table.test.tsx,models-registry-edit-remove.test.tsx,admin-models-ui.test.ts,admin-models-management.test.ts}` | EDIT | §1: rows found by the id's hover; formats follow the shared module |
+| `ui/packages/app/tests/{models-registry-table.test.tsx,models-registry-edit-remove.test.tsx,models-registry-cells.test.tsx,admin-models-ui.test.ts,admin-models-management.test.ts}` | EDIT | §1: rows found by the id's hover; formats follow the shared module |
 | `ui/packages/app/tests/timestamp-standard.test.ts` | EDIT | §1: the model library no longer calls a locale formatter, so its exemption goes |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation.tsx,FleetTabLink.tsx,FleetTabLink.test.tsx}` | EDIT, CREATE | §2: a pending tab |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{FleetSubnavigation.tsx,FleetSubnavigation.test.tsx,FleetTabLink.tsx,FleetTabLink.test.tsx}` | EDIT, CREATE | §2: a pending tab |
 | `ui/packages/app/tests/{helpers/dashboard-mocks.tsx,fleets-routes/detail-views.test.ts}` | EDIT | §2: the link mock answers `useLinkStatus`; the route test proves the panel paints with its tabs |
 | `ui/packages/app/app/(dashboard)/settings/members/components/{TeamTable.tsx,MembersView.test.tsx}`, `ui/packages/app/tests/{helpers/members-fixtures.tsx,e2e/acceptance/team-members.spec.ts}` | EDIT | §3: email status in the Time column as "Invite emailed"; plain icon actions |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/{secret-row-cells.tsx,SecretsList.test.tsx}` | EDIT | §3: the name sits in a fixed slot that ellipsizes, its icons after it |
@@ -73,7 +73,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/toolbox/manifest.txt` | EDIT | §6: the toolbox snapshot moves to one serving Debian 13.7 |
 | `docs/v2/pending/M220_001_P2_DOCS_INFRA_KERNEL_VM_RUNS_DEBIAN_TRIXIE.md` | CREATE | §6: the deferred kernel-lane machine and doc drifts, as their own spec on this branch |
 | `ui/packages/app/AGENTS.md` | EDIT | §6: Next 16.4 rewrites its managed `nextjs-agent-rules` block |
-| `docs/v2/active/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md` | CREATE | This spec |
+| `docs/v2/{active,done}/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md` | CREATE | This spec |
 
 ## Applicable Rules
 
@@ -209,13 +209,13 @@ No API, route or wire change.
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | One rate formatter in the app (§1) | `git grep -n 'function formatRates' -- ui/packages/app` | one line, in `lib/models/display.ts` | P1 | |
-| R2 | The fleet view renders behind a boundary (§2) | `git grep -c 'Suspense' -- 'ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx'` | `1` or more | P1 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Lint passes | `make lint-all` | exit 0 | P0 | |
-| S3 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S4 | Integration passes | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
+| R1 | One rate formatter in the app (§1) | `git grep -n 'function formatRates' -- ui/packages/app` | one line, in `lib/models/display.ts` | P1 | ✅ `lib/models/display.ts:129:export function formatRatesPerMtok` |
+| R2 | A clicked fleet tab shows its pending pulse (§2; amended after Indy chose "Pulse only", which removed the skeleton boundary) | `git grep -c 'useLinkStatus' -- 'ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetTabLink.tsx'` | `1` or more | P1 | ✅ `FleetTabLink.tsx:3` |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | see PR Session Notes, `orly gate pr` |
+| S2 | Lint passes | `make lint-all` | exit 0 | P0 | see PR Session Notes, `orly gate pr` |
+| S3 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | see PR Session Notes, `orly gate pr` |
+| S4 | Integration passes | `make test-integration-rustd` | exit 0 | P0 | see PR Session Notes, `orly gate pr` |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | see PR Session Notes, `orly gate pr` |
 
 ## Dead Code Sweep
 
@@ -258,6 +258,6 @@ No API, route or wire change.
 - **Toolbox Debian** — Indy, Oct 10, 2026: "can that be changed to use the debian latest 13?", then "Debian 13.7". The pinned snapshot served 13.6. He chose "Bump snapshot in this PR" (§6).
 - **Close-out (Oct 10, 2026)** — Indy accepted the screens ("Accepted (Recommended)"), and asked that the two known limits be recorded rather than fixed, docs be skipped under an override, and the branch be pushed and opened as a PR once green. For the fleet card he wrote "the agent slug name and status is important that must be the first line" and "Runs in loop static text doesnt have value, but rather the Waiting for the event is valuable", then picked "Footer name" (§7).
 - **Metrics review** — No product event changes.
-- **Skill-chain outcomes** — pending.
+- **Skill-chain outcomes** — `/orly-write-unit-test` boundary audit (Oct 10, 2026): every Dimension maps to a test; TypeScript 100% under `make test-unit-all`. Dimension 6.3 ran on the `afr-kernel` kernel lane: 49 of 51 passed under full load, and the two failures passed alone (one left a cgroup behind, which was cleared). gstack `/review` covered this spec with M219_001 on the same branch; its design findings on the switch's touch target, focus while saving and the status gap were fixed in `70041d524`. The nested memory card and the pill-shaped switch are left for Indy. `orly-babysit-prs`: recorded in the PR.
 - **Deferrals** — the `afr-kernel` VM rebuild on Debian 13, and three doc drifts: `docs/architecture/runner_execution.md:164`, `.github/workflows/test-integration-rustd.yml:131` and `rustd/Cargo.toml:344`. They go to their own spec, `M220_001` in `docs/v2/pending/` on this branch.
   > Indy (2026-10-10 10:00): "Bump snapshot in this PR" — context: the option he chose read "The VM and doc fixes go to their own spec."; then "all changes have to go in 1 branch/worktree".
