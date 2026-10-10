@@ -58,6 +58,13 @@ GATE = """\
       - run: STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
 """
 
+RUNNER = """\
+      - name: Deploy runner
+        run: ./playbooks/lib/runner/deploy.sh
+        env:
+          ALLOW_VAULT_READS: "1"
+"""
+
 LOG_LEVEL = """\
       - run: |
           export AGENTSFLEET_LOG_LEVEL="debug"
@@ -75,8 +82,8 @@ def clean_tree() -> dict[str, str]:
         checker.NOTIFY_ACTION: NOTIFY_ACTION,
         f"{checker.WORKFLOWS_DIR}/deploy-dev.yml": workflow(GATE, NOTIFY_DEV),
         f"{checker.WORKFLOWS_DIR}/deploy-dev-fly.yml": workflow(dev, LOG_LEVEL, NOTIFY_DEV),
-        f"{checker.WORKFLOWS_DIR}/deploy-dev-metal.yml": workflow(NOTIFY_DEV),
-        f"{checker.WORKFLOWS_DIR}/release.yml": workflow(GATE, prod, NOTIFY_RELEASE),
+        f"{checker.WORKFLOWS_DIR}/deploy-dev-metal.yml": workflow(RUNNER, NOTIFY_DEV),
+        f"{checker.WORKFLOWS_DIR}/release.yml": workflow(GATE, prod, RUNNER, NOTIFY_RELEASE),
         f"{checker.WORKFLOWS_DIR}/post-release.yml": workflow(NOTIFY_RELEASE),
     }
 
@@ -117,6 +124,7 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
             "workflow-connector-signing-row": seeded("deploy-dev-fly.yml", "ENV=dev ./playbooks", "ENV=prod ./playbooks"),
             "workflow-daemon-log-level": seeded("deploy-dev-fly.yml", 'export AGENTSFLEET_LOG_LEVEL="debug"', 'LOG_LEVEL="debug"'),
             "workflow-collector-org": seeded("deploy-dev-fly.yml", "FLY_ORG: agentsfleet-dev", "FLY_ORG: agentsfleet-prod"),
+            "workflow-vault-read-approval": seeded("release.yml", 'ALLOW_VAULT_READS: "1"', 'ALLOW_VAULT_READS: "0"'),
             "workflow-missing": {k: v for k, v in clean_tree().items() if not k.endswith("deploy-dev-metal.yml")},
         }
         for rule, files in cases.items():
@@ -145,8 +153,15 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         files = clean_tree()
         key = f"{checker.WORKFLOWS_DIR}/deploy-dev-metal.yml"
         files[key] = "on: push\njobs:\n  deploy:\n      runs-on: ubuntu-latest\n      steps:\n        - uses: ./.github/actions/notify-discord\n"
+        files[key] += "        - run: ./playbooks/founding/05_runner_bootstrap_dev/deploy.sh\n          env: {ALLOW_VAULT_READS: \"1\"}\n"
         code, output = lint_tree(files)
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
+
+    def test_a_runner_step_with_no_approval_is_named_and_a_deploy_with_no_runner_step_is_refused(self) -> None:
+        code, output = lint_tree(seeded("deploy-dev-metal.yml", '        env:\n          ALLOW_VAULT_READS: "1"\n', ""))
+        self.assertIn("deploy-dev-metal.yml:1: workflow-vault-read-approval: step `Deploy runner` runs the runner playbook", output)
+        code, output = lint_tree(seeded("release.yml", "./playbooks/lib/runner/deploy.sh", "./scripts/other.sh"))
+        self.assertIn("release.yml:1: workflow-vault-read-approval: no step runs the runner playbook", output)
 
     def test_an_unknown_argument_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):

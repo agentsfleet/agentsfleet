@@ -55,6 +55,12 @@ COLLECTOR_ORGS = {"deploy-dev-fly.yml": "agentsfleet-dev", "release.yml": "agent
 CREATE_CALL = "ensure_fly_app.sh --create-only"
 SECRETS_CALL = "flyctl secrets set"
 COLLECTOR_MARK = "GRAFANA"
+# The runner playbooks read the vault, and playbooks/lib/common.sh refuses to
+# unless the caller set this approval; a deploy step without it fails on a host
+# with nothing changed, after the build has already spent its time.
+VAULT_READ_APPROVAL = ("ALLOW_VAULT_READS", "1")
+RUNNER_PLAYBOOK = re.compile(r"playbooks/(?:lib/runner|founding/0[58]_runner_bootstrap_\w+)/")
+RUNNER_DEPLOYS = ("deploy-dev-metal.yml", "release.yml")
 
 
 class YamlUnreadable(Exception):
@@ -188,7 +194,22 @@ def check_collector_standup(w: Workflows) -> None:
             w.find(path, "workflow-collector-org", f"the create path needs `FLY_ORG: {org}`")
 
 
-RULES = (check_discord_routes, check_deployment_stage, check_connector_secrets, check_log_level, check_collector_standup)
+def check_vault_read_approval(w: Workflows) -> None:
+    key, value = VAULT_READ_APPROVAL
+    for name in RUNNER_DEPLOYS:
+        path = f"{WORKFLOWS_DIR}/{name}"
+        runners = [step for step in steps(w.workflow(name)) if RUNNER_PLAYBOOK.search(step.get("run", ""))]
+        if not runners:
+            w.find(path, "workflow-vault-read-approval", "no step runs the runner playbook this rule guards")
+        for step in runners:
+            if str(step.get("env", {}).get(key)) != value:
+                w.find(path, "workflow-vault-read-approval", f"step `{step.get('name', '?')}` runs the runner playbook without `{key}: \"{value}\"`")
+
+
+RULES = (
+    check_discord_routes, check_deployment_stage, check_connector_secrets, check_log_level, check_collector_standup,
+    check_vault_read_approval,
+)
 
 
 def lint(root: Path) -> list[lib.Finding]:
