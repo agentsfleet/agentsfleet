@@ -76,9 +76,6 @@ pub const BENCH_REQUEST_JSON: &str = "{\"prompt\":\"bench\"}";
 /// lanes seed against different clocks.
 pub const SEEDED_AT: i64 = 1_767_225_600_000;
 
-/// The status a leasable fleet carries.
-const FLEET_STATUS: &str = "active";
-
 /// Placeholder markdown a seeded fleet is created with.
 const SOURCE_MARKDOWN: &str = "# bench";
 
@@ -238,7 +235,7 @@ async fn fleet_row(
     .bind(prefix.name("fleet"))
     .bind(SOURCE_MARKDOWN)
     .bind(CONFIG_JSON)
-    .bind(FLEET_STATUS)
+    .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
     .bind(now)
     .bind(vec![tag.to_owned()])
     .execute(connection)

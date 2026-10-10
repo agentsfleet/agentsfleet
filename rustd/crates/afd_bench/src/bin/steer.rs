@@ -11,6 +11,7 @@ use afd_bench::cli;
 use afd_bench::error::Result;
 use afd_bench::lane::{steer, sweep};
 use afd_bench::report::Lane;
+use afd_core::env::ProcessEnv;
 use core::time::Duration;
 
 use afd_bench::knobs::{WINDOW_VARIABLE, number};
@@ -35,7 +36,7 @@ async fn main() -> ExitCode {
 
 /// Resolve, admit, measure, sweep, write.
 async fn measure() -> Result<String> {
-    let env = cli::process_env();
+    let env = ProcessEnv;
     let (profile, _target, provenance) = cli::admitted(&env)?;
     let parameters = steer::Parameters {
         fleets: number(&env, Parameter::Fleets.name(), DEFAULT_FLEETS)?,
