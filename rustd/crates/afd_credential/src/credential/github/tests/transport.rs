@@ -11,6 +11,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use afd_core::test_util::trace::{Capture, CapturedEvent};
 use afd_fleet_runtime::config::{Access, RepositoryBinding};
 use axum::Router;
 use axum::http::StatusCode;
@@ -20,6 +21,7 @@ use axum::routing::{get, post};
 use octocrab::Octocrab;
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
+use tracing::Level;
 
 use super::super::exchange::request_token;
 use crate::credential::outcome::{Outcome, Retry};
@@ -161,11 +163,28 @@ async fn an_installation_without_checks_mints_without_asking_for_them() {
 async fn a_successful_but_overreaching_response_is_discarded() {
     let token = r#"{"token":"ghs_fixture","permissions":{"contents":"write"},"repositories":[{"full_name":"acme/widgets"}]}"#;
     let github = FakeGithub::answering((OK, HOLDS_EVERYTHING), (CREATED, token)).await;
+    let capture = Capture::install();
 
     assert!(matches!(
         github.mint().await,
         Outcome::MintFailed(Retry::Permanent)
     ));
+    // One warning an operator can read the reach from, and never the token.
+    let events = capture.events();
+    let [warning]: [&CapturedEvent; 1] = events
+        .iter()
+        .filter(|event| event.field("event") == Some("github_mint_overreach"))
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("exactly one overreach warning");
+    assert_eq!(warning.level, Level::WARN);
+    for name in ["overreach", "granted", "requested"] {
+        assert!(warning.field(name).is_some(), "{name} in {warning:?}");
+    }
+    assert!(
+        warning.fields.values().all(|value| !value.contains("ghs_fixture")),
+        "{warning:?}"
+    );
 }
 
 /// Dimension 1.7 — a failed installation read is classified as the token

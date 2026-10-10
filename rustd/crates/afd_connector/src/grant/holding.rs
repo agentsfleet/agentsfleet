@@ -237,20 +237,18 @@ impl Grants {
     /// workspace holding no handle is [`Forgotten::AlreadyAbsent`], not an
     /// error — the caller wanted it gone and it is gone.
     pub async fn forget(&self, workspace: &Uuid7, provider: Provider) -> Result<Forgotten> {
+        let name = SecretName::parse(provider.grant_key())?;
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_FORGET))?;
         Self::take_turn(&mut transaction, workspace, CONTEXT_FORGET).await?;
-        let forgotten = match SecretName::parse(provider.grant_key()) {
-            Ok(name) => match self
-                .vault
-                .directory()
-                .delete_in(&mut transaction, workspace, &name)
-                .await?
-            {
-                Deleted::Removed => Forgotten::Disconnected,
-                Deleted::AlreadyAbsent => Forgotten::AlreadyAbsent,
-            },
-            Err(_unconstructible) => Forgotten::AlreadyAbsent,
+        let forgotten = match self
+            .vault
+            .directory()
+            .delete_in(&mut transaction, workspace, &name)
+            .await?
+        {
+            Deleted::Removed => Forgotten::Disconnected,
+            Deleted::AlreadyAbsent => Forgotten::AlreadyAbsent,
         };
         sqlx::query(sql::DELETE_WORKSPACE_INSTALLS)
             .bind(provider.id())

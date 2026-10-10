@@ -148,6 +148,24 @@ fn should_refuse_a_commit_that_names_its_own_identity() {
 }
 
 #[test]
+fn should_admit_a_bodyless_request_under_a_closed_rule_and_still_refuse_its_query() {
+    // No body carries no key, so a closed rule that locks none has nothing to
+    // refuse; the query is refused whether or not a body came with it.
+    let mut commits = rule(
+        HttpMethod::Post,
+        "/repos/acme/widgets/git/commits",
+        HttpPathMatch::Exact,
+    );
+    commits.permitted_fields = Some(vec!["message".into()]);
+    let commits = origin(vec![commits]);
+    let at = url("https://api.github.com/repos/acme/widgets/git/commits");
+    let queried = url("https://api.github.com/repos/acme/widgets/git/commits?tree=abc");
+
+    assert!(admits(&commits, &Method::POST, &at, None));
+    assert!(!admits(&commits, &Method::POST, &queried, None));
+}
+
+#[test]
 fn should_say_which_key_or_query_a_closed_rule_refused() {
     let pulls = draft_pull_request();
     let at = url("https://api.github.com/repos/acme/widgets/pulls");
