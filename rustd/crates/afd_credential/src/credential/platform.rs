@@ -18,6 +18,7 @@
 
 use std::collections::BTreeMap;
 
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use serde::Deserialize;
 use zeroize::Zeroizing;
@@ -208,9 +209,11 @@ async fn read(vault: &Vault, admin_workspace: &Uuid7, key: &str) -> Option<Vec<u
         })
         .await
         .inspect_err(|error| {
+            let Logged { error_code, reason } = error.logged();
             tracing::warn!(
                 key,
-                error = %error,
+                error_code,
+                reason,
                 event = "platform_credential_unreadable",
                 "a platform credential row would not open; that connector will not mint"
             );
