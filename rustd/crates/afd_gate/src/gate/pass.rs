@@ -138,7 +138,7 @@ impl Gates {
             }
             Err(fault) => {
                 let fleet = request.fleet_id.as_str();
-                let reason = fault.to_string();
+                let reason = fault.told();
                 tracing::warn!(
                     event = EVENT_LOOKUP_UNREADABLE,
                     fleet_id = fleet,
@@ -168,7 +168,7 @@ impl Gates {
             // Waiting costs a poll; the other direction throws away an answer.
             Err(fault) => {
                 let fleet = request.fleet_id.as_str();
-                let reason = fault.to_string();
+                let reason = fault.told();
                 tracing::warn!(
                     event = EVENT_DECISION_UNREADABLE,
                     fleet_id = fleet,
