@@ -81,7 +81,7 @@ test_should_accept_complete_project_target_inventory() {
   output="$(run_script bash "$SCRIPT")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif grep -Eq 'vercel-secret' "$calls" <<<"$output"; then
+  elif grep -Fq 'vercel-secret' "$calls" || grep -Fq 'vercel-secret' <<<"$output"; then
     bad "$name" "Vercel token appeared in output or process arguments"
   else
     ok "$name"
