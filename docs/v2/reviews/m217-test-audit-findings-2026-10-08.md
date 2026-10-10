@@ -450,3 +450,28 @@ M213 removes or rewrites these on `feat/m213-rust-runner-cutover`; M217 starts a
 | F389 | `deploy/baremetal/unit_test.sh:139` (file arrives with M213; line is on `cfb9a4371`) | test_baremetal_unit_hosts_the_rust_runner; test_unit_does_not_restart_a_refused_token; test_unit_names_each_host_instance | lint | These read Rust source with sed and the systemd unit as text to check that the two agree, so a rustfmt reflow or a `pub(crate)` breaks them while nothing executes; this is a lint, not a test. | A unit that drops a delegated controller (Delegate=cpu io memory pids) or RestartPreventExitStatus=77 would ship, and systemd-analyze would not catch it. Keep the check as a lint. |
 | F390 | `playbooks/lib/runner/runner_host_test.sh:69` (file arrives with M213; line is on `cfb9a4371`) | test_should_gate_on_every_controller_the_runner_probe_requires | lint | This compares the lane's controller loop with a sed parse of probe.rs source, so the only new link it adds is Rust text and it breaks on a reformatted array; runner_test.sh already pins the lane side. | The shell cgroup gate (REQUIRED_CGROUP_CONTROLLERS in common.sh:130) could drift from probe.rs:37 and pass a host the runner then refuses. Keep the parity check as a lint. |
 | F391 | `ui/packages/app/tests/release-gate-workflow.test.ts:65` | test_playwright_cache_key_tracks_real_inputs; routes each production deployment to the matching smoke contract; test_acceptance_artifacts_survive_failure; should download every artifact the build jobs upload; pins installation and acceptance to the triggering release; blocks latest promotion behind successful production acceptance; passes repository variables through environment maps; validates the fleet inventory before selecting any host; deploys and verifies the canary before the approved fleet rollout | lint | These nine tests read the GitHub workflow files as text and look for exact strings, so they break when the files are reformatted and pass when a real rollout defect is written differently; they belong in a workflow audit, not the unit suite. | Only the upload-name vs download-pattern cross-check (:151-178) has teeth. If an artifact is renamed and the `pattern:` glob is left stale, push-ghcr downloads zero binaries on the next merge to main. Carry that one into the audit script; the rest are workflow text a reviewer reads anyway. |
+
+## Outcomes on `feat/m217-tests-call-code` (Oct 11, 2026)
+
+Every row F001–F385 was worked by test name; line numbers above are the audit's. Rows resolved as their Action column says are not repeated here. This table lists the rows whose outcome differs, the rows whose tests moved or were renamed before the work reached them, and the six M213 rows.
+
+| ID | Outcome |
+|---|---|
+| F136 | `delete` → `execute`. The named twin did not pin the branch: coverage dropped at `cli/src/lib/browser.ts:94`. New test `WSL with a display but no wslview falls through to xdg-open`. |
+| F193 | `delete` → `execute` for the relative-format tooltip half; the hydration half deleted. New test `relative format opens a tooltip with the absolute form when none is asked for`. |
+| F013 | A happy-path login test already existed in `cli/test/login.acceptance.spec.ts`; it moved into `login-exchange.unit.test.ts` with the minted-credential assertions, rather than gaining a duplicate. |
+| F036 | Deleting the source read left no proof that the root layout mounts `AuthSessionKeeper`; `ui/packages/app/tests/root-layout.test.tsx` now renders the root layout and asserts it. |
+| F006 | The `cancelled` guard in `app/cli-auth/[session_id]/page.tsx` was deleted, not asserted: Next remounts the page per session id, so the guard had no observable effect. |
+| F054 | `lint`, landed as `rust-migration-list` in `scripts/check_rust_source.py`, not as a generated registry: `afd_db/src/migration.rs` documents why the list is hand-written. |
+| F073 | The npm-path check deleted (twin `ui/packages/website/src/components/Fleets.test.tsx`); the claim and noun checks moved to `scripts/check_website_copy.py`. |
+| F195 | Lede test renamed before the work: now `renders the hero lede naming the trigger and its sources`. |
+| F249 | Lede test renamed before the work: now `renders the lede paragraph naming the trigger and its sources`. |
+| F330 | Renamed in `8d56dbf6d`: now `states the brand line and who decides what ships`. |
+| F386 | Removed in `7bb7156b8` (M213). |
+| F387 | Removed in `449501196` (M213), which deleted `runner_host_test.sh`. |
+| F388 | Removed in `cfb9a4371` (M213). |
+| F389 | Removed in `cfb9a4371` (M213). |
+| F390 | Removed in `449501196` (M213). |
+| F391 | Removed in `7bb7156b8` (M213). |
+
+Three test reads the audit never listed were found by `scripts/check_tests_call_code.py` and fixed in this branch: `cli/test/acceptance/helpers-help-and-errors.ts` (read `package.json`), `deploy/baremetal/deploy_test.sh` (read the systemd unit) and `playbooks/operations/observability/observability_verify_test.sh` (read `assets/alerts.json`).
