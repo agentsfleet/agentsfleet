@@ -19,6 +19,14 @@ fn kek(hex: &str) -> Kek {
     Kek::from_hex(hex).unwrap()
 }
 
+/// A code debugs as the hex the daemon stores, so a log line can be matched
+/// against the stored column.
+#[test]
+fn test_mac_debugs_as_its_stored_hex() {
+    let tag = HmacSha256Tag::compute(&kek(KEK_HEX), b"agt_t_example");
+    assert!(format!("{tag:?}").contains(&tag.to_hex()), "{tag:?}");
+}
+
 #[test]
 fn test_mac_verifies_a_matching_code() {
     let key = kek(KEK_HEX);
