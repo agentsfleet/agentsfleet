@@ -121,8 +121,11 @@ def check_migration_list(root: Path) -> list[lib.Finding]:
 
 
 def check_bundle_prose(root: Path) -> list[lib.Finding]:
+    documents = sorted(p for name in BUNDLE_DOCUMENTS for p in (root / BUNDLES).glob(f"*/{name}"))
+    if not documents:
+        return [lib.Finding(BUNDLES, 1, "rust-bundle-retired-gate", "no bundle document found to read; the fixtures moved")]
     findings = []
-    for document in sorted(p for name in BUNDLE_DOCUMENTS for p in (root / BUNDLES).glob(f"*/{name}")):
+    for document in documents:
         for number, line in enumerate(document.read_text(encoding="utf-8").splitlines(), start=1):
             if RETIRED_GATE in line.lower():
                 findings.append(lib.Finding(lib.relative(root, document), number, "rust-bundle-retired-gate", f"the bundle promises the retired {RETIRED_GATE}"))

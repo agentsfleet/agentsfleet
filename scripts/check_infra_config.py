@@ -49,6 +49,12 @@ TAG_CI, TAG_WORKER = "tag:ci", "tag:worker"
 ADMIN_GROUP, MEMBER_GROUP = "autogroup:admin", "autogroup:member"
 ROOT_USER, SSH_PORT, WILDCARD = "root", "tcp:22", "*"
 PLAYBOOKS = "playbooks"
+# Each environment's host bootstrap: every one of them must join the tailnet,
+# so one playbook losing its `tailscale up` cannot hide behind the other.
+JOINING_PLAYBOOKS = (
+    f"{PLAYBOOKS}/founding/05_runner_bootstrap_dev/001_playbook.md",
+    f"{PLAYBOOKS}/founding/08_runner_bootstrap_prod/001_playbook.md",
+)
 CODE_FENCE = re.compile(r"^```[^\n]*\n(?P<body>.*?)^```", re.MULTILINE | re.DOTALL)
 TAILSCALE_UP = re.compile(r"tailscale up\b(?P<flags>(?:[^\n\\]|\\\n)*)")
 ADVERTISED = re.compile(r"--advertise-tags[= ](?P<tags>\S+)")
@@ -180,18 +186,20 @@ def check_tailnet_policy(root: Path) -> list[lib.Finding]:
 
 
 def check_worker_tag_commands(root: Path) -> list[lib.Finding]:
-    found, commands = [], 0
+    found, joining = [], set()
     for path in sorted((root / PLAYBOOKS).rglob("*.md")):
         text = path.read_text(encoding="utf-8")
         for block in CODE_FENCE.finditer(text):
             for command in TAILSCALE_UP.finditer(block["body"]):
-                commands += 1
+                joining.add(lib.relative(root, path))
                 tags = [t for m in ADVERTISED.finditer(command["flags"]) for t in m["tags"].split(",")]
                 if tags != [TAG_WORKER]:
                     line = lib.line_of(text, block.start("body") + command.start())
                     found.append(lib.Finding(lib.relative(root, path), line, "infra-worker-tag", f"a host joins with --advertise-tags={TAG_WORKER} only, never {TAG_CI}"))
-    if commands == 0:
-        found.append(finding(PLAYBOOKS, "infra-worker-tag", "no playbook joins a host with `tailscale up`; the scan is broken, not the tree"))
+    found += [
+        finding(path, "infra-worker-tag", "this bootstrap never joins its host with `tailscale up`; the playbook moved or lost the step")
+        for path in JOINING_PLAYBOOKS if path not in joining
+    ]
     return found
 
 

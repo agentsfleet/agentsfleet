@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Table assertions for check_architecture_doc.sh. Sourced by it, never run
-# alone: it reads that script's `err`, `ok`, `FAIL` and `ARCH_DIR`.
+# alone: it reads that script's `err`, `ok`, `FAIL`, `ARCH_DIR` and
+# `PUBLISHED_ARCH_DIR`.
 #
 #   * architecture_tool_table_matches_catalog — runner_execution.md's Tool
 #     catalog table names exactly the tools afr_tools publishes
@@ -48,7 +49,12 @@ documented_tool_names() {
   ' "$1" | sort
 }
 
-if [ -f "$TOOL_TABLE_PAGE" ]; then
+if [ ! -f "$TOOL_TABLE_PAGE" ]; then
+  # A fixture may leave the page out; the published corpus losing it means the
+  # table moved and this check would otherwise pass on nothing.
+  [ "$ARCH_DIR" != "$PUBLISHED_ARCH_DIR" ] \
+    || err "architecture_tool_table_matches_catalog: $TOOL_TABLE_PAGE is missing — the Tool catalog table moved or was deleted"
+else
   tools_published="$(published_tool_names "$TOOL_CATALOG")"
   tools_documented="$(documented_tool_names "$TOOL_TABLE_PAGE")"
   if [ -z "$tools_published" ] || [ -z "$tools_documented" ]; then

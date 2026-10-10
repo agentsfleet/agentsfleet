@@ -25,7 +25,8 @@ APP = "ui/packages/app"
 DASHBOARD = f"{APP}/app/(dashboard)"
 BUTTON = "Button"
 PERMITTED_VARIANTS = frozenset({"ghost", "destructive", "link"})
-LITERAL_VARIANT = re.compile(r'\bvariant="(?P<variant>[a-z-]+)"')
+# JSX takes either quote for a string attribute, so both spell a literal.
+LITERAL_VARIANT = re.compile(r"""\bvariant=(?P<quote>["'])(?P<variant>[a-z-]+)(?P=quote)""")
 DYNAMIC_VARIANT = re.compile(r"\bvariant=\{")
 # Sites whose variant comes from a per-action config, audited on that config.
 CONFIG_DRIVEN_SITES = frozenset({

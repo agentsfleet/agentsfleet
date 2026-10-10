@@ -62,3 +62,22 @@ test_arch_doc_tool_table_matches_catalog() {
   done
   ok "$name"
 }
+
+# The published corpus losing runner_execution.md fails the check by name; a
+# fixture directory without it is not the corpus and is left alone.
+test_arch_doc_tool_table_page_missing_from_the_corpus_fails() {
+  local name="architecture_tool_table_matches_catalog[the published corpus without the page fails]"
+  local check="architecture_tool_table_matches_catalog"
+  local root="$WORK_DIR/corpus_root" spec_root="$WORK_DIR/specs" output
+  build_spec_root "$spec_root"
+  build_arch_dir "$root/docs/architecture" direction.md "No tool table here." >/dev/null
+  output="$(cd "$root" && SPEC_ROOT="$spec_root" DOC_SET_EXTRA="" bash "$GATE" 2>&1)" && {
+    bad "$name" "the published corpus without runner_execution.md passed"
+    return
+  }
+  if [[ "$output" != *"$check: docs/architecture/runner_execution.md is missing"* ]]; then
+    bad "$name" "the failure did not name the missing page: $output"
+    return
+  fi
+  ok "$name"
+}

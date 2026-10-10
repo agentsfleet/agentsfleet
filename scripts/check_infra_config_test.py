@@ -100,7 +100,7 @@ def clean_tree() -> dict[str, str]:
         checker.RUNNER_UNIT: UNIT,
         checker.DEPLOY_SH: DEPLOY,
         checker.TAILNET_POLICY: POLICY,
-        f"{checker.PLAYBOOKS}/founding/05_bootstrap/001_playbook.md": BOOTSTRAP,
+        **{path: BOOTSTRAP for path in checker.JOINING_PLAYBOOKS},
         checker.RELEASE: RELEASE,
     }
     for environment in checker.HOSTNAMES:
@@ -131,7 +131,7 @@ def seeded(path: str, old: str, new: str) -> dict[str, str]:
 
 PROD_API = f"{checker.FLY_DIR}/agentsfleetd-prod/fly.toml"
 DEV_TUNNEL = f"{checker.FLY_DIR}/cloudflared-dev/fly.toml"
-BOOTSTRAP_PATH = f"{checker.PLAYBOOKS}/founding/05_bootstrap/001_playbook.md"
+BOOTSTRAP_PATH, PROD_BOOTSTRAP = checker.JOINING_PLAYBOOKS
 
 
 class MovedRulesRejectSeededViolations(unittest.TestCase):
@@ -181,6 +181,14 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
         code, output = lint_tree(seeded(checker.RELEASE, "DESIRED_API_MACHINES=3", "DESIRED_API_MACHINES=4"))
         self.assertIn(f"{PROD_API}:1: infra-pool-budget: ", output)
+
+    def test_a_bootstrap_that_stops_joining_is_named_while_the_other_still_joins(self) -> None:
+        files = clean_tree()
+        files[PROD_BOOTSTRAP] = "# Bootstrap\n\nThe host joins the tailnet by hand.\n"
+        code, output = lint_tree(files)
+        self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+        self.assertIn(f"{PROD_BOOTSTRAP}:1: infra-worker-tag: this bootstrap never joins its host", output)
+        self.assertNotIn(f"{BOOTSTRAP_PATH}:1: infra-worker-tag", output)
 
     def test_a_prose_warning_outside_a_code_block_is_not_a_command(self) -> None:
         code, output = lint_tree(clean_tree())

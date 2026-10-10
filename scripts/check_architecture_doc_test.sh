@@ -298,6 +298,7 @@ test_arch_doc_published_links_resolve
 test_arch_doc_only_link_targets_are_checked
 test_arch_doc_every_clickable_link_form_is_checked
 test_arch_doc_tool_table_matches_catalog
+test_arch_doc_tool_table_page_missing_from_the_corpus_fails
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ "$failed" -eq 0 ]]

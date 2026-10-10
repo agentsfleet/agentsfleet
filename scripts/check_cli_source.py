@@ -29,9 +29,10 @@ BANNER = "cli/src/program/banner.ts"
 COMMANDS = "cli/src/commands"
 ENV_DECLARATION = re.compile(r'export const \w+ = "(?P<name>[A-Z][A-Z0-9_]+)"')
 
-# A raw escape spelled any of the ways a TypeScript source can: the \u001b and
-# \x1b escapes, the \e some editors paste, and the control character itself.
-RAW_ESCAPE = re.compile(r"\\u001b\[|\\x1b\[|\x1b\[")
+# A raw escape spelled any of the ways a TypeScript source can: the \u001b,
+# \u{1b} and \x1b escapes in either case, the \e some editors paste, and the
+# control character itself.
+RAW_ESCAPE = re.compile(r"\\(?:u001b|u\{0*1b\}|x1b|e)\[|\x1b\[", re.IGNORECASE)
 COLOR_256 = re.compile(r"38;5;\d+")
 PULSE_CALL = re.compile(r"\bpalette\.pulse\b")
 PULSE_CALLERS_MAX = 3
