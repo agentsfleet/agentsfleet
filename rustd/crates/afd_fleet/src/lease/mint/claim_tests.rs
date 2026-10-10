@@ -10,8 +10,11 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use std::collections::BTreeSet;
+
 use afd_connector::Provider;
 use afd_core::error_code::{self, ErrorCode};
+use afd_credential::credential::oauth;
 use afd_credential::secrets::connector::{Connectors as _, Exchange, Registry};
 use serde_json::{Value, json};
 
@@ -45,6 +48,29 @@ fn every_on_demand_connector_is_a_provider_the_routing_table_knows() {
             "{provider}"
         );
     }
+}
+
+#[test]
+fn every_server_a_zoho_callback_writes_is_one_a_refresh_will_post_to() {
+    // `afd_connector` maps a callback's `location` to the server it writes; the
+    // exchange holds its post to `ZOHO_ACCOUNTS_SERVERS`. A centre added to one
+    // and not the other would leave that region's tenants unable to mint, so
+    // the two lists are held to each other here, where both crates are seen.
+    let locations = [
+        None,
+        Some("eu"),
+        Some("in"),
+        Some("au"),
+        Some("cn"),
+        Some("jp"),
+        Some("ca"),
+    ];
+    let written: BTreeSet<&str> = locations
+        .into_iter()
+        .map(afd_connector::zoho::accounts_base)
+        .collect();
+    let posted: BTreeSet<&str> = oauth::ZOHO_ACCOUNTS_SERVERS.into_iter().collect();
+    assert_eq!(written, posted);
 }
 
 #[test]
@@ -126,6 +152,11 @@ fn a_refresh_posts_only_where_the_connect_flow_points_it() {
             "zoho",
             json!({"integration": "zoho", "refresh_token": "rt"}),
         ),
+        // A path is never read, so naming one moves nothing.
+        (
+            "zoho",
+            json!({"integration": "zoho", "refresh_token": "rt", "accounts_base": "https://accounts.zoho.com", "token_path": "/collect"}),
+        ),
         (
             "jira",
             json!({"integration": "jira", "refresh_token": "rt", "cloud_id": "c"}),
@@ -147,7 +178,7 @@ fn a_refresh_posts_only_where_the_connect_flow_points_it() {
 fn a_refresh_steered_anywhere_else_never_reaches_the_exchange() {
     // Each would post this deployment's client secret to a host or path the
     // connect flow never writes: a public host the SSRF guard admits, a Zoho
-    // lookalike, a base on a provider that has none, and a path override.
+    // lookalike, and a real Zoho server named by a provider that has none.
     for (requested, handle) in [
         (
             "zoho",
@@ -160,10 +191,6 @@ fn a_refresh_steered_anywhere_else_never_reaches_the_exchange() {
         (
             "jira",
             json!({"integration": "jira", "refresh_token": "rt", "accounts_base": "https://accounts.zoho.com"}),
-        ),
-        (
-            "zoho",
-            json!({"integration": "zoho", "refresh_token": "rt", "accounts_base": "https://accounts.zoho.com", "token_path": "/oauth/v2/token"}),
         ),
     ] {
         assert_eq!(

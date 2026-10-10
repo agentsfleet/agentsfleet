@@ -221,9 +221,10 @@ async fn seed_install(
         "INSERT INTO core.connector_installs
            (id, provider, external_account_id, workspace_id, installed_by, scopes,
             created_at, updated_at)
-         VALUES ($1::uuid, 'github', $2, $3::uuid, '', '{}', $4, $4)",
+         VALUES ($1::uuid, $2, $3, $4::uuid, '', '{}', $5, $5)",
     )
     .bind(unique_ids().0)
+    .bind(afd_connector::Provider::GitHub.id())
     .bind(installation)
     .bind(workspace)
     .bind(now.as_millis())

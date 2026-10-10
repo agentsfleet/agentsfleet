@@ -1,18 +1,19 @@
 //! Where a stored refresh handle sends the platform's client secret.
 //!
 //! A refresh grant posts this deployment's `client_id` and `client_secret`, and
-//! the handle can move where that post lands: `accounts_base` names an accounts
-//! server, `token_path` the path beneath it. Both are bytes the workspace
-//! wrote, and the generic secrets route accepts any of them. So the fields are
-//! read here once, by [`steer`], for two readers: [`endpoint`], which composes
-//! the address the exchange dials, and the lease plane's mint admission, which
-//! holds the address to the accounts servers the connect flow can write before
-//! any exchange runs. Read in two places, a handle could pass the check as one
-//! address and be posted to another.
+//! a Zoho handle names the accounts server that post lands on. The handle is
+//! bytes the workspace wrote, and the generic secrets route accepts any of
+//! them, so the server is held HERE, at the code that posts: [`endpoint`] dials
+//! only the descriptor's own URL or one of [`ZOHO_ACCOUNTS_SERVERS`], and
+//! refuses everything else before a byte leaves the process. The SSRF guard a
+//! tenant `base_url` passes is not enough for this, because it admits any
+//! public `https` host.
+//!
+//! [`steer`] is the one reader of the field, shared with the lease plane's mint
+//! admission, which refuses the same handles earlier and under the provider
+//! they claim to be.
 
 use serde_json::{Map, Value};
-
-use crate::provider::validate_endpoint;
 
 /// The vault-handle field naming the accounts server this refresh token is
 /// redeemable at.
@@ -23,39 +24,48 @@ use crate::provider::validate_endpoint;
 /// initial exchange would.
 const FIELD_ACCOUNTS_BASE: &str = "accounts_base";
 
-/// The vault-handle field overriding the path appended to
-/// [`FIELD_ACCOUNTS_BASE`].
-///
-/// No connect flow writes it. It is honoured for a handle that carries it and
-/// refused at mint admission, so its only source is a hand-stored handle.
-const FIELD_TOKEN_PATH: &str = "token_path";
+/// The path every Zoho accounts server serves the token exchange on.
+const TOKEN_PATH: &str = "/oauth/v2/token";
 
-/// The path appended to an `accounts_base` that names none of its own.
+/// Every accounts server a Zoho callback can write onto a handle, one per data
+/// centre, exactly as written.
 ///
-/// The Zoho shape, which is the only provider that carries a base at all.
-const DEFAULT_TOKEN_PATH: &str = "/oauth/v2/token";
+/// The connect flow resolves a callback's `location` to one of these in
+/// `afd_connector::zoho`; a test in the lease plane, which sees both crates,
+/// holds the two lists to each other. Canada is the irregular entry: a
+/// different apex domain, as Zoho documents it.
+pub const ZOHO_ACCOUNTS_SERVERS: [&str; 7] = [
+    "https://accounts.zoho.com",
+    "https://accounts.zoho.eu",
+    "https://accounts.zoho.in",
+    "https://accounts.zoho.com.au",
+    "https://accounts.zoho.com.cn",
+    "https://accounts.zoho.jp",
+    "https://accounts.zohocloud.ca",
+];
 
 /// Where a stored handle asks its refresh to be posted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Steer<'a> {
     /// Where the connector's descriptor says; the handle names no server.
     Declared,
-    /// To the accounts server `base`, at `path` when the handle names one.
-    To {
-        /// The handle's `accounts_base`.
-        base: &'a str,
-        /// The handle's `token_path`, when it carries one.
-        path: Option<&'a str>,
-    },
+    /// To the accounts server `base` the handle names.
+    To(&'a str),
 }
 
 /// Where `handle` asks its refresh to be posted.
 ///
-/// A field that is not a string is no override at all, as the exchange has
-/// always read it: a non-string base posts where the descriptor says.
+/// A base that is not a string is no override at all, as the exchange has
+/// always read it: the post goes where the descriptor says.
 #[must_use]
 pub fn steer(handle: &Value) -> Steer<'_> {
     handle.as_object().map_or(Steer::Declared, fields)
+}
+
+/// Whether `base` is one of Zoho's accounts servers, exactly as written.
+#[must_use]
+pub fn is_zoho_accounts_server(base: &str) -> bool {
+    ZOHO_ACCOUNTS_SERVERS.contains(&base)
 }
 
 /// [`steer`], over a handle already known to be an object.
@@ -63,39 +73,23 @@ fn fields(handle: &Map<String, Value>) -> Steer<'_> {
     handle
         .get(FIELD_ACCOUNTS_BASE)
         .and_then(Value::as_str)
-        .map_or(Steer::Declared, |base| Steer::To {
-            base,
-            path: handle.get(FIELD_TOKEN_PATH).and_then(Value::as_str),
-        })
+        .map_or(Steer::Declared, Steer::To)
 }
 
-/// Where this exchange posts.
+/// Where this exchange posts, or `None` to refuse the mint unsent.
 ///
 /// The handle's own accounts server wins over the descriptor's declared
-/// endpoint — a refresh token is redeemable at one data centre and posting it
-/// at another fails `invalid_grant`. `None` refuses the mint.
-///
-/// The composed URL is validated even though only the base is tenant-adjacent,
-/// because the check is about the address that will be DIALLED and the path is
-/// part of composing it.
+/// endpoint, because a refresh token is redeemable at one data centre and
+/// posting it at another fails `invalid_grant`. It wins only when it is one of
+/// the servers a callback writes: every address dialled is then a constant of
+/// this build, so there is nothing tenant-shaped left to parse or validate.
 pub(super) fn endpoint(handle: &Map<String, Value>, declared: &str) -> Option<Box<str>> {
-    let Steer::To { base, path } = fields(handle) else {
-        // No override: the descriptor's endpoint, which is a compile-time
-        // constant in this repository and has nothing to validate.
-        return Some(declared.into());
-    };
-    let composed = format!("{base}{}", path.unwrap_or(DEFAULT_TOKEN_PATH));
-    // The guard answers `https`, a parseable authority, and a host outside the
-    // SSRF ranges. What it does NOT answer is whether the path smuggled a query
-    // or a fragment, which is the one thing `isValidTokenPath` was for — asked
-    // here of the parse rather than of the bytes. Nor does it answer whether
-    // the host is the provider's: that is the mint admission's question.
-    let parsed = url::Url::parse(&composed).ok()?;
-    if parsed.query().is_some() || parsed.fragment().is_some() {
-        return None;
+    match fields(handle) {
+        Steer::Declared => Some(declared.into()),
+        Steer::To(base) => {
+            is_zoho_accounts_server(base).then(|| format!("{base}{TOKEN_PATH}").into())
+        }
     }
-    validate_endpoint(&composed).ok()?;
-    Some(composed.into())
 }
 
 #[cfg(test)]

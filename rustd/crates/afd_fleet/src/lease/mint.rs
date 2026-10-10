@@ -65,6 +65,9 @@ use afd_credential::vault::KeyRef;
 /// The event a rotation write-back is logged under.
 const EVENT_REFRESH_ROTATED: &str = "refresh_rotated";
 
+/// The event a refused stored handle is logged under.
+const EVENT_HANDLE_REFUSED: &str = "credential_handle_refused";
+
 impl Plane {
     /// Mints one short-lived credential for the child behind `runner_id`.
     ///
@@ -180,14 +183,19 @@ impl Plane {
         integration: &str,
         handle: &Value,
     ) -> Result<()> {
-        match claim(self.connectors, integration, handle)? {
-            Claim::Unowned => Ok(()),
-            Claim::Installation { provider, id } => self
-                .leases
-                .holds_install(&scope.workspace_id, provider.id(), &id.to_string())
-                .await?
-                .then_some(())
-                .ok_or_else(github_reconnect_required),
+        let held = match claim(self.connectors, integration, handle) {
+            Ok(Claim::Unowned) => true,
+            Ok(Claim::Installation { provider, id }) => {
+                self.leases
+                    .holds_install(&scope.workspace_id, provider.id(), &id.to_string())
+                    .await?
+            }
+            Err(refusal) => return Err(refused(scope, integration, refusal)),
+        };
+        if held {
+            Ok(())
+        } else {
+            Err(refused(scope, integration, github_reconnect_required()))
         }
     }
 
@@ -246,6 +254,24 @@ impl Plane {
             ),
         }
     }
+}
+
+/// Records a stored handle the mint admission refused, and hands it back.
+///
+/// A forged handle and a stale one answer the runner identically, by design;
+/// this line is where an operator tells them apart. It names the workspace and
+/// the integration asked for, never a byte of the handle.
+fn refused(scope: &MintScope, integration: &str, refusal: crate::Error) -> crate::Error {
+    let workspace_id = scope.workspace_id.as_str();
+    let error_code = refusal.code().as_str();
+    tracing::warn!(
+        event = EVENT_HANDLE_REFUSED,
+        error_code,
+        workspace_id,
+        integration,
+        "a stored handle claimed what its workspace did not connect"
+    );
+    refusal
 }
 
 /// The credential, or the refusal this outcome earns.

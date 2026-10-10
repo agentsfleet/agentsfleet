@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_core::error_code::ErrorCode;
+use afd_core::test_util::trace::{Capture, CapturedEvent};
 use afd_credential::credential::{Ask, Broker, Exchanger, Minted, Outcome};
 use afd_credential::secrets::connector::{Connector, Registry};
 use zeroize::Zeroizing;
@@ -100,6 +101,20 @@ async fn granted_with(fixtures: &Fixtures, name: &str, service: &str, handle: &s
     owner
 }
 
+/// The operator's record of a refused handle: one warning, naming the
+/// workspace and the refusal's code.
+fn assert_refusal_logged(capture: &Capture, who: &Bound, code: ErrorCode) {
+    let events = capture.events();
+    let [warned]: [&CapturedEvent; 1] = events
+        .iter()
+        .filter(|event| event.field("event") == Some("credential_handle_refused"))
+        .collect::<Vec<_>>()
+        .try_into()
+        .expect("exactly one refused-handle warning");
+    assert_eq!(warned.field("workspace_id"), Some(who.workspace.as_str()));
+    assert_eq!(warned.field("error_code"), Some(code.as_str()));
+}
+
 /// What `who` asking for `integration` is answered, and how many exchanges
 /// that answer cost.
 async fn mint(
@@ -142,10 +157,12 @@ async fn test_a_handle_naming_another_workspaces_installation_mints_nothing() {
     )
     .await;
 
+    let capture = Capture::install();
     let (answer, exchanges) = mint(&fixtures, &forger, CONNECTOR_GITHUB).await;
 
     assert_eq!(answer.err(), Some(error_code::GH_RECONNECT_REQUIRED));
     assert_eq!(exchanges, 0, "a forged handle reached the exchange");
+    assert_refusal_logged(&capture, &forger, error_code::GH_RECONNECT_REQUIRED);
 
     fixtures.cleanup().await;
 }
@@ -243,6 +260,7 @@ async fn test_a_refresh_steered_off_its_provider_posts_nothing() {
     )
     .await;
 
+    let capture = Capture::install();
     let (answer, exchanges) = mint(&fixtures, &steered, CONNECTOR_ZOHO).await;
 
     assert_eq!(
@@ -250,6 +268,11 @@ async fn test_a_refresh_steered_off_its_provider_posts_nothing() {
         Some(error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED)
     );
     assert_eq!(exchanges, 0, "a steered refresh reached the exchange");
+    assert_refusal_logged(
+        &capture,
+        &steered,
+        error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
+    );
 
     fixtures.cleanup().await;
 }

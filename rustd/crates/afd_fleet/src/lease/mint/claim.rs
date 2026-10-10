@@ -15,14 +15,14 @@
 //!   could name another's installation and be handed its token.
 //! - **Where a refresh posts.** A refresh grant carries this deployment's OAuth
 //!   client secret, and the handle can name the accounts server it is posted
-//!   to. Only a server the connect flow writes is accepted, so the secret
-//!   cannot be sent to a host a workspace member chose.
+//!   to. The exchange holds that to Zoho's accounts servers; this holds it to
+//!   Zoho, so no other provider's secret is posted there either.
 //!
 //! The provider vocabulary comes from [`Provider`], which owns the routing
 //! table's `provider` column; the connector registry's names are held to it by
 //! a test rather than trusted to match.
 
-use afd_connector::{Provider, zoho};
+use afd_connector::Provider;
 use afd_credential::credential::{github, oauth};
 use afd_credential::secrets::connector::{Connectors as _, Exchange, FIELD_INTEGRATION, Registry};
 use serde_json::Value;
@@ -89,19 +89,18 @@ fn filed_as(connector: &str, requested: &str) -> Result<Option<Provider>> {
 /// Whether a refresh handle posts only where its connector's connect flow
 /// could have pointed it.
 ///
-/// The descriptor's own endpoint is a constant of this build. A named base is
-/// accepted only for Zoho, only as one of its accounts servers, and only on the
-/// path that server serves, because nothing the connect flow writes carries a
-/// path of its own.
+/// The exchange itself refuses a base outside Zoho's accounts servers, so this
+/// adds the provider's half: a named base is Zoho's shape and nobody else's,
+/// and is refused here before the vault's handle reaches the broker.
 fn refresh(provider: Option<Provider>, handle: &Value) -> Result<Claim> {
     match oauth::steer(handle) {
         oauth::Steer::Declared => Ok(Claim::Unowned),
-        oauth::Steer::To { base, path: None }
-            if provider == Some(Provider::Zoho) && zoho::is_accounts_server(base) =>
+        oauth::Steer::To(base)
+            if provider == Some(Provider::Zoho) && oauth::is_zoho_accounts_server(base) =>
         {
             Ok(Claim::Unowned)
         }
-        oauth::Steer::To { .. } => Err(connector_reconnect_required()),
+        oauth::Steer::To(_) => Err(connector_reconnect_required()),
     }
 }
 
