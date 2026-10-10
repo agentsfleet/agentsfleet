@@ -4,10 +4,11 @@ use afd_core::clock::UnixMillis;
 use afd_db::Db;
 use sqlx::{Acquire as _, Row as _};
 
-use super::etag::{compute, matches_if_match};
+use super::etag::matches_if_match;
 use super::{DeleteLibrary, LibraryItem, LibraryPatch, LibraryRequirements, PatchLibrary};
 use crate::Result;
 use crate::error::database;
+use afd_core::etag::compute;
 
 const CONTEXT_LIST: &str = "list platform library";
 const CONTEXT_PATCH: &str = "patch platform library";
@@ -139,12 +140,12 @@ fn decode(row: &sqlx::postgres::PgRow, context: &'static str) -> Result<LibraryI
     let trigger_present = row.try_get(11).map_err(database(context))?;
     let updated_at = UnixMillis::from_millis(row.try_get(12).map_err(database(context))?);
     let etag = compute(&[
-        Some(&name),
-        Some(&description),
-        Some(&source_repo),
-        Some(&source_ref),
-        Some(&reasons_raw),
-        Some(&visibility),
+        Some(name.as_bytes()),
+        Some(description.as_bytes()),
+        Some(source_repo.as_bytes()),
+        Some(source_ref.as_bytes()),
+        Some(reasons_raw.as_bytes()),
+        Some(visibility.as_bytes()),
     ]);
     Ok(LibraryItem {
         id,
