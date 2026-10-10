@@ -161,9 +161,23 @@ Chromium does not start inside a bubblewrap lease. Its own sandbox needs a neste
 
 ## Toolbox
 
-The toolbox is a minimal Debian root filesystem with pinned git, the GitHub command-line tool, Python 3 with uv, Node, ripgrep, jq, curl, Chromium (Debian's `chromium-headless-shell`, for the browser tools under the Firecracker engine), and the Codex and Claude Code command-line tools. It ships as a compressed read-only EROFS image, is mounted once per host, and is bound read-only into every lease. Each lease writes to its own workspace disk, mounted at `/workspace`. The capability report states whether the host kernel can mount the toolbox's filesystem, beside whether `/dev/kvm` is present; a host that cannot mount the toolbox cannot build a sandbox, so it refuses every lease.
+The toolbox is a minimal Debian root filesystem. Its pinned packages are `ca-certificates`, `coreutils`, git, GitHub's command-line tool (`gh`), Python 3, Node, ripgrep, jq, and curl. Vendored uv and uvx come from the same pinned uv release.
 
-**Built from pinned inputs.** `make toolbox-image` runs mmdebstrap over `scripts/toolbox/manifest.txt` on a native builder for each architecture, and `mkfs.erofs` compresses the result with LZ4 high compression (LZ4HC). The release record pins the snapshot.debian.org inputs for main, updates and security; every package's version and hash; the builder's mmdebstrap, apt, dpkg, erofs-utils and compression-library versions; every binary that does not come from Debian (uv, the coding-engine command-line tools) by URL and SHA-256; the EROFS features enabled; the runner versions the image serves; and the digests of the image and its Software Bill of Materials (SBOM). Two builds of one record are byte-identical, and a changed dependency is a new release, never an edit to an old one. Rebuilding a release proves we can build it again; it does not prove an upstream prebuilt binary came from its claimed source.
+It ships as a compressed read-only EROFS image, mounted once per host and bound read-only into every lease. Each lease writes to its own workspace disk, mounted at `/workspace`. The capability report states whether the host kernel can mount the toolbox's filesystem and whether `/dev/kvm` is present.
+
+A host that cannot mount the toolbox cannot build a sandbox, so it refuses every lease.
+
+**Built from pinned inputs.** `make toolbox-image` runs mmdebstrap over `scripts/toolbox/manifest.txt` on a native builder for each architecture. `mkfs.erofs` compresses the result with LZ4 high compression (LZ4HC).
+
+The release record pins:
+
+- The snapshot.debian.org inputs for main, updates and security, and every package's version and hash.
+- The builder's mmdebstrap, apt, dpkg, erofs-utils and compression-library versions.
+- The upstream uv archive containing uv and uvx, the only vendored binaries, by URL and SHA-256.
+- The EROFS features enabled and the runner versions the image serves.
+- The digests of the image and its Software Bill of Materials (SBOM).
+
+Two builds of one record are byte-identical. A changed dependency is a new release, never an edit to an old one. Rebuilding proves we can build a release again; it does not prove an upstream binary came from its claimed source.
 
 **Signed and scanned.** Syft writes the SBOM and Grype scans it. Findings in Debian packages are reconciled against Debian's security tracker, because a backported fix keeps a version number a version-only scanner calls vulnerable. cosign signs the release manifest, and the runner checks that signature offline against a public key it is built with, so no lease waits on Sigstore. Vulnerabilities are evaluated daily, the snapshot is refreshed weekly, and an actively exploited vulnerability with a usable fix gets a new release within 24 hours.
 
