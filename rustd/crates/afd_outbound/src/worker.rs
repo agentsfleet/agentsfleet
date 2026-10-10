@@ -62,6 +62,7 @@
 use std::ops::ControlFlow;
 use std::time::Duration;
 
+use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use afd_dragonfly::{OutboundDelivery, OutboundQueue, OutboundReader};
 use tokio_util::sync::CancellationToken;
@@ -329,7 +330,9 @@ async fn pause(token: &CancellationToken) -> ControlFlow<()> {
 /// lanes report through it too.
 pub(crate) fn report(event: &'static str, failure: &crate::Error) {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-    let error_code = failure.code().as_str();
-    let reason = failure.to_string();
+    let Logged { error_code, reason } = failure.logged();
     tracing::warn!(error_code, reason, event);
 }
+
+#[cfg(test)]
+mod tests;
