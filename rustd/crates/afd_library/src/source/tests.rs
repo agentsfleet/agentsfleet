@@ -117,3 +117,33 @@ async fn source_failure_never_persists_partial_catalogue_state() {
         );
     }
 }
+
+/// A refused import's two failure lines say why without repeating the code,
+/// which each line's own `error_code` field already carries, or a backtrace.
+#[tokio::test]
+async fn a_failed_source_and_bundle_import_reason_carries_no_code_prefix() {
+    let capture = afd_core::test_util::trace::Capture::install();
+    let mut unsafe_path = fixture();
+    unsafe_path.support_files = vec![SupportFile {
+        path: "../outside".into(),
+        content: Vec::new(),
+    }];
+    let error = importer(FixtureSource::Bundle(unsafe_path), Catalog::default())
+        .import("agentsfleet/reviewer")
+        .await
+        .expect_err("a traversing path is refused");
+
+    for event in ["bundle_import_failed", "library_source_import_failed"] {
+        let logged = capture.only(event);
+        let reason = logged.field("reason").expect("the line says why");
+        assert!(
+            !reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'),
+            "{event}: {reason}"
+        );
+        assert_eq!(
+            logged.field("error_code"),
+            Some(error.code().as_str()),
+            "{event}"
+        );
+    }
+}
