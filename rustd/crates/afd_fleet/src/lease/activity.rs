@@ -104,7 +104,7 @@ impl Leases {
             payloads.extend(serde_json::to_string(published).ok());
         }
         if let Err(unreachable_queue) = streams.publish_tail_batch(fleet, &payloads).await {
-            let reason = unreachable_queue.to_string();
+            let reason = unreachable_queue.told();
             tracing::debug!(
                 fleet_id = fleet,
                 reason,

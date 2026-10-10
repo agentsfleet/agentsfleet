@@ -19,6 +19,7 @@
 //! comment.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_observability::metrics::label::fleet::HeldClaim;
@@ -188,11 +189,10 @@ impl Leases {
     /// logged and the answer stands.
     pub(crate) async fn let_go(&self, fleet_id: &Uuid7, fence: Fence, now: UnixMillis) {
         if let Err(failure) = self.release(fleet_id, fence, now).await {
-            let code = failure.code().as_str();
+            let Logged { error_code, reason } = failure.logged();
             let fleet_id = fleet_id.as_str();
-            let reason = failure.to_string();
             tracing::warn!(
-                error_code = code,
+                error_code,
                 event = EVENT_CLAIM_RELEASE_FAILED,
                 fleet_id,
                 reason,

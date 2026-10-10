@@ -90,7 +90,7 @@ impl Gate {
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
         // scores the dead copy.
         let code = error_code::INTERNAL_DB_QUERY.as_str();
-        let reason = fault.to_string();
+        let reason = fault.told();
         let event = self.event;
         match self.on_fault {
             OnFault::Admit => {

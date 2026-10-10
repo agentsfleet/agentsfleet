@@ -34,6 +34,7 @@
 //! exists either way.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_wire::credentials::MintCredentialRequest;
 use serde_json::Value;
@@ -198,13 +199,18 @@ impl Plane {
             ),
             // The operator's breadcrumb, and nothing more. No token bytes ride
             // this line, and the request is already successful.
-            Err(failed) => tracing::warn!(
-                event = EVENT_REFRESH_ROTATED,
-                workspace_id = scope.workspace_id.as_str(),
-                integration,
-                error = %failed,
-                "a rotated refresh token could not be written back"
-            ),
+            Err(failed) => {
+                let Logged { error_code, reason } = failed.logged();
+                let workspace_id = scope.workspace_id.as_str();
+                tracing::warn!(
+                    event = EVENT_REFRESH_ROTATED,
+                    workspace_id,
+                    integration,
+                    error_code,
+                    reason,
+                    "a rotated refresh token could not be written back"
+                );
+            }
         }
     }
 }

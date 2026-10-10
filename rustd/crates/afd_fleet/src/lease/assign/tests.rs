@@ -80,10 +80,69 @@ async fn a_held_fleets_unreadable_readiness_leaves_the_poll_its_partition()
         .ok_or("the partition's read failed, and so does the poll")?;
     let skipped = log.only(EVENT_HELD_READ_FAILED);
     assert_eq!(skipped.field("fleet_id"), Some(id(1).as_str()));
+    let reason = skipped.field("reason").unwrap_or_default();
+    assert!(
+        !reason.is_empty() && !reason.contains("[UZ-"),
+        "the code is the line's `error_code`, never the reason's prefix: {reason}"
+    );
     assert_ne!(
         store.cursor().advance(),
         ReadyCursor::new().advance(),
         "the partition pass ran"
     );
     Ok(())
+}
+
+/// Each queue reporter's reason is the failure's sentence; its constant code
+/// rides `error_code` alone.
+#[test]
+fn a_poll_queue_failure_reason_carries_no_code_prefix() -> Result<(), &'static str> {
+    use afd_core::test_util::trace::Capture;
+
+    let runner = runner_id()?;
+    let (_label, error) = afd_dragonfly::error::one_of_each_kind()
+        .into_iter()
+        .next()
+        .ok_or("the queue test utility exposes an error")?;
+    let told = error.told();
+
+    let log = Capture::install();
+    super::warn_queue("lease_poll_queue_failed", &runner, &error);
+    super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
+
+    for event in ["lease_poll_queue_failed", "lease_claim_queue_failed"] {
+        let line = log.only(event);
+        assert_eq!(
+            line.field("error_code"),
+            Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
+        assert_eq!(line.field("reason"), Some(told.as_str()), "{event}");
+    }
+    Ok(())
+}
+
+/// A stream entry no reader can decode is dropped on a dead queue too, and the
+/// line that records it carries the decode failure's sentence alone.
+#[tokio::test]
+async fn an_undecodable_entry_reason_carries_no_code_prefix() {
+    use afd_core::test_util::trace::Capture;
+
+    use super::diagnostics::{EVENT_ENTRY_UNDECODABLE_DROP_FAILED, drop_undecodable};
+    use crate::lease::test_dead;
+
+    let error = crate::error::lease_lost();
+    let told = error.told();
+    let leases = test_dead::leases();
+
+    let log = Capture::install();
+    drop_undecodable(
+        &leases.streams(),
+        "fleet-fixture",
+        &afd_dragonfly::EventId::of("1767225600000-0"),
+        &error,
+    )
+    .await;
+
+    let line = log.only(EVENT_ENTRY_UNDECODABLE_DROP_FAILED);
+    assert_eq!(line.field("reason"), Some(told.as_str()));
 }
