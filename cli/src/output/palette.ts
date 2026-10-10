@@ -130,13 +130,3 @@ export const palette: Palette = {
 
   pulseBold: (text, opts) => styledBold(PALETTE_TOKEN_PULSE, text, opts),
 };
-
-// Test/inspection surface. Production callers should not import these;
-// they exist so unit tests can assert the exact mapping without redoing
-// the lookup logic.
-export const PALETTE_INTERNALS = {
-  XTERM_256,
-  BASIC_16,
-  RESET,
-  ESC,
-} as const;

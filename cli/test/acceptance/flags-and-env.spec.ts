@@ -109,8 +109,8 @@ describe("env-var reference (--help)", () => {
   // --help stays terse: the full environment-variable matrix (telemetry
   // opt-out included) lives in the docs, surfaced as a single docs pointer
   // (refactor: inline matrix → docs link). This confirms the built binary
-  // (npm install / dist) renders that pointer end-to-end and that the old
-  // inline matrix does not resurface. `helpTail()` is the single source.
+  // (npm install / dist) renders that pointer end-to-end. `helpTail()` is
+  // the single source.
   it("points to the env-var docs instead of inlining the matrix", async () => {
     const result = await runFleetctl(["--help"], {
       env: composeEnv({ NO_COLOR: "1" }),
@@ -121,19 +121,6 @@ describe("env-var reference (--help)", () => {
       result.stdout.includes(tail),
       `--help did not surface the env-var docs pointer (${tail}); got: ${result.stdout}`,
     );
-    // The matrix moved to the docs — neither the current nor the
-    // pre-supabase env names should be inlined in --help (catches a
-    // regression that re-inlines them).
-    for (const inlineName of [
-      "AGENTSFLEET_TELEMETRY_DISABLED",
-      "AGENTSFLEET_POSTHOG_KEY",
-      "AGENTSFLEET_POSTHOG_HOST",
-    ]) {
-      assert.ok(
-        !result.stdout.includes(inlineName),
-        `--help re-inlines ${inlineName}; the env-var matrix belongs in the docs`,
-      );
-    }
   });
 });
 

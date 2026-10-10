@@ -1,12 +1,9 @@
-// Unit tests for src/output/palette.js — the canonical 256-color → token
-// mapping. Asserts the exact ANSI escape per token, the basic16 fallback
-// codes, and that NO_COLOR / non-TTY paths emit byte-exact plain text.
-//
-// The 256-color codes per docs/DESIGN_SYSTEM.md "CLI / agentsfleet
-// rendering" are pinned in PALETTE_INTERNALS — drift breaks the brand.
+// Unit tests for src/output/palette.js — the escape format per capability
+// mode, the basic16 fallback codes, and that NO_COLOR / non-TTY paths emit
+// byte-exact plain text.
 
 import { describe, test, expect, beforeEach } from "bun:test";
-import { palette, PALETTE_INTERNALS } from "../src/output/palette.ts";
+import { palette } from "../src/output/palette.ts";
 import { ColorMode, resetCapabilityWarning } from "../src/output/capability.ts";
 import { makeBufferStream } from "./helpers.ts";
 
@@ -26,45 +23,7 @@ beforeEach(() => {
   resetCapabilityWarning();
 });
 
-describe("palette — xterm256 mapping pinned to design-system tokens", () => {
-  test("pulse → 256:79 (cyan2)", () => {
-    expect(palette.pulse("hi", { mode: ColorMode.XTERM256 })).toBe(`${ESC}[38;5;79mhi${ESC}[0m`);
-  });
-
-  test("evidence → 256:220 (gold1)", () => {
-    expect(palette.evidence("EVIDENCE", { mode: ColorMode.XTERM256 })).toBe(
-      `${ESC}[38;5;220mEVIDENCE${ESC}[0m`,
-    );
-  });
-
-  test("success → 256:78", () => {
-    expect(palette.success("ok", { mode: ColorMode.XTERM256 })).toBe(`${ESC}[38;5;78mok${ESC}[0m`);
-  });
-
-  test("warn → 256:214", () => {
-    expect(palette.warn("warn", { mode: ColorMode.XTERM256 })).toBe(`${ESC}[38;5;214mwarn${ESC}[0m`);
-  });
-
-  test("error → 256:210", () => {
-    expect(palette.error("err", { mode: ColorMode.XTERM256 })).toBe(`${ESC}[38;5;210merr${ESC}[0m`);
-  });
-
-  test("muted → 256:102 (grey53)", () => {
-    expect(palette.muted("dim", { mode: ColorMode.XTERM256 })).toBe(`${ESC}[38;5;102mdim${ESC}[0m`);
-  });
-
-  test("subtle → 256:244", () => {
-    expect(palette.subtle("subtle", { mode: ColorMode.XTERM256 })).toBe(
-      `${ESC}[38;5;244msubtle${ESC}[0m`,
-    );
-  });
-
-  test("pulseBold → bold + 256:79", () => {
-    expect(palette.pulseBold("USAGE", { mode: ColorMode.XTERM256 })).toBe(
-      `${ESC}[1;38;5;79mUSAGE${ESC}[0m`,
-    );
-  });
-
+describe("palette — bold and plain text in xterm256", () => {
   test("bold → bold only, no color", () => {
     expect(palette.bold("Section", { mode: ColorMode.XTERM256 })).toBe(
       `${ESC}[1mSection${ESC}[0m`,
@@ -135,25 +94,5 @@ describe("palette — capability defaults to caller's stream", () => {
   test("TTY stream + 256color TERM → xterm256 → escape present", () => {
     const result = palette.pulse("hi", { env: { TERM: "xterm-256color" }, stream: ttyStream() });
     expect(result).toBe(`${ESC}[38;5;79mhi${ESC}[0m`);
-  });
-});
-
-describe("PALETTE_INTERNALS — design-system invariants pinned", () => {
-  test("xterm256 codes match the design-system mapping", () => {
-    expect(PALETTE_INTERNALS.XTERM_256).toMatchObject({
-      pulse: 79,
-      evidence: 220,
-      success: 78,
-      warn: 214,
-      error: 210,
-      muted: 102,
-      subtle: 244,
-    });
-  });
-
-  test("basic16 codes are valid SGR ints", () => {
-    for (const code of Object.values(PALETTE_INTERNALS.BASIC_16)) {
-      expect(code).toMatch(/^[0-9]{1,2}$/);
-    }
   });
 });

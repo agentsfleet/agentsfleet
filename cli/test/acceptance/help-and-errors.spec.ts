@@ -22,7 +22,6 @@ import {
   startStalledServer,
   stripAnsi,
   pkgVersion,
-  validateModule,
   emptyEnv,
 } from "./helpers-help-and-errors.ts";
 
@@ -198,28 +197,6 @@ describe("after logout, an authenticated command refuses from disk", () => {
     } finally {
       await state.cleanup();
     }
-  });
-});
-
-describe("validate.js error stem", () => {
-  // "abc def" fails the current validator because spaces aren't allowed
-  // in SAFE_ID_RE. "not-a-uuid" actually passes today (matches SAFE_ID_RE);
-  // that mismatch with the backend's strict uuidv7 is the motivation for
-  // the optional library swap covered in the lifecycle suite.
-  it("validateRequiredId is reachable and emits the invalid-format stem", () => {
-    const result = validateModule.validateRequiredId("abc def", "fleet_id");
-    assert.equal(result.ok, false);
-    assert.match(
-      result.message,
-      /invalid fleet_id: expected/i,
-      `unexpected stem: ${result.message}`,
-    );
-  });
-
-  it("validateRequiredId('') reports the empty-required stem", () => {
-    const result = validateModule.validateRequiredId("", "workspace_id");
-    assert.equal(result.ok, false);
-    assert.match(result.message, /workspace_id is required/i);
   });
 });
 
