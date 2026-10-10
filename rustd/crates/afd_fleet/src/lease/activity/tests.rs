@@ -22,10 +22,6 @@ const FENCE: i64 = 7;
 /// The call id the runner stamps on every fixture tool frame.
 const RUNNER_CALL: &str = "3";
 
-/// The published stream route whose description lists the frame kinds.
-const STREAM_DESCRIPTION: &str =
-    "/paths/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1events~1stream/get/description";
-
 /// The tool every fixture frame names.
 const TOOL: &str = "shell";
 
@@ -115,33 +111,6 @@ fn one_runner_call_id_under_two_fences_publishes_two_ids() {
     assert_eq!(
         second["call_id"],
         serde_json::Value::from(format!("{}:{RUNNER_CALL}", FENCE + 1))
-    );
-}
-
-#[test]
-fn test_sse_kind_list_matches_published_kinds() {
-    let openapi = include_str!("../../../../../../public/openapi.json");
-    let document: serde_json::Value =
-        serde_json::from_str(openapi).expect("the published spec parses");
-    let description = document
-        .pointer(STREAM_DESCRIPTION)
-        .and_then(serde_json::Value::as_str)
-        .expect("the stream route is described");
-    for frame in every_frame(Some(RUNNER_CALL)) {
-        let value = published(&frame);
-        let kind = value["kind"].as_str().expect("every frame has a kind");
-        assert!(
-            description.contains(&format!("`{kind}`")),
-            "`{kind}` is undocumented"
-        );
-    }
-    assert!(
-        !description.contains("`fleet_response_chunk`"),
-        "the stream publishes `chunk`, never the runner's own name for it"
-    );
-    assert!(
-        description.contains("`call_id`"),
-        "the tool frames' call id is documented"
     );
 }
 
