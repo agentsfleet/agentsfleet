@@ -23,6 +23,7 @@ SUBJECTS = {
     "make/quality.mk": "lint-all:\n",
     "cli/test/fixtures/reply.json": "{}\n",
     "tests/fixtures/fleetbundle/reviewer/SKILL.md": "---\nname: reviewer\n---\n",
+    "rustd/crates/afd_auth/src/lib.rs": "pub fn f() {}\n",
 }
 
 SEEDED = {
@@ -119,6 +120,52 @@ class NotReads(unittest.TestCase):
         text = 'ROOT = Path(__file__).resolve().parents[1]\nprint(f"{(ROOT / \'make/quality.mk\').read_text()}")\n'
         code, output = lint({"scripts/braces_test.py": text})
         self.assertIn("scripts/braces_test.py:2: test reads ", output)
+
+
+# Read shapes beyond the first seeded set: (path, text, line of the read).
+MORE_READS = {
+    "rust cwd-relative": ("rustd/crates/afd_auth/tests/cwd.rs", 'fn t() {\n    let text = std::fs::read_to_string("src/lib.rs").unwrap();\n}\n', 2),
+    "rust bare read_to_string": ("rustd/crates/afd_auth/tests/bare.rs", 'use std::fs::read_to_string;\nlet page = read_to_string("../../../../docs/AUTH.md");\n', 2),
+    "shell redirection": ("make/quality_test.sh", 'ROOT="$(git rev-parse --show-toplevel)"\nwhile read -r line; do echo "$line"; done < "$ROOT/make/quality.mk"\n', 2),
+    "shell $(<file)": ("make/slurp_test.sh", 'ROOT="$(git rev-parse --show-toplevel)"\ntext="$(<"$ROOT/make/quality.mk")"\n', 2),
+    "Bun.spawnSync grep": ("cli/test/spawn.unit.test.ts", 'const out = Bun.spawnSync(["grep", "-n", "login", join(import.meta.dir, "..", "src", "commands", "login.ts")]);\n', 1),
+    "spawnSync sed": ("cli/test/sed.unit.test.ts", 'const CLI_ROOT = join(import.meta.dir, "..");\nspawnSync("sed", ["-n", "1p", join(CLI_ROOT, "src/commands/login.ts")]);\n', 2),
+    "js helper walk": ("cli/test/walk.unit.test.ts", 'function walk(dir: string): string[] {\n  return readdirSync(dir);\n}\nconst found = walk(join(__dirname, "..", "src"));\n', 4),
+    "js arrow helper": ("cli/test/arrow.unit.test.ts", 'const slurp = (file: string) => {\n  const at = join(file, "login.ts");\n  return readFileSync(at, "utf8");\n};\nslurp(join(import.meta.dir, "..", "src", "commands"));\n', 5),
+}
+
+
+class MoreReadShapes(unittest.TestCase):
+    def test_each_read_shape_is_a_read(self) -> None:
+        for shape, (path, text, line) in MORE_READS.items():
+            with self.subTest(shape=shape):
+                code, output = lint({path: text})
+                self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+                self.assertIn(f"{path}:{line}: test reads ", output)
+
+    def test_the_same_shapes_on_the_tests_own_files_are_not_reads(self) -> None:
+        code, output = lint({
+            "rustd/crates/afd_auth/tests/tmp.rs": (
+                'let status = std::fs::read_to_string("/proc/self/status");\n'
+                'let file = "Cargo.toml";\nlet text = read_to_string(dir.path().join(file));\n'
+            ),
+            "deploy/baremetal/redirect_test.sh": (
+                'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\n'
+                'bash < "$SCRIPT_DIR/deploy.sh"\n'
+                'cat <<EOF\n$SCRIPT_DIR/deploy.sh\nEOF\n'
+                'while read -r l; do :; done <<<"$SCRIPT_DIR/deploy.sh"\n'
+                'diff <(echo a) <(echo b)\n'
+                'work="$(mktemp -d)"\nwhile read -r l; do :; done < "$work/out"\n'
+            ),
+            "cli/test/tmp.unit.test.ts": (
+                'const dir = mkdtempSync(join(tmpdir(), "x-"));\n'
+                'Bun.spawnSync(["grep", "-n", "x", join(dir, "out.txt")]);\n'
+                'function walk(at: string): string[] { return readdirSync(at); }\n'
+                'walk(dir);\n'
+                'const match = /grep/.exec("grep x");\n'
+            ),
+        })
+        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
 
 
 class HelperAndRegionReads(unittest.TestCase):

@@ -26,16 +26,24 @@ LANGUAGES = {
         "reads": re.compile(
             r"\b(?:readFileSync|readFile|readdirSync|readdir|existsSync|statSync|createReadStream|opendirSync)\s*\("
             r"|\bBun\.file\s*\(|\.scan\s*\(|\bimport\.meta\.glob\s*(?:<[^>]*>)?\s*\("
-            r"|\b(?:execSync|spawnSync|execFileSync)\s*\(\s*[\"'`](?:grep|rg|cat|find)\b"
+            # A spawned reader: `spawnSync("grep", …)` or `Bun.spawnSync(["sed", …])`.
+            r"|(?:\b(?:execSync|execFile|execFileSync|spawn|spawnSync)|(?<![\w.$])exec)\s*\(\s*\[?\s*[\"'`]"
+            r"(?:grep|egrep|fgrep|rg|cat|find|sed|awk|head|tail|jq|cut|sort|diff)\b"
             r"|\bfrom\s+[\"'][^\"']+\?raw[\"']"
         ),
         "comment": "//",
     },
     "rust": {
-        "anchors": r'env!\(\s*"CARGO_MANIFEST_DIR"\s*\)|' + r'"(?:\.\./)+',
+        "anchors": r'env!\(\s*"CARGO_MANIFEST_DIR"\s*\)|"(?:\.\./)+|\b(?:Path::new|PathBuf::from)\(\s*&?"(?!/)',
+        # Cargo runs a test with the crate as its working directory, so a
+        # relative path literal handed straight to a read names a crate file.
+        # It anchors only as the whole argument: joined onto a temporary
+        # directory, the same literal names the test's own file.
+        "direct": r'^\s*&?"(?!/)(?=[^"\n]*(?:/|\.[A-Za-z0-9]+"))[^"\n]+"\s*$',
         "assign": re.compile(r"\b(?:let|const|static)\s+(?:mut\s+)?(?P<name>\w+)\s*(?::[^=]+)?=\s*(?P<value>[^;]+)"),
         "reads": re.compile(
             r"\binclude_(?:str|bytes)!\s*\(|\bfs::(?:read_to_string|read|read_dir)\s*\(|\bFile::open\s*\("
+            r"|(?<![\w.:])(?:read_to_string|read_dir)\s*\("
             r"|\bWalkDir::new\s*\("
         ),
         "comment": "//",
@@ -56,7 +64,10 @@ LANGUAGES = {
             re.MULTILINE,
         ),
         "reads": re.compile(
-            r"(?:^|[\s;|&(`])(?:cat|grep|egrep|fgrep|rg|sed|awk|head|tail|jq|yq|cut|sort|diff|cmp)\b(?![-=.])",
+            r"(?:^|[\s;|&(`])(?:cat|grep|egrep|fgrep|rg|sed|awk|head|tail|jq|yq|cut|sort|diff|cmp)\b(?![-=.])"
+            # Input redirection, `< file` and `$(<file)`; not a heredoc, a
+            # here-string, process substitution or a descriptor duplication.
+            r"|(?<![<\d])<(?![<(&=])",
             re.MULTILINE,
         ),
         "comment": "#",

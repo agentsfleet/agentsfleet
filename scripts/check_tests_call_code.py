@@ -17,11 +17,13 @@ What counts:
   or `__tests__/` directory, and Rust's `tests.rs`, `*_tests.rs` and the body
   of a `#[cfg(test)]` module.
 - A read is a file-reading call (`readFileSync`, `Bun.file`, `include_str!`,
-  `fs::read_to_string`, `open`, `read_text`, `cat`, `grep`, `sed`, …) or a
-  directory walk, whose path is anchored in the repository: it is built from
-  the test's own location (`__dirname`, `import.meta.url`,
-  `CARGO_MANIFEST_DIR`, `__file__`, `BASH_SOURCE`, `git rev-parse`), from a
-  relative path, or from a variable that was.
+  `fs::read_to_string`, `open`, `read_text`, `cat`, `grep`, `sed`, a shell
+  `< file`, a spawned `grep` or `sed`, …), a directory walk, or a call to a
+  test function whose body reads its parameter, whose path is anchored in the
+  repository: it is built from the test's own location (`__dirname`,
+  `import.meta.url`, `CARGO_MANIFEST_DIR`, `__file__`, `BASH_SOURCE`,
+  `git rev-parse`), from a relative path (in Rust, a crate-relative literal
+  handed whole to the read), or from a variable that was.
 - A path through a fixture directory (`fixtures/`, `testdata/`,
   `__fixtures__/`, `__snapshots__/`, `golden/`) is the test's own input and is
   allowed. So is a path the test made itself (a temporary directory), because
@@ -37,11 +39,9 @@ What counts:
 
 from __future__ import annotations
 
-import io
 from pathlib import Path
 import re
 import sys
-import tokenize
 
 sys.dont_write_bytecode = True
 
@@ -53,11 +53,14 @@ TARGET_MAX = 80
 from check_tests_call_code_languages import (
     FIXTURE, FIXTURE_DIRS, JS_SUFFIXES, LANGUAGES, SKIPPED, TEST_DIRS, TS_TEST_NAME,
 )
+from check_tests_call_code_text import call_argument, cfg_test_regions, js_functions, python_literal_spans
 
 # A shell value that runs something: its output is not a path, so it anchors nothing.
 EXECUTED_SUBSTITUTION = re.compile(r'^"?\$\((?!\s*(?:cd|dirname|git rev-parse|pwd|realpath)\b)')
 # A read that hands the file to something that runs it, or copies it for that.
 SHELL_EXECUTES = re.compile(r"\|\s*(?:\w+=\S*\s+)*(?:bash|sh)\b|>\s*\"?\$\w")
+# A command whose input redirection feeds a shell: `bash < "$SCRIPT_DIR/x.sh"`.
+SHELL_RUNS_INPUT = re.compile(r"(?:^|[;&|(])\s*(?:\w+=\S*\s+)*(?:bash|sh)\b[^;&|]*$")
 JS_COPY = re.compile(r"Bun\.write\([^;]*$")
 STRING_LITERAL = re.compile(r""""([^"\n]*)"|'([^'\n]*)'|`([^`]*)`""")
 POSITIONAL = re.compile(r'\$\{?[1-9]\b')
@@ -68,8 +71,6 @@ LEADING_DELIMITERS = "\n\t ;|&(`"
 # A literal that spells a path: a separator, or a name with an extension. An
 # encoding ("utf8") or a message is neither.
 PATH_LIKE = re.compile(r"^[^\s]*(?:/|\.[A-Za-z0-9]+$)[^\s]*$")
-# Tokens whose text is a Python literal; an f-string's braced code tokenizes apart.
-PYTHON_LITERAL_TOKENS = frozenset({"STRING", "FSTRING_MIDDLE", "TSTRING_MIDDLE"})
 
 
 def language_of(path: Path) -> str | None:
@@ -89,23 +90,6 @@ def is_test_file(relative_path: Path) -> bool:
     if name.endswith(".rs") and (name == "tests.rs" or name.endswith("_tests.rs")):
         return True
     return language_of(relative_path) is not None and bool(TEST_DIRS.intersection(parts[:-1]))
-
-
-def cfg_test_regions(source: str) -> list[tuple[int, int]]:
-    """Offsets of each `#[cfg(test)]` item's body in a Rust source file."""
-    regions = []
-    for match in re.finditer(r"#\[cfg\(test\)\]", source):
-        brace, semicolon = source.find("{", match.end()), source.find(";", match.end())
-        if brace == -1 or (semicolon != -1 and semicolon < brace):
-            continue  # `mod tests;` — the body is its own file
-        depth, index = 0, brace
-        while index < len(source):
-            depth += {"{": 1, "}": -1}.get(source[index], 0)
-            if depth == 0:
-                break
-            index += 1
-        regions.append((match.start(), index))
-    return regions
 
 
 def strip_comments(source: str, language: str) -> str:
@@ -167,43 +151,6 @@ def names_untracked_path(text: str, tracked_parts: frozenset[str]) -> bool:
     return bool(parts) and not any(part in tracked_parts for part in parts)
 
 
-def python_literal_spans(code: str) -> list[tuple[int, int]]:
-    """Offsets of each Python string literal's text, from the standard tokenizer."""
-    line_offsets = [0]
-    for line in code.splitlines(keepends=True):
-        line_offsets.append(line_offsets[-1] + len(line))
-    spans = []
-    try:
-        for token in tokenize.generate_tokens(io.StringIO(code).readline):
-            if tokenize.tok_name[token.type] in PYTHON_LITERAL_TOKENS:
-                (start_row, start_col), (end_row, end_col) = token.start, token.end
-                spans.append((line_offsets[start_row - 1] + start_col, line_offsets[end_row - 1] + end_col))
-    except (tokenize.TokenError, SyntaxError):
-        pass  # source that will not tokenize keeps the literals found so far, and every read is a candidate
-    return spans
-
-
-def call_argument(code: str, start: int, language: str) -> str:
-    """The text a read call is handed: its parenthesised arguments, or the rest of the command."""
-    line_end = code.find("\n", start)
-    line_end = len(code) if line_end == -1 else line_end
-    if language == "shell":
-        while code[:line_end].rstrip().endswith("\\") and line_end < len(code):
-            next_end = code.find("\n", line_end + 1)
-            line_end = len(code) if next_end == -1 else next_end
-        return code[start:line_end]
-    paren = code.find("(", start, line_end + 1)
-    if paren == -1:
-        return code[start:line_end]
-    depth, index = 0, paren
-    while index < len(code):
-        depth += {"(": 1, ")": -1}.get(code[index], 0)
-        if depth == 0:
-            return code[paren + 1 : index]
-        index += 1
-    return code[paren + 1 :]
-
-
 class Scan:
     """One test file's code, with the names anchored in the repository."""
 
@@ -219,9 +166,18 @@ class Scan:
         self.fixture_names = fixture_names
         self.tracked_parts = tracked_parts
         self.literals = python_literal_spans(self.code) if language == "python" else []
+        direct = LANGUAGES[language].get("direct")
+        self.direct = re.compile(direct) if direct else None
+
+    def names_relative_path(self, argument: str) -> bool:
+        """A relative path literal handed whole to the read, or through one name."""
+        if self.direct is None:
+            return False
+        value = self.values.get(argument.strip().lstrip("&"), "")
+        return bool(self.direct.search(argument) or self.direct.search(value))
 
     def is_repository_read(self, argument: str) -> bool:
-        if not self.anchor.search(argument) or FIXTURE.search(argument):
+        if not (self.anchor.search(argument) or self.names_relative_path(argument)) or FIXTURE.search(argument):
             return False
         if self.fixture_names and self.fixture_names.search(argument):
             return False
@@ -229,7 +185,9 @@ class Scan:
 
     def executes(self, start: int, argument: str) -> bool:
         if self.language == "shell":
-            return bool(SHELL_EXECUTES.search(argument))
+            line = self.code[self.code.rfind("\n", 0, start) + 1 : start]
+            feeds_shell = argument.startswith("<") and SHELL_RUNS_INPUT.search(line)
+            return bool(SHELL_EXECUTES.search(argument) or feeds_shell)
         statement_start = max(self.code.rfind(";", 0, start), self.code.rfind("\n\n", 0, start))
         return self.language == "js" and bool(JS_COPY.search(self.code[statement_start + 1 : start]))
 
@@ -253,20 +211,46 @@ def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]]
     return found
 
 
-def shell_helper_findings(scan: Scan, relative_path: str) -> list[lib.Finding]:
-    """Calls that hand an anchored path to a function whose body reads its argument."""
+def reads_a_parameter(body: str, language: str, param: re.Pattern[str]) -> bool:
+    for read in LANGUAGES[language]["reads"].finditer(body):
+        start = read.start() + len(read.group(0)) - len(read.group(0).lstrip(LEADING_DELIMITERS))
+        if param.search(call_argument(body, start, language)):
+            return True
+    return False
+
+
+def helper_readers(code: str, language: str) -> set[str]:
+    """Functions whose body reads a path built from one of their parameters."""
     readers = set()
-    for function in SHELL_FUNCTION.finditer(scan.code):
-        body = function["body"]
-        params = {n for n, v in assignments(body, "shell").items() if POSITIONAL.search(v)}
-        param = re.compile(POSITIONAL.pattern + ("|" + names_pattern(params, "shell") if params else ""))
-        for read in LANGUAGES["shell"]["reads"].finditer(body):
-            if param.search(call_argument(body, read.start(), "shell")):
+    if language == "shell":
+        for function in SHELL_FUNCTION.finditer(code):
+            body = function["body"]
+            params = {n for n, v in assignments(body, "shell").items() if POSITIONAL.search(v)}
+            param = re.compile(POSITIONAL.pattern + ("|" + names_pattern(params, "shell") if params else ""))
+            if reads_a_parameter(body, "shell", param):
                 readers.add(function["name"])
+    elif language == "js":
+        for name, params, body, _ in js_functions(code):
+            if params:
+                derived = params | grow(assignments(body, "js"), names_pattern(params, "js"), "js", None)
+                if reads_a_parameter(body, "js", re.compile(names_pattern(derived, "js"))):
+                    readers.add(name)
+    return readers
+
+
+def helper_findings(scan: Scan, relative_path: str) -> list[lib.Finding]:
+    """Calls that hand an anchored path to a function whose body reads its argument."""
     found = []
-    for name in readers:
-        for call in re.finditer(rf"^\s*{re.escape(name)}\b(?!\s*\(\))", scan.code, re.MULTILINE):
-            argument = call_argument(scan.code, call.start(), "shell")
+    for name in helper_readers(scan.code, scan.language):
+        if scan.language == "shell":
+            calls = re.finditer(rf"^\s*{re.escape(name)}\b(?!\s*\(\))", scan.code, re.MULTILINE)
+        else:
+            calls = (
+                c for c in re.finditer(rf"(?<![\w.$]){re.escape(name)}\s*\(", scan.code)
+                if not re.search(r"\bfunction\s*$", scan.code[max(0, c.start() - 40) : c.start()])
+            )
+        for call in calls:
+            argument = call_argument(scan.code, call.start(), scan.language)
             if scan.is_repository_read(argument):
                 found.append(finding(relative_path, scan.code, call.start(), argument))
     return found
@@ -280,8 +264,7 @@ def finding(relative_path: str, code: str, offset: int, argument: str) -> lib.Fi
 def findings_in(relative_path: str, source: str, language: str, regions, tracked_parts: frozenset[str]) -> list[lib.Finding]:
     scan = Scan(source, language, tracked_parts)
     found = read_findings(scan, relative_path, regions)
-    if language == "shell":
-        found += shell_helper_findings(scan, relative_path)
+    found += helper_findings(scan, relative_path)
     first_per_line: dict[int, lib.Finding] = {}
     for item in found:
         first_per_line.setdefault(item.line, item)
