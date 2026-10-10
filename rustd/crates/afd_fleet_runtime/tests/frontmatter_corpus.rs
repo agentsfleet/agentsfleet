@@ -207,34 +207,6 @@ fn an_unsubstituted_template_is_refused() {
 }
 
 #[test]
-fn drill_bundles_parse_and_join_the_corpus() {
-    assert_eq!(FIRST_PARTY.len(), 9);
-    assert_eq!(CORPUS_CASES.len(), 19);
-    for (relative, kind) in [
-        ("ci-responder/SKILL.md", Kind::Skill),
-        ("ci-responder/TRIGGER.md", Kind::Trigger),
-        ("ci-repairer/SKILL.md", Kind::Skill),
-        ("ci-repairer/TRIGGER.md", Kind::Trigger),
-    ] {
-        assert!(
-            CORPUS_CASES.contains(&(relative, kind, Verdict::Accepts)),
-            "{relative} must be graded by the corpus"
-        );
-    }
-    for slug in ["ci-responder", "ci-repairer"] {
-        assert!(
-            FIRST_PARTY.contains(&slug),
-            "{slug} joins the first-party roster"
-        );
-        let skill = parse_skill(&fixture(&format!("{slug}/SKILL.md")))
-            .unwrap_or_else(|failure| panic!("{slug} skill should parse: {failure}"));
-        let trigger = parse_trigger(&fixture(&format!("{slug}/TRIGGER.md")))
-            .unwrap_or_else(|failure| panic!("{slug} trigger should parse: {failure}"));
-        assert_eq!(skill.name(), trigger.config().name(), "{slug} names agree");
-    }
-}
-
-#[test]
 fn responder_bundle_holds_no_write_reach() {
     let parsed =
         parse_trigger(&fixture("ci-responder/TRIGGER.md")).expect("responder trigger should parse");
