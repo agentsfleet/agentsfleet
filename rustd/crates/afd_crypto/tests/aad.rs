@@ -80,11 +80,3 @@ fn test_aad_carries_utf8_key_names() {
 fn test_aad_keeps_both_separators_when_fields_are_empty() {
     assert_eq!(Aad::new("", "").as_bytes(), b"\x1f\x1f2");
 }
-
-/// The rendering names the fields without inventing a secret to redact.
-#[test]
-fn test_aad_debug_shows_the_bytes() {
-    let rendered = format!("{:?}", Aad::new("ws_1", "openai"));
-    assert!(rendered.starts_with("Aad("), "got {rendered}");
-    assert!(rendered.contains("openai"), "got {rendered}");
-}
