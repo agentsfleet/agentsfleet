@@ -16,6 +16,9 @@ lint-website:  ## Lint website only (Oxlint + tsc)
 	@echo "→ [website] Running Oxlint + TypeScript check..."
 	@cd ui/packages/website && bun run lint
 	@cd ui/packages/website && bun run typecheck
+	@echo "→ [website] Copy policy: retired framing, unvalidated claims, the product noun..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_website_copy_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_website_copy.py
 	@echo "✓ [website] Lint passed"
 
 lint-app:  ## Lint ui/packages/app only (Oxlint + tsc)
@@ -30,6 +33,9 @@ lint-app:  ## Lint ui/packages/app only (Oxlint + tsc)
 lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsc)
 	@echo "→ [design-system] Running Oxlint + TypeScript check..."
 	@cd ui/packages/design-system && bun run lint
+	@echo "→ [design-system] Source rules: mapped tokens, text contrast on every surface, one cn..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_design_system_source_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_design_system_source.py
 	@echo "✓ [design-system] Lint passed"
 
 lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
