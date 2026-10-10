@@ -25,6 +25,10 @@ const LONG_AGO: i64 = 1;
 
 /// One tenant's fleets, each holding an `active` lease that expired long ago
 /// on a runner of its own; answers the fleet ids.
+///
+/// The runners are registered to the tenant, so deleting the tenant cascades
+/// to them: 101 stale runners left behind would sit in every later liveness
+/// batch in the lane (ISO-1).
 const SEED_STRANDED: &str = "
 WITH tenant AS (
     INSERT INTO core.tenants (id, name, created_at, updated_at)
@@ -41,8 +45,8 @@ WITH tenant AS (
     RETURNING id, workspace_id
 ), runners AS (
     INSERT INTO fleet.runners (id, host_id, token_hash, sandbox_tier, admin_state,
-      labels, last_seen_at, created_at, updated_at)
-    SELECT f.id, f.id::text, f.id::text, 'dev_none', 'active', '[]', $3, $3, $3
+      labels, last_seen_at, created_at, updated_at, tenant_id)
+    SELECT f.id, f.id::text, f.id::text, 'dev_none', 'active', '[]', $3, $3, $3, $1::uuid
       FROM fleets f
     RETURNING id
 ), events AS (
@@ -63,22 +67,22 @@ SELECT uuidv7(), r.id, e.fleet_id, e.workspace_id, $1::uuid, e.event_id, 'test',
   FROM events e JOIN runners r ON r.id = e.fleet_id
 RETURNING fleet_id::text";
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_second_pass_resumes_after_the_last_stranded_fleet_the_first_reached() {
     let _lane = RECLAIM_LANE.lock().await;
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
-    let tenant = mint_id();
-    let stranded = seed(&database, &tenant).await;
     let queue = connect_redis().await;
     let index = ReadyIndex::new(queue.clone());
+    let seeded = Seeded::new(database.clone(), index.clone()).await;
+    let stranded = &seeded.fleets;
     let reclaim = Reclaim::new(database.clone(), queue.clone(), "reclaim-paging");
 
     reclaim.sweep().await.expect("the first pass completes");
-    let after_first = marked(&index, &stranded).await;
+    let after_first = marked(&index, stranded).await;
     reclaim.sweep().await.expect("the second pass completes");
-    let after_second = marked(&index, &stranded).await;
+    let after_second = marked(&index, stranded).await;
 
     assert!(
         after_first < stranded.len(),
@@ -91,30 +95,65 @@ async fn a_second_pass_resumes_after_the_last_stranded_fleet_the_first_reached()
         "the second pass resumes where the first stopped and reaches the rest"
     );
 
-    for fleet in &stranded {
-        let _cleared = index.force_clear(fleet).await;
-    }
-    let mut connection = database.acquire().await.expect("a connection");
-    let _removed = sqlx::query("DELETE FROM core.tenants WHERE id = $1::uuid")
-        .bind(&tenant)
-        .execute(&mut *connection)
-        .await;
-    drop(connection);
+    drop(seeded);
     drop(database);
     lane.cleanup().await;
 }
 
-/// One page and one more of stranded fleets under a tenant of their own.
-async fn seed(database: &Db, tenant: &str) -> Vec<String> {
-    let mut connection = database.acquire().await.expect("a connection");
-    sqlx::query_scalar(SEED_STRANDED)
-        .bind(tenant)
-        .bind(mint_id())
-        .bind(LONG_AGO)
-        .bind(i32::try_from(BATCH_LIMIT + 1).expect("one page and one more fits"))
-        .fetch_all(&mut *connection)
-        .await
-        .expect("the stranded fleets seed")
+/// Removes the tenant's fleets, leases, events and runners by cascade.
+const DELETE_TENANT: &str = "DELETE FROM core.tenants WHERE id = $1::uuid";
+
+/// One page and one more of stranded fleets under a tenant of this run's own,
+/// removed with their readiness marks when this drops, whether or not the
+/// test reached its end.
+struct Seeded {
+    database: Db,
+    index: ReadyIndex,
+    tenant: String,
+    fleets: Vec<String>,
+}
+
+impl Seeded {
+    async fn new(database: Db, index: ReadyIndex) -> Self {
+        let tenant = mint_id();
+        let mut connection = database.acquire().await.expect("a connection");
+        let fleets = sqlx::query_scalar(SEED_STRANDED)
+            .bind(&tenant)
+            .bind(mint_id())
+            .bind(LONG_AGO)
+            .bind(i32::try_from(BATCH_LIMIT + 1).expect("one page and one more fits"))
+            .fetch_all(&mut *connection)
+            .await
+            .expect("the stranded fleets seed");
+        drop(connection);
+        Self {
+            database,
+            index,
+            tenant,
+            fleets,
+        }
+    }
+}
+
+impl Drop for Seeded {
+    /// Async cleanup from a synchronous drop: `block_in_place` hands this
+    /// worker's other tasks away while the cleanup runs, which is why the test
+    /// runs on the multi-threaded runtime.
+    fn drop(&mut self) {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                for fleet in &self.fleets {
+                    let _cleared = self.index.force_clear(fleet).await;
+                }
+                if let Ok(mut connection) = self.database.acquire().await {
+                    let _removed = sqlx::query(DELETE_TENANT)
+                        .bind(&self.tenant)
+                        .execute(&mut *connection)
+                        .await;
+                }
+            });
+        });
+    }
 }
 
 /// How many of `fleets` the readiness index holds a mark for.
