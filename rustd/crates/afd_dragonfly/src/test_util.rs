@@ -80,21 +80,6 @@ pub async fn connect_live(config: &DragonflyConfig) -> Result<Dragonfly> {
     }
 }
 
-/// The synchronous half of a connect, for the timing diagnostic.
-///
-/// The transport reads the certificate authority off disk and builds the TLS
-/// client INLINE — no `spawn_blocking` — so its cost is paid on whichever
-/// worker polls the connect. This seam lets a test measure it.
-///
-/// # Errors
-/// Returns a config error when the seed is not a URL or a named authority is
-/// unreadable.
-pub fn build_client_for_diagnosis(
-    config: &DragonflyConfig,
-) -> Result<redis::cluster::ClusterClient> {
-    crate::transport::client(config, config.request_timeout())
-}
-
 /// The `CLUSTER SLOTS` reply a fake server must answer before a cluster client
 /// will send it anything else.
 ///

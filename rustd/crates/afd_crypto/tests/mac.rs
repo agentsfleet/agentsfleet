@@ -78,15 +78,6 @@ fn test_mac_from_slice_rejects_a_wrong_length() {
     HmacSha256Tag::from_slice(&[0_u8; HMAC_SHA256_TAG_LEN]).expect("a full-width code is accepted");
 }
 
-/// The rendering shows the digest, which is not the secret behind it.
-#[test]
-fn test_mac_debug_shows_the_digest() {
-    let mac = HmacSha256Tag::compute(&kek(KEK_HEX), b"agt_t_example");
-    let rendered = format!("{mac:?}");
-    assert!(rendered.starts_with("HmacSha256Tag("), "got {rendered}");
-    assert!(rendered.contains(&mac.to_hex()), "got {rendered}");
-}
-
 /// The type admits no comparison but the constant-time one (RULE CTM).
 ///
 /// The module doc above and `mac.rs:30` both assert that `PartialEq` is

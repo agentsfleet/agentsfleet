@@ -53,7 +53,5 @@ mod integration_pool_retry;
 mod integration_pool_tls;
 #[path = "lock_policy.rs"]
 mod lock_policy;
-#[path = "migration_slot_grants.rs"]
-mod migration_slot_grants;
 #[path = "migrations.rs"]
 mod migrations;

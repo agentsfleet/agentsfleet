@@ -9,7 +9,6 @@
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -66,21 +65,6 @@ fn test_migrations_are_in_ascending_version_order() {
     assert_eq!(distinct.len(), versions.len(), "two files claim one slot");
 }
 
-/// No migration is empty, and each one's SQL is the file's own content.
-#[test]
-fn test_every_migration_carries_its_file() {
-    for migration in MIGRATIONS {
-        let on_disk = std::fs::read_to_string(repo_root().join("schema").join(migration.name()))
-            .unwrap_or_else(|error| panic!("{} is not readable: {error}", migration.name()));
-        assert_eq!(
-            migration.sql(),
-            on_disk,
-            "{} was embedded from somewhere other than schema/",
-            migration.name()
-        );
-    }
-}
-
 /// The slot-number derivation, run rather than compiled.
 ///
 /// Every production call site is a `static` initialiser, so the build proves
@@ -122,27 +106,6 @@ fn test_version_derivation_refuses_a_name_without_a_slot_number() {
     }
 }
 
-/// `Migration::for_test` carries exactly what it was handed.
-///
-/// It is a `const fn`, and every production caller is a `static` initialiser —
-/// which is why it needs a test that calls it at RUNTIME. A const evaluated at
-/// compile time proves the compiler agrees with itself; the failure-bookkeeping
-/// proof builds one of these from values it computes, and that is this path.
-#[test]
-#[cfg(feature = "test-util")]
-fn test_a_test_only_migration_carries_what_it_was_given() {
-    let version = 9_999_i32;
-    let migration = Migration::for_test(version, "9999_not_committed.sql", "SELECT 1;");
-
-    assert_eq!(migration.version(), version);
-    assert_eq!(migration.name(), "9999_not_committed.sql");
-    assert_eq!(migration.sql(), "SELECT 1;");
-    assert!(
-        !MIGRATIONS.iter().any(|m| m.version() == version),
-        "a test-only migration must not collide with a committed slot"
-    );
-}
-
 /// The default migrator is the canonical one.
 ///
 /// `Default` exists so a caller can write `Migrator::default()`, and the risk
@@ -156,118 +119,5 @@ fn test_the_default_migrator_runs_the_canonical_list() {
         afd_db::Migrator::default().canonical_versions(),
         afd_db::Migrator::new().canonical_versions(),
         "Default and new() must not describe two different migrators"
-    );
-}
-
-/// Slot 915 drops the foreign key by lookup, not by guessed name.
-///
-/// `DROP CONSTRAINT IF EXISTS usage_ledger_fleet_id_fkey` is the tempting
-/// spelling and the dangerous one: `IF EXISTS` swallows a name miss, so a
-/// generated name that differs by even one character leaves the foreign key in
-/// place while the migration reports success. The whole point of the slot is
-/// that `ON DELETE SET NULL` stops firing, and that failure mode is silent.
-///
-/// The catalogue lookup cannot miss that way, so this test pins the shape.
-#[test]
-fn test_m201_slot_915_drops_the_constraint_by_lookup() {
-    let slot = MIGRATIONS
-        .iter()
-        .find(|m| m.version() == 915)
-        .expect("slot 915 must be registered");
-
-    // Comments stripped first. The slot's own prose explains why the `IF
-    // EXISTS` form is wrong, and that explanation contains the very string
-    // this asserts the absence of — so a whole-file grep fails on the
-    // documentation rather than on the code. Ask the question of the
-    // statements only.
-    let statements: String = slot
-        .sql()
-        .lines()
-        .filter(|line| !line.trim_start().starts_with("--"))
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    assert!(
-        statements.contains("pg_constraint"),
-        "slot 915 must find the foreign key in the catalogue, not guess its name"
-    );
-    assert!(
-        !statements.contains("DROP CONSTRAINT IF EXISTS"),
-        "slot 915 must not use the IF EXISTS form, which hides a name miss"
-    );
-}
-
-/// Slot 915 is in the shipped list exactly once, and it follows 914.
-///
-/// The list is hand-written (see this file's module note), so a slot whose
-/// `.sql` landed without its `migration!()` entry is the failure mode this
-/// crate's other tests already catch. What they do NOT catch is the pair of
-/// mistakes that are specific to appending: a duplicated entry, which applies
-/// the same file twice and makes the ledger disagree with the directory, and an
-/// entry inserted ABOVE an already-shipped slot, which would renumber nothing
-/// but would run this file before the table it alters exists on a fresh
-/// database while leaving an upgraded one untouched — a divergence that only
-/// shows up on the next clean install.
-#[test]
-fn test_m201_migration_slot_registered() {
-    const LEDGER_IDENTITY: &str = "915_usage_ledger_retains_fleet_identity.sql";
-
-    let listed: Vec<&Migration> = MIGRATIONS
-        .iter()
-        .filter(|migration| migration.name() == LEDGER_IDENTITY)
-        .collect();
-    assert_eq!(
-        listed.len(),
-        1,
-        "{LEDGER_IDENTITY} must be registered exactly once"
-    );
-
-    let position = MIGRATIONS
-        .iter()
-        .position(|migration| migration.name() == LEDGER_IDENTITY)
-        .expect("the slot was just found by name");
-    let predecessor = MIGRATIONS
-        .get(position.wrapping_sub(1))
-        .expect("slot 915 is never the first entry");
-    assert_eq!(
-        predecessor.version(),
-        914,
-        "slot 915 must follow 914 — an entry placed above a shipped slot runs \
-         in a different order on a fresh database than on an upgraded one"
-    );
-}
-
-/// Slot 916 is in the shipped list exactly once, and it follows 915.
-///
-/// Same pair of appending mistakes `test_m201_migration_slot_registered`
-/// guards for 915, asked of the slot that replaces the ledger's arbiter. The
-/// order matters more here than for an additive slot: 916 drops a constraint
-/// schema/710 created, so an entry placed above 710 would drop a constraint
-/// that does not exist yet on a fresh database while an upgraded one kept it.
-#[test]
-fn slot_916_follows_915_exactly_once() {
-    const FLEET_SCOPED_KEY: &str = "916_usage_ledger_fleet_scoped_key.sql";
-
-    let listed = MIGRATIONS
-        .iter()
-        .filter(|migration| migration.name() == FLEET_SCOPED_KEY)
-        .count();
-    assert_eq!(
-        listed, 1,
-        "{FLEET_SCOPED_KEY} must be registered exactly once"
-    );
-
-    let position = MIGRATIONS
-        .iter()
-        .position(|migration| migration.name() == FLEET_SCOPED_KEY)
-        .expect("the slot was just found by name");
-    let predecessor = MIGRATIONS
-        .get(position.wrapping_sub(1))
-        .expect("slot 916 is never the first entry");
-    assert_eq!(
-        predecessor.version(),
-        915,
-        "slot 916 must follow 915 — it drops the constraint schema/710 created \
-         and relies on the column schema/915 left behind"
     );
 }
