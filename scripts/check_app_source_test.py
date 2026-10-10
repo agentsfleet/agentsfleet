@@ -109,13 +109,14 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
             "app-client-credential": with_file(f"{APP}/components/Panel.tsx", CLIENT_TSX.replace("{ label }: { label: string }", "{ token }: { token: string }")),
             "app-date-formatter": with_file(f"{APP}/lib/when.ts", "export const when = (d: Date) => d.toLocaleString();\n"),
             "app-button-variant": with_file(f"{jsx.DASHBOARD}/fleets/page.tsx", PAGE_TSX.replace('variant="ghost"', 'variant="outline"')),
+            "app-button-variant single-quoted": with_file(f"{jsx.DASHBOARD}/fleets/page.tsx", PAGE_TSX.replace('variant="ghost"', "variant='outline'")),
             "app-interface-font": with_file(f"{jsx.DASHBOARD}/fleets/page.tsx", PAGE_TSX.replace('className="w-full"', 'className="font-display"')),
         }
         for rule, files in cases.items():
             with self.subTest(rule=rule):
                 code, output = lint_tree(files)
                 self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
-                self.assertIn(f": {rule}: ", output)
+                self.assertIn(f": {rule.split()[0]}: ", output)
 
     def test_a_journeys_project_that_drops_the_execution_spec_is_refused(self) -> None:
         code, output = lint_tree(clean_tree(), listing=listed("  [journeys] › other.spec.ts:1:1 › x\n"))

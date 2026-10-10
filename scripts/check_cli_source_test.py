@@ -76,6 +76,12 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
                 self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
                 self.assertIn(f": {rule}: ", output)
 
+    def test_every_spelling_of_the_escape_character_is_a_raw_escape(self) -> None:
+        for spelling in ("\\x1b", "\\x1B", "\\u001b", "\\u001B", "\\u{1b}", "\\u{001B}", "\\e", "\x1b"):
+            with self.subTest(spelling=spelling):
+                code, output = lint_tree(with_file("cli/src/lib/spinner.ts", f'const red = "{spelling}[31m";\n'))
+                self.assertIn("cli/src/lib/spinner.ts:1: cli-raw-escape: ", output)
+
     def test_a_dotted_read_of_a_declared_name_is_a_second_spelling(self) -> None:
         code, output = lint_tree(with_file("cli/src/lib/api.ts", "const url = env.AGENTSFLEET_API_URL;\n"))
         self.assertIn("cli/src/lib/api.ts:1: cli-env-spelling: ", output)

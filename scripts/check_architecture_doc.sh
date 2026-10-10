@@ -30,7 +30,10 @@ set -euo pipefail
 # resolve either way.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-ARCH_DIR="${ARCH_DIR:-docs/architecture}"
+# The corpus the repository publishes. A page an assertion needs may be absent
+# from a self-test fixture, never from this tree.
+readonly PUBLISHED_ARCH_DIR="docs/architecture"
+ARCH_DIR="${ARCH_DIR:-$PUBLISHED_ARCH_DIR}"
 SPEC_ROOT="${SPEC_ROOT:-docs/v2}"
 DONE_DIR="$SPEC_ROOT/done"
 ACTIVE_DIR="$SPEC_ROOT/active"

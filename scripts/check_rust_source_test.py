@@ -147,6 +147,12 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         self.assertIn("no ToSchema derive was read", output)
         self.assertIn("no migration entry or no tracked schema file was read", output)
 
+    def test_a_bundle_directory_with_no_documents_is_a_finding(self) -> None:
+        files = {k: v for k, v in clean_tree().items() if not k.startswith(checker.BUNDLES)}
+        code, output = lint_tree(files)
+        self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+        self.assertIn(f"{checker.BUNDLES}:1: rust-bundle-retired-gate: no bundle document found to read", output)
+
 
 if __name__ == "__main__":
     unittest.main()
