@@ -1,9 +1,11 @@
 //! Atomic runner credential rotation.
 
+use afd_api_wire::admin::AdminState;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use sqlx::Row as _;
 
+use crate::admin::state_wire;
 use crate::error::{Result, query, rejected, runner_not_found};
 use crate::sql;
 use crate::store::Runners;
@@ -12,7 +14,6 @@ use afd_auth::minted::Minted;
 
 const CONTEXT_ROTATE: &str = "runner token rotation";
 const DETAIL_REVOKED: &str = "revoked runners cannot rotate credentials";
-const STATE_REVOKED: &str = "revoked";
 const EVENT_TOKEN_ROTATED: &str = "runner_token_rotated";
 
 impl Runners {
@@ -38,7 +39,7 @@ impl Runners {
             .bind(runner.as_str())
             .bind(token.digest().as_str())
             .bind(now.as_millis())
-            .bind(STATE_REVOKED)
+            .bind(state_wire(AdminState::Revoked))
             .bind(event_id.as_str())
             .bind(EVENT_TOKEN_ROTATED)
             .bind(sql::meta::ACTOR_ID)

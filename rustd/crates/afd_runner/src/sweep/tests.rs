@@ -14,9 +14,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use afd_core::test_util::trace::Capture;
 use tokio_util::sync::CancellationToken;
 
-use super::{Sweep, Swept, run};
+use super::{EVENT_FAILED, Sweep, Swept, run};
 use crate::error::{Result, query};
 
 /// A sweeper that records how often it ran and answers what it was told to.
@@ -115,4 +116,35 @@ async fn a_failing_pass_does_not_stop_the_sweeper() {
         survived > 1,
         "the sweeper stopped after a failed pass: {survived} passes"
     );
+}
+
+/// A failed pass is logged with its code beside a reason that does not repeat
+/// it, under `reason` rather than the `error` field it used to carry.
+#[tokio::test]
+async fn a_failed_sweep_reason_carries_no_code_prefix() {
+    // Current-thread, so the spawned loop raises its events on the thread the
+    // capture listens on.
+    let capture = Capture::install();
+    let sweeper = Counting::new(true);
+    let token = CancellationToken::new();
+    let task = tokio::spawn(run(Arc::clone(&sweeper), token.clone()));
+
+    tokio::time::sleep(SEVERAL_INTERVALS).await;
+    token.cancel();
+    task.await.expect(CANCELLED_RETURNS);
+
+    let expected_code = query("counting sweep")(sqlx::Error::PoolClosed).code();
+    let failed: Vec<_> = capture
+        .events()
+        .into_iter()
+        .filter(|event| event.field("event") == Some(EVENT_FAILED))
+        .collect();
+    assert!(!failed.is_empty(), "no failed pass was logged");
+    for line in failed {
+        let reason = line.field("reason").expect("a failed pass says why");
+        assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
+        assert_eq!(line.field("error_code"), Some(expected_code.as_str()));
+        assert_eq!(line.field("error"), None, "the reason moved to `reason`");
+        assert_eq!(line.field("sweeper"), Some("counting"));
+    }
 }

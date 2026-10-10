@@ -5,10 +5,18 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use afd_core::error_code;
+use afd_core::id::Uuid7;
+use afd_core::test_util::trace::Capture;
 use afd_wire::runner::{CONTROLLER_NAME_MAX_BYTES, HeartbeatRequest, REPORT_CONTROLLERS_MAX};
 use serde_json::json;
 
-use super::bounded_report;
+use super::{EVENT_LIVENESS_WRITE, bounded_report, refuse_selftest, report};
+use crate::bounds::DETAIL_SELFTEST_UNBOUNDED;
+use crate::error::{rejected, runner_vanished};
+
+/// The runner every logged line names.
+const RUNNER: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
 
 /// A beat body as a runner sends it, reporting `controllers`.
 fn beat_body(controllers: &[String]) -> String {
@@ -47,4 +55,40 @@ fn test_capability_report_out_of_bounds_is_ignored() {
 #[test]
 fn a_beat_without_a_report_reconciles_the_stored_one() {
     assert!(bounded_report(&super::NO_REPORT).is_none());
+}
+
+/// A refused verdict is logged with the refusal's own sentence: the code is
+/// the line's `error_code` already, so the reason does not repeat it.
+#[test]
+fn a_refused_selftest_reason_is_the_refusal_sentence() {
+    let capture = Capture::install();
+    let runner = Uuid7::parse(RUNNER).expect("a canonical identifier");
+
+    refuse_selftest(&runner, &rejected(DETAIL_SELFTEST_UNBOUNDED));
+
+    let logged = capture.only("selftest_verdict_refused");
+    assert_eq!(logged.field("reason"), Some(DETAIL_SELFTEST_UNBOUNDED));
+    assert_eq!(
+        logged.field("error_code"),
+        Some(error_code::INVALID_REQUEST.as_str())
+    );
+    assert_eq!(logged.field("runner_id"), Some(RUNNER));
+}
+
+#[test]
+fn an_unattempted_beat_step_reason_carries_no_code_prefix() {
+    let capture = Capture::install();
+    let runner = Uuid7::parse(RUNNER).expect("a canonical identifier");
+
+    report(EVENT_LIVENESS_WRITE, &runner, &runner_vanished());
+
+    let logged = capture.only(EVENT_LIVENESS_WRITE);
+    let reason = logged.field("reason").expect("a failure line says why");
+    assert!(!reason.is_empty(), "the failure line says nothing");
+    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
+    assert!(!reason.contains('\n'), "a backtrace rode along: {reason}");
+    assert_eq!(
+        logged.field("error_code"),
+        Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
 }
