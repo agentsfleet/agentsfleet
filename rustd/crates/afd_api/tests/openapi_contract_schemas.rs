@@ -161,7 +161,9 @@ fn test_workspace_creation_publishes_what_its_client_relies_on() {
     let create = operation(&document, CREATE_WORKSPACE, "post");
 
     assert_eq!(
-        create.get("operationId").and_then(serde_json::Value::as_str),
+        create
+            .get("operationId")
+            .and_then(serde_json::Value::as_str),
         Some("create_workspace"),
         "{create}"
     );
