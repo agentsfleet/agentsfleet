@@ -24,7 +24,7 @@ import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, listFleets, seedFleet } from "./fixtures/seed";
 import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { CLERK_NEXTJS_PINNED_MAJOR, FIXTURE_KEY } from "./fixtures/constants";
+import { CLERK_NEXTJS_PINNED_MAJOR, FIXTURE_KEY, JWT_CACHE_PATH } from "./fixtures/constants";
 import {
   assertCliArtifactPresent,
   diagnoseApiError,
@@ -34,8 +34,6 @@ import {
   probeRunnerOnline,
   probeRuntimeModel,
 } from "./fixtures/preflight";
-
-const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
 // Clerk's SignIn card hydrates client-side from clerk.accounts.dev; a cold CI
 // browser can take longer than expect()'s 5s default while the page itself is
