@@ -1,8 +1,7 @@
 // Canonical user-facing definition of a Fleet — the product's primary runtime noun.
 // Faithful restatement of docs/architecture/direction.md ("a durable runtime,
 // not a one-shot prompt"). Single source for the app so every first-touch
-// surface renders identical wording (Unified Field Semantics). Mirrors the website package's exact
-// identifiers + strings in ui/packages/website/src/lib/copy.ts.
+// surface renders identical wording (Unified Field Semantics).
 
 export const FLEET_SHORT_GLOSS =
   "A Fleet wakes on an event, runs your skill, and reports back.";
