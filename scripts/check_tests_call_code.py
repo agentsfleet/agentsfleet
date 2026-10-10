@@ -30,13 +30,18 @@ What counts:
 - Handing a file to something that executes it is calling the code: a shell
   read piped into `bash` or redirected into a copy, `Bun.write` of a
   `Bun.file`, and `source` are not findings.
+- A read spelled inside a Python string literal is data, never a call: a
+  test that seeds code samples (this lint's own test does) holds them in
+  strings. Code between an f-string's braces still runs, so it still counts.
 """
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 import re
 import sys
+import tokenize
 
 sys.dont_write_bytecode = True
 
@@ -63,6 +68,8 @@ LEADING_DELIMITERS = "\n\t ;|&(`"
 # A literal that spells a path: a separator, or a name with an extension. An
 # encoding ("utf8") or a message is neither.
 PATH_LIKE = re.compile(r"^[^\s]*(?:/|\.[A-Za-z0-9]+$)[^\s]*$")
+# Tokens whose text is a Python literal; an f-string's braced code tokenizes apart.
+PYTHON_LITERAL_TOKENS = frozenset({"STRING", "FSTRING_MIDDLE", "TSTRING_MIDDLE"})
 
 
 def language_of(path: Path) -> str | None:
@@ -160,6 +167,22 @@ def names_untracked_path(text: str, tracked_parts: frozenset[str]) -> bool:
     return bool(parts) and not any(part in tracked_parts for part in parts)
 
 
+def python_literal_spans(code: str) -> list[tuple[int, int]]:
+    """Offsets of each Python string literal's text, from the standard tokenizer."""
+    line_offsets = [0]
+    for line in code.splitlines(keepends=True):
+        line_offsets.append(line_offsets[-1] + len(line))
+    spans = []
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(code).readline):
+            if tokenize.tok_name[token.type] in PYTHON_LITERAL_TOKENS:
+                (start_row, start_col), (end_row, end_col) = token.start, token.end
+                spans.append((line_offsets[start_row - 1] + start_col, line_offsets[end_row - 1] + end_col))
+    except (tokenize.TokenError, SyntaxError):
+        pass  # source that will not tokenize keeps the literals found so far, and every read is a candidate
+    return spans
+
+
 def call_argument(code: str, start: int, language: str) -> str:
     """The text a read call is handed: its parenthesised arguments, or the rest of the command."""
     line_end = code.find("\n", start)
@@ -195,6 +218,7 @@ class Scan:
         self.anchor = re.compile(anchors if not self.anchored else f"{anchors}|{names_pattern(self.anchored, language)}")
         self.fixture_names = fixture_names
         self.tracked_parts = tracked_parts
+        self.literals = python_literal_spans(self.code) if language == "python" else []
 
     def is_repository_read(self, argument: str) -> bool:
         if not self.anchor.search(argument) or FIXTURE.search(argument):
@@ -215,6 +239,8 @@ def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]]
     for read in LANGUAGES[scan.language]["reads"].finditer(scan.code):
         start = read.start() + len(read.group(0)) - len(read.group(0).lstrip(LEADING_DELIMITERS))
         if regions is not None and not any(a <= start <= b for a, b in regions):
+            continue
+        if any(a <= start < b for a, b in scan.literals):
             continue
         argument = call_argument(scan.code, start, scan.language)
         if scan.language == "python" or read.group(0).lstrip().startswith("."):

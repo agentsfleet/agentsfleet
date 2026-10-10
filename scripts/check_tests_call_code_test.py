@@ -105,6 +105,21 @@ class NotReads(unittest.TestCase):
             "cli/test/lane.unit.test.ts": 'await Bun.write(join(dir, "bunfig.toml"), Bun.file(join(CLI_ROOT, "bunfig.toml")));\n',
         })
 
+    def test_a_read_spelled_inside_a_python_string_literal(self) -> None:
+        self.assert_clean({
+            "scripts/seeds_test.py": (
+                'ROOT = Path(__file__).resolve().parents[1]\n'
+                'SAMPLE = \'text = (ROOT / "make/quality.mk").read_text()\'\n'
+                'LONG = """\nwith open(ROOT / "make/quality.mk") as f:\n    pass\n"""\n'
+                'LABEL = f"{ROOT} / make/quality.mk .read_text()"\n'
+            ),
+        })
+
+    def test_code_between_f_string_braces_is_still_a_read(self) -> None:
+        text = 'ROOT = Path(__file__).resolve().parents[1]\nprint(f"{(ROOT / \'make/quality.mk\').read_text()}")\n'
+        code, output = lint({"scripts/braces_test.py": text})
+        self.assertIn("scripts/braces_test.py:2: test reads ", output)
+
 
 class HelperAndRegionReads(unittest.TestCase):
     def test_a_shell_helper_handed_an_anchored_path_is_a_read(self) -> None:
