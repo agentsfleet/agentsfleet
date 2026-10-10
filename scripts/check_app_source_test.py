@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import io
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -189,9 +190,10 @@ class JsxRules(unittest.TestCase):
 
 OXLINT = checker.lib.ROOT / APP / "node_modules/.bin/oxlint"
 OXLINT_CONFIG = checker.lib.ROOT / APP / ".oxlintrc.json"
-# Pinned: on a GitHub runner oxlint switches to its `::error` annotation format,
-# which the assertions below do not read.
-OXLINT_FORMAT = "--format=stylish"
+# Pinned: oxlint picks its report format from the environment (GitHub annotations
+# on a runner, an agent format under a coding agent), so the assertions read one.
+OXLINT_FORMAT = "--format=unix"
+RESTRICTED_IMPORTS = re.escape("eslint(no-restricted-imports)")
 
 
 class IdentityProviderBoundary(unittest.TestCase):
@@ -214,9 +216,9 @@ class IdentityProviderBoundary(unittest.TestCase):
             "lib/auth/credential.ts": sdk_auth,
             "lib/middleware-copy.ts": middleware,
         })
-        self.assertIn("app/page.ts:1:1: error eslint(no-restricted-imports)", output)
-        self.assertIn("lib/middleware-copy.ts:1:1: error eslint(no-restricted-imports)", output)
-        self.assertIn("proxy.ts:1:10: error eslint(no-restricted-imports): 'auth' import", output)
+        self.assertRegex(output, rf"(?m)^app/page\.ts:1:1: .*\[Error/{RESTRICTED_IMPORTS}\]$")
+        self.assertRegex(output, rf"(?m)^lib/middleware-copy\.ts:1:1: .*\[Error/{RESTRICTED_IMPORTS}\]$")
+        self.assertRegex(output, rf"(?m)^proxy\.ts:1:10: 'auth' import .*\[Error/{RESTRICTED_IMPORTS}\]$")
         self.assertNotIn("lib/auth/credential.ts:", output)
 
 
