@@ -250,6 +250,10 @@ WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
 /// cannot tell a caller which workspace holds it. The unique constraint on
 /// `(provider, external_account_id)` makes the answer one row or none.
 ///
+/// A reader only: the rows are written and released by the connect flow
+/// (`afd_connector::sql::CLAIM_INSTALL` and its siblings), whose GitHub claim is
+/// exclusive per installation.
+///
 /// `$1` provider, `$2` external account, `$3` workspace.
 pub const SELECT_CONNECTOR_INSTALL_HELD: &str = "\
 SELECT EXISTS (

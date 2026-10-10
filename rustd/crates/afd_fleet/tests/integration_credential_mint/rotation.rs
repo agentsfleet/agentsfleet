@@ -22,15 +22,18 @@ use zeroize::Zeroizing;
 use super::*;
 use crate::requests;
 
-/// A refresh connector, so the mint's grant gate applies and the exchange
-/// rotates.
-const CONNECTOR_ZOHO: &str = "zoho";
-
 /// The refresh token the stored handle holds when the exchange posts it.
 const POSTED: &str = "rt-posted";
 
 /// The refresh token the stand-in vendor rotates it to.
 const REPLACEMENT: &str = "rt-replacement";
+
+/// The event the mint's write-back breadcrumb is logged under, as
+/// `afd_fleet::lease::mint` spells it (`EVENT_REFRESH_ROTATED`).
+const EVENT_REFRESH_ROTATED: &str = "refresh_rotated";
+
+/// The accounts server a European Zoho callback writes onto the handle.
+const EU_ACCOUNTS: &str = "https://accounts.zoho.eu";
 
 /// The access token every stand-in exchange hands back.
 const ACCESS: &str = "at-rotated";
@@ -86,7 +89,7 @@ impl Exchanger for Rotating {
 async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bound, Minted) {
     let owner = bound(fixtures, "{}").await;
     seed_handle(fixtures, &owner.workspace, CONNECTOR_ZOHO, handle).await;
-    seed_grant(fixtures, &owner.fleet, CONNECTOR_ZOHO, "approved").await;
+    seed_grant(fixtures, &owner.fleet, CONNECTOR_ZOHO, STATUS_APPROVED).await;
     let vendor = Rotating {
         database: fixtures.database.clone(),
         workspace: owner.workspace.clone(),
@@ -132,7 +135,7 @@ fn breadcrumb(capture: &Capture, level: Level, owner: &Bound) -> CapturedEvent {
     let events = capture.events();
     let [found]: [&CapturedEvent; 1] = events
         .iter()
-        .filter(|event| event.field("event") == Some("refresh_rotated"))
+        .filter(|event| event.field("event") == Some(EVENT_REFRESH_ROTATED))
         .collect::<Vec<_>>()
         .try_into()
         .expect("exactly one write-back breadcrumb");
@@ -154,8 +157,9 @@ fn breadcrumb(capture: &Capture, level: Level, owner: &Bound) -> CapturedEvent {
 async fn test_a_rotated_refresh_token_is_written_back_before_the_mint_returns() {
     support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
-    let handle =
-        format!(r#"{{"integration":"zoho","refresh_token":"{POSTED}","accounts_base":"eu"}}"#);
+    let handle = format!(
+        r#"{{"integration":"zoho","refresh_token":"{POSTED}","accounts_base":"{EU_ACCOUNTS}"}}"#
+    );
 
     let capture = Capture::install();
     let (owner, minted) = mint_rotating(&fixtures, &handle, During::Nothing).await;
@@ -171,7 +175,7 @@ async fn test_a_rotated_refresh_token_is_written_back_before_the_mint_returns() 
     // A rotation, not a rewrite: what the connect callback stored survives.
     assert_eq!(
         after.get("accounts_base").and_then(Value::as_str),
-        Some("eu"),
+        Some(EU_ACCOUNTS),
         "{after}"
     );
 
@@ -185,9 +189,9 @@ async fn test_a_handle_that_posted_no_refresh_token_is_left_as_stored() {
     // replacement with no posted value could overwrite a reconnect's token.
     support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
-    let handle = r#"{"integration":"zoho","accounts_base":"eu"}"#;
+    let handle = format!(r#"{{"integration":"zoho","accounts_base":"{EU_ACCOUNTS}"}}"#);
 
-    let (owner, minted) = mint_rotating(&fixtures, handle, During::Nothing).await;
+    let (owner, minted) = mint_rotating(&fixtures, &handle, During::Nothing).await;
 
     assert_eq!(minted.token.as_str(), ACCESS);
     let after = stored(&fixtures, &owner).await;
