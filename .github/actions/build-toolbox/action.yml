@@ -66,20 +66,27 @@ runs:
       shell: bash
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}
+        # Existing amd64 image measured in dev run 38072785909 (Oct 10, 2026).
+        MAX_IMAGE_BYTES: 262848512
       run: |
         set -euo pipefail
         out="$PWD/$OUTPUT_DIR"
         image="$(sudo make --no-print-directory toolbox-image TOOLBOX_DIR="$out")"
         sudo chown -R "$(id -u):$(id -g)" "$out"
+        bytes="$(wc -c < "$image")"
+        if [ "$bytes" -gt "$MAX_IMAGE_BYTES" ]; then
+          echo "✗ toolbox image is $bytes bytes; limit is $MAX_IMAGE_BYTES bytes" >&2
+          exit 1
+        fi
         # shellcheck source=deploy/baremetal/toolbox.sh
         source deploy/baremetal/toolbox.sh
         digest="$(toolbox_digest_of "$image")"
         echo "digest=$digest" >> "$GITHUB_OUTPUT"
-        echo "✓ built toolbox-$digest.erofs ($(wc -c < "$image") bytes)"
+        echo "✓ built toolbox-$digest.erofs ($bytes bytes; limit $MAX_IMAGE_BYTES bytes)"
 
     # Pinned by version, and each download checked against the checksums file
     # its project publishes beside it, so a moved tag cannot change what runs.
-    - name: Install syft, grype and cosign
+    - name: Install CI-host scanners and signing tools
       shell: bash
       env:
         SYFT_VERSION: 1.54.1

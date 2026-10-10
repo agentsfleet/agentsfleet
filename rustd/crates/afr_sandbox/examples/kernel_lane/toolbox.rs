@@ -21,7 +21,7 @@ const RIPGREP: &str = "ripgrep";
 const SHA256: &str = "sha256";
 /// The Debian packages the lease's tools come from, each pinned with the hash
 /// apt checked it by.
-const PINNED: [&str; 8] = [
+const PINNED: [&str; 7] = [
     "ca-certificates",
     GIT,
     "python3",
@@ -29,7 +29,6 @@ const PINNED: [&str; 8] = [
     RIPGREP,
     "jq",
     "curl",
-    "gh",
 ];
 /// The binary Debian does not ship, vendored by URL and SHA-256.
 const UV_RELEASE: &str = "astral-sh/uv/releases/download/";
@@ -127,9 +126,18 @@ git init -q && echo one >README && git add README \
 /// How the log line ends.
 const COMMITTED: &str = " one";
 /// The other pinned tools answer their versions.
-const VERSIONS: &str = "rg --version | head -n1 && jq --version && curl --version | head -n1 && gh --version | head -n1";
+const VERSIONS: &str = "rg --version | head -n1 && jq --version && curl --version | head -n1";
 /// A word from each tool's version line.
-const VERSION_WORDS: [&str; 4] = [RIPGREP, "jq-", "curl ", "gh version"];
+const VERSION_WORDS: [&str; 3] = [RIPGREP, "jq-", "curl "];
+/// Go, the Go-built GitHub client, and build-only tools stay outside the image.
+const EXCLUDED_TOOLS: &str = r#"
+for tool in go gh syft grype cosign; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    echo "$tool must not be in the toolbox" >&2
+    exit 1
+  fi
+done
+"#;
 
 /// Under the production policy, uv installs a locked project from a loopback
 /// index, `node --test` passes, git commits, and the other pinned tools run;
@@ -141,14 +149,16 @@ pub(crate) fn toolbox_carries_the_tools(lane: &Lane) -> Result<(), Failed> {
         shell(NODE_TEST, Some(NODE_TIMEOUT_MS)),
         shell(GIT_COMMIT, None),
         shell(VERSIONS, None),
+        shell(EXCLUDED_TOOLS, None),
     ];
     let outputs = shell_calls(lane, "toolbox-tools", &calls)?;
-    let [uv, node, git, versions] = answers(&outputs)?;
+    let [uv, node, git, versions, excluded] = answers(&outputs)?;
     for (step, output) in [
         ("uv", uv),
         ("node", node),
         (GIT, git),
         ("versions", versions),
+        ("excluded tools", excluded),
     ] {
         expect(
             output.exit_code == Some(SUCCESS) && output.error_code.is_none(),
