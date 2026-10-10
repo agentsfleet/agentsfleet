@@ -23,6 +23,8 @@ readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
 # PATH so a test can assert a deploy never reached them.
 readonly SENTINEL_INSTALL="install-ran"
 readonly SENTINEL_SYSTEMCTL="systemctl-ran"
+# The unit file beside deploy.sh, which the deploy installs under this name.
+readonly RUNNER_UNIT_FILE="agentsfleet-runner.service"
 
 passed=0
 failed=0
@@ -53,9 +55,16 @@ STUB
 # path starts the service and whether verify_healthy sees it come up, so a test
 # drives it via SYSTEMCTL_IS_ACTIVE_RC (default 0 = active, so the common
 # exact-match skip works). Every call still drops the sentinel for reachability.
+# A case that sets SYSTEMCTL_CALLS gets each call's arguments appended there, one
+# line per call, with ` unit-synced` added when SYSTEMCTL_UNIT exists by then.
 cat >"$STUB_DIR/systemctl" <<STUB
 #!/usr/bin/env bash
 touch "\$SENTINEL_DIR/$SENTINEL_SYSTEMCTL"
+if [[ -n "\${SYSTEMCTL_CALLS:-}" ]]; then
+  synced=""
+  [[ -f "\${SYSTEMCTL_UNIT:-}" ]] && synced=" unit-synced"
+  printf '%s%s\\n' "\$*" "\$synced" >>"\$SYSTEMCTL_CALLS"
+fi
 for arg in "\$@"; do
   case "\$arg" in
     is-active) exit "\${SYSTEMCTL_IS_ACTIVE_RC:-0}" ;;
@@ -180,6 +189,36 @@ test_deploy_version_match_unhealthy_service_reinstalls() {
   fi
 }
 
+# ── §1b — unit sync ──────────────────────────────────────────────────────────
+
+# A unit edit reaches a host only if the deploy copies the file in and then
+# reloads systemd; a restart without the reload keeps running the old unit.
+test_deploy_syncs_the_unit_then_reloads_systemd() {
+  local name="test_deploy_syncs_the_unit_then_reloads_systemd"
+  local unit_dir="$WORK_DIR/systemd-$RANDOM" calls="$WORK_DIR/calls-$RANDOM"
+  mkdir -p "$unit_dir"
+
+  local status=0
+  (
+    export SENTINEL_DIR="$WORK_DIR" PATH="$STUB_DIR:$PATH"
+    # shellcheck source=./deploy.sh
+    source "$DEPLOY_SH" >/dev/null 2>&1
+    set +e
+    export SYSTEMCTL_CALLS="$calls" SYSTEMCTL_UNIT="$unit_dir/$RUNNER_UNIT_FILE"
+    sync_systemd_unit "$SCRIPT_DIR/$RUNNER_UNIT_FILE" "$unit_dir" >/dev/null 2>&1
+  ) || status=$?
+
+  if [[ "$status" -ne 0 ]]; then
+    bad "$name" "sync_systemd_unit exited $status"
+  elif ! cmp -s "$SCRIPT_DIR/$RUNNER_UNIT_FILE" "$unit_dir/$RUNNER_UNIT_FILE"; then
+    bad "$name" "the unit file was not copied into the systemd directory"
+  elif ! grep -qx 'daemon-reload unit-synced' "$calls" 2>/dev/null; then
+    bad "$name" "systemd was not reloaded after the unit was copied: $(cat "$calls" 2>/dev/null)"
+  else
+    ok "$name"
+  fi
+}
+
 # ── §2 — deploy mutex ────────────────────────────────────────────────────────
 
 # The holder signals readiness with a marker file rather than the parent probing
@@ -283,6 +322,7 @@ test_deploy_version_substring_not_equal_reinstalls
 test_deploy_version_exact_match_skips
 test_deploy_malformed_version_reinstalls
 test_deploy_version_match_unhealthy_service_reinstalls
+test_deploy_syncs_the_unit_then_reloads_systemd
 test_deploy_takes_the_lock_before_any_write
 
 if command -v flock >/dev/null 2>&1; then

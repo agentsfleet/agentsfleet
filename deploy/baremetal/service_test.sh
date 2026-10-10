@@ -9,6 +9,7 @@
 # on PATH answers `is-active` from STUB_IS_ACTIVE and `show -p NRestarts` from
 # STUB_NRESTARTS, one value per call with the last repeating, so a case can
 # hand the check a unit that systemd restarts, or that is down, mid-window.
+# With STUB_CALLS set, it appends each call's arguments there, one per line.
 
 set -uo pipefail
 
@@ -46,6 +47,7 @@ next_of() {
   [ "$index" -ge "${#values[@]}" ] && index=$((${#values[@]} - 1))
   printf '%s\n' "${values[index]}"
 }
+[ -n "${STUB_CALLS:-}" ] && printf '%s\n' "$*" >>"$STUB_CALLS"
 for arg in "$@"; do
   case "$arg" in
     is-active) exit "$(next_of "${STUB_IS_ACTIVE:-0}" "$STUB_STATE.active")" ;;
@@ -115,6 +117,35 @@ test_service_health_passes_a_runner_that_stays_up() {
   fi
 }
 
+# A unit that is installed but not enabled comes back up after a restart and
+# stays down after the host's next reboot, so every restart enables it first.
+test_service_restart_enables_the_unit_before_restarting_it() {
+  local name="test_service_restart_enables_the_unit_before_restarting_it"
+  local calls="$WORK_DIR/calls-$RANDOM" status=0
+  (
+    export PATH="$STUB_DIR:$PATH" STUB_STATE="$WORK_DIR/state-$RANDOM" STUB_CALLS="$calls"
+    # The unit reads as stopped, so the drain has nothing to stop.
+    export STUB_IS_ACTIVE="1"
+    # shellcheck source=./log.sh
+    source "$LOG_SH"
+    # shellcheck source=./service.sh
+    source "$SERVICE_SH"
+    restart_services "$UNIT_UNDER_TEST" 0 >/dev/null 2>&1
+  ) || status=$?
+  local enabled restarted
+  enabled="$(grep -nx "enable $UNIT_UNDER_TEST" "$calls" 2>/dev/null | cut -d: -f1)"
+  restarted="$(grep -nx "restart $UNIT_UNDER_TEST" "$calls" 2>/dev/null | cut -d: -f1)"
+  if [[ "$status" -ne 0 ]]; then
+    bad "$name" "restart_services exited $status"
+  elif [[ -z "$enabled" || -z "$restarted" ]]; then
+    bad "$name" "the restart did not both enable and restart the unit: $(tr '\n' ';' <"$calls" 2>/dev/null)"
+  elif [[ "$enabled" -gt "$restarted" ]]; then
+    bad "$name" "the unit was enabled only after it was restarted"
+  else
+    ok "$name"
+  fi
+}
+
 # systemd reads the unit and says what it makes of it. `systemd-analyze verify`
 # exits 0 over a misspelled directive or a value it cannot parse: it warns
 # ("Unknown key name … ignoring") and drops the line, so a unit that loses its
@@ -139,6 +170,7 @@ test_unit_passes_systemd_analyze() {
 test_service_health_fails_a_runner_restarted_inside_the_window
 test_service_health_fails_a_runner_down_at_the_window_end
 test_service_health_passes_a_runner_that_stays_up
+test_service_restart_enables_the_unit_before_restarting_it
 # The unit check needs systemd: it skips on a machine without it and fails when
 # CI is set, so the unit is always proven on the ubuntu-latest runners that gate
 # a merge.
