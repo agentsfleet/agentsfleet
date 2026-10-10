@@ -17,11 +17,11 @@ import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library
 import {
   CONTEXT_HEADER,
   RATES_HEADER,
+  compareModelIds,
   formatContextTokens,
   formatRatesPerMtok,
   modelIdCopyLabel,
   modelLabel,
-  modelSortKey,
 } from "@/lib/models/display";
 import { presentErrorString } from "@/lib/errors";
 import {
@@ -128,7 +128,13 @@ function buildColumns({
 }): DataTableColumn<AdminModel>[] {
   return [
     { key: "provider", header: "Provider", sortValue: (m) => m.provider, cell: (m) => <Badge variant="cyan">{m.provider}</Badge> },
-    { key: "model", header: "Model", sortValue: (m) => modelSortKey(m.model_id), cell: (m) => <ModelCell model={m} active={active} /> },
+    {
+      key: "model",
+      header: "Model",
+      sortValue: (m) => m.model_id,
+      compare: (a, b) => compareModelIds(a.model_id, b.model_id),
+      cell: (m) => <ModelCell model={m} active={active} />,
+    },
     {
       key: "context",
       header: CONTEXT_HEADER,

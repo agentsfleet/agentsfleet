@@ -285,6 +285,13 @@ impl Error {
     pub fn lease_not_found() -> Self {
         super::error::lease_not_found()
     }
+
+    /// The refusal an uninstalled or revoked GitHub App answers a mint with:
+    /// the one mint refusal a route renders as a conflict naming its state.
+    #[must_use]
+    pub fn github_reconnect_required() -> Self {
+        super::error::github_reconnect_required()
+    }
 }
 
 impl Error {

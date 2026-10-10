@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { usdPerMtokToNanos } from "@/lib/api/admin-model-library-types";
-import { EMPTY_VALUE, formatContextTokens, formatRatesPerMtok, modelLabel, modelSortKey } from "./display";
+import { EMPTY_VALUE, compareModelIds, formatContextTokens, formatRatesPerMtok, modelLabel } from "./display";
 
 describe("model display", () => {
   it("names a provider id the way its provider markets the model", () => {
@@ -39,21 +39,22 @@ describe("model display", () => {
 
   it("sorts a model column by the name it shows, then the id", () => {
     const ids = ["accounts/fireworks/models/kimi-k3", "claude-opus-5-5", "anthropic/claude-opus-5.5", "deepseek-flash"];
-    const sorted = [...ids].sort((a, b) => modelSortKey(a).localeCompare(modelSortKey(b)));
+    const sorted = [...ids].sort(compareModelIds);
     expect(sorted.map(modelLabel)).toEqual(["DeepSeek Flash", "Kimi K3", "Opus 5.5", "Opus 5.5"]);
     // Two ids that read alike keep a fixed order, by id.
     expect(sorted.slice(2)).toEqual(["anthropic/claude-opus-5.5", "claude-opus-5-5"]);
   });
 
-  it("a name sorts before a longer name it starts, under either table's comparison", () => {
-    const ids = ["openai/gpt-5-mini", "openai/gpt-5", "azure/gpt-5", "openai/gpt-5.1"];
-    const expected = ["azure/gpt-5", "openai/gpt-5", "openai/gpt-5-mini", "openai/gpt-5.1"];
-    // The workspace table sorts with localeCompare; the library's DataTable
-    // compares the key's code points. Both must agree on the order.
-    const byLocale = [...ids].sort((a, b) => modelSortKey(a).localeCompare(modelSortKey(b)));
-    const byCodePoint = [...ids].sort((a, b) => (modelSortKey(a) < modelSortKey(b) ? -1 : 1));
-    expect(byLocale).toEqual(expected);
-    expect(byCodePoint).toEqual(expected);
+  it("a name sorts before a longer one it starts, and a number inside a name sorts as a number", () => {
+    expect(["openai/gpt-5-mini", "openai/gpt-5", "azure/gpt-5"].sort(compareModelIds)).toEqual([
+      "azure/gpt-5",
+      "openai/gpt-5",
+      "openai/gpt-5-mini",
+    ]);
+    expect(["openai/gpt-oss-120b", "openai/gpt-oss-20b"].sort(compareModelIds)).toEqual([
+      "openai/gpt-oss-20b",
+      "openai/gpt-oss-120b",
+    ]);
   });
 
   it("formats context and rates the way the model library prints them", () => {

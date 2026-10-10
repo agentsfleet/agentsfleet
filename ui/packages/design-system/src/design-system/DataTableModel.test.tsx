@@ -41,3 +41,28 @@ describe("table pagination configuration", () => {
     expect(result.current.table.getRowModel().rows.map((row) => row.original.id)).toEqual(["2", "3"]);
   });
 });
+
+describe("table column comparison", () => {
+  type Ranked = { id: string; name: string; rank: number };
+  // The names sort alphabetically one way and the ranks the other, so only the
+  // column's own comparison can produce the rank order.
+  const RANKED: Ranked[] = [
+    { id: "a", name: "alpha", rank: 3 },
+    { id: "b", name: "beta", rank: 1 },
+    { id: "c", name: "gamma", rank: 2 },
+  ];
+  const byRank = (a: Ranked, b: Ranked) => a.rank - b.rank;
+
+  it("sorts a column by its own comparison, in either direction", () => {
+    const columns = [
+      { key: "name", header: "Name", cell: (row: Ranked) => row.name, sortValue: (row: Ranked) => row.name, compare: byRank },
+    ];
+    const { result } = renderHook(() => useDataTableModel({ columns, rows: RANKED, rowKey: (row: Ranked) => row.id }));
+    const order = () => result.current.table.getRowModel().rows.map((row) => row.original.name);
+
+    act(() => result.current.table.setSorting([{ id: "name", desc: false }]));
+    expect(order()).toEqual(["beta", "gamma", "alpha"]);
+    act(() => result.current.table.setSorting([{ id: "name", desc: true }]));
+    expect(order()).toEqual(["alpha", "gamma", "beta"]);
+  });
+});

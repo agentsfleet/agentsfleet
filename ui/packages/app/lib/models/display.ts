@@ -103,15 +103,15 @@ function wordsLabel(segment: string): string {
   return cased.join(" ");
 }
 
-/** Sorts below a space under both code-point order and the locale collation
- * `localeCompare` uses, so "GPT-5" ends before "GPT-5 Mini" begins. Control
- * characters below it are ignored by the collation and would not. */
-const SORT_KEY_SEPARATOR = "\t";
+/** One collation for every Model column: pinned to `en-US` so the server and
+ * the browser agree, and numeric so "GPT OSS 20B" precedes "GPT OSS 120B". */
+const MODEL_COLLATOR = new Intl.Collator("en-US", { numeric: true });
 
-/** What a Model column sorts by: the name it shows, then the id, so two ids
- * that read alike keep a fixed order. */
-export function modelSortKey(modelId: string): string {
-  return `${modelLabel(modelId)}${SORT_KEY_SEPARATOR}${modelId}`;
+/** The order every Model column sorts in: the name it shows, then the id, so
+ * two ids that read alike keep a fixed order. Both model tables call this, so
+ * they cannot disagree. */
+export function compareModelIds(a: string, b: string): number {
+  return MODEL_COLLATOR.compare(modelLabel(a), modelLabel(b)) || MODEL_COLLATOR.compare(a, b);
 }
 
 /** What a model id's copy button announces, the same on every table. */
