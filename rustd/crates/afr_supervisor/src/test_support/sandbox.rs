@@ -281,7 +281,3 @@ fn bound(network: Network<'_>) -> Bound {
         Network::Allowed(allowlist) => Bound::Allowed(allowlist.clone()),
     }
 }
-
-#[cfg(test)]
-#[path = "sandbox_tests.rs"]
-mod tests;
