@@ -18,7 +18,7 @@ import check_cli_source as checker
 ENV_TS = 'export const API_URL_ENV = "AGENTSFLEET_API_URL" as const;\n'
 PALETTE_TS = 'export const pulse = (text: string) => `\\u001b[38;5;51m${text}\\u001b[0m`;\n'
 GLYPH_TS = '// Reads AGENTSFLEET_API_URL in prose only.\nexport const live = () => palette.pulse("●");\n'
-FORMAT_TS = 'import { API_URL_ENV } from "../constants/env.ts";\nexport const heading = (t: string) => palette.pulseBold(t) + API_URL_ENV;\n'
+FORMAT_TS = 'import { API_URL_ENV } from "../constants/env.ts";\nexport const heading = (t: string) => palette.pulse(t) + API_URL_ENV;\n'
 BANNER_TS = 'export const banner = "agentsfleet";\n'
 CONNECTOR_TS = "yield* output.printTable(rows);\n"
 LIST_TS = "yield* printEntityTable(spec, rows);\n"
