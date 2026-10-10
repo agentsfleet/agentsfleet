@@ -53,24 +53,17 @@ pub const INGRESS_PATH: &str = "/v1/ingress/qstash/schedules";
 /// The longest destination this daemon will register.
 pub const MAX_DESTINATION_BYTES: usize = 2048;
 
-/// Why a destination could not be built.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InvalidDestination {
-    /// The configured API URL is empty, or too long once the path is on it.
-    Unusable,
-    /// It carries a query or a fragment — see [`destination_url`].
-    NotAPlainOrigin,
-}
-
 /// Where the scheduler should call back to, for this deployment.
 ///
 /// # Errors
-/// [`InvalidDestination`] rather than a silently truncated URL. The destination
+/// A refusal rather than a silently truncated URL: one kind for a value that
+/// is not a URL or is past [`MAX_DESTINATION_BYTES`], another for a query or a
+/// fragment. The destination
 /// rides RAW inside the provider's own request path, so a `?` or `#` here would
 /// be read as the provider request's query or fragment and register a callback
 /// this daemon never meant.
-pub fn destination_url(api_url: &str) -> Result<String, InvalidDestination> {
-    let parsed = Url::parse(api_url).map_err(|_unparsed| InvalidDestination::Unusable)?;
+pub fn destination_url(api_url: &str) -> Result<String> {
+    let parsed = Url::parse(api_url).map_err(|_unparsed| error::destination_unusable())?;
 
     // Asked of the PARSED url rather than of the string. A `#` inside a
     // percent-encoded path is not a fragment and a `?` in userinfo is not a
@@ -79,13 +72,13 @@ pub fn destination_url(api_url: &str) -> Result<String, InvalidDestination> {
     // request path is the difference between a callback that works and one
     // silently truncated at the first `?`.
     if parsed.query().is_some() || parsed.fragment().is_some() {
-        return Err(InvalidDestination::NotAPlainOrigin);
+        return Err(error::destination_not_plain_origin());
     }
 
     let base = parsed.as_str().trim_end_matches('/');
     let destination = format!("{base}{INGRESS_PATH}");
     if destination.len() > MAX_DESTINATION_BYTES {
-        return Err(InvalidDestination::Unusable);
+        return Err(error::destination_unusable());
     }
     Ok(destination)
 }
