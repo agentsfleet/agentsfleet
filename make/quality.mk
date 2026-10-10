@@ -114,6 +114,11 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety bench-datastore-self-test  ## Run all linters + quality gates
+	@# A test calls the code it proves; a test that reads a repository file
+	@# asserts on text instead (docs/architecture/testing.md).
+	@echo "→ [tests] No test reads a repository file..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_tests_call_code_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_tests_call_code.py
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check
