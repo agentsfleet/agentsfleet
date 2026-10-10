@@ -151,14 +151,21 @@ function AccessSwitches({ workspaceId, fleetId, initial }: { workspaceId: string
     inFlight.current = true;
     setSaving(true);
     setNotice(null);
-    const result = await setMemoryAccessAction(workspaceId, fleetId, { [grant]: !access[grant] });
-    inFlight.current = false;
-    setSaving(false);
-    if (result.ok) {
-      setAccess(result.data);
-      return;
+    try {
+      const result = await setMemoryAccessAction(workspaceId, fleetId, { [grant]: !access[grant] });
+      if (result.ok) {
+        setAccess(result.data);
+        return;
+      }
+      setNotice(presentErrorString({ errorCode: result.errorCode, message: result.error, action: MEMORY_ACCESS_ACTION }));
+    } catch {
+      // A transport failure rejects rather than answering; the switches must
+      // not stay held by it, and the notice reads from the action alone.
+      setNotice(presentErrorString({ action: MEMORY_ACCESS_ACTION }));
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
     }
-    setNotice(presentErrorString({ errorCode: result.errorCode, message: result.error, action: MEMORY_ACCESS_ACTION }));
   }
 
   return (

@@ -26,7 +26,9 @@
 //! two connections; report and renew instead fence inside the write. A reclaim
 //! that commits between the two lets one superseded request through, and a
 //! capture there can overwrite an entry the new holder wrote under the same
-//! key. It is bounded to one request per reclaim.
+//! key. It is bounded to the requests in flight when the reclaim commits.
+//! `crate::lease::write_fence` is the shape that would close it: the fence
+//! proved inside the write's own transaction.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;

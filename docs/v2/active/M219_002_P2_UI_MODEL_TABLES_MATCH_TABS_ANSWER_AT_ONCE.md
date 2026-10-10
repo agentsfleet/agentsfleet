@@ -71,6 +71,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/{FleetTile.tsx,FleetTile.test.tsx}` | EDIT | §7: agent and status first, the live line second, the fleet name in the footer |
 | `ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.tsx` | EDIT | §6: a tab click reports one source change on Radix tabs 1.1.22 |
 | `scripts/toolbox/manifest.txt` | EDIT | §6: the toolbox snapshot moves to one serving Debian 13.7 |
+| `docs/v2/pending/M220_001_P2_DOCS_INFRA_KERNEL_VM_RUNS_DEBIAN_TRIXIE.md` | CREATE | §6: the deferred kernel-lane machine and doc drifts, as their own spec on this branch |
 | `ui/packages/app/AGENTS.md` | EDIT | §6: Next 16.4 rewrites its managed `nextjs-agent-rules` block |
 | `docs/v2/active/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md` | CREATE | This spec |
 
@@ -258,5 +259,5 @@ No API, route or wire change.
 - **Close-out (Oct 10, 2026)** — Indy accepted the screens ("Accepted (Recommended)"), and asked that the two known limits be recorded rather than fixed, docs be skipped under an override, and the branch be pushed and opened as a PR once green. For the fleet card he wrote "the agent slug name and status is important that must be the first line" and "Runs in loop static text doesnt have value, but rather the Waiting for the event is valuable", then picked "Footer name" (§7).
 - **Metrics review** — No product event changes.
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — the `afr-kernel` VM rebuild on Debian 13, and three doc drifts: `docs/architecture/runner_execution.md:164`, `.github/workflows/test-integration-rustd.yml:131` and `rustd/Cargo.toml:344`. They go to their own spec, written to `docs/v2/pending/` on this branch.
+- **Deferrals** — the `afr-kernel` VM rebuild on Debian 13, and three doc drifts: `docs/architecture/runner_execution.md:164`, `.github/workflows/test-integration-rustd.yml:131` and `rustd/Cargo.toml:344`. They go to their own spec, `M220_001` in `docs/v2/pending/` on this branch.
   > Indy (2026-10-10 10:00): "Bump snapshot in this PR" — context: the option he chose read "The VM and doc fixes go to their own spec."; then "all changes have to go in 1 branch/worktree".

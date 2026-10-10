@@ -204,6 +204,23 @@ describe("MemoryPanel shared memory", () => {
     expect(read.getAttribute("aria-disabled")).toBeNull();
   });
 
+  it("a flip whose save rejects releases both switches and says so", async () => {
+    setMemoryAccessAction.mockRejectedValueOnce(new Error("network down"));
+    setMemoryAccessAction.mockResolvedValueOnce({ ok: true, data: { read: false, publish: true } });
+    const user = userEvent.setup({ delay: null });
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant />);
+
+    const read = screen.getByRole("switch", { name: MEMORY_ACCESS_READ_LABEL });
+    await user.click(read);
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(read.getAttribute("aria-disabled")).toBeNull();
+    expect(read.getAttribute("aria-checked")).toBe("false");
+
+    await user.click(screen.getByRole("switch", { name: MEMORY_ACCESS_PUBLISH_LABEL }));
+    expect(setMemoryAccessAction).toHaveBeenCalledTimes(2);
+    expect(setMemoryAccessAction).toHaveBeenLastCalledWith("ws_1", "agt_1", { publish: true });
+  });
+
   it("holds both switches while a flip is saving, and keeps the focus where it was", async () => {
     let answer: (value: unknown) => void = () => undefined;
     setMemoryAccessAction.mockReturnValue(

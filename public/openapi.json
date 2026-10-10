@@ -17048,7 +17048,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on an open rule: a read, a blob or tree write, and every rule\nfrom a daemon older than this field. The runner then checks the rule's\nlocked fields and nothing more. Closing an older daemon's write rule\nwould refuse keys it never listed, such as a ref's `sha` or a Pull\nRequest's `title`. Every write would then stop until the daemon\nupgrades.\n\nA runner older than this field ignores it and reads every rule as\nopen, so a closed rule holds once the runners that enforce it run."
+            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on an open rule: a read, a blob or tree write, and every rule\nfrom a daemon older than this field. The runner then checks the rule's\nlocked fields and nothing more. Closing an older daemon's write rule\nwould refuse keys it never listed, such as a ref's `sha` or a Pull\nRequest's `title`. Every write would then stop until the daemon\nupgrades.\n\nA runner older than this field ignores it and reads every rule as\nopen. A closed rule holds once the runners that enforce it run."
           }
         }
       },
