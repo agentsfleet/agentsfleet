@@ -33,8 +33,8 @@
 //! the stricter of the two claims.
 #![cfg(feature = "test-util")]
 #![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
+    clippy::panic,
+    reason = "test target: an unmounted route should fail the test loudly, by name"
 )]
 
 use std::collections::BTreeSet;
@@ -55,8 +55,9 @@ const UNSERVED: StatusCode = StatusCode::METHOD_NOT_ALLOWED;
 
 /// The methods `route`'s own mount answers, discovered by probing each verb.
 async fn mounted(state: &Arc<Fleet>, route: Route) -> BTreeSet<Verb> {
-    let handler = unlayered_mount::<Fleet>(route).expect("every tabled route is mounted");
     let template = route.meta().template;
+    let handler = unlayered_mount::<Fleet>(route)
+        .unwrap_or_else(|| panic!("{template} is tabled but has no mounted handler"));
     let router = Router::new()
         .route(template, handler)
         .with_state(Arc::clone(state));
