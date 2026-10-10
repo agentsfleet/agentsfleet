@@ -52,8 +52,3 @@ check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremet
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@$(SHELLCHECK) --severity=error -x deploy/baremetal/*.sh
 	@PLAYBOOK_TEST_SCRUB="$(PLAYBOOK_TEST_SCRUB)" bash scripts/run-playbook-tests.sh deploy/baremetal
-	@# The collector stand-up's ORDER, which actionlint cannot see: an app
-	@# must exist before `flyctl secrets set --app` addresses it. This block
-	@# was once inline in both deploy workflows and one copy drifted to run
-	@# after the deploy it was supposed to precede, passing actionlint.
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/ensure_fly_app_test.py

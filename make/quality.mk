@@ -118,6 +118,13 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@# on whose rig they may reset rides the same pair.
 	@echo "→ [gh-actions] Reset runs before migrate, and only on an owned rig..."
 	@bash scripts/make_reset_order_test.sh
+	@# What the deploy workflows run and in which order, which actionlint
+	@# cannot see: the collector app exists before `flyctl secrets set`
+	@# addresses it, Discord routes by stage, the connector's signing secret
+	@# and vault row are both seeded, the daemon's own log level is set.
+	@echo "→ [gh-actions] Deploy workflows run the right steps in the right order..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_workflow_rules_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_workflow_rules.py
 	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference
