@@ -147,6 +147,8 @@ async fn a_dispatch_the_ledger_refuses_is_logged_and_left_to_retry() {
         .expect("the refused dispatch is logged with the intent it failed");
     assert_eq!(logged.get("workspace_id"), Some(&fixture.workspace));
     assert!(logged.contains_key("due_since_ms"), "{logged:?}");
+    let reason = logged.get("reason").expect("the refused dispatch says why");
+    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
     assert_eq!(fixture.verification().await.event_id, None);
     assert!(
         claim_token(&fixture).await.is_some(),
