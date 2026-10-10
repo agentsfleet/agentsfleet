@@ -192,7 +192,7 @@ impl Inbox {
     pub(super) async fn wake_parked_delivery(&self, fleet: &str, gate: &str) {
         if let Err(error) = ReadyIndex::new(self.queue.clone()).mark(fleet).await {
             let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let reason = error.to_string();
+            let reason = error.told();
             tracing::warn!(
                 error_code = code,
                 event = EVENT_WAKE_READY_MARK_FAILED,
@@ -300,3 +300,7 @@ mod stood;
 #[cfg(test)]
 #[path = "resolve/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "resolve/wake_tests.rs"]
+mod wake_tests;
