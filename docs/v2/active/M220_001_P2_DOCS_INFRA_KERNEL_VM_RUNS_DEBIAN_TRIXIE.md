@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M220
 **Workstream:** 001
 **Date:** Oct 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — developer tooling and doc accuracy; no product behaviour changes
 **Categories:** DOCS, INFRA
 **Batch:** B1 — one machine rebuild and three doc lines, independent of each other
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** `build/m220-debian-kernel-vm`
+**Baseline revision:** `6e4a02127b4738f205c6ba1c8d42bce42413ed2e`
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** `M219_002` §6 — the toolbox already builds from the Debian 13.7 snapshot `20261010T000000Z`
