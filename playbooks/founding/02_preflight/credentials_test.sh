@@ -2,7 +2,6 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo_root="$(cd "$script_dir/../../.." && pwd)"
 script_under_test="$script_dir/02_credentials.sh"
 
 passed=0
@@ -249,35 +248,6 @@ test_prod_rejects_malformed_discord_webhook() {
   fi
 }
 
-test_issue_tracker_docs_pin_current_source_scopes() {
-  local name="issue-tracker docs pin current source scopes"
-  # Both providers declare their scopes in one Rust registry now; the Jira
-  # string is split across two source lines, so it is pinned as two fragments.
-  local registry="$repo_root/rustd/crates/afd_connector/src/registry.rs"
-  local jira_doc="$repo_root/playbooks/operations/jira_app_registration/001_playbook.md"
-  local linear_doc="$repo_root/playbooks/operations/linear_app_registration/001_playbook.md"
-  local jira_doc_text
-
-  jira_doc_text="$(tr '\n' ' ' <"$jira_doc")"
-
-  # Backticks below are literal Markdown delimiters.
-  # shellcheck disable=SC2016
-  if ! grep -Fq 'scopes: "read:jira-work read:jira-user write:jira-work' "$registry" \
-    || ! grep -Fq 'read:servicedesk-request write:servicedesk-request offline_access",' "$registry"; then
-    bad "$name" "Jira source scope changed"
-  elif [[ "$jira_doc_text" != *'exactly `read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request`'* ]]; then
-    bad "$name" "Jira registration scope is stale"
-  elif ! grep -Fq 'scopes: "read,comments:create",' "$registry"; then
-    bad "$name" "Linear source scope changed"
-  elif ! grep -Fq \
-    'The authorization request supplies `read,comments:create`.' \
-    "$linear_doc"; then
-    bad "$name" "Linear registration scope is stale"
-  else
-    ok "$name"
-  fi
-}
-
 test_smtp_relay_is_a_post_deploy_input() {
   local name="smtp-relay is a post-deploy input"
   local stage output status
@@ -318,7 +288,6 @@ test_deployment_rejects_missing_runtime_input
 test_prod_checks_both_discord_webhooks
 test_dev_checks_ci_discord_webhook
 test_prod_rejects_malformed_discord_webhook
-test_issue_tracker_docs_pin_current_source_scopes
 test_smtp_relay_is_a_post_deploy_input
 test_unknown_stage_fails_closed
 

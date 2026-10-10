@@ -7,6 +7,8 @@
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_parity_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_parity.py
 
 ACTIONLINT ?= actionlint
 
