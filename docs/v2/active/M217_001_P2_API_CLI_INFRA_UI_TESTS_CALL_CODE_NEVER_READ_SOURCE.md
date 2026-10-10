@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — starts once M213 merges; Sections run in order
 **Branch:** feat/m217-tests-call-code
 **Baseline revision:** c07f5e899ab4b0efa1d5c6a81fcff5eb6bc64741
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=4614 integration=935 — Rust, from CI on the `6e4a02127` tree (TypeScript: app 3638, design system 653, website 145, CLI 1778)
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M217_001-c07f5e899.md`
 **Depends on:** M213_001 (Rust runner cutover, Zig retired; one Pull Request (PR) with M213_002). It removes or rewrites ledger rows F386–F391, renames four ledger tests, and adds the files behind F044 and F124. Re-locate every ledger row by test name after it lands.
 **Provenance:** LLM-drafted (large language model Claude Opus 5.5, Oct 08, 2026) from the repository-wide test audit and Indy's Oct 08 decisions
 **Canonical architecture:** `docs/architecture/testing.md` §Public lanes, §Coverage
@@ -67,6 +67,7 @@ The ledger enumerates each test file by row; this table names the roles.
 | `playbooks/lib/test_search.sh` and its ten sourcing tests | DELETE / EDIT | The `rg` shim only tests use (F354); callers use `grep -E`/`grep -F` |
 | `scripts/check_documentation_rules.py`, `scripts/check_architecture_doc.sh`, `scripts/check_model_allowlist.py`, `ui/packages/{app,design-system,website}/.oxlintrc.json`, `cli/.oxlintrc.json`, `make/quality.mk`, `make/check-safety-gates.mk` | EDIT | Lint hosts for moved checks and their wiring — Indy approves each at PLAN |
 | `scripts/check_tests_call_code.py`, `scripts/check_tests_call_code_test.py` | CREATE | §6 lint and its seeded-violation tests — Indy approves at PLAN |
+| `playbooks/operations/acceptance/baselines/M217_001-c07f5e899.md` | CREATE | Baseline evidence and the branch's measured delta |
 | `docs/architecture/testing.md` | EDIT | The rule: a test calls the code; text rules over source are lints |
 | `scripts/check_source_lib.py`, `scripts/check_{app_source,app_jsx,cli_source,design_system_source,website_copy,documentation_parity,rust_source,infra_config,workflow_rules}.py` and their `_test.py`, `scripts/check_architecture_doc_tables.sh` + `scripts/check_architecture_doc_test_tables.sh`, `scripts/check_tests_call_code_languages.py` | CREATE | Lint hosts for moved rows (§2.4) that no existing host fit; added at EXECUTE under Indy's overnight authorization (Discovery) |
 | `rustd/crates/*/src/**/sql.rs`, `afd_library/src/catalogue/**`, `afd_runner/src/sweep/{reconcile,replay}.rs`, `afd_tenant/src/{sql,workspace}/**`, `afd_admin/src/platform_key.rs`, `afd_api_tenant/.../identity.rs`, `agentsfleetd/src/preflight.rs`, `afd_db/src/migration.rs`, `afd_fleet/src/lease/activity*.rs`, `afd_bench/src/error/accessors.rs` | EDIT | Inline statement-text test modules removed; test-only constants and accessors deleted; doc comments re-pointed; the frame-kind vocabulary exposed for F025 |
@@ -102,58 +103,58 @@ The ledger enumerates each test file by row; this table names the roles.
 
 ## Sections (implementation slices)
 
-### §1 — Tests that can never fail or never run (F001–F009)
+### §1 — Tests that can never fail or never run (F001–F009) — DONE
 
 First, because each one reports a guarantee nobody holds. All verified on `main`: `afd_core` builds one harness (`Cargo.toml:4` `autotests = false`, `core_suite.rs:11` `mod backtrace;`), so `--exact` with a bare name (`backtrace.rs:44`) matches nothing and the child exits 0; `router.rs:195` makes `is_mounted` true for every route family; `gallery/sql.rs:168` pairs both ranks with `FIRST_PAGE`; nothing sets the flag `signup-webhook-live.spec.ts:38` skips on; `make/test-integration-rustd.mk:139,141` and the coverage shards (`:323`) all exclude `afd_bench`, so no lane runs its `#[ignore]`d tests.
 
-- **Dimension 1.1** — The four re-exec children (`afd_core` backtrace; `afd_crypto`, `afd_db`, `afd_dragonfly` error surfaces) filter by their module-qualified names, and each parent asserts its child ran exactly one test → Test `should_render_the_backtrace_only_when_the_environment_asks_for_one`
-- **Dimension 1.2** — `test_every_tabled_route_is_served` goes; the full-router loop keeps its not-404 check and loses `is_mounted`, its helpers and the unreachable arm → Test `test_declared_verbs_match_the_mounted_router`
-- **Dimension 1.3** — The gallery's statement-text tests go; a live test proves tier order across a page boundary → Test `the_gallery_orders_a_tied_instant_by_tier_across_pages`
-- **Dimension 1.4** — The `E2E_LIVE_SIGNUP_WEBHOOK` opt-in goes; the local and production skips stay → Test `Clerk user.created webhook provisions workspace without harness bootstrap`
-- **Dimension 1.5** — The assertion-free unmount pair, the length tautology with `CLI_CREDENTIAL_TOTAL_LEN`, and the two website checks that cannot fail are deleted → Lane `make test-coverage-all`
-- **Dimension 1.6** — 21 of the 22 ignored `afd_bench` tests go; the one that dials `127.0.0.1:1` runs un-ignored in the unit lane → Test `test_a_run_that_cannot_reach_its_datastore_writes_no_result`
+- **Dimension 1.1** — DONE — The four re-exec children (`afd_core` backtrace; `afd_crypto`, `afd_db`, `afd_dragonfly` error surfaces) filter by their module-qualified names, and each parent asserts its child ran exactly one test → Test `should_render_the_backtrace_only_when_the_environment_asks_for_one`
+- **Dimension 1.2** — DONE — `test_every_tabled_route_is_served` goes; the full-router loop keeps its not-404 check and loses `is_mounted`, its helpers and the unreachable arm → Test `test_declared_verbs_match_the_mounted_router`
+- **Dimension 1.3** — DONE — The gallery's statement-text tests go; a live test proves tier order across a page boundary → Test `the_gallery_orders_a_tied_instant_by_tier_across_pages`
+- **Dimension 1.4** — DONE — The `E2E_LIVE_SIGNUP_WEBHOOK` opt-in goes; the local and production skips stay → Test `Clerk user.created webhook provisions workspace without harness bootstrap`
+- **Dimension 1.5** — DONE — The assertion-free unmount pair, the length tautology with `CLI_CREDENTIAL_TOTAL_LEN`, and the two website checks that cannot fail are deleted → Lane `make test-coverage-all`
+- **Dimension 1.6** — DONE — 21 of the 22 ignored `afd_bench` tests go; the one that dials `127.0.0.1:1` runs un-ignored in the unit lane → Test `test_a_run_that_cannot_reach_its_datastore_writes_no_result`
 
 ### §2 — Tests that read source, configuration, workflow or documentation (F010–F116)
 
 107 sites (124 findings). `execute` rewrites run the code; `delete` and `trim` rows already have an executing twin, named in the ledger's last column. A split row resolves one way: execute beats lint; delete beats lint when the twin exists (F097). **Implementation default:** a `lint` row moves to the host for its surface: a standard tool's rule first (oxlint `no-restricted-imports`/`no-restricted-syntax`, actionlint, shellcheck); otherwise the existing repository script for that surface (`check_documentation_rules.py` for OpenAPI and command prose, `check_architecture_doc.sh` for architecture tables, `check_model_allowlist.py`, `check-playbooks`, `check-deploy-safety`). A Rust parity scan becomes a compile-time check where one exists (generate `MIGRATIONS` from `schema/`). A check whose natural host is an `orly`-managed audit gets a repository-owned host instead. **Required human decision:** Indy approves the host list at PLAN; a lint-routed test is deleted only in the commit that lands its rule.
 
-- **Dimension 2.1** — Rust statement-text tests (F017, F018, F020–F024, F026–F033) become live tests through the store, each red with its guarded predicate removed → Test `the_vault_never_reads_another_workspaces_key`
-- **Dimension 2.2** — OpenAPI readers (F019, F025, F034, F035, F038) read the generated document; `workspace-client.test.ts`'s interface facts move into `afd_api`'s OpenAPI tests → Test `test_the_published_catalog_id_bound_is_the_enforced_one`
-- **Dimension 2.3** — CLI, app, design-system, shell and handler rewrites (F010–F016, F036, F037, F039, F051) drive the code: login inspects what it saved, scripts run against stubbed tools, the identity handler runs under `Capture` → Test `login persists the minted credential, never the decrypted session token`
-- **Dimension 2.4** — Every `lint` row in §2 and §3 lands with a seeded violation in its host's own test, and the host exits non-zero naming it → Test `moved_rules_reject_seeded_violations`
-- **Dimension 2.5** — `delete` and `trim` rows go and their named twins still fail on the behaviour → Lane `make test-coverage-all`
+- **Dimension 2.1** — IN_PROGRESS — red runs owed for F018, F020, F022, F024, F026 and the F023 twin — Rust statement-text tests (F017, F018, F020–F024, F026–F033) become live tests through the store, each red with its guarded predicate removed → Test `the_vault_never_reads_another_workspaces_key`
+- **Dimension 2.2** — DONE — OpenAPI readers (F019, F025, F034, F035, F038) read the generated document; `workspace-client.test.ts`'s interface facts move into `afd_api`'s OpenAPI tests → Test `test_the_published_catalog_id_bound_is_the_enforced_one`
+- **Dimension 2.3** — IN_PROGRESS — F039's red run was refused by the permission classifier — CLI, app, design-system, shell and handler rewrites (F010–F016, F036, F037, F039, F051) drive the code: login inspects what it saved, scripts run against stubbed tools, the identity handler runs under `Capture` → Test `login persists the minted credential, never the decrypted session token`
+- **Dimension 2.4** — DONE — Every `lint` row in §2 and §3 lands with a seeded violation in its host's own test, and the host exits non-zero naming it → Test `moved_rules_reject_seeded_violations`
+- **Dimension 2.5** — DONE — `delete` and `trim` rows go and their named twins still fail on the behaviour → Lane `make test-coverage-all`
 
-### §3 — Wording and class-name pins (PIN), then duplicates (DUP) (F117–F336)
+### §3 — Wording and class-name pins (PIN), then duplicates (DUP) (F117–F336) — DONE
 
 220 sites. A pin on observable interface stays asserted by execution: error codes, wire spellings, exit codes, accessible names. Pins on copy, class strings, icon names and constants compared with themselves go or trim to their behavioural half. For each duplicate the stronger twin named in the ledger stays.
 
-- **Dimension 3.1** — Copy and class pins (PIN `delete`/`trim`) go; interface assertions stay → Lane `make test-coverage-all`
-- **Dimension 3.2** — Rewrites (F117, F118, F200–F206) observe behaviour: a client-side round-trip keeps one stream, and queries go by role and accessible name → Test `fleet thread survives a client-side round-trip without remounting`
-- **Dimension 3.3** — The weaker twin goes; trims keep the unique half, such as the absent-event 404 (`workspace_events.rs:279`) → Test `the_absent_event_code_is_the_events_own_and_not_the_fleets`
+- **Dimension 3.1** — DONE — Copy and class pins (PIN `delete`/`trim`) go; interface assertions stay → Lane `make test-coverage-all`
+- **Dimension 3.2** — DONE — Rewrites (F117, F118, F200–F206) observe behaviour: a client-side round-trip keeps one stream, and queries go by role and accessible name → Test `fleet thread survives a client-side round-trip without remounting`
+- **Dimension 3.3** — DONE — The weaker twin goes; trims keep the unique half, such as the absent-event 404 (`workspace_events.rs:279`) → Test `the_absent_event_code_is_the_events_own_and_not_the_fleets`
 
-### §4 — Tests of test-only code (DEAD) and of their own mocks (MOCK) (F337–F385)
+### §4 — Tests of test-only code (DEAD) and of their own mocks (MOCK) (F337–F385) — DONE
 
 49 sites. Harness self-tests leave the unit suite. Two safety checks in `clerk-admin.test.ts` stay: `:183` refuses an identity without the suite ownership marker, and `:198` redacts the generated credential. `cli-credential-revoke.test.ts:118` ("gives up at the attempt cap, naming the id and every attempt, never the secret") also stays; its `:130` keeps a minted credential out of logs.
 
-- **Dimension 4.1** — Fixture and harness tests go; the three safety checks above stay → Test `refuses an existing identity without the suite ownership marker`
-- **Dimension 4.2** — The `AgentRun` redaction test moves beside `AgentRun` before the `ScriptedEngine` tests go (F345) → Test `a_run_debugs_without_the_leases_secrets`
-- **Dimension 4.3** — Harness checks (F338–F342) run in the lane that uses them: the `compose-env` leak guard as an acceptance preflight, `bench_datastore_test.py` in `make lint-all` → Test `CompleteEvidencePasses`
-- **Dimension 4.4** — Mock-only tests go; the rewrites (F337, F372–F375) assert on the system under test → Test `a_workspace_that_does_not_exist_is_not_distinguishable_from_a_foreign_one`
-- **Dimension 4.5** — Test-only exports and reset-only branches go with their tests (§5) → Lane `make test-coverage-all`
+- **Dimension 4.1** — DONE — Fixture and harness tests go; the three safety checks above stay → Test `refuses an existing identity without the suite ownership marker`
+- **Dimension 4.2** — DONE — The `AgentRun` redaction test moves beside `AgentRun` before the `ScriptedEngine` tests go (F345) → Test `a_run_debugs_without_the_leases_secrets`
+- **Dimension 4.3** — DONE — Harness checks (F338–F342) run in the lane that uses them: the `compose-env` leak guard as an acceptance preflight, `bench_datastore_test.py` in `make lint-all` → Test `CompleteEvidencePasses`
+- **Dimension 4.4** — DONE — Mock-only tests go; the rewrites (F337, F372–F375) assert on the system under test → Test `a_workspace_that_does_not_exist_is_not_distinguishable_from_a_foreign_one`
+- **Dimension 4.5** — DONE — Test-only exports and reset-only branches go with their tests (§5) → Lane `make test-coverage-all`
 
 ### §5 — Coverage holds without moving a floor
 
 Runs at every Section's commit. A production line a deletion leaves uncovered gets an executing test through its public entry if a production caller reaches it, or is deleted if none does. No threshold moves, no `RUSTD_COVERAGE_IGNORE` pattern or coverage-ignore comment is added, and no file joins a coverage exclude.
 
-- **Dimension 5.1** — TypeScript floors hold at 100% with threshold sources unchanged → Lane `make test-coverage-all`
-- **Dimension 5.2** — The Rust floor holds at `RUSTD_COVERAGE_FLOOR ?= 97.5` (`make/test-integration-rustd.mk:212`) → Lane `make test-coverage-rustd`
+- **Dimension 5.1** — DONE — TypeScript floors hold at 100% with threshold sources unchanged → Lane `make test-coverage-all`
+- **Dimension 5.2** — IN_PROGRESS — proven by CI's coverage merge on the final head — The Rust floor holds at `RUSTD_COVERAGE_FLOOR ?= 97.5` (`make/test-integration-rustd.mk:212`) → Lane `make test-coverage-rustd`
 
-### §6 — The rule, enforced (requires Indy's approval)
+### §6 — The rule, enforced (requires Indy's approval) — DONE
 
 **Required human decision:** Indy approves the new check and its `make lint-all` wiring at PLAN. Declined → amend this spec to drop §6, rubric R2 and the Goal's first clause, and record the invariant as review-enforced in Discovery.
 
-- **Dimension 6.1** — `scripts/check_tests_call_code.py` flags a file read of a repository path from a test file outside that test's fixture directories, in TypeScript, Rust, shell and Python, with no allowlist or baseline → Test `test_a_seeded_source_read_fails_in_each_language`
-- **Dimension 6.2** — `make lint-all` runs the check and fails on a seeded violation → Test `lint_all_runs_check_tests_call_code`
+- **Dimension 6.1** — DONE — `scripts/check_tests_call_code.py` flags a file read of a repository path from a test file outside that test's fixture directories, in TypeScript, Rust, shell and Python, with no allowlist or baseline → Test `test_a_seeded_source_read_fails_in_each_language`
+- **Dimension 6.2** — DONE — `make lint-all` runs the check and fails on a seeded violation → Test `lint_all_runs_check_tests_call_code`
 
 ## Interfaces
 
