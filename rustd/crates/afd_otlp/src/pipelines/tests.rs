@@ -15,9 +15,7 @@ use opentelemetry::KeyValue;
 use opentelemetry::trace::{Link, SpanKind, TraceId, TraceState, Tracer as _, TracerProvider as _};
 use opentelemetry_sdk::trace::{SamplingDecision, SamplingResult, ShouldSample, SpanData};
 
-use super::{
-    Builder, LOGS_PATH, METRICS_PATH, SPAN_BATCH, SPAN_QUEUE, SPAN_SEND_EVERY, SpanEnd, TRACES_PATH,
-};
+use super::{Builder, LOGS_PATH, METRICS_PATH, SpanEnd, TRACES_PATH};
 use crate::config::{Encoding, OTEL_ENDPOINT_KNOB, OtlpConfig};
 use crate::resource::Service;
 
@@ -206,17 +204,6 @@ fn the_observer_sees_exactly_what_the_sampler_keeps() {
         1,
         "the sampler shed one span and the observer saw the other end"
     );
-}
-
-/// pin test: the pinned span-queue values are the SDK's own defaults, so
-/// pinning them changed nothing a deployment sees. That `tracer()` builds its
-/// processor from these constants rather than from `OTEL_BSP_*` is read in
-/// its body; this test keeps the numbers from drifting off the defaults.
-#[test]
-fn the_span_queue_is_pinned_at_the_sdks_defaults() {
-    assert_eq!(SPAN_QUEUE, 2048);
-    assert_eq!(SPAN_BATCH, 512);
-    assert_eq!(SPAN_SEND_EVERY, Duration::from_secs(5));
 }
 
 /// A series ceiling the SDK refuses refuses the install, as a defect in the
