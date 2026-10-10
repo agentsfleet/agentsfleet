@@ -19,7 +19,7 @@ use sqlx::Row as _;
 
 use crate::error::{Result, query, sequence_corrupt};
 use crate::lease::sql;
-use crate::lease::standing::fence_holds;
+use crate::lease::standing::{fence_current, fence_holds};
 use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
@@ -87,9 +87,10 @@ impl Fence {
         Ok(Self { own, live_seq })
     }
 
-    /// Whether no reclaim has moved the fleet past this lease.
+    /// Whether no reclaim has moved the fleet past this lease: the first half
+    /// of the rule [`Self::holds`] applies, from the same function.
     pub(crate) const fn current(self) -> bool {
-        self.own >= self.live_seq
+        fence_current(self.own, self.live_seq)
     }
 
     /// Whether this lease still holds the fleet and `presented` is its own

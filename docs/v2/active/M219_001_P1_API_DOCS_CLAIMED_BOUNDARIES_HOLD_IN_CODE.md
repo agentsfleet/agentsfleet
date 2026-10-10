@@ -57,7 +57,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` | EDIT | The launcher starts with an empty environment |
 | `rustd/crates/afr_sandbox/src/bubblewrap_engine/tests/{prepare.rs,support.rs}` | EDIT | Empty-environment test, over a fake launcher that reports its inherited environment |
 | `rustd/crates/afd_fleet/src/lease/fence.rs` | EDIT | Fence reads return the lease's own token beside the live sequence |
-| `rustd/crates/afd_fleet/src/lease/memory.rs`, `rustd/crates/afd_fleet/src/error/{detail.rs,refuse.rs,mod.rs}` | EDIT | Capture, recall and hydrate decide through `fence_holds`; the stale-fence sentence and fenced event name every verb |
+| `rustd/crates/afd_fleet/src/lease/{memory.rs,standing.rs}`, `rustd/crates/afd_fleet/src/error/{detail.rs,refuse.rs,mod.rs}` | EDIT | Capture and recall decide through `fence_holds`, hydrate through its first half `fence_current`; the stale-fence sentence and fenced event name every verb; the module states its check-then-write race |
 | `rustd/crates/afd_fleet/src/lease/sql/lease.rs` | EDIT | The mint scope read requires the lease to hold the live sequence |
 | `rustd/crates/afd_fleet/tests/{integration_memory_capture.rs,integration_memory_hydrate_order.rs,fleet_suite.rs}` | EDIT, CREATE | The test admitting a token above the live sequence is inverted; superseded-lease cases; hydrate trusts the higher token over the clock |
 | `rustd/crates/afd_fleet/tests/{integration_credential_mint.rs,integration_credential_mint/cases.rs}` | EDIT | A superseded active lease mints nothing; the fixture lease's token is a named constant, and a helper moves the sequence past it |
@@ -65,9 +65,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_vault/src/{delete.rs,error.rs}` | EDIT | `delete_in` on a caller's transaction; `delete` wraps it; a referenced-refusal sample behind `test-util` |
 | `rustd/crates/afd_connector/src/{grant/holding.rs,error.rs,error/raise.rs}`, `rustd/crates/afd_connector/{Cargo.toml,tests/error_surface.rs}` | EDIT | `forget` is one transaction; its "different stores" note is corrected; a referenced refusal carries its count |
 | `rustd/crates/afd_connector/src/grant.rs` | EDIT | `land` writes the vault row before routing, as its module note already says |
-| `rustd/crates/afd_connector/tests/{integration_connect_roundtrip.rs,integration_connect_roundtrip/disconnect.rs}` | EDIT, CREATE | Refused-delete and racing-reconnect cases, holding the production workspace lock; the fixture exposes its tenant and a grant store |
-| `rustd/crates/afd_api_tenant/src/handler/{connector/status.rs,secret.rs}`, `rustd/crates/afd_api/tests/{integration_connector_status.rs,integration_connector_status/checks.rs}`, `rustd/crates/afd_api_runner/src/handler/runner/credential.rs`, `rustd/crates/afd_core/src/problem/request.rs` | EDIT | A referenced Disconnect answers 409 with `current_state`; Disconnect, mint and vault delete document their 409s; the `UZ-VAULT-004` sentence fits both verbs |
-| `rustd/crates/afd_wire/src/{policy.rs,policy/repository.rs}` | EDIT | `HttpRequestRule` gains serde-defaulted `permitted_fields`; named field constants and the commits path |
+| `rustd/crates/afd_connector/tests/{integration_connect_roundtrip.rs,integration_connect_roundtrip/disconnect.rs,integration_connect_roundtrip/disconnect/rollback.rs}` | EDIT, CREATE | Refused-delete and racing-reconnect cases, holding the production workspace lock; a refused routing delete takes the vault delete back, on a private database; the fixture exposes its tenant and a grant store |
+| `deploy/baremetal/{deploy_test.sh,agentsfleet-runner.service}` | EDIT | The drain timeout and the unit's stop timeout are one number, which a test holds |
+| `rustd/crates/afd_api_tenant/src/handler/{connector/status.rs,secret.rs}`, `rustd/crates/afd_api/tests/{integration_connector_status.rs,integration_connector_status/checks.rs}`, `rustd/crates/afd_api_runner/src/handler/runner/{credential.rs,memory.rs}`, `rustd/crates/afd_core/src/problem/request.rs` | EDIT | A referenced Disconnect answers 409 with `current_state`; a memory route's stale fence names `superseded`; Disconnect, mint, memory and vault delete document their 409s; the `UZ-VAULT-004` sentence fits both verbs |
+| `rustd/crates/afd_wire/src/{policy.rs,policy/repository.rs}`, `rustd/crates/afd_wire/tests/policy_shapes.rs` | EDIT | `HttpRequestRule` gains serde-defaulted `permitted_fields`, omitted on an open rule; named field constants and the commits path |
 | `rustd/crates/afr_egress/src/{origin.rs,origin/tests.rs,origin/tests/closed.rs,admission.rs,admission/tests.rs,fixture.rs}` | EDIT, CREATE | A closed rule admits only its keys and no query, and names the key it refused, escaped and capped; the fixture permits what the gate does |
 | `rustd/crates/afd_gate/src/policy/egress/{write.rs,read.rs,tests.rs}` | EDIT | Permitted fields per endpoint, commits name theirs, read rules name none; the open set is blobs and trees |
 | `rustd/crates/afr_agent/src/{loop/history_tests.rs,prompt/tests.rs}` | EDIT | Rule literals carry the new field |
@@ -198,7 +199,7 @@ afd_fleet (§7)  Leases::stored_config(&Uuid7) -> Result<Option<FleetConfig>>
 Slack chat.postMessage body: `text` is entity-escaped for & < >; `metadata` unchanged
 ```
 
-No route or error code changes. A referenced Disconnect's 409 gains `current_state: "referenced"` and the mint's `UZ-GH-001` 409 `current_state: "reconnect_required"`; Disconnect, mint and vault delete document their 409s. Refusals reuse `RUN_STALE_FENCING_TOKEN`, `lease_not_found`, `budget_exhausted` and the egress refusal codes.
+No new route. A Disconnect whose credential a model entry still names moves from 500 `UZ-INTERNAL-003`, which had already deleted the routing rows, to 409 `UZ-VAULT-004` with `current_state: "referenced"` and nothing deleted. The mint's `UZ-GH-001` 409 names `reconnect_required`, and the memory routes' `UZ-RUN-005` 409 names `superseded`. Disconnect, mint, memory and vault delete document their 409s. Refusals reuse `RUN_STALE_FENCING_TOKEN`, `lease_not_found`, `budget_exhausted` and the egress refusal codes.
 
 ## Failure Modes
 
@@ -214,7 +215,7 @@ No route or error code changes. A referenced Disconnect's 409 gains `current_sta
 
 ## Invariants
 
-1. Only the holder's exact, current token passes a fenced verb — every fenced read decides through `fence_holds`; R2 counts no other comparison.
+1. Only the holder's exact, current token passes a fenced verb — every fenced read decides through `fence_holds`, or for a hydrate its first half `fence_current`; R2 counts no other comparison.
 2. Routing rows exist only beside a vault handle — `land` and `forget` each run in one transaction that locks the workspace row first (`sql::LOCK_WORKSPACE`).
 3. A closed rule admits nothing it does not name — with `permitted_fields` present, the matcher rejects any key outside the locked and permitted sets and any query string; an absent list leaves a read, or an older daemon's rule, open.
 4. Model text reaches Slack only through `literal` — the poster is the one path to `chat.postMessage`.
@@ -264,7 +265,7 @@ Regression: the existing memory, mint, connect-roundtrip, egress and Slack poste
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The launcher clears its environment (§1) | `git grep -c 'env_clear()' -- rustd/crates/afr_sandbox/src/bubblewrap_engine/parts.rs` | `1` | P0 | |
-| R2 | No fenced verb compares tokens by hand (§2) | `git grep -nE 'token < live\|presented < live' -- rustd/crates/afd_fleet/src` | no output | P0 | |
+| R2 | No fenced verb compares tokens by hand (§2) | `git grep -nE 'token < live\|presented < live\|own >= (self\.)?live' -- rustd/crates/afd_fleet/src` | no output | P0 | |
 | R3 | No "different stores" reasoning survives (§3) | `git grep -n 'different stores' -- rustd/crates/afd_connector docs/architecture/connectors.md` | no output | P0 | |
 | R4 | One escaping function, owned by the poster (§5) | `git grep -n 'fn literal' -- rustd/crates/afd_outbound/src` | one line, in `slack/escape.rs` | P0 | |
 | R5 | This spec's diff stays inside Files Changed | `git diff --name-only $(git log --diff-filter=A --format=%H -- 'docs/v2/*/M219_001_*.md' \| tail -1)..HEAD` | 0 paths missing from the Files Changed table | P0 | |

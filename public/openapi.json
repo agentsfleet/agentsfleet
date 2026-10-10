@@ -6173,7 +6173,7 @@
           "Memory"
         ],
         "summary": "Load what a fleet remembers",
-        "description": "The memory a fleet carries between runs, read at the start of one. The runner names the fleet, and the lease it holds is what makes that name legitimate. ",
+        "description": "The memory a fleet carries between runs, read at the start of one. The runner names the fleet, and the lease it holds is what makes that name legitimate. A lease the fleet has moved past returns 409 `UZ-RUN-005` naming `superseded`.",
         "operationId": "runner_hydrate_memory",
         "parameters": [
           {
@@ -6289,7 +6289,7 @@
           "Memory"
         ],
         "summary": "Capture what a fleet learned",
-        "description": "Writes back what the run decided is worth keeping. The reply names what was stored and what was skipped, so a runner learns which of its entries did not survive the bounds. ",
+        "description": "Writes back what the run decided is worth keeping. The reply names what was stored and what was skipped, so a runner learns which of its entries did not survive the bounds. A superseded lease, or a token not its own, returns 409 `UZ-RUN-005` naming `superseded`.",
         "operationId": "runner_capture_memory",
         "parameters": [
           {
@@ -6427,7 +6427,7 @@
           "Memory"
         ],
         "summary": "Search what a fleet remembers",
-        "description": "Finds the fleet's entries whose key or content holds the query, ignoring case, key matches first. A fleet granted to read shared memory also gets the workspace's shared entries, each naming the fleet that wrote it. Fenced like a capture: a superseded holder is refused. ",
+        "description": "Finds the fleet's entries whose key or content holds the query, ignoring case, key matches first. A fleet granted to read shared memory also gets the workspace's shared entries, each naming the fleet that wrote it. Fenced like a capture: a superseded holder gets 409 `UZ-RUN-005` naming `superseded`.",
         "operationId": "runner_recall_memory",
         "parameters": [
           {
@@ -17048,7 +17048,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on a rule that locks nothing, as today's daemon writes a read,\nand on every rule from a daemon older than this field. The runner then\nchecks the rule's locked fields and nothing more. Closing an older\ndaemon's write rule would refuse keys it never listed, such as a ref's\n`sha` or a Pull Request's `title`. Every write would then stop until\nthe daemon upgrades."
+            "description": "Fields the rule admits with any value beside the locked ones, and with\nthem the rule's whole key set. Present but empty closes the rule to\nits locked fields alone.\n\nAbsent on an open rule: a read, a blob or tree write, and every rule\nfrom a daemon older than this field. The runner then checks the rule's\nlocked fields and nothing more. Closing an older daemon's write rule\nwould refuse keys it never listed, such as a ref's `sha` or a Pull\nRequest's `title`. Every write would then stop until the daemon\nupgrades.\n\nA runner older than this field ignores it and reads every rule as\nopen, so a closed rule holds once the runners that enforce it run."
           }
         }
       },

@@ -292,6 +292,13 @@ impl Error {
     pub fn github_reconnect_required() -> Self {
         super::error::github_reconnect_required()
     }
+
+    /// The refusal a fenced verb answers a superseded lease, or a token not
+    /// the lease's own, with: the memory routes render it as a conflict.
+    #[must_use]
+    pub fn stale_fence() -> Self {
+        super::error::stale_fence()
+    }
 }
 
 impl Error {
