@@ -218,11 +218,9 @@ impl ScriptedExecutor {
     /// Stops holding process `id` while its events stay open; whether it
     /// held one.
     pub fn forget(&self, id: ProcessId) -> bool {
-        let Some(held) = self.release(id) else {
-            return false;
-        };
-        locked(&self.forgotten).push(held);
-        true
+        self.release(id)
+            .map(|held| locked(&self.forgotten).push(held))
+            .is_some()
     }
 
     fn release(&self, id: ProcessId) -> Option<Held> {
