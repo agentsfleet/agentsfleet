@@ -2,7 +2,7 @@
 //! (`admit_receipt`), which appends the entry and records the receipt.
 
 use afd_core::clock::{self, UnixMillis};
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::AdmissionOutcome;
 use afd_observability::producers::fleet::admission as metrics;
@@ -242,11 +242,10 @@ fn count_refusal(refused: &Error, admission: &Admission<'_>) {
         (AdmissionOutcome::Refused, "admission_failed")
     };
     metrics::admitted(outcome);
-    let code = refused.code().as_str();
-    let reason = refused.to_string();
+    let Logged { error_code, reason } = refused.logged();
     let producer = admission.producer.as_str();
     tracing::warn!(
-        error_code = code,
+        error_code,
         producer,
         fleet_id = admission.fleet,
         reason,

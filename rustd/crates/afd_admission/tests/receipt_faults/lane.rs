@@ -235,9 +235,9 @@ fn remove(url: &str, name: &str) -> sqlx::Result<()> {
     })
 }
 
-/// Admits one event for `lane`'s fleet against a fake queue answering
-/// `rules`, recording what the admission logged on this thread.
-pub(crate) async fn admit_against(lane: &Lane, rules: &[(&str, Reply)]) -> Run {
+/// The lane's admissions over a fake queue answering `rules`, and the fake,
+/// which serves for as long as it is held.
+async fn over_fake(lane: &Lane, rules: &[(&str, Reply)]) -> (FakeRedis, Admissions) {
     install_subscriber();
     let mut table = vec![("PING", Reply::Raw("+PONG\r\n"))];
     table.extend(rules.iter().cloned());
@@ -248,6 +248,13 @@ pub(crate) async fn admit_against(lane: &Lane, rules: &[(&str, Reply)]) -> Run {
         .await
         .expect("a fake that answers PONG must be accepted");
     let admissions = Admissions::for_tests(lane.database.clone(), queue);
+    (server, admissions)
+}
+
+/// Admits one event for `lane`'s fleet against a fake queue answering
+/// `rules`, recording what the admission logged on this thread.
+pub(crate) async fn admit_against(lane: &Lane, rules: &[(&str, Reply)]) -> Run {
+    let (server, admissions) = over_fake(lane, rules).await;
     let events = Arc::new(Mutex::new(Vec::new()));
     let outcome = {
         let _scoped = tracing::subscriber::set_default(
@@ -276,6 +283,41 @@ pub(crate) async fn admit_against(lane: &Lane, rules: &[(&str, Reply)]) -> Run {
         events,
     }
 }
+
+/// Replays every owed row against a fake queue answering `rules`, keeping the
+/// events logged for `lane`'s fleet: the pass reaches every fleet in the lane.
+pub(crate) async fn replay_against(
+    lane: &Lane,
+    rules: &[(&str, Reply)],
+) -> Vec<HashMap<String, String>> {
+    let (_server, admissions) = over_fake(lane, rules).await;
+    let events = Arc::new(Mutex::new(Vec::new()));
+    {
+        let _scoped = tracing::subscriber::set_default(
+            tracing_subscriber::registry().with(Recorder(Arc::clone(&events))),
+        );
+        // Past every row the lane holds, so this fleet's is old enough.
+        let after_every_row = afd_core::clock::now().saturating_add_millis(REPLAY_AHEAD_MS);
+        let _replayed = admissions
+            .replay(after_every_row, Duration::ZERO, REPLAY_LIMIT)
+            .await
+            .expect("a queue that will not take an append is the pass's outcome, not its error");
+    }
+    let events = events
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    events
+        .into_iter()
+        .filter(|fields| fields.get("fleet_id") == Some(&lane.fleet))
+        .collect()
+}
+
+/// How far past now a replay reads, so a row admitted a moment ago qualifies.
+const REPLAY_AHEAD_MS: i64 = 60_000;
+
+/// Rows one replay reaches, so the shared lane's other rows cannot crowd out this one's.
+const REPLAY_LIMIT: i64 = 10_000;
 
 /// Keeps every event's fields as text.
 struct Recorder(Arc<Mutex<Vec<HashMap<String, String>>>>);

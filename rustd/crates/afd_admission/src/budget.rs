@@ -147,7 +147,7 @@ impl Admissions {
                 Ok(self.ceiling.estimate())
             }
             Err(unread) => {
-                let reason = unread.to_string();
+                let reason = unread.told();
                 tracing::debug!(reason, event = "admission_ceiling_unread",);
                 Ok(estimate)
             }
@@ -166,7 +166,7 @@ impl Admissions {
             }
             Ok(_within_budget) => Ok(()),
             Err(unread) => {
-                let reason = unread.to_string();
+                let reason = unread.told();
                 tracing::debug!(fleet_id = fleet, reason, event = "admission_backlog_unread",);
                 Ok(())
             }

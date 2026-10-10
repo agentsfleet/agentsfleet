@@ -34,7 +34,7 @@ mod lane;
 use afd_core::error_code;
 
 use self::fake_redis::Reply;
-use self::lane::{Lane, admit_against};
+use self::lane::{Lane, admit_against, replay_against};
 
 /// The entry id the fake's `XADD` hands back.
 const FAKE_RECEIPT: &str = "1790000000000-0";
@@ -76,6 +76,12 @@ async fn a_full_queue_defers_the_admission_and_names_the_limit() {
         Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
     );
     assert!(
+        logged
+            .get("reason")
+            .is_some_and(|reason| !reason.contains("[UZ-")),
+        "a deferred append's reason does not repeat its code: {logged:?}"
+    );
+    assert!(
         !run.seen.iter().any(|command| command.starts_with("HSET")),
         "a deferred admission marks nothing: {:?}",
         run.seen
@@ -113,6 +119,12 @@ async fn a_refused_ready_mark_still_admits_and_is_logged() {
             .is_some_and(|reason| reason.contains("HSET")),
         "the line names the write the index refused: {logged:?}"
     );
+    assert!(
+        logged
+            .get("reason")
+            .is_some_and(|reason| !reason.contains("[UZ-")),
+        "a lost mark's reason does not repeat its code: {logged:?}"
+    );
     lane.cleanup().await;
 }
 
@@ -143,5 +155,39 @@ async fn a_receipt_the_sweeper_recorded_first_stands_and_is_logged() {
         Some(FAKE_RECEIPT),
         "the line names the entry that lost"
     );
+    lane.cleanup().await;
+}
+
+/// A replay the queue will not take keeps the row owed, and its line says why
+/// without repeating the code the line already carries.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_failed_replay_reason_carries_no_code_prefix() {
+    let lane = Lane::seed().await;
+    let deferred = admit_against(&lane, &[("XADD", Reply::Raw(OUT_OF_MEMORY))]).await;
+    deferred
+        .outcome
+        .as_ref()
+        .expect("a full queue defers; it does not refuse");
+
+    let events = replay_against(&lane, &[("XADD", Reply::Raw(OUT_OF_MEMORY))]).await;
+
+    let logged = events
+        .iter()
+        .find(|fields| {
+            fields.get("event").map(String::as_str) == Some("admission_replay_queue_full")
+        })
+        .expect("a full queue is named as such on a replay too");
+    assert_eq!(
+        logged.get("error_code").map(String::as_str),
+        Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
+    );
+    assert!(
+        logged
+            .get("reason")
+            .is_some_and(|reason| !reason.contains("[UZ-")),
+        "a failed replay's reason does not repeat its code: {logged:?}"
+    );
+    assert_eq!(lane.receipt().await, None, "the row is still owed");
     lane.cleanup().await;
 }
