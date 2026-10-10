@@ -30,10 +30,12 @@ use crate::seed::seeded_parts;
 use crate::support::Fixtures;
 
 /// Takes one admission row's lock inside the caller's transaction.
-const LOCK_ROW: &str = "SELECT 1 FROM core.fleet_admissions WHERE id = $1::uuid FOR UPDATE";
+const LOCK_ROW: &str = "SELECT 1 FROM core.fleet_admissions \
+     WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3 FOR UPDATE";
 
 /// Rewrites a held row's receipt, as a replay on another replica would.
-const RERECEIPT: &str = "UPDATE core.fleet_admissions SET receipt = $2 WHERE id = $1::uuid";
+const RERECEIPT: &str = "UPDATE core.fleet_admissions SET receipt = $4 \
+     WHERE fleet_id = $1::uuid AND created_at = $2 AND seq = $3";
 
 /// This connection's server process, which a blocked statement names.
 const BACKEND_PID: &str = "SELECT pg_backend_pid()";
@@ -41,6 +43,13 @@ const BACKEND_PID: &str = "SELECT pg_backend_pid()";
 /// Whether any statement is waiting on a lock the given backend holds.
 const SOMEONE_WAITS_ON: &str =
     "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid)))";
+
+/// The receipt another replica's replay records while the row is held.
+///
+/// A well-formed stream entry id the forgotten stream does not hold, so a pass
+/// that probed THIS receipt would find it lost and void it: the test's premise
+/// is that only a pass which read the row before the change can leave it.
+const REPLAYED_RECEIPT: &str = "1-1";
 
 /// How long a pass may take to park behind the held row, or to finish past it.
 const PATIENCE: Duration = Duration::from_secs(20);
@@ -72,8 +81,11 @@ async fn a_reconcile_void_lands_only_on_the_receipt_it_probed() {
         .begin()
         .await
         .expect("a holding transaction");
+    let (created_at, seq) = logical(&event);
     sqlx::query(LOCK_ROW)
-        .bind(&event)
+        .bind(&fleet)
+        .bind(created_at)
+        .bind(seq)
         .execute(&mut *holder)
         .await
         .expect("the row locks");
@@ -82,17 +94,19 @@ async fn a_reconcile_void_lands_only_on_the_receipt_it_probed() {
         .await
         .expect("the backend answers")
         .get(0);
-    let replaced = format!("{event}-replayed");
+    let replaced = REPLAYED_RECEIPT.to_owned();
 
     // The pass reads the row WITHOUT waiting, probes the lost receipt, and only
     // its void parks behind the lock. While it is parked, the row's receipt
     // changes and commits; the void then re-reads the row and must find the
     // receipt it was told about gone.
-    let (lane_view, row, receipt) = (&fixtures, event.as_str(), replaced.as_str());
+    let (lane_view, held_fleet, receipt) = (&fixtures, fleet.as_str(), replaced.as_str());
     let rereceipt = async move {
         wait_until_blocked(lane_view, pid).await;
         sqlx::query(RERECEIPT)
-            .bind(row)
+            .bind(held_fleet)
+            .bind(created_at)
+            .bind(seq)
             .bind(receipt)
             .execute(&mut *holder)
             .await
@@ -156,8 +170,11 @@ async fn a_replay_pass_skips_the_row_another_replica_holds() {
         .begin()
         .await
         .expect("a holding transaction");
+    let (created_at, seq) = logical(&held);
     sqlx::query(LOCK_ROW)
-        .bind(&held)
+        .bind(&fleet)
+        .bind(created_at)
+        .bind(seq)
         .execute(&mut *holder)
         .await
         .expect("the row locks");
@@ -193,6 +210,11 @@ async fn a_replay_pass_skips_the_row_another_replica_holds() {
         "once released, the held row is replayed by the next pass"
     );
     fixtures.cleanup().await;
+}
+
+/// The ledger row an event id names, as its `(created_at, seq)` key.
+fn logical(event: &str) -> (i64, i64) {
+    afd_admission::logical_parts(event).expect("the ledger minted this id")
 }
 
 /// Returns once a statement is parked behind a lock `pid` holds.
