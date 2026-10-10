@@ -17,8 +17,6 @@ source "$RUNNER_TEST_DIR/../test_search.sh"
 readonly PREPARE="$RUNNER_TEST_DIR/prepare.sh"
 readonly DEPLOY="$RUNNER_TEST_DIR/deploy.sh"
 readonly VERIFY="$RUNNER_TEST_DIR/verify.sh"
-readonly DEPLOY_SCRIPT="$RUNNER_TEST_DIR/../../../deploy/baremetal/deploy.sh"
-readonly REPO_ROOT="$RUNNER_TEST_DIR/../../.."
 # The cgroup controllers the runner lanes require, as common.sh declares them,
 # read in a subshell so the library's `set -e` stays out of this harness. The
 # stub's cgroup report and the cases hand back exactly these.

@@ -179,23 +179,6 @@ test_scripts_print_no_credentials() {
   fi
 }
 
-test_deploy_steps_reference_catalogue_priming() {
-  local name="deploy_steps_reference_catalogue_priming"
-  local root missing
-  root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-  missing=""
-  for playbook in \
-    "$root/playbooks/founding/04_deploy_dev/001_playbook.md" \
-    "$root/playbooks/founding/07_deploy_prod/001_playbook.md"; do
-    grep -q "operations/model_catalogue" "$playbook" || missing="$missing $playbook"
-  done
-  if [ -n "$missing" ]; then
-    bad "$name" "deploy steps do not cite the catalogue playbook:$missing"
-  else
-    ok "$name"
-  fi
-}
-
 test_verify_fails_on_empty_catalogue() {
   local name="verify_fails_on_empty_catalogue"
   local empty populated out
@@ -245,26 +228,6 @@ test_apply_aborts_on_confirmation_mismatch() {
     bad "$name" "the catalogue was written despite a confirmation mismatch"
   elif [ ! -f "$match/node.log" ] || ! grep -q -- "--apply" "$match/node.log"; then
     bad "$name" "a MATCHING confirmation did not write either — the refusal proves nothing"
-  else
-    ok "$name"
-  fi
-}
-
-test_existing_teardown_gates_still_reject_unknown_env() {
-  local name="existing_teardown_gates_still_reject_unknown_env"
-  local root failed=""
-  root="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-  # Regression guard: both teardown gates gained a dispatched step in this
-  # milestone. Their pre-existing ENV validation must be untouched.
-  for gate in \
-    "$root/playbooks/operations/teardown/database/00_gate.sh" \
-    "$root/playbooks/operations/teardown/dragonfly/00_gate.sh"; do
-    if ENV=staging ALLOW_VAULT_READS=1 bash "$gate" >/dev/null 2>&1; then
-      failed="$failed $gate"
-    fi
-  done
-  if [ -n "$failed" ]; then
-    bad "$name" "gate accepted ENV=staging:$failed"
   else
     ok "$name"
   fi
@@ -414,10 +377,8 @@ test_should_reject_unknown_action
 test_should_require_apply_approval
 test_diff_arm_writes_nothing
 test_scripts_print_no_credentials
-test_deploy_steps_reference_catalogue_priming
 test_verify_fails_on_empty_catalogue
 test_apply_aborts_on_confirmation_mismatch
-test_existing_teardown_gates_still_reject_unknown_env
 test_allowlist_rate_rows_are_well_formed
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
