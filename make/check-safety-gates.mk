@@ -43,7 +43,7 @@ check-architecture-doc:  ## docs/architecture/ stays true — milestone refs res
 	@bash scripts/check_architecture_doc_test.sh
 	@bash scripts/check_architecture_doc.sh
 
-check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremetal/ (host deploy, toolbox, health check, unit)
+check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremetal/ + deployment config rules (scripts/check_infra_config.py)
 	@# deploy/ sits outside _shell_lint's scripts/*.sh glob, so it would otherwise
 	@# never be shellchecked. The suites are found by name, so a new one runs
 	@# without an edit here. Some cases need a Linux tool (flock, GNU tar,
@@ -52,3 +52,9 @@ check-deploy-safety:  ## shellcheck + every *_test.sh suite under deploy/baremet
 	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
 	@$(SHELLCHECK) --severity=error -x deploy/baremetal/*.sh
 	@PLAYBOOK_TEST_SCRUB="$(PLAYBOOK_TEST_SCRUB)" bash scripts/run-playbook-tests.sh deploy/baremetal
+	@# What no deploy executes before it ships: the runner's health window
+	@# against its RestartSec, the tailnet policy's CI grant, every host joining
+	@# as tag:worker, the Fly apps private behind their tunnel and their pools
+	@# inside the cluster's connection budget.
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_infra_config_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_infra_config.py

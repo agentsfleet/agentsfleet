@@ -92,7 +92,8 @@ readonly HEALTH_DELAY_SECONDS=2
 # exits: Restart=always brings it back RestartSec after each one, and that
 # cycle never reaches `failed`. So the window outlasts the unit's RestartSec
 # plus a first boot, which copies and hashes the toolbox image before the
-# runner dials the control plane. service_test.sh holds it above RestartSec.
+# runner dials the control plane. scripts/check_infra_config.py (rule
+# infra-restart-window, in check-deploy-safety) holds it above RestartSec.
 readonly HEALTH_STABLE_SECONDS=30
 
 # `agentsfleet-runner --version` prints `agentsfleet-runner <version>`: clap's
