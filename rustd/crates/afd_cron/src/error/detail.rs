@@ -31,3 +31,20 @@ pub const UPSTREAM_UNAVAILABLE: &str =
 /// same event and the retirement runs again.
 pub const RETIRE_HELD: &str = "The schedule ran, and is being synchronised, so it is not yet \
      removed. Repeat the request in a moment to finish removing it.";
+
+/// What a caller is told when a schedule fire did not prove it came from the
+/// external scheduler.
+///
+/// One sentence for every reason, byte-identical to the one the fire route
+/// answers: which check failed is the operator's to read in the log, never the
+/// sender's.
+pub const FIRE_UNVERIFIED: &str = "The schedule callback could not be verified.";
+
+/// Why a deployment's API URL could not become its schedule callback: it is
+/// not a URL, or is past the cap once the ingress path is on it.
+pub const DESTINATION_UNUSABLE: &str = "The configured API URL cannot carry a schedule callback.";
+
+/// Why a deployment's API URL could not become its schedule callback: it
+/// carries a query or a fragment, which the scheduler would read as its own.
+pub const DESTINATION_NOT_PLAIN_ORIGIN: &str =
+    "The configured API URL carries a query or a fragment.";

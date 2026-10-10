@@ -30,7 +30,10 @@ mod raise;
 pub use self::raise::one_of_each_kind;
 
 pub use self::raise::retire_held;
-pub(crate) use self::raise::{query, row_unreadable, upstream_refused, upstream_unreadable};
+pub(crate) use self::raise::{
+    body_mismatch, destination_not_plain_origin, destination_unusable, keys_missing, query,
+    row_unreadable, signature_invalid, token_malformed, upstream_refused, upstream_unreadable,
+};
 
 /// The result every fallible function in this crate returns.
 ///
@@ -126,7 +129,50 @@ pub(crate) enum ErrorKind {
     /// event, and the retirement is tried again once the holder lets go.
     #[error("the fired once-schedule is held by another syncer and is not yet retired")]
     RetireHeld,
+
+    /// This deployment holds no signing key to check a fire against.
+    ///
+    /// Fail-closed: with no key there is nothing to verify, and accepting the
+    /// fire would let anyone who found the URL wake every fleet on it.
+    #[error("no signing key is configured to verify a schedule fire")]
+    KeysMissing,
+
+    /// The fire token is empty, longer than
+    /// [`crate::verifier::MAX_TOKEN_BYTES`], or not a token at all.
+    #[error("the schedule fire token is empty, oversized, or not a token")]
+    TokenMalformed,
+
+    /// Neither the current nor the next key produced the token's signature,
+    /// or its issuer, subject or window did not hold.
+    #[error("the schedule fire token did not verify under either signing key")]
+    SignatureInvalid,
+
+    /// The token is genuine and the body is not the one it was minted over:
+    /// the refusal that means somebody is replaying a captured token.
+    #[error("the schedule fire body is not the one its token was minted over")]
+    BodyMismatch,
+
+    /// The configured API URL is not a URL, or is too long once the ingress
+    /// path is on it.
+    #[error("the configured api url cannot carry a schedule callback")]
+    DestinationUnusable,
+
+    /// The configured API URL carries a query or a fragment — see
+    /// [`crate::qstash::destination_url`].
+    #[error("the configured api url carries a query or a fragment")]
+    DestinationNotPlainOrigin,
 }
+
+/// [`Error::refusal_word`] for a deployment holding no signing key.
+const REASON_KEYS_MISSING: &str = "signing_keys_absent";
+/// [`Error::refusal_word`] for a token past its bound or not a token.
+const REASON_TOKEN_MALFORMED: &str = "token_malformed";
+/// [`Error::refusal_word`] for a token neither key verifies.
+const REASON_SIGNATURE_INVALID: &str = "signature_invalid";
+/// [`Error::refusal_word`] for a genuine token over different bytes.
+const REASON_BODY_MISMATCH: &str = "body_mismatch";
+/// [`Error::refusal_word`] for every kind that is not a refused fire.
+const REASON_OPERATIONAL: &str = "operational_fault";
 
 /// The columns [`ErrorKind::RowUnreadable`] can name, one spelling each.
 ///
@@ -181,7 +227,48 @@ impl Error {
                 error_code::INTERNAL_OPERATION_FAILED,
                 detail::OPERATION_FAILED,
             ),
+            ErrorKind::DestinationUnusable => (
+                error_code::INTERNAL_OPERATION_FAILED,
+                detail::DESTINATION_UNUSABLE,
+            ),
+            ErrorKind::DestinationNotPlainOrigin => (
+                error_code::INTERNAL_OPERATION_FAILED,
+                detail::DESTINATION_NOT_PLAIN_ORIGIN,
+            ),
             ErrorKind::RetireHeld => (error_code::SCHEDULE_SYNCING, detail::RETIRE_HELD),
+            // One answer for every refusal of a fire: telling a prober which
+            // check it failed would say whether this daemon is misconfigured.
+            ErrorKind::KeysMissing
+            | ErrorKind::TokenMalformed
+            | ErrorKind::SignatureInvalid
+            | ErrorKind::BodyMismatch => (
+                error_code::WEBHOOK_SIGNATURE_INVALID,
+                detail::FIRE_UNVERIFIED,
+            ),
+        }
+    }
+
+    /// The stable word an operator greps for when a schedule stops firing.
+    ///
+    /// One word per reason a fire was not believed, because each means a
+    /// different repair: a missing key is a deployment to configure, and a body
+    /// mismatch is somebody replaying a captured token. A word rather than a
+    /// `Debug` rendering, so a rename that meant nothing to the operator does
+    /// not change what they search for. Every other kind is this daemon
+    /// failing rather than a token being refused; `verify_at` raises none of
+    /// them, and they share one word so the answer is total.
+    ///
+    /// Not named `reason`: the HTTP edge's `Refusable::reason` is this error's
+    /// whole chain for the refusal log, and an inherent method of that name
+    /// would shadow it wherever the type is concrete.
+    #[must_use]
+    pub const fn refusal_word(&self) -> &'static str {
+        match self.kind() {
+            ErrorKind::KeysMissing => REASON_KEYS_MISSING,
+            ErrorKind::TokenMalformed => REASON_TOKEN_MALFORMED,
+            ErrorKind::SignatureInvalid => REASON_SIGNATURE_INVALID,
+            ErrorKind::BodyMismatch => REASON_BODY_MISMATCH,
+            _operational => REASON_OPERATIONAL,
         }
     }
 
