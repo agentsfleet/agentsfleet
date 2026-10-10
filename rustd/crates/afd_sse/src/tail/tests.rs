@@ -66,3 +66,19 @@ async fn a_closed_hub_ends_the_tail() {
     hub.shutdown();
     assert!(frames.next().await.is_none());
 }
+
+/// The line a closed tail leaves says why without the registry code, which a
+/// debug line names nowhere, or a backtrace.
+#[tokio::test]
+async fn a_closed_tail_reason_carries_no_code_prefix() {
+    let capture = afd_core::test_util::trace::Capture::install();
+    let (hub, _server) = SubscriptionHub::detached();
+    let mut frames = Box::pin(tail(hub.subscribe(CHANNEL)));
+    hub.shutdown();
+    assert!(frames.next().await.is_none());
+
+    let logged = capture.only("sse_tail_closed");
+    let reason = logged.field("reason").expect("the line says why");
+    assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+    assert_eq!(logged.field("channel"), Some(CHANNEL));
+}
