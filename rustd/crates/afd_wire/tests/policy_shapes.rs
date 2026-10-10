@@ -49,9 +49,12 @@ fn test_an_open_rule_omits_permitted_fields_and_a_closed_one_carries_it() {
     let open = encoded(blob_rule(None));
     assert!(open.get("permitted_fields").is_none(), "{open}");
     let shut = encoded(blob_rule(Some(Vec::new())));
-    assert_eq!(shut["permitted_fields"], serde_json::json!([]));
+    assert_eq!(shut.get("permitted_fields"), Some(&serde_json::json!([])));
     let listed = encoded(blob_rule(Some(vec![Cow::Borrowed("content")])));
-    assert_eq!(listed["permitted_fields"], serde_json::json!(["content"]));
+    assert_eq!(
+        listed.get("permitted_fields"),
+        Some(&serde_json::json!(["content"]))
+    );
 
     let nulled: HttpRequestRule<'_> = serde_json::from_str(
         r#"{"method":"post","path":"/x","path_match":"exact","json_fields":[],"permitted_fields":null}"#,

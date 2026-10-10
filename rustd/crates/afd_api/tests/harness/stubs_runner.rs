@@ -1,4 +1,4 @@
-//! The runner plane's stub: a lease plane that always answers no-work.
+//! The runner plane's stub: a lease plane that by default answers no-work.
 
 use std::sync::{Arc, Mutex};
 
@@ -7,12 +7,12 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::report::Reconciled;
 
-/// A lease plane that always answers no-work.
+/// A lease plane that by default answers no-work.
 ///
 /// The production plane holds a Dragonfly connection that is opened by CONNECTING,
 /// so these suites cannot build one — and should not: what they prove is the
 /// router's guard, scope and refusal matrix, which is decided BEFORE any verb
-/// runs. A stub that always answers the same thing keeps that boundary honest,
+/// runs. A stub that answers each verb the same way keeps that boundary honest,
 /// because a suite here cannot accidentally start asserting on lease
 /// behaviour that belongs to `afd_fleet`'s own integration lane.
 ///
@@ -115,7 +115,7 @@ impl Leasing for NoWork {
     }
 
     /// Mints nothing, and says so with the code a deployment holding no
-    /// platform credential answers.
+    /// platform credential answers, unless built with [`NoWork::refusing`].
     ///
     /// A REFUSAL where the three stubs above answer `Ok`, and the asymmetry is
     /// the verb's: `mint` has no success this suite could assert without a
