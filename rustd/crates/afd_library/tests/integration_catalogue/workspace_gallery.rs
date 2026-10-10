@@ -194,7 +194,7 @@ async fn an_onboarding_lands_in_the_workspaces_own_library_and_nobody_elses() {
 }
 
 /// A one-file bundle, gzipped as GitHub serves a tarball.
-fn archive(name: &str) -> Vec<u8> {
+pub(super) fn archive(name: &str) -> Vec<u8> {
     let document = format!(
         "---\nname: {name}\ndescription: deterministic onboarding\nversion: 1.0.0\n---\nRun."
     );
@@ -212,7 +212,7 @@ fn archive(name: &str) -> Vec<u8> {
 }
 
 /// A single-shot HTTP origin serving `body`, for the fetch to reach locally.
-fn serve(body: &[u8]) -> String {
+pub(super) fn serve(body: &[u8]) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("the fixture server binds");
     let address = listener.local_addr().expect("the fixture address resolves");
     let body = body.to_vec();
