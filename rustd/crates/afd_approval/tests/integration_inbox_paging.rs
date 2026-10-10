@@ -18,9 +18,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_api_wire::approval::GateStatus;
+use afd_approval::{Cursor, Decision, Filter, Resolution};
 use afd_core::clock::UnixMillis;
-
-use afd_approval::{Cursor, Decision, Filter, GateStatus, Resolution};
 
 use crate::lane::{Lane, NOW_MS, WINDOW_MS};
 

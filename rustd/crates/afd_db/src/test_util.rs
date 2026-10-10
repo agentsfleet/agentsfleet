@@ -149,21 +149,22 @@ impl TestDatabase {
     /// URL with the database swapped — keeping whatever query string the lane
     /// carried, `sslmode` among them, which a lane against a TLS Postgres needs
     /// and a rebuilt URL would silently drop.
+    ///
+    /// Swapped through a parse rather than at the last `/`: a query carrying a
+    /// path of its own (`sslrootcert=/etc/ca.pem`) has a later `/` than the
+    /// database's, and a lane URL naming no database has none at all.
+    ///
+    /// # Panics
+    /// When the lane's URL is not a URL, which is a lane fault.
     #[must_use]
     pub fn url(&self) -> String {
         let Some(name) = self.owned.as_deref() else {
             return self.base_url.clone();
         };
-        let (prefix, tail) = self
-            .base_url
-            .rsplit_once('/')
-            .unwrap_or((self.base_url.as_str(), ""));
-        let query = tail.split_once('?').map_or("", |(_, query)| query);
-        if query.is_empty() {
-            format!("{prefix}/{name}")
-        } else {
-            format!("{prefix}/{name}?{query}")
-        }
+        let mut url = url::Url::parse(&self.base_url)
+            .unwrap_or_else(|failure| panic!("{LANE_KNOB} must be a URL: {failure}"));
+        url.set_path(&format!("/{name}"));
+        url.into()
     }
 
     /// The database this handle created, when it created one.
@@ -311,3 +312,7 @@ pub fn install_subscriber() {
         let _already_set = tracing::subscriber::set_global_default(subscriber);
     });
 }
+
+#[cfg(test)]
+#[path = "test_util/tests.rs"]
+mod tests;

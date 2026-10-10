@@ -2,10 +2,9 @@
 //! and a flip's export.
 
 use afd_core::id::Uuid7;
+use afd_db::statement::Bound;
 use afd_wire::memory::MAX_ENTRIES_PER_FLEET;
 use sqlx::PgConnection;
-use sqlx::postgres::PgArguments;
-use sqlx::query::Query;
 
 use super::{Failure, PgStore, page, record};
 use crate::error::Result;
@@ -18,9 +17,6 @@ const CONTEXT_LIST: &str = "memory list";
 const CONTEXT_RECALL: &str = "memory recall";
 const CONTEXT_EXPORT: &str = "memory export";
 
-/// One prepared statement over the shared seven columns.
-type Statement<'q> = Query<'q, sqlx::Postgres, PgArguments>;
-
 /// The most shared rows one hydrate reads before the window spends its budget:
 /// one fleet's cap, so a workspace of many publishers costs one fleet's read.
 fn shared_scan_limit() -> i64 {
@@ -30,7 +26,7 @@ fn shared_scan_limit() -> i64 {
 /// Runs `statement` and reads every row it returns.
 async fn fetch(
     connection: &mut PgConnection,
-    statement: Statement<'_>,
+    statement: Bound<'_>,
     failure: Failure,
 ) -> Result<Vec<Record>> {
     statement

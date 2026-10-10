@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::UnixMillis;
 use crate::error::{Error, ErrorKind, Result};
+use crate::lower_hex;
 
 /// Length of canonical dashed UUID text: 32 hex characters plus 4 dashes.
 pub const TEXT_LEN: usize = 36;
@@ -215,7 +216,7 @@ fn first_violation(text: &str) -> Option<&'static str> {
         if DASH_OFFSETS.contains(&offset) {
             byte != b'-'
         } else {
-            !byte.is_ascii_digit() && !matches!(byte, b'a'..=b'f')
+            !lower_hex::is_digit(char::from(byte))
         }
     });
     if misplaced {

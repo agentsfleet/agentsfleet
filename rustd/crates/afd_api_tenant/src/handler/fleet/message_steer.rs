@@ -25,7 +25,8 @@ use std::sync::Arc;
 use afd_api_wire::tail::TailFrame;
 use afd_core::error_code;
 use afd_events::Steered;
-use afd_wire::event::{EventType, SteerAccepted, SteerRequest, operation_id_usable};
+use afd_validate::Sentences;
+use afd_wire::event::{EventType, SteerAccepted, SteerRequest};
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -71,6 +72,17 @@ const DETAIL_MESSAGE_INVALID: &str =
 /// goes looking at the wrong limit. It also says omitting the field is valid,
 /// since the field is optional.
 const DETAIL_OPERATION_ID_INVALID: &str = "operation_id, when sent, must be 1 to 200 bytes with no NUL character; omit it to send without retry protection";
+
+/// A refused steer's sentence by the field its report names.
+///
+/// The operation id comes FIRST: a caller that sent a bad one and was told its
+/// message was empty would go looking at the wrong field. Both message
+/// refusals report the same path, so the table answers the invalid one and the
+/// handler tells an empty message apart by looking at it.
+const SENTENCES: Sentences = Sentences::new(
+    &[("operation_id", DETAIL_OPERATION_ID_INVALID)],
+    DETAIL_MESSAGE_INVALID,
+);
 
 /// The refusal a fleet this workspace does not hold earns.
 const DETAIL_FLEET_NOT_FOUND: &str = "Fleet not found";
@@ -275,21 +287,15 @@ fn read_steer(body: &Bytes) -> Result<SteerRequest<'_>, Refusal> {
     }
     let request: SteerRequest<'_> = afd_http::handler::read_body(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))?;
-    if request.validate().is_err() {
+    if let Err(report) = request.validate() {
         // Three sentences read back off one report, because they are three
-        // different mistakes to whoever has to fix them. The operation id is
-        // tested FIRST: a caller that sent a bad one and was told its message
-        // was empty would go looking at the wrong field.
-        let operation_unusable = request
-            .operation_id
-            .as_deref()
-            .is_some_and(|id| !operation_id_usable(id));
-        return Err(Refusal::malformed(if operation_unusable {
-            DETAIL_OPERATION_ID_INVALID
-        } else if request.message.is_empty() {
+        // different mistakes to whoever has to fix them.
+        let picked = SENTENCES.pick(&report);
+        let empty = picked == DETAIL_MESSAGE_INVALID && request.message.is_empty();
+        return Err(Refusal::malformed(if empty {
             DETAIL_MESSAGE_EMPTY
         } else {
-            DETAIL_MESSAGE_INVALID
+            picked
         }));
     }
     Ok(request)

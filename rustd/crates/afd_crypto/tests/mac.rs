@@ -140,3 +140,35 @@ fn test_the_tag_type_offers_no_short_circuiting_comparison() {
          Compare with `verify`, or store `as_bytes()` and compare those."
     );
 }
+
+/// The stored form is lowercase hex of the code, byte for byte: a stored
+/// digest written by an earlier build must still compare equal.
+#[test]
+fn test_mac_hex_is_the_known_lowercase_answer() {
+    let mac = HmacSha256Tag::compute(&kek(KEK_HEX), b"agt_t_example");
+    // pin test: literal is the contract
+    assert_eq!(
+        mac.to_hex(),
+        "d19d9881bfb2497b30b1ca2306f4e06c0d9e393b0fb16259afe5caeeceeec7cb"
+    );
+}
+
+/// Only the exact lowercase rendering verifies; a second spelling of the same
+/// bytes, a truncation, or something that is not hex at all does not.
+#[test]
+fn test_mac_verify_hex_accepts_only_its_own_lowercase_text() {
+    let mac = HmacSha256Tag::compute(&kek(KEK_HEX), b"agt_t_example");
+    let genuine = mac.to_hex();
+
+    assert!(mac.verify_hex(&genuine));
+    assert!(
+        !mac.verify_hex(&genuine.to_uppercase()),
+        "uppercase is refused"
+    );
+    assert!(!mac.verify_hex(&genuine[..63]), "one digit short");
+    assert!(!mac.verify_hex(&format!("{genuine}0")), "one digit long");
+    assert!(!mac.verify_hex(""));
+    assert!(!mac.verify_hex(&"z".repeat(64)), "not hex at all");
+    let other = HmacSha256Tag::compute(&kek(OTHER_HEX), b"agt_t_example");
+    assert!(!mac.verify_hex(&other.to_hex()), "another key's code");
+}

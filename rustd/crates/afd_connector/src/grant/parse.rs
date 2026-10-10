@@ -17,6 +17,8 @@
 //! that can refuse rather than a deserialize that cannot.
 
 use afd_core::clock::UnixMillis;
+use afd_core::credential::FIELD_REFRESH_TOKEN;
+use afd_core::json::non_empty_str;
 use serde_json::{Map, Value};
 
 use crate::provider::Provider;
@@ -40,8 +42,6 @@ const HANDLE_SCOPES: &str = "scopes";
 /// See [`HANDLE_BOT_TOKEN`].
 const HANDLE_ACCESS_TOKEN: &str = "access_token";
 /// See [`HANDLE_BOT_TOKEN`].
-const HANDLE_REFRESH_TOKEN: &str = "refresh_token";
-/// See [`HANDLE_BOT_TOKEN`].
 const HANDLE_EXPIRES_AT: &str = "expires_at_ms";
 /// See [`HANDLE_BOT_TOKEN`].
 const HANDLE_CONNECTED_AT: &str = "connected_at_ms";
@@ -52,8 +52,6 @@ pub(crate) const HANDLE_LABEL: &str = "label";
 const WIRE_OK: &str = "ok";
 /// See [`WIRE_OK`].
 const WIRE_ACCESS_TOKEN: &str = "access_token";
-/// See [`WIRE_OK`].
-const WIRE_REFRESH_TOKEN: &str = "refresh_token";
 /// See [`WIRE_OK`].
 const WIRE_EXPIRES_IN: &str = "expires_in";
 /// See [`WIRE_OK`].
@@ -136,34 +134,35 @@ pub fn slack(body: &Value, delimiter: char) -> Option<Grant> {
         return None;
     }
     let team = body.get(WIRE_TEAM)?;
-    let team_id = text(team, WIRE_ID)?;
-    let scope = text(body, WIRE_SCOPE).unwrap_or_default();
+    let team_id = non_empty_str(team, WIRE_ID)?;
+    let scope = non_empty_str(body, WIRE_SCOPE).unwrap_or_default();
 
     let mut handle = Map::new();
     handle.insert(HANDLE_INTEGRATION.into(), Provider::Slack.id().into());
     handle.insert(
         HANDLE_BOT_TOKEN.into(),
-        text(body, WIRE_ACCESS_TOKEN)?.into(),
+        non_empty_str(body, WIRE_ACCESS_TOKEN)?.into(),
     );
     handle.insert(
         HANDLE_BOT_USER_ID.into(),
-        text(body, WIRE_BOT_USER_ID)?.into(),
+        non_empty_str(body, WIRE_BOT_USER_ID)?.into(),
     );
-    handle.insert(HANDLE_TEAM_ID.into(), team_id.clone().into());
+    handle.insert(HANDLE_TEAM_ID.into(), team_id.into());
     handle.insert(
         HANDLE_TEAM_NAME.into(),
-        text(team, WIRE_NAME).unwrap_or_default().into(),
+        non_empty_str(team, WIRE_NAME).unwrap_or_default().into(),
     );
-    handle.insert(HANDLE_SCOPES.into(), scope.clone().into());
+    handle.insert(HANDLE_SCOPES.into(), scope.into());
 
     Some(Grant {
         handle,
         install: Some(Install {
-            external_account_id: team_id,
+            external_account_id: team_id.to_owned(),
             installed_by: body
                 .get(WIRE_AUTHED_USER)
-                .and_then(|user| text(user, WIRE_ID))
-                .unwrap_or_default(),
+                .and_then(|user| non_empty_str(user, WIRE_ID))
+                .unwrap_or_default()
+                .to_owned(),
             // Split here rather than stored as the vendor's comma-joined
             // string: the column is a `text[]`, and a reader splitting it back
             // out would be the second place the delimiter is known.
@@ -200,11 +199,11 @@ pub fn refresh_triple(
     handle.insert(HANDLE_INTEGRATION.into(), provider.id().into());
     handle.insert(
         HANDLE_ACCESS_TOKEN.into(),
-        text(body, WIRE_ACCESS_TOKEN)?.into(),
+        non_empty_str(body, WIRE_ACCESS_TOKEN)?.into(),
     );
     handle.insert(
-        HANDLE_REFRESH_TOKEN.into(),
-        text(body, WIRE_REFRESH_TOKEN)?.into(),
+        FIELD_REFRESH_TOKEN.into(),
+        non_empty_str(body, FIELD_REFRESH_TOKEN)?.into(),
     );
     handle.insert(
         HANDLE_EXPIRES_AT.into(),
@@ -222,12 +221,6 @@ pub fn refresh_triple(
         // questions by a fleet and never wake one.
         install: None,
     })
-}
-
-/// One non-empty string field of a document.
-fn text(document: &Value, name: &str) -> Option<String> {
-    let value = document.get(name)?.as_str()?;
-    (!value.is_empty()).then(|| value.to_owned())
 }
 
 #[cfg(test)]

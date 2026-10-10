@@ -4,7 +4,7 @@
 //! and a metric from one process describe the same service or they cannot be
 //! correlated at the other end.
 
-use afd_core::env::{EnvSource, ProcessEnv};
+use afd_core::env::{EnvSource, ProcessEnv, optional};
 use afd_observability::semconv;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
@@ -80,9 +80,8 @@ impl Service {
 fn instance_id<E: EnvSource + ?Sized>(env: &E) -> Option<String> {
     [INSTANCE_ID_KNOB, MACHINE_ID_KNOB]
         .into_iter()
-        .filter_map(|knob| env.get(knob))
-        .map(|value| value.trim().to_owned())
-        .find(|value| !value.is_empty())
+        .find_map(|knob| optional(env, knob))
+        .map(String::from)
 }
 
 #[cfg(test)]

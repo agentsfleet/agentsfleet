@@ -54,6 +54,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
 
+use afd_core::clock::UnixMillis;
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
 
@@ -79,9 +80,6 @@ pub const SDK_OVERFLOW_MARKER: &str = "otel.metric.overflow";
 /// The number is not the point — the bound is. Four thousand is far past any
 /// real deployment's host count and far below anything that threatens memory.
 pub const MAX_SERIES: usize = 4096;
-
-/// Milliseconds per second, for the one conversion this module performs.
-const MILLIS_PER_SECOND: u64 = 1_000;
 
 /// The stamp a runner nothing has heard from carries.
 const NEVER_HEARD_FROM: i64 = 0;
@@ -265,7 +263,7 @@ impl RunnerMetrics {
             // reports from 1970, so nothing real is lost by refusing it. The
             // delivery span refuses a pre-epoch start for the same reason.
             (stamp > NEVER_HEARD_FROM)
-                .then(|| u64::try_from(stamp).ok().map(|ms| ms / MILLIS_PER_SECOND))
+                .then(|| u64::try_from(UnixMillis::from_millis(stamp).as_seconds()).ok())
                 .flatten()
         })
     }

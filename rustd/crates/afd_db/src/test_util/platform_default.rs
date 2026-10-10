@@ -175,16 +175,26 @@ impl Drop for PlatformDefault {
         let provider = self.provider.clone();
         let removed = std::thread::spawn(move || remove(&provider, &created)).join();
         states().entry(self.provider.clone()).or_default().deleting = false;
-        let failure = match removed {
-            Ok(Ok(())) => return,
-            Ok(Err(cause)) => cause.to_string(),
-            Err(_) => "the removal thread panicked".to_owned(),
+        let Some(reason) = unremoved(removed) else {
+            return;
         };
         tracing::warn!(
             event = "test_platform_default_not_removed",
-            error = %failure,
+            reason,
             "the platform default this run seeded could not be removed; reset the lane"
         );
+    }
+}
+
+/// Why a removal left its row behind, or `None` when it did not.
+///
+/// The sentence and its causes, never the `[CODE]` and backtrace a failure's
+/// `Display` renders: the line is read by a person resetting a lane.
+fn unremoved(removed: std::thread::Result<crate::Result<()>>) -> Option<String> {
+    match removed {
+        Ok(Ok(())) => None,
+        Ok(Err(cause)) => Some(cause.told()),
+        Err(_) => Some("the removal thread panicked".to_owned()),
     }
 }
 
@@ -225,4 +235,27 @@ fn remove(provider: &str, created: &Created) -> crate::Result<()> {
             .map_err(|source| crate::error::query(REMOVAL_CONTEXT, source))?;
         Ok(())
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unremoved;
+
+    #[test]
+    fn a_leftover_platform_default_reason_carries_no_code_prefix() {
+        assert_eq!(
+            unremoved(Ok(Ok(()))),
+            None,
+            "a removed row leaves nothing to say"
+        );
+        for (kind, failure) in crate::error::one_of_each_kind() {
+            let reason = unremoved(Ok(Err(failure))).unwrap_or_default();
+            assert!(
+                !reason.is_empty() && !reason.contains("[UZ-"),
+                "{kind}: {reason}"
+            );
+        }
+        let panicked = unremoved(Err(Box::new("boom")));
+        assert_eq!(panicked.as_deref(), Some("the removal thread panicked"));
+    }
 }

@@ -181,7 +181,7 @@ async fn redial(config: &DragonflyConfig, schedule: ExponentialBuilder) -> Conne
                 let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
                 attempt = attempt.saturating_add(1);
                 let count = attempt;
-                let reason = failure.to_string();
+                let reason = failure.told();
                 tracing::warn!(
                     attempt = count,
                     reason,
@@ -259,3 +259,7 @@ async fn resubscribe(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "pump/tests.rs"]
+mod tests;

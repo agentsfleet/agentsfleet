@@ -17,6 +17,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_core::json::non_empty_str;
 use serde_json::{Map, Value};
 
 use crate::connect::{Connectors, Spent};
@@ -141,8 +142,8 @@ impl Connectors {
                 let base = zoho::accounts_base(location);
                 let mut extras = Map::new();
                 extras.insert(HANDLE_ACCOUNTS_BASE.into(), base.into());
-                let label = text(&body, WIRE_API_DOMAIN).unwrap_or_else(|| base.to_owned());
-                parse::refresh_triple(provider, &body, &label, connected_at, extras)
+                let label = non_empty_str(&body, WIRE_API_DOMAIN).unwrap_or(base);
+                parse::refresh_triple(provider, &body, label, connected_at, extras)
             }
             Provider::Jira => return self.read_jira(&body, connected_at).await,
             Provider::Linear => parse::refresh_triple(
@@ -181,7 +182,7 @@ impl Connectors {
         let found = github::resolve(
             &self.client,
             self.exchange.pinned_endpoint(),
-            &token,
+            token,
             installation_id,
         )
         .await?;
@@ -202,9 +203,10 @@ impl Connectors {
 
     /// Jira's grant, with the site it is scoped to resolved first.
     async fn read_jira(&self, body: &Value, connected_at: UnixMillis) -> Result<Grant> {
-        let access_token = text(body, "access_token").ok_or_else(error::exchange_unreadable)?;
+        let access_token =
+            non_empty_str(body, "access_token").ok_or_else(error::exchange_unreadable)?;
         let site =
-            jira::resolve(&self.client, self.exchange.pinned_endpoint(), &access_token).await?;
+            jira::resolve(&self.client, self.exchange.pinned_endpoint(), access_token).await?;
 
         let mut extras = Map::new();
         extras.insert(jira::HANDLE_CLOUD_ID.into(), site.cloud_id.into());
@@ -232,12 +234,6 @@ fn token_endpoint(provider: Provider, location: Option<&str>) -> String {
             Archetype::Oauth2(flow) => flow.token_endpoint.to_owned(),
         },
     }
-}
-
-/// One non-empty string field of a document.
-fn text(document: &Value, name: &str) -> Option<String> {
-    let value = document.get(name)?.as_str()?;
-    (!value.is_empty()).then(|| value.to_owned())
 }
 
 #[cfg(test)]

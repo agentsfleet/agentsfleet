@@ -52,7 +52,7 @@ use serde_json::Value;
 
 pub use self::anomaly::Anomaly;
 pub use self::claim::{Claim, MAX_EVIDENCE_BYTES, MAX_PROPOSED_ACTION_BYTES, NO_EVIDENCE};
-pub use self::decision::{Answer, DECISION_APPROVE, DECISION_DENY, Status};
+pub use self::decision::{Answer, DECISION_APPROVE, DECISION_DENY};
 pub use self::detail::Stated;
 pub use self::park::{Park, Parked};
 pub use self::pass::{Check, Refused, Verdict, Waiting};

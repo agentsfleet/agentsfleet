@@ -41,6 +41,7 @@ pub mod event;
 pub mod id;
 pub mod json;
 pub mod limits;
+pub mod lower_hex;
 pub mod money;
 pub mod net;
 pub mod paging;

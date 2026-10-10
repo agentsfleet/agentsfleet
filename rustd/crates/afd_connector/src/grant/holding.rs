@@ -34,6 +34,7 @@
 use std::collections::BTreeSet;
 
 use afd_core::id::Uuid7;
+use afd_core::json::non_empty_str;
 use afd_crypto::secret::SecretString;
 use afd_vault::{Deleted, SecretName};
 use sqlx::Acquire as _;
@@ -121,7 +122,7 @@ impl Grants {
             return Ok(None);
         }
         Ok(Some(Connection {
-            label: text(&handle, HANDLE_LABEL),
+            label: non_empty_str(&handle, HANDLE_LABEL).map(str::to_owned),
         }))
     }
 
@@ -215,10 +216,12 @@ impl Grants {
         if handle.get(HANDLE_INTEGRATION).is_none() {
             return Ok(None);
         }
-        Ok(text(&handle, HANDLE_BOT_TOKEN).map(|token| BotIdentity {
-            token: SecretString::new(token),
-            user_id: text(&handle, HANDLE_BOT_USER_ID),
-        }))
+        Ok(
+            non_empty_str(&handle, HANDLE_BOT_TOKEN).map(|token| BotIdentity {
+                token: SecretString::new(token.to_owned()),
+                user_id: non_empty_str(&handle, HANDLE_BOT_USER_ID).map(str::to_owned),
+            }),
+        )
     }
 
     /// Forgets this workspace's connection to `provider`.
@@ -272,16 +275,6 @@ impl Grants {
     }
 }
 
-/// One non-empty string field of a handle.
-///
-/// The same reading [`crate::app`] does over its own bag: a field that is
-/// present and empty is a field nobody set, and rendering `""` as a label would
-/// put a blank name on a dashboard card.
-fn text(handle: &serde_json::Value, name: &str) -> Option<String> {
-    let value = handle.get(name)?.as_str()?;
-    (!value.is_empty()).then(|| value.to_owned())
-}
-
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -289,7 +282,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{HANDLE_INTEGRATION, HANDLE_LABEL, text};
+    use super::{HANDLE_INTEGRATION, HANDLE_LABEL, non_empty_str};
 
     /// A handle with no label still names a connection.
     ///
@@ -302,7 +295,7 @@ mod tests {
             serde_json::from_str(r#"{"integration":"slack"}"#).expect("valid JSON fixture");
 
         assert!(handle.get(HANDLE_INTEGRATION).is_some());
-        assert_eq!(text(&handle, HANDLE_LABEL), None);
+        assert_eq!(non_empty_str(&handle, HANDLE_LABEL), None);
     }
 
     /// No unusable label shape reaches a dashboard card.
@@ -321,7 +314,7 @@ mod tests {
             let handle: serde_json::Value =
                 serde_json::from_str(stored).expect("valid JSON fixture");
             assert_eq!(
-                text(&handle, HANDLE_LABEL),
+                non_empty_str(&handle, HANDLE_LABEL),
                 None,
                 "`{stored}` names no label"
             );
@@ -335,6 +328,6 @@ mod tests {
             serde_json::from_str(r#"{"integration":"jira","label":"Acme Site"}"#)
                 .expect("valid JSON fixture");
 
-        assert_eq!(text(&handle, HANDLE_LABEL).as_deref(), Some("Acme Site"));
+        assert_eq!(non_empty_str(&handle, HANDLE_LABEL), Some("Acme Site"));
     }
 }

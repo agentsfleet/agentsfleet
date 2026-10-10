@@ -25,6 +25,7 @@
 //! — a real `api.github.com` call from a test — would prove nothing and would
 //! send a freshly minted user token off the machine.
 
+use afd_core::json::non_empty_str;
 use garde::Validate;
 use serde_json::{Map, Value};
 
@@ -116,9 +117,8 @@ pub fn is_installation_id(id: &str) -> bool {
 
 /// The user token out of the exchange's answer, or nothing readable.
 #[must_use]
-pub(crate) fn access_token(body: &Value) -> Option<String> {
-    let token = body.get(WIRE_ACCESS_TOKEN)?.as_str()?;
-    (!token.is_empty()).then(|| token.to_owned())
+pub(crate) fn access_token(body: &Value) -> Option<&str> {
+    non_empty_str(body, WIRE_ACCESS_TOKEN)
 }
 
 /// The listing as the three-state answer, or `None` for a body this build

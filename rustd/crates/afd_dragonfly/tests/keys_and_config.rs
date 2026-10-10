@@ -153,20 +153,20 @@ fn test_malformed_urls_are_refused() {
     }
 }
 
-/// Both schemes are accepted, and only `rediss://` means TLS.
+/// TLS is what the client dials, in every scheme spelling it dials it for.
 #[test]
 fn test_tls_is_the_scheme_not_a_guess() {
-    let plain = DragonflyConfig::resolve(
-        &env_with(&[("DRAGONFLY_URL", "redis://localhost:6379")]),
-        DragonflyRole::Default,
-    )
-    .unwrap();
-    assert!(!plain.is_tls());
-
-    let tls =
-        DragonflyConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), DragonflyRole::Default)
-            .unwrap();
-    assert!(tls.is_tls(), "rediss:// is the TLS spelling");
+    for (url, tls) in [
+        ("redis://localhost:6379", false),
+        ("valkey://localhost:6379", false),
+        (URL, true),
+        ("valkeys://localhost:6379", true),
+        ("REDISS://localhost:6379", true),
+    ] {
+        let env = env_with(&[("DRAGONFLY_URL", url)]);
+        let config = DragonflyConfig::resolve(&env, DragonflyRole::Default).unwrap();
+        assert_eq!(config.is_tls(), tls, "{url}");
+    }
 }
 
 /// The request deadline defaults to the documented five seconds, and a knob
@@ -249,19 +249,21 @@ fn test_ca_cert_file_comes_from_the_documented_knob() {
     assert_eq!(CA_CERT_FILE_KNOB, "DRAGONFLY_TLS_CA_CERT_FILE");
 
     let with_ca = DragonflyConfig::resolve(
-        &env_with(&[("DRAGONFLY_URL", URL), (CA_CERT_FILE_KNOB, "/tmp/ca.crt")]),
+        &env_with(&[("DRAGONFLY_URL", URL), (CA_CERT_FILE_KNOB, " /tmp/ca.crt ")]),
         DragonflyRole::Default,
     )
     .unwrap();
     assert_eq!(with_ca.ca_cert_file(), Some(Path::new("/tmp/ca.crt")));
 
-    let without =
-        DragonflyConfig::resolve(&env_with(&[("DRAGONFLY_URL", URL)]), DragonflyRole::Default)
-            .unwrap();
-    assert!(
-        without.ca_cert_file().is_none(),
-        "no knob means the system trust store, not an empty path"
-    );
+    for blank in [None, Some(""), Some("   ")] {
+        let mut pairs = vec![("DRAGONFLY_URL", URL)];
+        pairs.extend(blank.map(|path| (CA_CERT_FILE_KNOB, path)));
+        let without = DragonflyConfig::resolve(&env_with(&pairs), DragonflyRole::Default).unwrap();
+        assert!(
+            without.ca_cert_file().is_none(),
+            "{blank:?}: no knob means the system trust store, not an empty path"
+        );
+    }
 }
 
 /// The reconnect schedule grows, stops growing, and never waits forever.
