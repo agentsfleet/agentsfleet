@@ -23,6 +23,10 @@ use afd_auth::principal::Subject;
 
 use crate::error::MetadataUnwritten;
 use crate::provider::{JSON_MEDIA_TYPE, ProviderSecret};
+use crate::users::UsersEndpoint;
+
+/// The sub-resource under a person that holds their metadata.
+const METADATA_SEGMENT: &str = "metadata";
 
 /// The merge payload, as the provider reads it.
 ///
@@ -47,7 +51,7 @@ struct PublicMetadata<'a> {
 #[derive(Debug)]
 pub struct ProviderMetadata {
     client: reqwest::Client,
-    api_base: Box<str>,
+    users: UsersEndpoint,
     secret: ProviderSecret,
 }
 
@@ -55,18 +59,20 @@ impl ProviderMetadata {
     /// Builds a metadata writer against `api_base`.
     ///
     /// # Errors
-    /// [`MetadataUnwritten::Unreachable`] when a client cannot be constructed.
+    /// [`MetadataUnwritten::Unreachable`] when a client cannot be constructed,
+    /// or when `api_base` is not a URL a person's resource can be appended to.
     pub fn new(
         api_base: impl Into<Box<str>>,
         secret: ProviderSecret,
         timeout: std::time::Duration,
     ) -> Result<Self, MetadataUnwritten> {
+        let users = UsersEndpoint::parse(&api_base.into()).ok_or(MetadataUnwritten::Unreachable)?;
         let client = crate::direct(timeout)
             .build()
             .map_err(|_unbuildable| MetadataUnwritten::Unreachable)?;
         Ok(Self {
             client,
-            api_base: api_base.into(),
+            users,
             secret,
         })
     }
@@ -84,7 +90,11 @@ impl ProviderMetadata {
         tenant_id: &str,
         scopes: &str,
     ) -> Result<(), MetadataUnwritten> {
-        let url = format!("{}/users/{}/metadata", self.api_base, subject.as_str());
+        // A dot-segment subject names no person; the write is never sent.
+        let url = self
+            .users
+            .person(subject, &[METADATA_SEGMENT])
+            .ok_or(MetadataUnwritten::Unreachable)?;
         // Serialised here rather than through reqwest's `json` helper: this
         // workspace builds reqwest without that feature, and the read next
         // door already spells its own media-type header for the same reason.
@@ -97,7 +107,7 @@ impl ProviderMetadata {
 
         let response = self
             .client
-            .patch(&url)
+            .patch(url)
             .bearer_auth(self.secret.expose())
             .header(reqwest::header::CONTENT_TYPE, JSON_MEDIA_TYPE)
             .body(payload)

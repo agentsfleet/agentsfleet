@@ -13,22 +13,26 @@
 //! [`afd_auth::scope::parse_claim`] applies to an unknown token inside a claim.
 
 use afd_auth::principal::Subject;
+use afd_crypto::secret::SecretString;
 
 use crate::capability::ClaimSource;
+use crate::capped::{CapBreak, read_capped};
 use crate::error::{ClaimUnavailable, Result, blank_secret};
+use crate::users::UsersEndpoint;
 
 /// The provider's backend API secret.
 ///
 /// A newtype rather than a `String` because of what it is: the credential that
 /// lets this daemon read EVERY person's capabilities. It is held for the
 /// process's life inside a service the boot path prints, so a derived `Debug`
-/// anywhere up the ownership chain would put it in a log (Invariant 5).
+/// anywhere up the ownership chain would put it in a log (Invariant 5). The
+/// bytes live in a [`SecretString`], which wipes them when the process drops
+/// them; this type adds the blank refusal and the name it renders under.
 ///
-/// `afd_crypto`'s `SecretBytes` is the workspace's byte-shaped equivalent; this
-/// is the string-shaped one, kept local rather than pulling a crypto crate into
-/// this graph for a header value.
-#[derive(Clone, PartialEq, Eq)]
-pub struct ProviderSecret(Box<str>);
+/// No equality: nothing compares a backend secret, and a derived `==` would be
+/// a non-constant-time comparison waiting for a caller.
+#[derive(Clone)]
+pub struct ProviderSecret(SecretString);
 
 impl ProviderSecret {
     /// Wraps the boot-resolved secret.
@@ -42,7 +46,7 @@ impl ProviderSecret {
         if raw.trim().is_empty() {
             return Err(blank_secret());
         }
-        Ok(Self(raw.into()))
+        Ok(Self(SecretString::new(raw.to_owned())))
     }
 
     /// The secret, for the one header that carries it.
@@ -51,7 +55,7 @@ impl ProviderSecret {
     /// [`crate::metadata`] and carries the same credential in the same header.
     #[must_use]
     pub(crate) fn expose(&self) -> &str {
-        &self.0
+        self.0.expose()
     }
 }
 
@@ -59,15 +63,6 @@ impl ProviderSecret {
 impl std::fmt::Debug for ProviderSecret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("ProviderSecret(redacted)")
-    }
-}
-
-/// Zeroes the secret when the process drops it.
-impl Drop for ProviderSecret {
-    fn drop(&mut self) {
-        use zeroize::Zeroize as _;
-        let mut bytes = std::mem::take(&mut self.0).into_boxed_bytes();
-        bytes.zeroize();
     }
 }
 
@@ -108,7 +103,7 @@ const SCOPES_KEY: &str = "scopes";
 #[derive(Debug)]
 pub struct ProviderClaims {
     client: reqwest::Client,
-    api_base: Box<str>,
+    users: UsersEndpoint,
     secret: ProviderSecret,
 }
 
@@ -116,19 +111,20 @@ impl ProviderClaims {
     /// Builds a claim reader against `api_base`.
     ///
     /// # Errors
-    /// [`ClaimUnavailable::Unreachable`] when a client cannot be constructed.
-    ///
+    /// [`ClaimUnavailable::Unreachable`] when a client cannot be constructed,
+    /// or when `api_base` is not a URL a person's resource can be appended to.
     pub fn new(
         api_base: impl Into<Box<str>>,
         secret: ProviderSecret,
         timeout: std::time::Duration,
     ) -> Result<Self, ClaimUnavailable> {
+        let users = UsersEndpoint::parse(&api_base.into()).ok_or(ClaimUnavailable::Unreachable)?;
         let client = crate::direct(timeout)
             .build()
             .map_err(|_unbuildable| ClaimUnavailable::Unreachable)?;
         Ok(Self {
             client,
-            api_base: api_base.into(),
+            users,
             secret,
         })
     }
@@ -171,36 +167,34 @@ impl ProviderClaims {
         }
     }
 
-    /// Reads the body, refusing past the cap.
-    async fn read_capped(mut response: reqwest::Response) -> Result<Vec<u8>, ClaimUnavailable> {
-        let mut body = Vec::with_capacity(INITIAL_BODY_BYTES);
-        loop {
-            let chunk = response
-                .chunk()
-                .await
-                .map_err(|_transport| ClaimUnavailable::Unreachable)?;
-            let Some(chunk) = chunk else { break };
-            if body.len().saturating_add(chunk.len()) > USER_MAX_RESPONSE_BYTES {
-                let cap = USER_MAX_RESPONSE_BYTES;
-                tracing::warn!(
-                    cap,
-                    event = "scope_response_too_large",
-                    "refusing the user document"
-                );
-                return Err(ClaimUnavailable::Unreachable);
-            }
-            body.extend_from_slice(&chunk);
-        }
-        Ok(body)
+    /// Reads the body, refusing past [`USER_MAX_RESPONSE_BYTES`].
+    async fn read_body(response: reqwest::Response) -> Result<Vec<u8>, ClaimUnavailable> {
+        read_capped(response, USER_MAX_RESPONSE_BYTES, INITIAL_BODY_BYTES)
+            .await
+            .map_err(|broke| {
+                if broke == CapBreak::TooLarge {
+                    let cap = USER_MAX_RESPONSE_BYTES;
+                    tracing::warn!(
+                        cap,
+                        event = "scope_response_too_large",
+                        "refusing the user document"
+                    );
+                }
+                ClaimUnavailable::Unreachable
+            })
     }
 }
 
 impl ClaimSource for ProviderClaims {
     async fn claim(&self, subject: &Subject) -> Result<String, ClaimUnavailable> {
-        let url = format!("{}/users/{}", self.api_base, subject.as_str());
+        // A dot-segment subject names no person; the request is never sent.
+        let url = self
+            .users
+            .person(subject, &[])
+            .ok_or(ClaimUnavailable::Unreachable)?;
         let response = self
             .client
-            .get(&url)
+            .get(url)
             .bearer_auth(self.secret.expose())
             .header(reqwest::header::ACCEPT, JSON_MEDIA_TYPE)
             .send()
@@ -226,7 +220,7 @@ impl ClaimSource for ProviderClaims {
             tracing::warn!(code, event = "scope_fetch_rejected");
             return Err(refusal);
         }
-        let body = Self::read_capped(response).await?;
+        let body = Self::read_body(response).await?;
         Self::extract_claim(&body)
     }
 }

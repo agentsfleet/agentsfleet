@@ -37,12 +37,14 @@
 )]
 
 pub mod capability;
+mod capped;
 pub mod direct;
 pub mod error;
 pub mod jwks;
 mod jwt;
 pub mod metadata;
 pub mod provider;
+mod users;
 
 pub use crate::capability::ProviderCapabilities;
 pub use crate::direct::direct;

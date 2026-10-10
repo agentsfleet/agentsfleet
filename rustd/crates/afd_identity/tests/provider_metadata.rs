@@ -23,6 +23,9 @@ const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// What the fake server's request buffer starts at before the read grows it.
 const REQUEST_BUFFER_BYTES: usize = 1024;
 
+/// A base whose port nothing listens on, for a case that must not connect.
+const UNROUTED_BASE: &str = "http://127.0.0.1:9";
+
 const TENANT: &str = "tn_01J8XKQ2VN0000000000000000";
 const SCOPES: &str = "fleet:admin apikey:admin";
 
@@ -247,4 +250,30 @@ fn test_a_provider_that_never_answers_is_unreachable_not_a_panic() {
             Err(MetadataUnwritten::Unreachable)
         );
     });
+}
+
+/// A dot-segment subject would aim the PATCH at the collection, so the secret
+/// is never sent for it.
+#[test]
+fn test_a_dot_segment_subject_is_refused_before_any_write() {
+    block_on(async {
+        // Nothing listens here; a request would fail as a connection, and the
+        // refusal arrives first.
+        let writer = ProviderMetadata::new(UNROUTED_BASE, secret(), TIMEOUT).expect("a client");
+        for dots in [".", ".."] {
+            let subject = Subject::new(dots).expect("a non-blank subject");
+            assert_eq!(
+                writer.write_signup(&subject, TENANT, SCOPES).await,
+                Err(MetadataUnwritten::Unreachable),
+                "{dots}"
+            );
+        }
+    });
+}
+
+/// An API base no person's resource can hang off is refused at construction.
+#[test]
+fn test_an_api_base_that_is_not_a_url_is_refused_at_construction() {
+    let refused = ProviderMetadata::new("not a url", secret(), TIMEOUT).expect_err("not a URL");
+    assert_eq!(refused, MetadataUnwritten::Unreachable);
 }
