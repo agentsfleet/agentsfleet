@@ -23,7 +23,7 @@ readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
 # PATH so a test can assert a deploy never reached them.
 readonly SENTINEL_INSTALL="install-ran"
 readonly SENTINEL_SYSTEMCTL="systemctl-ran"
-# The unit file beside deploy.sh, which the deploy installs under this name.
+# The name deploy.sh installs the runner's unit under.
 readonly RUNNER_UNIT_FILE="agentsfleet-runner.service"
 
 passed=0
@@ -195,8 +195,9 @@ test_deploy_version_match_unhealthy_service_reinstalls() {
 # reloads systemd; a restart without the reload keeps running the old unit.
 test_deploy_syncs_the_unit_then_reloads_systemd() {
   local name="test_deploy_syncs_the_unit_then_reloads_systemd"
-  local unit_dir="$WORK_DIR/systemd-$RANDOM" calls="$WORK_DIR/calls-$RANDOM"
-  mkdir -p "$unit_dir"
+  local source_dir="$WORK_DIR/deploy-$RANDOM" unit_dir="$WORK_DIR/systemd-$RANDOM" calls="$WORK_DIR/calls-$RANDOM"
+  mkdir -p "$source_dir" "$unit_dir"
+  printf '[Service]\nExecStart=/usr/local/bin/agentsfleet-runner\n' >"$source_dir/$RUNNER_UNIT_FILE"
 
   local status=0
   (
@@ -205,12 +206,12 @@ test_deploy_syncs_the_unit_then_reloads_systemd() {
     source "$DEPLOY_SH" >/dev/null 2>&1
     set +e
     export SYSTEMCTL_CALLS="$calls" SYSTEMCTL_UNIT="$unit_dir/$RUNNER_UNIT_FILE"
-    sync_systemd_unit "$SCRIPT_DIR/$RUNNER_UNIT_FILE" "$unit_dir" >/dev/null 2>&1
+    sync_systemd_unit "$source_dir/$RUNNER_UNIT_FILE" "$unit_dir" >/dev/null 2>&1
   ) || status=$?
 
   if [[ "$status" -ne 0 ]]; then
     bad "$name" "sync_systemd_unit exited $status"
-  elif ! cmp -s "$SCRIPT_DIR/$RUNNER_UNIT_FILE" "$unit_dir/$RUNNER_UNIT_FILE"; then
+  elif ! cmp -s "$source_dir/$RUNNER_UNIT_FILE" "$unit_dir/$RUNNER_UNIT_FILE"; then
     bad "$name" "the unit file was not copied into the systemd directory"
   elif ! grep -qx 'daemon-reload unit-synced' "$calls" 2>/dev/null; then
     bad "$name" "systemd was not reloaded after the unit was copied: $(cat "$calls" 2>/dev/null)"
