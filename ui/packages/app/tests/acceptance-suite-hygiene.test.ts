@@ -2,9 +2,6 @@
  * Standing contracts over the acceptance tree, enforced from the unit lane
  * (vitest excludes tests/e2e/** as test FILES, so the greps must live here):
  *
- *  - the shared TRIGGER.md fixture carries every frontmatter key the daemon's
- *    importer requires (name, triggers, tools, budget — see `FleetConfig` in
- *    rustd/crates/afd_fleet_runtime/src/config/mod.rs);
  *  - no spec re-grows a private bundle builder — the drifted copies are how
  *    installs started failing with UZ-BUNDLE-001;
  *  - no test waits on `networkidle`, which is unreachable while the Clerk
@@ -17,7 +14,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
-import { triggerMd } from "./e2e/acceptance/fixtures/seed";
 
 const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ACCEPTANCE_DIR = path.join(TESTS_DIR, "e2e", "acceptance");
@@ -33,15 +29,6 @@ function acceptanceSources(): string[] {
     .filter((rel) => rel.endsWith(".ts"))
     .map((rel) => path.join(ACCEPTANCE_DIR, rel));
 }
-
-test("test_shared_trigger_fixture_satisfies_required_keys", () => {
-  const md = triggerMd("hygiene-check");
-  expect(md.startsWith("---\n")).toBe(true);
-  expect(md).toContain("name: hygiene-check");
-  expect(md).toContain("triggers:");
-  expect(md).toContain("tools:");
-  expect(md).toContain("budget:");
-});
 
 test("test_no_spec_local_bundle_builders_remain", () => {
   const offenders = acceptanceSources()

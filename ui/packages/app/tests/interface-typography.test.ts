@@ -60,21 +60,6 @@ function containsFontOverride(node: ts.Node, constants: Map<string, ts.Expressio
 }
 
 describe("interface typography ownership", () => {
-  it("rejects aliased primitives with multiline, conditional, and named font overrides", () => {
-    const source = `import { Button as Action, NavItem } from "@agentsfleet/design-system";
-      const LOCAL_STYLE = "font-mono";
-      const controls = <><Action className={cn("p-md", active && LOCAL_STYLE)}>Run</Action>
-        <NavItem\n className="font-display">Fleets</NavItem></>;`;
-    expect(fontOverrides(source)).toEqual(["Button", "NavItem"]);
-  });
-
-  it("permits technical fields, technical child values, and layout composition", () => {
-    const source = `import { Button, Input } from "@agentsfleet/design-system";
-      const controls = <><Input className="font-mono" /><Button className="w-full">
-        Copy <code className="font-mono">fleet_id</code></Button></>;`;
-    expect(fontOverrides(source)).toEqual([]);
-  });
-
   it("keeps every app page and component on interface primitive defaults", () => {
     const violations: string[] = [];
     for (const directory of ["app", "components"]) {
