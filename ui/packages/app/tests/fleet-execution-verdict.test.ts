@@ -27,7 +27,12 @@ import {
   VERDICT_KIND,
   type TerminalObservation,
 } from "./e2e/acceptance/fixtures/execution";
-import { EXECUTION_REPLY_PREFIX, executionSkillMd } from "./e2e/acceptance/fixtures/seed";
+import {
+  EXECUTION_REPLY_PREFIX,
+  executionSkillMd,
+  triggerMd,
+  webhookTriggerMd,
+} from "./e2e/acceptance/fixtures/seed";
 
 // A row shape per verdict, so each case reads as the row that produced it.
 function processed(reply: string | null): TerminalObservation {
@@ -135,5 +140,41 @@ describe("the execution journey's bundle", () => {
     const body = md.split("---\n")[2] ?? "";
     expect(body.trim().length).toBeGreaterThan(0);
     expect(body).toContain(EXECUTION_REPLY_PREFIX);
+  });
+});
+
+// The daemon's importer refuses a TRIGGER.md missing any of these: `name` at
+// the top of the frontmatter, the rest under `x-agentsfleet` (`FleetConfig` in
+// rustd/crates/afd_fleet_runtime/src/config/mod.rs). Every library seed in the
+// acceptance suite installs through these two builders.
+const RUNTIME_BLOCK = "x-agentsfleet";
+const REQUIRED_RUNTIME_KEYS = ["triggers", "tools", "budget"];
+const FRONTMATTER_FENCE = "---";
+const NESTED_INDENT = "  ";
+
+/** The keys declared at one indent of a frontmatter block, in order. */
+function keysAtIndent(lines: string[], indent: string): string[] {
+  return lines
+    .filter((line) => line.startsWith(indent) && !line.startsWith(`${indent} `))
+    .map((line) => line.slice(indent.length).split(":")[0] ?? "")
+    .filter((key) => /^[\w-]+$/.test(key));
+}
+
+function frontmatterLines(md: string): string[] {
+  const [opening, block] = md.split(`${FRONTMATTER_FENCE}\n`);
+  expect(opening, "the frontmatter opens on the first line").toBe("");
+  return (block ?? "").split("\n");
+}
+
+describe("the shared trigger fixtures", () => {
+  it.each([
+    ["cron", triggerMd("trigger-check")],
+    ["webhook", webhookTriggerMd("trigger-check", "gh-secret")],
+  ])("the %s fixture carries every key the importer requires", (_kind, md) => {
+    const lines = frontmatterLines(md);
+    const top = keysAtIndent(lines, "");
+    expect(top).toContain(RUNTIME_BLOCK);
+    expect(lines).toContain("name: trigger-check");
+    expect(keysAtIndent(lines, NESTED_INDENT)).toEqual(REQUIRED_RUNTIME_KEYS);
   });
 });
