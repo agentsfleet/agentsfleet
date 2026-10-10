@@ -35,16 +35,16 @@
   },
   "dependencies": {
     "@effect/platform-bun": "4.0.2",
-    "@vercel/detect-agent": "^1.2.5",
+    "@vercel/detect-agent": "^1.2.6",
     "effect": "4.0.2",
     "posthog-node": "^5.55.1",
-    "uuid": "^14.0.2"
+    "uuid": "^14.0.3"
   },
   "license": "MIT",
   "devDependencies": {
-    "@clerk/testing": "^2.2.44",
+    "@clerk/testing": "^2.2.45",
     "@playwright/test": "1.64.0",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "@types/uuid": "^11.0.0",
     "bun-types": "^1.4.2",
     "oxlint": "^1.87.0",
