@@ -3,7 +3,7 @@
 
 Each rule reads a configuration file through its format's parser and checks a
 property a deploy depends on: the runner's health window outlasts its restart
-delay, the tailnet policy grants CI exactly the worker SSH it needs, the Fly
+delay, its drain waits as long as the unit's stop timeout, the tailnet policy grants CI exactly the worker SSH it needs, the Fly
 apps stay private behind their tunnel and their pools fit the database.
 
     python3 scripts/check_infra_config.py [--root <dir>]
@@ -30,6 +30,8 @@ import check_workflow_rules as workflows
 RUNNER_UNIT = "deploy/baremetal/agentsfleet-runner.service"
 DEPLOY_SH = "deploy/baremetal/deploy.sh"
 HEALTH_WINDOW = re.compile(r"^(?:readonly )?HEALTH_STABLE_SECONDS=(?P<seconds>[0-9]+)$", re.MULTILINE)
+# How long drain_runner waits for a stopping runner; systemd kills it at TimeoutStopSec.
+DRAIN_TIMEOUT = re.compile(r"^(?:readonly )?DRAIN_TIMEOUT_SECONDS=(?P<seconds>[0-9]+)$", re.MULTILINE)
 # systemd.time(7): a span is a sequence of numbers each with an optional unit;
 # a bare number is seconds.
 TIMESPAN_PART = re.compile(r"(?P<value>[0-9.]+)\s*(?P<unit>[a-z]*)")
@@ -97,20 +99,39 @@ def timespan_seconds(span: str) -> float | None:
     return sum(float(p["value"]) * TIMESPAN_UNITS[p["unit"]] for p in parts)
 
 
+def service_option(unit: str, key: str) -> str | None:
+    """One `[Service]` setting of a systemd unit, read as configparser reads an INI file."""
+    parser = configparser.ConfigParser(strict=False, interpolation=None)
+    parser.optionxform = str
+    parser.read_string(unit)
+    return parser.get("Service", key, fallback=None)
+
+
 def check_restart_window(root: Path) -> list[lib.Finding]:
     unit, deploy = read(root, RUNNER_UNIT), read(root, DEPLOY_SH)
     if unit is None or deploy is None:
         return [finding(RUNNER_UNIT, "infra-restart-window", f"{RUNNER_UNIT} and {DEPLOY_SH} must both exist")]
-    parser = configparser.ConfigParser(strict=False, interpolation=None)
-    parser.optionxform = str
-    parser.read_string(unit)
-    span = parser.get("Service", "RestartSec", fallback=None)
+    span = service_option(unit, "RestartSec")
     restart = timespan_seconds(span) if span else None
     window = HEALTH_WINDOW.search(deploy)
     if restart is None or window is None:
         return [finding(RUNNER_UNIT, "infra-restart-window", f"RestartSec ({span!r}) or HEALTH_STABLE_SECONDS does not parse")]
     if int(window["seconds"]) <= restart:
         return [finding(DEPLOY_SH, "infra-restart-window", f"HEALTH_STABLE_SECONDS={window['seconds']} must outlast RestartSec={span}, or a crash loop passes verify_healthy")]
+    return []
+
+
+def check_drain_timeout(root: Path) -> list[lib.Finding]:
+    unit, deploy = read(root, RUNNER_UNIT), read(root, DEPLOY_SH)
+    if unit is None or deploy is None:
+        return [finding(RUNNER_UNIT, "infra-drain-timeout", f"{RUNNER_UNIT} and {DEPLOY_SH} must both exist")]
+    span = service_option(unit, "TimeoutStopSec")
+    stop = timespan_seconds(span) if span else None
+    drain = DRAIN_TIMEOUT.search(deploy)
+    if stop is None or drain is None:
+        return [finding(RUNNER_UNIT, "infra-drain-timeout", f"TimeoutStopSec ({span!r}) or DRAIN_TIMEOUT_SECONDS does not parse")]
+    if int(drain["seconds"]) != stop:
+        return [finding(DEPLOY_SH, "infra-drain-timeout", f"DRAIN_TIMEOUT_SECONDS={drain['seconds']} must equal TimeoutStopSec={span}: a shorter drain cuts a run the unit would let finish")]
     return []
 
 
@@ -216,7 +237,7 @@ def check_fly_topology(root: Path) -> list[lib.Finding]:
     return found + check_environment(root, "dev", DEV_REPLICAS) + check_environment(root, "prod", int(desired["count"]))
 
 
-RULES = (check_restart_window, check_tailnet_policy, check_worker_tag_commands, check_fly_topology)
+RULES = (check_restart_window, check_drain_timeout, check_tailnet_policy, check_worker_tag_commands, check_fly_topology)
 
 
 def lint(root: Path) -> list[lib.Finding]:
