@@ -34,18 +34,6 @@ enum DataCentre {
 }
 
 impl DataCentre {
-    /// Every centre, so the set of accounts servers is read off this type and
-    /// never restated.
-    const ALL: [Self; 7] = [
-        Self::UnitedStates,
-        Self::Europe,
-        Self::India,
-        Self::Australia,
-        Self::China,
-        Self::Japan,
-        Self::Canada,
-    ];
-
     /// The centre a callback's `location` names.
     ///
     /// An absent or unrecognised value is the United States, which is the
@@ -89,19 +77,6 @@ pub fn accounts_base(location: Option<&str>) -> &'static str {
     DataCentre::named(location).accounts_base()
 }
 
-/// Whether `base` is one of Zoho's accounts servers, exactly as a callback
-/// writes it.
-///
-/// The connect flow stores only these, so a stored handle naming any other base
-/// was written by something else — and a refresh posts this deployment's
-/// client secret to whatever base the handle names.
-#[must_use]
-pub fn is_accounts_server(base: &str) -> bool {
-    DataCentre::ALL
-        .iter()
-        .any(|centre| centre.accounts_base() == base)
-}
-
 /// The token endpoint a callback's `location` names.
 #[must_use]
 pub fn token_endpoint(location: Option<&str>) -> String {
@@ -110,33 +85,7 @@ pub fn token_endpoint(location: Option<&str>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{US_TOKEN_ENDPOINT, accounts_base, is_accounts_server, token_endpoint};
-
-    /// Every base a callback can write is one, and nothing near one is.
-    #[test]
-    fn only_the_bases_a_callback_writes_are_accounts_servers() {
-        for location in [
-            None,
-            Some("eu"),
-            Some("in"),
-            Some("au"),
-            Some("cn"),
-            Some("jp"),
-            Some("ca"),
-        ] {
-            assert!(is_accounts_server(accounts_base(location)), "{location:?}");
-        }
-        for foreign in [
-            "https://accounts.zoho.com/",
-            "https://accounts.zoho.com.evil.test",
-            "http://accounts.zoho.com",
-            "https://ACCOUNTS.ZOHO.COM",
-            "https://example.test",
-            "",
-        ] {
-            assert!(!is_accounts_server(foreign), "{foreign}");
-        }
-    }
+    use super::{US_TOKEN_ENDPOINT, accounts_base, token_endpoint};
 
     /// Each documented centre resolves to its own accounts server.
     #[test]

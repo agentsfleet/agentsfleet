@@ -16,27 +16,17 @@
 //!   `serde_urlencoded`. This matters beyond tidiness: the values are
 //!   provider-issued opaque bytes, and a `&` or `=` that escapes its field
 //!   changes the SHAPE of the form the token endpoint parses.
-//! - The token path. A handle's path must carry no query, fragment or
-//!   whitespace, because it decides where platform credentials get `POST`ed.
-//!   The URL parser answers that, and answers it the way the client that will
-//!   actually dial the address does.
 //! - A float `expires_in`. `Duration`'s own checked constructor rejects a
 //!   hostile provider float and cannot trap.
 //!
-//! # The accounts base is checked, never trusted
+//! # The accounts base is held, never trusted
 //!
 //! `accounts_base` is a field on the VAULT HANDLE — Zoho's multi-data-centre
 //! shape, where a token is redeemable only at the accounts server it was issued
-//! by. Checking only the path appended to it would let a handle written with an
-//! attacker's host POST this deployment's `client_secret` to that host. Here
-//! the composed endpoint goes through [`crate::provider::validate_endpoint`] —
-//! the same `https`-and-SSRF guard a tenant's `base_url` passes — and a refused
-//! one fails the mint rather than dialling.
-//!
-//! That guard admits any public `https` host, so it is not what keeps the
-//! secret with the provider. The lease plane's mint admission is: it reads the
-//! same fields through [`steer`] and refuses any base outside the accounts
-//! servers the connect flow writes, before an exchange is attempted.
+//! by. The handle is bytes the workspace wrote, and this exchange posts the
+//! deployment's `client_secret` to whatever it names, so [`steer`] holds it to
+//! the servers a Zoho callback writes and a handle naming any other refuses
+//! the mint before anything is sent.
 
 use afd_core::credential::FIELD_REFRESH_TOKEN;
 use std::time::Duration;
@@ -295,7 +285,7 @@ fn classify(status: reqwest::StatusCode, answered: Option<&Answered>) -> Outcome
 mod steer;
 
 use self::steer::endpoint;
-pub use self::steer::{Steer, steer};
+pub use self::steer::{Steer, ZOHO_ACCOUNTS_SERVERS, is_zoho_accounts_server, steer};
 
 #[cfg(test)]
 mod tests;
