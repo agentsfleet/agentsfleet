@@ -22,6 +22,6 @@ archive debian trixie-updates
 archive debian-security trixie-security
 uuid 6d2b1f0e-6a1c-4b8e-9f3a-2c7d5e8a9b10
 erofs -zlz4hc,12 -b4096
-packages ca-certificates coreutils git python3 nodejs ripgrep jq curl gh
+packages ca-certificates coreutils git python3 nodejs ripgrep jq curl
 vendor arm64 https://github.com/astral-sh/uv/releases/download/0.12.21/uv-aarch64-unknown-linux-gnu.tar.gz 030b69227b40af8c1981b7301793dc66e71ed3c796ea8688209dd268bd91ec51 uv-aarch64-unknown-linux-gnu/uv=uv uv-aarch64-unknown-linux-gnu/uvx=uvx
 vendor amd64 https://github.com/astral-sh/uv/releases/download/0.12.21/uv-x86_64-unknown-linux-gnu.tar.gz 23f02075b652bb1df64178cfae41b5caf160822e720e2663568f3f5d63bc52c0 uv-x86_64-unknown-linux-gnu/uv=uv uv-x86_64-unknown-linux-gnu/uvx=uvx
