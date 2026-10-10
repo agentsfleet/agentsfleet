@@ -87,6 +87,9 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+# `MapEnv`: the environment a test hands every knob reader instead of
+# mutating the process.
+afd_core = { workspace = true, features = ["test-util"] }
 # `Db::unreachable` and `Redis::unreachable`: handles that open no socket, so
 # the abort rail can be proven wired into a lane without a datastore to kill.
 afd_db = { workspace = true, features = ["test-util"] }

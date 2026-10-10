@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap;
 
+use afd_core::env::MapEnv;
+
 use super::{DATASTORE_IMAGE_VARIABLE, OWNED_VALUE, OWNED_VARIABLE, Provenance, REVISION_VARIABLE};
 use crate::error::{Error, ErrorKind};
 
@@ -24,7 +26,12 @@ fn complete() -> BTreeMap<&'static str, String> {
 
 /// Reads `environment`, and nothing else.
 fn read(environment: &BTreeMap<&'static str, String>) -> Result<Provenance, Error> {
-    Provenance::read(&|key| environment.get(key).cloned())
+    let env = MapEnv::from_pairs(
+        environment
+            .iter()
+            .map(|(key, value)| (*key, value.as_str())),
+    );
+    Provenance::read(&env)
 }
 
 #[test]
@@ -93,4 +100,18 @@ fn a_shared_target_is_a_statement_and_not_a_silence() {
     environment.insert(OWNED_VARIABLE, "shared".to_owned());
     let provenance = read(&environment).expect("a declared shared target is readable");
     assert!(!provenance.owned);
+}
+
+#[test]
+fn a_padded_ownership_word_is_not_ownership_and_the_revision_keeps_its_bytes() {
+    // The knob reader keeps a value as it was set: a padded word is not the
+    // word, and a padded revision is recorded as the shell exported it.
+    let mut environment = complete();
+    environment.insert(OWNED_VARIABLE, format!(" {OWNED_VALUE} "));
+    environment.insert(REVISION_VARIABLE, " 3643941ca ".to_owned());
+
+    let provenance = read(&environment).expect("a padded variable is still set");
+
+    assert!(!provenance.owned);
+    assert_eq!(provenance.revision, " 3643941ca ");
 }
