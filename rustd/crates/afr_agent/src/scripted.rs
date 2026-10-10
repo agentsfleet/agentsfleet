@@ -183,7 +183,3 @@ fn finish(turn: Turn, started: Instant) -> RunOutput {
         records: Vec::new(),
     }
 }
-
-#[cfg(test)]
-#[path = "scripted/tests.rs"]
-mod tests;

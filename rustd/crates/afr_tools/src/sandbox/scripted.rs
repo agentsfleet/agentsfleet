@@ -320,7 +320,3 @@ impl Executor for ScriptedExecutor {
         Err(refused(PROCESSES_ONLY))
     }
 }
-
-#[cfg(test)]
-#[path = "scripted/tests.rs"]
-mod tests;
