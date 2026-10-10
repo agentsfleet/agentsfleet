@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import contextlib
 import io
+import pathlib
+import subprocess
 import sys
 import unittest
 
@@ -187,6 +189,22 @@ class HelperAndRegionReads(unittest.TestCase):
     def test_an_unknown_argument_is_a_usage_error(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(checker.lib.EXIT_USAGE, checker.main(["--bogus"]))
+
+
+class LintAllWiring(unittest.TestCase):
+    """`make lint-all` runs the check and its tests: make's dry run is the plan."""
+
+    LANE = "lint-all"
+    REPOSITORY = pathlib.Path(checker.__file__).resolve().parents[1]
+    COMMANDS = ("scripts/check_tests_call_code_test.py", "scripts/check_tests_call_code.py")
+
+    def test_lint_all_runs_check_tests_call_code(self) -> None:
+        plan = subprocess.run(
+            ["make", "--dry-run", "--always-make", self.LANE],
+            cwd=self.REPOSITORY, capture_output=True, text=True, check=True,
+        ).stdout
+        for command in self.COMMANDS:
+            self.assertTrue(f"python3 {command}" in plan, f"make {self.LANE} never runs {command}")
 
 
 if __name__ == "__main__":
