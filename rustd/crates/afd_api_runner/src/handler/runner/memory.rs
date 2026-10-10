@@ -16,8 +16,7 @@
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_core::id::Uuid7;
-use afd_http::handler::Refusal;
+use afd_http::handler::{Refusal, parse_fleet_id};
 use afd_wire::memory::{MemoryCaptureResponse, MemoryPushRequest, MemoryRecallRequest};
 use axum::Json;
 use axum::body::Bytes;
@@ -34,9 +33,6 @@ const EVENT_HYDRATE: &str = "runner_memory_hydrate_failed";
 
 /// The scoped event a failed capture is logged under.
 const EVENT_CAPTURE: &str = "runner_memory_capture_failed";
-
-/// The refusal a path segment that is not an identifier earns.
-const DETAIL_FLEET_ID: &str = "fleet_id must be a valid UUIDv7";
 
 /// The refusal a body this daemon cannot read earns.
 const DETAIL_MALFORMED: &str = "Malformed memory body";
@@ -84,8 +80,9 @@ pub(crate) async fn hydrate<D: Services>(
     RunnerIdentity(runner): RunnerIdentity,
     Path(fleet_id): Path<String>,
 ) -> Response {
-    let Ok(fleet) = Uuid7::parse(&fleet_id) else {
-        return malformed(DETAIL_FLEET_ID);
+    let fleet = match parse_fleet_id(&fleet_id) {
+        Ok(fleet) => fleet,
+        Err(refused) => return refused.into_response(),
     };
     match services
         .leases()
@@ -134,8 +131,9 @@ pub(crate) async fn recall<D: Services>(
     Path(fleet_id): Path<String>,
     body: Bytes,
 ) -> Response {
-    let Ok(fleet) = Uuid7::parse(&fleet_id) else {
-        return malformed(DETAIL_FLEET_ID);
+    let fleet = match parse_fleet_id(&fleet_id) {
+        Ok(fleet) => fleet,
+        Err(refused) => return refused.into_response(),
     };
     let Ok(request) = afd_http::handler::read_strict_body::<MemoryRecallRequest<'_>>(&body) else {
         return malformed(DETAIL_RECALL_MALFORMED);
@@ -189,8 +187,9 @@ pub(crate) async fn capture<D: Services>(
     Path(fleet_id): Path<String>,
     body: Bytes,
 ) -> Response {
-    let Ok(fleet) = Uuid7::parse(&fleet_id) else {
-        return malformed(DETAIL_FLEET_ID);
+    let fleet = match parse_fleet_id(&fleet_id) {
+        Ok(fleet) => fleet,
+        Err(refused) => return refused.into_response(),
     };
     // Borrowed out of `body`: every delta's content goes straight into a column.
     // Strict because a delta is also what hydrate answers with, and the runner
