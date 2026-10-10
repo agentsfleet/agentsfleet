@@ -2,7 +2,8 @@
 
 Pure text helpers: a Rust `#[cfg(test)]` body, the spans of Python string
 literals, the argument a call or command is handed, and the functions a
-TypeScript or JavaScript test declares. None of them knows what a read is.
+TypeScript or JavaScript test declares, whose end skips braces inside string,
+template and pattern literals. None of them knows what a read is.
 """
 
 from __future__ import annotations
@@ -11,6 +12,8 @@ from collections.abc import Iterator
 import io
 import re
 import tokenize
+
+import check_source_lib as lib
 
 # Tokens whose text is a Python literal; an f-string's braced code tokenizes apart.
 PYTHON_LITERAL_TOKENS = frozenset({"STRING", "FSTRING_MIDDLE", "TSTRING_MIDDLE"})
@@ -21,6 +24,8 @@ JS_FUNCTION = re.compile(
     r"\((?P<arrow_params>[^)]*)\)[^=;{]*=>\s*\{"
 )
 JS_PARAM = re.compile(r"\s*(?:\.\.\.)?(?P<name>[A-Za-z_$][\w$]*)")
+# How much code before a slash decides whether it opens a pattern literal.
+JS_LOOKBEHIND = 64
 
 
 def matching_close(code: str, open_index: int, pair: str = "{}") -> int:
@@ -28,6 +33,30 @@ def matching_close(code: str, open_index: int, pair: str = "{}") -> int:
     depth, index = 0, open_index
     while index < len(code):
         depth += {pair[0]: 1, pair[1]: -1}.get(code[index], 0)
+        if depth == 0:
+            return index
+        index += 1
+    return len(code)
+
+
+def js_literal_end(code: str, index: int) -> int | None:
+    """The offset past the string, template or pattern literal opening at `index`, or None."""
+    if code[index] in "\"'`":
+        return lib._quoted_end(code, index)
+    if code[index] == "/" and lib._regex_may_start(code[max(0, index - JS_LOOKBEHIND) : index]):
+        return lib._regex_end(code, index)
+    return None
+
+
+def js_block_end(code: str, open_index: int) -> int:
+    """The offset of the brace closing the one at `open_index`; a brace inside a literal is text."""
+    depth, index = 0, open_index
+    while index < len(code):
+        end = js_literal_end(code, index)
+        if end is not None:
+            index = end
+            continue
+        depth += {"{": 1, "}": -1}.get(code[index], 0)
         if depth == 0:
             return index
         index += 1
@@ -83,4 +112,4 @@ def js_functions(code: str) -> Iterator[tuple[str, set[str], str, int]]:
         params_text = match["params"] if match["name"] else match["arrow_params"]
         params = {m["name"] for part in params_text.split(",") if (m := JS_PARAM.match(part))}
         body_start = match.end() - 1
-        yield name, params, code[body_start : matching_close(code, body_start)], match.start()
+        yield name, params, code[body_start : js_block_end(code, body_start)], match.start()

@@ -108,6 +108,14 @@ class NotReads(unittest.TestCase):
             "cli/test/lane.unit.test.ts": 'await Bun.write(join(dir, "bunfig.toml"), Bun.file(join(CLI_ROOT, "bunfig.toml")));\n',
         })
 
+    def test_a_helper_that_copies_its_parameter_for_running(self) -> None:
+        self.assert_clean({
+            "cli/test/copy.unit.test.ts": (
+                'function copy(file: string) {\n  return Bun.write(destination, Bun.file(file));\n}\n'
+                'copy(join(import.meta.dir, "..", "src", "commands", "login.ts"));\n'
+            ),
+        })
+
     def test_a_read_spelled_inside_a_python_string_literal(self) -> None:
         self.assert_clean({
             "scripts/seeds_test.py": (
@@ -133,6 +141,7 @@ MORE_READS = {
     "Bun.spawnSync grep": ("cli/test/spawn.unit.test.ts", 'const out = Bun.spawnSync(["grep", "-n", "login", join(import.meta.dir, "..", "src", "commands", "login.ts")]);\n', 1),
     "spawnSync sed": ("cli/test/sed.unit.test.ts", 'const CLI_ROOT = join(import.meta.dir, "..");\nspawnSync("sed", ["-n", "1p", join(CLI_ROOT, "src/commands/login.ts")]);\n', 2),
     "js helper walk": ("cli/test/walk.unit.test.ts", 'function walk(dir: string): string[] {\n  return readdirSync(dir);\n}\nconst found = walk(join(__dirname, "..", "src"));\n', 4),
+    "js helper with a quoted brace": ("cli/test/brace.unit.test.ts", 'function slurp(file: string) {\n  const marker = "}";\n  return readFileSync(file, "utf8");\n}\nslurp(join(__dirname, "..", "src", "commands", "login.ts"));\n', 5),
     "js arrow helper": ("cli/test/arrow.unit.test.ts", 'const slurp = (file: string) => {\n  const at = join(file, "login.ts");\n  return readFileSync(at, "utf8");\n};\nslurp(join(import.meta.dir, "..", "src", "commands"));\n', 5),
 }
 
