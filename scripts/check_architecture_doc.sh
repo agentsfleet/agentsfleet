@@ -16,6 +16,7 @@
 #   * test_arch_cited_make_targets_exist — every named make target is declared
 #   * test_arch_section_anchors_resolve  — every cross-page §anchor names a heading
 #   * test_arch_no_retired_slot_numbers  — no page cites a retired 0xx schema slot
+#   * architecture_tool_table_matches_catalog — the Tool catalog table names exactly the published tools
 #
 # ARCH_DIR, SPEC_ROOT and DOC_SET_EXTRA are overridable so the self-tests can
 # point the gate at fixtures. Nothing else sets them.
@@ -222,6 +223,8 @@ done < <(find "$ARCH_DIR" -name '*.md' 2>/dev/null | sort)
 # ---------------------------------------------------------------------------
 # shellcheck source=scripts/check_architecture_doc_citations.sh
 . "$SCRIPT_DIR/check_architecture_doc_citations.sh"
+# shellcheck source=scripts/check_architecture_doc_tables.sh
+. "$SCRIPT_DIR/check_architecture_doc_tables.sh"
 
 # ---------------------------------------------------------------------------
 exit "$FAIL"
