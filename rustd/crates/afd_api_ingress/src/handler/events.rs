@@ -55,6 +55,7 @@ use std::sync::Arc;
 use afd_connector::Provider;
 use afd_connector::registry::{EventIngress, EventProducer, Handshake};
 use afd_core::error_code;
+use afd_core::json::non_empty_str;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -121,30 +122,18 @@ fn decide<'e>(ingress: &EventIngress, envelope: &'e serde_json::Value) -> Answer
         return Answer::Drop(webhook::REASON_UNSUPPORTED_EVENT);
     };
 
-    if field(envelope, echo.type_field) != Some(echo.type_value) {
+    if non_empty_str(envelope, echo.type_field) != Some(echo.type_value) {
         return Answer::Drop(webhook::REASON_UNSUPPORTED_EVENT);
     }
 
     // The handshake kind with no value under it proves nothing either way, and
     // echoing an empty string would look like it had.
-    field(envelope, echo.echo_field).map_or(Answer::Drop(REASON_HANDSHAKE_EMPTY), |value| {
+    non_empty_str(envelope, echo.echo_field).map_or(Answer::Drop(REASON_HANDSHAKE_EMPTY), |value| {
         Answer::Echo {
             field: echo.echo_field,
             value,
         }
     })
-}
-
-/// One non-empty string field of an envelope.
-///
-/// Absent, not a string, and present-and-empty are one answer: none of the
-/// three is a value this route can act on, and telling them apart would be
-/// three branches with one outcome.
-fn field<'e>(envelope: &'e serde_json::Value, name: &str) -> Option<&'e str> {
-    envelope
-        .get(name)
-        .and_then(serde_json::Value::as_str)
-        .filter(|value| !value.is_empty())
 }
 
 /// `POST /v1/connectors/{provider}/events`.

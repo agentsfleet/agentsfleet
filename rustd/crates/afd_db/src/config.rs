@@ -15,7 +15,7 @@ use sqlx::postgres::PgConnectOptions;
 mod tls;
 
 use crate::error::{Error, ErrorKind, Result};
-use afd_core::env::EnvSource;
+use afd_core::env::{EnvSource, optional};
 
 /// The pool's ceiling, sized the way `core_api` sizes its own.
 ///
@@ -201,11 +201,10 @@ impl PoolConfig {
     /// a Postgres connection URL.
     pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Self> {
         let knob = role.url_knob();
-        let url = env
-            .get(knob)
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| Error::new(ErrorKind::MissingDatabaseUrl { knob }))?;
+        let url = String::from(
+            optional(env, knob)
+                .ok_or_else(|| Error::new(ErrorKind::MissingDatabaseUrl { knob }))?,
+        );
 
         let max_connections =
             read_knob(env, POOL_SIZE_KNOB, role).map_or_else(pool_size_default, clamp_pool_size);

@@ -45,27 +45,13 @@ pub fn compute(fields: &[Option<&[u8]>]) -> String {
     }
     let mut tag = String::with_capacity(2 + QUOTED_TAG_LEN);
     tag.push('"');
-    push_hex(&mut tag, &hasher.finalize());
+    tag.push_str(&hex::encode(hasher.finalize()));
     tag.push('"');
     tag
 }
 
 /// The quoted tag's hex half — SHA-256 is thirty-two bytes, two characters each.
 const QUOTED_TAG_LEN: usize = 64;
-
-/// Renders `bytes` as lower-case hex onto `out`.
-///
-/// One spelling for both renderings here: [`compute`] wraps it in quotes and
-/// [`sha256_hex`] does not, and a second copy of the format string is a second
-/// place for the width or the case to drift — either of which silently stops a
-/// client's cached validator from ever matching again.
-fn push_hex(out: &mut String, bytes: &[u8]) {
-    use std::fmt::Write as _;
-    for byte in bytes {
-        // Writing hex into a String cannot fail; the discard says so.
-        let _infallible = write!(out, "{byte:02x}");
-    }
-}
 
 /// A plain SHA-256 over `bytes`, lower-case hex.
 ///
@@ -74,11 +60,13 @@ fn push_hex(out: &mut String, bytes: &[u8]) {
 /// `encode(sha256(convert_to(col, 'UTF8')), 'hex')` — because a conditional
 /// write compares the two inside the `UPDATE`'s own predicate. A caller wanting
 /// a validator to hand a client wants [`compute`] instead.
+///
+/// Both renderings here are `hex::encode`, lowercase, so [`compute`]'s quoted
+/// form and this bare one cannot drift apart in width or case — either of
+/// which would silently stop a client's cached validator from matching again.
 #[must_use]
 pub fn sha256_hex(bytes: &[u8]) -> String {
-    let mut hex = String::with_capacity(QUOTED_TAG_LEN);
-    push_hex(&mut hex, &Sha256::digest(bytes));
-    hex
+    hex::encode(Sha256::digest(bytes))
 }
 
 #[cfg(test)]
@@ -97,6 +85,23 @@ mod tests {
             tag,
             compute(&[Some(b"hello")]),
             "deterministic across calls"
+        );
+    }
+
+    /// A tag a client cached from an earlier build must still match, so the
+    /// encoding is pinned to its bytes: markers, length prefixes, the absent
+    /// field's marker, lowercase hex and the quotes.
+    #[test]
+    fn the_tag_is_the_zig_encoding_to_the_byte() {
+        // pin test: literal is the contract
+        assert_eq!(
+            compute(&[Some(b"hello")]),
+            "\"fdc54b20f1d3a02028207d0439220bea6c7f6807349996ee723d26bd52bbf8b5\""
+        );
+        // pin test: literal is the contract
+        assert_eq!(
+            compute(&[None, Some(b"")]),
+            "\"13c6a7b85fcb0443c1d31dafe22561aac714fbaa99d3b9a56474d8dda0c9aee0\""
         );
     }
 

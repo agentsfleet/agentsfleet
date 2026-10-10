@@ -12,8 +12,8 @@
 use sqlx::Row as _;
 
 use super::resolve::CONTEXT_RESOLVE;
-use crate::gate_status::GateStatus;
 use crate::{Result, error};
+use afd_api_wire::approval::GateStatus;
 
 /// One gate as the inbox shows it.
 #[derive(Debug, Clone)]

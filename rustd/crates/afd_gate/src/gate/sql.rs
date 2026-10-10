@@ -3,10 +3,12 @@
 //! The lease path reads one statement here, [`SELECT_GATE_STATUS`]: the gate
 //! ROW is written by the park, and the resolve is the tenant plane's.
 
+use afd_api_wire::approval::GateStatus;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_db::statement::Bound;
 
-use crate::gate::{Claim, Stated, Status};
+use crate::gate::{Claim, Stated};
 
 /// The durable status of one approval gate.
 ///
@@ -116,7 +118,7 @@ impl<'a> PendingRow<'a> {
     /// The status (`$12`) is supplied here rather than by a caller: every row
     /// this statement writes opens `pending`, and a caller able to pass another
     /// value could write a gate already resolved.
-    pub fn bind(&'a self) -> afd_runner::sql::runner::Bound<'a> {
+    pub fn bind(&'a self) -> Bound<'a> {
         sqlx::query(INSERT_GATE)
             .bind(self.gate_id.as_str())
             .bind(self.fleet_id.as_str())
@@ -129,7 +131,7 @@ impl<'a> PendingRow<'a> {
             .bind(self.claim.evidence())
             .bind(self.stated.radius)
             .bind(self.deadline.as_millis())
-            .bind(Status::Pending.as_str())
+            .bind(GateStatus::Pending.as_str())
             .bind(self.now.as_millis())
             .bind(self.event_id)
             .bind(self.stated_binding)

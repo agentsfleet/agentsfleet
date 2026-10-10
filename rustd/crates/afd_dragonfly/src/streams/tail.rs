@@ -80,7 +80,7 @@ impl FleetStreams {
             return;
         };
         if let Err(unreachable_queue) = self.publish_tail(fleet_id, &payload).await {
-            let reason = unreachable_queue.to_string();
+            let reason = unreachable_queue.told();
             tracing::debug!(
                 fleet_id,
                 reason,
@@ -130,5 +130,31 @@ mod tests {
         )
         .await
         .expect("the frame is dropped at serialization, not after a connect attempt");
+    }
+
+    /// A frame the queue would not take is logged with the failure's sentence
+    /// and its causes, not its rendered `[CODE]` and backtrace.
+    #[tokio::test]
+    async fn a_dropped_frame_reason_carries_no_code_prefix() {
+        let recorder = afd_core::test_util::trace::Capture::install();
+        let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE.to_owned())
+            .with_request_timeout(Duration::from_millis(200));
+        let queue = Dragonfly::unreachable(&config).expect("a lazy handle opens no socket");
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            FleetStreams::new(queue).publish_frame("fleet-1", &"frame"),
+        )
+        .await
+        .expect("the publish gives up within its request budget");
+
+        let events = recorder.events();
+        let dropped = events
+            .iter()
+            .find(|record| {
+                record.fields.get("event").map(String::as_str) == Some(super::EVENT_FRAME_DROPPED)
+            })
+            .expect("a frame the queue would not take is logged");
+        let reason = dropped.fields.get("reason").expect("the drop names why");
+        assert!(!reason.is_empty() && !reason.contains("[UZ-"), "{reason}");
     }
 }

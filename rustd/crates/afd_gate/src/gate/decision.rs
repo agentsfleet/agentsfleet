@@ -1,9 +1,10 @@
 //! The two stored vocabularies a decision arrives in.
 //!
 //! One is the Dragonfly mirror's — two imperative words a human's answer is written
-//! as. The other is the durable row's `status`, which is finer. They are
-//! separate types because they answer different questions, and they live in one
-//! file because the collapse from one to the other is the interesting part.
+//! as. The other is the durable row's `status`, which is finer and is
+//! [`GateStatus`], shared with the operator plane that writes it. They are
+//! separate types because they answer different questions, and the collapse
+//! from one to the other — [`answer`] — lives here because it is this plane's.
 //!
 //! # Every spelling is declared once
 //!
@@ -13,7 +14,7 @@
 //! it causes — a row one release writes that the next cannot read — has no
 //! failing test behind it.
 
-use afd_api_wire::approval::status;
+use afd_api_wire::approval::GateStatus;
 use afd_core::spelling::from_spelling;
 use serde::Deserialize;
 
@@ -69,71 +70,29 @@ impl Answer {
     }
 }
 
-/// The durable row's `status`, which is finer than [`Answer`].
+/// The answer the durable row's `status` resolves to, if it resolves to one.
 ///
-/// The three refusing arms are kept apart here because the row is what an
-/// operator reads and a runbook branches on — "the reviewer said no", "nobody
-/// answered in time", and "the daemon stopped it" are three different
-/// incidents. [`Status::answer`] is where they collapse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Status {
-    /// Still waiting on a human.
-    Pending,
-    /// A reviewer approved it.
-    Approved,
-    /// A reviewer refused it.
-    Denied,
-    /// The deadline passed with no answer.
-    TimedOut,
-    /// The daemon stopped the fleet.
-    AutoKilled,
-}
-
-impl Status {
-    /// The spelling the `status` column stores.
-    ///
-    /// Hand-written, and unlike [`Answer::as_str`] this daemon DOES write it:
-    /// the park opens every gate row at [`Status::Pending`]. That is why the
-    /// round-trip test below matters more here than there — a drift between
-    /// this and the `#[serde(rename_all)]` above would write rows the very
-    /// next poll's [`Status::parse`] could not read, and the gate would sit
-    /// pending forever with a human's answer landing nowhere.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => status::PENDING,
-            Self::Approved => status::APPROVED,
-            Self::Denied => status::DENIED,
-            Self::TimedOut => status::TIMED_OUT,
-            Self::AutoKilled => status::AUTO_KILLED,
-        }
-    }
-
-    /// Recover a status from its stored spelling.
-    #[must_use]
-    pub fn parse(stored: &str) -> Option<Self> {
-        from_spelling(stored)
-    }
-
-    /// The answer this status resolves to, if it resolves to one at all.
-    ///
-    /// `None` is [`Status::Pending`] and only that — which is why the durable
-    /// read can return an `Option` rather than needing a caller to remember
-    /// that pending is not terminal.
-    #[must_use]
-    pub const fn answer(self) -> Option<Answer> {
-        match self {
-            Self::Pending => None,
-            Self::Approved => Some(Answer::Approved),
-            Self::Denied | Self::TimedOut | Self::AutoKilled => Some(Answer::Denied),
-        }
+/// The status is finer than [`Answer`]: "the reviewer said no", "nobody
+/// answered in time" and "the daemon stopped it" are three incidents an
+/// operator reads and a runbook branches on, and this is where they collapse
+/// into one refusal. `None` is [`GateStatus::Pending`] and only that — which is
+/// why the durable read can return an `Option` rather than needing a caller to
+/// remember that pending is not terminal.
+#[must_use]
+pub(crate) const fn answer(status: GateStatus) -> Option<Answer> {
+    match status {
+        GateStatus::Pending => None,
+        GateStatus::Approved => Some(Answer::Approved),
+        GateStatus::Denied | GateStatus::TimedOut | GateStatus::AutoKilled => Some(Answer::Denied),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Answer, Status};
+    use afd_api_wire::approval::GateStatus;
+    use afd_core::spelling::from_spelling;
+
+    use super::{Answer, answer};
 
     #[test]
     fn an_answer_round_trips_through_the_mirror_spelling() {
@@ -153,46 +112,38 @@ mod tests {
 
     #[test]
     fn every_refusing_status_resolves_to_one_denial() {
-        assert_eq!(Status::Approved.answer(), Some(Answer::Approved));
-        for refusing in [Status::Denied, Status::TimedOut, Status::AutoKilled] {
-            assert_eq!(refusing.answer(), Some(Answer::Denied), "{refusing:?}");
+        assert_eq!(answer(GateStatus::Approved), Some(Answer::Approved));
+        for refusing in [
+            GateStatus::Denied,
+            GateStatus::TimedOut,
+            GateStatus::AutoKilled,
+        ] {
+            assert_eq!(answer(refusing), Some(Answer::Denied), "{refusing:?}");
         }
         // And pending is the only status with no answer, which is what lets the
         // durable read hand back an `Option` instead of a terminality check.
-        assert_eq!(Status::Pending.answer(), None);
-    }
-
-    #[test]
-    fn every_status_round_trips_through_the_column_spelling() {
-        // The park WRITES `pending` through `as_str` and the next poll reads it
-        // back through `parse`, so these two must agree on every arm — not only
-        // on the one the write path happens to use today.
-        for status in [
-            Status::Pending,
-            Status::Approved,
-            Status::Denied,
-            Status::TimedOut,
-            Status::AutoKilled,
-        ] {
-            assert_eq!(Status::parse(status.as_str()), Some(status), "{status:?}");
-        }
+        assert_eq!(answer(GateStatus::Pending), None);
     }
 
     #[test]
     fn a_status_reads_the_spellings_the_column_stores() {
         for (spelling, status) in [
-            ("pending", Status::Pending),
-            ("approved", Status::Approved),
-            ("denied", Status::Denied),
-            ("timed_out", Status::TimedOut),
-            ("auto_killed", Status::AutoKilled),
+            ("pending", GateStatus::Pending),
+            ("approved", GateStatus::Approved),
+            ("denied", GateStatus::Denied),
+            ("timed_out", GateStatus::TimedOut),
+            ("auto_killed", GateStatus::AutoKilled),
         ] {
-            assert_eq!(Status::parse(spelling), Some(status), "{spelling}");
+            assert_eq!(
+                from_spelling::<GateStatus>(spelling),
+                Some(status),
+                "{spelling}"
+            );
         }
         // A word the column never held stays unresolved, which leaves the gate
         // pending rather than guessing in either direction.
         for unknown in ["cancelled", "TimedOut", "timedOut", ""] {
-            assert_eq!(Status::parse(unknown), None, "{unknown}");
+            assert_eq!(from_spelling::<GateStatus>(unknown), None, "{unknown}");
         }
     }
 }

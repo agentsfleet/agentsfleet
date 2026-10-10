@@ -65,6 +65,10 @@ fn assert_connection_pair(recorder: &Capture) {
         failed.fields.get("attempt_id")
     );
     assert!(failed.fields.contains_key("error_code"));
+    // The reason is the failure's sentence and causes; the code rides its own
+    // field, so a `[UZ-…]` prefix here would only repeat it.
+    let reason = failed.fields.get("reason").map_or("", String::as_str);
+    assert!(!reason.is_empty() && !reason.contains("[UZ-"), "{reason}");
 }
 
 /// A socket that accepts the client and never answers the liveness probe is

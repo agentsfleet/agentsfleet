@@ -136,7 +136,7 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
         "a table with room admits the runner itself"
     );
 
-    metrics.seen(&runner_id, 1_760_000_000_000);
+    metrics.seen(&runner_id, 1_760_000_000_999);
     metrics.leased(&runner_id);
     metrics.leased(&runner_id);
     metrics.released(&runner_id);
@@ -146,8 +146,8 @@ fn a_runner_gauge_reads_only_the_admitted_series() {
     let seen = seen.first().expect("the length was just asserted");
     assert_eq!(
         seen.value, 1_760_000_000,
-        "the stamp is published in the seconds the census declares, not the \
-         milliseconds it is stored in"
+        "the stamp is published in the whole seconds the census declares, \
+         truncated, not the milliseconds it is stored in"
     );
 
     let leases = metrics.active_lease_readings();

@@ -20,6 +20,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use afd_core::error_code::{Coded as _, Logged};
 use redis::cluster_async::ClusterConnection;
 use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
 use redis::{Cmd, FromRedisValue, Pipeline, Value};
@@ -100,13 +101,13 @@ impl Dragonfly {
                 Ok(redis)
             }
             Err(failure) => {
-                let error_code = failure.code().as_str();
+                let Logged { error_code, reason } = failure.logged();
                 tracing::warn!(
                     attempt_id,
                     role,
                     duration_ms,
                     error_code,
-                    reason = %failure,
+                    reason,
                     event = "dragonfly_connect_failed"
                 );
                 Err(failure)

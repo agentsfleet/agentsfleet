@@ -163,6 +163,36 @@ async fn test_migrate_gives_up_when_the_lock_never_frees() {
     database.cleanup().await;
 }
 
+/// A policy with no polls refuses a FREE lock without taking it: no poll is
+/// made, so nothing can win the lock and turn the refusal into a migration.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_zero_poll_policy_refuses_without_polling() {
+    let database = TestDatabase::create().await;
+    let pool = database.open(DbRole::Migrator, &[]).await;
+
+    let connection = pool.acquire().await.unwrap();
+    let refused = afd_db::migrate::MigrationLock::acquire(
+        connection,
+        RetryPolicy::new(0, Duration::from_secs(1)),
+    )
+    .await
+    .expect_err("a policy with no polls must refuse");
+    assert!(refused.is_migration_refused(), "got {refused}");
+
+    let mut probe = pool.acquire().await.unwrap();
+    assert!(
+        afd_db::migrate::lock::probe_available(&mut probe)
+            .await
+            .unwrap(),
+        "the lock must still be free: nothing polled for it"
+    );
+
+    drop(probe);
+    pool.close().await;
+    database.cleanup().await;
+}
+
 /// The read-side lock probe answers both ways, and leaves no lock behind.
 ///
 /// `/readyz` asks this on a POOLED connection, which is why it uses a
