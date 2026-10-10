@@ -43,7 +43,7 @@ pub fn tail(subscription: Subscription) -> impl Stream<Item = Frame> + Send {
                 Ok(Received::Gap) => Some((Frame::catching_up(0), (subscription, seq))),
                 Err(closed) => {
                     let channel = subscription.channel();
-                    let reason = closed.to_string();
+                    let reason = closed.told();
                     tracing::debug!(channel, reason, event = "sse_tail_closed");
                     None
                 }

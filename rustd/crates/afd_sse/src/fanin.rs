@@ -35,9 +35,9 @@ use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream, SelectAll};
 use tokio_util::sync::CancellationToken;
 
-use crate::channel;
 use crate::error::Error;
 use crate::frame::Frame;
+use afd_dragonfly::fleet_activity_channel;
 
 /// One arrival on the shared consumer, before it becomes a frame.
 ///
@@ -161,7 +161,7 @@ impl FanIn {
                 continue;
             }
             let token = CancellationToken::new();
-            let subscription = hub.subscribe(&channel::activity(fleet_id));
+            let subscription = hub.subscribe(&fleet_activity_channel(fleet_id));
             self.arrivals
                 .push(arrivals(subscription, Arc::from(fleet_id.as_str()), token.clone()).boxed());
             self.attached.insert(fleet_id.clone(), token);
@@ -251,7 +251,18 @@ mod tests {
 
     use std::collections::BTreeSet;
 
+    use afd_dragonfly::fleet_activity_channel;
+
     use super::FanIn;
+
+    /// The channel a fan-in subscribes to is the one the publisher writes:
+    /// both read the name from the queue crate, and its bytes are pinned here
+    /// because a drift would leave every tile silent with nothing failing.
+    #[test]
+    fn a_fleets_activity_channel_is_its_id_between_the_two_affixes() {
+        // pin test: literal is the contract
+        assert_eq!(fleet_activity_channel("a"), "fleet:a:activity");
+    }
 
     #[test]
     fn a_detached_fan_in_stays_empty_and_debug_hides_transport_details() {
@@ -273,7 +284,7 @@ mod tests {
             fan_in.sync_to(&BTreeSet::from(["a".to_owned()])).attached,
             1
         );
-        let channel = crate::channel::activity("a");
+        let channel = fleet_activity_channel("a");
         server.confirm(&channel);
         server.confirm(&channel);
 
@@ -291,7 +302,7 @@ mod tests {
         let mut fan_in = FanIn::new(Some(hub.clone()));
         fan_in.sync_to(&BTreeSet::from(["a".to_owned()]));
         hub.shutdown();
-        server.publish(&crate::channel::activity("a"), r#"{"kind":"chunk"}"#);
+        server.publish(&fleet_activity_channel("a"), r#"{"kind":"chunk"}"#);
         tokio::time::timeout(std::time::Duration::from_millis(20), fan_in.next_frame())
             .await
             .expect_err("a closed hub leaves nothing to send and nothing to end");

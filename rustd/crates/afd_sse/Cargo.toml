@@ -54,3 +54,5 @@ afd_dragonfly = { workspace = true, features = ["test-util"] }
 # would prove the close path runs without ever proving the line reporting it
 # does. Output goes to a sink.
 tracing-subscriber.workspace = true
+# The trace capture a closed tail's line is read back through.
+afd_core = { workspace = true, features = ["test-util"] }
