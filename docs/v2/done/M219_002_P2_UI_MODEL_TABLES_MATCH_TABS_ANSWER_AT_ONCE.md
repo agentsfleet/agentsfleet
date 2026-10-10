@@ -103,39 +103,39 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 `display.ts` turns a provider id into the name the provider markets (`claude-fable-5` → `Fable 5`, `accounts/fireworks/models/glm-5p3-flash` → `GLM 5.3 Flash`), formats context with pinned `en-US` grouping, and prints rates as `in / cached / out` at two decimals. Both tables render the name with the exact id on hover, sort by the name and then the id (`compareModelIds`), and keep accessible labels on the id. **Implementation default:** derive the name from the id rather than add a column, because the catalogue has no display field and the id stays one hover away.
 
-- **Dimension 1.1** — Provider ids read as marketed names → Test `names a provider id the way its provider markets the model` — DONE (`ui/packages/app/lib/models/display.test.ts`)
-- **Dimension 1.2** — Both tables print one row's context and rates identically → Test `formats context and rates the way the model library prints them` — DONE (`ui/packages/app/lib/models/display.test.ts`)
-- **Dimension 1.3** — The exact id stays on the row → Test `the model cell shows the name and keeps the id on hover` — DONE (`ui/packages/app/tests/admin-models-ui.test.ts`)
+- **Dimension 1.1** — DONE — Provider ids read as marketed names → Test `names a provider id the way its provider markets the model` (`ui/packages/app/lib/models/display.test.ts`)
+- **Dimension 1.2** — DONE — Both tables print one row's context and rates identically → Test `formats context and rates the way the model library prints them` (`ui/packages/app/lib/models/display.test.ts`)
+- **Dimension 1.3** — DONE — The exact id stays on the row → Test `the model cell shows the name and keeps the id on hover` (`ui/packages/app/tests/admin-models-ui.test.ts`)
 
 ### §2 — A clicked fleet tab answers at once — DONE
 
 The tab the user clicked shows its pending state through `useLinkStatus` while its navigation is in flight, and the view replaces the last one in a single paint. A panel skeleton was built and measured: React keeps a shown fallback up for at least 300 ms (`FALLBACK_THROTTLE_MS`, `react-dom` 19.3.0), which made Chat land 210 ms after its own reads, so the panel renders with its tabs. **Implementation default:** keep the views as `?view=` queries; the pulse answers the click and routes would change every link and test.
 
-- **Dimension 2.1** — A clicked tab is marked pending before the server answers → Test `a clicked fleet tab reads as loading while its view is on the way` — DONE (`FleetTabLink.test.tsx`)
-- **Dimension 2.2** — A view paints in the same pass as its tabs, with no skeleton between → Test `renders fleet-local navigation with Chat as the focused default` — DONE (`tests/fleets-routes/detail-views.test.ts`)
-- **Dimension 2.3** — Click to first paint, measured on the running app before and after → Test `fleet_tab_paints_before_its_data` (manual) — DONE (Discovery: first change 375–674 ms → 5–11 ms)
+- **Dimension 2.1** — DONE — A clicked tab is marked pending before the server answers → Test `a clicked fleet tab reads as loading while its view is on the way` (`FleetTabLink.test.tsx`)
+- **Dimension 2.2** — DONE — A view paints in the same pass as its tabs, with no skeleton between → Test `renders fleet-local navigation with Chat as the focused default` (`tests/fleets-routes/detail-views.test.ts`)
+- **Dimension 2.3** — DONE — Click to first paint, measured on the running app before and after → Test `fleet_tab_paints_before_its_data` (manual) (Discovery: first change 375–674 ms → 5–11 ms)
 
 ### §3 — Row icons line up — DONE
 
 The invite email status moves into the Time column under the dates, reading "Invite emailed", "Email not sent" or "Email not set up" (the last keeps its tooltip). The actions cell becomes resend, copy and revoke as right-aligned ghost icons, destructive last, as Secrets does. A secret's name sits in a `max-w-trim` slot that ellipsizes past it, with the full name on hover; its copy and rename icons follow the slot, so they line up on every row.
 
-- **Dimension 3.1** — An invite row's actions are icons only → Test `an invite row's actions are icons only, right-aligned` — DONE (`MembersView.test.tsx`)
-- **Dimension 3.2** — The Time column says whether the invite email went → Test `the time column says whether the invite email went` — DONE (`MembersView.test.tsx`)
-- **Dimension 3.3** — A long secret name ellipsizes and its icons stay in line → Test `a long secret name ellipsizes and keeps its icons in line` — DONE (`SecretsList.test.tsx`)
+- **Dimension 3.1** — DONE — An invite row's actions are icons only → Test `an invite row's actions are icons only, right-aligned` (`MembersView.test.tsx`)
+- **Dimension 3.2** — DONE — The Time column says whether the invite email went → Test `the time column says whether the invite email went` (`MembersView.test.tsx`)
+- **Dimension 3.3** — DONE — A long secret name ellipsizes and its icons stay in line → Test `a long secret name ellipsizes and keeps its icons in line` (`SecretsList.test.tsx`)
 
 ### §4 — Indy eyeballs the dashboard — DONE
 
 The app runs on `http://localhost:3000` from `AGENTSFLEET_UI_ENV_FILE`; the browse tool captures each changed screen for the PR, and Indy reviews the running app.
 
-- **Dimension 4.1** — Indy accepts the four screens on the running app → Test `indy_eyeballs_the_changed_screens` (manual) — DONE (Discovery)
+- **Dimension 4.1** — DONE — Indy accepts the four screens on the running app → Test `indy_eyeballs_the_changed_screens` (manual) (Discovery)
 
 ### §5 — Shared-memory access reads as two named switches — DONE
 
 The Memory tab's two grants become a "Shared memory" fieldset of two `DashboardRow`s, each a label, a one-line description and a `Switch` on the right. **Use shared memory** — "See what other fleets in this workspace have shared." — is the read grant. **Share this fleet's memory** — "Let this fleet share what it learns with other fleets in this workspace." — is the publish grant. `Switch` is a new design-system primitive over `@radix-ui/react-switch`, as `RadioGroup` wraps Radix. A flip calls `setMemoryAccessAction` as today; a refusal leaves the switch where it was and shows the warning. **Implementation default:** the names Indy picked from three proposals.
 
-- **Dimension 5.1** — The switch states its value and flips → Test `a switch announces its state and flips on click` (`ui/packages/design-system/src/design-system/Switch.test.tsx`) — DONE
-- **Dimension 5.2** — Each grant is a named switch with what it does → Test `each shared-memory grant is a named switch with what it does` (`MemoryPanel.test.tsx`) — DONE
-- **Dimension 5.3** — A refused flip leaves the switch unchanged and says why → Test `a refused shared-memory change leaves the switch where it was` (`MemoryPanel.test.tsx`) — DONE
+- **Dimension 5.1** — DONE — The switch states its value and flips → Test `a switch announces its state and flips on click` (`ui/packages/design-system/src/design-system/Switch.test.tsx`)
+- **Dimension 5.2** — DONE — Each grant is a named switch with what it does → Test `each shared-memory grant is a named switch with what it does` (`MemoryPanel.test.tsx`)
+- **Dimension 5.3** — DONE — A refused flip leaves the switch unchanged and says why → Test `a refused shared-memory change leaves the switch where it was` (`MemoryPanel.test.tsx`)
 
 ### §6 — Packages run their latest releases — DONE
 
@@ -143,15 +143,15 @@ Every npm dependency in `cli`, `ui/packages/app`, `ui/packages/design-system` an
 
 The toolbox image moves to Debian 13.7. Its snapshot pin goes from `20260901T000000Z`, which serves 13.6, to `20261010T000000Z`. That snapshot serves 13.7 with security updates through Oct 09, 2026. The image hash changes; no code does.
 
-- **Dimension 6.1** — No package reports an update → Test `bun_outdated_reports_only_the_jsapi_alias` (package audit) — DONE
-- **Dimension 6.2** — One click on a source tab is one source change → Test `tells the caller when the operator changes source` (`ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.test.tsx`) — DONE
-- **Dimension 6.3** — The toolbox builds from Debian 13.7 and records the snapshot it used → Test `test_toolbox_carries_the_tools`, whose first step is `release_manifest_names_the_image` (kernel lane, `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox.rs`) — DONE
+- **Dimension 6.1** — DONE — No package reports an update → Test `bun_outdated_reports_only_the_jsapi_alias` (package audit)
+- **Dimension 6.2** — DONE — One click on a source tab is one source change → Test `tells the caller when the operator changes source` (`ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.test.tsx`)
+- **Dimension 6.3** — DONE — The toolbox builds from Debian 13.7 and records the snapshot it used → Test `test_toolbox_carries_the_tools`, whose first step is `release_manifest_names_the_image` (kernel lane, `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox.rs`)
 
 ### §7 — A fleet card leads with its agent and what it is doing — DONE
 
 The card's first line is the agent label with its status beside it, and the second is the live line, "Waiting for the next event." or the latest activity, in body text. The fixed sentence "Runs in a loop: wakes on events, gathers evidence." goes. The fleet's own name, the `name:` its bundle declares, moves to the footer beside "Manage fleet". **Implementation default:** the layout Indy picked from three mockups.
 
-- **Dimension 7.1** — Agent and status lead, the activity follows, the name sits in the footer → Test `leads with the agent and its status, then what it is doing, and keeps the fleet's name in the footer` — DONE (`FleetTile.test.tsx`)
+- **Dimension 7.1** — DONE — Agent and status lead, the activity follows, the name sits in the footer → Test `leads with the agent and its status, then what it is doing, and keeps the fleet's name in the footer` (`FleetTile.test.tsx`)
 
 ## Interfaces
 
