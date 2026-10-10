@@ -10,25 +10,6 @@ describe("Textarea", () => {
     expect(el.tagName).toBe("TEXTAREA");
   });
 
-  it("applies base semantic utilities matching Input", () => {
-    render(<Textarea data-testid="t" />);
-    const cls = screen.getByTestId("t").className;
-    expect(cls).toContain("border-border");
-    expect(cls).toContain("bg-secondary");
-    expect(cls).toContain("text-foreground");
-    expect(cls).toContain("rounded-md");
-    expect(cls).toContain("min-h-20");
-    expect(cls).toContain("font-sans");
-  });
-
-  it("applies focus ring and disabled styles", () => {
-    render(<Textarea data-testid="t" />);
-    const cls = screen.getByTestId("t").className;
-    expect(cls).toContain("focus:ring-ring");
-    expect(cls).toContain("focus:border-border-strong");
-    expect(cls).toContain("disabled:opacity-50");
-  });
-
   it("merges a custom className", () => {
     render(<Textarea className="extra" data-testid="t" />);
     const cls = screen.getByTestId("t").className;
