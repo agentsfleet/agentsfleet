@@ -36,6 +36,7 @@ export interface Recorder {
   readonly events: Array<{ event: string; properties: Record<string, unknown> }>;
   savedToken: string | null;
   savedSessionId: string | null;
+  saves: number;
   browserOpened: boolean;
   promptsAsked: number;
   cleared: boolean;
@@ -47,6 +48,7 @@ export const makeRecorder = (): Recorder => ({
   events: [],
   savedToken: null,
   savedSessionId: null,
+  saves: 0,
   browserOpened: false,
   promptsAsked: 0,
   cleared: false,
