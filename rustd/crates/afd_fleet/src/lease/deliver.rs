@@ -8,6 +8,7 @@
 //! the fleet's own configuration cannot be enforced.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::Access;
@@ -70,20 +71,24 @@ impl Plane {
                     .await;
             }
             // A fleet author's mistake, not an operational fault: nothing about
-            // the next poll will be different, so the event ends.
-            Err(misconfigured) => {
-                let reason = misconfigured.to_string();
+            // the next poll will be different, so the event ends. Its detail is
+            // stored, never the `[CODE]` rendering.
+            Err(misconfigured) if misconfigured.is_rejected() => {
+                let reason = misconfigured.detail();
                 return self
                     .refused(
                         &admitted.acquired,
                         label::BINDING_UNENFORCEABLE,
                         runner_id,
-                        &reason,
+                        reason,
                         now,
                     )
                     .await
                     .map(Step::Stop);
             }
+            // Anything else is a fault the next poll may not meet, so it is
+            // raised rather than ending the event for good.
+            Err(fault) => return Err(fault.into()),
         };
         self.issue_ready(runner_id, &admitted, *policy, now).await
     }
@@ -261,11 +266,10 @@ fn written(
         Err(unwritten) => {
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.
-            let code = unwritten.code().as_str();
+            let Logged { error_code, reason } = unwritten.logged();
             let fleet_id = fleet.as_str();
-            let reason = unwritten.to_string();
             tracing::warn!(
-                error_code = code,
+                error_code,
                 event = EVENT_REQUEST_FAILED,
                 fleet_id,
                 service,
