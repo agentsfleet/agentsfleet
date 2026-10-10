@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M218
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — Rust workspace hygiene; routes, wire bytes and error codes do not change
 **Categories:** API (the Rust daemon and runner crates), DOCS (the error standard and the crate-ownership record)
 **Batch:** B1 — starts once M213 merges; §1 precedes every other Section
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m218-shared-crates
+**Baseline revision:** 6e4a02127b4738f205c6ba1c8d42bce42413ed2e
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M213_001 (Rust runner cutover, Zig retired; one Pull Request (PR) with M213_002). It adds `Coded::told()` and `Coded::logged()` (`afd_core/src/error_code.rs:70,75` on its branch), the runner code this audit sweeps, and the egress slot bitmap §5 restructures. M217_001 (tests call code) is independent; both edit `rustd/crates/afd_dragonfly/src/test_util.rs`, so whichever merges second re-locates its rows.
 **Provenance:** LLM-drafted (large language model Claude Opus 5.5, Oct 08, 2026) from the M213 refactor survey and grep evidence on `main` at `9b6736e47` and `feat/m213-rust-runner-cutover` at `f9ab1450f`
@@ -44,7 +44,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 1. `docs/architecture/rust-ownership.md` — the rubric every finding is scored on (Consequence, Replacement fit, Ownership burden) and the September 2026 ownership decisions this audit does not reopen.
 2. `docs/RUST_ERROR_STANDARD.md` — `error_shell!`/`error_lifts!`, the property test for which crates take the hull, and the conformance table §2 completes.
-3. `docs/v2/reviews/m217-test-audit-findings-2026-10-08.md` — the ledger shape this milestone mirrors: provenance, reconciliation, one row per site, verifier rejections kept.
+3. The M217_001 ledger, `docs/v2/reviews/m217-test-audit-findings-2026-10-08.md` on `feat/m217-tests-call-code` (not yet on `main`) — the ledger shape this milestone mirrors: provenance, reconciliation, one row per site, verifier rejections kept.
 4. `rustd/crates/afd_validate/src/rules.rs` — `charset`, `nul_free`, `ascii_digits`, `finite`: what garde lacks, and what a hand-written bound becomes.
 5. `rustd/crates/afr_providers/src/retry.rs` — `backon` with `.when`, `.adjust` and `.notify`: the shape a hand-written retry loop becomes.
 6. `.orly/dispatch/write_rust.md` — Rust error discipline (ERR-RS), functional design (FN-RS), constants (UFS), and the reference-guideline read every Rust review cites.
