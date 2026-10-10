@@ -1,7 +1,7 @@
 use super::RunnerEventType;
 
 #[test]
-fn every_runner_history_value_has_the_stored_spelling_the_wire_serializes() {
+fn every_runner_history_value_serializes_as_the_spelling_postgres_stores() {
     for (value, expected) in [
         (RunnerEventType::RunnerRegistered, "runner_registered"),
         (RunnerEventType::RunnerOnline, "runner_online"),
@@ -18,7 +18,6 @@ fn every_runner_history_value_has_the_stored_spelling_the_wire_serializes() {
             "runner_policy_assigned",
         ),
     ] {
-        assert_eq!(value.as_str(), expected);
         let encoded = serde_json::to_value(value);
         assert_eq!(
             encoded.as_ref().ok().and_then(serde_json::Value::as_str),

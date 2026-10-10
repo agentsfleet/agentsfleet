@@ -28,7 +28,7 @@ pub struct MintApiKeyRequest<'a> {
 
 /// The one response that reveals a key's plaintext.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct MintedApiKeyResponse<'a> {
     /// The key's identifier, which every later call addresses it by.
     pub id: Cow<'a, str>,
@@ -61,7 +61,7 @@ pub struct MintCliCredentialRequest<'a> {
 ///
 /// Save the value when you receive it. No later call returns it again.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct MintedCliCredentialResponse<'a> {
     /// The credential row's identifier, which the revoke addresses it by.
     pub id: Cow<'a, str>,
