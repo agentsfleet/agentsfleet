@@ -67,6 +67,8 @@ test-util = [
 # The tracing capture, so a discarded overreaching token is proven to log its
 # reach and never the token itself.
 afd_core = { workspace = true, features = ["test-util"] }
+# The unreachable pool a platform row fails to open against.
+afd_db = { workspace = true, features = ["test-util"] }
 # A loopback GitHub for the mint's two calls, so the token request's body is
 # read by a real HTTP server rather than searched for in socket bytes.
 axum.workspace = true
