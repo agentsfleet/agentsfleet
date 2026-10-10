@@ -39,6 +39,8 @@ use sqlx::{AssertSqlSafe, PgConnection, Row as _};
 
 use crate::support::EventsLane;
 
+#[path = "integration_list_plans/bodies.rs"]
+mod bodies;
 #[path = "integration_list_plans/expected.rs"]
 mod expected;
 #[path = "integration_list_plans/walk.rs"]

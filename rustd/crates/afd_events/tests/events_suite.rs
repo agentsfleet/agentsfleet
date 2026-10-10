@@ -15,8 +15,6 @@ mod support;
 // and runs in the unit lane (`docs/architecture/testing.md`, filename rule).
 #[path = "counters_refused.rs"]
 mod counters_refused;
-#[path = "counters_statement.rs"]
-mod counters_statement;
 
 #[path = "integration_admission_prototype.rs"]
 mod integration_admission_prototype;

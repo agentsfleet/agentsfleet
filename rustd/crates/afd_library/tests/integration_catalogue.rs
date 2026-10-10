@@ -25,6 +25,8 @@ mod gallery_ties;
 mod owned_paging;
 #[path = "integration_catalogue/source_imports.rs"]
 mod source_imports;
+#[path = "integration_catalogue/workspace_entries.rs"]
+mod workspace_entries;
 #[path = "integration_catalogue/workspace_gallery.rs"]
 mod workspace_gallery;
 
