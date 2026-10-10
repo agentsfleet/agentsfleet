@@ -142,7 +142,11 @@ pub(crate) fn sweep(kernel: &impl Kernel) -> Result<()> {
         .collect();
     slots.sort_unstable_by_key(|slot| slot.index());
     slots.dedup();
-    for claim in slots.into_iter().filter_map(Claim::exactly) {
+    let pool = kernel.slots();
+    for claim in slots
+        .into_iter()
+        .filter_map(|slot| Claim::exactly(pool, slot))
+    {
         let slot = claim.slot().index();
         match scope::remove(kernel, claim.slot()) {
             Ok(()) => {
