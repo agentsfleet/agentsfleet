@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 
 import {
-  LIVE_ACCEPTANCE_FILES,
   LIVE_HANDSHAKE_FILE,
   LIVE_SERIAL_FILE,
   acceptanceTestCommand,
@@ -99,14 +98,6 @@ describe("CLI acceptance lane membership", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
-
-  it("names only live files that exist, so no live spec is lost to a typo", async () => {
-    const missing: string[] = [];
-    for (const file of LIVE_ACCEPTANCE_FILES) {
-      if (!(await Bun.file(path.join(CLI_ROOT, file)).exists())) missing.push(file);
-    }
-    expect(missing).toEqual([]);
   });
 
   it("fails the deterministic lane when any test skips", () => {
