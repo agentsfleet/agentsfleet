@@ -77,7 +77,6 @@
     "svix": "^2.8.0",
     "tailwindcss": "^4.3.3",
     "typescript": "7.0.2",
-    "typescript-jsapi": "npm:typescript@6.0.2",
     "vitest": "5.0.3"
   }
 }

@@ -185,8 +185,9 @@ navigation, explanatory prose, or whole table. Keep route labels and recovery ac
 
 `.orly/audits/design-tokens.sh` checks named utilities, flat fills, and consumer font ownership.
 Component tests verify defaults and state behavior.
-`ui/packages/app/tests/interface-typography.test.ts` checks every app page and component
-for font overrides on shared interface primitives, including aliased imports and named classes.
+`scripts/check_app_source.py` (rule app-interface-font, run by `make lint-app`) checks every
+app page and component for font overrides on shared interface primitives, including aliased
+imports and named classes.
 Browser review checks both themes,
 narrow screens, and loading, empty, error, selected, and disabled states. Static checks
 cannot determine whether arbitrary prose is a technical value; that remains a review duty.
