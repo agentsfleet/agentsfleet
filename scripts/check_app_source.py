@@ -13,6 +13,7 @@ Exit 0 clean, 1 with one line per finding, 2 on a usage error.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -41,6 +42,10 @@ JOURNEYS_PROJECT = "journeys"
 EXECUTION_SPEC = "fleet-execution.spec.ts"
 ACCEPTANCE_CONFIG = "playwright.acceptance.config.ts"
 PLAYWRIGHT = "node_modules/.bin/playwright"
+# The specs throw at import when NEXT_PUBLIC_API_URL is unset, and the lint job
+# sets no backend. Listing never connects, so a reserved, unroutable origin
+# lets the specs load without pointing them at anything real.
+LISTING_API_URL = "https://listing.invalid"
 
 # --- The analytics catalog ---------------------------------------------------
 EVENTS_MODULE = f"{APP}/lib/analytics/events.ts"
@@ -91,23 +96,27 @@ def check_acceptance_suite(root: Path) -> list[lib.Finding]:
     return found
 
 
-def journey_findings(listing: str) -> list[lib.Finding]:
+def journey_findings(listing: subprocess.CompletedProcess[str]) -> list[lib.Finding]:
     """The execution journey must be among the journeys project's tests."""
-    if f"[{JOURNEYS_PROJECT}] › {EXECUTION_SPEC}" in listing:
+    where = f"{APP}/{ACCEPTANCE_CONFIG}"
+    if listing.returncode != 0:
+        error = listing.stderr.strip() or listing.stdout.strip() or f"exit {listing.returncode}"
+        return [lib.Finding(where, 1, "app-journey-listed", f"Playwright could not list the {JOURNEYS_PROJECT} project: {error}")]
+    if f"[{JOURNEYS_PROJECT}] › {EXECUTION_SPEC}" in listing.stdout:
         return []
-    return [lib.Finding(f"{APP}/{ACCEPTANCE_CONFIG}", 1, "app-journey-listed", f"the {JOURNEYS_PROJECT} project does not run {EXECUTION_SPEC}")]
+    return [lib.Finding(where, 1, "app-journey-listed", f"the {JOURNEYS_PROJECT} project does not run {EXECUTION_SPEC}")]
 
 
-def list_journeys(root: Path) -> str | None:
+def list_journeys(root: Path) -> subprocess.CompletedProcess[str] | None:
     """Playwright's listing of the journeys project, or None without Playwright."""
     playwright = root / APP / PLAYWRIGHT
     if not playwright.exists():
         return None
-    listing = subprocess.run(
-        [str(playwright), "test", "--list", f"--project={JOURNEYS_PROJECT}", "-c", ACCEPTANCE_CONFIG],
+    return subprocess.run(
+        [str(playwright), "test", "--list", "--reporter=list", f"--project={JOURNEYS_PROJECT}", "-c", ACCEPTANCE_CONFIG],
         cwd=root / APP, capture_output=True, text=True, check=False,
+        env={**os.environ, "NEXT_PUBLIC_API_URL": LISTING_API_URL},
     )
-    return listing.stdout
 
 
 def check_execution_journey(root: Path) -> list[lib.Finding]:

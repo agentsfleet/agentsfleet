@@ -24,7 +24,13 @@ import check_app_jsx as jsx
 import check_app_source as checker
 
 APP = checker.APP
-LISTING = f"  [journeys] › {checker.EXECUTION_SPEC}:12:3 › a fleet executes\nTotal: 1 test in 1 file\n"
+
+
+def listed(stdout: str, returncode: int = 0, stderr: str = "") -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
+
+
+LISTING = listed(f"  [journeys] › {checker.EXECUTION_SPEC}:12:3 › a fleet executes\nTotal: 1 test in 1 file\n")
 
 EVENTS_TS = 'export const EVENTS = {\n  fleet_created: "fleet_created",\n} as const;\n'
 SEED_TS = "export function triggerMd(name: string) { return name; }\n"
@@ -63,7 +69,7 @@ def clean_tree() -> dict[str, str]:
     }
 
 
-def lint_tree(files: dict[str, str], listing: str | None = LISTING) -> tuple[int, str]:
+def lint_tree(files: dict[str, str], listing: subprocess.CompletedProcess[str] | None = LISTING) -> tuple[int, str]:
     original = checker.list_journeys
     checker.list_journeys = lambda root: listing
     try:
@@ -111,10 +117,17 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
                 self.assertIn(f": {rule}: ", output)
 
     def test_a_journeys_project_that_drops_the_execution_spec_is_refused(self) -> None:
-        code, output = lint_tree(clean_tree(), listing="  [journeys] › other.spec.ts:1:1 › x\n")
-        self.assertIn(": app-journey-listed: ", output)
+        code, output = lint_tree(clean_tree(), listing=listed("  [journeys] › other.spec.ts:1:1 › x\n"))
+        self.assertIn(": app-journey-listed: the journeys project does not run", output)
         code, output = lint_tree(clean_tree(), listing=None)
         self.assertIn("Playwright is not installed", output)
+
+    def test_a_listing_that_fails_reports_playwrights_error_not_a_missing_journey(self) -> None:
+        error = "Error: NEXT_PUBLIC_API_URL is unset — refusing to guess a backend."
+        code, output = lint_tree(clean_tree(), listing=listed("Total: 0 tests in 0 files\n", returncode=1, stderr=error))
+        self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
+        self.assertIn(f": app-journey-listed: Playwright could not list the journeys project: {error}", output)
+        self.assertNotIn("does not run", output)
 
     def test_a_retired_formatter_named_only_in_a_comment_is_not_a_finding(self) -> None:
         code, output = lint_tree(with_file(f"{APP}/lib/when.ts", "// formatDate was deleted.\nexport const x = 1;\n"))
