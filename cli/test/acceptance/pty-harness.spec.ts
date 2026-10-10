@@ -1,11 +1,12 @@
 /**
- * Unit tests for the PtyProcess harness itself
+ * Self-tests for the PtyProcess harness itself
  * (test/acceptance/fixtures/pty.ts).
  *
  * The acceptance login spec leans entirely on this harness to drive the
  * device flow under a real pseudo-terminal, so a regression here silently
  * rots the only end-to-end login coverage we have. These tests run in the
- * unit suite (no live API, no DEV-tenant writes): they spawn the built CLI
+ * deterministic acceptance lane beside the specs that use the harness (no live
+ * API, no DEV-tenant writes): they spawn the built CLI
  * with a fully-composed hermetic env and exercise nothing but commands whose
  * output and exit code are fixed by `cli.ts` / `cli-tree.ts` — `--version`
  * (prints `agentsfleet v<semver>`, exits 0), `--help` (prints `Usage:`, exits
@@ -33,11 +34,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { composeEnv } from "./acceptance/fixtures/cli.js";
-import { PtyProcess } from "./acceptance/fixtures/pty.ts";
+import { composeEnv } from "./fixtures/cli.js";
+import { PtyProcess } from "./fixtures/pty.ts";
 
 // Worktree mode runs `node dist/bin/agentsfleet.js` — the same artifact the
-// acceptance suite drives. The unit suite's `npm run build` keeps dist/ fresh.
+// acceptance suite drives. The lane's `npm run build` keeps dist/ fresh.
 const BINARY_MODE = "worktree" as const;
 
 // argv whose stdout/stderr + exit code are pinned by cli.ts / cli-tree.ts.
