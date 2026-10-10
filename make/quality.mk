@@ -59,6 +59,11 @@ RUSTD_DIR := rustd
 
 lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
+	@# What no compiler pass sees: one component name per schema type, every
+	@# tracked schema/*.sql in the migration list, no bundle promising a
+	@# retired gate, the stream ceiling on a measured rung.
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source.py
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- cargo fmt --check
 	@# --all-features, not the default set: a crate's `test-util` feature gates
 	@# its mockable input/output core (M-MOCKABLE-SYSCALLS), and without this

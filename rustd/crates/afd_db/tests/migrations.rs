@@ -1,12 +1,11 @@
-//! The migration list is the `schema/` directory, spelled out by hand.
+//! The migration list, held to the shape the migrator relies on.
 //!
 //! The integration half proves a fresh database ends up with the right rows.
-//! This half proves the list those rows come from cannot drift from the files
-//! it names. `afd_db::migration` writes every filename out rather than globbing
-//! the directory — deliberately, so the set does not depend on the state of a
-//! working tree — and a hand-written list is exactly what falls behind. A
-//! `.sql` dropped into `schema/` without its `migration!()` entry fails here,
-//! in the fast lane, rather than in production as a table nothing created.
+//! This half proves the hand-written list in `afd_db::migration` is ordered,
+//! one slot per file, each applying as its filename's number. That every
+//! tracked `schema/*.sql` has an entry is checked by a lint
+//! (`scripts/check_rust_source.py`, rule `rust-migration-list`), which reads
+//! both listings without running anything.
 #![expect(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -27,36 +26,6 @@ fn repo_root() -> PathBuf {
         .nth(3)
         .unwrap()
         .to_path_buf()
-}
-
-/// The `.sql` files on disk, by name.
-fn schema_directory() -> BTreeSet<String> {
-    std::fs::read_dir(repo_root().join("schema"))
-        .expect("schema/ must exist")
-        .filter_map(|entry| {
-            let name = entry.ok()?.file_name().to_string_lossy().into_owned();
-            Path::new(&name)
-                .extension()
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("sql"))
-                .then_some(name)
-        })
-        .collect()
-}
-
-/// Two lists, one set: the files on disk and the ones this crate ships.
-#[test]
-fn test_migration_list_matches_schema_directory() {
-    let ours: BTreeSet<String> = MIGRATIONS
-        .iter()
-        .map(|migration| migration.name().to_owned())
-        .collect();
-    let directory = schema_directory();
-
-    assert_eq!(
-        ours, directory,
-        "the migration list and schema/ disagree — a file was added or removed without updating src/migration.rs"
-    );
-    assert_eq!(MIGRATIONS.len(), ours.len(), "a filename is listed twice");
 }
 
 /// The version is the slot number, derived rather than restated.

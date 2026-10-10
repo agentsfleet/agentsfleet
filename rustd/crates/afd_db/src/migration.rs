@@ -13,9 +13,10 @@
 //! that scans `schema/`. A scan cannot tell a file that belongs in the ledger
 //! from one that was dropped in the directory, and it would make the migration
 //! set depend on the state of a working tree. The list is explicit, and
-//! `test_migration_list_matches_schema_directory` compares it against the
-//! directory — so a file added to `schema/` and missing here fails a test
-//! rather than a production migrate.
+//! `scripts/check_rust_source.py` (rule `rust-migration-list`, in
+//! `make lint-all`) compares it against the tracked `schema/*.sql` files — so
+//! a file added to `schema/` and missing here fails the lint rather than a
+//! production migrate.
 
 /// One versioned schema migration: the file, its slot number, and its SQL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
