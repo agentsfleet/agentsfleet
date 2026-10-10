@@ -7,11 +7,15 @@ root directory so their own tests can point them at a fixture tree.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
+from typing import Iterator
 
 sys.dont_write_bytecode = True
 
@@ -144,3 +148,25 @@ def run(argv: list[str], label: str, lint) -> int:
         print(f"usage: {Path(sys.argv[0]).name} [{ROOT_FLAG} <dir>]", file=sys.stderr)
         return EXIT_USAGE
     return report(lint(root), label)
+
+
+@contextlib.contextmanager
+def fixture_repository(files: dict[str, str]) -> Iterator[Path]:
+    """A temporary git repository holding `files`, for a lint's own tests.
+
+    The GIT_* variables a hook exports are dropped while it lives: under
+    `git commit` the pre-commit hook exports GIT_INDEX_FILE, and left in place
+    the fixture's `git add` would write into the index of the running commit.
+    """
+    saved = {key: os.environ.pop(key) for key in list(os.environ) if key.startswith("GIT_")}
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path, text in files.items():
+                (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
+                (root / relative_path).write_text(text, encoding="utf-8")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+            yield root
+    finally:
+        os.environ.update(saved)

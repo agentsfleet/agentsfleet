@@ -1,21 +1,23 @@
 // The matrix fixture is only a single source of truth if it cannot fall behind
-// the command tree. These tests walk the real tree and diff what it actually
+// the command tree. These checks walk the real tree and diff what it actually
 // declares against what the fixture enumerates, so a command that lands with a
-// required argument and no matrix row fails here rather than going unswept.
+// required argument and no matrix row fails here rather than going unswept by
+// argument-negatives.spec.ts. They audit the acceptance fixture, so they run
+// in the acceptance lane that uses it, not the unit lane.
 //
-// This is the invariant M171 was opened for: `events` and `steer` both declared
-// <fleet_id> while the fixture listed neither, and nothing failed.
+// `events` and `steer` both once declared <fleet_id> while the fixture listed
+// neither, and nothing failed.
 
 import { describe, expect, test } from "bun:test";
 import { Param } from "effect/cli";
 
-import { rootCommand } from "../src/program/tree/root.command.ts";
-import { childrenOf, type CommandNode } from "../src/program/tree/resolve-path.ts";
+import { rootCommand } from "../../src/program/tree/root.command.ts";
+import { childrenOf, type CommandNode } from "../../src/program/tree/resolve-path.ts";
 import {
   ACTION_GROUP_NODES,
   GROUP_NODES,
   REQUIRES_POSITIONAL_ARG,
-} from "./acceptance/fixtures/command-matrix.ts";
+} from "./fixtures/command-matrix.ts";
 
 const OPTIONAL_TAG = "Optional";
 

@@ -30,6 +30,9 @@ lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsc)
 lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsc..."
 	@cd cli && bun run lint
+	@echo "→ [agentsfleet] Source rules: one env spelling, escapes in the palette, detail tables, live citations..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source.py
 	@echo "✓ [agentsfleet] Lint passed"
 
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
