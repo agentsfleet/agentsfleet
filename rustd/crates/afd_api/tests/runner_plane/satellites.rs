@@ -145,8 +145,14 @@ async fn runner_conflicts_name_the_state_that_refuses_them() {
         let refused = send(&fenced, method.clone(), path, Some(RUNNER_TOKEN), body).await;
         assert_eq!(refused.status(), StatusCode::CONFLICT, "{method} {path}");
         let document = json_body(refused).await;
-        assert_eq!(document["error_code"], "UZ-RUN-005", "{method} {path}");
-        assert_eq!(document["current_state"], "superseded", "{method} {path}");
+        assert_eq!(
+            (document.get("error_code"), document.get("current_state")),
+            (
+                Some(&serde_json::json!("UZ-RUN-005")),
+                Some(&serde_json::json!("superseded"))
+            ),
+            "{method} {path}"
+        );
     }
 
     let revoked = Fleet::new()
@@ -163,8 +169,13 @@ async fn runner_conflicts_name_the_state_that_refuses_them() {
     .await;
     assert_eq!(minted.status(), StatusCode::CONFLICT);
     let document = json_body(minted).await;
-    assert_eq!(document["error_code"], "UZ-GH-001");
-    assert_eq!(document["current_state"], "reconnect_required");
+    assert_eq!(
+        (document.get("error_code"), document.get("current_state")),
+        (
+            Some(&serde_json::json!("UZ-GH-001")),
+            Some(&serde_json::json!("reconnect_required"))
+        )
+    );
 }
 
 /// A batch of live-tail frames is acknowledged with `{"ok":true}`, not a bare

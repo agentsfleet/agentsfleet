@@ -32,8 +32,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `orb -m afr-kernel cat /etc/debian_version` prints `13.` followed by a point release, `make test-runner-kernel` passes there, and no doc names a tool the toolbox manifest does not install.
-**Problem:** The local kernel-lane machine runs Ubuntu 24.04.5 while production runner hosts run Debian 13, so a host-userland difference can pass locally and fail on a host. Three docs also disagree with the code: the toolbox page lists Chromium, Codex and Claude Code, which the image does not hold; a CI comment calls the build debootstrap; and a Cargo comment names a bookworm deploy image.
+**Goal (testable):** `orb -m afr-kernel cat /etc/debian_version` prints `13.` followed by a point release, `make test-runner-kernel` passes there, and the toolbox paragraph and its release-record sentence name only what the toolbox manifest installs.
+**Problem:** The local kernel-lane machine runs Ubuntu 24.04.5 while production runner hosts run Debian 13, so a host-userland difference can pass locally and fail on a host. Three docs also disagree with the code: the toolbox page lists Chromium, Codex and Claude Code, which the image does not hold; a Continuous Integration (CI) comment calls the build debootstrap; and a Cargo comment names `debian:bookworm-slim` where the daemon image is distroless `static-debian12`.
 **Solution summary:** Recreate the OrbStack machine `afr-kernel` from the `debian:trixie` image with the packages the kernel lane needs, and write its setup as a short doc so the machine can be rebuilt by anyone. OrbStack's own kernel stays, so the sandbox's kernel features do not change. Correct the three doc lines to what the code does today.
 
 ## PR Intent & comprehension handshake
@@ -58,6 +58,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/runner_execution.md` | EDIT | The toolbox paragraph names the manifest's tools only |
 | `.github/workflows/test-integration-rustd.yml` | EDIT | The timeout comment says mmdebstrap; a CI file, so Indy approves the edit at EXECUTE |
 | `rustd/Cargo.toml` | EDIT | The `tzdb-zoneinfo` comment names the image the daemon actually ships in |
+| `docs/v2/{pending,active,done}/M220_001_P2_DOCS_INFRA_KERNEL_VM_RUNS_DEBIAN_TRIXIE.md` | EDIT | This spec, moved by CHORE(open) and CHORE(close) |
+| `playbooks/operations/acceptance/baselines/M220_001-<revision>.md` | CREATE | The baseline evidence the header promises, named for the comparison revision |
 
 ## Applicable Rules
 
@@ -92,11 +94,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §3 — The docs name what the code does
 
-The toolbox paragraph lists the manifest's packages and uv. The CI comment says mmdebstrap. The Cargo comment names the daemon's real base image, after confirming that image ships `/usr/share/zoneinfo`.
+The toolbox paragraph lists the manifest's packages and uv, and the release-record sentence names uv as the one binary from outside Debian. The CI comment says mmdebstrap. The Cargo comment names the daemon's real base image, after confirming that image ships `/usr/share/zoneinfo`.
 
-- **Dimension 3.1** — No doc names a toolbox tool the manifest lacks → Test `toolbox_doc_matches_manifest` (grep, rubric R2)
+- **Dimension 3.1** — The toolbox paragraph and release-record sentence name only the manifest's tools → Test `toolbox_doc_matches_manifest` (grep, rubric R2)
 - **Dimension 3.2** — No build comment says debootstrap → Test `no_debootstrap_mention` (grep, rubric R3)
-- **Dimension 3.3** — No comment names a bookworm deploy image → Test `no_bookworm_deploy_image` (grep, rubric R4)
+- **Dimension 3.3** — No comment names `debian:bookworm-slim` → Test `no_bookworm_slim_image` (grep, rubric R4)
 
 ## Interfaces
 
@@ -129,19 +131,19 @@ N/A — no invariants: the work changes a developer machine and documentation.
 | 1.1 | manual | `kernel_vm_is_debian_trixie` | `orb -m afr-kernel cat /etc/debian_version` → starts with `13.`; the developer pastes the line into PR Session Notes |
 | 1.2 | integration | `test_toolbox_carries_the_tools` | `make test-runner-kernel` on the Debian machine → every kernel-lane test passes |
 | 2.1 | manual | `kernel_vm_setup_doc_rebuilds_the_machine` | The doc's commands on a fresh machine name → 1.1 and 1.2 hold; the developer records the machine name and lane result in PR Session Notes |
-| 3.1 | unit | `toolbox_doc_matches_manifest` | `git grep -nE 'Chromium\|chromium-headless-shell\|Claude Code' -- docs/architecture/runner_execution.md` → no output |
+| 3.1 | unit | `toolbox_doc_matches_manifest` | `git grep -n -e chromium-headless-shell -e 'Codex and Claude Code command-line tools' -e 'uv, the coding-engine command-line tools' -- docs/architecture/runner_execution.md` → no output (today: lines 164 and 166) |
 | 3.2 | unit | `no_debootstrap_mention` | `git grep -n debootstrap -- .github rustd scripts make` → no output |
-| 3.3 | unit | `no_bookworm_deploy_image` | `git grep -n 'bookworm' -- rustd/Cargo.toml` → no output |
+| 3.3 | unit | `no_bookworm_slim_image` | `git grep -n 'bookworm-slim' -- rustd/Cargo.toml` → no output |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The kernel lane runs on Debian 13 (§1) | `orb -m afr-kernel cat /etc/debian_version` | starts with `13.` | P1 | |
-| R2 | The toolbox doc names only the image's tools (§3) | `git grep -nE 'Chromium\|chromium-headless-shell\|Claude Code' -- docs/architecture/runner_execution.md` | no output | P1 | |
+| R2 | The toolbox doc names only the image's tools (§3) | `git grep -n -e chromium-headless-shell -e 'Codex and Claude Code command-line tools' -e 'uv, the coding-engine command-line tools' -- docs/architecture/runner_execution.md` | no output | P1 | |
 | R3 | No build comment says debootstrap (§3) | `git grep -n debootstrap -- .github rustd scripts make` | no output | P2 | |
-| R4 | No comment names a bookworm deploy image (§3) | `git grep -n 'bookworm' -- rustd/Cargo.toml` | no output | P2 | |
-| R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R4 | No comment names `debian:bookworm-slim` (§3) | `git grep -n 'bookworm-slim' -- rustd/Cargo.toml` | no output | P2 | |
+| R5 | This spec's diff stays inside Files Changed | `git diff --name-only $(git log --diff-filter=A --format=%H -- 'docs/v2/*/M220_001_*.md' \| tail -1)..HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint passes | `make lint-all` | exit 0 | P0 | |
