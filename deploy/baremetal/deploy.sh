@@ -192,10 +192,12 @@ fetch_release() {
 
 # ── Systemd sync ─────────────────────────────────────────────────────────────
 
+# `src` and `unit_dir` are injectable so deploy_test.sh can sync a fixture into
+# a scratch directory (production passes nothing).
 sync_systemd_unit() {
-  local src="${HOST_DEPLOY_DIR}/${SERVICE_NAME}"
+  local src="${1:-${HOST_DEPLOY_DIR}/${SERVICE_NAME}}" unit_dir="${2:-$SYSTEMD_DIR}"
   [[ -f "$src" ]] || return 0
-  cp "$src" "${SYSTEMD_DIR}/${SERVICE_NAME}"
+  cp "$src" "${unit_dir}/${SERVICE_NAME}"
   systemctl daemon-reload
   log "Synced ${SERVICE_NAME} → systemd."
 }
