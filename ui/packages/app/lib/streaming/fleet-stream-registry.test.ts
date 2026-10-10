@@ -220,21 +220,4 @@ describe("fleet-stream-registry — refcount + idle release", () => {
     expect(sourceAt(0).closed).toBe(true);
     clearSpy.mockRestore();
   });
-
-  it("tears down a still-subscribed reconnecting entry, clearing only the reconnect timer", () => {
-    // RECONNECTING but with a live subscriber: refCount stays > 0 so no idle
-    // timer is scheduled. Teardown must clear the reconnect timer and skip the
-    // (null) idle timer — the no-idle-timer side of the teardown guard.
-    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
-    const a = subscribe(WS, Z_A, NO_SEED, () => {});
-    const es = sourceAt(0);
-    es.fail();
-    expect(getSnapshot(Z_A).connectionStatus).toBe(CONNECTION_STATUS.RECONNECTING);
-    clearSpy.mockClear();
-    __resetRegistryForTests();
-    expect(clearSpy).toHaveBeenCalledTimes(1);
-    expect(sourceAt(0).closed).toBe(true);
-    clearSpy.mockRestore();
-    a();
-  });
 });

@@ -252,7 +252,7 @@ export function subscribeFleet(
   set.add(listener);
   const subscribedSet = set;
   entry.refCount += 1;
-  return () => releaseFleet(workspaceId, fleetId, listener, subscribedSet);
+  return () => releaseFleet(entry, fleetId, listener, subscribedSet);
 }
 
 export function subscribeWorkspaceFrames(
@@ -263,7 +263,7 @@ export function subscribeWorkspaceFrames(
   const entry = ensureEntry(workspaceId, backfill);
   entry.workspaceListeners.add(listener);
   entry.refCount += 1;
-  return () => releaseWorkspaceFrameListener(workspaceId, listener);
+  return () => releaseWorkspaceFrameListener(entry, listener);
 }
 
 // Observe the workspace connection's health (for the wall's "catching up" /
@@ -278,32 +278,28 @@ export function subscribeStatus(
   entry.statusListeners.add(listener);
   entry.refCount += 1;
   listener(entry.status);
-  return () => releaseStatus(workspaceId, listener);
+  return () => releaseStatus(entry, listener);
 }
 
+// A handle releases the entry it subscribed to. The entry outlives every
+// handle: teardown runs only from the idle timer, once the last one released.
 function releaseFleet(
-  workspaceId: string,
+  entry: Entry,
   fleetId: string,
   listener: FleetFrameListener,
   listeners: Set<FleetFrameListener>,
 ): void {
-  const entry = REGISTRY.get(workspaceId);
-  if (!entry) return;
   listeners.delete(listener);
   if (listeners.size === 0) entry.fleetListeners.delete(fleetId);
   decRef(entry);
 }
 
-function releaseStatus(workspaceId: string, listener: StatusListener): void {
-  const entry = REGISTRY.get(workspaceId);
-  if (!entry) return;
+function releaseStatus(entry: Entry, listener: StatusListener): void {
   entry.statusListeners.delete(listener);
   decRef(entry);
 }
 
-function releaseWorkspaceFrameListener(workspaceId: string, listener: WorkspaceFrameListener): void {
-  const entry = REGISTRY.get(workspaceId);
-  if (!entry) return;
+function releaseWorkspaceFrameListener(entry: Entry, listener: WorkspaceFrameListener): void {
   entry.workspaceListeners.delete(listener);
   decRef(entry);
 }
