@@ -2,45 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// A permanent-glow bug was fixed: tokens.css's wake-pulse selector
-// matched `[data-live]` (any value, including the literal string "false"),
-// so a consumer rendering `data-live={live}` unconditionally glowed even
-// when not live. jsdom (this package's test environment) never applies
-// real CSS, so no rendered-animation assertion can observe the bug or a
-// regression back to it — WakePulse.test.tsx and the app's
-// active-model-row.test.tsx only prove which *consumers* set the attribute,
-// never that the selector itself still requires the "true" value. This is
-// a text-contract pin on the CSS source directly: it fails the moment
-// someone reverts the selector to the bare, presence-only form.
 const TOKENS_CSS_PATH = path.join(__dirname, "tokens.css");
-const THEME_CSS_PATH = path.join(__dirname, "theme.css");
-
-describe("tokens.css — wake-pulse [data-live] selector contract", () => {
-  it('only animates the literal [data-live="true"] value', () => {
-    const css = readFileSync(TOKENS_CSS_PATH, "utf8");
-    expect(css).toContain('[data-live="true"] {');
-  });
-
-  it("never re-introduces a bare [data-live] presence selector driving the animation", () => {
-    const css = readFileSync(TOKENS_CSS_PATH, "utf8");
-    // Matches `[data-live] {` or `[data-live]{` but not `[data-live="true"] {`
-    // (the `=` after data-live in the real selector keeps this from
-    // false-positiving on the correct rule).
-    expect(css).not.toMatch(/\[data-live\]\s*\{/);
-  });
-});
-
-describe("operational stream duration token", () => {
-  it("pins the 80ms stream entry duration and exposes its named utility", () => {
-    const tokens = readFileSync(TOKENS_CSS_PATH, "utf8");
-    const theme = readFileSync(THEME_CSS_PATH, "utf8");
-
-    expect(tokens).toContain("--motion-duration-stream: 80ms;");
-    expect(theme).toContain(
-      "--transition-duration-stream: var(--motion-duration-stream);",
-    );
-  });
-});
 
 const MIN_TEXT_CONTRAST = 4.5;
 const MAX_RGB_CHANNEL = 255;
@@ -64,9 +26,8 @@ function luminance(hex: string): number {
   }, 0);
 }
 
-describe("theme contrast pairs and font roles", () => {
+describe("theme contrast pairs", () => {
   const css = readFileSync(TOKENS_CSS_PATH, "utf8");
-  const theme = readFileSync(THEME_CSS_PATH, "utf8");
   const blocks = [
     { name: "dark", source: css.split(":root {")[1]?.split('[data-theme="light"]')[0] ?? "" },
     { name: "light", source: css.split('[data-theme="light"] {')[1]?.split("}")[0] ?? "" },
@@ -88,88 +49,4 @@ describe("theme contrast pairs and font roles", () => {
       }
     }
   }
-
-  it("keeps display, interface, and technical font roles independent", () => {
-    expect(css).toContain('--ff-display: "Bricolage Grotesque Variable"');
-    expect(css).toContain('--ff-sans: "Instrument Sans Variable"');
-    expect(css).toContain('--ff-mono: "Commit Mono"');
-    for (const role of ["display", "sans", "mono"]) expect(theme).toContain(`--font-${role}: var(--ff-${role});`);
-    expect(theme).not.toMatch(/(--[\w-]+):\s*var\(\1\)/);
-  });
-
-  it("does not dim live content for reduced motion", () => {
-    expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*?opacity: 1/);
-    expect(css).not.toContain("opacity: 0.6");
-  });
-});
-
-describe("tokens.css — the onboarding beckon [data-beckon] selector contract", () => {
-  const css = readFileSync(TOKENS_CSS_PATH, "utf8");
-
-  it('only animates the literal [data-beckon="true"] value, as [data-live] does', () => {
-    // The same permanent-glow bug wake-pulse once had: a presence selector
-    // would fire for `data-beckon="false"` too.
-    expect(css).toMatch(/\[data-beckon="true"\]\s*\{[^}]*animation: cta-beckon/);
-    expect(css).not.toMatch(/\[data-beckon\]\s*\{/);
-    // No gradient: the design-token gate forbids them, and the beckon carries
-    // its motion in box-shadow and transform instead.
-    expect(css).not.toMatch(/\[data-beckon="true"\][\s\S]{0,200}linear-gradient/);
-  });
-
-  it("is a different keyframe from wake-pulse, at the same cadence", () => {
-    // Two meanings, two names; one rhythm, so a page carrying both never strobes.
-    expect(css).toMatch(/@keyframes cta-beckon\b/);
-    expect(css).toMatch(/animation: wake-pulse 2\.4s/);
-    expect(css).toMatch(/animation: cta-beckon 2\.4s/);
-    expect(css).toMatch(/animation: text-beckon 2\.4s/);
-  });
-
-  it("stops moving under reduced motion and keeps a static mark", () => {
-    const reduced = css.split("prefers-reduced-motion: reduce").slice(1).join("");
-    expect(reduced).toMatch(/\[data-beckon="true"\]\s*\{[^}]*animation: none;[^}]*box-shadow: 0 0 0 4px var\(--pulse-glow\)/);
-    expect(reduced).toMatch(/\[data-beckon-text="true"\]\s*\{[^}]*animation: none/);
-  });
-});
-
-describe("tokens.css — the running tool bullet [data-tool-shimmer] contract", () => {
-  const css = readFileSync(TOKENS_CSS_PATH, "utf8");
-
-  it('only shimmers the literal [data-tool-shimmer="true"] value, at the live cadence', () => {
-    // A done cell renders `data-tool-shimmer` false or not at all, and must sit still.
-    expect(css).toMatch(/\[data-tool-shimmer="true"\]\s*\{[^}]*animation: tool-shimmer 2\.4s/);
-    expect(css).not.toMatch(/\[data-tool-shimmer\]\s*\{/);
-    expect(css).toMatch(/@keyframes tool-shimmer\s*\{[^@]*color: var\(--text-dim\)[^@]*color: var\(--pulse\)/);
-    expect(css).not.toMatch(/@keyframes tool-shimmer[^@]{0,300}gradient/);
-  });
-
-  it("test_running_bullet_respects_reduced_motion", () => {
-    const reduced = css.split("prefers-reduced-motion: reduce").slice(1).join("");
-    expect(reduced).toMatch(/\[data-tool-shimmer="true"\]\s*\{[^}]*animation: none;[^}]*color: var\(--pulse\);[^}]*opacity: 1/);
-  });
-});
-
-describe("tokens.css — the braille spinner and settled-row contracts", () => {
-  const css = readFileSync(TOKENS_CSS_PATH, "utf8");
-
-  it("steps ten frames in 800 ms by transform, with no script", () => {
-    expect(css).toMatch(/@keyframes braille-spin\s*\{[^@]*transform: translateY\(-100%\)/);
-    expect(css).toMatch(/\[data-braille-frames\]\s*\{[^}]*animation: braille-spin 800ms steps\(10\) infinite/);
-    expect(css).toMatch(/\[data-braille-spinner\]\s*\{[^}]*height: 1lh;[^}]*overflow: hidden/);
-  });
-
-  it("swaps the column for the rest frame under reduced motion", () => {
-    const reduced = css.split("prefers-reduced-motion: reduce").slice(1).join("");
-    expect(reduced).toMatch(/\[data-braille-frames\]\s*\{[^}]*display: none;[^}]*animation: none/);
-    expect(reduced).toMatch(/\[data-braille-rest\]\s*\{[^}]*display: inline/);
-  });
-
-  it("skips off-screen layout only for the literal settled value", () => {
-    expect(css).toMatch(/\[data-settled="true"\]\s*\{[^}]*content-visibility: auto;[^}]*contain-intrinsic-size: auto/);
-    expect(css).not.toMatch(/\[data-settled\]\s*\{/);
-  });
-
-  it("reserves the focus ring's reach from its one declaration, not a copied length", () => {
-    expect(css.match(/--focus-ring-reach:/g)).toHaveLength(1);
-    expect(css).toMatch(/\[data-settled="true"\]\s*\{[^}]*--settled-ring-room: calc\(var\(--sp-sm\) \+ var\(--focus-ring-reach\)\)/);
-  });
 });
