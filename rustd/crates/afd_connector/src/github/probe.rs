@@ -46,10 +46,6 @@ const HEADER_API_VERSION: &str = "x-github-api-version";
 /// See [`HEADER_API_VERSION`].
 const API_VERSION: &str = "2022-11-28";
 /// See [`HEADER_API_VERSION`].
-const HEADER_AUTHORIZATION: &str = "authorization";
-/// See [`HEADER_API_VERSION`].
-const BEARER_PREFIX: &str = "Bearer ";
-/// See [`HEADER_API_VERSION`].
 const HEADER_ACCEPT: &str = "accept";
 /// See [`HEADER_API_VERSION`].
 const CONTENT_TYPE_JSON: &str = "application/vnd.github+json";
@@ -182,7 +178,9 @@ pub(crate) fn request(
 ) -> reqwest::RequestBuilder {
     client
         .get(endpoint)
-        .header(HEADER_AUTHORIZATION, format!("{BEARER_PREFIX}{token}"))
+        // Marked sensitive, so a client that renders its request never shows
+        // the person's token.
+        .bearer_auth(token)
         .header(HEADER_ACCEPT, CONTENT_TYPE_JSON)
         .header(HEADER_API_VERSION, API_VERSION)
         .header(HEADER_USER_AGENT, USER_AGENT)
@@ -196,6 +194,26 @@ mod tests {
     )]
 
     use super::{CONTENT_TYPE_JSON, USER_AGENT, USER_INSTALLATIONS, request};
+
+    /// The token rides as `Bearer <token>`, marked sensitive so a request that
+    /// is rendered for a log or a debugger never shows it.
+    #[test]
+    fn the_installation_probe_presents_the_token_as_a_sensitive_bearer() {
+        let built = request(
+            &reqwest::Client::new(),
+            String::from(USER_INSTALLATIONS),
+            "t",
+        )
+        .build()
+        .expect("a request the client can send");
+
+        let authorization = built
+            .headers()
+            .get("authorization")
+            .expect("the token rides");
+        assert_eq!(authorization.to_str().ok(), Some("Bearer t"));
+        assert!(authorization.is_sensitive());
+    }
 
     /// Every header GitHub's REST API requires rides both vendor calls.
     ///
