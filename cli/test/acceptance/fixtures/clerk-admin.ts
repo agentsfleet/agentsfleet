@@ -173,7 +173,7 @@ export async function provisionUser(
   return createUser(clerkSecret, opts);
 }
 
-export async function mintTokens(
+async function mintTokens(
   clerkSecret: string,
   clerkUserId: string,
   opts?: MintTokensOptions,
@@ -286,7 +286,7 @@ export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Pr
   return { ...tokens, clerkUserId: user.id, email: opts.email };
 }
 
-export async function revokeSession(clerkSecret: string, sessionId: string): Promise<void> {
+async function revokeSession(clerkSecret: string, sessionId: string): Promise<void> {
   try {
     await clerkRequest(clerkSecret, "POST", `/sessions/${sessionId}/revoke`);
   } catch (err: unknown) {
