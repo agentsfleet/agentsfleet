@@ -37,7 +37,8 @@ export async function listFleetsAction(
  * The events list carries no request or response body — it is kept off
  * oversized-attribute storage — so the dialog asks for them per event. It goes
  * through an action rather than a browser fetch because the dashboard's
- * credential never leaves the server (gate: `no-api-template-mint.test.ts`).
+ * credential never leaves the server (lint: `scripts/check_app_source.py`,
+ * rule app-client-credential).
  */
 export async function getFleetEventAction(
   workspaceId: string,
