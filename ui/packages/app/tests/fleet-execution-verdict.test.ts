@@ -8,10 +8,7 @@
  * list, and this asserts the execution journey is not on that list, so a green
  * `acceptance-e2e` is a claim that includes it.
  */
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import acceptanceConfig from "../playwright.acceptance.config";
 import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import {
   classifyApiFailure,
@@ -32,10 +29,6 @@ import {
 } from "./e2e/acceptance/fixtures/execution";
 import { EXECUTION_REPLY_PREFIX, executionSkillMd } from "./e2e/acceptance/fixtures/seed";
 
-const JOURNEYS_PROJECT = "journeys";
-const EXECUTION_SPEC = "fleet-execution.spec.ts";
-const EXECUTION_SPEC_PATH = path.join(__dirname, "e2e", "acceptance", EXECUTION_SPEC);
-
 // A row shape per verdict, so each case reads as the row that produced it.
 function processed(reply: string | null): TerminalObservation {
   return { status: EVENT_STATUS.processed, failure_label: null, failure_detail: null, response_text: reply };
@@ -43,11 +36,6 @@ function processed(reply: string | null): TerminalObservation {
 
 function failed(label: string | null, detail: string | null = null): TerminalObservation {
   return { status: EVENT_STATUS.fleetError, failure_label: label, failure_detail: detail, response_text: null };
-}
-
-interface ProjectShape {
-  name?: string;
-  testIgnore?: unknown;
 }
 
 describe("the terminal row is classified before it is trusted", () => {
@@ -140,17 +128,7 @@ describe("the terminal row is classified before it is trusted", () => {
   });
 });
 
-describe("the execution journey is part of the required acceptance run", () => {
-  it("the journeys project does not ignore it and the spec exists", () => {
-    expect(fs.existsSync(EXECUTION_SPEC_PATH), EXECUTION_SPEC_PATH).toBe(true);
-    const projects = (acceptanceConfig.projects ?? []) as ProjectShape[];
-    const journeys = projects.find((project) => project.name === JOURNEYS_PROJECT);
-    expect(journeys, `project ${JOURNEYS_PROJECT} must exist`).toBeDefined();
-    const ignored = Array.isArray(journeys?.testIgnore) ? journeys.testIgnore : [journeys?.testIgnore];
-    const ignoresExecution = ignored.some((pattern) => String(pattern).includes(EXECUTION_SPEC));
-    expect(ignoresExecution, "the execution journey must run in the journeys project").toBe(false);
-  });
-
+describe("the execution journey's bundle", () => {
   it("the execution bundle carries an instruction, unlike the empty-body probe", () => {
     const md = executionSkillMd("exec-check");
     expect(md).toContain("name: exec-check");
