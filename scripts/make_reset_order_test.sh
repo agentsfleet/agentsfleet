@@ -40,7 +40,9 @@ has_word() {
 
 test_should_migrate_only_after_the_reset() {
   local name="test_should_migrate_only_after_the_reset" found
-  found="$(prerequisites "$MIGRATE")"
+  # Cleared on make's command line, which outranks a caller's exported
+  # KEEP_TEST_STATE=1: the case asks about the default graph.
+  found="$(prerequisites "$MIGRATE" KEEP_TEST_STATE=)"
   if has_word "$found" "$RESET"; then ok "$name"
   else bad "$name" "$MIGRATE depends on [$found], not on $RESET"; fi
 }
