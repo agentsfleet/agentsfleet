@@ -83,6 +83,21 @@ fn a_character_that_lets_a_name_lie_is_refused() {
     }
 }
 
+/// The refusals keep their order: a forbidden character wins over the length
+/// cap, and a whitespace-only name past the cap still means "generate".
+#[test]
+fn the_character_refusal_runs_before_blankness_and_blankness_before_the_cap() {
+    let invalid = error::workspace_name_invalid();
+    let long_and_lying = format!("{}\u{0007}", "a".repeat(MAX_NAME_CODEPOINTS + 1));
+    let refused = Chosen::parse(&long_and_lying)
+        .err()
+        .map(|refusal| (refusal.code(), refusal.to_string()));
+    assert_eq!(refused, Some((invalid.code(), invalid.to_string())));
+
+    let long_blank = "\u{3000}".repeat(MAX_NAME_CODEPOINTS + 72);
+    assert_eq!(Chosen::parse(&long_blank).ok(), Some(None));
+}
+
 #[test]
 fn a_generated_name_has_the_documented_shape() {
     let name = generate(&Entropy::new()).expect("a host can draw random bytes");
