@@ -146,8 +146,8 @@ test_version_pin() {
 
 test_partial_download_safety() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0; fake_present claude
-  local n; n="$(wc -l <"$INSTALL_SH")"
-  OUT="$(head -n "$((n - 2))" "$INSTALL_SH" | PATH="$FAKE_BIN" HOME="$HOME_DIR" bash 2>&1)"; RC=$?
+  # The script with its last two lines cut off, as a dropped download leaves it.
+  OUT="$(sed '$d' "$INSTALL_SH" | sed '$d' | PATH="$FAKE_BIN" HOME="$HOME_DIR" bash 2>&1)"; RC=$?
   assert_log_empty "$NPM_LOG" "partial_download: npm not called"
   assert_log_empty "$NPX_LOG" "partial_download: npx not called"
   if [[ -z "$OUT" ]]; then
