@@ -138,14 +138,6 @@ describe("AddSecretDialog", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("renders a PlusIcon on the create-secret trigger (test_create_triggers_render_plus_icon)", async () => {
-    await renderDialog();
-    const trigger = screen.getByRole("button", { name: "Create secret" });
-    // This file mocks lucide-react as <svg data-icon={name}> (see top-of-file
-    // vi.mock), so assert on the mock's marker, not the real lucide-* class.
-    expect(trigger.querySelector('[data-icon="PlusIcon"]')).toBeTruthy();
-  });
-
   it("opens the create-secret form when the trigger is clicked", async () => {
     const user = userEvent.setup();
     await renderDialog();

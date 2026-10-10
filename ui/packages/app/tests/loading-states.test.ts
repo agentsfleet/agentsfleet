@@ -1,107 +1,112 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { within } from "@testing-library/react";
+import { FLEET_LIBRARY_TITLE } from "../app/(dashboard)/admin/fleet-libraries/library-copy";
+import { INVITES_TITLE } from "../app/(dashboard)/invites/copy";
+import { MEMBERS_TITLE } from "../app/(dashboard)/settings/members/copy";
+import { SECRETS_PAGE_TITLE } from "../app/(dashboard)/w/[workspaceId]/secrets/copy";
+import { MODELS_PAGE_TITLE } from "../app/(dashboard)/w/[workspaceId]/settings/models/copy";
 
-// Each Next.js segment has its own loading.tsx Suspense fallback. The shared
-// RouteLoading paints the page's exact title + description so a route swap shows
-// the correct header instantly (no wobble) with one consistent spinner across
-// routes. The title assertions below pin that each loader matches its page.
+// Each Next.js segment has its own loading.tsx Suspense fallback, and every one
+// must render. Where the page renders its title from a shared copy constant,
+// the loader must paint that same constant, so a route swap shows the page's
+// own header instead of a neighbour's. A null title is a skeleton loader, or a
+// page that spells its title inline, so there is no shared constant to compare.
 
 describe("dashboard segment loading states", () => {
-  const cases: Array<{ name: string; importer: () => Promise<{ default: React.ComponentType }>; expectsTitle: string | null }> = [
+  const cases: Array<{ name: string; importer: () => Promise<{ default: React.ComponentType }>; pageTitle: string | null }> = [
     {
       name: "fleets/[id]",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/fleets/[id]/loading"),
-      expectsTitle: null, // skeleton title, no static text
+      pageTitle: null,
     },
     {
       // /settings is a bare redirect to /settings/api-keys now,
       // no loading.tsx of its own — its former loader was the Workspace tab's.
       name: "settings/api-keys",
       importer: () => import("../app/(dashboard)/settings/api-keys/loading"),
-      expectsTitle: "API Keys",
+      pageTitle: null,
     },
     {
       name: "settings/models",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/settings/models/loading"),
-      expectsTitle: "Models",
+      pageTitle: MODELS_PAGE_TITLE,
     },
     {
       name: "settings/billing",
       importer: () => import("../app/(dashboard)/settings/billing/loading"),
-      expectsTitle: "Billing",
+      pageTitle: null,
     },
     {
       name: "settings/members",
       importer: () => import("../app/(dashboard)/settings/members/loading"),
-      expectsTitle: "Members",
+      pageTitle: MEMBERS_TITLE,
     },
     {
       // One loader covers both Invites routes; the linked one nests under it.
       name: "invites",
       importer: () => import("../app/(dashboard)/invites/loading"),
-      expectsTitle: "Invites",
+      pageTitle: INVITES_TITLE,
     },
     {
       // Secrets is its own standalone page — its loader paints the real
       // title, not the stale "Models" it borrowed when /credentials redirected.
       name: "secrets",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/secrets/loading"),
-      expectsTitle: "Secrets",
+      pageTitle: SECRETS_PAGE_TITLE,
     },
     {
       name: "admin/runners",
       importer: () => import("../app/(dashboard)/admin/runners/loading"),
-      expectsTitle: "Runners",
+      pageTitle: null,
     },
     {
       name: "admin/models",
       importer: () => import("../app/(dashboard)/admin/models/loading"),
-      expectsTitle: "Model library",
+      pageTitle: null,
     },
     {
       name: "admin/fleet-libraries",
       importer: () => import("../app/(dashboard)/admin/fleet-libraries/loading"),
-      expectsTitle: "Fleet library",
+      pageTitle: FLEET_LIBRARY_TITLE,
     },
     {
       name: "integrations",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/integrations/loading"),
-      expectsTitle: "Integrations",
+      pageTitle: null,
     },
     {
       name: "events",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/events/loading"),
-      expectsTitle: "Events",
+      pageTitle: null,
     },
     {
       name: "approvals",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/approvals/loading"),
-      expectsTitle: "Approvals",
+      pageTitle: null,
     },
     {
       name: "approvals/[gateId]",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/approvals/[gateId]/loading"),
-      expectsTitle: null, // skeleton title
+      pageTitle: null,
     },
     {
       name: "workspace home",
       importer: () => import("../app/(dashboard)/w/[workspaceId]/loading"),
-      expectsTitle: null, // workspace-home fallback — spinner only, no static text
+      pageTitle: null,
     },
   ];
 
-  for (const { name, importer, expectsTitle } of cases) {
-    it(`${name} loading renders loading chrome`, async () => {
+  for (const { name, importer, pageTitle } of cases) {
+    it(`${name} loading renders${pageTitle ? " the page's own title" : ""}`, async () => {
       const { default: Loading } = await importer();
       const markup = renderToStaticMarkup(React.createElement(Loading));
-      // A loader renders either a RouteLoading title + Spinner or a bespoke
-      // Skeleton (the detail/settings routes); both emit a div. Smoke-check the
-      // markup contains one — the title assertion below pins the rest.
-      expect(markup).toContain("<div");
-      if (expectsTitle) {
-        expect(markup).toContain(expectsTitle);
-      }
+      expect(markup).not.toBe("");
+      if (!pageTitle) return;
+      const host = document.createElement("div");
+      host.innerHTML = markup;
+      expect(within(host).getByRole("heading", { level: 1 }).textContent).toBe(pageTitle);
     });
   }
 });

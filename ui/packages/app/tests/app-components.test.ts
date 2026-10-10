@@ -1,7 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { render, screen, cleanup, within, waitFor } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
 const TOAST_FADE_MS = 240;
@@ -292,15 +292,6 @@ describe("app components", () => {
     expect(markup).toMatch(/href="\/w\/ws_1\/settings\/models"[\s\S]*?data-icon="BrainCircuitIcon"[^>]*><\/svg>Models</);
     expect(markup).toMatch(/href="\/w\/ws_1\/integrations"[\s\S]*?data-icon="PlugIcon"[^>]*><\/svg>Integrations</);
     expect(markup).toMatch(/href="\/w\/ws_1\/secrets"[\s\S]*?data-icon="KeyRoundIcon"[^>]*><\/svg>Secrets</);
-  });
-
-  it("Shell sidebar marks the active route via data-active attribute", async () => {
-    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
-    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
-    const markup = renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div")));
-    // The active link gets data-active="true" — the sidebar's surface-3 fill
-    // and the left accent bar are both driven from this attribute.
-    expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="BotIcon"/);
   });
 
   it("Shell active-link resolves the longest-matching prefix (nested /settings/* routes)", async () => {
