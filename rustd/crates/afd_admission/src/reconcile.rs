@@ -64,7 +64,7 @@
 //! steps the sweeper can keep up with.
 
 use afd_core::clock::UnixMillis;
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_dragonfly::{EventId, FleetStreams};
 
 use crate::Admissions;
@@ -300,11 +300,10 @@ impl Admissions {
         {
             Ok(held) => held,
             Err(unreachable_queue) => {
-                let code = unreachable_queue.code().as_str();
-                let reason = unreachable_queue.to_string();
+                let Logged { error_code, reason } = unreachable_queue.logged();
                 let receipt = unfinished.receipt.as_str();
                 tracing::warn!(
-                    error_code = code,
+                    error_code,
                     fleet_id,
                     receipt,
                     reason,

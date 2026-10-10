@@ -2,7 +2,7 @@
 //! the receipt, and mark the fleet leasable.
 
 use afd_core::clock::UnixMillis;
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::{FleetStreams, ReadyIndex};
 use afd_observability::metrics::label::fleet::AdmissionOutcome;
@@ -94,7 +94,7 @@ impl Admissions {
         if let Err(unmarked) = ReadyIndex::new(self.queue.clone()).mark(fleet).await {
             afd_observability::producers::fleet::ready_write_failed();
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let reason = unmarked.to_string();
+            let reason = unmarked.told();
             tracing::warn!(
                 error_code = code,
                 fleet_id = fleet,
@@ -116,8 +116,7 @@ fn count_deferral(
     event_id: &str,
 ) {
     metrics::admitted(AdmissionOutcome::Deferred);
-    let code = unreachable_queue.code().as_str();
-    let reason = unreachable_queue.to_string();
+    let Logged { error_code, reason } = unreachable_queue.logged();
     let producer = admission.producer.as_str();
     let event = if unreachable_queue.is_full() {
         "admission_queue_full"
@@ -125,7 +124,7 @@ fn count_deferral(
         "admission_append_deferred"
     };
     tracing::warn!(
-        error_code = code,
+        error_code,
         producer,
         fleet_id = admission.fleet,
         event_id,

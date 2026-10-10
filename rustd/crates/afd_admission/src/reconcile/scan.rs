@@ -114,3 +114,6 @@ impl Admissions {
         Ok(voided.rows_affected())
     }
 }
+
+#[cfg(test)]
+mod tests;
