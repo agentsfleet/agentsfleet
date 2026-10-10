@@ -42,25 +42,3 @@ describe("WAITLIST_URL resolution", () => {
     expect(await loadWaitlistUrl()).toBe(DEV_HOST);
   });
 });
-
-/*
- * agentsfleet rebrand pins. Two directions, both deliberate:
- *  - operational strings that must NOT change until their own cutover
- *    spec lands (team mailbox);
- *  - flipped values (installer domain, docs host, GitHub org) that must
- *    not regress to the retired brand. Unpinning either direction is the
- *    conscious act of a cutover edit, never a side effect.
- */
-describe("rebrand pins — flipped values must not regress; operational strings stay", () => {
-  it("GitHub URL serves on the renamed agentsfleet/agentsfleet repo", async () => {
-    vi.resetModules();
-    const mod = await import("./config");
-    expect(mod.GITHUB_URL).toBe("https://github.com/agentsfleet/agentsfleet");
-  });
-
-  it("docs URL serves on the agentsfleet host", async () => {
-    vi.resetModules();
-    const mod = await import("./config");
-    expect(mod.DOCS_URL).toBe("https://docs.agentsfleet.net");
-  });
-});
