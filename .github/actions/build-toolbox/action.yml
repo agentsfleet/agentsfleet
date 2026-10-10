@@ -118,6 +118,8 @@ runs:
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}
         DIGEST: ${{ steps.image.outputs.digest }}
+        # The privileged scan must not create root-only parents in ~/.cache.
+        SYFT_CACHE_DIR: ${{ runner.temp }}/toolbox-syft-cache
       run: |
         set -euo pipefail
         out="$PWD/$OUTPUT_DIR"
@@ -136,6 +138,7 @@ runs:
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}
         DIGEST: ${{ steps.image.outputs.digest }}
+        GRYPE_DB_CACHE_DIR: ${{ runner.temp }}/toolbox-grype-db
       run: |
         set -euo pipefail
         out="$PWD/$OUTPUT_DIR"
