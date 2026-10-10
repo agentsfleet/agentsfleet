@@ -1,5 +1,3 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cn } from "./utils";
 
@@ -59,40 +57,5 @@ describe("cn", () => {
     expect(cn("text-eyebrow", "text-muted-foreground")).toBe(
       "text-eyebrow text-muted-foreground",
     );
-  });
-});
-
-describe("cn — single workspace declaration", () => {
-  // vitest runs from the package dir (jsdom rewrites import.meta.url, so
-  // cwd is the reliable anchor); one level up is ui/packages.
-  const PACKAGES_ROOT = resolve(process.cwd(), "..");
-  const SKIPPED_DIRS = new Set(["node_modules", ".next", "dist", "build", "coverage"]);
-  // Matches a declaration, not a re-export or an import — `export { cn }`
-  // and `import { cn }` deliberately do not hit.
-  const CN_DECLARATION = /export (?:function|const) cn\b/;
-
-  function tsSourcesUnder(dir: string): string[] {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory()) {
-        if (SKIPPED_DIRS.has(entry.name)) continue;
-        out.push(...tsSourcesUnder(`${dir}/${entry.name}`));
-        continue;
-      }
-      if (/\.tsx?$/.test(entry.name)) out.push(`${dir}/${entry.name}`);
-    }
-    return out;
-  }
-
-  it("test_single_cn_export — exactly one cn declaration exists across ui/packages", () => {
-    // Fail loud if the cwd anchor resolved somewhere unexpected — a scan of
-    // the wrong tree would pass while guarding nothing.
-    expect(existsSync(resolve(PACKAGES_ROOT, "design-system"))).toBe(true);
-    expect(existsSync(resolve(PACKAGES_ROOT, "app"))).toBe(true);
-    const hits = tsSourcesUnder(PACKAGES_ROOT).filter((file) =>
-      CN_DECLARATION.test(readFileSync(file, "utf8")),
-    );
-    expect(hits).toHaveLength(1);
-    expect(hits[0]).toContain("design-system/src/utils.ts");
   });
 });

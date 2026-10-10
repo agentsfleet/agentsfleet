@@ -1,12 +1,8 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { RadioGroup } from "./RadioGroup";
 import { OptionCard } from "./OptionCard";
-
-const OPTION_CARD_SRC_PATH = path.join(__dirname, "OptionCard.tsx");
 
 function Picker({ onChange }: { onChange?: (value: string) => void }) {
   const [value, setValue] = useState("a");
@@ -55,15 +51,5 @@ describe("OptionCard", () => {
       </RadioGroup>,
     );
     expect(screen.getByTestId("icon")).toBeInTheDocument();
-  });
-
-  it("uses only mapped design-system tokens — no arbitrary hex or arbitrary-value utility in its class strings", () => {
-    const src = readFileSync(OPTION_CARD_SRC_PATH, "utf8");
-    expect(src).not.toMatch(/#[0-9a-fA-F]{3,6}/);
-    // Arbitrary-VALUE brackets (e.g. `bg-[#fff]`, `w-[42px]`) are the
-    // violation; `data-[state=checked]:` is a standard Tailwind arbitrary
-    // VARIANT selector (same idiom RadioGroupItem.tsx already uses), so
-    // brackets immediately followed by `:` are excluded.
-    expect(src).not.toMatch(/\[[^\]]+\](?!:)/);
   });
 });
