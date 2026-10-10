@@ -15,10 +15,12 @@
  * library a table that never grew), so the table is measured against its page.
  */
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { v7 } from "uuid";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
-import { getDefaultWorkspaceId, skillMd, triggerMd } from "./fixtures/seed";
+import { getDefaultWorkspaceId, seedFleet, skillMd, triggerMd, waitForFleetActive } from "./fixtures/seed";
+import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { workspaceHref } from "./fixtures/nav";
 import { EDIT, EDIT_TITLE } from "@/app/(dashboard)/admin/fleet-libraries/library-copy";
@@ -46,6 +48,9 @@ const TABLE_FILL_TEMPLATE = "e2e-table-fill";
 const PLATFORM_ENTRY_ID = "e2e-measured-layout";
 const PLATFORM_LIBRARIES = "/v1/admin/fleet-libraries";
 const GALLERY_TEMPLATE = "e2e-measured-gallery";
+// Events lists a row only once a fleet has admitted one: one steered fleet gives it.
+const TABLE_FILL_FLEET_PREFIX = "e2e-table-fill-";
+const TABLE_FILL_MESSAGE = "measure the events table";
 
 async function expectTableFillsPage(page: Page, path: string): Promise<void> {
   await page.goto(path);
@@ -174,13 +179,20 @@ test.describe("a paginating table fills the page it sits on", () => {
     const secrets = `/v1/workspaces/${workspaceId}/secrets`;
     const secret = `e2e-table-fill-${crypto.randomUUID()}`;
     await client.post(secrets, { name: secret, data: { purpose: "table fill fixture" } });
+    const fleet = await seedFleet(FIXTURE_KEY.regular, workspaceId, { name: `${TABLE_FILL_FLEET_PREFIX}${crypto.randomUUID()}` });
     try {
+      await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+      await client.post(`/v1/workspaces/${workspaceId}/fleets/${fleet.id}/messages`, {
+        message: TABLE_FILL_MESSAGE,
+        operation_id: v7(),
+      });
       await signInAs(page, FIXTURE_KEY.regular);
       for (const surface of ["library", "secrets", "events"]) {
         await expectTableFillsPage(page, workspaceHref(workspaceId, surface));
       }
     } finally {
       await client.delete(`${secrets}/${encodeURIComponent(secret)}`);
+      await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, TABLE_FILL_FLEET_PREFIX);
     }
   });
 
