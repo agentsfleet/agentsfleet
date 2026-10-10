@@ -16,13 +16,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M217
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — test-suite tooling; no product behaviour changes
 **Categories:** API (Rust daemon and runner tests), command-line interface (CLI), Infrastructure (INFRA: playbooks, deploy, scripts, make), user interface (UI: app, design-system, website)
 **Batch:** B1 — starts once M213 merges; Sections run in order
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
+**Branch:** feat/m217-tests-call-code
+**Baseline revision:** c07f5e899ab4b0efa1d5c6a81fcff5eb6bc64741
+**Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** M213_001 (Rust runner cutover, Zig retired; one Pull Request (PR) with M213_002). It removes or rewrites ledger rows F386–F391, renames four ledger tests, and adds the files behind F044 and F124. Re-locate every ledger row by test name after it lands.
 **Provenance:** LLM-drafted (large language model Claude Opus 5.5, Oct 08, 2026) from the repository-wide test audit and Indy's Oct 08 decisions

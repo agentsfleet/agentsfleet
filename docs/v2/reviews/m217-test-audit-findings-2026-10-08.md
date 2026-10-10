@@ -1,6 +1,6 @@
 # M217 test audit ledger — Oct 08, 2026
 
-Companion ledger for [`M217_001`](../pending/M217_001_P2_API_CLI_INFRA_UI_TESTS_CALL_CODE_NEVER_READ_SOURCE.md). The spec decides how each Section is done; this file names every test site the work covers. It is the durable copy of a repository-wide audit whose working files lived in a session scratchpad.
+Companion ledger for [`M217_001`](../active/M217_001_P2_API_CLI_INFRA_UI_TESTS_CALL_CODE_NEVER_READ_SOURCE.md). The spec decides how each Section is done; this file names every test site the work covers. It is the durable copy of a repository-wide audit whose working files lived in a session scratchpad.
 
 ## Provenance and verification
 
