@@ -38,6 +38,7 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 # rather than adding another near-duplicate wrapper.
 _model_allowlist_check:
 	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_model_allowlist_test.py
 	@python3 scripts/check_model_allowlist.py
 
 
