@@ -70,6 +70,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `package.json`, `bun.lock`, `cli/{package.json,bun.lock}`, `ui/packages/{app,design-system,website}/package.json` | EDIT | §6: every package on its latest release; §5 adds `@radix-ui/react-switch` |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/{FleetTile.tsx,FleetTile.test.tsx}` | EDIT | §7: agent and status first, the live line second, the fleet name in the footer |
 | `ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.tsx` | EDIT | §6: a tab click reports one source change on Radix tabs 1.1.22 |
+| `scripts/toolbox/manifest.txt` | EDIT | §6: the toolbox snapshot moves to one serving Debian 13.7 |
 | `ui/packages/app/AGENTS.md` | EDIT | §6: Next 16.4 rewrites its managed `nextjs-agent-rules` block |
 | `docs/v2/active/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md` | CREATE | This spec |
 
@@ -135,12 +136,15 @@ The Memory tab's two grants become a "Shared memory" fieldset of two `DashboardR
 - **Dimension 5.2** — Each grant is a named switch with what it does → Test `each shared-memory grant is a named switch with what it does` (`MemoryPanel.test.tsx`) — DONE
 - **Dimension 5.3** — A refused flip leaves the switch unchanged and says why → Test `a refused shared-memory change leaves the switch where it was` (`MemoryPanel.test.tsx`) — DONE
 
-### §6 — Packages run their latest releases — DONE
+### §6 — Packages run their latest releases — IN_PROGRESS
 
 Every npm dependency in `cli`, `ui/packages/app`, `ui/packages/design-system` and `ui/packages/website` moves to its latest release, keeping its pin style, and the root `playwright-core` override follows Playwright to 1.64.0. `typescript-jsapi` stays on TypeScript 6, the alias Indy accepted on Jul 30, 2026 (`M151_001`). Radix tabs 1.1.22 focuses a trigger on mousedown, so one click selects its tab twice before a re-render; `LibrarySourceTabs` now reports only a real change of source.
 
+The toolbox image moves to Debian 13.7. Its snapshot pin goes from `20260901T000000Z`, which serves 13.6, to `20261010T000000Z`. That snapshot serves 13.7 with security updates through Oct 09, 2026. The image hash changes; no code does.
+
 - **Dimension 6.1** — No package reports an update → Test `bun_outdated_reports_only_the_jsapi_alias` (package audit) — DONE
 - **Dimension 6.2** — One click on a source tab is one source change → Test `tells the caller when the operator changes source` (`ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.test.tsx`) — DONE
+- **Dimension 6.3** — The toolbox builds from Debian 13.7 and records the snapshot it used → Test `release_manifest_names_the_image` (kernel lane, `rustd/crates/afr_sandbox/examples/kernel_lane/toolbox.rs`) — PENDING
 
 ### §7 — A fleet card leads with its agent and what it is doing — DONE
 
@@ -197,6 +201,7 @@ No API, route or wire change.
 | 5.3 | unit | `a refused shared-memory change leaves the switch where it was` | Action refused with 403 → the switch stays unchecked and enabled, and a warning alert shows |
 | 6.1 | package audit | `bun_outdated_reports_only_the_jsapi_alias` | `bun outdated` in the four packages → only `typescript` (the `typescript-jsapi` alias) |
 | 6.2 | unit | `tells the caller when the operator changes source` | Click Upload, then GitHub → `onSourceChange` called exactly twice |
+| 6.3 | kernel lane | `release_manifest_names_the_image` | `make test-runner-kernel` builds from `manifest.txt` → the release records `snapshot` `20261010T000000Z`; that snapshot's trixie `Release` → `Version: 13.7` |
 | 7.1 | unit | `leads with the agent and its status, then what it is doing, and keeps the fleet's name in the footer` | Live fleet `alpha` → first line the agent label and `Active`, then `Waiting for the next event.`, footer `alpha`; no fixed sentence |
 
 ## Acceptance Rubric (single scoring surface)
@@ -248,8 +253,9 @@ No API, route or wire change.
 - **Tab reads** — Indy, Oct 09, 2026, after clicking through §2: "it seems performant now", then asked whether a tab loads only what it needs. Each tab starts only its own reads (`view-data.ts`), but every click re-reads the fleet and tenant billing, because the header renders in `page.tsx`. A `fleets/[id]/layout.tsx` holding the header would drop the billing read from every click and the fleet read from Events, at the cost of a header status that refreshes only on reload. Indy chose "Measure first": Dimension 2.3's timing decides whether the header moves.
 - **Tab timing** — Oct 09, 2026, `next dev` on `localhost:3000`, median of 5 clicks, ms. Before §2 every tab showed nothing until done: Events 390, Memory 375, Skill 385, Trigger 674, Chat 473. With the pulse and a skeleton: the tab answered in 5–11; done Events 368, Memory 374, Skill 385, Trigger 656, Chat 683. Every view lands no sooner than the fleet read (~370), which four of five tabs need, so the header stays in `page.tsx`. Indy chose "Pulse only": the skeleton goes, and Chat returns to its own read time.
 - **Shared-memory switches** — Indy, Oct 09, 2026: "i think we must keep it simple and have it NAME PROPERLY PROPOSE FIRST, SO INDY APPROVES", with a screenshot of on/off switches. Three name sets were proposed; he picked "Use shared memory" / "Share this fleet's memory" and chose to ship it here as §5.
-- **Packages** — Indy, Oct 09, 2026: "can we check and update all the packages you have (npm) to the latest in ui/packages/app, cli, design-system, website?", then asked for it in this PR (§6). The new releases are one to four days old; `posthog-js` 1.438.5 was hours old.
+- **Packages** — Indy, Oct 09, 2026: "can we check and update all the packages you have (npm) to the latest in ui/packages/app, cli, design-system, website?", then asked for it in this PR (§6). The new releases are one to four days old; `posthog-js` 1.438.5 was hours old. On Oct 10, 2026 he wrote "if there is an update on posthot do so". `posthog-js` moved to 1.438.7, published Oct 09, 2026 21:02 UTC. The same day's `bun outdated` re-audit found patch releases since Oct 09. Those moved too: `@clerk/{nextjs,ui,testing}`, `uuid`, `@types/node` and `@vercel/detect-agent`.
+- **Toolbox Debian** — Indy, Oct 10, 2026: "can that be changed to use the debian latest 13?", then "Debian 13.7". The pinned snapshot served 13.6. He chose "Bump snapshot in this PR" (§6).
 - **Close-out (Oct 10, 2026)** — Indy accepted the screens ("Accepted (Recommended)"), and asked that the two known limits be recorded rather than fixed, docs be skipped under an override, and the branch be pushed and opened as a PR once green. For the fleet card he wrote "the agent slug name and status is important that must be the first line" and "Runs in loop static text doesnt have value, but rather the Waiting for the event is valuable", then picked "Footer name" (§7).
 - **Metrics review** — No product event changes.
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Deferrals** — Indy, Oct 10, 2026, chose "Bump snapshot in this PR", whose option read "The VM and doc fixes go to their own spec." That spec rebuilds the `afr-kernel` VM on Debian 13. It also fixes three doc drifts: `docs/architecture/runner_execution.md:164`, `.github/workflows/test-integration-rustd.yml:131` and `rustd/Cargo.toml:344`.
