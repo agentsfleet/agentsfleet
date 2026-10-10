@@ -136,6 +136,31 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         self.assertIn(f"{APP}/lib/when.ts:1: app-date-formatter: ", output)
 
 
+class CommentBlankingKeepsLiteralsWhole(unittest.TestCase):
+    """A quote inside JSX text or a pattern must not hide the comments after it."""
+
+    def test_a_comment_after_a_jsx_apostrophe_is_still_a_comment(self) -> None:
+        source = "export const P = () => <p>Don't panic</p>;\n// formatDate was deleted.\nexport const x = 1;\n"
+        code, output = lint_tree(with_file(f"{APP}/lib/when.tsx", source))
+        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
+
+    def test_a_comment_after_a_pattern_holding_a_quote_is_still_a_comment(self) -> None:
+        source = "export const missing = /Couldn't find \"it\"/i;\n// formatDate was deleted.\nexport const x = 1;\n"
+        code, output = lint_tree(with_file(f"{APP}/lib/when.ts", source))
+        self.assertEqual(checker.lib.EXIT_CLEAN, code, output)
+
+    def test_code_after_a_jsx_apostrophe_is_still_checked(self) -> None:
+        source = "export const P = () => <p>Don't panic</p>;\n// note\nexport const formatDate = 1;\n"
+        code, output = lint_tree(with_file(f"{APP}/lib/when.tsx", source))
+        self.assertIn(f"{APP}/lib/when.tsx:3: app-date-formatter: ", output)
+
+    def test_slashes_inside_a_pattern_are_kept_and_a_division_still_ends_before_its_comment(self) -> None:
+        pattern = "const slashes = path.replace(/\\//g, \"-\");\n"
+        self.assertEqual(pattern, checker.lib.blank_js_comments(pattern))
+        division = "const half = total / 2; // formatDate\n"
+        self.assertEqual("const half = total / 2; " + " " * len("// formatDate") + "\n", checker.lib.blank_js_comments(division))
+
+
 class JsxRules(unittest.TestCase):
     def test_an_arrow_inside_the_tag_does_not_end_it(self) -> None:
         source = 'export const X = () => (\n  <Button variant="outline" onClick={() => a > b}>go</Button>\n);\n<ButtonGroup variant="secondary" />\n'
@@ -164,6 +189,9 @@ class JsxRules(unittest.TestCase):
 
 OXLINT = checker.lib.ROOT / APP / "node_modules/.bin/oxlint"
 OXLINT_CONFIG = checker.lib.ROOT / APP / ".oxlintrc.json"
+# Pinned: on a GitHub runner oxlint switches to its `::error` annotation format,
+# which the assertions below do not read.
+OXLINT_FORMAT = "--format=default"
 
 
 class IdentityProviderBoundary(unittest.TestCase):
@@ -174,7 +202,7 @@ class IdentityProviderBoundary(unittest.TestCase):
             for relative_path, text in files.items():
                 (root / relative_path).parent.mkdir(parents=True, exist_ok=True)
                 (root / relative_path).write_text(text, encoding="utf-8")
-            result = subprocess.run([str(OXLINT), "-c", ".oxlintrc.json", *files], cwd=root, capture_output=True, text=True, check=False)
+            result = subprocess.run([str(OXLINT), "-c", ".oxlintrc.json", OXLINT_FORMAT, *files], cwd=root, capture_output=True, text=True, check=False)
             return result.stdout + result.stderr
 
     def test_moved_rules_reject_seeded_violations(self) -> None:
