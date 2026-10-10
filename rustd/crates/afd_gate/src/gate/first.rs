@@ -144,7 +144,7 @@ impl Gates {
     async fn stop(&self, request: &Check<'_>, trigger: Trigger, now: UnixMillis) -> Verdict {
         if let Err(fault) = self.pause(request.fleet_id, trigger, now).await {
             let fleet = request.fleet_id.as_str();
-            let reason = fault.to_string();
+            let reason = fault.told();
             tracing::error!(
                 event = EVENT_PAUSE_FAILED,
                 fleet_id = fleet,

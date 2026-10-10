@@ -87,7 +87,7 @@ impl Gates {
         match self.queue().increment_in_window(key, window_s).await {
             Ok(count) => Some(count),
             Err(fault) => {
-                let reason = fault.to_string();
+                let reason = fault.told();
                 tracing::warn!(
                     event = EVENT_COUNTER_UNAVAILABLE,
                     reason,

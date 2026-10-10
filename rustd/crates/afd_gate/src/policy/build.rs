@@ -25,7 +25,7 @@ use afd_fleet_runtime::FleetConfig;
 use afd_wire::policy::{ExecutionPolicy, Mintable};
 
 use crate::policy::context::{self, Overlay};
-use crate::policy::egress::{self, Misconfigured};
+use crate::policy::egress;
 use crate::policy::grants::{Grants, first_ungranted};
 use crate::policy::shape::{network, wire_binding};
 use afd_credential::provider::Resolved;
@@ -75,13 +75,11 @@ pub struct Inputs<'a> {
 /// empty set has to be named rather than defaulted into.
 ///
 /// # Errors
-/// [`Misconfigured`] when a write binding cannot be turned into egress rules
-/// that bound anything — a fleet author's mistake, distinct from a datastore
-/// fault, and the caller ends the event rather than retrying it.
-pub fn assemble<'a>(
-    inputs: Inputs<'a>,
-    granted: &Grants,
-) -> crate::Result<Assembled<'a>, Misconfigured> {
+/// A rejection, [`crate::Error::is_rejected`], when a write binding cannot be
+/// turned into egress rules that bound anything — a fleet author's mistake,
+/// distinct from a datastore fault, and the caller ends the event with its
+/// [`crate::Error::detail`] rather than retrying it.
+pub fn assemble<'a>(inputs: Inputs<'a>, granted: &Grants) -> crate::Result<Assembled<'a>> {
     if let Some(wanted) = first_ungranted(inputs.declared, granted) {
         return Ok(Assembled::Ungranted {
             credential: &wanted.name,
@@ -147,6 +145,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
     use super::{Assembled, Inputs, assemble};
+    use crate::policy::egress::DETAIL_NO_REPAIR_BRANCH;
     use afd_fleet_runtime::FleetConfig;
     use afd_wire::policy::ExecutionPolicy;
 
@@ -277,8 +276,13 @@ mod tests {
                 repair_branch: None,
             },
             &Grants::none(),
+        )
+        .expect_err("a write binding needs its branch");
+        assert!(
+            refused.is_rejected(),
+            "a fleet author's mistake, not a fault"
         );
-        assert!(refused.is_err(), "a write binding needs its branch");
+        assert_eq!(refused.detail(), DETAIL_NO_REPAIR_BRANCH);
     }
 
     #[test]
