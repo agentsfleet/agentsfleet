@@ -36,9 +36,6 @@ AGENTSFLEET_DRAGONFLY_LAST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BAS
 # The daemon's API port rides the dragonfly service (shared namespace), one
 # past the datastore range so parallel lanes never meet on 3000.
 AGENTSFLEET_API_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 5 )))
-# The plaintext Redis port, derived from the TLS one rather than allocated, so
-# a worktree's two Redis ports move together and the allocator keeps owning one
-# number per service.
 export AGENTSFLEET_PG_HOST_PORT
 export AGENTSFLEET_QSTASH_HOST_PORT
 export AGENTSFLEET_DRAGONFLY_BASE_PORT AGENTSFLEET_DRAGONFLY_LAST_PORT AGENTSFLEET_API_HOST_PORT
@@ -49,33 +46,9 @@ AGENTSFLEET_MAILPIT_SMTP_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_
 AGENTSFLEET_MAILPIT_UI_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 7 )))
 export AGENTSFLEET_MAILPIT_SMTP_PORT AGENTSFLEET_MAILPIT_UI_PORT
 
-# The live ports are still discovered from the running container rather than
-# assumed from the values above, so these stay the single source of truth about
-# what is actually bound.
-#
-# Resolved lazily with `=` -- NOT `:=` -- because the containers may not be
-# running when this Makefile is first parsed; the shell runs at first use, which
-# is always after _ensure-test-infra.
-#
-# The pinning is what makes that safe. While the host side was ephemeral, this
-# lookup was correct when it ran and wrong afterwards: a container restart moved
-# the port, the URL built from it did not follow, and every Redis test failed at
-# TCP connect against a port nothing was listening on.
-#
-# Each falls back to the declared port when the lookup yields nothing. The case
-# that produced this was `docker compose port` returning an empty string where
-# no docker CLI was present, so the URL became
-# `postgres://…@localhost:/agentsfleetdb`, which the daemon rejects as
-# InvalidDatabaseUrl. The declared port is the right answer whenever the lookup
-# cannot answer,
-# because the caller provisioned the infra itself and told us where it is.
-COMPOSE_PG_PORT = $(or $(strip $(shell docker compose port postgres 5432 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_PG_HOST_PORT))
-COMPOSE_QSTASH_PORT = $(or $(strip $(shell docker compose port qstash 8080 2>/dev/null | sed 's/.*://')),$(AGENTSFLEET_QSTASH_HOST_PORT))
-# No lookup for the cluster: its published numbers ARE its announced numbers,
-# so the declared port is the only correct answer and a discovered one that
-# disagreed would be the bug, not the truth.
-COMPOSE_DRAGONFLY_PORT = $(AGENTSFLEET_DRAGONFLY_BASE_PORT)
-COMPOSE_DRAGONFLY_TLS_PORT = $(AGENTSFLEET_DRAGONFLY_LAST_PORT)
+# The URLs below use the declared ports directly. They are fixed (above) and
+# compose publishes exactly these numbers, so the declared port IS the bound
+# one; a lookup could only disagree by being wrong.
 
 # WHERE THE TEST SUITES GET THEIR SERVICES — three names, and only three.
 #
@@ -106,7 +79,7 @@ COMPOSE_DRAGONFLY_TLS_PORT = $(AGENTSFLEET_DRAGONFLY_LAST_PORT)
 # the lane and the tail is what made `ConnectTimeout` a coin flip against the
 # 5 s connect budget. The Redis certificate carries `IP:127.0.0.1` in its SAN
 # beside `DNS:localhost`, so TLS verification is unaffected.
-TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(COMPOSE_PG_PORT)/agentsfleetdb?sslmode=disable
+TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_PG_HOST_PORT)/agentsfleetdb?sslmode=disable
 # `redis://`, not `rediss://`, and the reason is measured rather than assumed.
 #
 # A TLS connect to the lane's Redis runs a 232 ms median against 0.1 ms for
@@ -127,9 +100,9 @@ TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(COMPOSE_PG_P
 # rather than a second variable. Plaintext: the TLS handshake is paid where
 # it proves something, below. The name is the environment contract the daemon
 # reads (DRAGONFLY_URL); the datastore behind it is Dragonfly.
-TEST_DRAGONFLY_URL ?= redis://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_PORT)
+TEST_DRAGONFLY_URL ?= redis://:agentsfleet@127.0.0.1:$(AGENTSFLEET_DRAGONFLY_BASE_PORT)
 # The TLS node, for the suite whose subject IS the trust decision.
-TEST_DRAGONFLY_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(COMPOSE_DRAGONFLY_TLS_PORT)
+TEST_DRAGONFLY_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(AGENTSFLEET_DRAGONFLY_LAST_PORT)
 # Cert path — populated by _ensure-test-infra after the datastore is healthy.
 # Do NOT shell-expand at parse time; the container may not be running yet when
 # the Makefile is first evaluated.
@@ -149,33 +122,26 @@ export TEST_DATABASE_URL TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFL
 TEST_MAILPIT_SMTP_PORT ?= $(AGENTSFLEET_MAILPIT_SMTP_PORT)
 TEST_MAILPIT_URL ?= http://127.0.0.1:$(AGENTSFLEET_MAILPIT_UI_PORT)
 export TEST_MAILPIT_SMTP_PORT TEST_MAILPIT_URL
-# QStash local dev server (docker-compose `qstash` service). The emulator ships a
-# hardcoded local identity and rejects anything else (a different user 404s, a
-# different password 401s), so this is a fixture we reproduce, not a credential we
-# choose — and nothing it authenticates to holds real data. Derived here from its
-# two plain parts so no credential-shaped blob is stored in the repo.
-# The opt-in live QStash tests read these vars; unset (or server down) → self-skip.
-# The API BASE, `/v2` included. `QStash::upsert` composes
+# QStash (Upstash's message queue) local dev server, the docker-compose `qstash`
+# service. The opt-in live-scheduler tests read these two names directly, so they
+# are exported here beside the datastore URLs; unset, or the server down, and
+# those tests skip themselves.
+#
+# The emulator ships a hardcoded local identity and rejects anything else (a
+# different user 404s, a different password 401s), so the token is a fixture we
+# reproduce, not a credential we choose, and nothing it authenticates to holds
+# real data. It is derived from its two plain parts so no credential-shaped blob
+# is stored in the repo.
+#
+# The URL is the API base, `/v2` included. `QStash::upsert` composes
 # `{api_base}/schedules/{destination}`, matching the vendor's own
 # `https://qstash.upstash.io/v2`, so a base without the version segment 404s
-# every push — and a 404 is a refusal, so the row lands `Failed` with "not yet
-# registered" and reads exactly like a scheduler outage.
-#
-# `127.0.0.1` rather than `localhost` for the reason the datastore URLs above
-# give: measured here at 13 ms against 140 ms for the name.
-QSTASH_DEV_URL_LOCAL ?= http://127.0.0.1:$(COMPOSE_QSTASH_PORT)/v2
-QSTASH_DEV_IDENTITY ?= defaultUser
-QSTASH_DEV_SECRET ?= defaultPassword
-QSTASH_DEV_TOKEN_LOCAL ?= $(shell printf '{"UserID":"%s","Password":"%s"}' '$(QSTASH_DEV_IDENTITY)' '$(QSTASH_DEV_SECRET)' | base64 | tr -d '\n')
-
-# The names the live-scheduler tests read. Exported here beside the datastore
-# URLs for their reason: the suites read these names directly rather than a lane
-# resolving them into a fourth spelling. `make/test-integration.mk` exported the
-# same two before M175 §6 deleted it, and nothing re-exported them afterwards
-# -- which is why the Rust port's schedule sync had "no QStash
-# fake" recorded against it while the compose service was up the whole time.
-AGENTSFLEET_QSTASH_LIVE_URL ?= $(QSTASH_DEV_URL_LOCAL)
-AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(QSTASH_DEV_TOKEN_LOCAL)
+# every push, and a 404 is a refusal: the row lands `Failed` with "not yet
+# registered" and reads exactly like a scheduler outage. `127.0.0.1` rather than
+# `localhost` for the reason the datastore URLs above give: measured here at
+# 13 ms against 140 ms for the name.
+AGENTSFLEET_QSTASH_LIVE_URL ?= http://127.0.0.1:$(AGENTSFLEET_QSTASH_HOST_PORT)/v2
+AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(shell printf '{"UserID":"%s","Password":"%s"}' defaultUser defaultPassword | base64 | tr -d '\n')
 export AGENTSFLEET_QSTASH_LIVE_URL AGENTSFLEET_QSTASH_LIVE_TOKEN
 
 # Bring postgres + dragonfly + qstash up via docker compose and wait for healthchecks to pass.

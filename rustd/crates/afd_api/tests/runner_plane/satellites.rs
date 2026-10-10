@@ -124,6 +124,60 @@ async fn runner_memory_routes_validate_and_render() {
     );
 }
 
+/// A 409 names the state that refuses it: a memory verb fenced out says
+/// `superseded`, and a mint the GitHub App refuses says `reconnect_required`.
+/// The plane decides the refusal; the route decides how it renders.
+#[tokio::test]
+async fn runner_conflicts_name_the_state_that_refuses_them() {
+    let fenced = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .with_lease_refusal(afd_fleet::Error::stale_fence)
+        .router();
+    let memory_path = format!("/v1/runners/me/memory/{FLEET_ID}");
+    let recall_path = format!("{memory_path}/recall");
+    let recall = format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":1,"query":"x","limit":5}}"#);
+    let capture = format!(r#"{{"lease_id":"{LEASE_ID}","fencing_token":7,"memory":[]}}"#);
+    for (method, path, body) in [
+        (Method::GET, &memory_path, ""),
+        (Method::POST, &recall_path, recall.as_str()),
+        (Method::POST, &memory_path, capture.as_str()),
+    ] {
+        let refused = send(&fenced, method.clone(), path, Some(RUNNER_TOKEN), body).await;
+        assert_eq!(refused.status(), StatusCode::CONFLICT, "{method} {path}");
+        let document = json_body(refused).await;
+        assert_eq!(
+            (document.get("error_code"), document.get("current_state")),
+            (
+                Some(&serde_json::json!("UZ-RUN-005")),
+                Some(&serde_json::json!("superseded"))
+            ),
+            "{method} {path}"
+        );
+    }
+
+    let revoked = Fleet::new()
+        .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
+        .with_lease_refusal(afd_fleet::Error::github_reconnect_required)
+        .router();
+    let minted = send(
+        &revoked,
+        Method::POST,
+        "/v1/runners/me/credentials/mint",
+        Some(RUNNER_TOKEN),
+        &format!(r#"{{"lease_id":"{LEASE_ID}","integration":"github","scope":null}}"#),
+    )
+    .await;
+    assert_eq!(minted.status(), StatusCode::CONFLICT);
+    let document = json_body(minted).await;
+    assert_eq!(
+        (document.get("error_code"), document.get("current_state")),
+        (
+            Some(&serde_json::json!("UZ-GH-001")),
+            Some(&serde_json::json!("reconnect_required"))
+        )
+    );
+}
+
 /// A batch of live-tail frames is acknowledged with `{"ok":true}`, not a bare
 /// 202.
 ///

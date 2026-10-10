@@ -1,6 +1,6 @@
 use super::{Admission, Draft, Placement};
 use crate::error::raise;
-use crate::fixture::{ELASTIC_QUERY, GITHUB, Shown, policy, shown};
+use crate::fixture::{BASE, BRANCH, ELASTIC_QUERY, GITHUB, Shown, policy, shown};
 use crate::refusal::Refusal;
 
 pub(super) fn draft(
@@ -155,7 +155,23 @@ fn should_refuse_a_request_no_origin_rule_admits() {
         Some(shown(&raise::request_policy_not_allowed(
             GITHUB,
             "GET",
-            "/repos/acme/other/pulls"
+            "/repos/acme/other/pulls",
+            None
+        )))
+    );
+}
+
+#[test]
+fn should_tell_the_model_which_key_a_closed_rule_refused() {
+    let pulls = "https://api.github.com/repos/acme/widgets/pulls";
+    let body = format!(r#"{{"head":"{BRANCH}","base":"{BASE}","draft":true,"issue":7}}"#);
+    assert_eq!(
+        refused(false, draft("POST", pulls, &[], Some(&body))),
+        Some(shown(&raise::request_policy_not_allowed(
+            GITHUB,
+            "POST",
+            "/repos/acme/widgets/pulls",
+            Some(r#"it sends "issue", which this rule does not list"#.to_owned())
         )))
     );
 }

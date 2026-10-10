@@ -78,8 +78,10 @@ readonly RELEASE_BUNDLE="${BINARY_NAME}-bundle-linux-${_arch}"
 # it a writable temp file (/var/lock is root-owned; the tests are not root).
 readonly DEPLOY_LOCK_PATH="/var/lock/agentsfleet-deploy.lock"
 
-# How long a stopping runner gets before it is killed (drain_runner).
-readonly DRAIN_TIMEOUT_SECONDS=120
+# How long a stopping runner gets before it is killed (drain_runner). Equal
+# to the unit's TimeoutStopSec (agentsfleet-runner.service): a shorter wait
+# cuts any run the unit would have let finish.
+readonly DRAIN_TIMEOUT_SECONDS=300
 # How many times, and how many seconds apart, verify_healthy looks for the
 # restarted unit to come up.
 readonly HEALTH_ATTEMPTS=5

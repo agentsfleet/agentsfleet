@@ -42,6 +42,7 @@ export function nextLinkMock() {
   return {
     default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
       React.createElement("a", { href, ...rest }, children),
+    useLinkStatus: () => ({ pending: false }),
   };
 }
 

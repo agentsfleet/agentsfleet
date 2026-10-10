@@ -12,6 +12,11 @@ function withTooltipProvider(node: React.ReactElement): React.ReactElement {
   return React.createElement(TooltipProvider, null, node);
 }
 
+/** A model the static known-models list offers for "anthropic": the option an
+ *  Edit picks while the catalogue is empty. */
+const FALLBACK_MODEL = "claude-opus-5-5";
+const FALLBACK_OPTION = "Opus 5.5 claude-opus-5-5"; // the name the option shows, then the id
+
 const listModelEntriesActionMock = vi.fn();
 const listSecretsActionMock = vi.fn();
 const setProviderSelfManagedActionMock = vi.fn();
@@ -99,7 +104,7 @@ afterEach(() => cleanup());
 describe("Row actions — Edit", () => {
   it("saves a model change via PATCH; entering a key also replaces the shared secret whole", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: 1 } });
     replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "anthropic-prod" } });
     await renderTable(registry([target]));
 
@@ -111,24 +116,24 @@ describe("Row actions — Edit", () => {
     // so ProviderModelSelect falls back to the static known-models list for
     // "anthropic" — a <Select>, not a free-text input.
     await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
+    await user.click(await screen.findByRole("option", { name: FALLBACK_OPTION }));
     await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: "claude-opus-4-8" }));
+    await waitFor(() => expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: FALLBACK_MODEL }));
     await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", { provider: "anthropic", api_key: "sk-ant-rotated" }));
   });
 
   it("changes only the model when no key is entered — replace is never called", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: 1 } });
     const { dialog, onSaved, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
+    await user.click(await screen.findByRole("option", { name: FALLBACK_OPTION }));
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
-    await waitFor(() => expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: "claude-opus-4-8" }));
+    await waitFor(() => expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: FALLBACK_MODEL }));
     expect(replaceSecretActionMock).not.toHaveBeenCalled();
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
@@ -148,12 +153,12 @@ describe("Row actions — Edit", () => {
 
   it("a failed replace strands only the model write, and the table is re-read to show it", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
-    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "claude-opus-4-8", secret_ref: "anthropic-prod", created_at: 1 } });
+    updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: FALLBACK_MODEL, secret_ref: "anthropic-prod", created_at: 1 } });
     replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
     const { dialog, onSaved, onCommitted, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
+    await user.click(await screen.findByRole("option", { name: FALLBACK_OPTION }));
     await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
@@ -161,7 +166,7 @@ describe("Row actions — Edit", () => {
     // one row, visible, changed back in two clicks. The credential — shared,
     // unreadable, unrestorable — was never rotated.
     await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: "claude-opus-4-8" });
+    expect(updateModelEntryActionMock).toHaveBeenCalledWith("e1", { model_id: FALLBACK_MODEL });
     // The stranded write is SHOWN, not narrated: the table re-reads so it
     // displays the model the server actually holds.
     await waitFor(() => expect(onCommitted).toHaveBeenCalled());
@@ -187,7 +192,7 @@ describe("Row actions — Edit", () => {
     const { dialog, onSaved, onCommitted, user } = await renderEditDialog(target);
 
     await user.click(within(dialog).getByLabelText(/^model$/i));
-    await user.click(await screen.findByRole("option", { name: "claude-opus-4-8" }));
+    await user.click(await screen.findByRole("option", { name: FALLBACK_OPTION }));
     await user.type(within(dialog).getByLabelText(/api key/i), "sk-ant-rotated");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
@@ -480,7 +485,7 @@ describe("Row actions — Remove", () => {
 
     await waitFor(() => expect(deleteModelEntryActionMock).toHaveBeenCalledWith("e2"));
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByText("claude-sonnet-5")).toBeTruthy());
+    await waitFor(() => expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy());
   });
 
   it("surfaces a delete error inside the confirm dialog and still refreshes behind it", async () => {

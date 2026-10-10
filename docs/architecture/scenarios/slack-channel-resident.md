@@ -23,16 +23,18 @@ sequenceDiagram
   Lead->>Slack: @agentsfleet what's our prod called? (thread A)
   Slack->>API: POST /v1/connectors/slack/events (v0 Hash-based Message Authentication Code (HMAC)) ✅
   API->>PG: resolve team→workspace; materialize channel fleet via Fleets::install (default skill.md) ✅
-  API->>API: XADD fleet:{channel_fleet_id}:events actor=slack:<user> (webhook-producer shape) ♻️
+  API->>API: admit producer slack_mention, key <team_id>:<event_id>, actor=slack:<user> → XADD fleet:{channel_fleet_id}:events ✅
   Runner->>API: lease → run; GET /me/memory/{channel_fleet_id} (empty) ♻️
-  Runner->>Slack: chat.postMessage thread_ts=A "don't know yet — tell me?" ✅
+  Runner->>API: report "don't know yet — tell me?"
+  API->>Slack: chat.postMessage thread_ts=A (outbound poster) ✅
   Lead->>Slack: it's "aurora" (thread A)
   Runner->>API: POST /me/memory/{channel_fleet_id} {prod: aurora} ♻️
   Note over Lead,Runner: …days later, a different thread…
   Lead->>Slack: @agentsfleet is aurora healthy? (thread B)
   API->>API: SAME channel_fleet_id (core.connector_channels)
   Runner->>API: lease → GET /me/memory/{channel_fleet_id} → {prod: aurora} ✅
-  Runner->>Slack: chat.postMessage thread_ts=B (uses "aurora") ✅
+  Runner->>API: report (uses "aurora")
+  API->>Slack: chat.postMessage thread_ts=B (outbound poster) ✅
 ```
 
 ---
@@ -52,7 +54,7 @@ The first `@mention` in `#support` materializes a **durable per-channel resident
 
 ## 3. Mention → steer → answer (one reasoning loop)
 
-A mention is a `slack:<user>` event XADDed via the webhook-producer shape (signature-authed, no principal — `afd_api_ingress/src/handler/webhook/receive_route.rs`) on `fleet:{channel_fleet_id}:events` — the **same** single ingress as webhook / cron / steer ([`../data_flow.md`](../data_flow.md) §B). On lease, the runner hydrates the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`); the runner's agent loop ([`../runner_execution.md`](../runner_execution.md#process-model)) answers from that memory plus the live thread context (read-only — it holds no write credentials at Rung 0); the answer posts back via `chat.postMessage thread_ts=<originating>`. On report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The hydrate/capture loop is **reused unchanged** from [`../runner_fleet.md`](../runner_fleet.md) §Memory continuity.
+A mention is a `slack:<user>` event admitted under producer `slack_mention`, keyed `<team_id>:<event_id>` (`afd_ingress/src/slack/admit.rs`), on `fleet:{channel_fleet_id}:events` — the **same** single ingress as webhook / cron / steer ([`../data_flow.md`](../data_flow.md) §B). On lease, the runner hydrates the channel's memory (`GET /v1/runners/me/memory/{channel_fleet_id}`); the runner's agent loop ([`../runner_execution.md`](../runner_execution.md#process-model)) answers from that memory plus the live thread context (read-only — it holds no write credentials at Rung 0); the daemon's outbound poster posts the answer with `chat.postMessage thread_ts=<originating>` (`afd_outbound/src/slack.rs`). On report, new facts are captured (`POST …/memory/{channel_fleet_id}`). The hydrate/capture loop is **reused unchanged** from [`../runner_fleet.md`](../runner_fleet.md) §Memory continuity.
 
 ## 4. The cross-thread payoff
 
@@ -62,7 +64,7 @@ Thread A stored `prod=aurora`. Thread B — a different thread, possibly days la
 
 | Step | Status |
 |---|---|
-| Memory hydrate/capture loop (keyed by `fleet_id`) | ✅ lease-scoped (`rustd/crates/afd_fleet/src/lease/memory.rs:45-50`) |
+| Memory hydrate/capture loop (keyed by `fleet_id`) | ✅ lease-scoped (`Plane::hydrate` in `rustd/crates/afd_fleet/src/lease/memory.rs`) |
 | Single ingress / lease / execute / report | ✅ one `slack_mention` admission per Slack event (`rustd/crates/afd_api_ingress/src/handler/mention.rs`) |
 | Slack OAuth install — vault handle + generic `core.connector_installs` | ✅ |
 | Signed events ingress + `(team,channel)→fleet` routing (`core.connector_channels`) | ✅ (`rustd/crates/afd_ingress/src/slack/route.rs`) |
@@ -73,8 +75,8 @@ Thread A stored `prod=aurora`. Thread B — a different thread, possibly days la
 
 - **Memory scope = channel = audience boundary.** The resident fleet (keyed by its `fleet_id`), not the thread, is the namespace — so memory crosses threads and never bleeds across channels.
 - **One reasoning loop.** A Slack mention is one more producer into the same ingress; the lease/execute/report path never branches on actor type.
-- **Reactive is not a second runtime.** Read-only, mention-only, never unattended — the on-ramp to the durable hired teammate (Rung 1), not "a chat UI over tools."
+- **Reactive is not a second runtime.** Read-only, mention-only, never unattended — the on-ramp to the durable hired agent (Rung 1), not "a chat UI over tools."
 
 ## 7. What is NOT in this scenario (Rung 1)
 
-Hired durable teammates, source webhooks (Zoho Desk / Statuspage), write actions, approval gating, interactivity buttons, slash commands, and direct messages — the follow-on milestone. The reactive bot's limit (no system access) is the conversion lever to that durable teammate.
+Hired durable agents, source webhooks (Zoho Desk / Statuspage), write actions, approval gating, interactivity buttons, slash commands, and direct messages — the follow-on milestone. The reactive bot's limit (no system access) is the conversion lever to that durable agent.

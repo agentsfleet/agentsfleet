@@ -13,6 +13,7 @@ import {
   Time,
 } from "@agentsfleet/design-system";
 import { providerLabel } from "@/lib/api/model-library-types";
+import { modelLabel } from "@/lib/models/display";
 import type { TenantModelEntry } from "@/lib/types";
 
 type Props = {
@@ -25,7 +26,7 @@ function Details({ target }: { target: TenantModelEntry }) {
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{target.model_id}</DialogTitle>
+        <DialogTitle>{modelLabel(target.model_id)}</DialogTitle>
         {/* Creation time and key presence are header context, not rows: the rows
             say what the entry is, the header says when it landed and whether a
             key backs it. */}

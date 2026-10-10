@@ -104,6 +104,7 @@ fn every_sentence_is_one_of_the_declared_details() {
         detail::EXCHANGE_FAILED,
         detail::INSTALLATION_OWNERSHIP,
         detail::INSTALLATION_LISTING_FAILED,
+        detail::GRANT_STILL_REFERENCED,
     ];
     for (label, error) in one_of_each_kind() {
         assert!(
@@ -122,6 +123,36 @@ fn only_the_kinds_a_retry_could_fix_are_retryable() {
             RETRYABLE.contains(&label),
             "{label} decides the wrong way about whether the caller should try again"
         );
+    }
+}
+
+/// A Disconnect the vault refused over a model entry names how many entries
+/// hold it and answers the vault's conflict; no other kind claims a count.
+///
+/// The count is what lets the route answer 409 with `current_state` rather
+/// than an operation failure a client would retry.
+#[test]
+fn only_a_referenced_refusal_carries_a_count_and_the_vault_conflict() {
+    for (label, error) in one_of_each_kind() {
+        if label == "vault referenced" {
+            assert_eq!(error.referenced_by(), Some(2), "{error}");
+            assert_eq!(
+                error.code(),
+                afd_core::error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
+                "{error}"
+            );
+            assert_eq!(error.detail(), detail::GRANT_STILL_REFERENCED);
+            assert!(
+                !error.is_retryable(),
+                "the entry must go before a retry can pass"
+            );
+        } else {
+            assert_eq!(
+                error.referenced_by(),
+                None,
+                "{label} claims a count it has none of"
+            );
+        }
     }
 }
 

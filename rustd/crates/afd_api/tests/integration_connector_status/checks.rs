@@ -1,7 +1,7 @@
-//! The five things the status walk asserts, one function each.
+//! The six things the status walk asserts, one function each.
 //!
 //! The walk itself is one test — it shares a database lane and a seeded
-//! workspace, so splitting it into five tests would mean seeding five times.
+//! workspace, so splitting it into six tests would mean seeding six times.
 //! What CAN be split is the assertions, and they read better named than
 //! inlined. A child module rather than a sibling because each one reaches
 //! into [`super::Fixture`], whose fields stay private to the parent.
@@ -161,6 +161,46 @@ pub(super) async fn a_disconnect_removes_the_handle_and_repeats_harmlessly(
     )
     .await;
     assert_eq!(again.status(), StatusCode::NO_CONTENT);
+}
+
+/// A Disconnect a model entry still names is a conflict naming its state.
+///
+/// The client is told to remove the entry first, in the shape the vault's own
+/// delete uses, and nothing about the connection moves: the handle still reads
+/// and its routing row is still there.
+pub(super) async fn a_disconnect_a_model_entry_still_names_is_a_conflict(
+    router: &axum::Router,
+    fixture: &Fixture,
+) {
+    let entry = fixture.reference_handle(HELD).await;
+    let refused = send(
+        router,
+        Method::DELETE,
+        &fixture.one(HELD),
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    let status = refused.status();
+    let document = json_body(refused).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{document}");
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some(afd_core::error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES.as_str()),
+        "{document}"
+    );
+    assert_eq!(
+        document.get("current_state").and_then(Value::as_str),
+        Some(STATE_REFERENCED),
+        "the conflict names the state that refuses it: {document}"
+    );
+    assert_eq!(
+        fixture.routed(HELD, ROUTED_ACCOUNT).await,
+        1,
+        "a refused Disconnect leaves the routing row"
+    );
+    a_held_handle_reads_as_connected(router, fixture).await;
+    fixture.drop_entry(&entry).await;
 }
 
 /// A workspace secret sharing a provider's name is not a connection.

@@ -194,7 +194,10 @@ jobs:
       # `docker run` rather than a job `container:`: JS actions cannot run
       # inside an Alpine container on an ARM64 runner, which is the constraint
       # release.yml documents on the same build.
-      - name: Build the daemon in the pinned builder (musl-native)
+      # One `cargo build` per binary, as deploy-dev-build.yml builds them: a
+      # single invocation unifies features across both dependency graphs and
+      # would pass a binary that only compiles with the other's features.
+      - name: Build both binaries in the pinned builder (musl-native)
         run: |
           mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
           # DERIVED, never spelled twice — see check_builder_pin.sh.
@@ -212,6 +215,7 @@ jobs:
             sh -c '
               set -e
               cargo build --profile dist --bin agentsfleetd
+              cargo build --profile dist --bin agentsfleet-runner
             '
           sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
 
@@ -220,18 +224,19 @@ jobs:
       # there, so the assertion belongs on this side of the wall.
       - name: Verify static ELF — zero NEEDED, no INTERP
         run: |
-          bin=rustd/target/dist/agentsfleetd
-          test -f "$bin"
-          if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
-            echo "FAIL: $bin has dynamic NEEDED entries"
-            readelf -d "$bin" | grep NEEDED
-            exit 1
-          fi
-          if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
-            echo "FAIL: $bin has INTERP (dynamic linker) section"
-            exit 1
-          fi
-          echo "✓ linux/${{ matrix.arch }}: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
+          for bin in rustd/target/dist/agentsfleetd rustd/target/dist/agentsfleet-runner; do
+            test -f "$bin"
+            if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
+              echo "FAIL: $bin has dynamic NEEDED entries"
+              readelf -d "$bin" | grep NEEDED
+              exit 1
+            fi
+            if readelf -l "$bin" 2>/dev/null | grep -q "INTERP"; then
+              echo "FAIL: $bin has INTERP (dynamic linker) section"
+              exit 1
+            fi
+            echo "✓ linux/${{ matrix.arch }} $bin: fully static (zero NEEDED, no INTERP), $(wc -c < "$bin") bytes"
+          done
 
   test:
     runs-on: ubuntu-latest

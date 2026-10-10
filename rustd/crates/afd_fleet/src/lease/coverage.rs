@@ -105,11 +105,11 @@ impl Plane {
     /// accepted the document at ingest, so the ceiling that admits a run and
     /// the ceiling that stops one can never be read two ways.
     async fn budget_covers(&self, lease: &Renewing, lease_id: &str, now: UnixMillis) -> Result<()> {
-        let installed = match self.leases.installed(&lease.fleet_id).await {
-            Ok(Some(installed)) => installed,
-            // A fleet an operator stopped mid-run has no ceiling left to
-            // enforce and no author waiting on one. The run finishes; stopping
-            // a fleet has never killed work already in flight.
+        let config = match self.leases.stored_config(&lease.fleet_id).await {
+            Ok(Some(config)) => config,
+            // The row is gone only when a purge raced the run. There is no
+            // ceiling left to read; a stopped or killed fleet still has one,
+            // so it never reaches this arm.
             Ok(None) => return Ok(()),
             // The one CLOSED arm. A stored ceiling this daemon cannot parse is
             // not a ceiling it may ignore — and unlike the outage below, it
@@ -145,7 +145,7 @@ impl Plane {
                 return Ok(());
             }
         };
-        let verdict = budget::covers(installed.config.budget(), spend);
+        let verdict = budget::covers(config.budget(), spend);
         if verdict == Verdict::Admit {
             return Ok(());
         }

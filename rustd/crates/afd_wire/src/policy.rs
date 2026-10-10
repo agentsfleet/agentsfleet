@@ -76,8 +76,10 @@ pub struct HttpJsonFieldRule<'a> {
 
 /// One method and path admitted at an origin.
 ///
-/// JSON rules lock selected fields; any field the rules do not name stays
-/// available for request-specific content.
+/// A rule always checks the fields it locks. A rule that carries
+/// `permitted_fields` is also closed: it admits no top-level key beside its
+/// locked and permitted ones, and no query string. A rule without it admits
+/// any other key and any query string.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpRequestRule<'a> {
@@ -91,6 +93,21 @@ pub struct HttpRequestRule<'a> {
     /// Fields whose values the rule locks.
     #[serde(borrow)]
     pub json_fields: Vec<HttpJsonFieldRule<'a>>,
+    /// Fields the rule admits with any value beside the locked ones, and with
+    /// them the rule's whole key set. Present but empty closes the rule to
+    /// its locked fields alone.
+    ///
+    /// Absent on an open rule: a read, a blob or tree write, and every rule
+    /// from a daemon older than this field. The runner then checks the rule's
+    /// locked fields and nothing more. Closing an older daemon's write rule
+    /// would refuse keys it never listed, such as a ref's `sha` or a Pull
+    /// Request's `title`. Every write would then stop until the daemon
+    /// upgrades.
+    ///
+    /// A runner older than this field ignores it and reads every rule as
+    /// open. A closed rule holds once the runners that enforce it run.
+    #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
+    pub permitted_fields: Option<Vec<Cow<'a, str>>>,
 }
 
 /// The provider-neutral request boundary for one exact host.

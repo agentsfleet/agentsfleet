@@ -17,10 +17,9 @@ Every row is extracted from the sections below; the owner column names the secti
 | Trust anchors | 6 | signed single-use state bound to workspace and starter identity (`UZ-CONN-002`) · user-authorization installation proof (`UZ-CONN-008`) · admin-vault `<provider>-app` bags (`UZ-CONN-001`) · provider signatures · the standing integration grant | §Trust anchors |
 | GitHub App URLs | 2, different jobs | `/api/connectors/github/callback` on the dashboard (browser install) vs `/v1/ingress/github` on the API (machine events) | §GitHub App |
 | Disconnect | internal state only | `DELETE` removes the workspace handle and routing rows; provider authorization remains active | §The registry |
-| Binding writes | one transaction per provider and workspace | every callback and Disconnect share a transaction-scoped writer lock | §The registry |
+| Binding writes | callback and Disconnect atomic | each commits the sealed grant and the routing rows in one transaction, taking the workspace row lock first, so the two serialise even before a grant exists | §The registry |
 | App replay identity | authenticated body digest, per fleet | the unsigned delivery header is diagnostic only; failed fan-out legs retry without duplicating others | §GitHub App |
-| Outbound HTTP | the connectors' bounded-fetch entry only, grep-gated | pin → arm → fetch → disarm; refusal is `UZ-CONN-003` (502); deadlines named per call class (10 s / 10 s / 1.5 s) | §Bounded outbound |
-| Residual unbounded window | the TLS handshake | the HTTP client's connect does TCP+TLS atomically; tracked follow-up | §Bounded outbound |
+| Outbound HTTP | a deadline on every vendor call | refusal is `UZ-CONN-003` (502); token exchange 10 s · Slack post 5 s · thread re-read 1.5 s · answer check 3 s | §Bounded outbound |
 | Front-door failures | 404 vs 503 | unknown provider → `UZ-CONN-004`; registry id with no `<provider>-app` bag → `UZ-CONN-001`, fail-loud | §Unknown vs unconfigured |
 
 ## Traps
@@ -31,7 +30,6 @@ Each trap is enforced in its owner section; this list is the index.
 - No `if provider == "slack"` exists anywhere in the flow; adding one is a design regression (§The registry).
 - A static vendor key (Datadog, Grafana, Fly) is a plain workspace secret, never a registry entry (§Archetypes).
 - Generic connect plumbing does not imply generic event behavior — inbound routing follows the provider's real shape (§The registry).
-- A watchdog arms exactly ONE call at a time; sharing an instance across concurrent requests leaves one call unbounded (§Bounded outbound).
 - No pool slot rides a vendor call — credentials load under a short acquire released before the exchange (§Bounded outbound).
 - The App private key and webhook secret never enter the lease, runner environment, sandbox, logs, or response frames (§GitHub App).
 
@@ -69,10 +67,10 @@ The connector registry (`rustd/crates/afd_credential/`) holds a compile-time `Co
             └───────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Routes are generic.** `POST /v1/workspaces/{ws}/connectors/{provider}/connect`, `GET` or `DELETE /v1/workspaces/{ws}/connectors/{provider}`, and authenticated `POST /v1/connectors/{provider}/callback` use the same matchers for every provider. The dashboard owns `/api/connectors/{provider}/callback`. The old API `GET` callback only relays browsers to that dashboard route. `DELETE` requires `connector:write`, removes only `agentsfleet` state, and returns 204 when repeated. Provider authorization remains active outside `agentsfleet`.
+- **Routes are generic over `{provider}`** (API reference › Connectors). The dashboard owns `/api/connectors/{provider}/callback`; Disconnect removes only `agentsfleet` state.
 - **Dispatch is on SHAPE, never on provider id.** The archetype tagged-union owns which flow runs; handlers match exhaustively on it (a new archetype cannot land half-wired — the compiler forces every arm). No `if provider == "slack"` exists anywhere in the flow.
 - **Invariants are compile-time facts.** Duplicate/empty provider ids, an oauth2 entry without scopes or an exchange-failed code, or a flow whose embedded provider id disagrees with its entry — all compile-time errors, not review vigilance.
-- **A callback's write is atomic; Disconnect's is ordered, not atomic — and the difference is deliberate.** A completing callback commits its routing row and its sealed grant in ONE transaction, so a connect that cannot seal its grant leaves no routing row behind. Disconnect is NOT one transaction (`afd_connector/src/grant/holding.rs`: *"Not a transaction, and that is the honest shape rather than a compromise"*): it deletes the routing rows first and the vault handle second, chosen so the intermediate state is a handle nothing routes to rather than rows pointing at a credential that is gone. **The consequence, stated rather than implied:** nothing serialises a callback against an in-flight Disconnect, so a callback committing between those two deletes can leave a connection the Disconnect believed it had removed. No advisory lock exists in this tree, and a Postgres lock could not cover the vault write anyway (M187_001 §3.3 — Indy, Sep 07, 2026: "Why do you need the advisory lock").
+- **A callback and a Disconnect each write both rows in one transaction.** A completing callback commits its sealed grant and its routing row together, so a connect that cannot seal its grant leaves no routing row behind. Disconnect deletes the grant and the routing rows together, so a refused delete leaves both (`afd_connector/src/grant/holding.rs`). Both lock the workspace row first (`core.workspaces`, `FOR NO KEY UPDATE`), so a callback and a Disconnect take turns even on a first connect, before the grant's row exists, and end with both rows or neither. The vault and the routing table share one Postgres, so no advisory lock is needed.
 - **Inbound routing follows the provider's real shape.** App-level webhooks whose payload carries a stable routing key use `POST /v1/ingress/{provider}`, but the shipped implementation is provider-owned: GitHub has its own `/v1/ingress/github` handler, and its routing statements live with the GitHub connector in `rustd/crates/afd_credential/`. Slack keeps `POST /v1/connectors/slack/events` because its challenge, retry, timestamp, channel, and thread semantics are load-bearing; that route verifies the signature, answers the challenge, and admits a mention as one `slack_mention` event on the fleet it routes to (`rustd/crates/afd_api_ingress/src/handler/mention.rs:195`); a mention no subscribed fleet takes reaches the channel's resident, installed on the first one ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) §4). Jira and Linear have connected credentials but no inbound integration yet. Generic connect plumbing does not imply generic event behavior.
 
 ## Archetypes
@@ -154,7 +152,7 @@ one-time code → GitHub user token
                          other workspace: 403, no mutation
 ```
 
-**Disconnect** and every authenticated provider callback completion write in one transaction per provider and workspace: the vault handle and the reverse-routing rows are deleted or written together, or neither is. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
+A callback completion writes the vault handle and the reverse-routing rows in one transaction. **Disconnect** deletes both in one transaction too, and the two serialise on the workspace row, which exists before a first Connect writes a handle (§"The registry: a provider is a data entry"). A handle a model entry still names is not deleted: Disconnect answers 409 `UZ-VAULT-004` with `current_state: "referenced"`. Disconnect leaves the GitHub App and repository access installed. A later **Connect** can therefore reconcile external and internal state after a datastore rebuild.
 
 The user token is discarded after the current callback, always: the Rust daemon carries no App slug, so there is no App-install continuation to hold it for. Zero reachable installations is a refusal (`UZ-CONN-008`), not a redirect to GitHub's install page, as M187_001's Discovery records. After the identity, workspace, and installation checks pass, the callbacks endpoint writes both records on one database connection:
 
@@ -288,40 +286,33 @@ Slack is the contrast and the reason this page cannot generalise: its retry sema
 
 ### Credential use remains separate from event receipt
 
-Receiving a signed event does not hand GitHub credentials to a fleet. When a leased fleet later calls the GitHub API through `${secrets.github.token}`, the runner-token plane asks `agentsfleetd` to mint. The daemon derives the fleet and workspace from the lease, rechecks the approved integration grant, loads the workspace installation handle, signs with the platform private key, exchanges for a short-lived installation token, and returns that token for the tool call. The runner keeps the token for the lease, mints again 30 s before it expires, and masks it out of every response a tool returns (`rustd/crates/afr_egress/src/vault.rs`). The App private key and webhook secret never enter the lease, runner environment, sandbox, logs, or response frames.
+Receiving a signed event does not hand GitHub credentials to a fleet. When a leased fleet later calls the GitHub API through `${secrets.github.token}`, the runner-token plane asks `agentsfleetd` to mint. The daemon derives the fleet and workspace from the lease, rechecks the approved integration grant, loads the workspace installation handle, signs with the platform private key, exchanges for a short-lived installation token, and returns that token for the tool call. The runner keeps the token for the lease, mints again 30 s before it expires, and masks it out of every response a tool returns (`rustd/crates/afr_egress/src/vault.rs`). The App private key and webhook secret never enter the lease, runner environment, sandbox, logs, or response frames. The minted token's scope follows the binding (`afd_credential/src/credential/github/request.rs`): a read binding gets `contents: read` and no `pull_requests` at all; a repair binding adds what a push and a draft Pull Request need, never `workflows`; the `actions` and `checks` reads are requested only where the installation holds them, so a missing one answers 403 to the fleet. The runner's egress client follows no redirect (`afr_egress/src/network.rs`), so a job log that GitHub serves by redirect is not fetched.
 
 ### Provider impact
 
 | Provider | Connect credential | Inbound events after M102_005 |
 |---|---|---|
 | <img src="https://cdn.simpleicons.org/github" width="14" alt="" /> GitHub | App installation handle | App ingress routes by installation + repository + event + grant; manual per-fleet webhook remains available |
-| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from Open Authorization (OAuth) | specialized events route: signature and challenge today; team/channel mention routing specified in M206_002 |
+| <img src="https://api.iconify.design/logos/slack-icon.svg" width="14" alt="" /> Slack | bot token from Open Authorization (OAuth) | specialized events route: signature, challenge, and mention routing to one `slack_mention` event (`rustd/crates/afd_api_ingress/src/handler/mention.rs`) |
 | <img src="https://cdn.simpleicons.org/zoho" width="14" alt="" /> Zoho Desk | OAuth refresh handle, multi-data-center token endpoint | no inbound integration in this workstream |
 | <img src="https://cdn.simpleicons.org/jira" width="14" alt="" /> Jira | OAuth refresh handle | no inbound integration in this workstream |
 | <img src="https://cdn.simpleicons.org/linear" width="14" alt="" /> Linear | OAuth refresh handle | no inbound integration in this workstream |
 
-## Bounded outbound: every vendor call is armed
+## Bounded outbound: every vendor call has a deadline
 
-The connectors' bounded-fetch entry is the **only sanctioned outbound HTTP entry** for connector code — grep-gated (spec eval E8): no raw HTTP client is constructed anywhere else in connector code. It mirrors the runner's control-plane client: pin the pooled socket → `arm` the watchdog → fetch → `disarm`, with the shared `Watchdog` promoted to a named call-deadline module (both planes consume it — the runner's deadlines are unchanged).
+Every connector vendor call runs under a deadline set at its call site. A callback exchange past its deadline, or one that cannot reach the vendor, answers `UZ-CONN-003` (502); background paths log the same code and retry.
 
-- **Fail-closed, no unbounded branch.** A call either runs armed or is refused: watchdog-unavailable (thread spawn failure) and pin failure both refuse the call (`UZ-CONN-003`, 502) instead of falling through to an unarmed fetch. The invariant is code-path-true — there is no fallback branch to take.
-- **Deadlines are named per call class**, once: token exchange (10 s), outbound post (10 s), thread re-read (1.5 s — M106's ingress bound, kept).
-- **Watchdog ownership follows the concurrency of the path.** A watchdog arms exactly ONE call at a time. The serialized outbound worker owns one across its loop; the request-concurrent paths (OAuth exchange, mention-ingress thread re-read) hold one per request — sharing an instance across concurrent requests would let two arms clobber each other and leave one call unbounded.
-- **Residual window: connection setup.** Name resolution, the TCP dial, **and the TLS handshake** happen before a pooled handle exists to arm. DNS + dial are OS-bounded (connect timeouts); the TLS handshake read is **not** — the HTTP client's connect does TCP+TLS atomically, so we cannot arm between them without a setup deadline mechanism that does not exist yet. So a vendor that completes TCP then stalls the TLS handshake is the one unbounded branch left (tracked as a follow-up, together with bounding the outbound callers that are not connectors — JWKS, Clerk, OTLP, fleet-bundle fetches, and the credential broker's GitHub mint — which M108_001 deferred). The armed surface is the post-handshake read stage, where the M100/M106 incidents actually lived (vendor accepts + handshakes, then stalls the response). This is a strict improvement, not a regression: pre-M108 the *entire* call — connect, handshake, and read — was unbounded.
+- **Deadlines are named per call class.** Token exchange and credential mint: 10 s, a client-wide total timeout that covers connect and the Transport Layer Security (TLS) handshake (`rustd/crates/agentsfleetd/src/credentials.rs`, `EXCHANGE_TIMEOUT`). Slack post: 5 s (`rustd/crates/afd_outbound/src/slack.rs`, `POST_DEADLINE`). Slack thread re-read: 1.5 s (`rustd/crates/afd_connector/src/slack/replies.rs`, `READ_DEADLINE`). Slack answer check: 3 s (`rustd/crates/afd_connector/src/slack/answered.rs`, `ANSWER_CHECK_DEADLINE`).
+- **The exchange and the mint hold separate clients.** A slow connect exchange cannot consume the connection slots a credential mint needs (`rustd/crates/agentsfleetd/src/credentials.rs`).
 - **No pool slot rides a vendor call.** Credentials load under a short acquire released before the exchange; the events ingress pre-loads the bot token and returns its slot before the thread re-read (closes merged-PR #468's P1).
-
-Deadline fired, watchdog unarmable, or vendor unreachable → `UZ-CONN-003` (502) + a `connector_vendor_call_refused` warn naming provider, call class, and `reason` (the per-class distinction) — never URL query or token material.
 
 ## Unknown vs unconfigured (the two front-door failures)
 
-| Case | Meaning | Response |
-|---|---|---|
-| Unknown provider | `{provider}` not in the registry — nothing to configure | 404 `UZ-CONN-004`, body names the id, no side effects |
-| Unconfigured provider | registry id whose `<provider>-app` bag is absent on this deployment | 503 `UZ-CONN-001`, fail-loud, no partial state |
+An unknown provider (`UZ-CONN-004`) and a registry id with no `<provider>-app` bag (`UZ-CONN-001`) are different failures ([error codes](https://docs.agentsfleet.net/api-reference/error-codes#UZ-CONN-004)).
 
 ## Adding a provider (the recipe)
 
-1. Provider id as a `common` constant (RULE UFS) — it is simultaneously the route segment, the vault-key stem (`<provider>-app`, `fleet:<provider>`), and the registry id.
+1. Provider id as a `common` constant (RULE UFS) — it is simultaneously the route segment, the vault-key stem (`<provider>-app` for the platform app, the bare `<provider>` for the workspace grant: `Provider::app_key` and `Provider::grant_key` in `rustd/crates/afd_connector/src/provider.rs`), and the registry id.
 2. One `Archetype` arm in the registry — `Oauth2Flow` (endpoints, scopes, delimiter, extra query, refresh) or `AppInstall` (authorize + token endpoints) — plus the provider's arm in `complete::read`, which is where its answer is parsed into a grant. The registry holds no per-provider hook functions: it dispatches on the archetype enum and matches per provider.
 3. One `ConnectorSpec` entry in the registry.
 4. Provision the `<provider>-app` bag in the admin vault. (An operator-supplied vendor key with no browser round-trip — Datadog/Grafana/Fly's shape — isn't a connector at all; it's a plain workspace secret, `agentsfleet secret create`, never a registry entry.)

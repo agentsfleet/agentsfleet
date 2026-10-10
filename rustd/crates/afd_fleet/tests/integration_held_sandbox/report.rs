@@ -18,7 +18,7 @@ use crate::report_seed::{Held, SLICE_MS, held};
 
 /// A processed report on `held`'s lease, asking to hold its sandbox until
 /// `held_until_ms`.
-fn processed(held: &Held, held_until_ms: Option<i64>) -> ReportRequest<'_> {
+pub(crate) fn processed(held: &Held, held_until_ms: Option<i64>) -> ReportRequest<'_> {
     ReportRequest {
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
         event_id: Cow::Borrowed(&held.event_id),

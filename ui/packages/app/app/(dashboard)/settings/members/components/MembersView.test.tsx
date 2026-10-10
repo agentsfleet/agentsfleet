@@ -101,9 +101,9 @@ describe("the table", () => {
 describe("invite email", () => {
   it("should show each invite's email status, and offer send again whenever there is a relay to send it", () => {
     renderView([JOHN], [INVITE, UNSENT, NO_RELAY]);
-    expect(within(actionsCellOf(INVITE.email)).getByText(EMAIL_SENT)).toBeTruthy();
-    expect(within(actionsCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
-    expect(within(actionsCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP)).toBeTruthy();
+    expect(within(timeCellOf(INVITE.email)).getByText(EMAIL_SENT)).toBeTruthy();
+    expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
+    expect(within(timeCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP)).toBeTruthy();
     // A sent email may still never arrive, so it can be sent again too.
     expect(within(rowOf(INVITE.email)).getByRole("button", { name: sendAgain(INVITE) })).toBeTruthy();
     expect(within(rowOf(UNSENT.email)).getByRole("button", { name: sendAgain(UNSENT) })).toBeTruthy();
@@ -115,7 +115,7 @@ describe("invite email", () => {
     actions.loadTeamAction.mockResolvedValue({ ok: true, data: { members: [JOHN], invites: [{ ...UNSENT, email_status: EMAIL_STATUS.sent }] } });
     renderView([JOHN], [UNSENT]);
     await userEvent.setup().click(screen.getByRole("button", { name: sendAgain(UNSENT) }));
-    await waitFor(() => expect(within(actionsCellOf(UNSENT.email)).getByText(EMAIL_SENT)).toBeTruthy());
+    await waitFor(() => expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_SENT)).toBeTruthy());
     expect(actions.sendInviteEmailAction).toHaveBeenCalledExactlyOnceWith(UNSENT.id);
   });
 
@@ -138,7 +138,7 @@ describe("invite email", () => {
     // Send again holds until the reload behind the refusal has landed.
     await waitFor(() => expect(button().disabled).toBe(false));
     expect(actions.loadTeamAction).toHaveBeenCalledOnce();
-    expect(within(actionsCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
+    expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
   });
 });
 
@@ -151,14 +151,14 @@ describe("an invite's email status", () => {
 
   it("should read as a warning when the email did not go or cannot, and quietly once it went", () => {
     renderView([JOHN], [INVITE, UNSENT, NO_RELAY]);
-    expect(within(actionsCellOf(INVITE.email)).getByText(EMAIL_SENT).className).toMatch(MUTED);
-    expect(within(actionsCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT).className).toMatch(WARNING);
-    expect(within(actionsCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP).className).toMatch(WARNING);
+    expect(within(timeCellOf(INVITE.email)).getByText(EMAIL_SENT).className).toMatch(MUTED);
+    expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT).className).toMatch(WARNING);
+    expect(within(timeCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP).className).toMatch(WARNING);
   });
 
   it("should explain on focus that this deployment sends no email, and to copy the link instead", async () => {
     renderView([JOHN], [NO_RELAY]);
-    fireEvent.focus(within(actionsCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP));
+    fireEvent.focus(within(timeCellOf(NO_RELAY.email)).getByText(EMAIL_NOT_SET_UP));
     // pin test: literal is the contract — what the owner reads on hover or focus.
     const explained = "Email isn't set up for this deployment. Copy the link and share it instead.";
     await waitFor(() => expect(screen.getAllByText(explained).length).toBeGreaterThan(0));
@@ -166,11 +166,28 @@ describe("an invite's email status", () => {
 
   it("should reach that explanation through a button that keeps the shared focus ring and the warning tone", () => {
     renderView([JOHN], [NO_RELAY]);
-    const trigger = within(actionsCellOf(NO_RELAY.email)).getByRole("button", { name: EMAIL_NOT_SET_UP });
+    const trigger = within(timeCellOf(NO_RELAY.email)).getByRole("button", { name: EMAIL_NOT_SET_UP });
     expect(trigger.textContent).toBe(EMAIL_NOT_SET_UP);
     expect(trigger.className).toMatch(/\bfocus-visible:ring-2\b/);
     expect(trigger.className).toMatch(/\bfocus-visible:ring-ring\b/);
     expect(trigger.className).toMatch(WARNING);
+  });
+});
+
+describe("row layout", () => {
+  it("the time column says whether the invite email went", () => {
+    renderView([JOHN], [INVITE, UNSENT]);
+    expect(within(timeCellOf(INVITE.email)).getByText(EMAIL_SENT)).toBeTruthy();
+    expect(within(timeCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT)).toBeTruthy();
+  });
+
+  it("an invite row's actions are icons only, right-aligned", () => {
+    renderView([JOHN], [INVITE]);
+    const actions = actionsCellOf(INVITE.email);
+    // No status words beside the buttons: every child is an icon button.
+    expect(actions.textContent?.trim()).toBe("");
+    expect(within(actions).getAllByRole("button")).toHaveLength(3);
+    expect(actions.querySelector(".justify-end")).not.toBeNull();
   });
 });
 
@@ -180,7 +197,6 @@ describe("a row at phone width", () => {
     const phoneOnly = personCellOf(UNSENT.email).querySelector(PHONE_ONLY);
     expect(phoneOnly?.querySelectorAll("time")).toHaveLength(2);
     expect(phoneOnly?.textContent).toContain(EMAIL_NOT_SENT);
-    expect(within(actionsCellOf(UNSENT.email)).getByText(EMAIL_NOT_SENT).closest(PHONE_HIDDEN)).not.toBeNull();
     expect(timeCellOf(UNSENT.email).matches(PHONE_HIDDEN)).toBe(true);
   });
 

@@ -5,6 +5,8 @@
 
 Canonical reference for the v2 problem, thesis, runtime model, Fleet / runner interaction, capabilities, and context lifecycle. All v2 specs in `docs/v2/` are grounded in the topic files in this directory.
 
+Product thesis: [`high_level.md`](./high_level.md).
+
 ---
 
 ## Why the doc is split this way
@@ -26,7 +28,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | How does work get assigned, executed, and reported? | [`data_flow.md`](./data_flow.md) §C. EXECUTE |
 | Can two runners hold the same fleet at once? | [`data_flow.md`](./data_flow.md) §One active lease per fleet |
 | How does a new runner get enrolled? | [`runner_fleet.md`](./runner_fleet.md) §Registering a runner |
-| What are the runner protocol verbs? | [`runner_fleet.md`](./runner_fleet.md) §The control protocol |
+| What are the runner protocol verbs? | [API reference](https://docs.agentsfleet.net/api-reference/introduction) › Runner plane |
 | What sandbox does a leased event run in? | [`runner_fleet.md`](./runner_fleet.md) §Running one event |
 | How does the Rust runner run a lease, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §Process model, §Workspace between leases |
 | What network can a sandboxed fleet reach? | [`runner_fleet.md`](./runner_fleet.md) §Egress model |
@@ -37,7 +39,7 @@ Start here: find the question, jump to the one §-section that answers it. The l
 | Which table answers "what did this fleet do"? | [`data_flow.md`](./data_flow.md) §The five durable stores |
 | How does the live tail work — and can it lose frames? | [`data_flow.md`](./data_flow.md) §D. WATCH |
 | What happens if the datastore blips during install? | [`data_flow.md`](./data_flow.md) §The install failure scenario, visually |
-| Why was my webhook rejected, and what do I fix? | [`data_flow.md`](./data_flow.md) §"The webhook auth taxonomy" |
+| Why was my webhook rejected, and what do I fix? | [error codes](https://docs.agentsfleet.net/api-reference/error-codes#UZ-WH-020) |
 | Who owns cron scheduling? | [`data_flow.md`](./data_flow.md) §"QStash owns the clock" |
 | What is memory keyed by, and what survives? | [`memory.md`](./memory.md) §1 |
 | How does memory travel between runs? | [`runner_fleet.md`](./runner_fleet.md) §Memory continuity |
@@ -90,23 +92,32 @@ After that, dip into whichever of these matches the change you're making:
 
 | File | Topic |
 |---|---|
-| 🧭 [`high_level.md`](./high_level.md) | Product thesis, problem statement, why-now, MVP thesis, initial use cases. The "why this exists" reading for new contributors. |
-| 📐 [`direction.md`](./direction.md) | The architectural constants. When a spec proposes something that conflicts with these, the spec gets amended — not the constants. |
-| 🧑‍💻 [`user_flow.md`](./user_flow.md) | How a user authors, imports, installs, triggers, and supervises a Fleet. Includes Fleet Bundle entrypoints, the CLI + template-catalogue install walkthrough, deployment posture, and the model-cap origin story (§8.7). |
-| 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two fleets in play, the five durable stores, the Dragonfly streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
-| 📦 [`fleet_bundles.md`](./fleet_bundles.md) | The bundle/fleet split: how a GitHub source is fetched, re-packed into agentsfleet's own canonical tar, and stored across R2 + Postgres; what is immutable vs `PATCH`-editable; the runtime read path; and the current support-file storage redundancy. |
-| 🏃 [`runner_fleet.md`](./runner_fleet.md) | **The runtime split (implemented at the M80_002 cutover).** `agentsfleetd` control plane + host-resident `agentsfleet-runner` execution plane: System Guarantees + Failure Recovery Model first, then the `/v1/runners` control protocol, event-leasing + sticky routing + fencing/reclaim, secret-delivery trust modes, sandbox tiers, the scaling inversion, and the operator plane's open policy questions. Sibling of `data_flow.md` (the same runtime, traced per event). |
-| 🧰 [`capabilities.md`](./capabilities.md) | What the fleet has, what the platform enforces, and the context-lifecycle layers (memory checkpoint, rolling tool window, run chunking) that keep long incidents reasoning past the model's context window. |
-| 🧠 [`memory.md`](./memory.md) | Fleet memory — the canonical scope/isolation/durability facts: keyed by `fleet_id` (never workspace), `memory_runtime` role isolation, erased with the fleet by cascade, and why ephemeral-fleet-per-event loses continuity. Hydrate/capture transport lives in [`runner_fleet.md`](./runner_fleet.md) §"Memory continuity"; in-run tools + categories in `capabilities.md` §4. |
-| 📈 [`observability.md`](./observability.md) | Where a signal goes and who owns it: `agentsfleetd` is the observability plane (one OTLP push of logs, traces and metrics to the environment's collector, which holds the vendor credential and owns the fan-out; no pull endpoint; PostHog; Postgres execution telemetry). Runners get a collector of their own on the bare-metal host (decided, built later; the daemon's collectors stay daemon-only): spans and runner metric families over OTLP, logs read from the host's log store. The M61 `OTEL_EXPORT_REMOVAL` naming trap and the shared logging module. |
-| 🧵 [`concurrency.md`](./concurrency.md) | The thread/lock/channel/shutdown model of both planes: every spawned thread and its stop path (thread map), the SPSC channel inventory with payload ownership, the lock-invariant registry, and the stop→join→deinit shutdown choreography. Grounds the `C1–C5` concurrency rules; the doc `name_architecture` consults before naming a thread, channel, or lock. |
-| 🖥️ [`web_app.md`](./web_app.md) | The dashboard's five statements (server fetches / client-leaf boundary / shell-first / optimistic mutations / no useEffect loading), the server-client bar, and the grep-measured migration scoreboard. Consulted when a milestone touches `ui/packages/app`. |
-| 🧪 [`testing.md`](./testing.md) | Component test ownership, the public lanes, the wire-fixture parity proof, and the 100% coverage bar. |
-| 🔌 [`connectors.md`](./connectors.md) | The registry-driven connector platform: connect/callback/status, provider ownership proof, App-level inbound routing, platform App secrets, workspace installation handles, repository-bound fleet subscriptions, and the provider impact across GitHub, Slack, Zoho, Jira, and Linear. This is the full platform-admin → workspace → fleet → event → short-lived-token walkthrough. |
-| 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | How users pay for what they run. The credit-pool model (Amp-style), the one-time starter grant, the two debit points (receive + run), `compute_receive_charge` / `compute_stage_charge`, free usage as a draining balance rather than a window, the self-managed secret shape, the api_key visibility boundary, the runner's provider routing, the model library (authenticated GET /v1/models) with per-model token rates, and the read-only billing dashboard + CLI surface. **Current dollar amounts live on [agentsfleet.net/#pricing](https://agentsfleet.net/#pricing)** — this doc covers shape and behaviour. |
-| 🐙 [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install `github-pr-reviewer`, connect GitHub, and receive review comments. |
-| 🚑 [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deployment and show the unproven steps needed for a draft Pull Request (PR). |
-| 🔐 [`../AUTH.md`](../AUTH.md) | The principal model (CLI `afc_` credential, UI, tenant api key, and the `agt_r` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
+| 🧭 [`high_level.md`](./high_level.md) | Product thesis, problem, and why it exists. |
+| 📐 [`direction.md`](./direction.md) | Design constants every spec must fit. |
+| 🧑‍💻 [`user_flow.md`](./user_flow.md) | How a user installs, triggers and supervises Fleets. |
+| 🔄 [`data_flow.md`](./data_flow.md) | Where a webhook, steer or cron fire lands. |
+| 📦 [`fleet_bundles.md`](./fleet_bundles.md) | Immutable bundle versus editable fleet; onboarding. |
+| 🏃 [`runner_fleet.md`](./runner_fleet.md) | Control plane and runner: leasing, fencing, recovery. |
+| ⚙️ [`runner_execution.md`](./runner_execution.md) | How the runner executes one lease. |
+| 🎟️ [`lease_flow.md`](./lease_flow.md) | One lease, from install to sandbox teardown. |
+| 🧰 [`capabilities.md`](./capabilities.md) | What a fleet can do, and context lifecycle. |
+| 🧠 [`memory.md`](./memory.md) | Memory scope, isolation and durability. |
+| 📈 [`observability.md`](./observability.md) | Where each signal goes, and who owns it. |
+| 📊 [`product_analytics.md`](./product_analytics.md) | PostHog product events and their rules. |
+| 🧵 [`concurrency.md`](./concurrency.md) | Tasks, locks, channels and shutdown order. |
+| 📏 [`scaling.md`](./scaling.md) | Sizing the runtime and its tuning knobs. |
+| 🗄️ [`datastore_scaling.md`](./datastore_scaling.md) | The Dragonfly cluster target and its status. |
+| 🖥️ [`web_app.md`](./web_app.md) | The dashboard's server-client rules. |
+| 🧪 [`testing.md`](./testing.md) | Test ownership, lanes and the coverage bar. |
+| 🦀 [`rust-ownership.md`](./rust-ownership.md) | When Rust code shares an owner or crate. |
+| 🔌 [`connectors.md`](./connectors.md) | Provider connections, App ingress and fleet subscriptions. |
+| 💳 [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | Credits, debit points, provider keys, model library. |
+| 🔑 [`tenant_provider_v2.md`](./tenant_provider_v2.md) | Provider activation: today's cost and the plan. |
+| 🐙 [`scenarios/github-pr-reviewer.md`](./scenarios/github-pr-reviewer.md) | Install the reviewer; follow one Pull Request (PR). |
+| 🚑 [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deploy toward a draft PR. |
+| 💬 [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md) | Rung-0 Slack bot: a per-channel resident fleet. |
+| 🚨 [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) | An installed fleet answering one Slack channel. |
+| 🔐 [`../AUTH.md`](../AUTH.md) | Principals, tokens and bearer routing. |
 
 ---
 
@@ -117,20 +128,11 @@ link out instead of pasting them in. Each line names the decision it carries.
 
 | Artifact | Decision |
 |---|---|
-| [Outbound bounding — before & after M139](https://claude.ai/code/artifact/de681e67-024d-4c08-bc04-4fa96aa58d48) | One process-wide deadline scheduler (generation-armed, monotonic clock) replaced per-caller watchdog threads on raw file descriptors. Postgres stays outside it; the pool's own timeouts bound it. |
-| [Greptile P1 — OTLP unbounded export](https://claude.ai/code/artifact/aee9e003-6c91-40a1-9d7e-0feacdb1d810) | The in-flight OTLP export stays unbounded for now: `fetch` is not cancel-safe, and the cancel-safe socket-shutdown bound needs a boot reorder. Deferred with the fix scoped, not forgotten. |
-| [PR #549 review — deadline scheduler](https://claude.ai/code/artifact/9bb6fc29-9ff4-4838-bc9d-bdf1bdcd5290) | The pre-merge review of the scheduler change above. |
 | [Index audit — slots 033 & 034](https://claude.ai/code/artifact/16b3fe3e-6a0f-47cf-a80f-03f34681ec85) | Which Postgres indexes earn their slots. |
 | [Error registry — inventory & curation](https://claude.ai/code/artifact/f5dd342f-633e-4a32-a7ee-579cd2db2427) | The `UZ-*` error-code inventory review. |
 | [M120_002 — Admin Model Library, as built](https://claude.ai/code/artifact/3add99c7-6ce3-4617-8656-bf371b658490) | The admin catalogue's final shape. |
 | [Fleet library: why your gallery was empty](https://claude.ai/code/artifact/a6b8c064-8643-444b-a43b-2fb2e7e82434) | Root cause of the empty-gallery incident. |
 | [Model configuration journeys](https://claude.ai/code/artifact/e0621bf7-7b01-4492-8862-38a43d6f46b3) | How users reach a working model configuration. |
-
-## What we are, in one paragraph
-
-agentsfleet v2 is a durable runtime for one operational outcome — work that continues after the human prompt is gone, needs durable state across retries, and benefits from natural-language reasoning instead of rigid typed branching. The flagship `platform-ops` fleet wakes on a GitHub Actions deploy failure, gathers evidence, and posts a diagnosis to Slack; the same fleet is also reachable via `agentsfleet steer`. Three differentiation pillars: open source, self-managed provider key, markdown-defined behaviour. Self-host is deferred to v3.
-
-For the long form — problem statement, why-now, why-not-the-alternatives, and the pass/fail test — read [`high_level.md`](./high_level.md). This paragraph is the on-ramp; that file is the canon.
 
 ---
 
@@ -140,19 +142,19 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 
 | Term | Meaning |
 |---|---|
-| **Fleet** | The customer-created runtime instance: a durable AI teammate defined by `SKILL.md` plus optional `TRIGGER.md` and source metadata; owns one operational outcome. `/fleets`, `core.fleets`, and `fleet_id` are canonical. [(more)](./high_level.md#1-product-thesis) |
-| **Fleet Bundle** | A validated template or imported folder/archive that contains required `SKILL.md` plus optional support files; creating from it still creates a runtime Fleet. [(more)](./user_flow.md#81-authoring-the-fleet) |
-| **Agent loop** | The language-model fleet loop in the runner's supervisor, outside the lease's sandbox; it routes each tool call to where that tool runs — this is "the fleet" (host) at runtime. [(more)](./runner_execution.md#process-model) |
-| **`agentsfleetd` (control plane)** | Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment / fencing / reclaim. Host runners reach it only over the `/v1/runners` protocol. Implemented at the M80_002 cutover. [(more)](./runner_fleet.md) |
-| **agentsfleet-runner** | The host-resident Rust binary (a trusted supervisor plus one sandbox per lease, whose executor is the same binary's `sandbox` sub-mode) that registers to `agentsfleetd` and pulls work; holds no datastore credentials. [(more)](./runner_execution.md) |
-| **Coding fleet** | The workstation tool the human types into (Claude Code / Amp / Codex CLI / OpenCode) — drives `agentsfleet`; distinct from "the fleet" (host) it operates. [(more)](./user_flow.md#80-the-wedge-surface) |
-| **Steer** | A human-initiated message via `agentsfleet steer {id} "…"` or the dashboard chat composer; lands as `actor=steer:<user>`. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **App webhook trigger** | A provider App posts to `/v1/ingress/{provider}`; GitHub routes an installation to one workspace, then an explicit repository/event subscription to one or more fleets. It lands as `actor=webhook:<source>`. [(more)](./connectors.md#github-app-platform-setup-to-fleet-execution) |
-| **Manual webhook trigger** | An operator-managed integration posts directly to `/v1/webhooks/{fleet_id}` (`…/{fleet_id}/github` for GitHub); the URL identifies the fleet and the workspace secret authenticates the sender. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **Trigger panel** | The dashboard card on `/fleets/{id}` that shows App connection/subscription state or a manual `curl` registration path. The platform holds its own GitHub App key, never the user's Personal Access Token (PAT). [(more)](./user_flow.md#84-working-from-claude-or-the-dashboard) |
-| **Free usage** | The starter grant, and nothing else — a balance that drains. Pricing reads the catalogue, never the clock. [(more)](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window) |
-| **Cron trigger** | An `agentsfleet` schedule registered with Upstash QStash; QStash owns the clock and signed fires land as `actor=cron:<schedule_id>`. [(more)](./user_flow.md#83-triggering-the-fleet) |
-| **Run** | One pass of the runner's agent loop over one lease — one language-model context window's worth of reasoning. Long incidents span multiple runs via continuation events. [(more)](./capabilities.md#4-context-lifecycle-keeping-a-long-incident-reasoning-past-the-models-working-memory-limit) |
-| **Egress guard** | The runner supervisor's outbound guard (`afr_egress`): it admits each request against the lease's policy and replaces `${secrets.NAME.FIELD}` placeholders with real bytes at send time, outside the sandbox. [(more)](./runner_execution.md#credentials) |
-| **Self-managed provider keys** | The posture where the user stores their own large language model provider secret in the vault and activates it via `agentsfleet tenant provider create --secret <name>`. [(more)](./billing_and_provider_keys.md#1-the-two-postures) |
-| **Bastion** | The post-launch framing where the same fleet owns both internal triage and customer-facing status communication. [(more)](./high_level.md#61-bastion--one-surface-for-internal-triage-and-customer-comms) |
+| **Fleet** | A durable AI agent defined by `SKILL.md`. [(more)](./high_level.md#1-product-thesis) |
+| **Fleet Bundle** | A validated template or import holding `SKILL.md`. [(more)](./user_flow.md#81-authoring-the-fleet) |
+| **Agent loop** | The runner supervisor's model loop, outside the sandbox. [(more)](./runner_execution.md#process-model) |
+| **`agentsfleetd` (control plane)** | Owns datastores, the API and work assignment. [(more)](./runner_fleet.md) |
+| **agentsfleet-runner** | Host binary that leases work and runs sandboxes. [(more)](./runner_execution.md) |
+| **Coding fleet** | The workstation tool a human types into. [(more)](./user_flow.md#80-the-wedge-surface) |
+| **Steer** | A human message; lands as `actor=steer:<user>`. [(more)](./user_flow.md#83-triggering-the-fleet) |
+| **App webhook trigger** | A provider App delivery; GitHub's lands as `actor=github-app`. [(more)](./connectors.md#github-app-platform-setup-to-fleet-execution) |
+| **Manual webhook trigger** | A post to `/v1/webhooks/{fleet_id}` with the workspace secret. [(more)](./user_flow.md#83-triggering-the-fleet) |
+| **Trigger panel** | The `/fleets/{id}` card showing trigger setup. [(more)](./user_flow.md#84-working-from-claude-or-the-dashboard) |
+| **Free usage** | The starter grant: a balance that drains. [(more)](./billing_and_provider_keys.md#23-free-usage-is-a-balance-never-a-window) |
+| **Cron trigger** | An Upstash QStash schedule; QStash owns the clock. [(more)](./user_flow.md#83-triggering-the-fleet) |
+| **Run** | One agent-loop pass over one lease. [(more)](./capabilities.md#4-context-lifecycle--keeping-a-long-incident-reasoning-past-the-models-working-memory-limit) |
+| **Egress guard** | Supervisor guard that admits requests and injects secrets. [(more)](./runner_execution.md#credentials) |
+| **Self-managed provider keys** | The tenant stores and activates its own provider key. [(more)](./billing_and_provider_keys.md#1-the-two-postures) |
+| **Bastion** | Post-launch: one fleet for triage and customer comms. [(more)](./high_level.md#61-bastion--one-surface-for-internal-triage-and-customer-comms) |

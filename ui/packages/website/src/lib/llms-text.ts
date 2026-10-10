@@ -1,3 +1,6 @@
+// No Vite-only syntax here (?url, CSS imports, import.meta.env):
+// tests/e2e/smoke.spec.ts loads this through Playwright's transform and
+// scripts/prebuild.mjs through Bun, and neither runs Vite plugins.
 import {
   LOOP_ANCHOR_ID,
   LOOP_STEPS,
@@ -8,10 +11,10 @@ import {
 } from "./marketing-copy";
 
 export const MARKETING_POSITIONING_SUMMARY =
-  "Prebuilt AI teammates for recurring engineering work: they wake on your events, produce an evidence-backed result, and require human approval before configured repair work can merge or ship.";
+  "Open-source runtime for AI agents that wake on production events: they investigate with your logs, metrics, and code, produce an evidence-backed result, and require human approval before configured repair work can merge or ship.";
 
 export const LLMS_FULL_INTRO =
-  "agentsfleet is a fleet of prebuilt AI teammates for recurring engineering work. Each one wakes on an event — a pull request, an incident, a deploy — reads only the sources you allow-list, and returns an evidence-backed result. Some runs end with diagnosis; configured repair work waits for human approval before anything merges or ships.";
+  "agentsfleet is an open-source runtime for AI agents that wake on events from production and your repositories. Each agent starts on one — an incident, a failed deploy, a pull request — reads only the sources you allow-list, and returns an evidence-backed result. Runs use the platform’s model or your own model key. Some runs end with diagnosis; configured repair work waits for human approval before anything merges or ships.";
 
 export type LlmsTextInputs = {
   docsUrl: string;
@@ -31,7 +34,7 @@ export function buildLlmsIndexText({
     `> ${MARKETING_POSITIONING_SUMMARY}`,
     "",
     "## Product",
-    `- [The fleet](${root}/#${LOOP_ANCHOR_ID}): prebuilt fleets, ready to run`,
+    `- [The fleet](${root}/#${LOOP_ANCHOR_ID}): prebuilt fleets that wake on your events`,
     `- [Early access and pricing](${root}/#pricing): ${PRICING_COPY.status}. ${PRICING_COPY.note}`,
     "",
     "## Resources",

@@ -222,6 +222,11 @@ LIMIT $4";
 /// - `l.status = $3 AND l.lease_expires_at > $4` — mint authority is bound to
 ///   the LEASE's lifetime, not the runner's, so a compromised runner replaying
 ///   a stale lease id cannot mint past the run it was issued for.
+/// - `l.fencing_token >= COALESCE(a.fencing_seq, l.fencing_token)` — and to
+///   the lease still HOLDING the fleet. A lease row stays `active` after a
+///   reclaim moves the fleet past it, until the reclaim's issue expires it; the
+///   affinity row's sequence is the live authority, as the fence reads in
+///   `crate::lease::fence` treat it.
 ///
 /// The fleet is joined rather than read second because the binding must come
 /// from the fleet the lease authorised. Two statements could return a binding
@@ -232,5 +237,7 @@ pub const SELECT_LEASE_SCOPE_FOR_MINT: &str = "\
 SELECT l.workspace_id::text, l.fleet_id::text, f.config_json::text, l.event_id
 FROM fleet.runner_leases l
 JOIN core.fleets f ON f.id = l.fleet_id
+LEFT JOIN fleet.runner_affinity a ON a.fleet_id = l.fleet_id
 WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
-  AND l.status = $3 AND l.lease_expires_at > $4";
+  AND l.status = $3 AND l.lease_expires_at > $4
+  AND l.fencing_token >= COALESCE(a.fencing_seq, l.fencing_token)";

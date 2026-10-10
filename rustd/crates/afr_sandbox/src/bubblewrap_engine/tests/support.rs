@@ -25,6 +25,7 @@ use crate::toolbox::Toolbox;
 const SLEEPER_NAME: &str = "sleeper";
 const FAILER_NAME: &str = "failer";
 const BRIEF_NAME: &str = "brief";
+const ENV_PROBE_NAME: &str = "env-probe";
 /// One processor core, in thousandths.
 const ONE_CORE: u32 = 1_000;
 /// The digest the fake host's toolbox is known by, and is configured for.
@@ -38,6 +39,16 @@ pub(super) const SLEEPER: Launcher = Launcher(SLEEPER_NAME);
 pub(super) const FAILER: Launcher = Launcher(FAILER_NAME);
 /// A "bubblewrap" that answers, then dies on its own a moment later.
 pub(super) const BRIEF: Launcher = Launcher(BRIEF_NAME);
+/// A "bubblewrap" that reports whether it inherited the runner's environment,
+/// then fails, so the refusal quotes the report.
+pub(super) const ENV_PROBE: Launcher = Launcher(ENV_PROBE_NAME);
+/// The line the probe opens its report with.
+pub(super) const ENV_PROBE_REPORT: &str = "environment:";
+/// What the probe prints for each variable it found set.
+pub(super) const ENV_PROBE_INHERITED: &str = "inherited";
+/// The variables the probe looks for: cargo sets the first in every test
+/// process, and a login sets the second.
+pub(super) const ENV_PROBE_VARIABLES: [&str; 2] = ["CARGO_MANIFEST_DIR", "HOME"];
 /// What the failing one says, as a refusal quotes it.
 pub(super) const FAILER_REASON: &str = "Operation not permitted";
 /// The program a formatter or `mount` is faked with.
@@ -76,6 +87,11 @@ fn scripts() -> &'static Path {
                  echo 'bwrap: Can not mount tmpfs: Operation not permitted' >&2\nexit 1\n",
             ),
             (BRIEF_NAME, "#!/bin/sh\nexec sleep 0.3\n"),
+            (
+                ENV_PROBE_NAME,
+                "#!/bin/sh\necho \"environment: ${CARGO_MANIFEST_DIR:+inherited} \
+                 ${HOME:+inherited}\" >&2\nexit 1\n",
+            ),
         ] {
             let path = dir.path().join(name);
             fs::write(&path, text).unwrap();

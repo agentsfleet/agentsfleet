@@ -16,9 +16,25 @@ pub const FIELD_HEAD: &str = "head";
 pub const FIELD_BASE: &str = "base";
 /// The `pulls` field deciding whether it opens as a draft.
 pub const FIELD_DRAFT: &str = "draft";
+/// The `pulls` field carrying the Pull Request's title.
+pub const FIELD_TITLE: &str = "title";
+/// The `pulls` field carrying its description.
+pub const FIELD_BODY: &str = "body";
+/// The `pulls` field letting maintainers push to the branch.
+pub const FIELD_MAINTAINER_CAN_MODIFY: &str = "maintainer_can_modify";
+/// The `git/refs` field naming the commit the ref points at.
+pub const FIELD_SHA: &str = "sha";
+/// The `git/commits` field carrying the commit message.
+pub const FIELD_MESSAGE: &str = "message";
+/// The `git/commits` field naming the tree it records.
+pub const FIELD_TREE: &str = "tree";
+/// The `git/commits` field naming its parents.
+pub const FIELD_PARENTS: &str = "parents";
 
 /// The endpoint that publishes a branch.
 pub const REFS_PATH: &str = "/git/refs";
+/// The endpoint that creates a commit object.
+pub const COMMITS_PATH: &str = "/git/commits";
 /// The endpoint that opens a Pull Request.
 pub const PULLS_PATH: &str = "/pulls";
 

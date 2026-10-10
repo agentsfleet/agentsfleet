@@ -60,11 +60,18 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@# is to be exercised by tests would be the one module lint never sees.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
 	  cargo clippy --workspace --all-targets --all-features -- -D warnings
-	@# The configuration that ships: no features at all. Every other lane turns
-	@# `openapi` and `test-util` on, so an import that exists only for an
+	@# The configuration that ships: each binary, no features. Every other lane
+	@# turns `openapi` and `test-util` on, so an import that exists only for an
 	@# annotation broke the production build once without any lane noticing.
+	@# One invocation per binary, as the deploy builds them: a single invocation
+	@# unifies features across both dependency graphs and hides a feature only
+	@# the other binary turns on. The release cfg on Linux, where a name used only
+	@# under `cfg(debug_assertions)` turns unused, is proved by CI's
+	@# `build-daemon-musl` job, which builds both with the `dist` profile.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
 	  cargo check -p agentsfleetd --bin agentsfleetd
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleet-runner (no features)" -- \
+	  cargo check -p agentsfleet_runner --bin agentsfleet-runner
 
 SHELLCHECK ?= shellcheck
 
@@ -105,6 +112,11 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@echo "→ [gh-actions] Builder-image tag is derived, not pasted..."
 	@bash scripts/check_builder_pin_test.sh
 	@bash scripts/check_builder_pin.sh
+	@# The integration lane CI runs resets, then migrates. Under `make -j` that
+	@# order holds only as an edge in make's graph, and the bench lanes' guard
+	@# on whose rig they may reset rides the same pair.
+	@echo "→ [gh-actions] Reset runs before migrate, and only on an owned rig..."
+	@bash scripts/make_reset_order_test.sh
 	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference

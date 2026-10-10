@@ -21,6 +21,7 @@ describe("design-system public exports", () => {
     expect(DesignSystem.Section).toBeDefined();
     expect(DesignSystem.InstallBlock).toBeDefined();
     expect(DesignSystem.WakePulse).toBeDefined();
+    expect(DesignSystem.Switch).toBeDefined();
   });
 
   it("exports utilities and variant helpers", () => {

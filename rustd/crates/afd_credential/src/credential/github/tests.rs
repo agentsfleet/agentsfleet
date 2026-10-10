@@ -111,8 +111,9 @@ fn verify_refuses_a_ci_scope_mismatch() {
 fn test_a_token_reaching_exactly_the_declaration_is_accepted() {
     let binding = binding(Access::Read);
     let request = scoped(&binding);
-    // `metadata` rides on every installation token GitHub mints. A read-level
-    // extra is ambient and must pass, or no mint would ever succeed.
+    // `metadata: read` rides on every installation token GitHub mints, so it
+    // is the one unrequested permission verify admits; any other unrequested
+    // read is refused (`tests/unrequested.rs`).
     let granted = granted(
         json!({"contents": "read", "actions": "read", "checks": "read", "metadata": "read"}),
         repositories(),
@@ -290,3 +291,4 @@ async fn mint_refuses_before_transport_when_narrowing_inputs_are_unusable() {
 
 mod request;
 mod transport;
+mod unrequested;

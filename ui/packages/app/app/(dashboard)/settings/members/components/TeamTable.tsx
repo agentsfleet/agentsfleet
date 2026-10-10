@@ -21,9 +21,9 @@ export const TEAM_CAPTION = "People";
 const INVITED = "invited";
 const STATUS_TEXT_CLASS = "text-label leading-label";
 
-/** What each email status reads as beside an invite's actions. */
+/** What each email status reads as under an invite's dates. */
 const EMAIL_STATUS_LABEL: Record<EmailStatus, string> = {
-  [EMAIL_STATUS.sent]: "Email sent",
+  [EMAIL_STATUS.sent]: "Invite emailed",
   [EMAIL_STATUS.failed]: "Email not sent",
   [EMAIL_STATUS.unconfigured]: "Email not set up",
 };
@@ -78,11 +78,10 @@ function PersonCell({ row }: { row: TeamRow }) {
   return (
     <div className="min-w-0">
       {row.invite ? <div className="truncate text-sm">{row.invite.email}</div> : <MemberName member={row.member} />}
-      {/* The Time column and an invite's email status leave the row on a
-          phone, so they read here instead, as the API Keys table does. */}
+      {/* The Time column leaves the row on a phone, so its dates and an
+          invite's email status read here instead, as the API Keys table does. */}
       <div className="mt-xs flex flex-col items-start gap-xs sm:hidden">
         <TimeCell row={row} />
-        {row.invite ? <EmailStatusLabel status={row.invite.email_status} /> : null}
       </div>
     </div>
   );
@@ -113,7 +112,7 @@ function EmailStatusLabel({ status }: { status: EmailStatus }) {
 }
 
 // When the person joined or the invite went out, as the API Keys table shows
-// a key's creation; an invite adds when it lapses.
+// a key's creation; an invite adds when it lapses and whether its email went.
 function TimeCell({ row }: { row: TeamRow }) {
   const since = row.invite ? row.invite.created_at : row.member.joined_at;
   return (
@@ -122,6 +121,7 @@ function TimeCell({ row }: { row: TeamRow }) {
       {row.invite ? (
         <span>expires <Time value={new Date(row.invite.expires_at)} format="relative" className="tabular-nums" /></span>
       ) : null}
+      {row.invite ? <EmailStatusLabel status={row.invite.email_status} /> : null}
     </div>
   );
 }
@@ -131,20 +131,18 @@ function RoleCell({ row }: { row: TeamRow }) {
   return <Badge variant={row.member.role === ACCOUNT_ROLE.owner ? "cyan" : "default"}>{row.member.role}</Badge>;
 }
 
-// An invite's email status, then: send again (a sent email may still never
-// arrive), copy the link the invitee needs either way, and revoke. With no mail
-// relay there is nothing to send again (it could only answer 503); the copied
-// link is the way in. On a phone the status reads under the address, leaving
-// this cell icons.
+// Send again (a sent email may still never arrive), copy the link the invitee
+// needs either way, and revoke: icons only, right-aligned with the destructive
+// one last, as every other table's row actions are. With no mail relay there is
+// nothing to send again (it could only answer 503); the copied link is the way
+// in. The email status reads in the Time column.
 function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers & { invite: InviteSummary }) {
   return (
-    <div className="inline-flex items-center gap-xs">
-      <span className="hidden sm:inline-flex">
-        <EmailStatusLabel status={invite.email_status} />
-      </span>
+    <div className="flex justify-end gap-1">
       {invite.email_status === EMAIL_STATUS.unconfigured ? null : (
         <IconAction
           type="button"
+          variant="ghost"
           disabled={pending}
           onClick={() => onResend(invite)}
           label={`Send the invite email to ${invite.email} again`}

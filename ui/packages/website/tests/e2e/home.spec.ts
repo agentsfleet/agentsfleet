@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { HERO_HEADLINE } from "../../src/lib/marketing-copy";
 
 test.describe("Home page", () => {
   test.beforeEach(async ({ page }) => {
@@ -7,15 +8,15 @@ test.describe("Home page", () => {
 
   test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("AI teammates for incident response.");
+    await expect(h1).toContainText(HERO_HEADLINE);
   });
 
   test("hero states the incident-response outcome without duplicating the workflow", async ({ page }) => {
-    // FINDING-M05 removed the kicker: it read "AI incident response for
-    // engineering teams" directly above a headline reading "AI teammates for
-    // incident response." — the same words twice, and the second of two
-    // pre-headline elements. Its decorative pulse dot went with it, so the
-    // hero now has no element that could imply anything is live.
+    // FINDING-M05 removed the kicker: at the time it read "AI incident
+    // response for engineering teams" directly above a headline that said
+    // the same thing, making it the second of two pre-headline elements.
+    // Its decorative pulse dot went with it, so the hero has no element
+    // that could imply anything is live.
     await expect(page.getByTestId("hero-eyebrow")).toHaveCount(0);
     const hero = page.getByTestId("hero");
     await expect(hero.locator('[data-live="true"]')).toHaveCount(0);

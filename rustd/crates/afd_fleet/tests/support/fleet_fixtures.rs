@@ -25,6 +25,10 @@ use afd_gate::gate::Gates;
 use afd_runner::Runners;
 use sqlx::{AssertSqlSafe, Row as _};
 
+/// The model catalogue's table, and the name it hides under while offline.
+const CATALOGUE_TABLE: &str = "model_library";
+const CATALOGUE_OFFLINE: &str = "model_library_offline";
+
 /// A handle on the lane's database, and the runner store over it.
 pub(crate) struct Fixtures {
     lane: TestDatabase,
@@ -201,6 +205,33 @@ impl Fixtures {
         self.queue
             .as_ref()
             .expect("this fixture has no queue — build it with Fixtures::create_with_queue")
+    }
+
+    /// Takes the model catalogue away from the api role, or gives it back.
+    ///
+    /// A renamed table, so the rate read fails as a datastore fault rather than
+    /// answering "no such model", which is a priced miss. Private databases
+    /// only: every test on the shared lane reads this table.
+    pub(crate) async fn set_catalogue_readable(&self, readable: bool) {
+        assert!(
+            self.lane.database_name().is_some(),
+            "only a private database may lose its catalogue: build it with create_isolated"
+        );
+        let (from, to) = if readable {
+            (CATALOGUE_OFFLINE, CATALOGUE_TABLE)
+        } else {
+            (CATALOGUE_TABLE, CATALOGUE_OFFLINE)
+        };
+        let migrator = self.lane.open(DbRole::Migrator, &[]).await;
+        let mut connection = migrator.acquire().await.expect("a migrator connection");
+        sqlx::query(AssertSqlSafe(format!(
+            "ALTER TABLE core.{from} RENAME TO {to}"
+        )))
+        .execute(&mut *connection)
+        .await
+        .expect("the migrator owns the catalogue table");
+        drop(connection);
+        migrator.close().await;
     }
 
     /// Releases this test's handles and drops its database when privately owned.

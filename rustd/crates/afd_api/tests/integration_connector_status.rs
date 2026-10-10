@@ -64,6 +64,9 @@ const STATUS_NOT_CONNECTED: &str = "not_connected";
 /// The provider account the held connection routes inbound events from.
 const ROUTED_ACCOUNT: &str = "T0STATUSFIXTURE";
 
+/// The `current_state` a Disconnect a model entry still names is refused with.
+const STATE_REFERENCED: &str = "referenced";
+
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_workspace_reads_lists_and_lets_go_of_what_its_vault_actually_holds() {
@@ -88,6 +91,7 @@ async fn a_workspace_reads_lists_and_lets_go_of_what_its_vault_actually_holds() 
     a_held_handle_reads_as_connected(&router, &fixture).await;
     a_provider_with_no_handle_reads_as_not_connected(&router, &fixture).await;
     the_catalogue_marks_only_what_is_held(&router, &fixture).await;
+    a_disconnect_a_model_entry_still_names_is_a_conflict(&router, &fixture).await;
     a_disconnect_removes_the_handle_and_repeats_harmlessly(&router, &fixture).await;
     a_secret_that_is_not_a_connector_handle_is_not_a_connection(&router, &fixture).await;
 
@@ -140,6 +144,35 @@ impl Fixture {
         .execute(&mut *connection)
         .await
         .expect("the routing row seeds");
+    }
+
+    /// Names `provider`'s grant key from a model entry, the reference the vault
+    /// refuses a delete over. Returns the entry for [`Self::drop_entry`].
+    async fn reference_handle(&self, provider: Provider) -> String {
+        let id = mint_id();
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query(
+            "INSERT INTO core.tenant_model_entries \
+               (id, tenant_id, model_id, secret_ref, created_at, updated_at) \
+             VALUES ($1::uuid, $2::uuid, 'fixture-model', $3, 1, 1)",
+        )
+        .bind(&id)
+        .bind(&self.tenant)
+        .bind(provider.grant_key())
+        .execute(&mut *connection)
+        .await
+        .expect("the model entry inserts");
+        id
+    }
+
+    /// Removes the entry [`Self::reference_handle`] wrote.
+    async fn drop_entry(&self, id: &str) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query("DELETE FROM core.tenant_model_entries WHERE id = $1::uuid")
+            .bind(id)
+            .execute(&mut *connection)
+            .await
+            .expect("the model entry deletes");
     }
 
     /// How many routing rows name `account` for this workspace.

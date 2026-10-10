@@ -54,7 +54,7 @@ const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.agentsfl
 // The words the Members table shows for each email status, held here rather
 // than imported so the spec pins what a person reads on the page.
 const EMAIL_STATUS_LABEL: Record<EmailStatus, string> = {
-  [EMAIL_STATUS.sent]: "Email sent",
+  [EMAIL_STATUS.sent]: "Invite emailed",
   [EMAIL_STATUS.failed]: "Email not sent",
   [EMAIL_STATUS.unconfigured]: "Email not set up",
 };

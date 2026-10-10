@@ -36,6 +36,7 @@ use std::collections::BTreeSet;
 use afd_core::id::Uuid7;
 use afd_crypto::secret::SecretString;
 use afd_vault::{Deleted, SecretName};
+use sqlx::Acquire as _;
 
 use super::Grants;
 use super::parse::{HANDLE_BOT_TOKEN, HANDLE_BOT_USER_ID, HANDLE_INTEGRATION, HANDLE_LABEL};
@@ -222,46 +223,49 @@ impl Grants {
 
     /// Forgets this workspace's connection to `provider`.
     ///
-    /// The routing rows go FIRST and the sealed handle second, which is the
-    /// reverse of the order [`Grants::land`] writes them in and deliberately
-    /// so: both orders leave one intermediate state, and the ones they leave
-    /// are not equally bad. Removing the handle first would leave rows saying
-    /// a provider account belongs to this workspace with no credential behind
-    /// them — an ingress that resolves a workspace and then cannot answer.
-    /// This way the intermediate state is a handle nothing routes to, which is
-    /// what a workspace that never installed the app is already in.
-    ///
-    /// Not a transaction, and that is the honest shape rather than a
-    /// compromise: the two writes are in different stores, so a transaction
-    /// over the pool would cover the rows and not the vault row it is ordered
-    /// against. An advisory lock could make the pair look atomic and still
-    /// could not include the vault write.
+    /// One transaction over the sealed handle and the routing rows, because
+    /// both live in this Postgres and either alone is a state a reader cannot
+    /// detect: rows naming an account with no credential behind them, or a
+    /// credential a second workspace can claim the account away from while it
+    /// still mints. It takes its turn on the workspace row first, as
+    /// [`Grants::land`] does, so a Disconnect and a callback serialise even on
+    /// a first connect, before any handle row exists to lock.
     ///
     /// # Errors
     /// Reports a datastore that would not answer and a vault that refused the
-    /// delete. A workspace holding no handle is [`Forgotten::AlreadyAbsent`],
-    /// not an error — the caller wanted it gone and it is gone.
+    /// delete; either rolls back both, so the connection is left as it was. A
+    /// workspace holding no handle is [`Forgotten::AlreadyAbsent`], not an
+    /// error — the caller wanted it gone and it is gone.
     pub async fn forget(&self, workspace: &Uuid7, provider: Provider) -> Result<Forgotten> {
+        let name = SecretName::parse(provider.grant_key())?;
         let mut connection = self.database.acquire().await?;
-        sqlx::query(sql::DELETE_WORKSPACE_INSTALLS)
-            .bind(provider.id())
-            .bind(workspace.as_str())
-            .execute(connection.as_mut())
-            .await
-            .map_err(query(CONTEXT_FORGET))?;
-        drop(connection);
-
-        let Ok(name) = SecretName::parse(provider.grant_key()) else {
-            return Ok(Forgotten::AlreadyAbsent);
-        };
-        let forgotten = match self.vault.directory().delete(workspace, &name).await? {
+        let mut transaction = connection.begin().await.map_err(query(CONTEXT_FORGET))?;
+        Self::take_turn(&mut transaction, workspace, CONTEXT_FORGET).await?;
+        let forgotten = match self
+            .vault
+            .directory()
+            .delete_in(&mut transaction, workspace, &name)
+            .await?
+        {
             Deleted::Removed => Forgotten::Disconnected,
             Deleted::AlreadyAbsent => Forgotten::AlreadyAbsent,
         };
+        sqlx::query(sql::DELETE_WORKSPACE_INSTALLS)
+            .bind(provider.id())
+            .bind(workspace.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(query(CONTEXT_FORGET))?;
+        transaction.commit().await.map_err(query(CONTEXT_FORGET))?;
 
+        // `delete_in` leaves logging to its caller, so this line also says
+        // whether a credential went: the vault's own `secret_deleted` is not
+        // emitted on this path.
+        let credential_removed = matches!(forgotten, Forgotten::Disconnected);
         tracing::info!(
             workspace_id = workspace.as_str(),
             provider = provider.id(),
+            credential_removed,
             event = "connector_disconnected",
         );
         Ok(forgotten)

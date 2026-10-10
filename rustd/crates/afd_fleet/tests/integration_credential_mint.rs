@@ -76,6 +76,9 @@ const CONNECTOR_GITHUB: &str = "github";
 /// wrong-workspace resolution is caught by VALUE and not merely by absence.
 const OWNER_TOKEN: &str = "ghp_owner_workspace_token";
 
+/// The fencing token every fixture lease carries.
+const FIXTURE_FENCE: i64 = 5;
+
 /// The event a fixture lease is issued against.
 const EVENT_ID: &str = "evt-cred-mint-fixture";
 
@@ -176,7 +179,7 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
          SELECT $1::uuid, $2::uuid, $3::uuid, $4::uuid, f.tenant_id, $5, $5,
                 'fixture:steer',
                 'chat', $6, 'platform', 'anthropic', 'claude-fixture',
-                0, 0, 0, 0, 5, $7, 'active', $6, $6
+                0, 0, 0, 0, $8, $7, 'active', $6, $6
          FROM core.fleets f WHERE f.id = $3::uuid",
     )
     .bind(lease)
@@ -186,9 +189,35 @@ async fn seed_lease(fixtures: &Fixtures, lease: &str, runner: &str, fleet: &str,
     .bind(EVENT_ID)
     .bind(NOW_MS)
     .bind(NOW_MS + LEASE_WINDOW_MS)
+    .bind(FIXTURE_FENCE)
     .execute(&mut *connection)
     .await
     .expect("the lease row must insert");
+}
+
+/// Moves `fleet`'s live sequence past the fixture lease's token, as a reclaim's
+/// claim does, leaving the lease row `active` and unexpired.
+async fn supersede(fixtures: &Fixtures, fleet: &str) {
+    let mut connection = fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query(
+        "INSERT INTO fleet.runner_affinity
+           (fleet_id, last_runner_id, fencing_seq, leased_until,
+            metered_input_tokens, metered_cached_tokens, metered_output_tokens,
+            last_metered_at, created_at, updated_at)
+         VALUES ($1::uuid, NULL, $2, $3, 0, 0, 0, $4, $4, $4)
+         ON CONFLICT (fleet_id) DO UPDATE SET fencing_seq = EXCLUDED.fencing_seq",
+    )
+    .bind(fleet)
+    .bind(FIXTURE_FENCE + 1)
+    .bind(NOW_MS + LEASE_WINDOW_MS)
+    .bind(NOW_MS)
+    .execute(&mut *connection)
+    .await
+    .expect("the affinity row must upsert");
 }
 
 /// Stores one credential handle in the vault, sealed under the fixture key.

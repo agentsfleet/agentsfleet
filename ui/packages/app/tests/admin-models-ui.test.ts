@@ -48,7 +48,7 @@ function renderWithTooltipProvider(node: React.ReactElement) {
 // The catalogue is a design-system DataTable — scope a row by its (unique)
 // model_id cell and walk up to its <tr>.
 function rowFor(modelId: string): HTMLElement {
-  return screen.getByText(modelId).closest("tr")!;
+  return screen.getByTitle(modelId).closest("tr")!;
 }
 
 async function loadedEditDialog(label: string) {
@@ -152,8 +152,19 @@ describe("CatalogueList — rows + rates + empty state", () => {
   it("renders a priced row per catalogue model with $/1M rates", () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByTestId("data-table")).toBeTruthy();
-    expect(screen.getByText("glm-5.2")).toBeTruthy();
+    expect(screen.getByTitle("glm-5.2")).toBeTruthy();
     expect(screen.getByText("0.55 / 0.14 / 2.19")).toBeTruthy();
+  });
+
+  it("the model cell shows the name and keeps the id on hover", () => {
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+    // The marketed name reads; the provider id a fleet config needs is the hover.
+    const cell = screen.getByTitle("glm-5.2");
+    expect(cell.textContent).toBe("GLM 5.2");
+    // Actions still name the row by its id, which is what a reader acts on.
+    expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Edit glm-5.2" })).toBeTruthy();
+    // Touch and keyboard reach the id through its copy button, as on the workspace table.
+    expect(within(rowFor("glm-5.2")).getByRole("button", { name: "Copy model id: glm-5.2" })).toBeTruthy();
   });
 
   it("sorts each catalogue data column from its header arrow", () => {
@@ -163,6 +174,23 @@ describe("CatalogueList — rows + rates + empty state", () => {
       fireEvent.click(screen.getByRole("button", { name }));
       expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
     }
+  });
+
+  it("sorts the Model column by the name it shows, not the id", () => {
+    const base = CATALOGUE[0]!;
+    // By id `accounts/...` sorts first; by the name a reader sees, Haiku 5.5 precedes Kimi K3.
+    const kimi = "accounts/fireworks/models/kimi-k3";
+    const haiku = "claude-haiku-5-5";
+    const models = [
+      { ...base, id: "k", model_id: kimi },
+      { ...base, id: "h", model_id: haiku },
+    ];
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    expect(screen.getByRole("columnheader", { name: "Model" }).getAttribute("aria-sort")).toBe("ascending");
+    const order = screen.getAllByTitle(/^(claude-haiku-5-5|accounts\/fireworks\/models\/kimi-k3)$/).map((cell) => cell.getAttribute("title"));
+    expect(order).toEqual([haiku, kimi]);
   });
 
   it("shows the empty state when there are no models", () => {

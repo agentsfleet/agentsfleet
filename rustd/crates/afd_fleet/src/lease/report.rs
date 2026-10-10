@@ -188,12 +188,19 @@ impl Plane {
             Err(failure) => {
                 let fleet = lease.fleet_id.as_str();
                 let reason = failure.to_string();
+                // The counts are the run's totals: whatever no priced renewal
+                // charged goes uncharged, including tokens a faulted renewal
+                // held for later (`renew::hold_tokens`). Logged so the loss is
+                // visible rather than silent.
                 tracing::warn!(
                     fleet_id = fleet,
                     lease_id = request.lease_id.as_ref(),
+                    input_tokens = cumulative.input,
+                    cached_input_tokens = cumulative.cached,
+                    output_tokens = cumulative.output,
                     reason,
                     event = "report_rates_unverified_run_fee_only",
-                    "the catalogue could not be read; the final slice meters runtime only"
+                    "the catalogue could not be read; the final slice meters runtime only and its tokens go uncharged"
                 );
                 self.accounts.run_fee_meter(cumulative)
             }

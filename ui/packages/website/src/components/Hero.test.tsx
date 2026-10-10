@@ -12,9 +12,11 @@ vi.mock("../analytics/posthog", () => analytics);
 import Hero from "./Hero";
 import {
   HERO_HEADLINE,
+  HERO_LEDE_PARTS,
   HERO_PRIMARY_LABEL,
   HERO_SECONDARY_LABEL,
   HOW_IT_WORKS_ANCHOR_ID,
+  PILLAR_TOKENS,
 } from "../lib/marketing-copy";
 import { WAITLIST_URL } from "../config";
 
@@ -50,13 +52,29 @@ describe("Hero", () => {
     expect(container.querySelector("[data-live=\"true\"]")).toBeNull();
   });
 
-  it("renders the lede paragraph in the warm teammates voice", () => {
+  it("renders the lede paragraph naming the trigger and its sources", () => {
     renderHero();
-    expect(screen.getByText("AI incident teammate")).toBeInTheDocument();
-    expect(screen.getByText("logs, metrics, and code")).toBeInTheDocument();
+    expect(screen.getByText(HERO_LEDE_PARTS.trigger)).toBeInTheDocument();
+    expect(screen.getByText(HERO_LEDE_PARTS.sources)).toBeInTheDocument();
     expect(screen.getByTestId("hero").textContent).toMatch(
       /you control access and decide what ships/i,
     );
+  });
+
+  // marketing-spec.test.ts reads the hero's source text; this proves each
+  // pillar token reaches the rendered page, which a dropped lede part would not.
+  it("renders every pillar token in the hero", () => {
+    renderHero();
+    const hero = screen.getByTestId("hero").textContent;
+    for (const token of PILLAR_TOKENS) {
+      expect(hero, `hero missing pillar token: ${token}`).toContain(token);
+    }
+  });
+
+  it("emphasises the trigger and the sources, both pillar tokens", () => {
+    const { container } = renderHero();
+    const emphasised = [...container.querySelectorAll("strong")].map((el) => el.textContent);
+    expect(emphasised).toEqual([PILLAR_TOKENS[0], PILLAR_TOKENS[1]]);
   });
 
   it("renders early-access as a waitlist link and loop CTA", () => {

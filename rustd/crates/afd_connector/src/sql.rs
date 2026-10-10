@@ -69,6 +69,20 @@ pub const DELETE_WORKSPACE_INSTALLS: &str = "\
 DELETE FROM core.connector_installs \
 WHERE provider = $1 AND workspace_id = $2::uuid";
 
+/// The workspace row, locked first by a connect's landing and by a Disconnect
+/// so the two take turns per workspace.
+///
+/// The sealed handle's own row cannot order them on a FIRST connect: there is
+/// no row yet, so a Disconnect would lock nothing, then delete routing rows a
+/// connect commits in between and leave a grant nothing routes to. The
+/// workspace row exists before either. `FOR NO KEY UPDATE` rather than
+/// `FOR UPDATE`, so an insert that only references the workspace (it takes
+/// `FOR KEY SHARE`) is not held up. `$1` workspace.
+pub const LOCK_WORKSPACE: &str = "\
+SELECT 1 FROM core.workspaces \
+WHERE id = $1::uuid \
+FOR NO KEY UPDATE";
+
 #[cfg(test)]
 mod tests {
     use super::{CLAIM_INSTALL, DELETE_WORKSPACE_INSTALLS, RELEASE_OTHER_INSTALLS, UPSERT_INSTALL};

@@ -15,12 +15,14 @@
 //! last — the outcome an advisory lock would give, reached without holding a
 //! lock across a vendor call.
 //!
-//! # The routing row is written AFTER the grant, never before
+//! # The grant and its routing row commit together
 //!
 //! A row saying "this Slack team belongs to this workspace" with no vaulted bot
 //! token behind it is an ingress that resolves a workspace and then cannot
-//! answer. The other order leaves a grant nothing routes to yet, which is the
-//! state a reconnect is in for a millisecond anyway.
+//! answer; a grant nothing routes to reads connected and receives nothing. So
+//! [`Grants::land`] writes both in one transaction, after taking its turn on
+//! the workspace row; a Disconnect (`Grants::forget`) takes the same turn
+//! first, so the two never interleave, even on a first connect.
 
 pub mod holding;
 pub mod parse;
@@ -162,39 +164,23 @@ impl Grants {
         // The routing row says which workspace an account's inbound events
         // belong to; the vaulted grant is the credential outbound spends. They
         // describe the same installation and a reader that saw one without the
-        // other would be wrong in a way nothing surfaces.
-        //
-        // Vault first leaves a sealed grant nothing routes: status reads
-        // CONNECTED, inbound resolves no workspace, and the callback state is
-        // already spent — no signal, no retry.
-        //
-        // Routing first is worse on the path that matters more. On a FIRST
-        // connect the survivor is a routing row with no grant, which reads as
-        // not connected and is true. On a RECONNECT there is already a grant,
-        // so a failed replace leaves routing naming the new installation while
-        // the vault still holds the old account's credential: status reads
-        // connected, and inbound and outbound then speak to different accounts
-        // under one workspace. That state is silent, which is what makes it
-        // worse than either loud half.
+        // other would be wrong in a way nothing surfaces: a sealed grant
+        // nothing routes reads CONNECTED while inbound resolves no workspace,
+        // and on a RECONNECT a routing row naming the new installation beside
+        // the old account's credential has inbound and outbound speaking to
+        // different accounts under one workspace.
         //
         // So they commit together or not at all. `sqlx::Transaction` rolls back
         // when it is DROPPED, so every `?` below unwinds both writes without a
         // rollback path of its own — the argument `crate::delete`'s note makes
         // about compensating rollbacks being decoration.
+        //
+        // A Disconnect (`Grants::forget`) takes turns with it on the workspace
+        // row (`sql::LOCK_WORKSPACE`), which exists before the first connect
+        // writes anything; the grant then goes first, as in `forget`.
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_INSTALL))?;
-
-        if let Some(install) = grant.install.as_ref() {
-            Self::route_in(
-                &mut transaction,
-                workspace,
-                provider,
-                install,
-                now,
-                &self.entropy,
-            )
-            .await?;
-        }
+        Self::take_turn(&mut transaction, workspace, CONTEXT_INSTALL).await?;
 
         match self
             .vault
@@ -210,6 +196,18 @@ impl Grants {
             Err(other) => return Err(other.into()),
         }
 
+        if let Some(install) = grant.install.as_ref() {
+            Self::route_in(
+                &mut transaction,
+                workspace,
+                provider,
+                install,
+                now,
+                &self.entropy,
+            )
+            .await?;
+        }
+
         transaction.commit().await.map_err(query(CONTEXT_INSTALL))?;
 
         tracing::info!(
@@ -217,6 +215,22 @@ impl Grants {
             provider = provider.id(),
             event = "connector_connected",
         );
+        Ok(())
+    }
+
+    /// Waits for, then holds, `workspace`'s turn to change a connection: the
+    /// first statement of a landing and of a Disconnect (`sql::LOCK_WORKSPACE`).
+    /// The lock lasts until the caller's transaction ends.
+    pub(super) async fn take_turn(
+        transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        context: &'static str,
+    ) -> Result<()> {
+        sqlx::query(sql::LOCK_WORKSPACE)
+            .bind(workspace.as_str())
+            .execute(&mut **transaction)
+            .await
+            .map_err(query(context))?;
         Ok(())
     }
 
