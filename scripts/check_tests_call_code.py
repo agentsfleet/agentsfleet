@@ -184,12 +184,17 @@ class Scan:
         return not names_untracked_path(resolved_text(argument, self.values, self.language), self.tracked_parts)
 
     def executes(self, start: int, argument: str) -> bool:
-        if self.language == "shell":
-            line = self.code[self.code.rfind("\n", 0, start) + 1 : start]
-            feeds_shell = argument.startswith("<") and SHELL_RUNS_INPUT.search(line)
-            return bool(SHELL_EXECUTES.search(argument) or feeds_shell)
-        statement_start = max(self.code.rfind(";", 0, start), self.code.rfind("\n\n", 0, start))
-        return self.language == "js" and bool(JS_COPY.search(self.code[statement_start + 1 : start]))
+        return executes(self.code, self.language, start, argument)
+
+
+def executes(code: str, language: str, start: int, argument: str) -> bool:
+    """True when the read at `start` hands the file to something that runs it, or copies it for that."""
+    if language == "shell":
+        line = code[code.rfind("\n", 0, start) + 1 : start]
+        feeds_shell = argument.startswith("<") and SHELL_RUNS_INPUT.search(line)
+        return bool(SHELL_EXECUTES.search(argument) or feeds_shell)
+    statement_start = max(code.rfind(";", 0, start), code.rfind("\n\n", 0, start))
+    return language == "js" and bool(JS_COPY.search(code[statement_start + 1 : start]))
 
 
 def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]] | None) -> list[lib.Finding]:
@@ -214,7 +219,8 @@ def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]]
 def reads_a_parameter(body: str, language: str, param: re.Pattern[str]) -> bool:
     for read in LANGUAGES[language]["reads"].finditer(body):
         start = read.start() + len(read.group(0)) - len(read.group(0).lstrip(LEADING_DELIMITERS))
-        if param.search(call_argument(body, start, language)):
+        argument = call_argument(body, start, language)
+        if param.search(argument) and not executes(body, language, start, argument):
             return True
     return False
 
