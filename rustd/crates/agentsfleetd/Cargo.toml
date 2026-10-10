@@ -53,6 +53,9 @@ afd_admission.workspace = true
 # client, and the verifier the fire ingress crosses.
 afd_cron.workspace = true
 reqwest.workspace = true
+# `url::Host`: whether a Slack base names a loopback host, read off the host the
+# parser already classified. reqwest re-exports `Url` but not `Host`.
+url.workspace = true
 afd_api.workspace = true
 afd_billing.workspace = true
 afd_credential.workspace = true

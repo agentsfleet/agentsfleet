@@ -50,7 +50,7 @@ use self::knobs::{
 
 use self::read::{bundle_store, classify, identity, is_set, read_kek, required};
 
-use afd_core::env::EnvSource;
+use afd_core::env::{EnvSource, optional};
 use afd_cron::SigningKeys;
 use afd_crypto::secret::SecretBytes;
 use afd_db::config::{DbRole, PoolConfig};
@@ -96,13 +96,8 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     .map(|pepper| SecretBytes::new(pepper.into_bytes()));
     // Both are optional-with-a-default and resolve identically, so the shape is
     // named once rather than written twice.
-    let optional_url = |knob: &str, fallback: &str| {
-        env.get(knob)
-            .map(|raw| raw.trim().to_owned())
-            .filter(|raw| !raw.is_empty())
-            .unwrap_or_else(|| fallback.to_owned())
-            .into_boxed_str()
-    };
+    let optional_url =
+        |knob: &str, fallback: &str| optional(env, knob).unwrap_or_else(|| fallback.into());
     // Set and unparseable is a typo, and a typo here would otherwise surface as
     // a dashboard that silently refuses every stream — the furthest possible
     // point from the mistake. Unset is the default, which is most deployments.
@@ -111,18 +106,10 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
     // nothing is the normal case, and refusing to boot over an unset key would
     // make every developer configure a product-analytics project to run the
     // daemon.
-    let posthog = env
-        .get(POSTHOG_KEY_KNOB)
-        .map(|raw| raw.trim().to_owned())
-        .filter(|raw| !raw.is_empty())
-        .map(|project_key| PostHogConfig {
-            project_key: project_key.into_boxed_str(),
-            host: env
-                .get(POSTHOG_HOST_KNOB)
-                .map(|raw| raw.trim().to_owned())
-                .filter(|raw| !raw.is_empty())
-                .map(String::into_boxed_str),
-        });
+    let posthog = optional(env, POSTHOG_KEY_KNOB).map(|project_key| PostHogConfig {
+        project_key,
+        host: optional(env, POSTHOG_HOST_KNOB),
+    });
     // Absent is a deployment that exports nothing, which is most of them and
     // is not a fault. What IS a fault is an endpoint with a protocol, timeout
     // or header list this build cannot use — those are typos that would
@@ -179,17 +166,6 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
         // fault, so the refusal names them all rather than the first.
         _refused => Err(Refusal::new(faults)),
     }
-}
-
-/// One optional knob, absent when it is unset or blank.
-///
-/// Blank is treated as absent rather than as a value, because an environment
-/// that exports a variable to the empty string is an environment that meant to
-/// unset it — and an empty bearer would be sent upstream as `Bearer `.
-fn optional<E: EnvSource + ?Sized>(source: &E, knob: &str) -> Option<Box<str>> {
-    let value = source.get(knob)?;
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.into())
 }
 
 /// The scheduler's signing keys, when BOTH are configured.

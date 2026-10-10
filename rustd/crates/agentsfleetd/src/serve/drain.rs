@@ -187,9 +187,10 @@ impl Drain {
         }
         let in_flight_at_close = self.in_flight();
         if in_flight_at_close > 0 {
+            let bound_ms = afd_core::clock::saturating_millis(bound);
             tracing::info!(
                 in_flight = in_flight_at_close,
-                bound_ms = u64::try_from(bound.as_millis()).unwrap_or(u64::MAX),
+                bound_ms,
                 event = EVENT_DRAIN_STARTED,
                 "no longer accepting; waiting for in-flight requests"
             );

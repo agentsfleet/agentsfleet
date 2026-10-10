@@ -14,6 +14,7 @@ use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 use afd_observability::Analytics;
 
+use super::clients::Clients;
 use super::optional::{announce_identity, open_live};
 use crate::error::BootFailure;
 use crate::plane::{ServingPlane, Shared};
@@ -50,12 +51,18 @@ pub(super) struct Runtime {
     /// grant store over it, so boot hands one key to both rather than reading
     /// the knob twice.
     pub(super) kek: Arc<Kek>,
+    /// The answer-delivery worker's own pool, built with the plane's before
+    /// anything was spawned.
+    pub(super) outbound_client: reqwest::Client,
 }
 
 pub(super) async fn open_runtime(
     config: &BootConfig,
     analytics: &Analytics,
 ) -> Result<Runtime, BootFailure> {
+    // First, before a socket opens: a client that will not build is a defect
+    // in the build, and nothing below should be opened only to be abandoned.
+    let clients = Clients::open()?;
     let database = Db::connect(config.api_pool()).await?;
     // Before the router exists, so the first request finds live connections
     // instead of paying a handshake inside an acquire budget sized for a wait.
@@ -77,6 +84,7 @@ pub(super) async fn open_runtime(
     let broker = crate::credentials::resolve(
         &afd_credential::vault::Vault::new(database.clone(), Arc::clone(&kek)),
         config.platform_admin_workspace(),
+        clients.broker,
     )
     .await;
     #[cfg(feature = "test-util")]
@@ -109,12 +117,13 @@ pub(super) async fn open_runtime(
         // The same base the outbound worker posts answers to, so an interim
         // line and the answer it precedes land in the same Slack.
         slack_api_base: config.slack_api_base().to_owned(),
+        vendor_client: clients.plane,
         // A destination that will not build is a deployment that cannot
         // register schedules, and it fails CLOSED rather than registering a
         // truncated callback: the empty string matches no token's subject, so
         // every fire is refused until the api url is corrected.
         schedule: crate::plane::ScheduleConfig {
-            client: reqwest::Client::new(),
+            client: clients.schedule,
             token: afd_crypto::secret::SecretString::new(
                 config.qstash_token().unwrap_or_default().to_owned(),
             ),
@@ -140,6 +149,7 @@ pub(super) async fn open_runtime(
         plane,
         hub,
         kek,
+        outbound_client: clients.outbound,
     })
 }
 
@@ -150,6 +160,7 @@ pub(super) async fn spawn_background(
     queue: &Dragonfly,
     kek: &Arc<Kek>,
     hub: Option<afd_dragonfly::SubscriptionHub>,
+    outbound_client: reqwest::Client,
 ) {
     if let Some(hub) = hub {
         supervisor.spawn(crate::HUB_PUMP, move |token| async move {
@@ -176,7 +187,7 @@ pub(super) async fn spawn_background(
             database.clone(),
             Entropy::new(),
         ),
-        crate::credentials::vendor_exchange_client(),
+        outbound_client,
         config.slack_api_base().to_owned(),
     )
     .await;
