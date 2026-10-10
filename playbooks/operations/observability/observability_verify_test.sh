@@ -3,8 +3,6 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/test_search.sh
-source "$SCRIPT_DIR/../../lib/test_search.sh"
 PROVIDER_DIR="$SCRIPT_DIR"
 VERIFY="$PROVIDER_DIR/04_verify.sh"
 passed=0
@@ -141,7 +139,7 @@ test_should_accept_matching_resources() {
     bad "$name" "$output"
   elif [[ "$output" != *"resources match the repository"* ]]; then
     bad "$name" "verification omitted its success verdict"
-  elif rg --quiet grafana-secret "$calls"; then
+  elif grep -Eq grafana-secret "$calls"; then
     bad "$name" "Grafana token appeared in process arguments"
   else
     ok "$name"
