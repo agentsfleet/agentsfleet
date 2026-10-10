@@ -28,7 +28,7 @@
 
 use afd_fleet_runtime::{Class, Error, config::Access, parse_skill, parse_trigger};
 
-use crate::support::{FIRST_PARTY, MODEL_VALUE, fixture, raw_fixture};
+use crate::support::{MODEL_VALUE, fixture, raw_fixture};
 
 /// What the corpus expects one document to answer, at the grain the table
 /// grades.

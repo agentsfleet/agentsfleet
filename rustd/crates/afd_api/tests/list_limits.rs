@@ -13,7 +13,6 @@
 use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -43,10 +42,10 @@ const EVERY_LIST_SCOPE: ScopeSet = ScopeSet::from_scopes(&[
 ]);
 
 /// The malformed-request code most lists answer.
-const INVALID_REQUEST: &str = error_code::INVALID_REQUEST.as_str();
+const INVALID_REQUEST: &str = "UZ-REQ-001";
 
 /// The library family's bounds code.
-const LIBRARY_BOUNDS: &str = error_code::LIBRARY_INPUT_OUT_OF_BOUNDS.as_str();
+const LIBRARY_BOUNDS: &str = "UZ-LIBRARY-003";
 
 /// One list route: where it lives, its ceiling, and the code it refuses with.
 struct ListRoute {

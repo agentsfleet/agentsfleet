@@ -8,24 +8,12 @@
 //! both listings without running anything.
 #![expect(
     clippy::unwrap_used,
-    clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
 
 use afd_db::migration::{MIGRATIONS, Migration};
-
-/// The repository root, four levels up from this crate's manifest
-/// (`rustd/crates/afd_db` → `rustd/crates` → `rustd` → root).
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .unwrap()
-        .to_path_buf()
-}
 
 /// The version is the slot number, derived rather than restated.
 ///
