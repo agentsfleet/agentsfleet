@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — starts once M213 merges; §1 precedes every other Section
 **Branch:** feat/m218-shared-crates
 **Baseline revision:** 6e4a02127b4738f205c6ba1c8d42bce42413ed2e
-**Test Baseline:** pending — measured before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=4614 integration=5438 — Rust unit 4614 passed, 0 failed, 935 ignored (201 binaries); Rust integration 5438 passed, 0 failed (256 binaries), from Continuous Integration (CI) on PR #739 head `a5ef046ee`, whose tree is the comparison revision's; the TypeScript lanes are in the evidence report
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M218_001-6e4a02127.md`
 **Depends on:** M213_001 (Rust runner cutover, Zig retired; one Pull Request (PR) with M213_002). It adds `Coded::told()` and `Coded::logged()` (`afd_core/src/error_code.rs:70,75` on its branch), the runner code this audit sweeps, and the egress slot bitmap §5 restructures. M217_001 (tests call code) is independent; both edit `rustd/crates/afd_dragonfly/src/test_util.rs`, so whichever merges second re-locates its rows.
 **Provenance:** LLM-drafted (large language model Claude Opus 5.5, Oct 08, 2026) from the M213 refactor survey and grep evidence on `main` at `9b6736e47` and `feat/m213-rust-runner-cutover` at `f9ab1450f`
 **Canonical architecture:** `docs/architecture/rust-ownership.md` §Review rubric, §Ownership decisions
@@ -38,7 +38,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** refactor(rustd): move duplicated and hand-rolled code onto shared crates
 - **Intent (one sentence):** A fix to a shared mechanism lands once, in the crate that owns it, and every caller gets it.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake** — performed at PLAN, Oct 10, 2026. Restated: each mechanism the workspace copies (a log reason, a URL guard, a hex render, a charset bound, a clock, an environment read, a retry loop, a direct HTTP client, the slot bitmap) gets one owner, and a fix there reaches every caller. `ASSUMPTIONS I'M MAKING:` (1) a row that changes what any input does is refuted with that input, except the two changes Interfaces names and the defect fixes Discovery lists; (2) no tier (c) crate; (3) §7 lands last and waits on Indy's approval in review. Matches the Intent.
 
 ## Implementing agent — read these first
 
@@ -165,6 +165,13 @@ Unchanged: HTTP routes and bodies, the OpenAPI document, wire types, error codes
 Changed on purpose: a log's `reason` for a Coded failure = Coded::told() — its
   sentence, then each cause; no "[UZ-…]" prefix, no backtrace. A vendor client
   that cannot build refuses boot (§4, Indy confirms).
+Log fields: a site that logged `x.code()` binds `Logged { error_code, reason }`
+  from `x.logged()`; a site that logged a constant code keeps it and takes
+  `reason` from `x.told()`; `error = %x` becomes `reason` + `error_code`.
+Direct client: `afd_identity::direct(timeout: Duration) -> reqwest::ClientBuilder`
+  (timeout + `no_proxy()`), amended from `reqwest::Result<Client>` so a caller
+  adds its own bounds (the key-set fetch limits redirects) before `.build()`
+  and keeps its own error mapping. The QStash (Upstash's scheduled-message service) client is built from it too.
 Ledger row: | ID (D001…) | Family | Site | Owner (crate::item @ version) | Tier | C/F/B | Verifier | Proof | Status |
   C/F/B = the rubric's consequence, replacement fit and ownership burden, 1–3 each
   Status ∈ open · landed <commit> · moved <Discovery quote> · refuted <reason>
@@ -214,7 +221,7 @@ Tier `static` is a grep or lint run at the repository root that passes when it p
 | 2.1 | unit | `a_logged_failure_reason_carries_no_code_prefix` | `Capture` over `afd_outbound`'s `report` → `error_code` set, `reason` without `[UZ-`; Display restored → red; rubric R3 prints `0` |
 | 2.2 | unit | `test_every_boot_failure_renders_a_reason` | Each `BootFailure` and `MigrateFailure` renders its code and cause chain; `tests/serve.rs` `contains` checks hold |
 | 2.3 | static | `the_error_standard_accounts_for_every_crate` | Rubric R4 → no output (today it prints 10 crates) |
-| 3.1 | unit | `a_pin_that_is_not_a_usable_origin_refuses` | Empty host, userinfo, backslash → `None`; `afd_vault` hides a userinfo URL; rubric R2 counts no `"://"` |
+| 3.1 | unit | `a_pin_that_is_not_a_usable_origin_refuses` | Empty host, userinfo, backslash → `None`; `afd_vault` hides a userinfo URL; rubric R2 counts no `"://"` outside the refuted guards |
 | 3.2 | unit | `the_tag_is_the_zig_encoding_to_the_byte` | Known input → the same tag; `mac` and nonce renders unchanged; no `write!` hex loop in R2 |
 | 3.3 | unit | `the_length_rule_is_asked_before_the_charset_rule` | Over-long name with a bad byte → the length reason; every refusal reason unchanged |
 | 3.4 | static | `no_private_clock_or_environment_reader` | `git grep -nE '^fn now\(\) -> UnixMillis\|^pub fn process_env\(' -- 'rustd/crates/*/src/**'` → no output |
@@ -234,7 +241,7 @@ Regression: every surviving test passes with its expected values; 7 of the 20 ro
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Every crate audited (§1) | `` for c in $(ls rustd/crates); do grep -qF "\| \`$c\` \|" docs/v2/reviews/m218-rust-duplication-ledger.md \|\| echo $c; done `` | no output | P0 | |
-| R2 | Hand-written URL, hex, clock, environment, retry and slot copies gone (§3–§5) | `git grep -nE '"://"\|write!\([a-z_]+, "\{[a-z_]*:02x\}"\|^fn now\(\) -> UnixMillis\|^pub fn process_env\(\|for attempt in 1\.\.=policy\.attempts\|TEST_CLAIMS' -- 'rustd/crates/*/src/**' \| wc -l` | `0` (today `8`) | P0 | |
+| R2 | Hand-written URL, hex, clock, environment, retry and slot copies gone (§3–§5) | `git grep -nE '"://"\|write!\([a-z_]+, "\{[a-z_]*:02x\}"\|^fn now\(\) -> UnixMillis\|^pub fn process_env\(\|for attempt in 1\.\.=policy\.attempts\|TEST_CLAIMS' -- 'rustd/crates/*/src/**' ':!rustd/crates/afd_connector/src/endpoint.rs' ':!rustd/crates/afd_vault/src/projection.rs' ':!rustd/crates/afr_egress/src/allowlist.rs' \| wc -l` | `0` (today `8`; the three excluded URL guards are refuted rows D067, D160, D179) | P0 | |
 | R3 | No log pairs a failure's code with its Display (§2) | `git grep -h -A1 -E 'let error_code = [a-z_]+\.code\(\)\.as_str\(\);' -- 'rustd/crates/*/src/**' \| awk 'match($0,/let error_code = [a-z_]+\./){v=substr($0,RSTART+17,RLENGTH-18); next} v!="" && index($0,"let reason = " v ".to_string();"){n++} {v=""} END{print n+0}'` | `0` (today `12`) | P0 | |
 | R4 | Error standard covers every crate (§2) | `` for c in $(ls rustd/crates); do grep -qF "\`$c\`" docs/RUST_ERROR_STANDARD.md \|\| echo $c; done `` | no output | P0 | |
 | R5 | Scope held | `git diff --name-only origin/main...HEAD -- .orly/ .github/ make/` | no output | P0 | |
@@ -260,7 +267,7 @@ Regression: every surviving test passes with its expected values; 7 of the 20 ro
 
 | Deleted symbol/import | Grep | Expected |
 |-----------------------|------|----------|
-| `SCHEME_SEPARATOR`, `push_hex`, `process_env` | `git grep -nwE 'SCHEME_SEPARATOR\|push_hex\|process_env' -- rustd` | 0 matches |
+| `SCHEME_SEPARATOR`, `push_hex`, `process_env` | `git grep -nwE 'SCHEME_SEPARATOR\|push_hex\|process_env' -- rustd ':!rustd/crates/afd_connector/src/endpoint.rs' ':!rustd/crates/afd_vault/src/projection.rs' ':!rustd/crates/afr_egress/src/allowlist.rs'` | 0 matches; the excluded URL guards keep theirs (refuted D067, D160, D179) |
 | `TEST_CLAIMS`, `claims_held`, `CLAIMED` | `git grep -nwE 'TEST_CLAIMS\|claims_held\|CLAIMED' -- rustd/crates/afr_sandbox` | 0 matches |
 | `vendor_exchange_client` | `git grep -nw vendor_exchange_client -- rustd` | 0 matches, or 1 calling the shared builder |
 
@@ -296,6 +303,11 @@ Regression: every surviving test passes with its expected values; 7 of the 20 ro
 ## Discovery (consult log)
 
 - **Consults** — Indy, Oct 08, 2026, in session: "Also have you ensured the duplicates in the code are nuked, and we use the *core/ crates, and public crates as need as opposed to handrolled code in rustd/ codebase?" and then "Okay the duplicates and handrolled code can go in a new spec". The scope (all 54 crates, the owner order, the three tiers, the seeded families) was relayed by the session agent, not quoted. Evidence came from `git grep` on `main` at `9b6736e47` and on the M213 branch's objects at `f9ab1450f`; the M213 worktree was not touched. The survey (session scratchpad, `refactor/survey-addcbba5b0ae112ea.md`) is not durable; what this spec needs from it is restated here. Its "retries all go through `backon`" held for M213's 649 files, not the workspace (`afd_db/src/migrate/lock.rs:114`). HEX and ENV were found while confirming the seeds.
+- **Execution brief** — Indy, Oct 10, 2026, in session, before the overnight run: "ensure we process through to a PR. … follow governance process, gstack /review (fix all), push PR, watch CI jobs make it green, fix greptile feedback, ensure its ripe and ready for a PR with a report for Indy to review in the morning." and "No doc updates needed = override approved in orly, and other overrides as you need for orly. You can inform Indy in the mornign, indy can review and propose changes later." Then "ensure that if you touch rust code the coverage must be 99%, typescript the coverage is 100%", "be congnizant of space, cp, memory", and "yes go" to the plan of verifiers, ledger, then §2–§7.
+- **Human decisions taken by the agent under that brief, open to Indy's review** — none of these carries a per-item quote. §1: the ledger's Section assignments; no tier (c) crate was proposed, so Dimension 1.5 holds vacuously. §4: an unbuildable vendor client refuses boot, the spec's default. §7: the `disallowed-methods` list and each `expect`. Declining §7 drops it per that Section; declining the boot refusal restores the fallback in one function.
+- **Behaviour decisions (agent)** — Behaviour is preserved except Interfaces' two intended changes and four tightening defect fixes: Dragonfly `is_tls` takes redis's own decision; a vault URL is hidden when its raw or parsed form carries userinfo; `.` and `..` subject segments are refused; the QStash client is built on `direct`. A row that would change any other input's outcome is refuted with that input: `If-Match`/`If-None-Match` widening, JSON-array 400s, clamp-to-refuse limits, runner token trimming, and URL guards stricter than `url::Url` (D067, D160, D179; their duplicates D068 and D178 close with them).
+- **Log and error decisions (agent)** — LOG follows Interfaces' log-field rule. `agentsfleetd`'s `BootFailure` and `MigrateFailure` stay off the hull, and `RUST_ERROR_STANDARD.md` names the property: their Display is the operator sentence and the analytics reason, so the hull's `[CODE]` and backtrace would repeat the code and reach PostHog (the product-analytics service).
+- **Measurement** — The baseline comes from CI on PR #739, not a local run: the host's disk was shared with four other build directories. The 99% per-file Rust coverage bar is read from the branch's Codecov (the coverage-report service) report; no local coverage run.
 - **Metrics review** — No analytics or funnel playbook update required: no product or operator event changes.
 - **Skill-chain outcomes** — `orly-spec-new` applied at authoring. `/orly-write-unit-test`, gstack `/review` and `orly-babysit-prs` pending.
 - **Deferrals** — None.
