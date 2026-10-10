@@ -63,9 +63,8 @@ def check_env_spelling(root: Path, sources: dict[Path, str]) -> list[lib.Finding
     names = env_names(root)
     if not names:
         return [lib.Finding(ENV_MODULE, 1, "cli-env-spelling", "no environment-variable name was declared")]
-    spellings = re.compile("|".join(
-        rf"([\"'`]){re.escape(name)}\1|\.{re.escape(name)}\b" for name in names
-    ))
+    alternatives = "|".join(re.escape(name) for name in names)
+    spellings = re.compile(rf"([\"'`])(?:{alternatives})\1|\.(?:{alternatives})\b")
     found = []
     for path, code in sources.items():
         if lib.relative(root, path) == ENV_MODULE:

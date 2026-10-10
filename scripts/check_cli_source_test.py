@@ -86,6 +86,14 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
         code, output = lint_tree(with_file("cli/src/lib/api.ts", "const url = env.AGENTSFLEET_API_URL;\n"))
         self.assertIn("cli/src/lib/api.ts:1: cli-env-spelling: ", output)
 
+    def test_a_quoted_spelling_of_any_declared_name_is_a_second_spelling(self) -> None:
+        declared = ENV_TS + 'export const API_KEY_ENV = "AGENTSFLEET_API_KEY" as const;\n'
+        for name in ("AGENTSFLEET_API_URL", "AGENTSFLEET_API_KEY"):
+            with self.subTest(name=name):
+                files = {**with_file("cli/src/lib/api.ts", f'const value = process.env["{name}"];\n'), checker.ENV_MODULE: declared}
+                code, output = lint_tree(files)
+                self.assertIn("cli/src/lib/api.ts:1: cli-env-spelling: ", output)
+
     def test_a_name_inside_a_comment_or_a_longer_name_is_not(self) -> None:
         text = "/* set AGENTSFLEET_API_URL */\nconst other = env.AGENTSFLEET_API_URL_OVERRIDE;\n"
         code, output = lint_tree(with_file("cli/src/lib/api.ts", text))
