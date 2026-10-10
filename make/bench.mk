@@ -128,7 +128,8 @@ BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo
 .PHONY: bench-steer bench-lease bench-outbound bench-cardinality bench-tail bench-compare
 
 # On the rig every lane resets and migrates first, as the integration lane
-# does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`). The migration gives a
+# does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`, which depends on the
+# reset, so `make -j` cannot run the two side by side). The migration gives a
 # fresh worktree the schema its seed needs (`core.tenants`); the reset clears
 # the readiness marks the integration suite leaves in `fleet:ready`, which a
 # lease run would otherwise meet in every idle window. Only an owned rig: a dev

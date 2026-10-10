@@ -112,6 +112,11 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@echo "→ [gh-actions] Builder-image tag is derived, not pasted..."
 	@bash scripts/check_builder_pin_test.sh
 	@bash scripts/check_builder_pin.sh
+	@# The integration lane CI runs resets, then migrates. Under `make -j` that
+	@# order holds only as an edge in make's graph, and the bench lanes' guard
+	@# on whose rig they may reset rides the same pair.
+	@echo "→ [gh-actions] Reset runs before migrate, and only on an owned rig..."
+	@bash scripts/make_reset_order_test.sh
 	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference
