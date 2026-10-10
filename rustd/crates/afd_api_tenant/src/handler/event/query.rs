@@ -36,6 +36,7 @@ use garde::Validate as _;
 use super::DETAIL_FLEET_ID;
 use crate::handler::paging::store_ceiling;
 use crate::handler::{Refusal, decoded_parameter, parameter};
+use afd_http::handler::parse_id;
 
 /// The listings' bound on `?limit`: the event store's own page constants.
 const CEILING: Ceiling = store_ceiling(MAX_LIMIT, DEFAULT_LIMIT);
@@ -138,9 +139,8 @@ impl WorkspaceListing {
         let params = Params::read(query)?;
         let fleet = params
             .fleet_id
-            .map(Uuid7::parse)
-            .transpose()
-            .map_err(|_shape| Refusal::malformed(DETAIL_FLEET_ID))?;
+            .map(|raw| parse_id(raw, DETAIL_FLEET_ID))
+            .transpose()?;
         Ok(Self {
             listing: params.resolve(now)?,
             fleet,
