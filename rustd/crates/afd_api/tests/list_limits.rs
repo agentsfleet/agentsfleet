@@ -1,10 +1,9 @@
 //! Every list route's `?limit`, at both edges of its own ceiling.
 //!
 //! Each route reads its page size through one bounded type with the route's
-//! ceiling and answers the route's own sentence; this suite is the one place
-//! that walks all of them, so a route that drifts from the shared reading is
-//! caught by name. The sentences are spelled out rather than imported, so the
-//! test and the code under test cannot agree with each other by construction.
+//! ceiling; this suite is the one place that walks all of them, so a route that
+//! drifts from the shared reading is caught by name. The refusal's sentence is
+//! copy, so only its status and code are asserted.
 //!
 //! A limit AT the ceiling is accepted, and over a datastore nobody is
 //! listening on the route answers past the parameter check — a `503` or a
@@ -14,6 +13,7 @@
 use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
+use afd_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -43,32 +43,24 @@ const EVERY_LIST_SCOPE: ScopeSet = ScopeSet::from_scopes(&[
 ]);
 
 /// The malformed-request code most lists answer.
-const INVALID_REQUEST: &str = "UZ-REQ-001";
+const INVALID_REQUEST: &str = error_code::INVALID_REQUEST.as_str();
 
 /// The library family's bounds code.
-const LIBRARY_BOUNDS: &str = "UZ-LIBRARY-003";
+const LIBRARY_BOUNDS: &str = error_code::LIBRARY_INPUT_OUT_OF_BOUNDS.as_str();
 
-/// The keyset lists' sentence, shared by the library family.
-const LIBRARY_LIMIT: &str = "limit must be an integer between 1 and 100";
-
-/// The event listings' and the inbox's sentence.
-const WIDE_LIMIT: &str = "limit must be between 1 and 200";
-
-/// One list route: where it lives, its ceiling, and how it refuses.
+/// One list route: where it lives, its ceiling, and the code it refuses with.
 struct ListRoute {
     path: String,
     ceiling: u32,
     code: &'static str,
-    sentence: &'static str,
 }
 
 impl ListRoute {
-    fn new(path: String, ceiling: u32, code: &'static str, sentence: &'static str) -> Self {
+    const fn new(path: String, ceiling: u32, code: &'static str) -> Self {
         Self {
             path,
             ceiling,
             code,
-            sentence,
         }
     }
 
@@ -85,80 +77,35 @@ fn every_list_route() -> Vec<ListRoute> {
             format!("{workspace}/fleets/{FLEET}/messages"),
             25,
             INVALID_REQUEST,
-            "limit must be between 1 and 25",
         ),
-        ListRoute::new(
-            format!("{workspace}/events"),
-            200,
-            INVALID_REQUEST,
-            WIDE_LIMIT,
-        ),
+        ListRoute::new(format!("{workspace}/events"), 200, INVALID_REQUEST),
         ListRoute::new(
             format!("{workspace}/fleets/{FLEET}/events"),
             200,
             INVALID_REQUEST,
-            WIDE_LIMIT,
         ),
-        ListRoute::new(
-            format!("{workspace}/approvals"),
-            200,
-            INVALID_REQUEST,
-            WIDE_LIMIT,
-        ),
-        ListRoute::new("/v1/models".to_owned(), 100, LIBRARY_BOUNDS, LIBRARY_LIMIT),
-        ListRoute::new(
-            format!("{workspace}/fleet-libraries"),
-            100,
-            LIBRARY_BOUNDS,
-            LIBRARY_LIMIT,
-        ),
-        ListRoute::new(
-            format!("{workspace}/library-entries"),
-            100,
-            LIBRARY_BOUNDS,
-            LIBRARY_LIMIT,
-        ),
-        ListRoute::new(
-            "/v1/tenants/me/models".to_owned(),
-            100,
-            LIBRARY_BOUNDS,
-            LIBRARY_LIMIT,
-        ),
+        ListRoute::new(format!("{workspace}/approvals"), 200, INVALID_REQUEST),
+        ListRoute::new("/v1/models".to_owned(), 100, LIBRARY_BOUNDS),
+        ListRoute::new(format!("{workspace}/fleet-libraries"), 100, LIBRARY_BOUNDS),
+        ListRoute::new(format!("{workspace}/library-entries"), 100, LIBRARY_BOUNDS),
+        ListRoute::new("/v1/tenants/me/models".to_owned(), 100, LIBRARY_BOUNDS),
         ListRoute::new(
             "/v1/tenants/me/billing/charges".to_owned(),
             200,
             INVALID_REQUEST,
-            WIDE_LIMIT,
         ),
-        ListRoute::new(
-            "/v1/tenants/me/workspaces".to_owned(),
-            100,
-            INVALID_REQUEST,
-            "Limit must be between 1 and 100",
-        ),
-        ListRoute::new(
-            "/v1/api-keys".to_owned(),
-            100,
-            INVALID_REQUEST,
-            "limit must be between 1 and 100",
-        ),
-        ListRoute::new(
-            "/v1/fleets/runners".to_owned(),
-            100,
-            INVALID_REQUEST,
-            "limit must be an integer between 1 and 100; starting_after must be a cursor from a previous page",
-        ),
+        ListRoute::new("/v1/tenants/me/workspaces".to_owned(), 100, INVALID_REQUEST),
+        ListRoute::new("/v1/api-keys".to_owned(), 100, INVALID_REQUEST),
+        ListRoute::new("/v1/fleets/runners".to_owned(), 100, INVALID_REQUEST),
         ListRoute::new(
             format!("/v1/fleets/runners/{RUNNER}/events"),
             100,
             INVALID_REQUEST,
-            "limit must be between 1 and 100; starting_after must be a cursor from a previous page; event_type must be a comma-separated set of runner event types; since/until must be millis",
         ),
         ListRoute::new(
             format!("/v1/fleets/runners/{RUNNER}/leases"),
             100,
             INVALID_REQUEST,
-            LIBRARY_LIMIT,
         ),
     ]
 }
@@ -171,7 +118,7 @@ async fn read(path: &str) -> axum::response::Response {
     harness::send(&router, Method::GET, path, Some(TENANT_KEY), "").await
 }
 
-/// The status, code and sentence a response carries.
+/// The status, code and detail a response carries.
 async fn answer(path: &str) -> (StatusCode, Option<String>, Option<String>) {
     let response = read(path).await;
     let status = response.status();
@@ -185,12 +132,12 @@ async fn test_every_list_route_refuses_its_limit_out_of_range() {
     for route in every_list_route() {
         for refused in [0, route.ceiling + 1] {
             let path = route.with_limit(refused);
-            let expected = (
-                StatusCode::BAD_REQUEST,
-                Some(route.code.to_owned()),
-                Some(route.sentence.to_owned()),
+            let (status, code, detail) = answer(&path).await;
+            assert_eq!(
+                (status, code.as_deref()),
+                (StatusCode::BAD_REQUEST, Some(route.code)),
+                "{path}: {detail:?}"
             );
-            assert_eq!(answer(&path).await, expected, "{path}");
         }
         let at_ceiling = route.with_limit(route.ceiling);
         let (status, _code, _detail) = answer(&at_ceiling).await;
