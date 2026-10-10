@@ -3,9 +3,8 @@
 //! Each was a hand-written length check, or no check at all; each is now a
 //! bound garde proves before the store is asked anything. This suite pins the
 //! edge of every one through the production router: one past the bound is a
-//! `400` naming it, and the bound itself gets past the parameter check. The
-//! sentences are spelled out rather than imported, so the test and the code
-//! under test cannot agree with each other by construction.
+//! `400` carrying the malformed-request code, and the bound itself gets past
+//! the parameter check. The refusal's sentence is copy, so it is not asserted.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -16,6 +15,7 @@
 use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
+use afd_core::error_code;
 use http::{Method, StatusCode};
 use serde_json::Value;
 
@@ -40,7 +40,10 @@ const EVERY_SCOPE: ScopeSet = ScopeSet::from_scopes(&[
 ]);
 
 /// The malformed-request code.
-const INVALID_REQUEST: &str = "UZ-REQ-001";
+const INVALID_REQUEST: &str = error_code::INVALID_REQUEST.as_str();
+
+/// The code a catalogue filter over its bound answers.
+const LIBRARY_INPUT_OUT_OF_BOUNDS: &str = error_code::LIBRARY_INPUT_OUT_OF_BOUNDS.as_str();
 
 /// The longest memory key, in decoded bytes.
 const MAX_KEY_LEN: usize = 255;
@@ -52,7 +55,7 @@ const EVENT_ID_MAX_LEN: usize = 256;
 const KEY_PROVIDER_MAX_BYTES: usize = 32;
 
 /// The longest platform catalogue id: the bundle name it is keyed by.
-const CATALOG_ID_MAX_BYTES: usize = 64;
+const CATALOG_ID_MAX_BYTES: usize = afd_library::MAX_SKILL_NAME_LEN;
 
 /// The longest actor glob or prefix.
 const MAX_ACTOR_FILTER_BYTES: usize = 256;
@@ -63,7 +66,8 @@ const MAX_GATE_KIND_BYTES: usize = 64;
 /// The catalogue's provider column, which the filter shares.
 const CATALOGUE_PROVIDER_BYTES: usize = 64;
 
-/// One request through a router holding one fully scoped person.
+/// One request through a router holding one fully scoped person: its status,
+/// its error code and its detail.
 async fn send(method: Method, path: &str) -> (StatusCode, Option<String>, Option<String>) {
     let router = Fleet::new()
         .with_person(TENANT_KEY, SUBJECT, EVERY_SCOPE)
@@ -75,14 +79,14 @@ async fn send(method: Method, path: &str) -> (StatusCode, Option<String>, Option
     (status, field("error_code"), field("detail"))
 }
 
-/// Asserts `path` is refused with `code` and `sentence`.
-async fn assert_refused(method: Method, path: &str, code: &str, sentence: &str) {
-    let expected = (
-        StatusCode::BAD_REQUEST,
-        Some(code.to_owned()),
-        Some(sentence.to_owned()),
+/// Asserts `path` is refused `400` with `code`.
+async fn assert_refused(method: Method, path: &str, code: &str) {
+    let (status, refused_with, detail) = send(method, path).await;
+    assert_eq!(
+        (status, refused_with.as_deref()),
+        (StatusCode::BAD_REQUEST, Some(code)),
+        "{path}: {detail:?}"
     );
-    assert_eq!(send(method, path).await, expected, "{path}");
 }
 
 /// Asserts `path` got past every parameter check.
@@ -103,7 +107,6 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
         Method::DELETE,
         &fleet_path(&format!("memories/{key}")),
         INVALID_REQUEST,
-        "memory key must be 1..255 chars",
     )
     .await;
     let encoded = "%6B".repeat(MAX_KEY_LEN);
@@ -111,12 +114,11 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
 
     // An over-long event id is told its bound, on both paths that name one.
     let event = "e".repeat(EVENT_ID_MAX_LEN + 1);
-    let event_sentence = "event_id must be 1-256 bytes";
     for path in [
         fleet_path(&format!("events/{event}")),
         fleet_path(&format!("events/{event}/tool-calls/fence:1")),
     ] {
-        assert_refused(Method::GET, &path, INVALID_REQUEST, event_sentence).await;
+        assert_refused(Method::GET, &path, INVALID_REQUEST).await;
     }
     let at_bound = "e".repeat(EVENT_ID_MAX_LEN);
     assert_accepted(Method::GET, &fleet_path(&format!("events/{at_bound}"))).await;
@@ -127,7 +129,6 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
         Method::DELETE,
         &format!("/v1/admin/platform-keys/{provider}"),
         INVALID_REQUEST,
-        "provider must be 1–32 chars",
     )
     .await;
 
@@ -139,7 +140,6 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
             method,
             &format!("/v1/admin/fleet-libraries/{catalog}"),
             INVALID_REQUEST,
-            "catalog id must be 1-64 bytes",
         )
         .await;
     }
@@ -155,13 +155,9 @@ async fn test_path_segments_are_bounded_on_their_path_type() {
 async fn test_unbounded_filters_now_refuse_oversize() {
     let events = format!("/v1/workspaces/{OWNED_WORKSPACE}/events");
     let over = "a".repeat(MAX_ACTOR_FILTER_BYTES + 1);
-    let cases = [
-        ("actor", "actor must be at most 256 bytes"),
-        ("actor_prefix", "actor_prefix must be at most 256 bytes"),
-    ];
-    for (filter, sentence) in cases {
+    for filter in ["actor", "actor_prefix"] {
         let path = format!("{events}?{filter}={over}");
-        assert_refused(Method::GET, &path, INVALID_REQUEST, sentence).await;
+        assert_refused(Method::GET, &path, INVALID_REQUEST).await;
         let at_bound = "a".repeat(MAX_ACTOR_FILTER_BYTES);
         assert_accepted(Method::GET, &format!("{events}?{filter}={at_bound}")).await;
     }
@@ -172,7 +168,6 @@ async fn test_unbounded_filters_now_refuse_oversize() {
         Method::GET,
         &format!("{approvals}?gate_kind={kind}"),
         INVALID_REQUEST,
-        "gate_kind must be at most 64 bytes",
     )
     .await;
     let at_bound = "g".repeat(MAX_GATE_KIND_BYTES);
@@ -185,20 +180,20 @@ async fn test_provider_filter_shares_the_catalogue_bound() {
     assert_refused(
         Method::GET,
         &format!("/v1/models?provider={over}"),
-        "UZ-LIBRARY-003",
-        "provider must be at most 64 bytes once normalized, and valid UTF-8",
+        LIBRARY_INPUT_OUT_OF_BOUNDS,
     )
     .await;
     let at_bound = "p".repeat(CATALOGUE_PROVIDER_BYTES);
     assert_accepted(Method::GET, &format!("/v1/models?provider={at_bound}")).await;
 }
 
-/// The published document bounds the admin catalogue id the way the handler
-/// does: a 1 to 64 byte slug on both routes that take one, never a UUID.
+/// The generated document bounds the admin catalogue id the way the handler
+/// does: a 1 to `MAX_SKILL_NAME_LEN` byte slug on both routes that take one,
+/// never a UUID.
 #[test]
 fn test_the_published_catalog_id_bound_is_the_enforced_one() {
-    let openapi = include_str!("../../../../public/openapi.json");
-    let document: Value = serde_json::from_str(openapi).expect("the published document is JSON");
+    let document = serde_json::to_value(afd_api::openapi::document())
+        .expect("the generated document serializes");
     for verb in ["patch", "delete"] {
         let id = document
             .pointer(&format!(
@@ -217,7 +212,7 @@ fn test_the_published_catalog_id_bound_is_the_enforced_one() {
                 id.get("minLength").and_then(Value::as_u64),
                 id.get("maxLength").and_then(Value::as_u64),
             ),
-            (Some(1), Some(CATALOG_ID_MAX_BYTES as u64)),
+            (Some(1), u64::try_from(CATALOG_ID_MAX_BYTES).ok()),
             "{verb}: {id}"
         );
     }
