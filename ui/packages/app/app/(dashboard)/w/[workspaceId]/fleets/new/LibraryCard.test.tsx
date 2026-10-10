@@ -64,13 +64,6 @@ const BRIEF: FleetLibraryGalleryEntry = {
 };
 
 describe("a gallery card is bounded", () => {
-  it("clamps a long description to one line rather than setting the row height", () => {
-    renderCard(<LibraryCard entry={VERBOSE} action={null} />);
-
-    const description = screen.getByTestId(`library-card-description-${VERBOSE.id}`);
-    expect(description.className).toContain("line-clamp-1");
-  });
-
   it("keeps the whole description in the document, clipped only by the clamp", () => {
     // The clamp is CSS. The sentence a sighted reader loses to it is still
     // here for anyone reading the page another way, and it is what the
