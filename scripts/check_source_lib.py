@@ -72,29 +72,89 @@ def source_files(base: Path, suffixes: tuple[str, ...], include_tests: bool = Fa
     return sorted(found)
 
 
+# A slash after one of these starts a regular expression literal: an operator
+# or an opener leaves nothing on its left for a division to divide. `<` stays
+# out so a JSX closing tag reads as markup, not a pattern.
+REGEX_AFTER_CHARS = frozenset("(,=:[!&|?{};+-*%~^>")
+REGEX_AFTER_WORDS = frozenset({
+    "return", "typeof", "case", "do", "else", "in", "of", "new", "delete",
+    "void", "throw", "yield", "await", "instanceof",
+})
+IDENTIFIER_TAIL = re.compile(r"[A-Za-z_$][\w$]*$")
+
+
+def _regex_may_start(code: str) -> bool:
+    """Whether a slash after `code` (comments already blanked) opens a pattern."""
+    before = code.rstrip()
+    if not before:
+        return True
+    if before[-1] in REGEX_AFTER_CHARS:
+        return True
+    word = IDENTIFIER_TAIL.search(before)
+    return bool(word) and word.group(0) in REGEX_AFTER_WORDS
+
+
+def _regex_end(source: str, start: int) -> int | None:
+    """The offset past the pattern literal opening at `start`, or None.
+
+    A literal never spans a line, so one with no closing slash before the
+    newline was a division after all and the caller treats the slash as one.
+    """
+    index = start + 1
+    in_class = False
+    while index < len(source):
+        char = source[index]
+        if char == "\n":
+            return None
+        if char == "\\":
+            index += 2
+            continue
+        if char == "/" and not in_class:
+            index += 1
+            while index < len(source) and source[index].isalpha():
+                index += 1
+            return index
+        in_class = (in_class or char == "[") and char != "]"
+        index += 1
+    return None
+
+
+def _quoted_end(source: str, start: int) -> int:
+    """The offset past the string opening at `start`.
+
+    A single- or double-quoted string ends at its line: JavaScript allows no
+    raw newline in one, so a quote that reaches one was an apostrophe in JSX
+    text, and the next line is code again. A template literal spans lines.
+    """
+    quote = source[start]
+    index = start + 1
+    while index < len(source):
+        char = source[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == quote:
+            return index + 1
+        if char == "\n" and quote != "`":
+            return index
+        index += 1
+    return len(source)
+
+
 def blank_js_comments(source: str) -> str:
     """`source` with every comment blanked to spaces; strings and lines kept.
 
     A rule that matches code must not match a comment that names the thing it
     bans, and a report must still point at the right line, so a comment's
     characters become spaces (newlines survive) rather than disappearing.
+    String, template and pattern literals are copied whole, so a `//` inside
+    one is never taken for a comment.
     """
-    out = []
+    out: list[str] = []
     index = 0
-    quote = ""
     length = len(source)
     while index < length:
         char = source[index]
-        if quote:
-            out.append(char)
-            if char == "\\" and index + 1 < length:
-                out.append(source[index + 1])
-                index += 2
-                continue
-            if char == quote:
-                quote = ""
-            index += 1
-            continue
         pair = source[index : index + 2]
         if pair in ("//", "/*"):
             end = source.find("\n", index) if pair == "//" else source.find("*/", index + 2)
@@ -102,10 +162,14 @@ def blank_js_comments(source: str) -> str:
             out.append("".join(c if c == "\n" else " " for c in source[index:end]))
             index = end
             continue
+        end = None
         if char in "\"'`":
-            quote = char
-        out.append(char)
-        index += 1
+            end = _quoted_end(source, index)
+        elif char == "/" and _regex_may_start("".join(out[-64:])):
+            end = _regex_end(source, index)
+        end = end or index + 1
+        out.append(source[index:end])
+        index = end
     return "".join(out)
 
 

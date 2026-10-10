@@ -191,7 +191,7 @@ OXLINT = checker.lib.ROOT / APP / "node_modules/.bin/oxlint"
 OXLINT_CONFIG = checker.lib.ROOT / APP / ".oxlintrc.json"
 # Pinned: on a GitHub runner oxlint switches to its `::error` annotation format,
 # which the assertions below do not read.
-OXLINT_FORMAT = "--format=default"
+OXLINT_FORMAT = "--format=stylish"
 
 
 class IdentityProviderBoundary(unittest.TestCase):
