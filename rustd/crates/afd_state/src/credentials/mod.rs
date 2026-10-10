@@ -73,7 +73,7 @@ impl Credentials {
             .await
             .inspect_err(|failure| {
                 let code = error_code::INTERNAL_DB_UNAVAILABLE.as_str();
-                let reason = failure.to_string();
+                let reason = failure.told();
                 tracing::warn!(
                     error_code = code,
                     class,
@@ -187,3 +187,6 @@ impl CredentialDirectory for Credentials {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
