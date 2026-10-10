@@ -53,6 +53,58 @@ async fn test_mint_scope_is_the_presenting_runners_lease() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+async fn test_mint_refuses_a_superseded_active_lease() {
+    // A reclaim moves the fleet's sequence past a lease before the issue that
+    // expires its row, so a row that is `active` and unexpired is not proof
+    // the lease still holds the fleet. The mint scope is checked against the
+    // affinity row's sequence, as the memory fence and report are.
+    support::install_subscriber();
+    let fixtures = Fixtures::create_with_queue().await;
+    let owner = bound(&fixtures, "{}").await;
+    seed_handle(
+        &fixtures,
+        &owner.workspace,
+        CONNECTOR_STATIC,
+        &format!(r#"{{"integration":"static","token":"{OWNER_TOKEN}"}}"#),
+    )
+    .await;
+    let leases = fixtures.leases();
+    let now = UnixMillis::from_millis(NOW_MS);
+    assert!(
+        leases
+            .mint_scope(&owner.runner, &owner.lease, now)
+            .await
+            .expect("the read must succeed")
+            .is_some(),
+        "the control: the lease mints while it holds the fleet"
+    );
+
+    supersede(&fixtures, &owner.fleet).await;
+
+    assert!(
+        leases
+            .mint_scope(&owner.runner, &owner.lease, now)
+            .await
+            .expect("the read must succeed")
+            .is_none(),
+        "a lease the fleet moved past still resolved a mint scope"
+    );
+    let refused = fixtures
+        .plane()
+        .mint(
+            &owner.runner,
+            &requests::mint(&owner.lease, CONNECTOR_STATIC),
+            now,
+        )
+        .await
+        .expect_err("a superseded lease mints nothing");
+    assert_eq!(refused.code(), error_code::RUN_LEASE_NOT_FOUND);
+
+    fixtures.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
 async fn test_a_static_handle_mints_from_the_leases_own_workspace() {
     // The positive, and the scope proof: the token's VALUE is what
     // distinguishes the owner's workspace from any other, so a mint that

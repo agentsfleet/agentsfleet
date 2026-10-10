@@ -4,7 +4,7 @@
 >
 > **Built; the drill is pending.** M206_001–003 live in `docs/v2/done/`; M206_004 is in `docs/v2/done/` with its live drills (§3) parked until 001–003 reach `api-dev`. Status rows cite source on the M206 branch; the scenario's original "today" claims were read at `b1bc6f0c4`.
 
-Legend: ✅ in the Rust daemon · 🟡 in the Rust daemon, broken · 🔨 specified, not built.
+Legend: ✅ in the Rust daemon · 🟡 in the Rust daemon, broken.
 
 **Outcome under test:** a failed `agentsfleet/linkwarden` GitHub Actions run is announced in `#ci-dev`. Someone replies in that announcement's thread with `@agentsfleet-dev why did this fail?`. One fleet answers in the same thread with a GitHub Actions job-log line and a Grafana Loki log line it read itself, plus a proposed fix. Asked to, the channel's repairer opens one draft fix Pull Request (PR) against Linkwarden `dev`: attaching it to the channel was the authorisation, as in Claude Tag. Merging and deploying stay with people and the pipeline.
 
@@ -53,7 +53,7 @@ A connected card proves only the first column. The catalogue's "Connected" is va
 
 ## 3. The same shape GitHub already has
 
-| Question | GitHub App ✅ | Slack mention 🔨 |
+| Question | GitHub App ✅ | Slack mention ✅ |
 |---|---|---|
 | Ceiling | the repositories the App installation covers | the channels the bot user is a member of |
 | Workspace routing | `installation.id` → `core.connector_installs` (`afd_ingress/src/sql.rs:49-52`) | `team_id` → the same table and statement |
@@ -110,6 +110,8 @@ The producer that owns a reply surface records the reply destination on the admi
 
 The report parses the recorded connector once, so the lease's **model** provider never reaches the delivery ledger (`afd_fleet/src/lease/obligation.rs`). A job its destination refuses for good, or one out of delivery cycles, is stamped abandoned, and no scan offers it again (`afd_outbound/src/abandon.rs`).
 
+A run may say up to eight interim lines before its answer, through `POST /v1/runners/me/leases/{lease_id}/messages` (`MESSAGES_PER_RUN_MAX`, `afd_wire/src/message_verb.rs`). The lease plane fences each line and counts it in `fleet.runner_leases.messages_posted` (`schema/929_runner_leases_messages_posted.sql`), so a reclaimed lease starts a new count. The daemon posts every Slack text, interim line and answer alike, as literal text, with `&`, `<` and `>` sent as Slack entities (`afd_outbound/src/slack/escape.rs`, called from `SlackPoster::post`). Each line is stamped `agentsfleet_interim` with `{lease_id, line}` (`afd_connector/src/slack/answered.rs`), so a repeat finds only its own line and never silences the answer.
+
 ## 7. Four stages, four authorities
 
 | Stage | Who acts | Credential | Approval |
@@ -119,7 +121,7 @@ The report parses the recorded connector once, so the lease's **model** provider
 | Merge | a person in GitHub | their own | the repository's branch protection |
 | Deploy | Linkwarden's pipeline | the pipeline's | the release process; the setup checks that `agentsfleet-repair/*` branches cannot reach deploy secrets |
 
-A Slack-requested run can do exactly what the attached fleet's own policy allows. For the repairer that is one daemon-issued branch in `agentsfleet/linkwarden` and one draft PR against trusted base `dev` (`afd_gate/src/policy/egress/write.rs:54-91`): no rule admits a merge, a ref update, a deletion or GraphQL, the runner denies any request no rule matches on a ruled host (`afr_egress/src/admission.rs:218-229`), and the token carries no workflow permission. A write-bound fleet never receives an unaddressed mention. A branch pushed into Linkwarden runs that repository's workflows, so the drill audits their secret paths for `agentsfleet-repair/*` branches. An installed grant covers the write, exactly as `connectors.md` trust anchor 6 says for every other origin.
+A Slack-requested run can do exactly what the attached fleet's own policy allows. For the repairer that is one daemon-issued branch in `agentsfleet/linkwarden` and one draft PR against trusted base `dev` (`rules` in `afd_gate/src/policy/egress/write.rs`): no rule admits a merge, a ref update, a deletion or GraphQL, the runner denies any request no rule matches on a ruled host (`origin_admits` in `afr_egress/src/admission.rs`), and the token carries no workflow permission. A write-bound fleet never receives an unaddressed mention. A branch pushed into Linkwarden runs that repository's workflows, so the drill audits their secret paths for `agentsfleet-repair/*` branches. An installed grant covers the write, exactly as `connectors.md` trust anchor 6 says for every other origin.
 
 ## 8. Evidence sources
 
@@ -127,14 +129,14 @@ A Slack-requested run can do exactly what the attached fleet's own policy allows
 |---|---|---|
 | GitHub run | the fleet reads the linked run, failed jobs, steps and annotations through `http_request` under the repository's read prefix, as its SKILL.md directs (M206_003 §2); it also reads commits and compare there (`afd_gate/src/policy/egress/read.rs:14-27`) | A mint reads the installation's permissions first and asks for `contents` read plus whichever of `actions` and `checks` read it holds (`afd_credential/src/credential/github/request.rs:85`). The App registration lists Checks: read-only and each installation accepts it before the drill (`playbooks/operations/github_app_registration/001_playbook.md:38-43`); until one does, the mint succeeds without it and the fleet's annotation read answers 403. Job logs answer with a redirect to storage outside the exact-host allowlist; the runner's client follows no redirect (`afr_egress/src/network.rs:157-169`), so the fleet names a job-log gap. The storage hop is owner-held. |
 | Grafana | workspace secret `grafana = {host, token}`; `Bearer ${secrets.grafana.token}`; Loki and alert reads over GET | No connector, by design ([connector archetypes](../connectors.md#archetypes)). The host must resolve publicly, because the tool rejects private addresses. Read-only is enforced by `network.read_only`, which is otherwise off by default (`afd_fleet_runtime/src/config/policy.rs:154-157`). |
-| Memory | the fleet's own namespace, hydrated only under a live lease for that fleet (`afd_fleet/src/lease/memory.rs:45-50`) | none for this journey |
+| Memory | the fleet's own namespace, hydrated only under a live lease for that fleet that no reclaim has moved past (`Plane::hydrate` in `afd_fleet/src/lease/memory.rs`) | none for this journey |
 
 ## 9. Integration map
 
 | Integration | Connector (auth) | Events in | Actions out | In the first drill |
 |---|---|---|---|---|
 | GitHub | App install; per-lease installation token, repository-scoped, 1 hour | App ingress: `pull_request`; `workflow_run` completed with `failure` only; `deployment_status` dropped (`afd_api_ingress/src/handler/webhook/github.rs:159-186`, `app_route.rs:22-32`) | fleet `http_request` inside egress rules | read token only |
-| Slack | OAuth bot token: `app_mentions:read`, `chat:write`, `channels:history` | handshake only today; `app_mention` in M206_002 | daemon `chat.postMessage` | yes |
+| Slack | OAuth bot token: `app_mentions:read`, `chat:write`, `channels:history` | `app_mention` (M206_002) | daemon `chat.postMessage` | yes |
 | Grafana | none; workspace secret | none | fleet reads | yes, read-only |
 | Zoho Desk | OAuth refresh, multi-data-center, `Desk.*.READ` | none | none | no |
 | Zoho Recruit bundle | static secret `zoho_recruit`, never refreshed | none | fleet `http_request` | no |

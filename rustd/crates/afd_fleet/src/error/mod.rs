@@ -285,6 +285,20 @@ impl Error {
     pub fn lease_not_found() -> Self {
         super::error::lease_not_found()
     }
+
+    /// The refusal an uninstalled or revoked GitHub App answers a mint with:
+    /// the one mint refusal a route renders as a conflict naming its state.
+    #[must_use]
+    pub fn github_reconnect_required() -> Self {
+        super::error::github_reconnect_required()
+    }
+
+    /// The refusal a fenced verb answers a superseded lease, or a token not
+    /// the lease's own, with: the memory routes render it as a conflict.
+    #[must_use]
+    pub fn stale_fence() -> Self {
+        super::error::stale_fence()
+    }
 }
 
 impl Error {

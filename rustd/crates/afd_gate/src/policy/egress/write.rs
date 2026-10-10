@@ -1,5 +1,6 @@
-//! Writing a bound repository — objects freely, the ref and the Pull Request
-//! locked to exactly what this lease authorised.
+//! Writing a bound repository — blobs and trees freely, a commit without an
+//! identity of its own, the ref and the Pull Request locked to exactly what
+//! this lease authorised.
 //!
 //! # A scoped token bounds WHERE, not WHAT
 //!
@@ -9,16 +10,30 @@
 //! the card said "one branch, one draft Pull Request in the bound repository",
 //! and the only way that sentence is true is if no other request is admitted.
 //!
-//! # Objects are open; the ref is not
+//! # Blobs and trees are open; the ref is not
 //!
-//! Blobs, trees and commits are UNREFERENCED until something points at them, so
+//! Blobs and trees are UNREFERENCED until something points at them, so
 //! creating one changes nothing an observer can see and locking their fields
 //! would bound nothing real. Publishing is the ref creation — so that is the
 //! rule that pins an exact value, and `/pulls` pins three.
+//!
+//! A commit is open in its content and not in its identity: the ref that
+//! publishes it publishes the author and committer it names, so its rule names
+//! the three fields a commit needs and GitHub records the App as both.
+//!
+//! # Every locked rule names what it sends
+//!
+//! A rule that locks a field also lists the fields it permits beside it, and
+//! the matcher admits no other key and no query string
+//! (`afd_wire::policy::HttpRequestRule`). Locking `draft` bounds nothing if an
+//! unlocked key can turn an existing issue into the Pull Request, or point it
+//! at another repository's branch.
 
 use afd_fleet_runtime::config::RepositoryBinding;
 use afd_wire::policy::repository::{
-    self, FIELD_BASE, FIELD_DRAFT, FIELD_HEAD, FIELD_REF, PULLS_PATH, REFS_HEADS, REFS_PATH,
+    self, COMMITS_PATH, FIELD_BASE, FIELD_BODY, FIELD_DRAFT, FIELD_HEAD,
+    FIELD_MAINTAINER_CAN_MODIFY, FIELD_MESSAGE, FIELD_PARENTS, FIELD_REF, FIELD_SHA, FIELD_TITLE,
+    FIELD_TREE, PULLS_PATH, REFS_HEADS, REFS_PATH,
 };
 use afd_wire::policy::{HttpJsonFieldRule, HttpMethod, HttpPathMatch, HttpRequestRule};
 
@@ -27,9 +42,18 @@ use super::Misconfigured;
 /// The endpoints a write binding may POST to with nothing locked.
 ///
 /// See the module note: an unreferenced object is invisible until a ref points
-/// at it. What this list bounds is that the OPEN set is exactly these three — a
-/// fourth would be a boundary nobody decided.
-const OPEN_OBJECT_PATHS: [&str; 3] = ["/git/blobs", "/git/trees", "/git/commits"];
+/// at it. What this list bounds is that the OPEN set is exactly these two — a
+/// third would be a boundary nobody decided.
+const OPEN_OBJECT_PATHS: [&str; 2] = ["/git/blobs", "/git/trees"];
+
+/// What a commit may carry: its content, and no identity of its own.
+const COMMIT_FIELDS: [&str; 3] = [FIELD_MESSAGE, FIELD_TREE, FIELD_PARENTS];
+
+/// What a ref creation may carry beside the ref it is locked to.
+const REF_FIELDS: [&str; 1] = [FIELD_SHA];
+
+/// What a Pull Request may carry beside its three locked fields.
+const PULL_FIELDS: [&str; 3] = [FIELD_TITLE, FIELD_BODY, FIELD_MAINTAINER_CAN_MODIFY];
 
 /// The requests a write binding admits, beyond its reads.
 ///
@@ -51,13 +75,20 @@ pub(super) fn rules<'a>(
 
     let mut rules: Vec<HttpRequestRule<'a>> = OPEN_OBJECT_PATHS
         .iter()
-        .map(|suffix| exact_post(repository, suffix, Vec::new()))
+        .map(|suffix| exact_post(repository, suffix, Vec::new(), None))
         .collect();
 
     rules.push(exact_post(
         repository,
+        COMMITS_PATH,
+        Vec::new(),
+        Some(&COMMIT_FIELDS),
+    ));
+    rules.push(exact_post(
+        repository,
         REFS_PATH,
         vec![locked(FIELD_REF, format!("{REFS_HEADS}{branch}"))],
+        Some(&REF_FIELDS),
     ));
     rules.push(exact_post(
         repository,
@@ -71,11 +102,14 @@ pub(super) fn rules<'a>(
                 boolean_value: Some(true),
             },
         ],
+        Some(&PULL_FIELDS),
     ));
     Ok(rules)
 }
 
-/// One POST admitted at an exact path, with `fields` locked.
+/// One POST admitted at an exact path, with `fields` locked and `permitted`
+/// admitted beside them. `permitted` present closes the rule to those keys;
+/// absent leaves an open object path open to any body.
 ///
 /// Exact rather than prefix, unlike the read rules: a prefix at `/git/refs`
 /// would admit paths beneath it, and this rule's whole purpose is that exactly
@@ -84,12 +118,14 @@ fn exact_post<'a>(
     repository: &str,
     suffix: &str,
     fields: Vec<HttpJsonFieldRule<'a>>,
+    permitted: Option<&[&'static str]>,
 ) -> HttpRequestRule<'a> {
     HttpRequestRule {
         method: HttpMethod::Post,
         path: repository::path(repository, suffix).into(),
         path_match: HttpPathMatch::Exact,
         json_fields: fields,
+        permitted_fields: permitted.map(|names| names.iter().map(|&name| name.into()).collect()),
     }
 }
 

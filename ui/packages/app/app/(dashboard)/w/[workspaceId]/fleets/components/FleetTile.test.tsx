@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { CONNECTION_STATUS } from "@/lib/streaming/fleet-stream-registry";
 import type { Fleet } from "@/lib/api/fleets";
+import { agentDisplayName } from "@/lib/fleets/agent-label";
 
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: React.PropsWithChildren<{ href: string }>) =>
@@ -18,7 +19,6 @@ vi.mock("@/components/domain/useWorkspaceStream", () => ({
 }));
 
 import FleetTile, {
-  FLEET_AGENT_DESCRIPTION,
   FLEET_NO_LIVE_ACTIVITY_COPY,
   FLEET_WAITING_COPY,
   MANAGE_FLEET_LABEL,
@@ -30,6 +30,9 @@ import {
   TILE_NOT_LIVE_TOOLTIP,
   TILE_SPEND_SUFFIX,
 } from "@/lib/wall/tile-liveness";
+
+/** The fade a drained tile once wore; it reads at full strength now. */
+const FADED_CLASS = "opacity-60";
 
 function fleet(over: Partial<Fleet> = {}): Fleet {
   return {
@@ -65,13 +68,14 @@ describe("FleetTile kinds", () => {
     expect(streamMock).not.toHaveBeenCalled();
     const card = container.querySelector("[data-kind]");
     expect(card?.getAttribute("data-kind")).toBe("drained");
-    expect(card?.className).not.toContain("opacity-60");
+    expect(card?.className).not.toContain(FADED_CLASS);
     expect(getByText(FLEET_NO_LIVE_ACTIVITY_COPY)).toBeTruthy();
+    expect(container.querySelector("[data-fleet-status]")?.textContent).toBe("Stopped");
     // Every tile links to its console, drained included.
     expect(container.querySelector('a[href="/w/ws_1/fleets/flt_1"]')).not.toBeNull();
   });
 
-  it("an active fleet renders live identity, agent purpose, management, and server truth", () => {
+  it("an active fleet renders live identity, its activity, management, and server truth", () => {
     streamMock.mockReturnValue({
       feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
@@ -82,7 +86,6 @@ describe("FleetTile kinds", () => {
     const { container, getByRole, getByText } = renderTile(fleet());
     expect(container.querySelector('[data-kind="live"]')).not.toBeNull();
     expect(container.querySelector('[data-fleet-sigil][data-live="true"]')).not.toBeNull();
-    expect(getByText(FLEET_AGENT_DESCRIPTION)).toBeTruthy();
     expect(getByText(FLEET_WAITING_COPY)).toBeTruthy();
     expect(getByText(MANAGE_FLEET_LABEL, { exact: false })).toBeTruthy();
     expect(
@@ -293,6 +296,25 @@ describe("FleetTile kinds", () => {
     expect(container.querySelector('[data-kind="snapshot"]')).not.toBeNull();
     expect(getByText(TILE_NOT_LIVE_EYEBROW)).toBeTruthy();
     expect(container.querySelector('[data-live="true"]')).toBeNull();
+  });
+
+  it("leads with the agent and its status, then what it is doing, and keeps the fleet's name in the footer", () => {
+    streamMock.mockReturnValue({
+      feed: undefined,
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      helloReceived: true,
+      isLive: true,
+      catchingUp: false,
+    });
+    const { container } = renderTile(fleet());
+    const agent = container.querySelector("[data-agent-name]");
+    expect(agent?.textContent).toBe(agentDisplayName("flt_1"));
+    expect(container.querySelector("[data-fleet-status]")?.textContent).toBe("Active");
+    // The status sits on the agent's own line, and the activity is the next.
+    expect(agent?.parentElement?.contains(container.querySelector("[data-fleet-status]"))).toBe(true);
+    expect(container.querySelector("[data-tile-activity]")?.textContent).toBe(FLEET_WAITING_COPY);
+    expect(container.querySelector("[data-fleet-name]")?.textContent).toBe("alpha");
+    expect(container.textContent).not.toContain("Runs in a loop");
   });
 
   it("test_wall_copy_consts_are_single_source", () => {

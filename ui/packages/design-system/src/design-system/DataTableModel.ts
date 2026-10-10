@@ -13,6 +13,7 @@ import {
   useTable,
   type ColumnDef,
   type PaginationState,
+  type SortFn,
   type SortingState,
 } from "@tanstack/react-table";
 
@@ -85,9 +86,14 @@ function buildColumns<T extends DataTableRowData>(
     const accessor = column.sortValue
       ? { accessorFn: column.sortValue }
       : sortingEnabled ? { accessorKey: column.key } : {};
+    const { compare } = column;
+    const sortFn: SortFn<DataTableFeatures, T> | undefined = compare
+      ? (rowA, rowB) => compare(rowA.original, rowB.original)
+      : undefined;
     return {
       id: column.key,
       ...accessor,
+      ...(sortFn ? { sortFn } : {}),
       enableSorting: sortingEnabled,
       sortDescFirst: false,
     };

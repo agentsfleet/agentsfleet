@@ -106,7 +106,12 @@ pub(crate) struct Held {
 
 /// Runs §2 far enough to leave one active lease on one funded fleet.
 pub(crate) async fn held() -> Held {
-    let fixtures = Fixtures::create_with_queue().await;
+    held_in(Fixtures::create_with_queue().await).await
+}
+
+/// [`held`], over `fixtures`: a private database for a test that breaks a
+/// table every other test reads.
+pub(crate) async fn held_in(fixtures: Fixtures) -> Held {
     let Seeded {
         runners: [runner, spare],
         fleet,

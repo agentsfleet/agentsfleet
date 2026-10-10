@@ -31,6 +31,12 @@ export type DataTableColumn<T extends DataTableRowData> = {
   cell: (row: T) => React.ReactNode;
   /** Scalar used by the built-in client sorter. Also opts the column into sorting. */
   sortValue?: (row: T) => string | number;
+  /**
+   * Orders two rows where the sort value's own order is not the one the column
+   * means: a number inside a name, two names that read alike. Replaces the
+   * client sorter's comparison; `sortValue` still opts the column in.
+   */
+  compare?: (a: T, b: T) => number;
   /** Optional right-align (common for numeric/spend cells). */
   numeric?: boolean;
   /** Hide on mobile (< sm breakpoint) to reduce horizontal scroll. */

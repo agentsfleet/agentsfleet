@@ -174,6 +174,13 @@ impl Fleet {
         self
     }
 
+    /// A lease plane whose memory verbs and mint answer `refusal`, for a case
+    /// that proves how those routes render it.
+    pub(crate) fn with_lease_refusal(mut self, refusal: fn() -> afd_fleet::Error) -> Self {
+        self.leases = super::NoWork::refusing(refusal);
+        self
+    }
+
     /// Files a person row under the digest of `key`, holding `scopes`.
     pub(crate) fn with_person(mut self, key: &str, subject: &str, scopes: ScopeSet) -> Self {
         let who = Subject::new(subject).expect("the fixture subject is not blank");

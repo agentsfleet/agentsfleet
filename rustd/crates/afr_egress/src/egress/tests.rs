@@ -55,6 +55,7 @@ fn refused_post(url: &str) -> Shown {
         GITHUB,
         POST,
         url.trim_start_matches("https://api.github.com"),
+        None,
     ))
 }
 

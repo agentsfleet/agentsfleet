@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Badge,
   ConfirmDialog,
+  CopyButton,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -13,7 +14,15 @@ import {
 } from "@agentsfleet/design-system";
 import { CoinsIcon, PencilIcon, StarIcon, Trash2Icon } from "lucide-react";
 import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library";
-import { nanosToUsdPerMtok } from "@/lib/api/admin-model-library-types";
+import {
+  CONTEXT_HEADER,
+  RATES_HEADER,
+  compareModelIds,
+  formatContextTokens,
+  formatRatesPerMtok,
+  modelIdCopyLabel,
+  modelLabel,
+} from "@/lib/models/display";
 import { presentErrorString } from "@/lib/errors";
 import {
   default as EditModelDialogDynamic,
@@ -23,12 +32,6 @@ import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-m
 import { deleteAdminModelAction } from "../actions";
 import MakeDefaultDialog from "./MakeDefaultDialog";
 
-// $/1M tokens, two decimals — the catalogue is priced per million tokens (matches
-// how every provider quotes), so the rates paste straight from a pricing page.
-function usd(nanos: number): string {
-  return nanosToUsdPerMtok(nanos).toFixed(2);
-}
-
 // The active default resolves to exactly one catalogue row — the one whose
 // (provider, model_id) equals the active row's (provider, model).
 function isDefault(m: AdminModel, active: PlatformKey | null): boolean {
@@ -37,8 +40,16 @@ function isDefault(m: AdminModel, active: PlatformKey | null): boolean {
 
 function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey | null }) {
   return (
-    <span className="flex items-center gap-2">
-      <span className="font-mono text-mono leading-mono">{model.model_id}</span>
+    <span className="flex min-w-0 items-center gap-2">
+      {/* The marketed name reads; the provider id, which fleet configs and
+          provider dashboards use, is one hover away, and the copy button
+          reaches it on touch or a keyboard, as on the workspace table. */}
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate" title={model.model_id}>
+          {modelLabel(model.model_id)}
+        </span>
+        <CopyButton value={model.model_id} label={modelIdCopyLabel(model.model_id)} />
+      </span>
       {isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
     </span>
   );
@@ -117,30 +128,33 @@ function buildColumns({
 }): DataTableColumn<AdminModel>[] {
   return [
     { key: "provider", header: "Provider", sortValue: (m) => m.provider, cell: (m) => <Badge variant="cyan">{m.provider}</Badge> },
-    { key: "model", header: "Model", sortValue: (m) => m.model_id, cell: (m) => <ModelCell model={m} active={active} /> },
+    {
+      key: "model",
+      header: "Model",
+      sortValue: (m) => m.model_id,
+      compare: (a, b) => compareModelIds(a.model_id, b.model_id),
+      cell: (m) => <ModelCell model={m} active={active} />,
+    },
     {
       key: "context",
-      header: "Context",
+      header: CONTEXT_HEADER,
       hideOnMobile: true,
       numeric: true,
       sortValue: (m) => m.context_cap_tokens,
       cell: (m) => (
         <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">
-          {/* Pin the locale — a bare toLocaleString() groups digits per the
-              viewer's locale (en-IN "1,28,000" vs en-US "128,000"), so SSR and
-              client disagree and React throws a hydration mismatch. */}
-          {m.context_cap_tokens.toLocaleString("en-US")}
+          {formatContextTokens(m.context_cap_tokens)}
         </span>
       ),
     },
     {
       key: "rates",
-      header: "Rates $/1M (in / cached / out)",
+      header: RATES_HEADER,
       numeric: true,
       sortValue: (m) => m.input_nanos_per_mtok,
       cell: (m) => (
         <span className="font-mono text-mono leading-mono tabular-nums text-muted-foreground">
-          {usd(m.input_nanos_per_mtok)} / {usd(m.cached_input_nanos_per_mtok)} / {usd(m.output_nanos_per_mtok)}
+          {formatRatesPerMtok(m)}
         </span>
       ),
     },

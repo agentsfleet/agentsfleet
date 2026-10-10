@@ -18,7 +18,7 @@ executable: false
 
 ## What it is
 
-This page records the approved requirements for datastore scaling and the target design the implementation builds toward. It does not claim that Dragonfly support or million-fleet capacity has shipped; the sections below marked *target* describe what the active spec builds, and the runtime pages (`data_flow.md`, `runner_fleet.md`) describe what runs today until a Section lands and updates them in the same commit.
+This page records the approved requirements for datastore scaling and the target design the implementation builds toward. Dragonfly has served development since Sep 17, 2026 (§"Upstash retirement status"); production and million-fleet capacity have not shipped. The sections below marked *target* describe what the active spec builds, and the runtime pages (`data_flow.md`, `runner_fleet.md`) describe what runs today until a Section lands and updates them in the same commit.
 
 ## Why it exists
 
@@ -69,6 +69,8 @@ Move to Swarm when the cost of an unattended failover exceeds the difference
 between the two bills.
 
 ### Two containers, cross-paired (Indy, 2026-09-15)
+
+**Not built.** Both Fly apps run ONE machine with all four processes (`deploy/fly/dragonfly-dev/fly.toml`, `deploy/fly/dragonfly-prod/fly.toml`), so a machine loss today costs every node.
 
 Every requirement above says four *processes*, and until this decision nothing
 said how many hosts or containers carry them — which is what decides what a node
@@ -196,7 +198,7 @@ A four-node Dragonfly v1.40.2 cluster (two primaries, one replica each, one netw
 
 ## Target design
 
-**One boundary, one transport.** `afd_dragonfly` (renamed from `afd_redis`; the `REDIS_*` environment names are unchanged) keeps its surfaces — `Dragonfly`, `Dedicated`, `FleetStreams`, `ReadyIndex`, `SessionStore`, `SubscriptionHub` — over one `ClusterConnection` per process for ordinary commands. There is no `REDIS_TOPOLOGY` and no standalone backend: a seed that is not a cluster refuses boot. A blocking consumer (`Dedicated`) holds its OWN `ClusterConnection`, never a borrowed one, because the driver keeps exactly one socket per node and applies one reply deadline to every command on a connection — a parked read on a shared handle would stall the owning node's only socket and impose the park-sized deadline on every other caller. Business crates never learn the topology, and no business code branches on it. Correctness-sensitive commands go to primaries; `read_from_replicas` is never enabled.
+**One boundary, one transport.** `afd_dragonfly` (renamed from `afd_redis`; the boot knob is `DRAGONFLY_URL`, `rustd/crates/afd_dragonfly/src/config.rs`) keeps its surfaces — `Dragonfly`, `Dedicated`, `FleetStreams`, `ReadyIndex`, `SessionStore`, `SubscriptionHub` — over one `ClusterConnection` per process for ordinary commands. There is no `REDIS_TOPOLOGY` and no standalone backend: a seed that is not a cluster refuses boot. A blocking consumer (`Dedicated`) holds its OWN `ClusterConnection`, never a borrowed one, because the driver keeps exactly one socket per node and applies one reply deadline to every command on a connection — a parked read on a shared handle would stall the owning node's only socket and impose the park-sized deadline on every other caller. Business crates never learn the topology, and no business code branches on it. Correctness-sensitive commands go to primaries; `read_from_replicas` is never enabled.
 
 **Acceptance is a PostgreSQL row, the queue is a receipt.** Every producer (steer, webhook, schedule fire, gate continuation, install, outbound answer) commits an admission row carrying its producer identity before any success response. The single-key `XADD` follows and is recorded back as the physical receipt; a replay dispatcher re-appends admitted rows that never got one. Duplicate producer identity is a unique-index conflict, which is what the Redis dedup claim used to be. Settlement and billing key on the admission row, so a replayed receipt cannot debit twice. Losing the in-memory datastore loses no accepted work while PostgreSQL survives, and that takes two recovery passes rather than one: the two paragraphs below are the second.
 

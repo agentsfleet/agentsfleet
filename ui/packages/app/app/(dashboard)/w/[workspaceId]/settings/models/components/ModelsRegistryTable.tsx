@@ -19,7 +19,7 @@ import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedActi
 import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
-import { computeNextSort, readErrorCopy, sortValueFor, type SortState } from "./registry-view";
+import { compareEntries, computeNextSort, readErrorCopy, type SortState } from "./registry-view";
 import { useStoredSecrets } from "./use-stored-secrets";
 import ModelDetailsDialog from "./ModelDetailsDialog";
 import { CATALOGUE_STATUS } from "./catalogue-status";
@@ -34,6 +34,7 @@ import {
   StatusCell,
   rowKey,
 } from "./ModelsRegistryCells";
+import { CONTEXT_HEADER, RATES_HEADER } from "@/lib/models/display";
 
 type Props = {
   workspaceId: string;
@@ -97,7 +98,7 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   const sortedEntries = useMemo(() => {
     if (!sort) return entries;
     const dir = sort.dir === "ascending" ? 1 : -1;
-    return [...entries].sort((a, b) => sortValueFor(a, sort.key).localeCompare(sortValueFor(b, sort.key)) * dir);
+    return [...entries].sort((a, b) => compareEntries(a, b, sort.key) * dir);
   }, [entries, sort]);
 
   const rows: RegistryRow[] = [
@@ -234,14 +235,14 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     { key: "model", header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
     {
       key: "context",
-      header: "Context",
+      header: CONTEXT_HEADER,
       numeric: true,
       hideOnMobile: true,
       cell: (row) => <ContextCell row={row} platformDefault={platformDefault} />,
     },
     {
       key: "rates",
-      header: "Price / 1M",
+      header: RATES_HEADER,
       numeric: true,
       hideOnMobile: true,
       cell: (row) => <RatesCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,

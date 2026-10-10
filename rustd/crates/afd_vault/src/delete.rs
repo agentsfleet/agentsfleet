@@ -70,12 +70,43 @@ impl Directory {
     pub async fn delete(&self, workspace: &Uuid7, name: &SecretName) -> Result<Deleted> {
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_DELETE))?;
-        if !secret_is_held(&mut transaction, workspace, name).await? {
+        let deleted = self.delete_in(&mut transaction, workspace, name).await?;
+        transaction.commit().await.map_err(query(CONTEXT_DELETE))?;
+        if deleted == Deleted::Removed {
+            let workspace_id = workspace.as_str();
+            let secret_name = name.as_str();
+            tracing::info!(
+                workspace = workspace_id,
+                name = secret_name,
+                event = "secret_deleted",
+            );
+        }
+        Ok(deleted)
+    }
+
+    /// [`Self::delete`] inside the caller's transaction.
+    ///
+    /// The secret's row lock is taken here, which orders writers of a row that
+    /// exists. A caller that must also order against a writer about to CREATE
+    /// the row takes its own lock first: a connector's Disconnect holds the
+    /// workspace row (`afd_connector::sql::LOCK_WORKSPACE`), so the handle and
+    /// the routing rows go together or not at all, even beside a first Connect.
+    ///
+    /// # Errors
+    /// As [`Self::delete`]. The transaction is the caller's to commit; dropping
+    /// it rolls back, which is the property this seam is for.
+    pub async fn delete_in(
+        &self,
+        transaction: &mut Transaction<'_, sqlx::Postgres>,
+        workspace: &Uuid7,
+        name: &SecretName,
+    ) -> Result<Deleted> {
+        if !secret_is_held(transaction, workspace, name).await? {
             return Ok(Deleted::AlreadyAbsent);
         }
 
-        let tenant = owning_tenant(&mut transaction, workspace).await?;
-        let references = reference_count(&mut transaction, &tenant, name).await?;
+        let tenant = owning_tenant(transaction, workspace).await?;
+        let references = reference_count(transaction, &tenant, name).await?;
         if references > 0 {
             return Err(still_referenced(entry_count(references)));
         }
@@ -83,25 +114,16 @@ impl Directory {
         let unreadable = query(CONTEXT_DELETE);
         sqlx::query(sql::LOCK_SELECTION)
             .bind(&tenant)
-            .fetch_all(&mut *transaction)
+            .fetch_all(&mut **transaction)
             .await
             .map_err(&unreadable)?;
 
         let removed = sqlx::query(sql::DELETE_SECRET)
             .bind(workspace.as_str())
             .bind(name.as_str())
-            .execute(&mut *transaction)
+            .execute(&mut **transaction)
             .await
             .map_err(&unreadable)?;
-        transaction.commit().await.map_err(&unreadable)?;
-
-        let workspace_id = workspace.as_str();
-        let secret_name = name.as_str();
-        tracing::info!(
-            workspace = workspace_id,
-            name = secret_name,
-            event = "secret_deleted",
-        );
         Ok(if removed.rows_affected() > 0 {
             Deleted::Removed
         } else {

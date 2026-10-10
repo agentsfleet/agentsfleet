@@ -29,6 +29,15 @@ mod raise;
 
 pub(crate) use self::raise::{query, still_referenced};
 
+/// A delete refused because `count` model registry entries still name the
+/// secret, built without a datastore so a crate wrapping this error can cover
+/// the arm it answers that refusal with.
+#[cfg(feature = "test-util")]
+#[must_use]
+pub fn still_referenced_sample(count: u32) -> Error {
+    still_referenced(count)
+}
+
 /// The result every fallible function in this crate returns.
 ///
 /// One alias per crate, defaulted to this crate's own [`Error`], so a reader

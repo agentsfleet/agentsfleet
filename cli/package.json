@@ -34,21 +34,21 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@effect/platform-bun": "4.0.0",
-    "@vercel/detect-agent": "^1.2.5",
-    "effect": "4.0.0",
-    "posthog-node": "^5.55.0",
-    "uuid": "^14.0.2"
+    "@effect/platform-bun": "4.0.2",
+    "@vercel/detect-agent": "^1.2.6",
+    "effect": "4.0.2",
+    "posthog-node": "^5.55.1",
+    "uuid": "^14.0.3"
   },
   "license": "MIT",
   "devDependencies": {
-    "@clerk/testing": "^2.2.42",
-    "@playwright/test": "1.63.0",
-    "@types/node": "^26.6.4",
+    "@clerk/testing": "^2.2.45",
+    "@playwright/test": "1.64.0",
+    "@types/node": "^26.6.5",
     "@types/uuid": "^11.0.0",
     "bun-types": "^1.4.2",
-    "oxlint": "^1.86.0",
-    "playwright": "^1.63.0",
+    "oxlint": "^1.87.0",
+    "playwright": "^1.64.0",
     "typescript": "7.0.2"
   }
 }

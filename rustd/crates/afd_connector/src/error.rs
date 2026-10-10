@@ -23,6 +23,12 @@
 //! type. They are refusals the caller renders, because nothing failed: the
 //! state machine did its job and answered no. [`crate::state::Rejected`] and
 //! [`crate::Unknown`] are those answers.
+//!
+//! One caller-resolvable state does arrive here: the vault refusing a
+//! Disconnect's delete while a model entry still names the credential. The
+//! vault raises it as an error inside the Disconnect's transaction, so it is
+//! carried as one, and `referenced_by` lets the route render it as the 409 it
+//! is.
 
 use afd_core::error_code::{self, ErrorCode};
 
@@ -156,6 +162,19 @@ impl Error {
         )
     }
 
+    /// How many model entries still name the credential, when the vault
+    /// refused a Disconnect for that reason.
+    ///
+    /// The refusal is a conflict the caller resolves, so the route answers it
+    /// with a `current_state` where every other failure answers without one.
+    #[must_use]
+    pub fn referenced_by(&self) -> Option<u32> {
+        match self.kind() {
+            ErrorKind::Vault { source } => source.referenced_by(),
+            _ => None,
+        }
+    }
+
     /// The code and the sentence, decided together — see the module note.
     fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
@@ -185,6 +204,13 @@ impl Error {
             ErrorKind::InstallationUnresolved { .. } | ErrorKind::InstallationHeldElsewhere => (
                 error_code::CONNECTOR_INSTALLATION_OWNERSHIP,
                 detail::INSTALLATION_OWNERSHIP,
+            ),
+            // A Disconnect the vault refused because a model entry still names
+            // the credential: the caller's to correct, so it answers the
+            // vault's own conflict rather than an operation failure.
+            ErrorKind::Vault { .. } if self.referenced_by().is_some() => (
+                error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
+                detail::GRANT_STILL_REFERENCED,
             ),
             ErrorKind::Queue { .. }
             | ErrorKind::Vault { .. }

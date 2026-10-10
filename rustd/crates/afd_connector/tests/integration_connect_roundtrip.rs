@@ -38,6 +38,8 @@
 
 #[path = "integration_connect_roundtrip/cases.rs"]
 mod cases;
+#[path = "integration_connect_roundtrip/disconnect.rs"]
+mod disconnect;
 #[path = "integration_connect_roundtrip/vendor.rs"]
 mod vendor;
 
@@ -55,9 +57,9 @@ use afd_crypto::aad::Aad;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::envelope::Sealer;
 use afd_crypto::secret::{Kek, SecretBytes};
-use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::{Db, Migrator};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_vault::{SecretName, Vault};
 
@@ -93,16 +95,36 @@ pub(crate) struct Round {
     pub(crate) connectors: Connectors,
     pub(crate) admin: Uuid7,
     pub(crate) workspace: Uuid7,
+    /// The tenant both workspaces belong to.
+    tenant: String,
     vault: Vault,
     database: Db,
-    _lane: TestDatabase,
+    lane: TestDatabase,
 }
 
 impl Round {
     /// Seeds both workspaces and binds the connectors to `vendor`.
     pub(crate) async fn create(vendor: &FakeAtlassian) -> Self {
+        Self::over(TestDatabase::shared(), vendor).await
+    }
+
+    /// [`Round::create`] over a migrated database of its own, beside the
+    /// migrator's handle to it: for a case that changes the schema, such as a
+    /// trigger that fails a write on demand, which the shared lane must not see.
+    /// End it with [`Round::drop_private`].
+    pub(crate) async fn create_private(vendor: &FakeAtlassian) -> (Self, Db) {
+        let lane = TestDatabase::create().await;
+        let migrator = lane.open(DbRole::Migrator, &[]).await;
+        Migrator::new()
+            .run(&migrator)
+            .await
+            .expect("the private database must migrate");
+        (Self::over(lane, vendor).await, migrator)
+    }
+
+    /// Seeds both workspaces in `lane` and binds the connectors to `vendor`.
+    async fn over(lane: TestDatabase, vendor: &FakeAtlassian) -> Self {
         afd_db::test_util::install_subscriber();
-        let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
         let admin = mint_id();
@@ -124,9 +146,10 @@ impl Round {
             connectors,
             admin: Uuid7::parse(&admin).expect("a minted id is a v7 spelling"),
             workspace: Uuid7::parse(&workspace).expect("a minted id is a v7 spelling"),
+            tenant,
             vault,
             database,
-            _lane: lane,
+            lane,
         }
     }
 
@@ -142,6 +165,12 @@ impl Round {
             )
             .expect("the fixture bag seals");
         insert_secret(&self.database, self.admin.as_str(), &name, &sealed).await;
+    }
+
+    /// The grant store the connectors write through, for verbs a round trip
+    /// does not drive: a direct land, and Disconnect.
+    pub(crate) fn grants(&self) -> Grants {
+        Grants::new(self.vault.clone(), self.database.clone(), Entropy::new())
     }
 
     /// The grant this connect landed, opened back out of the vault.
@@ -166,6 +195,11 @@ impl Round {
                 .await
                 .expect("the fixture workspace must delete");
         }
+    }
+
+    /// Drops the database [`Round::create_private`] made, and everything in it.
+    pub(crate) async fn drop_private(self) {
+        self.lane.cleanup().await;
     }
 }
 

@@ -157,10 +157,14 @@ export function LibrarySourceTabs({
 
   // Switching source clears the other tab's error state, so a half-filled
   // GitHub ref does not keep the upload tab's submit button explaining itself.
+  // Radix selects a clicked tab on mousedown and again on the focus that
+  // follows, before either re-renders, so only a real change goes on.
   function handleSourceChange(next: string) {
+    const kind = next === SOURCE_KIND_UPLOAD ? SOURCE_KIND_UPLOAD : SOURCE_KIND_GITHUB;
+    if (form.getValues("source_kind") === kind) return;
     onSourceChange?.();
     form.clearErrors();
-    form.setValue("source_kind", next === SOURCE_KIND_UPLOAD ? SOURCE_KIND_UPLOAD : SOURCE_KIND_GITHUB);
+    form.setValue("source_kind", kind);
   }
 
   // A chosen folder fills the boxes rather than going straight to the wire.

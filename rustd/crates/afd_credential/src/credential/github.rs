@@ -42,6 +42,10 @@ mod request;
 pub use self::exchange::{Exchange, mint};
 pub use self::request::{Installed, ScopedRequest};
 
+/// The one permission GitHub attaches to every installation token unasked,
+/// always at read. [`Granted::verify`] admits it and no other stranger.
+const AMBIENT_READ: &str = "metadata";
+
 /// One repository permission a mint may ask GitHub for.
 ///
 /// A closed set: a permission this enum does not name cannot be requested,
@@ -199,13 +203,12 @@ impl Granted {
         }
     }
 
-    /// Every granted permission is either an ambient read, or exactly what was
-    /// asked for.
+    /// Every granted permission is [`AMBIENT_READ`] at read, or exactly what
+    /// was asked for.
     ///
-    /// GitHub attaches read-level grants of its own — `metadata` rides on every
-    /// installation token — so a read-level extra is expected and passes.
-    /// Anything above read that was not requested, at any name this daemon does
-    /// or does not model, is refused.
+    /// Any other unrequested name is refused at every level, read included:
+    /// an unasked `administration: read` still shows the token's holder a
+    /// repository's settings and collaborators, which no fleet declared.
     fn verify_permissions(
         &self,
         requested: &BTreeMap<GithubPermission, Permission>,
@@ -213,10 +216,10 @@ impl Granted {
         if self.permissions.is_empty() {
             return Err(Overreach::Unstated);
         }
-        // Nothing granted beyond an ambient read except exactly what was asked
-        // for, at exactly the level it was asked for.
+        // Nothing granted beyond GitHub's own `metadata` read except exactly
+        // what was asked for, at exactly the level it was asked for.
         let within_request = self.permissions.iter().all(|(name, granted)| {
-            *granted <= Permission::Read
+            (name == AMBIENT_READ && *granted == Permission::Read)
                 || requested
                     .iter()
                     .any(|(permission, want)| permission.as_str() == name && want == granted)

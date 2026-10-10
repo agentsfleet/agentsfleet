@@ -102,12 +102,13 @@ pub const DETAIL_GATE_REFERENCE_UNWRITABLE: &str = "approval gate reference unwr
 /// failure into an approval nobody can spend. Never rendered.
 pub const DETAIL_GATE_BINDING_UNWRITABLE: &str = "approval gate binding unwritable";
 
-/// The report refusal when the presenting holder has been superseded.
+/// The refusal any lease verb answers when the presenting holder has been
+/// superseded — a report, a memory hydrate, push or recall, a tool detail.
 ///
-/// It names the outcome — the current holder's result wins — because that is
-/// the fact the runner acts on: it stops retrying and discards its own result,
-/// rather than backing off and re-reporting into a lease it no longer holds.
-pub const DETAIL_STALE_FENCE: &str = "Lease superseded by a newer holder; report rejected";
+/// It names the outcome — the current holder wins — because that is the fact
+/// the runner acts on: it stops retrying and discards its own work, rather
+/// than backing off and calling again into a lease it no longer holds.
+pub const DETAIL_STALE_FENCE: &str = "Lease superseded by a newer holder; request rejected";
 
 /// The renewal refusal when no lease with that id is the caller's.
 ///

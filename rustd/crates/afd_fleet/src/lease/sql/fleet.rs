@@ -28,3 +28,14 @@ SELECT f.workspace_id::text, f.config_json::text, f.source_markdown, f.status,
 FROM core.fleets f
 LEFT JOIN core.fleet_sessions s ON s.fleet_id = f.id
 WHERE f.id = $1::uuid";
+
+/// A fleet's stored config, whatever its status.
+///
+/// The renewal's ceiling read. No status filter, because a fleet an operator
+/// stopped or killed mid-run still has a stored ceiling for its run to obey.
+///
+/// `$1` fleet.
+pub const SELECT_FLEET_CONFIG: &str = "\
+SELECT f.config_json::text
+FROM core.fleets f
+WHERE f.id = $1::uuid";

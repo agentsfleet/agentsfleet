@@ -47,8 +47,9 @@ const EVENT_LIST: &str = "secret_list_failed";
 const EVENT_REPLACE: &str = "secret_replace_failed";
 const EVENT_DELETE: &str = "secret_delete_failed";
 
-/// The state a still-referenced delete reports as its conflict.
-const STATE_REFERENCED: &str = "referenced";
+/// The state a still-referenced delete reports as its conflict — a secret's,
+/// or a connection's whose credential a model entry names.
+pub(crate) const STATE_REFERENCED: &str = "referenced";
 
 /// The refusal a body this daemon cannot read earns.
 pub const DETAIL_MALFORMED_JSON: &str = "Request body is not valid JSON";
@@ -270,7 +271,11 @@ pub(crate) async fn replace<D: Services>(
     tag = afd_http::openapi::tag::SECRETS,
     operation_id = "delete_workspace_secret",
     summary = "Delete a secret from the workspace vault",
-    description = "Idempotent — returns 204 whether or not the secret existed. ",
+    description = concat!(
+        "Idempotent — returns 204 whether or not the secret existed. A secret ",
+        "that model registry entries still name returns 409 `UZ-VAULT-004`, ",
+        "and its detail counts those entries.",
+    ),
     params(
         afd_http::openapi::path::Secret,
     ),
@@ -280,6 +285,7 @@ pub(crate) async fn replace<D: Services>(
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),

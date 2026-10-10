@@ -16,7 +16,7 @@
 #              Debian does not ship, fetched by URL, refused unless its
 #              SHA-256 matches, each member installed as /usr/local/bin/<name>
 suite trixie
-snapshot 20260901T000000Z
+snapshot 20261010T000000Z
 archive debian trixie
 archive debian trixie-updates
 archive debian-security trixie-security

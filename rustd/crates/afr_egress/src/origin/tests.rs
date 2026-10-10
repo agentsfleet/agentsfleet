@@ -30,6 +30,7 @@ fn rule(
         path: path.into(),
         path_match,
         json_fields: Vec::new(),
+        permitted_fields: None,
     }
 }
 
@@ -130,6 +131,7 @@ fn should_admit_a_body_only_when_every_locked_field_holds_its_value() {
             boolean_value: Some(true),
         },
     ];
+    pulls.permitted_fields = Some(vec!["title".into()]);
     let pulls_origin = origin(vec![pulls]);
     let at = url("https://api.github.com/repos/acme/widgets/pulls");
 
@@ -177,3 +179,7 @@ fn should_admit_nothing_under_a_rule_that_locks_no_value() {
         Some(r#"{"ref":"a"}"#)
     ));
 }
+
+/// Rules that list their whole key set, and what they refuse.
+#[path = "tests/closed.rs"]
+mod closed;

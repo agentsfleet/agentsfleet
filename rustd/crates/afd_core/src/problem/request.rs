@@ -72,9 +72,9 @@ pub(super) const REQUEST: &[Problem] = &[
         code: error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
         status: 409,
         title: "Secret still referenced by model entries",
-        hint: "Model registry entries still reference this secret. Remove them first, then delete it. The error detail names the count.",
+        hint: "Model registry entries still reference this secret. Remove them first, then retry the delete or the Disconnect. A secret delete's detail names the count.",
         user_message: Some(
-            "This key is used by one or more models in your registry. Remove those entries first, then delete the key.",
+            "Models in your registry still use this credential. Remove those entries first, then try again.",
         ),
     },
     Problem {

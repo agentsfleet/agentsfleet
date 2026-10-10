@@ -203,6 +203,8 @@ describe("fleets routes — detail views", () => {
     expect(markup).toContain("Skill");
     expect(markup).toContain("Trigger");
     expect(markup).not.toContain("Settings");
+    // The panel paints in the same pass as the tabs. A skeleton between them
+    // stays up at least 300 ms once shown, and made Chat land later than its reads.
     expect(markup).toContain('aria-label="Fleet summary"');
     expect(markup).toContain('aria-label="Fleet lifecycle actions"');
     expect(markup).not.toContain("fleet-header-alignment-spacer");

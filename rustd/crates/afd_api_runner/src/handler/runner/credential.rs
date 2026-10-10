@@ -21,6 +21,8 @@
 
 use std::sync::Arc;
 
+use afd_core::error_code;
+use afd_http::handler::Refusal;
 use afd_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
 use axum::Json;
 use axum::body::Bytes;
@@ -28,7 +30,7 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
-use crate::handler::{malformed, refuse};
+use crate::handler::malformed;
 use crate::services::{Leasing as _, Services};
 
 /// The scoped event a failed mint is logged under.
@@ -36,6 +38,10 @@ const EVENT: &str = "runner_credential_mint_failed";
 
 /// The refusal a body this daemon cannot read earns.
 const DETAIL_MALFORMED: &str = "Malformed mint request body";
+
+/// The `current_state` a mint names when the GitHub App was uninstalled or
+/// revoked: no token can be minted until the workspace reconnects GitHub.
+const STATE_RECONNECT_REQUIRED: &str = "reconnect_required";
 
 /// Mints one short-lived credential for the child behind this runner.
 #[cfg_attr(feature = "openapi", utoipa::path(
@@ -48,7 +54,9 @@ const DETAIL_MALFORMED: &str = "Malformed mint request body";
         "Issued at the moment a tool needs one, scoped to what the lease ",
         "already proved. The body names no workspace. The credential is ",
         "minted against the lease the caller holds, so a runner cannot ask ",
-        "for material outside its own run. ",
+        "for material outside its own run. An uninstalled or revoked GitHub ",
+        "App returns 409 `UZ-GH-001` naming `reconnect_required`; reconnect ",
+        "GitHub before the next mint.",
     ),
     request_body = MintCredentialRequest,
     responses(
@@ -56,6 +64,8 @@ const DETAIL_MALFORMED: &str = "Malformed mint request body";
         (status = 400, description = afd_http::openapi::BAD_REQUEST),
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 413, description = afd_http::openapi::PAYLOAD_TOO_LARGE),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
@@ -87,9 +97,30 @@ pub(crate) async fn handle<D: Services>(
             expires_at_ms: minted.expires_at_ms,
         })
         .into_response(),
-        // Every refusal already carries its own registry code and sentence, so
-        // there is no matching here — which is what keeps a new outcome from
-        // needing an edit in two crates.
-        Err(error) => refuse(&error, EVENT),
+        // Every refusal carries its own registry code and sentence. The one
+        // conflict also names the state that refuses it, as a 409 must.
+        Err(error) => Refusal::conflict_or_at(EVENT, conflict_state)(error).into_response(),
+    }
+}
+
+/// The state a refused mint is in, when the refusal is a conflict.
+fn conflict_state(error: &afd_fleet::Error) -> Option<&'static str> {
+    (error.code() == error_code::GH_RECONNECT_REQUIRED).then_some(STATE_RECONNECT_REQUIRED)
+}
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests {
+    use super::{STATE_RECONNECT_REQUIRED, conflict_state};
+
+    /// The reconnect refusal is a conflict naming its state; a refusal that is
+    /// not a conflict names none, and renders as every other refusal does.
+    #[test]
+    fn only_the_reconnect_refusal_names_a_conflict_state() {
+        assert_eq!(
+            conflict_state(&afd_fleet::Error::github_reconnect_required()),
+            Some(STATE_RECONNECT_REQUIRED)
+        );
+        assert_eq!(conflict_state(&afd_fleet::Error::mint_unconfigured()), None);
+        assert_eq!(conflict_state(&afd_fleet::Error::lease_not_found()), None);
     }
 }

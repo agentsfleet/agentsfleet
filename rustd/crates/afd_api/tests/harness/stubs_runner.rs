@@ -1,4 +1,4 @@
-//! The runner plane's stub: a lease plane that always answers no-work.
+//! The runner plane's stub: a lease plane that by default answers no-work.
 
 use std::sync::{Arc, Mutex};
 
@@ -7,26 +7,46 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::report::Reconciled;
 
-/// A lease plane that always answers no-work.
+/// A lease plane that by default answers no-work.
 ///
 /// The production plane holds a Dragonfly connection that is opened by CONNECTING,
 /// so these suites cannot build one — and should not: what they prove is the
 /// router's guard, scope and refusal matrix, which is decided BEFORE any verb
-/// runs. A stub that always answers the same thing keeps that boundary honest,
+/// runs. A stub that answers each verb the same way keeps that boundary honest,
 /// because a suite here cannot accidentally start asserting on lease
 /// behaviour that belongs to `afd_fleet`'s own integration lane.
 ///
 /// It remembers the holds each poll named, which is the one thing the lease
 /// handler decides before the plane: what the poll's body reads as.
+///
+/// [`NoWork::refusing`] makes the memory verbs and the mint answer one chosen
+/// refusal instead, for a suite that proves how a route RENDERS a refusal the
+/// plane decided: the status and `current_state` are the handler's, not the
+/// stub's.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct NoWork {
     polled: Arc<Mutex<Vec<Vec<String>>>>,
+    refusal: Option<fn() -> afd_fleet::Error>,
 }
 
 impl NoWork {
+    /// A plane whose hydrate, capture, recall and mint answer `refusal`.
+    pub(crate) fn refusing(refusal: fn() -> afd_fleet::Error) -> Self {
+        Self {
+            refusal: Some(refusal),
+            ..Self::default()
+        }
+    }
+
     /// The fleets each poll named as held, oldest poll first.
     pub(crate) fn polled_holds(&self) -> Vec<Vec<String>> {
         self.polled.lock().expect("the poll log is healthy").clone()
+    }
+
+    /// The chosen refusal, when there is one; `Ok` lets the verb answer as
+    /// a plane with no work would.
+    fn refused(&self) -> afd_fleet::Result<()> {
+        self.refusal.map_or(Ok(()), |refusal| Err(refusal()))
     }
 }
 
@@ -95,7 +115,7 @@ impl Leasing for NoWork {
     }
 
     /// Mints nothing, and says so with the code a deployment holding no
-    /// platform credential answers.
+    /// platform credential answers, unless built with [`NoWork::refusing`].
     ///
     /// A REFUSAL where the three stubs above answer `Ok`, and the asymmetry is
     /// the verb's: `mint` has no success this suite could assert without a
@@ -110,7 +130,8 @@ impl Leasing for NoWork {
         _request: &afd_wire::credentials::MintCredentialRequest<'_>,
         _now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<afd_credential::credential::Minted>> + Send {
-        std::future::ready(Err(afd_fleet::Error::mint_unconfigured()))
+        let refusal = self.refusal.unwrap_or(afd_fleet::Error::mint_unconfigured);
+        std::future::ready(Err(refusal()))
     }
 
     /// Hydrates nothing, which is what a fleet that has never run remembers.
@@ -124,11 +145,14 @@ impl Leasing for NoWork {
         _now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<afd_wire::memory::MemoryHydrateResponse<'static>>> + Send
     {
-        std::future::ready(Ok(afd_wire::memory::MemoryHydrateResponse {
-            memory: Vec::new(),
-            shared: Vec::new(),
-            publish: false,
-        }))
+        std::future::ready(
+            self.refused()
+                .map(|()| afd_wire::memory::MemoryHydrateResponse {
+                    memory: Vec::new(),
+                    shared: Vec::new(),
+                    publish: false,
+                }),
+        )
     }
 
     /// Stores nothing and says so, for the reason [`NoWork::report`] accepts.
@@ -139,7 +163,7 @@ impl Leasing for NoWork {
         _request: &afd_wire::memory::MemoryPushRequest<'_>,
         _now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<afd_memory::Captured>> + Send {
-        std::future::ready(Ok(afd_memory::Captured::default()))
+        std::future::ready(self.refused().map(|()| afd_memory::Captured::default()))
     }
 
     /// Finds nothing, which is what a fleet that has never run remembers.
@@ -151,10 +175,13 @@ impl Leasing for NoWork {
         _now: UnixMillis,
     ) -> impl Future<Output = afd_fleet::Result<afd_wire::memory::MemoryRecallResponse<'static>>> + Send
     {
-        std::future::ready(Ok(afd_wire::memory::MemoryRecallResponse {
-            memory: Vec::new(),
-            shared: Vec::new(),
-        }))
+        std::future::ready(
+            self.refused()
+                .map(|()| afd_wire::memory::MemoryRecallResponse {
+                    memory: Vec::new(),
+                    shared: Vec::new(),
+                }),
+        )
     }
 
     /// Keeps every record a post carries, which is what a plane with room

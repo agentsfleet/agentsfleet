@@ -27,6 +27,7 @@ use http::StatusCode;
 use super::{EVENT_READ, EVENT_WRITE, provider_of};
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
+use crate::handler::secret::STATE_REFERENCED;
 use crate::services::{Services, WorkspaceConnectors as _};
 
 /// One connection, or the absence of one, as the wire renders it.
@@ -103,8 +104,9 @@ pub(crate) async fn read<D: Services>(
 /// one had failed.
 ///
 /// # Errors
-/// `UZ-CONN-004` for a provider this daemon does not ship, a datastore that
-/// would not answer, and a vault that refused the delete.
+/// 409 `UZ-VAULT-004` with `current_state: "referenced"` when a model entry
+/// still names the connection's credential; the connection is left as it was.
+/// The provider path and the datastore refuse as every connector route does.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/v1/workspaces/{workspace_id}/connectors/{provider}",
@@ -115,7 +117,9 @@ pub(crate) async fn read<D: Services>(
         "Removes the workspace's connector handle and event-routing records ",
         "from `agentsfleet`. Provider authorization remains active outside ",
         "`agentsfleet`. Repeating this request returns 204. Use Connect to ",
-        "authorize the provider again. ",
+        "authorize the provider again. A model entry that still names the ",
+        "connection's credential returns 409 `UZ-VAULT-004` and leaves the ",
+        "connection as it was.",
     ),
     params(
         afd_http::openapi::path::WorkspaceProvider,
@@ -126,6 +130,7 @@ pub(crate) async fn read<D: Services>(
         (status = 401, description = afd_http::openapi::UNAUTHORIZED),
         (status = 403, description = afd_http::openapi::FORBIDDEN),
         (status = 404, description = afd_http::openapi::NOT_FOUND),
+        (status = 409, description = afd_http::openapi::CONFLICT),
         (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
         (status = 500, description = afd_http::openapi::INTERNAL),
         (status = 503, description = afd_http::openapi::UNAVAILABLE),
@@ -141,7 +146,12 @@ pub(crate) async fn disconnect<D: Services>(
         .connectors()
         .forget(&owned.workspace, provider)
         .await
-        .map_err(Refusal::at(EVENT_WRITE))?;
+        // A credential a model entry still names is the caller's to resolve,
+        // so it is a conflict naming its state, as the vault's own delete is.
+        .map_err(Refusal::conflict_or_at(
+            EVENT_WRITE,
+            |refused: &afd_connector::Error| refused.referenced_by().map(|_| STATE_REFERENCED),
+        ))?;
 
     // Both outcomes answer 204, and the value is still worth matching on: a
     // reader here can see that the two were considered and deliberately

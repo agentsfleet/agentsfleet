@@ -25,7 +25,7 @@ pub(super) const FLEET: &[Problem] = &[
         // the resource is very much still there, owned by somebody else.
         status: 409,
         title: "Stale fencing token",
-        hint: "The lease was reclaimed by a newer holder. This report is rejected; the current holder's result wins.",
+        hint: "The lease was reclaimed by a newer holder, or the token is not the lease's own. This request is refused; the current holder's work wins.",
         // Not dashboard-facing: this rides the runner-to-control-plane wire.
         user_message: None,
     },

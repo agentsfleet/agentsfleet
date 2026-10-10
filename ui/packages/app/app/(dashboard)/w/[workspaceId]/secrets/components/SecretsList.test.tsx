@@ -195,3 +195,23 @@ describe("SecretsList Created cell", () => {
     expect(source).not.toContain("formatCreatedAt");
   });
 });
+
+describe("SecretsList name cell", () => {
+  it("a long secret name ellipsizes and keeps its icons in line", () => {
+    const longName = "billing-warehouse-replica-read-only-credentials-for-the-nightly-export";
+    renderList([{ ...providerSecret(CREATED_MS), name: longName }]);
+    // From sm up the name sits in one fixed slot, as wide on every row, that
+    // truncates; the full name is its hover. On a phone the slot gives way.
+    const slot = screen.getByTitle(longName);
+    expect(slot.className).toContain("truncate");
+    expect(slot.className).toContain("sm:min-w-trim");
+    expect(slot.className).toContain("sm:max-w-trim");
+    // Below sm the slot may shrink: no unprefixed floor holds it at the trim width.
+    expect(slot.classList.contains("min-w-0")).toBe(true);
+    expect(slot.classList.contains("min-w-trim")).toBe(false);
+    // Copy and rename follow the slot in the same row, so every row lines them up.
+    const iconRow = slot.parentElement!;
+    expect(within(iconRow).getByRole("button", { name: `Copy secret name: ${longName}` })).toBeTruthy();
+    expect(within(iconRow).getByRole("button", { name: `Rename secret ${longName}` })).toBeTruthy();
+  });
+});

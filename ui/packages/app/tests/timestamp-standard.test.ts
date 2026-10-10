@@ -20,13 +20,11 @@ const APP_ROOT = path.resolve(TESTS_DIR, ".."); // ui/packages/app
 // Directories that never hold production source.
 const SKIP_DIRS = new Set(["node_modules", ".next", "tests", "dist", ".turbo"]);
 
-// The only files sanctioned to touch a locale date/number API in production:
-//   - charges.ts      — the ledger "MMM DD, YYYY · HH:MM" label fed to Time.
-//   - CatalogueList.tsx — formats a token COUNT (a number), not a date.
+// The only file sanctioned to touch a locale date/number API in production:
+//   - charges.ts — the ledger "MMM DD, YYYY · HH:MM" label fed to Time.
 // Paths are relative to APP_ROOT with POSIX separators.
 const ALLOWED = new Set([
   "app/(dashboard)/settings/billing/lib/charges.ts",
-  "app/(dashboard)/admin/models/components/CatalogueList.tsx",
 ]);
 
 // A line is a bespoke date formatter if it calls one of the locale date

@@ -51,11 +51,11 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
 
 ### Install writes the fleet, the stream, the grant, and stops
 
-`afd_fleet_lifecycle/src/install.rs` writes the `core.fleets` row and then `ensure_stream` creates the per-fleet stream and its consumer group. Installing a bundle that declares a credential writes the approved `core.integration_grants` row at install, with no card (`docs/architecture/scenarios/github-pr-reviewer.md`). `docs/architecture/data_flow.md` is explicit: "no admission, event, lease or affinity row yet". The fleet's display name ("AGENT BOB 01") is `core.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
+`afd_fleet_lifecycle/src/install.rs` writes the `core.fleets` row and then `ensure_stream` creates the per-fleet stream and its consumer group. Installing a bundle that declares a credential writes the approved `core.integration_grants` row at install, with no card (`docs/architecture/scenarios/github-pr-reviewer.md`). Install writes no admission, event, lease or affinity row (`afd_fleet_lifecycle/src/install.rs`). The fleet's display name ("AGENT BOB 01") is `core.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
 
 ### Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet
 
-`afd_api_ingress/src/handler/webhook/app_route.rs`: only `github` is served, the body cap is checked before anything is hashed, the `X-GitHub-Event` header is required, then the body is verified against the platform App's `webhook_secret` under the vault key `github-app` (constant at). A `ping` is answered only after verification.
+`afd_api_ingress/src/handler/webhook/app_route.rs`: only `github` is served, the body cap is checked before anything is hashed, the `X-GitHub-Event` header is required, then the body is verified against the platform App's `webhook_secret` under the vault key `github-app` (`APP_IDENTITY_GITHUB`, `app_route.rs`). A `ping` is answered only after verification.
 
 `route` parses the body once with octocrab, reads `installation.id` and `repository.full_name`, resolves the installation to a workspace with `SELECT_INSTALL_WORKSPACE` (`afd_ingress/src/sql.rs`, `afd_ingress/src/app.rs`), classifies under `Policy::AppIngress`, then asks `subscribers`.
 
@@ -63,13 +63,13 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
 
 So "the fleet slug AGENT BOB 01 receives the request" is really: the installation that linkwarden lives under maps to Indy's workspace, and every active fleet there holding an approved `github` grant whose `TRIGGER.md` says `source: github`, `events: [pull_request]`, `repositories: [agentsfleet/linkwarden]` gets one admission. The fixture bundle says exactly that (`tests/fixtures/fleetbundle/github-pr-reviewer/TRIGGER.md`). Two fleets so configured both run (`docs/architecture/connectors.md`).
 
-The digest the fleet reasons over is twelve fields (`afd_api_ingress/src/handler/webhook/github.rs`: action, repo, number, title, url, state, draft, author, head_ref, base_ref, head_sha, received_at). Under `Policy::AppIngress` every `pull_request` action wakes the fleet except one on a repair branch (); the manual per-fleet route narrows to opened/reopened/synchronize/ready_for_review.
+The digest the fleet reasons over is twelve fields (`afd_api_ingress/src/handler/webhook/github.rs`: action, repo, number, title, url, state, draft, author, head_ref, base_ref, head_sha, received_at). Under `Policy::AppIngress` every `pull_request` action wakes the fleet except one on a repair branch (`is_repair_branch`, `github.rs`); the manual per-fleet route narrows to opened/reopened/synchronize/ready_for_review.
 
 ### Admission: the row is the acceptance, the stream entry is a receipt
 
 `fan_out` (`app_route.rs`) calls `deliver` once per fleet, sequentially. `afd_ingress/src/deliver.rs` keys the admission `"{fleet}:{replay_id}"` where `replay_id = sha256(body)` (`afd_ingress/src/app.rs`; the unsigned `X-GitHub-Delivery` header is deliberately not used), producer `webhook_app`, actor `github-app` (`app_route.rs`), and `Reply::None` (`deliver.rs`), which matters in section 4.
 
-`Admissions::admit` (`afd_admission/src/admit.rs`): fleet backlog budget first, then `INSERT_ADMISSION` (`afd_admission/src/sql.rs`) into `core.fleet_admissions` (`schema/910_fleet_admissions.sql`) with `ON CONFLICT (producer, producer_key) DO UPDATE ... RETURNING (xmax = 0) AS inserted, created_at, seq, receipt`. The logical event id is `<created_at>-<seq>` (`afd_admission/src/lib.rs`). A fresh row then goes to `queue_entry` (`afd_admission/src/admit_receipt.rs`): `XADD fleet:{id}:events` with the five envelope fields plus `event_id`, `RECORD_RECEIPT` writes the stream entry id back (`sql.rs`), and `mark_ready` sets the fleet's readiness mark () in one of 16 partitions (`afd_dragonfly/src/ready/partition.rs`). A replay (same key) answers the first row with `replayed = true` and re-marks (`admit.rs`). No `core.fleet_events` row is written at ingress (`deliver.rs`).
+`Admissions::admit` (`afd_admission/src/admit.rs`): fleet backlog budget first, then `INSERT_ADMISSION` (`afd_admission/src/sql.rs`) into `core.fleet_admissions` (`schema/910_fleet_admissions.sql`) with `ON CONFLICT (producer, producer_key) DO UPDATE ... RETURNING (xmax = 0) AS inserted, created_at, seq, receipt`. The logical event id is `<created_at>-<seq>` (`afd_admission/src/lib.rs`). A fresh row then goes to `queue_entry` (`afd_admission/src/admit_receipt.rs`): `XADD fleet:{id}:events` with the five envelope fields plus `event_id`, `RECORD_RECEIPT` writes the stream entry id back (`sql.rs`), and `mark_ready` sets the fleet's readiness mark through `ReadyIndex::mark` in one of 16 partitions (`afd_dragonfly/src/ready/partition.rs`). A replay (same key) answers the first row with `replayed = true` and re-marks (`admit.rs`). No `core.fleet_events` row is written at ingress (`deliver.rs`).
 
 GitHub gives this whole path ten seconds and never auto-redelivers (`docs/architecture/connectors.md`).
 
@@ -82,7 +82,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 3. per candidate, `try_candidate`: `claim` → `CLAIM_AFFINITY_SLOT` (`sql/lease.rs`), a conditional upsert on `fleet.runner_affinity` (`schema/630_runner_affinity.sql`) that wins only if `leased_until < now`, bumps `fencing_seq + 1`, sets `leased_until = now + LEASE_TTL_MS` (30 s, `afd_core/src/timing.rs`) and returns the new `fencing_seq`. That returned number is the `Fence` (`afd_fleet/src/lease/affinity.rs`), the only source of a fencing token in the system;
 4. `take_claimed` (`assign.rs`): if the fleet still has an `active` lease row (a holder that stopped renewing), `RECLAIM_PRIOR_ACTIVE` (`sql/lease.rs`) flips it to `expired` and re-reads the body from `core.fleet_events` in one statement (`afd_fleet/src/lease/reclaim.rs`); otherwise `acquire_fresh` takes the group's oldest pending entry then a new one (`docs/architecture/data_flow.md`), and an empty fleet releases the claim and clears its mark. `from_fresh` refuses an entry missing any of the six fields (`afd_fleet/src/lease/envelope.rs`).
 
-`run_claimed` (`afd_fleet/src/lease/pull/held.rs`) then runs `admit_claimed` (`pull.rs`): read the installed fleet (`afd_fleet/src/lease/installed.rs`: config, `instructions = afd_fleet_runtime::instructions(source_markdown)`, the SKILL.md body after the frontmatter per `afd_fleet_runtime/src/instructions.rs`, the bundle hash and the session row); `record_received` inserts `core.fleet_events` with `status = received` (`afd_fleet/src/lease/event.rs`; table `schema/800_fleet_events.sql`) and stamps `core.fleet_admissions.delivered_at` on the same connection (); a first delivery publishes the `event_received` bracket (`pull.rs`); then `billed` parses the event type, reads the payer once, resolves the provider, runs the money gates and the approval gate. Every refusal frees the claim (`held.rs`) and writes a `gate_blocked` terminal row (`pull/refuse.rs`).
+`run_claimed` (`afd_fleet/src/lease/pull/held.rs`) then runs `admit_claimed` (`pull.rs`): read the installed fleet (`afd_fleet/src/lease/installed.rs`: config, `instructions = afd_fleet_runtime::instructions(source_markdown)`, the SKILL.md body after the frontmatter per `afd_fleet_runtime/src/instructions.rs`, the bundle hash and the session row); `record_received` inserts `core.fleet_events` with `status = received` (`afd_fleet/src/lease/event.rs`; table `schema/800_fleet_events.sql`) and stamps `core.fleet_admissions.delivered_at` on the same connection (`afd_admission::sql::MARK_DELIVERED`, `event.rs`); a first delivery publishes the `event_received` bracket (`pull.rs`); then `billed` parses the event type, reads the payer once, resolves the provider, runs the money gates and the approval gate. Every refusal frees the claim (`held.rs`) and writes a `gate_blocked` terminal row (`pull/refuse.rs`).
 
 `deliver` (`afd_fleet/src/lease/deliver.rs`): open the vault for the declared credentials, derive the repair branch for a write binding (→ `agentsfleet-repair/<base64url(event_id)>`, `afd_gate/src/policy/repair.rs`), read approved grants, and `build::assemble` (`afd_gate/src/policy/build.rs`): `tools` straight from the config, `secrets_map`, `mintable`, provider and api key, `repository_binding`, and `http_origin_policies` from `egress::build`. A mintable credential with no grant parks the lease (`deliver.rs`).
 
@@ -207,7 +207,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 **Step 2, the diff read.** `http_request` drafts `GET https://api.github.com/repos/agentsfleet/linkwarden/pulls/{n}` with `Authorization: Bearer ${secrets.github.token}` (`afr_tools/src/http_request.rs`). `Admission::admit` (`afr_egress/src/admission.rs`): method listed, HTTPS and no placeholder in the URL, placeholder only in `Authorization`, host in `network_policy.allow`, credential bound to this host because the `api.github.com` origin names `github` in `credential_names` (`afd_gate/src/policy/egress/mod.rs`), and a read rule matches: `GET` with prefix `/repos/agentsfleet/linkwarden/` (`afd_gate/src/policy/egress/read.rs`; `admission.rs`). The vault then mints: `LeaseMint` → `POST /v1/runners/me/credentials/mint` → `Plane::mint` resolves the lease scope, checks the approved grant, opens the workspace's `github` handle and exchanges an installation token narrowed to the binding (`afd_fleet/src/lease/mint.rs`; `docs/architecture/connectors.md`). The token is kept per lease until expiry and masked out of responses (`afr_egress/src/egress.rs`; `afr_tools/src/egress.rs`).
 
-**Step 4, the review post.** `POST .../pulls/{n}/reviews`: the origin `api.github.com` has rules, and none matches. The write set is exactly `POST /repos/{repo}/git/blobs`, `/git/trees`, `/git/commits` (open), `/git/refs` with `ref` locked to the repair branch, and `/pulls` (exact path) with `head`, `base` and `draft: true` locked (`afd_gate/src/policy/egress/write.rs`, where the paths are `HttpPathMatch::Exact`). `/pulls/{n}/reviews` is neither the exact `/pulls` nor a prefix rule, so `origin_admits` answers `request_policy_not_allowed` (`afr_egress/src/admission.rs`) → `ToolErrorCode::RequestPolicyNotAllowed` (`afr_tools/src/egress.rs`) → the model reads `[request_policy_not_allowed] ...` and the run continues (`afr_tools/src/runtime.rs`). The integration test asserts zero POSTs reach the fake GitHub and the last tool result starts with that code (`agentsfleetd/tests/integration_rust_runner_reviews.rs`). The scenario page records the same (`docs/architecture/scenarios/github-pr-reviewer.md`).
+**Step 4, the review post.** `POST .../pulls/{n}/reviews`: the origin `api.github.com` has rules, and none matches. The write set is exactly `POST /repos/{repo}/git/blobs` and `/git/trees` (open), `/git/commits` carrying only `message`, `tree` and `parents`, `/git/refs` with `ref` locked to the repair branch and only `sha` beside it, and `/pulls` (exact path) with `head`, `base` and `draft: true` locked and only `title`, `body` and `maintainer_can_modify` beside them; a rule that names fields refuses any other key and any query string (`afd_gate/src/policy/egress/write.rs`, where the paths are `HttpPathMatch::Exact`). `/pulls/{n}/reviews` is neither the exact `/pulls` nor a prefix rule, so `origin_admits` answers `request_policy_not_allowed` (`afr_egress/src/admission.rs`) → `ToolErrorCode::RequestPolicyNotAllowed` (`afr_tools/src/egress.rs`) → the model reads `[request_policy_not_allowed] ...` and the run continues (`afr_tools/src/runtime.rs`). The integration test asserts zero POSTs reach the fake GitHub and the last tool result starts with that code (`agentsfleetd/tests/integration_rust_runner_reviews.rs`). The scenario page records the same (`docs/architecture/scenarios/github-pr-reviewer.md`).
 
 **What the operator sees.** The live tail: `event_received`, `tool_call_started` / `tool_call_completed` (the second with `status: failed` and the output head carrying the code), streamed text chunks, `event_complete` ([Runner Fleet](./runner_fleet.md) §"Live activity (the SSE tail)"). Durably: `core.fleet_events` row `processed` with `response_text` = the model's final answer and `tool_calls` = the trace (`afd_fleet/src/lease/finalize.rs`), and `core.fleet_tool_call_details` for "show all" (`afd_api_runner/src/handler/runner/tool_call.rs`). On GitHub: nothing. Memory: whatever `memory_store` wrote, pushed before the report.
 
@@ -217,15 +217,15 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 **SKILL.md is prose and cannot widen anything.** The lease marks `instructions` as "soft reasoning input, hard tool and secret policy stays in `policy`" (`afd_wire/src/lease.rs`; `afd_fleet_runtime/src/instructions.rs`). The egress rules are compiled by the daemon from the binding alone (`afd_gate/src/policy/build.rs`; `afd_gate/src/policy/egress/mod.rs`) and evaluated by the runner as written (`afr_egress/src/admission.rs`). So writing "post the review" in SKILL.md (which the fixture already does, `SKILL.md`) changes the model's intent, not the admission.
 
-**A chat steer is the same.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` is admitted as its own `chat` event through the same ledger (`afd_events/src/steer.rs`; `docs/architecture/data_flow.md`), waits behind the running lease (`data_flow.md`), and runs with the same policy. SKILL.md tells the fleet to treat a steer with no PR as chat and to save operator facts with `memory_store` (`SKILL.md`). A steer cannot add an egress rule.
+**A chat steer is the same.** `POST /v1/workspaces/{ws}/fleets/{id}/messages` is admitted as its own `chat` event through the same ledger (`afd_events/src/steer.rs`), waits behind the running lease for the fleet's one affinity slot (`CLAIM_AFFINITY_SLOT`, `afd_fleet/src/lease/sql/lease.rs`), and runs with the same policy. SKILL.md tells the fleet to treat a steer with no PR as chat and to save operator facts with `memory_store` (`SKILL.md`). A steer cannot add an egress rule.
 
-**What the code admits today for this fleet (write binding on one repository):** reads under `/repos/agentsfleet/linkwarden/` (`read.rs`), and the five writes above. In principle the fleet could create blobs, trees and commits, create one ref `refs/heads/agentsfleet-repair/<event>`, and open one draft PR from it against `main`. What is refused: a review (`/pulls/{n}/reviews`), an issue comment, a PR comment, approve, request changes, any other ref, a non-draft PR. `docs/architecture/data_flow.md`: "A fleet can push a fix to its repair branch and open a draft PR; it cannot comment."
+**What the code admits today for this fleet (write binding on one repository):** reads under `/repos/agentsfleet/linkwarden/` (`read.rs`), and the five writes above. In principle the fleet could create blobs, trees and commits, create one ref `refs/heads/agentsfleet-repair/<event>`, and open one draft PR from it against `main`. What is refused: a review (`/pulls/{n}/reviews`), an issue comment, a PR comment, approve, request changes, any other ref, a non-draft PR. The write rules admit a fix on the repair branch and one draft PR, and no comment (`afd_gate/src/policy/egress/write.rs`).
 
 **The deferral, verbatim** (the agent-loop workstream's spec, under Discovery, its Deferrals bullet):
 
 > **Deferrals** — Dimension 6.3's review post: no `afd_gate` rule admits `POST …/pulls/{number}/reviews`, so the post is refused today. > Indy (2026-10-04 11:49): "6.3 The PR review gets posted from the runner? SKILL.md? I want to experience the test and decide, so make me record that and add this as parked." — context: the runner posts it, `github-pr-reviewer/SKILL.md` step 4 sending `POST …/pulls/{number}/reviews` through `http_request`; a write binding admits only `/git/blobs`, `/git/trees`, `/git/commits`, the locked ref and the locked draft (`rustd/crates/afd_gate/src/policy/egress/write.rs`), so the runner refuses the post before it leaves and the test asserts that; Dimension 6.3 stays open until Indy runs it, and this supersedes the Oct 03 "move it to done" for 6.3. > Indy (2026-10-03 15:32): "you just tell me crap, increase the scope, so the refusal of review must be ignored for now. If that blocks the spec to move to done, then record Indys wording and move it to done."
 
-**The other reply path, also not for GitHub.** The report owes a `core.fleet_obligations` delivery only when the admission recorded a reply destination (`afd_fleet/src/lease/commit.rs`; `schema/918_fleet_admissions_reply_destination.sql`). The App webhook admits with `Reply::None` (`afd_ingress/src/deliver.rs`), and only Slack posters exist (`data_flow.md`). So there is no daemon-side "answer back to the PR" either.
+**The other reply path, also not for GitHub.** The report owes a `core.fleet_obligations` delivery only when the admission recorded a reply destination (`afd_fleet/src/lease/commit.rs`; `schema/918_fleet_admissions_reply_destination.sql`). The App webhook admits with `Reply::None` (`afd_ingress/src/deliver.rs`), and only Slack posters exist (`afd_outbound/src/poster.rs`). So there is no daemon-side "answer back to the PR" either.
 
 **The sandbox does not change this.** The sandbox `git` tool refuses `push`, `fetch`, `pull`, `remote` and `clone`, and a change is meant to leave through `propose_change`, which is not written (`afr_tools/src/sandbox/git.rs`; [Runner execution](./runner_execution.md) §"Repository writes"). Unblocking the review is a one-rule change in `afd_gate/src/policy/egress/write.rs` (an exact `POST /repos/{repo}/pulls/{n}/reviews` with `event` locked to `COMMENT`), which Indy parked until he runs the test.
 
@@ -245,7 +245,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
    NOT carried: the previous answer, and for this fleet no sandbox and no clone
 ```
 
-**Same fleet, new event, new lease.** The dedupe key is the body digest (`afd_ingress/src/app.rs`), and a `synchronize` body differs, so it is a new admission and a new stream entry ([`data_flow.md`](./data_flow.md)). Every pull-request action wakes the fleet under `Policy::AppIngress`, so `labeled`, `edited` and friends each queue a run too; nothing coalesces or supersedes per PR. The affinity slot allows one active lease per fleet, and on the runner `FleetTurns` allows one run per fleet ([Runner execution](./runner_execution.md) §"One lease, end to end"). So the second event waits until the first reports and the settle transaction frees the slot.
+**Same fleet, new event, new lease.** The dedupe key is the body digest (`afd_ingress/src/app.rs`), and a `synchronize` body differs, so it is a new admission and a new stream entry. Every pull-request action wakes the fleet under `Policy::AppIngress`, so `labeled`, `edited` and friends each queue a run too; nothing coalesces or supersedes per PR. The affinity slot allows one active lease per fleet, and on the runner `FleetTurns` allows one run per fleet ([Runner execution](./runner_execution.md) §"One lease, end to end"). So the second event waits until the first reports and the settle transaction frees the slot.
 
 **Same runner?** Preferred, not promised: the candidate scan sorts the last runner first, and the claim records the hint (`afd_fleet/src/lease/sql/lease.rs`). Any eligible runner can win. A runner that holds a sandbox for the fleet looks at it first, and others skip it while the hold lasts ([Runner Fleet](./runner_fleet.md) §"Cold and warm execution").
 
@@ -257,86 +257,20 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 
 ## 6. Sandbox lifecycle
 
-```text
- held sandbox for this fleet, key unchanged, hold live?  ──yes──► thaw ──► the turn runs
-   │ no
-   ▼
- engine.prepare(SandboxRequest{lease_id, limits, network})   afr_sandbox/src/bubblewrap_engine.rs
-   mkdir <home>/sandboxes/<lease_id>        0711, never reused
-   workspace.img  sparse, the lease's disk limit (4 GiB default), 0600
-     mke2fs ext4, no journal, root owned by the sandbox user     afr_sandbox/src/host.rs
-     loop-mounted loop,nosuid,nodev; holds workspace/ and tmp/   afr_sandbox/src/workspace_disk.rs
-   cgroup <delegated>/<lease_id>                                 afr_sandbox/src/cgroup.rs
-     memory.max 2 GiB · cpu.max 2 cores · pids.max 512 · memory.swap.max 0
-     io.max <loop major:minor> rbps=wbps=200 MiB/s
-     leaves: sandbox (bwrap, executor) · tenant (memory.max less the reserve, memory.high)
-   run/  0700, owned by the sandbox user
-   bwrap --unshare-{user,pid,ipc,uts,cgroup}  [--unshare-net unless allow_all]
-         --disable-userns --cap-drop ALL --clearenv --die-with-parent --new-session
-         --ro-bind <toolbox mount> /            ← the shared EROFS root
-         --proc /proc --dev /dev --tmpfs /dev/shm (a quarter of memory)
-         --bind <disk>/tmp /tmp --tmpfs /run --bind <disk>/workspace /workspace
-         --bind <dir>/run /run/agentsfleet
-         --ro-bind <rendered hosts, resolv.conf> /etc/...   (allow_list_egress only)
-         --ro-bind <runner binary> /opt/agentsfleet/agentsfleet-runner
-         --uid 1000 --gid 1000 --chdir /workspace -- /opt/agentsfleet/agentsfleet-runner sandbox
-     pre_exec: write "0" to cgroup.procs ⇒ born inside the sandbox leaf   bubblewrap_engine/parts.rs
-   inside: bind executor.sock → no_new_privs → Landlock → seccomp (12 calls refused) → serve
-   supervisor: connect to the socket within the ready timeout (10 s)
-   allow_list_egress: veth afv<slot> into the sandbox's namespace, table inet afegress<slot>
-   ... the turn runs; tool calls cross the Unix socket ...
- lease ends processed ──► freeze (cgroup.freeze) ──► held ≤ 10 min for the fleet
- any other ending, or the hold ends ──► destroy:
-   cgroup.kill → kill bwrap → rmdir cgroup → umount → rm img → rm dir → egress table and veth
-```
-
-**A sandbox only when a tool runs in one.** A lease whose tools all run in the supervisor starts none, so the PR reviewer never builds one ([Runner execution](./runner_execution.md) §"A lease's sandbox today").
-
-**The network follows the runner's assignment.** `allow_all` shares the host's namespace, `deny_all_egress` keeps the sandbox's own with loopback only, and `allow_list_egress` joins it to the host by a veth pair whose host-side rules admit only the lease's resolved set ([Runner Fleet](./runner_fleet.md) §"Egress model — outbound is the only network surface").
-
-**Held or destroyed.** A processed lease's sandbox is frozen and held for the fleet's next lease; any other is destroyed before the report. The hold's key, its lifetime and what ends it are in [Runner execution](./runner_execution.md) §"Workspace between leases".
-
-**Warm slots.** `WarmSlots` keeps sandboxes started ahead of their leases, one lease each (`afr_sandbox/src/warm_slots.rs`). Only the kernel lane uses them; the runner hands the supervisor the bare engine.
-
-**Cold start, measured.** Lease accept to executor ready, debug build, median of five in the kernel lane: cold 23.6 ms, from a warm slot 0.66 ms ([Runner execution](./runner_execution.md) §"A lease's sandbox today"). The waits that matter are elsewhere: the poll interval (up to 1 s), the hydrate round trip, and the first model call.
-
-**Boot sweep.** Building the engine removes what a crashed run left: each leftover lease's cgroup, disk and directory, and every egress table and veth carrying the runner's prefix (`afr_sandbox/src/bubblewrap_engine/sweep.rs`). A host builds one engine per state directory, because an engine per worker would sweep its siblings' leases.
+Layout: [runner_fleet.md](./runner_fleet.md) §"The sandbox filesystem contract". Build and teardown: [runner_execution.md](./runner_execution.md) §"A lease's sandbox today". Hold: [runner_execution.md](./runner_execution.md) §"Workspace between leases".
 
 ---
 
 ## 7. Where the image lives, and what bounds a bare-metal host
 
-```text
- HOST DISK (storage home)                                 HOST RAM
- ┌────────────────────────────────────────────┐           ┌──────────────────────────────────────┐
- │ toolbox/images, the current and previous   │  loop,ro  │ kernel page cache                    │
- │   each mounted once, admitted by descriptor ──────────►│   decompressed toolbox pages, SHARED │
- │                                            │           │   by every sandbox, evictable,       │
- │ sandboxes/<lease_A>/workspace.img  4 GiB   │  loop,rw  │   charged to NO cgroup               │
- │ sandboxes/<lease_B>/workspace.img  sparse  │           ├──────────────────────────────────────┤
- │ spool/<lease>.json   bundles/<hash>.tar    │           │ cgroup lease_A  memory.max 2 GiB     │
- │ git/<scope>/<owner>/<repo>.git  (mirrors)  │           │   processes + /run + /dev/shm        │
- └────────────────────────────────────────────┘           │   (tmpfs = RAM, charged here)        │
-                                                          │ cgroup lease_B  memory.max 2 GiB     │
-   bound read-only into each sandbox as "/"               │ ...  × worker_count (1..=64)         │
-                                                          └──────────────────────────────────────┘
- ceiling: Σ memory.max = 2 GiB × workers ≤ 128 GiB (nothing checks it against the host)
-          disk  = 4 GiB × live and held leases, sparse, no reserve
-```
-
-**The image is a file, mounted once per host, read-only, through a loop device.** The release build produces a compressed EROFS image from pinned Debian snapshots, and the runner admits it by descriptor: the file is opened once, hashed, attached to a loop device with `LOOP_CONFIGURE` and mounted `ro,nosuid,nodev`, so nothing reopens it by path ([Runner execution](./runner_execution.md) §Toolbox; `afr_sandbox/src/toolbox/admit.rs`, `afr_sandbox/src/toolbox/loop_device.rs`). Every sandbox gets that one mount as its root.
-
-**"Where does the cache live?" In the kernel page cache, in RAM, shared, reclaimable.** There is no per-sandbox copy and no runner-level cache. EROFS decompresses blocks on read into the page cache of the one mount, and every sandbox's reads hit the same pages ([Runner execution](./runner_execution.md) §"A lease's sandbox today"). Those pages are charged to no lease's cgroup, and under memory pressure the kernel drops them and the next read decompresses again. A Firecracker guest would not share them.
-
-**What each lease owns.** A sparse workspace disk on the state disk, formatted ext4 without a journal and loop-mounted read-write, holding both `/workspace` and `/tmp`, so a full `/tmp` answers `ENOSPC` rather than filling the lease's memory (`afr_sandbox/src/workspace_disk.rs`). `/run` and `/dev/shm` are tmpfs, RAM charged to the lease's cgroup, and `/dev/shm` is capped at a quarter of the lease's memory (`afr_sandbox/src/engine.rs`). The tenant leaf's memory limit sits below the lease's, so the out-of-memory killer picks a tenant process and never bubblewrap ([Runner execution](./runner_execution.md) §"Sandbox engines").
+The toolbox image, its page cache and what bounds a host's memory and disk: [runner_execution.md](./runner_execution.md) §"Toolbox" and §"A lease's sandbox today".
 
 **The numbers the code declares.**
 - `Limits::default()`: 2 GiB of memory, two cores, 512 processes and a 4 GiB disk (`afr_sandbox/src/engine.rs`); 200 MiB/s of disk input and output each way; swap off (`afr_sandbox/src/cgroup.rs`).
 - Workers per host: default 1, between 1 and 64 (`afd_core/src/limits.rs`).
 - Activity: 64 KiB batches, 4 held (`afr_supervisor/src/activity.rs`). Memory: a 256 KiB hydrate window (`afd_wire/src/memory.rs`).
 - Timers: lease TTL 30 s, renew every 5 s, max runtime 12 h, runner offline after 90 s, heartbeat 10 s, empty-poll hint 1 s, sandbox hold 10 min (`afd_core/src/timing.rs`).
-
-**What bounds concurrency on a bare-metal host.** RAM: 2 GiB × the worker count, up to 128 GiB at the cap, plus whatever page cache the toolbox keeps warm, plus the supervisor itself; nothing checks the sum against the host. Disk: 4 GiB × live and held leases at worst, sparse, with nothing reserved. Processor: two cores per lease by quota, so 64 workers would oversubscribe anything short of 128 cores. The image's own RAM footprint is not a bound, because it is evictable.
+- Poll and admission: `MAX_READY_CANDIDATES_PER_POLL` = 64 fleets peeked per poll (`afd_fleet/src/lease/assign.rs`); `FLEET_BACKLOG_BUDGET` = 10,000 outstanding stream entries per fleet before its producers are refused (`afd_admission/src/budget.rs`).
 
 ---
 
@@ -345,11 +279,11 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 Each gap names what would close it.
 
 1. **The review post is refused.** No write rule admits `/pulls/{n}/reviews`, and Indy parked it until he runs the test. A one-rule change in `afd_gate/src/policy/egress/write.rs`, an exact path with `event` locked to `COMMENT`, closes it.
-2. **No daemon path answers a PR.** The App webhook admits with `Reply::None`, and only Slack posters exist (`afd_ingress/src/deliver.rs`). A GitHub poster in the outbound worker closes it.
+2. **No daemon path answers a PR.** The App webhook admits with `Reply::None` (`afd_ingress/src/deliver.rs`), and only Slack posters exist (`afd_outbound/src/poster.rs`). A GitHub poster in the outbound worker closes it.
 3. **No workspace restore or save.** Snapshots in R2 are design only ([Runner execution](./runner_execution.md) §"Workspace between leases"). The snapshot workstream closes it.
 4. **The session checkpoint reaches no lease.** It is written and loaded, and `render` never puts it on the lease (`afd_fleet/src/lease/answer.rs`). A lease field the agent loop reads closes it.
 5. **`propose_change` and the supervisor push are not written.** The sandbox `git` tool refuses `push` (`afr_tools/src/sandbox/git.rs`). The push path in [Runner execution](./runner_execution.md) §"Repository writes" closes it.
-6. **Kill and pause never reach a running lease.** Renewal admits a fleet that is no longer active, and the heartbeat names no lease ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause"). A revocation on the heartbeat or a refused renewal closes it.
+6. **Kill and pause never reach a running lease.** Renewal ignores the fleet's status but still enforces its stored budget ceiling, and the heartbeat names no lease ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause"). A revocation on the heartbeat or a refused renewal closes it.
 7. **Browser tools are refused** under the bubblewrap engine ([Runner execution](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
 8. **Warm slots are not wired into the supervisor.** Wiring `WarmSlots` around the host's engine closes it.
 9. **Limits are not per fleet.** The daemon sends `limits: null` (`afd_fleet/src/lease/answer.rs`). A size on the fleet's config closes it.

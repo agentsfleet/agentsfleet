@@ -38,8 +38,6 @@ import {
 
 type Props = { fleet: Fleet; workspaceId: string };
 
-export const FLEET_AGENT_DESCRIPTION =
-  "Runs in a loop: wakes on events, gathers evidence.";
 export const FLEET_WAITING_COPY = "Waiting for the next event.";
 export const FLEET_NO_LIVE_ACTIVITY_COPY = "No live activity.";
 export const MANAGE_FLEET_LABEL = "Manage fleet";
@@ -195,28 +193,38 @@ function TileEyebrow({ eyebrow, title }: { eyebrow?: string; title?: string }) {
   );
 }
 
-function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, children }: Omit<ShellProps, "workspaceId" | "kind" | "feed" | "emptyActivity"> & { identity: FleetIdentity }) {
+/** A status as a word a reader scans: `active` reads "Active". */
+function statusLabel(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+type IdentityProps = Omit<ShellProps, "workspaceId" | "kind" | "feed" | "emptyActivity" | "counters"> & {
+  identity: FleetIdentity;
+  activity: string;
+};
+
+// The agent and its status lead, because they are what an operator scans a
+// wall for; what the fleet is doing right now follows. The operator's own name
+// for the fleet sits in the footer, where it tells two fleets apart.
+function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, activity, children }: IdentityProps) {
   return (
     <div className="flex items-start gap-xl">
       <FleetSigil identity={identity} live={live} />
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-md">
-          <div className="min-w-0">
-            <div className="truncate font-medium">{fleet.name}</div>
-            <div
-              className={cn(EYEBROW_CLASS, "text-muted-foreground")}
-              data-agent-name={identity.callsign}
-            >
-              {agentDisplayName(fleet.id)} · {fleet.status}
-            </div>
+          <div className="min-w-0 truncate font-medium" data-agent-name={identity.callsign}>
+            {agentDisplayName(fleet.id)}
           </div>
-          <div className="flex items-center gap-md">
+          <div className="flex shrink-0 items-center gap-md">
             <TileEyebrow eyebrow={eyebrow} title={eyebrowTitle} />
-            {children}
+            <span className="flex items-center gap-sm text-body-sm leading-body-sm text-muted-foreground" data-fleet-status>
+              {children}
+              {statusLabel(fleet.status)}
+            </span>
           </div>
         </div>
-        <p className="mt-md text-body-sm leading-body-sm text-muted-foreground">
-          {FLEET_AGENT_DESCRIPTION}
+        <p className="mt-xs truncate text-body-sm leading-body-sm text-foreground" data-tile-activity>
+          {activity}
         </p>
       </div>
     </div>
@@ -262,15 +270,16 @@ function TileShell({ fleet, workspaceId, kind, live, eyebrow, eyebrowTitle, feed
           live={live}
           eyebrow={eyebrow}
           eyebrowTitle={eyebrowTitle}
+          activity={feed ?? emptyActivity}
         >
           {children}
         </TileIdentity>
-        <div className="min-h-5 font-sans text-label leading-label text-muted-foreground truncate">
-          {feed ?? emptyActivity}
-        </div>
         <TileMetrics fleet={fleet} counters={counters} />
-        <div className="mt-auto flex justify-end border-t border-border pt-lg">
-          <span className="font-sans text-label font-medium text-pulse">
+        <div className="mt-auto flex items-center justify-between gap-md border-t border-border pt-lg">
+          <span className="min-w-0 truncate font-mono text-label leading-label text-muted-foreground" data-fleet-name>
+            {fleet.name}
+          </span>
+          <span className="shrink-0 font-sans text-label font-medium text-pulse">
             {MANAGE_FLEET_LABEL} →
           </span>
         </div>
