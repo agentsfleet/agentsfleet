@@ -24,6 +24,7 @@
 //! distinction is the error's own rather than a `match` re-derived here.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 
 use crate::error::{Result, budget_exhausted, renewal_no_credits};
 use crate::lease::pull::Plane;
@@ -116,7 +117,7 @@ impl Plane {
             // will read the same on every subsequent tick.
             Err(fault) if fault.is_config_permanent() => {
                 let fleet = lease.fleet_id.as_str();
-                let reason = fault.to_string();
+                let reason = fault.told();
                 tracing::warn!(
                     fleet_id = fleet,
                     lease_id,
@@ -172,10 +173,9 @@ impl Plane {
 /// return type three screens further down.
 fn admit_unreadable(gate: &'static str, lease: &Renewing, lease_id: &str, fault: &crate::Error) {
     let fleet = lease.fleet_id.as_str();
-    let reason = fault.to_string();
-    let code = fault.code().as_str();
+    let Logged { error_code, reason } = fault.logged();
     tracing::warn!(
-        error_code = code,
+        error_code,
         fleet_id = fleet,
         lease_id,
         gate,
@@ -244,6 +244,20 @@ mod tests {
             admit_unreadable("budget", &lease, "lease-fixture", &fault);
             admit_unreadable("spend", &lease, "lease-fixture", &fault);
         }
+        Ok(())
+    }
+
+    #[test]
+    fn an_unreadable_renewal_gate_reason_carries_no_code_prefix() -> Result<(), &'static str> {
+        let log = afd_core::test_util::trace::Capture::install();
+        let lease = renewing()?;
+        let fault = crate::error::query("balance read")(sqlx::Error::PoolTimedOut);
+
+        admit_unreadable("balance", &lease, "lease-fixture", &fault);
+
+        let line = log.only(super::EVENT_GATE_UNREADABLE);
+        assert_eq!(line.field("error_code"), Some(fault.code().as_str()));
+        assert_eq!(line.field("reason"), Some(fault.told().as_str()));
         Ok(())
     }
 }

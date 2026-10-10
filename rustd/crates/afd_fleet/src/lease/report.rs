@@ -187,7 +187,7 @@ impl Plane {
             Ok(meter) => meter,
             Err(failure) => {
                 let fleet = lease.fleet_id.as_str();
-                let reason = failure.to_string();
+                let reason = failure.told();
                 // The counts are the run's totals: whatever no priced renewal
                 // charged goes uncharged, including tokens a faulted renewal
                 // held for later (`renew::hold_tokens`). Logged so the loss is

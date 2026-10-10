@@ -33,7 +33,7 @@ impl Leases {
         if let Err(failure) = self.ready().clear_if_unchanged(fleet, token).await {
             producers::fleet::ready_write_failed();
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let reason = failure.to_string();
+            let reason = failure.told();
             tracing::warn!(
                 error_code = code,
                 event = EVENT_READY_CLEAR_FAILED,
@@ -83,6 +83,11 @@ mod tests {
         assert_eq!(
             line.get("fleet_id").map(String::as_str),
             Some(acquired.fleet_id.as_str())
+        );
+        let reason = line.get("reason").map_or("", String::as_str);
+        assert!(
+            !reason.is_empty() && !reason.contains("[UZ-"),
+            "the reason is the failure's sentence, its code only in `error_code`: {reason}"
         );
     }
 }

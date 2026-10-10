@@ -25,7 +25,7 @@ use crate::lease::installed::Installed;
 const FLEET_STOPPED: &str = "the fleet stopped between selection and claim";
 
 /// A fleet whose unreadable config could not even be recorded as such.
-const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
+pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
 
 impl Plane {
     /// The installed fleet behind a claim, or the answer that ends the pass.
@@ -159,7 +159,7 @@ impl Plane {
         fault: &Error,
         now: UnixMillis,
     ) -> Result<String> {
-        let reason = fault.to_string();
+        let reason = fault.told();
         match self.end_unreadable(acquired, runner_id, &reason, now).await {
             Ok(answer) => Ok(answer),
             // Logged, never propagated, and the reasoning is this module's

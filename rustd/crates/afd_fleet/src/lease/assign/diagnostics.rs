@@ -21,7 +21,7 @@ pub(super) const EVENT_READY_PEEK_FAILED: &str = "assign_ready_peek_failed";
 const EVENT_ENTRY_UNDECODABLE_DROPPED: &str = "assign_entry_undecodable_dropped";
 
 /// The discard could not be acknowledged; the next poll tries again.
-const EVENT_ENTRY_UNDECODABLE_DROP_FAILED: &str = "assign_entry_undecodable_drop_failed";
+pub(super) const EVENT_ENTRY_UNDECODABLE_DROP_FAILED: &str = "assign_entry_undecodable_drop_failed";
 
 /// A lapsed holder's event was taken back under a higher fence.
 pub(super) const EVENT_LEASE_RECLAIMED: &str = "lease_reclaimed";
@@ -41,7 +41,7 @@ pub(super) fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_dra
     // scores the dead copy.
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let runner = runner_id.as_str();
-    let reason = error.to_string();
+    let reason = error.told();
     tracing::warn!(
         error_code = code,
         event,
@@ -59,7 +59,7 @@ pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dr
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let runner = runner_id.as_str();
     let fleet = fleet_id.as_str();
-    let reason = error.to_string();
+    let reason = error.told();
     tracing::warn!(
         error_code = code,
         event = EVENT_HELD_READ_FAILED,
@@ -73,7 +73,7 @@ pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dr
 /// Reports a queue failure against one fleet's stream.
 pub(crate) fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_dragonfly::Error) {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-    let reason = error.to_string();
+    let reason = error.told();
     tracing::warn!(
         error_code = code,
         event,
@@ -109,7 +109,7 @@ pub(super) async fn drop_undecodable(
     error: &crate::error::Error,
 ) {
     let id = receipt.as_str();
-    let reason = error.to_string();
+    let reason = error.told();
     let event = if streams.ack(fleet_id, receipt).await.is_ok() {
         EVENT_ENTRY_UNDECODABLE_DROPPED
     } else {
