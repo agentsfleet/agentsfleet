@@ -25,12 +25,6 @@ use crate::error::{self, Result};
 /// Where the sites a grant reaches are listed.
 const ACCESSIBLE_RESOURCES: &str = "https://api.atlassian.com/oauth/token/accessible-resources";
 
-/// The header the freshly minted access token is presented in.
-const HEADER_AUTHORIZATION: &str = "authorization";
-
-/// The scheme it is presented under.
-const BEARER_PREFIX: &str = "Bearer ";
-
 /// The header asking for JSON back.
 const HEADER_ACCEPT: &str = "accept";
 
@@ -85,10 +79,9 @@ pub async fn resolve(
         .ok_or_else(error::exchange_unreadable)?;
     let answer = client
         .get(endpoint)
-        .header(
-            HEADER_AUTHORIZATION,
-            format!("{BEARER_PREFIX}{access_token}"),
-        )
+        // Marked sensitive, so a client that renders its request never shows
+        // the freshly minted token.
+        .bearer_auth(access_token)
         .header(HEADER_ACCEPT, CONTENT_TYPE_JSON)
         .send()
         .await?;
