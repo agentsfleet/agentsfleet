@@ -652,6 +652,7 @@ describe("ModelsRegistryTable", () => {
     expect([big, small].sort((a, b) => compareEntries(a, b, "model")).map((e) => e.model_id)).toEqual(["openai/gpt-oss-20b", "openai/gpt-oss-120b"]);
     expect(compareEntries(big, small, "provider")).toBeGreaterThan(0);
     expect(compareEntries(entry({ provider: undefined }), small, "provider")).toBeLessThan(0);
+    expect(compareEntries(small, entry({ provider: undefined }), "provider")).toBeGreaterThan(0);
   });
 
   it("formats the context column at and below the 'k' abbreviation threshold", async () => {

@@ -68,6 +68,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/design-system/src/design-system/{Switch.tsx,Switch.test.tsx,index.ts,DataTable.types.ts,DataTableModel.ts,DataTableModel.test.tsx}`, `ui/packages/design-system/src/{index.ts,index.test.ts}` | CREATE, EDIT | §5: a `Switch` primitive over `@radix-ui/react-switch`; §1: a `DataTable` column may bring its own `compare` |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/{MemoryPanel.tsx,MemoryPanel.test.tsx}` | EDIT | §5: each grant a named switch with its description |
 | `package.json`, `bun.lock`, `cli/{package.json,bun.lock}`, `ui/packages/{app,design-system,website}/package.json` | EDIT | §6: every package on its latest release; §5 adds `@radix-ui/react-switch` |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/{FleetTile.tsx,FleetTile.test.tsx}` | EDIT | §7: agent and status first, the live line second, the fleet name in the footer |
 | `ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.tsx` | EDIT | §6: a tab click reports one source change on Radix tabs 1.1.22 |
 | `ui/packages/app/AGENTS.md` | EDIT | §6: Next 16.4 rewrites its managed `nextjs-agent-rules` block |
 | `docs/v2/active/M219_002_P2_UI_MODEL_TABLES_MATCH_TABS_ANSWER_AT_ONCE.md` | CREATE | This spec |
@@ -120,11 +121,11 @@ The invite email status moves into the Time column under the dates, reading "Inv
 - **Dimension 3.2** — The Time column says whether the invite email went → Test `the time column says whether the invite email went` — DONE (`MembersView.test.tsx`)
 - **Dimension 3.3** — A long secret name ellipsizes and its icons stay in line → Test `a long secret name ellipsizes and keeps its icons in line` — DONE (`SecretsList.test.tsx`)
 
-### §4 — Indy eyeballs the dashboard
+### §4 — Indy eyeballs the dashboard — DONE
 
 The app runs on `http://localhost:3000` from `AGENTSFLEET_UI_ENV_FILE`; the browse tool captures each changed screen for the PR, and Indy reviews the running app.
 
-- **Dimension 4.1** — Indy accepts the four screens on the running app → Test `indy_eyeballs_the_changed_screens` (manual)
+- **Dimension 4.1** — Indy accepts the four screens on the running app → Test `indy_eyeballs_the_changed_screens` (manual) — DONE (Discovery)
 
 ### §5 — Shared-memory access reads as two named switches — DONE
 
@@ -140,6 +141,12 @@ Every npm dependency in `cli`, `ui/packages/app`, `ui/packages/design-system` an
 
 - **Dimension 6.1** — No package reports an update → Test `bun_outdated_reports_only_the_jsapi_alias` (package audit) — DONE
 - **Dimension 6.2** — One click on a source tab is one source change → Test `tells the caller when the operator changes source` (`ui/packages/app/components/domain/fleet-library/LibrarySourceTabs.test.tsx`) — DONE
+
+### §7 — A fleet card leads with its agent and what it is doing — DONE
+
+The card's first line is the agent label with its status beside it, and the second is the live line, "Waiting for the next event." or the latest activity, in body text. The fixed sentence "Runs in a loop: wakes on events, gathers evidence." goes. The fleet's own name, the `name:` its bundle declares, moves to the footer beside "Manage fleet". **Implementation default:** the layout Indy picked from three mockups.
+
+- **Dimension 7.1** — Agent and status lead, the activity follows, the name sits in the footer → Test `leads with the agent and its status, then what it is doing, and keeps the fleet's name in the footer` — DONE (`FleetTile.test.tsx`)
 
 ## Interfaces
 
@@ -190,6 +197,7 @@ No API, route or wire change.
 | 5.3 | unit | `a refused shared-memory change leaves the switch where it was` | Action refused with 403 → the switch stays unchecked and enabled, and a warning alert shows |
 | 6.1 | package audit | `bun_outdated_reports_only_the_jsapi_alias` | `bun outdated` in the four packages → only `typescript` (the `typescript-jsapi` alias) |
 | 6.2 | unit | `tells the caller when the operator changes source` | Click Upload, then GitHub → `onSourceChange` called exactly twice |
+| 7.1 | unit | `leads with the agent and its status, then what it is doing, and keeps the fleet's name in the footer` | Live fleet `alpha` → first line the agent label and `Active`, then `Waiting for the next event.`, footer `alpha`; no fixed sentence |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -241,6 +249,7 @@ No API, route or wire change.
 - **Tab timing** — Oct 09, 2026, `next dev` on `localhost:3000`, median of 5 clicks, ms. Before §2 every tab showed nothing until done: Events 390, Memory 375, Skill 385, Trigger 674, Chat 473. With the pulse and a skeleton: the tab answered in 5–11; done Events 368, Memory 374, Skill 385, Trigger 656, Chat 683. Every view lands no sooner than the fleet read (~370), which four of five tabs need, so the header stays in `page.tsx`. Indy chose "Pulse only": the skeleton goes, and Chat returns to its own read time.
 - **Shared-memory switches** — Indy, Oct 09, 2026: "i think we must keep it simple and have it NAME PROPERLY PROPOSE FIRST, SO INDY APPROVES", with a screenshot of on/off switches. Three name sets were proposed; he picked "Use shared memory" / "Share this fleet's memory" and chose to ship it here as §5.
 - **Packages** — Indy, Oct 09, 2026: "can we check and update all the packages you have (npm) to the latest in ui/packages/app, cli, design-system, website?", then asked for it in this PR (§6). The new releases are one to four days old; `posthog-js` 1.438.5 was hours old.
+- **Close-out (Oct 10, 2026)** — Indy accepted the screens ("Accepted (Recommended)"), and asked that the two known limits be recorded rather than fixed, docs be skipped under an override, and the branch be pushed and opened as a PR once green. For the fleet card he wrote "the agent slug name and status is important that must be the first line" and "Runs in loop static text doesnt have value, but rather the Waiting for the event is valuable", then picked "Footer name" (§7).
 - **Metrics review** — No product event changes.
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
