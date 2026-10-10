@@ -32,6 +32,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_auth::principal::Principal;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_sse::{FanIn, Frame, KIND_CATCHING_UP};
 use futures_util::stream::BoxStream;
@@ -229,19 +230,23 @@ async fn hello<D: Services>(services: &D, workspace: &Uuid7, carried: Vec<String
     let counters = match services.fleets().counters(workspace, &carried).await {
         Ok(counters) => counters,
         Err(error) => {
-            let workspace_id = workspace.as_str();
-            let error_code = error.code().as_str();
-            let reason = error.to_string();
-            tracing::warn!(
-                workspace_id,
-                error_code,
-                reason,
-                event = EVENT_HELLO_COUNTERS_UNREAD
-            );
+            counters_unread(workspace, &error);
             BTreeMap::new()
         }
     };
     Frame::hello(&carried, &counters)
+}
+
+/// A `hello` whose counters did not answer: the set goes out without them.
+fn counters_unread(workspace: &Uuid7, error: &afd_fleet_lifecycle::Error) {
+    let workspace_id = workspace.as_str();
+    let Logged { error_code, reason } = error.logged();
+    tracing::warn!(
+        workspace_id,
+        error_code,
+        reason,
+        event = EVENT_HELLO_COUNTERS_UNREAD
+    );
 }
 
 /// Re-authorize the caller, then align the attached set with the workspace's.

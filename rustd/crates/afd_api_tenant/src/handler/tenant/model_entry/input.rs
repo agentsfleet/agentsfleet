@@ -15,6 +15,7 @@ use afd_core::id::Uuid7;
 use afd_core::paging::QUERY_STARTING_AFTER;
 use afd_core::paging::struct_cursor;
 use afd_credential::provider::Boundary;
+use afd_http::handler::parse_id;
 use afd_validate::Sentences;
 
 use crate::handler::tenant::models::DETAIL_CURSOR_MALFORMED;
@@ -67,7 +68,7 @@ pub(super) fn resume_from(
 
 /// The entry a path segment names.
 pub(super) fn parse_entry_id(raw: &str) -> Result<Uuid7, Refusal> {
-    Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_ENTRY_ID))
+    parse_id(raw, DETAIL_ENTRY_ID)
 }
 
 /// The refusal for the bound a request body broke.
