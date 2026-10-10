@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M221
 **Workstream:** 001
 **Date:** Oct 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P3 — deferrable; a smaller download and disk footprint per runner host, with no lease behaviour change
 **Categories:** API, INFRA
 **Batch:** B1 — measure, then one image change, its admission list and its docs
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** `build/m221-toolbox-shrink`
+**Baseline revision:** 6e4a02127b4738f205c6ba1c8d42bce42413ed2e
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** `M219_002` §6 merged (PR #739) — the toolbox builds from the Debian 13.7 snapshot `20261010T000000Z`, and every size here is measured on it
