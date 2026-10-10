@@ -244,31 +244,14 @@ async fn token_request_failures_keep_their_retry_posture() {
     ));
 }
 
-/// The PEM label GitHub's App keys are handed out under, spelled once so the
-/// fixture below never carries a key-shaped literal.
-const PEM_LABEL: &str = "PRIVATE KEY";
-
 /// A freshly generated App key, PEM-encoded the way an operator pastes one.
 ///
 /// Generated per run rather than committed: a private key in the tree is a
 /// secret-scanner finding whatever it signs.
 fn app_key() -> String {
-    use aws_lc_rs::encoding::AsDer as _;
-    use base64::Engine as _;
-
-    let pair = aws_lc_rs::rsa::KeyPair::generate(aws_lc_rs::rsa::KeySize::Rsa2048)
-        .expect("the host generates an RSA key");
-    let der = pair.as_der().expect("a generated key encodes");
-    let body = base64::engine::general_purpose::STANDARD.encode(der.as_ref());
-    let lines: Vec<&str> = body
-        .as_bytes()
-        .chunks(64)
-        .map(|line| std::str::from_utf8(line).expect("base64 is ASCII"))
-        .collect();
-    format!(
-        "-----BEGIN {PEM_LABEL}-----\n{}\n-----END {PEM_LABEL}-----\n",
-        lines.join("\n")
-    )
+    rcgen::KeyPair::generate_for(&rcgen::PKCS_RSA_SHA256)
+        .expect("the host generates an RSA key")
+        .serialize_pem()
 }
 
 /// Mints through the App's own signed client, rooted at `base`.

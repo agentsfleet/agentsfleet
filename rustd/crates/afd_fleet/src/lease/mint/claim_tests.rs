@@ -2,15 +2,17 @@
 //!
 //! The failure each case exists for is a handle the workspace wrote that the
 //! broker would mint from without the mint having checked it: an on-demand
-//! connector filed under a name the grant gate never checked, or a GitHub
-//! installation nobody proved this workspace owns.
+//! connector filed under a name the grant gate never checked, a GitHub
+//! installation nobody proved this workspace owns, or a refresh that would post
+//! the platform's client secret somewhere the connect flow never points it.
 #![expect(
     clippy::expect_used,
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use afd_connector::Provider;
 use afd_core::error_code::{self, ErrorCode};
-use afd_credential::secrets::connector::Registry;
+use afd_credential::secrets::connector::{Connectors as _, Exchange, Registry};
 use serde_json::{Value, json};
 
 use super::{Claim, claim};
@@ -20,20 +22,43 @@ const SHIPPED: Registry = Registry::SHIPPED;
 
 /// The code `handle`, opened under `requested`, is refused with.
 fn refused(requested: &str, handle: &Value) -> ErrorCode {
-    claim(&SHIPPED, requested, handle)
+    claim(SHIPPED, requested, handle)
         .expect_err("the handle must be refused")
         .code()
 }
 
 #[test]
+fn every_on_demand_connector_is_a_provider_the_routing_table_knows() {
+    // The routing row's `provider` column is written from `Provider::id` by the
+    // connect flow and read here from the registry's name. Two spellings of one
+    // vocabulary, held together by this test rather than by luck: a drift
+    // would refuse every legitimate GitHub mint with nothing saying why.
+    for provider in Provider::ALL {
+        let Some(connector) = SHIPPED.resolve(provider.id()) else {
+            // Slack answers mentions and mints nothing: it has no connector.
+            assert_eq!(*provider, Provider::Slack);
+            continue;
+        };
+        assert_eq!(connector.name(), provider.id());
+        assert!(
+            !matches!(connector.exchange(), Exchange::Stored),
+            "{provider}"
+        );
+    }
+}
+
+#[test]
 fn a_github_handle_under_its_own_name_claims_its_installation() {
-    for spelled in [json!("42"), json!(42)] {
+    // Every spelling the exchange parses to 42 claims 42: the check and the
+    // mint read one number, so a leading zero or a sign cannot make them
+    // disagree about which installation is spent.
+    for spelled in [json!("42"), json!(42), json!("042"), json!("+42")] {
         let handle = json!({"integration": "github", "installation_id": spelled});
 
         assert_eq!(
-            claim(&SHIPPED, "github", &handle).expect("a connected handle reads"),
+            claim(SHIPPED, "github", &handle).expect("a connected handle reads"),
             Claim::Installation {
-                provider: "github",
+                provider: Provider::GitHub,
                 id: 42
             },
             "{handle}"
@@ -86,20 +111,79 @@ fn a_github_handle_naming_no_readable_installation_asks_for_a_reconnect() {
 }
 
 #[test]
+fn a_refresh_posts_only_where_the_connect_flow_points_it() {
+    // What a Zoho callback writes, and the providers that write no base at all.
+    for (requested, handle) in [
+        (
+            "zoho",
+            json!({"integration": "zoho", "refresh_token": "rt", "accounts_base": "https://accounts.zoho.eu"}),
+        ),
+        (
+            "zoho",
+            json!({"integration": "zoho", "refresh_token": "rt", "accounts_base": "https://accounts.zohocloud.ca"}),
+        ),
+        (
+            "zoho",
+            json!({"integration": "zoho", "refresh_token": "rt"}),
+        ),
+        (
+            "jira",
+            json!({"integration": "jira", "refresh_token": "rt", "cloud_id": "c"}),
+        ),
+        (
+            "linear",
+            json!({"integration": "linear", "refresh_token": "rt"}),
+        ),
+    ] {
+        assert_eq!(
+            claim(SHIPPED, requested, &handle).expect("the connect flow's own shape"),
+            Claim::Unowned,
+            "{handle}"
+        );
+    }
+}
+
+#[test]
+fn a_refresh_steered_anywhere_else_never_reaches_the_exchange() {
+    // Each would post this deployment's client secret to a host or path the
+    // connect flow never writes: a public host the SSRF guard admits, a Zoho
+    // lookalike, a base on a provider that has none, and a path override.
+    for (requested, handle) in [
+        (
+            "zoho",
+            json!({"integration": "zoho", "refresh_token": "rt", "accounts_base": "https://collector.example"}),
+        ),
+        (
+            "zoho",
+            json!({"integration": "zoho", "refresh_token": "rt", "accounts_base": "https://accounts.zoho.com.example"}),
+        ),
+        (
+            "jira",
+            json!({"integration": "jira", "refresh_token": "rt", "accounts_base": "https://accounts.zoho.com"}),
+        ),
+        (
+            "zoho",
+            json!({"integration": "zoho", "refresh_token": "rt", "accounts_base": "https://accounts.zoho.com", "token_path": "/oauth/v2/token"}),
+        ),
+    ] {
+        assert_eq!(
+            refused(requested, &handle),
+            error_code::CONNECTOR_OAUTH_EXCHANGE_FAILED,
+            "{handle}"
+        );
+    }
+}
+
+#[test]
 fn handles_with_nothing_to_own_pass_through_to_the_broker() {
-    // Inline credentials are the workspace's own bytes, a refresh handle spends
-    // the workspace's own refresh token, and an unknown or absent integration
-    // is the broker's `UnknownIntegration` to answer — none has an owner a
-    // routing row could disagree with.
+    // Inline credentials are the workspace's own bytes, and an unknown or
+    // absent integration is the broker's `UnknownIntegration` to answer —
+    // none has an owner a routing row could disagree with.
     for (requested, handle) in [
         ("pat", json!({"integration": "static", "token": "ghp_own"})),
         (
             "github",
             json!({"integration": "static", "token": "ghp_own"}),
-        ),
-        (
-            "zoho",
-            json!({"integration": "zoho", "refresh_token": "rt"}),
         ),
         ("github", json!({"webhook_secret": "whsec"})),
         ("acme", json!({"integration": "acme"})),
@@ -107,7 +191,7 @@ fn handles_with_nothing_to_own_pass_through_to_the_broker() {
         ("github", json!(["github"])),
     ] {
         assert_eq!(
-            claim(&SHIPPED, requested, &handle).expect("nothing to refuse"),
+            claim(SHIPPED, requested, &handle).expect("nothing to refuse"),
             Claim::Unowned,
             "{requested}: {handle}"
         );

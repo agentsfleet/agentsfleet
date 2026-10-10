@@ -58,7 +58,22 @@ const TOKEN_LIFETIME_MS: i64 = 60 * 60 * 1000;
 
 /// The GitHub connection handle a workspace holds: the App installation the
 /// broker mints for. Its ids are never dialled; [`MintedToken`] answers.
-const GITHUB_HANDLE: &str = r#"{"integration":"github","app_id":"7","installation_id":"42"}"#;
+fn github_handle(installation: &str) -> String {
+    format!(r#"{{"integration":"github","app_id":"7","installation_id":"{installation}"}}"#)
+}
+
+/// A fresh installation id per scenario.
+///
+/// The mint spends an installation only when the workspace's routing row says
+/// it connected it, and `(provider, external_account_id)` is unique across the
+/// table, so scenarios running at once cannot share one id.
+fn fresh_installation() -> String {
+    let mut bytes = [0u8; 4];
+    Entropy::new()
+        .fill(&mut bytes)
+        .expect("the host provides entropy");
+    u32::from_be_bytes(bytes).to_string()
+}
 
 /// GitHub's token endpoint, as the lane stands it in.
 #[derive(Debug)]
@@ -119,7 +134,16 @@ pub(crate) async fn install_bundle(
     let default = seed_platform_default(&booted, &workspace, now).await;
     seed_provider_key(&booted, &workspace, now).await;
     let workspace_id = Uuid7::parse(&workspace).expect("a minted workspace id");
-    seal(&booted, &workspace_id, "github", GITHUB_HANDLE, now).await;
+    let installation = fresh_installation();
+    seal(
+        &booted,
+        &workspace_id,
+        "github",
+        &github_handle(&installation),
+        now,
+    )
+    .await;
+    seed_install(&booted, &workspace, &installation, now).await;
     for secret in secrets {
         seal(
             &booted,
@@ -179,6 +203,33 @@ async fn seed_workspace(
     .execute(&mut *connection)
     .await
     .expect("the workspace row must insert");
+}
+
+/// The routing row the GitHub connect flow lands beside its handle.
+async fn seed_install(
+    booted: &agentsfleetd::serve::Booted,
+    workspace: &str,
+    installation: &str,
+    now: UnixMillis,
+) {
+    let mut connection = booted
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    sqlx::query(
+        "INSERT INTO core.connector_installs
+           (id, provider, external_account_id, workspace_id, installed_by, scopes,
+            created_at, updated_at)
+         VALUES ($1::uuid, 'github', $2, $3::uuid, '', '{}', $4, $4)",
+    )
+    .bind(unique_ids().0)
+    .bind(installation)
+    .bind(workspace)
+    .bind(now.as_millis())
+    .execute(&mut *connection)
+    .await
+    .expect("the routing row must insert");
 }
 
 /// Seals `body` into the workspace's vault under `name`, as the tenant plane's

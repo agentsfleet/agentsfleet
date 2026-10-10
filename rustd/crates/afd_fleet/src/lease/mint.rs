@@ -38,6 +38,11 @@
 //! for. It is bounded to one request, and a re-check afterwards could only
 //! WITHHOLD a credential the vendor has already issued — the upstream token
 //! exists either way.
+//!
+//! The installation's routing row is read the same way: before the exchange,
+//! holding no lock. A Disconnect that lands between the read and the exchange
+//! still sees one token issued — the same one-request bound, and the same
+//! reason a later re-check would buy nothing.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -175,11 +180,11 @@ impl Plane {
         integration: &str,
         handle: &Value,
     ) -> Result<()> {
-        match claim(&self.connectors, integration, handle)? {
+        match claim(self.connectors, integration, handle)? {
             Claim::Unowned => Ok(()),
             Claim::Installation { provider, id } => self
                 .leases
-                .holds_install(&scope.workspace_id, provider, &id.to_string())
+                .holds_install(&scope.workspace_id, provider.id(), &id.to_string())
                 .await?
                 .then_some(())
                 .ok_or_else(github_reconnect_required),

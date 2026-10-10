@@ -29,8 +29,8 @@
 // to THIS file's directory, which the aggregator does not change.
 #[path = "integration_credential_mint/cases.rs"]
 mod cases;
-#[path = "integration_credential_mint/installation.rs"]
-mod installation;
+#[path = "integration_credential_mint/claims.rs"]
+mod claims;
 #[path = "integration_credential_mint/rotation.rs"]
 mod rotation;
 #[path = "integration_credential_mint/write_gate.rs"]
@@ -75,6 +75,12 @@ const CONNECTOR_STATIC: &str = "static";
 
 /// A connector that mints ON DEMAND, so the grant gate applies to it.
 const CONNECTOR_GITHUB: &str = "github";
+
+/// A refresh connector, whose handle may name an accounts server.
+const CONNECTOR_ZOHO: &str = "zoho";
+
+/// The grant status a mint is admitted under.
+const STATUS_APPROVED: &str = "approved";
 
 /// The token a static handle carries, distinct per workspace so a
 /// wrong-workspace resolution is caught by VALUE and not merely by absence.
