@@ -22,6 +22,9 @@ lint-app:  ## Lint ui/packages/app only (Oxlint + tsc)
 	@echo "→ [app] Running Oxlint + TypeScript check..."
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
+	@echo "→ [app] Source rules: one event catalog, Time for dates, no browser bearer, the acceptance conventions, button variants, interface typefaces..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source.py
 	@echo "✓ [app] Lint passed"
 
 lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsc)
