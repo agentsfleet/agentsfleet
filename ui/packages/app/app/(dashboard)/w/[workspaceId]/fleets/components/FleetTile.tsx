@@ -217,7 +217,7 @@ function TileIdentity({ fleet, identity, live, eyebrow, eyebrowTitle, activity, 
           </div>
           <div className="flex shrink-0 items-center gap-md">
             <TileEyebrow eyebrow={eyebrow} title={eyebrowTitle} />
-            <span className="flex items-center gap-xs text-body-sm leading-body-sm text-muted-foreground" data-fleet-status>
+            <span className="flex items-center gap-sm text-body-sm leading-body-sm text-muted-foreground" data-fleet-status>
               {children}
               {statusLabel(fleet.status)}
             </span>

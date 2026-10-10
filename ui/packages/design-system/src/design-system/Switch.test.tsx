@@ -50,6 +50,23 @@ describe("Switch", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("true");
   });
 
+  it("a coarse pointer gets a 44px hit area without a larger track", () => {
+    render(<Switch aria-label={NAME} />);
+    const toggle = screen.getByRole("switch", { name: NAME });
+    for (const reach of ["after:absolute", "pointer-coarse:after:-inset-y-xl", "pointer-coarse:after:-inset-x-md"]) {
+      expect(toggle.className).toContain(reach);
+    }
+    expect(toggle.className).toContain("h-5 w-9");
+  });
+
+  it("an aria-disabled switch reads as disabled and stays focusable", () => {
+    render(<Switch aria-label={NAME} aria-disabled />);
+    const toggle = screen.getByRole("switch", { name: NAME });
+    toggle.focus();
+    expect(document.activeElement).toBe(toggle);
+    expect(toggle.className).toContain("aria-disabled:opacity-50");
+  });
+
   it("a caller's class joins the track's own", () => {
     render(<Switch aria-label={NAME} className="ml-auto" />);
     const toggle = screen.getByRole("switch", { name: NAME });

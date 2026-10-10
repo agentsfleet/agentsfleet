@@ -140,12 +140,19 @@ export default function MemoryPanel({ workspaceId, fleetId, entries: initial, ac
 function AccessSwitches({ workspaceId, fleetId, initial }: { workspaceId: string; fleetId: string; initial: MemoryAccess }) {
   const [access, setAccess] = useState<MemoryAccess>(initial);
   const [saving, setSaving] = useState(false);
+  const inFlight = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   async function flip(grant: keyof MemoryAccess) {
+    // One change at a time: a second flip would send a grant computed from an
+    // access the first has not answered yet. The switches stay focusable while
+    // saving (aria-disabled), so a keyboard user keeps their place.
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     setNotice(null);
     const result = await setMemoryAccessAction(workspaceId, fleetId, { [grant]: !access[grant] });
+    inFlight.current = false;
     setSaving(false);
     if (result.ok) {
       setAccess(result.data);
@@ -165,7 +172,7 @@ function AccessSwitches({ workspaceId, fleetId, initial }: { workspaceId: string
               label={label}
               description={description}
               checked={access[grant]}
-              disabled={saving}
+              busy={saving}
               onFlip={() => void flip(grant)}
             />
           ))}
@@ -181,10 +188,10 @@ const ACCESS_GRANTS: { grant: keyof MemoryAccess; label: string; description: st
   { grant: "publish", label: MEMORY_ACCESS_PUBLISH_LABEL, description: MEMORY_ACCESS_PUBLISH_DESCRIPTION },
 ];
 
-type AccessRowProps = { label: string; description: string; checked: boolean; disabled: boolean; onFlip: () => void };
+type AccessRowProps = { label: string; description: string; checked: boolean; busy: boolean; onFlip: () => void };
 
 // One grant: its name labels the switch and its line describes it.
-function AccessRow({ label, description, checked, disabled, onFlip }: AccessRowProps) {
+function AccessRow({ label, description, checked, busy, onFlip }: AccessRowProps) {
   const switchId = useId();
   const descriptionId = useId();
   return (
@@ -194,7 +201,13 @@ function AccessRow({ label, description, checked, disabled, onFlip }: AccessRowP
       title={<Label htmlFor={switchId}>{label}</Label>}
       description={<span id={descriptionId}>{description}</span>}
       action={
-        <Switch id={switchId} checked={checked} disabled={disabled} onCheckedChange={onFlip} aria-describedby={descriptionId} />
+        <Switch
+          id={switchId}
+          checked={checked}
+          aria-disabled={busy || undefined}
+          onCheckedChange={onFlip}
+          aria-describedby={descriptionId}
+        />
       }
     />
   );

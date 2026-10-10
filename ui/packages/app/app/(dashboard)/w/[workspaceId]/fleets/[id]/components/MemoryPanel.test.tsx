@@ -201,7 +201,33 @@ describe("MemoryPanel shared memory", () => {
 
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(read.getAttribute("aria-checked")).toBe("false");
-    expect((read as HTMLButtonElement).disabled).toBe(false);
+    expect(read.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("holds both switches while a flip is saving, and keeps the focus where it was", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    setMemoryAccessAction.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const user = userEvent.setup({ delay: null });
+    render(<MemoryPanel workspaceId="ws_1" fleetId="agt_1" entries={[]} access={CLOSED} canGrant />);
+
+    const read = screen.getByRole("switch", { name: MEMORY_ACCESS_READ_LABEL });
+    const publish = screen.getByRole("switch", { name: MEMORY_ACCESS_PUBLISH_LABEL });
+    await user.click(read);
+    for (const each of [read, publish]) {
+      expect(each.getAttribute("aria-disabled")).toBe("true");
+    }
+    expect(document.activeElement).toBe(read);
+
+    await user.click(publish);
+    expect(setMemoryAccessAction).toHaveBeenCalledTimes(1);
+
+    answer({ ok: true, data: { read: true, publish: false } });
+    await waitFor(() => expect(read.getAttribute("aria-disabled")).toBeNull());
+    expect(read.getAttribute("aria-checked")).toBe("true");
   });
 
   it("shows no switches to a viewer without fleet:write", () => {

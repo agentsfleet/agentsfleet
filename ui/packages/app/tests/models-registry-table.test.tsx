@@ -655,7 +655,7 @@ describe("ModelsRegistryTable", () => {
     expect(compareEntries(small, entry({ provider: undefined }), "provider")).toBeGreaterThan(0);
   });
 
-  it("formats the context column at and below the 'k' abbreviation threshold", async () => {
+  it("groups the context column in threes, as the model library prints it", async () => {
     await renderTable(
       registry([
         entry({ id: "e1", model_id: "m1", context_cap_tokens: 200000 }),

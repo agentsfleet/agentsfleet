@@ -13,6 +13,11 @@ import { cn } from "../utils";
  *
  * Compose: <Switch id="x" checked={on} onCheckedChange={setOn} />
  *          <Label htmlFor="x">Name</Label>
+ *
+ * The track is 36x20; on a coarse pointer an overlay widens what a finger can
+ * hit to 48x48 without changing what is drawn (DESIGN_SYSTEM.md's 44px floor,
+ * CopyButton's overlay). aria-disabled looks like disabled, for a caller that
+ * must keep the switch focusable while a change is saving.
  */
 
 export type SwitchProps = ComponentProps<typeof SwitchPrimitive.Root>;
@@ -23,9 +28,10 @@ export function Switch({ className, ref, ...props }: SwitchProps) {
       ref={ref}
       className={cn(
         "inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent",
+        "relative after:absolute after:inset-0 pointer-coarse:after:-inset-y-xl pointer-coarse:after:-inset-x-md",
         "bg-border-strong data-[state=checked]:bg-primary",
         "ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-        "disabled:cursor-not-allowed disabled:opacity-50",
+        "disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50",
         "transition-colors duration-snap ease-snap",
         className,
       )}

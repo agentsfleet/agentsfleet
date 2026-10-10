@@ -176,6 +176,23 @@ describe("CatalogueList — rows + rates + empty state", () => {
     }
   });
 
+  it("sorts the Model column by the name it shows, not the id", () => {
+    const base = CATALOGUE[0]!;
+    // By id `accounts/...` sorts first; by the name a reader sees, Haiku 5.5 precedes Kimi K3.
+    const kimi = "accounts/fireworks/models/kimi-k3";
+    const haiku = "claude-haiku-5-5";
+    const models = [
+      { ...base, id: "k", model_id: kimi },
+      { ...base, id: "h", model_id: haiku },
+    ];
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    expect(screen.getByRole("columnheader", { name: "Model" }).getAttribute("aria-sort")).toBe("ascending");
+    const order = screen.getAllByTitle(/^(claude-haiku-5-5|accounts\/fireworks\/models\/kimi-k3)$/).map((cell) => cell.getAttribute("title"));
+    expect(order).toEqual([haiku, kimi]);
+  });
+
   it("shows the empty state when there are no models", () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: [], activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByText("No models yet")).toBeTruthy();
