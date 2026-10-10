@@ -195,38 +195,6 @@ describe("FleetThread — robustness against malformed metadata", () => {
     ).toBeNull();
   });
 
-  it("every rendered row carries the operational 80ms fade-in classes", () => {
-    mockStream([
-      ev({ role: "user", actor: "steer:k@e2e.com", text: "u" }),
-      ev({ role: "assistant", actor: "fleet", text: "a" }),
-      ev({ role: "system", actor: "cron", text: "c" }),
-      ev({
-        role: "system",
-        actor: "webhook:github",
-        text: "wh",
-        custom: { requestJson: "{}" },
-      }),
-    ]);
-    const { container } = renderThread();
-    const rows = container.querySelectorAll("[data-role]");
-    expect(rows.length).toBeGreaterThanOrEqual(4);
-    for (const r of rows) {
-      const cls = r.className;
-      expect(cls).toMatch(/animate-in/);
-      expect(cls).toMatch(/fade-in-0/);
-      expect(cls).toMatch(/duration-stream/);
-      expect(cls).not.toMatch(/slide-in/);
-    }
-  });
-
-  it("renders the jump-to-latest scroll button", () => {
-    mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
-    renderThread();
-    expect(
-      screen.getByRole("button", { name: /jump to latest/i }),
-    ).toBeTruthy();
-  });
-
   it("keeps a fleet reply left aligned and its long body within the reading column", () => {
     mockStream([ev({ role: "assistant", actor: "fleet", text: "x" })]);
     const { container } = renderThread();

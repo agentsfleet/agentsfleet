@@ -13,6 +13,12 @@
  * exactly).
  */
 
+import * as path from "node:path";
+
+// Where global setup caches the minted fixture JWTs. It must sit outside every
+// folder Playwright uploads as a CI artifact, or live session tokens ride along.
+export const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
+
 export const AGENTSFLEET_STATUS = {
   active: "active",
   paused: "paused",
