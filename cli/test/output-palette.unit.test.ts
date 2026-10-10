@@ -51,10 +51,6 @@ describe("palette — basic16 fallback codes", () => {
   test("error falls back to red (31)", () => {
     expect(palette.error("x", { mode: ColorMode.BASIC16 })).toContain(`${ESC}[31mx`);
   });
-
-  test("pulseBold in basic16 emits bold + cyan", () => {
-    expect(palette.pulseBold("HEAD", { mode: ColorMode.BASIC16 })).toContain(`${ESC}[1;36mHEAD`);
-  });
 });
 
 describe("palette — NO_COLOR / 'none' mode emits byte-exact plain text", () => {
@@ -72,8 +68,7 @@ describe("palette — NO_COLOR / 'none' mode emits byte-exact plain text", () =>
     }
   });
 
-  test("pulseBold and bold return plain text in 'none' mode", () => {
-    expect(palette.pulseBold("HI", { mode: ColorMode.NONE })).toBe("HI");
+  test("bold returns plain text in 'none' mode", () => {
     expect(palette.bold("HI", { mode: ColorMode.NONE })).toBe("HI");
   });
 

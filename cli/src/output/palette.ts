@@ -74,21 +74,6 @@ function styled(token: Token, text: unknown, opts: StyleOpts = {}): string {
   return `${ESC}38;5;${XTERM_256[token]}m${text}${RESET}`;
 }
 
-// Bold variant — used by helpHeading + version banner brand-mark. Bold
-// sequence layered before the color so basic16 mode still bolds.
-function styledBold(token: Token, text: unknown, opts: StyleOpts = {}): string {
-  const env = opts.env ?? process.env;
-  const stream = opts.stream ?? process.stdout;
-  const mode = opts.mode ?? detectColorMode(env, stream);
-
-  if (mode === ColorMode.NONE) return String(text);
-  if (mode === ColorMode.BASIC16) {
-    noteBasic16IfFirst(opts.warnStream ?? process.stderr);
-    return `${ESC}1;${BASIC_16[token]}m${text}${RESET}`;
-  }
-  return `${ESC}1;38;5;${XTERM_256[token]}m${text}${RESET}`;
-}
-
 // Bold-only (no color) variant. Used for chrome that needs weight but
 // not currency — section titles, table headers. Capability-aware so
 // NO_COLOR / !isTTY mode emits plain text.
@@ -112,7 +97,6 @@ export interface Palette {
   readonly subtle: Painter;
   readonly text: (text: unknown) => string;
   readonly bold: Painter;
-  readonly pulseBold: Painter;
 }
 
 // Token helpers — every site that emits color goes through one of these.
@@ -127,6 +111,4 @@ export const palette: Palette = {
   subtle:   (text, opts) => styled(PALETTE_TOKEN_SUBTLE, text, opts),
   text:     (text)       => String(text),
   bold,
-
-  pulseBold: (text, opts) => styledBold(PALETTE_TOKEN_PULSE, text, opts),
 };

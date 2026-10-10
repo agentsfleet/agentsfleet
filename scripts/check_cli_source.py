@@ -33,7 +33,7 @@ ENV_DECLARATION = re.compile(r'export const \w+ = "(?P<name>[A-Z][A-Z0-9_]+)"')
 # \x1b escapes, the \e some editors paste, and the control character itself.
 RAW_ESCAPE = re.compile(r"\\u001b\[|\\x1b\[|\x1b\[")
 COLOR_256 = re.compile(r"38;5;\d+")
-PULSE_CALL = re.compile(r"\bpalette\.pulse(?:Bold)?\b")
+PULSE_CALL = re.compile(r"\bpalette\.pulse\b")
 PULSE_CALLERS_MAX = 3
 # The decorative glyphs the design system retired from CLI output.
 RETIRED_GLYPHS = {"\U0001F9DF": "agent face", "\U0001F389": "party"}
