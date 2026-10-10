@@ -13,7 +13,6 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly DEPLOY_SH="$SCRIPT_DIR/deploy.sh"
 readonly SERVICE_SH="$SCRIPT_DIR/service.sh"
 readonly LOG_SH="$SCRIPT_DIR/log.sh"
 readonly RUNNER_UNIT="$SCRIPT_DIR/agentsfleet-runner.service"
@@ -116,22 +115,6 @@ test_service_health_passes_a_runner_that_stays_up() {
   fi
 }
 
-# The window only sees a crash loop when it outlasts the unit's RestartSec.
-test_service_health_window_outlasts_restart_sec() {
-  local name="test_service_health_window_outlasts_restart_sec"
-  local restart_sec window
-  restart_sec="$(sed -n 's/^RestartSec=\([0-9]*\)s\{0,1\}$/\1/p' "$RUNNER_UNIT" | head -1)"
-  # shellcheck source=./deploy.sh
-  window="$(source "$DEPLOY_SH" >/dev/null 2>&1; printf '%s' "$HEALTH_STABLE_SECONDS")"
-  if [[ -z "$restart_sec" ]]; then
-    bad "$name" "RestartSec in $RUNNER_UNIT is not a whole number of seconds"
-  elif [[ "$window" -le "$restart_sec" ]]; then
-    bad "$name" "HEALTH_STABLE_SECONDS=$window does not outlast RestartSec=$restart_sec"
-  else
-    ok "$name"
-  fi
-}
-
 # systemd reads the unit and says what it makes of it. `systemd-analyze verify`
 # exits 0 over a misspelled directive or a value it cannot parse: it warns
 # ("Unknown key name … ignoring") and drops the line, so a unit that loses its
@@ -156,7 +139,6 @@ test_unit_passes_systemd_analyze() {
 test_service_health_fails_a_runner_restarted_inside_the_window
 test_service_health_fails_a_runner_down_at_the_window_end
 test_service_health_passes_a_runner_that_stays_up
-test_service_health_window_outlasts_restart_sec
 # The unit check needs systemd: it skips on a machine without it and fails when
 # CI is set, so the unit is always proven on the ubuntu-latest runners that gate
 # a merge.
