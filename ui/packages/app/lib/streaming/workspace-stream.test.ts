@@ -262,6 +262,55 @@ describe("workspace-stream — lifecycle", () => {
     expect(FakeEventSource.instances[0]!.closed).toBe(false);
     b();
   });
+
+  it("a handle released twice leaves the other subscribers' connection open", () => {
+    const handles = [
+      subscribeFleet(WS, FLEET_A, () => {}),
+      subscribeStatus(WS, () => {}),
+      subscribeWorkspaceFrames(WS, () => {}),
+    ];
+    const holder = subscribeFleet(WS, FLEET_B, () => {});
+    for (const release of handles) {
+      release();
+      release();
+    }
+    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
+    expect(FakeEventSource.instances[0]!.closed).toBe(false);
+    holder();
+  });
+
+  it("a stale handle after teardown neither closes nor evicts the newer connection", () => {
+    const stale = subscribeFleet(WS, FLEET_A, () => {});
+    stale();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
+    const onFrame = vi.fn();
+    const live = subscribeFleet(WS, FLEET_A, onFrame);
+    const current = FakeEventSource.instances[1]!;
+
+    stale();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
+    current.emit(frame(FLEET_A));
+    subscribeStatus(WS, () => {});
+
+    expect(current.closed).toBe(false);
+    expect(onFrame).toHaveBeenCalledTimes(1);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    live();
+  });
+
+  it("a handle that outlives a registry reset leaves the connection opened after it", () => {
+    const outlived = subscribeFleet(WS, FLEET_A, () => {});
+    __resetWorkspaceRegistryForTests();
+    const live = subscribeFleet(WS, FLEET_A, () => {});
+
+    outlived();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
+    subscribeStatus(WS, () => {});
+
+    expect(FakeEventSource.instances[1]!.closed).toBe(false);
+    expect(FakeEventSource.instances).toHaveLength(2);
+    live();
+  });
 });
 
 describe("workspace-stream — server time", () => {

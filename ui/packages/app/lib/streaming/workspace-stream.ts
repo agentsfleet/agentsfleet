@@ -187,7 +187,9 @@ function teardown(entry: Entry): void {
   if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
   if (entry.idleTimer) clearTimeout(entry.idleTimer);
   entry.eventSource?.close();
-  REGISTRY.delete(entry.workspaceId);
+  // A newer entry may hold the slot by now: a handle that outlived this one's
+  // teardown must not evict a live connection it never subscribed to.
+  if (REGISTRY.get(entry.workspaceId) === entry) REGISTRY.delete(entry.workspaceId);
 }
 
 function createEntry(workspaceId: string, backfill: BackfillFn | null): Entry {
@@ -251,8 +253,10 @@ export function subscribeFleet(
   }
   set.add(listener);
   const subscribedSet = set;
-  entry.refCount += 1;
-  return () => releaseFleet(entry, fleetId, listener, subscribedSet);
+  return handle(entry, () => {
+    subscribedSet.delete(listener);
+    if (subscribedSet.size === 0) entry.fleetListeners.delete(fleetId);
+  });
 }
 
 export function subscribeWorkspaceFrames(
@@ -262,8 +266,7 @@ export function subscribeWorkspaceFrames(
 ): () => void {
   const entry = ensureEntry(workspaceId, backfill);
   entry.workspaceListeners.add(listener);
-  entry.refCount += 1;
-  return () => releaseWorkspaceFrameListener(entry, listener);
+  return handle(entry, () => entry.workspaceListeners.delete(listener));
 }
 
 // Observe the workspace connection's health (for the wall's "catching up" /
@@ -276,38 +279,25 @@ export function subscribeStatus(
 ): () => void {
   const entry = ensureEntry(workspaceId, backfill);
   entry.statusListeners.add(listener);
-  entry.refCount += 1;
   listener(entry.status);
-  return () => releaseStatus(entry, listener);
+  return handle(entry, () => entry.statusListeners.delete(listener));
 }
 
-// A handle releases the entry it subscribed to. The entry outlives every
-// handle: teardown runs only from the idle timer, once the last one released.
-function releaseFleet(
-  entry: Entry,
-  fleetId: string,
-  listener: FleetFrameListener,
-  listeners: Set<FleetFrameListener>,
-): void {
-  listeners.delete(listener);
-  if (listeners.size === 0) entry.fleetListeners.delete(fleetId);
-  decRef(entry);
-}
-
-function releaseStatus(entry: Entry, listener: StatusListener): void {
-  entry.statusListeners.delete(listener);
-  decRef(entry);
-}
-
-function releaseWorkspaceFrameListener(entry: Entry, listener: WorkspaceFrameListener): void {
-  entry.workspaceListeners.delete(listener);
-  decRef(entry);
-}
-
-function decRef(entry: Entry): void {
-  entry.refCount -= 1;
-  if (entry.refCount > 0) return;
-  entry.idleTimer = setTimeout(() => teardown(entry), IDLE_RELEASE_MS);
+// A handle holds one count on the entry it subscribed to and gives it back
+// once: a second call (React's double cleanup, or a caller holding it past
+// teardown) would drop a count it no longer holds and arm a teardown under the
+// subscribers still on the connection. The last count back starts the idle grace.
+function handle(entry: Entry, detach: () => void): () => void {
+  entry.refCount += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    detach();
+    entry.refCount -= 1;
+    if (entry.refCount > 0) return;
+    entry.idleTimer = setTimeout(() => teardown(entry), IDLE_RELEASE_MS);
+  };
 }
 
 // The set the open connection last announced, for a wall that mounts after its
