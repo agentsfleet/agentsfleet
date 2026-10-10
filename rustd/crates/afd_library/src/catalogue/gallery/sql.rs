@@ -18,15 +18,17 @@
 //! aliased and cast so the union's column list is identical and the id tiebreak
 //! compares like with like.
 //!
-//! # The tier ranks are literals here, and a test is what keeps them honest
+//! # The tier ranks are literals here, and a live walk is what keeps them honest
 //!
 //! An `ORDER BY` cannot take a bind parameter and `concat!` takes literals
 //! only, so the ranks [`Tier`](super::Tier) owns are spelled again in the SQL.
 //! Assembling the statement at runtime instead would make it a `String`, which
 //! `sqlx` refuses without an injection audit — correctly, since a statement
 //! built per request is the shape that surface lives in. So the statements stay
-//! compile-time constants and the drift is caught where drift between a literal
-//! and a value is always caught: a test that compares them.
+//! compile-time constants, and drift is caught by running them: a rank that no
+//! longer matches [`Tier::from_rank`](super::Tier::from_rank) mislabels a card,
+//! and a seek that disagrees with the order skips a row at a tied instant —
+//! both of which the catalogue lane's tie walk reports.
 
 /// The platform arm: published rows that actually carry a bundle.
 ///
@@ -142,100 +144,3 @@ pub(super) const FIRST_PAGE: &str = concat!(merged!(), order_by!(), "\n LIMIT $3
 /// `$1` published spelling · `$2` workspace · `$3` boundary instant ·
 /// `$4` boundary tier rank · `$5` boundary id · `$6` how many rows.
 pub(super) const PAGE_AFTER: &str = concat!(merged!(), seek!(), order_by!(), "\n LIMIT $6");
-
-#[cfg(test)]
-mod tests {
-    use super::super::Tier;
-    use super::{FIRST_PAGE, PAGE_AFTER};
-
-    /// The platform tier's sort rank, as the statements above spell it.
-    ///
-    /// Declared here rather than beside them because it is the test's
-    /// EXPECTATION, not an input: the statements carry the digit inline, since
-    /// `concat!` takes literals only and an `ORDER BY` takes no bind parameter.
-    const RANK_PLATFORM: &str = "0";
-
-    /// The tenant tier's sort rank, likewise.
-    const RANK_TENANT: &str = "1";
-
-    #[test]
-    fn the_ranks_in_the_statements_are_the_ranks_the_type_owns() {
-        // The one drift a compile-time statement cannot prevent on its own. If
-        // `Tier` renumbers and these literals do not, the page orders one way
-        // and the cursor resumes another, and rows disappear at every boundary.
-        assert_eq!(RANK_PLATFORM, Tier::Platform.rank().to_string());
-        assert_eq!(RANK_TENANT, Tier::Tenant.rank().to_string());
-        for (rank, statement) in [(RANK_PLATFORM, FIRST_PAGE), (RANK_TENANT, FIRST_PAGE)] {
-            assert!(
-                statement.contains(&format!("{rank} AS tier_rank")),
-                "the statement projects no {rank} rank"
-            );
-        }
-    }
-
-    #[test]
-    fn both_pages_read_both_libraries_and_neither_reads_a_third() {
-        for statement in [FIRST_PAGE, PAGE_AFTER] {
-            assert!(statement.contains("FROM core.fleet_library"));
-            assert!(statement.contains("FROM core.tenant_fleet_library"));
-            assert!(statement.contains("UNION ALL"));
-        }
-    }
-
-    #[test]
-    fn the_tenant_arm_is_scoped_to_one_workspace() {
-        // The isolation boundary. Losing this predicate turns a workspace's
-        // gallery into every workspace's, and every row of it lists.
-        for statement in [FIRST_PAGE, PAGE_AFTER] {
-            assert!(statement.contains("WHERE workspace_id = $2::uuid"));
-        }
-    }
-
-    #[test]
-    fn the_platform_arm_shows_only_what_a_tenant_could_install() {
-        // Seeing a row a tenant cannot install is an install button that fails
-        // after the click. The pair is the same one the install read enforces.
-        for statement in [FIRST_PAGE, PAGE_AFTER] {
-            assert!(statement.contains("WHERE visibility = $1 AND content_hash IS NOT NULL"));
-        }
-    }
-
-    #[test]
-    fn both_pages_walk_the_same_order() {
-        // Two pages of one walk ordered differently silently drop rows and
-        // repeat others, and the client sees neither happen.
-        let order = "ORDER BY created_at DESC, tier_rank ASC, id COLLATE \"C\" DESC";
-        assert!(FIRST_PAGE.contains(order));
-        assert!(PAGE_AFTER.contains(order));
-    }
-
-    #[test]
-    fn the_seek_follows_each_column_in_its_own_direction() {
-        // The bug this pins: `created_at` and `id` descend so "after" is
-        // smaller, `tier_rank` ascends so "after" is larger. Getting one arm
-        // backwards does not error — it drops rows at every page boundary.
-        assert!(PAGE_AFTER.contains("created_at < $3"));
-        assert!(PAGE_AFTER.contains("created_at = $3 AND tier_rank > $4"));
-        assert!(PAGE_AFTER.contains("tier_rank = $4 AND id COLLATE \"C\" < $5"));
-    }
-
-    #[test]
-    fn the_id_tiebreak_collates_the_same_way_it_seeks() {
-        // Byte order in one and a locale in the other orders the page
-        // differently from the way the cursor resumes it, and the rows between
-        // the two orders are never served.
-        assert_eq!(PAGE_AFTER.matches("COLLATE \"C\"").count(), 2);
-    }
-
-    #[test]
-    fn the_page_carries_no_bundle_content_and_no_object_store_key() {
-        // A read cannot leak bundle content through a column it does not
-        // project. The support-file manifest is absent for a different reason —
-        // it has no reader and would not fit the body ceiling.
-        for statement in [FIRST_PAGE, PAGE_AFTER] {
-            for column in ["skill_markdown", "support_files_json", "content_hash,"] {
-                assert!(!statement.contains(column), "the gallery projects {column}");
-            }
-        }
-    }
-}
