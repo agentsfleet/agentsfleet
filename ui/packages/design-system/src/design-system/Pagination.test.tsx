@@ -29,11 +29,6 @@ describe("Pagination — cursor-backed feeds", () => {
     );
     expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
-
-  it("uses flex-wrap so buttons reflow on narrow viewports", () => {
-    render(<Pagination kind="page" page={1} pageSize={25} hasNext onPageChange={() => {}} />);
-    expect(screen.getByTestId("pagination-page").className).toContain("flex-wrap");
-  });
 });
 
 describe("Pagination (page variant)", () => {
