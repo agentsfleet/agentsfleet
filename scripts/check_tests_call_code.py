@@ -53,7 +53,7 @@ TARGET_MAX = 80
 from check_tests_call_code_languages import (
     FIXTURE, FIXTURE_DIRS, JS_SUFFIXES, LANGUAGES, SKIPPED, TEST_DIRS, TS_TEST_NAME,
 )
-from check_tests_call_code_text import call_argument, cfg_test_regions, js_functions, python_literal_spans
+from check_tests_call_code_text import call_argument, cfg_test_regions, js_block_end, js_functions, python_literal_spans
 
 # A shell value that runs something: its output is not a path, so it anchors nothing.
 EXECUTED_SUBSTITUTION = re.compile(r'^"?\$\((?!\s*(?:cd|dirname|git rev-parse|pwd|realpath)\b)')
@@ -61,7 +61,8 @@ EXECUTED_SUBSTITUTION = re.compile(r'^"?\$\((?!\s*(?:cd|dirname|git rev-parse|pw
 SHELL_EXECUTES = re.compile(r"\|\s*(?:\w+=\S*\s+)*(?:bash|sh)\b|>\s*\"?\$\w")
 # A command whose input redirection feeds a shell: `bash < "$SCRIPT_DIR/x.sh"`.
 SHELL_RUNS_INPUT = re.compile(r"(?:^|[;&|(])\s*(?:\w+=\S*\s+)*(?:bash|sh)\b[^;&|]*$")
-JS_COPY = re.compile(r"Bun\.write\([^;]*$")
+# A copy call: a read inside its parentheses copies the file for running.
+JS_COPY = re.compile(r"\bBun\.write\s*\(")
 STRING_LITERAL = re.compile(r""""([^"\n]*)"|'([^'\n]*)'|`([^`]*)`""")
 POSITIONAL = re.compile(r'\$\{?[1-9]\b')
 SHELL_FUNCTION = re.compile(r"^(?P<name>[A-Za-z_]\w*)\s*\(\)\s*\{(?P<body>.*?)^\}", re.MULTILINE | re.DOTALL)
@@ -193,8 +194,9 @@ def executes(code: str, language: str, start: int, argument: str) -> bool:
         line = code[code.rfind("\n", 0, start) + 1 : start]
         feeds_shell = argument.startswith("<") and SHELL_RUNS_INPUT.search(line)
         return bool(SHELL_EXECUTES.search(argument) or feeds_shell)
-    statement_start = max(code.rfind(";", 0, start), code.rfind("\n\n", 0, start))
-    return language == "js" and bool(JS_COPY.search(code[statement_start + 1 : start]))
+    return language == "js" and any(
+        js_block_end(code, copy.end() - 1, "()") > start for copy in JS_COPY.finditer(code, 0, start)
+    )
 
 
 def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]] | None) -> list[lib.Finding]:
