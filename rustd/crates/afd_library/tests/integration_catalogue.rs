@@ -17,6 +17,10 @@ use object_store::memory::InMemory;
 mod entry_privileges;
 #[path = "integration_catalogue/fixtures.rs"]
 mod fixtures;
+#[path = "integration_catalogue/gallery_seed.rs"]
+mod gallery_seed;
+#[path = "integration_catalogue/gallery_ties.rs"]
+mod gallery_ties;
 #[path = "integration_catalogue/owned_paging.rs"]
 mod owned_paging;
 #[path = "integration_catalogue/source_imports.rs"]
