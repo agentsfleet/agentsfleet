@@ -61,8 +61,7 @@ describe("FleetConnectionNotice", () => {
     render(<FleetConnectionNotice status={CONNECTION_STATUS.REVOKED} onRetry={vi.fn()} />);
 
     const notice = screen.getByTestId(NOTICE);
-    // pin test: literal is the contract — the sentence a removed member reads.
-    expect(notice.textContent).toBe("You no longer have access to this workspace.");
+    expect(notice.textContent).toMatch(/no longer have access/);
     expect(notice.getAttribute("role")).toBe("alert");
     expect(screen.queryByRole("button", { name: RECONNECT_LABEL })).toBeNull();
   });

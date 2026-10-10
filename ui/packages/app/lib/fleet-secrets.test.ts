@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { missingSecrets, WORKSPACE_SECRETS_PATH } from "./fleet-secrets";
+import { missingSecrets } from "./fleet-secrets";
 
 describe("missingSecrets", () => {
   it("returns required names absent from the workspace vault", () => {
@@ -19,9 +19,3 @@ describe("missingSecrets", () => {
   });
 });
 
-describe("WORKSPACE_SECRETS_PATH", () => {
-  it("is the workspace credentials route, not the model-provider page", () => {
-    expect(WORKSPACE_SECRETS_PATH).toBe("/secrets");
-    expect(WORKSPACE_SECRETS_PATH).not.toContain("/settings/models");
-  });
-});

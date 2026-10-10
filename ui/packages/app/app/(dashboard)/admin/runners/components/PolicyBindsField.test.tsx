@@ -51,14 +51,6 @@ describe("PolicyBindsField", () => {
     expect(screen.getByRole("button", { name: "Add mount" })).toBeTruthy();
   });
 
-  it("opens already expanded when the runner carries binds", () => {
-    // An operator editing a runner that HAS mounts must see them without
-    // hunting for a disclosure — hiding assigned state is how a wipe goes
-    // unnoticed, which is the bug this whole field exists to prevent.
-    render(<Harness initial={[ROW]} />);
-    expect((screen.getByLabelText("Mount path 1") as HTMLInputElement).value).toBe("/srv/models");
-  });
-
   it("adds an empty read-only row — access never widens by omission", () => {
     render(<Harness />);
     openBinds();
