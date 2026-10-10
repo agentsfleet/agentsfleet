@@ -104,7 +104,7 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety bench-datastore-self-test  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check
