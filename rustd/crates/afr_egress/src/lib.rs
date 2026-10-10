@@ -36,5 +36,5 @@ pub use self::error::{Error, Result};
 pub use self::mint::{Mint, Minted};
 pub use self::network::{Network, RESPONSE_MAX_BYTES, blocked_address, guarded, guarded_by};
 pub use self::refusal::Refusal;
-pub use self::resolve::{BlockedAddress, Resolve, SystemResolver, unblocked};
+pub use self::resolve::{BlockedAddress, Resolve, SystemResolver, blocked_literal, unblocked};
 pub use self::transport::{Inbound, Outbound, Transport};
