@@ -53,7 +53,9 @@ TARGET_MAX = 80
 from check_tests_call_code_languages import (
     FIXTURE, FIXTURE_DIRS, JS_SUFFIXES, LANGUAGES, SKIPPED, TEST_DIRS, TS_TEST_NAME,
 )
-from check_tests_call_code_text import call_argument, cfg_test_regions, js_code_only, js_functions, matching_close, python_literal_spans
+from check_tests_call_code_text import (
+    call_argument, cfg_test_regions, in_js_literal, js_code_only, js_functions, matching_close, python_literal_spans,
+)
 
 # A shell value that runs something: its output is not a path, so it anchors nothing.
 EXECUTED_SUBSTITUTION = re.compile(r'^"?\$\((?!\s*(?:cd|dirname|git rev-parse|pwd|realpath)\b)')
@@ -82,14 +84,15 @@ def language_of(path: Path) -> str | None:
 
 def is_test_file(relative_path: Path) -> bool:
     name, parts = relative_path.name, relative_path.parts
-    if any(part in FIXTURE_DIRS for part in parts[:-1]):
-        return False
     if TS_TEST_NAME.search(name) or name.endswith(("_test.sh", "_test.py")):
         return True
     if name.startswith("test_") and name.endswith(".py"):
         return True
     if name.endswith(".rs") and (name == "tests.rs" or name.endswith("_tests.rs")):
         return True
+    # A helper beneath a fixture directory is the tests' input; one named as a test is a test anywhere.
+    if any(part in FIXTURE_DIRS for part in parts[:-1]):
+        return False
     return language_of(relative_path) is not None and bool(TEST_DIRS.intersection(parts[:-1]))
 
 
@@ -206,7 +209,7 @@ def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]]
         start = read.start() + len(read.group(0)) - len(read.group(0).lstrip(LEADING_DELIMITERS))
         if regions is not None and not any(a <= start <= b for a, b in regions):
             continue
-        if any(a <= start < b for a, b in scan.literals):
+        if any(a <= start < b for a, b in scan.literals) or in_js_literal(scan.code, start, scan.language):
             continue
         argument = call_argument(scan.code, start, scan.language)
         if scan.language == "python" or read.group(0).lstrip().startswith("."):
@@ -222,6 +225,8 @@ def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]]
 def reads_a_parameter(body: str, language: str, param: re.Pattern[str]) -> bool:
     for read in LANGUAGES[language]["reads"].finditer(body):
         start = read.start() + len(read.group(0)) - len(read.group(0).lstrip(LEADING_DELIMITERS))
+        if in_js_literal(body, start, language):
+            continue
         argument = call_argument(body, start, language)
         if param.search(argument) and not executes(body, language, start, argument):
             return True
