@@ -15,6 +15,59 @@ use super::{
 /// The field every runner log line names its event in.
 const EVENT_FIELD: &str = "event";
 
+#[cfg(debug_assertions)]
+#[derive(Debug)]
+struct Held(Arc<std::sync::atomic::AtomicBool>);
+
+#[cfg(debug_assertions)]
+impl Drop for Held {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[cfg(debug_assertions)]
+impl afr_sandbox::Resources for Held {
+    fn close(self: Box<Self>) -> afr_sandbox::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(debug_assertions)]
+#[tokio::test]
+#[expect(clippy::unwrap_used, reason = "test setup and assertions")]
+async fn test_booted_host_retains_resources_while_its_engine_serves() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use afr_sandbox::{Booted, Limits, ProbePaths, SandboxRequest, Started, UnsandboxedEngine};
+
+    let dir = tempfile::tempdir_in("/tmp").unwrap();
+    let released = Arc::new(AtomicBool::new(false));
+    let probe = afr_sandbox::probe(&ProbePaths::default());
+    let host = super::Host::from(Booted {
+        started: Started {
+            engine: UnsandboxedEngine::new(dir.path().to_owned()).unwrap(),
+            resources: Box::new(Held(Arc::clone(&released))),
+        },
+        probe: probe.clone(),
+    });
+    assert_eq!(host.probe, probe);
+    assert!(!released.load(Ordering::SeqCst));
+    let sandbox = host
+        .engine
+        .prepare(SandboxRequest::new("host-transfer", Limits::default()))
+        .await
+        .unwrap();
+    assert_eq!(
+        sandbox.workspace().unwrap().root,
+        dir.path().join("host-transfer/workspace")
+    );
+    sandbox.destroy().await.unwrap();
+    assert!(!released.load(Ordering::SeqCst));
+    drop(host);
+    assert!(released.load(Ordering::SeqCst));
+}
+
 /// A refused token ends `run` with the one status the unit will not restart
 /// on; every other failure keeps the status systemd restarts after.
 #[test]

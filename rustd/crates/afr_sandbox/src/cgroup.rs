@@ -25,6 +25,7 @@ use crate::probe::REQUIRED_CONTROLLERS;
 mod delegated;
 mod freezer;
 
+pub(crate) use self::delegated::enable_controllers;
 pub use self::delegated::{MECHANISM_DELEGATED_CGROUP, SELF_CGROUP_PATH, delegated_root};
 pub use self::freezer::Freezer;
 

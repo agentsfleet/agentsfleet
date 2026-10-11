@@ -17,6 +17,8 @@ mod budgets;
 #[cfg(target_os = "linux")]
 mod confinement;
 #[cfg(target_os = "linux")]
+mod delegation;
+#[cfg(target_os = "linux")]
 mod egress;
 #[cfg(target_os = "linux")]
 mod egress_closed;
