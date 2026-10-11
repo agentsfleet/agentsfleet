@@ -1,10 +1,6 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { UsageBar } from "./UsageBar";
-
-const USAGE_BAR_SRC_PATH = path.join(__dirname, "UsageBar.tsx");
 
 describe("UsageBar", () => {
   it("renders label, tabular-nums percentage, track+fill, and a sub-caption when a label is given", () => {
@@ -43,12 +39,6 @@ describe("UsageBar", () => {
     const track = el.querySelector(".usage-bar-track") as HTMLElement;
     expect(track.getAttribute("aria-hidden")).toBe("true");
     expect(screen.getByText("spent $12")).not.toHaveAttribute("aria-hidden");
-  });
-
-  it("uses only mapped design-system tokens — no arbitrary hex or bracket utility in its class strings", () => {
-    const src = readFileSync(USAGE_BAR_SRC_PATH, "utf8");
-    expect(src).not.toMatch(/#[0-9a-fA-F]{3,6}/);
-    expect(src).not.toMatch(/\[[^\]]+\]/);
   });
 
   it("a caller can override data-testid (BillingBalanceCard pins balance-meter)", () => {

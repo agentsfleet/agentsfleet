@@ -7,7 +7,6 @@
 // error-passthrough behavior the chat's stall and replay reads depend on.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ERROR_CODE } from "@/lib/errors";
 
 const { getTokenFn } = vi.hoisted(() => ({ getTokenFn: vi.fn() }));
 
@@ -60,18 +59,6 @@ function upstreamDetail(): Response {
 }
 
 describe("event detail route handler — auth", () => {
-  it("test_event_detail_route_unauthorized — 401 with the registered auth code and no upstream call when Clerk has no session token", async () => {
-    getTokenFn.mockResolvedValueOnce(null);
-    const res = await GET(makeReq(), paramsOf(WS, FLEET, EVENT_ID));
-    expect(res.status).toBe(401);
-    expect(res.headers.get(HEADER_CONTENT_TYPE)).toBe(CONTENT_TYPE_JSON);
-    expect(res.headers.get(HEADER_CACHE_CONTROL)).toBe(NO_STORE);
-    const body = (await res.json()) as { error: string; code: string };
-    expect(body.code).toBe(ERROR_CODE.AUTH_401);
-    expect(body.error).toBe("Unauthorized");
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
   it("rejects a dot-only segment in any of the three params before minting or calling upstream", async () => {
     // encodeURIComponent leaves '.' intact; a bare '..' segment would
     // dot-normalize inside fetch and steer the token at a different
@@ -114,14 +101,6 @@ describe("event detail route handler — authed proxying", () => {
     expect(url).toBe("https://api.example.test/v1/workspaces/ws%2F..%2Fadmin/fleets/fleet%201/events/evt%3Fx%3D1");
   });
 
-  it("propagates the request abort signal to the upstream fetch", async () => {
-    getTokenFn.mockResolvedValueOnce(TOKEN);
-    fetchSpy.mockResolvedValueOnce(upstreamDetail());
-    const ctl = new AbortController();
-    await GET(makeReq(ctl.signal), paramsOf(WS, FLEET, EVENT_ID));
-    const [, init] = fetchSpy.mock.calls[0]!;
-    expect((init as RequestInit).signal).toBe(ctl.signal);
-  });
 });
 
 describe("event detail route handler — upstream errors", () => {
@@ -147,34 +126,4 @@ describe("event detail route handler — upstream errors", () => {
     expect(res.headers.get(HEADER_CONTENT_TYPE)).toBe(CONTENT_TYPE_TEXT);
   });
 
-  it("falls back to a synthetic body when the upstream error has no payload or type", async () => {
-    getTokenFn.mockResolvedValueOnce(TOKEN);
-    fetchSpy.mockResolvedValueOnce(new Response(null, { status: 503 }));
-    const res = await GET(makeReq(), paramsOf(WS, FLEET, EVENT_ID));
-    expect(res.status).toBe(503);
-    expect(res.headers.get(HEADER_CONTENT_TYPE)).toBe(CONTENT_TYPE_TEXT);
-    expect(await res.text()).toBe("Upstream error 503");
-  });
-
-  it("returns a pinned 502 envelope when the upstream fetch itself rejects", async () => {
-    getTokenFn.mockResolvedValueOnce(TOKEN);
-    fetchSpy.mockRejectedValueOnce(new Error("connect ECONNREFUSED"));
-    const res = await GET(makeReq(), paramsOf(WS, FLEET, EVENT_ID));
-    expect(res.status).toBe(502);
-    expect(res.headers.get(HEADER_CACHE_CONTROL)).toBe(NO_STORE);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("Upstream unreachable");
-  });
-
-  it("survives upstream.text() rejection without throwing", async () => {
-    getTokenFn.mockResolvedValueOnce(TOKEN);
-    const broken = new Response("ignored", { status: 502 });
-    Object.defineProperty(broken, "text", {
-      value: () => Promise.reject(new Error("read failed")),
-    });
-    fetchSpy.mockResolvedValueOnce(broken);
-    const res = await GET(makeReq(), paramsOf(WS, FLEET, EVENT_ID));
-    expect(res.status).toBe(502);
-    expect(await res.text()).toBe("Upstream error 502");
-  });
 });

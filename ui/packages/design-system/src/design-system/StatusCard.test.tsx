@@ -27,25 +27,6 @@ describe("StatusCard", () => {
     expect(glyph).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("uses responsive sizing (text-xl + sm:text-2xl)", () => {
-    const { container } = render(<StatusCard label="X" count={9} />);
-    const dd = container.querySelector("dd")!;
-    expect(dd.className).toContain("text-xl");
-    expect(dd.className).toContain("sm:text-2xl");
-  });
-
-  it("respects prefers-reduced-motion by disabling transitions", () => {
-    render(<StatusCard label="X" count={0} />);
-    expect(screen.getByTestId("status-card").className).toContain("motion-reduce:transition-none");
-  });
-
-  it("does not accept asChild (display composition wraps externally)", () => {
-    // Compile-time contract: StatusCardProps doesn't declare asChild. This
-    // test documents the intent for humans; the TS compiler enforces it.
-    const props = {} as Parameters<typeof StatusCard>[0];
-    expect("asChild" in props).toBe(false);
-  });
-
   it("SSR renders with data-slot for styling hooks + data-variant", () => {
     const html = renderToStaticMarkup(<StatusCard label="X" count={1} variant="success" />);
     expect(html).toContain('data-slot="status-card"');

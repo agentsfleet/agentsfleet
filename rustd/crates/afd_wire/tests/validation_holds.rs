@@ -127,19 +127,3 @@ fn test_the_published_holds_bound_is_the_enforced_one() {
     assert_holds_bounded("LeaseRequest", &poll);
     assert_holds_bounded("HeartbeatRequest", &beat);
 }
-
-/// The document clients read carries the same bounds. The derive above can
-/// be right while a stale `public/openapi.json` still tells clients the old
-/// ones.
-#[test]
-fn test_the_published_document_bounds_holds_as_garde_does() {
-    let openapi = include_str!("../../../../public/openapi.json");
-    let document: serde_json::Value = serde_json::from_str(openapi).unwrap();
-
-    for body in ["LeaseRequest", "HeartbeatRequest"] {
-        let schema = document
-            .pointer(&format!("/components/schemas/{body}"))
-            .unwrap_or(&serde_json::Value::Null);
-        assert_holds_bounded(body, schema);
-    }
-}

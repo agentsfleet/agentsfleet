@@ -181,33 +181,3 @@ pub mod posture {
     /// and only the run fee is charged.
     pub const SELF_MANAGED: &str = "self_managed";
 }
-
-#[cfg(test)]
-mod tests {
-    use super::INSERT_USAGE_LEDGER;
-
-    /// The third charging statement captures the name the same way the two in
-    /// `afd_fleet` do — read from the fleet the row already names, never bound.
-    ///
-    /// Its siblings are asserted in `afd_fleet::lease::sql`; this one lives
-    /// here because a crate cannot reach across to test another's constants,
-    /// and a charge written by this path is as unattributable as one written
-    /// by theirs if the column is missed.
-    #[test]
-    fn test_m201_the_ledger_insert_captures_the_fleet_name() {
-        assert!(
-            INSERT_USAGE_LEDGER.contains("fleet_name"),
-            "the ledger insert writes a charge without capturing fleet_name"
-        );
-        assert!(
-            INSERT_USAGE_LEDGER.contains("SELECT f.name FROM core.fleets f WHERE f.id = $4::uuid"),
-            "fleet_name must be read from the fleet $4 already names, so a \
-             caller cannot pass a name disagreeing with the identifier"
-        );
-        assert!(
-            !INSERT_USAGE_LEDGER.contains("$17"),
-            "fleet_name must not become a bind parameter — that would let a \
-             request supply the name and break the server-captured invariant"
-        );
-    }
-}

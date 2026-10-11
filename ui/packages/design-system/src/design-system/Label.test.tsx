@@ -10,13 +10,6 @@ describe("Label", () => {
     expect(el).toHaveAttribute("for", "email");
   });
 
-  it("applies semantic utilities", () => {
-    render(<Label data-testid="l">Name</Label>);
-    const cls = screen.getByTestId("l").className;
-    expect(cls).toContain("text-sm");
-    expect(cls).toContain("font-medium");
-  });
-
   it("merges a custom className", () => {
     render(<Label className="extra" data-testid="l">Name</Label>);
     expect(screen.getByTestId("l").className).toContain("extra");

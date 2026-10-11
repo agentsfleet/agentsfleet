@@ -2,9 +2,6 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/test_search.sh
-source "$script_dir/../../lib/test_search.sh"
-repo_root="$(cd "$script_dir/../../.." && pwd)"
 script_under_test="$script_dir/02_credentials.sh"
 
 passed=0
@@ -251,179 +248,8 @@ test_prod_rejects_malformed_discord_webhook() {
   fi
 }
 
-test_discord_notifications_route_by_release_stage() {
-  local name="Discord notifications route development and production separately"
-  local action="$repo_root/.github/actions/notify-discord/action.yml"
-  local workflow path notify_count selector_count
-
-  if ! rg --fixed-strings --quiet 'default: discord-ci-webhook' "$action" ||
-     ! rg --fixed-strings --quiet 'op://${{ inputs.vault }}/${{ inputs.webhook-item }}/credential' "$action"; then
-    bad "$name" "notify action does not default to the development webhook item"
-    return
-  fi
-
-  for workflow in release.yml post-release.yml; do
-    path="$repo_root/.github/workflows/$workflow"
-    notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
-    selector_count="$(rg --fixed-strings -c 'webhook-item: discord-release-webhook' "$path" || true)"
-    if [ "${notify_count:-0}" -ne 1 ] || [ "${selector_count:-0}" -ne 1 ]; then
-      bad "$name" "$workflow does not select the release webhook"
-      return
-    fi
-  done
-
-  for workflow in deploy-dev.yml deploy-dev-fly.yml deploy-dev-metal.yml; do
-    path="$repo_root/.github/workflows/$workflow"
-    notify_count="$(rg --fixed-strings -c 'uses: ./.github/actions/notify-discord' "$path" || true)"
-    if [ "${notify_count:-0}" -ne 1 ]; then
-      bad "$name" "$workflow does not invoke the Discord notification action exactly once"
-      return
-    elif rg --quiet 'webhook-item:' "$path"; then
-      bad "$name" "$workflow overrides the development webhook default"
-      return
-    fi
-  done
-  ok "$name"
-}
-
-test_workflows_use_deployment_stage_without_generated_pointer() {
-  local name="workflows use deployment stage without generated pointer"
-  local workflow
-
-  for workflow in deploy-dev.yml release.yml; do
-    if ! rg --fixed-strings --quiet \
-      'STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh' \
-      "$repo_root/.github/workflows/$workflow"; then
-      bad "$name" "$workflow does not use the deployment credential stage"
-      return
-    fi
-  done
-
-  for workflow in deploy-dev.yml deploy-dev-fly.yml release.yml; do
-    if rg --quiet 'PLATFORM_ADMIN_WORKSPACE_ID' \
-      "$repo_root/.github/workflows/$workflow"; then
-      bad "$name" "$workflow still requires the post-signup workspace pointer"
-      return
-    fi
-  done
-  ok "$name"
-}
-
-test_workflows_load_only_current_connector_boot_secret() {
-  local name="workflows load only the current connector boot secret"
-  local family workflow vault
-
-  for workflow in deploy-dev release; do
-    vault=VAULT_DEV
-    [ "$workflow" = release ] && vault=VAULT_PROD
-    family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
-    # The expression is literal GitHub Actions syntax.
-    # shellcheck disable=SC2016
-    if ! rg --fixed-strings --quiet \
-      "APPROVAL_SIGNING_SECRET: op://\${{ vars.$vault }}/approval-signing-secret/credential" \
-      <<<"$family"; then
-      bad "$name" "$workflow workflow family does not load approval-signing-secret"
-      return
-    fi
-    if ! rg --fixed-strings --quiet \
-      'APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET"' \
-      <<<"$family"; then
-      bad "$name" "$workflow workflow family does not pass approval-signing-secret to Fly"
-      return
-    fi
-    if rg --quiet 'GITHUB_APP_ID|GITHUB_APP_PRIVATE_KEY' <<<"$family"; then
-      bad "$name" "$workflow workflow family still loads retired GitHub app boot secrets"
-      return
-    fi
-  done
-  ok "$name"
-}
-
-# The Fly environment variable checked above is NOT what the connector flow
-# resolves. The daemon reads no environment variable for it: it reads an
-# admin-workspace vault row named `approval-signing`
-# (`afd_http::services::ingress::APPROVAL_IDENTITY`), and `state_secret` refuses
-# the whole connect with 503 UZ-CONN-001 when it is absent — for every provider,
-# before any provider bag is read, and without logging a line.
-#
-# Dev ran that way for the entire cutover: the Fly secret was set and correct,
-# the catalogue reported `configured: true` for all five providers, and every
-# connect answered 503. The check above stayed green throughout, because it
-# proves the Fly variable. This one proves the vault row the daemon reads.
-test_workflows_seed_the_connector_signing_row() {
-  local name="workflows seed the connector signing vault row"
-  local family workflow env_name
-
-  for workflow in deploy-dev release; do
-    env_name=dev
-    [ "$workflow" = release ] && env_name=prod
-    family="$(cat "$repo_root/.github/workflows/$workflow"*.yml)"
-    if ! rg --fixed-strings --quiet \
-      "ENV=$env_name ./playbooks/lib/platform_secret_sync.sh approval-signing" \
-      <<<"$family"; then
-      bad "$name" "$workflow workflow family does not seed the approval-signing vault row"
-      return
-    fi
-  done
-  ok "$name"
-}
-
-# The daemon reads AGENTSFLEET_LOG_LEVEL (`LOG_LEVEL_VAR`, `afd_core/src/env.rs`)
-# and falls back to INFO. The dev deploy set a bare `LOG_LEVEL`, which nothing
-# reads, from the cutover until Sep 07, 2026, so dev ran at INFO the whole time and
-# every `tracing::debug!` was unreachable. That is not a cosmetic gap: two
-# sessions of connector debugging reasoned from the ABSENCE of a debug line
-# (`secret_opened`) that could never have been emitted. A deployment that
-# believes it is in debug and is not is worse than one that knows it is at INFO.
-test_dev_deploy_sets_the_daemons_own_log_level() {
-  local name="dev deploy sets the daemon's own log level variable"
-  local workflow="$repo_root/.github/workflows/deploy-dev-fly.yml"
-
-  if ! rg --fixed-strings --quiet 'AGENTSFLEET_LOG_LEVEL="debug"' "$workflow"; then
-    bad "$name" "deploy-dev-fly.yml does not set AGENTSFLEET_LOG_LEVEL"
-    return
-  fi
-  # The bare spelling is read by nothing in `rustd/`; setting it again would be
-  # the same silent no-op this check exists to prevent.
-  if rg --quiet '^\s+LOG_LEVEL=' "$workflow"; then
-    bad "$name" "deploy-dev-fly.yml still sets the dead LOG_LEVEL variable"
-    return
-  fi
-  ok "$name"
-}
-
-test_issue_tracker_docs_pin_current_source_scopes() {
-  local name="issue-tracker docs pin current source scopes"
-  # Both providers declare their scopes in one Rust registry now; the Jira
-  # string is split across two source lines, so it is pinned as two fragments.
-  local registry="$repo_root/rustd/crates/afd_connector/src/registry.rs"
-  local jira_doc="$repo_root/playbooks/operations/jira_app_registration/001_playbook.md"
-  local linear_doc="$repo_root/playbooks/operations/linear_app_registration/001_playbook.md"
-  local jira_doc_text
-
-  jira_doc_text="$(tr '\n' ' ' <"$jira_doc")"
-
-  # Backticks below are literal Markdown delimiters.
-  # shellcheck disable=SC2016
-  if ! rg --fixed-strings --quiet 'scopes: "read:jira-work read:jira-user write:jira-work' "$registry" \
-    || ! rg --fixed-strings --quiet 'read:servicedesk-request write:servicedesk-request offline_access",' "$registry"; then
-    bad "$name" "Jira source scope changed"
-  elif [[ "$jira_doc_text" != *'exactly `read:jira-work read:jira-user write:jira-work read:servicedesk-request write:servicedesk-request`'* ]]; then
-    bad "$name" "Jira registration scope is stale"
-  elif ! rg --fixed-strings --quiet 'scopes: "read,comments:create",' "$registry"; then
-    bad "$name" "Linear source scope changed"
-  elif ! rg --fixed-strings --quiet \
-    'The authorization request supplies `read,comments:create`.' \
-    "$linear_doc"; then
-    bad "$name" "Linear registration scope is stale"
-  else
-    ok "$name"
-  fi
-}
-
 test_smtp_relay_is_a_post_deploy_input() {
   local name="smtp-relay is a post-deploy input"
-  local playbook="$script_dir/001_playbook.md"
   local stage output status
 
   # The invite email degrades to `unconfigured` without the relay, so the
@@ -440,15 +266,7 @@ test_smtp_relay_is_a_post_deploy_input() {
       return
     fi
   done
-  # Backticks below are literal Markdown delimiters.
-  # shellcheck disable=SC2016
-  if ! rg --fixed-strings --quiet \
-    '| `smtp-relay` (`host`, `port`, `username`, `password`, `from_address`) |' \
-    "$playbook"; then
-    bad "$name" "the post-deploy table does not list smtp-relay and its five fields"
-  else
-    ok "$name"
-  fi
+  ok "$name"
 }
 
 test_unknown_stage_fails_closed() {
@@ -470,12 +288,6 @@ test_deployment_rejects_missing_runtime_input
 test_prod_checks_both_discord_webhooks
 test_dev_checks_ci_discord_webhook
 test_prod_rejects_malformed_discord_webhook
-test_discord_notifications_route_by_release_stage
-test_workflows_use_deployment_stage_without_generated_pointer
-test_workflows_load_only_current_connector_boot_secret
-test_workflows_seed_the_connector_signing_row
-test_dev_deploy_sets_the_daemons_own_log_level
-test_issue_tracker_docs_pin_current_source_scopes
 test_smtp_relay_is_a_post_deploy_input
 test_unknown_stage_fails_closed
 

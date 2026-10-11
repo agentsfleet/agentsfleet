@@ -17,7 +17,8 @@ const SHELLS = ["bash", "zsh", "fish", "sh"] as const;
 // `ubuntu-latest`, so spawning it unconditionally fails the lane with
 // `Executable not found in $PATH` rather than with anything about our script.
 // `bash` is everywhere, and is asserted present rather than probed: a box
-// without it is broken, which `external-commands.unit.test.ts` says out loud.
+// without it is broken, which the unit lane's runner (`scripts/enforce-coverage.mjs`)
+// refuses to start on.
 const PARSEABLE = ["bash", "zsh"] as const;
 const ALWAYS_PARSEABLE = "bash" as const;
 

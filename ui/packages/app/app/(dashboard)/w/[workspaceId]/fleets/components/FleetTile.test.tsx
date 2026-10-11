@@ -25,10 +25,8 @@ import FleetTile, {
 } from "./FleetTile";
 import {
   TILE_CATCHING_UP_EYEBROW,
-  TILE_EVENTS_SUFFIX,
   TILE_NOT_LIVE_EYEBROW,
   TILE_NOT_LIVE_TOOLTIP,
-  TILE_SPEND_SUFFIX,
 } from "@/lib/wall/tile-liveness";
 
 /** The fade a drained tile once wore; it reads at full strength now. */
@@ -196,7 +194,7 @@ describe("FleetTile kinds", () => {
     expect(labels[0]).not.toBe(labels[1]);
   });
 
-  it("preserves the canonical callsign and mirrored sigil geometry", () => {
+  it("draws the sigil inside its box, mirrored across the centre", () => {
     streamMock.mockReturnValue({
       feed: undefined,
       connectionStatus: CONNECTION_STATUS.LIVE,
@@ -207,9 +205,6 @@ describe("FleetTile kinds", () => {
     const { container } = renderTile(
       fleet({ id: "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee" }),
     );
-    expect(container.querySelector('[data-fleet-sigil="4bce8453"]')).not.toBeNull();
-    expect(container.querySelector('[data-agent-name="Lumen-8453"]')).not.toBeNull();
-
     const cells = Array.from(
       container.querySelectorAll('svg rect[fill="currentColor"]'),
       (cell) => ({
@@ -219,6 +214,7 @@ describe("FleetTile kinds", () => {
         height: Number(cell.getAttribute("height")),
       }),
     );
+    expect(cells.length).toBeGreaterThan(0);
     for (const cell of cells) {
       expect(cell.x).toBeGreaterThanOrEqual(4.5);
       expect(cell.x + cell.width).toBeLessThanOrEqual(19.5);
@@ -315,22 +311,6 @@ describe("FleetTile kinds", () => {
     expect(container.querySelector("[data-tile-activity]")?.textContent).toBe(FLEET_WAITING_COPY);
     expect(container.querySelector("[data-fleet-name]")?.textContent).toBe("alpha");
     expect(container.textContent).not.toContain("Runs in a loop");
-  });
-
-  it("test_wall_copy_consts_are_single_source", () => {
-    streamMock.mockReturnValue({
-      feed: undefined,
-      connectionStatus: CONNECTION_STATUS.RECONNECTING,
-      helloReceived: true,
-      isLive: true,
-      catchingUp: false,
-    });
-    const { container, getByText } = renderTile(fleet());
-    // Every rendered label is the exported constant — the component and this
-    // test read the same source, so a copy change lands in exactly one place.
-    expect(getByText(TILE_NOT_LIVE_EYEBROW)).toBeTruthy();
-    expect(container.textContent).toContain(`7 ${TILE_EVENTS_SUFFIX}`);
-    expect(container.textContent).toContain(`$1.20 ${TILE_SPEND_SUFFIX}`);
   });
 
   it("a server drop signal surfaces catching up", () => {

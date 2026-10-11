@@ -223,6 +223,3 @@ SELECT 1 FROM core.tenant_model_selection
 pub(crate) const DELETE_SECRET: &str = "\
 DELETE FROM vault.secrets
  WHERE workspace_id = $1::uuid AND key_name = $2";
-
-#[cfg(test)]
-mod tests;

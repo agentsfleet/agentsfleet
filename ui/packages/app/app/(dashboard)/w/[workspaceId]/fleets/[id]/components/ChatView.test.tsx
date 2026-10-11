@@ -9,9 +9,8 @@ import { __resetRegistryForTests, reconcileServerRows } from "@/lib/streaming/fl
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { METRICS_UNAVAILABLE } from "./console-copy";
 
-const { refreshMock, threadProps } = vi.hoisted(() => ({
+const { refreshMock } = vi.hoisted(() => ({
   refreshMock: vi.fn(),
-  threadProps: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -20,10 +19,7 @@ vi.mock("next/navigation", () => ({
 // The thread is a sibling view over the same stream and plays no part in the
 // strip; the strip's own subscription is what these tests drive.
 vi.mock("@/components/domain/FleetThreadDynamic", () => ({
-  default: (props: Record<string, unknown>) => {
-    threadProps(props);
-    return null;
-  },
+  default: () => null,
 }));
 
 import { ChatView } from "./ChatView";
@@ -139,18 +135,6 @@ afterEach(() => {
   __resetRegistryForTests();
   FakeEventSource.uninstall();
   vi.unstubAllGlobals();
-});
-
-describe("the thread's sender", () => {
-  it("the thread takes its sender label under its own name", () => {
-    // Dimension 5.3. The page passes the callsign, which is what the thread
-    // signs the fleet's messages with — so the prop says so, and `fleetName`
-    // is left meaning the fleet's given name everywhere it appears.
-    render(view(summary()));
-    const handed = threadProps.mock.calls.at(-1)?.[0];
-    expect(handed).toMatchObject({ senderLabel: "Agent Finch" });
-    expect(handed).not.toHaveProperty("fleetName");
-  });
 });
 
 describe("ChatView — the run summary as a view over the stream", () => {

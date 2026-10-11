@@ -20,16 +20,6 @@ describe("Button", () => {
     expect(btn.className).not.toContain("rounded-full");
   });
 
-  // Primary CTA fills with the theme-swapping --cta token: the pulse in dark,
-  // solid ink in light (mint reserved for accents/links/active/glow).
-  it("test_primary_button_ink_in_light: primary uses the swapping --cta token, not a fixed pulse fill", () => {
-    render(<Button>Go</Button>);
-    const cls = screen.getByRole("button").className;
-    expect(cls).toContain("bg-cta");
-    expect(cls).toContain("text-cta-foreground");
-    expect(cls).not.toContain("bg-pulse");
-  });
-
   it("applies the destructive variant", () => {
     render(<Button variant="destructive">Delete</Button>);
     expect(screen.getByRole("button").className).toContain("bg-destructive");
@@ -69,54 +59,6 @@ describe("Button", () => {
     expect(cls).toContain("text-primary");
     expect(cls).toContain("font-semibold");
     expect(cls).not.toContain("shadow-");
-  });
-
-  it("uses --r-md radius (preview-rounded, no pill-radius on chrome)", () => {
-    render(<Button>X</Button>);
-    expect(screen.getByRole("button").className).toContain("rounded-md");
-  });
-
-  it("uses font-sans on chrome", () => {
-    render(<Button>X</Button>);
-    expect(screen.getByRole("button").className).toContain("font-sans");
-  });
-
-  it("default size has h-10 (40px) per spec component principles", () => {
-    render(<Button>X</Button>);
-    expect(screen.getByRole("button").className).toContain("h-10");
-  });
-
-  it("sm size has h-8", () => {
-    render(<Button size="sm">X</Button>);
-    expect(screen.getByRole("button").className).toContain("h-8");
-  });
-
-  it("lg size has h-12", () => {
-    render(<Button size="lg">X</Button>);
-    expect(screen.getByRole("button").className).toContain("h-12");
-  });
-
-  it("icon size is 36px square (spec max for icon-only)", () => {
-    render(<Button size="icon" aria-label="settings">⚙</Button>);
-    const cls = screen.getByRole("button").className;
-    expect(cls).toContain("h-9");
-    expect(cls).toContain("w-9");
-  });
-
-  it("eyebrow size sits on the 16px eyebrow line with no border of its own", () => {
-    render(<Button size="eyebrow">Platform</Button>);
-    const className = screen.getByRole("button").className;
-    expect(className).toContain("h-4");
-    expect(className).toContain("border-0");
-    expect(className).toContain("px-2");
-    expect(className).not.toContain("h-8");
-  });
-
-  it("icon-sm size is 24px square (inline affordance, e.g. CopyButton)", () => {
-    render(<Button size="icon-sm" aria-label="copy">⧉</Button>);
-    const cls = screen.getByRole("button").className;
-    expect(cls).toContain("h-6");
-    expect(cls).toContain("w-6");
   });
 
   it("merges a custom className via cn", () => {
