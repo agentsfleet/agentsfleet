@@ -49,6 +49,7 @@ pub(crate) struct HubInner {
     /// and hold that channel's entry across the send — and per-key is exactly
     /// what a sharded map gives. Two DIFFERENT channels never needed ordering
     /// between them; they are independent subscriptions on one socket.
+    pub(super) namespace: crate::namespace::Namespace,
     pub(super) channels: DashMap<String, ChannelEntry>,
     /// How many times a connection has been established, including the first.
     /// A process that opens two has broken Invariant 2, and this is how a test
@@ -119,6 +120,7 @@ impl HubInner {
     /// An empty table that has opened no connection yet.
     pub(super) fn new() -> Self {
         Self {
+            namespace: crate::namespace::Namespace::default(),
             channels: DashMap::new(),
             connections_opened: AtomicU64::new(0),
         }
@@ -152,11 +154,16 @@ impl HubInner {
 
     /// Hands a message to the readers of its channel, allocated once for all
     /// of them.
-    pub(crate) fn dispatch(&self, message: Message) {
+    pub(crate) fn dispatch(&self, mut message: Message) {
         if let Some(entry) = self.channels.get(&message.channel) {
             // The error case is "no receivers right now", which is not a
             // failure: a subscription being dropped as a message arrives is an
             // ordinary race, and the refcount cleanup is already on its way.
+            let Some(logical) = self.namespace.logical(&message.channel) else {
+                return;
+            };
+            let prefix_len = message.channel.len() - logical.len();
+            message.channel.drain(..prefix_len);
             let _ = entry.sender.send(Delivery::Message(Arc::new(message)));
         }
     }

@@ -39,6 +39,12 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             Error::new(ErrorKind::InvalidUrl { knob: KNOB }),
         ),
         (
+            "invalid namespace",
+            Error::new(ErrorKind::InvalidNamespace {
+                source: garde::Report::new(),
+            }),
+        ),
+        (
             "ca cert unreadable",
             Error::new(ErrorKind::CaCertUnreadable {
                 path: "/tls/ca.crt".to_owned(),

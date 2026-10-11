@@ -64,6 +64,7 @@ impl Capacity {
             ..Self::default()
         };
         for key in keys.iter().take(walk_cap) {
+            let key = &redis.key(key);
             sample.streams_walked += 1;
             sample.retained_entries += retain::length_of(redis, key).await?;
             if let Some(backlog) = retain::backlog_of(redis, key, FLEET_CONSUMER_GROUP).await? {

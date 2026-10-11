@@ -120,7 +120,9 @@ impl OutboundReader {
         for arg in options.to_redis_args() {
             cmd.arg(arg);
         }
-        cmd.arg("STREAMS").arg(OUTBOUND_STREAM_KEY).arg(read_id);
+        cmd.arg("STREAMS")
+            .arg(self.connection.key(OUTBOUND_STREAM_KEY))
+            .arg(read_id);
 
         let reply: redis::streams::StreamReadReply = self
             .connection
@@ -156,7 +158,7 @@ impl OutboundReader {
     /// next turn tries again.
     async fn drop_undeliverable(&mut self, id: &str) {
         let mut cmd = redis::cmd(CMD_XACK);
-        cmd.arg(OUTBOUND_STREAM_KEY)
+        cmd.arg(self.connection.key(OUTBOUND_STREAM_KEY))
             .arg(OUTBOUND_CONSUMER_GROUP)
             .arg(id);
         let acknowledged: Result<i64> = self

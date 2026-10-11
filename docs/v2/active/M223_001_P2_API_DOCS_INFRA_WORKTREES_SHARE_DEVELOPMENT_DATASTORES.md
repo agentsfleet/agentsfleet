@@ -55,11 +55,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_dragonfly/src/{hub.rs,hub/channels.rs,hub/dispatch.rs,hub/pump.rs,hub/repair.rs,hub/repair/tests.rs,hub/detached.rs}` | EDIT | Scope subscriptions without leaking physical channel names to callers |
 | `rustd/crates/afd_dragonfly/tests/{datastore_suite.rs,integration_namespace.rs,keys_and_config.rs}` | EDIT, CREATE | Prove isolation on a real shared cluster |
 | `compose.dev-infra.yml` | CREATE | Infrastructure-only development definition, independent of disposable tests |
-| `scripts/{local-dev.sh,local-dev-infra.sh,local-dev-env.sh,local-dev-test.sh}` | CREATE | Stable identity, canonical infrastructure snapshot, process ownership and regression proofs |
-| `make/dev.mk` and `Makefile` | EDIT | Wire existing up/down and distinct infrastructure/runner workflows |
+| `scripts/{local-dev.sh,local-dev-test.sh}` | CREATE | One launcher for identity, shared infrastructure and processes; separate regression proofs |
+| `make/dev.mk` and `Makefile` | EDIT | Keep existing up/down as the developer workflow; add no Make targets |
 | `make/test-unit.mk` | EDIT | Include launcher regression proofs in the declared unit lane |
 | `make/dry.mk` and `make/bench.mk` | EDIT | Read this worktree's daemon URL |
 | `docs/architecture/datastore_scaling.md` and `docs/development.md` | EDIT | Record the isolation mechanism and development commands with implementation |
+| `playbooks/operations/ci_rust_images/001_playbook.md` | EDIT | Remove the obsolete development caller of the release builder |
 | `docs/v2/{pending,active,done}/M223_001_P2_API_DOCS_INFRA_WORKTREES_SHARE_DEVELOPMENT_DATASTORES.md` | EDIT | Lifecycle metadata and evidence |
 | `playbooks/operations/acceptance/baselines/M223_001-*.md` | CREATE | Comparison-revision verification evidence |
 
@@ -111,7 +112,7 @@ Prerequisite: §1. Agent choice: one project per repository, derived from the Gi
 
 ### §3 — Processes, migrations and shutdown belong to the worktree
 
-Prerequisite: §2. Agent choice: start a native daemon compiled from this worktree to preserve the cluster's loopback routing without another application container. Load the existing trusted machine environment file without printing it. Override only development datastore addresses, namespace and callback origin. Create the worktree database idempotently and migrate it through this worktree's daemon before serving. Process metadata records the executable and process identity; shutdown verifies both before signaling. Stable ports refuse collisions rather than silently selecting another worktree's listener.
+Prerequisite: §2. Agent choice: start a native daemon compiled from this worktree to preserve the cluster's loopback routing without another application container. Share the repository's Cargo build cache under a build lock, copying the completed binary to the worktree's process directory before releasing that lock. Load the existing trusted machine environment file without printing it. Override only development datastore addresses, namespace and callback origin. Create the worktree database idempotently and migrate it through this worktree's daemon before serving. Process metadata records the executable and process identity; shutdown verifies both before signaling. Stable ports refuse collisions rather than silently selecting another worktree's listener.
 
 - **Dimension 3.1** — Repeated startup keeps database state and selects the same worktree URL; another worktree uses its own database → Test `development_start_preserves_each_database`.
 - **Dimension 3.2** — Down signals only an owned daemon, preserves data, and never shuts down shared infrastructure → Test `development_down_preserves_sibling_processes`.
@@ -120,7 +121,7 @@ Prerequisite: §2. Agent choice: start a native daemon compiled from this worktr
 
 ### §4 — Developer flows and destructive test lanes stay coherent
 
-Prerequisite: §3. Agent choice: existing up/down use the shared development launcher; an explicit infra-down stops the shared project while preserving volumes. Mailpit filtering uses distinct development recipients and never global deletion. QStash callbacks use each daemon's reachable origin. No new product endpoint or tenant model is introduced.
+Prerequisite: §3. Agent choice: existing up/down use the shared development launcher; add no Make targets. The launcher's maintenance command stops the shared project while preserving volumes. Mailpit filtering uses distinct development recipients and never global deletion. QStash callbacks use each daemon's reachable origin. No new product endpoint or tenant model is introduced.
 
 - **Dimension 4.1** — Two real daemons share the infrastructure, answer their own URLs and retain independent data after either stops → Test `two_worktrees_share_infrastructure_end_to_end`.
 - **Dimension 4.2** — Disposable integration resets cannot target the shared development project → Test `test_reset_cannot_address_shared_development`.
@@ -132,11 +133,11 @@ Prerequisite: §3. Agent choice: existing up/down use the shared development lau
 AGENTSFLEET_DEV_NAMESPACE: optional validated ASCII namespace; unset keeps existing keys.
 make up: ensure shared infrastructure, compile/migrate/start this worktree's daemon.
 make down: stop this worktree's daemon; keep infrastructure and data.
-make infra-down: explicitly stop repository-shared infrastructure; keep volumes.
-make runner-env: emit this worktree's runner URL/storage settings, never a token.
+local-dev.sh infra-down: maintenance shutdown of shared infrastructure; keep volumes.
+local-dev.sh runner-env: emit existing runner URL/storage settings, never a token.
 RUNNER_STORAGE_HOME and AGENTSFLEET_API_URL: existing runner inputs.
 DATABASE_URL_API / DATABASE_URL_MIGRATOR: worktree database on shared Postgres.
-API_URL: worktree-specific origin reachable from QStash; local clients use loopback.
+API_URL: host IPv4 origin on the worktree port, reachable from native clients and QStash.
 ```
 
 The generated identifier is stable for an absolute worktree path, changes on relocation and never depends on the checked-out branch. Database identifiers and prefixes are derived from its bounded digest. Native daemon startup retains all existing role/configuration requirements. Existing Linux runner-host execution and credentials remain explicit prerequisites; this work does not provision or modify the host.
@@ -212,7 +213,7 @@ No files or public symbols are deleted. Replace the existing destructive develop
 - Sharing destructive reset, failover, migration-fault or saturation suites with development data.
 - Provisioning another Linux runner host, remote-host automation or changing sandbox privileges.
 - Independent Mailpit inboxes or another scheduling service.
-- Sharing compilation target directories across worktrees.
+- Sharing running daemon binaries or runner storage across worktrees.
 
 ## Product Clarity (authoring record)
 
@@ -236,6 +237,7 @@ No files or public symbols are deleted. Replace the existing destructive develop
 ## Discovery (consult log)
 
 - **Consults:** Indy approved the proposal: "Yes create a spec and lets start the work". Runner decision: "Use the existing Linux runner host". Source inspection found deployment-wide readiness/outbound keys, loopback cluster announcements, no dotenv loading in the daemon entry point and destructive integration resets. Architecture changes land with their implementation.
+- **Developer workflow:** Indy requested "i will just use make up , make down in each of my work trees" and "Ensure thatthe envs that you have build are not redundant and standard and reuse the existing." Runtime helpers are consolidated into one launcher; no Make targets or duplicate runner URL settings are added. The requested pre-push target, script and environment tables were supplied before publication.
 - **Metrics review:** No product analytics or funnel playbook update is required; contributor startup diagnostics expose no secrets.
 - **Skill-chain outcomes:** orly-spec-new invoked; structural validation pending. Unit, integration and adversarial review outcomes populate during implementation.
 - **Deferrals:** None. Existing Linux-host execution is an explicit user decision; provisioning that host is outside this workstream.

@@ -270,6 +270,40 @@ check. That is not cutover scaffolding and did not retire with it.
 trigger. Mentions of Upstash in the cron sections of these pages are correct and
 `scripts/check_architecture_doc.sh` requires them.
 
+## Shared local development
+
+`make up` shares one infrastructure project across a repository's linked Git worktrees.
+`compose.dev-infra.yml` contains Postgres, the local Dragonfly cluster, Mailpit and Upstash QStash.
+The first caller saves a canonical Compose snapshot; later callers reuse healthy services without replacing that snapshot.
+
+Each worktree starts its own native `agentsfleetd`, compiled from that checkout.
+A repository build lock protects the shared Cargo cache and the copy to each worktree's separate binary path.
+The daemon port, database name and development namespace come from the worktree's absolute path checksum.
+
+| Resource | Development boundary |
+|---|---|
+| Postgres | One database per worktree; existing schemas and tenant checks remain intact |
+| Dragonfly | `AGENTSFLEET_DEV_NAMESPACE` adds `dev:<namespace>:` to keys, streams, scan patterns and subscription channels |
+| QStash | Each daemon supplies its own callback port through the existing `API_URL` setting |
+| Mailpit | Shared inbox; use distinct recipient addresses to identify each worktree's mail |
+| Linux runner | Separate binary, registered token, `AGENTSFLEET_API_URL` and `RUNNER_STORAGE_HOME` per worktree |
+
+The namespace accepts at most 64 ASCII letters, digits, underscores or hyphens.
+Unset or blank values retain existing datastore names; production and deployed `api-dev` keep their deployment configuration.
+Replicas in one deployment use the same database and namespace so they can process the same deployment's work.
+
+`afd_dragonfly` applies prefixes at each application operation boundary, including dedicated blocking readers and the subscription hub.
+Scans and delivered subscription messages return logical names to callers.
+Raw command methods retain physical keys for administration; application code uses the scoped operations.
+
+`make down` stops only the verified daemon belonging to the current worktree.
+The launcher's maintenance command stops the repository's shared services and preserves their volumes.
+Dragonfly's in-memory state and pending QStash deliveries can disappear during infrastructure shutdown; Postgres remains the durable source.
+
+The disposable stack used by `make test-integration-rustd` has separate project names, ports and volumes.
+Its schema resets and cluster fault tests must never use the shared development project.
+The [development notes](../development.md#shared-development-worktrees) explain startup, runner setup and failure recovery.
+
 ## Related pages
 
 - [Scaling](./scaling.md) describes existing capacity assumptions that measurements must verify.

@@ -25,7 +25,7 @@ impl FleetStreams {
     /// Returns a command error when the publish fails.
     pub async fn publish(&self, channel: &str, payload: &str) -> Result<i64> {
         let mut cmd = redis::cmd(CMD_PUBLISH);
-        cmd.arg(channel).arg(payload);
+        cmd.arg(self.redis.key(channel)).arg(payload);
         self.redis.command(CMD_PUBLISH, channel, &cmd).await
     }
 
@@ -52,7 +52,7 @@ impl FleetStreams {
         if payloads.is_empty() {
             return Ok(());
         }
-        let channel = fleet_activity_channel(fleet_id);
+        let channel = self.redis.key(&fleet_activity_channel(fleet_id));
         let mut pipeline = redis::pipe();
         for payload in payloads {
             pipeline.cmd(CMD_PUBLISH).arg(&channel).arg(payload);

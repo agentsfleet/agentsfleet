@@ -118,6 +118,8 @@ mod integration_cluster_semantics;
 mod integration_hub;
 #[path = "integration_hub_exclusive.rs"]
 mod integration_hub_exclusive;
+#[path = "integration_namespace.rs"]
+mod integration_namespace;
 #[path = "integration_partitioned_ready.rs"]
 mod integration_partitioned_ready;
 #[path = "integration_ready.rs"]
