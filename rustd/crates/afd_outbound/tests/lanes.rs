@@ -39,6 +39,9 @@ mod no_ledger;
 use self::gated_poster::Gated;
 use self::hanging_queue::HangingQueue;
 
+#[path = "lanes/contention.rs"]
+mod contention;
+
 /// The thread an owed answer is addressed to, as a Slack producer records it.
 const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 
@@ -303,11 +306,9 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
 /// A job that lands while its lane is retiring is delivered IN ORDER with the
 /// one dispatched behind it.
 ///
-/// The lane the job reached is leaving, so the job is handed to a fresh one.
-/// Handing it over after the map entry was released would let the NEXT job
-/// find no lane, spawn its own and overtake it — an inversion to the one
-/// destination whose order this module promises. The hand-over happens holding
-/// the entry instead, so the next dispatch queues behind what was rescued.
+/// A retired lane returns the job for re-dispatch. The worker dispatches
+/// serially, so that retry finishes before the next answer is queued. Jobs
+/// published before retirement are observed under the shared entry guard.
 ///
 /// Pairs dispatched back to back with no wait between them, each pair landing
 /// while the previous pair's lane retires: the window is two statements wide,

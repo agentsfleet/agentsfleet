@@ -86,13 +86,14 @@ async function withPlatformEntry(body: () => Promise<void>): Promise<void> {
 async function expectFooterReachable(dialog: Locator, footerButton: string): Promise<void> {
   await expect(dialog).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
   // The form must overflow this window, or the reach below proves nothing.
-  expect(await dialog.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await expect.poll(() => dialog.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   const footer = dialog.getByRole("button", { name: footerButton, exact: true });
   await footer.scrollIntoViewIfNeeded();
   await expect(footer).toBeInViewport();
 }
 
 async function openFirstRunnerPolicy(page: Page): Promise<Locator> {
+  await signInAs(page, FIXTURE_KEY.policyEditor);
   await page.goto("/admin/runners");
   const runner = page.getByRole("link", { name: new RegExp(`^${INSPECT_RUNNER_LABEL}`) }).first();
   await expect(runner).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
@@ -129,7 +130,6 @@ test.describe("dialogs keep their footer reachable in a short window", () => {
 test.describe("measured placement", () => {
   test("the runner policy's isolation tiers sit side by side on one row", async ({ page }) => {
     await page.setViewportSize(WIDE_WINDOW);
-    await signInAs(page, FIXTURE_KEY.operator);
     const dialog = await openFirstRunnerPolicy(page);
     const tiers = dialog.getByRole("radiogroup", { name: /isolation/i }).getByRole("radio");
     await expect(tiers.first()).toBeVisible({ timeout: RENDER_TIMEOUT_MS });

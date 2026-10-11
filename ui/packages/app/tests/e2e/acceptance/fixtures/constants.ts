@@ -15,6 +15,9 @@
 
 import * as path from "node:path";
 
+// Matches afr_tools/src/catalog.rs:HTTP_REQUEST so fixture bundles pass native admission.
+export const HTTP_REQUEST = "http_request";
+
 // Where global setup caches the minted fixture JWTs. It must sit outside every
 // folder Playwright uploads as a CI artifact, or live session tokens ride along.
 export const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
@@ -32,11 +35,10 @@ export type FleetStatus = (typeof AGENTSFLEET_STATUS)[keyof typeof AGENTSFLEET_S
 export const FIXTURE_KEY = {
   regular: "regular",
   admin: "admin",
-  // Platform operator — the only fixture whose Clerk `public_metadata.scopes`
-  // carries an operator scope. Kept separate from `admin` (which is a tenant
-  // owner, not a platform operator) so the other fixtures stay scope-free and
-  // the specs that assert an operator surface is HIDDEN keep their meaning.
+  // Platform operator — carries read-only runner visibility plus library writes.
+  // Kept separate from the tenant owner so hidden-platform assertions stay meaningful.
   operator: "operator",
+  policyEditor: "policy-editor",
 } as const;
 
 export type FixtureKey = (typeof FIXTURE_KEY)[keyof typeof FIXTURE_KEY];
@@ -45,6 +47,7 @@ export const FIXTURE_KEYS: readonly FixtureKey[] = [
   FIXTURE_KEY.regular,
   FIXTURE_KEY.admin,
   FIXTURE_KEY.operator,
+  FIXTURE_KEY.policyEditor,
 ] as const;
 
 // Provisioned onto the operator fixture's Clerk `public_metadata.scopes`, which
@@ -57,6 +60,13 @@ export const FIXTURE_KEYS: readonly FixtureKey[] = [
 // expensive journeys start. No write/admin runner scope: the preflight must
 // stay incapable of mutating platform state by construction.
 export const OPERATOR_FIXTURE_SCOPES = ["platform-library:write", "runner:read"] as const;
+
+// Only policy-dialog journeys use this identity; the release preflight stays read-only.
+export const POLICY_EDITOR_FIXTURE_SCOPES = ["runner:write"] as const;
+export const PLATFORM_FIXTURE_SCOPES: Partial<Record<FixtureKey, readonly string[]>> = {
+  [FIXTURE_KEY.operator]: OPERATOR_FIXTURE_SCOPES,
+  [FIXTURE_KEY.policyEditor]: POLICY_EDITOR_FIXTURE_SCOPES,
+};
 
 // Storage-state file global-setup primes with the short-lived Vercel bypass
 // cookie. The browser then never sends the raw x-vercel-protection-bypass

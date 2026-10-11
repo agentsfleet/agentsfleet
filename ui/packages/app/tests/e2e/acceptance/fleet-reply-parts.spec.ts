@@ -116,7 +116,8 @@ test("test_interleaved_reasoning_folds_once", async ({ page }) => {
     await stream.send([opening(Date.now()), ...thinkFor(INTERLEAVED_CHUNKS)]);
     const thought = chat.getByRole("button", { name: /^(Thinking|Thought)/ });
     await expect(thought).toHaveAttribute("aria-expanded", "true");
-    const states = thought.evaluate((el, ms) => new Promise<string[]>((resolve) => {
+    // Await the handle, not its pending result, before sending the answer.
+    const sample = await thought.evaluateHandle((el, ms) => ({ states: new Promise<string[]>((resolve) => {
       const seen: string[] = [];
       const t0 = performance.now();
       const tick = () => {
@@ -125,17 +126,22 @@ test("test_interleaved_reasoning_folds_once", async ({ page }) => {
         if (performance.now() - t0 < ms) requestAnimationFrame(tick);
         else resolve(seen);
       };
-      requestAnimationFrame(tick);
-    }), INTERLEAVED_SAMPLE_MS);
-    await stream.send([chunk(seq++, "answer", "Hey! ")]);
-    await stream.send([...thinkFor(INTERLEAVED_CHUNKS), chunk(seq++, "answer", "How can I help?")]);
-    // Open, then folded for good: never open again after the answer started.
-    expect(await states).toEqual(["true", "false"]);
-    await stream.send([{
-      afterMs: 0,
-      body: frame(FRAME_KIND.EVENT_COMPLETE, { event_id: EVENT_ID, actor: ACTOR, status: "processed", final_reply: INTERLEAVED_ANSWER }),
-    }]);
-    await expect(chat.getByText(INTERLEAVED_ANSWER, { exact: true })).toBeVisible();
+      // Record the asserted open state before the next frame can fold it.
+      tick();
+    }) }), INTERLEAVED_SAMPLE_MS);
+    try {
+      await stream.send([chunk(seq++, "answer", "Hey! ")]);
+      await stream.send([...thinkFor(INTERLEAVED_CHUNKS), chunk(seq++, "answer", "How can I help?")]);
+      // Open, then folded for good: never open again after the answer started.
+      expect(await sample.evaluate((probe) => probe.states)).toEqual(["true", "false"]);
+      await stream.send([{
+        afterMs: 0,
+        body: frame(FRAME_KIND.EVENT_COMPLETE, { event_id: EVENT_ID, actor: ACTOR, status: "processed", final_reply: INTERLEAVED_ANSWER }),
+      }]);
+      await expect(chat.getByText(INTERLEAVED_ANSWER, { exact: true })).toBeVisible();
+    } finally {
+      await sample.dispose();
+    }
   });
 });
 
