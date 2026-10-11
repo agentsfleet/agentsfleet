@@ -11,7 +11,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M223
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — development infrastructure consumes one stack per repository
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — datastore isolation precedes attaching development processes
@@ -63,6 +63,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `playbooks/operations/ci_rust_images/001_playbook.md` | EDIT | Remove the obsolete development caller of the release builder |
 | `docs/v2/{pending,active,done}/M223_001_P2_API_DOCS_INFRA_WORKTREES_SHARE_DEVELOPMENT_DATASTORES.md` | EDIT | Lifecycle metadata and evidence |
 | `playbooks/operations/acceptance/baselines/M223_001-*.md` | CREATE | Comparison-revision verification evidence |
+| `docs/v2/pending/M218_001_P2_API_DOCS_SHARED_CRATES_REPLACE_HANDROLLED_RUST.md` and `docs/v2/pending/M222_001_P2_API_DOCS_OUTBOUND_PROXY_DECLARED_NOT_INHERITED.md` | PRESERVE | Carry the existing requested spec changes in the same tree |
 
 ## Applicable Rules
 
@@ -124,8 +125,8 @@ Prerequisite: §2. Agent choice: start a native daemon compiled from this worktr
 Prerequisite: §3. Agent choice: existing up/down use the shared development launcher; add no Make targets. The launcher's maintenance command stops the shared project while preserving volumes. Mailpit filtering uses distinct development recipients and never global deletion. QStash callbacks use each daemon's reachable origin. No new product endpoint or tenant model is introduced.
 
 - **Dimension 4.1** — DONE — Two real daemons share the infrastructure, answer their own URLs and retain independent data after either stops → Test `two_worktrees_share_infrastructure_end_to_end`.
-- **Dimension 4.2** — DONE — Disposable integration resets cannot target the shared development project → Test `test_reset_cannot_address_shared_development`.
-- **Dimension 4.3** — DONE — Development, dry and benchmark commands use the worktree URL; documentation names runner registration, mail filtering and explicit infrastructure shutdown → Test `development_commands_use_the_worktree_url`.
+- **Dimension 4.2** — DONE — Disposable integration resets use their own project and datastore addresses → Test `disposable_reset_keeps_shared_development` (manual: complete integration while two development daemons and four unchanged shared containers remain present).
+- **Dimension 4.3** — DONE — Development, dry and benchmark commands select the worktree URL; documentation names runner registration, mail filtering and explicit infrastructure shutdown → Test `runner_environment_is_worktree_scoped` and manual Make dry-run expansion for `dry-app-rustd` and `_bench-loadgen`.
 
 ## Interfaces
 
@@ -150,9 +151,10 @@ The generated identifier is stable for an absolute worktree path, changes on rel
 | Cross-worktree consumption | Shared logical stream/channel names | Scope all readers and writers; `namespaces_isolate_streams_readiness_and_outbound`, `namespaces_isolate_subscriptions` |
 | Startup race | Concurrent first callers | Exclusive bounded lock and canonical snapshot; `concurrent_start_reuses_one_infrastructure_stack` |
 | Dependency unavailable | Docker, health or port failure | Fail before daemon startup; `infrastructure_refusal_stops_application_start` |
-| Migration refusal | Branch migrations fail | Keep database for diagnosis and refuse serving; `development_refuses_unsafe_process_operations` |
+| Migration refusal | Branch migrations fail | Keep both databases and existing daemons; `migrations_precede_serving_and_refusal_preserves_running_daemons` |
 | Foreign process | Reused process identifier or occupied port | Verify process identity and refuse signaling; `development_refuses_unsafe_process_operations` |
-| Destructive test | Reset or cluster-fault suite | Separate Compose project and datastores; `test_reset_cannot_address_shared_development` |
+| Destructive test | Reset or cluster-fault suite | Separate Compose project and datastores; manual `disposable_reset_keeps_shared_development` |
+| Exit during shutdown | Process disappears or becomes a zombie between ownership reads or signaling | Confirm exit before clearing ownership; `exit_during_ownership_read_or_termination_cleans_record` |
 | Missing runner registration | No token minted in this worktree's database | Existing runner refuses missing/foreign token; `runner_environment_is_worktree_scoped` |
 
 ## Invariants
@@ -182,24 +184,24 @@ No product analytics or funnel signals change. The launcher reports its namespac
 | 3.1 | integration | `development_start_preserves_each_database` | Repeated A startup → A's row survives; B's database differs |
 | 3.2 | unit | `development_down_preserves_sibling_processes` | A down → only verified A signaled; no Compose down or data removal |
 | 3.3 | unit | `runner_environment_is_worktree_scoped` | A/B settings → different URL/storage; no token output; existing missing-token refusal |
-| 3.4 | unit | `development_refuses_unsafe_process_operations` | Migration/configuration/identity/port failures → no serving or foreign signal |
+| 3.4 | unit | `development_refuses_unsafe_process_operations` | Foreign identity → refusal; additional launcher migration-order/refusal and exit-race cases prove no replacement and successful normal-exit cleanup |
 | 4.1 | e2e | `two_worktrees_share_infrastructure_end_to_end` | Two subprocess daemons → separate healthy URLs/state on one infrastructure project |
-| 4.2 | unit | `test_reset_cannot_address_shared_development` | Integration lane's project/URLs differ from launcher-selected shared project |
-| 4.3 | unit | `development_commands_use_the_worktree_url` | Dry/benchmark and runner configuration select this worktree's URL |
+| 4.2 | integration, manual | `disposable_reset_keeps_shared_development` | Disposable integration runs on its own project and URLs; two development daemons and shared container identities survive |
+| 4.3 | unit, manual | `runner_environment_is_worktree_scoped` | Runner settings and manual `make -n dry-app-rustd` / `make -n _bench-loadgen` expansions select this worktree's URL |
 
 ## Acceptance Rubric (single scoring surface)
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
-| R1 | Namespaced datastore behavior | `make test-integration-rustd` | exit 0; namespace isolation cases pass | P0 | |
-| R2 | Launcher safety and reuse | `bash scripts/local-dev-test.sh` | exit 0; all launcher cases pass | P0 | |
-| R3 | Two-worktree developer flow | `bash scripts/local-dev-test.sh --live` | exit 0; both daemon URLs healthy, one infrastructure project, sibling survives stop | P0 | |
-| R4 | Conform | `make harness-verify` | exit 0 | P0 | |
-| R5 | Lint | `make lint-all` | exit 0 | P0 | |
-| R6 | Unit | `make test-unit-all` | exit 0 | P0 | |
-| R7 | Version | `make check-version` | exit 0 | P0 | |
-| R8 | Secrets | `gitleaks detect` | exit 0 | P0 | |
-| R9 | Scoped diff | `git diff --name-only origin/main...HEAD` | 0 paths outside Files Changed | P0 | |
+| R1 | Namespaced datastore behavior | `make test-integration-rustd` | exit 0; namespace isolation cases pass | P0 | ✅ exit 0; 945 integration passes, including four namespace cases |
+| R2 | Launcher safety and reuse | `bash scripts/local-dev-test.sh` | exit 0; all launcher cases pass | P0 | ✅ 19 tests; exit 0, both shutdown exit seams covered |
+| R3 | Two-worktree developer flow | `bash scripts/local-dev-test.sh --live` | exit 0; both daemon URLs healthy, one infrastructure project, sibling survives stop | P0 | ✅ 1 live test; both URLs, callbacks, data preservation and cleanup passed |
+| R4 | Conform | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN; exit 0 |
+| R5 | Lint | `make lint-all` | exit 0 | P0 | ✅ final declared lint-all invocation exit 0 |
+| R6 | Unit | `make test-unit-all` | exit 0 | P0 | ✅ 10194 passes, 0 failures, 964 ignored/skipped; exit 0 |
+| R7 | Version | `make check-version` | exit 0 | P0 | ✅ all versions match 0.59.0 |
+| R8 | Secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found; 10 branch commits scanned |
+| R9 | Scoped diff | `git diff --name-only origin/main...HEAD` | 0 paths outside Files Changed | P0 | ✅ implementation and carried spec paths listed above |
 
 **Grading protocol:** Record decisive output for spec-specific proofs; repository-wide results come from the final `orly gate pr` run. Baseline counts are measured for the recorded comparison revision before the Pull Request.
 
@@ -239,5 +241,5 @@ No files or public symbols are deleted. Replace the existing destructive develop
 - **Consults:** Indy approved the proposal: "Yes create a spec and lets start the work". Runner decision: "Use the existing Linux runner host". Source inspection found deployment-wide readiness/outbound keys, loopback cluster announcements, no dotenv loading in the daemon entry point and destructive integration resets. Architecture changes land with their implementation.
 - **Developer workflow:** Indy requested "i will just use make up , make down in each of my work trees" and "Ensure thatthe envs that you have build are not redundant and standard and reuse the existing." Runtime helpers are consolidated into one launcher; no Make targets or duplicate runner URL settings are added. The requested pre-push target, script and environment tables were supplied before publication.
 - **Metrics review:** No product analytics or funnel playbook update is required; contributor startup diagnostics expose no secrets.
-- **Skill-chain outcomes:** orly-spec-new invoked; structural validation pending. Unit, integration and adversarial review outcomes populate during implementation.
+- **Skill-chain outcomes:** Structural validation clean; unit/integration diff ledgers reviewed with explicit scope exceptions for generic load, allocator and random-order proofs. gstack review and native adversarial pass clean on `51b934c82`; optional external review disabled. Full declared gate passed; the closed metadata receives a fresh gate before publication. Live revalidation passed using the existing sibling checkout, with synthetic state removed and owned cleanup required to succeed. Two source-text tests were replaced by shutdown behavior; Make expansion and measured disposable-stack isolation supply their manual proofs.
 - **Deferrals:** None. Existing Linux-host execution is an explicit user decision; provisioning that host is outside this workstream.
