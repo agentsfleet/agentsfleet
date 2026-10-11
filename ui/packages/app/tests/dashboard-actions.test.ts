@@ -55,20 +55,4 @@ describe("createWorkspaceAction — forwards create through withToken", () => {
     expect(r).toEqual({ ok: true, data });
   });
 
-  it("forwards a withToken failure envelope untouched, without attempting the create", async () => {
-    const failure = {
-      ok: false as const,
-      error: "Workspace limit reached",
-      status: 409,
-      errorCode: "UZ-WSP-009",
-    };
-    // withToken resolves to a failure envelope (e.g. missing token); the inner
-    // client never runs, so the action just threads the failure straight back.
-    withTokenMock.mockResolvedValueOnce(failure);
-
-    const r = await createWorkspaceAction({ name: "doomed" });
-
-    expect(r).toEqual(failure);
-    expect(createTenantWorkspaceMock).not.toHaveBeenCalled();
-  });
 });

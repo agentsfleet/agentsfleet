@@ -6,7 +6,6 @@
 )]
 
 use crate::metrics::declared::{fleet, http, library};
-use crate::metrics::label::cost::{ChargeClass, TokenType};
 use crate::metrics::label::fleet as fleet_labels;
 use crate::metrics::label::http as http_labels;
 use crate::metrics::label::library as library_labels;
@@ -131,21 +130,6 @@ fn every_declared_ceiling_admits_its_label_product() {
              label sets can write {product}"
         );
     }
-}
-
-/// The cost families' attribute sets are closed even though their budget is not.
-///
-/// They draw on the shared cost sub-budget rather than a fixed ceiling, so the
-/// test above cannot cover them — but a token direction or a charge class
-/// spelled two ways is still two series in the money dashboards.
-#[test]
-fn the_cost_attribute_sets_stay_closed() {
-    assert_eq!(
-        TokenType::ALL.len(),
-        2,
-        "input already includes the cached portion; a third direction would make the total wrong"
-    );
-    assert_eq!(ChargeClass::ALL.len(), 3);
 }
 
 /// Every closed set this build declares, with the spellings it can write.

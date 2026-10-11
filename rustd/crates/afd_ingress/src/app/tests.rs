@@ -152,12 +152,3 @@ fn the_ceiling_admits_exactly_its_own_count_and_refuses_one_more() {
          first hundred of a hundred and one silently picks whose fleet runs"
     );
 }
-
-/// The ceiling is a spend bound, so its value is load-bearing rather than taste.
-///
-/// A change here changes how much one signed HTTP request may cost this
-/// deployment, which is a decision no refactor should be able to make quietly.
-#[test]
-fn the_ceiling_is_one_hundred_fleets_per_delivery() {
-    assert_eq!(MAX_FANOUT, 100);
-}

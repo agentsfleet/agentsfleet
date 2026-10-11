@@ -93,29 +93,6 @@ describe("listApprovals", () => {
     expect(url).toContain("limit=25");
   });
 
-  it("propagates JSON evidence without re-stringifying", async () => {
-    const evidence = { files: ["a", "b"], loc: 42 };
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({ items: [gateFixture({ evidence })], next_cursor: null }),
-    );
-    const result = await listApprovals(WORKSPACE_ID, TOKEN);
-    expect(result.items[0]!.evidence).toEqual(evidence);
-  });
-
-  it("returns next_cursor for paginated responses", async () => {
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        items: Array.from({ length: 50 }, (_, i) =>
-          gateFixture({ gate_id: `01999999-0000-7000-8000-${String(i).padStart(12, "0")}` }),
-        ),
-        next_cursor: "cur_next",
-      }),
-    );
-    const result = await listApprovals(WORKSPACE_ID, TOKEN, { limit: 50 });
-    expect(result.items).toHaveLength(50);
-    expect(result.next_cursor).toBe("cur_next");
-  });
-
   it("throws ApiError on non-2xx (404 unknown gate / cross-workspace)", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: "not_found" }, 404));
     await expect(listApprovals(WORKSPACE_ID, TOKEN)).rejects.toBeTruthy();

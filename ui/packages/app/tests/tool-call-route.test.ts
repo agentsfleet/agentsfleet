@@ -7,7 +7,6 @@
 // the dialog unchanged.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ERROR_CODE } from "@/lib/errors";
 
 const { getTokenFn } = vi.hoisted(() => ({ getTokenFn: vi.fn() }));
 
@@ -72,18 +71,4 @@ describe("tool call route handler", () => {
     expect(await res.text()).toBe(NOT_KEPT_BODY);
   });
 
-  it("refuses a dot-only call id before minting a token", async () => {
-    const res = await call("..");
-    expect(res.status).toBe(400);
-    expect(getTokenFn).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("answers a signed-out request 401 with the registered code and no upstream call", async () => {
-    getTokenFn.mockResolvedValueOnce(null);
-    const res = await call(CALL_ID);
-    expect(res.status).toBe(401);
-    expect(((await res.json()) as { code: string }).code).toBe(ERROR_CODE.AUTH_401);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
 });

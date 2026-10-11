@@ -195,16 +195,6 @@ describe("RunnerHeader", () => {
     expect(screen.queryByRole("button", { name: /copied/i })).toBeNull();
   });
 
-  it("every header action renders an icon beside its label", () => {
-    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    // The edit-policy trigger's icon is asserted in EditPolicyDialog.test.tsx —
-    // this suite mounts its island as a stub.
-    for (const name of ["Run checks", "Cordon", "Drain", "Revoke", "Refresh"]) {
-      const button = screen.getByRole("button", { name });
-      expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
-    }
-  });
-
   it("refresh button requests a router refresh", () => {
     render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));

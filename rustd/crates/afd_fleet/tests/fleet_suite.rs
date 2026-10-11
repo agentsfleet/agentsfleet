@@ -88,6 +88,8 @@ mod integration_recovery_progress_live;
 mod integration_recovery_progress_restart;
 #[path = "integration_recovery_progress_walk.rs"]
 mod integration_recovery_progress_walk;
+#[path = "integration_recovery_row_locks.rs"]
+mod integration_recovery_row_locks;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage.rs"]

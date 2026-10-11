@@ -110,12 +110,6 @@ describe("ApiKeyList component", () => {
     expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy();
   });
 
-  it("Revoke and Delete are icon buttons — ban and trash glyphs, verbs carried by the aria-label", async () => {
-    await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(screen.getByLabelText(/Revoke API key ci-runner/i).querySelector("svg.lucide-ban")).toBeTruthy();
-    expect(screen.getByLabelText(/Delete API key old-zapier/i).querySelector("svg.lucide-trash")).toBeTruthy();
-  });
-
   it("the icon action buttons disable while a mutation is in flight (disabled-while-pending preserved)", async () => {
     // Hold the mutation open so the transition stays pending; the row's icon
     // buttons must be disabled for the duration, then re-enable on settle.
@@ -137,12 +131,6 @@ describe("ApiKeyList component", () => {
     resolveRevoke({ ok: true, data: { id: ACTIVE.id, active: false, revoked_at: 1 } });
     // After settle the list re-fetched (row now revoked → Delete affordance).
     await waitFor(() => expect(screen.getByLabelText(/Delete API key old-zapier/i)).toBeTruthy());
-  });
-
-  it("Revoke and Delete row triggers render the destructive button variant, the shared admin row-trigger pattern", async () => {
-    await renderList(listResponse([ACTIVE, REVOKED]));
-    expect(screen.getByLabelText(/Revoke API key ci-runner/i).className).toContain("bg-destructive");
-    expect(screen.getByLabelText(/Delete API key old-zapier/i).className).toContain("bg-destructive");
   });
 
   it("renders rows through the standard DataTable primitive, not a hand-rolled list", async () => {

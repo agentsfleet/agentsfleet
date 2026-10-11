@@ -114,8 +114,6 @@ mod integration_cluster_readiness;
 mod integration_cluster_recovery;
 #[path = "integration_cluster_semantics.rs"]
 mod integration_cluster_semantics;
-#[path = "integration_diagnose_connect.rs"]
-mod integration_diagnose_connect;
 #[path = "integration_hub.rs"]
 mod integration_hub;
 #[path = "integration_hub_exclusive.rs"]

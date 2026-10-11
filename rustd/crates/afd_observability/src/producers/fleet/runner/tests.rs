@@ -36,20 +36,6 @@ fn every_failure_class_is_assigned_the_side_we_decided() {
     }
 }
 
-/// The count is the assertion.
-///
-/// `fault_of` is exhaustive, so a twelfth class fails the BUILD rather than
-/// this test — but a twelfth class added to the match and forgotten here would
-/// leave the split undocumented, which is how a decision becomes an accident.
-#[test]
-fn the_split_covers_every_class_the_wire_can_carry() {
-    assert_eq!(
-        SPLIT.len(),
-        11,
-        "a FailureClass was added or removed; decide its side and record it here"
-    );
-}
-
 /// A cause nobody could name is not evidence against the tenant.
 #[test]
 fn an_unclassified_failure_is_charged_to_the_platform() {

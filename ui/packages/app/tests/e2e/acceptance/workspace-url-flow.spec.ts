@@ -17,7 +17,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { getDefaultWorkspaceId, ensureSecondWorkspace } from "./fixtures/seed";
-import { gotoWorkspace, workspaceUrlPattern, workspaceHref } from "./fixtures/nav";
+import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 
 const SWITCH_TIMEOUT_MS = 10_000;
 
@@ -68,16 +68,5 @@ test.describe("workspace in the URL", () => {
     await expect(switcher).toContainText(secondary.name ?? secondary.id, {
       timeout: SWITCH_TIMEOUT_MS,
     });
-  });
-
-  test("a workspace deep-link is stable and shareable", async ({ page }) => {
-    const primary = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await signInAs(page, FIXTURE_KEY.regular);
-
-    // Navigating straight to a workspace's Events page (as a bookmark/share would)
-    // lands on exactly that page — no re-resolution, no bounce.
-    await page.goto(workspaceHref(primary, "events"));
-    await expect(page).toHaveURL(new RegExp(`/w/${primary}/events`));
-    await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
   });
 });

@@ -88,6 +88,8 @@ mod integration_workspace_approvals;
 mod integration_workspace_approvals_fixture;
 #[path = "integration_workspace_approvals_listing.rs"]
 mod integration_workspace_approvals_listing;
+#[path = "integration_workspace_enumeration.rs"]
+mod integration_workspace_enumeration;
 #[path = "integration_workspace_library_entries.rs"]
 mod integration_workspace_library_entries;
 #[path = "integration_workspace_members.rs"]

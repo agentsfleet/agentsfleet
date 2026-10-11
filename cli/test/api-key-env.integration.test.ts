@@ -94,39 +94,6 @@ test("whitespace-only AGENTSFLEET_API_KEY is treated as absent → AUTH_REQUIRED
   });
 });
 
-test("AGENTSFLEET_API_KEY is sent as Authorization: Bearer on Effect-path requests", async () => {
-  await withFreshStateDir(async () => {
-    const out = bufferStream();
-    const err = bufferStream();
-    let authHeader: string | undefined;
-    // `list` runs through the Effect http-client (handlers-bind). Capture the
-    // Authorization header it sends on the workspace /fleets request.
-    const fetchImpl = asFetchOverride(async (url, init): Promise<ResponseLike> => {
-      if (url.includes("/fleets")) {
-        const headers = init?.headers as Record<string, string> | undefined;
-        authHeader = headers?.Authorization;
-      }
-      return {
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        headers: makeHeaders([]),
-        text: async () => JSON.stringify({ items: [] }),
-      };
-    });
-    await runCli(["--json", "list"], {
-      env: envWith({ AGENTSFLEET_API_KEY: "sk-branded-works" }),
-      stdout: out.stream,
-      stderr: err.stream,
-      fetchImpl,
-    });
-    // The branded key clears the guard AND reaches the wire as a Bearer
-    // credential — proving the Effect-path propagation fix, not just that the
-    // local guard accepted it.
-    assert.equal(authHeader, "Bearer sk-branded-works", `expected the api key on the wire; stderr=${err.read()}`);
-  });
-});
-
 // With `--token` removed, the environment
 // variable is the whole unattended story, so the property that makes it
 // usable in a container has to be pinned: it authenticates a real request

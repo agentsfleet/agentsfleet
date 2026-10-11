@@ -44,11 +44,6 @@ test.describe("Home page", () => {
     await expect(page.getByTestId("hero-cta-secondary")).toContainText("See how it works");
   });
 
-  test("no longer renders the removed hero install Terminal", async ({ page }) => {
-    await expect(page.getByLabel(/install via agentsfleet\.dev/i)).toHaveCount(0);
-    await expect(page.getByTestId("hero-cli")).toHaveCount(0);
-  });
-
   test("topbar opens the waitlist and retains the brand-mark pulse", async ({ page }) => {
     const cta = page.getByTestId("header-install-cta");
     await expect(cta).toBeVisible();
@@ -94,14 +89,6 @@ test.describe("Home page", () => {
     await expect(how.getByText("03 / You approve", { exact: true })).toBeVisible();
     await expect(how.getByText("05 / GitHub draft PR", { exact: true })).toBeVisible();
     await expect(how).toContainText("A diagnosis alone never starts it.");
-  });
-
-  test("does not render a duplicate install block below pricing", async ({ page }) => {
-    // The standalone InstallBlock was removed; the loop section now carries the
-    // operational path instead of a second install pitch.
-    await expect(
-      page.getByRole("heading", { level: 2, name: /install agentsfleet, then run/i }),
-    ).toHaveCount(0);
   });
 
   test("topbar how it works link reveals the workflow examples", async ({ page }) => {

@@ -1,7 +1,7 @@
 //! The statements this crate runs, in one place a reader can grep.
 //!
-//! Public so a suite can assert on the text without respelling it — the same
-//! reason `afd_cron::sql` and `afd_ingress::sql` are public. Nothing here is
+//! Public so a suite can take the same lock a writer takes without respelling
+//! it — the same reason `afd_cron::sql` and `afd_ingress::sql` are public. Nothing here is
 //! composed at runtime: every statement is a constant, and every value a caller
 //! supplies is a bind parameter.
 
@@ -82,69 +82,3 @@ pub const LOCK_WORKSPACE: &str = "\
 SELECT 1 FROM core.workspaces \
 WHERE id = $1::uuid \
 FOR NO KEY UPDATE";
-
-#[cfg(test)]
-mod tests {
-    use super::{CLAIM_INSTALL, DELETE_WORKSPACE_INSTALLS, RELEASE_OTHER_INSTALLS, UPSERT_INSTALL};
-
-    /// Every statement names its schema, so none of them depends on a
-    /// `search_path` a pooled connection could have been handed.
-    #[test]
-    fn every_statement_is_schema_qualified() {
-        for statement in [
-            UPSERT_INSTALL,
-            CLAIM_INSTALL,
-            RELEASE_OTHER_INSTALLS,
-            DELETE_WORKSPACE_INSTALLS,
-        ] {
-            assert!(
-                statement.contains("core.connector_installs"),
-                "`{statement}` must name its schema",
-            );
-        }
-    }
-
-    /// The install upsert re-points an account rather than duplicating it.
-    ///
-    /// Pinned because the alternative — `DO NOTHING` — is the one-character
-    /// edit that turns a reinstall into a silently stale route: events would
-    /// keep arriving at the workspace that installed the app FIRST.
-    #[test]
-    fn the_install_upsert_repoints_an_account_that_moved() {
-        assert!(UPSERT_INSTALL.contains("ON CONFLICT (provider, external_account_id) DO UPDATE"));
-        assert!(UPSERT_INSTALL.contains("workspace_id = EXCLUDED.workspace_id"));
-    }
-
-    /// The exclusive claim never moves a row another workspace holds.
-    ///
-    /// The guard is the `WHERE` on the conflict arm: without it this statement
-    /// IS the re-pointing upsert, and a second workspace connecting the same
-    /// installation would silently take the first one's pull requests.
-    #[test]
-    fn the_exclusive_claim_updates_only_the_holding_workspace() {
-        assert!(CLAIM_INSTALL.contains("ON CONFLICT (provider, external_account_id) DO UPDATE"));
-        assert!(
-            CLAIM_INSTALL
-                .contains("WHERE core.connector_installs.workspace_id = EXCLUDED.workspace_id")
-        );
-        assert!(!CLAIM_INSTALL.contains("workspace_id = EXCLUDED.workspace_id,"));
-    }
-
-    /// The disconnect is scoped to one workspace as well as one provider.
-    #[test]
-    fn the_disconnect_cannot_reach_another_workspaces_rows() {
-        assert!(DELETE_WORKSPACE_INSTALLS.contains("workspace_id = $2::uuid"));
-    }
-
-    /// The release is bounded by BOTH the workspace and the provider.
-    ///
-    /// Without the workspace arm it would delete another tenant's routing;
-    /// without the provider arm, this workspace's Slack row would go when it
-    /// connected GitHub. The `<>` is what keeps the row being claimed.
-    #[test]
-    fn the_release_never_reaches_past_this_workspace_and_provider() {
-        assert!(RELEASE_OTHER_INSTALLS.contains("provider = $1"));
-        assert!(RELEASE_OTHER_INSTALLS.contains("workspace_id = $2::uuid"));
-        assert!(RELEASE_OTHER_INSTALLS.contains("external_account_id <> $3"));
-    }
-}

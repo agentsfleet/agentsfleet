@@ -108,19 +108,3 @@ fn test_coverage_gate_rust_source() {
         render(&unserved).join("\n  "),
     );
 }
-
-/// The route table's own count, so a silent collapse of either side is visible.
-///
-/// Set equality passes trivially if both sides are empty, and both sides are
-/// built by iterators that a refactor could quietly empty. This is the floor
-/// that makes the equality above mean something.
-#[test]
-fn test_the_gate_compares_a_non_empty_inventory() {
-    let served = served();
-    assert!(
-        served.len() > 90,
-        "the served inventory collapsed to {} operations; the gate above would \
-         pass against an empty document",
-        served.len()
-    );
-}

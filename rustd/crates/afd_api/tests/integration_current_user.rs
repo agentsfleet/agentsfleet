@@ -19,6 +19,12 @@
 //! rather than seeding a second one, because the claim is about the COLUMN and
 //! a separate fixture would let an unrelated difference explain the result.
 //!
+//! # Why the log capture rides the same run
+//!
+//! The success path is the only one holding the person's email, and it needs
+//! the rows this suite seeds; a capture over a refusal would search records
+//! that could never have held it.
+//!
 //! Marked `#[ignore]` so the unit lane compiles and lints this without a
 //! datastore; `make test-integration-rustd` is the only lane that runs it.
 #![cfg(feature = "test-util")]
@@ -33,6 +39,7 @@ use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::id::Uuid7;
+use afd_core::test_util::trace::Capture;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -64,6 +71,7 @@ const TENANT_API_KEY: &str = "tenant_api_key";
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn the_identity_read_answers_the_rows_behind_the_credential() {
+    let capture = Capture::install();
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let router = Fleet::live(
@@ -76,8 +84,30 @@ async fn the_identity_read_answers_the_rows_behind_the_credential() {
 
     a_named_person_is_rendered_in_full(&router, &fixture).await;
     a_person_with_no_display_name_omits_the_field(&router, &fixture).await;
+    no_record_names_the_person(&capture);
 
     fixture.cleanup().await;
+}
+
+/// Nothing logged while the read answered carries the person it answered about.
+///
+/// The response is the one place an address may go. A log line is one field
+/// away from publishing it to an operator's aggregator, whether the handler
+/// writes it or a helper beneath it does, so every event and span recorded on
+/// this thread is searched for the person's email and display name.
+fn no_record_names_the_person(capture: &Capture) {
+    let events = capture.events().into_iter().map(|event| event.fields);
+    let spans = capture.spans().into_iter().map(|span| span.fields);
+    for fields in events.chain(spans) {
+        for (name, value) in &fields {
+            for private in [EMAIL, DISPLAY_NAME] {
+                assert!(
+                    !value.contains(private),
+                    "the `{name}` field carries `{private}`: {fields:?}"
+                );
+            }
+        }
+    }
 }
 
 /// Every field, against the row that produced it.

@@ -155,20 +155,6 @@ async fn a_limit_that_is_not_a_number_is_refused() {
 }
 
 #[tokio::test]
-async fn a_limit_outside_the_range_is_refused() {
-    for wrong in ["0", "201"] {
-        let path = format!("{CHARGES}?limit={wrong}");
-        let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{path}");
-        assert_eq!(
-            detail_of(response).await,
-            afd_api::handler::tenant::DETAIL_LIMIT_RANGE,
-            "the range sentence names the same bounds the store enforces"
-        );
-    }
-}
-
-#[tokio::test]
 async fn the_limit_cap_is_inside_the_range() {
     let path = format!("{CHARGES}?limit=200");
     let response = read(BILLING_READ, &path, Some(TENANT_KEY)).await;

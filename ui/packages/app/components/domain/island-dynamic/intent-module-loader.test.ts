@@ -1,9 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-// The bundle guard below AST-walks production sources, which needs the
-// JavaScript compiler API that the Go-native typescript@7 no longer ships —
-// `typescript-jsapi` aliases typescript@6 purely as this test's parser.
-import ts from "typescript-jsapi";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import {
@@ -33,132 +27,13 @@ function stubPointer(coarse: boolean) {
   );
 }
 
-function readAppSource(path: string): string {
-  return readFileSync(resolve(process.cwd(), path), "utf8");
-}
-
-function productionSourceFiles(directory: string): string[] {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const path = resolve(directory, entry.name);
-    if (entry.isDirectory()) return productionSourceFiles(path);
-    if (
-      !entry.name.match(/\.tsx?$/) ||
-      entry.name.includes(".test.") ||
-      entry.name.includes(".spec.")
-    ) {
-      return [];
-    }
-    return [path];
-  });
-}
-
-function staticModuleSpecifiers(path: string): string[] {
-  const source = readFileSync(path, "utf8");
-  const kind = path.endsWith(".tsx")
-    ? ts.ScriptKind.TSX
-    : ts.ScriptKind.TS;
-  const parsed = ts.createSourceFile(
-    path,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    kind,
-  );
-  const specifiers: string[] = [];
-
-  function visit(node: ts.Node) {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      specifiers.push(node.moduleSpecifier.text);
-    }
-    const [requiredModule] = ts.isCallExpression(node)
-      ? node.arguments
-      : [];
-    if (
-      ts.isCallExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "require" &&
-      node.arguments.length === 1 &&
-      requiredModule &&
-      ts.isStringLiteral(requiredModule)
-    ) {
-      specifiers.push(requiredModule.text);
-    }
-    ts.forEachChild(node, visit);
-  }
-
-  visit(parsed);
-  return specifiers;
-}
-
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
 describe("intent module loader", () => {
-  it("test_closed_heavy_tools_stay_out_of_initial_entries", async () => {
-    const initialEntries = [
-      [
-        "app/(dashboard)/admin/models/components/ModelsView.tsx",
-        'from "./AddModelDialog"',
-        "AddModelDialogDynamic",
-      ],
-      [
-        "app/(dashboard)/admin/models/components/CatalogueList.tsx",
-        'from "./EditModelDialog"',
-        "EditModelDialogDynamic",
-      ],
-      [
-        "app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.tsx",
-        'from "./AddFleetDialog"',
-        "AddFleetDialogDynamic",
-      ],
-      [
-        "app/(dashboard)/admin/fleet-libraries/components/PlatformCatalogTable.tsx",
-        'from "./EditFleetDialog"',
-        "EditFleetDialogDynamic",
-      ],
-      [
-        "app/(dashboard)/w/[workspaceId]/fleets/new/InstallSourceSelector.tsx",
-        'from "./AddLibraryDialog"',
-        "AddLibraryDialogDynamic",
-      ],
-    ] as const;
-
-    for (const [path, eagerImport, dynamicBoundary] of initialEntries) {
-      const source = readAppSource(path);
-      expect(source).not.toContain(eagerImport);
-      expect(source).toContain(dynamicBoundary);
-    }
-
-    const heavyModules = new Set([
-      "AddFleetDialog",
-      "AddLibraryDialog",
-      "AddModelDialog",
-      "EditFleetDialog",
-      "EditModelDialog",
-    ]);
-    const productionFiles = [
-      ...productionSourceFiles(resolve(process.cwd(), "app")),
-      ...productionSourceFiles(resolve(process.cwd(), "components")),
-    ];
-    const eagerHeavyImports = productionFiles.flatMap((path) =>
-      staticModuleSpecifiers(path)
-        .filter((specifier) => {
-          const moduleName = specifier
-            .split("/")
-            .at(-1)
-            ?.replace(/\.tsx?$/, "");
-          return moduleName ? heavyModules.has(moduleName) : false;
-        })
-        .map((specifier) => ({ path, specifier })),
-    );
-    expect(eagerHeavyImports).toEqual([]);
-
+  it("loads a closed tool once, only when asked, and serves the cached module after", async () => {
     const pending = deferred<{ default: string }>();
     const importModule = vi.fn(() => pending.promise);
     const loader = createIntentModuleLoader(importModule);

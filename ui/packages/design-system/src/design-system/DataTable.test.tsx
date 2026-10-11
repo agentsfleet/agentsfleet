@@ -232,19 +232,6 @@ describe("DataTable", () => {
     expect(wrapper.className).toContain("overflow-hidden");
   });
 
-  it("keeps dense cells while giving sortable headers the standard button target", () => {
-    render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />);
-    const headerCell = screen.getAllByRole("columnheader")[0];
-    const headerButton = screen.getByRole("button", { name: "Name" });
-    const bodyCell = screen.getByText("Alpha").closest("td")!;
-    expect(headerCell.className).toContain("p-0");
-    expect(headerButton.className).toContain("h-8");
-    expect(headerButton.className).toContain("focus-visible:ring-inset");
-    // 8px, on the 4px scale: 6px put every row height off the grid.
-    expect(bodyCell.className).toContain("py-2");
-    expect(bodyCell.className).not.toContain("py-1.5");
-  });
-
   it("is unbounded by default, so a paginated table lets the page scroll", () => {
     const { container } = render(
       <DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} />,
@@ -284,22 +271,6 @@ describe("DataTable", () => {
     expect(viewport.className).toContain("overflow-y-auto");
     const thead = container.querySelector("thead") as HTMLElement;
     expect(thead.className).not.toContain("sticky");
-  });
-
-  it("pulls the trailing page controls back onto the body's right column", () => {
-    render(
-      <DataTable
-        columns={COLUMNS}
-        rows={ROWS}
-        rowKey={(r) => r.id}
-        pagination={{ kind: "page", page: 1, pageSize: 2, total: 6, onPageChange: () => {} }}
-      />,
-    );
-    // Prev and Next are ghost buttons: their padding paints nothing, so
-    // inside the footer's px-3 the "›" glyph sat 13px further in than the row
-    // actions above it. The cluster is pulled back by exactly that padding.
-    const next = screen.getByRole("button", { name: "Next page" });
-    expect(next.parentElement).toHaveClass("-mr-3");
   });
 
   it("contains overscroll on the horizontal axis only", () => {

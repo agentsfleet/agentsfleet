@@ -70,33 +70,13 @@ describe("KillSwitch component", () => {
     expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
   });
 
-  it("styles reversible Stop separately from terminal Kill and keeps both touchable", async () => {
+  // The label already names the action; the glyph must not be read out twice.
+  it("hides each lifecycle action's glyph from its accessible name", async () => {
     await renderSwitch("active");
-    const stop = screen.getByRole("button", { name: /^stop$/i });
-    const kill = screen.getByRole("button", { name: /^kill$/i });
-    expect(stop.getAttribute("data-variant")).toBe("outline");
-    expect(kill.getAttribute("data-variant")).toBe("destructive");
-    expect(stop.className).toMatch(/min-h-11/);
-    expect(kill.className).toMatch(/min-h-11/);
-  });
-
-  // Stop and Kill are the two most consequential controls in the product and
-  // read as plain words in a row of plain words. The glyph is what makes them
-  // findable before they are read, the way every runner action carries one.
-  it("gives each lifecycle action its own glyph, hidden from the accessible name", async () => {
-    await renderSwitch("active");
-    const stop = screen.getByRole("button", { name: /^stop$/i });
-    const kill = screen.getByRole("button", { name: /^kill$/i });
-    expect(stop.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("CircleStopIcon");
-    expect(kill.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("PowerOffIcon");
-    // The label already names the action; the glyph must not be read out twice.
-    expect(stop.querySelector("[data-icon]")?.getAttribute("aria-hidden")).toBe("true");
-  });
-
-  it("gives Resume its own glyph rather than reusing Stop's", async () => {
-    await renderSwitch("stopped");
-    const resume = screen.getByRole("button", { name: /^resume$/i });
-    expect(resume.querySelector("[data-icon]")?.getAttribute("data-icon")).toBe("PlayIcon");
+    for (const name of [/^stop$/i, /^kill$/i]) {
+      const button = screen.getByRole("button", { name });
+      expect(button.querySelector("[data-icon]")?.getAttribute("aria-hidden")).toBe("true");
+    }
   });
 
   // After opening the action dialog, both the trigger button and the

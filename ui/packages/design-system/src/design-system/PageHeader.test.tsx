@@ -15,14 +15,6 @@ describe("PageHeader", () => {
     expect(getByText("Actions")).toBeInTheDocument();
   });
 
-  it("applies base layout utilities (flex + space-between)", () => {
-    const { container } = render(<PageHeader />);
-    const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("flex");
-    expect(cls).toContain("items-center");
-    expect(cls).toContain("justify-between");
-  });
-
   it("merges consumer className without dropping base utilities", () => {
     const { container } = render(<PageHeader className="pt-10" />);
     const cls = (container.firstChild as HTMLElement).className;

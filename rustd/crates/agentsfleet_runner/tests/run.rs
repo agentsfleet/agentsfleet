@@ -144,27 +144,6 @@ fn attribute<'a>(holder: &'a Value, key: &str) -> Option<&'a str> {
         .as_str()
 }
 
-/// The built binary against a daemon granting one lease: the lease is
-/// admitted, its turn runs on the agent loop, one report settles it, and the
-/// binary stops cleanly on SIGTERM with nothing logged as a failure.
-#[test]
-fn test_runner_binary_runs_a_lease() {
-    let runtime = runtime();
-    let mut daemon = runtime.block_on(FakeDaemon::start());
-
-    let ran = run_one_lease(&runtime, &mut daemon, &[]);
-
-    assert_eq!(ran.report["lease_id"], LEASE_ID, "{}", ran.report);
-    assert_eq!(ran.report["fencing_token"], FENCING, "{}", ran.report);
-    assert_ne!(
-        ran.report["failure_reason"], STARTUP_POSTURE,
-        "the lease was admitted and its turn ran: {}",
-        ran.report
-    );
-    assert!(ran.status.success(), "{:?}: {}", ran.status, ran.stderr);
-    assert!(!ran.stderr.contains(RUN_FAILED), "{}", ran.stderr);
-}
-
 /// The same lease with a collector configured: its root span reaches the
 /// collector naming the lease, under the instance identity the systemd unit
 /// sets, so each host publishes its own series.
@@ -211,8 +190,10 @@ fn test_runner_binary_exports_its_lease_trace() {
 }
 
 /// The built binary settles a lease under each egress posture the daemon
-/// assigns: the allowlist binds through the host's resolver, and no posture
-/// refuses the lease before its turn runs.
+/// assigns: the lease is admitted, its turn runs on the agent loop, one report
+/// settles it under the lease's fencing token, the allowlist binds through the
+/// host's resolver, and the binary stops cleanly with nothing logged as a
+/// failure.
 #[test]
 fn test_runner_binary_runs_a_lease_per_policy() {
     let runtime = runtime();
@@ -228,6 +209,11 @@ fn test_runner_binary_runs_a_lease_per_policy() {
         assert_eq!(
             ran.report["lease_id"], LEASE_ID,
             "{policy:?}: {}",
+            ran.report
+        );
+        assert_eq!(
+            ran.report["fencing_token"], FENCING,
+            "{policy:?}: the report echoes the lease's fencing token: {}",
             ran.report
         );
         assert_ne!(

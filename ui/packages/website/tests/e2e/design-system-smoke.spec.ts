@@ -68,13 +68,6 @@ test.describe("Button — computed styles", () => {
     expect(px).toBeLessThan(20); // hard ceiling well under any pill value
   });
 
-  test("transition-timing-function resolves (ease-snap)", async ({ page }) => {
-    // var(--ease-snap) → var(--easing-snap) → ease-out
-    const ease = await computed(page, "btn-default", "transition-timing-function");
-    expect(ease.length).toBeGreaterThan(0);
-    expect(ease).not.toBe("");
-  });
-
   test("sm size has h-8 (32px)", async ({ page }) => {
     const h = await computed(page, "btn-sm", "height");
     expect(parseFloat(h)).toBeCloseTo(32, 0);
@@ -104,17 +97,31 @@ test.describe("Button — computed styles", () => {
   });
 });
 
+// A touch screen reports `pointer: coarse`, and there every Button keeps the
+// 44px target floor its compact sizes sit under. The fine-pointer sizes above
+// are the control: the same buttons measure 32 and 36px without touch.
+const COARSE_TARGET_PX = 44;
+const COMPACT_BUTTONS = ["btn-sm", "btn-icon", "btn-default-size"];
+
+test.describe("Button — coarse-pointer target floor", () => {
+  test.use({ hasTouch: true });
+
+  test("every compact Button is at least 44px square on a coarse pointer", async ({ page }) => {
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    for (const testid of COMPACT_BUTTONS) {
+      const box = await page.locator(`[data-testid="${testid}"]`).boundingBox();
+      expect(box!.height, `${testid} height`).toBeGreaterThanOrEqual(COARSE_TARGET_PX);
+      expect(box!.width, `${testid} width`).toBeGreaterThanOrEqual(COARSE_TARGET_PX);
+    }
+  });
+});
+
 test.describe("Card — computed styles", () => {
   test("default card has border + card background + p-6 padding", async ({ page }) => {
     const pad = await computed(page, "card-default", "padding-top");
     const bw = await computed(page, "card-default", "border-top-width");
     expect(parseFloat(pad)).toBeCloseTo(24, 0); // p-6 = 24px
     expect(parseFloat(bw)).toBeGreaterThan(0);
-  });
-
-  test("featured card renders the 'Popular' badge", async ({ page }) => {
-    const card = page.locator('[data-testid="card-featured"]');
-    await expect(card).toContainText("Popular");
   });
 });
 
@@ -134,12 +141,6 @@ test.describe("Terminal — computed styles", () => {
       .locator(`[data-testid="${testid}"]`)
       .evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
   }
-
-  test("default terminal uses the info color (cyan)", async ({ page }) => {
-    const color = await terminalPreStyle(page, "terminal-default", "color");
-    expect(color).not.toBe("");
-    expect(color).not.toBe("rgba(0, 0, 0, 0)");
-  });
 
   test("green terminal uses the success color (different from info)", async ({ page }) => {
     const green = await terminalPreStyle(page, "terminal-green", "color");

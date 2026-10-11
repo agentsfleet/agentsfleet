@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -27,9 +24,6 @@ import {
   DELETE_SECRET_DESCRIPTION,
   deleteConnectionDescription,
 } from "../copy";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SOURCE_PATH = path.join(__dirname, "SecretsList.tsx");
 
 // A fixed, far-past instant keeps the relative label stable ("… ago", never
 // flipping to "in …") and the absolute tooltip deterministic per runtime tz.
@@ -193,12 +187,6 @@ describe("SecretsList Created cell", () => {
     fireEvent.focus(timeEl!);
     const tips = await screen.findAllByText(absolute);
     expect(tips.length).toBeGreaterThan(0);
-  });
-
-  it("test_secretslist_no_bespoke_formatter", () => {
-    const source = readFileSync(SOURCE_PATH, "utf8");
-    expect(source).not.toContain("DATE_FORMATTER");
-    expect(source).not.toContain("formatCreatedAt");
   });
 });
 

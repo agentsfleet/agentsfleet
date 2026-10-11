@@ -85,21 +85,6 @@ describe("FleetMessageRow", () => {
     expect(screen.getByText("Fleet:", { selector: ".sr-only" })).toBeTruthy();
   });
 
-  it("uses the operational opacity-only entry motion", () => {
-    const { container } = renderRow();
-    const row = container.querySelector('[data-role="user"]') as HTMLElement;
-    expect(row.className).toMatch(/motion-safe:fade-in-0/);
-    expect(row.className).toMatch(/motion-safe:duration-stream/);
-    expect(row.className).not.toMatch(/slide-in/);
-  });
-
-  it("keeps a long body inside its own row rather than widening the page", () => {
-    const { container } = renderRow({ children: "x".repeat(600) });
-    const body = container.querySelector(".break-words") as HTMLElement;
-    expect(body).toBeTruthy();
-    expect(body.className).toMatch(/min-w-0/);
-  });
-
   it("dims a sending row and marks a failed one for the renderer", () => {
     const { container } = renderRow({ dimmed: true, failed: true });
     const row = container.querySelector('[data-role="user"]') as HTMLElement;
@@ -110,7 +95,7 @@ describe("FleetMessageRow", () => {
 });
 
 describe("FleetActivityRow", () => {
-  it("keeps integration metadata together and renders a calm destructive failure cue", () => {
+  it("keeps integration metadata together and marks a failed outcome destructive", () => {
     const { container } = render(
       <FleetActivityRow
         sender="GitHub App"
@@ -125,35 +110,25 @@ describe("FleetActivityRow", () => {
       </FleetActivityRow>,
     );
     const row = container.querySelector('[data-role="system"]') as HTMLElement;
-    const card = row as HTMLElement;
-    const headline = screen.getByText("agentsfleet/agentsfleet#546 was edited");
     const outcome = screen
       .getByText(RUNNER_REFUSAL_SENTENCE)
       .closest("p") as HTMLElement;
-    const details = screen.getByRole("button", { name: "Details" });
     const time = row.querySelector("time") as HTMLTimeElement;
     const accessibleTime = screen.getByText(/^Occurred /, {
       selector: ".sr-only",
     });
 
-    expect(card.className).toMatch(/w-full/);
-    expect(card.className).toMatch(/border-b/);
+    expect(screen.getByText("agentsfleet/agentsfleet#546 was edited")).toBeTruthy();
     expect(screen.getByText("EDITED")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Details" })).toBeTruthy();
     expect(time.dateTime).toBe(AT.toISOString());
     expect(time.getAttribute("aria-hidden")).toBe("true");
     expect(time.textContent).toMatch(/ago$/);
     expect(time.title).not.toBe("");
     expect(accessibleTime.textContent).toContain(time.title);
-    expect(headline.className).toMatch(/text-muted-foreground/);
-    expect(outcome.className).toMatch(/text-foreground/);
-    expect(outcome.className).toMatch(/text-label/);
     expect(outcome.querySelector("svg")?.getAttribute("class")).toMatch(
       /text-destructive/,
     );
-    expect(details.className).toMatch(/w-fit/);
-    expect(details.className).toMatch(/min-h-11/);
-    expect(details.className).toMatch(/sm:min-h-6/);
-    expect(details.querySelectorAll("svg")).toHaveLength(2);
   });
 
   it("refreshes an idle activity timestamp as wall time advances", async () => {

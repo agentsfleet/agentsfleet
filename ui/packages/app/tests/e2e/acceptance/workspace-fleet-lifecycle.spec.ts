@@ -3,7 +3,7 @@
  *
  * Walks the operator path that exercises the most workspace-scoped state:
  *   1. Ensure a 2nd workspace exists (API; the dashboard has no Create-
- *      workspace UI yet — same posture multi-workspace.spec.ts takes).
+ *      workspace UI yet).
  *   2. Sign in, switch to the 2nd workspace via the header switcher (UI).
  *   3. Install a fleet via /w/<secondary>/fleets/new (UI).
  *   4. Kill it (UI confirm dialog).

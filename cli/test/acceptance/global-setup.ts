@@ -18,6 +18,8 @@ import {
   DASHBOARD_URL_PROD,
 } from "./fixtures/constants.ts";
 import { ensureFixtureTenantReady } from "./fixtures/clerk-admin.ts";
+import { composeEnv } from "./fixtures/cli.js";
+import { API_KEY_ENV } from "../../src/constants/env.ts";
 
 export interface AcceptanceEnv {
   readonly apiUrl: string;
@@ -130,9 +132,27 @@ async function verifyChromiumInstalled(): Promise<void> {
   }
 }
 
+export type SpawnEnvComposer = typeof composeEnv;
+
+/**
+ * Refuse to run when a spawned CLI would inherit the parent's API key.
+ *
+ * Every acceptance spec spawns the real binary through `composeEnv`, which
+ * builds the child environment field by field. A composer that let the
+ * parent's `AGENTSFLEET_API_KEY` through would authenticate specs that assert
+ * unauthenticated behaviour with the operator's own key, and cross-contaminate
+ * the two fixture identities. The key's value is never printed.
+ */
+export function assertHermeticSpawnEnv(compose: SpawnEnvComposer = composeEnv): void {
+  if (API_KEY_ENV in compose({ [API_KEY_ENV]: undefined })) {
+    throw new Error(`${API_KEY_ENV} leaks into spawned CLIs — compose the spawn env, never inherit it`);
+  }
+}
+
 export async function runLiveAcceptancePreflight(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
+  assertHermeticSpawnEnv();
   const config = resolveLiveAcceptancePreflight(env);
   await verifyChromiumInstalled();
   await ensureFixtureTenantReady(config.clerkSecret, {

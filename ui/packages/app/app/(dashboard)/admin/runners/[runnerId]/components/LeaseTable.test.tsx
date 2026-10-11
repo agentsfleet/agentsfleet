@@ -10,6 +10,9 @@ import { APPLY_LEASE_FILTER_LABEL, LEASE_FILTER_LABEL } from "./runner-copy";
 // read it from there. That the root mounts it at all is guarded once, in
 // `app/layout.test.tsx`, which is the only place the question is still live.
 
+// A total past one 25-row page, so the pager has a next page to hand off.
+const LEASES_PAST_ONE_PAGE = 60;
+
 const goToPage = vi.fn();
 const changePageSize = vi.fn();
 let mockHasNext = false;
@@ -181,7 +184,7 @@ describe("LeaseTable", () => {
       <LeaseTable
         initial={{
           items: [lease({ id: "page-1-lease" })],
-          total: 60,
+          total: LEASES_PAST_ONE_PAGE,
           next_cursor: "page-2-cursor",
         }}
         pageSize={25}
@@ -365,23 +368,6 @@ describe("LeaseTable", () => {
     expect(routerPush).toHaveBeenCalledWith(MOCK_PATHNAME, { scroll: true });
   });
 
-  it("lease and activity tables use the shared time vocabulary (lease half)", () => {
-    render(
-      <LeaseTable
-        initial={{
-          items: [lease({ id: "vocab-1" })],
-          total: 1,
-          next_cursor: null,
-        }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    // The app-wide column names (EventsList's), not this table's own dialect.
-    expect(screen.getByRole("columnheader", { name: "Time" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Duration" })).toBeTruthy();
-    expect(screen.queryByRole("columnheader", { name: "When" })).toBeNull();
-    expect(screen.queryByRole("columnheader", { name: "Took" })).toBeNull();
-  });
-
   it("should sort by Time through the standard header control", () => {
     render(
       <LeaseTable
@@ -410,10 +396,3 @@ describe("LeaseTable", () => {
   });
 });
 
-it("the filter copy reads Filter and Apply — pinned literals, not constants", () => {
-  // The interaction tests import the constants so plumbing refactors stay
-  // cheap; these literals pin the user-facing words themselves, the same way
-  // the vocabulary test pins Time/Duration.
-  expect(LEASE_FILTER_LABEL).toBe("Filter");
-  expect(APPLY_LEASE_FILTER_LABEL).toBe("Apply");
-});

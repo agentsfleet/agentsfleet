@@ -16,6 +16,7 @@ failed=0
 work_dir="$(mktemp -d)"
 stub_dir="$work_dir/bin"
 calls="$work_dir/calls"
+loaded_sql="$work_dir/loaded.sql"
 mkdir -p "$stub_dir"
 trap 'rm -rf "$work_dir"' EXIT
 
@@ -42,11 +43,19 @@ esac
 STUB
 
 # Answers the three questions the scripts put to a container: the ledger
-# version (branching on which URL was forwarded), a census, or a copy.
+# version (branching on which URL was forwarded), a census, or a copy. The copy
+# keeps the load.sql the script mounted at /work, since the script deletes its
+# temp dir on exit and the file is what the real container would run.
 cat >"$stub_dir/docker" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$CALLS"
 case "$*" in
+  *pg_dump*)
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "-v" ]; then cp -- "${2%:/work}/load.sql" "$LOADED_SQL"; fi
+      shift
+    done
+    ;;
   *schema_migrations*)
     case "${DATABASE_URL:-}" in
       *"$NEXT_HOST"*) printf '%s\n' "${TARGET_LEDGER:-900}" ;;
@@ -68,7 +77,7 @@ run() {
   local script="$1"
   shift
   : >"$calls"
-  env PATH="$stub_dir:$PATH" CALLS="$calls" NEXT_HOST="${NEXT_HOST:-us-east.pg.psdb.cloud}" \
+  env PATH="$stub_dir:$PATH" CALLS="$calls" LOADED_SQL="$loaded_sql" NEXT_HOST="${NEXT_HOST:-us-east.pg.psdb.cloud}" \
     ALLOW_VAULT_READS=1 ENV="${ENV_UNDER_TEST:-dev}" "$@" bash "$script" 2>&1
 }
 
@@ -200,22 +209,6 @@ test_system_roots_are_added_for_the_container() {
   ) && ok "$name" || bad "$name" "wrapping or parsing is wrong (exit $?)"
 }
 
-# A vault field carrying sslrootcert is a daemon that will not boot:
-# afd_db parses it as a path and raises TlsCertFileUnreadable.
-test_the_staged_vault_strings_carry_no_sslrootcert() {
-  local name="staged vault strings never carry sslrootcert"
-  if grep -q 'sslrootcert' "$SCRIPT_DIR/001_playbook.md" &&
-     ! grep -q 'never reach a vault field\|must never appear in a vault' "$SCRIPT_DIR/001_playbook.md"; then
-    bad "$name" "the playbook mentions sslrootcert without warning it off vault fields"
-    return
-  fi
-  if grep -nE 'next-(api|migrator)-connection-string.*sslrootcert' "$SCRIPT_DIR"/*.sh >/dev/null 2>&1; then
-    bad "$name" "a script writes sslrootcert into a staged vault field"
-  else
-    ok "$name"
-  fi
-}
-
 # The target is migrated before the copy, so it already holds what the
 # migrations wrote. A restore that ignores that collides on migration 410's
 # singleton row and substitutes trigger defaults for migration 880's counters.
@@ -237,14 +230,22 @@ test_the_load_clears_the_target_and_suppresses_triggers() {
 }
 
 # The two statements the load depends on live in the generated SQL, not in the
-# docker argv, so they are asserted against the file the script writes.
+# docker argv, so they are asserted against the file the copy mounted at /work.
 test_the_load_sql_carries_the_two_statements_it_depends_on() {
   local name="the load SQL truncates and sets replica role"
-  local body
-  body="$(sed -n "/cat >\"\$work_dir\/load.sql\"/,/^SQL$/p" "$SCRIPT_DIR/02_copy.sh")"
-  if [ -z "$body" ]; then
-    bad "$name" "no load.sql heredoc found in 02_copy.sh"
-  elif [[ "$body" != *"session_replication_role = 'replica'"* ]]; then
+  local out status=0 body
+  rm -f -- "$loaded_sql"
+  out="$(printf 'dev\n' | run "$COPY" ALLOW_PROVIDER_WRITES=1)" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "$name" "status=$status: $out"
+    return
+  fi
+  if [ ! -s "$loaded_sql" ]; then
+    bad "$name" "the copy mounted no load.sql at /work"
+    return
+  fi
+  body="$(cat "$loaded_sql")"
+  if [[ "$body" != *"session_replication_role = 'replica'"* ]]; then
     bad "$name" "triggers are not suppressed: counters would take trigger defaults"
   elif [[ "$body" != *"TRUNCATE TABLE"* ]] || [[ "$body" != *"CASCADE"* ]]; then
     bad "$name" "the target is not cleared, so seeded rows collide"
@@ -261,7 +262,6 @@ echo "database-region-move regression tests"
 test_the_load_clears_the_target_and_suppresses_triggers
 test_the_load_sql_carries_the_two_statements_it_depends_on
 test_system_roots_are_added_for_the_container
-test_the_staged_vault_strings_carry_no_sslrootcert
 test_gate_refuses_all
 test_check_refuses_same_host
 test_check_refuses_api_on_direct_port

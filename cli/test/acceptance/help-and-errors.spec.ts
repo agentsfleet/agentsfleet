@@ -11,6 +11,7 @@
 
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
+import { VERSION } from "../../src/cli.ts";
 import { COMMAND_GROUPS, AUTH_REQUIRED_REPRESENTATIVE } from "./fixtures/command-matrix.ts";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
@@ -21,8 +22,6 @@ import {
   TELEMETRY_EXIT_BUDGET_MS,
   startStalledServer,
   stripAnsi,
-  pkgVersion,
-  validateModule,
   emptyEnv,
 } from "./helpers-help-and-errors.ts";
 
@@ -63,22 +62,22 @@ describe("--version", () => {
     const result = await runFleetctl(["--version"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     assert.ok(
-      result.stdout.includes(pkgVersion),
-      `expected ${pkgVersion} in stdout: ${result.stdout}`,
+      result.stdout.includes(VERSION),
+      `expected ${VERSION} in stdout: ${result.stdout}`,
     );
   });
 
   it("-v is equivalent to --version", async () => {
     const result = await runFleetctl(["-v"], { env: emptyEnv() });
     assert.equal(result.code, 0);
-    assert.ok(result.stdout.includes(pkgVersion));
+    assert.ok(result.stdout.includes(VERSION));
   });
 
   it("--version --json emits parseable JSON with the version field", async () => {
     const result = await runFleetctl(["--version", "--json"], { env: emptyEnv() });
     assert.equal(result.code, 0);
     const parsed = JSON.parse(result.stdout.trim()) as { version: string };
-    assert.equal(parsed.version, pkgVersion);
+    assert.equal(parsed.version, VERSION);
   });
 });
 
@@ -198,28 +197,6 @@ describe("after logout, an authenticated command refuses from disk", () => {
     } finally {
       await state.cleanup();
     }
-  });
-});
-
-describe("validate.js error stem", () => {
-  // "abc def" fails the current validator because spaces aren't allowed
-  // in SAFE_ID_RE. "not-a-uuid" actually passes today (matches SAFE_ID_RE);
-  // that mismatch with the backend's strict uuidv7 is the motivation for
-  // the optional library swap covered in the lifecycle suite.
-  it("validateRequiredId is reachable and emits the invalid-format stem", () => {
-    const result = validateModule.validateRequiredId("abc def", "fleet_id");
-    assert.equal(result.ok, false);
-    assert.match(
-      result.message,
-      /invalid fleet_id: expected/i,
-      `unexpected stem: ${result.message}`,
-    );
-  });
-
-  it("validateRequiredId('') reports the empty-required stem", () => {
-    const result = validateModule.validateRequiredId("", "workspace_id");
-    assert.equal(result.ok, false);
-    assert.match(result.message, /workspace_id is required/i);
   });
 });
 

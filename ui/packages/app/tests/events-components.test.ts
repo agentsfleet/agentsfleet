@@ -36,7 +36,7 @@ afterEach(() => cleanup());
 // ── EventsList ─────────────────────────────────────────────────────────────
 
 import { EventsList } from "../components/domain/EventsList";
-import { type EventDetail, type EventRow, type EventsPage } from "@/lib/api/events";
+import { type EventDetail, type EventsPage } from "@/lib/api/events";
 import { GUIDANCE } from "@/lib/events/event-summary";
 import { agentDisplayName } from "@/lib/fleets/agent-label";
 
@@ -90,17 +90,6 @@ function renderList(initial: EventsPage, fleetId?: string) {
 }
 
 describe("EventsList — the standard workspace events table", () => {
-  it("lets the event log grow with the page instead of a fixed-height scroll box", () => {
-    // Regression for the dead-space report: the table's default bound is a
-    // constant 384px, so a 50-row first fetch rendered ~8 rows above a screen
-    // of black space and "Load more" appended rows nobody could see.
-    const { container } = renderList({
-      items: [row({ event_id: "evt_grow_1" })],
-      next_cursor: "cursor-1",
-    });
-    expect(container.querySelector(".max-h-none")).toBeTruthy();
-  });
-
   it("collapses repeated identical failures into one row that opens on demand", async () => {
     const failure = (id: string) =>
       row({

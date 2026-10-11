@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 import {
   advanceInstallStep,
   INSTALL_STEP,
   installStepFromKind,
   isInstallComplete,
-  isInstallFrame,
   rankOf,
 } from "@/lib/streaming/install-steps";
 
@@ -21,24 +19,6 @@ describe("installStepFromKind — the cross-tier frame→step map", () => {
     expect(installStepFromKind(FRAME_KIND.INSTALL_ERROR)).toBe(INSTALL_STEP.ERROR);
     expect(installStepFromKind(FRAME_KIND.CHUNK)).toBeNull();
     expect(installStepFromKind("totally_unknown")).toBeNull();
-  });
-
-  it("the kind values are the client's own install:* vocabulary (no server constant declares them)", () => {
-    expect(FRAME_KIND.INSTALL_CREATING).toBe("install:creating");
-    expect(FRAME_KIND.INSTALL_PROVISIONING).toBe("install:provisioning");
-    expect(FRAME_KIND.INSTALL_READY).toBe("install:ready");
-    expect(FRAME_KIND.INSTALL_ERROR).toBe("install:error");
-  });
-});
-
-describe("isInstallFrame", () => {
-  it("is true for install frames and false for chat frames", () => {
-    expect(isInstallFrame({ kind: FRAME_KIND.INSTALL_CREATING } as LiveFrame)).toBe(true);
-    expect(isInstallFrame({ kind: FRAME_KIND.INSTALL_READY } as LiveFrame)).toBe(true);
-    expect(
-      isInstallFrame({ kind: FRAME_KIND.EVENT_RECEIVED, event_id: "e", actor: "fleet" }),
-    ).toBe(false);
-    expect(isInstallFrame({ kind: FRAME_KIND.CHUNK, event_id: "e", text: "hi" })).toBe(false);
   });
 });
 

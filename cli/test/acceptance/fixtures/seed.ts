@@ -60,7 +60,7 @@ function remainingTimeoutMs(deadline: number): number {
   return Math.max(1, deadline - Date.now());
 }
 
-export function fleetReachedActive(fleetId: string, status: string | undefined): boolean {
+function fleetReachedActive(fleetId: string, status: string | undefined): boolean {
   if (status === AGENTSFLEET_STATUS.active) return true;
   if (status !== undefined && TERMINAL_STATUSES.includes(status)) {
     throw new Error(`fleet ${fleetId} entered terminal status=${status} before becoming active`);
@@ -68,7 +68,7 @@ export function fleetReachedActive(fleetId: string, status: string | undefined):
   return false;
 }
 
-export function fleetReadErrorIsRetryable(error: unknown): boolean {
+function fleetReadErrorIsRetryable(error: unknown): boolean {
   return error instanceof FleetNotFoundError;
 }
 

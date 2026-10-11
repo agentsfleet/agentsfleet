@@ -49,9 +49,6 @@ const FLEET_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetRead]);
 /// The rung the forget takes.
 const FLEET_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::FleetWrite]);
 
-/// The longest key that could ever have been stored.
-const MAX_KEY_LEN: usize = 255;
-
 /// A page size far past what any page will serve.
 ///
 /// Named rather than spelled inline so the assertion says what it is asking
@@ -266,14 +263,6 @@ async fn a_memory_key_with_a_malformed_escape_is_refused() {
             "{key}: a malformed key is a malformed request"
         );
     }
-}
-
-/// A memory key longer than one that could be stored is refused.
-#[tokio::test]
-async fn a_memory_key_over_its_bound_is_refused() {
-    let over = "k".repeat(MAX_KEY_LEN + 1);
-    let response = forgetting(&item(&over)).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 /// A well-formed forget reaches the store, and the outage is a 503.

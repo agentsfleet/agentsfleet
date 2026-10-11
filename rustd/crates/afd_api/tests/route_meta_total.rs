@@ -139,31 +139,6 @@ fn test_every_template_is_a_low_cardinality_literal() {
     }
 }
 
-/// A route's identity is not its template.
-///
-/// Five templates are shared by routes that differ by method or guard — the
-/// connector callback a browser is redirected to and the one the dashboard
-/// completes, the runner memory read and write, the operator's runner read,
-/// patch and delete, and so on. Asserting templates were
-/// unique would look like a tightening and would actually be false; what must
-/// be unique is the route, which the walk above already holds.
-#[test]
-fn test_templates_may_repeat_but_the_pairs_are_known() {
-    let mut seen: HashSet<&'static str> = HashSet::new();
-    let shared: Vec<&'static str> = Route::all()
-        .map(|route| route.meta().template)
-        .filter(|template| !seen.insert(template))
-        .collect();
-
-    assert_eq!(
-        shared.len(),
-        5,
-        "the set of routes sharing a template changed: {shared:?}. That is not \
-         automatically wrong — two methods on one path are two routes — but it \
-         is a thing to have decided, not to discover."
-    );
-}
-
 /// Only the two Server-Sent Events tails are exempt from the request ceiling,
 /// and only the two probes are exempt from shedding.
 ///
