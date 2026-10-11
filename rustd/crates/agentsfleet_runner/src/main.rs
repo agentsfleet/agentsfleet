@@ -13,6 +13,7 @@
 //!   before any thread exists, then serves the executor. The binary is bound
 //!   read-only into every sandbox, so there is no second artifact to ship.
 
+mod engine;
 mod host;
 
 use std::process::ExitCode;
@@ -62,11 +63,14 @@ enum Command {
 /// How `run` builds each lease's sandbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::Args)]
 struct RunArgs {
+    /// Sandbox engine used for every lease on this host.
+    #[arg(long, value_enum, default_value_t)]
+    engine: engine::EngineChoice,
     /// Build no sandbox: every lease's tools run unconfined in a scratch
     /// directory under the storage home. A debug build alone has the flag, so
     /// a suite can drive this binary end to end on a host without bubblewrap.
     #[cfg(debug_assertions)]
-    #[arg(long, hide = true)]
+    #[arg(long, hide = true, conflicts_with = "engine")]
     unsandboxed: bool,
 }
 
@@ -111,7 +115,7 @@ fn probe() -> ExitCode {
         }
         Err(error) => return refused(&error),
     }
-    if host.missing().is_none() {
+    if afr_sandbox::BubblewrapRequirements::missing(&host).is_none() {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
@@ -174,13 +178,12 @@ fn exporting(env: &impl EnvSource) -> Result<Option<Telemetry>, ExitCode> {
 /// The failure, already logged under `run_failed`, as the exit status.
 fn supervise(args: RunArgs) -> Result<ExitCode, ExitCode> {
     let (config, home) = afr_supervisor::boot(&ProcessEnv).or_exit()?;
-    // `mounted` outlives the runtime and the engine it is moved into: every
+    // `resources` outlives the runtime and the engine it is moved into: every
     // sandbox is gone before its toolbox is unmounted.
-    let Host {
-        engine,
-        probe,
-        mounted: _mounted,
-    } = args.host(&home)?;
+    let host = args.host(&home)?;
+    let _resources = host.resources;
+    let engine = host.engine;
+    let probe = host.probe;
     let agent = host::agent()?;
     let runtime = tokio::runtime::Runtime::new().map_err(|error| host::io_failed(&error))?;
     runtime
@@ -200,7 +203,7 @@ impl RunArgs {
         if self.unsandboxed {
             return Host::unsandboxed(home);
         }
-        Host::bubblewrap(home)
+        self.engine.boot(home)
     }
 }
 
