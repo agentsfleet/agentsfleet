@@ -30,6 +30,7 @@
 
 use std::sync::Arc;
 
+use afd_core::error_code::{Coded as _, Logged};
 use backon::{BackoffBuilder as _, ExponentialBuilder, Retryable as _};
 use redis::PushInfo;
 use redis::cluster_async::ClusterConnection;
@@ -181,11 +182,15 @@ async fn redial(config: &DragonflyConfig, schedule: ExponentialBuilder) -> Conne
                 let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
                 attempt = attempt.saturating_add(1);
                 let count = attempt;
-                let reason = failure.told();
+                let Logged {
+                    error_code: cause_error_code,
+                    reason,
+                } = failure.logged();
                 tracing::warn!(
                     attempt = count,
                     reason,
                     error_code,
+                    cause_error_code,
                     event = "hub_reconnect_failed"
                 );
             })

@@ -36,6 +36,7 @@
 //! character boundary at or below the cap.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::EventId;
 use afd_events::Closed;
@@ -216,9 +217,13 @@ impl Leases {
             Ok(_nothing_above_the_floor) => {}
             Err(failure) => {
                 let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                let reason = failure.told();
+                let Logged {
+                    error_code: cause_error_code,
+                    reason,
+                } = failure.logged();
                 tracing::warn!(
                     error_code = code,
+                    cause_error_code,
                     fleet_id = fleet,
                     reason,
                     event = "stream_trim_failed"
@@ -279,6 +284,11 @@ mod tests {
         assert_eq!(
             line.field("error_code"),
             Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
+        assert_eq!(
+            line.field("cause_error_code"),
+            Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
+            "the refused command's own code rides `cause_error_code`"
         );
         assert!(
             !reason.is_empty() && !reason.contains("[UZ-"),

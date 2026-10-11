@@ -91,4 +91,8 @@ fn an_unattempted_beat_step_reason_carries_no_code_prefix() {
         logged.field("error_code"),
         Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
+    assert_eq!(
+        logged.field("cause_error_code"),
+        Some(runner_vanished().code().as_str())
+    );
 }

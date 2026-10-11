@@ -85,6 +85,11 @@ async fn a_held_fleets_unreadable_readiness_leaves_the_poll_its_partition()
         !reason.is_empty() && !reason.contains("[UZ-"),
         "the code is the line's `error_code`, never the reason's prefix: {reason}"
     );
+    assert_eq!(
+        skipped.field("cause_error_code"),
+        Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
+        "the refused command's own code rides `cause_error_code`"
+    );
     assert_ne!(
         store.cursor().advance(),
         ReadyCursor::new().advance(),
@@ -116,6 +121,11 @@ fn a_poll_queue_failure_reason_carries_no_code_prefix() -> Result<(), &'static s
             line.field("error_code"),
             Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
         );
+        assert_eq!(
+            line.field("cause_error_code"),
+            Some(error.code().as_str()),
+            "{event}"
+        );
         assert_eq!(line.field("reason"), Some(told.as_str()), "{event}");
     }
     Ok(())
@@ -145,4 +155,5 @@ async fn an_undecodable_entry_reason_carries_no_code_prefix() {
 
     let line = log.only(EVENT_ENTRY_UNDECODABLE_DROP_FAILED);
     assert_eq!(line.field("reason"), Some(told.as_str()));
+    assert_eq!(line.field("cause_error_code"), Some(error.code().as_str()));
 }

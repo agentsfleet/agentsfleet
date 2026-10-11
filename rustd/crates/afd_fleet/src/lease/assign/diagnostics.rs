@@ -7,7 +7,7 @@
 //! what the poll returns — a runner recovers by backing off and re-polling, so
 //! nothing here is raised to it.
 
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 
 /// The readiness index would not answer.
@@ -41,9 +41,13 @@ pub(super) fn warn_queue(event: &'static str, runner_id: &Uuid7, error: &afd_dra
     // scores the dead copy.
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let runner = runner_id.as_str();
-    let reason = error.told();
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
     tracing::warn!(
         error_code = code,
+        cause_error_code,
         event,
         runner_id = runner,
         reason,
@@ -59,9 +63,13 @@ pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dr
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let runner = runner_id.as_str();
     let fleet = fleet_id.as_str();
-    let reason = error.told();
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
     tracing::warn!(
         error_code = code,
+        cause_error_code,
         event = EVENT_HELD_READ_FAILED,
         runner_id = runner,
         fleet_id = fleet,
@@ -73,9 +81,13 @@ pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dr
 /// Reports a queue failure against one fleet's stream.
 pub(crate) fn warn_queue_fleet(event: &'static str, fleet_id: &str, error: &afd_dragonfly::Error) {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-    let reason = error.told();
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
     tracing::warn!(
         error_code = code,
+        cause_error_code,
         event,
         fleet_id,
         reason,
@@ -109,7 +121,10 @@ pub(super) async fn drop_undecodable(
     error: &crate::error::Error,
 ) {
     let id = receipt.as_str();
-    let reason = error.told();
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
     let event = if streams.ack(fleet_id, receipt).await.is_ok() {
         EVENT_ENTRY_UNDECODABLE_DROPPED
     } else {
@@ -117,6 +132,7 @@ pub(super) async fn drop_undecodable(
     };
     tracing::warn!(
         error_code = error_code::INTERNAL_OPERATION_FAILED.as_str(),
+        cause_error_code,
         event,
         fleet_id,
         receipt = id,

@@ -49,6 +49,11 @@ async fn a_failed_wake_mark_reason_carries_no_code_prefix() {
         logged.field("error_code"),
         Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
+    assert_eq!(
+        logged.field("cause_error_code"),
+        Some(error_code::INTERNAL_OPERATION_FAILED.as_str()),
+        "the refused command's own code rides `cause_error_code`"
+    );
     assert_eq!(logged.field("fleet_id"), Some(FLEET));
     let reason = logged.field("reason").expect("a lost mark says why");
     assert!(!reason.is_empty(), "the failure line says nothing");

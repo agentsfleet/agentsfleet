@@ -30,18 +30,20 @@ async fn a_failed_redial_reason_carries_no_code_prefix() {
     );
 
     let events = recorder.events();
-    let reasons: Vec<&str> = events
+    let failed: Vec<_> = events
         .iter()
         .filter(|record| {
             record.fields.get("event").map(String::as_str) == Some("hub_reconnect_failed")
         })
-        .filter_map(|record| record.fields.get("reason").map(String::as_str))
         .collect();
-    assert!(
-        !reasons.is_empty(),
-        "a failed redial is logged with a reason"
-    );
-    for reason in reasons {
+    assert!(!failed.is_empty(), "a failed redial is logged");
+    for record in failed {
+        let reason = record.fields.get("reason").map_or("", String::as_str);
         assert!(!reason.is_empty() && !reason.contains("[UZ-"), "{reason}");
+        assert_eq!(
+            record.fields.get("cause_error_code").map(String::as_str),
+            Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
+            "the refused dial's own code rides `cause_error_code`"
+        );
     }
 }
