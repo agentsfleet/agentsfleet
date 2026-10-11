@@ -467,6 +467,10 @@ Every row F001–F385 was worked by test name; line numbers above are the audit'
 | F195 | Lede test renamed before the work: now `renders the hero lede naming the trigger and its sources`. |
 | F249 | Lede test renamed before the work: now `renders the lede paragraph naming the trigger and its sources`. |
 | F330 | Renamed in `8d56dbf6d`: now `states the brand line and who decides what ships`. |
+| F042 | Moved to `scripts/check_cli_source.py`; its retired-glyph and pulse-caller halves were later dropped with Indy's approval, so only the raw-escape half is enforced. |
+| F057 | `lint`, then dropped with Indy's approval: the architecture tool table is no longer checked against the catalog. |
+| F062, F066 | `lint`, then dropped with Indy's approval (`check_app_jsx.py`): button variants and interface typefaces are no longer enforced. |
+| F072, F073, F074 | `lint`, then dropped with Indy's approval (`check_website_copy.py`): marketing copy policy is no longer enforced. |
 | F386 | Removed in `7bb7156b8` (M213). |
 | F387 | Removed in `449501196` (M213), which deleted `runner_host_test.sh`. |
 | F388 | Removed in `cfb9a4371` (M213). |
