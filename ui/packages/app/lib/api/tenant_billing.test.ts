@@ -17,6 +17,13 @@ describe("getTenantBilling", () => {
     });
     const { getTenantBilling } = await import("./tenant_billing");
     const res = await getTenantBilling("tok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/v1\/tenants\/me\/billing$/),
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
     expect(res.balance_nanos).toBe(4_710_000_000);
   });
 

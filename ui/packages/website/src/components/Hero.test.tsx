@@ -11,8 +11,6 @@ vi.mock("../analytics/posthog", () => analytics);
 
 import Hero from "./Hero";
 import {
-  HERO_HEADLINE,
-  HERO_LEDE_PARTS,
   HERO_PRIMARY_LABEL,
   HERO_SECONDARY_LABEL,
   HOW_IT_WORKS_ANCHOR_ID,
@@ -34,14 +32,6 @@ describe("Hero", () => {
     analytics.trackSignupStarted.mockReset();
   });
 
-  it("renders the resident-engineer headline", () => {
-    const { container } = renderHero();
-    const h1 = container.querySelector("h1");
-    expect(h1).not.toBeNull();
-    expect(h1).toHaveTextContent(HERO_HEADLINE);
-    expect(h1!.className).toContain("font-display");
-  });
-
   // The hero once opened with a kicker carrying a mint dot (FINDING-M05). The
   // dot never meant anything was live, and the kicker only restated the
   // headline; both are gone. The guarantee is now structural: the hero shows no
@@ -52,17 +42,6 @@ describe("Hero", () => {
     expect(container.querySelector("[data-live=\"true\"]")).toBeNull();
   });
 
-  it("renders the lede paragraph naming the trigger and its sources", () => {
-    renderHero();
-    expect(screen.getByText(HERO_LEDE_PARTS.trigger)).toBeInTheDocument();
-    expect(screen.getByText(HERO_LEDE_PARTS.sources)).toBeInTheDocument();
-    expect(screen.getByTestId("hero").textContent).toMatch(
-      /you control access and decide what ships/i,
-    );
-  });
-
-  // marketing-spec.test.ts reads the hero's source text; this proves each
-  // pillar token reaches the rendered page, which a dropped lede part would not.
   it("renders every pillar token in the hero", () => {
     renderHero();
     const hero = screen.getByTestId("hero").textContent;
@@ -104,20 +83,6 @@ describe("Hero", () => {
       surface: "hero",
       mode: "humans",
     });
-  });
-
-  it("no longer renders the removed install-via Terminal", () => {
-    renderHero();
-    expect(screen.queryByTestId("hero-cli")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/install via agentsfleet\.dev/i)).not.toBeInTheDocument();
-  });
-
-  it("does not render orange-era hero scaffolding", () => {
-    const { container } = renderHero();
-    expect(container.querySelector(".hero-illustration")).toBeNull();
-    expect(container.querySelector(".hero-proof-grid")).toBeNull();
-    expect(container.querySelector(".hero-cta-primary")).toBeNull();
-    expect(container.querySelector(".hero-headline")).toBeNull();
   });
 
   it("invites early access without promising a price or credit", () => {

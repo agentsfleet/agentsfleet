@@ -99,21 +99,21 @@ fn test_a_hydrate_reply_carries_grants_only_when_given() {
 
 /// The published recall `limit` is the range the request type proves, so a
 /// client generated from the spec never sends a limit the daemon refuses.
+#[cfg(feature = "openapi")]
 #[test]
 fn test_the_published_recall_limit_is_the_proved_range() {
-    let openapi = include_str!("../../../../public/openapi.json");
-    let document: serde_json::Value = serde_json::from_str(openapi).unwrap();
+    let schema =
+        serde_json::to_value(<MemoryRecallRequest<'_> as utoipa::PartialSchema>::schema()).unwrap();
     let limit = |bound: &str| {
-        document
-            .pointer(&format!(
-                "/components/schemas/MemoryRecallRequest/properties/limit/{bound}"
-            ))
+        schema
+            .pointer(&format!("/properties/limit/{bound}"))
             .and_then(serde_json::Value::as_u64)
     };
-    assert_eq!(limit("minimum"), Some(1));
+    assert_eq!(limit("minimum"), Some(1), "{schema}");
     assert_eq!(
         limit("maximum").and_then(|max| usize::try_from(max).ok()),
-        Some(RECALL_LIMIT_MAX)
+        Some(RECALL_LIMIT_MAX),
+        "{schema}"
     );
 }
 

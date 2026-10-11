@@ -145,6 +145,38 @@ async fn test_file_tools_refuse_path_escape() {
     );
 }
 
+/// A sandbox that cannot serve a file call reads back as unavailable, never as
+/// a missing file or a refused path: the caller's next step differs.
+#[tokio::test]
+async fn a_sandbox_that_cannot_serve_a_file_call_reads_back_as_unavailable() {
+    let executor = ScriptedExecutor::default();
+    let (catalog, _sent) = hosted();
+    let names: Vec<&str> = FILE_TOOLS.iter().map(|entry| entry.name()).collect();
+    let selection = catalog.select(&names).unwrap();
+    let lease = Lease::default();
+
+    for entry in FILE_TOOLS {
+        let failed = call_in(
+            offered(&selection, entry),
+            &executor,
+            &lease,
+            on(entry, TODO),
+        )
+        .await;
+
+        assert_eq!(
+            failed.error_code,
+            Some(ToolErrorCode::SandboxUnavailable),
+            "{}: {failed:?}",
+            entry.name()
+        );
+        assert!(
+            !failed.text.is_empty(),
+            "the executor's sentence is carried"
+        );
+    }
+}
+
 /// A link that leaves the workspace is caught by the executor's handle, and
 /// reads back under the same code; what it points at is untouched.
 #[tokio::test]

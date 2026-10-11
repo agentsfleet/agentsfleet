@@ -81,10 +81,12 @@ fn test_aad_keeps_both_separators_when_fields_are_empty() {
     assert_eq!(Aad::new("", "").as_bytes(), b"\x1f\x1f2");
 }
 
-/// The rendering names the fields without inventing a secret to redact.
+/// A log line stays one line: the separators and any control character in a
+/// name render escaped, never raw.
 #[test]
-fn test_aad_debug_shows_the_bytes() {
-    let rendered = format!("{:?}", Aad::new("ws_1", "openai"));
-    assert!(rendered.starts_with("Aad("), "got {rendered}");
-    assert!(rendered.contains("openai"), "got {rendered}");
+fn test_aad_debugs_with_its_control_characters_escaped() {
+    let rendered = format!("{:?}", Aad::new("ws_0123", "line\nbreak"));
+    assert!(!rendered.contains('\n'), "{rendered}");
+    assert!(!rendered.contains('\x1f'), "{rendered}");
+    assert!(rendered.contains("line\\nbreak"), "{rendered}");
 }

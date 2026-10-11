@@ -126,7 +126,7 @@ export async function runCli(
         { stderr: stderr as unknown as NodeJS.WritableStream, jsonMode },
         refusal.errorCode,
         refusal.message,
-        { printJson, writeLine, ui },
+        { ui },
       );
       return Effect.fail(new GuardRefused(GUARD_EXIT_CODE));
     }),

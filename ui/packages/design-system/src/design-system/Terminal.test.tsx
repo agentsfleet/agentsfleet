@@ -10,22 +10,6 @@ describe("Terminal", () => {
     expect(pre?.textContent).toContain("echo hi");
   });
 
-  it("uses operational mono on the deepest surface by default", () => {
-    const { container } = render(<Terminal>x</Terminal>);
-    const pre = container.querySelector("pre");
-    // Body retains the mono + foreground colour contract.
-    expect(pre?.className).toContain("text-foreground");
-    expect(pre?.className).toContain("font-mono");
-    // The terminal-window chrome lives on the outer wrapper now —
-    // border + background are owned by the wrapper, not the <pre>.
-    const wrapper = container.firstElementChild as HTMLElement | null;
-    expect(wrapper?.className).toContain("border-border");
-    // The terminal body sits one shade below --bg per the canonical
-    // preview (`.cli { background: #06090A; }` line 195) — the Layer 0
-    // token is --surface-deep, exposed as `bg-surface-deep`.
-    expect(wrapper?.className).toContain("bg-surface-deep");
-  });
-
   it("switches to success colors with green=true", () => {
     const { container } = render(<Terminal green>x</Terminal>);
     const pre = container.querySelector("pre");

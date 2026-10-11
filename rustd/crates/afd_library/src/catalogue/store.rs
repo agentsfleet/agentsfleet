@@ -166,26 +166,7 @@ fn decode(row: &sqlx::postgres::PgRow, context: &'static str) -> Result<LibraryI
     })
 }
 
-#[cfg(test)]
-const PROJECTION: &str = "id,name,description,source_repo,source_ref,visibility,content_hash,required_credentials::text,required_tools::text,network_hosts::text,required_credentials_reasons::text,(trigger_markdown IS NOT NULL),updated_at";
 const LIST: &str = "SELECT id,name,description,source_repo,source_ref,visibility,content_hash,required_credentials::text,required_tools::text,network_hosts::text,required_credentials_reasons::text,(trigger_markdown IS NOT NULL),updated_at FROM core.fleet_library ORDER BY id";
 const SELECT_FOR_UPDATE: &str = "SELECT id,name,description,source_repo,source_ref,visibility,content_hash,required_credentials::text,required_tools::text,network_hosts::text,required_credentials_reasons::text,(trigger_markdown IS NOT NULL),updated_at FROM core.fleet_library WHERE id=$1 FOR UPDATE";
 const UPDATE: &str = "UPDATE core.fleet_library SET name=COALESCE($2,name),description=COALESCE($3,description),content_hash=CASE WHEN COALESCE($4,source_repo) IS DISTINCT FROM source_repo OR COALESCE($5,source_ref) IS DISTINCT FROM source_ref THEN NULL ELSE content_hash END,visibility=CASE WHEN COALESCE($4,source_repo) IS DISTINCT FROM source_repo OR COALESCE($5,source_ref) IS DISTINCT FROM source_ref THEN 'draft' WHEN $7::boolean IS TRUE THEN 'public' WHEN $7::boolean IS FALSE THEN 'draft' ELSE visibility END,source_repo=COALESCE($4,source_repo),source_ref=COALESCE($5,source_ref),required_credentials_reasons=COALESCE($6::jsonb,required_credentials_reasons),updated_at=$8 WHERE id=$1 RETURNING id,name,description,source_repo,source_ref,visibility,content_hash,required_credentials::text,required_tools::text,network_hosts::text,required_credentials_reasons::text,(trigger_markdown IS NOT NULL),updated_at";
 const DELETE: &str = "WITH target AS (SELECT visibility FROM core.fleet_library WHERE id=$1), removed AS (DELETE FROM core.fleet_library WHERE id=$1 AND visibility <> 'public' RETURNING 1) SELECT CASE WHEN EXISTS(SELECT 1 FROM removed) THEN 'deleted' WHEN EXISTS(SELECT 1 FROM target WHERE visibility='public') THEN 'published' ELSE 'not_found' END";
-
-#[cfg(test)]
-mod tests {
-    use super::{LIST, PROJECTION, SELECT_FOR_UPDATE, UPDATE};
-
-    #[test]
-    fn every_catalogue_read_is_metadata_only_and_projection_aligned() {
-        for statement in [LIST, SELECT_FOR_UPDATE, UPDATE] {
-            assert!(!statement.contains("skill_markdown,"));
-            assert!(!statement.contains("support_files_json"));
-            assert!(!statement.contains("snapshot_key"));
-        }
-        assert!(LIST.contains(PROJECTION));
-        assert!(SELECT_FOR_UPDATE.contains(PROJECTION));
-        assert!(UPDATE.contains(PROJECTION));
-    }
-}

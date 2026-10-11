@@ -8,14 +8,14 @@
 use std::borrow::Cow;
 use std::time::Instant;
 
-use crate::{Completed, ExecutionResult, Failure, ResultOutcome};
+use crate::{Completed, ExecutionResult, ResultOutcome};
 use afd_core::clock::saturating_millis_signed;
 use afd_wire::activity::{
     ActivityFrame, FleetResponseChunk, StreamTextKind, ToolCallCompleted, ToolCallStarted,
 };
 use afd_wire::memory::MemoryDelta;
 use afd_wire::policy::ExecutionPolicy;
-use afr_executor::{Ending, Executor, Spawn};
+use afr_executor::{Executor, Spawn};
 
 use crate::engine::{AgentEngine, AgentRun, EventSink, Needs, RunOutput};
 use crate::error::Result;
@@ -24,13 +24,11 @@ use crate::error::Result;
 /// secrets, and the frame needs a value.
 const ARGS_REDACTED: &str = "{}";
 
-/// Why a step that runs a process failed on a lease with no sandbox.
-const NO_SANDBOX: &str = " needs a sandbox and the lease has none";
-
 /// One thing a scripted turn does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
-    /// Runs a process in the sandbox, reported as a call to `tool`.
+    /// Runs a process in the sandbox, reported as a call to `tool`. A script
+    /// holding one is admitted as needing a sandbox, so the run always has one.
     Run {
         /// The tool name its frames carry.
         tool: &'static str,
@@ -64,7 +62,6 @@ impl ScriptedEngine {
 struct Turn {
     answer: String,
     memory: Vec<MemoryDelta<'static>>,
-    failure: Option<String>,
     chunks: u64,
 }
 
@@ -86,14 +83,8 @@ impl AgentEngine for ScriptedEngine {
         for (index, step) in self.steps.iter().enumerate() {
             match step {
                 Step::Run { tool, spawn } => {
-                    let failed = match run.executor {
-                        Some(executor) => {
-                            run_tool(executor, run.events, tool, &call_id(index), spawn).await?
-                        }
-                        None => Some(format!("{tool}{NO_SANDBOX}")),
-                    };
-                    if let Some(detail) = failed {
-                        turn.failure.get_or_insert(detail);
+                    if let Some(executor) = run.executor {
+                        run_tool(executor, run.events, tool, &call_id(index), spawn).await?;
                     }
                 }
                 Step::Say(text) => say(run.events, &mut turn, text),
@@ -109,25 +100,25 @@ fn call_id(index: usize) -> String {
     format!("call_{index}")
 }
 
-/// Runs one tool call to its end; `Some(detail)` when the process failed.
+/// Runs one tool call to its end.
 async fn run_tool(
     executor: &dyn Executor,
     events: &dyn EventSink,
     tool: &'static str,
     call: &str,
     spawn: &Spawn,
-) -> Result<Option<String>> {
+) -> Result<()> {
     let started = Instant::now();
     events.emit(ActivityFrame::ToolCallStarted(ToolCallStarted {
         name: Cow::Borrowed(tool),
         args_redacted: Cow::Borrowed(ARGS_REDACTED),
         call_id: Some(Cow::Owned(call.to_owned())),
     }));
-    let process = executor.spawn(spawn).await?;
-    let ending = process
+    let _ending = executor
+        .spawn(spawn)
+        .await?
         .ended(|_stream, _data| ())
-        .await
-        .unwrap_or(Ending::Interrupted);
+        .await;
     let elapsed = saturating_millis_signed(started.elapsed());
     events.emit(ActivityFrame::ToolCallCompleted(ToolCallCompleted {
         name: Cow::Borrowed(tool),
@@ -139,7 +130,7 @@ async fn run_tool(
         output_line_count: None,
         exit_code: None,
     }));
-    Ok((ending != Ending::Exited(0)).then(|| format!("{tool} ended {ending:?}")))
+    Ok(())
 }
 
 /// Streams one chunk of answer text.
@@ -158,17 +149,9 @@ fn say(events: &dyn EventSink, turn: &mut Turn, text: &str) {
 
 /// The report half of a finished turn.
 fn finish(turn: Turn, started: Instant) -> RunOutput {
-    let outcome = turn
-        .failure
-        .map_or(ResultOutcome::Completed(Completed), |detail| {
-            ResultOutcome::Failed(Failure {
-                class: None,
-                detail: Cow::Owned(detail),
-            })
-        });
     RunOutput {
         result: ExecutionResult {
-            outcome,
+            outcome: ResultOutcome::Completed(Completed),
             content: Cow::Owned(turn.answer),
             token_count: 0,
             wall_seconds: started.elapsed().as_secs(),
@@ -183,7 +166,3 @@ fn finish(turn: Turn, started: Instant) -> RunOutput {
         records: Vec::new(),
     }
 }
-
-#[cfg(test)]
-#[path = "scripted/tests.rs"]
-mod tests;

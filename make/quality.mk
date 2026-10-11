@@ -7,6 +7,8 @@
 check-documentation-rules:  ## Check public API and command help text
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_rules.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_parity_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_documentation_parity.py
 
 ACTIONLINT ?= actionlint
 
@@ -20,16 +22,25 @@ lint-app:  ## Lint ui/packages/app only (Oxlint + tsc)
 	@echo "→ [app] Running Oxlint + TypeScript check..."
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
+	@echo "→ [app] Source rules: one event catalog, Time for dates, no browser bearer, the acceptance conventions..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source.py
 	@echo "✓ [app] Lint passed"
 
 lint-design-system:  ## Lint ui/packages/design-system only (Oxlint + tsc)
 	@echo "→ [design-system] Running Oxlint + TypeScript check..."
 	@cd ui/packages/design-system && bun run lint
+	@echo "→ [design-system] Source rules: mapped tokens, text contrast on every surface, one cn..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_design_system_source_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_design_system_source.py
 	@echo "✓ [design-system] Lint passed"
 
 lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 	@echo "→ [agentsfleet] Oxlint + runtime/const audits + tsc..."
 	@cd cli && bun run lint
+	@echo "→ [agentsfleet] Source rules: one env spelling, escapes in the palette, detail tables, live citations..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_cli_source.py
 	@echo "✓ [agentsfleet] Lint passed"
 
 # Governance gates: the script-driven checks that enforce repository CONVENTIONS
@@ -38,6 +49,7 @@ lint-cli: check-documentation-rules  ## Lint agentsfleet CLI and its public text
 # rather than adding another near-duplicate wrapper.
 _model_allowlist_check:
 	@echo "→ [models] Checking every dialable provider is priced or carries a reason..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_model_allowlist_test.py
 	@python3 scripts/check_model_allowlist.py
 
 
@@ -53,6 +65,11 @@ RUSTD_DIR := rustd
 
 lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
+	@# What no compiler pass sees: one component name per schema type, every
+	@# tracked schema/*.sql in the migration list, no bundle promising a
+	@# retired gate, the stream ceiling on a measured rung.
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source.py
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- cargo fmt --check
 	@# --all-features, not the default set: a crate's `test-util` feature gates
 	@# its mockable input/output core (M-MOCKABLE-SYSCALLS), and without this
@@ -93,7 +110,12 @@ lint-apps-designsystem-cli: lint-app lint-design-system lint-cli  ## Lint app + 
 
 
 
-lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety  ## Run all linters + quality gates
+lint-all: lint-rustd _model_allowlist_check lint-website lint-apps-designsystem-cli lint-shell check-documentation-rules check-gh-actions-valid check-playbooks check-architecture-doc check-deploy-safety bench-datastore-self-test  ## Run all linters + quality gates
+	@# A test calls the code it proves; a test that reads a repository file
+	@# asserts on text instead (docs/architecture/testing.md).
+	@echo "→ [tests] No test reads a repository file..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_tests_call_code_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_tests_call_code.py
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + action pins + make-target ref check
@@ -117,6 +139,13 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@# on whose rig they may reset rides the same pair.
 	@echo "→ [gh-actions] Reset runs before migrate, and only on an owned rig..."
 	@bash scripts/make_reset_order_test.sh
+	@# What the deploy workflows run and in which order, which actionlint
+	@# cannot see: the collector app exists before `flyctl secrets set`
+	@# addresses it, Discord routes by stage, the connector's signing secret
+	@# and vault row are both seeded, the daemon's own log level is set.
+	@echo "→ [gh-actions] Deploy workflows run the right steps in the right order..."
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_workflow_rules_test.py
+	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_workflow_rules.py
 	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference

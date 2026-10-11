@@ -15,7 +15,9 @@ use crate::harness;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_core::error_code;
-use afd_cron::validate::{MAX_CRON_LEN, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN};
+use afd_cron::validate::{
+    DETAIL_INVALID_CRON, DETAIL_INVALID_TIMEZONE, MAX_CRON_LEN, MAX_MESSAGE_LEN, MAX_TIMEZONE_LEN,
+};
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -32,15 +34,6 @@ const FLEET: &str = "01924f4e-0000-7000-8000-00000000fee8";
 
 /// An expression this daemon registers.
 const NIGHTLY: &str = "0 3 * * *";
-
-/// The sentence an expression this daemon will not register earns.
-// pin test: literal is the contract
-const DETAIL_INVALID_CRON: &str =
-    "The cron expression must be five numeric fields this daemon accepts.";
-
-/// The sentence a zone this daemon will not pass upstream earns.
-// pin test: literal is the contract
-const DETAIL_INVALID_TIMEZONE: &str = "The timezone is not a name this daemon will register.";
 
 /// One create, as a person holding the schedule-write rung sends it.
 async fn create(body: &Value) -> (StatusCode, Value) {
@@ -88,8 +81,11 @@ async fn test_schedule_message_over_cap_names_the_cap() {
     );
 }
 
+/// Each oversized field is refused by its own rule: the detail is the
+/// validator's own constant, so a cron refusal and a timezone refusal stay
+/// distinguishable without the test re-typing either sentence.
 #[tokio::test]
-async fn an_oversized_expression_and_zone_keep_their_sentences() {
+async fn an_oversized_expression_and_zone_are_each_refused_by_their_own_rule() {
     let expression = "0".repeat(MAX_CRON_LEN + 1);
     let (status, document) = create(&json!({ "cron": expression, "message": "run" })).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);

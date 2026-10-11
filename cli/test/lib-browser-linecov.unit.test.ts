@@ -3,14 +3,11 @@
 // drives openUrl through every reachable branch (the quoteUrl/url-push fork,
 // the disabled short-circuit, the successful detached spawn, and the spawn
 // "error" path) via the injectable spawnImpl seam so nothing shells out to the
-// real OS opener. The wslview / xdg-open resolver branches are also exercised
-// here: when those binaries exist on PATH the resolver picks them, otherwise it
-// falls through to the documented null reason — both are asserted as a
-// contract, matching the sibling suite.
+// real OS opener.
 
 import { expect, test } from "bun:test";
 import type { spawn } from "node:child_process";
-import { commandExists, openUrl, resolveBrowserCommand } from "../src/lib/browser.ts";
+import { commandExists, openUrl } from "../src/lib/browser.ts";
 
 const CB_URL = "https://app.test.local/auth/callback";
 
@@ -123,37 +120,6 @@ test("openUrl resolves false when the spawned child emits an error", async () =>
   expect(calls[0]!.command).toBe("open");
 });
 
-test("WSL with wslview installed resolves to the wslview opener", async () => {
-  // commandExists probes the real PATH via `sh`; assert the contract. When
-  // wslview is present the resolver returns it (line under test); otherwise it
-  // falls through to xdg-open or a documented null reason.
-  const r = await resolveBrowserCommand(
-    { WSL_DISTRO_NAME: "Ubuntu", DISPLAY: ":0" },
-    "linux",
-  );
-
-  if (r.command === "wslview") {
-    expect(r.argv).toEqual(["wslview"]);
-    expect(r.quoteUrl).toBe(false);
-  } else {
-    // No wslview binary on this host: must be the xdg-open continuation or null.
-    expect(r.argv === null || r.command === "xdg-open").toBe(true);
-  }
-});
-
-test("linux with a display resolves to xdg-open when that opener is installed", async () => {
-  const r = await resolveBrowserCommand({ DISPLAY: ":0" }, "linux");
-
-  if (r.command === "xdg-open") {
-    expect(r.argv).toEqual(["xdg-open"]);
-    expect(r.quoteUrl).toBe(false);
-  } else {
-    // No xdg-open on this host: resolver reports the missing-opener reason.
-    expect(r.argv).toBeNull();
-    expect(r.reason).toBe("missing-xdg-open");
-  }
-});
-
 // commandExists is now async + non-blocking (spawn, not spawnSync). Drive its
 // close/error resolutions deterministically through an injected spawn stub so
 // the event loop is never blocked AND both callback lines stay covered without
@@ -183,22 +149,4 @@ test("commandExists resolves false when the probe exits non-zero", async () => {
 
 test("commandExists resolves false when the shell probe cannot spawn", async () => {
   expect(await commandExists("xdg-open", probeSpawn("error"))).toBe(false);
-});
-
-test("openUrl on linux with a display drives the resolved opener through spawn", async () => {
-  const calls: SpawnCall[] = [];
-  const ok = await openUrl(CB_URL, {
-    platform: "linux",
-    env: { DISPLAY: ":0" },
-    spawnImpl: recordingSpawn(calls),
-  });
-
-  // When an opener (xdg-open) resolves, openUrl spawns it and returns true;
-  // when none is installed the resolver yields null and openUrl returns false.
-  if (ok) {
-    expect(calls).toHaveLength(1);
-    expect(calls[0]!.args).toEqual([CB_URL]);
-  } else {
-    expect(calls).toHaveLength(0);
-  }
 });

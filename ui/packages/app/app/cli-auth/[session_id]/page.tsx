@@ -85,16 +85,12 @@ export default function CliAuthPage({
   const [approve, setApprove] = useState<ApproveState>({ kind: APPROVE.idle });
 
   useEffect(() => {
-    // Widen to `boolean` so the in-flight `cancelled` checks below aren't
-    // narrowed to a literal `false` — the cleanup flips it on unmount.
-    let cancelled = false as boolean;
     void (async () => {
       try {
         const res = await fetch(`/backend/v1/auth/sessions/${encodeURIComponent(session_id)}`, {
           method: "GET",
           headers: { Accept: JSON_CONTENT_TYPE },
         });
-        if (cancelled) return;
         if (res.ok) {
           const body = (await res.json()) as Partial<ActiveSession>;
           if (
@@ -136,12 +132,9 @@ export default function CliAuthPage({
           message: "Couldn't load this login session. Try again, or start over from your terminal.",
         });
       } catch {
-        if (!cancelled) setLoad({ kind: LOAD.error, message: "Network error loading the login session." });
+        setLoad({ kind: LOAD.error, message: "Network error loading the login session." });
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [session_id]);
 
   // `session` is supplied by the caller (the Approve button renders only in the

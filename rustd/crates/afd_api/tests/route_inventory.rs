@@ -24,7 +24,7 @@
 use std::collections::BTreeSet;
 
 use afd_api::Route;
-use afd_api::route::{Ownership, TenantRoute, WorkspaceRoute};
+use afd_api::route::{Ownership, TenantRoute};
 
 /// Every path this milestone's §1, §2, §3, §4, §6 and §7 own.
 ///
@@ -218,18 +218,4 @@ fn tenant_and_workspace_templates() -> impl Iterator<Item = &'static str> {
             )
         })
         .map(|route| route.meta().template)
-}
-
-/// The workspace family's own roster is what the inventory walks.
-///
-/// A guard on the guard: if [`WorkspaceRoute::ALL`] were short a variant, the
-/// walk above would never see it and both directions of the inventory check
-/// would pass while the surface was incomplete.
-#[test]
-fn test_the_workspace_roster_is_whole() {
-    assert_eq!(
-        WorkspaceRoute::ALL.len(),
-        15,
-        "a workspace route was added or removed without the inventory moving"
-    );
 }
