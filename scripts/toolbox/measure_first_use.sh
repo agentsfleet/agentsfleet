@@ -35,13 +35,23 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
+cancel() {
+  trap '' INT TERM HUP
+  local child
+  # The job table also covers a signal between child launch and wait.
+  for child in $(jobs -pr); do
+    kill -TERM "$child" 2>/dev/null || true
+    wait "$child" 2>/dev/null || true
+  done
+  exit "$1"
+}
+trap 'cancel 130' INT
+trap 'cancel 143' TERM
+trap 'cancel 129' HUP
 mkdir "$work/root"
 mount -t erofs -o loop,ro,nosuid,nodev -- "$IMAGE" "$work/root"
 
-python3 - "$IMAGE" "$OUTPUT" "$RUNS" "$BASELINE" "$work" <<'PY'
+python3 - "$IMAGE" "$OUTPUT" "$RUNS" "$BASELINE" "$work" <<'PY' &
 import hashlib
 import json
 import math
@@ -176,3 +186,4 @@ finally:
 print(json.dumps({"report": str(output), "regressions": regressions}))
 sys.exit(1 if regressions else 0)
 PY
+wait "$!"

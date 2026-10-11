@@ -21,7 +21,7 @@ const IMAGE_CAP_BYTES: u64 = 0;
 /// Copyright files and aliases in the baseline; shared doc directories are not followed.
 const COPYRIGHT_FILES: &str = "156";
 /// The installed tree must retain licences while excluding the other payloads.
-const LICENCES: &str = r#"
+const LICENCES: &str = r"
 python3 - <<'PY'
 from pathlib import Path
 import subprocess
@@ -43,7 +43,7 @@ for package in packages.splitlines():
     assert notice.is_file() and notice.stat().st_size > 0, f'missing licence: {package}'
 print(len(copyrights))
 PY
-"#;
+";
 
 pub(crate) const TRIALS: &[(&str, Body)] = &[
     ("test_toolbox_image_fits_its_size_cap", fits_size_cap),

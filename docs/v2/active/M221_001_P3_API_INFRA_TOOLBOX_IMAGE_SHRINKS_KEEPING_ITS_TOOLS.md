@@ -232,6 +232,10 @@ N/A — no files deleted. The losing candidates' settings never enter the manife
 
 - **Build-resource steering** — Indy supplied the Cargo job-cap fix and requested sourcing `~/.config/agentsfleet/.env` again. Host build commands now load `CARGO_PROFILE_DEV_DEBUG=1`, `CARGO_PROFILE_TEST_DEBUG=1`, `CARGO_INCREMENTAL=0` and `CARGO_BUILD_JOBS=4`, applying the other branch's cap through the environment. The native instrumented cache retains its established debug-zero settings and one-job limit.
 
+- **Cancellation repair** — The fresh adversarial review identified wrapper-only termination while Python measures. Captures 016 and 017 reproduced deferred cleanup with a real EROFS mount and bubblewrap child. The sampler now waits on a background child, forwards termination and reaps it before cleanup. The identical probe exits 143 in 25 milliseconds with no child, mount, tree or report (018); all seven permanent failure/publication cases pass (019).
+
+- **Kernel and platform checks** — The native kernel run passed 51 of 53 trials, including the size cap, licence inventory, tools, reproducibility and four-lease budgets. Two host-side Git fixture trials could not spawn Git; the owned VM now has Git 2.47.3 and the complete lane remains required. Linux Clippy found needless raw-string hashes in the new licence proof; removing only the delimiters preserves its command bytes. LZMA and deflate images both fail this kernel's mount with exit 32, `Operation not supported`, and have no fabricated timing samples.
+
 - **Consults** — Oct 10, 2026: Indy asked "Why is the image size big? How can we bring down the size", then "write me a follow on prompt so let me decide to do it or not in reducing the image size", then "i recommend you to push this spec as well". Measured on afr-kernel, arm64, rebuilding today's tree:
 
   | Settings | Bytes | vs today |
