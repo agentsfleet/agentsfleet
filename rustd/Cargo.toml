@@ -341,9 +341,9 @@ uuid = { version = "1.26.0", default-features = false, features = ["v7", "std"] 
 # stays plain millisecond subtraction in `money::window` where that is legible.
 # `tzdb-zoneinfo` reads the system timezone database rather than bundling one:
 # zero extra crates, zero binary growth, and the deploy image already ships
-# `/usr/share/zoneinfo` (distroless/static-debian12:nonroot, verified). It lets a zone
-# name be VALIDATED against the real database instead of pattern-matched — see
-# `afd_cron::validate::timezone`.
+# `/usr/share/zoneinfo` (gcr.io/distroless/static-debian12:nonroot, verified).
+# It lets a zone name be VALIDATED against the real database instead of
+# pattern-matched — see `afd_cron::validate::timezone`.
 jiff = { version = "0.2.35", default-features = false, features = [
   "std",
   "tzdb-zoneinfo",

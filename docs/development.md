@@ -88,6 +88,19 @@ OrbStack supplies the kernel; choosing Debian changes the machine's userland.
 The lane needs root, bubblewrap, Landlock, the Enhanced Read-Only File System (EROFS), control groups (cgroup) v2 and IPv4 forwarding.
 It fails when a required mechanism is missing.
 
+The lane starts the production `afr_sandbox::BubblewrapEngine` with the built toolbox image.
+It exercises confinement, filesystem and resource limits, network policies, tool execution, warm starts, freeze/resume and cleanup.
+Unit and service integration tests cover additional runner logic.
+
+Caller tests start with a lease carrying a steer and instructions, then drive the real supervisor, agent loop and tool catalog.
+They verify workspace edits and local Git commits inside bubblewrap.
+They also verify memory, schedules, thread messages and guarded HTTPS reads through the supervisor.
+
+These cases receive an admitted lease; they do not test the steer API or `SKILL.md` loading.
+
+The model, daemon and upstream endpoints are fakes shared with existing tests.
+The service integration lane checks daemon storage and Slack delivery.
+
 1. Choose the machine name. Use a fresh name to check the setup without replacing an existing machine.
 
    ```bash
@@ -164,6 +177,9 @@ It fails when a required mechanism is missing.
 
 The toolbox snapshot comes from `scripts/toolbox/manifest.txt`. Continuous Integration (CI) remains the release build of record.
 Different builder-package versions can produce different toolbox bytes; each image's release record names the versions that built it.
+
+After the lane, `orb -m "$kernel_machine" sudo fstrim -v /` can return unused Linux disk blocks to macOS.
+The reported trimmed size varies; use `df -h /System/Volumes/Data` on the Mac to check actual headroom.
 
 To rebuild an existing machine, save any Linux-only files first. **`orb delete "$kernel_machine"` erases that machine's Linux disk**, including its build cache and toolbox images.
 
