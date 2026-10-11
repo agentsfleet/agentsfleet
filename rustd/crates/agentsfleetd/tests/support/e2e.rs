@@ -42,6 +42,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use afd_core::clock::UnixMillis;
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_runner::Runners;
@@ -126,7 +127,7 @@ pub(crate) const REQUEST_JSON: &str = r#"{"prompt":"fixture"}"#;
 
 /// Reads a lane knob, failing with the command that sets it.
 pub(crate) fn lane(knob: &str) -> String {
-    std::env::var(knob).unwrap_or_else(|_unset| {
+    ProcessEnv.get(knob).unwrap_or_else(|| {
         panic!("{knob} is unset — run these through `make test-integration-rustd`")
     })
 }
@@ -143,7 +144,7 @@ pub(crate) fn dragonfly_config() -> afd_dragonfly::DragonflyConfig {
         afd_dragonfly::DragonflyRole::Default,
         lane(DRAGONFLY_LANE_KNOB),
     )
-    .with_ca_cert_file(std::env::var(DRAGONFLY_CA_LANE_KNOB).ok().map(Into::into))
+    .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_LANE_KNOB).map(Into::into))
 }
 
 /// A fleet, workspace and tenant no other scenario in this lane will name.

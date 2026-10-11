@@ -67,6 +67,10 @@ impl Connector {
     /// # Errors
     /// The HTTP client could not be built.
     pub fn new(registry: Registry) -> Result<Self> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "afr_egress::guarded wraps this builder to pin DNS to the sandbox allowlist; afd_identity::direct is a daemon crate the runner does not depend on, and swapping to it would drop the egress guard"
+        )]
         let client = afr_egress::guarded(reqwest::Client::builder())
             .connect_timeout(CONNECT_TIMEOUT)
             .read_timeout(READ_TIMEOUT)

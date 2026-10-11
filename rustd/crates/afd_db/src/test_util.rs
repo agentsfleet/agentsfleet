@@ -49,7 +49,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use afd_core::env::MapEnv;
+use afd_core::env::{EnvSource, MapEnv, ProcessEnv};
 use sqlx::AssertSqlSafe;
 
 use crate::config::{DbRole, PoolConfig};
@@ -290,7 +290,7 @@ pub fn mint_id() -> String {
 
 /// The lane's connection URL, or a panic naming the knob that is unset.
 fn lane_url() -> String {
-    std::env::var(LANE_KNOB).unwrap_or_else(|_unset| {
+    ProcessEnv.get(LANE_KNOB).unwrap_or_else(|| {
         panic!("{LANE_KNOB} is unset — run these through `make test-integration-rustd`")
     })
 }

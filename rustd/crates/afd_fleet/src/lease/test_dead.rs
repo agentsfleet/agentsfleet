@@ -54,6 +54,10 @@ pub(crate) fn leases() -> Leases {
 }
 
 /// The whole lease plane over both.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the broker's vendors hold Platform::empty(), so this client never exchanges a credential or sends a request; afd_identity::direct's deadline and no_proxy have nothing to bound"
+)]
 pub(crate) fn plane() -> Plane {
     let kek = Arc::new(Kek::from_bytes([7; afd_crypto::KEY_LEN]));
     Plane {

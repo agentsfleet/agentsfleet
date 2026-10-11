@@ -230,6 +230,10 @@ mod accessor_tests {
     /// remember. Swapping the two registers every schedule to fire at the
     /// scheduler's own API — a loop that looks configured and delivers nothing.
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the client is only stored for the accessors to read past, never sent"
+    )]
     fn the_scheduler_host_and_the_callback_host_are_not_the_same_value() {
         let config = QStash::new(
             reqwest::Client::new(),

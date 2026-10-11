@@ -41,6 +41,10 @@ const BODY: &[u8] = br#"{"schedule_id":"01J0000000000000000000000A"}"#;
 /// Seconds since the epoch, for the `exp`/`nbf` the crate reads a system clock
 /// against. There is no seam to hand an instant in — see `verify_at`'s note —
 /// so the fixtures are placed generously around now rather than pinned.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the token claims want unsigned whole seconds and a panic on a pre-epoch clock, which `clock::now` reports as negative milliseconds instead"
+)]
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

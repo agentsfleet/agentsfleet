@@ -2,6 +2,10 @@
     clippy::unwrap_used,
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "plain clients only manufacture reqwest errors (a refused loopback connect, an unbuildable user agent) for the error mapping under test"
+)]
 
 use afd_core::error_code;
 

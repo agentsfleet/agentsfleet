@@ -192,6 +192,10 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
+    #![expect(
+        clippy::disallowed_methods,
+        reason = "each client only builds a request for inspection and sends nothing"
+    )]
 
     use super::{CONTENT_TYPE_JSON, USER_AGENT, USER_INSTALLATIONS, request};
 

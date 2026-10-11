@@ -310,6 +310,10 @@ async fn test_a_registry_host_at_a_private_address_is_admitted() {
 #[tokio::test]
 async fn test_a_host_with_one_blocked_address_is_refused_on_both_egress_paths() {
     let resolver = blocking_resolver();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the raw builder is what afr_egress::guarded_by wraps, and the guard is what this test proves; afd_identity::direct is a daemon crate the runner does not depend on"
+    )]
     let client = afr_egress::guarded_by(reqwest::Client::builder(), Arc::new(resolver.clone()))
         .build()
         .unwrap();
