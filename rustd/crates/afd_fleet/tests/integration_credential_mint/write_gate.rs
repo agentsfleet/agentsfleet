@@ -34,7 +34,7 @@ const DRIFTED_BINDING: &str = r#"{"repositories":["acme/ledger"],"access":"write
 /// A write-bound fleet whose `github` grant is approved, ready to mint.
 async fn write_bound(fixtures: &Fixtures) -> Bound {
     let owner = bound(fixtures, WRITE_BOUND_CONFIG).await;
-    seed_grant(fixtures, &owner.fleet, CONNECTOR_GITHUB, "approved").await;
+    seed_grant(fixtures, &owner.fleet, CONNECTOR_GITHUB, STATUS_APPROVED).await;
     owner
 }
 

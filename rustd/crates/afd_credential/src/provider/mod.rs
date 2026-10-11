@@ -76,12 +76,6 @@ pub use self::entries::{
     Added, Boundary, CatalogueRate, Entry, PricedDefault, RegistryPage, RegistryRow, Removed,
     Retargeted,
 };
-// Re-exported crate-wide for the credential broker, which asks the SAME
-// question of a vault handle's `accounts_base` that this module asks of a
-// tenant's `base_url`: is this URL one the daemon will dial. One guard with two
-// callers, rather than a second scheme-and-SSRF check that could come to
-// disagree with this one about the same host.
-pub(crate) use self::endpoint::validate as validate_endpoint;
 pub use self::resolved::{Dialled, Resolved};
 pub use self::secret_kind::SecretKind;
 pub use self::selection::{PlatformDefault, Selection};
@@ -201,7 +195,9 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{Providers, Resolution, credential};
+    use super::{
+        OPENAI_COMPATIBLE, Providers, Rejection, Resolution, credential, validate_endpoint_pair,
+    };
     use serde::Deserialize;
 
     /// A two-field credential, which is what makes the positional reading
@@ -242,6 +238,31 @@ mod tests {
 
         assert_eq!(parsed.provider, "anthropic");
         assert_eq!(parsed.api_key, "sk-live");
+    }
+
+    #[test]
+    fn the_pairing_facade_refuses_what_resolution_refuses() {
+        // A named provider carries no endpoint, and the compatible one carries a
+        // safe one: the operator route asks this before a key is stored.
+        assert_eq!(validate_endpoint_pair("anthropic", None), Ok(()));
+        assert_eq!(
+            validate_endpoint_pair(OPENAI_COMPATIBLE, Some("https://api.example.com/v1")),
+            Ok(())
+        );
+        for (provider, base_url) in [
+            ("anthropic", Some("https://api.example.com/v1")),
+            (OPENAI_COMPATIBLE, None),
+            (OPENAI_COMPATIBLE, Some("https://169.254.169.254")),
+        ] {
+            assert!(
+                validate_endpoint_pair(provider, base_url).is_err(),
+                "{provider} {base_url:?}"
+            );
+        }
+        assert_eq!(
+            validate_endpoint_pair(OPENAI_COMPATIBLE, None),
+            Err(Rejection::Required)
+        );
     }
 
     /// A strategy is held across the vault `await` between `key` and

@@ -241,6 +241,23 @@ impl Granted {
 #[cfg(test)]
 mod tests;
 
+/// The handle field that names which installation to mint for.
+const FIELD_INSTALLATION_ID: &str = "installation_id";
+
+/// The installation a stored GitHub handle names, if it names one readably.
+///
+/// The one reader of that field. The exchange mints for what this returns,
+/// and the lease plane checks the workspace owns the same installation before
+/// any exchange runs — read in two places, a handle could pass the check as one
+/// installation and be minted as another.
+#[must_use]
+pub fn installation(handle: &Value) -> Option<u64> {
+    handle
+        .as_object()
+        .and_then(|fields| fields.get(FIELD_INSTALLATION_ID))
+        .and_then(installation_id)
+}
+
 /// The installation id, however the handle spells it.
 ///
 /// GitHub's id is numeric and a stored handle may carry it either as a JSON

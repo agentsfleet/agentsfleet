@@ -63,12 +63,20 @@ fn a_decimal_string_id_reads_as_the_same_installation() {
     assert!(matches!(parse_listing(&listing), Some(Found::One(found)) if found.id == "7"));
 }
 
+#[test]
+fn a_padded_string_id_in_a_listing_is_unreadable() {
+    let listing = json!({"installations": [{"id": "007"}]});
+    assert!(parse_listing(&listing).is_none());
+}
+
 /// The shape rule the callback applies to a claimed id.
 #[test]
 fn an_installation_id_is_bounded_decimal_digits() {
     assert!(is_installation_id("12345678"));
     assert!(is_installation_id(&"1".repeat(32)), "the cap itself passes");
-    for bad in ["", "12a45", "-1", "+1", "١", &"1".repeat(33)] {
+    assert!(is_installation_id("0"), "a lone zero is unpadded");
+    // Padded spellings are a second routing key for one installation.
+    for bad in ["", "12a45", "-1", "+1", "١", "042", "00", &"1".repeat(33)] {
         assert!(
             !is_installation_id(bad),
             "`{bad}` is not an installation id"

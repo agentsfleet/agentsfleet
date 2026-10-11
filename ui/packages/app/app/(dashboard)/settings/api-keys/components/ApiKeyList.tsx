@@ -1,6 +1,6 @@
 "use client";
 
-import { type Ref, useImperativeHandle, useState, useTransition } from "react";
+import { type Ref, useImperativeHandle, useMemo, useState, useTransition } from "react";
 import { Badge, DataTable, type DataTableColumn, EmptyState, IconAction, Time } from "@agentsfleet/design-system";
 import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
 import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
@@ -19,6 +19,21 @@ const NEXT_SORT: Record<"name" | "activity", Record<ApiKeySort, ApiKeySort>> = {
 
 export type ApiKeyListHandle = { refresh: () => void };
 
+// The list is always complete (the server action walks the cursor to the end),
+// so a header click reorders it here, at once, instead of asking the server to
+// fetch every page again before the arrow could flip.
+function sortApiKeys(items: readonly ApiKeyRow[], sort: ApiKeySort): ApiKeyRow[] {
+  const direction = sort.startsWith("-") ? -1 : 1;
+  const byName = sort === "key_name" || sort === "-key_name";
+  // Ties break on the id, so two keys created in the same millisecond keep
+  // one order however often the header is clicked.
+  return [...items].sort(
+    (a, b) =>
+      direction * (byName ? a.key_name.localeCompare(b.key_name) : a.created_at - b.created_at) ||
+      a.id.localeCompare(b.id),
+  );
+}
+
 export default function ApiKeyList({
   initial,
   ref,
@@ -32,39 +47,32 @@ export default function ApiKeyList({
   const [target, setTarget] = useState<ConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // The header "New API key" dialog (rendered by the parent view) calls this via
-  // ref on create — a targeted re-fetch, not a full-route refresh.
-  useImperativeHandle(ref, () => ({
-    refresh: () => loadSorted(DEFAULT_SORT),
-  }));
-
-  // User-initiated sort. The list is always complete (the client walks the
-  // cursor to exhaustion server-action-side), so sorting is the only control.
-  // Clears the error on a clean load; an invalid sort (UZ-REQ-001) resets to
-  // the default rather than blanking. `retried` guards the reset: if the
-  // backend rejects even the default (response drift), self-calling again
-  // would loop forever — reset at most once.
-  function loadSorted(nextSort: ApiKeySort, retried = false) {
+  // A re-fetch whose failure the user is told about.
+  function reload() {
     startTransition(async () => {
-      const r = await listApiKeysAction(nextSort);
+      const r = await listApiKeysAction(DEFAULT_SORT);
       if (!r.ok) {
         setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "load API keys" }));
-        if (r.errorCode === "UZ-REQ-001" && !retried) {
-          loadSorted(DEFAULT_SORT, true);
-        }
         return;
       }
       setError(null);
       setItems(r.data.items);
-      setSort(nextSort);
+      setSort(DEFAULT_SORT);
     });
   }
+
+  // The header "New API key" dialog (rendered by the parent view) calls this via
+  // ref on create — a targeted re-fetch, not a full-route refresh. It returns
+  // to the default order so the new key shows first.
+  useImperativeHandle(ref, () => ({
+    refresh: () => reload(),
+  }));
 
   // Post-mutation re-fetch (Invariant 4): mirror backend reality without
   // clobbering a mutation error the user still needs to read.
   function refresh() {
     startTransition(async () => {
-      const r = await listApiKeysAction(sort);
+      const r = await listApiKeysAction(DEFAULT_SORT);
       if (r.ok) setItems(r.data.items);
     });
   }
@@ -86,6 +94,7 @@ export default function ApiKeyList({
     });
   }
 
+  const rows = useMemo(() => sortApiKeys(items, sort), [items, sort]);
   const sortKey = sort === "-created_at" || sort === "created_at" ? "activity" : "name";
   const sortDirection = sort === "key_name" || sort === "created_at" ? "ascending" : "descending";
 
@@ -97,12 +106,12 @@ export default function ApiKeyList({
           onRevoke: (k) => setTarget({ ...k, mode: "revoke" }),
           onDelete: (k) => setTarget({ ...k, mode: "delete" }),
         })}
-        rows={items}
+        rows={rows}
         rowKey={(k) => k.id}
         caption="API keys"
         sortKey={sortKey}
         sortDirection={sortDirection}
-        onSortChange={(key) => loadSorted(NEXT_SORT[key as "name" | "activity"][sort])}
+        onSortChange={(key) => setSort(NEXT_SORT[key as "name" | "activity"][sort])}
         pagination={false}
         empty={
           <EmptyState

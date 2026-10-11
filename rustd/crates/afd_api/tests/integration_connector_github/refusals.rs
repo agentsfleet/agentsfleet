@@ -9,6 +9,7 @@
 #![cfg(feature = "test-util")]
 
 use super::*;
+use afd_core::test_util::trace::Capture;
 
 /// The refusal every ownership case answers, and the state it leaves.
 async fn assert_ownership_refused(
@@ -77,8 +78,15 @@ async fn a_listing_of_none_binds_nothing() {
     let router = fixture.router(&provider);
 
     let state = start_connect(&router, &fixture, PROVIDER).await;
+    let capture = Capture::install();
     let refused = complete(&router, &fixture, PROVIDER, &state).await;
     assert_ownership_refused(&fixture, refused, &installation).await;
+    // The operator's half of the refusal: which connector, and whether the
+    // return claimed an installation at all.
+    let warned = capture.only("connector_installation_unresolved");
+    assert_eq!(warned.field("provider"), Some(PROVIDER.id()), "{warned:?}");
+    assert_eq!(warned.field("claimed"), Some("false"), "{warned:?}");
+    assert!(warned.field("reason").is_some(), "{warned:?}");
 
     provider.close();
     fixture.cleanup().await;

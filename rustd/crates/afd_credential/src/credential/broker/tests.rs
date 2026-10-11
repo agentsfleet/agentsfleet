@@ -24,7 +24,8 @@ use afd_fleet_runtime::config::{Access, RepositoryBinding};
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
-use super::{Ask, Broker, Exchanger, stored};
+use super::vendors::stored;
+use super::{Ask, Broker, Exchanger};
 use crate::credential::outcome::{Minted, Outcome, Retry};
 use crate::secrets::connector::{Connector, Registry};
 

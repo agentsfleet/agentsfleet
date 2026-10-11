@@ -326,3 +326,5 @@ async fn test_callback_records_platform_crossing() {
 
 #[path = "integration_connector_callback/second_time.rs"]
 mod second_time;
+#[path = "integration_connector_callback/withdrawn.rs"]
+mod withdrawn;

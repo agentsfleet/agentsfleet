@@ -52,6 +52,18 @@ pub(crate) type Body = fn(&Lane) -> Result<(), Failed>;
 
 /// Every trial, by the name the lane reports it under.
 const TRIALS: &[(&str, Body)] = &[
+    (
+        "test_boot_enables_delegated_controllers",
+        crate::delegation::boots_disabled,
+    ),
+    (
+        "test_boot_refuses_unavailable_controllers",
+        crate::delegation::refuses_unavailable,
+    ),
+    (
+        "test_boot_preserves_activation_failure",
+        crate::delegation::refuses_populated,
+    ),
     ("test_sandbox_process_has_no_capabilities", no_capabilities),
     (
         "test_sandbox_cannot_plant_files_on_the_host",
@@ -151,6 +163,8 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
     let trials = TRIALS
         .iter()
         .chain(crate::egress::TRIALS)
+        .chain(crate::toolbox_size::TRIALS)
+        .chain(crate::supervisor_trials::TRIALS)
         .map(|&(name, body)| {
             let lane = Arc::clone(lane);
             Trial::test(name, move || body(&lane))

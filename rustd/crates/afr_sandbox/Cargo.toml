@@ -80,6 +80,16 @@ test-util = []
 
 [dev-dependencies]
 afd_core = { workspace = true, features = ["test-util"] }
+afd_wire.workspace = true
+afr_agent.workspace = true
+afr_providers.workspace = true
+axum = { workspace = true, features = ["json"] }
+hyper.workspace = true
+hyper-util.workspace = true
+rcgen.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
 # The kernel lane drives the runner's real sandbox-side tools through its
 # catalog, with a lease whose egress sends nothing.
 afr_egress = { workspace = true, features = ["test-util"] }
@@ -87,7 +97,7 @@ afr_tools = { workspace = true, features = ["test-util"] }
 # The supervisor's own host-side checkout, so the kernel lane proves the clone
 # that ships rather than a copy of it. A dev-dependency cycle: the example links
 # the one `afr_sandbox` library the supervisor does.
-afr_supervisor.workspace = true
+afr_supervisor = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
 libtest-mimic.workspace = true
 serde_json.workspace = true
