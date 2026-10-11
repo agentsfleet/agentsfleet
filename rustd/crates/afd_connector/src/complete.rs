@@ -16,6 +16,7 @@
 //! a site listing that fails leaves nothing half-connected.
 
 use afd_core::clock::UnixMillis;
+use afd_core::credential::FIELD_ACCOUNTS_BASE;
 use afd_core::id::Uuid7;
 use serde_json::{Map, Value};
 
@@ -27,9 +28,6 @@ use crate::grant::{Grant, parse};
 use crate::provider::Provider;
 use crate::registry::Archetype;
 use crate::{jira, zoho};
-
-/// The handle field naming the accounts server a Zoho refresh mints at.
-const HANDLE_ACCOUNTS_BASE: &str = "accounts_base";
 
 /// The exchange field naming the API host a Zoho grant reaches.
 ///
@@ -140,7 +138,7 @@ impl Connectors {
             Provider::Zoho => {
                 let base = zoho::accounts_base(location);
                 let mut extras = Map::new();
-                extras.insert(HANDLE_ACCOUNTS_BASE.into(), base.into());
+                extras.insert(FIELD_ACCOUNTS_BASE.into(), base.into());
                 let label = text(&body, WIRE_API_DOMAIN).unwrap_or_else(|| base.to_owned());
                 parse::refresh_triple(provider, &body, &label, connected_at, extras)
             }

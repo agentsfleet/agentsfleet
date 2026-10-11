@@ -173,8 +173,8 @@ pub async fn mint(refresh: Refresh<'_>) -> Outcome {
         // never finished. A human reconnects it.
         return Outcome::ReconnectRequired;
     };
-    // A base this daemon will not dial, or a path that would move where the
-    // client secret is posted, refuses here — nothing is sent.
+    // An accounts server this daemon will not dial refuses here: nothing is
+    // sent, so the client secret never reaches a host the handle chose.
     let Some(endpoint) = endpoint(handle, refresh.token_url) else {
         return Outcome::MintFailed(Retry::Permanent);
     };
@@ -285,7 +285,7 @@ fn classify(status: reqwest::StatusCode, answered: Option<&Answered>) -> Outcome
 mod steer;
 
 use self::steer::endpoint;
-pub use self::steer::{Steer, ZOHO_ACCOUNTS_SERVERS, is_zoho_accounts_server, steer};
+pub use self::steer::{Steer, is_zoho_accounts_server, steer};
 
 #[cfg(test)]
 mod tests;

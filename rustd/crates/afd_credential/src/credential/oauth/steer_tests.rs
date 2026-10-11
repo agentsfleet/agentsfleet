@@ -7,9 +7,10 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use afd_core::credential::ZOHO_ACCOUNTS_SERVERS;
 use serde_json::{Value, json};
 
-use super::{Steer, ZOHO_ACCOUNTS_SERVERS, endpoint, is_zoho_accounts_server, steer};
+use super::{Steer, endpoint, is_zoho_accounts_server, steer};
 
 /// The handle object a mint reads, from a JSON literal.
 fn handle(value: &Value) -> serde_json::Map<String, Value> {
