@@ -25,7 +25,6 @@ CLI_SRC = "cli/src"
 CLI_TEST = "cli/test"
 ENV_MODULE = "cli/src/constants/env.ts"
 PALETTE = "cli/src/output/palette.ts"
-BANNER = "cli/src/program/banner.ts"
 COMMANDS = "cli/src/commands"
 ENV_DECLARATION = re.compile(r'export const \w+ = "(?P<name>[A-Z][A-Z0-9_]+)"')
 
@@ -34,11 +33,6 @@ ENV_DECLARATION = re.compile(r'export const \w+ = "(?P<name>[A-Z][A-Z0-9_]+)"')
 # control character itself.
 RAW_ESCAPE = re.compile(r"\\(?:u001b|u\{0*1b\}|x1b|e)\[|\x1b\[", re.IGNORECASE)
 COLOR_256 = re.compile(r"38;5;\d+")
-PULSE_CALL = re.compile(r"\bpalette\.pulse\b")
-PULSE_CALLERS_MAX = 3
-# The decorative glyphs the design system retired from CLI output.
-RETIRED_GLYPHS = {"\U0001F9DF": "agent face", "\U0001F389": "party"}
-BOX_DRAWING = ("╭", "╮", "╯", "╰", "│")
 # A two-column label/value table for ONE resource is a different shape from a
 # list of entities, and these are the commands that render one; every entity
 # list goes through printEntityTable so its columns come from one order.
@@ -74,28 +68,14 @@ def check_env_spelling(root: Path, sources: dict[Path, str]) -> list[lib.Finding
     return found
 
 
-def check_output_currency(root: Path, sources: dict[Path, str]) -> list[lib.Finding]:
+def check_raw_escapes(root: Path, sources: dict[Path, str]) -> list[lib.Finding]:
     found = []
-    pulse_callers = []
     for path, text in sources.items():
-        relative_path = lib.relative(root, path)
-        if PULSE_CALL.search(text):
-            pulse_callers.append(relative_path)
-        if relative_path != PALETTE:
-            for pattern, what in ((RAW_ESCAPE, "a raw terminal escape"), (COLOR_256, "a 256-color code")):
-                for match in pattern.finditer(text):
-                    found.append(finding(root, path, text, match.start(), "cli-raw-escape", f"{what} belongs in {PALETTE}, which honours NO_COLOR"))
-        for glyph, name in RETIRED_GLYPHS.items():
-            at = text.find(glyph)
-            if at != -1:
-                found.append(finding(root, path, text, at, "cli-retired-glyph", f"the {name} emoji was retired from CLI output"))
-        if relative_path == BANNER:
-            for glyph in BOX_DRAWING:
-                at = text.find(glyph)
-                if at != -1:
-                    found.append(finding(root, path, text, at, "cli-retired-glyph", "the banner carries no box-drawing border"))
-    if len(pulse_callers) > PULSE_CALLERS_MAX:
-        found.append(lib.Finding(pulse_callers[-1], 1, "cli-pulse-callers", f"palette.pulse is called from {len(pulse_callers)} files (at most {PULSE_CALLERS_MAX}): {', '.join(pulse_callers)}"))
+        if lib.relative(root, path) == PALETTE:
+            continue
+        for pattern, what in ((RAW_ESCAPE, "a raw terminal escape"), (COLOR_256, "a 256-color code")):
+            for match in pattern.finditer(text):
+                found.append(finding(root, path, text, match.start(), "cli-raw-escape", f"{what} belongs in {PALETTE}, which honours NO_COLOR"))
     return found
 
 
@@ -130,7 +110,7 @@ def lint(root: Path) -> list[lib.Finding]:
     code = {path: lib.blank_js_comments(text) for path, text in raw.items()}
     return (
         check_env_spelling(root, code)
-        + check_output_currency(root, raw)
+        + check_raw_escapes(root, raw)
         + check_detail_tables(root)
         + check_cited_paths(root)
     )

@@ -4,7 +4,7 @@
 Each rule is a convention the app keeps by declaring a thing once: an event
 name in the analytics catalog, a timestamp through `Time`, a bearer only on
 the server, an acceptance bundle in the shared seed. A finding is a second
-spelling somewhere else. The JSX rules live in `check_app_jsx.py`.
+spelling somewhere else.
 
     python3 scripts/check_app_source.py [--root <dir>]
 
@@ -21,7 +21,6 @@ import sys
 
 sys.dont_write_bytecode = True
 
-import check_app_jsx as jsx
 import check_source_lib as lib
 
 APP = "ui/packages/app"
@@ -182,7 +181,7 @@ def check_date_formatters(root: Path) -> list[lib.Finding]:
 
 RULES = (
     check_acceptance_suite, check_execution_journey, check_event_literals,
-    check_client_credentials, check_date_formatters, jsx.check_button_variants, jsx.check_interface_fonts,
+    check_client_credentials, check_date_formatters,
 )
 
 

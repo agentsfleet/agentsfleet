@@ -2,8 +2,7 @@ import { describe, it, expect } from "vitest";
 import { HERO_HEADLINE, HERO_LEDE_PARTS } from "./lib/marketing-copy";
 
 /*
- * Guards the approved positioning copy. The copy policy (retired framing,
- * unvalidated claims, the retired noun) is a lint: scripts/check_website_copy.py.
+ * Guards the approved positioning copy.
  *
  * Test names follow RULE TST-NAM (no milestone IDs in test names).
  */

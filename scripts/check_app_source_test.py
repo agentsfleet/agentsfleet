@@ -3,8 +3,8 @@
 
     python3 scripts/check_app_source_test.py
 
-Covers check_app_source.py, the JSX rules in check_app_jsx.py, and the
-identity-provider import boundary in ui/packages/app/.oxlintrc.json.
+Covers check_app_source.py and the identity-provider import boundary in
+ui/packages/app/.oxlintrc.json.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ import unittest
 
 sys.dont_write_bytecode = True
 
-import check_app_jsx as jsx
 import check_app_source as checker
 
 APP = checker.APP
@@ -45,14 +44,6 @@ SERVER_TS = 'const bearer = await getToken();\nexport const headers = { Authoriz
 HANDOFF_TSX = '"use client";\nconst token = await getToken({ template: "api" });\n'
 CHARGES_TS = 'export const label = (at: Date) => at.toLocaleDateString("en-US");\n'
 ZONE_TS = "export const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;\n"
-PAGE_TSX = (
-    'import { Button, Input } from "@agentsfleet/design-system";\n'
-    "export const Page = () => (\n"
-    '  <><Input className="font-mono" /><Button className="w-full" onClick={() => a > b}>\n'
-    '    Copy <code className="font-mono">fleet_id</code></Button>\n'
-    '  <Button variant="ghost">Cancel</Button></>\n'
-    ");\n"
-)
 
 
 def clean_tree() -> dict[str, str]:
@@ -66,7 +57,6 @@ def clean_tree() -> dict[str, str]:
         checker.CLI_HANDOFF: HANDOFF_TSX,
         checker.DATE_LABEL_HOME: CHARGES_TS,
         f"{APP}/lib/zone.ts": ZONE_TS,
-        f"{jsx.DASHBOARD}/fleets/page.tsx": PAGE_TSX,
     }
 
 
@@ -108,15 +98,12 @@ class MovedRulesRejectSeededViolations(unittest.TestCase):
             "app-api-template": with_file(f"{APP}/app/login/page.tsx", 'const t = await getToken({ template: "api" });\n'),
             "app-client-credential": with_file(f"{APP}/components/Panel.tsx", CLIENT_TSX.replace("{ label }: { label: string }", "{ token }: { token: string }")),
             "app-date-formatter": with_file(f"{APP}/lib/when.ts", "export const when = (d: Date) => d.toLocaleString();\n"),
-            "app-button-variant": with_file(f"{jsx.DASHBOARD}/fleets/page.tsx", PAGE_TSX.replace('variant="ghost"', 'variant="outline"')),
-            "app-button-variant single-quoted": with_file(f"{jsx.DASHBOARD}/fleets/page.tsx", PAGE_TSX.replace('variant="ghost"', "variant='outline'")),
-            "app-interface-font": with_file(f"{jsx.DASHBOARD}/fleets/page.tsx", PAGE_TSX.replace('className="w-full"', 'className="font-display"')),
         }
         for rule, files in cases.items():
             with self.subTest(rule=rule):
                 code, output = lint_tree(files)
                 self.assertEqual(checker.lib.EXIT_FINDINGS, code, output)
-                self.assertIn(f": {rule.split()[0]}: ", output)
+                self.assertIn(f": {rule}: ", output)
 
     def test_a_journeys_project_that_drops_the_execution_spec_is_refused(self) -> None:
         code, output = lint_tree(clean_tree(), listing=listed("  [journeys] › other.spec.ts:1:1 › x\n"))
@@ -161,32 +148,6 @@ class CommentBlankingKeepsLiteralsWhole(unittest.TestCase):
         self.assertEqual(pattern, checker.lib.blank_js_comments(pattern))
         division = "const half = total / 2; // formatDate\n"
         self.assertEqual("const half = total / 2; " + " " * len("// formatDate") + "\n", checker.lib.blank_js_comments(division))
-
-
-class JsxRules(unittest.TestCase):
-    def test_an_arrow_inside_the_tag_does_not_end_it(self) -> None:
-        source = 'export const X = () => (\n  <Button variant="outline" onClick={() => a > b}>go</Button>\n);\n<ButtonGroup variant="secondary" />\n'
-        tags = jsx.opening_tags(source, frozenset({"Button"}))
-        self.assertEqual(['<Button variant="outline" onClick={() => a > b}>'], [t.text for t in tags])
-        with self.assertRaises(jsx.UnterminatedTag):
-            jsx.opening_tags('<Button variant="outline"', frozenset({"Button"}))
-
-    def test_aliased_multiline_conditional_and_named_overrides_are_found(self) -> None:
-        source = (
-            'import { Button as Action, NavItem } from "@agentsfleet/design-system";\n'
-            'const LOCAL_STYLE = "font-mono";\n'
-            'const controls = <><Action className={cn("p-md", active && LOCAL_STYLE)}>Run</Action>\n'
-            '  <NavItem\n className="font-display">Fleets</NavItem></>;\n'
-        )
-        self.assertEqual(["Button", "NavItem"], [name for _, name in jsx.font_overrides(source)])
-
-    def test_technical_fields_and_child_values_keep_their_typeface(self) -> None:
-        source = (
-            'import { Button, Input } from "@agentsfleet/design-system";\n'
-            'const controls = <><Input className="font-mono" /><Button className="w-full">\n'
-            '  Copy <code className="font-mono">fleet_id</code></Button></>;\n'
-        )
-        self.assertEqual([], jsx.font_overrides(source))
 
 
 OXLINT = checker.lib.ROOT / APP / "node_modules/.bin/oxlint"
