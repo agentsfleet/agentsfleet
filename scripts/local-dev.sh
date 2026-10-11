@@ -159,14 +159,20 @@ dev_owned_process() {
   started="$(ps -p "$pid" -o lstart=)" || return 1
   command="$(ps -ww -p "$pid" -o command=)" || return 1
   [ "$started" = "$(sed -n '2p' "$DEV_PID_FILE")" ] && \
-    [ "$command" = "$DEV_BINARY serve --port $DEV_PORT" ] || dev_fail 'daemon process identity changed; refusing to signal it'
+    [ "$command" = "$DEV_BINARY serve --port $DEV_PORT" ] && return 0
+  # A normal exit can change the command to a zombie between the snapshots.
+  state="$(ps -p "$pid" -o stat=)" || return 1
+  case "$state" in *Z*) return 1 ;; esac
+  dev_fail 'daemon process identity changed; refusing to signal it'
 }
 
 dev_stop() {
   if dev_owned_process; then
     local pid deadline
     pid="$(sed -n '1p' "$DEV_PID_FILE")"
-    kill -TERM "$pid"
+    if ! kill -TERM "$pid" 2>/dev/null && dev_owned_process; then
+      dev_fail 'could not signal the owned daemon'
+    fi
     deadline=$(( $(date +%s) + DEV_STOP_SECONDS ))
     while dev_owned_process; do
       [ "$(date +%s)" -lt "$deadline" ] || dev_fail 'daemon did not stop within its shutdown allowance'
