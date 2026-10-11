@@ -53,7 +53,7 @@ TARGET_MAX = 80
 from check_tests_call_code_languages import (
     FIXTURE, FIXTURE_DIRS, JS_SUFFIXES, LANGUAGES, SKIPPED, TEST_DIRS, TS_TEST_NAME,
 )
-from check_tests_call_code_text import call_argument, cfg_test_regions, js_block_end, js_functions, python_literal_spans
+from check_tests_call_code_text import call_argument, cfg_test_regions, js_code_only, js_functions, matching_close, python_literal_spans
 
 # A shell value that runs something: its output is not a path, so it anchors nothing.
 EXECUTED_SUBSTITUTION = re.compile(r'^"?\$\((?!\s*(?:cd|dirname|git rev-parse|pwd|realpath)\b)')
@@ -194,9 +194,10 @@ def executes(code: str, language: str, start: int, argument: str) -> bool:
         line = code[code.rfind("\n", 0, start) + 1 : start]
         feeds_shell = argument.startswith("<") and SHELL_RUNS_INPUT.search(line)
         return bool(SHELL_EXECUTES.search(argument) or feeds_shell)
-    return language == "js" and any(
-        js_block_end(code, copy.end() - 1, "()") > start for copy in JS_COPY.finditer(code, 0, start)
-    )
+    if language != "js":
+        return False
+    code = js_code_only(code)
+    return any(matching_close(code, copy.end() - 1, "()") > start for copy in JS_COPY.finditer(code, 0, start))
 
 
 def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]] | None) -> list[lib.Finding]:
