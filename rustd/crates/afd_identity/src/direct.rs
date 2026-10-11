@@ -1,9 +1,8 @@
 //! The one way this workspace builds an HTTP client that must reach its
 //! endpoint directly.
 //!
-//! The key-set fetch, the claim read, the metadata write, a vendor's token
-//! exchange and the scheduler's calls each carry a credential or decide who
-//! may act. An environment proxy (`HTTPS_PROXY`, `ALL_PROXY`) silently
+//! The key-set fetch, the claim read, the metadata write and a vendor's token
+//! exchange each carry a credential or decide who may act. An environment proxy (`HTTPS_PROXY`, `ALL_PROXY`) silently
 //! rerouting one of them is not a convenience worth having, so every such
 //! client starts here and a change to that rule lands once.
 

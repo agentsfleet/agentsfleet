@@ -90,10 +90,9 @@ impl GithubSource {
         if !valid_segment(&revision) {
             return Err(SourceFailure::InvalidReference.into());
         }
-        // Direct, like every other vendor client: an environment proxy does not
-        // get to reroute the fetch of code a fleet will run.
-        let client = afd_identity::direct(REQUEST_TIMEOUT)
+        let client = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(REQUEST_TIMEOUT)
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|source| Error::from(ErrorKind::Github { source }))?;

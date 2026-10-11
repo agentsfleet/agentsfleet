@@ -3,10 +3,11 @@
 //! Each is its own pool, because a pool is what a client is: the broker holds
 //! its exchange client privately, so sharing it would let a slow connector
 //! exchange take the slots a credential mint needs, and the delivery worker
-//! runs beside the plane rather than through it. Each is direct and bounded
-//! (`afd_identity::direct`), and one that will not build refuses boot here,
-//! before a socket is opened or a worker started, rather than standing in a
-//! default client that honours environment proxies and has no deadline.
+//! runs beside the plane rather than through it. The three that carry a
+//! vendor's credential are direct and bounded (`afd_identity::direct`); the
+//! scheduler's is bounded and honours an environment proxy, as its default
+//! client did. One that will not build refuses boot here, before a socket is
+//! opened or a worker started, rather than standing in a default client.
 
 use crate::error::BootFailure;
 
@@ -96,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn every_client_builds_through_the_direct_builder() {
+    fn the_real_builders_build_every_client() {
         assert!(Clients::open().is_ok(), "the real builders build");
     }
 }
