@@ -180,7 +180,6 @@ impl Staged {
             )),
             grants: IntegrationGrants::new(database, Entropy::new()),
             thread: Arc::new(afd_events::History::new(stores.database.clone())),
-            connectors: Registry::default(),
         }
     }
 }

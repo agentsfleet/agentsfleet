@@ -16,6 +16,7 @@
 //! a site listing that fails leaves nothing half-connected.
 
 use afd_core::clock::UnixMillis;
+use afd_core::credential::FIELD_ACCOUNTS_BASE;
 use afd_core::id::Uuid7;
 use afd_core::json::non_empty_str;
 use serde_json::{Map, Value};
@@ -26,11 +27,8 @@ use crate::exchange::Exchanged;
 use crate::github::{self, Found};
 use crate::grant::{Grant, parse};
 use crate::provider::Provider;
-use crate::registry::Archetype;
+use crate::registry::{Archetype, Oauth2Flow};
 use crate::{jira, zoho};
-
-/// The handle field naming the accounts server a Zoho refresh mints at.
-const HANDLE_ACCOUNTS_BASE: &str = "accounts_base";
 
 /// The exchange field naming the API host a Zoho grant reaches.
 ///
@@ -134,14 +132,13 @@ impl Connectors {
         let grant = match provider {
             // The answer's delimiter is the provider's own, read from the
             // registry rather than assumed — see `Oauth2Flow::scope_delimiter`.
-            Provider::Slack => match provider.archetype() {
-                Archetype::Oauth2(flow) => parse::slack(&body, flow.scope_delimiter),
-                Archetype::AppInstall(_) => None,
-            },
+            Provider::Slack => {
+                oauth2_flow(provider).and_then(|flow| parse::slack(&body, flow.scope_delimiter))
+            }
             Provider::Zoho => {
                 let base = zoho::accounts_base(location);
                 let mut extras = Map::new();
-                extras.insert(HANDLE_ACCOUNTS_BASE.into(), base.into());
+                extras.insert(FIELD_ACCOUNTS_BASE.into(), base.into());
                 let label = non_empty_str(&body, WIRE_API_DOMAIN).unwrap_or(base);
                 parse::refresh_triple(provider, &body, label, connected_at, extras)
             }
@@ -190,10 +187,14 @@ impl Connectors {
         match found {
             Found::One(installation) => Ok(github::grant(&installation, connected_at.as_millis())),
             Found::None | Found::Several => {
+                // Hoisted: the `log` bridge duplicates field expressions and
+                // llvm-cov scores the dead copy.
+                let provider = Provider::GitHub.id();
+                let claimed = installation_id.is_some();
                 tracing::warn!(
-                    provider = Provider::GitHub.id(),
+                    provider,
                     reason,
-                    claimed = installation_id.is_some(),
+                    claimed,
                     event = "connector_installation_unresolved",
                 );
                 Err(error::installation_unresolved(reason))
@@ -223,22 +224,24 @@ impl Connectors {
 /// is only redeemable at the data centre that issued it, named by the
 /// callback's own `location`. Everything else answers its registry endpoint.
 fn token_endpoint(provider: Provider, location: Option<&str>) -> String {
-    match provider {
-        Provider::Zoho => zoho::token_endpoint(location),
-        Provider::Slack | Provider::Jira | Provider::Linear => match provider.archetype() {
-            Archetype::Oauth2(flow) => flow.token_endpoint.to_owned(),
-            Archetype::AppInstall(install) => install.token_endpoint.to_owned(),
-        },
-        Provider::GitHub => match provider.archetype() {
-            Archetype::AppInstall(install) => install.token_endpoint.to_owned(),
-            Archetype::Oauth2(flow) => flow.token_endpoint.to_owned(),
-        },
+    match (provider, provider.archetype()) {
+        (Provider::Zoho, _) => zoho::token_endpoint(location),
+        (_, Archetype::Oauth2(flow)) => flow.token_endpoint.to_owned(),
+        (_, Archetype::AppInstall(install)) => install.token_endpoint.to_owned(),
+    }
+}
+
+/// The provider's consent flow, when it connects by one.
+const fn oauth2_flow(provider: Provider) -> Option<Oauth2Flow> {
+    match provider.archetype() {
+        Archetype::Oauth2(flow) => Some(flow),
+        Archetype::AppInstall(_) => None,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::token_endpoint;
+    use super::{oauth2_flow, token_endpoint};
     use crate::provider::Provider;
 
     /// Zoho's endpoint follows the callback's data centre; nobody else's does.
@@ -275,5 +278,12 @@ mod tests {
                 "`{provider}` redeems nowhere",
             );
         }
+    }
+
+    /// Only a connector that connects by consent has a consent flow to read.
+    #[test]
+    fn only_a_consent_connector_has_an_oauth2_flow() {
+        assert!(oauth2_flow(Provider::Slack).is_some());
+        assert!(oauth2_flow(Provider::GitHub).is_none());
     }
 }

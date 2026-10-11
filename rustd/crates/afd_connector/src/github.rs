@@ -50,8 +50,11 @@ const WIRE_LOGIN: &str = "login";
 /// See [`WIRE_INSTALLATIONS`].
 const WIRE_ACCESS_TOKEN: &str = "access_token";
 
-/// Handle fields the broker's mint reads back — `afd_credential`'s GitHub
-/// exchange opens [`HANDLE_INSTALLATION_ID`] and accepts a decimal string.
+/// Handle fields the broker's mint reads back — `afd_credential`'s
+/// `credential::github::installation` is the one reader of
+/// [`HANDLE_INSTALLATION_ID`], for the exchange and for the lease plane's
+/// ownership check against this crate's routing row, and accepts a decimal
+/// string.
 pub(crate) const HANDLE_INSTALLATION_ID: &str = "installation_id";
 /// See [`HANDLE_INSTALLATION_ID`].
 const HANDLE_LABEL: &str = "label";
@@ -97,19 +100,37 @@ impl Found {
 }
 
 /// An installation id as a query or a listing spells it, with its shape
-/// declared on the value: decimal digits, non-empty, within the cap.
+/// declared on the value: decimal digits, unpadded, non-empty, within the cap.
 #[derive(Debug, Validate)]
 #[garde(transparent)]
 struct InstallationId<'a>(
     #[garde(
         length(bytes, min = 1, max = MAX_INSTALLATION_ID_LEN),
-        custom(afd_validate::ascii_digits)
+        custom(afd_validate::ascii_digits),
+        custom(unpadded)
     )]
     &'a str,
 );
 
+/// Why a padded id is refused.
+const PADDED: &str = "must carry no leading zero";
+
+/// Refuses an id written with a leading zero.
+///
+/// The routing row is keyed by the id's TEXT and the mint asks for the
+/// number's canonical spelling, so `0042` beside `42` would be a second key for
+/// one installation — past the exclusive claim, and one no mint could match.
+/// GitHub writes its ids unpadded, so this refuses nothing GitHub sends.
+fn unpadded<C: ?Sized>(id: &str, _context: &C) -> garde::Result {
+    if id.len() > 1 && id.starts_with('0') {
+        Err(garde::Error::new(PADDED))
+    } else {
+        Ok(())
+    }
+}
+
 /// Whether `id` has the shape of an installation id on the query: decimal
-/// digits, non-empty, within the cap.
+/// digits, unpadded, non-empty, within the cap.
 #[must_use]
 pub fn is_installation_id(id: &str) -> bool {
     InstallationId(id).validate().is_ok()

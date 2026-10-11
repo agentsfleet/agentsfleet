@@ -99,6 +99,8 @@ pub struct Drain {
     /// listener — must still settle rather than wait forever.
     attached: Arc<AtomicBool>,
     live: Arc<AtomicUsize>,
+    /// Recorded by the accept loop before it wakes any stopped waiters.
+    at_close: Arc<AtomicUsize>,
     idle: Arc<Notify>,
 }
 
@@ -111,6 +113,7 @@ impl Drain {
             stopped: CancellationToken::new(),
             attached: Arc::new(AtomicBool::new(false)),
             live: Arc::new(AtomicUsize::new(0)),
+            at_close: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
         }
     }
@@ -146,6 +149,7 @@ impl Drain {
     /// Called however the loop ends, which is what lets [`Self::settle`] read a
     /// count no further connection can join.
     pub fn stopped_accepting(&self) {
+        self.at_close.store(self.in_flight(), Ordering::Release);
         self.stopped.cancel();
     }
 
@@ -178,14 +182,15 @@ impl Drain {
         self.accepting.cancel();
         // Cancelling only ASKS the loop to stop; it is parked in `accept()` and
         // leaves on its next poll, so a connection can still be accepted and
-        // counted in between. Waiting for the loop to say it has left is what
-        // makes `in_flight_at_close` the count at CLOSE rather than the count
-        // when close was requested. Skipped when no loop ever attached, which
-        // would otherwise wait for a cancellation nobody is going to make.
-        if self.attached.load(Ordering::Acquire) {
+        // counted in between. The loop records its close count before waking
+        // us: a connection may finish before this task is scheduled again.
+        // With no loop attached, nobody will signal a close; sample directly.
+        let in_flight_at_close = if self.attached.load(Ordering::Acquire) {
             self.stopped.cancelled().await;
-        }
-        let in_flight_at_close = self.in_flight();
+            self.at_close.load(Ordering::Acquire)
+        } else {
+            self.in_flight()
+        };
         if in_flight_at_close > 0 {
             let bound_ms = afd_core::clock::saturating_millis(bound);
             tracing::info!(

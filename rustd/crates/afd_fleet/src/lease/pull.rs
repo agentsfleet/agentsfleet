@@ -48,7 +48,6 @@ use crate::lease::store::Leases;
 use afd_billing::Accounts;
 use afd_core::event::label;
 use afd_credential::provider::{Providers, Resolved};
-use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_gate::gate::{Check, Gates};
 
@@ -111,14 +110,6 @@ pub struct Plane {
     /// a gate; a second writer on this path is a row that statement would have
     /// to trust.
     pub grants: afd_approval::IntegrationGrants,
-    /// The connector set a mintable credential is classified against.
-    ///
-    /// A field rather than an argument: which connectors this daemon ships
-    /// with is a composition-root fact, and threading it down from the HTTP
-    /// layer would make an accident of it — a handler is the last place that
-    /// should get a vote on which third parties exist. The seam for a
-    /// different set is [`Vault::declared`], which still takes the trait.
-    pub connectors: Registry,
     /// The fleet's thread, which a chat lease carries its earlier turns from.
     pub thread: std::sync::Arc<dyn crate::lease::Thread>,
 }

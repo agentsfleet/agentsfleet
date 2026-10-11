@@ -16,11 +16,19 @@ import { presentErrorString } from "@/lib/errors";
 import EditSecretDialogDynamic from "@/components/domain/island-dynamic/EditSecretDialogDynamic";
 import RenameSecretDialogDynamic from "@/components/domain/island-dynamic/RenameSecretDialogDynamic";
 import { SecretActions, SecretCreatedCell, SecretNameCell } from "./secret-row-cells";
+import {
+  DELETE_CONNECTION_CONFIRM,
+  DELETE_SECRET_CONFIRM,
+  DELETE_SECRET_DESCRIPTION,
+  deleteConnectionDescription,
+} from "../copy";
 
 type Props = {
   workspaceId: string;
   secrets: Secret[];
   protectedSecretName?: string | null;
+  /** Secret name → connector display name, for each live connection. */
+  connections?: Readonly<Record<string, string>>;
 };
 
 function buildColumns({
@@ -73,6 +81,7 @@ function SecretDialogs({
   renameTarget,
   existingNames,
   target,
+  connection,
   error,
   onEditClose,
   onRenameClose,
@@ -84,6 +93,7 @@ function SecretDialogs({
   renameTarget: string | null;
   existingNames: readonly string[];
   target: string | null;
+  connection: string | undefined;
   error: string | null;
   onEditClose: () => void;
   onRenameClose: () => void;
@@ -109,8 +119,8 @@ function SecretDialogs({
         open={target !== null}
         onOpenChange={onDeleteClose}
         title={`Delete secret "${target ?? ""}"?`}
-        description="Deleting breaks fleets that reference it. This cannot be undone."
-        confirmLabel="Delete"
+        description={connection ? deleteConnectionDescription(connection) : DELETE_SECRET_DESCRIPTION}
+        confirmLabel={connection ? DELETE_CONNECTION_CONFIRM : DELETE_SECRET_CONFIRM}
         intent="destructive"
         errorMessage={error}
         // The promise reaches the dialog so it can hold both buttons disabled
@@ -155,6 +165,7 @@ export default function SecretsList({
   workspaceId,
   secrets,
   protectedSecretName = null,
+  connections = {},
 }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -243,6 +254,7 @@ export default function SecretsList({
         renameTarget={renameTarget}
         existingNames={visibleSecrets.map((s) => s.name)}
         target={target}
+        connection={target !== null && Object.hasOwn(connections, target) ? connections[target] : undefined}
         error={error}
         onEditClose={() => setEditTarget(null)}
         onRenameClose={() => setRenameTarget(null)}
