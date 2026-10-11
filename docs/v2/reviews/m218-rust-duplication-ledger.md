@@ -1,6 +1,6 @@
 # M218 Rust duplication ledger
 
-**Spec:** `docs/v2/active/M218_001_P2_API_DOCS_SHARED_CRATES_REPLACE_HANDROLLED_RUST.md` §1
+**Spec:** `docs/v2/done/M218_001_P2_API_DOCS_SHARED_CRATES_REPLACE_HANDROLLED_RUST.md` §1
 **Revision audited:** `1a95f97a5` on `feat/m218-shared-crates` (post-M213 `main` at `6e4a02127` plus the spec)
 **Date:** 2026-10-11
 **Scored on:** `docs/architecture/rust-ownership.md` §Review rubric — C consequence, F replacement fit, B ownership burden, 1–3 each
