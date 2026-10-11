@@ -62,7 +62,13 @@ async fn a_rolled_back_install_and_its_failed_rollback_carry_no_code_prefix() {
     assert!(matches!(answered.kind(), ErrorKind::InstallRolledBack));
     let line = log.only("install_rollback_failed");
     assert_eq!(line.field("reason"), Some(cause.told().as_str()));
+    assert_eq!(line.field("cause_error_code"), Some(cause.code().as_str()));
     assert!(told_only(line.field("rollback_error")), "{line:?}");
+    assert!(
+        line.field("rollback_error_code")
+            .is_some_and(|code| code.starts_with("UZ-")),
+        "the failed rollback's own code rides `rollback_error_code`: {line:?}"
+    );
     assert_eq!(line.field("hint"), Some("row_orphaned_manual_recovery"));
 }
 
@@ -112,6 +118,11 @@ async fn a_retried_stream_reason_carries_no_code_prefix() {
         assert_eq!(
             line.field("error_code"),
             Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
+        assert_eq!(
+            line.field("cause_error_code"),
+            Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
+            "the unavailable queue's own code rides `cause_error_code`"
         );
         assert!(told_only(line.field("reason")), "{line:?}");
     }

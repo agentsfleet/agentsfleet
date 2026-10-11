@@ -94,9 +94,13 @@ impl Admissions {
         if let Err(unmarked) = ReadyIndex::new(self.queue.clone()).mark(fleet).await {
             afd_observability::producers::fleet::ready_write_failed();
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let reason = unmarked.told();
+            let Logged {
+                error_code: cause_error_code,
+                reason,
+            } = unmarked.logged();
             tracing::warn!(
                 error_code = code,
+                cause_error_code,
                 fleet_id = fleet,
                 reason,
                 event = "admission_ready_mark_failed",

@@ -113,6 +113,11 @@ async fn a_refused_ready_mark_still_admits_and_is_logged() {
         logged.get("error_code").map(String::as_str),
         Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
+    assert_eq!(
+        logged.get("cause_error_code").map(String::as_str),
+        Some(error_code::INTERNAL_OPERATION_FAILED.as_str()),
+        "the refused write's own code rides `cause_error_code`: {logged:?}"
+    );
     assert!(
         logged
             .get("reason")

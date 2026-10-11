@@ -19,7 +19,7 @@
 //! means stating a posture; changing a posture means editing one line that
 //! reads like the sentence it enforces.
 
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 
 use crate::lease::admit::{Declined, Transient};
 
@@ -90,12 +90,16 @@ impl Gate {
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
         // scores the dead copy.
         let code = error_code::INTERNAL_DB_QUERY.as_str();
-        let reason = fault.told();
+        let Logged {
+            error_code: cause_error_code,
+            reason,
+        } = fault.logged();
         let event = self.event;
         match self.on_fault {
             OnFault::Admit => {
                 tracing::warn!(
                     error_code = code,
+                    cause_error_code,
                     event,
                     reason,
                     "a money gate could not be read; the event is admitted rather than \
@@ -106,6 +110,7 @@ impl Gate {
             OnFault::Retry => {
                 tracing::warn!(
                     error_code = code,
+                    cause_error_code,
                     event,
                     reason,
                     "the pass ended early; the delivery stays leasable and the next poll retries"

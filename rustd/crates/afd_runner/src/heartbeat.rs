@@ -17,7 +17,7 @@
 //! an omission.
 
 use afd_core::clock::UnixMillis;
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_observability::producers;
@@ -287,8 +287,17 @@ fn bounded_report<'b, 'a>(beat: &'b HeartbeatRequest<'a>) -> Option<&'b Capabili
 fn report(event: &'static str, runner: &Uuid7, error: &Error) {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let id = runner.as_str();
-    let reason = error.told();
-    tracing::warn!(error_code = code, runner_id = id, reason, event);
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
+    tracing::warn!(
+        error_code = code,
+        cause_error_code,
+        runner_id = id,
+        reason,
+        event
+    );
 }
 
 pub mod holds;

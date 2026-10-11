@@ -27,7 +27,7 @@ mod rows;
 use crate::error::{Result, Unavailable};
 use afd_auth::credential::CredentialKind;
 use afd_auth::directory::{CredentialDirectory, CredentialRecord, Digest};
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_db::Db;
 use sqlx::FromRow;
 use sqlx::postgres::PgRow;
@@ -73,9 +73,13 @@ impl Credentials {
             .await
             .inspect_err(|failure| {
                 let code = error_code::INTERNAL_DB_UNAVAILABLE.as_str();
-                let reason = failure.told();
+                let Logged {
+                    error_code: cause_error_code,
+                    reason,
+                } = failure.logged();
                 tracing::warn!(
                     error_code = code,
+                    cause_error_code,
                     class,
                     reason,
                     event = "credential_lookup_unavailable",

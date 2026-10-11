@@ -27,4 +27,9 @@ async fn an_unavailable_credential_lookup_reason_carries_no_code_prefix() {
     let reason = logged.field("reason").expect("the line says why");
     assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
     assert_eq!(logged.field("error_code"), Some("UZ-INTERNAL-001"));
+    assert_eq!(
+        logged.field("cause_error_code"),
+        Some(afd_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str()),
+        "the refused acquire's own code rides `cause_error_code`"
+    );
 }

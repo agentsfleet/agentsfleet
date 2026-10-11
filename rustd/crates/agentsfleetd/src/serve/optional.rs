@@ -1,5 +1,6 @@
 //! Optional boot surfaces that degrade without refusing the daemon.
 
+use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::{DragonflyConfig, SubscriptionHub};
 use afd_observability::Analytics;
 use afd_sse::{Ceiling, Live};
@@ -34,9 +35,13 @@ pub(super) async fn open_live(config: &DragonflyConfig, max_streams: usize) -> L
         Ok(hub) => Live::new(hub, ceiling),
         Err(unopened) => {
             let code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
-            let reason = unopened.told();
+            let Logged {
+                error_code: cause_error_code,
+                reason,
+            } = unopened.logged();
             tracing::warn!(
                 error_code = code,
+                cause_error_code,
                 reason,
                 event = "hub_unavailable",
                 "the live-stream surface will carry no frames; every other verb is unaffected"
@@ -101,6 +106,11 @@ mod tests {
         assert_eq!(
             line.field("error_code"),
             Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str())
+        );
+        assert_eq!(
+            line.field("cause_error_code"),
+            Some(afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
+            "the unopened hub's own code rides `cause_error_code`"
         );
         assert!(
             !reason.is_empty() && !reason.contains("[UZ-"),
