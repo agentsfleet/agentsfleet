@@ -94,7 +94,7 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
                       : header.column.getToggleSortingHandler()}
                     className={cn(
                       "w-full justify-start gap-1.5 rounded-none border-0 px-3 text-label uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none",
-                      definition?.numeric && "flex-row-reverse",
+                      definition?.numeric && "justify-end",
                     )}
                   >
                     {definition!.header}

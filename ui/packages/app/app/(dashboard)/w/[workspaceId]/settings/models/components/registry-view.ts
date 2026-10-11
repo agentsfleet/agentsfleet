@@ -4,26 +4,85 @@
 // component keeps the state and wiring.
 
 import { LIBRARY_ERROR_KIND, type LibraryError } from "@/lib/api/library-types";
-import type { TenantModelEntry } from "@/lib/types";
-import { compareModelIds } from "@/lib/models/display";
+import type { LibraryModel } from "@/lib/api/model-library-types";
+import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
+import { compareModelIds, type RateFields } from "@/lib/models/display";
 
-export type SortState = { key: "model" | "provider"; dir: "ascending" | "descending" } | null;
+/** The columns the table sorts, matching the model library's set. */
+const SORT_KEYS = ["model", "provider", "context", "rates"] as const;
+export type SortKey = (typeof SORT_KEYS)[number];
+export type SortState = { key: SortKey; dir: "ascending" | "descending" } | null;
+
+/** Where an entry with no figure sorts: below every real one, as Events does. */
+const ABSENT_FIGURE = -1;
+
+function isSortKey(key: string): key is SortKey {
+  return (SORT_KEYS as readonly string[]).includes(key);
+}
 
 // Pure — DataTable's onSortChange prop is typed `(key: string) => void` (any
-// column could be sortable), but only the "model"/"provider" columns opt in;
+// column could be sortable), but only the SORT_KEYS columns opt in;
 // a `key` outside that set returns `null` (no-op) instead of ever reaching
 // component state. Exported so the boundary is unit-testable without needing
 // to reach it through a real DataTable header click.
 export function computeNextSort(cur: SortState, key: string): SortState | null {
-  if (key !== "model" && key !== "provider") return null;
+  if (!isSortKey(key)) return null;
   if (!cur || cur.key !== key) return { key, dir: "ascending" };
   return { key, dir: cur.dir === "ascending" ? "descending" : "ascending" };
 }
 
 /** Pure — the order two entries take under a sort column. The model column
- * orders exactly as the model library does, through the one shared comparison. */
-export function compareEntries(a: TenantModelEntry, b: TenantModelEntry, key: "model" | "provider"): number {
-  return key === "model" ? compareModelIds(a.model_id, b.model_id) : (a.provider ?? "").localeCompare(b.provider ?? "");
+ * orders exactly as the model library does, through the one shared comparison;
+ * rates order by the input rate the Rates cell shows, the entry's own or else
+ * the library's. */
+export function compareEntries(
+  a: TenantModelEntry,
+  b: TenantModelEntry,
+  key: SortKey,
+  libraryModels: LibraryModel[] = [],
+): number {
+  switch (key) {
+    case "model":
+      return compareModelIds(a.model_id, b.model_id);
+    case "provider":
+      return (a.provider ?? "").localeCompare(b.provider ?? "");
+    case "context":
+      return (a.context_cap_tokens ?? ABSENT_FIGURE) - (b.context_cap_tokens ?? ABSENT_FIGURE);
+    case "rates":
+      return inputRateOf(a, libraryModels) - inputRateOf(b, libraryModels);
+  }
+}
+
+/** The input rate an entry's Rates cell shows, or ABSENT_FIGURE. */
+function inputRateOf(entry: TenantModelEntry, libraryModels: LibraryModel[]): number {
+  const rate = rowRateFor(entry) ?? libraryRateFor(libraryModels, entry.provider, entry.model_id);
+  return rate?.input_nanos_per_mtok ?? ABSENT_FIGURE;
+}
+
+/** The library row pricing (provider, model_id) — null when the library
+ * doesn't price it (custom endpoints, or the library fetch failed). */
+export function libraryRateFor(
+  models: LibraryModel[],
+  provider: string | undefined,
+  modelId: string,
+): LibraryModel | null {
+  if (!provider) return null;
+  return models.find((m) => m.provider === provider && m.id === modelId) ?? null;
+}
+
+export function rowRateFor(row: TenantModelEntry | TenantPlatformDefault): RateFields | null {
+  if (
+    row.input_nanos_per_mtok == null ||
+    row.cached_input_nanos_per_mtok == null ||
+    row.output_nanos_per_mtok == null
+  ) {
+    return null;
+  }
+  return {
+    input_nanos_per_mtok: row.input_nanos_per_mtok,
+    cached_input_nanos_per_mtok: row.cached_input_nanos_per_mtok,
+    output_nanos_per_mtok: row.output_nanos_per_mtok,
+  };
 }
 
 /**

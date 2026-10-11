@@ -146,7 +146,7 @@ Do not add creation dates to catalog tables whose records have no useful creatio
 
 Column labels and cells share horizontal padding and alignment.
 Left-align dates beneath Time, including secondary usage details in the same cell.
-Right-align numeric columns and row actions. Place a numeric column’s sort icon before its label.
+Right-align numeric columns and row actions. Every sort icon follows its label, numeric columns included.
 Use shared DataTable sorting, pagination, and scroll behavior.
 
 Runner detail bounds its table height on desktop and scrolls the page on mobile.

@@ -655,6 +655,47 @@ describe("ModelsRegistryTable", () => {
     expect(compareEntries(small, entry({ provider: undefined }), "provider")).toBeGreaterThan(0);
   });
 
+  it("computeNextSort accepts Context and Rates, the columns the model library sorts", async () => {
+    const { computeNextSort } = await import(
+      "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
+    );
+    expect(computeNextSort(null, "context")).toEqual({ key: "context", dir: "ascending" });
+    expect(computeNextSort(null, "rates")).toEqual({ key: "rates", dir: "ascending" });
+  });
+
+  it("compareEntries orders context and rates by the figure the row shows, an absent one first", async () => {
+    const { compareEntries } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view");
+    const wide = entry({ context_cap_tokens: 1_000_000 });
+    const narrow = entry({ context_cap_tokens: 128_000 });
+    expect(compareEntries(wide, narrow, "context")).toBeGreaterThan(0);
+    expect(compareEntries(entry({ context_cap_tokens: undefined }), narrow, "context")).toBeLessThan(0);
+
+    // An entry priced by its own fields uses them; one without uses the
+    // library's rate for its (provider, model), exactly as the Rates cell does.
+    const priced = entry({
+      provider: "openai",
+      model_id: "own",
+      input_nanos_per_mtok: 5,
+      cached_input_nanos_per_mtok: 1,
+      output_nanos_per_mtok: 9,
+    });
+    const library = entry({ provider: "openai", model_id: "listed" });
+    const unpriced = entry({ provider: "openai", model_id: "unlisted" });
+    const models = [
+      {
+        id: "listed",
+        provider: "openai",
+        context_cap_tokens: 1,
+        input_nanos_per_mtok: 3,
+        cached_input_nanos_per_mtok: 1,
+        output_nanos_per_mtok: 4,
+      },
+    ];
+    expect(compareEntries(priced, library, "rates", models)).toBeGreaterThan(0);
+    expect(compareEntries(unpriced, library, "rates", models)).toBeLessThan(0);
+    expect(compareEntries(library, unpriced, "rates")).toBe(0);
+  });
+
   it("groups the context column in threes, as the model library prints it", async () => {
     await renderTable(
       registry([
