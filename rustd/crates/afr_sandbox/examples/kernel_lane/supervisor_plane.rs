@@ -3,7 +3,6 @@
 //! These observations prove runner requests, not daemon datastore effects.
 
 use std::sync::{Arc, mpsc};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use afd_wire::lease::LeasePayload;
 use afd_wire::paths::{
@@ -62,7 +61,7 @@ impl Server {
     ) -> Result<Self, Failed> {
         let (calls, received) = mpsc::channel();
         let reported = Arc::new(Notify::new());
-        let granted_until = now()? + 60_000;
+        let granted_until = now() + 60_000;
         let healthy = Healthy {
             assigned: AssignedPolicy {
                 sandbox_tier: SandboxTier::LandlockFull,
@@ -154,10 +153,8 @@ fn response(plane: &Plane, method: &Method, path: &str) -> Value {
     }
 }
 
-fn now() -> Result<i64, Failed> {
-    Ok(i64::try_from(
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis(),
-    )?)
+fn now() -> i64 {
+    afd_core::clock::now().as_millis()
 }
 
 fn lease(tools: &[&str], repository: bool, expires: i64) -> Result<Value, Failed> {
