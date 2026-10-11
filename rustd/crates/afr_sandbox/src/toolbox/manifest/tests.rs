@@ -24,6 +24,17 @@ const COSIGN_RUNNER: &str = "0.56.0";
 const COSIGN_DIGEST: &str = "377a14f4401c17acc47c6d90f621b550b9e07b49039cb7831eb48a5a55416402";
 const COSIGN_LENGTH: u64 = 258_277_376;
 const IMAGE: &[u8] = b"an erofs image's bytes";
+/// The measured image's feature list, reported by `dump.erofs -s`.
+const APPROVED_FEATURES: [&str; 8] = [
+    "sb_csum",
+    "mtime",
+    "0padding",
+    "compr_cfgs",
+    "big_pcluster",
+    "ztailpacking",
+    "fragments",
+    "dedupe",
+];
 /// The key the fixture was signed under: a test key, never the release key,
 /// so the real image the fixture names is admitted by no host.
 const FIXTURE_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
@@ -61,6 +72,25 @@ fn a_release_signed_by_its_key_names_its_image() {
 
     assert_eq!(manifest.sha256(), sha256(IMAGE));
     assert_eq!(manifest.length(), IMAGE.len() as u64);
+}
+
+#[test]
+fn should_admit_each_approved_erofs_feature() {
+    let signer = Signer::new();
+    for features in APPROVED_FEATURES
+        .map(|feature| vec![feature])
+        .into_iter()
+        .chain([APPROVED_FEATURES.to_vec()])
+    {
+        let mut image = facts(IMAGE);
+        image["erofs_features"] = json!(features);
+        let bytes = manifest_bytes(&image);
+        let admitted = signer
+            .release()
+            .verify(&bytes, &signer.sign(&bytes))
+            .unwrap();
+        assert_eq!(admitted.erofs_features, features);
+    }
 }
 
 #[test]
@@ -172,9 +202,9 @@ fn should_refuse_a_release_for_another_host_runner_or_kernel() {
     let bytes = manifest_bytes(&facts(IMAGE));
     let mut later = facts(IMAGE);
     later["runner_versions"] = json!(["10.0.0"]);
-    let mut packed = facts(IMAGE);
-    packed["erofs_features"] = json!(["sb_csum", "ztailpacking"]);
-    let (later, packed) = (manifest_bytes(&later), manifest_bytes(&packed));
+    let mut unsupported = facts(IMAGE);
+    unsupported["erofs_features"] = json!(["sb_csum", "unapproved_feature"]);
+    let (later, unsupported) = (manifest_bytes(&later), manifest_bytes(&unsupported));
 
     let cases = [
         (
@@ -183,7 +213,7 @@ fn should_refuse_a_release_for_another_host_runner_or_kernel() {
             ToolboxRefusal::Architecture,
         ),
         (signer.release(), &later, ToolboxRefusal::RunnerVersion),
-        (signer.release(), &packed, ToolboxRefusal::Features),
+        (signer.release(), &unsupported, ToolboxRefusal::Features),
     ];
 
     for (release, manifest, expected) in cases {
