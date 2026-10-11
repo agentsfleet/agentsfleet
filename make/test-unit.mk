@@ -2,7 +2,7 @@
 # TEST-UNIT — agentsfleetd, agentsfleet, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel test-coverage-runner-kernel
+.PHONY: test-unit-rustd test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs test-unit-cli test-unit-website test-unit-app test-unit-design-system test-coverage-all test-runner-kernel test-runner-startup test-coverage-runner-kernel
 
 # Three shards, one per crate family, so Continuous Integration runs each on its
 # own runner at once and `test-unit-rustd` is all three in order: the whole
@@ -86,29 +86,44 @@ test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and 
 # it FAILS naming what is missing rather than skipping — a lane that skips
 # passes without proving anything. Cargo builds as the invoking user; only the
 # lane binary runs as root, through cargo's runner. KERNEL_LANE_RUNNER is that
-# elevation (empty when already root, as in a container).
-# The runner is set through cargo's per-host variable rather than `--config`,
-# so `KERNEL_LANE_CARGO="cargo llvm-cov run ..."` measures the same run in CI.
+# elevation (empty when already root, as in a container). Cargo's runner must
+# still name a command, so an already-root invocation uses env.
+# The runner is set through cargo's per-host variable rather than `--config`.
 KERNEL_LANE_RUNNER ?= sudo -E
-KERNEL_LANE_CARGO ?= cargo run
+# No variables are required for the full lane. AFR_TOOLBOX_IMAGE optionally
+# reuses an existing image; the default builds it from the pinned manifest.
 KERNEL_LANE_HOST = $(shell cd $(RUSTD_DIR) && rustc -vV | sed -n 's/^host: //p' | tr 'a-z-' 'A-Z_')
 
 test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (root, bubblewrap, Landlock, cgroup v2); fails, never skips
-	@image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" && \
+	@$(KERNEL_LANE_RUNNER) bash scripts/toolbox/test_measure_first_use.sh
+	@image="$${AFR_TOOLBOX_IMAGE:-}"; \
+	  if [ -z "$$image" ]; then image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" || exit $$?; fi; \
+	  test -f "$$image" && image="$$(realpath "$$image")" && \
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
-	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(KERNEL_LANE_RUNNER)" \
-	  $(KERNEL_LANE_CARGO) -p afr_sandbox --features test-util --example kernel_lane
+	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(or $(KERNEL_LANE_RUNNER),env)" \
+	  cargo run -p afr_sandbox --features test-util --example kernel_lane
+	@$(MAKE) --no-print-directory test-runner-startup
 
-# The kernel lane under coverage: the same run, with the instrument in
-# KERNEL_LANE_CARGO, written as one more report beside the integration lane's
+# Uses the deployed unit and the shipping binary, including its release key.
+# An absent toolbox must refuse admission after successful host preparation.
+# The kernel lane above separately proves signed admission and child limits.
+test-runner-startup:  ## Prove default/explicit engine startup under systemd on a Linux host
+	@cd $(RUSTD_DIR) && cargo build -p agentsfleet_runner --bin agentsfleet-runner
+	@target="$$(cd $(RUSTD_DIR) && cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')" && \
+	  $(KERNEL_LANE_RUNNER) bash scripts/test-runner-startup.sh "$$target/debug/agentsfleet-runner" deploy/baremetal/agentsfleet-runner.service
+
+# The kernel lane under coverage: both the example and the systemd binary
+# share the instrumented environment, producing a report beside the integration lane's
 # shards. `test-coverage-rustd-merge` grades it with them, so the Linux-only
 # lines only this lane reaches count toward the floor. Its caller is the
 # kernel job in .github/workflows/test-integration-rustd.yml.
 test-coverage-runner-kernel:  ## Measure the kernel lane under coverage into rustd/lcov-kernel.info for test-coverage-rustd-merge
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
-	@cd $(RUSTD_DIR) && cargo llvm-cov clean --workspace
-	@$(MAKE) --no-print-directory test-runner-kernel KERNEL_LANE_CARGO="cargo llvm-cov run --no-report"
-	@cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
+	@set -e; cd $(RUSTD_DIR); \
+	  coverage_env="$$(cargo llvm-cov show-env --sh)"; eval "$$coverage_env"; \
+	  cargo llvm-cov clean --workspace; \
+	  cd ..; $(MAKE) --no-print-directory test-runner-kernel; \
+	  cd $(RUSTD_DIR); cargo llvm-cov report --workspace \
 	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-kernel.info \
 	  || { echo "✗ [rustd] kernel lane lcov report failed"; exit 1; }
 	@git rev-parse HEAD > $(RUSTD_DIR)/lcov-kernel.rev

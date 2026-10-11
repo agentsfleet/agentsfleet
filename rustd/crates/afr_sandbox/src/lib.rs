@@ -17,6 +17,7 @@
 
 pub mod error;
 
+mod boot;
 pub mod bubblewrap;
 mod cgroup;
 mod engine;
@@ -44,9 +45,11 @@ mod egress;
 #[cfg(all(target_os = "linux", feature = "test-util"))]
 pub use self::egress::far as egress_testing;
 
+pub use self::boot::{Backend, Booted, HostPaths, Resources, Started, boot};
+pub use self::bubblewrap::Requirements as BubblewrapRequirements;
 #[cfg(target_os = "linux")]
 pub use self::bubblewrap_engine::{
-    Booted, BubblewrapConfig, BubblewrapEngine, READY_TIMEOUT, SANDBOX_HOST_IDS,
+    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, READY_TIMEOUT, SANDBOX_HOST_IDS,
 };
 pub use self::cgroup::{
     DEFAULT_IO_BYTES_PER_SECOND, Freezer, LeaseCgroup, MECHANISM_DELEGATED_CGROUP, SANDBOX_LEAF,
