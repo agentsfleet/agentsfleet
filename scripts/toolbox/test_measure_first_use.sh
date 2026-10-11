@@ -12,10 +12,13 @@ python3 - "$SAMPLER" "${2:-}" <<'PY'
 import json
 import os
 import random
+import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 sampler = Path(sys.argv[1]).resolve()
@@ -23,10 +26,20 @@ fixture = Path(tempfile.mkdtemp(prefix="first-use-cleanup-", dir="/var/tmp"))
 source = fixture / "source"
 source.mkdir()
 (source / "notice").write_text("cleanup fixture\n")
+for name in ("tmp", "workspace", "proc", "dev", "run"):
+    (source / name).mkdir()
+binaries = ["/usr/bin/dash", "/usr/bin/sleep"]
+dependencies = subprocess.check_output(["ldd", *binaries], text=True)
+libraries = [name for name in re.findall(r"\s(/[^\s]+)", dependencies) if Path(name).is_file()]
+for name in dict.fromkeys([*binaries, *libraries]):
+    target = source / name.lstrip("/")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(name, target)
+(source / "usr/bin/sh").symlink_to("dash")
 image = fixture / "fixture.erofs"
 subprocess.run(["mkfs.erofs", "--quiet", str(image), str(source)], check=True)
 cases = ["signal_after_mount", "mount_failed", "command_failed", "unmount_failed",
-         "null_baseline", "publication_symlink"]
+         "null_baseline", "publication_symlink", "signal_during_measurement"]
 if sys.argv[2]:
     assert sys.argv[2] in cases
     cases = [sys.argv[2]]
@@ -39,6 +52,39 @@ def mounted_root(marker):
     root = Path(marker.read_text().strip())
     assert root.parent.name.startswith("toolbox-first-use.") and root.name == "root"
     return root
+
+
+def run_sampler(command, environment, marker, case):
+    if case != "signal_during_measurement":
+        return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=90)
+    process = subprocess.Popen(command, env=environment, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            root = mounted_root(marker)
+            if root and (root.parent / "workspace/cancellation-started").is_file():
+                break
+            assert process.poll() is None, "sampler exited before cancellation"
+            time.sleep(0.01)
+        else:
+            raise AssertionError("real sandbox did not start")
+        children = Path(f"/proc/{process.pid}/task/{process.pid}/children").read_text().split()
+        assert len(children) == 1, f"unexpected sampler children: {children}"
+        process.send_signal(signal.SIGTERM)
+        stdout, stderr = process.communicate(timeout=3)
+        assert not Path(f"/proc/{children[0]}").exists(), "measurement child was not reaped"
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+    finally:
+        if process.poll() is None:
+            owned = Path(f"/proc/{process.pid}/task/{process.pid}/children").read_text().split()
+            for child in owned:
+                try:
+                    os.kill(int(child), signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+            process.kill()
+            process.communicate(timeout=5)
 
 
 try:
@@ -68,6 +114,13 @@ try:
             bwrap = directory / "bwrap"
             bwrap.write_text(f'#!/bin/bash\ntouch "{called}"\nexit 0\n')
             bwrap.chmod(0o700)
+        if case == "signal_during_measurement":
+            bwrap = directory / "bwrap"
+            bwrap.write_text('#!/bin/bash\nset -euo pipefail\nargs=()\n'
+                             'for arg in "$@"; do\n args+=("$arg")\n [ "$arg" != -- ] || break\ndone\n'
+                             'exec /usr/bin/bwrap "${args[@]}" /usr/bin/sh -ec '
+                             "'printf running >/workspace/cancellation-started; exec /usr/bin/sleep 120'\n")
+            bwrap.chmod(0o700)
         if case == "null_baseline":
             invalid = directory / "baseline.json"
             invalid.write_text("null\n")
@@ -80,8 +133,8 @@ try:
             output.with_name(output.name + ".tmp").symlink_to(victim)
         root = None
         try:
-            result = subprocess.run(["bash", str(sampler), str(image), str(output), "20", *baseline],
-                                    env=environment, capture_output=True, text=True, timeout=90)
+            result = run_sampler(["bash", str(sampler), str(image), str(output), "20", *baseline],
+                                 environment, marker, case)
             assert marker.is_file(), f"{case}: injection did not execute"
             root = mounted_root(marker)
             mounted = subprocess.run(["/usr/bin/mountpoint", "-q", str(root)]).returncode == 0
@@ -100,7 +153,7 @@ try:
                 assert result.returncode != 0 and mounted and root.parent.exists()
                 assert "unmount failed; retained" in result.stderr
             else:
-                expected = (143 if case == "signal_after_mount" else 77 if case == "mount_failed"
+                expected = (143 if case.startswith("signal_") else 77 if case == "mount_failed"
                             else 0 if case == "publication_symlink" else 1)
                 assert result.returncode == expected, f"{case}: exit {result.returncode}, expected {expected}"
                 assert not mounted and not root.parent.exists(), f"{case}: leaked mount or tree"
