@@ -23,6 +23,7 @@ import { expect, type Page } from "@playwright/test";
 import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor, type ClientHandle } from "./api-client";
 import { workspaceHref, workspaceUrlPattern } from "./nav";
+import { HTTP_REQUEST } from "./constants";
 
 // 60s, not 30s — the install now runs inline through the live SSE state stream
 // (creating → provisioning → ready) before "Open fleet →" appears, not just a
@@ -61,7 +62,7 @@ function fixtureTriggerMd(name: string): string {
     "    - type: cron",
     '      schedule: "0 0 * * *"',
     "  tools:",
-    "    - agentmail",
+    `    - ${HTTP_REQUEST}`,
     "  budget:",
     "    daily_dollars: 1.0",
     "---",

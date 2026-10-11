@@ -8,6 +8,8 @@ use super::*;
 use crate::lanes::LANE_DEPTH;
 use afd_dragonfly::{OutboundDelivery, streams::EventId};
 
+mod capacity;
+
 fn job(number: u32) -> Job {
     Box::new(OutboundDelivery {
         id: EventId::of(&format!("1700000000{number:03}-0")),

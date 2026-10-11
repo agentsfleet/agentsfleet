@@ -113,6 +113,21 @@ function assertSteerProcessed(result: RunResult, diagnostics = ""): void {
     `live steer must carry status=${STATUS_PROCESSED}; got ${JSON.stringify(envelope)}`);
 }
 
+function assertMissingModelFailure(stdout: string, eventId: unknown): void {
+  assert.ok(typeof eventId === "string" && eventId.length > 0, "terminal event id is missing");
+  const events: unknown = JSON.parse(stdout);
+  assert.ok(events !== null && typeof events === "object" && "items" in events);
+  assert.ok(Array.isArray(events.items), "events must carry an items array");
+  const event = (events.items as unknown[]).find((item) =>
+    item !== null && typeof item === "object" && "event_id" in item && item.event_id === eventId);
+  assert.ok(event !== null && typeof event === "object" && "failure_detail" in event,
+    "the terminal event must carry its failure detail");
+  assert.ok(typeof event.failure_detail === "string", "failure detail must be a sentence");
+  // Pin test: require the provider's HTTP 404 and named refusal on this event.
+  assert.match(event.failure_detail, /status 404 \(NOT_FOUND\)/i,
+    "the failure must identify the missing model, not just ApiError");
+}
+
 if (!isLive) {
   describe("steer-live.spec.ts", () => {
     it.skip(`requires ${ACCEPTANCE_TARGET_ENV} to be an https URL`, () => {});
@@ -210,8 +225,8 @@ if (!isLive) {
       // The cause line must be DIAGNOSABLE, which is the half that cost days:
       // `ApiError` alone is indistinguishable from a rejected credential,
       // because the retired runner's error classifier collapsed both into one bucket.
-      // The runner now carries the provider's own words onto the event, so the
-      // 404 and its "model not found" wording have to survive to here.
+      // The runner carries the provider's status and error code onto the event,
+      // keeping diagnostic names while excluding its potentially private message.
       //
       // Runner-version-dependent by nature: this asserts the behaviour of the
       // runner deployed to the target, so it goes green once the worker deploy
@@ -219,8 +234,7 @@ if (!isLive) {
       // still running a pre-fix runner.
       const events = await runWithEnv(["events", badId, JSON_FLAG]);
       assert.equal(events.code, 0, `events read failed: ${events.stderr}`);
-      assert.match(events.stdout, /not found|does not exist|unknown model/i,
-        `the failure must say WHY, not just "ApiError": ${events.stdout}`);
+      assertMissingModelFailure(events.stdout, envelope[ENVELOPE_EVENT_ID_KEY]);
     }, STEER_TIMEOUT_MS);
 
     it("steer with no <fleet_id> exits non-zero with a usage stem", async () => {

@@ -29,6 +29,8 @@ import {
   withSessionRevocation,
 } from "./clerk-admin.ts";
 import { CLERK_SECRET_KEY_ENV } from "./constants.ts";
+import { vercelBypassState } from "./vercel-bypass.ts";
+import type { Page } from "playwright";
 
 const APPROVE_BUTTON_NAME = /approve/i;
 const VERIFICATION_CODE_LABEL = "Verification code";
@@ -60,97 +62,76 @@ interface BrowserClerk {
   }): Promise<void>;
 }
 
+async function signInFixture(
+  page: Page, origin: string, clerkSecret: string, clerkUserId: string, timeoutMs: number,
+): Promise<string> {
+  const { setupClerkTestingToken } = await import("@clerk/testing/playwright");
+  await setupClerkTestingToken({ page });
+  await page.goto(`${origin}${SIGN_IN_PATH}`, { waitUntil: "load", timeout: timeoutMs });
+  await page.waitForFunction(() =>
+    Boolean((globalThis as unknown as { Clerk?: BrowserClerk }).Clerk?.client)
+  );
+  const browserClientId = await page.evaluate(() => {
+    const id = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk?.client?.id;
+    if (!id) throw new Error("Clerk client id unavailable during fixture sign-in");
+    return id;
+  });
+  const ticket = await createSignInTicket(clerkSecret, clerkUserId);
+  return withClientSessionSweepOnFailure(clerkSecret, browserClientId, () =>
+    page.evaluate(async (signInTicket) => {
+      const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
+      if (!clerk?.client) throw new Error("Clerk client unavailable during fixture sign-in");
+      const attempt = await clerk.client.signIn.create({ strategy: "ticket", ticket: signInTicket });
+      if (attempt.status !== "complete" || !attempt.createdSessionId) {
+        throw new Error(`fixture ticket sign-in did not complete (${attempt.status})`);
+      }
+      return attempt.createdSessionId;
+    }, ticket)
+  );
+}
+
+async function approveLogin(page: Page, opts: CliAuthHandoffOptions, sessionId: string): Promise<string> {
+  await page.evaluate(async (id) => {
+    const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
+    if (!clerk) throw new Error("Clerk client unavailable during fixture activation");
+    await clerk.setActive({ session: id, navigate: async () => {} });
+  }, sessionId);
+  await page.waitForFunction(() =>
+    Boolean((globalThis as unknown as { Clerk?: { user?: unknown } }).Clerk?.user)
+  );
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  await page.goto(opts.loginUrl, { waitUntil: "load", timeout: timeoutMs });
+  const approve = page.getByRole("button", { name: APPROVE_BUTTON_NAME });
+  await approve.waitFor({ state: "visible", timeout: timeoutMs });
+  await approve.click();
+  const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL);
+  await codeOutput.waitFor({ state: "visible", timeout: timeoutMs });
+  const code = ((await codeOutput.textContent()) ?? "").trim();
+  if (!VERIFICATION_CODE_RE.test(code)) {
+    throw new Error("completeCliAuthHandoff: expected a 6-digit verification code");
+  }
+  return code;
+}
+
 async function runBrowserHandoff(opts: CliAuthHandoffOptions): Promise<string> {
   if (!opts?.loginUrl) throw new Error("completeCliAuthHandoff: loginUrl required");
   if (!opts?.clerkUserId) throw new Error("completeCliAuthHandoff: clerkUserId required");
   const clerkSecret = process.env[CLERK_SECRET_KEY_ENV];
   if (!clerkSecret) throw new Error(`completeCliAuthHandoff: ${CLERK_SECRET_KEY_ENV} required`);
-
-  // Lazy imports — playwright + @clerk/testing are devDependencies; never
-  // pulled into non-handshake paths (the specs import this module but only
-  // call it when the handshake is enabled).
+  // Node hosts the Playwright transport; the parent Bun process owns orchestration.
   const { chromium } = await import("playwright");
-  const { clerkSetup, setupClerkTestingToken } = await import("@clerk/testing/playwright");
-
-  // clerkSetup fetches the Clerk Frontend API URL (from CLERK_PUBLISHABLE_KEY)
-  // that setupClerkTestingToken needs to bypass dev bot-protection. The
-  // dashboard suite calls this in global setup; we call it here (idempotent)
-  // so the handshake fixture is self-contained.
+  const { clerkSetup } = await import("@clerk/testing/playwright");
   await clerkSetup();
-
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const origin = new URL(opts.loginUrl).origin;
-
-  // Vercel deployment protection guards the dev/preview dashboard — without
-  // the bypass header the browser hits Vercel's password page instead of the
-  // app, so clerk-js never loads and clerk.signIn hangs on window.Clerk.loaded.
-  // Mirrors ui/.../playwright.acceptance.config.ts. Omitted on public deploys.
-  const bypass = process.env.VERCEL_BYPASS_SECRET;
-  const contextOptions = bypass
-    ? { extraHTTPHeaders: { "x-vercel-protection-bypass": bypass, "x-vercel-set-bypass-cookie": "true" } }
-    : {};
-
+  const storageState = await vercelBypassState(origin, process.env.VERCEL_BYPASS_SECRET);
   const browser = await chromium.launch({ headless: true });
   try {
-    const context = await browser.newContext(contextOptions);
+    const context = await browser.newContext({ storageState });
     const page = await context.newPage();
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     page.setDefaultTimeout(timeoutMs);
-
-    // clerk-js needs a Clerk-aware page mounted before it can mint a session;
-    // /sign-in is the cheapest such page in the dashboard.
-    await setupClerkTestingToken({ page });
-    await page.goto(`${origin}${SIGN_IN_PATH}`, { waitUntil: "load", timeout: timeoutMs });
-    await page.waitForFunction(() =>
-      Boolean((globalThis as unknown as { Clerk?: { client?: unknown } }).Clerk?.client)
-    );
-    const browserClientId = await page.evaluate(() => {
-      const id = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk?.client?.id;
-      if (!id) throw new Error("Clerk client id unavailable during fixture sign-in");
-      return id;
-    });
-    const ticket = await createSignInTicket(clerkSecret, opts.clerkUserId);
-    const browserSessionId = await withClientSessionSweepOnFailure(
-      clerkSecret,
-      browserClientId,
-      () => page.evaluate(async (signInTicket) => {
-        const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
-        if (!clerk?.client) throw new Error("Clerk client unavailable during fixture sign-in");
-        const attempt = await clerk.client.signIn.create({
-          strategy: "ticket",
-          ticket: signInTicket,
-        });
-        if (attempt.status !== "complete" || !attempt.createdSessionId) {
-          throw new Error(`fixture ticket sign-in did not complete (${attempt.status})`);
-        }
-        return attempt.createdSessionId;
-      }, ticket),
-    );
-    return await withSessionRevocation(clerkSecret, browserSessionId, async () => {
-      await page.evaluate(async (sessionId) => {
-        const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
-        if (!clerk) throw new Error("Clerk client unavailable during fixture activation");
-        await clerk.setActive({
-          session: sessionId,
-          navigate: async () => {},
-        });
-      }, browserSessionId);
-      await page.waitForFunction(() =>
-        Boolean((globalThis as unknown as { Clerk?: { user?: unknown } }).Clerk?.user)
-      );
-
-      await page.goto(opts.loginUrl, { waitUntil: "load", timeout: timeoutMs });
-      const approve = page.getByRole("button", { name: APPROVE_BUTTON_NAME });
-      await approve.waitFor({ state: "visible", timeout: timeoutMs });
-      await approve.click();
-
-      const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL);
-      await codeOutput.waitFor({ state: "visible", timeout: timeoutMs });
-      const code = ((await codeOutput.textContent()) ?? "").trim();
-      if (!VERIFICATION_CODE_RE.test(code)) {
-        throw new Error(`completeCliAuthHandoff: expected a 6-digit code, got ${JSON.stringify(code)}`);
-      }
-      return code;
-    });
+    const sessionId = await signInFixture(page, origin, clerkSecret, opts.clerkUserId, timeoutMs);
+    return await withSessionRevocation(clerkSecret, sessionId, () => approveLogin(page, opts, sessionId));
   } finally {
     await browser.close().catch(() => {});
   }

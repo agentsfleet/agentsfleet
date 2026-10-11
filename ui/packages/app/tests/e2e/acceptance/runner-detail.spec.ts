@@ -1,16 +1,15 @@
 /**
  * runner-detail.spec.ts — the operator's runner triage walk, end to end.
  *
- * Wire: seed a fleet whose SKILL.md carries valid frontmatter and an EMPTY
- * body → steer it once from the console → the runner leases the delivery and
- * fails closed before any model call (child_exec's no-instructions branch
- * reports a startup-posture failure) → the operator opens /admin/runners,
+ * Wire: seed a fleet whose trigger requests an intentionally unhosted tool
+ * → steer it once from the console → the runner leases the delivery and
+ * refuses the tool before any model call with a startup-posture failure
+ * → the operator opens /admin/runners,
  * clicks the host's card, lands on that runner's Leases, reads the failure
  * as the shared plain-English sentence, and opens Review lease from the row.
  *
- * The empty-body failure is the one deterministic, model-free way to place a
- * failed lease on a runner from the outside: the self-plane lease protocol is
- * runner-token-only, and a healthy seeded fleet would settle succeeded. The
+ * The unhosted-tool refusal places a failed lease without calling a model:
+ * the self-plane lease protocol is runner-token-only. The
  * arrangement half runs as the regular tenant; the walk half re-signs-in as
  * the operator fixture — the only identity whose scopes open /admin surfaces.
  */
@@ -31,7 +30,7 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { agentCellFor, expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
 import {
-  emptyBodySkillMd,
+  skillMd,
   getDefaultWorkspaceId,
   triggerMd,
   waitForFleetActive,
@@ -40,10 +39,11 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const FLEET_NAME_PREFIX = "runner-detail-";
-// The empty-body bundle is onboarded ONCE per workspace under this name and
+// The refusal bundle is onboarded ONCE per workspace under this name and
 // every fleet below installs from it by explicit name: identical bytes
 // converge on one library row, where a per-fleet bundle left one row per run.
-const EMPTY_BODY_LIBRARY_NAME = "runner-detail-empty-body";
+const REFUSED_LIBRARY_NAME = "runner-detail-unhosted-tool";
+const UNHOSTED_FIXTURE_TOOL = "acceptance_unhosted_tool";
 const RENDER_TIMEOUT_MS = 15_000;
 // The failure must ride delivery → lease → child start → terminal report →
 // event settle. No model round-trip is involved, but the pipeline crosses the
@@ -131,8 +131,8 @@ async function seedFailedLease(page: Page): Promise<SeededFailedLease> {
     `/v1/workspaces/${ws}/fleet-libraries`,
     {
       source_kind: SOURCE_KIND_UPLOAD,
-      skill_markdown: emptyBodySkillMd(EMPTY_BODY_LIBRARY_NAME),
-      trigger_markdown: triggerMd(EMPTY_BODY_LIBRARY_NAME),
+      skill_markdown: skillMd(REFUSED_LIBRARY_NAME),
+      trigger_markdown: triggerMd(REFUSED_LIBRARY_NAME, UNHOSTED_FIXTURE_TOOL),
     },
   );
   const fleet = await tenant.post<CreateFleetResp>(`/v1/workspaces/${ws}/fleets`, {
