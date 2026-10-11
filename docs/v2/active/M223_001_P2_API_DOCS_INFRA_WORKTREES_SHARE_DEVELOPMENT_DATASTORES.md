@@ -17,8 +17,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — datastore isolation precedes attaching development processes
 **Branch:** feat/m223-shared-dev
 **Baseline revision:** 9b3d4dae029f5ee344185884b2a40c7dc2c84d09
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report revision, commands, environment and passed/failed/skipped counts
+**Test Baseline:** unit=10027 integration=924
+**Baseline evidence:** playbooks/operations/acceptance/baselines/M223_001-20261012.md
 **Depends on:** none
 **Provenance:** agent-generated (Codex, Oct 11, 2026), from Indy's approved shared-stack proposal
 **Canonical architecture:** `docs/architecture/datastore_scaling.md` §Target design and §Limits
@@ -97,35 +97,35 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 Prerequisite: none. Agent choice: a validated optional namespace is part of connection configuration, cloned with connections and inherited by dedicated readers and the subscription hub. Empty/unset uses existing key names. Namespace text introduces no braces or glob metacharacters, preserving existing cluster hash tags.
 
-- **Dimension 1.1** — Invalid, oversized or unsafe namespace input refuses before connecting; unset configuration retains existing names → Test `namespace_config_refuses_unsafe_input`.
-- **Dimension 1.2** — Equal logical keys in different namespaces hold independent values, sessions, counters and scan results → Test `namespaces_isolate_values_sessions_and_scans`.
-- **Dimension 1.3** — Fleet streams, readiness and outbound readers process only their namespace, including acknowledgment and pending recovery → Test `namespaces_isolate_streams_readiness_and_outbound`.
-- **Dimension 1.4** — Subscription delivery and reconnect use scoped physical channels while callers receive logical channel names → Test `namespaces_isolate_subscriptions`.
+- **Dimension 1.1** — DONE — Invalid, oversized or unsafe namespace input refuses before connecting; unset configuration retains existing names → Test `namespace_config_refuses_unsafe_input`.
+- **Dimension 1.2** — DONE — Equal logical keys in different namespaces hold independent values, sessions, counters and scan results → Test `namespaces_isolate_values_sessions_and_scans`.
+- **Dimension 1.3** — DONE — Fleet streams, readiness and outbound readers process only their namespace, including acknowledgment and pending recovery → Test `namespaces_isolate_streams_readiness_and_outbound`.
+- **Dimension 1.4** — DONE — Subscription delivery and reconnect use scoped physical channels while callers receive logical channel names → Test `namespaces_isolate_subscriptions`.
 
 ### §2 — Infrastructure is started once and safely reused
 
 Prerequisite: §1. Agent choice: one project per repository, derived from the Git common-directory path; copy the first caller's infrastructure definition and cluster script into repository-scoped development state. Subsequent callers address that canonical snapshot. A bounded exclusive startup lock prevents two callers provisioning the same services concurrently. Healthy existing services are reused without issuing configuration-replacing up commands.
 
-- **Dimension 2.1** — Stable identities distinguish worktrees and share the infrastructure project across them → Test `worktree_identity_is_stable_and_distinct`.
-- **Dimension 2.2** — Concurrent startup performs one provisioning operation and both callers attach; a second branch cannot replace the snapshot → Test `concurrent_start_reuses_one_infrastructure_stack`.
-- **Dimension 2.3** — Missing Docker, unhealthy dependencies, conflicting ports or a held lock fail with an actionable error and no application startup → Test `infrastructure_refusal_stops_application_start`.
+- **Dimension 2.1** — DONE — Stable identities distinguish worktrees and share the infrastructure project across them → Test `worktree_identity_is_stable_and_distinct`.
+- **Dimension 2.2** — DONE — Concurrent startup performs one provisioning operation and both callers attach; a second branch cannot replace the snapshot → Test `concurrent_start_reuses_one_infrastructure_stack`.
+- **Dimension 2.3** — DONE — Missing Docker, unhealthy dependencies, conflicting ports or a held lock fail with an actionable error and no application startup → Test `infrastructure_refusal_stops_application_start`.
 
 ### §3 — Processes, migrations and shutdown belong to the worktree
 
 Prerequisite: §2. Agent choice: start a native daemon compiled from this worktree to preserve the cluster's loopback routing without another application container. Share the repository's Cargo build cache under a build lock, copying the completed binary to the worktree's process directory before releasing that lock. Load the existing trusted machine environment file without printing it. Override only development datastore addresses, namespace and callback origin. Create the worktree database idempotently and migrate it through this worktree's daemon before serving. Process metadata records the executable and process identity; shutdown verifies both before signaling. Stable ports refuse collisions rather than silently selecting another worktree's listener.
 
-- **Dimension 3.1** — Repeated startup keeps database state and selects the same worktree URL; another worktree uses its own database → Test `development_start_preserves_each_database`.
-- **Dimension 3.2** — Down signals only an owned daemon, preserves data, and never shuts down shared infrastructure → Test `development_down_preserves_sibling_processes`.
-- **Dimension 3.3** — Runner configuration points to this daemon and a separate Linux-host storage root; token provisioning uses the existing runner registration workflow → Test `runner_environment_is_worktree_scoped`.
-- **Dimension 3.4** — Migration failure, port collision, stale process identity and missing configuration produce a nonzero status without signaling foreign processes → Test `development_refuses_unsafe_process_operations`.
+- **Dimension 3.1** — DONE — Repeated startup keeps database state and selects the same worktree URL; another worktree uses its own database → Test `development_start_preserves_each_database`.
+- **Dimension 3.2** — DONE — Down signals only an owned daemon, preserves data, and never shuts down shared infrastructure → Test `development_down_preserves_sibling_processes`.
+- **Dimension 3.3** — DONE — Runner configuration points to this daemon and a separate Linux-host storage root; token provisioning uses the existing runner registration workflow → Test `runner_environment_is_worktree_scoped`.
+- **Dimension 3.4** — DONE — Migration failure, port collision, stale process identity and missing configuration produce a nonzero status without signaling foreign processes → Test `development_refuses_unsafe_process_operations`.
 
 ### §4 — Developer flows and destructive test lanes stay coherent
 
 Prerequisite: §3. Agent choice: existing up/down use the shared development launcher; add no Make targets. The launcher's maintenance command stops the shared project while preserving volumes. Mailpit filtering uses distinct development recipients and never global deletion. QStash callbacks use each daemon's reachable origin. No new product endpoint or tenant model is introduced.
 
-- **Dimension 4.1** — Two real daemons share the infrastructure, answer their own URLs and retain independent data after either stops → Test `two_worktrees_share_infrastructure_end_to_end`.
-- **Dimension 4.2** — Disposable integration resets cannot target the shared development project → Test `test_reset_cannot_address_shared_development`.
-- **Dimension 4.3** — Development, dry and benchmark commands use the worktree URL; documentation names runner registration, mail filtering and explicit infrastructure shutdown → Test `development_commands_use_the_worktree_url`.
+- **Dimension 4.1** — DONE — Two real daemons share the infrastructure, answer their own URLs and retain independent data after either stops → Test `two_worktrees_share_infrastructure_end_to_end`.
+- **Dimension 4.2** — DONE — Disposable integration resets cannot target the shared development project → Test `test_reset_cannot_address_shared_development`.
+- **Dimension 4.3** — DONE — Development, dry and benchmark commands use the worktree URL; documentation names runner registration, mail filtering and explicit infrastructure shutdown → Test `development_commands_use_the_worktree_url`.
 
 ## Interfaces
 
