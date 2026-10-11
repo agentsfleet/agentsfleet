@@ -64,7 +64,7 @@ pub(super) fn statement<'a>(
     event_types: Option<Vec<String>>,
     cursor: Option<&KeysetCursor>,
     limit: u32,
-) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
+) -> afd_db::statement::Bound<'a> {
     cursor.map_or(
         sqlx::query(sql::runner_view::LIST_EVENTS_FIRST)
             .bind(runner.as_str())

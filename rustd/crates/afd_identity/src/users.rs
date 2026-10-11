@@ -10,13 +10,11 @@
 //! at a person, and no escaping can make either name a single user.
 
 use afd_auth::principal::Subject;
+use afd_validate::not_relative;
 use reqwest::Url;
 
 /// The collection every person lives under, appended to the API base.
 const USERS_SEGMENT: &str = "users";
-
-/// Path segments a URL resolves instead of naming.
-const DOT_SEGMENTS: [&str; 2] = [".", ".."];
 
 /// The provider's user collection, parsed once at construction.
 #[derive(Debug, Clone)]
@@ -38,9 +36,7 @@ impl UsersEndpoint {
     /// `None` for a subject that is a dot segment.
     pub(crate) fn person(&self, subject: &Subject, tail: &[&str]) -> Option<Url> {
         let name = subject.as_str();
-        if DOT_SEGMENTS.contains(&name) {
-            return None;
-        }
+        not_relative(name, &()).ok()?;
         let mut url = self.0.clone();
         url.path_segments_mut()
             .ok()?

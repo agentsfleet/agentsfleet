@@ -44,8 +44,8 @@ pub trait EnvSource {
 ///
 /// Blank is treated as absent rather than as a value, because an environment
 /// that exports a variable to the empty string is an environment that meant
-/// to unset it. Every knob reader in the daemon reads through this one, so a
-/// padded value means the same thing whichever knob carries it.
+/// to unset it. Every string-valued knob in the daemon reads through this one,
+/// so a padded value means the same thing whichever knob carries it.
 #[must_use]
 pub fn optional<E: EnvSource + ?Sized>(env: &E, knob: &str) -> Option<Box<str>> {
     let value = env.get(knob)?;

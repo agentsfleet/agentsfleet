@@ -288,8 +288,8 @@ impl Profile {
             return Ok(Target::Rig);
         }
         // Trimmed, so a variable set to whitespace is unset rather than an
-        // address of one space; the knobs module reads every other variable
-        // the same way.
+        // address of one space. The knobs module shares only the blank-is-unset
+        // rule: it reads every other variable untrimmed.
         let authored = env.get(TARGET_VARIABLE).unwrap_or_default();
         match authored.trim().to_owned() {
             address if address.is_empty() => Err(ErrorKind::TargetMissing {

@@ -111,7 +111,7 @@ fn joined(held: &[String], live: Vec<String>) -> Vec<String> {
 /// Waits until a command routed to `range`'s slots is answered by the
 /// range's own primary, or `deadline`.
 async fn await_owner(
-    connection: &mut ClusterConnection,
+    connection: &ClusterConnection,
     range: &SlotRange,
     deadline: Instant,
 ) -> Result<(), Loss> {
@@ -134,23 +134,7 @@ async fn await_owner(
     // A clone is a second handle on the same driver, not a second socket: the
     // probe runs on the connection the repair holds, and owning the handle is
     // what lets each probe's future outlive the closure that made it.
-    let probe = |mut connection: ClusterConnection| {
-        let mut cmd = redis::cmd("CLUSTER");
-        cmd.arg("MYID");
-        let route = route.clone();
-        async move {
-            let answered = connection.route_command(cmd, route).await;
-            // An answer naming someone else and no answer at all are one
-            // thing: not the owner yet.
-            let named = answered.ok().as_ref().and_then(text);
-            let settled = if named.as_deref() == Some(owner) {
-                Ok(())
-            } else {
-                Err(Loss::Unexplained)
-            };
-            (connection, settled)
-        }
-    };
+    let probe = |connection: ClusterConnection| probe_owner(connection, route.clone(), owner);
     // The first probe always goes; the window is read only after one fails,
     // and an unbounded constant schedule leaves the window as the only stop.
     let (_handle, settled) = probe
@@ -163,6 +147,29 @@ async fn await_owner(
         .when(|_not_yet| Instant::now() < deadline)
         .await;
     settled
+}
+
+/// One `CLUSTER MYID` along `route`, settled when `owner` answers it.
+///
+/// Hands the connection back with the verdict, which is the shape a retry
+/// that owns its context threads from one attempt to the next.
+async fn probe_owner(
+    mut connection: ClusterConnection,
+    route: RoutingInfo,
+    owner: &str,
+) -> (ClusterConnection, Result<(), Loss>) {
+    let mut cmd = redis::cmd("CLUSTER");
+    cmd.arg("MYID");
+    let answered = connection.route_command(cmd, route).await;
+    // An answer naming someone else and no answer at all are one thing: not
+    // the owner yet.
+    let named = answered.ok().as_ref().and_then(text);
+    let settled = if named.as_deref() == Some(owner) {
+        Ok(())
+    } else {
+        Err(Loss::Unexplained)
+    };
+    (connection, settled)
 }
 
 /// Whether `range` holds `slot`.
