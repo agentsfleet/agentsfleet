@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use afd_core::error_code::{Coded as _, Logged};
 use sqlx::Connection as _;
 
 use super::lane_url;
@@ -175,10 +176,14 @@ impl Drop for PlatformDefault {
         let provider = self.provider.clone();
         let removed = std::thread::spawn(move || remove(&provider, &created)).join();
         states().entry(self.provider.clone()).or_default().deleting = false;
-        let Some(reason) = unremoved(removed) else {
-            return;
+        // A panicked removal has no failure to name, so its line has no code.
+        let (error_code, reason) = match unremoved(removed) {
+            None => return,
+            Some(Unremoved::Failed(Logged { error_code, reason })) => (Some(error_code), reason),
+            Some(Unremoved::Panicked) => (None, REMOVAL_PANICKED.to_owned()),
         };
         tracing::warn!(
+            error_code,
             event = "test_platform_default_not_removed",
             reason,
             "the platform default this run seeded could not be removed; reset the lane"
@@ -186,15 +191,25 @@ impl Drop for PlatformDefault {
     }
 }
 
+/// What a removal that panicked says in place of a failure's sentence.
+const REMOVAL_PANICKED: &str = "the removal thread panicked";
+
+/// Why a removal left its row behind.
+#[derive(Debug, PartialEq, Eq)]
+enum Unremoved {
+    /// The removal failed: its code and its sentence, as a log line carries
+    /// them, never the `[CODE]` and backtrace a failure's `Display` renders.
+    Failed(Logged),
+    /// The removal thread panicked, so there is no failure to name.
+    Panicked,
+}
+
 /// Why a removal left its row behind, or `None` when it did not.
-///
-/// The sentence and its causes, never the `[CODE]` and backtrace a failure's
-/// `Display` renders: the line is read by a person resetting a lane.
-fn unremoved(removed: std::thread::Result<crate::Result<()>>) -> Option<String> {
+fn unremoved(removed: std::thread::Result<crate::Result<()>>) -> Option<Unremoved> {
     match removed {
         Ok(Ok(())) => None,
-        Ok(Err(cause)) => Some(cause.told()),
-        Err(_) => Some("the removal thread panicked".to_owned()),
+        Ok(Err(cause)) => Some(Unremoved::Failed(cause.logged())),
+        Err(_) => Some(Unremoved::Panicked),
     }
 }
 
@@ -239,7 +254,9 @@ fn remove(provider: &str, created: &Created) -> crate::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::unremoved;
+    use afd_core::error_code::Coded as _;
+
+    use super::{Unremoved, unremoved};
 
     #[test]
     fn a_leftover_platform_default_reason_carries_no_code_prefix() {
@@ -249,13 +266,18 @@ mod tests {
             "a removed row leaves nothing to say"
         );
         for (kind, failure) in crate::error::one_of_each_kind() {
-            let reason = unremoved(Ok(Err(failure))).unwrap_or_default();
+            let logged = failure.logged();
             assert!(
-                !reason.is_empty() && !reason.contains("[UZ-"),
-                "{kind}: {reason}"
+                !logged.reason.is_empty() && !logged.reason.contains("[UZ-"),
+                "{kind}: {}",
+                logged.reason
+            );
+            assert_eq!(
+                unremoved(Ok(Err(failure))),
+                Some(Unremoved::Failed(logged)),
+                "{kind}: the line keeps the failure's code beside its sentence"
             );
         }
-        let panicked = unremoved(Err(Box::new("boom")));
-        assert_eq!(panicked.as_deref(), Some("the removal thread panicked"));
+        assert_eq!(unremoved(Err(Box::new("boom"))), Some(Unremoved::Panicked));
     }
 }
