@@ -13,6 +13,9 @@
 //! never as root, and the runner starts bubblewrap itself as an unprivileged
 //! host user, so a file the sandbox creates is never owned by host root.
 
+mod requirements;
+pub use self::requirements::Requirements;
+
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
