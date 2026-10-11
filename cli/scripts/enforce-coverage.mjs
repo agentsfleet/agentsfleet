@@ -27,6 +27,22 @@ function readThreshold() {
   return { line: Number(match[1]), func: Number(match[2]) };
 }
 
+// The commands the suite shells out to. A box without one fails every case
+// that spawns it with `Executable not found in $PATH`, once per case and with
+// nothing naming the box; nine of those once scrolled past in a clipped CI log
+// and read as nine broken tests. Named once, here, before anything runs.
+const REQUIRED_COMMANDS = ["bash", "python3"];
+
+function requireCommands() {
+  const missing = REQUIRED_COMMANDS.filter(
+    (name) => spawnSync("sh", ["-c", `command -v ${name}`], { stdio: "ignore" }).status !== 0,
+  );
+  if (missing.length > 0) {
+    console.error(`enforce-coverage: this box lacks ${missing.join(", ")}, which the suite shells out to`);
+    process.exit(2);
+  }
+}
+
 function runTests() {
   // Delete any prior lcov.info first. parseSummary grades from that file, so a
   // run that exits 0 without rewriting it (a dropped reporter, a bun path
@@ -66,6 +82,7 @@ function parseSummary() {
 
 function main() {
   const threshold = readThreshold();
+  requireCommands();
   runTests();
   const { fn, line, uncovered } = parseSummary();
   const floorFn = threshold.func * 100;

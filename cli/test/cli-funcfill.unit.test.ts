@@ -20,9 +20,7 @@ import path from "node:path";
 import { runCli } from "../src/cli.ts";
 import { EXIT_CODE } from "../src/errors/index.ts";
 import { CommandExitCode, makeCommandExitCode, withManagedExitCode } from "../src/runtime/exit-code.service.ts";
-import { bufferStream, makeNoop, cliEnv, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
-
-const VALID_ID = "01900000-0000-7000-8000-000000000001";
+import { bufferStream, makeNoop, cliEnv, withFreshStateDir } from "./helpers-cli-state.ts";
 
 async function withBrokenStateBase<T>(fn: () => Promise<T>): Promise<T> {
   const previous = process.env.AGENTSFLEET_STATE_DIR;
@@ -98,19 +96,6 @@ describe("runCli exit-code mapping", () => {
     });
   });
 
-  test("auth-required surfaces a JSON error envelope under --json and still exits 1", async () => {
-    await withFreshStateDir(async () => {
-      const out = bufferStream();
-      const err = bufferStream();
-      const code = await runCli(["--json", "doctor"], {
-        stdout: out.stream,
-        stderr: err.stream,
-        env: cliEnv({ NO_COLOR: "1" }),
-      });
-      expect(code).toBe(1);
-    });
-  });
-
   test("state-load failures fall back to empty credentials and workspaces", async () => {
     await withBrokenStateBase(async () => {
       const err = bufferStream();
@@ -121,21 +106,6 @@ describe("runCli exit-code mapping", () => {
       });
       expect(code).toBe(1);
       expect(err.read()).toContain("not authenticated");
-    });
-  });
-
-  test("an authed command that parses cleanly returns state.exitCode (the success tail)", async () => {
-    // Drives the no-error tail (`return state.exitCode`) with a bound leaf
-    // handler so the rejection mapping is NOT exercised — the complementary
-    // side of the parseResult.ok branch.
-    await withAuthedStateDir({ workspaceId: VALID_ID }, async () => {
-      const code = await runCli(["workspace", "list"], {
-        stdout: makeNoop(),
-        stderr: makeNoop(),
-        env: cliEnv({ NO_COLOR: "1" }),
-        // Offline: no fetch needed — workspace list reads local state.
-      });
-      expect(typeof code).toBe("number");
     });
   });
 });

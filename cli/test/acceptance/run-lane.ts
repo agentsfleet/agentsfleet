@@ -8,6 +8,7 @@ const TERMINAL_OUTCOME = {
   failed: "failed",
   preflightFailed: "preflight_failed",
   summaryMissing: "summary_missing",
+  testsSkipped: "tests_skipped",
 } as const;
 
 export const BUN_TEST_TIMEOUT_MS = 120_000;
@@ -22,8 +23,12 @@ const REGISTERED_RE = /Ran\s+(\d+)\s+tests?\b/;
 const PASSED_RE = /(\d+)\s+pass\b/;
 const FAILED_RE = /(\d+)\s+fail\b/;
 const SKIPPED_RE = /(\d+)\s+skip\b/;
+// Every acceptance file the deterministic lane can run: the specs and the
+// harness checks beside them. A file not on the live list runs here, so a
+// new spec cannot land in no lane at all.
+const ACCEPTANCE_FILE_GLOB = "test/acceptance/**/*.{spec,test}.ts";
 
-type AcceptanceLane = (typeof ACCEPTANCE_LANE)[keyof typeof ACCEPTANCE_LANE];
+export type AcceptanceLane = (typeof ACCEPTANCE_LANE)[keyof typeof ACCEPTANCE_LANE];
 
 export interface LaneCounts {
   readonly registered: number;
@@ -32,22 +37,7 @@ export interface LaneCounts {
   readonly skipped: number;
 }
 
-export const DETERMINISTIC_ACCEPTANCE_FILES: ReadonlyArray<string> = [
-  "test/acceptance/acceptance-lanes.test.ts",
-  "test/acceptance/argument-negatives.spec.ts",
-  "test/acceptance/fixtures/clerk-admin.test.ts",
-  "test/acceptance/fixtures/cli-credential-revoke.test.ts",
-  "test/acceptance/fixtures/workspace-hydration.test.ts",
-  "test/acceptance/flags-and-env.spec.ts",
-  "test/acceptance/help-and-errors.spec.ts",
-  "test/acceptance/memory-read.spec.ts",
-  "test/acceptance/options-metavar.spec.ts",
-  "test/acceptance/retry-policy.spec.ts",
-  "test/acceptance/streaming-follow.spec.ts",
-  "test/acceptance/whoami.spec.ts",
-];
-
-export const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
+const LIVE_ACCEPTANCE_FILES: ReadonlyArray<string> = [
   "test/acceptance/approvals-live.spec.ts",
   "test/acceptance/concurrency.spec.ts",
   "test/acceptance/fleet-update-delete.spec.ts",
@@ -102,10 +92,26 @@ function readCount(output: string, pattern: RegExp): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function acceptanceFiles(lane: AcceptanceLane): ReadonlyArray<string> {
-  return lane === ACCEPTANCE_LANE.deterministic
-    ? DETERMINISTIC_ACCEPTANCE_FILES
-    : LIVE_ACCEPTANCE_FILES;
+export function deterministicAcceptanceFiles(root: string): ReadonlyArray<string> {
+  const live = new Set(LIVE_ACCEPTANCE_FILES);
+  return [...new Bun.Glob(ACCEPTANCE_FILE_GLOB).scanSync({ cwd: root })]
+    .filter((file) => !live.has(file))
+    .sort();
+}
+
+// A deterministic file that skips is a live-only file put in the wrong lane:
+// without an https target it registers skip-only placeholders and passes
+// having proved nothing. The deterministic lane therefore fails on any skip.
+export function laneOutcome(
+  lane: AcceptanceLane,
+  exitCode: number,
+  counts: LaneCounts,
+): { readonly exitCode: number; readonly terminalOutcome: string } {
+  if (exitCode !== 0) return { exitCode, terminalOutcome: TERMINAL_OUTCOME.failed };
+  if (lane === ACCEPTANCE_LANE.deterministic && counts.skipped > 0) {
+    return { exitCode: 1, terminalOutcome: TERMINAL_OUTCOME.testsSkipped };
+  }
+  return { exitCode, terminalOutcome: TERMINAL_OUTCOME.passed };
 }
 
 export function liveExecutionPlan(): LiveExecutionPlan {
@@ -260,7 +266,9 @@ async function runLane(lane: AcceptanceLane): Promise<number> {
         await runTestFile(plan.serial),
       ]);
   } else {
-    const deterministicResult = await executeAndStream(acceptanceTestCommand(lane, acceptanceFiles(lane)));
+    const deterministicResult = await executeAndStream(
+      acceptanceTestCommand(lane, deterministicAcceptanceFiles(process.cwd())),
+    );
     result = {
       exitCode: deterministicResult.exitCode,
       counts: parseLaneCounts(deterministicResult.outputTail),
@@ -272,9 +280,9 @@ async function runLane(lane: AcceptanceLane): Promise<number> {
       Date.now() - startedAt, TERMINAL_OUTCOME.summaryMissing);
     return 1;
   }
-  writeSummary(lane, counts, Date.now() - startedAt,
-    result.exitCode === 0 ? TERMINAL_OUTCOME.passed : TERMINAL_OUTCOME.failed);
-  return result.exitCode;
+  const outcome = laneOutcome(lane, result.exitCode, counts);
+  writeSummary(lane, counts, Date.now() - startedAt, outcome.terminalOutcome);
+  return outcome.exitCode;
 }
 
 if (import.meta.main) {

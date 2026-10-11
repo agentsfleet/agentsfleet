@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { spawnSync } from "node:child_process";
-import { resolve } from "node:path";
 import { EVENTS, EVENT_PROP_KEYS } from "../lib/analytics/events";
-
-const APP_ROOT = resolve(__dirname, "..");
 
 // Exact prop-key names that would indicate a secret-bearing payload. Event
 // props carry IDs, names, and enums only; suffixed forms (api_key_id,
@@ -53,34 +49,5 @@ describe("analytics event catalog", () => {
     for (const name of Object.values(EVENTS)) {
       expect(name).toMatch(/^[a-z]+(_[a-z]+)+$/);
     }
-  });
-
-  it("no bare catalog event-name literal exists outside the catalog module", () => {
-    // Same grep-gate shape as tests/grep-gates: the catalog is the single
-    // source; every other reference goes through EVENTS.*. The pattern is
-    // built from the catalog itself so this file carries no bare literal,
-    // covers all three quote forms, and runs via spawnSync (no shell quoting).
-    const pattern = `['"\`](${Object.values(EVENTS).join("|")})['"\`]`;
-    const result = spawnSync(
-      "grep",
-      [
-        "-rnE",
-        "--include=*.ts",
-        "--include=*.tsx",
-        "--exclude-dir=node_modules",
-        "--exclude-dir=.next",
-        "--exclude-dir=dist",
-        pattern,
-        ".",
-      ],
-      { cwd: APP_ROOT, encoding: "utf8" },
-    );
-    if (result.status === 1) return; // zero matches anywhere
-    expect(result.status, result.stderr).toBe(0);
-    const offenders = result.stdout
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      .filter((line) => !line.startsWith("./lib/analytics/events.ts:"));
-    expect(offenders, offenders.join("\n")).toEqual([]);
   });
 });

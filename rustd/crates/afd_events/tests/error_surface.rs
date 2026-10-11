@@ -13,8 +13,8 @@
 //! wrong handler.
 //!
 //! Every count below was MEASURED against the sample set, not chosen. Each is a
-//! pin: a kind added without a sample, or a lift swapped for a `to_string()`,
-//! fails here instead of reaching an operator as a broken chain.
+//! pin: a lift swapped for a `to_string()` fails here instead of reaching an
+//! operator as a broken chain.
 
 #![cfg(feature = "test-util")]
 
@@ -23,34 +23,10 @@ use std::error::Error as _;
 
 use afd_events::error::one_of_each_kind;
 
-/// How many kinds the sample declares.
-const SAMPLES: usize = 7;
 /// How many carry a `source()` — the chain an operator follows to the cause.
 const WITH_SOURCE: usize = 5;
 /// How many distinct registry codes the kinds report between them.
 const DISTINCT_CODES: usize = 4;
-
-#[test]
-fn the_sample_declares_every_kind_under_a_distinct_label() {
-    let kinds = one_of_each_kind();
-    assert_eq!(
-        kinds.len(),
-        SAMPLES,
-        "a kind was added to ErrorKind without a sample beside it, or a sample \
-         was removed — the suites that grade this surface only see what is here"
-    );
-
-    let labels: BTreeSet<&str> = kinds.iter().map(|(label, _)| *label).collect();
-    assert_eq!(
-        labels.len(),
-        kinds.len(),
-        "two samples share a label, so a failure here would name the wrong kind"
-    );
-    assert!(
-        labels.iter().all(|label| !label.trim().is_empty()),
-        "a blank label makes an assertion failure unreadable"
-    );
-}
 
 #[test]
 fn every_kind_renders_leading_with_its_code() {

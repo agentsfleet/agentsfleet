@@ -31,13 +31,6 @@ describe("EmptyState", () => {
     expect(screen.getByText("Start")).toBeInTheDocument();
   });
 
-  it("uses responsive padding (p-6 + sm:p-10)", () => {
-    render(<EmptyState title="X" />);
-    const cls = screen.getByTestId("empty-state").className;
-    expect(cls).toContain("p-6");
-    expect(cls).toContain("sm:p-10");
-  });
-
   it("carries data-slot for external styling hooks", () => {
     render(<EmptyState title="X" />);
     expect(screen.getByTestId("empty-state")).toHaveAttribute("data-slot", "empty-state");

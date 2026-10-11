@@ -32,6 +32,8 @@ mod registry;
 mod registry_default;
 #[path = "integration_rotation/registry_page.rs"]
 mod registry_page;
+#[path = "integration_rotation/registry_tenancy.rs"]
+mod registry_tenancy;
 #[path = "integration_rotation/registry_walk.rs"]
 mod registry_walk;
 

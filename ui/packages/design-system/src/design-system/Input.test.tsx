@@ -21,29 +21,6 @@ describe("Input", () => {
     expect(screen.getByPlaceholderText("Email")).toHaveAttribute("type", "email");
   });
 
-  it("applies base semantic utilities", () => {
-    render(<Input data-testid="i" />);
-    const cls = screen.getByTestId("i").className;
-    expect(cls).toContain("border-border");
-    expect(cls).toContain("bg-secondary");
-    expect(cls).toContain("text-foreground");
-    expect(cls).toContain("rounded-md");
-    expect(cls).toContain("font-sans");
-  });
-
-  it("applies focus ring and disabled styles", () => {
-    render(<Input data-testid="i" />);
-    const cls = screen.getByTestId("i").className;
-    expect(cls).toContain("focus:ring-ring");
-    expect(cls).toContain("focus:border-border-strong");
-    expect(cls).toContain("disabled:opacity-50");
-  });
-
-  it("uses muted-foreground for placeholder color", () => {
-    render(<Input data-testid="i" />);
-    expect(screen.getByTestId("i").className).toContain("placeholder:text-muted-foreground");
-  });
-
   it("merges a custom className", () => {
     render(<Input className="extra" data-testid="i" />);
     const cls = screen.getByTestId("i").className;

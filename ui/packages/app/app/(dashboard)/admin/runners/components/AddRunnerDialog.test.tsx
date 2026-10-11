@@ -24,27 +24,6 @@ function openDialog() {
 }
 
 describe("AddRunnerDialog assigns policy", () => {
-  // Enrollment is where an operator picks a policy for the first time, so the
-  // page the fields point at has to be reachable from here too, not only from
-  // the edit dialog they reach after something is already wrong.
-  it("points at the runner policy page", () => {
-    openDialog();
-
-    expect(screen.getByRole("link", { name: /^learn more/i }).getAttribute("href")).toBe(
-      "https://docs.agentsfleet.net/runners",
-    );
-  });
-
-  // Same policy form as the edit dialog, plus the post-create token panel, so it
-  // overflows a short viewport for the same reason and needs the same scroll.
-  it("test_add_runner_dialog_body_scrolls: keeps the footer reachable on a short viewport", () => {
-    openDialog();
-
-    const dialogClasses = screen.getByRole("dialog").className;
-    expect(dialogClasses).toContain("max-h-svh");
-    expect(dialogClasses).toContain("overflow-y-auto");
-  });
-
   it("refuses a bad registry entry in-form and never calls the action", async () => {
     openDialog();
     fireEvent.change(screen.getByLabelText(/host name/i), { target: { value: "web-prod-1" } });
@@ -54,16 +33,6 @@ describe("AddRunnerDialog assigns policy", () => {
     fireEvent.submit(screen.getByLabelText(/host name/i).closest("form") as HTMLFormElement);
     await waitFor(() => expect(screen.getByText(/must be a host name/i)).toBeTruthy());
     expect(createRunnerActionMock).not.toHaveBeenCalled();
-  });
-
-  it("test_add_runner_copy_describes_an_assignment", () => {
-    // Dimension 4.3 — the selection is an assignment the host must satisfy,
-    // never a description of the host.
-    openDialog();
-    expect(screen.getByText(/assigned to the host/i)).toBeTruthy();
-    expect(screen.getByText(/cannot enforce the assigned tier is degraded/i)).toBeTruthy();
-    // The pre-inversion framing is gone: nothing calls the tier self-reported.
-    expect(screen.queryByText(/self-reported/i)).toBeNull();
   });
 
   it("test_add_runner_exposes_all_policy_fields", () => {

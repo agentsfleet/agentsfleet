@@ -329,14 +329,6 @@ describe("FleetThread — tool cells", () => {
     expect(cell!.querySelector("img, strong")).toBeNull();
   });
 
-  it("test_cell_text_is_readable", () => {
-    renderCalls([call({ name: TOOL_NAME.FILE_DELETE, args: { path: "a.md" }, outputHead: "ok", outputLineCount: 1 })]);
-    const [cell] = cells();
-    // text-dim measures 4.41:1 on the light page; readable text uses text-subtle.
-    expect(cell!.className).toContain("text-text-subtle");
-    expect(cell!.className).not.toContain("text-text-dim");
-  });
-
   it("test_omitted_calls_render_count", () => {
     renderCalls([call({ name: TOOL_NAME.FILE_DELETE })], PROCESSED, { omittedCallCount: 4 });
     expect(screen.getByText("4 more calls not recorded")).toBeTruthy();

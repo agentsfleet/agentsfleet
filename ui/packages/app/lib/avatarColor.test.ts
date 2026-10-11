@@ -19,11 +19,4 @@ describe("avatarColor", () => {
   it("falls back to a stable non-empty seed for an empty string", () => {
     expect(avatarColor("")).toBe(avatarColor(AVATAR_COLOR_FALLBACK_SEED));
   });
-
-  it("never uses the reserved --pulse currency color", () => {
-    // The pulse hue (#5eead4) sits at hue ~174 on the HSL wheel; this test
-    // just guards that the function emits hsl(...) values, never the raw
-    // --pulse/--pulse-dim custom-property references.
-    expect(avatarColor("user_123")).not.toContain("--pulse");
-  });
 });

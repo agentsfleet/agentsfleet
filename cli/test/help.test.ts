@@ -88,20 +88,6 @@ describe("help output", () => {
       .filter((line) => line.length > 80);
     expect(overflow).toEqual([]);
   });
-
-  test("--help output contains no decorative emoji or box-drawing chars", async () => {
-    const out = bufferStream();
-    const err = bufferStream();
-    await runCli(["--help"], {
-      stdout: out.stream,
-      stderr: err.stream,
-      env: { ...process.env, NO_COLOR: "1" },
-    });
-    const output = out.read();
-    expect(output).not.toContain("🧟");
-    expect(output).not.toContain("🎉");
-    expect(output).not.toMatch(/[╭╮╯╰│]/);
-  });
 });
 
 describe("version output", () => {

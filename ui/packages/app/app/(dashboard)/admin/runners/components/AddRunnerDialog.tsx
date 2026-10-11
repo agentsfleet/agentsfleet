@@ -138,8 +138,8 @@ export default function AddRunnerDialog({ onCreated }: { onCreated: () => void }
           // The reveal is INLINE — never a child component taking the token as a prop.
           //
           // A one-time runner token is never handed to another component as a prop.
-          // `tests/grep-gates/no-api-template-mint.test.ts` forbids a token-typed
-          // prop in any "use client" file, because a prop crossing into a client
+          // `scripts/check_app_source.py` (rule app-client-credential) forbids a
+          // token-typed prop in any "use client" file, because a prop crossing into a client
           // component is serialized into the hydration payload. Here `created` is
           // already client state from a server action, so the prop was not in fact
           // a hydration leak — but a regex cannot know that, and a credential that

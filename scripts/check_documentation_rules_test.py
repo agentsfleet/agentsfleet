@@ -9,12 +9,6 @@ sys.dont_write_bytecode = True
 
 import check_documentation_rules as checker
 
-ROOT = Path(__file__).resolve().parents[1]
-ARCHITECTURE_SCENARIOS = ROOT / "docs/architecture/scenarios"
-GITHUB_REVIEW_SCENARIO = "github-pr-reviewer.md"
-REPAIR_SCENARIO = "production-deploy-repair.md"
-REPAIR_PROOF_BOUNDARY = "not yet proven together"
-
 
 VALID_OPENAPI = """{
   "paths": {
@@ -73,29 +67,6 @@ class CommandTextTests(unittest.TestCase):
         text = 'description: "A powerful command for fleets",\n'
         issues = checker.lint_cli_source(Path("cli/src/program/example.ts"), text)
         self.assertTrue(any("DOC-07" in issue for issue in issues))
-
-
-class RepositoryWiringTests(unittest.TestCase):
-    def test_architecture_scenarios_match_source(self) -> None:
-        self.assertTrue((ARCHITECTURE_SCENARIOS / GITHUB_REVIEW_SCENARIO).is_file())
-        repair = (ARCHITECTURE_SCENARIOS / REPAIR_SCENARIO).read_text(encoding="utf-8")
-        self.assertIn(REPAIR_PROOF_BOUNDARY, repair)
-
-    def test_precommit_runs_documentation_checks(self) -> None:
-        makefile = (ROOT / "make/quality.mk").read_text(encoding="utf-8")
-        hook = (ROOT / ".githooks/pre-commit").read_text(encoding="utf-8")
-        self.assertIn("check-documentation-rules:", makefile)
-        self.assertIn("python3 scripts/check_documentation_rules_test.py", makefile)
-        self.assertIn("python3 scripts/check_documentation_rules.py", makefile)
-        self.assertIn("make_targets+=(check-documentation-rules)", hook)
-        self.assertIn("make -j", hook)
-        self.assertIn("these files have staged and unstaged edits", hook)
-
-    def test_precommit_routes_command_line_changes_to_lint(self) -> None:
-        hook = (ROOT / ".githooks/pre-commit").read_text(encoding="utf-8")
-        self.assertIn("cli/*)", hook)
-        self.assertIn("make_targets+=(lint-cli)", hook)
-        self.assertNotIn("git commit --no-verify", hook)
 
 
 if __name__ == "__main__":

@@ -66,6 +66,33 @@ Both git hooks dispatch on `*.rs` and on `rustd/*`: manifests and the toolchain
 pin change what the lane compiles and which compiler compiles it, so they trigger
 it too.
 
+## A test calls the code it proves
+
+A test runs the code it names and asserts on what that code does. It never
+opens a repository file to inspect source text, configuration, workflows,
+documentation or the committed OpenAPI document; a test that does goes red
+when someone reflows a file or rewords a comment, and stays green when the
+same bug is written another way. A test may read files under its own fixture
+directory and files it wrote itself.
+
+- **OpenAPI facts** come from the generated document, `afd_api::openapi::document()`,
+  or a type's `<T as utoipa::PartialSchema>::schema()`, never `public/openapi.json`.
+- **SQL guarantees** are proven live: run the statement through its store
+  against Postgres and assert on the rows. A substring match on statement text
+  proves nothing about the rows.
+- **Rules about how source text reads** (a banned import, a retired word, a
+  table that must match a constant) are lints. Each lives in a repository-owned
+  host that `make lint-all` runs (an oxlint rule, `scripts/check_*.py`, a
+  make-run shell check), with a seeded violation in that host's own test.
+- **Pins** stay only on observable interface: error codes, wire spellings, exit
+  codes, roles and accessible names. Copy, class strings and constants compared
+  with themselves are not interface.
+
+`scripts/check_tests_call_code.py`, run by `make lint-all`, fails on a test
+that reads a repository file in TypeScript, Rust, shell or Python. It has no
+allowlist. A false positive is fixed in the matcher, with a negative case in
+its test.
+
 ## Rust test naming — the filename declares the tier
 
 Three shapes, and the tier is readable without opening the file.

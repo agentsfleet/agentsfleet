@@ -68,8 +68,8 @@ function sourceCell(entry: WorkspaceLibraryEntry) {
  *  The column answers "which of these is the one I added this morning", which
  *  a relative label answers better than either a date or a millisecond count.
  *  `Time` owns the `<time datetime>` semantic, the locale pin and the
- *  hydration guard — `tests/timestamp-standard.test.ts` is the grep that keeps
- *  a hand-rolled formatter from reappearing here. */
+ *  hydration guard — rule app-date-formatter in `scripts/check_app_source.py`
+ *  keeps a hand-rolled formatter from reappearing here. */
 function onboardedOn(entry: WorkspaceLibraryEntry) {
   return (
     <Time value={new Date(entry.created_at)} format="relative" className="tabular-nums" />

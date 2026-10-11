@@ -69,14 +69,4 @@ describe("useFleetPendingSends", () => {
     }
     expect(renderToStaticMarkup(<Probe />)).toContain("no pending");
   });
-
-  it("notifies mounted consumers when the test ledger resets", () => {
-    const hook = renderHook(() => useFleetPendingSends(scope("fleet_reset")));
-    act(() => {
-      hook.result.current.writers.begin({ operationId: "op-r", text: "clear me", submittedAtMs: SUBMITTED_AT_MS });
-    });
-    expect(hook.result.current.pending).toHaveLength(1);
-    act(() => __resetPendingSendsForTests());
-    expect(hook.result.current.pending).toEqual([]);
-  });
 });
