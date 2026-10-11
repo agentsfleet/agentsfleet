@@ -38,6 +38,10 @@ impl Speaking {
         seal_slack_grant(&run).await;
         Self {
             run,
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+            )]
             http: reqwest::Client::new(),
             slack,
         }

@@ -4,6 +4,10 @@
     clippy::expect_used,
     reason = "test construction failures should stop the mapping proof"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the plane is built only to compare store addresses; its clients never send a request"
+)]
 
 use std::sync::Arc;
 
@@ -65,6 +69,7 @@ fn plane() -> ServingPlane {
         },
         analytics: Analytics::silent(),
         slack_api_base: String::new(),
+        vendor_client: reqwest::Client::new(),
         login: LoginConfig {
             code_pepper: SecretBytes::new(b"plane-test-pepper".to_vec()),
             app_url: afd_connector::Dashboard::parse("https://app.fixture.test")

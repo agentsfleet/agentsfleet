@@ -145,19 +145,9 @@ fn evidence(offered: &Value) -> Option<String> {
 /// A prefix of valid UTF-8 cut at a character boundary is itself valid UTF-8,
 /// so this cannot produce the mangled tail a byte-count truncation can.
 fn bounded(prose: &str, cap: usize) -> &str {
-    if prose.len() <= cap {
-        return prose;
-    }
-    // Each character's END offset, kept while it still fits — so the cut lands
-    // on the last boundary within the cap rather than one past it, and a
-    // multi-byte character straddling the cap is dropped whole.
-    let end = prose
-        .char_indices()
-        .map(|(at, character)| at + character.len_utf8())
-        .take_while(|end| *end <= cap)
-        .last()
-        .unwrap_or_default();
-    prose.split_at(end).0
+    // The last boundary at or below the cap, so a multi-byte character
+    // straddling it is dropped whole; the whole string when it already fits.
+    prose.split_at(prose.floor_char_boundary(cap)).0
 }
 
 /// `prose` with every character a renderer could be fooled by replaced.

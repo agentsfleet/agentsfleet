@@ -223,3 +223,26 @@ fn test_published_completed_carries_outcome() {
         );
     }
 }
+
+/// A batch the queue would not take costs the tail, and the debug line says
+/// why in the failure's own sentence, with no code prefix.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn a_dropped_activity_batch_reason_carries_no_code_prefix() {
+    let log = afd_core::test_util::trace::Capture::install();
+
+    crate::lease::test_dead::leases()
+        .publish_activity(&target(), &every_frame(None))
+        .await;
+
+    let line = log.only(super::EVENT_DROPPED);
+    assert!(
+        line.field("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
+    let reason = line.field("reason").unwrap_or_default();
+    assert!(
+        !reason.is_empty() && !reason.contains("[UZ-"),
+        "the failure's sentence, not its `[CODE]` rendering: {reason}"
+    );
+}

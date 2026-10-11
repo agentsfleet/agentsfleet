@@ -21,7 +21,7 @@ use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
-use crate::handler::{malformed, refuse};
+use crate::handler::{malformed, refuse, reject};
 use crate::services::{Leasing as _, Services};
 
 /// The scoped event a failed post is logged under.
@@ -74,12 +74,7 @@ pub(crate) async fn handle<D: Services>(
     body: Bytes,
 ) -> Response {
     if body.len() > DETAIL_POST_MAX_BYTES {
-        return crate::envelope::ProblemResponse::new(
-            afd_core::error_code::PAYLOAD_TOO_LARGE,
-            DETAIL_TOO_LARGE,
-            crate::request_id::RequestId::mint(),
-        )
-        .into_response();
+        return reject(afd_core::error_code::PAYLOAD_TOO_LARGE, DETAIL_TOO_LARGE);
     }
     // Borrowed out of `body`: every record's output goes straight into a column.
     let Ok(request) = afd_http::handler::read_body::<ToolCallRecordsRequest<'_>>(&body) else {

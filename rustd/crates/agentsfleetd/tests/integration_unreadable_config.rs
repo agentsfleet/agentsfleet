@@ -82,6 +82,10 @@ async fn seed_unreadable_fleet(run: &Scenario) -> String {
 async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
     let http = reqwest::Client::new();
 
     let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;

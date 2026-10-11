@@ -40,15 +40,10 @@ use std::time::Duration;
 use afd_core::clock;
 use afd_core::timing::MAX_RUNTIME_MS;
 use afd_db::Db;
+use afd_db::statement::Bound;
 use afd_observability::producers;
 
 use crate::error::{Result, query};
-
-/// One retention statement, part-way through being bound.
-///
-/// Named because all three passes take and answer it, and the full spelling
-/// would be the widest thing in this file.
-type Statement = sqlx::query::Query<'static, sqlx::Postgres, sqlx::postgres::PgArguments>;
 use crate::sql;
 use crate::sweep::{Sweep, Swept};
 
@@ -144,7 +139,7 @@ impl Retention {
         bind: B,
     ) -> Result<(u64, bool)>
     where
-        B: Fn(Statement) -> Statement,
+        B: Fn(Bound<'static>) -> Bound<'static>,
     {
         let mut total = 0;
         for _pass in 0..MAX_BATCHES {

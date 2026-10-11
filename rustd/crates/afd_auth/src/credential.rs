@@ -32,6 +32,7 @@
 //! token still fails at the verifier, and a deployment with no verifier refuses
 //! the whole class.
 
+use afd_crypto::secret::SecretString;
 use std::fmt;
 
 /// One credential class the daemon can prove.
@@ -203,9 +204,14 @@ const BLANK_BYTES: [char; 4] = [' ', '\t', '\r', '\n'];
 ///
 /// The value is stored untrimmed. Whitespace is consulted only to decide
 /// blankness; [`crate::directory::Digest::of`] hashes the raw bytes, so a
-/// stored digest matches exactly what the minter rendered.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Presented(Box<str>);
+/// stored digest matches exactly what the minter rendered. The bytes live in a
+/// [`SecretString`], which wipes them when the request that carried them ends
+/// (Invariant 5).
+///
+/// No equality: a credential is compared by its digest, and a derived `==` on
+/// the plaintext would be a non-constant-time comparison waiting for a caller.
+#[derive(Clone)]
+pub struct Presented(SecretString);
 
 /// A presented credential that carried nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -221,7 +227,7 @@ impl Presented {
         if raw.trim_matches(BLANK_BYTES).is_empty() {
             return Err(Blank);
         }
-        Ok(Self(raw.into()))
+        Ok(Self(SecretString::new(raw.to_owned())))
     }
 
     /// Parses a whole `Authorization` header value.
@@ -242,13 +248,13 @@ impl Presented {
     /// that way.
     #[must_use]
     pub fn expose(&self) -> &str {
-        &self.0
+        self.0.expose()
     }
 
     /// How many bytes were presented. The only thing about it safe to log.
     #[must_use]
-    pub const fn len(&self) -> usize {
-        self.0.len()
+    pub fn len(&self) -> usize {
+        self.0.expose().len()
     }
 
     /// Whether nothing was presented.
@@ -256,7 +262,7 @@ impl Presented {
     /// Never true — the constructor refuses it — and present because a type
     /// answering `len` should answer this.
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
@@ -264,25 +270,6 @@ impl Presented {
 /// Renders the length, never the value.
 impl fmt::Debug for Presented {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Presented({} bytes, redacted)", self.0.len())
-    }
-}
-
-/// Zeroes the credential when the request that carried it ends (Invariant 5).
-///
-/// A `Box<str>` is freed, not overwritten, so without this the bytes sit in
-/// released heap for as long as the allocator leaves them there. Hand-written
-/// rather than derived for the reason the workspace `Cargo.toml` records:
-/// `zeroize_derive` is the last crate in this graph on `syn` 2, and a duplicate
-/// `syn` fails `clippy::multiple_crate_versions`.
-impl Drop for Presented {
-    fn drop(&mut self) {
-        use zeroize::Zeroize as _;
-        // Take the buffer so the write happens on memory nothing can observe
-        // afterwards, and go through the byte view because `Box<str>` has no
-        // mutable one. `zeroize` rather than a loop so the write is not
-        // eliminated as dead.
-        let mut bytes = std::mem::take(&mut self.0).into_boxed_bytes();
-        bytes.zeroize();
+        write!(f, "Presented({} bytes, redacted)", self.len())
     }
 }

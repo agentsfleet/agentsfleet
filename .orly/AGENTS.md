@@ -88,7 +88,6 @@ Auto-memory is **disabled** (`autoMemoryEnabled: false` + `CLAUDE_CODE_DISABLE_A
 - Never publish a Claude Artifact unless asked for one in that session. Answer in the terminal.
 - Before commit/push: `gitleaks` must pass.
 - No new `make` targets without a distinct caller (CI job, spec-mandated gate, or a workflow existing targets can't express) — check `make/*.mk` first; extend over near-duplicate wrappers.
-- `*.zig` → read `.orly/dispatch/write_zig.md`; ZIG GATE fires.
 - Auth-flow (token-minting handlers, credential-typed spec dimensions, the repository's auth directories) → read the repository's `docs/AUTH.md` first, where it exists.
 - **Indy's reference checkouts** (`~/Projects/`): TypeScript → `oss/supabase/apps/studio` + `oss/supabase/packages/{ui,ui-patterns}` + `oss/cli`; Zig → `oss/ghostty/src/`; Rust → `oss/rs/exonum` + `oss/rs/arrow-rs` + `agentsfleet/rustd/` + `oss/rs/builder/components/builder-core/`. Missing → search `oss/rs/`; ask before cloning.
 
@@ -129,7 +128,6 @@ Guards fire pre-hoc regardless of lifecycle stage. Override: `<GATE>: SKIPPED pe
 
 | Trigger — when you… | Dispatch | Latent façade carries · override |
 |---|---|---|
-| write `*.zig` | `write_zig` | `.orly/dispatch/write_zig.md` — memory safety, init/deinit + `errdefer`, pub shape verdict (`FILE SHAPE DECISION` — auto-mode does NOT cover), tagged unions, length caps, declared cross-compile matrix · `ZIG GATE` / `PUB GATE` / `LIFECYCLE GATE: SKIPPED per user override (reason: ...)`. |
 | write `*.ts`/`*.tsx`/`*.js`/`*.jsx` | `write_ts_adhere_bun` | `.orly/dispatch/write_ts_adhere_bun.md` — TS FILE SHAPE DECISION at PLAN, `const`/import/Bun-primitive discipline, raw-HTML → design-system primitive, `*-[...]` → token utility · `UI GATE` / `DESIGN TOKEN GATE: SKIPPED per user override (reason: ...)`; auto-mode does NOT cover; reason must cite a concrete external constraint. |
 | write `*.rs` | `write_rust` | `.orly/dispatch/write_rust.md` — ownership, justified `unsafe`, preserved error variants, feature combinations, deterministic concurrency tests · 🤔 judgment-only. |
 | write `*.py` | `write_python` | `.orly/dispatch/write_python.md` — standard-library parsing, context-managed resources, boundary validation, specific exceptions · 🤔 judgment-only. |
@@ -362,7 +360,6 @@ Edit here, then `orly update`.*
 | `language.rust` | .rs |
 | `language.shell` | .sh |
 | `language.typescript` | .ts, .tsx |
-| `language.zig` | .zig |
 | `persona.indy` | path or action trigger |
 | `product.agentsfleet` | path or action trigger |
 | `universal.authoring` | path or action trigger |

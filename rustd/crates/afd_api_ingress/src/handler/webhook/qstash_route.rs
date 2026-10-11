@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_cron::verifier::{self, Unverified};
+use afd_cron::verifier;
 use afd_fleet_lifecycle::FleetStatus;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
@@ -116,10 +116,10 @@ pub(crate) async fn receive<D: Services>(
 
     // Nothing above this line has read the body as anything but bytes.
     let proven = verifier::verify_at(keys, services.schedule_destination(), token, &body).map_err(
-        |refused: Unverified| {
+        |refused: afd_cron::Error| {
             // Logged with the reason, answered without it — the operator needs to
             // know a key is missing; the sender must not.
-            let reason = refused.reason();
+            let reason = refused.refusal_word();
             tracing::warn!(
                 reason,
                 event = EVENT_DROPPED,

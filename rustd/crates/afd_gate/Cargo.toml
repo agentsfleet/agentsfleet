@@ -26,9 +26,6 @@ afd_core.workspace = true
 # What the policy assembly resolves a fleet's declared credentials into.
 afd_credential.workspace = true
 afd_crypto.workspace = true
-# A gate row binds through the runner plane's `Bound`, the shared arity helper
-# every multi-value insert in this workspace uses.
-afd_runner.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # The fleet's activity counters, read once right before a gate's frame goes

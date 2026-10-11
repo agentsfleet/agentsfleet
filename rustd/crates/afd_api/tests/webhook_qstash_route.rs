@@ -104,6 +104,10 @@ impl FireClaims {
 }
 
 /// Seconds since the epoch — `verify_at` reads a system clock, with no seam.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "unsigned seconds that panic before the epoch; afd_core::clock::now reads a pre-epoch host as negative instead"
+)]
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

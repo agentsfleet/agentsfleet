@@ -20,6 +20,7 @@
 //! is the marker and nothing else, which is what the parameter says.
 
 use afd_crypto::entropy::Entropy;
+use afd_crypto::secret::SecretString;
 use std::fmt;
 
 use crate::credential::CredentialKind;
@@ -38,8 +39,11 @@ const TOKEN_RANDOM_BYTES: usize = 32;
 /// taken over anything but the WHOLE presented value — marker included —
 /// authenticates nothing, and that is a mistake with no failing test, only a
 /// fleet that cannot log in.
+///
+/// The token lives in a [`SecretString`], which wipes it once the response that
+/// revealed it has been written.
 pub struct Minted {
-    token: Box<str>,
+    token: SecretString,
     digest: Digest,
 }
 
@@ -64,11 +68,11 @@ impl Minted {
         // `hex` rather than a `write!` loop: the encoding is not this crate's
         // problem, and a hand-written one is a place for a `{:x}` to lose a
         // leading zero. Lower-case, matching every stored credential column.
-        let token: Box<str> = format!("{marker}{}", hex::encode(raw)).into();
+        let token = SecretString::new(format!("{marker}{}", hex::encode(raw)));
         // Over the WHOLE value, marker included, through the same function that
         // hashes what the holder later presents — a digest taken over anything
         // else stores a value no lookup will ever match.
-        let digest = Digest::of_minted(&token);
+        let digest = Digest::of_minted(token.expose());
         Ok(Self { token, digest })
     }
 
@@ -79,7 +83,7 @@ impl Minted {
     /// follow.
     #[must_use]
     pub fn expose(&self) -> &str {
-        &self.token
+        self.token.expose()
     }
 
     /// The digest the row stores.
@@ -95,21 +99,7 @@ impl Minted {
 /// how the credential reaches a log.
 impl fmt::Debug for Minted {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Minted({} bytes, redacted)", self.token.len())
-    }
-}
-
-/// Zeroes the token when the response that revealed it has been written.
-///
-/// A `Box<str>` is freed, not overwritten, so without this the credential sits
-/// in released heap for as long as the allocator leaves it there. Hand-written
-/// rather than derived, for the reason the workspace manifest records:
-/// `zeroize_derive` is the last crate in this graph on `syn` 2.
-impl Drop for Minted {
-    fn drop(&mut self) {
-        use zeroize::Zeroize as _;
-        let mut bytes = std::mem::take(&mut self.token).into_boxed_bytes();
-        bytes.zeroize();
+        write!(f, "Minted({} bytes, redacted)", self.expose().len())
     }
 }
 
@@ -155,6 +145,11 @@ mod tests {
             assert!(
                 rendered.contains("redacted"),
                 "and the reader is told the value was withheld rather than absent"
+            );
+            assert_eq!(rendered, format!("Minted({} bytes, redacted)", token.len()));
+            assert_eq!(
+                minted.digest(),
+                &crate::directory::Digest::of_minted(&token)
             );
         }
         Ok(())

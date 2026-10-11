@@ -57,6 +57,31 @@ Secret guards cover the allocations they own. They do not claim to erase Serde
 scratch storage, parser error-path allocations, borrowed input, or copies held by
 transport libraries. Tests must not read freed memory to infer zeroization.
 
+## October 2026 audit: owners added and replacements refused
+
+The second audit covered all 54 crates, 18 more than September's, with a finder and an independent
+verifier per crate group; the per-site record is
+`docs/v2/reviews/m218-rust-duplication-ledger.md`. It added these owners:
+
+| Area | Owner and decision |
+|---|---|
+| Configuration knobs | `afd_core::env::optional` reads a knob trimmed, and blank as unset. Every daemon-side reader of a string-valued knob calls it; the numeric readers (pool sizes, timeouts, the log level) trim and parse in place. The daemon's terminal sensing (`NO_COLOR`, `TERM`, the service-manager marker) stays a direct presence check, where a set-but-blank value still counts as set. The runner supervisor keeps its own untrimmed reader on purpose: it refuses a padded runner token today, and a trimming reader would accept one. |
+| Direct HTTP clients | `afd_identity::direct(timeout)` is the one builder for a client that must ignore an environment proxy: the key-set fetch, the claim read, the metadata write and the vendor token exchange. The scheduler's client and the GitHub library fetch keep honouring an environment proxy, as they did before. It returns a builder, so a caller that also bounds redirects says so before building, and maps a build failure into its own error. A vendor client that cannot build refuses boot rather than falling back to a proxy-honouring default. |
+| Egress slots | `afr_sandbox`'s slot pool is reached through `Kernel::slots()`: the running kernel's pool is one static, because every engine in a process names its links in the same host namespace; a fake kernel holds its own, so tests need no process-wide lock. |
+| Log lines of a coded failure | `Coded::logged()` binds `error_code` and `reason`; `reason` is `Coded::told()` — the sentence and its causes, without the code a second time or a captured backtrace. A line that logs a fixed code keeps it and takes only `told()`. |
+| Hex, MAC tags and entity tags | `hex::encode` renders bytes, and `afd_core::lower_hex` is the one lowercase-hex digit test. `afd_crypto`'s tag type compares a presented hex tag in constant time over its hex form, which is how the connector's state and subject tags are checked. The webhook scheme decodes a provider's digest first, on purpose and case-insensitively, then compares the decoded tag in constant time. `afd_core::etag::compute` is the one entity-tag encoding. |
+| Small shared rules | `afd_validate::rules` owns the path-segment rule two crates wrote; `afd_db` owns the query type alias and the escaping of untrusted text inside a `LIKE` pattern; `afd_api_wire::approval` owns the approval-gate status vocabulary both the gate and the inbox read. |
+
+Replacements the verifiers refused, kept here so they are not proposed again without new evidence:
+
+| Proposed replacement | Why it was refused |
+|---|---|
+| `url::Url` for the connector token pin, the vault projection guard and the runner allowlist | Each hand guard is stricter exactly where its comment says it must be: WHATWG parsing reads `\` as `/`, collapses `///`, accepts `scheme:host` with no `//`, accepts an empty userinfo before `@`, and reads `host:443` as a scheme. Keeping every refusal means keeping the hand split. |
+| `backon` for regenerating a workspace or signup name on collision | Not a retry: no transient fault and no wait. Each pass draws a new name because the last was taken, inside one held connection. |
+| `headers::IfMatch` / `IfNoneMatch` for the fleet and entity-tag preconditions | Both directions change: `*` and tag lists would pass where they answer 412 today, a malformed member would be skipped where the header is refused today, and a quoted tag with a space trips a debug assertion. |
+| garde, or `afd_validate::Limit`, for a raw body byte cap or a clamping `?limit` | A byte cap is checked before parsing, with its own code and order; `Limit` refuses where these routes clamp. |
+| A shared trimming reader for the runner's token | See configuration knobs above. |
+
 ## OAuth library evaluation
 
 `afd_connector::oauth` already delegates encoding to `url` and request encoding

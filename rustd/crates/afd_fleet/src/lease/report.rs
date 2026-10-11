@@ -34,6 +34,7 @@
 //! a report could not settle without.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_core::timing::SANDBOX_HOLD_IDLE_MS;
 use afd_wire::report::ReportRequest;
@@ -187,12 +188,13 @@ impl Plane {
             Ok(meter) => meter,
             Err(failure) => {
                 let fleet = lease.fleet_id.as_str();
-                let reason = failure.to_string();
+                let Logged { error_code, reason } = failure.logged();
                 // The counts are the run's totals: whatever no priced renewal
                 // charged goes uncharged, including tokens a faulted renewal
                 // held for later (`renew::hold_tokens`). Logged so the loss is
                 // visible rather than silent.
                 tracing::warn!(
+                    error_code,
                     fleet_id = fleet,
                     lease_id = request.lease_id.as_ref(),
                     input_tokens = cumulative.input,

@@ -24,6 +24,7 @@
 
 use std::time::Duration;
 
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
@@ -163,11 +164,11 @@ impl OutboundHarness {
 
     /// The configuration the lane hands this suite.
     pub(crate) fn config() -> DragonflyConfig {
-        let url = std::env::var(URL_KNOB).unwrap_or_else(|_| {
+        let url = ProcessEnv.get(URL_KNOB).unwrap_or_else(|| {
             panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
         DragonflyConfig::from_url(DragonflyRole::Default, url)
-            .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
+            .with_ca_cert_file(ProcessEnv.get(CA_KNOB).map(Into::into))
             .with_request_timeout(REQUEST_DEADLINE)
     }
 

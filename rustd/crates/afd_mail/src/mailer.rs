@@ -206,7 +206,7 @@ impl<'a> Attempt<'a> {
     }
 
     fn duration_ms(&self) -> u64 {
-        u64::try_from(self.began.elapsed().as_millis()).unwrap_or(u64::MAX)
+        afd_core::clock::saturating_millis(self.began.elapsed())
     }
 
     fn completed(&self, reply: u16) -> InviteEmailOutcome {

@@ -208,6 +208,10 @@ async fn test_memory_push_failure_is_counted() {
 #[tokio::test]
 async fn every_push_failure_names_its_reason() {
     // Port 1 is reserved and nothing listens on it, so the connect is refused.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client only provokes a refused connect on loopback port 1 to produce a transport error"
+    )]
     let unreached = reqwest::Client::new()
         .get("http://127.0.0.1:1/")
         .send()

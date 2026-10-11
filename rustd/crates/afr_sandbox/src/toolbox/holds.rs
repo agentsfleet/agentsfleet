@@ -167,9 +167,9 @@ impl<M: Mounter> Toolboxes<M> {
                         .is_some_and(|refusal| REFUSALS_OF_THE_FILE.contains(&refusal)) =>
             {
                 let digest = manifest.sha256();
-                let reason = refused.told();
+                let Logged { error_code, reason } = refused.logged();
                 let event = EVENT_RESTAGED;
-                tracing::warn!(digest, reason, event);
+                tracing::warn!(error_code, digest, reason, event);
                 fs::remove_file(image)?;
                 stage::stage(manifest, source, &self.dir)?;
                 self.mounter.mount(manifest, image)

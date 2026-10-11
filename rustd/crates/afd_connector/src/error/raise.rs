@@ -101,6 +101,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         afd_core::id::Uuid7::parse("not-an-identifier").expect_err("a non-identifier is refused");
     // A URL the builder rejects, so a `reqwest::Error` exists without a request
     // ever leaving the process — this suite reaches no network.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the client only refuses an unparseable URL and sends nothing"
+    )]
     let unreachable = reqwest::Client::new()
         .get("http://[")
         .build()

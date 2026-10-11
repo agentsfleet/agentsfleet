@@ -30,6 +30,8 @@
 //! [`crate::scope::Scope`] already gets from `wire()`/`bit()`, and the reason
 //! the escape hatch is the only place dynamism is allowed to enter.
 
+use afd_core::lower_hex;
+
 use crate::capability::CapabilitySource;
 use crate::credential::{CredentialKind, Presented};
 use crate::directory::{CredentialDirectory, CredentialRecord, Digest, Liveness};
@@ -160,7 +162,7 @@ impl HashedClass {
             && raw
                 .iter()
                 .skip(self.prefix.len())
-                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(c))
+                .all(|byte| lower_hex::is_digit(char::from(*byte)))
     }
 }
 

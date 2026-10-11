@@ -35,7 +35,7 @@ use serde::Deserialize;
 
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::handler::fleet::detail::{DETAIL_FLEET_ID, FleetPath};
+use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
 use crate::services::{FleetGrants as _, Services};
 
 /// The scoped events each verb's failures are logged under.
@@ -102,7 +102,7 @@ pub(crate) async fn list<D: Services>(
     WorkspaceContext(owned): WorkspaceContext,
     Path(FleetPath { fleet_id }): Path<FleetPath>,
 ) -> Result<Response, Refusal> {
-    let fleet = parse_fleet(&fleet_id)?;
+    let fleet = parse_fleet_id(&fleet_id)?;
     let held = services
         .grants()
         .page(&owned.workspace, &fleet)
@@ -151,7 +151,7 @@ pub(crate) async fn revoke<D: Services>(
     WorkspaceContext(owned): WorkspaceContext,
     Path(GrantPath { fleet_id, grant_id }): Path<GrantPath>,
 ) -> Result<Response, Refusal> {
-    let fleet = parse_fleet(&fleet_id)?;
+    let fleet = parse_fleet_id(&fleet_id)?;
     let grant = parse_grant(&grant_id)?;
 
     let outcome = services
@@ -165,19 +165,6 @@ pub(crate) async fn revoke<D: Services>(
         Revocation::GrantAbsent => Err(grant_not_found()),
         Revocation::FleetAbsent => Err(fleet_not_found()),
     }
-}
-
-/// The fleet named in the path, refused before a connection is drawn.
-///
-/// The sibling detail route's sentence and status, reused rather than restated:
-/// `GET .../fleets/{fleet_id}` already answers a 400 for a segment that is not
-/// an identifier, and one path shape answering two different ways depending on
-/// what follows it is a difference no client could act on.
-///
-/// Refusing here is what keeps the store's `::uuid` cast from ever being the
-/// thing that fails, leaving every error from below a genuine datastore fault.
-fn parse_fleet(raw: &str) -> Result<Uuid7, Refusal> {
-    Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_FLEET_ID))
 }
 
 /// The grant named in the path, or the refusal for a row that cannot exist.

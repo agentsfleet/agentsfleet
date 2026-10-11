@@ -72,13 +72,10 @@ impl Digest {
     /// measures.
     #[must_use]
     pub fn of_minted(raw: &str) -> Self {
-        use sha2::Digest as _;
-        // `hex::encode` rather than a `write!("{:02x}")` loop. The loop was not
-        // wrong, but it re-derives a solved thing in the file that decides
-        // whether a credential authenticates, and a hand-written hex render is
-        // where a leading zero goes missing. Lower-case, which is what every
-        // credential column stores.
-        Self(hex::encode(sha2::Sha256::digest(raw.as_bytes())).into())
+        // The workspace's one plain SHA-256: lower-case hex, which is what
+        // every credential column stores and what Postgres's own
+        // `encode(sha256(..), 'hex')` renders for the same bytes.
+        Self(afd_core::etag::sha256_hex(raw.as_bytes()).into())
     }
 
     /// The digest as the lower-case hex a credential column stores.

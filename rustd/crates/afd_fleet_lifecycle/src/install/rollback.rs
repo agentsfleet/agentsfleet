@@ -5,7 +5,7 @@
 //! `install` answers an error, the `core.fleets` row it wrote is gone and
 //! retrying is safe. That promise is worth reading in one piece.
 
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 
 use crate::error::{self, ErrorKind};
@@ -35,7 +35,10 @@ impl Fleets {
         cause: &crate::Error,
     ) -> crate::Error {
         let fleet = id.as_str();
-        let reason = cause.to_string();
+        let Logged {
+            error_code: cause_error_code,
+            reason,
+        } = cause.logged();
         let removed = async {
             let mut connection = self.database.acquire().await?;
             sqlx::query(sql::DELETE_FLEET)
@@ -51,14 +54,20 @@ impl Fleets {
         match removed {
             Ok(()) => tracing::warn!(
                 error_code = error_code::AGENTSFLEET_INSTALL_ROLLED_BACK.as_str(),
+                cause_error_code,
                 fleet,
                 reason,
                 event = "install_rolled_back",
             ),
             Err(double_fault) => {
-                let rollback_error = double_fault.to_string();
+                let Logged {
+                    error_code: rollback_error_code,
+                    reason: rollback_error,
+                } = double_fault.logged();
                 tracing::error!(
                     error_code = error_code::AGENTSFLEET_INSTALL_ROLLED_BACK.as_str(),
+                    cause_error_code,
+                    rollback_error_code,
                     fleet,
                     reason,
                     rollback_error,

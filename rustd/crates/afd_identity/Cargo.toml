@@ -22,6 +22,10 @@ test-util = ["afd_auth/test-util", "afd_core/test-util"]
 [dependencies]
 afd_auth.workspace = true
 afd_core.workspace = true
+# The rule that a subject spliced into a path is not `.` or `..`.
+afd_validate.workspace = true
+# The wiping owner of the provider's backend secret.
+afd_crypto.workspace = true
 base64.workspace = true
 moka.workspace = true
 reqwest.workspace = true
@@ -31,8 +35,6 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 tracing.workspace = true
-# Invariant 5: the provider's backend secret is held for the process's life.
-zeroize.workspace = true
 
 [dev-dependencies]
 # `net` and `io-util` for the one-shot loopback server the HTTP source is read
@@ -65,3 +67,8 @@ workspace = true
 [[test]]
 name = "identity_suite"
 path = "tests/identity_suite.rs"
+
+# Its own binary: the one test that writes the process environment.
+[[test]]
+name = "direct_client"
+path = "tests/direct_client.rs"

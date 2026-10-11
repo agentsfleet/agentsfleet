@@ -9,7 +9,7 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use std::collections::HashMap;
+use afd_core::env::MapEnv;
 
 use super::{
     ACKNOWLEDGEMENT_VALUE, ACKNOWLEDGEMENT_VARIABLE, Parameter, Profile, TARGET_RIG,
@@ -17,16 +17,12 @@ use super::{
 };
 
 /// An environment holding exactly what a test put in it.
-fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
-    let map: HashMap<String, String> = pairs
-        .iter()
-        .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
-        .collect();
-    move |key: &str| map.get(key).cloned()
+fn env_of(pairs: &[(&str, &str)]) -> MapEnv {
+    MapEnv::from_pairs(pairs.iter().copied())
 }
 
 /// An environment with nothing in it at all.
-fn empty_env() -> impl Fn(&str) -> Option<String> + use<> {
+fn empty_env() -> MapEnv {
     env_of(&[])
 }
 

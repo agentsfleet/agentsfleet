@@ -17,7 +17,7 @@ use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
 use afd_billing::Meter;
-use afd_runner::sql::runner::Bound;
+use afd_db::statement::Bound;
 
 /// The lease a report is about, scoped to the runner presenting it.
 ///

@@ -3,8 +3,10 @@
 use std::borrow::Cow;
 
 use afd_api_wire::operator::{LeaseKind, LeaseOutcome, RunnerLeaseItem, RunnerLeasesResponse};
+use afd_core::event::status::{FLEET_ERROR, PROCESSED};
 use afd_core::id::Uuid7;
 use afd_db::Db;
+use afd_state::sql::{LEASE_STATUS_ACTIVE, LEASE_STATUS_EXPIRED, LEASE_STATUS_REPORTED};
 use sqlx::Row as _;
 
 use crate::error::{Result, cursor_invalid, query, row, runner_not_found};
@@ -14,11 +16,6 @@ const CONTEXT_TOTAL: &str = "runner lease total";
 const CONTEXT_CURSOR: &str = "runner lease cursor";
 const CONTEXT_PAGE: &str = "runner lease page";
 const COLUMN_CREATED_AT: &str = "created_at";
-const LEASE_ACTIVE: &str = "active";
-const LEASE_REPORTED: &str = "reported";
-const LEASE_EXPIRED: &str = "expired";
-const EVENT_PROCESSED: &str = "processed";
-const EVENT_FLEET_ERROR: &str = "fleet_error";
 
 pub(crate) const DETAIL_BAD_CURSOR: &str = "starting_after must be a lease id held by this runner, and must match workspace_id and fleet when those filters are set";
 
@@ -163,11 +160,11 @@ fn optional_owned(value: Option<String>) -> Option<Cow<'static, str>> {
 
 fn outcome(lease_status: &str, event_status: Option<&str>) -> LeaseOutcome {
     match lease_status {
-        LEASE_EXPIRED => LeaseOutcome::Expired,
-        LEASE_ACTIVE => LeaseOutcome::Running,
-        LEASE_REPORTED => match event_status {
-            Some(EVENT_PROCESSED) => LeaseOutcome::Succeeded,
-            Some(EVENT_FLEET_ERROR) => LeaseOutcome::Failed,
+        LEASE_STATUS_EXPIRED => LeaseOutcome::Expired,
+        LEASE_STATUS_ACTIVE => LeaseOutcome::Running,
+        LEASE_STATUS_REPORTED => match event_status {
+            Some(PROCESSED) => LeaseOutcome::Succeeded,
+            Some(FLEET_ERROR) => LeaseOutcome::Failed,
             Some(_) | None => LeaseOutcome::Unknown,
         },
         _ => LeaseOutcome::Unknown,
@@ -180,24 +177,43 @@ mod tests {
 
     #[test]
     fn every_stored_status_pair_has_one_closed_outcome() {
-        assert_eq!(outcome(LEASE_ACTIVE, None), LeaseOutcome::Running);
+        assert_eq!(outcome(LEASE_STATUS_ACTIVE, None), LeaseOutcome::Running);
         assert_eq!(
-            outcome(LEASE_ACTIVE, Some(EVENT_PROCESSED)),
+            outcome(LEASE_STATUS_ACTIVE, Some(PROCESSED)),
             LeaseOutcome::Running
         );
         assert_eq!(
-            outcome(LEASE_EXPIRED, Some(EVENT_PROCESSED)),
+            outcome(LEASE_STATUS_EXPIRED, Some(PROCESSED)),
             LeaseOutcome::Expired
         );
         assert_eq!(
-            outcome(LEASE_REPORTED, Some(EVENT_PROCESSED)),
+            outcome(LEASE_STATUS_REPORTED, Some(PROCESSED)),
             LeaseOutcome::Succeeded
         );
         assert_eq!(
-            outcome(LEASE_REPORTED, Some(EVENT_FLEET_ERROR)),
+            outcome(LEASE_STATUS_REPORTED, Some(FLEET_ERROR)),
             LeaseOutcome::Failed
         );
-        assert_eq!(outcome(LEASE_REPORTED, None), LeaseOutcome::Unknown);
+        assert_eq!(outcome(LEASE_STATUS_REPORTED, None), LeaseOutcome::Unknown);
         assert_eq!(outcome("mystery", None), LeaseOutcome::Unknown);
+    }
+
+    #[test]
+    fn the_stored_spellings_map_as_the_rows_hold_them() {
+        // pin test: literal is the contract — the column bytes the lease and
+        // event writers store.
+        assert_eq!(
+            outcome("reported", Some("processed")),
+            LeaseOutcome::Succeeded
+        );
+        // pin test: literal is the contract
+        assert_eq!(
+            outcome("reported", Some("fleet_error")),
+            LeaseOutcome::Failed
+        );
+        // pin test: literal is the contract
+        assert_eq!(outcome("active", None), LeaseOutcome::Running);
+        // pin test: literal is the contract
+        assert_eq!(outcome("expired", None), LeaseOutcome::Expired);
     }
 }

@@ -41,6 +41,44 @@ pub mod status {
     pub const AUTO_KILLED: &str = "auto_killed";
 }
 
+/// Every state a gate row's `status` can be in.
+///
+/// One enum for both planes, beside the spellings it renders: the runner plane
+/// opens a row at [`GateStatus::Pending`] and reads the durable answer back,
+/// and the operator plane filters its inbox by it. Two copies would let a row
+/// one plane wrote be a state the other cannot name. A reader parses a stored
+/// spelling through serde (`afd_core::spelling::from_spelling`), so the
+/// `rename_all` below is the only reading vocabulary and [`GateStatus::as_str`]
+/// the only writing one, pinned against each other by this module's tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GateStatus {
+    /// Still waiting on a human.
+    Pending,
+    /// A reviewer approved it.
+    Approved,
+    /// A reviewer refused it.
+    Denied,
+    /// The deadline passed with no answer.
+    TimedOut,
+    /// The daemon stopped the fleet.
+    AutoKilled,
+}
+
+impl GateStatus {
+    /// The spelling the `status` column stores.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => status::PENDING,
+            Self::Approved => status::APPROVED,
+            Self::Denied => status::DENIED,
+            Self::TimedOut => status::TIMED_OUT,
+            Self::AutoKilled => status::AUTO_KILLED,
+        }
+    }
+}
+
 /// One gate as the inbox lists it.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Serialize)]
@@ -146,4 +184,49 @@ pub struct ResolvedResponse<'a> {
     pub resolved_at: i64,
     /// Who decided it — not necessarily this caller.
     pub resolved_by: Cow<'a, str>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GateStatus;
+
+    /// Every state, in the order the column's lifecycle reaches them.
+    const EVERY: [GateStatus; 5] = [
+        GateStatus::Pending,
+        GateStatus::Approved,
+        GateStatus::Denied,
+        GateStatus::TimedOut,
+        GateStatus::AutoKilled,
+    ];
+
+    /// The spelling written is the spelling read, for every state: a drift
+    /// would write rows the next read could not name, and a gate would sit
+    /// pending forever with a human's answer landing nowhere.
+    #[test]
+    fn every_state_reads_back_from_the_spelling_it_writes() {
+        for state in EVERY {
+            let written = serde_json::Value::from(state.as_str());
+            assert_eq!(serde_json::to_value(state).ok(), Some(written.clone()));
+            assert_eq!(
+                serde_json::from_value::<GateStatus>(written).ok(),
+                Some(state)
+            );
+        }
+    }
+
+    #[test]
+    fn the_column_spellings_are_pinned() {
+        let spelled: Vec<_> = EVERY.map(GateStatus::as_str).into();
+        // pin test: literal is the contract
+        assert_eq!(
+            spelled,
+            ["pending", "approved", "denied", "timed_out", "auto_killed"]
+        );
+    }
+
+    #[test]
+    fn a_spelling_no_row_carries_is_not_a_state() {
+        let unknown = serde_json::from_value::<GateStatus>("elsewhere".into());
+        assert_eq!(unknown.ok(), None);
+    }
 }

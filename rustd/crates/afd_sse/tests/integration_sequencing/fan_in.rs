@@ -9,9 +9,9 @@
 use std::collections::BTreeSet;
 
 use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::fleet_activity_channel;
 use afd_dragonfly::streams::FleetStreams;
 use afd_sse::FanIn;
-use afd_sse::channel;
 
 use super::support::{DELIVERY_BUDGET, SseLane};
 use super::{payload, prime};
@@ -26,8 +26,8 @@ async fn test_workspace_fan_in_tracks_authorised_fleets_and_valid_frames() {
     let publisher = FleetStreams::new(lane.redis.clone());
     let alpha = lane.fleet("fanin-alpha");
     let beta = lane.fleet("fanin-beta");
-    let alpha_channel = channel::activity(&alpha);
-    let beta_channel = channel::activity(&beta);
+    let alpha_channel = fleet_activity_channel(&alpha);
+    let beta_channel = fleet_activity_channel(&beta);
     let hub = SubscriptionHub::start(SseLane::config())
         .await
         .expect("the hub starts");
@@ -63,7 +63,7 @@ async fn assert_fan_in_delivery(
     alpha: &str,
     beta: &str,
 ) {
-    let beta_channel = channel::activity(beta);
+    let beta_channel = fleet_activity_channel(beta);
     publisher
         .publish(&beta_channel, &payload(3))
         .await
@@ -77,7 +77,7 @@ async fn assert_fan_in_delivery(
         "the frame is tagged by its fleet"
     );
 
-    let alpha_channel = channel::activity(alpha);
+    let alpha_channel = fleet_activity_channel(alpha);
     publisher
         .publish(&alpha_channel, "not-json")
         .await

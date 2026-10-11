@@ -186,27 +186,9 @@ pub(crate) fn open_telemetry(
         // dropped — which is the same ordering the analytics flush has, and
         // for the same reason.
         //
-        // On the blocking pool, because `force_flush` parks the thread that
-        // calls it, and a parked reactor worker is one the whole shutdown
-        // waits behind. Under a budget as well, because moving the parking off
-        // the reactor does not shorten it: see `FLUSH_BUDGET`.
-        match tokio::time::timeout(
-            FLUSH_BUDGET,
-            tokio::task::spawn_blocking(move || exports.flush()),
-        )
-        .await
-        {
-            Ok(Ok(())) => {}
-            Ok(Err(_panicked)) => tracing::warn!(
-                event = "telemetry_flush_abandoned",
-                "the shutdown flush did not run to completion"
-            ),
-            Err(_elapsed) => tracing::warn!(
-                budget_ms = FLUSH_BUDGET.as_millis(),
-                event = "telemetry_flush_timed_out",
-                "the shutdown flush outran its budget — some telemetry was not delivered"
-            ),
-        }
+        // On the blocking pool and under a budget, as every flush is: see
+        // `flush_within` and `FLUSH_BUDGET`.
+        crate::telemetry::flush_within(exports, FLUSH_BUDGET).await;
     });
     Ok(())
 }

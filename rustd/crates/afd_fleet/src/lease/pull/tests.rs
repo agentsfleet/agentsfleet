@@ -24,3 +24,64 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
         "the runner is told when to ask again: {body}"
     );
 }
+
+/// A finished event whose acknowledgement the queue refused is still answered
+/// no work, and the warning's reason is the failure's sentence alone.
+#[tokio::test]
+async fn an_unacknowledged_terminal_reason_carries_no_code_prefix() {
+    use afd_core::test_util::trace::Capture;
+
+    let log = Capture::install();
+    test_dead::plane()
+        .finished(&test_dead::acquired(), &test_dead::id(9))
+        .await
+        .expect("a lost acknowledgement is logged, not raised");
+
+    let line = log.only(super::EVENT_TERMINAL_ACK_FAILED);
+    let reason = line.field("reason").unwrap_or_default();
+    assert!(
+        line.field("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
+    assert!(
+        !reason.is_empty() && !reason.contains("[UZ-"),
+        "the code is the line's `error_code`, never the reason's prefix: {reason}"
+    );
+}
+
+/// A fleet whose unreadable config cannot even be recorded is answered no
+/// work, and neither the config's reason nor the write's failure carries a
+/// code.
+#[tokio::test]
+async fn an_unreadable_config_refusal_reason_carries_no_code_prefix() {
+    use afd_core::test_util::trace::Capture;
+
+    let log = Capture::install();
+    let fault = crate::Error::from(
+        afd_fleet_runtime::FleetConfig::stored("not a document")
+            .expect_err("a document that is not JSON does not parse"),
+    );
+
+    test_dead::plane()
+        .refuse_unreadable_config(
+            &test_dead::acquired(),
+            &test_dead::id(9),
+            &fault,
+            test_dead::AT,
+        )
+        .await
+        .expect("an unrecorded refusal is logged, not raised");
+
+    let line = log.only(super::refuse::EVENT_CONFIG_REFUSAL_UNRECORDED);
+    assert_eq!(line.field("config_reason"), Some(fault.told().as_str()));
+    assert_eq!(
+        line.field("config_error_code"),
+        Some(fault.code().as_str()),
+        "the config fault's own code rides beside its reason"
+    );
+    let reason = line.field("reason").unwrap_or_default();
+    assert!(
+        !reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'),
+        "the write's failure is its sentence alone, its code the line's `error_code`: {reason}"
+    );
+}

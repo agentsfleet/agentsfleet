@@ -6,7 +6,10 @@
     clippy::panic,
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
-use super::{API_HOST, CREDENTIAL_GITHUB, Misconfigured, build};
+use super::{
+    API_HOST, CREDENTIAL_GITHUB, DETAIL_NO_BASE_BRANCH, DETAIL_NO_REPAIR_BRANCH,
+    DETAIL_NOT_EXACTLY_ONE_REPOSITORY, build,
+};
 use afd_fleet_runtime::FleetConfig;
 use afd_fleet_runtime::config::{Mode, RepositoryBinding};
 use afd_fleet_runtime::provider::StaticRegistry;
@@ -263,19 +266,22 @@ fn a_write_binding_this_cannot_bound_is_refused_by_kind() {
     // WIDENING — no branch would mean any branch, no base any base — which
     // is why all three refuse.
     let no_base = binding(&["acme/payments"], "write", None);
-    assert_eq!(
-        build(&no_base, Some(BRANCH)),
-        Err(Misconfigured::NoBaseBranch)
-    );
-
     let bounded = binding(&["acme/payments"], "write", Some("main"));
-    assert_eq!(build(&bounded, None), Err(Misconfigured::NoRepairBranch));
-
     let several = binding(&["acme/payments", "acme/widgets"], "write", Some("main"));
-    assert_eq!(
-        build(&several, Some(BRANCH)),
-        Err(Misconfigured::NotExactlyOneRepository)
-    );
+    let refusals = [
+        (build(&no_base, Some(BRANCH)), DETAIL_NO_BASE_BRANCH),
+        (build(&bounded, None), DETAIL_NO_REPAIR_BRANCH),
+        (
+            build(&several, Some(BRANCH)),
+            DETAIL_NOT_EXACTLY_ONE_REPOSITORY,
+        ),
+    ];
+
+    for (built, expected) in refusals {
+        let refused = built.expect_err("a binding this cannot bound is refused");
+        assert!(refused.is_rejected(), "{expected} reads as a fault");
+        assert_eq!(refused.detail(), expected);
+    }
 }
 
 #[test]

@@ -99,6 +99,10 @@ async fn test_tenant_provider_and_registry_over_the_booted_daemon() {
     let token = mint_tenant_token();
     seed_tenant_key(&run.booted, &run.tenant, &token, run.seeded_at).await;
     seed_activatable_key(&run.booted, &run.workspace, WALK_KEY).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
     let http = reqwest::Client::new();
 
     let entry_id = register_and_refuse_the_repeats(&http, &token, &run).await;

@@ -27,9 +27,10 @@
 
 use std::borrow::Cow;
 
-use afd_approval::GateStatus;
-use afd_core::id::Uuid7;
+use afd_api_wire::approval::GateStatus;
 use afd_core::paging::{Ceiling, Cursor as CoreCursor, InvalidCursor};
+use afd_core::spelling::from_spelling;
+use afd_http::handler::parse_id;
 use afd_validate::Limit;
 use const_format::concatcp;
 use garde::Validate as _;
@@ -214,9 +215,7 @@ fn parse_fleet_id(raw: Option<&str>) -> Result<Option<String>, Refusal> {
     let Some(raw) = raw else {
         return Ok(None);
     };
-    Uuid7::parse(raw)
-        .map(|fleet| Some(fleet.as_str().to_owned()))
-        .map_err(|_shape| Refusal::malformed(DETAIL_FLEET_ID))
+    parse_id(raw, DETAIL_FLEET_ID).map(|fleet| Some(fleet.as_str().to_owned()))
 }
 
 /// The status filter, as the store expresses it.
@@ -236,7 +235,7 @@ fn parse_status(raw: Option<&str>) -> Result<Option<GateStatus>, Refusal> {
     // `None` because absent MEANT pending and the two were the same request.
     // Absent now means every state, so collapsing would make `?status=pending`
     // — the one query an existing client is told to send — return all five.
-    match GateStatus::parse(raw) {
+    match from_spelling::<GateStatus>(raw) {
         Some(state) => Ok(Some(state)),
         None => Err(Refusal::malformed(DETAIL_STATUS)),
     }

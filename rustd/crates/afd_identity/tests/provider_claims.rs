@@ -277,6 +277,64 @@ fn test_an_unreachable_provider_is_an_outage() {
     });
 }
 
+/// A subject carrying URL syntax is one person, sent as one escaped segment.
+#[test]
+fn test_a_subject_with_url_syntax_reaches_the_provider_as_one_segment() {
+    crate::support::install_subscriber();
+    block_on(async {
+        let (base, server) = serve_once(404, b"{}".to_vec()).await;
+        let odd = Subject::new("a/b?c%d").expect("a non-blank subject");
+        let refused = ProviderClaims::new(base, secret(), TIMEOUT)
+            .expect("a client")
+            .claim(&odd)
+            .await
+            .expect_err("the provider does not know them");
+        assert_eq!(refused, ClaimUnavailable::UnknownSubject);
+        let request = server.await.expect("the server task");
+        assert!(
+            request.starts_with("GET /users/a%2Fb%3Fc%25d "),
+            "one escaped segment: {request}"
+        );
+    });
+}
+
+/// A dot-segment subject would address the user collection, so the secret is
+/// never sent for it.
+#[test]
+fn test_a_dot_segment_subject_is_refused_before_any_request() {
+    block_on(async {
+        let (base, listener) = silent_listener();
+        let reader = ProviderClaims::new(base, secret(), TIMEOUT).expect("a client");
+        for dots in [".", ".."] {
+            let subject = Subject::new(dots).expect("a non-blank subject");
+            let refused = reader.claim(&subject).await.expect_err("names no person");
+            assert_eq!(refused, ClaimUnavailable::Unreachable, "{dots}");
+        }
+        assert!(
+            listener.accept().is_err(),
+            "a dot-segment subject was dialled"
+        );
+    });
+}
+
+/// A loopback port that accepts connections nobody answers, so a test can ask
+/// afterwards whether anything dialled it.
+fn silent_listener() -> (String, std::net::TcpListener) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    listener
+        .set_nonblocking(true)
+        .expect("a non-blocking listener");
+    let base = format!("http://{}", listener.local_addr().expect("its address"));
+    (base, listener)
+}
+
+/// An API base no person's resource can hang off is refused at construction.
+#[test]
+fn test_an_api_base_that_is_not_a_url_is_refused_at_construction() {
+    let refused = ProviderClaims::new("not a url", secret(), TIMEOUT).expect_err("not a URL");
+    assert_eq!(refused, ClaimUnavailable::Unreachable);
+}
+
 /// The type is reachable from the crate root, which is how a host wires it.
 #[test]
 fn test_the_claim_reader_is_exported_from_the_crate_root() {

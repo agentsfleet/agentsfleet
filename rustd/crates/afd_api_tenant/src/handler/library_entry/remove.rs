@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use afd_core::id::Uuid7;
+use afd_http::handler::parse_id;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
@@ -77,7 +77,7 @@ pub(crate) async fn remove<D: Services>(
     WorkspaceContext(owned): WorkspaceContext,
     Path(EntryPath { entry_id }): Path<EntryPath>,
 ) -> Result<Response, Refusal> {
-    let entry = parse_entry_id(&entry_id)?;
+    let entry = parse_id(&entry_id, DETAIL_ENTRY_ID)?;
 
     let removed = services
         .libraries()
@@ -96,14 +96,6 @@ pub(crate) async fn remove<D: Services>(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// The entry a path segment names.
-///
-/// `Refusal::malformed` rather than a minted code, which is what every other
-/// path identifier in this daemon does.
-fn parse_entry_id(raw: &str) -> Result<Uuid7, Refusal> {
-    Uuid7::parse(raw).map_err(|_not_an_identifier| Refusal::malformed(DETAIL_ENTRY_ID))
-}
-
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -111,7 +103,12 @@ mod tests {
         reason = "a test asserts by panicking on an unmet precondition"
     )]
 
-    use super::parse_entry_id;
+    use super::{DETAIL_ENTRY_ID, parse_id};
+
+    /// The entry a path segment names, as the handler parses it.
+    fn parse_entry_id(raw: &str) -> Result<afd_core::id::Uuid7, crate::handler::Refusal> {
+        parse_id(raw, DETAIL_ENTRY_ID)
+    }
 
     /// A path segment that is not an identifier is refused before any
     /// statement, and without minting a registry code.

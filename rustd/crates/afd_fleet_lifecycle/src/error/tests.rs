@@ -114,3 +114,27 @@ fn assert_error(expected: &Expected, has_source: bool) {
         assert_ne!(expected.code, error_code::AGENTSFLEET_SOURCE_STALE);
     }
 }
+
+/// A queue outage names the queue, not the database: the sentence sends an
+/// operator to the datastore that actually failed.
+#[test]
+fn a_queue_outage_tells_the_caller_the_queue_is_unavailable() {
+    /// An environment with no knob set, so resolving a Dragonfly URL fails
+    /// without a server — the cheapest real `afd_dragonfly::Error` there is.
+    struct Unset;
+    impl afd_core::env::EnvSource for Unset {
+        fn get(&self, _key: &str) -> Option<String> {
+            None
+        }
+    }
+    let outage =
+        afd_dragonfly::DragonflyConfig::resolve(&Unset, afd_dragonfly::DragonflyRole::Default)
+            .err()
+            .map(Error::from);
+
+    // pin test: literal is the contract
+    assert_eq!(
+        outage.as_ref().map(Error::detail),
+        Some("Queue unavailable")
+    );
+}

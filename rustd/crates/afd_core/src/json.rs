@@ -197,6 +197,21 @@ pub fn unknown_field_of(error: &serde_json::Error) -> Option<String> {
     Some(name.to_owned())
 }
 
+/// One non-empty string member of a JSON object, borrowed.
+///
+/// Absent, not a string, and present-and-empty are one answer: a field that is
+/// present and empty is a field nobody set, and every reader that acts on one
+/// would otherwise need three branches with one outcome. Whitespace is a
+/// value, not an absence — only the empty string is dropped. A caller that
+/// keeps the value past the document's life takes `.map(str::to_owned)`.
+#[must_use]
+pub fn non_empty_str<'v>(object: &'v serde_json::Value, name: &str) -> Option<&'v str> {
+    object
+        .get(name)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+}
+
 #[cfg(test)]
 #[path = "json/tests.rs"]
 mod tests;

@@ -28,6 +28,10 @@ fn report_of(rate: f64, p95: f64) -> Report {
 }
 
 /// A scratch path unique to this test run.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a scratch name needs nanoseconds to stay unique, finer than `clock::now`'s milliseconds"
+)]
 fn scratch(label: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!(
         "afd-bench-cmp-{label}-{}-{:?}",

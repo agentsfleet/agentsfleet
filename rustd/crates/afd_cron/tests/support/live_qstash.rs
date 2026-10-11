@@ -3,6 +3,7 @@
 //! Shared by `integration_sync.rs` and `integration_sync_once.rs`; each
 //! self-skips outside `make test-integration-rustd`, which exports the knobs.
 
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_cron::ScheduleService as Reconciler;
 use afd_cron::qstash::QStash;
 
@@ -27,10 +28,8 @@ pub(crate) const LIVE_DESTINATION: &str = "https://example.com";
 /// reporting four passes over two tests that never ran — which is how this
 /// suite's own base URL stayed wrong long enough to be found by accident.
 pub(crate) fn live() -> Option<(String, String)> {
-    let url = std::env::var(LIVE_URL_KNOB).ok().filter(|v| !v.is_empty());
-    let token = std::env::var(LIVE_TOKEN_KNOB)
-        .ok()
-        .filter(|v| !v.is_empty());
+    let url = ProcessEnv.get(LIVE_URL_KNOB).filter(|v| !v.is_empty());
+    let token = ProcessEnv.get(LIVE_TOKEN_KNOB).filter(|v| !v.is_empty());
     match (url, token) {
         (Some(url), Some(token)) => Some((url, token)),
         _unset => {
@@ -44,6 +43,10 @@ pub(crate) fn live() -> Option<(String, String)> {
 }
 
 /// A reconciler bound to the real scheduler.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the lane reaches its live scheduler with reqwest's defaults, environment proxy included, which `direct` would refuse"
+)]
 pub(crate) fn against_live(lane: &CronLane, url: String, token: String) -> Reconciler {
     Reconciler::new(
         lane.store.clone(),
