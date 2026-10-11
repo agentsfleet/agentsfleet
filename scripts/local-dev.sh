@@ -31,7 +31,7 @@ dev_identity() {
   DEV_COMMON="$(cd "$DEV_COMMON" && pwd -P)"
   DEV_REPO_ID="$(dev_hash "$DEV_COMMON")"
   DEV_ID="wt_$(dev_hash "$DEV_ROOT")"
-  DEV_SHARED="${TMPDIR:-/tmp}/agentsfleet-dev-$(id -u)-$DEV_REPO_ID"
+  DEV_SHARED="$DEV_COMMON/agentsfleet-dev-$(id -u)-$DEV_REPO_ID"
   DEV_STATE="$DEV_SHARED/worktrees/$DEV_ID"
   DEV_INFRA="$DEV_SHARED/infrastructure"
   DEV_PROJECT="agentsfleet-dev-$DEV_REPO_ID"
@@ -148,6 +148,22 @@ dev_infrastructure() (
 )
 
 
+dev_process_stamp() {
+  if [ "$(uname -s)" = Linux ]; then
+    # Kernel start ticks survive wall-clock, timezone and locale changes.
+    python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+try:
+    print(Path(f"/proc/{sys.argv[1]}/stat").read_text().rsplit(") ", 1)[1].split()[19])
+except (OSError, IndexError):
+    sys.exit(1)
+PY
+  else
+    LC_ALL=C TZ=UTC ps -p "$1" -o lstart=
+  fi
+}
+
 dev_owned_process() {
   [ -s "$DEV_PID_FILE" ] || return 1
   local pid started command state
@@ -156,7 +172,7 @@ dev_owned_process() {
   kill -0 "$pid" 2>/dev/null || return 1
   state="$(ps -p "$pid" -o stat=)" || return 1
   case "$state" in *Z*) return 1 ;; esac
-  started="$(ps -p "$pid" -o lstart=)" || return 1
+  started="$(dev_process_stamp "$pid")" || return 1
   command="$(ps -ww -p "$pid" -o command=)" || return 1
   [ "$started" = "$(sed -n '2p' "$DEV_PID_FILE")" ] && \
     [ "$command" = "$DEV_BINARY serve --port $DEV_PORT" ] && return 0
@@ -240,7 +256,7 @@ PY
 dev_launch() {
   nohup "$DEV_BINARY" serve --port "$DEV_PORT" >"$DEV_LOG" 2>&1 </dev/null &
   local pid=$! started deadline
-  started="$(ps -p "$pid" -o lstart=)"
+  started="$(dev_process_stamp "$pid")"
   printf '%s\n%s\n' "$pid" "$started" >"$DEV_PID_FILE"
   deadline=$(( $(date +%s) + DEV_READY_SECONDS ))
   until curl --silent --fail --max-time 2 "$DEV_URL/readyz" >/dev/null && \

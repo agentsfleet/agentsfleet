@@ -15,8 +15,7 @@ import tempfile
 import time
 import unittest
 import urllib.request
-SOURCE = Path(sys.argv[1])
-LIVE = sys.argv[2] == "--live"
+SOURCE, LIVE = Path(sys.argv[1]), sys.argv[2] == "--live"
 DOCKER = '''#!/usr/bin/env python3
 import os, pathlib, sys, time
 a = sys.argv[1:]
@@ -78,9 +77,8 @@ class LauncherTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix="dev-launcher-")
         self.base = Path(self.tmp.name)
         self.bin = self.base / "bin"
-        self.bin.mkdir()
         self.common = self.base / "common"
-        self.common.mkdir()
+        for directory in [self.bin, self.common]: directory.mkdir()
         self.repos = [self.base / "worktree-a", self.base / "worktree-b"]
         for repo in self.repos:
             (repo / "scripts").mkdir(parents=True)
@@ -101,7 +99,7 @@ class LauncherTests(unittest.TestCase):
                         AUTH_SESSION_CODE_PEPPER="test-pepper", ENCRYPTION_MASTER_KEY="test-key",
                         AGENTSFLEET_RUSTD_ENV_FILE=str(self.base / "absent"))
     def tearDown(self):
-        for record in self.base.glob("agentsfleet-dev-*/worktrees/*/daemon.pid"):
+        for record in self.common.glob("agentsfleet-dev-*/worktrees/*/daemon.pid"):
             raw = record.read_text().splitlines()[0]
             if not raw.isdecimal():
                 continue
@@ -111,8 +109,7 @@ class LauncherTests(unittest.TestCase):
                 os.kill(pid, signal.SIGTERM)
         self.tmp.cleanup()
     def run_dev(self, action, repo=0, env=None, expected=0, infra=False):
-        if infra:
-            action = "infra-" + action
+        action = "infra-" + action if infra else action
         result = subprocess.run(["bash", "scripts/local-dev.sh", action], cwd=self.repos[repo],
                                 env=env or self.env, capture_output=True, text=True, timeout=45)
         if expected == 0:
@@ -121,7 +118,7 @@ class LauncherTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, result.stdout)
         return result
     def shared(self):
-        return next(self.base.glob("agentsfleet-dev-*"))
+        return next(self.common.glob("agentsfleet-dev-*"))
     def state(self, repo=0):
         return self.shared() / "worktrees" / self.run_dev("identity", repo).stdout.strip()
     def test_worktree_identity_is_stable_and_distinct(self):
@@ -163,12 +160,25 @@ class LauncherTests(unittest.TestCase):
         self.assertNotIn("down", (self.shared() / "docker-calls").read_text().splitlines())
         self.run_dev("down", 1)
         self.run_dev("down", 1)
+    def test_shutdown_retains_ownership_when_environment_changes(self):
+        other = self.base / "other-temp"
+        other.mkdir()
+        for changed in [dict(TMPDIR=str(other)), dict(TZ="Pacific/Honolulu")]:
+            with self.subTest(changed=changed):
+                self.run_dev("up", env=dict(self.env, TZ="UTC"))
+                record = self.state() / "daemon.pid"
+                self.run_dev("down", env=dict(self.env, **changed))
+                self.assertFalse(record.exists())
+                self.run_dev("up", env=dict(self.env, **changed))
+                self.assertTrue(record.exists())
+                self.run_dev("down", env=dict(self.env, TZ="UTC"))
     def test_development_refuses_unsafe_process_operations(self):
         foreign = subprocess.Popen(["sleep", "60"])
         try:
             self.run_dev("up", infra=True)
             record = self.state() / "daemon.pid"
-            started = subprocess.run(["ps", "-p", str(foreign.pid), "-o", "lstart="], capture_output=True, text=True, check=True).stdout.rstrip("\n")
+            stamp = 'source scripts/local-dev.sh; dev_process_stamp "$1"'
+            started = subprocess.run(["bash", "-c", stamp, "fixture", str(foreign.pid)], cwd=self.repos[0], env=self.env, capture_output=True, text=True, check=True).stdout.rstrip("\n")
             record.write_text(f"{foreign.pid}\n{started}\n")
             self.run_dev("down", expected=1)
             self.assertIsNone(foreign.poll())
@@ -206,7 +216,7 @@ class LauncherTests(unittest.TestCase):
         with socket.socket() as occupied:
             occupied.bind(("0.0.0.0", port))
             self.run_dev("up", expected=1)
-        self.assertFalse(list(self.base.glob("agentsfleet-dev-*/docker-calls")))
+        self.assertFalse(list(self.common.glob("agentsfleet-dev-*/docker-calls")))
     def test_corrupt_process_record_cannot_signal_another_process(self):
         self.run_dev("up", infra=True)
         record = self.state() / "daemon.pid"
@@ -276,23 +286,13 @@ class LauncherTests(unittest.TestCase):
 class LiveTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.owned = not sys.argv[3]
-        cls.tmp = tempfile.TemporaryDirectory(prefix="dev-live-") if cls.owned else None
-        cls.repos = [Path(cls.tmp.name) / name for name in ["a", "b"]] if cls.owned else [SOURCE, Path(sys.argv[3]).resolve()]
-        cls.addClassCleanup(cls.cleanup)
+        if not sys.argv[3]: raise ValueError("--live requires an existing sibling checkout")
+        cls.repos = [SOURCE, Path(sys.argv[3]).resolve()]
         cls.env = dict(os.environ, FOLLOW_LOGS="0", ENCRYPTION_MASTER_KEY=os.urandom(32).hex())
         for repo in cls.repos:
-            if cls.owned:
-                subprocess.run(["git", "worktree", "add", "--detach", str(repo), "HEAD"], cwd=SOURCE, check=True)
+            cls.addClassCleanup(subprocess.run, ["make", "down"], cwd=repo, env=cls.env, check=True)
             if (repo / "scripts/local-dev.sh").read_bytes() != (SOURCE / "scripts/local-dev.sh").read_bytes():
                 raise RuntimeError("commit the launcher before its live worktree proof")
-    @classmethod
-    def cleanup(cls):
-        for repo in cls.repos:
-            subprocess.run(["make", "down"], cwd=repo, env=cls.env, check=True)
-            if cls.owned:
-                subprocess.run(["git", "worktree", "remove", str(repo)], cwd=SOURCE, check=True)
-        if cls.owned: cls.tmp.cleanup()
     def run_make(self, action, index):
         subprocess.run(["make", action], cwd=self.repos[index], env=self.env, check=True)
     def context(self, index):
