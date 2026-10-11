@@ -21,7 +21,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use afd_api_wire::tenant::{MintCliCredentialRequest, MintedCliCredentialResponse};
-use afd_core::id::Uuid7;
+use afd_http::handler::parse_id;
 use afd_tenant::cli_credential::{MachineName, MintRequest, Revealed};
 use axum::Json;
 use axum::body::Bytes;
@@ -147,8 +147,7 @@ pub(crate) async fn revoke<D: Services>(
     Path(credential_id): Path<String>,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
-    let credential = Uuid7::parse(&credential_id)
-        .map_err(|_unparseable| Refusal::malformed(DETAIL_CREDENTIAL_ID))?;
+    let credential = parse_id(&credential_id, DETAIL_CREDENTIAL_ID)?;
 
     let user = services
         .cli_credentials()

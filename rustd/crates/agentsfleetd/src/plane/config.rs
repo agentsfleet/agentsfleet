@@ -96,6 +96,11 @@ pub struct PlaneParts {
     /// Which Slack API an interim message is posted to — the outbound
     /// worker's, resolved once by `preflight`.
     pub slack_api_base: String,
+    /// The pool the connector token exchange and site listing go out on.
+    ///
+    /// Built by boot rather than here, so a client that will not build
+    /// refuses boot before this constructor runs — see `crate::credentials`.
+    pub vendor_client: reqwest::Client,
 }
 
 /// What the schedules surface needs from configuration.

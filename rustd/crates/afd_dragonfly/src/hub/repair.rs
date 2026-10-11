@@ -49,6 +49,7 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
+use backon::{ConstantBuilder, RetryableWithContext as _};
 use redis::cluster_async::ClusterConnection;
 use redis::cluster_routing::{Route, RoutingInfo, SingleNodeRoutingInfo, SlotAddr};
 use tokio::time::Instant;
@@ -110,7 +111,7 @@ fn joined(held: &[String], live: Vec<String>) -> Vec<String> {
 /// Waits until a command routed to `range`'s slots is answered by the
 /// range's own primary, or `deadline`.
 async fn await_owner(
-    connection: &mut ClusterConnection,
+    connection: &ClusterConnection,
     range: &SlotRange,
     deadline: Instant,
 ) -> Result<(), Loss> {
@@ -130,18 +131,45 @@ async fn await_owner(
         range.first,
         SlotAddr::Master,
     )));
-    loop {
-        let mut cmd = redis::cmd("CLUSTER");
-        cmd.arg("MYID");
-        let answered = connection.route_command(cmd, route.clone()).await;
-        if answered.ok().as_ref().and_then(text).as_deref() == Some(owner) {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            return Err(Loss::Unexplained);
-        }
-        tokio::time::sleep(RETRY_INTERVAL).await;
-    }
+    // A clone is a second handle on the same driver, not a second socket: the
+    // probe runs on the connection the repair holds, and owning the handle is
+    // what lets each probe's future outlive the closure that made it.
+    let probe = |connection: ClusterConnection| probe_owner(connection, route.clone(), owner);
+    // The first probe always goes; the window is read only after one fails,
+    // and an unbounded constant schedule leaves the window as the only stop.
+    let (_handle, settled) = probe
+        .retry(
+            ConstantBuilder::new()
+                .with_delay(RETRY_INTERVAL)
+                .without_max_times(),
+        )
+        .context(connection.clone())
+        .when(|_not_yet| Instant::now() < deadline)
+        .await;
+    settled
+}
+
+/// One `CLUSTER MYID` along `route`, settled when `owner` answers it.
+///
+/// Hands the connection back with the verdict, which is the shape a retry
+/// that owns its context threads from one attempt to the next.
+async fn probe_owner(
+    mut connection: ClusterConnection,
+    route: RoutingInfo,
+    owner: &str,
+) -> (ClusterConnection, Result<(), Loss>) {
+    let mut cmd = redis::cmd("CLUSTER");
+    cmd.arg("MYID");
+    let answered = connection.route_command(cmd, route).await;
+    // An answer naming someone else and no answer at all are one thing: not
+    // the owner yet.
+    let named = answered.ok().as_ref().and_then(text);
+    let settled = if named.as_deref() == Some(owner) {
+        Ok(())
+    } else {
+        Err(Loss::Unexplained)
+    };
+    (connection, settled)
 }
 
 /// Whether `range` holds `slot`.

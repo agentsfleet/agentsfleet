@@ -72,20 +72,27 @@ impl TryFrom<raw::AnomalyRule> for AnomalyRule {
 /// when zero or above `cap`.
 fn threshold(field: &'static str, authored: Option<u32>, cap: u32) -> Result<NonZeroU32> {
     let value = authored.ok_or_else(|| missing(field))?;
+    let refuse = |reason| -> Error { ErrorKind::InvalidThreshold { field, reason }.into() };
 
-    if value > cap {
-        return Err(ErrorKind::InvalidThreshold {
-            field,
-            reason: REASON_ABOVE_CAP,
-        }
-        .into());
-    }
-
-    NonZeroU32::new(value).ok_or(
-        ErrorKind::InvalidThreshold {
-            field,
-            reason: REASON_ZERO,
-        }
-        .into(),
-    )
+    let proved = garde::Unvalidated::new(Threshold { value })
+        .validate_with(&cap)
+        .map_err(|_above_cap| refuse(REASON_ABOVE_CAP))?;
+    NonZeroU32::new(proved.value).ok_or_else(|| refuse(REASON_ZERO))
 }
+
+/// An authored threshold, its cap passed as context.
+///
+/// The cap only: zero is [`NonZeroU32`]'s to refuse, so the proof of it
+/// travels with the value and the reason stays [`REASON_ZERO`]. Validated here
+/// rather than on the raw document, so a rule missing its pattern is still
+/// refused for that first.
+#[derive(Debug, garde::Validate)]
+#[garde(context(u32 as cap))]
+struct Threshold {
+    #[garde(range(max = *cap))]
+    value: u32,
+}
+
+#[cfg(test)]
+#[path = "anomaly/tests.rs"]
+mod tests;

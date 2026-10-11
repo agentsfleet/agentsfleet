@@ -8,17 +8,17 @@
 //! already too late to decide the run was a bad idea, because the connection
 //! is to the thing the run would have damaged.
 //!
-//! # Environment arrives as a lookup, not as a read
+//! # Environment arrives as a source, not as a read
 //!
-//! Every entry point takes `env: &dyn Fn(&str) -> Option<String>` rather than
-//! calling [`std::env::var`]. Edition 2024 made `set_var` unsafe — it races
-//! any thread reading the environment — so a test that wanted to prove the
-//! production refusal would otherwise have to mutate process-global state to
-//! do it. The binaries pass a closure over `std::env::var`; the tests pass a
-//! map.
+//! Every entry point takes `env: &dyn EnvSource` rather than calling
+//! [`std::env::var`], for `afd_core::env`'s reason: a test proving the
+//! production refusal hands in a map instead of mutating the process. The
+//! binaries pass `ProcessEnv`.
 
 use core::fmt;
 use core::time::Duration;
+
+use afd_core::env::EnvSource;
 
 use crate::error::{Error, ErrorKind, Result};
 
@@ -252,7 +252,7 @@ impl Profile {
     /// `AcknowledgementMissing` when production was not
     /// acknowledged, or `TargetMissing` when a deployed profile
     /// has nowhere to point.
-    pub fn admit(self, env: &dyn Fn(&str) -> Option<String>) -> Result<Target> {
+    pub fn admit(self, env: &dyn EnvSource) -> Result<Target> {
         self.acknowledge(env)?;
         self.target(env)
     }
@@ -263,11 +263,11 @@ impl Profile {
     ///
     /// `AcknowledgementMissing` when the variable is absent or
     /// carries anything but [`ACKNOWLEDGEMENT_VALUE`].
-    pub fn acknowledge(self, env: &dyn Fn(&str) -> Option<String>) -> Result<()> {
+    pub fn acknowledge(self, env: &dyn EnvSource) -> Result<()> {
         if self != Self::Prod {
             return Ok(());
         }
-        let spoken = env(ACKNOWLEDGEMENT_VARIABLE).unwrap_or_default();
+        let spoken = env.get(ACKNOWLEDGEMENT_VARIABLE).unwrap_or_default();
         if spoken == ACKNOWLEDGEMENT_VALUE {
             return Ok(());
         }
@@ -283,14 +283,15 @@ impl Profile {
     /// # Errors
     ///
     /// `TargetMissing` when a deployed profile has no target.
-    pub fn target(self, env: &dyn Fn(&str) -> Option<String>) -> Result<Target> {
+    pub fn target(self, env: &dyn EnvSource) -> Result<Target> {
         if !self.is_deployed() {
             return Ok(Target::Rig);
         }
         // Trimmed, so a variable set to whitespace is unset rather than an
-        // address of one space; the knobs module reads every other variable
-        // the same way.
-        match env(TARGET_VARIABLE).unwrap_or_default().trim().to_owned() {
+        // address of one space. The knobs module shares only the blank-is-unset
+        // rule: it reads every other variable untrimmed.
+        let authored = env.get(TARGET_VARIABLE).unwrap_or_default();
+        match authored.trim().to_owned() {
             address if address.is_empty() => Err(ErrorKind::TargetMissing {
                 profile: self,
                 variable: TARGET_VARIABLE,

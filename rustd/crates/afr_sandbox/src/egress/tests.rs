@@ -10,7 +10,7 @@ use afd_core::test_util::trace::Capture;
 use netlink_packet_netfilter::NetfilterProtoFamily;
 
 use super::kernel::{Host, Kernel as _};
-use super::slot::{Claim, Slot, claims_held};
+use super::slot::{Claim, Slot};
 use super::testing::{DELLINK, DELTABLE, Fake, GETCHAIN, NEWTABLE, Protocol};
 use super::{enforceable, namespace_of, probe, sweep};
 use crate::error::{EgressRefusal, Step};
@@ -44,7 +44,6 @@ fn test_the_probe_needs_forwarding() {
 /// inside a namespace made for it, so the host's own is never touched.
 #[test]
 fn test_the_probe_builds_and_removes_a_scope_of_its_own() {
-    let _claims = claims_held();
     let dir = tempfile::tempdir().unwrap();
     let on = forwarding_on(&dir);
     let kernel = Fake::default();
@@ -69,7 +68,6 @@ fn test_the_probe_builds_and_removes_a_scope_of_its_own() {
 /// is refused too, naming the step.
 #[test]
 fn test_the_probe_refuses_a_host_whose_forward_chain_drops() {
-    let _claims = claims_held();
     let dir = tempfile::tempdir().unwrap();
     let on = forwarding_on(&dir);
     let dropping = Fake::default()
@@ -135,13 +133,12 @@ fn test_a_sandbox_sharing_the_hosts_namespace_is_refused() {
 /// and leaves alone a slot a scope in this process still holds.
 #[test]
 fn test_the_sweep_removes_only_leftovers() {
-    let _claims = claims_held();
     let capture = Capture::install();
-    let live = Claim::exactly(Slot::new(9).unwrap()).unwrap();
     let kernel = Fake::default().holding(
         &["afegress3", "afegress07", "filter", "afegress9"],
         &["lo", "afv3", "afv9", "eth0"],
     );
+    let live = Claim::exactly(kernel.slots(), Slot::new(9).unwrap()).unwrap();
 
     sweep(&kernel).unwrap();
 
@@ -169,7 +166,6 @@ fn test_the_sweep_removes_only_leftovers() {
 /// logged and its slot kept, so no scope in this run meets it.
 #[test]
 fn test_a_sweep_says_what_it_could_not_do() {
-    let _claims = claims_held();
     let capture = Capture::install();
     let blind = Fake::default().closed(Protocol::Netfilter);
     let stuck = Fake::default().holding(&["afegress6"], &[]).refusing(
@@ -183,14 +179,13 @@ fn test_a_sweep_says_what_it_could_not_do() {
 
     assert_eq!(refused.netlink_step(), Some(Step::ListTables));
     assert_eq!(capture.only("egress_sweep_failed").field("slot"), Some("6"));
-    assert!(Claim::exactly(Slot::new(6).unwrap()).is_none());
+    assert!(Claim::exactly(stuck.slots(), Slot::new(6).unwrap()).is_none());
 }
 
 /// A sweep that lists the tables but cannot list the links fails naming that
 /// listing, before it removes anything or claims any slot.
 #[test]
 fn test_a_sweep_that_cannot_list_the_links_removes_nothing() {
-    let _claims = claims_held();
     let kernel = Fake::default()
         .holding(&["afegress4"], &["afv4"])
         .closed(Protocol::Route);
@@ -204,7 +199,7 @@ fn test_a_sweep_that_cannot_list_the_links_removes_nothing() {
         kernel.seen()
     );
     assert!(
-        Claim::exactly(Slot::new(4).unwrap()).is_some(),
+        Claim::exactly(kernel.slots(), Slot::new(4).unwrap()).is_some(),
         "the slot is free"
     );
 }

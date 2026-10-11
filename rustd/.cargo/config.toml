@@ -1,0 +1,10 @@
+# Cap Cargo's job count at the workspace root so every launcher — make lanes,
+# agent scripts, manual runs — inherits it. The default (all cores) times N
+# concurrent worktree builds oversubscribes this machine: 5 agents each
+# spawning a full-core rustc/link pool was the failure mode behind the 94%-full
+# disk and memory pressure (Tarzy review, 2026-10-11).
+#
+# Precedence: `cargo -j N` > CARGO_BUILD_JOBS env > this value, so per-run
+# overrides stay available. Revisit when builds move to the warm Linux worker.
+[build]
+jobs = 4

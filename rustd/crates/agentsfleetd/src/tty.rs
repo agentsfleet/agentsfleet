@@ -81,6 +81,10 @@ pub const DIM: &str = "2";
 pub const GREEN: &str = "32";
 
 /// Whether the environment asked for no colour at all.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a presence check: a blank or non-UTF-8 NO_COLOR still disables colour, and afd_core::env would read either as unset"
+)]
 fn colour_disabled() -> bool {
     std::env::var_os(NO_COLOUR_KNOB).is_some()
 }

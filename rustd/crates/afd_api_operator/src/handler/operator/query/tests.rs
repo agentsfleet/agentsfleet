@@ -159,3 +159,53 @@ fn a_blank_limit_is_the_default_page() {
     assert_eq!(leases(&blank).map(|query| query.limit).ok(), Some(default));
     assert_eq!(events(&blank).map(|query| query.limit).ok(), Some(default));
 }
+
+/// Each token reads as the variant its serde spelling names, and a word no
+/// variant spells refuses the whole set rather than being dropped from it.
+#[test]
+fn an_event_type_token_reads_by_its_stored_spelling_and_an_unknown_one_refuses() {
+    let set = |raw: &str| {
+        events(&HashMap::from([(
+            QUERY_EVENT_TYPE.to_owned(),
+            raw.to_owned(),
+        )]))
+    };
+    let read = set("runner_online,lease_released").expect("two stored spellings");
+    let expected = RunnerEventFilter::new(
+        vec![
+            RunnerEventType::RunnerOnline,
+            RunnerEventType::LeaseReleased,
+        ],
+        None,
+        None,
+    );
+    assert_eq!(Some(read.filter), expected);
+    for unknown in [
+        "RunnerOnline",
+        "runner_online,not_an_event",
+        "runner-online",
+    ] {
+        assert_eq!(set(unknown).err(), Some(DETAIL_BAD_EVENTS), "{unknown}");
+    }
+}
+
+/// The boundary is a timestamp and a version-7 id: a text-form cursor, an
+/// empty id, an id that is not one and a boundary that is not digits are each
+/// the page sentence.
+#[test]
+fn a_cursor_that_is_not_a_timestamp_and_a_uuid7_is_refused() {
+    let text_form = Cursor::Text {
+        value: "1725000000000".to_owned(),
+        id: "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010".to_owned(),
+    }
+    .to_string();
+    for refused in [
+        text_form.as_str(),
+        "1725000000000:",
+        "1725000000000:not-a-uuid",
+        "not-digits:0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010",
+    ] {
+        let params = HashMap::from([(QUERY_STARTING_AFTER.to_owned(), refused.to_owned())]);
+        assert_eq!(page(&params).err(), Some(DETAIL_BAD_PAGE), "{refused}");
+    }
+}

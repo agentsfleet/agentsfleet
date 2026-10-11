@@ -43,6 +43,10 @@ fn a_stored_handle_hands_back_what_it_holds_and_refuses_when_it_holds_nothing() 
 }
 
 #[tokio::test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "every exchange here is refused before dialling, so the client never sends a request"
+)]
 async fn vendor_dispatch_degrades_only_the_connector_it_cannot_serve() {
     let registry = Registry;
     let client = reqwest::Client::new();

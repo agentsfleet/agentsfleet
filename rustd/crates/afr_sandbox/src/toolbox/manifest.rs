@@ -7,6 +7,7 @@
 //! release to this host: its architecture, this runner's version, and EROFS
 //! features every kernel this runner supports parses.
 
+use afd_core::lower_hex;
 use afd_validate::rules::charset;
 use aws_lc_rs::signature::{ECDSA_P256_SHA256_ASN1, UnparsedPublicKey};
 use base64::Engine as _;
@@ -173,7 +174,7 @@ pub struct Manifest {
     length: u64,
     /// The image's SHA-256, lowercase hexadecimal. It names files under the
     /// toolbox directory before the image is hashed, so nothing else is read.
-    #[garde(length(bytes, equal = SHA256_HEX_LEN), custom(charset(is_lower_hex)))]
+    #[garde(length(bytes, equal = SHA256_HEX_LEN), custom(charset(lower_hex::is_digit)))]
     sha256: String,
     /// The EROFS features the image uses.
     #[garde(length(max = LIST_MAX), inner(length(min = 1, max = FIELD_MAX)))]
@@ -230,11 +231,6 @@ fn debian_arch(arch: &'static str) -> &'static str {
         "aarch64" => "arm64",
         other => other,
     }
-}
-
-/// Whether `digit` is a lowercase hexadecimal digit.
-fn is_lower_hex(digit: char) -> bool {
-    digit.is_ascii_digit() || ('a'..='f').contains(&digit)
 }
 
 #[cfg(test)]

@@ -82,6 +82,10 @@ fn now() -> UnixMillis {
 }
 
 /// The production connect flow over stores that are not there.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "verify never calls the vendor, so these clients are inert fixtures that send nothing"
+)]
 fn connectors() -> Connectors {
     let environment = MapEnv::from_pairs([(DbRole::Api.url_knob(), NOWHERE)]);
     let pool = PoolConfig::resolve(&environment, DbRole::Api).expect("the fixture URL resolves");

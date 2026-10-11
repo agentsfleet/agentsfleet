@@ -81,6 +81,10 @@ async fn test_a_disk_without_a_loop_device_is_logged_buffered_under_its_lease() 
 // with, readable through `/proc/<pid>/environ`; the runner's own carries its
 // credential, so the launcher must start with none.
 #[tokio::test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "asks only whether a variable is present, as raw OS bytes; afd_core::env reads String values and would call a non-Unicode one unset"
+)]
 async fn test_bubblewrap_starts_with_an_empty_environment() {
     assert!(
         ENV_PROBE_VARIABLES

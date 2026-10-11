@@ -85,12 +85,6 @@ every code a dispatch `.sh` emits resolves to exactly one row here.
 **Tags:** zig, js, security
 **Example:** TS/JS — extractCreatedAt used indexOf on JSON. simpleYamlParse silently dropped all arrays.
 
-## RULE OWN — One owner per resource — no double cleanup
-
-**Rule:** Every allocation has exactly one cleanup path — errdefer OR manual free, never both on the same pointer. For multi-step init, use the sequential errdefer chain (see .orly/dispatch/write_zig.md "Multi-Step Init"). For shared ownership, use `ref()`/`unref()` with an atomic refcount — `unref()` destroys when count hits zero. Raw pointer field = borrowed (caller owns); refcounted field = owned (self manages).
-**Why:** Two cleanup paths = double-free on the error path. The bvisor encoding (raw ptr = borrowed, refcount = owned) makes the ownership contract readable from the type alone.
-**Tags:** zig, memory
-**Example:** Zig — manual alloc.free() + errdefer on same pointer = double-free. bvisor Thread.zig, ThreadGroup.zig for ref/unref pattern.
 
 ## RULE CTM — Constant-time comparison for secrets
 
@@ -136,15 +130,6 @@ For `agentsfleet`, compile both `x86_64-linux` and `aarch64-linux`.
 **Tags:** zig, ci
 **Example:** client.open compiled on macOS, absent on Linux — 3 rounds to fix. v0.4.0 bare -gnu in CI.
 
-## RULE FLS — Flush all layers — drain all results
-
-**Rule:** Flush every transport layer and drain query results on every exit.
-Use the repository's query wrapper when it owns draining; otherwise release
-results explicitly without discarding a failure silently.
-For `agentsfleet`, use `PgQuery` as `.orly/dispatch/write_zig.md` specifies.
-**Why:** TLS flush only encrypts into buffer; undrained slices dangle; ::text prevents binary/text divergence across OS.
-**Tags:** zig, tls, postgres
-**Example:** Zig — missing socket flush → infinite hang. UUID read as binary on Linux CI, text on macOS. PgQuery wraps drain into deinit.
 
 ## RULE TIM — Timing invariants must be explicit
 

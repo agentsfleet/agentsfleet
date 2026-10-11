@@ -17,7 +17,7 @@
 //! an omission.
 
 use afd_core::clock::UnixMillis;
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_observability::producers;
@@ -31,8 +31,8 @@ use crate::policy::{AssignmentColumns, StoredVerdict, capability};
 use crate::reconcile::{Verdict, reconcile};
 use crate::spelling::render_list;
 use crate::sql;
-use crate::sql::runner::Bound;
 use crate::store::Runners;
+use afd_db::statement::Bound;
 
 /// The statement name a policy-read failure carries.
 const CONTEXT_POLICY_READ: &str = "runner policy read";
@@ -216,16 +216,7 @@ async fn persist_selftest(
         return false;
     };
     if let Err(rejection) = bounds::accept(report) {
-        let code = error_code::INVALID_REQUEST.as_str();
-        let id = runner.as_str();
-        let reason = rejection.to_string();
-        tracing::warn!(
-            error_code = code,
-            runner_id = id,
-            reason,
-            event = "selftest_verdict_refused",
-            "self-test verdict refused; the beat still counts as liveness"
-        );
+        refuse_selftest(runner, &rejection);
         return false;
     }
 
@@ -238,6 +229,23 @@ async fn persist_selftest(
         .bind(report.network_policy.as_ref())
         .bind(now.as_millis());
     best_effort(write, connection, EVENT_SELFTEST_WRITE, runner).await
+}
+
+/// Logs a verdict the bounds refused; the beat still counts as liveness.
+///
+/// The refusal's own sentence, never its rendering: the code is the line's
+/// `error_code` field already.
+fn refuse_selftest(runner: &Uuid7, rejection: &Error) {
+    let code = error_code::INVALID_REQUEST.as_str();
+    let id = runner.as_str();
+    let reason = rejection.detail();
+    tracing::warn!(
+        error_code = code,
+        runner_id = id,
+        reason,
+        event = "selftest_verdict_refused",
+        "self-test verdict refused; the beat still counts as liveness"
+    );
 }
 
 /// Runs a write whose failure must not fail the beat, and says whether it
@@ -279,8 +287,17 @@ fn bounded_report<'b, 'a>(beat: &'b HeartbeatRequest<'a>) -> Option<&'b Capabili
 fn report(event: &'static str, runner: &Uuid7, error: &Error) {
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let id = runner.as_str();
-    let reason = error.to_string();
-    tracing::warn!(error_code = code, runner_id = id, reason, event);
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
+    tracing::warn!(
+        error_code = code,
+        cause_error_code,
+        runner_id = id,
+        reason,
+        event
+    );
 }
 
 pub mod holds;

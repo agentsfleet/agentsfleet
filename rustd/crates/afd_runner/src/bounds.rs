@@ -26,13 +26,15 @@
 //! them and the success path has no arm at all (`dispatch/write_rust.md`
 //! §Functional design).
 //!
-//! The two refusals stay distinct because the refusing side logs WHICH, and
-//! they are different operator
+//! The two refusals read as distinct sentences because the refusing side logs
+//! WHICH, and they are different operator
 //! problems — a bound is a runner sending too much, a disagreement is a runner
 //! claiming health its own checks contradict.
 
 use afd_wire::runner::SelftestReport;
 use garde::Validate as _;
+
+use crate::error::{Result, rejected};
 
 // The four caps below are the wire type's own, under the names this crate and
 // its suite already spell them by. Aliases rather than second definitions: the
@@ -55,20 +57,17 @@ pub const MAX_CHECK_DETAIL_LEN: usize = afd_wire::runner::CHECK_DETAIL_MAX_BYTES
 /// Longest the policy strings travelling with a verdict may be.
 pub const MAX_SELFTEST_POLICY_LEN: usize = afd_wire::runner::SELFTEST_POLICY_MAX_BYTES;
 
-/// Why a reported verdict was refused.
+/// Why a verdict past a cap, or carrying an empty name, detail or policy
+/// string, was refused.
 ///
-/// Carries no fragment of what was refused: a runner token can put arbitrary
-/// bytes in a check name, and a refusal that quotes them is a refusal that logs
-/// them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum Rejection {
-    /// Past a cap, or carrying an empty name, detail or policy string.
-    #[error("the reported verdict exceeds its bounds")]
-    Unbounded,
-    /// `all_ok` contradicts the checks it arrived with.
-    #[error("all_ok disagrees with the reported checks")]
-    AllOkDisagrees,
-}
+/// Neither refusal carries a fragment of what was refused: a runner token can
+/// put arbitrary bytes in a check name, and a refusal that quotes them is a
+/// refusal that logs them.
+pub const DETAIL_SELFTEST_UNBOUNDED: &str = "the reported verdict exceeds its bounds";
+
+/// Why a verdict whose `all_ok` contradicts the checks it arrived with was
+/// refused.
+pub const DETAIL_SELFTEST_ALL_OK_DISAGREES: &str = "all_ok disagrees with the reported checks";
 
 /// Whether `report` may be stored.
 ///
@@ -76,17 +75,18 @@ pub enum Rejection {
 /// a partially stored self-test is a verdict nobody reasoned about.
 ///
 /// # Errors
-/// [`Rejection::Unbounded`] when any cap is exceeded or any required string is
-/// empty; [`Rejection::AllOkDisagrees`] when the summary contradicts the
-/// checks. That second one is the incident this exists for: a host reading
-/// healthy while every lease dies inside its sandbox.
-pub fn accept(report: &SelftestReport<'_>) -> Result<(), Rejection> {
+/// A rejection reading [`DETAIL_SELFTEST_UNBOUNDED`] when any cap is exceeded
+/// or any required string is empty, and [`DETAIL_SELFTEST_ALL_OK_DISAGREES`]
+/// when the summary contradicts the checks. That second one is the incident
+/// this exists for: a host reading healthy while every lease dies inside its
+/// sandbox.
+pub fn accept(report: &SelftestReport<'_>) -> Result<()> {
     // Every bound is declared on the wire type, including the per-check ones
     // `dive` reaches. What stays here is the agreement between `all_ok` and the
     // checks, which is a relation between two fields rather than a bound on
     // either.
     if report.validate().is_err() {
-        return Err(Rejection::Unbounded);
+        return Err(rejected(DETAIL_SELFTEST_UNBOUNDED));
     }
 
     // Reported by the host rather than derived on arrival, so without this a
@@ -95,12 +95,16 @@ pub fn accept(report: &SelftestReport<'_>) -> Result<(), Rejection> {
     if report.all_ok == every_check_passed {
         Ok(())
     } else {
-        Err(Rejection::AllOkDisagrees)
+        Err(rejected(DETAIL_SELFTEST_ALL_OK_DISAGREES))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    )]
     use std::borrow::Cow;
 
     use afd_wire::runner::SelftestCheck;
@@ -135,14 +139,24 @@ mod tests {
         }
     }
 
+    /// The sentence `refused` is turned away with, proven to be a rejection.
+    fn refusal(refused: &SelftestReport<'_>) -> &'static str {
+        let rejection = accept(refused).expect_err("this verdict must not be stored");
+        assert!(
+            rejection.is_rejected(),
+            "a malformed verdict is the runner's fault"
+        );
+        rejection.detail()
+    }
+
     /// A well-formed verdict is stored.
     #[test]
     fn test_selftest_report_bounds_accept_a_well_formed_verdict() {
-        assert_eq!(accept(&report(vec![passing()], true)), Ok(()));
-        assert_eq!(accept(&report(vec![passing(), failing()], false)), Ok(()));
+        accept(&report(vec![passing()], true)).expect("a passing verdict is stored");
+        accept(&report(vec![passing(), failing()], false)).expect("an honest failure is stored");
         // No checks at all is vacuously all-ok, and is what a probe that ran
         // nothing reports.
-        assert_eq!(accept(&report(Vec::new(), true)), Ok(()));
+        accept(&report(Vec::new(), true)).expect("an empty verdict is stored");
     }
 
     /// Every bound refuses the whole verdict.
@@ -186,7 +200,7 @@ mod tests {
                 ..report(vec![passing()], true)
             },
         ] {
-            assert_eq!(accept(&refused), Err(Rejection::Unbounded));
+            assert_eq!(refusal(&refused), DETAIL_SELFTEST_UNBOUNDED);
         }
     }
 
@@ -196,13 +210,13 @@ mod tests {
         // A runner claiming health its own checks contradict — the shape that
         // lets a broken host keep reading healthy, which is the whole incident.
         assert_eq!(
-            accept(&report(vec![passing(), failing()], true)),
-            Err(Rejection::AllOkDisagrees)
+            refusal(&report(vec![passing(), failing()], true)),
+            DETAIL_SELFTEST_ALL_OK_DISAGREES
         );
         // And the mirror: claiming failure when every check passed.
         assert_eq!(
-            accept(&report(vec![passing()], false)),
-            Err(Rejection::AllOkDisagrees)
+            refusal(&report(vec![passing()], false)),
+            DETAIL_SELFTEST_ALL_OK_DISAGREES
         );
     }
 }

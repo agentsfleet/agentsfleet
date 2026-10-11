@@ -298,10 +298,8 @@ dependencies = [
  "afd_crypto",
  "afd_wire",
  "hex",
- "sha2 0.11.0",
  "thiserror",
  "tokio",
- "zeroize",
 ]
 
 [[package]]
@@ -369,11 +367,11 @@ dependencies = [
  "axum",
  "base64 0.23.1",
  "garde",
+ "hex",
  "reqwest",
  "serde",
  "serde_json",
  "sqlx",
- "subtle",
  "thiserror",
  "tokio",
  "tracing",
@@ -481,6 +479,7 @@ name = "afd_db"
 version = "0.59.0"
 dependencies = [
  "afd_core",
+ "backon",
  "sqlx",
  "thiserror",
  "tokio",
@@ -609,6 +608,7 @@ dependencies = [
  "afd_api_wire",
  "afd_core",
  "afd_db",
+ "afd_state",
  "sqlx",
  "thiserror",
  "tokio",
@@ -643,7 +643,6 @@ dependencies = [
  "afd_events",
  "afd_fleet_runtime",
  "afd_observability",
- "afd_runner",
  "afd_wire",
  "base64 0.23.1",
  "serde",
@@ -689,6 +688,7 @@ dependencies = [
  "afd_vault",
  "afd_wire",
  "axum",
+ "hex",
  "http",
  "percent-encoding",
  "serde",
@@ -705,6 +705,8 @@ version = "0.59.0"
 dependencies = [
  "afd_auth",
  "afd_core",
+ "afd_crypto",
+ "afd_validate",
  "aws-lc-rs",
  "base64 0.23.1",
  "jsonwebtoken",
@@ -716,7 +718,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "zeroize",
 ]
 
 [[package]]
@@ -760,13 +761,11 @@ dependencies = [
  "futures-util",
  "garde",
  "headers",
- "hex",
  "object_store",
  "reqwest",
  "serde",
  "serde_json",
  "serde_yaml_ng",
- "sha2 0.11.0",
  "sqlx",
  "tar",
  "thiserror",
@@ -980,6 +979,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -1246,6 +1246,7 @@ name = "afr_tools"
 version = "0.59.0"
 dependencies = [
  "afd_core",
+ "afd_validate",
  "afd_wire",
  "afr_egress",
  "afr_executor",
@@ -1253,6 +1254,7 @@ dependencies = [
  "afr_secrets",
  "async-trait",
  "bytes",
+ "garde",
  "html2text",
  "jiff",
  "rustix",
@@ -1358,6 +1360,7 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

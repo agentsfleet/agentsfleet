@@ -148,6 +148,10 @@ async fn test_bundle_run_trace_is_readable() {
     let settled = run_event(&run, &run.event_id, &upstream, model).await;
 
     assert_eq!(settled.status, "processed");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
     let http = reqwest::Client::new();
     let event = format!(
         "/v1/workspaces/{}/fleets/{}/events/{}",

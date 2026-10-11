@@ -7,8 +7,8 @@ use afd_api_wire::tenant::{
     ApiKeySummary, MintApiKeyRequest, MintedApiKeyResponse, PageResponse, PatchApiKeyRequest,
     RevokedApiKeyResponse,
 };
-use afd_core::id::Uuid7;
 use afd_core::paging::{Boundary as _, CEILING, Page};
+use afd_http::handler::parse_id;
 use afd_tenant::apikey::{
     ApiKeySort, Deactivation, Description, KeyName, KeyRow, Listing, MintRequest, Revealed, Revoked,
 };
@@ -188,7 +188,7 @@ pub(crate) async fn revoke<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
-    let key = Uuid7::parse(&key_id).map_err(|_unparseable| Refusal::malformed(DETAIL_KEY_ID))?;
+    let key = parse_id(&key_id, DETAIL_KEY_ID)?;
     let request = afd_http::handler::read_body::<PatchApiKeyRequest>(&body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_PATCH_BODY))?;
     // The intent is PARSED, not checked: `revoke` takes a `Deactivation`, so
@@ -237,7 +237,7 @@ pub(crate) async fn delete<D: Services>(
     Path(key_id): Path<String>,
 ) -> Result<Response, Refusal> {
     let person = identity.person();
-    let key = Uuid7::parse(&key_id).map_err(|_unparseable| Refusal::malformed(DETAIL_KEY_ID))?;
+    let key = parse_id(&key_id, DETAIL_KEY_ID)?;
     let tenant = tenant_of(&services, person, DETAIL_NO_TENANT, EVENT_TENANT).await?;
 
     services

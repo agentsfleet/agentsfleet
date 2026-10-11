@@ -78,11 +78,7 @@ pub(super) async fn record(stores: &Datastores, report: &mut Report) -> Result<(
     report.measurement(LEDGER_BACKLOG_ROWS, count(backlog.rows));
     report.measurement(
         LEDGER_BACKLOG_OLDEST_AGE_MS,
-        count(
-            backlog
-                .oldest_age
-                .map_or(0, |age| u64::try_from(age.as_millis()).unwrap_or(u64::MAX)),
-        ),
+        count(backlog.oldest_age.map_or(0, clock::saturating_millis)),
     );
     Ok(())
 }

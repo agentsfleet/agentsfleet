@@ -19,6 +19,10 @@
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "each test hands the resolver a plain client aimed at a loopback fake, a refused pin, or a vendor host a test cannot reach"
+)]
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};

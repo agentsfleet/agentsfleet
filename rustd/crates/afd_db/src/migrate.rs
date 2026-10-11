@@ -18,7 +18,7 @@ use sqlx::pool::PoolConnection;
 use sqlx::{Acquire as _, Postgres};
 
 pub use self::ledger::{FailureRow, Ledger};
-pub use self::lock::{Attempt, MigrationLock, RetryPolicy};
+pub use self::lock::{MigrationLock, RetryPolicy};
 
 use crate::error::{Error, ErrorKind, Result};
 use crate::migration::{MIGRATIONS, Migration};

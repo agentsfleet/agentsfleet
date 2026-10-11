@@ -15,7 +15,7 @@
 
 use core::time::Duration;
 
-use afd_core::env::EnvSource;
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole, SubscriptionHub};
@@ -98,7 +98,7 @@ impl EnvSource for LaneEnv<'_> {
         if key == DbRole::Api.url_knob() || key == DbRole::Default.url_knob() {
             return Some(self.database_url.to_owned());
         }
-        std::env::var(key).ok()
+        ProcessEnv.get(key)
     }
 }
 

@@ -103,7 +103,13 @@ async fn a_stranded_lease_the_index_will_not_mark_is_logged_and_not_counted() {
             fields.get("fleet_id") == Some(&fixture.fleet)
         })
         .expect("the ledger's stranded fleet is named when its mark fails");
-    assert!(logged.contains_key("error"), "{logged:?}");
+    assert!(
+        logged
+            .get("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
+    let reason = logged.get("reason").expect("the failed mark says why");
+    assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
     fixture.cleanup().await;
 }
 

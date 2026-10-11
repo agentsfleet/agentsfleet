@@ -10,7 +10,8 @@ use std::os::fd::AsFd as _;
 use afd_core::test_util::trace::Capture;
 
 use super::{Scope, remove};
-use crate::egress::slot::{Claim, Slot, claims_held};
+use crate::egress::kernel::Kernel as _;
+use crate::egress::slot::{Claim, Slot};
 use crate::egress::testing::{
     DELLINK, DELSETELEM, DELTABLE, Fake, GETLINK, NEWADDR, NEWCHAIN, NEWLINK, NEWROUTE, NEWRULE,
     NEWSET, NEWSETELEM, NEWTABLE, Protocol, SETLINK,
@@ -46,7 +47,6 @@ fn slot_in(capture: &Capture, event: &str) -> Slot {
 /// namespace. Removal takes the link, then the table, and frees the slot.
 #[test]
 fn test_a_scope_builds_its_rules_before_its_link() {
-    let _claims = claims_held();
     let capture = Capture::install();
     let kernel = Fake::default();
 
@@ -84,7 +84,10 @@ fn test_a_scope_builds_its_rules_before_its_link() {
     );
     assert_eq!(kernel.entered(), 1, "the peer is configured where it lives");
     assert_eq!(capture.only("egress_scope_built").field("hosts"), Some("2"));
-    assert!(Claim::exactly(slot).is_some(), "the slot is free again");
+    assert!(
+        Claim::exactly(kernel.slots(), slot).is_some(),
+        "the slot is free again"
+    );
 }
 
 /// Every netlink step that fails refuses the lease, naming the step; what was
@@ -92,7 +95,6 @@ fn test_a_scope_builds_its_rules_before_its_link() {
 /// the names and gives neither them nor their addresses.
 #[test]
 fn test_egress_setup_failures_refuse_the_lease() {
-    let _claims = claims_held();
     let cases = [
         // With no netfilter socket, nothing was sent, so the slot is freed.
         (
@@ -138,7 +140,11 @@ fn test_egress_setup_failures_refuse_the_lease() {
             "{step:?}: no names or addresses are logged"
         );
         let slot = slot_in(&capture, "egress_scope_refused");
-        assert_eq!(Claim::exactly(slot).is_some(), freed, "{step:?}");
+        assert_eq!(
+            Claim::exactly(kernel.slots(), slot).is_some(),
+            freed,
+            "{step:?}"
+        );
     }
 }
 
@@ -146,7 +152,6 @@ fn test_egress_setup_failures_refuse_the_lease() {
 /// life, so no later scope meets the link it left.
 #[test]
 fn test_a_scope_that_will_not_come_down_keeps_its_slot() {
-    let _claims = claims_held();
     let capture = Capture::install();
     let kernel = Fake::default().refusing(Protocol::Route, DELLINK, libc::EBUSY);
     let scope = Scope::build(&kernel, namespace().as_fd(), &allowlist()).unwrap();
@@ -158,17 +163,17 @@ fn test_a_scope_that_will_not_come_down_keeps_its_slot() {
         kernel.seen_on(Protocol::Netfilter).contains(&DELTABLE),
         "the table still goes"
     );
-    assert!(Claim::exactly(slot_in(&capture, "egress_scope_left")).is_none());
+    let slot = slot_in(&capture, "egress_scope_left");
+    assert!(Claim::exactly(kernel.slots(), slot).is_none());
 }
 
 /// A host whose every slot is held refuses the next scope before asking the
 /// kernel for anything.
 #[test]
 fn test_a_host_with_every_slot_held_refuses() {
-    let _claims = claims_held();
     let capture = Capture::install();
     let kernel = Fake::default();
-    let held: Vec<Claim> = std::iter::from_fn(Claim::any).collect();
+    let held: Vec<Claim> = std::iter::from_fn(|| Claim::any(kernel.slots())).collect();
 
     let refused = Scope::build(&kernel, namespace().as_fd(), &allowlist()).unwrap_err();
 
@@ -198,7 +203,6 @@ fn test_a_leftovers_link_goes_even_when_its_table_cannot() {
 /// names it now admits. A swap the kernel refuses names its step.
 #[test]
 fn test_a_scope_takes_new_addresses_in_place() {
-    let _claims = claims_held();
     let capture = Capture::install();
     let kernel = Fake::default();
     let refusing = Fake::default().refusing(Protocol::Netfilter, DELSETELEM, libc::EPERM);
@@ -235,7 +239,6 @@ fn test_a_scope_takes_new_addresses_in_place() {
 /// acknowledgement does not hide the removal's own refusal.
 #[test]
 fn test_a_removal_after_a_refused_refill_reads_its_own_answer() {
-    let _claims = claims_held();
     let cases = [
         // The refill's second message is refused too; the table still goes.
         (libc::EEXIST, None),
@@ -272,6 +275,10 @@ fn test_a_removal_after_a_refused_refill_reads_its_own_answer() {
             removed.map(|_errno| Step::RemoveRules),
             "{added}"
         );
-        assert_eq!(Claim::exactly(slot).is_some(), removed.is_none(), "{added}");
+        assert_eq!(
+            Claim::exactly(kernel.slots(), slot).is_some(),
+            removed.is_none(),
+            "{added}"
+        );
     }
 }

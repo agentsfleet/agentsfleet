@@ -147,10 +147,10 @@ impl Producer {
         let now = clock::now();
         let uncommitted_before = now
             .as_millis()
-            .saturating_sub(i64::try_from(MIN_AGE.as_millis()).unwrap_or(i64::MAX));
+            .saturating_sub(clock::saturating_millis_signed(MIN_AGE));
         let lost_before = now
             .as_millis()
-            .saturating_sub(i64::try_from(LOST_AFTER.as_millis()).unwrap_or(i64::MAX));
+            .saturating_sub(clock::saturating_millis_signed(LOST_AFTER));
 
         let mut appended = 0;
         appended += self

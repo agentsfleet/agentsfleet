@@ -166,6 +166,14 @@ pub enum BootFailure {
     /// one is a defect in this build rather than a condition to serve through.
     #[error("agentsfleetd cannot boot: the metric contract was refused")]
     Contract(#[from] afd_observability::Error),
+    /// An outbound HTTP client would not build.
+    ///
+    /// Refuses boot rather than serving through a default client: that one
+    /// honours environment proxies and has no deadline, which is what every
+    /// client here exists to refuse. Like the exporter, a failure is a defect
+    /// in the build — this workspace selects its TLS backend at compile time.
+    #[error("agentsfleetd cannot boot: an outbound HTTP client would not build")]
+    HttpClient(#[from] reqwest::Error),
 }
 
 impl From<afd_otlp::Error> for BootFailure {
@@ -195,6 +203,7 @@ impl BootFailure {
             Self::Queue(_) => "queue",
             Self::Listen(_) => "listen",
             Self::Exporter(_) | Self::Contract(_) => "telemetry",
+            Self::HttpClient(_) => "http_client",
         }
     }
 
@@ -209,7 +218,7 @@ impl BootFailure {
             Self::Environment(_) => afd_core::error_code::STARTUP_ENV_CHECK,
             Self::Database(_) => afd_core::error_code::STARTUP_DB_CONNECT,
             Self::Queue(_) => afd_core::error_code::STARTUP_DRAGONFLY_CONNECT,
-            Self::Listen(_) | Self::Exporter(_) | Self::Contract(_) => {
+            Self::Listen(_) | Self::Exporter(_) | Self::Contract(_) | Self::HttpClient(_) => {
                 afd_core::error_code::INTERNAL_OPERATION_FAILED
             }
         }

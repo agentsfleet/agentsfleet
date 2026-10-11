@@ -35,7 +35,6 @@
 
 mod decision;
 pub mod error;
-mod gate_status;
 mod grant;
 mod grant_sql;
 mod inbox;
@@ -44,7 +43,6 @@ mod sql;
 
 pub use self::decision::Decision;
 pub use self::error::{Error, Result};
-pub use self::gate_status::GateStatus;
 pub use self::grant::{GrantRow, IntegrationGrants, Revocation};
 #[cfg(feature = "test-util")]
 pub use self::inbox::SweptParts;

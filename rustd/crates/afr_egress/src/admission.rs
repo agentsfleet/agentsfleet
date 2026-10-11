@@ -10,19 +10,17 @@
 
 use std::borrow::Cow;
 use std::fmt;
-use std::net::IpAddr;
 
-use afd_core::net::is_blocked;
 use afd_wire::policy::{ExecutionPolicy, HttpOriginPolicy, Mintable, NetworkPolicy};
 use afr_secrets::{FIELD_HOST, FIELD_TOKEN, StaticSecrets};
 use reqwest::header::{AUTHORIZATION, HOST};
 use reqwest::{Method, Url};
-use url::Host;
 
 use crate::allowlist::{self, allowlist_host};
 use crate::error::{Error, Result, raise};
 use crate::origin;
 use crate::placeholder::{self, SecretRef};
+use crate::resolve::blocked_literal;
 
 /// Every method a tool may send.
 const METHODS: [Method; 7] = [
@@ -300,12 +298,7 @@ fn header_secrets<'d>(
 /// Whether an address literal stays outside the private ranges; a name is
 /// checked by the resolver, after it resolves.
 fn reachable(url: &Url, host: &str) -> Result<()> {
-    let address: Option<IpAddr> = match url.host() {
-        Some(Host::Ipv4(address)) => Some(address.into()),
-        Some(Host::Ipv6(address)) => Some(address.into()),
-        Some(Host::Domain(_)) | None => None,
-    };
-    if address.is_some_and(is_blocked) {
+    if blocked_literal(url) {
         Err(raise::address_not_allowed(host))
     } else {
         Ok(())

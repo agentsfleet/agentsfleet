@@ -7,6 +7,7 @@
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::mock::MockDirectory;
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::{Dragonfly, SubscriptionHub};
@@ -34,10 +35,14 @@ const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The integration lane's one Dragonfly configuration.
 pub(crate) fn dragonfly_config() -> DragonflyConfig {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the panic carries the VarError beside the lane hint; ProcessEnv::get returns an Option and would drop it"
+    )]
     let url = std::env::var(DRAGONFLY_URL_KNOB)
         .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
     DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
+        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5))
 }

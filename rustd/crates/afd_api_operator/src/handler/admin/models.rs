@@ -9,7 +9,6 @@ use afd_api_wire::admin::{
     ModelRates,
 };
 use afd_core::error_code;
-use afd_core::id::Uuid7;
 use afd_validate::Sentences;
 use axum::Json;
 use axum::body::Bytes;
@@ -19,7 +18,7 @@ use garde::Validate as _;
 use http::StatusCode;
 
 use crate::auth::PersonIdentity;
-use crate::handler::{refuse, reject};
+use crate::handler::{parse_id, refuse, reject};
 use crate::request_id::RequestId;
 use crate::services::Services;
 
@@ -168,9 +167,9 @@ pub(crate) async fn update<D: Services>(
     Path(raw_id): Path<String>,
     body: Bytes,
 ) -> Response {
-    let id = match Uuid7::parse(&raw_id) {
+    let id = match parse_id(&raw_id, DETAIL_ID) {
         Ok(id) => id,
-        Err(_error) => return reject(error_code::INVALID_REQUEST, DETAIL_ID),
+        Err(refused) => return refused.into_response(),
     };
     let rates = match rates_request(&body) {
         Ok(rates) => rates,
@@ -223,9 +222,9 @@ pub(crate) async fn delete<D: Services>(
     identity: PersonIdentity,
     Path(raw_id): Path<String>,
 ) -> Response {
-    let id = match Uuid7::parse(&raw_id) {
+    let id = match parse_id(&raw_id, DETAIL_ID) {
         Ok(id) => id,
-        Err(_error) => return reject(error_code::INVALID_REQUEST, DETAIL_ID),
+        Err(refused) => return refused.into_response(),
     };
     match services.models().delete(&id, services.now()).await {
         Ok(DeleteModel::Deleted) => {

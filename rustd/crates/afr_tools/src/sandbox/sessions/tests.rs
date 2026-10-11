@@ -78,6 +78,11 @@ async fn should_forget_a_session_whose_kill_is_refused() {
     assert!(sessions.get(id).is_none());
     let refused = capture.only(EVENT_KILL_REFUSED);
     assert_eq!(refused.field("session_id"), Some("1"));
+    assert!(
+        refused
+            .field("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
 }
 
 #[tokio::test]

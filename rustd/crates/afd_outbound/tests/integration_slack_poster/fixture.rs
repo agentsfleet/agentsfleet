@@ -57,6 +57,10 @@ impl Fixture {
         )
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a fixture client aimed at the suite's loopback Slack fake; afd_identity::direct would add a deadline and drop the environment proxy, neither of which this suite proves"
+    )]
     pub(super) fn poster(&self, api_base: &str) -> afd_outbound::SlackPoster {
         afd_outbound::SlackPoster::new(
             Grants::new(self.vault(), self.database.clone(), Entropy::new()),

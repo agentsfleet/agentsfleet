@@ -95,8 +95,7 @@ impl<'run> Hydrated<'run> {
     fn matching(&self, query: &str, limit: usize) -> Result<Vec<Recalled<'_>>> {
         let matcher = AhoCorasick::builder()
             .ascii_case_insensitive(true)
-            .build([query])
-            .map_err(error::query)?;
+            .build([query])?;
         let in_key = |found: &Recalled<'_>| matcher.is_match(found.key.as_ref());
         let in_content_only =
             |found: &Recalled<'_>| !in_key(found) && matcher.is_match(found.content.as_ref());
@@ -146,7 +145,7 @@ impl<'run> Hydrated<'run> {
 #[async_trait::async_trait]
 impl MemoryBackend for Hydrated<'_> {
     async fn store(&mut self, entry: MemoryDelta<'static>) -> Result<()> {
-        entry.validate().map_err(error::malformed)?;
+        entry.validate()?;
         if entry.visibility.is_workspace() && !self.seed.publish {
             return Err(error::not_granted());
         }

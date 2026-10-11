@@ -77,13 +77,7 @@ impl RequestId {
             );
             return Self(UNKNOWN_REQUEST_ID.to_owned());
         }
-        // Folded big-endian into the low 48 bits of a `u64`, so one `{:012x}`
-        // renders the whole id. Six bytes cannot overflow a `u64`, and a fold
-        // says that structurally where indexing would only assert it.
-        let packed = bytes
-            .iter()
-            .fold(0u64, |packed, &byte| (packed << 8) | u64::from(byte));
-        Self(format!("{PREFIX}{packed:012x}"))
+        Self(format!("{PREFIX}{}", hex::encode(bytes)))
     }
 
     /// The id as it appears on the wire.
@@ -102,5 +96,31 @@ impl Display for RequestId {
 impl From<RequestId> for String {
     fn from(id: RequestId) -> Self {
         id.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use afd_crypto::entropy::Entropy;
+
+    use super::{RequestId, UNKNOWN_REQUEST_ID};
+
+    /// The six bytes render in order, two lowercase digits each.
+    #[test]
+    fn the_id_is_its_entropy_in_byte_order() {
+        let (entropy, control) = Entropy::new_mocked();
+        control.push_bytes(&[0x01, 0x02, 0x03, 0x04, 0x05, 0xab]);
+
+        // pin test: literal is the contract
+        assert_eq!(RequestId::mint_from(&entropy).as_str(), "req_0102030405ab");
+    }
+
+    /// No entropy is an unidentified request, never a refused one.
+    #[test]
+    fn an_entropy_failure_is_the_unknown_id() {
+        let (entropy, control) = Entropy::new_mocked();
+        control.fail_next();
+
+        assert_eq!(RequestId::mint_from(&entropy).as_str(), UNKNOWN_REQUEST_ID);
     }
 }
