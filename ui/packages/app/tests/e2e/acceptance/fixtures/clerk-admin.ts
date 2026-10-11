@@ -20,7 +20,7 @@
  * stable, and the SDK pulls in node:crypto-heavy deps we don't need.
  */
 
-import { FIXTURE_KEY, OPERATOR_FIXTURE_SCOPES, type FixtureKey } from "./constants";
+import { PLATFORM_FIXTURE_SCOPES, type FixtureKey } from "./constants";
 import { ClerkRequestError, clerkRequest } from "./clerk-request";
 
 // Session-token TTL for minted fixture JWTs. Default Clerk TTL is 60s — too
@@ -91,8 +91,9 @@ async function getUser(userId: string): Promise<ClerkUser> {
 // identities out, and gives a future Clerk webhook handler a hook to refuse
 // unsafe operations against fixture users.
 //
-// `scopes` is present only on the operator fixture. The session-token template
-// projects it to the top-level `scopes` claim that agentsfleetd's requireScope
+// Platform scopes belong only to the operator and policy-editor fixtures.
+// The session-token template projects them to the top-level `scopes` claim
+// that agentsfleetd's requireScope
 // and the dashboard's readSessionScopes both read; every other fixture is
 // deliberately scope-free, so a spec asserting an operator surface is hidden
 // stays meaningful. Built once and shared by the create and backfill paths so
@@ -103,9 +104,8 @@ function fixtureMetadata(spec: FixtureUserSpec): Record<string, unknown> {
     owner: "acceptance-e2e-suite",
     role: spec.key,
   };
-  if (spec.key === FIXTURE_KEY.operator) {
-    metadata.scopes = [...OPERATOR_FIXTURE_SCOPES];
-  }
+  const scopes = PLATFORM_FIXTURE_SCOPES[spec.key];
+  if (scopes) metadata.scopes = [...scopes];
   return metadata;
 }
 
@@ -142,11 +142,12 @@ export async function finalizeFixtureMetadata(user: ProvisionedUser): Promise<vo
   await waitForTenantMetadata(user.clerkUserId);
   const current = await getUser(user.clerkUserId);
   const publicMetadata = fixtureMetadata(user);
-  if (user.key === FIXTURE_KEY.operator) {
+  const platformScopes = PLATFORM_FIXTURE_SCOPES[user.key];
+  if (platformScopes) {
     publicMetadata.scopes = [
       ...new Set([
         ...scopeValues(current.public_metadata?.scopes),
-        ...OPERATOR_FIXTURE_SCOPES,
+        ...platformScopes,
       ]),
     ].join(" ");
   }

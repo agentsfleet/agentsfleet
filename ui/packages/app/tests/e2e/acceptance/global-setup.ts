@@ -70,6 +70,7 @@ const REQUIRED_ENV = [
 const DEFAULT_REGULAR_EMAIL = "regular-fixture@e2e.agentsfleet.net";
 const DEFAULT_ADMIN_EMAIL = "admin-fixture@e2e.agentsfleet.net";
 const DEFAULT_OPERATOR_EMAIL = "operator-fixture@e2e.agentsfleet.net";
+const DEFAULT_POLICY_EDITOR_EMAIL = "policy-editor-fixture@e2e.agentsfleet.net";
 
 // Random per-create password. The harness never logs in via password;
 // CLERK_SECRET_KEY admin API mints sessions directly. A stable password
@@ -95,6 +96,11 @@ function fixtureUsers(): FixtureUserSpec[] {
     {
       key: FIXTURE_KEY.operator,
       email: process.env.AUTH_E2E_OPERATOR_EMAIL ?? DEFAULT_OPERATOR_EMAIL,
+      password: freshPassword(),
+    },
+    {
+      key: FIXTURE_KEY.policyEditor,
+      email: process.env.AUTH_E2E_POLICY_EDITOR_EMAIL ?? DEFAULT_POLICY_EDITOR_EMAIL,
       password: freshPassword(),
     },
   ];
@@ -178,7 +184,7 @@ export default async function globalSetup(): Promise<void> {
   //   2. bootstrapTenant: agentsfleetd creates tenant + writes tenant_id/role
   //      back to Clerk publicMetadata.
   //   3. finalizeFixtureMetadata: wait for tenant writeback, then append the
-  //      operator-only scope without dropping ordinary tenant grants.
+  //      fixture-specific platform scopes without dropping ordinary tenant grants.
   //   4. attachJwt: mint session JWT — now the JWT snapshots the updated
   //      publicMetadata, so agentsfleetd API calls that require tenant context
   //      succeed.

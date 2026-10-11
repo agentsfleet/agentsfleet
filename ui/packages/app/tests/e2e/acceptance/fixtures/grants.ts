@@ -23,6 +23,7 @@ import { clientFor, type ClientHandle } from "./api-client";
 import type { ApprovalGate, ApprovalsListResponse } from "@/lib/api/approvals";
 import { APPROVAL_STATUS } from "@/lib/api/approvals-types";
 import type { TenantBilling, TenantBillingChargesResponse } from "@/lib/types";
+import { HTTP_REQUEST } from "./constants";
 
 /**
  * The gate kind the daemon raises for a mintable credential.
@@ -124,7 +125,7 @@ export function connectorTriggerMd(name: string): string {
     "    - type: cron",
     '      schedule: "0 0 * * *"',
     "  tools:",
-    "    - agentmail",
+    `    - ${HTTP_REQUEST}`,
     "  credentials:",
     `    - ${GRANT_CREDENTIAL_NAME}`,
     "  budget:",
