@@ -413,6 +413,10 @@ describe("EventsList — the standard workspace events table", () => {
       "Runs",
     ]);
     expect(screen.getByText("$0.02")).toBeTruthy();
+    // A count and a row action align right with the other figures.
+    for (const name of ["Runs", "Details"]) {
+      expect(screen.getByRole("columnheader", { name }).className).toContain("text-right");
+    }
   });
 
   it("opens actionable diagnostics when startup safety failed without a recorded reason", async () => {

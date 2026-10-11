@@ -98,8 +98,8 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
   const sortedEntries = useMemo(() => {
     if (!sort) return entries;
     const dir = sort.dir === "ascending" ? 1 : -1;
-    return [...entries].sort((a, b) => compareEntries(a, b, sort.key) * dir);
-  }, [entries, sort]);
+    return [...entries].sort((a, b) => compareEntries(a, b, sort.key, libraryModels) * dir);
+  }, [entries, sort, libraryModels]);
 
   const rows: RegistryRow[] = [
     ...(showDefaultRow ? [{ kind: "default" as const }] : []),
@@ -236,14 +236,14 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
     {
       key: "context",
       header: CONTEXT_HEADER,
-      numeric: true,
+      numeric: true, sortable: true,
       hideOnMobile: true,
       cell: (row) => <ContextCell row={row} platformDefault={platformDefault} />,
     },
     {
       key: "rates",
       header: RATES_HEADER,
-      numeric: true,
+      numeric: true, sortable: true,
       hideOnMobile: true,
       cell: (row) => <RatesCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,
     },

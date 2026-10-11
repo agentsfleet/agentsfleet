@@ -215,28 +215,55 @@ describe("ApiKeyList component", () => {
     expect(screen.getByText("old-zapier")).toBeTruthy();
   });
 
-  it("clicking the Name column header re-fetches sorted by name", async () => {
-    await renderList(listResponse([ACTIVE], 30));
+  /** The key names in the order the table shows them. */
+  function shownNames(): string[] {
+    return screen
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => row.querySelector("td")?.textContent ?? "")
+      .map((cell) => ["ci-runner", "old-zapier", "twin"].find((name) => cell.includes(name)) ?? cell);
+  }
+
+  it("clicking Name sorts the loaded keys at once, with no fetch", async () => {
+    await renderList(listResponse([REVOKED, ACTIVE]));
     fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
-    await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("key_name"));
+    expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
+    expect(screen.getByRole("columnheader", { name: "Name" }).getAttribute("aria-sort")).toBe("ascending");
+
+    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
+    expect(shownNames()).toEqual(["old-zapier", "ci-runner"]);
+    expect(listApiKeysActionMock).not.toHaveBeenCalled();
   });
 
-  it("clicking the active Time column header toggles its direction", async () => {
-    await renderList(listResponse([ACTIVE], 30));
+  it("clicking the active Time column header toggles its direction in place", async () => {
+    await renderList(listResponse([ACTIVE, REVOKED]));
+    expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
     fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
-    await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("created_at"));
+    expect(shownNames()).toEqual(["old-zapier", "ci-runner"]);
+    expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("ascending");
+    expect(listApiKeysActionMock).not.toHaveBeenCalled();
   });
 
-  it("resets to defaults at most once on UZ-REQ-001 (no infinite retry loop)", async () => {
-    // Backend rejects every request, including the defaults the reset falls back
-    // to — the `retried` guard must stop after one reset, not loop forever.
-    listApiKeysActionMock.mockResolvedValue({ ok: false, error: "invalid sort", errorCode: "UZ-REQ-001" });
-    await renderList(listResponse([ACTIVE], 30));
-    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
-    // Original load + exactly one defaults-reset = 2 calls; never a third.
-    await waitFor(() => expect(listApiKeysActionMock.mock.calls.length).toBe(2));
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(listApiKeysActionMock.mock.calls.length).toBe(2);
+  it("keys created in the same millisecond keep one order in both directions", async () => {
+    const twin = { ...ACTIVE, id: "0190cccc-cccc-7ccc-cccc-cccccccccccc", key_name: "twin" };
+    await renderList(listResponse([twin, ACTIVE]));
+    expect(shownNames()).toEqual(["ci-runner", "twin"]);
+    fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
+    expect(shownNames()).toEqual(["ci-runner", "twin"]);
+  });
+
+  it("a failed reload after a create says so and keeps the list", async () => {
+    const { default: ApiKeyList } = await import(
+      "../app/(dashboard)/settings/api-keys/components/ApiKeyList"
+    );
+    const handle = React.createRef<{ refresh: () => void }>();
+    render(withTooltipProvider(React.createElement(ApiKeyList, { initial: listResponse([ACTIVE]), ref: handle } as never)));
+    listApiKeysActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
+
+    React.startTransition(() => handle.current?.refresh());
+    await screen.findByText(/couldn't load api keys/i);
+    expect(listApiKeysActionMock).toHaveBeenCalledWith("-created_at");
+    expect(screen.getByText("ci-runner")).toBeTruthy();
   });
 
   it("re-fetches the list after a key is minted and the reveal is closed", async () => {
@@ -277,22 +304,5 @@ describe("ApiKeyList component", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(revokeApiKeyActionMock).not.toHaveBeenCalled();
-  });
-
-  it("surfaces a non-validation load error inline without resetting", async () => {
-    await renderList(listResponse([ACTIVE], 30));
-    listApiKeysActionMock.mockResolvedValueOnce({ ok: false, error: "boom", errorCode: "UZ-INTERNAL-003" });
-    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
-    await screen.findByText(/couldn't load api keys/i);
-    // No UZ-REQ-001 reset loop: exactly one load fired by the click.
-    expect(listApiKeysActionMock).toHaveBeenCalledWith("key_name");
-    expect(listApiKeysActionMock.mock.calls.length).toBe(1);
-  });
-
-  it("an invalid sort response (UZ-REQ-001) resets to the default sort", async () => {
-    listApiKeysActionMock.mockResolvedValueOnce({ ok: false, error: "bad sort", errorCode: "UZ-REQ-001" });
-    await renderList(listResponse([ACTIVE], 30));
-    fireEvent.click(screen.getByRole("button", { name: /^name$/i }));
-    await waitFor(() => expect(listApiKeysActionMock).toHaveBeenCalledWith("-created_at"));
   });
 });

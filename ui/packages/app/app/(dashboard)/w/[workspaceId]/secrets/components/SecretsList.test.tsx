@@ -18,6 +18,12 @@ vi.mock("next/navigation", () => ({
 vi.mock("../actions", () => ({ deleteSecretAction: deleteSecretActionMock }));
 
 import SecretsList from "./SecretsList";
+import {
+  DELETE_CONNECTION_CONFIRM,
+  DELETE_SECRET_CONFIRM,
+  DELETE_SECRET_DESCRIPTION,
+  deleteConnectionDescription,
+} from "../copy";
 
 // A fixed, far-past instant keeps the relative label stable ("… ago", never
 // flipping to "in …") and the absolute tooltip deterministic per runtime tz.
@@ -29,9 +35,9 @@ function providerSecret(created_at: number): Secret {
 
 // The wrapper stands in for a real ancestor: the root layout mounts the app's
 // one TooltipProvider, which the Created cell's relative `Time` reads from.
-function renderList(secrets: Secret[]) {
+function renderList(secrets: Secret[], connections?: Record<string, string>) {
   return render(
-    React.createElement(SecretsList, { workspaceId: "ws_1", secrets }),
+    React.createElement(SecretsList, { workspaceId: "ws_1", secrets, connections }),
     { wrapper: TooltipProvider },
   );
 }
@@ -201,5 +207,47 @@ describe("SecretsList name cell", () => {
     const iconRow = slot.parentElement!;
     expect(within(iconRow).getByRole("button", { name: `Copy secret name: ${longName}` })).toBeTruthy();
     expect(within(iconRow).getByRole("button", { name: `Rename secret ${longName}` })).toBeTruthy();
+  });
+});
+
+describe("SecretsList — deleting a connection's secret", () => {
+  const GRANT = "github";
+  const CONNECTION = "GitHub";
+
+  function grantSecret(name: string): Secret {
+    return { kind: SECRET_KIND.custom_secret, name, created_at: CREATED_MS };
+  }
+
+  async function openDelete(name: string) {
+    fireEvent.click(screen.getByRole("button", { name: `Delete secret ${name}` }));
+    return screen.findByRole("alertdialog");
+  }
+
+  it("names the connection and disconnects on confirm", async () => {
+    deleteSecretActionMock.mockResolvedValueOnce({ ok: true });
+    renderList([grantSecret(GRANT)], { [GRANT]: CONNECTION });
+
+    const dialog = await openDelete(GRANT);
+    expect(within(dialog).getByText(deleteConnectionDescription(CONNECTION))).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: DELETE_CONNECTION_CONFIRM }));
+
+    await waitFor(() => expect(deleteSecretActionMock).toHaveBeenCalledWith("ws_1", GRANT));
+  });
+
+  it("keeps the plain warning for a secret no connection holds", async () => {
+    renderList([grantSecret(GRANT)], {});
+
+    const dialog = await openDelete(GRANT);
+    expect(within(dialog).getByText(DELETE_SECRET_DESCRIPTION)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: DELETE_SECRET_CONFIRM })).toBeTruthy();
+  });
+
+  it("does not read an inherited key as a connection", async () => {
+    // `connections.constructor` is Object's own constructor: a plain index
+    // would call this secret a live connection.
+    renderList([grantSecret("constructor")], { [GRANT]: CONNECTION });
+
+    const dialog = await openDelete("constructor");
+    expect(within(dialog).getByText(DELETE_SECRET_DESCRIPTION)).toBeTruthy();
   });
 });

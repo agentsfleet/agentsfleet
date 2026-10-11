@@ -186,7 +186,7 @@ async fn test_an_unconnected_integration_is_not_a_grant_failure() {
     support::install_subscriber();
     let fixtures = Fixtures::create_with_queue().await;
     let owner = bound(&fixtures, "{}").await;
-    seed_grant(&fixtures, &owner.fleet, CONNECTOR_GITHUB, "approved").await;
+    seed_grant(&fixtures, &owner.fleet, CONNECTOR_GITHUB, STATUS_APPROVED).await;
 
     let refusal = fixtures
         .plane()

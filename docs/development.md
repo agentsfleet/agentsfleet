@@ -167,6 +167,111 @@ follows is the repo-workflow half that page does not carry.
   which only dev-dependencies enable (`afr_supervisor`, `afr_providers`,
   `agentsfleetd`), so no shipped binary carries it.
 
+## Runner kernel lane on Debian 13
+
+Use an OrbStack Debian 13 machine for `make test-runner-kernel`, matching the runner hosts' distribution. Run these commands from the repository root on macOS.
+OrbStack supplies the kernel; choosing Debian changes the machine's userland.
+
+The lane needs root, bubblewrap, Landlock, the Enhanced Read-Only File System (EROFS), control groups (cgroup) v2 and IPv4 forwarding.
+It fails when a required mechanism is missing.
+
+The lane starts the production `afr_sandbox::BubblewrapEngine` with the built toolbox image.
+It exercises confinement, filesystem and resource limits, network policies, tool execution, warm starts, freeze/resume and cleanup.
+Unit and service integration tests cover additional runner logic.
+
+Caller tests start with a lease carrying a steer and instructions, then drive the real supervisor, agent loop and tool catalog.
+They verify workspace edits and local Git commits inside bubblewrap.
+They also verify memory, schedules, thread messages and guarded HTTPS reads through the supervisor.
+
+These cases receive an admitted lease; they do not test the steer API or `SKILL.md` loading.
+
+The model, daemon and upstream endpoints are fakes shared with existing tests.
+The service integration lane checks daemon storage and Slack delivery.
+
+1. Choose the machine name. Use a fresh name to check the setup without replacing an existing machine.
+
+   ```bash
+   kernel_machine=afr-kernel
+   ```
+
+   Expected: no output.
+
+2. Create the machine. OrbStack creates a Linux user matching your macOS username and shares the Mac checkout at the same path.
+
+   ```bash
+   orb create debian:trixie "$kernel_machine"
+   ```
+
+   Expected: exit 0; progress output varies. An existing name is refused.
+
+3. Install the builder's shared package list and the kernel lane's host tools.
+
+   ```bash
+   orb -m "$kernel_machine" bash scripts/toolbox/install-builder-tools.sh \
+     bubblewrap build-essential pkg-config git nftables iproute2 e2fsprogs cryptsetup kmod
+   ```
+
+   Expected: apt installs the packages and exits 0. Host Git creates the lane's repository fixtures; the toolbox's Git serves sandbox commands.
+
+4. Install rustup, then let the workspace select its pinned Rust toolchain and components.
+
+   ```bash
+   orb -m "$kernel_machine" bash -lc \
+     'curl --proto "=https" --tlsv1.2 -fsSL https://sh.rustup.rs -o /tmp/agentsfleet-rustup.sh &&
+      sh /tmp/agentsfleet-rustup.sh -y --profile minimal --default-toolchain none &&
+      . "$HOME/.cargo/env" && cd rustd && rustup toolchain install && rustup show active-toolchain'
+   ```
+
+   Expected: the channel from `rustd/rust-toolchain.toml`, selected by that file. Keep any `RUSTUP_TOOLCHAIN` override equal to the pin.
+
+5. Check passwordless sudo and the toolbox filesystem. OrbStack's default user already has passwordless sudo, which the lane's `sudo -E` uses.
+
+   ```bash
+   orb -m "$kernel_machine" bash -lc \
+     'sudo -n true && { grep -qw erofs /proc/filesystems || sudo modprobe erofs; }'
+   ```
+
+   Expected: exit 0 and no output. A sudo prompt or a missing kernel module means the machine needs repair before the lane runs.
+
+6. Enable IPv4 forwarding, as the runner-host preparation does.
+
+   ```bash
+   orb -m "$kernel_machine" sudo sysctl -w net.ipv4.ip_forward=1
+   ```
+
+   Expected: `net.ipv4.ip_forward = 1`. Repeat after a machine restart if forwarding is disabled.
+
+7. Verify the distribution.
+
+   ```bash
+   orb -m "$kernel_machine" cat /etc/debian_version
+   ```
+
+   Expected: `13.<point-release>`; the setup check on 2026-10-10 reported `13.7`.
+
+8. Run the kernel lane. Keep Linux build outputs and toolbox images on the machine's native disk, separate from the Mac checkout's outputs.
+   Create Cargo's directory as your user before the root toolbox build, so their shared cache parent stays writable.
+
+   ```bash
+   orb -m "$kernel_machine" bash -lc \
+     '. "$HOME/.cargo/env" && mkdir -p "$HOME/.cache/agentsfleet/kernel-target" &&
+      CARGO_BUILD_JOBS=1 \
+      CARGO_TARGET_DIR="$HOME/.cache/agentsfleet/kernel-target" \
+      make test-runner-kernel TOOLBOX_DIR="$HOME/.cache/agentsfleet/toolbox"'
+   ```
+
+   Expected: every kernel-lane check passes, including `test_toolbox_carries_the_tools`; the command exits 0. Cargo builds as your user; its runner runs only the lane binary as root.
+
+The toolbox snapshot comes from `scripts/toolbox/manifest.txt`. Continuous Integration (CI) remains the release build of record.
+Different builder-package versions can produce different toolbox bytes; each image's release record names the versions that built it.
+
+After the lane, `orb -m "$kernel_machine" sudo fstrim -v /` can return unused Linux disk blocks to macOS.
+The reported trimmed size varies; use `df -h /System/Volumes/Data` on the Mac to check actual headroom.
+
+To rebuild an existing machine, save any Linux-only files first. **`orb delete "$kernel_machine"` erases that machine's Linux disk**, including its build cache and toolbox images.
+
+The shared Mac checkout survives. Delete only your disposable machine, then repeat the steps above.
+
 ## agentsfleet CLI conventions
 
 - **Hidden flags are registered on the root program**, never on a subcommand —

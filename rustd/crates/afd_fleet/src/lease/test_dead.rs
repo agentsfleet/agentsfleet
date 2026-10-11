@@ -69,7 +69,6 @@ pub(crate) fn plane() -> Plane {
         )),
         grants: afd_approval::IntegrationGrants::new(database(), Entropy::new()),
         thread: Arc::new(afd_events::History::new(database())),
-        connectors: Registry::default(),
     }
 }
 

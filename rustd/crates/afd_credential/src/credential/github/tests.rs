@@ -16,7 +16,8 @@ use afd_fleet_runtime::config::{Access, RepositoryBinding};
 use serde_json::json;
 
 use super::{
-    Exchange, Granted, Installed, Overreach, Permission, ScopedRequest, installation_id, mint,
+    Exchange, Granted, Installed, Overreach, Permission, ScopedRequest, installation,
+    installation_id, mint,
 };
 use crate::credential::outcome::{Outcome, Retry};
 use crate::credential::platform::GithubApp;
@@ -246,6 +247,28 @@ fn installation_ids_accept_only_unsigned_numbers_and_decimal_strings() {
     assert_eq!(installation_id(&json!("42")), Some(42));
     for invalid in [json!(-1), json!("not-a-number"), json!({}), json!([])] {
         assert_eq!(installation_id(&invalid), None);
+    }
+}
+
+#[test]
+fn a_handle_names_its_installation_only_through_the_installation_field() {
+    // The reader the lease plane's ownership check and the exchange share:
+    // whatever this answers is both the installation checked and the one
+    // minted for.
+    assert_eq!(
+        installation(&json!({"integration": "github", "installation_id": "42"})),
+        Some(42)
+    );
+    assert_eq!(installation(&json!({"installation_id": 42})), Some(42));
+    for unreadable in [
+        json!({"integration": "github"}),
+        json!({"installation_id": "not-a-number"}),
+        json!({"installation_id": {"id": 42}}),
+        json!({"installation": 42}),
+        json!([42]),
+        json!("42"),
+    ] {
+        assert_eq!(installation(&unreadable), None, "{unreadable}");
     }
 }
 

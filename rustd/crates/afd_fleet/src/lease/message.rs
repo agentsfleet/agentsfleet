@@ -115,7 +115,7 @@ impl Plane {
         }
         let declared = self
             .vault
-            .declared(&standing.workspace_id, &names, &self.connectors)
+            .declared(&standing.workspace_id, &names, self.broker.connectors())
             .await?;
         let scrub = Scrub::of(StaticSecrets::of_map(declared.secrets_map()).values())?;
         Ok(scrub.text(text).into_owned())
