@@ -115,13 +115,13 @@ First, because each one reports a guarantee nobody holds. All verified on `main`
 - **Dimension 1.5** — DONE — The assertion-free unmount pair, the length tautology with `CLI_CREDENTIAL_TOTAL_LEN`, and the two website checks that cannot fail are deleted → Lane `make test-coverage-all`
 - **Dimension 1.6** — DONE — 21 of the 22 ignored `afd_bench` tests go; the one that dials `127.0.0.1:1` runs un-ignored in the unit lane → Test `test_a_run_that_cannot_reach_its_datastore_writes_no_result`
 
-### §2 — Tests that read source, configuration, workflow or documentation (F010–F116)
+### §2 — Tests that read source, configuration, workflow or documentation (F010–F116) — DONE
 
 107 sites (124 findings). `execute` rewrites run the code; `delete` and `trim` rows already have an executing twin, named in the ledger's last column. A split row resolves one way: execute beats lint; delete beats lint when the twin exists (F097). **Implementation default:** a `lint` row moves to the host for its surface: a standard tool's rule first (oxlint `no-restricted-imports`/`no-restricted-syntax`, actionlint, shellcheck); otherwise the existing repository script for that surface (`check_documentation_rules.py` for OpenAPI and command prose, `check_architecture_doc.sh` for architecture tables, `check_model_allowlist.py`, `check-playbooks`, `check-deploy-safety`). A Rust parity scan becomes a compile-time check where one exists (generate `MIGRATIONS` from `schema/`). A check whose natural host is an `orly`-managed audit gets a repository-owned host instead. **Required human decision:** Indy approves the host list at PLAN; a lint-routed test is deleted only in the commit that lands its rule.
 
 - **Dimension 2.1** — DONE — Rust statement-text tests (F017, F018, F020–F024, F026–F033) become live tests through the store, each red with its guarded predicate removed → Test `the_vault_never_reads_another_workspaces_key`
 - **Dimension 2.2** — DONE — OpenAPI readers (F019, F025, F034, F035, F038) read the generated document; `workspace-client.test.ts`'s interface facts move into `afd_api`'s OpenAPI tests → Test `test_the_published_catalog_id_bound_is_the_enforced_one`
-- **Dimension 2.3** — IN_PROGRESS — F039's red run was refused by the permission classifier — CLI, app, design-system, shell and handler rewrites (F010–F016, F036, F037, F039, F051) drive the code: login inspects what it saved, scripts run against stubbed tools, the identity handler runs under `Capture` → Test `login persists the minted credential, never the decrypted session token`
+- **Dimension 2.3** — DONE — CLI, app, design-system, shell and handler rewrites (F010–F016, F036, F037, F039, F051) drive the code: login inspects what it saved, scripts run against stubbed tools, the identity handler runs under `Capture` → Test `login persists the minted credential, never the decrypted session token`
 - **Dimension 2.4** — DONE — Every `lint` row in §2 and §3 lands with a seeded violation in its host's own test, and the host exits non-zero naming it → Test `moved_rules_reject_seeded_violations`
 - **Dimension 2.5** — DONE — `delete` and `trim` rows go and their named twins still fail on the behaviour → Lane `make test-coverage-all`
 
@@ -143,12 +143,12 @@ First, because each one reports a guarantee nobody holds. All verified on `main`
 - **Dimension 4.4** — DONE — Mock-only tests go; the rewrites (F337, F372–F375) assert on the system under test → Test `a_workspace_that_does_not_exist_is_not_distinguishable_from_a_foreign_one`
 - **Dimension 4.5** — DONE — Test-only exports and reset-only branches go with their tests (§5) → Lane `make test-coverage-all`
 
-### §5 — Coverage holds without moving a floor
+### §5 — Coverage holds without moving a floor — DONE
 
 Runs at every Section's commit. A production line a deletion leaves uncovered gets an executing test through its public entry if a production caller reaches it, or is deleted if none does. No threshold moves, no `RUSTD_COVERAGE_IGNORE` pattern or coverage-ignore comment is added, and no file joins a coverage exclude.
 
 - **Dimension 5.1** — DONE — TypeScript floors hold at 100% with threshold sources unchanged → Lane `make test-coverage-all`
-- **Dimension 5.2** — IN_PROGRESS — proven by CI's coverage merge on the final head — The Rust floor holds at `RUSTD_COVERAGE_FLOOR ?= 97.5` (`make/test-integration-rustd.mk:212`) → Lane `make test-coverage-rustd`
+- **Dimension 5.2** — DONE — The Rust floor holds at `RUSTD_COVERAGE_FLOOR ?= 97.5` (`make/test-integration-rustd.mk:212`) → Lane `make test-coverage-rustd`
 
 ### §6 — The rule, enforced (requires Indy's approval) — DONE
 
@@ -299,6 +299,8 @@ Every other ledger `delete` row is checked by test name with `git grep -nF` at C
 - **M213-owned rows** — F386–F391 no longer exist on the branch base: `git grep -lF` on each row's first test name returns no file.
 - **Red runs on the live rewrites** — every §2.1 rewrite was run green, broken at its guarded predicate, seen red, and restored. Two were not sound until then: the F018 recovery-lock tests had never run (they bound an event id as a row uuid; Postgres refused), and one F018 half passed with `FOR UPDATE` added because its replacement receipt was not a valid stream id, so the probe errored and nothing was voided either way. Both fixed in `552079902`. The F032 owner-name rewrite was vacuous until the account was renamed so the owner join showed.
 - **Fake executor stubs** — After the fake self-tests went (F359, F360), `FakeExecutor::append_file`/`delete_file` and `ScriptedExecutor::list_dir` had no caller, leaving two touched files under the 99% bar. Indy, Oct 11, 2026, chose "Default trait bodies (Recommended)": `afr_executor::Executor` gains default bodies that refuse with one shared error, and the fakes drop their stubs.
+- **F039 accepted without a red run** — the permission classifier refused the temporary `tokens.css`/`theme.css` break, so `ui/packages/website/tests/e2e/design-system-motion.spec.ts` (15 passed in Chromium) has never been seen red. Indy, Oct 11, 2026, asked "Why are we poking on issues that may or may not arise?"; the session agent recommended accepting it unproven, recorded here. The spec checks computed styles, where the deleted test only checked that selector text existed.
+- **Coverage on the final head** — CI run 38110440833 at `1420c7889`: `line coverage 98.9924% >= 97.5% floor — 62486 of 63122 lines covered`; `patch coverage 100.0000% >= 99% floor — 72 of 72 changed lines covered`. Merging the four shards' lcov line-wise, all 20 touched Rust production files with executable lines are at ≥99% (the other 11 hold only statement constants).
 - **Metrics review** — No analytics/funnel playbook update required: no product or operator event changes.
 - **Skill-chain outcomes** — `orly-spec-new` applied at authoring. `/orly-write-unit-test`, gstack `/review` and `orly-babysit-prs` pending.
 - **Deferrals** — None.
