@@ -31,7 +31,7 @@ mod parts;
 mod stderr;
 mod sweep;
 
-pub use self::boot::Booted;
+pub use self::boot::BubblewrapBackend;
 pub use self::config::BubblewrapConfig;
 use self::names::{Names, join};
 use self::parts::Parts;

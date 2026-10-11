@@ -1,10 +1,4 @@
-//! A runner host's boot, and the refusal of a host no sandbox can be built on.
-//!
-//! The host is probed first and refused before anything is mounted when it
-//! lacks a mechanism every sandbox needs; then the toolbox release a deploy
-//! staged is admitted, and the engine every lease runs in is built over it.
-//! `agentsfleet-runner run` boots through here and so does the kernel lane,
-//! so the lane proves the boot a host makes.
+//! Bubblewrap's startup requirements, toolbox admission and resource lifetime.
 
 use std::path::PathBuf;
 
@@ -13,56 +7,52 @@ use afd_core::error_code::{Coded as _, Logged};
 
 use super::{BubblewrapConfig, BubblewrapEngine, EVENT_HOST_REFUSED};
 use crate::error::{Result, refused};
-use crate::probe::{HostProbe, ProbePaths, probe};
+use crate::probe::HostProbe;
 use crate::toolbox::{KernelMounter, MountedToolboxes, Release, ToolboxHome, Toolboxes};
+use crate::{Backend, HostPaths, Resources, Started};
 
-/// What a booted host serves leases with. Its fields drop in order, so the
-/// engine goes before the images its sandboxes run on.
+/// The release and entry point used by the shipping sandbox backend.
 #[derive(Debug)]
-pub struct Booted {
-    /// Builds each lease's sandbox.
-    pub engine: BubblewrapEngine,
-    /// What the host's kernel can enforce, as every heartbeat states it.
-    pub probe: HostProbe,
-    /// The toolbox images the engine's sandboxes run on.
-    pub toolboxes: MountedToolboxes<KernelMounter>,
+pub struct BubblewrapBackend<'a, E: EnvSource> {
+    /// Binary started inside each sandbox.
+    pub entry: PathBuf,
+    /// Identity that admits the staged toolbox.
+    pub release: &'a Release,
+    /// Images and mount locations supplied by the storage home.
+    pub home: &'a ToolboxHome,
+    /// Host settings the backend passes into its sandbox.
+    pub env: &'a E,
 }
 
-impl BubblewrapEngine {
-    /// Boots a runner host: probes it under `cgroup_root` and `state_dir`,
-    /// admits the release a deploy staged in `home` as `release` verifies it,
-    /// and builds the engine over that toolbox, with `entry` starting every
-    /// sandbox and the log level `env` names passed inside.
-    ///
-    /// # Errors
-    /// The host lacks a mechanism every sandbox needs, refused before anything
-    /// is mounted; the staged release is refused; or the engine is. A refusal
-    /// past admission unmounts what was admitted.
-    pub fn boot(
-        cgroup_root: PathBuf,
-        state_dir: PathBuf,
-        entry: PathBuf,
-        release: &Release,
-        home: &ToolboxHome,
-        env: &impl EnvSource,
-    ) -> Result<Booted> {
-        let host = probe(&ProbePaths {
-            cgroup_root: cgroup_root.clone(),
-            state_dir: Some(state_dir.clone()),
-            ..ProbePaths::default()
-        });
-        admissible(&host)?;
-        let toolboxes = Toolboxes::open(home.images(), KernelMounter::new(home.mounts()))?;
-        // Admission mounts only what it admits, so a refusal leaves nothing to
-        // unmount; past it, every early return drops the guard, which does.
-        let toolbox = toolboxes.admit_incoming(release, &home.incoming())?;
-        let toolboxes = MountedToolboxes::from(toolboxes);
-        let config = BubblewrapConfig::for_host(toolbox, cgroup_root, state_dir, entry, env);
-        Ok(Booted {
-            engine: Self::new(config, &host)?,
-            probe: host,
-            toolboxes,
+impl<E: EnvSource> Backend for BubblewrapBackend<'_, E> {
+    type Engine = BubblewrapEngine;
+
+    fn validate(&self, host: &HostProbe) -> Result<()> {
+        admissible(host)
+    }
+
+    fn start(self, paths: &HostPaths, host: &HostProbe) -> Result<Started<Self::Engine>> {
+        let toolboxes =
+            Toolboxes::open(self.home.images(), KernelMounter::new(self.home.mounts()))?;
+        let toolbox = toolboxes.admit_incoming(self.release, &self.home.incoming())?;
+        let resources = MountedToolboxes::from(toolboxes);
+        let config = BubblewrapConfig::for_host(
+            toolbox,
+            paths.cgroup_root.clone(),
+            paths.state_dir.clone(),
+            self.entry,
+            self.env,
+        );
+        Ok(Started {
+            engine: BubblewrapEngine::new(config, host)?,
+            resources: Box::new(resources),
         })
+    }
+}
+
+impl Resources for MountedToolboxes<KernelMounter> {
+    fn close(self: Box<Self>) -> Result<()> {
+        (*self).close()
     }
 }
 
@@ -71,7 +61,7 @@ impl BubblewrapEngine {
 /// # Errors
 /// The first mechanism the probe found missing.
 pub(super) fn admissible(host: &HostProbe) -> Result<()> {
-    let Some(missing) = host.missing() else {
+    let Some(missing) = crate::BubblewrapRequirements::missing(host) else {
         return Ok(());
     };
     let error = refused(missing);

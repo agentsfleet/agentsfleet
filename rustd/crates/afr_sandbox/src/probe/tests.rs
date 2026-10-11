@@ -69,7 +69,7 @@ fn test_capability_probe_states_every_mechanism_it_finds() {
             egress: false,
         }
     );
-    assert_eq!(found.missing(), None);
+    assert_eq!(crate::BubblewrapRequirements::missing(&found), None);
     assert!(found.has_required_controllers());
 }
 
@@ -92,7 +92,7 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
     let paths = host(dir.path());
     let missing = |edit: &dyn Fn()| {
         edit();
-        read(&paths, LANDLOCK_ONLY).missing()
+        crate::BubblewrapRequirements::missing(&read(&paths, LANDLOCK_ONLY))
     };
 
     assert_eq!(
@@ -110,14 +110,20 @@ fn test_a_host_missing_a_mechanism_names_the_first_one() {
     );
     fs::write(&paths.filesystems, "\terofs\n").unwrap();
     // Throughput limits are required too: a host without `io` builds nothing.
-    assert_eq!(read(&paths, LANDLOCK_ONLY).missing(), Some("io"));
+    assert_eq!(
+        crate::BubblewrapRequirements::missing(&read(&paths, LANDLOCK_ONLY)),
+        Some("io")
+    );
     assert!(!read(&paths, LANDLOCK_ONLY).has_required_controllers());
     fs::write(
         paths.cgroup_root.join("cgroup.subtree_control"),
         "cpu io memory",
     )
     .unwrap();
-    assert_eq!(read(&paths, LANDLOCK_ONLY).missing(), Some("pids"));
+    assert_eq!(
+        crate::BubblewrapRequirements::missing(&read(&paths, LANDLOCK_ONLY)),
+        Some("pids")
+    );
     assert_eq!(
         missing(&|| fs::set_permissions(&paths.bwrap, fs::Permissions::from_mode(0o644)).unwrap()),
         Some("bubblewrap")
@@ -148,7 +154,10 @@ fn test_unreadable_facts_read_as_absent_mechanisms() {
 
     let found = read(&paths, LANDLOCK_ONLY);
 
-    assert_eq!(found.missing(), Some("landlock"));
+    assert_eq!(
+        crate::BubblewrapRequirements::missing(&found),
+        Some("landlock")
+    );
     assert_eq!(found.cgroup_controllers, [] as [String; 0]);
     assert_eq!(found.kvm, Kvm::Absent);
 }
@@ -172,7 +181,10 @@ fn test_a_kernel_too_old_for_the_ruleset_reads_as_without_landlock() {
     let found = read(&host(dir.path()), NEITHER);
 
     assert!(!found.landlock);
-    assert_eq!(found.missing(), Some("landlock"));
+    assert_eq!(
+        crate::BubblewrapRequirements::missing(&found),
+        Some("landlock")
+    );
 }
 
 #[test]
