@@ -87,10 +87,43 @@ fn run_builds_a_sandbox_unless_a_debug_build_is_told_not_to() {
     #[cfg(debug_assertions)]
     assert_eq!(
         unsandboxed.unwrap(),
-        Command::Run(RunArgs { unsandboxed: true })
+        Command::Run(RunArgs {
+            unsandboxed: true,
+            ..RunArgs::default()
+        })
     );
     #[cfg(not(debug_assertions))]
     assert!(unsandboxed.is_err(), "a release build has no such flag");
+}
+
+#[test]
+fn default_and_explicit_bubblewrap_select_the_shipping_engine() {
+    for args in [
+        &["agentsfleet-runner", "run"][..],
+        &["agentsfleet-runner", "run", "--engine", "bubblewrap"][..],
+    ] {
+        let Command::Run(run) = Cli::try_parse_from(args).unwrap().command else {
+            unreachable!("the run entry");
+        };
+        assert_eq!(run.engine, super::engine::EngineChoice::Bubblewrap);
+    }
+    for refused in ["firecracker", "unsandboxed", "unknown", ""] {
+        let error =
+            Cli::try_parse_from(["agentsfleet-runner", "run", "--engine", refused]).unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
+    }
+    #[cfg(debug_assertions)]
+    {
+        let error = Cli::try_parse_from([
+            "agentsfleet-runner",
+            "run",
+            "--engine",
+            "bubblewrap",
+            "--unsandboxed",
+        ])
+        .unwrap_err();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
 }
 
 /// An unreadable level falls back rather than refusing: a typo in a debugging

@@ -27,6 +27,9 @@ const CANNOT_SANDBOX: &str = "this host cannot build a sandbox";
 const EXIT_TOKEN_REFUSED: u8 = 77;
 /// The status every other failure exits with.
 const EXIT_FAILED: u8 = 1;
+/// The unit's `DelegateSubgroup`: only its parent belongs to this service.
+#[cfg(target_os = "linux")]
+const RUNNER_SUBGROUP: &str = "runner";
 
 /// The engine and the facts `run` serves leases with.
 pub(crate) struct Host {
@@ -34,61 +37,62 @@ pub(crate) struct Host {
     pub(crate) engine: Box<dyn Engine>,
     /// What this host's kernel can enforce, as every heartbeat states it.
     pub(crate) probe: HostProbe,
-    /// The toolbox images the engine's sandboxes run on, unmounted when this
-    /// is dropped, after serving ends; none for an engine that mounts none.
-    pub(crate) mounted: Option<Mounted>,
+    /// Backend resources, released after serving and its runtime have ended.
+    pub(crate) resources: Option<Box<dyn afr_sandbox::Resources>>,
 }
-
-/// The toolbox images a host admitted, unmounted when dropped.
-#[cfg(target_os = "linux")]
-pub(crate) type Mounted = afr_sandbox::MountedToolboxes<afr_sandbox::KernelMounter>;
-/// Off Linux no image is ever mounted, so there is never one to hold.
-#[cfg(not(target_os = "linux"))]
-pub(crate) type Mounted = std::convert::Infallible;
 
 impl Host {
     /// A host leasing with `engine`, on a kernel `probe` describes, its
-    /// sandboxes running on `mounted`. A release build off Linux builds no
+    /// sandboxes using `resources`. A release build off Linux builds no
     /// engine at all, so it has no caller there.
     #[cfg(any(target_os = "linux", debug_assertions))]
-    fn new(engine: impl Engine + 'static, probe: HostProbe, mounted: Option<Mounted>) -> Self {
+    fn new(
+        engine: impl Engine + 'static,
+        probe: HostProbe,
+        resources: Option<Box<dyn afr_sandbox::Resources>>,
+    ) -> Self {
         Self {
             engine: Box::new(engine),
             probe,
-            mounted,
+            resources,
         }
     }
 
     /// The bubblewrap engine this host builds sandboxes with, booted over the
-    /// release a deploy staged (`afr_sandbox`'s `BubblewrapEngine::boot`).
+    /// release a deploy staged (`afr_sandbox::boot` with `BubblewrapBackend`).
     ///
     /// # Errors
     /// The reason it cannot, already logged, as the exit status.
     #[cfg(target_os = "linux")]
-    pub(crate) fn bubblewrap(home: &StorageHome) -> Result<Self, ExitCode> {
+    pub(crate) fn production(home: &StorageHome) -> Result<Self, ExitCode> {
         use std::fs::File;
         use std::io::BufReader;
         use std::path::Path;
 
         use afd_core::env::ProcessEnv;
         use afr_sandbox::{
-            BubblewrapEngine, CGROUP_ROOT, Release, SELF_CGROUP_PATH, delegated_root,
+            BubblewrapBackend, CGROUP_ROOT, HostPaths, Release, SELF_CGROUP_PATH, boot,
+            delegated_root,
         };
 
         let own = File::open(SELF_CGROUP_PATH).map_err(|error| io_failed(&error))?;
-        let cgroup_root = delegated_root(BufReader::new(own), Path::new(CGROUP_ROOT)).or_exit()?;
+        let cgroup_root =
+            delegated_root(BufReader::new(own), Path::new(CGROUP_ROOT), RUNNER_SUBGROUP)
+                .or_exit()?;
         let release = Release::signed_by_release(env!("CARGO_PKG_VERSION")).or_exit()?;
         let entry = std::env::current_exe().map_err(|error| io_failed(&error))?;
-        let host = BubblewrapEngine::boot(
-            cgroup_root,
-            home.sandboxes(),
+        let toolbox = home.toolbox();
+        let backend = BubblewrapBackend {
             entry,
-            &release,
-            &home.toolbox(),
-            &ProcessEnv,
-        )
-        .or_exit()?;
-        Ok(Self::new(host.engine, host.probe, Some(host.toolboxes)))
+            release: &release,
+            home: &toolbox,
+            env: &ProcessEnv,
+        };
+        let paths = HostPaths {
+            cgroup_root,
+            state_dir: home.sandboxes(),
+        };
+        boot(backend, &paths).map(Self::from).or_exit()
     }
 
     /// No bubblewrap engine exists off Linux.
@@ -97,10 +101,11 @@ impl Host {
     /// Always: the first mechanism the host's probe found missing, already
     /// logged, as the exit status.
     #[cfg(not(target_os = "linux"))]
-    pub(crate) fn bubblewrap(_home: &StorageHome) -> Result<Self, ExitCode> {
+    pub(crate) fn production(_home: &StorageHome) -> Result<Self, ExitCode> {
         let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
         Err(cannot_sandbox(
-            probe.missing().unwrap_or(afr_sandbox::MECHANISM_BUBBLEWRAP),
+            afr_sandbox::BubblewrapRequirements::missing(&probe)
+                .unwrap_or(afr_sandbox::MECHANISM_BUBBLEWRAP),
         ))
     }
 
@@ -115,6 +120,17 @@ impl Host {
         let engine = afr_sandbox::UnsandboxedEngine::new(home.sandboxes()).or_exit()?;
         let probe = afr_sandbox::probe(&afr_sandbox::ProbePaths::default());
         Ok(Self::new(engine, probe, None))
+    }
+}
+
+#[cfg(any(target_os = "linux", debug_assertions))]
+impl<E: Engine + 'static> From<afr_sandbox::Booted<E>> for Host {
+    fn from(value: afr_sandbox::Booted<E>) -> Self {
+        Self::new(
+            value.started.engine,
+            value.probe,
+            Some(value.started.resources),
+        )
     }
 }
 
