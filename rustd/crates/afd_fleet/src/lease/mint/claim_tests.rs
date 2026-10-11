@@ -12,7 +12,9 @@
 
 use afd_connector::Provider;
 use afd_core::error_code::{self, ErrorCode};
-use afd_credential::secrets::connector::{Connectors as _, Exchange, Registry};
+use afd_credential::secrets::connector::{
+    Connector as _, Connectors as _, Exchange, Registry, Supply,
+};
 use serde_json::{Value, json};
 
 use super::{Claim, claim};
@@ -22,7 +24,7 @@ const SHIPPED: Registry = Registry::SHIPPED;
 
 /// The code `handle`, opened under `requested`, is refused with.
 fn refused(requested: &str, handle: &Value) -> ErrorCode {
-    claim(SHIPPED, requested, handle)
+    claim(&SHIPPED, requested, handle)
         .expect_err("the handle must be refused")
         .code()
 }
@@ -48,6 +50,23 @@ fn every_on_demand_connector_is_a_provider_the_routing_table_knows() {
 }
 
 #[test]
+fn every_connector_that_mints_names_a_provider() {
+    // The other direction, walked from the registry: an on-demand connector
+    // added with no `Provider` would have its installation or refresh claim
+    // refused at every mint, failing closed with nothing saying why.
+    for connector in SHIPPED.declared() {
+        if connector.supply() == Supply::OnDemand {
+            assert_eq!(
+                Provider::parse(connector.name()).map(Provider::id),
+                Some(connector.name()),
+                "{}",
+                connector.name()
+            );
+        }
+    }
+}
+
+#[test]
 fn a_github_handle_under_its_own_name_claims_its_installation() {
     // Every spelling the exchange parses to 42 claims 42: the check and the
     // mint read one number, so a leading zero or a sign cannot make them
@@ -56,7 +75,7 @@ fn a_github_handle_under_its_own_name_claims_its_installation() {
         let handle = json!({"integration": "github", "installation_id": spelled});
 
         assert_eq!(
-            claim(SHIPPED, "github", &handle).expect("a connected handle reads"),
+            claim(&SHIPPED, "github", &handle).expect("a connected handle reads"),
             Claim::Installation {
                 provider: Provider::GitHub,
                 id: 42
@@ -141,7 +160,7 @@ fn a_refresh_posts_only_where_the_connect_flow_points_it() {
         ),
     ] {
         assert_eq!(
-            claim(SHIPPED, requested, &handle).expect("the connect flow's own shape"),
+            claim(&SHIPPED, requested, &handle).expect("the connect flow's own shape"),
             Claim::Unowned,
             "{handle}"
         );
@@ -192,7 +211,7 @@ fn handles_with_nothing_to_own_pass_through_to_the_broker() {
         ("github", json!(["github"])),
     ] {
         assert_eq!(
-            claim(SHIPPED, requested, &handle).expect("nothing to refuse"),
+            claim(&SHIPPED, requested, &handle).expect("nothing to refuse"),
             Claim::Unowned,
             "{requested}: {handle}"
         );

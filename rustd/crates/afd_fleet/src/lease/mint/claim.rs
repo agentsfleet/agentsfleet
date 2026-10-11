@@ -18,13 +18,15 @@
 //!   to. The exchange holds that to Zoho's accounts servers; this holds it to
 //!   Zoho, so no other provider's secret is posted there either.
 //!
+//! The connector is resolved through the broker's own set, never a second
+//! registry: a connector only one of two sets carried would mint unchecked.
 //! The provider vocabulary comes from [`Provider`], which owns the routing
-//! table's `provider` column; the connector registry's names are held to it by
-//! a test rather than trusted to match.
+//! table's `provider` column; the connector registry's names are held to it in
+//! both directions by a test rather than trusted to match.
 
 use afd_connector::Provider;
 use afd_credential::credential::{github, oauth};
-use afd_credential::secrets::connector::{Connectors as _, Exchange, FIELD_INTEGRATION, Registry};
+use afd_credential::secrets::connector::{Connectors, Exchange, FIELD_INTEGRATION};
 use serde_json::Value;
 
 use crate::error::{
@@ -55,7 +57,7 @@ pub(super) enum Claim {
 /// Refuses a GitHub handle that names no readable installation as a reconnect,
 /// the same answer the exchange would give it, and a refresh handle steering
 /// its post anywhere the connect flow does not write as a reconnect too.
-pub(super) fn claim(connectors: Registry, requested: &str, handle: &Value) -> Result<Claim> {
+pub(super) fn claim(connectors: &dyn Connectors, requested: &str, handle: &Value) -> Result<Claim> {
     let Some(connector) = handle
         .get(FIELD_INTEGRATION)
         .and_then(Value::as_str)

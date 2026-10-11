@@ -59,7 +59,7 @@ use crate::lease::pull::Plane;
 use crate::lease::scope::MintScope;
 use afd_credential::credential::broker::Ask;
 use afd_credential::credential::outcome::{Minted, Outcome};
-use afd_credential::secrets::connector::{Connector, Connectors as _, Exchange, Supply};
+use afd_credential::secrets::connector::{Connector, Exchange, Supply};
 use afd_credential::vault::KeyRef;
 
 /// The event a rotation write-back is logged under.
@@ -91,7 +91,7 @@ impl Plane {
         // this connector is gated at all, and which family's refusal copy the
         // runner reads. A name comparison at each site would be two places for
         // the connector set to be described.
-        let connector = self.connectors.resolve(&request.integration);
+        let connector = self.broker.connectors().resolve(&request.integration);
 
         self.admit_mint(&scope, &request.integration, connector)
             .await?;
@@ -183,7 +183,7 @@ impl Plane {
         integration: &str,
         handle: &Value,
     ) -> Result<()> {
-        let held = match claim(self.connectors, integration, handle) {
+        let held = match claim(self.broker.connectors(), integration, handle) {
             Ok(Claim::Unowned) => true,
             Ok(Claim::Installation { provider, id }) => {
                 self.leases
