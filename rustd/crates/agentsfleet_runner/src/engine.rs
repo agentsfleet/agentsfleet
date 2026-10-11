@@ -1,6 +1,5 @@
 //! The operator's engine choice; each choice constructs its own backend.
 
-use std::fmt;
 use std::process::ExitCode;
 
 use afr_supervisor::StorageHome;
@@ -12,14 +11,6 @@ use crate::host::Host;
 pub(crate) enum EngineChoice {
     #[default]
     Bubblewrap,
-}
-
-impl fmt::Display for EngineChoice {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Bubblewrap => "bubblewrap",
-        })
-    }
 }
 
 impl EngineChoice {
