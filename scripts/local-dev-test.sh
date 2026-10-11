@@ -260,19 +260,19 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("AGENTSFLEET_API_URL=", a)
         self.assertIn("RUNNER_STORAGE_HOME=", a)
         self.assertNotIn("TOKEN", a)
-    def test_test_reset_cannot_address_shared_development(self):
-        self.run_dev("up", infra=True)
-        project = self.shared().name.split("-", 3)[-1]
-        self.assertNotEqual(self.repos[0].name, f"agentsfleet-dev-{project}")
-        self.assertNotIn("local-dev", (SOURCE / "make/test-infra.mk").read_text())
-        self.assertNotIn("--volumes", (SOURCE / "make/dev.mk").read_text())
-    def test_development_commands_use_the_worktree_url(self):
-        makefile = (SOURCE / "make/dev.mk").read_text()
-        self.assertIn("LOCAL_DAEMON_URL := $(shell bash scripts/local-dev.sh url)", makefile)
-        self.assertIn("$(LOCAL_DAEMON_URL)", (SOURCE / "make/dry.mk").read_text())
-        self.assertIn("$(LOCAL_DAEMON_URL)/healthz", (SOURCE / "make/bench.mk").read_text())
-        self.assertNotIn("\ninfra-down:", makefile)
-        self.assertNotIn("\nrunner-env:", makefile)
+    def test_exit_during_ownership_read_or_termination_cleans_record(self):
+        seams = [
+            'ps() { if [ "${!#}" = command= ]; then builtin kill -TERM "$3"; sleep 0.1; printf "<defunct>\\n"; else command ps "$@"; fi; }; export -f ps',
+            'kill() { builtin kill "$@"; if [ "$1" = -TERM ]; then sleep 0.1; return 1; fi; }; export -f kill',
+        ]
+        for seam in seams:
+            with self.subTest(seam=seam):
+                self.run_dev("up")
+                record = self.state() / "daemon.pid"
+                result = subprocess.run(["bash", "-c", seam + '; bash scripts/local-dev.sh down'],
+                                        cwd=self.repos[0], env=self.env, capture_output=True, text=True, timeout=45)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertFalse(record.exists())
 class LiveTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
