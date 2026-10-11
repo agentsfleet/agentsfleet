@@ -7,7 +7,9 @@ DEV_INFRA_SLOTS=500
 DEV_INFRA_STRIDE=16
 DEV_DAEMON_PORT_START=30000
 DEV_DAEMON_PORT_COUNT=9000
-DEV_LOCK_ATTEMPTS=150
+DEV_INFRA_LOCK_ATTEMPTS=1800
+DEV_BUILD_LOCK_ATTEMPTS=6000
+DEV_PROCESS_LOCK_ATTEMPTS=9000
 DEV_LOCK_INTERVAL=0.2
 DEV_READY_SECONDS=90
 DEV_STOP_SECONDS=30
@@ -62,10 +64,14 @@ dev_marker() {
 
 dev_lock() {
   DEV_LOCK="$1"
-  local attempt=0
+  local attempt=0 attempts=$DEV_PROCESS_LOCK_ATTEMPTS
+  case "$DEV_LOCK" in
+    "$DEV_SHARED/infrastructure.lock") attempts=$DEV_INFRA_LOCK_ATTEMPTS ;;
+    "$DEV_SHARED/build.lock") attempts=$DEV_BUILD_LOCK_ATTEMPTS ;;
+  esac
   until mkdir "$DEV_LOCK" 2>/dev/null; do
     attempt=$((attempt + 1))
-    [ "$attempt" -lt "$DEV_LOCK_ATTEMPTS" ] || dev_fail "lock wait expired: $DEV_LOCK"
+    [ "$attempt" -lt "$attempts" ] || dev_fail "lock wait expired: $DEV_LOCK"
     sleep "$DEV_LOCK_INTERVAL"
   done
   trap 'rmdir "$DEV_LOCK"' EXIT
@@ -185,7 +191,7 @@ dev_load_environment() {
   export DATABASE_URL_API="postgresql://agentsfleet:agentsfleet@127.0.0.1:$AGENTSFLEET_PG_HOST_PORT/$DEV_DB?sslmode=disable"
   export DATABASE_URL_MIGRATOR="$DATABASE_URL_API"
   export DRAGONFLY_URL="redis://:agentsfleet@127.0.0.1:$AGENTSFLEET_DRAGONFLY_BASE_PORT"
-  export AGENTSFLEET_DEV_NAMESPACE="$DEV_ID" MIGRATE_ON_START=1
+  export AGENTSFLEET_DEV_NAMESPACE="$DEV_ID"
   export API_URL
   API_URL="$(dev_api_origin)"
   export QSTASH_URL="http://127.0.0.1:$AGENTSFLEET_QSTASH_HOST_PORT/v2"
@@ -256,6 +262,7 @@ dev_up() {
   dev_infrastructure database
   dev_load_environment
   dev_build
+  "$DEV_BINARY" migrate
   dev_stop
   dev_port_available
   dev_launch

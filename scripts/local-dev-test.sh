@@ -27,7 +27,7 @@ action = next(x for x in a if x in ["ps", "up", "down", "exec"])
 with (d.parent / "docker-calls").open("a") as f: f.write(action + "\\n")
 if action == "up":
     if os.getenv("FAIL_DOCKER"): sys.exit(42)
-    time.sleep(0.1)
+    time.sleep(float(os.getenv("FAKE_DOCKER_DELAY", "0.1")))
     state.write_text("ready")
 elif action == "ps" and state.exists():
     for name in ["postgres", "dragonfly", "mailpit", "qstash"]:
@@ -41,10 +41,11 @@ import os, sys
 print(os.getcwd() if "--show-toplevel" in sys.argv else os.environ["FAKE_COMMON"])
 '''
 CARGO = '''#!/usr/bin/env python3
-import os, pathlib, shutil, sys
+import os, pathlib, shutil, sys, time
 target = pathlib.Path(os.environ["CARGO_TARGET_DIR"]) / "debug/agentsfleetd"
 target.parent.mkdir(parents=True, exist_ok=True)
 if os.getenv("FAIL_BUILD"): sys.exit(42)
+time.sleep(float(os.getenv("FAKE_BUILD_DELAY", "0")))
 record = target.parents[2] / "runtime-env.json"
 record.write_text(__import__("json").dumps({key: os.getenv(key) for key in [
     "DATABASE_URL_API", "DATABASE_URL_MIGRATOR", "DRAGONFLY_URL", "AGENTSFLEET_DEV_NAMESPACE", "API_URL"]}))
@@ -67,15 +68,14 @@ class LauncherTests(unittest.TestCase):
         cls.compilers = tempfile.TemporaryDirectory(prefix="dev-native-")
         cls.native = Path(cls.compilers.name) / "native"
         cls.failed, cls.unbound = [Path(cls.compilers.name) / name for name in ["failed", "unbound"]]
-        server = '#include <unistd.h>\n#include <stdlib.h>\n#include <arpa/inet.h>\nint main(int c,char**v){int s=socket(AF_INET,SOCK_STREAM,0),yes=1;setsockopt(s,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));struct sockaddr_in a={.sin_family=AF_INET,.sin_port=htons(atoi(v[3]))};if(bind(s,(void*)&a,sizeof(a))||listen(s,1))return 42;for(;;)pause();}'
-        for path, body in [(cls.native, server), (cls.failed, 'int main(void){return 42;}'),
-                           (cls.unbound, '#include <unistd.h>\nint main(void){sleep(1);return 42;}')]:
-            subprocess.run(["cc", "-x", "c", "-", "-o", str(path)], input=body, text=True, check=True)
-
+        prefix = '#include <stdio.h>\n#include <string.h>\n#include <stdlib.h>\nint main(int c,char**v){FILE*f=fopen(getenv("FAKE_EVENTS"),"a");fprintf(f,"%s\\n",v[1]);fclose(f);if(!strcmp(v[1],"migrate"))return getenv("FAIL_MIGRATION")?42:0;'
+        server = '#include <unistd.h>\n#include <stdlib.h>\n#include <arpa/inet.h>\nint s=socket(AF_INET,SOCK_STREAM,0),yes=1;setsockopt(s,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));struct sockaddr_in a={.sin_family=AF_INET,.sin_port=htons(atoi(v[3]))};if(bind(s,(void*)&a,sizeof(a))||listen(s,1))return 42;for(;;)pause();}'
+        for path, body in [(cls.native, server), (cls.failed, 'return 42;}'),
+                           (cls.unbound, '#include <unistd.h>\nsleep(1);return 42;}')]:
+            subprocess.run(["cc", "-x", "c", "-", "-o", str(path)], input=body.replace('int s=socket', prefix + 'int s=socket') if path == cls.native else '#include <unistd.h>\n' + prefix + body.replace('#include <unistd.h>\n', ''), text=True, check=True)
     @classmethod
     def tearDownClass(cls):
         cls.compilers.cleanup()
-
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="dev-launcher-")
         self.base = Path(self.tmp.name)
@@ -89,6 +89,8 @@ class LauncherTests(unittest.TestCase):
             (repo / "rustd").mkdir()
             for name in ["local-dev.sh", "dragonfly-cluster.sh"]:
                 shutil.copyfile(SOURCE / "scripts" / name, repo / "scripts" / name)
+            launcher = repo / "scripts/local-dev.sh"
+            launcher.write_text(launcher.read_text().replace("DEV_INFRA_LOCK_ATTEMPTS=1800", "DEV_INFRA_LOCK_ATTEMPTS=10").replace("DEV_BUILD_LOCK_ATTEMPTS=6000", "DEV_BUILD_LOCK_ATTEMPTS=10").replace("DEV_PROCESS_LOCK_ATTEMPTS=9000", "DEV_PROCESS_LOCK_ATTEMPTS=10"))
             shutil.copyfile(SOURCE / "compose.dev-infra.yml", repo / "compose.dev-infra.yml")
         for name, body in [("docker", DOCKER), ("git", GIT), ("cargo", CARGO), ("curl", CURL)]:
             (self.bin / name).write_text(body)
@@ -97,10 +99,9 @@ class LauncherTests(unittest.TestCase):
             (self.bin / name).write_text(f'#!/bin/sh\nprintf "%s\\n" "{output}"\n')
             (self.bin / name).chmod(0o700)
         self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", TMPDIR=str(self.base),
-                        FAKE_COMMON=str(self.common), FAKE_NATIVE=str(self.native), FAKE_BOOT_FAILURE=str(self.failed), FAKE_UNBOUND=str(self.unbound),
+                        FAKE_EVENTS=str(self.base / "events"), FAKE_COMMON=str(self.common), FAKE_NATIVE=str(self.native), FAKE_BOOT_FAILURE=str(self.failed), FAKE_UNBOUND=str(self.unbound),
                         AUTH_SESSION_CODE_PEPPER="test-pepper", ENCRYPTION_MASTER_KEY="test-key",
                         AGENTSFLEET_RUSTD_ENV_FILE=str(self.base / "absent"))
-
     def tearDown(self):
         for record in self.base.glob("agentsfleet-dev-*/worktrees/*/daemon.pid"):
             raw = record.read_text().splitlines()[0]
@@ -111,7 +112,6 @@ class LauncherTests(unittest.TestCase):
             if str(record.parent / "build/debug/agentsfleetd") in command:
                 os.kill(pid, signal.SIGTERM)
         self.tmp.cleanup()
-
     def run_dev(self, action, repo=0, env=None, expected=0, infra=False):
         if infra:
             action = "infra-" + action
@@ -122,19 +122,15 @@ class LauncherTests(unittest.TestCase):
         else:
             self.assertNotEqual(result.returncode, 0, result.stdout)
         return result
-
     def shared(self):
         return next(self.base.glob("agentsfleet-dev-*"))
-
     def state(self, repo=0):
         return self.shared() / "worktrees" / self.run_dev("identity", repo).stdout.strip()
-
     def test_worktree_identity_is_stable_and_distinct(self):
         a = self.run_dev("identity").stdout
         self.assertEqual(a, self.run_dev("identity").stdout)
         self.assertNotEqual(a, self.run_dev("identity", 1).stdout)
         self.assertNotEqual(self.run_dev("url").stdout, self.run_dev("url", 1).stdout)
-
     def test_concurrent_start_reuses_one_infrastructure_stack(self):
         with concurrent.futures.ThreadPoolExecutor() as pool:
             list(pool.map(lambda i: self.run_dev("up", i, infra=True), [0, 1]))
@@ -143,14 +139,19 @@ class LauncherTests(unittest.TestCase):
         (self.repos[1] / "compose.dev-infra.yml").write_text("branch drift")
         self.run_dev("up", 1, infra=True)
         self.assertEqual((self.shared() / "infrastructure/compose.yml").read_bytes(), snapshot)
-
     def test_infrastructure_refusal_stops_application_start(self):
         self.run_dev("up", env=dict(self.env, FAIL_DOCKER="1"), expected=1)
         self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
         self.run_dev("up", infra=True)
         self.run_dev("up", env=dict(self.env, FAIL_HEALTH="1"), expected=1)
         self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
-
+    def test_concurrent_cold_starts_wait_for_infrastructure_and_build_owners(self):
+        env = dict(self.env, FAKE_DOCKER_DELAY="1", FAKE_BUILD_DELAY="1")
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            list(pool.map(lambda i: self.run_dev("up", i, env=env), [0, 1]))
+        self.assertEqual((self.shared() / "docker-calls").read_text().splitlines().count("up"), 1)
+        for i in [0, 1]:
+            os.kill(int((self.state(i) / "daemon.pid").read_text().splitlines()[0]), 0)
     def test_development_down_preserves_sibling_processes(self):
         self.run_dev("up")
         self.run_dev("up", 1)
@@ -161,7 +162,6 @@ class LauncherTests(unittest.TestCase):
         self.assertNotIn("down", (self.shared() / "docker-calls").read_text().splitlines())
         self.run_dev("down", 1)
         self.run_dev("down", 1)
-
     def test_development_refuses_unsafe_process_operations(self):
         foreign = subprocess.Popen(["sleep", "60"])
         try:
@@ -177,25 +177,34 @@ class LauncherTests(unittest.TestCase):
         finally:
             foreign.terminate()
             foreign.wait()
-
+    def test_migrations_precede_serving_and_refusal_preserves_running_daemons(self):
+        self.run_dev("up")
+        self.assertEqual((self.base / "events").read_text().splitlines(), ["migrate", "serve"])
+        self.run_dev("up", 1)
+        records = [(self.state(i) / "daemon.pid").read_text() for i in [0, 1]]
+        failed = self.run_dev("up", env=dict(self.env, FAIL_MIGRATION="1"), expected=1)
+        self.assertNotIn("API:", failed.stdout)
+        self.assertEqual((self.base / "events").read_text().splitlines(), ["migrate", "serve", "migrate", "serve", "migrate"])
+        for i, record in enumerate(records):
+            self.assertEqual((self.state(i) / "daemon.pid").read_text(), record)
+            os.kill(int(record.splitlines()[0]), 0)
+        self.run_dev("up")
+        self.assertEqual((self.base / "events").read_text().splitlines()[-2:], ["migrate", "serve"])
     def test_missing_configuration_refuses_before_starting_a_daemon(self):
         self.run_dev("up", env=dict(self.env, AUTH_SESSION_CODE_PEPPER=""), expected=1)
         self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
-
     def test_occupied_daemon_port_refuses_before_starting_infrastructure(self):
         port = int(self.run_dev("url").stdout.strip().rsplit(":", 1)[1])
         with socket.socket() as occupied:
             occupied.bind(("0.0.0.0", port))
             self.run_dev("up", expected=1)
         self.assertFalse(list(self.base.glob("agentsfleet-dev-*/docker-calls")))
-
     def test_corrupt_process_record_cannot_signal_another_process(self):
         self.run_dev("up", infra=True)
         record = self.state() / "daemon.pid"
         record.write_text("unsafe\n")
         self.run_dev("down", expected=1)
         self.assertTrue(record.exists())
-
     def test_machine_environment_cannot_replace_shared_datastore_addresses(self):
         machine = self.base / "machine.env"
         machine.write_text('AGENTSFLEET_PG_HOST_PORT=1\nDRAGONFLY_URL=redis://wrong:1\n')
@@ -206,25 +215,20 @@ class LauncherTests(unittest.TestCase):
         self.assertNotIn("wrong", config["DRAGONFLY_URL"])
         self.assertEqual(config["AGENTSFLEET_DEV_NAMESPACE"], self.run_dev("identity").stdout.strip())
         self.assertEqual(config["API_URL"], self.run_dev("url").stdout.strip().replace("127.0.0.1", "192.0.2.10"))
-
     def test_signing_key_refusal_never_launches_a_daemon(self):
         self.run_dev("up", env=dict(self.env, FAIL_KEYS="1"), expected=1)
         self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
-
     def test_boot_failure_never_reports_a_ready_daemon(self):
         result = self.run_dev("up", env=dict(self.env, FAIL_BOOT="1"), expected=1)
         self.assertNotIn("API:", result.stdout)
-
     def test_an_unrelated_ready_response_cannot_report_an_unbound_child(self):
         result = self.run_dev("up", env=dict(self.env, FAIL_LISTENER="1"), expected=1)
         self.assertNotIn("API:", result.stdout)
-
     def test_repository_identity_collision_refuses_reuse(self):
         self.run_dev("up", infra=True)
         (self.shared() / "repository").write_text("foreign repository")
         result = self.run_dev("up", infra=True, expected=1)
         self.assertIn("identifier collision", result.stderr)
-
     def test_held_lock_has_a_bounded_refusal(self):
         self.run_dev("up", infra=True)
         lock = self.shared() / "infrastructure.lock"
@@ -235,14 +239,12 @@ class LauncherTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 40)
         self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
         self.assertTrue(lock.exists())
-
     def test_incomplete_snapshot_refuses_application_start(self):
         self.run_dev("up", infra=True)
         (self.shared() / "infrastructure/ports.env").unlink()
         result = self.run_dev("up", expected=1)
         self.assertIn("incomplete infrastructure snapshot", result.stderr)
         self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
-
     def test_runner_environment_is_worktree_scoped(self):
         a = self.run_dev("runner-env", env=dict(self.env, AGENTSFLEET_API_URL=self.run_dev("url").stdout.strip())).stdout
         b = self.run_dev("runner-env", 1, env=dict(self.env, AGENTSFLEET_API_URL=self.run_dev("url", 1).stdout.strip())).stdout
@@ -250,14 +252,12 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("AGENTSFLEET_API_URL=", a)
         self.assertIn("RUNNER_STORAGE_HOME=", a)
         self.assertNotIn("TOKEN", a)
-
     def test_test_reset_cannot_address_shared_development(self):
         self.run_dev("up", infra=True)
         project = self.shared().name.split("-", 3)[-1]
         self.assertNotEqual(self.repos[0].name, f"agentsfleet-dev-{project}")
         self.assertNotIn("local-dev", (SOURCE / "make/test-infra.mk").read_text())
         self.assertNotIn("--volumes", (SOURCE / "make/dev.mk").read_text())
-
     def test_development_commands_use_the_worktree_url(self):
         makefile = (SOURCE / "make/dev.mk").read_text()
         self.assertIn("LOCAL_DAEMON_URL := $(shell bash scripts/local-dev.sh url)", makefile)
@@ -279,36 +279,29 @@ class LiveTests(unittest.TestCase):
             cls.repos.append(repo)
             if (repo / "scripts/local-dev.sh").read_bytes() != (SOURCE / "scripts/local-dev.sh").read_bytes():
                 raise RuntimeError("commit the launcher before its live worktree proof")
-
     @classmethod
     def cleanup(cls):
         for repo in cls.repos:
             subprocess.run(["make", "down"], cwd=repo, env=cls.env, check=False)
             subprocess.run(["git", "worktree", "remove", str(repo)], cwd=SOURCE, check=True)
         cls.tmp.cleanup()
-
     def run_make(self, action, index):
         subprocess.run(["make", action], cwd=self.repos[index], env=self.env, check=True)
-
     def context(self, index):
         command = 'source scripts/local-dev.sh; printf "%s\\n" "$DEV_PROJECT" "$DEV_DB" "$DEV_STATE" "$DEV_URL" "$(dev_api_origin)"'
         values = subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env, text=True).splitlines()
         return dict(zip(["project", "database", "state", "url", "origin"], values))
-
     def sql(self, index, query):
         command = 'source scripts/local-dev.sh; dev_compose exec -T postgres psql -U agentsfleet -d "$DEV_DB" -v ON_ERROR_STOP=1 -At'
         return subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env,
                                        input=query, text=True).strip()
-
     def services(self, index):
         command = 'source scripts/local-dev.sh; dev_compose ps --format json'
         result = subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env, text=True)
         return {item["Service"]: item["ID"] for item in map(json.loads, result.splitlines())}
-
     def ready(self, context):
         with urllib.request.urlopen(context["url"] + "/readyz", timeout=5) as response:
             self.assertEqual(response.status, 200)
-
     def test_two_worktrees_share_infrastructure_end_to_end(self):
         self.run_make("up", 0)
         original = self.services(0)

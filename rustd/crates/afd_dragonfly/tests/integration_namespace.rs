@@ -87,6 +87,10 @@ async fn namespaces_isolate_values_sessions_and_scans() {
         a.scan_keys("*", 1).await.expect("scoped scan"),
         vec!["counter"]
     );
+    assert_session_isolation(a, b).await;
+}
+
+async fn assert_session_isolation(a: Dragonfly, b: Dragonfly) {
     let sa = SessionStore::new(a);
     let sb = SessionStore::new(b);
     sa.put(&session()).await.expect("session a");
