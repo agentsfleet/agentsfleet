@@ -1,42 +1,41 @@
-// Contract tests for composeEnv — the chokepoint that makes spawned-CLI
-// acceptance tests hermetic. The acceptance fixture spawns the real CLI with
-// a fully-composed child env (it never inherits process.env), so a regression
-// here silently re-breaks the whole suite: dropping the telemetry-off default
-// reintroduces the ~5s PostHog-flush flake; leaking parent env reintroduces
-// token cross-contamination. These tests fail loudly when that happens.
+// composeEnv builds the whole environment of every CLI the acceptance specs
+// spawn. Its telemetry-off default is what keeps a spawned CLI from waiting
+// ~5s on a PostHog flush when the runner is offline; the CLI's own consent
+// resolver decides here whether that default still turns telemetry off.
 
-import { describe, expect, test } from "bun:test";
+import { rmSync } from "node:fs";
+import { afterEach, describe, expect, test } from "bun:test";
 
+import { STATE_DIR_ENV } from "../src/constants/env.ts";
+import { getEffectiveConsent } from "../src/services/telemetry/consent.ts";
 import { composeEnv } from "./acceptance/fixtures/cli.js";
 
-describe("composeEnv — hermetic spawn env", () => {
-  test("should default AGENTSFLEET_TELEMETRY_DISABLED=1 so spawned CLIs never flush telemetry", () => {
-    const env = composeEnv({ NO_COLOR: "1" });
-    expect(env.AGENTSFLEET_TELEMETRY_DISABLED).toBe("1");
-    expect(env.NO_COLOR).toBe("1");
+// Read only as a dotted property in src/, so src/constants/env.ts has no
+// constant for it (see the note at the top of that file).
+const TELEMETRY_DISABLED_ENV = "AGENTSFLEET_TELEMETRY_DISABLED";
+const TELEMETRY_ENABLED = "0";
+
+const stateDirs: string[] = [];
+
+function spawnEnv(fields: Parameters<typeof composeEnv>[0]): NodeJS.ProcessEnv {
+  const env = composeEnv(fields);
+  const stateDir = env[STATE_DIR_ENV];
+  if (stateDir) stateDirs.push(stateDir);
+  return env;
+}
+
+afterEach(() => {
+  for (const dir of stateDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("composeEnv's telemetry default", () => {
+  test("a spawned CLI resolves telemetry consent as denied when the caller says nothing", () => {
+    expect(getEffectiveConsent(null, spawnEnv({}))).toBe("denied");
   });
 
-  test("should forward PATH and HOME from the parent so the spawned binary resolves", () => {
-    const env = composeEnv({});
-    expect(env.PATH).toBe(process.env.PATH);
-    expect(env.HOME).toBe(process.env.HOME);
-  });
-
-  test("should let a caller override the telemetry default by listing the key in fields", () => {
-    const env = composeEnv({ AGENTSFLEET_TELEMETRY_DISABLED: "0" });
-    expect(env.AGENTSFLEET_TELEMETRY_DISABLED).toBe("0");
-  });
-
-  test("should omit null and undefined fields so a parent AGENTSFLEET_API_KEY never leaks into a spawn", () => {
-    const env = composeEnv({ AGENTSFLEET_API_KEY: undefined, EXTRA: null, KEEP: "yes" });
-    expect("AGENTSFLEET_API_KEY" in env).toBe(false);
-    expect("EXTRA" in env).toBe(false);
-    expect(env.KEEP).toBe("yes");
-  });
-
-  test("should coerce non-string field values to strings (spawn env requires strings)", () => {
-    const env = composeEnv({ COUNT: 5, FLAG: true });
-    expect(env.COUNT).toBe("5");
-    expect(env.FLAG).toBe("true");
+  test("a caller that lists the telemetry key gets its own value, and consent follows it", () => {
+    const env = spawnEnv({ [TELEMETRY_DISABLED_ENV]: TELEMETRY_ENABLED });
+    expect(env[TELEMETRY_DISABLED_ENV]).toBe(TELEMETRY_ENABLED);
+    expect(getEffectiveConsent(null, env)).toBe("granted");
   });
 });

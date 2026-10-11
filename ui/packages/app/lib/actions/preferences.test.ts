@@ -1,74 +1,104 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OnboardingStatus } from "@/lib/api/onboarding";
+import { PREFERENCE_KEY } from "@/lib/api/preferences-types";
+import { ERROR_CODE } from "@/lib/errors";
 
-// withToken normally resolves the Clerk token; here it just hands the fn a stub
-// token and wraps the result, so the real action bodies run under test.
-vi.mock("@/lib/actions/with-token", () => ({
-  withToken: async (fn: (t: string) => Promise<unknown>) => {
-    try {
-      return { ok: true, data: await fn("tok") };
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
-    }
-  },
+// Only the edges are stubbed: Clerk's session token and the two network
+// clients. The real withToken resolves the token and wraps the result, and the
+// real statusToInputs derives the checklist inputs.
+const { getTokenMock, putPreference, getOnboardingRequired } = vi.hoisted(() => ({
+  getTokenMock: vi.fn(),
+  putPreference: vi.fn(),
+  getOnboardingRequired: vi.fn(),
 }));
-const putPreference = vi.fn();
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(async () => ({ getToken: getTokenMock })),
+}));
 vi.mock("@/lib/api/preferences", () => ({
   putPreference: (...a: unknown[]) => putPreference(...a),
-  PREFERENCE_KEY: { DISMISSED: "getting_started_dismissed", COLLAPSED: "getting_started_collapsed", CLI_TICKED: "getting_started_cli_ticked" },
 }));
-const getOnboardingRequired = vi.fn();
-vi.mock("@/lib/api/onboarding", () => ({
+vi.mock("@/lib/api/onboarding", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/onboarding")>()),
   getOnboardingRequired: (...a: unknown[]) => getOnboardingRequired(...a),
-  statusToInputs: (s: OnboardingStatus) => ({
-    modelConfigured: s.model_configured,
-    fleetTotal: s.has_fleet ? 1 : 0,
-    secretCount: s.has_secret ? 1 : 0,
-    hasProcessedEvent: s.has_processed_event,
-    hasSteerEvent: s.has_steer_event,
-    cliTicked: s.cli_ticked,
-  }),
 }));
 
 import { getOnboardingProgressAction, putPreferenceAction } from "./preferences";
 
+const TOKEN = "tok_session";
+const WORKSPACE_ID = "ws_1";
 const STATUS: OnboardingStatus = {
   model_configured: true, has_fleet: false, has_secret: true,
-  has_processed_event: false, has_steer_event: false,
+  has_processed_event: false, has_steer_event: true,
   cli_ticked: true, dismissed: true, collapsed: false,
 };
 
-afterEach(() => { putPreference.mockReset(); getOnboardingRequired.mockReset(); });
+afterEach(() => {
+  getTokenMock.mockReset();
+  putPreference.mockReset();
+  getOnboardingRequired.mockReset();
+});
 
 describe("putPreferenceAction", () => {
-  it("writes through the preferences client and wraps the result", async () => {
-    putPreference.mockResolvedValue({ getting_started_dismissed: true });
-    const r = await putPreferenceAction("ws_1", "getting_started_dismissed", true);
-    expect(r.ok).toBe(true);
-    expect(putPreference).toHaveBeenCalledWith("ws_1", "getting_started_dismissed", true, "tok");
+  it("writes the key and value for the workspace under the session token and returns the stored bag", async () => {
+    getTokenMock.mockResolvedValue(TOKEN);
+    const bag = { [PREFERENCE_KEY.COLLAPSED]: false };
+    putPreference.mockResolvedValue(bag);
+
+    const r = await putPreferenceAction(WORKSPACE_ID, PREFERENCE_KEY.COLLAPSED, false);
+
+    expect(r).toEqual({ ok: true, data: bag });
+    expect(putPreference).toHaveBeenCalledWith(WORKSPACE_ID, PREFERENCE_KEY.COLLAPSED, false, TOKEN);
   });
 });
 
 describe("getOnboardingProgressAction", () => {
-  it("returns inputs + dismissed + collapsed from the one onboarding call", async () => {
+  it("derives the checklist inputs and carries the widget's dismissed and collapsed flags from one read", async () => {
+    getTokenMock.mockResolvedValue(TOKEN);
     getOnboardingRequired.mockResolvedValue(STATUS);
-    const r = await getOnboardingProgressAction("ws_1");
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.data.dismissed).toBe(true);
-      expect(r.data.collapsed).toBe(false);
-      expect(r.data.inputs.modelConfigured).toBe(true);
-      expect(r.data.inputs.fleetTotal).toBe(0);
-      expect(r.data.inputs.secretCount).toBe(1);
-    }
-    expect(getOnboardingRequired).toHaveBeenCalledWith("ws_1", "tok");
+
+    const r = await getOnboardingProgressAction(WORKSPACE_ID);
+
+    expect(r).toEqual({
+      ok: true,
+      data: {
+        inputs: {
+          modelConfigured: true,
+          fleetTotal: 0,
+          secretCount: 1,
+          hasProcessedEvent: false,
+          hasSteerEvent: true,
+          cliTicked: true,
+        },
+        dismissed: true,
+        collapsed: false,
+      },
+    });
+    expect(getOnboardingRequired).toHaveBeenCalledWith(WORKSPACE_ID, TOKEN);
   });
 
-  it("returns a failed action when the live progress read fails", async () => {
+  it("follows the read when the flags flip, rather than holding a default", async () => {
+    getTokenMock.mockResolvedValue(TOKEN);
+    getOnboardingRequired.mockResolvedValue({ ...STATUS, dismissed: false, collapsed: true });
+
+    const r = await getOnboardingProgressAction(WORKSPACE_ID);
+
+    expect(r.ok && r.data.dismissed).toBe(false);
+    expect(r.ok && r.data.collapsed).toBe(true);
+  });
+
+  it("returns a failed action carrying the read's error when the progress read fails", async () => {
+    getTokenMock.mockResolvedValue(TOKEN);
     getOnboardingRequired.mockRejectedValue(new Error("down"));
-    await expect(getOnboardingProgressAction("ws_1")).resolves.toEqual({
-      ok: false,
-      error: "down",
-    });
+
+    await expect(getOnboardingProgressAction(WORKSPACE_ID)).resolves.toEqual({ ok: false, error: "down" });
+  });
+
+  it("refuses without a session and never reads the workspace", async () => {
+    getTokenMock.mockResolvedValue(null);
+
+    const r = await getOnboardingProgressAction(WORKSPACE_ID);
+
+    expect(r).toMatchObject({ ok: false, status: 401, errorCode: ERROR_CODE.AUTH_401 });
+    expect(getOnboardingRequired).not.toHaveBeenCalled();
   });
 });

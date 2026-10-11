@@ -11,9 +11,7 @@ interface CtxLike {
 }
 
 interface WriteErrorOpts {
-  printJson?: (stream: AnyStream, value: unknown) => void;
-  writeLine?: (stream: AnyStream, line?: string) => void;
-  ui?: Pick<UiTheme, "err"> | { err: (s: string) => string };
+  ui: Pick<UiTheme, "err">;
 }
 
 function writeLine(stream: AnyStream, line: string = ""): void {
@@ -28,16 +26,13 @@ function writeError(
   ctx: CtxLike,
   code: string,
   message: string,
-  opts: WriteErrorOpts = {},
+  opts: WriteErrorOpts,
 ): void {
-  const pj = opts.printJson || printJson;
-  const wl = opts.writeLine || writeLine;
-  const u = opts.ui || { err: (s: string) => s };
   if (!ctx.stderr) return;
   if (ctx.jsonMode) {
-    pj(ctx.stderr, { error: { code, message } });
+    printJson(ctx.stderr, { error: { code, message } });
   } else {
-    wl(ctx.stderr, u.err(message));
+    writeLine(ctx.stderr, opts.ui.err(message));
   }
 }
 

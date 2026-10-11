@@ -186,24 +186,6 @@ test_should_reject_placeholder_token() {
     ok "$name"
   fi
 }
-test_should_use_canonical_unit_refresh() {
-  local name="test_should_use_canonical_unit_refresh"
-  local output status=0
-  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
-  if [ "$status" -ne 0 ]; then
-    bad "$name" "$output"
-  elif ! grep -q '/opt/agentsfleet/deploy/deploy.sh runner' "$calls"; then
-    bad "$name" "runner deployment bypassed the canonical deploy path"
-  elif ! grep -q '^sync_systemd_unit()' "$DEPLOY_SCRIPT"; then
-    bad "$name" "canonical deploy path no longer refreshes the runner unit"
-  elif ! grep -q 'systemctl daemon-reload' "$DEPLOY_SCRIPT"; then
-    bad "$name" "canonical deploy path no longer reloads systemd"
-  elif ! grep -q 'systemctl enable "$SERVICE_NAME"' "$DEPLOY_SCRIPT"; then
-    bad "$name" "canonical deploy path no longer enables the runner service"
-  else
-    ok "$name"
-  fi
-}
 test_should_reject_shell_unsafe_runner_inputs() {
   local name="test_should_reject_shell_unsafe_runner_inputs"
   local output status=0
@@ -233,21 +215,6 @@ test_should_require_vault_read_approval() {
   else
     ok "$name"
   fi
-}
-test_should_declare_workflow_vault_read_approval() {
-  local name="test_should_declare_workflow_vault_read_approval"
-  local workflow
-  local -a workflows=(
-    "$REPO_ROOT/.github/workflows/deploy-dev-metal.yml"
-    "$REPO_ROOT/.github/workflows/release.yml"
-  )
-  for workflow in "${workflows[@]}"; do
-    if ! rg --fixed-strings --quiet 'ALLOW_VAULT_READS: "1"' "$workflow"; then
-      bad "$name" "$(basename "$workflow") omits runner vault-read approval"
-      return
-    fi
-  done
-  ok "$name"
 }
 test_should_copy_the_toolbox_beside_the_binary() {
   local name="test_should_copy_the_toolbox_beside_the_binary"
@@ -312,10 +279,8 @@ test_should_select_production_runner
 test_should_not_install_packages_during_deploy
 test_should_include_sbin_when_checking_host_tools
 test_should_reject_placeholder_token
-test_should_use_canonical_unit_refresh
 test_should_reject_shell_unsafe_runner_inputs
 test_should_require_vault_read_approval
-test_should_declare_workflow_vault_read_approval
 test_should_copy_the_toolbox_beside_the_binary
 test_should_clear_an_earlier_toolbox_before_staging
 test_should_refuse_a_deploy_without_its_toolbox

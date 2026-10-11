@@ -264,14 +264,5 @@ export const CTA_COPY = {
     "Pick a repository or a recurring investigation. Read the setup guide, choose the access your fleet needs, and review its first result.",
 } as const;
 
-export const FORBIDDEN_MARKETING_CLAIMS = [
-  "zero tickets",
-  "autonomous merge",
-  "autonomous deploy",
-  "40%",
-  "hour response time",
-  "ticket latency",
-] as const;
-
 export type LoopStep = (typeof LOOP_STEPS)[number];
 export type CapabilityItem = (typeof CAPABILITY_ITEMS)[number];

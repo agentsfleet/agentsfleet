@@ -7,7 +7,6 @@
 // fleet's status has gone installing→active on the server, so the UI leaves
 // install-mode. `error` is a terminal failure with a retry.
 
-import { type LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
 
 // The renderable install steps, in walk order. The pre-create `connect` step is
@@ -56,12 +55,6 @@ export function installStepFromKind(kind: string): InstallStepId | null {
     default:
       return null;
   }
-}
-
-// True for the four `install:*` discriminators — the registry uses this to fork
-// install frames away from the chat-event path so they never become messages.
-export function isInstallFrame(frame: LiveFrame): boolean {
-  return installStepFromKind(frame.kind) !== null;
 }
 
 // Advance an install step in response to a frame, forward-only. `error` always

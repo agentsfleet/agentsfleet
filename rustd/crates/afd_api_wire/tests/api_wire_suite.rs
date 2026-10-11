@@ -5,9 +5,8 @@
 
 #[path = "admin_shapes.rs"]
 mod admin_shapes;
-// Ungated: it reads both crates' sources, not the schemas.
-#[path = "names.rs"]
-mod names;
+#[path = "pull_request_bundle.rs"]
+mod pull_request_bundle;
 #[path = "redaction.rs"]
 mod redaction;
 // Gated with the feature it grades: without `openapi` there are no schemas.

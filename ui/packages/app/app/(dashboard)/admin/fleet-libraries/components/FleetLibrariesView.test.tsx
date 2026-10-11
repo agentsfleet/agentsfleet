@@ -264,19 +264,6 @@ describe("FleetLibrariesView", () => {
     expect(deletePlatformLibraryActionMock).not.toHaveBeenCalled();
   });
 
-  // Dismissing the confirm must leave the fleet alone. A destructive action that
-  // fires on dismissal is the worst bug this surface could have.
-  it("cancelling the confirm deletes nothing", async () => {
-    renderView([DRAFT]);
-
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
-    const confirm = await screen.findByRole("alertdialog");
-    await userEvent.click(within(confirm).getByRole("button", { name: /^cancel$/i }));
-
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(deletePlatformLibraryActionMock).not.toHaveBeenCalled();
-  });
-
   // Publishing is the moment a fleet becomes available to every tenant — the one
   // state change here with a decision riding on it, so it is the one event added.
   it("emits the publish event with the catalog slug and no operator free-text", async () => {

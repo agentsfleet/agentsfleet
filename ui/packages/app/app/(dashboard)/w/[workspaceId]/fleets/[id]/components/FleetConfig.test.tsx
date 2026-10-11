@@ -14,14 +14,6 @@ function renderConfig() {
 }
 
 describe("FleetConfig", () => {
-  it("test_config_card_no_stale_endpoint_copy", () => {
-    renderConfig();
-    // The M80-era claim that PATCH/pause/resume are unbuilt is gone (G7).
-    expect(screen.queryByText(/backend adds/i)).toBeNull();
-    expect(screen.queryByText(/:pause/)).toBeNull();
-    expect(screen.queryByText(/:resume/)).toBeNull();
-  });
-
   it("test_delete_confirm_states_memory_trap", async () => {
     const user = userEvent.setup({ delay: null });
     renderConfig();

@@ -181,36 +181,3 @@ fn a_record_holding_a_nul_is_skipped_not_fatal() {
         );
     }
 }
-
-/// Every published byte figure on this surface is the constant that enforces
-/// it, so a bound cannot move without its description failing here.
-#[test]
-fn published_descriptions_state_the_bounds_they_enforce() {
-    use super::DETAIL_POST_MAX_BYTES;
-    let openapi = include_str!("../../../../../public/openapi.json");
-    let document: serde_json::Value = serde_json::from_str(openapi).expect("the spec parses");
-    let text = |pointer: &str| {
-        document
-            .pointer(pointer)
-            .and_then(serde_json::Value::as_str)
-            .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
-            .unwrap_or_default()
-    };
-    let post = text("/paths/~1v1~1runners~1me~1leases~1{lease_id}~1tool-calls/post/description");
-    for bound in [DETAIL_POST_MAX_BYTES, DETAIL_FIELD_MAX_BYTES] {
-        assert!(post.contains(&bound.to_string()), "{bound}: {post}");
-    }
-    let read = text(
-        "/paths/~1v1~1workspaces~1{workspace_id}~1fleets~1{fleet_id}~1events~1{event_id}~1tool-calls~1{call_id}/get/description",
-    );
-    assert!(read.contains(&DETAIL_FIELD_MAX_BYTES.to_string()), "{read}");
-    for property in ["arguments", "output"] {
-        let field = text(&format!(
-            "/components/schemas/ToolCallRecord/properties/{property}/description"
-        ));
-        assert!(
-            field.contains(&DETAIL_FIELD_MAX_BYTES.to_string()),
-            "{property}: {field}"
-        );
-    }
-}

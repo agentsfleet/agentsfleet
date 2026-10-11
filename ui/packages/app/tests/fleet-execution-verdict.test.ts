@@ -8,10 +8,7 @@
  * list, and this asserts the execution journey is not on that list, so a green
  * `acceptance-e2e` is a claim that includes it.
  */
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { describe, expect, it } from "vitest";
-import acceptanceConfig from "../playwright.acceptance.config";
 import { LEASE_OUTCOME } from "@/lib/api/runners-types";
 import {
   classifyApiFailure,
@@ -30,11 +27,12 @@ import {
   VERDICT_KIND,
   type TerminalObservation,
 } from "./e2e/acceptance/fixtures/execution";
-import { EXECUTION_REPLY_PREFIX, executionSkillMd } from "./e2e/acceptance/fixtures/seed";
-
-const JOURNEYS_PROJECT = "journeys";
-const EXECUTION_SPEC = "fleet-execution.spec.ts";
-const EXECUTION_SPEC_PATH = path.join(__dirname, "e2e", "acceptance", EXECUTION_SPEC);
+import {
+  EXECUTION_REPLY_PREFIX,
+  executionSkillMd,
+  triggerMd,
+  webhookTriggerMd,
+} from "./e2e/acceptance/fixtures/seed";
 
 // A row shape per verdict, so each case reads as the row that produced it.
 function processed(reply: string | null): TerminalObservation {
@@ -43,11 +41,6 @@ function processed(reply: string | null): TerminalObservation {
 
 function failed(label: string | null, detail: string | null = null): TerminalObservation {
   return { status: EVENT_STATUS.fleetError, failure_label: label, failure_detail: detail, response_text: null };
-}
-
-interface ProjectShape {
-  name?: string;
-  testIgnore?: unknown;
 }
 
 describe("the terminal row is classified before it is trusted", () => {
@@ -140,22 +133,48 @@ describe("the terminal row is classified before it is trusted", () => {
   });
 });
 
-describe("the execution journey is part of the required acceptance run", () => {
-  it("the journeys project does not ignore it and the spec exists", () => {
-    expect(fs.existsSync(EXECUTION_SPEC_PATH), EXECUTION_SPEC_PATH).toBe(true);
-    const projects = (acceptanceConfig.projects ?? []) as ProjectShape[];
-    const journeys = projects.find((project) => project.name === JOURNEYS_PROJECT);
-    expect(journeys, `project ${JOURNEYS_PROJECT} must exist`).toBeDefined();
-    const ignored = Array.isArray(journeys?.testIgnore) ? journeys.testIgnore : [journeys?.testIgnore];
-    const ignoresExecution = ignored.some((pattern) => String(pattern).includes(EXECUTION_SPEC));
-    expect(ignoresExecution, "the execution journey must run in the journeys project").toBe(false);
-  });
-
+describe("the execution journey's bundle", () => {
   it("the execution bundle carries an instruction, unlike the empty-body probe", () => {
     const md = executionSkillMd("exec-check");
     expect(md).toContain("name: exec-check");
     const body = md.split("---\n")[2] ?? "";
     expect(body.trim().length).toBeGreaterThan(0);
     expect(body).toContain(EXECUTION_REPLY_PREFIX);
+  });
+});
+
+// The daemon's importer refuses a TRIGGER.md missing any of these: `name` at
+// the top of the frontmatter, the rest under `x-agentsfleet` (`FleetConfig` in
+// rustd/crates/afd_fleet_runtime/src/config/mod.rs). Every library seed in the
+// acceptance suite installs through these two builders.
+const RUNTIME_BLOCK = "x-agentsfleet";
+const REQUIRED_RUNTIME_KEYS = ["triggers", "tools", "budget"];
+const FRONTMATTER_FENCE = "---";
+const NESTED_INDENT = "  ";
+
+/** The keys declared at one indent of a frontmatter block, in order. */
+function keysAtIndent(lines: string[], indent: string): string[] {
+  return lines
+    .filter((line) => line.startsWith(indent) && !line.startsWith(`${indent} `))
+    .map((line) => line.slice(indent.length).split(":")[0] ?? "")
+    .filter((key) => /^[\w-]+$/.test(key));
+}
+
+function frontmatterLines(md: string): string[] {
+  const [opening, block] = md.split(`${FRONTMATTER_FENCE}\n`);
+  expect(opening, "the frontmatter opens on the first line").toBe("");
+  return (block ?? "").split("\n");
+}
+
+describe("the shared trigger fixtures", () => {
+  it.each([
+    ["cron", triggerMd("trigger-check")],
+    ["webhook", webhookTriggerMd("trigger-check", "gh-secret")],
+  ])("the %s fixture carries every key the importer requires", (_kind, md) => {
+    const lines = frontmatterLines(md);
+    const top = keysAtIndent(lines, "");
+    expect(top).toContain(RUNTIME_BLOCK);
+    expect(lines).toContain("name: trigger-check");
+    expect(keysAtIndent(lines, NESTED_INDENT)).toEqual(REQUIRED_RUNTIME_KEYS);
   });
 });

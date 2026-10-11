@@ -38,9 +38,9 @@ mod raise;
 mod tests;
 
 pub(crate) use self::raise::{
-    connection_lost, input_backlog_full, input_closed, invalid_params, launch_incomplete,
-    not_a_file, not_found, path_refused, refused, tenant_unavailable, unknown_process,
-    unresponsive,
+    connection_lost, file_calls_unsupported, input_backlog_full, input_closed, invalid_params,
+    launch_incomplete, not_a_file, not_found, path_refused, refused, tenant_unavailable,
+    unknown_process, unresponsive,
 };
 
 afd_core::error_shell!(
@@ -138,6 +138,11 @@ pub(crate) enum ErrorKind {
         #[source]
         source: io::Error,
     },
+
+    /// The executor serves processes only: a stand-in that inherited the
+    /// trait's file calls rather than serving them.
+    #[error("this executor serves no file calls")]
+    FileCallsUnsupported,
 
     /// A call's parameters were well-formed but unusable.
     #[error("{detail}")]

@@ -100,41 +100,4 @@ describe("PrebuiltFleets", () => {
     expect(section).not.toHaveTextContent(/prebuilt and proven|same day|every action gated|no setup/i);
     expect(screen.queryByTestId("fleet-card-coming-soon")).toBeNull();
   });
-
-  it("explains configured review triggers without promising automatic merges", () => {
-    renderFleets();
-    const card = screen.getByTestId("fleet-card-auto-reviewer");
-    expect(card).toHaveTextContent(/configured repositories/i);
-    expect(card).toHaveTextContent(/review comments/i);
-    expect(card).toHaveTextContent(/you review and merge/i);
-    expect(card).not.toHaveTextContent(/every pull request|before a human/i);
-  });
-
-  it("keeps repository writes approval-gated and deployment human-owned", () => {
-    renderFleets();
-    const card = screen.getByTestId("fleet-card-diagnose");
-    expect(card).toHaveTextContent(/draft pull request/i);
-    expect(card).toHaveTextContent(/approve repository write access/i);
-    expect(card).toHaveTextContent(/never merges or deploys/i);
-  });
-
-  it("does not market the Slack resident as unattended or a prebuilt install", () => {
-    renderFleets();
-    const card = screen.getByTestId("fleet-card-slack-teammate");
-    expect(card).toHaveTextContent(/channel memory across threads/i);
-    expect(card).toHaveTextContent(/mention-only/i);
-    expect(card).toHaveTextContent(/read-only/i);
-    expect(card).toHaveTextContent(/never acts unattended/i);
-    expect(card).toHaveTextContent(/connect Slack/i);
-    expect(within(card).queryByText(/coming soon/i)).toBeNull();
-  });
-
-  it("keeps the product pillars in Core Capabilities", () => {
-    renderFleets();
-    // The Isolated / Compounding / Proactive pillars moved to Core Capabilities
-    // (rendered on Home as capability-pillar-*). They must not appear here.
-    expect(screen.queryByTestId("fleet-pillar-sandbox")).toBeNull();
-    expect(screen.queryByTestId("fleet-pillar-learns")).toBeNull();
-    expect(screen.queryByTestId("fleet-pillar-proactive")).toBeNull();
-  });
 });

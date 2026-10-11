@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
-import { List, ListItem, listVariants } from "./List";
+import { List, ListItem } from "./List";
 
 describe("List", () => {
   it("defaults to <ul> with disc + pl-5", () => {
@@ -71,10 +71,6 @@ describe("List", () => {
       </List>,
     );
     expect((container.firstChild as HTMLElement).className).toContain("custom-x");
-  });
-
-  it("listVariants returns the plain token string", () => {
-    expect(listVariants({ variant: "plain" })).toContain("list-none");
   });
 
   it("defaults role='list' on the host (Safari VoiceOver list-none guard)", () => {

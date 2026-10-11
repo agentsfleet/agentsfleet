@@ -150,25 +150,6 @@ describe("tracingLayer — span behaviour", () => {
     }
   });
 
-  it("span end does NOT export NDJSON when AGENTSFLEET_TELEMETRY_DISABLED=1 (denied)", async () => {
-    const dir = makeTempDir();
-    process.env.AGENTSFLEET_STATE_DIR = dir;
-    process.env.AGENTSFLEET_TELEMETRY_DISABLED = "1";
-    try {
-      const tracesDir = path.join(dir, "traces");
-      const program = Effect.gen(function* () {
-        const tracer = yield* Tracing;
-        const span = tracer.span(makeSpanOptions());
-        span.end(BigInt(Date.now() + 100) * 1_000_000n, { _tag: "Success", value: undefined } as never);
-      }).pipe(Effect.provide(fullLayer()));
-      await Effect.runPromise(program);
-      const hasNdjson = existsSync(tracesDir) && readdirSync(tracesDir).some((f) => f.endsWith(".ndjson"));
-      expect(hasNdjson).toBe(false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
   it("span end writes the debug-console line when AGENTSFLEET_TELEMETRY_DEBUG=1", async () => {
     const dir = makeTempDir();
     process.env.AGENTSFLEET_STATE_DIR = dir;

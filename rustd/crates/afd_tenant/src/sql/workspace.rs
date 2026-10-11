@@ -164,18 +164,3 @@ pub const SELECT_TENANT_WORKSPACES_PAGE_AFTER_BY_NAME: &str = concat!(
     "AND name = $2 AND (created_at, id) > ($3, $4::uuid) \
      ORDER BY created_at ASC, id ASC LIMIT $5"
 );
-
-#[cfg(test)]
-mod tests {
-    use super::{SELECT_SUBJECT_ACCOUNTS, SELECT_TENANT_ACCOUNT};
-
-    /// The macro is handed a parameter NUMBER; the statements must come out
-    /// comparing the owner role to that parameter, or every account would be
-    /// named by nobody.
-    #[test]
-    fn the_owner_name_join_compares_the_role_to_the_slot_it_is_given() {
-        for statement in [SELECT_SUBJECT_ACCOUNTS, SELECT_TENANT_ACCOUNT] {
-            assert!(statement.contains("om.role = $2 AND"), "{statement}");
-        }
-    }
-}

@@ -8,10 +8,9 @@
 //! leave the charge alone, because a ledger records what was true, not what is.
 //!
 //! Every test here drives the real path — `Plane::renew`, `settle_alone`,
-//! `Accounts::debit_receive` — rather than the statement text. `afd_fleet`'s
-//! `lease::sql` already asserts the shape of both its statements, and shape is
-//! what a careless `DO UPDATE SET` passes: the accumulate clause can list every
-//! column a reader would expect and still be wrong about this one.
+//! `Accounts::debit_receive` — rather than the statement text. Shape is what a
+//! careless `DO UPDATE SET` passes: the accumulate clause can list every column
+//! a reader would expect and still be wrong about this one.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs them.
 #![cfg(feature = "test-util")]
@@ -214,9 +213,8 @@ async fn test_m201_all_insert_sites_capture_fleet_name() {
 /// mid-run rename would rewrite the charge's whole history — not a stale value,
 /// an actively falsified one.
 ///
-/// Asserted through two real renewals with a rename between them, because the
-/// statement-shape test next door (`afd_fleet::lease::sql`) proves the clause
-/// does not MENTION the column and cannot prove the server agrees.
+/// Asserted through two real renewals with a rename between them, because a
+/// clause that does not MENTION the column is not proof the server agrees.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_m201_accumulate_preserves_captured_name() {

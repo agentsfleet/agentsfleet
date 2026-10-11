@@ -1,26 +1,11 @@
 //! Every refusal carries its registry code and the sentence a client reads.
 //!
-//! This file checks that the pairing is a function, that no two refusals
-//! collapse onto one another by accident, and that every sentence a client
-//! reads is pinned, so changing one is a visible decision.
+//! This file checks that the pairing is a function and that no two refusals
+//! collapse onto one another by accident. Clients branch on the code, so the
+//! code is what is pinned; the sentences are only required to be distinct.
 use std::collections::BTreeSet;
 
 use afd_auth::error::{Error, Unavailable};
-
-/// Every client-visible refusal sentence, pinned.
-///
-/// A detail string is as client-visible as a status code. A person editing one
-/// is changing what a client reads, and that should cost them an edit here
-/// saying so, rather than passing as a typo fix.
-const PINNED_AUTH_SENTENCES: &[&str] = &[
-    "Invalid or missing token",
-    "token expired",
-    "Authentication service unavailable",
-    "API key has been revoked",
-    "Command-line credential has been revoked",
-    "Invalid or missing runner token",
-    "Runner admin state blocks runner-plane access",
-];
 
 /// The pairing is a function, and the catalogue is total.
 ///
@@ -66,50 +51,6 @@ fn test_each_refusal_answers_the_documented_registry_code() {
     ] {
         assert_eq!(err.code().as_str(), code, "{err:?}");
     }
-}
-
-/// Every sentence a client reads is one of the pinned sentences.
-///
-/// Changing a sentence here without a matching edit to
-/// [`PINNED_AUTH_SENTENCES`] is changing what a client reads, which is a
-/// behaviour change and therefore a decision, not a tidy-up.
-#[test]
-fn test_every_client_visible_sentence_is_pinned() {
-    for err in Error::ALL {
-        assert!(
-            PINNED_AUTH_SENTENCES.contains(&err.detail()),
-            "{err:?} says {:?}, which no pinned sentence says",
-            err.detail()
-        );
-    }
-    // Total in both directions: a sentence pinned here that no variant answers
-    // with is a stale expectation, and would let a real one be deleted unseen.
-    assert_eq!(
-        PINNED_AUTH_SENTENCES.len(),
-        Error::ALL.len(),
-        "the pinned sentences and the refusals they pin are no longer one-to-one"
-    );
-}
-
-/// The runner plane's sentence is deliberately NOT the tenant plane's.
-///
-/// The runner plane's refusal names the runner token and the tenant plane's
-/// does not. Collapsing them would be a readable simplification and a
-/// client-visible change, so it is pinned rather than left to review.
-#[test]
-fn test_the_runner_plane_names_the_runner_token_in_its_refusal() {
-    assert_eq!(
-        Error::InvalidOrMissingToken.detail(),
-        "Invalid or missing token"
-    );
-    assert_eq!(
-        Error::InvalidRunnerToken.detail(),
-        "Invalid or missing runner token"
-    );
-    assert_ne!(
-        Error::InvalidOrMissingToken.detail(),
-        Error::InvalidRunnerToken.detail()
-    );
 }
 
 /// Exactly one refusal is not a verdict on the caller.

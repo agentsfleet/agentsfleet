@@ -41,8 +41,8 @@ const MIN_AGE: Duration = Duration::from_secs(30);
 /// Bounded so a backlog cannot monopolise a pass, and small enough that the
 /// transaction holding the batch's row locks is short — a producer recording
 /// its own receipt waits behind exactly this many appends, never a whole
-/// backlog.
-const BATCH_LIMIT: i64 = 32;
+/// backlog. The reconcile pass sizes its own batch to this one.
+pub(super) const BATCH_LIMIT: i64 = 32;
 
 /// How long between ordinary passes.
 const INTERVAL: Duration = Duration::from_secs(30);

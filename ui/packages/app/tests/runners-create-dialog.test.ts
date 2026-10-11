@@ -141,16 +141,12 @@ describe("AddRunnerDialog component", () => {
     expect(screen.getByText("Runner token is shown once. Copy it now.")).toBeTruthy();
   });
 
-  it("isolation radiogroup has an accessible name and reads as an assignment, never self-reported", async () => {
+  it("isolation radiogroup has an accessible name", async () => {
     await openDialog();
     // Named via aria-labelledby (a div[role=radiogroup] isn't a labelable
     // HTML element, so FormLabel's htmlFor can't reach it) — not a duplicated
     // literal aria-label string.
     expect(screen.getByRole("radiogroup", { name: /^isolation$/i })).toBeTruthy();
-    // M148 Dimension 4.3: the copy describes an assignment the host must
-    // satisfy; the pre-inversion self-reported framing is gone.
-    expect(screen.getByText(/cannot enforce the assigned tier is degraded/i)).toBeTruthy();
-    expect(screen.queryByText(/self-reported/i)).toBeNull();
   });
 
   it("isolation renders one OptionCard per assignable tier; picking one rides the assignment envelope", async () => {

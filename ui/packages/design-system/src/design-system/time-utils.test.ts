@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import {
-  TIME_DEFAULT_LOCALE,
   TIME_INVALID_FALLBACK,
   coerceDate,
   formatTimeAbsolute,
@@ -18,12 +17,6 @@ import {
 
 const ISO = "2026-05-03T10:00:00.000Z";
 const NOW = new Date("2026-05-03T12:00:00Z");
-
-describe("TIME_DEFAULT_LOCALE", () => {
-  it("is en-US", () => {
-    expect(TIME_DEFAULT_LOCALE).toBe("en-US");
-  });
-});
 
 describe("coerceDate", () => {
   it("returns the same instance when given a Date", () => {

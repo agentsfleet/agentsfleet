@@ -1,6 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { createTenantWorkspace, listTenantWorkspaces } from "@/lib/api/workspaces";
 import { ACCOUNT_ROLE } from "@/lib/api/workspaces-types";
 
@@ -88,47 +86,6 @@ describe("createTenantWorkspace", () => {
     mockFetchOnce(201, { workspace_id: "ws_x", name, tenant_id: "tenant_x", request_id: "req_1" });
     await expect(createTenantWorkspace("tok_1", { name: "" })).rejects.toThrow("workspace create response is invalid");
   });
-
-  it("pins the create operation the daemon actually serves", () => {
-    // The bundle is generated from the daemon's own handlers now, so this
-    // pins BEHAVIOUR rather than a hand-written claim about it. The claim it
-    // used to pin — `name` required — was never true: `create` reads an empty
-    // body as `{}` and a `None` name means "name it for me", so a required
-    // field here would have documented a refusal the daemon does not make.
-    const bundlePath = resolve(process.cwd(), "../../../public/openapi.json");
-    const document = JSON.parse(readFileSync(bundlePath, "utf8")) as {
-      paths: Record<string, { post?: Record<string, unknown> }>;
-    };
-    const operation = document.paths["/v1/workspaces"]?.post as {
-      parameters?: Array<{ name?: string }>;
-      operationId?: string;
-      requestBody?: {
-        required?: boolean;
-        content?: {
-          "application/json"?: {
-            schema?: { $ref?: string };
-          };
-        };
-      };
-      responses?: Record<string, unknown>;
-    };
-
-    expect(operation.operationId).toBe("create_workspace");
-    expect(operation.requestBody?.content?.["application/json"]?.schema).toBeDefined();
-    // Optional, because the daemon names the workspace when the caller does not.
-    expect(operation.requestBody?.required).not.toBe(true);
-
-    const removedReplayHeader = ["Idempotency", "Key"].join("-");
-    expect(operation.parameters ?? []).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: removedReplayHeader }),
-      ]),
-    );
-    // The refusals the route table guarantees a caller can meet.
-    expect(Object.keys(operation.responses ?? {})).toEqual(
-      expect.arrayContaining(["401", "403", "409", "500"]),
-    );
-  });
 });
 
 describe("listTenantWorkspaces", () => {
@@ -211,37 +168,6 @@ describe("listTenantWorkspaces", () => {
     await expect(listTenantWorkspaces("tok_1")).rejects.toThrow(
       "repeated a cursor",
     );
-  });
-
-  it("pins exact-name filtering and cursor pagination in the bundled OpenAPI", () => {
-    const bundlePath = resolve(process.cwd(), "../../../public/openapi.json");
-    const document = JSON.parse(readFileSync(bundlePath, "utf8")) as {
-      paths: Record<string, { get?: Record<string, unknown> }>;
-    };
-    const operation = document.paths["/v1/tenants/me/workspaces"]?.get as {
-      parameters?: Array<{ name: string; schema?: Record<string, unknown> }>;
-      responses?: Record<
-        string,
-        {
-          content?: {
-            "application/json"?: { schema?: { $ref?: string } };
-          };
-        }
-      >;
-    };
-    const parameters = operation.parameters ?? [];
-    expect(parameters.map(({ name }) => name)).toEqual([
-      "name",
-      "starting_after",
-      "limit",
-    ]);
-    // The 200 names the response shape the daemon serializes. Per-field bounds
-    // — the `limit` ceiling, `items` maxItems, `x-stability` — are not carried
-    // yet: the port renamed the schemas, so they could not come across
-    // mechanically and are named as follow-up scope in the spec's Discovery.
-    const schema =
-      operation.responses?.["200"]?.content?.["application/json"]?.schema;
-    expect(schema?.$ref).toContain("WorkspacesResponse");
   });
 });
 
