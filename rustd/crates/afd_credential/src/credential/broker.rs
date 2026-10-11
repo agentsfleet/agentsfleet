@@ -169,12 +169,9 @@ impl Broker {
     /// consumed the old value, and the only one that may write the replacement
     /// back.
     pub async fn mint(&self, ask: Ask<'_>) -> Outcome {
-        let Some(connector) = self.resolve(ask.handle) else {
-            return Outcome::UnknownIntegration;
-        };
-        let Some(key) = Key::of(&ask, connector.name()) else {
-            // The handle would not serialise, so no entry can stand for it.
-            return Outcome::MintFailed(Retry::Permanent);
+        let (connector, key) = match self.keyed(&ask) {
+            Ok(keyed) => keyed,
+            Err(refused) => return refused,
         };
 
         if let Some(cached) = self.cache.get(&key).await {
@@ -233,6 +230,18 @@ impl Broker {
     }
 
     /// The connector this handle names, if the registry carries it.
+    /// The connector an ask names, and the cache entry it reads and writes.
+    ///
+    /// A handle naming no connector is an unknown integration. One that would
+    /// not serialise is refused for good, since no entry can stand for it.
+    fn keyed(&self, ask: &Ask<'_>) -> Result<(&dyn Connector, Key), Outcome> {
+        let connector = self
+            .resolve(ask.handle)
+            .ok_or(Outcome::UnknownIntegration)?;
+        let key = Key::of(ask, connector.name()).ok_or(Outcome::MintFailed(Retry::Permanent))?;
+        Ok((connector, key))
+    }
+
     fn resolve(&self, handle: &Value) -> Option<&dyn Connector> {
         let name = handle.get(FIELD_INTEGRATION)?.as_str()?;
         self.connectors.resolve(name)
