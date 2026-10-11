@@ -10,16 +10,16 @@ use crate::tools::{answers, shell, shell_calls};
 use crate::trials::Body;
 
 /// Eighty percent of the pinned baseline build on each architecture, rounded down.
-/// ARM64: 258,420,736 bytes; AMD64: 262,848,512 bytes (baseline deploy build).
+/// ARM64: 244,531,200 bytes; AMD64: 248,217,600 bytes (baseline deploy build).
 #[cfg(target_arch = "aarch64")]
-const IMAGE_CAP_BYTES: u64 = 206_736_588;
+const IMAGE_CAP_BYTES: u64 = 195_624_960;
 #[cfg(target_arch = "x86_64")]
-const IMAGE_CAP_BYTES: u64 = 210_278_809;
+const IMAGE_CAP_BYTES: u64 = 198_574_080;
 /// An architecture without a measured baseline cannot pass this proof.
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 const IMAGE_CAP_BYTES: u64 = 0;
 /// Copyright files and aliases in the baseline; shared doc directories are not followed.
-const COPYRIGHT_FILES: &str = "157";
+const COPYRIGHT_FILES: &str = "156";
 /// The installed tree must retain licences while excluding the other payloads.
 const LICENCES: &str = r#"
 python3 - <<'PY'

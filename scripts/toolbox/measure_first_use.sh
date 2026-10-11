@@ -19,16 +19,16 @@ if [ "$(uname -s)" != Linux ] || [ "$(id -u)" -ne 0 ]; then
   echo "measure_first_use.sh: needs Linux root to mount EROFS and drop caches" >&2
   exit 1
 fi
-for command in mount umount bwrap python3; do
+for command in mount mountpoint umount bwrap python3; do
   command -v "$command" >/dev/null
 done
 [ -f "$IMAGE" ]
 
 work="$(mktemp -d /var/tmp/toolbox-first-use.XXXXXX)"
-mounted=0
 cleanup() {
   # A failed unmount must leave its tree intact rather than remove a mounted root.
-  if [ "$mounted" -eq 1 ] && ! umount "$work/root"; then
+  # Observe the kernel mount even if a signal arrived before mount returned.
+  if mountpoint -q "$work/root" && ! umount "$work/root"; then
     echo "measure_first_use.sh: unmount failed; retained $work" >&2
     return 1
   fi
@@ -40,7 +40,6 @@ trap 'exit 143' TERM
 trap 'exit 129' HUP
 mkdir "$work/root"
 mount -t erofs -o loop,ro,nosuid,nodev -- "$IMAGE" "$work/root"
-mounted=1
 
 python3 - "$IMAGE" "$OUTPUT" "$RUNS" "$BASELINE" "$work" <<'PY'
 import hashlib
