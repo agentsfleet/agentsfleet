@@ -42,7 +42,7 @@ impl Plane {
             .declared(
                 &admitted.acquired.workspace_id,
                 &admitted.installed.credential_names(),
-                &self.connectors,
+                self.broker.connectors(),
             )
             .await?;
         let branch = Self::repair_branch(&admitted.acquired.event_id, &admitted.installed.config);

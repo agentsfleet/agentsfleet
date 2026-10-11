@@ -23,8 +23,9 @@ use serde_json::{Value, json};
 use tokio::task::JoinHandle;
 use tracing::Level;
 
-use super::super::exchange::request_token;
+use super::super::exchange::{Exchange, mint_at, request_token};
 use crate::credential::outcome::{Outcome, Retry};
+use crate::credential::platform::GithubApp;
 
 const NOW_MS: i64 = 1_760_000_000_000;
 const INSTALLATION_ID: u64 = 42;
@@ -217,6 +218,14 @@ async fn an_installation_read_failure_keeps_its_retry_posture() {
 
 #[tokio::test]
 async fn token_request_failures_keep_their_retry_posture() {
+    // Any other client error is GitHub refusing the request as made, which
+    // asking again unchanged will not fix.
+    let refused = FakeGithub::answering((OK, HOLDS_EVERYTHING), (422, GONE)).await;
+    assert!(matches!(
+        refused.mint().await,
+        Outcome::MintFailed(Retry::Permanent)
+    ));
+
     for status in [401, 404] {
         let github = FakeGithub::answering((OK, HOLDS_EVERYTHING), (status, GONE)).await;
         assert!(matches!(github.mint().await, Outcome::ReconnectRequired));
@@ -232,5 +241,60 @@ async fn token_request_failures_keep_their_retry_posture() {
     assert!(matches!(
         malformed.mint().await,
         Outcome::MintFailed(Retry::Transient)
+    ));
+}
+
+/// A freshly generated App key, PEM-encoded the way an operator pastes one.
+///
+/// Generated per run rather than committed: a private key in the tree is a
+/// secret-scanner finding whatever it signs.
+fn app_key() -> String {
+    rcgen::KeyPair::generate_for(&rcgen::PKCS_RSA_SHA256)
+        .expect("the host generates an RSA key")
+        .serialize_pem()
+}
+
+/// Mints through the App's own signed client, rooted at `base`.
+async fn signed_mint(app: &GithubApp, base: &str) -> Outcome {
+    let handle = json!({"integration": "github", "installation_id": INSTALLATION_ID});
+    let binding = binding();
+    mint_at(
+        Exchange {
+            app,
+            handle: &handle,
+            binding: Some(&binding),
+            now_ms: NOW_MS,
+        },
+        base,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_usable_app_key_signs_its_way_to_a_token() {
+    let token = r#"{"token":"ghs_signed","permissions":{"contents":"read","actions":"read","checks":"read","metadata":"read"},"repositories":[{"full_name":"acme/widgets"}]}"#;
+    let github = FakeGithub::answering((OK, HOLDS_EVERYTHING), (CREATED, token)).await;
+    let app = GithubApp {
+        app_id: 7,
+        private_key_pem: app_key().into(),
+    };
+
+    let outcome = signed_mint(&app, &github.base).await;
+
+    let minted = outcome.minted().expect("a signed exchange mints");
+    assert_eq!(minted.token.as_str(), "ghs_signed");
+    assert_eq!(github.asked_permissions().len(), 1);
+}
+
+#[tokio::test]
+async fn an_api_root_that_is_not_a_uri_signs_nothing() {
+    let app = GithubApp {
+        app_id: 7,
+        private_key_pem: app_key().into(),
+    };
+
+    assert!(matches!(
+        signed_mint(&app, "not a uri").await,
+        Outcome::MintFailed(Retry::Permanent)
     ));
 }

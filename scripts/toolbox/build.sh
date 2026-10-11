@@ -143,6 +143,19 @@ hooks+=("${installs[@]}")
 hooks+=("--customize-hook=chroot \"\$1\" sh -c 'dpkg-query -W -f \"\\\${binary:Package}=\\\${Version}\\n\" | xargs apt-cache show --no-all-versions >/$PACKAGES_INSIDE'")
 hooks+=("--customize-hook=download /$PACKAGES_INSIDE $work/packages.txt")
 hooks+=("--customize-hook=rm \"\$1/$PACKAGES_INSIDE\"")
+# dpkg's path filters retain symlinks, including aliases for excluded files.
+# Prune those aliases and install-info's regenerated index inside the root;
+# copyright files and shared licence directories stay. Regular documentation
+# was excluded during installation.
+hooks+=("--customize-hook=chroot \"\$1\" python3 -c 'from pathlib import Path
+doc = Path(\"/usr/share/doc\")
+info = Path(\"/usr/share/info\")
+for root in (doc, Path(\"/usr/share/man\"), Path(\"/usr/share/locale\"), info):
+    for path in root.rglob(\"*\"):
+        if path.is_symlink() and not (root == doc and (path.name == \"copyright\" or (path / \"copyright\").is_file())):
+            path.unlink()
+(info / \"dir\").unlink(missing_ok=True)
+'")
 
 sources=()
 for entry in "${archives[@]}"; do
@@ -166,6 +179,11 @@ mmdebstrap \
   --variant=minbase \
   --include="$include" \
   --aptopt='Acquire::Check-Valid-Until "false"' \
+  --dpkgopt='path-exclude=/usr/share/doc/*' \
+  --dpkgopt='path-include=/usr/share/doc/*/copyright' \
+  --dpkgopt='path-exclude=/usr/share/man/*' \
+  --dpkgopt='path-exclude=/usr/share/locale/*' \
+  --dpkgopt='path-exclude=/usr/share/info/*' \
   --keyring="$KEYRING" \
   "${hooks[@]}" \
   "$suite" "$work/root.tar" "${sources[@]}"

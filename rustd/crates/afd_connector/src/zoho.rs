@@ -10,9 +10,10 @@
 //! Every centre's accounts server is `accounts.zoho.<tld>` except Canada, whose
 //! server lives on a different apex domain entirely. That is Zoho's own
 //! irregularity, documented in their multi-DC table, not a suffix guessed here.
+//! The servers themselves are [`ZOHO_ACCOUNTS_SERVERS`], shared with the refresh
+//! exchange that refuses every other host.
 
-/// The path every accounts server serves the token exchange on.
-const TOKEN_PATH: &str = "/oauth/v2/token";
+use afd_core::credential::{ZOHO_ACCOUNTS_SERVERS, ZOHO_TOKEN_PATH};
 
 /// The default token endpoint, for a callback that named no data centre.
 ///
@@ -53,17 +54,20 @@ impl DataCentre {
     }
 
     /// This centre's accounts server, which is also where a refresh is minted.
+    ///
+    /// The pattern names every server in the shared list, so a server added
+    /// there without a centre here, or the reverse, fails the build rather
+    /// than refusing that region's mints at runtime.
     const fn accounts_base(self) -> &'static str {
+        let [us, eu, india, au, cn, jp, ca] = ZOHO_ACCOUNTS_SERVERS;
         match self {
-            Self::UnitedStates => "https://accounts.zoho.com",
-            Self::Europe => "https://accounts.zoho.eu",
-            Self::India => "https://accounts.zoho.in",
-            Self::Australia => "https://accounts.zoho.com.au",
-            Self::China => "https://accounts.zoho.com.cn",
-            Self::Japan => "https://accounts.zoho.jp",
-            // The one irregular entry — a different apex domain, not a `.ca`
-            // suffix under `zoho`. See the module note.
-            Self::Canada => "https://accounts.zohocloud.ca",
+            Self::UnitedStates => us,
+            Self::Europe => eu,
+            Self::India => india,
+            Self::Australia => au,
+            Self::China => cn,
+            Self::Japan => jp,
+            Self::Canada => ca,
         }
     }
 }
@@ -80,7 +84,7 @@ pub fn accounts_base(location: Option<&str>) -> &'static str {
 /// The token endpoint a callback's `location` names.
 #[must_use]
 pub fn token_endpoint(location: Option<&str>) -> String {
-    format!("{}{TOKEN_PATH}", accounts_base(location))
+    format!("{}{ZOHO_TOKEN_PATH}", accounts_base(location))
 }
 
 #[cfg(test)]

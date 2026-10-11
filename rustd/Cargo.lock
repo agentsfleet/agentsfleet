@@ -414,6 +414,7 @@ dependencies = [
  "jsonwebtoken",
  "moka",
  "octocrab",
+ "rcgen",
  "reqwest",
  "serde",
  "serde_json",

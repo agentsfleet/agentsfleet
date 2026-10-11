@@ -8,11 +8,9 @@ use octocrab::Octocrab;
 use octocrab::models::AppId;
 use serde_json::Value;
 
-use super::{Granted, Installed, ScopedRequest, classify, installation_id};
+use super::{Granted, Installed, ScopedRequest, classify, installation};
 use crate::credential::outcome::{Minted, Outcome, Retry};
 use crate::credential::platform::GithubApp;
-
-const FIELD_INSTALLATION_ID: &str = "installation_id";
 
 /// Where an App reads one of its installations; the token is minted beneath it.
 const INSTALLATIONS_ROUTE: &str = "/app/installations";
@@ -37,32 +35,42 @@ pub struct Exchange<'a> {
     pub now_ms: i64,
 }
 
+/// Where GitHub's REST API lives; [`mint_at`] takes it so a test can point the
+/// same signed client at a loopback GitHub.
+const GITHUB_API: &str = "https://api.github.com";
+
 /// Mints a repository-scoped installation token.
 ///
 /// The binding is required before the JWT is built. Without the body that
 /// narrows the token, GitHub would interpret the request as full installation
 /// reach, so absence must fail closed before transport.
 pub async fn mint(exchange: Exchange<'_>) -> Outcome {
-    let Some(installation_id) = exchange
-        .handle
-        .as_object()
-        .and_then(|handle| handle.get(FIELD_INSTALLATION_ID))
-        .and_then(installation_id)
-    else {
+    mint_at(exchange, GITHUB_API).await
+}
+
+/// [`mint`] against the GitHub API rooted at `base`.
+pub(super) async fn mint_at(exchange: Exchange<'_>, base: &str) -> Outcome {
+    let Some(installation_id) = installation(exchange.handle) else {
         return Outcome::ReconnectRequired;
     };
     let Some(binding) = exchange.binding else {
         return Outcome::MintFailed(Retry::Permanent);
     };
 
-    let key = match jsonwebtoken::EncodingKey::from_rsa_pem(exchange.app.private_key_pem.as_bytes())
-    {
-        Ok(key) => key,
-        Err(_unusable) => return Outcome::MintFailed(Retry::Permanent),
-    };
-    let Ok(client) = Octocrab::builder()
-        .app(AppId(exchange.app.app_id), key)
-        .build()
+    // One refusal for every way the App cannot sign: a key that is not an RSA
+    // PEM and a client that will not build are both the operator's to fix, and
+    // no retry helps either.
+    let Some(client) =
+        jsonwebtoken::EncodingKey::from_rsa_pem(exchange.app.private_key_pem.as_bytes())
+            .ok()
+            .and_then(|key| {
+                Octocrab::builder()
+                    .base_uri(base)
+                    .ok()?
+                    .app(AppId(exchange.app.app_id), key)
+                    .build()
+                    .ok()
+            })
     else {
         return Outcome::MintFailed(Retry::Permanent);
     };
@@ -92,14 +100,15 @@ pub(super) async fn request_token(
         Err(error) => return classify(&error),
     };
 
-    if let Err(overreach) = granted.verify(binding, request.permissions()) {
+    let requested = request.permissions();
+    if let Err(overreach) = granted.verify(binding, requested) {
         // Names and levels only, never the token: which permission tripped the
         // check is what an operator needs to tell a new ambient grant from a
         // mis-scoped installation.
         tracing::warn!(
             ?overreach,
             granted = ?granted.permissions,
-            requested = ?request.permissions(),
+            ?requested,
             event = "github_mint_overreach",
             "discarding a GitHub token whose reach does not match the fleet's binding"
         );

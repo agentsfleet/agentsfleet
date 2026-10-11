@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { listSecrets } from "@/lib/api/secrets";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
+import { getConnectorCatalog } from "@/lib/api/connectors";
 
 // Server-only read wrappers for the Secrets page. Mirrors the same
 // per-render cache() convention as settings/models/lib/reads.ts.
@@ -13,3 +14,6 @@ import { getTenantProvider } from "@/lib/api/tenant_provider";
 
 export const listSecretsCached = cache(listSecrets);
 export const getTenantProviderCached = cache(getTenantProvider);
+// getConnectorCatalogCached tells the delete dialog which secrets hold a live
+// connection: a connector's grant secret is named for its catalog id.
+export const getConnectorCatalogCached = cache(getConnectorCatalog);
