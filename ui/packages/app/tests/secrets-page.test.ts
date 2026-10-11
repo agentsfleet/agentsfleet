@@ -178,6 +178,17 @@ describe("Secrets page", () => {
     expect(markup).toContain(`data-connections="${JSON.stringify({ github: "GitHub" }).replaceAll('"', "&quot;")}"`);
   });
 
+  it("still renders, with no connections, when the connector catalogue read fails", async () => {
+    listSecretsCached.mockResolvedValue({ secrets: [] });
+    getConnectorCatalogCached.mockRejectedValue(new Error("503"));
+
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
+
+    expect(markup).toContain('data-testid="secrets-list"');
+    expect(markup).toContain('data-connections="{}"');
+  });
+
   it("redirects to /sign-in when unauthenticated", async () => {
     auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");

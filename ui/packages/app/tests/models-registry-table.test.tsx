@@ -669,6 +669,7 @@ describe("ModelsRegistryTable", () => {
     const narrow = entry({ context_cap_tokens: 128_000 });
     expect(compareEntries(wide, narrow, "context")).toBeGreaterThan(0);
     expect(compareEntries(entry({ context_cap_tokens: undefined }), narrow, "context")).toBeLessThan(0);
+    expect(compareEntries(narrow, entry({ context_cap_tokens: undefined }), "context")).toBeGreaterThan(0);
 
     // An entry priced by its own fields uses them; one without uses the
     // library's rate for its (provider, model), exactly as the Rates cell does.

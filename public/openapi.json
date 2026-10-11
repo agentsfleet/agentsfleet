@@ -14431,7 +14431,7 @@
           "Secrets"
         ],
         "summary": "Delete a secret from the workspace vault",
-        "description": "Idempotent — returns 204 whether or not the secret existed. A secret that model registry entries still name returns 409 `UZ-VAULT-004`, and its detail counts those entries. A secret named for a connector's `{provider}` holds that connector's connection. Deleting it disconnects the connector and removes its event-routing records, as Disconnect does.",
+        "description": "Idempotent — returns 204 whether or not the secret existed. A secret that model registry entries still name returns 409 `UZ-VAULT-004`, and its detail counts those entries. A secret named exactly as a connector's `{provider}` is deleted as Disconnect deletes it: the connector's event-routing records go with it.",
         "operationId": "delete_workspace_secret",
         "parameters": [
           {

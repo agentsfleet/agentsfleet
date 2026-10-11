@@ -233,7 +233,7 @@ describe("ApiKeyList component", () => {
       .getAllByRole("row")
       .slice(1)
       .map((row) => row.querySelector("td")?.textContent ?? "")
-      .map((cell) => (cell.includes("ci-runner") ? "ci-runner" : cell.includes("old-zapier") ? "old-zapier" : cell));
+      .map((cell) => ["ci-runner", "old-zapier", "twin"].find((name) => cell.includes(name)) ?? cell);
   }
 
   it("clicking Name sorts the loaded keys at once, with no fetch", async () => {
@@ -254,6 +254,14 @@ describe("ApiKeyList component", () => {
     expect(shownNames()).toEqual(["old-zapier", "ci-runner"]);
     expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("ascending");
     expect(listApiKeysActionMock).not.toHaveBeenCalled();
+  });
+
+  it("keys created in the same millisecond keep one order in both directions", async () => {
+    const twin = { ...ACTIVE, id: "0190cccc-cccc-7ccc-cccc-cccccccccccc", key_name: "twin" };
+    await renderList(listResponse([twin, ACTIVE]));
+    expect(shownNames()).toEqual(["ci-runner", "twin"]);
+    fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
+    expect(shownNames()).toEqual(["ci-runner", "twin"]);
   });
 
   it("a failed reload after a create says so and keeps the list", async () => {

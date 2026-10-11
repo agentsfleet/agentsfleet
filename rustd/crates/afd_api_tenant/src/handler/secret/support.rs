@@ -11,9 +11,11 @@ use afd_connector::Provider;
 use afd_vault::{SecretName, SecretSummary};
 use axum::body::Bytes;
 
+use afd_http::handler::Refusable;
+
 use crate::handler::Refusal;
 
-use super::{DETAIL_BODY_REQUIRED, DETAIL_MALFORMED_JSON};
+use super::{DETAIL_BODY_REQUIRED, DETAIL_MALFORMED_JSON, EVENT_DELETE, STATE_REFERENCED};
 
 /// The sentence a still-referenced delete is refused with.
 ///
@@ -52,6 +54,23 @@ pub(super) fn read_body<'b, T: serde::Deserialize<'b>>(body: &'b Bytes) -> Resul
 /// The connector whose connection `name` holds, if it is a grant key.
 pub(super) fn connection_named(name: &SecretName) -> Option<Provider> {
     Provider::parse(name.as_str()).filter(|provider| provider.grant_key() == name.as_str())
+}
+
+/// The refusal a delete answers with, on either path.
+///
+/// The one refusal whose sentence the call site knows better than the error's
+/// own table does: `detail()` is a `&'static str` and the count is not, so the
+/// counted form is rendered here, the same split `Refusal::preconditioned`
+/// makes for a stale `ETag`.
+pub(super) fn delete_refusal<E: Refusable>(referenced: Option<u32>, refused: E) -> Refusal {
+    match referenced {
+        Some(entries) => {
+            Refusal::conflict_detailed(EVENT_DELETE, referenced_detail(entries), STATE_REFERENCED)(
+                refused,
+            )
+        }
+        None => Refusal::at(EVENT_DELETE)(refused),
+    }
 }
 
 #[cfg(test)]

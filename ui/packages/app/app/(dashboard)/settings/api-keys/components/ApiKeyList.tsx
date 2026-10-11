@@ -23,12 +23,15 @@ export type ApiKeyListHandle = { refresh: () => void };
 // so a header click reorders it here, at once, instead of asking the server to
 // fetch every page again before the arrow could flip.
 function sortApiKeys(items: readonly ApiKeyRow[], sort: ApiKeySort): ApiKeyRow[] {
-  const descending = sort.startsWith("-");
+  const direction = sort.startsWith("-") ? -1 : 1;
   const byName = sort === "key_name" || sort === "-key_name";
-  const ordered = [...items].sort((a, b) =>
-    byName ? a.key_name.localeCompare(b.key_name) : a.created_at - b.created_at,
+  // Ties break on the id, so two keys created in the same millisecond keep
+  // one order however often the header is clicked.
+  return [...items].sort(
+    (a, b) =>
+      direction * (byName ? a.key_name.localeCompare(b.key_name) : a.created_at - b.created_at) ||
+      a.id.localeCompare(b.id),
   );
-  return descending ? ordered.reverse() : ordered;
 }
 
 export default function ApiKeyList({
