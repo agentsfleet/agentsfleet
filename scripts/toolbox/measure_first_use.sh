@@ -74,7 +74,6 @@ STEPS = {
     "git_commit": ["sh", "-ec", GIT_COMMIT],
     "node_start": ["node", "-e", "0"],
     "uv": ["uv", "--version"],
-    "gh": ["gh", "--version"],
     "rg": ["rg", "--version"],
     "jq": ["jq", "--version"],
     "curl": ["curl", "--version"],
