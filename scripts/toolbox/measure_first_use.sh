@@ -154,12 +154,17 @@ def percentile(samples, percent):
 
 
 def publish_report(report):
+    cancellation_signals = {signal.SIGINT, signal.SIGTERM, signal.SIGHUP}
+
     def cancelled(signum, _frame):
+        # Keep a second group/forwarded signal from interrupting cleanup.
+        signal.pthread_sigmask(signal.SIG_BLOCK, cancellation_signals)
         raise SystemExit(128 + signum)
 
-    signal.signal(signal.SIGTERM, cancelled)
+    for signum in cancellation_signals:
+        signal.signal(signum, cancelled)
     # Defer cancellation until the exclusively created file has a cleanup owner.
-    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, cancellation_signals)
     try:
         descriptor, filename = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
         temporary = Path(filename)
