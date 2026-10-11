@@ -33,6 +33,21 @@ const CLOCK_OPTIONS: Intl.DateTimeFormatOptions = {
  */
 export const TIME_INVALID_FALLBACK = "—";
 
+/* Built once. A table re-renders every relative-time cell on a sort click or a
+ * pending flip, and each one formats its tooltip; constructing a formatter per
+ * call made that a few hundred constructions per click. Only a caller that
+ * names another locale pays for one. */
+const ABSOLUTE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, ABSOLUTE_OPTIONS);
+const CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, CLOCK_OPTIONS);
+
+function formatterFor(
+  locale: string,
+  built: Intl.DateTimeFormat,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  return locale === DEFAULT_LOCALE ? built : new Intl.DateTimeFormat(locale, options);
+}
+
 export function coerceDate(value: string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
@@ -47,7 +62,7 @@ export function formatTimeAbsolute(
 ): string {
   const d = coerceDate(value);
   if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
-  return new Intl.DateTimeFormat(locale, ABSOLUTE_OPTIONS).format(d);
+  return formatterFor(locale, ABSOLUTE_FORMAT, ABSOLUTE_OPTIONS).format(d);
 }
 
 export function formatTimeClock(
@@ -56,8 +71,17 @@ export function formatTimeClock(
 ): string {
   const d = coerceDate(value);
   if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
-  return new Intl.DateTimeFormat(locale, CLOCK_OPTIONS).format(d);
+  return formatterFor(locale, CLOCK_FORMAT, CLOCK_OPTIONS).format(d);
 }
+
+/* The unit factors the relative label steps through. A month is 30 days and a
+ * year 365, which is all a "3 months ago" label needs. */
+export const MS_PER_SECOND = 1_000;
+export const SECONDS_PER_MINUTE = 60;
+export const SECONDS_PER_HOUR = 60 * SECONDS_PER_MINUTE;
+export const SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR;
+export const SECONDS_PER_MONTH = 30 * SECONDS_PER_DAY;
+export const SECONDS_PER_YEAR = 365 * SECONDS_PER_DAY;
 
 export function formatTimeRelative(
   value: string | Date,
@@ -65,19 +89,19 @@ export function formatTimeRelative(
 ): string {
   const d = coerceDate(value);
   if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
-  const deltaSec = Math.round((d.getTime() - now.getTime()) / 1000);
+  const deltaSec = Math.round((d.getTime() - now.getTime()) / MS_PER_SECOND);
   const abs = Math.abs(deltaSec);
 
   if (abs < 5) return "just now";
 
   const past = deltaSec < 0;
   const unit =
-    abs < 60 ? { n: abs, label: "second" }
-    : abs < 3_600 ? { n: Math.floor(abs / 60), label: "minute" }
-    : abs < 86_400 ? { n: Math.floor(abs / 3_600), label: "hour" }
-    : abs < 2_592_000 ? { n: Math.floor(abs / 86_400), label: "day" }
-    : abs < 31_536_000 ? { n: Math.floor(abs / 2_592_000), label: "month" }
-    : { n: Math.floor(abs / 31_536_000), label: "year" };
+    abs < SECONDS_PER_MINUTE ? { n: abs, label: "second" }
+    : abs < SECONDS_PER_HOUR ? { n: Math.floor(abs / SECONDS_PER_MINUTE), label: "minute" }
+    : abs < SECONDS_PER_DAY ? { n: Math.floor(abs / SECONDS_PER_HOUR), label: "hour" }
+    : abs < SECONDS_PER_MONTH ? { n: Math.floor(abs / SECONDS_PER_DAY), label: "day" }
+    : abs < SECONDS_PER_YEAR ? { n: Math.floor(abs / SECONDS_PER_MONTH), label: "month" }
+    : { n: Math.floor(abs / SECONDS_PER_YEAR), label: "year" };
 
   const noun = unit.n === 1 ? unit.label : `${unit.label}s`;
   return past ? `${unit.n} ${noun} ago` : `in ${unit.n} ${noun}`;
