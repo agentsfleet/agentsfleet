@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — measure, then one image change, its admission list and its docs
 **Branch:** `build/m221-toolbox-shrink`
 **Baseline revision:** 6e4a02127b4738f205c6ba1c8d42bce42413ed2e
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=10828 integration=5387 — identical-tree historical runs; integration uses the coverage-inclusive superset, not a like-for-like ignored-only delta
+**Baseline evidence:** `playbooks/operations/acceptance/baselines/M221_001-6e4a02127b47.md`
 **Depends on:** `M219_002` §6 merged (PR #739) — the toolbox builds from the Debian 13.7 snapshot `20261010T000000Z`, and every size here is measured on it
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 10, 2026) from Indy's Oct 10, 2026 questions on the image's size, with measurements taken that day
 **Canonical architecture:** `docs/architecture/runner_execution.md` §Toolbox
@@ -40,7 +40,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** build: the toolbox image is a fifth smaller and carries the same tools
 - **Intent (one sentence):** Each runner host downloads and keeps a smaller toolbox per release, and every tool a lease runs behaves and starts as it does today.
-- **Handshake** — pending until the implementing agent performs PLAN, before EXECUTE: restate the Intent in its own words and list `ASSUMPTIONS I'M MAKING: …`. A mismatch between the restatement and the Intent above → STOP and reconcile before any edit.
+- **Handshake (PLAN)** — Reduce each host's toolbox download and retained bytes by at least a fifth, preserve its tools and licences, and prove first use and kernel admission. `ASSUMPTIONS I'M MAKING:` keep the pinned snapshot and all packages; prefer candidate (a) if measured latency holds; use Indy's delegated override authority for the feature choice. Quality ceiling: compression and install-time exclusions solve this without a new image format or package removal. Surface checklist: OpenAPI, product commands and schema unchanged; published docs and release notes waived by Indy; version stays in sync. Verification: native image builds, cold first-use comparisons, signed admission tests, kernel lane and repository gates; changed Rust coverage at least 99%.
 
 ## Implementing agent — read these first
 
@@ -56,6 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/toolbox/manifest.txt` | EDIT | The `erofs` line carries the chosen compressor, chunk size and features |
 | `scripts/toolbox/build.sh` | EDIT | Docs, man pages, locales and info are excluded at install, `copyright` files included; `BUILDER_PACKAGES` names a new compressor's library |
 | `scripts/toolbox/measure_first_use.sh` | CREATE | First-use p50 and p99 per step for one image, cold cache, in a sandbox like a lease's |
+| `rustd/crates/afr_sandbox/examples/kernel_lane/main.rs` | EDIT | Wire the sibling size and licence proof into the existing example |
 | `rustd/crates/afr_sandbox/src/toolbox/{manifest.rs,manifest/tests.rs}` | EDIT | `EROFS_FEATURES` is the approved list; each feature is admitted and any other refused |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/{toolbox.rs,toolbox_size.rs,trials.rs}` | EDIT, CREATE | The size cap and the stripped-docs case, in a sibling file so `toolbox.rs` (274 lines) stays under the cap |
 | `docs/architecture/runner_execution.md` | EDIT | §Toolbox names the settings and features; a decision row records the choice and its numbers |
@@ -217,6 +218,12 @@ N/A — no files deleted. The losing candidates' settings never enter the manife
 - **Patch-vs-refactor verdict:** this is a **patch** because the build, admission and lane are right in shape; only settings and one list change.
 
 ## Discovery (consult log)
+
+- **Session overrides** — Indy: "You are free to override orly, orly docs can be skipped" and "No doc updates needed = override approved in orly, and other overrides as you need for orly." This delegates the implementation-default choice and its measured feature list, waives published architecture/changelog updates, and permits the missing sibling-module wiring in Files Changed. Measurements and verification remain required; the report is carried in the Pull Request. Indy also requires 99% coverage for touched Rust and 100% for touched TypeScript, and asks that five concurrent agents share disk, CPU and memory carefully. Builds use at most two Cargo jobs.
+
+- **Measured feature approval under delegated authority** — `dump.erofs -s` on the native LZ4 high compression (LZ4HC) level-9, 64 KiB, tail-packing/deduplication trial reports exactly `sb_csum mtime 0padding compr_cfgs big_pcluster ztailpacking fragments dedupe`. Indy's quoted override delegates this list's approval before admission is edited. Each feature and their combination get signed-admission proofs; an unknown feature remains refused. Final compressor settings still require the first-use comparison. Level 9 is an additional candidate because level 12's first native compression consumed over twenty CPU minutes.
+
+- **Install-filter findings** — dpkg retains documentation symlinks, and `install-info` regenerates `/usr/share/info/dir` after installation. The customize hook removes excluded-file aliases and that generated index, preserving copyright aliases and shared licence directories. The mounted-image comparison checks licence contents and package identity; the new kernel case rejects other documentation and broken links.
 
 - **Consults** — Oct 10, 2026: Indy asked "Why is the image size big? How can we bring down the size", then "write me a follow on prompt so let me decide to do it or not in reducing the image size", then "i recommend you to push this spec as well". Measured on afr-kernel, arm64, rebuilding today's tree:
 

@@ -29,10 +29,19 @@ X9Uwa+eLToHNFEG0sSzhyinf4yg1h2STC3EeThtX1E8N2qwR5D+IFZZZXw==
 -----END PUBLIC KEY-----
 ";
 /// The EROFS features a release may use: the ones the build's pinned
-/// compressor and block size produce (`scripts/toolbox/manifest.txt`). An
+/// compression settings produce (`scripts/toolbox/manifest.txt`). An
 /// image naming any other is refused rather than handed to the kernel's
 /// file-system parser.
-const EROFS_FEATURES: [&str; 3] = ["sb_csum", "mtime", "0padding"];
+const EROFS_FEATURES: [&str; 8] = [
+    "sb_csum",
+    "mtime",
+    "0padding",
+    "compr_cfgs",
+    "big_pcluster",
+    "ztailpacking",
+    "fragments",
+    "dedupe",
+];
 /// The most bytes a manifest or its signature may hold; a real manifest is
 /// tens of kilobytes and a signature under a hundred bytes.
 pub(crate) const MANIFEST_MAX_BYTES: usize = 1024 * 1024;
