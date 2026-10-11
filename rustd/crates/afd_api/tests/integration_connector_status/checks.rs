@@ -1,7 +1,7 @@
-//! The six things the status walk asserts, one function each.
+//! The seven things the status walk asserts, one function each.
 //!
 //! The walk itself is one test — it shares a database lane and a seeded
-//! workspace, so splitting it into six tests would mean seeding six times.
+//! workspace, so splitting it into seven tests would mean seeding seven times.
 //! What CAN be split is the assertions, and they read better named than
 //! inlined. A child module rather than a sibling because each one reaches
 //! into [`super::Fixture`], whose fields stay private to the parent.
@@ -201,6 +201,49 @@ pub(super) async fn a_disconnect_a_model_entry_still_names_is_a_conflict(
     );
     a_held_handle_reads_as_connected(router, fixture).await;
     fixture.drop_entry(&entry).await;
+}
+
+/// Deleting a connection's credential by name through the secrets route is a
+/// Disconnect: the routing row goes with it.
+///
+/// The secrets route was the side door. A plain vault delete there removed the
+/// handle and skipped the workspace's turn and the routing rows, leaving
+/// inbound events routed to a workspace with no credential to answer them.
+pub(super) async fn deleting_the_secret_by_name_disconnects_it(
+    router: &axum::Router,
+    fixture: &Fixture,
+) {
+    fixture.seal_handle(HELD, &handle(LABEL)).await;
+    fixture.route(HELD, ROUTED_ACCOUNT).await;
+    a_held_handle_reads_as_connected(router, fixture).await;
+
+    let secret = format!(
+        "/v1/workspaces/{}/secrets/{}",
+        fixture.workspace,
+        HELD.grant_key()
+    );
+    let gone = send(router, Method::DELETE, &secret, Some(&fixture.token), "").await;
+    assert_eq!(gone.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        fixture.routed(HELD, ROUTED_ACCOUNT).await,
+        0,
+        "the secrets route must take the routing row with the handle"
+    );
+
+    let read = send(
+        router,
+        Method::GET,
+        &fixture.one(HELD),
+        Some(&fixture.token),
+        "",
+    )
+    .await;
+    let document = json_body(read).await;
+    assert_eq!(
+        document.get("status").and_then(Value::as_str),
+        Some(STATUS_NOT_CONNECTED),
+        "the deleted connection must not still read: {document}"
+    );
 }
 
 /// A workspace secret sharing a provider's name is not a connection.

@@ -7,7 +7,8 @@
 
 use std::borrow::Cow;
 
-use afd_vault::SecretSummary;
+use afd_connector::Provider;
+use afd_vault::{SecretName, SecretSummary};
 use axum::body::Bytes;
 
 use crate::handler::Refusal;
@@ -46,6 +47,11 @@ pub(super) fn read_body<'b, T: serde::Deserialize<'b>>(body: &'b Bytes) -> Resul
     }
     afd_http::handler::read_body::<T>(body)
         .map_err(|_unreadable| Refusal::malformed(DETAIL_MALFORMED_JSON))
+}
+
+/// The connector whose connection `name` holds, if it is a grant key.
+pub(super) fn connection_named(name: &SecretName) -> Option<Provider> {
+    Provider::parse(name.as_str()).filter(|provider| provider.grant_key() == name.as_str())
 }
 
 #[cfg(test)]
