@@ -39,7 +39,8 @@ for name in dict.fromkeys([*binaries, *libraries]):
 image = fixture / "fixture.erofs"
 subprocess.run(["mkfs.erofs", "--quiet", str(image), str(source)], check=True)
 cases = ["signal_after_mount", "mount_failed", "command_failed", "unmount_failed",
-         "null_baseline", "publication_symlink", "signal_during_measurement"]
+         "null_baseline", "publication_symlink", "signal_during_measurement", "missing_digest",
+         "signal_during_publication"]
 if sys.argv[2]:
     assert sys.argv[2] in cases
     cases = [sys.argv[2]]
@@ -55,7 +56,7 @@ def mounted_root(marker):
 
 
 def run_sampler(command, environment, marker, case):
-    if case != "signal_during_measurement":
+    if case not in ("signal_during_measurement", "signal_during_publication"):
         return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=90)
     process = subprocess.Popen(command, env=environment, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True)
@@ -63,12 +64,14 @@ def run_sampler(command, environment, marker, case):
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             root = mounted_root(marker)
-            if root and (root.parent / "workspace/cancellation-started").is_file():
+            started = (marker.parent / "publication-started" if case == "signal_during_publication"
+                       else root.parent / "workspace/cancellation-started" if root else None)
+            if started and started.is_file():
                 break
             assert process.poll() is None, "sampler exited before cancellation"
             time.sleep(0.01)
         else:
-            raise AssertionError("real sandbox did not start")
+            raise AssertionError(f"{case}: cancellation point did not start")
         children = Path(f"/proc/{process.pid}/task/{process.pid}/children").read_text().split()
         assert len(children) == 1, f"unexpected sampler children: {children}"
         process.send_signal(signal.SIGTERM)
@@ -110,7 +113,7 @@ try:
             python.chmod(0o700)
         baseline = []
         called = directory / "command-called"
-        if case in ("null_baseline", "publication_symlink"):
+        if case in ("null_baseline", "publication_symlink", "missing_digest", "signal_during_publication"):
             bwrap = directory / "bwrap"
             bwrap.write_text(f'#!/bin/bash\ntouch "{called}"\nexit 0\n')
             bwrap.chmod(0o700)
@@ -126,6 +129,25 @@ try:
             invalid.write_text("null\n")
             baseline = [str(invalid)]
         environment = dict(os.environ, PATH=str(directory) + ":" + os.environ["PATH"])
+        if case == "signal_during_publication":
+            # Hold the real JSON writer after it owns its exclusive staging file.
+            hook = directory / "sitecustomize.py"
+            hook.write_text("import json, time\nfrom pathlib import Path\n"
+                            "def hold_report(*args, **kwargs):\n"
+                            f"    Path({str(directory / 'publication-started')!r}).touch()\n"
+                            "    time.sleep(120)\n"
+                            "json.dump = hold_report\n")
+            environment["PYTHONPATH"] = str(directory)
+        if case == "missing_digest":
+            # Produce a compatible baseline, then remove only its required digest.
+            seed = directory / "complete-baseline.json"
+            subprocess.run(["bash", str(sampler), str(image), str(seed), "20"],
+                           env=environment, capture_output=True, text=True, check=True, timeout=90)
+            incomplete = json.loads(seed.read_text())
+            del incomplete["image_sha256"]
+            seed.write_text(json.dumps(incomplete))
+            baseline = [str(seed)]
+            called.unlink()
         output = directory / "report.json"
         victim = directory / "unrelated-file"
         if case == "publication_symlink":
@@ -146,9 +168,14 @@ try:
                 assert all(len(step["samples_ms"]) == 20 for step in report["steps"].values())
             else:
                 assert not output.exists(), f"{case}: incomplete report published"
+            if case == "signal_during_publication":
+                assert not list(directory.glob(f".{output.name}.*.tmp")), "cancelled publication leaked staging file"
             if case == "null_baseline":
                 assert result.returncode != 0 and not called.exists(), "invalid baseline reached measurement"
                 assert "baseline" in result.stderr
+            if case == "missing_digest":
+                assert result.returncode != 0 and not called.exists(), "incomplete baseline reached measurement"
+                assert "baseline needs a SHA-256 image digest" in result.stderr
             if case == "unmount_failed":
                 assert result.returncode != 0 and mounted and root.parent.exists()
                 assert "unmount failed; retained" in result.stderr
