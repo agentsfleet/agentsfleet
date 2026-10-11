@@ -16,13 +16,15 @@
 //! knob's name and the header NAMES, and the value itself reaches exactly one
 //! reader: the exporter.
 
-use std::str::FromStr;
 use std::time::Duration;
 
 use afd_core::env::{EnvSource, optional};
-use opentelemetry_otlp::Protocol;
 
 use crate::error::{Refused, Result};
+
+mod protocol;
+
+pub use self::protocol::Encoding;
 
 #[cfg(test)]
 mod tests;
@@ -75,16 +77,6 @@ pub const OTEL_TIMEOUT_KNOB: &str = "OTEL_EXPORTER_OTLP_TIMEOUT";
 /// of this file knows the number without going to the exporter's source.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The protocol this build sends, and the only other one it accepts.
-const PROTOCOL_PROTOBUF: &str = "http/protobuf";
-
-/// The JSON encoding, accepted because a collector may prefer it.
-const PROTOCOL_JSON: &str = "http/json";
-
-/// Why a protocol this build does not carry is refused.
-const WHY_PROTOCOL: &str = "http/protobuf or http/json; this build carries no gRPC transport, and a \
-     deployment asking for one would export nothing at all";
-
 /// Why a timeout that will not parse is refused.
 const WHY_TIMEOUT: &str = "how long one export may take, in whole milliseconds";
 
@@ -100,58 +92,6 @@ const WHY_ENDPOINT: &str = "an http or https URL with a host and no query, such 
 /// The two schemes an HTTP exporter posts over.
 const SCHEME_HTTP: &str = "http";
 const SCHEME_HTTPS: &str = "https";
-
-/// The encoding a signal is posted in.
-///
-/// An enum rather than the knob's string: the two spellings the knob accepts
-/// and the two encodings the exporter speaks meet in exactly one place, and
-/// a value this type holds cannot be a third spelling nobody mapped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Encoding {
-    /// `http/protobuf`, the default and what the retired daemon posted.
-    #[default]
-    HttpProtobuf,
-    /// `http/json`, accepted because a collector may prefer it.
-    HttpJson,
-}
-
-impl Encoding {
-    /// The knob's spelling, for the line that reports it.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::HttpProtobuf => PROTOCOL_PROTOBUF,
-            Self::HttpJson => PROTOCOL_JSON,
-        }
-    }
-
-    /// The same encoding, as the exporter's own vocabulary spells it.
-    pub(crate) const fn wire(self) -> Protocol {
-        match self {
-            Self::HttpProtobuf => Protocol::HttpBinary,
-            Self::HttpJson => Protocol::HttpJson,
-        }
-    }
-}
-
-impl FromStr for Encoding {
-    type Err = Refused;
-
-    /// Every other spelling, `grpc` included, is refused HERE rather than at
-    /// the first export: a deployment that asked for gRPC and got a process
-    /// exporting nothing would look like a collector fault for as long as
-    /// nobody checked.
-    fn from_str(requested: &str) -> core::result::Result<Self, Refused> {
-        match requested {
-            PROTOCOL_PROTOBUF => Ok(Self::HttpProtobuf),
-            PROTOCOL_JSON => Ok(Self::HttpJson),
-            _unsupported => Err(Refused {
-                knob: OTEL_PROTOCOL_KNOB,
-                why: WHY_PROTOCOL,
-            }),
-        }
-    }
-}
 
 /// How long one export may take, read from the knob's digits.
 ///
