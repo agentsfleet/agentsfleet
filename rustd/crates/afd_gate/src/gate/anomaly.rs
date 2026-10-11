@@ -19,6 +19,7 @@
 //! that question is settled.
 
 use crate::gate::store::{Gates, key};
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::AnomalyRule;
 
@@ -87,8 +88,9 @@ impl Gates {
         match self.queue().increment_in_window(key, window_s).await {
             Ok(count) => Some(count),
             Err(fault) => {
-                let reason = fault.told();
+                let Logged { error_code, reason } = fault.logged();
                 tracing::warn!(
+                    error_code,
                     event = EVENT_COUNTER_UNAVAILABLE,
                     reason,
                     "the anomaly counter could not be read; the action is admitted \

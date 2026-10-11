@@ -29,6 +29,7 @@
 use std::time::Duration;
 
 use afd_core::clock::{self, UnixMillis};
+use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::streams::FleetStreams;
@@ -181,8 +182,9 @@ impl Reclaim {
                 Ok(Some(_entry)) => claimed += 1,
                 Ok(None) => break,
                 Err(failure) => {
-                    let reason = failure.told();
+                    let Logged { error_code, reason } = failure.logged();
                     tracing::warn!(
+                        error_code,
                         fleet_id,
                         reason,
                         event = "reclaim_claim_failed",
@@ -209,8 +211,9 @@ impl Reclaim {
                     // Loud, because this probe IS the recovery path's backstop:
                     // a silent failure leaves it inert while looking exactly
                     // like an idle system.
-                    let reason = failure.told();
+                    let Logged { error_code, reason } = failure.logged();
                     tracing::warn!(
+                        error_code,
                         fleet_id,
                         reason,
                         event = "deliverable_probe_failed",
@@ -233,8 +236,9 @@ impl Reclaim {
             Ok(_token) => true,
             Err(failure) => {
                 producers::fleet::ready_write_failed();
-                let reason = failure.told();
+                let Logged { error_code, reason } = failure.logged();
                 tracing::warn!(
+                    error_code,
                     fleet_id,
                     reason,
                     event = "ready_remark_failed",

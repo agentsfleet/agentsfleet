@@ -30,6 +30,7 @@
 //! is the only thing that decides.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetConfig;
 
@@ -138,8 +139,9 @@ impl Gates {
             }
             Err(fault) => {
                 let fleet = request.fleet_id.as_str();
-                let reason = fault.told();
+                let Logged { error_code, reason } = fault.logged();
                 tracing::warn!(
+                    error_code,
                     event = EVENT_LOOKUP_UNREADABLE,
                     fleet_id = fleet,
                     agentsfleet_event_id = request.event_id,
@@ -168,8 +170,9 @@ impl Gates {
             // Waiting costs a poll; the other direction throws away an answer.
             Err(fault) => {
                 let fleet = request.fleet_id.as_str();
-                let reason = fault.told();
+                let Logged { error_code, reason } = fault.logged();
                 tracing::warn!(
+                    error_code,
                     event = EVENT_DECISION_UNREADABLE,
                     fleet_id = fleet,
                     agentsfleet_event_id = request.event_id,

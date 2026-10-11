@@ -67,8 +67,8 @@ async fn a_closed_hub_ends_the_tail() {
     assert!(frames.next().await.is_none());
 }
 
-/// The line a closed tail leaves says why without the registry code, which a
-/// debug line names nowhere, or a backtrace.
+/// The line a closed tail leaves names the registry code in its own
+/// `error_code` field and says why without repeating it, or a backtrace.
 #[tokio::test]
 async fn a_closed_tail_reason_carries_no_code_prefix() {
     let capture = afd_core::test_util::trace::Capture::install();
@@ -81,4 +81,9 @@ async fn a_closed_tail_reason_carries_no_code_prefix() {
     let reason = logged.field("reason").expect("the line says why");
     assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
     assert_eq!(logged.field("channel"), Some(CHANNEL));
+    assert!(
+        logged
+            .field("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
 }

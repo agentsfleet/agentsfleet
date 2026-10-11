@@ -27,6 +27,7 @@
 //! the one outage acceptance was designed to ride through into a refusal.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::FleetStreams;
 
 use crate::Admissions;
@@ -147,8 +148,8 @@ impl Admissions {
                 Ok(self.ceiling.estimate())
             }
             Err(unread) => {
-                let reason = unread.told();
-                tracing::debug!(reason, event = "admission_ceiling_unread",);
+                let Logged { error_code, reason } = unread.logged();
+                tracing::debug!(error_code, reason, event = "admission_ceiling_unread",);
                 Ok(estimate)
             }
         }
@@ -166,8 +167,13 @@ impl Admissions {
             }
             Ok(_within_budget) => Ok(()),
             Err(unread) => {
-                let reason = unread.told();
-                tracing::debug!(fleet_id = fleet, reason, event = "admission_backlog_unread",);
+                let Logged { error_code, reason } = unread.logged();
+                tracing::debug!(
+                    error_code,
+                    fleet_id = fleet,
+                    reason,
+                    event = "admission_backlog_unread",
+                );
                 Ok(())
             }
         }

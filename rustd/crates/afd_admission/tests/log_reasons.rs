@@ -28,6 +28,12 @@ const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee2";
 /// backtrace, which begins on a line of its own.
 fn told_reason(capture: &Capture, event: &str) -> String {
     let logged = capture.only(event);
+    assert!(
+        logged
+            .field("error_code")
+            .is_some_and(|code| !code.is_empty()),
+        "{event} names no error_code"
+    );
     let reason = logged
         .field("reason")
         .expect("a failure line says why")

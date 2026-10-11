@@ -95,8 +95,9 @@ impl Fleets {
             // fleet is already active and the delivery path asks again.
             Err(unreadable) => {
                 let workspace_id = workspace.as_str();
-                let reason = unreadable.told();
+                let Logged { error_code, reason } = unreadable.logged();
                 tracing::warn!(
+                    error_code,
                     event = EVENT_CLASSIFY_FAILED,
                     workspace_id,
                     reason,
