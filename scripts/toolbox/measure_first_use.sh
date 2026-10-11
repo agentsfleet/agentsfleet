@@ -50,6 +50,7 @@ import platform
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -84,8 +85,10 @@ baseline = json.loads(Path(baseline_path).read_text()) if baseline_path else Non
 
 
 def validate_baseline():
-    if baseline is None:
+    if not baseline_path:
         return
+    if not isinstance(baseline, dict):
+        raise SystemExit("baseline must be a JSON object")
     if (baseline.get("arch") != platform.machine()
             or baseline.get("kernel") != platform.release()
             or baseline.get("cache") != "cold"
@@ -161,9 +164,12 @@ for name, command in STEPS.items():
             regressions.append(name)
     report["steps"][name] = step
 report["baseline_sha256"] = baseline["image_sha256"] if baseline else None
-temporary = output.with_name(output.name + ".tmp")
+descriptor, filename = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
+temporary = Path(filename)
 try:
-    temporary.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    with os.fdopen(descriptor, "w") as handle:
+        json.dump(report, handle, indent=2, sort_keys=True)
+        handle.write("\n")
     os.replace(temporary, output)
 finally:
     temporary.unlink(missing_ok=True)
