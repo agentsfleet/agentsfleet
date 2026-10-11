@@ -23,9 +23,6 @@ const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// What the fake server's request buffer starts at before the read grows it.
 const REQUEST_BUFFER_BYTES: usize = 1024;
 
-/// A base whose port nothing listens on, for a case that must not connect.
-const UNROUTED_BASE: &str = "http://127.0.0.1:9";
-
 const TENANT: &str = "tn_01J8XKQ2VN0000000000000000";
 const SCOPES: &str = "fleet:admin apikey:admin";
 
@@ -257,9 +254,8 @@ fn test_a_provider_that_never_answers_is_unreachable_not_a_panic() {
 #[test]
 fn test_a_dot_segment_subject_is_refused_before_any_write() {
     block_on(async {
-        // Nothing listens here; a request would fail as a connection, and the
-        // refusal arrives first.
-        let writer = ProviderMetadata::new(UNROUTED_BASE, secret(), TIMEOUT).expect("a client");
+        let (base, listener) = silent_listener();
+        let writer = ProviderMetadata::new(base, secret(), TIMEOUT).expect("a client");
         for dots in [".", ".."] {
             let subject = Subject::new(dots).expect("a non-blank subject");
             assert_eq!(
@@ -268,7 +264,22 @@ fn test_a_dot_segment_subject_is_refused_before_any_write() {
                 "{dots}"
             );
         }
+        assert!(
+            listener.accept().is_err(),
+            "a dot-segment subject was dialled"
+        );
     });
+}
+
+/// A loopback port that accepts connections nobody answers, so a test can ask
+/// afterwards whether anything dialled it.
+fn silent_listener() -> (String, std::net::TcpListener) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    listener
+        .set_nonblocking(true)
+        .expect("a non-blocking listener");
+    let base = format!("http://{}", listener.local_addr().expect("its address"));
+    (base, listener)
 }
 
 /// An API base no person's resource can hang off is refused at construction.

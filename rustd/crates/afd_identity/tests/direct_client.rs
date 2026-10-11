@@ -28,6 +28,10 @@ const PROXY_VARIABLES: [&str; 6] = [
     "ALL_PROXY",
     "all_proxy",
 ];
+
+/// The variables that exempt hosts from every proxy above.
+const BYPASS_VARIABLES: [&str; 2] = ["NO_PROXY", "no_proxy"];
+
 /// What the loopback endpoint answers.
 const ANSWER: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok";
 /// What the endpoint's request buffer holds.
@@ -61,6 +65,11 @@ fn a_direct_client_ignores_an_environment_proxy() {
         // SAFETY: this binary's one test, before any runtime or thread exists,
         // so nothing reads the environment while it is written.
         unsafe { std::env::set_var(variable, DEAD_PROXY) };
+    }
+    for variable in BYPASS_VARIABLES {
+        // SAFETY: as above. A host's own bypass list (commonly
+        // `localhost,127.0.0.1`) would let the control skip the dead proxy.
+        unsafe { std::env::remove_var(variable) };
     }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

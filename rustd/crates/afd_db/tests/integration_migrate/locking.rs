@@ -163,6 +163,71 @@ async fn test_migrate_gives_up_when_the_lock_never_frees() {
     database.cleanup().await;
 }
 
+/// A held lock is polled exactly the policy's attempts, a contended line
+/// before each retry and one exhaustion line after the last, with the
+/// interval waited between polls rather than skipped.
+///
+/// The bound moved from a hand loop onto `backon`, whose `max_times` counts
+/// retries, not polls: an off-by-one there is one extra poll on every
+/// contended deploy, and only the event count sees it.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn test_a_held_lock_is_polled_exactly_its_attempts() {
+    let database = TestDatabase::create().await;
+    let holder = database.open(DbRole::Migrator, &[]).await;
+    let waiter = database.open(DbRole::Migrator, &[]).await;
+
+    let mut held = holder.acquire().await.unwrap();
+    let taken: bool = sqlx::query("SELECT pg_try_advisory_lock($1)")
+        .bind(0x7A6F_6D62_6965_0001_i64)
+        .fetch_one(&mut *held)
+        .await
+        .unwrap()
+        .try_get(0)
+        .unwrap();
+    assert!(taken, "the test must actually hold the lock");
+
+    let interval = Duration::from_millis(50);
+    let capture = afd_core::test_util::trace::Capture::install();
+    let started = std::time::Instant::now();
+    let refused = afd_db::migrate::MigrationLock::acquire(
+        waiter.acquire().await.unwrap(),
+        RetryPolicy::new(3, interval),
+    )
+    .await
+    .expect_err("a lock nobody releases must refuse");
+    let took = started.elapsed();
+    let events = capture.events();
+    drop(capture);
+
+    assert!(refused.is_migration_refused(), "got {refused}");
+    let contended: Vec<_> = events
+        .iter()
+        .filter(|event| event.field("event") == Some("migrate_lock_contended"))
+        .map(|event| event.field("attempt").map(str::to_owned))
+        .collect();
+    assert_eq!(
+        contended,
+        [Some("1".to_owned()), Some("2".to_owned())],
+        "one contended line before each of the two retries"
+    );
+    let exhausted: Vec<_> = events
+        .iter()
+        .filter(|event| event.field("event") == Some("migrate_lock_exhausted"))
+        .map(|event| event.field("attempts").map(str::to_owned))
+        .collect();
+    assert_eq!(exhausted, [Some("3".to_owned())], "one exhaustion line");
+    assert!(
+        took >= interval * 2,
+        "the interval is waited between polls: {took:?}"
+    );
+
+    drop(held);
+    holder.close().await;
+    waiter.close().await;
+    database.cleanup().await;
+}
+
 /// A policy with no polls refuses a FREE lock without taking it: no poll is
 /// made, so nothing can win the lock and turn the refusal into a migration.
 #[tokio::test(flavor = "multi_thread")]

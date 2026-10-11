@@ -2,7 +2,7 @@
 
 use afd_wire::report::FailureClass;
 
-use super::fault_of;
+use super::{class_label, fault_of};
 use crate::metrics::label::fleet::Fault;
 
 /// Every class, named one at a time.
@@ -54,4 +54,20 @@ fn the_split_covers_every_class_the_wire_can_carry() {
 #[test]
 fn an_unclassified_failure_is_charged_to_the_platform() {
     assert_eq!(fault_of(None), Fault::Platform);
+}
+
+/// The metric label spells each class as the report that carried it does.
+///
+/// The label is a hand match, kept so the label stays a `&'static str`; this
+/// pins it to the serde spelling the stored row and the wire use, so a
+/// misspelled arm fails here instead of splitting one class across two labels.
+#[test]
+fn every_class_label_is_its_wire_spelling() {
+    for (class, _fault) in SPLIT {
+        assert_eq!(
+            Some(class_label(*class).to_owned()),
+            afd_core::spelling::to_spelling(class),
+            "{class:?}"
+        );
+    }
 }

@@ -63,34 +63,11 @@ pub(super) async fn open_runtime(
     // First, before a socket opens: a client that will not build is a defect
     // in the build, and nothing below should be opened only to be abandoned.
     let clients = Clients::open()?;
-    let database = Db::connect(config.api_pool()).await?;
-    // Before the router exists, so the first request finds live connections
-    // instead of paying a handshake inside an acquire budget sized for a wait.
-    // sqlx does not do this itself: it bootstraps `min_connections` only when
-    // `idle_timeout` and `max_lifetime` are both unset, and the pool pins
-    // both. `warm` reports its shortfall through `pool_warm_incomplete`.
-    database.warm(POOL_WARM_DEADLINE).await;
-    let queue = Dragonfly::connect(config.redis()).await?;
-    // Before the first write, and refused in the queue's own class. A seed
-    // that is not a cluster cannot place the keys this daemon routes by slot;
-    // a server without sharded pub/sub cannot carry the live tail; a primary
-    // that evicts keys would discard accepted work on purpose. A daemon that
-    // served on through any of them would look exactly like one whose fleets
-    // had simply gone quiet.
-    afd_dragonfly::preflight::refuse_unsuitable_datastore(&queue).await?;
+    let (database, queue) = open_datastores(config).await?;
     let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
     let kek = Arc::new(config.kek().clone());
-    let broker = crate::credentials::resolve(
-        &afd_credential::vault::Vault::new(database.clone(), Arc::clone(&kek)),
-        config.platform_admin_workspace(),
-        clients.broker,
-    )
-    .await;
-    #[cfg(feature = "test-util")]
-    let broker = config
-        .exchanger()
-        .map_or(broker, crate::credentials::with_exchanger);
+    let broker = open_broker(config, &database, &kek, clients.broker).await;
     let live = open_live(config.redis(), config.sse_max_streams()).await;
     let hub = live.hub().cloned();
     let observed = live.clone();
@@ -106,11 +83,7 @@ pub(super) async fn open_runtime(
         sessions,
         stores: crate::bundles::resolve(config.bundles()),
         platform_admin_workspace: config.platform_admin_workspace().cloned(),
-        // Fail-closed: a deployment that named no secret refuses every signup
-        // delivery rather than trusting an unverified one to open an account.
-        identity_webhook_secret: config
-            .identity_webhook_secret()
-            .map(|secret| afd_crypto::secret::SecretBytes::new(secret.as_bytes().to_vec())),
+        identity_webhook_secret: identity_webhook_secret(config),
         broker,
         live,
         analytics: analytics.clone(),
@@ -118,29 +91,8 @@ pub(super) async fn open_runtime(
         // line and the answer it precedes land in the same Slack.
         slack_api_base: config.slack_api_base().to_owned(),
         vendor_client: clients.plane,
-        // A destination that will not build is a deployment that cannot
-        // register schedules, and it fails CLOSED rather than registering a
-        // truncated callback: the empty string matches no token's subject, so
-        // every fire is refused until the api url is corrected.
-        schedule: crate::plane::ScheduleConfig {
-            client: clients.schedule,
-            token: afd_crypto::secret::SecretString::new(
-                config.qstash_token().unwrap_or_default().to_owned(),
-            ),
-            destination: afd_cron::qstash::destination_url(config.api_url()).unwrap_or_default(),
-            // The one place the vendor's US region is chosen, and only when this
-            // deployment named no scheduler of its own.
-            api_base: config
-                .qstash_url()
-                .unwrap_or(afd_cron::qstash::API_BASE)
-                .to_owned(),
-            keys: config.qstash_signing_keys().cloned(),
-        },
-        login: crate::plane::LoginConfig {
-            code_pepper: config.session_code_pepper().clone(),
-            app_url: config.app_url().clone(),
-            api_url: config.api_url().into(),
-        },
+        schedule: schedule_config(config, clients.schedule),
+        login: login_config(config),
     }));
     Ok(Runtime {
         database,
@@ -151,6 +103,90 @@ pub(super) async fn open_runtime(
         kek,
         outbound_client: clients.outbound,
     })
+}
+
+/// The database, warmed, and the queue, refused unless it can carry this
+/// daemon.
+async fn open_datastores(config: &BootConfig) -> Result<(Db, Dragonfly), BootFailure> {
+    let database = Db::connect(config.api_pool()).await?;
+    // Before the router exists, so the first request finds live connections
+    // instead of paying a handshake inside an acquire budget sized for a wait.
+    // sqlx does not do this itself: it bootstraps `min_connections` only when
+    // `idle_timeout` and `max_lifetime` are both unset, and the pool pins
+    // both. `warm` reports its shortfall through `pool_warm_incomplete`.
+    database.warm(POOL_WARM_DEADLINE).await;
+    let queue = Dragonfly::connect(config.redis()).await?;
+    // Before the first write, and refused in the queue's own class. A seed
+    // that is not a cluster cannot place the keys this daemon routes by slot;
+    // a server without sharded pub/sub cannot carry the live tail; a primary
+    // that evicts keys would discard accepted work on purpose. A daemon that
+    // served on through any of them would look exactly like one whose fleets
+    // had simply gone quiet.
+    afd_dragonfly::preflight::refuse_unsuitable_datastore(&queue).await?;
+    Ok((database, queue))
+}
+
+/// The credential broker, minting through the platform admin workspace's
+/// vault when one is set.
+async fn open_broker(
+    config: &BootConfig,
+    database: &Db,
+    kek: &Arc<Kek>,
+    client: reqwest::Client,
+) -> Arc<afd_credential::credential::Broker> {
+    let broker = crate::credentials::resolve(
+        &afd_credential::vault::Vault::new(database.clone(), Arc::clone(kek)),
+        config.platform_admin_workspace(),
+        client,
+    )
+    .await;
+    #[cfg(feature = "test-util")]
+    let broker = config
+        .exchanger()
+        .map_or(broker, crate::credentials::with_exchanger);
+    broker
+}
+
+/// The secret signup deliveries are verified against.
+///
+/// Fail-closed: a deployment that named no secret refuses every signup
+/// delivery rather than trusting an unverified one to open an account.
+fn identity_webhook_secret(config: &BootConfig) -> Option<afd_crypto::secret::SecretBytes> {
+    config
+        .identity_webhook_secret()
+        .map(|secret| afd_crypto::secret::SecretBytes::new(secret.as_bytes().to_vec()))
+}
+
+/// What the login flow signs codes with and redirects between.
+fn login_config(config: &BootConfig) -> crate::plane::LoginConfig {
+    crate::plane::LoginConfig {
+        code_pepper: config.session_code_pepper().clone(),
+        app_url: config.app_url().clone(),
+        api_url: config.api_url().into(),
+    }
+}
+
+/// The scheduler the plane registers schedules with.
+///
+/// A destination that will not build is a deployment that cannot register
+/// schedules, and it fails CLOSED rather than registering a truncated
+/// callback: the empty string matches no token's subject, so every fire is
+/// refused until the api url is corrected.
+fn schedule_config(config: &BootConfig, client: reqwest::Client) -> crate::plane::ScheduleConfig {
+    crate::plane::ScheduleConfig {
+        client,
+        token: afd_crypto::secret::SecretString::new(
+            config.qstash_token().unwrap_or_default().to_owned(),
+        ),
+        destination: afd_cron::qstash::destination_url(config.api_url()).unwrap_or_default(),
+        // The one place the vendor's US region is chosen, and only when this
+        // deployment named no scheduler of its own.
+        api_base: config
+            .qstash_url()
+            .unwrap_or(afd_cron::qstash::API_BASE)
+            .to_owned(),
+        keys: config.qstash_signing_keys().cloned(),
+    }
 }
 
 pub(super) async fn spawn_background(

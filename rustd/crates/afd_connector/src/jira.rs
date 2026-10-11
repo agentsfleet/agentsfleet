@@ -17,6 +17,7 @@
 //! which is the one their own UI defaults to. Picking differently would mean
 //! asking the person a question this flow has no screen for.
 
+use reqwest::RequestBuilder;
 use serde_json::Value;
 
 use crate::endpoint;
@@ -77,14 +78,7 @@ pub async fn resolve(
     // request carries a freshly minted bearer.
     let endpoint = endpoint::redirected(ACCESSIBLE_RESOURCES, pinned)
         .ok_or_else(error::exchange_unreadable)?;
-    let answer = client
-        .get(endpoint)
-        // Marked sensitive, so a client that renders its request never shows
-        // the freshly minted token.
-        .bearer_auth(access_token)
-        .header(HEADER_ACCEPT, CONTENT_TYPE_JSON)
-        .send()
-        .await?;
+    let answer = request(client, endpoint, access_token).send().await?;
 
     let status = answer.status();
     if !status.is_success() {
@@ -111,6 +105,16 @@ fn first_site(sites: &Value) -> Option<Site> {
     })
 }
 
+/// The site listing's request, carrying the freshly minted token.
+fn request(client: &reqwest::Client, endpoint: String, access_token: &str) -> RequestBuilder {
+    client
+        .get(endpoint)
+        // Marked sensitive, so a client that renders its request never shows
+        // the token.
+        .bearer_auth(access_token)
+        .header(HEADER_ACCEPT, CONTENT_TYPE_JSON)
+}
+
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -120,7 +124,27 @@ mod tests {
 
     use serde_json::json;
 
-    use super::first_site;
+    use super::{ACCESSIBLE_RESOURCES, first_site, request};
+
+    /// The token rides as `Bearer <token>`, marked sensitive so a request that
+    /// is rendered for a log or a debugger never shows it.
+    #[test]
+    fn the_site_listing_presents_the_token_as_a_sensitive_bearer() {
+        let built = request(
+            &reqwest::Client::new(),
+            ACCESSIBLE_RESOURCES.to_owned(),
+            "t",
+        )
+        .build()
+        .expect("a request the client can send");
+
+        let authorization = built
+            .headers()
+            .get("authorization")
+            .expect("the token rides");
+        assert_eq!(authorization.to_str().ok(), Some("Bearer t"));
+        assert!(authorization.is_sensitive());
+    }
 
     /// The first entry is the site, with its label and its address.
     #[test]
