@@ -191,11 +191,13 @@ No product analytics or funnel signals change. The launcher reports its namespac
 
 ## Acceptance Rubric (single scoring surface)
 
+For R3, replace `<SIBLING_CHECKOUT>` with an existing sibling checkout's absolute path; its `scripts/local-dev.sh` must match this checkout.
+
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
 | R1 | Namespaced datastore behavior | `make test-integration-rustd` | exit 0; namespace isolation cases pass | P0 | ✅ exit 0; 945 integration passes, including four namespace cases |
 | R2 | Launcher safety and reuse | `bash scripts/local-dev-test.sh` | exit 0; all launcher cases pass | P0 | ✅ 19 tests; exit 0, both shutdown exit seams covered |
-| R3 | Two-worktree developer flow | `bash scripts/local-dev-test.sh --live` | exit 0; both daemon URLs healthy, one infrastructure project, sibling survives stop | P0 | ✅ 1 live test; both URLs, callbacks, data preservation and cleanup passed |
+| R3 | Two-worktree developer flow | `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` | exit 0; both daemon URLs healthy, one infrastructure project, sibling survives stop | P0 | ✅ 1 live test; both URLs, callbacks, data preservation and cleanup passed |
 | R4 | Conform | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN; exit 0 |
 | R5 | Lint | `make lint-all` | exit 0 | P0 | ✅ final declared lint-all invocation exit 0 |
 | R6 | Unit | `make test-unit-all` | exit 0 | P0 | ✅ 10194 passes, 0 failures, 964 ignored/skipped; exit 0 |
