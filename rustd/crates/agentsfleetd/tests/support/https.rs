@@ -132,6 +132,8 @@ pub(crate) struct Upstream {
     root: reqwest::Certificate,
     hosts: Vec<&'static str>,
     seen: mpsc::Receiver<Seen>,
+    task: tokio::task::JoinHandle<()>,
+    stop: tokio_util::sync::CancellationToken,
 }
 
 impl Upstream {
@@ -147,11 +149,22 @@ impl Upstream {
         let address = listener.local_addr().expect("a bound address");
         let (sent, seen) = mpsc::channel();
         let routes = Arc::new(routes);
-        tokio::spawn(async move {
-            while let Ok((stream, _peer)) = listener.accept().await {
+        let stop = tokio_util::sync::CancellationToken::new();
+        let stopped = stop.clone();
+        let task = tokio::spawn(async move {
+            let mut connections = tokio::task::JoinSet::new();
+            loop {
+                let (stream, _peer) = tokio::select! {
+                    _shutdown = stopped.cancelled() => break,
+                    accepted = listener.accept() => match accepted {
+                        Ok(accepted) => accepted,
+                        Err(_) => break,
+                    },
+                    _joined = connections.join_next(), if !connections.is_empty() => continue,
+                };
                 let (acceptor, routes, sent) =
                     (acceptor.clone(), Arc::clone(&routes), sent.clone());
-                tokio::spawn(async move {
+                connections.spawn(async move {
                     let Ok(tls) = acceptor.accept(stream).await else {
                         return;
                     };
@@ -163,12 +176,15 @@ impl Upstream {
                         .await;
                 });
             }
+            connections.shutdown().await;
         });
         Self {
             address,
             root,
             hosts,
             seen,
+            task,
+            stop,
         }
     }
 
@@ -185,6 +201,26 @@ impl Upstream {
     /// Every request seen since the last read.
     pub(crate) fn seen(&self) -> Vec<Seen> {
         self.seen.try_iter().collect()
+    }
+
+    /// Reaps the listener; its owned connection set aborts every open socket.
+    #[allow(
+        dead_code,
+        reason = "shared test support: the kernel lane joins explicitly; daemon scenarios cancel on drop"
+    )]
+    pub(crate) async fn stop(&mut self) {
+        self.stop.cancel();
+        tokio::time::timeout(std::time::Duration::from_secs(10), &mut self.task)
+            .await
+            .expect("the fake upstream stops before its deadline")
+            .expect("the fake upstream reaps its connections");
+    }
+}
+
+impl Drop for Upstream {
+    fn drop(&mut self) {
+        self.stop.cancel();
+        self.task.abort();
     }
 }
 

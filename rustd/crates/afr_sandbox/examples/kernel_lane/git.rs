@@ -66,7 +66,7 @@ fn host_git(dir: &Path, args: &[&str]) -> Result<(), Failed> {
 }
 
 /// [`REPOSITORY`] with one commit, served from under `root`.
-fn serve(root: &Path) -> Result<(), Failed> {
+pub(crate) fn serve(root: &Path) -> Result<(), Failed> {
     let remote = root.join(ORIGINS).join(OWNER).join(format!("{NAME}.git"));
     fs::create_dir_all(&remote)?;
     host_git(&remote, &["init", QUIET, "--initial-branch", BASE])?;

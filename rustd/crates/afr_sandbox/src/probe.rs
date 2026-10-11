@@ -215,21 +215,6 @@ fn kvm(path: &Path) -> Kvm {
 }
 
 impl HostProbe {
-    /// The first mechanism every sandbox needs that this host lacks, or `None`
-    /// when a sandbox can be built here.
-    #[must_use]
-    pub fn missing(&self) -> Option<&'static str> {
-        [
-            (self.landlock, MECHANISM_LANDLOCK),
-            (self.seccomp, MECHANISM_SECCOMP),
-            (self.bubblewrap, MECHANISM_BUBBLEWRAP),
-            (self.toolbox_filesystem, MECHANISM_TOOLBOX_FILESYSTEM),
-        ]
-        .into_iter()
-        .find_map(|(present, name)| (!present).then_some(name))
-        .or_else(|| self.missing_controller())
-    }
-
     /// Whether every controller a lease's limits need is delegated here.
     #[must_use]
     pub fn has_required_controllers(&self) -> bool {
@@ -237,7 +222,7 @@ impl HostProbe {
     }
 
     /// The first required controller this host does not delegate.
-    fn missing_controller(&self) -> Option<&'static str> {
+    pub(crate) fn missing_controller(&self) -> Option<&'static str> {
         REQUIRED_CONTROLLERS
             .into_iter()
             .find(|wanted| !self.cgroup_controllers.iter().any(|have| have == wanted))

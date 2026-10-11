@@ -243,7 +243,8 @@ async fn a_connection_accepted_after_the_cancel_is_counted_at_close() {
             // The last connection the loop took before it noticed.
             let guard = drain.enter();
             drain.stopped_accepting();
-            tokio::time::sleep(A_MOMENT).await;
+            // No yield between closing and finishing: the waiting drain must
+            // retain the close count even if the request finishes first.
             drop(guard);
         }
     });
