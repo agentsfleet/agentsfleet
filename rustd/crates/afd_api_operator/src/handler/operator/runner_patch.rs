@@ -16,7 +16,7 @@ use http::header;
 
 use super::query;
 use crate::auth::PersonIdentity;
-use crate::handler::{malformed, refuse};
+use crate::handler::{malformed, parse_id, refuse};
 use crate::services::Services;
 
 const EVENT: &str = "runner_patch_failed";
@@ -79,9 +79,9 @@ pub(crate) async fn handle<D: Services>(
     Path(raw): Path<String>,
     body: Bytes,
 ) -> Response {
-    let runner = match query::runner_id(&raw) {
+    let runner = match parse_id(&raw, query::DETAIL_BAD_RUNNER_ID) {
         Ok(runner) => runner,
-        Err(detail) => return malformed(detail),
+        Err(refused) => return refused.into_response(),
     };
     // Strict: the assigned policy is a shape the runner reads leniently, and an
     // operator's misspelled key inside it must still be refused.

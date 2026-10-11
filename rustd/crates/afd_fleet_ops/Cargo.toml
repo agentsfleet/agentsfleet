@@ -18,6 +18,9 @@ test-util = ["afd_core/test-util", "afd_db/test-util"]
 afd_core.workspace = true
 afd_db.workspace = true
 afd_api_wire.workspace = true
+# The lease statuses a row is stored in, spelled once beside the statements
+# that write them.
+afd_state.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 

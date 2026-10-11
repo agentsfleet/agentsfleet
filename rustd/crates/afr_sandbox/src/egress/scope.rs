@@ -48,7 +48,7 @@ impl<W: Wire> Scope<W> {
         allowlist: &Allowlist,
     ) -> Result<Self> {
         let hosts = allowlist.hosts();
-        let claim = Claim::any()
+        let claim = Claim::any(kernel.slots())
             .ok_or_else(|| egress_refused(EgressRefusal::NoSlot))
             .inspect_err(|error| refused(None, hosts, error))?;
         let slot = claim.slot();

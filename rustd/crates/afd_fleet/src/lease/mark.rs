@@ -12,7 +12,7 @@
 //! best-effort: a clear that fails leaves the mark, which costs one more empty
 //! claim and never an event.
 
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::ReadyToken;
 use afd_observability::producers;
@@ -33,9 +33,13 @@ impl Leases {
         if let Err(failure) = self.ready().clear_if_unchanged(fleet, token).await {
             producers::fleet::ready_write_failed();
             let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let reason = failure.to_string();
+            let Logged {
+                error_code: cause_error_code,
+                reason,
+            } = failure.logged();
             tracing::warn!(
                 error_code = code,
+                cause_error_code,
                 event = EVENT_READY_CLEAR_FAILED,
                 fleet_id = fleet,
                 reason,
@@ -81,8 +85,18 @@ mod tests {
             Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
         );
         assert_eq!(
+            line.get("cause_error_code").map(String::as_str),
+            Some(error_code::INTERNAL_OPERATION_FAILED.as_str()),
+            "the refused command's own code rides `cause_error_code`"
+        );
+        assert_eq!(
             line.get("fleet_id").map(String::as_str),
             Some(acquired.fleet_id.as_str())
+        );
+        let reason = line.get("reason").map_or("", String::as_str);
+        assert!(
+            !reason.is_empty() && !reason.contains("[UZ-"),
+            "the reason is the failure's sentence, its code only in `error_code`: {reason}"
         );
     }
 }

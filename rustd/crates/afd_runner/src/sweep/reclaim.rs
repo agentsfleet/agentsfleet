@@ -29,6 +29,7 @@
 use std::time::Duration;
 
 use afd_core::clock::{self, UnixMillis};
+use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::streams::FleetStreams;
@@ -44,9 +45,6 @@ const CONTEXT_FLEETS: &str = "reclaim active fleets";
 
 /// Statement name, for the context the ledger question's failure carries.
 const CONTEXT_STRANDED: &str = "reclaim stranded leases";
-
-/// The fleet status whose streams are worth sweeping.
-pub(crate) const STATUS_ACTIVE: &str = "active";
 
 /// How many fleets one pass reaches, on either of its questions.
 ///
@@ -144,7 +142,7 @@ impl Reclaim {
         let mut cursor = self.cursor.lock().await;
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::sweep::SELECT_ACTIVE_FLEETS_AFTER)
-            .bind(STATUS_ACTIVE)
+            .bind(sql::FLEET_STATUS_ACTIVE)
             .bind(cursor.after_updated_at())
             .bind(cursor.after_id())
             .bind(BATCH_LIMIT)
@@ -184,9 +182,11 @@ impl Reclaim {
                 Ok(Some(_entry)) => claimed += 1,
                 Ok(None) => break,
                 Err(failure) => {
+                    let Logged { error_code, reason } = failure.logged();
                     tracing::warn!(
+                        error_code,
                         fleet_id,
-                        error = %failure,
+                        reason,
                         event = "reclaim_claim_failed",
                         "a stranded entry could not be claimed; the next pass retries it"
                     );
@@ -211,9 +211,11 @@ impl Reclaim {
                     // Loud, because this probe IS the recovery path's backstop:
                     // a silent failure leaves it inert while looking exactly
                     // like an idle system.
+                    let Logged { error_code, reason } = failure.logged();
                     tracing::warn!(
+                        error_code,
                         fleet_id,
-                        error = %failure,
+                        reason,
                         event = "deliverable_probe_failed",
                         "a fleet's deliverable state could not be read"
                     );
@@ -234,9 +236,11 @@ impl Reclaim {
             Ok(_token) => true,
             Err(failure) => {
                 producers::fleet::ready_write_failed();
+                let Logged { error_code, reason } = failure.logged();
                 tracing::warn!(
+                    error_code,
                     fleet_id,
-                    error = %failure,
+                    reason,
                     event = "ready_remark_failed",
                     "a deliverable fleet could not be re-marked ready"
                 );

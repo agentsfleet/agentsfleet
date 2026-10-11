@@ -13,6 +13,7 @@
 
 use std::backtrace::BacktraceStatus;
 
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_core::error_code::{Coded, Logged};
 use afd_core::limits::WorkerCount;
 
@@ -27,7 +28,7 @@ const RAN_ONE: &str = "test result: ok. 1 passed;";
 fn should_render_the_backtrace_only_when_the_environment_asks_for_one() {
     let err = WorkerCount::new(0).unwrap_err();
 
-    if std::env::var(CHILD_MARKER).is_ok() {
+    if ProcessEnv.get(CHILD_MARKER).is_some() {
         // Child: RUST_BACKTRACE=1, so capture succeeds and Display appends it.
         assert_eq!(err.backtrace().status(), BacktraceStatus::Captured);
         let rendered = err.to_string();
@@ -164,7 +165,7 @@ fn should_tell_a_shelled_cause_without_its_code_or_backtrace() {
     let passed = nested::supervisor::passed();
     let errno = std::io::Error::from_raw_os_error(nested::engine::EINVAL).to_string();
 
-    if std::env::var(CHILD_MARKER).is_ok() {
+    if ProcessEnv.get(CHILD_MARKER).is_some() {
         assert_eq!(caused.backtrace().status(), BacktraceStatus::Captured);
         assert!(
             caused.to_string().lines().count() > 1,
@@ -194,7 +195,7 @@ fn should_tell_a_shelled_cause_without_its_code_or_backtrace() {
         );
     }
 
-    if std::env::var(CHILD_MARKER).is_err() {
+    if ProcessEnv.get(CHILD_MARKER).is_none() {
         rerun_with_backtraces("should_tell_a_shelled_cause_without_its_code_or_backtrace");
     }
 }

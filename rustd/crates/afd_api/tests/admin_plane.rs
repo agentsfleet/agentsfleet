@@ -97,6 +97,22 @@ async fn model_mutations_validate_before_datastore_io() {
     )
     .await;
     assert_eq!(bad_id.status(), StatusCode::BAD_REQUEST);
+    let bad_delete = send(
+        &admin,
+        Method::DELETE,
+        "/v1/admin/models/not-a-uuid",
+        Some(PLATFORM_KEY),
+        "",
+    )
+    .await;
+    assert_eq!(bad_delete.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(
+        json_body(bad_delete)
+            .await
+            .get("detail")
+            .and_then(serde_json::Value::as_str),
+        Some("id must be a canonical UUIDv7")
+    );
 
     let bad_rates = send(
         &admin,

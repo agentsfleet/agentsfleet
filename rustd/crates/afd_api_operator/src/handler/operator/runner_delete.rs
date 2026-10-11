@@ -17,7 +17,7 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 
 use super::query;
-use crate::handler::{malformed, refuse};
+use crate::handler::{parse_id, refuse};
 use crate::services::Services;
 
 /// The scoped event a failed retirement is logged under.
@@ -57,9 +57,9 @@ pub(crate) async fn handle<D: Services>(
     State(services): State<Arc<D>>,
     Path(raw): Path<String>,
 ) -> Response {
-    let runner = match query::runner_id(&raw) {
+    let runner = match parse_id(&raw, query::DETAIL_BAD_RUNNER_ID) {
         Ok(runner) => runner,
-        Err(detail) => return malformed(detail),
+        Err(refused) => return refused.into_response(),
     };
     match services.runners().delete_revoked(&runner).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),

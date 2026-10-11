@@ -1,11 +1,15 @@
 //! Egress slots: the index a live scope is named and addressed by, held by one
 //! scope at a time across the whole process.
 //!
-//! The claims are one process-wide bitmap rather than a field of an engine:
+//! The claims are one bitmap per kernel, reached through [`Kernel::slots`]:
 //! every engine in a process names its links and tables from the same host
-//! namespace, so two engines handing out the same index would meet each
-//! other's objects. Claiming is a single atomic `fetch_or`, so no lock guards
-//! it and a scope built on any thread claims its slot without waiting.
+//! namespace, so the running kernel's pool is one static, [`HOST`], and two
+//! engines handing out the same index would meet each other's objects. A fake
+//! kernel holds a pool of its own, so a test claims without a process-wide
+//! lock. Claiming is a single atomic `fetch_or`, so no lock guards it and a
+//! scope built on any thread claims its slot without waiting.
+//!
+//! [`Kernel::slots`]: super::kernel::Kernel::slots
 
 use std::net::Ipv4Addr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -30,9 +34,30 @@ const SANDBOX_OCTET: u8 = 2;
 /// Bits in one word of the claim bitmap.
 const WORD_BITS: u8 = 64;
 
-/// One bit per slot, set while some scope in this process holds it: slots
-/// `0..64`, then `64..128`, `128..192` and `192..254`.
-static CLAIMED: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
+/// One bit per slot, set while some scope holds it: slots `0..64`, then
+/// `64..128`, `128..192` and `192..254`.
+#[derive(Debug)]
+pub(crate) struct Slots([AtomicU64; 4]);
+
+/// The running kernel's pool. A static rather than an engine's field, against
+/// `M-AVOID-STATICS` on purpose: the slots name objects in the one host
+/// namespace every engine in the process shares, and the boot sweep's `flock`
+/// already makes the pool host-wide across processes.
+pub(crate) static HOST: Slots = Slots::new();
+
+impl Slots {
+    /// A pool with every slot free.
+    pub(crate) const fn new() -> Self {
+        Self([const { AtomicU64::new(0) }; 4])
+    }
+
+    /// A pool of its own for a fake kernel, living as long as the process,
+    /// so a [`Claim`] holds it by a plain reference.
+    #[cfg(test)]
+    pub(crate) fn fresh() -> &'static Self {
+        Box::leak(Box::new(Self::new()))
+    }
+}
 
 /// One slot's index, and every name and address derived from it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,41 +122,41 @@ impl Slot {
         Ipv4Addr::new(NETWORK[0], NETWORK[1], self.0, last)
     }
 
-    /// Its bit in the claim bitmap: the word, and the mask within it.
-    fn bit(self) -> (&'static AtomicU64, u64) {
-        let [first, second, third, fourth] = &CLAIMED;
-        let word = match self.0 / WORD_BITS {
-            0 => first,
-            1 => second,
-            2 => third,
-            _ => fourth,
-        };
-        (word, 1 << (self.0 % WORD_BITS))
+    /// Its bit in `slots`: the word, and the mask within it. Every slot
+    /// [`Slot::new`] makes has a word, so `None` is unreachable.
+    fn bit(self, slots: &Slots) -> Option<(&AtomicU64, u64)> {
+        let word = slots.0.get(usize::from(self.0 / WORD_BITS))?;
+        Some((word, 1 << (self.0 % WORD_BITS)))
     }
 }
 
-/// A slot this process holds; released when dropped.
+/// A slot held in a pool; released when dropped.
 #[derive(Debug)]
-pub(crate) struct Claim(Slot);
+pub(crate) struct Claim {
+    slot: Slot,
+    slots: &'static Slots,
+}
 
 impl Claim {
-    /// The lowest slot no scope in this process holds, held from now on.
-    pub(crate) fn any() -> Option<Self> {
-        (0..SLOTS).filter_map(Slot::new).find_map(Self::exactly)
+    /// The lowest slot no scope holds in `slots`, held from now on.
+    pub(crate) fn any(slots: &'static Slots) -> Option<Self> {
+        (0..SLOTS)
+            .filter_map(Slot::new)
+            .find_map(|slot| Self::exactly(slots, slot))
     }
 
-    /// `slot`, held from now on, unless a scope in this process holds it.
-    pub(crate) fn exactly(slot: Slot) -> Option<Self> {
-        let (word, mask) = slot.bit();
+    /// `slot`, held in `slots` from now on, unless a scope holds it.
+    pub(crate) fn exactly(slots: &'static Slots, slot: Slot) -> Option<Self> {
+        let (word, mask) = slot.bit(slots)?;
         let before = word.fetch_or(mask, Ordering::AcqRel);
         // Built only when this call set the bit: a claim built and dropped
         // on the failing path would clear the bit its holder still owns.
-        (before & mask == 0).then(|| Self(slot))
+        (before & mask == 0).then(|| Self { slot, slots })
     }
 
     /// The slot held.
     pub(crate) const fn slot(&self) -> Slot {
-        self.0
+        self.slot
     }
 
     /// Holds the slot for the life of the process: its link or its table could
@@ -144,22 +169,10 @@ impl Claim {
 
 impl Drop for Claim {
     fn drop(&mut self) {
-        let (word, mask) = self.0.bit();
-        word.fetch_and(!mask, Ordering::AcqRel);
+        if let Some((word, mask)) = self.slot.bit(self.slots) {
+            word.fetch_and(!mask, Ordering::AcqRel);
+        }
     }
-}
-
-/// Taken by every test that claims slots, so the one that holds them all
-/// never starves another: the bitmap is the whole test process's.
-#[cfg(test)]
-pub(crate) static TEST_CLAIMS: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-/// [`TEST_CLAIMS`], held for a test's length.
-#[cfg(test)]
-pub(crate) fn claims_held() -> std::sync::MutexGuard<'static, ()> {
-    TEST_CLAIMS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[cfg(test)]

@@ -1,10 +1,17 @@
-//! The pace a lagging viewer's counter reads keep.
+//! The pace a lagging viewer's counter reads keep, and what a `hello` says
+//! when the counters do not answer.
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+)]
 
 use std::time::Duration;
 
+use afd_core::id::Uuid7;
+use afd_core::test_util::trace::Capture;
 use tokio::time::Instant;
 
-use super::{REFRESH_INTERVAL, Recount};
+use super::{EVENT_HELLO_COUNTERS_UNREAD, REFRESH_INTERVAL, Recount, counters_unread};
 
 /// Dimension 5.5: fifty lag frames inside one beat cost one counters read in
 /// that beat — the first lag's, taken at once — and whatever they still owe
@@ -60,4 +67,22 @@ fn any_hello_pays_off_an_owed_read() {
     recount.paid(); // a changed set's `hello`
     assert!(recount.deadline().is_none());
     assert!(!recount.due(opened + REFRESH_INTERVAL * 2));
+}
+
+/// A `hello` whose counters did not answer says why without repeating its
+/// code, which the line's own `error_code` field already carries.
+#[test]
+fn an_unread_hello_counter_reason_carries_no_code_prefix() {
+    let capture = Capture::install();
+    let workspace =
+        Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011").expect("a fixture identifier");
+    let refused = Uuid7::parse("not an identifier").expect_err("not an identifier");
+    let failure = afd_fleet_lifecycle::Error::from(refused);
+
+    counters_unread(&workspace, &failure);
+
+    let logged = capture.only(EVENT_HELLO_COUNTERS_UNREAD);
+    let reason = logged.field("reason").unwrap_or_default();
+    assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+    assert_eq!(logged.field("error_code"), Some(failure.code().as_str()));
 }

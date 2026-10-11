@@ -22,6 +22,7 @@
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole, FleetStreams, ReadyIndex};
 use afd_wire::event::Entry;
 
@@ -33,11 +34,11 @@ const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// The configuration the lane hands these suites.
 pub(crate) fn config() -> DragonflyConfig {
-    let url = std::env::var(URL_KNOB).unwrap_or_else(|_error| {
+    let url = ProcessEnv.get(URL_KNOB).unwrap_or_else(|| {
         panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
     });
     DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
+        .with_ca_cert_file(ProcessEnv.get(CA_KNOB).map(Into::into))
 }
 
 /// A Dragonfly nobody is listening on.

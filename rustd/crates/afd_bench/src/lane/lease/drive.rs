@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use afd_core::clock::UnixMillis;
+use afd_core::clock;
 use afd_core::id::Uuid7;
 use afd_fleet::lease::Leases;
 
@@ -83,7 +83,7 @@ pub async fn poll_until(
     let token = shared.abort.token();
     while Instant::now() < shared.deadline && !token.is_cancelled() && !shared.exhausted() {
         let started = Instant::now();
-        match leases.select(runner, &[], now()).await {
+        match leases.select(runner, &[], clock::now()).await {
             Ok(Some(_acquired)) => {
                 outcomes.succeeded(started.elapsed())?;
                 shared.leased.fetch_add(1, Ordering::Relaxed);
@@ -101,15 +101,6 @@ pub async fn poll_until(
         }
     }
     Ok((outcomes, last_lease))
-}
-
-/// The wall clock, in the shape the assignment pass is given.
-fn now() -> UnixMillis {
-    let millis = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    UnixMillis::from_millis(i64::try_from(millis).unwrap_or(i64::MAX))
 }
 
 /// A window's length: from its start to its last lease when the population

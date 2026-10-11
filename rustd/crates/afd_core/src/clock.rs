@@ -119,6 +119,10 @@ impl UnixMillis {
 /// honest, and recoverable; an epoch-0 reading hides the broken clock behind a
 /// real instant.
 #[must_use]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "this is the owner: the one wall-clock read every caller routes through"
+)]
 pub fn now() -> UnixMillis {
     millis_at(SystemTime::now())
 }

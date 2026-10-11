@@ -71,3 +71,27 @@ fn test_a_later_fence_outranks_an_earlier_one() {
         "a reclaim's token must outrank the holder it displaced"
     );
 }
+
+/// A release the datastore refused leaves the claim to lapse, and its warning
+/// carries the code as `error_code` and the failure's sentence as `reason`.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn an_unreleased_claim_reason_carries_no_code_prefix() {
+    use crate::lease::test_dead;
+
+    let log = afd_core::test_util::trace::Capture::install();
+    test_dead::leases()
+        .let_go(&test_dead::id(1), Fence::from_i64(3), test_dead::AT)
+        .await;
+
+    let line = log.only(EVENT_CLAIM_RELEASE_FAILED);
+    let reason = line.field("reason").unwrap_or_default();
+    assert!(
+        line.field("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
+    assert!(
+        !reason.is_empty() && !reason.contains("[UZ-"),
+        "the code is the line's `error_code`, never the reason's prefix: {reason}"
+    );
+}

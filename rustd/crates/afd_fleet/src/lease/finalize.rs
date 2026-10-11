@@ -32,10 +32,11 @@
 //! # The cap lands on a character boundary
 //!
 //! A response cut at a byte cap can split a multi-byte character and store
-//! text that is not UTF-8. [`truncate`] backs off to the last
-//! [`str::is_char_boundary`] at or below the cap.
+//! text that is not UTF-8. [`str::floor_char_boundary`] backs off to the last
+//! character boundary at or below the cap.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::EventId;
 use afd_events::Closed;
@@ -46,7 +47,7 @@ use crate::error::Result;
 use crate::lease::sql;
 use crate::lease::sql::session::MAX_CHECKPOINT_RESPONSE_BYTES;
 use crate::lease::store::Leases;
-use crate::lease::verdict::{Terminal, truncate};
+use crate::lease::verdict::Terminal;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_TERMINAL: &str = "fleet event terminal";
@@ -154,7 +155,8 @@ impl Leases {
         // nothing. Rendering a `Value` has no failure to absorb.
         let document = serde_json::json!(Checkpoint {
             last_event_id,
-            last_response: truncate(last_response, MAX_CHECKPOINT_RESPONSE_BYTES),
+            last_response: &last_response
+                [..last_response.floor_char_boundary(MAX_CHECKPOINT_RESPONSE_BYTES)],
         })
         .to_string();
 
@@ -215,9 +217,13 @@ impl Leases {
             Ok(_nothing_above_the_floor) => {}
             Err(failure) => {
                 let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-                let reason = failure.to_string();
+                let Logged {
+                    error_code: cause_error_code,
+                    reason,
+                } = failure.logged();
                 tracing::warn!(
                     error_code = code,
+                    cause_error_code,
                     fleet_id = fleet,
                     reason,
                     event = "stream_trim_failed"
@@ -258,5 +264,35 @@ impl Leases {
             .await
             .map_err(crate::error::query(CONTEXT_RELEASED))?;
         Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests {
+    use crate::lease::test_dead;
+
+    /// A trim the queue refused is logged under its constant code, and the
+    /// reason is the failure's sentence alone.
+    #[tokio::test]
+    async fn a_failed_trim_reason_carries_no_code_prefix() {
+        let log = afd_core::test_util::trace::Capture::install();
+
+        test_dead::leases().trim_history("fleet-fixture").await;
+
+        let line = log.only("stream_trim_failed");
+        let reason = line.field("reason").unwrap_or_default();
+        assert_eq!(
+            line.field("error_code"),
+            Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
+        assert_eq!(
+            line.field("cause_error_code"),
+            Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
+            "the refused command's own code rides `cause_error_code`"
+        );
+        assert!(
+            !reason.is_empty() && !reason.contains("[UZ-"),
+            "the code is the line's `error_code`, never the reason's prefix: {reason}"
+        );
     }
 }

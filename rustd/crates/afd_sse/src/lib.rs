@@ -25,7 +25,6 @@
 //! for.
 
 pub mod ceiling;
-pub mod channel;
 pub mod error;
 pub mod fanin;
 pub mod frame;

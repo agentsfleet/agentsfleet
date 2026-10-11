@@ -47,6 +47,7 @@ pub mod migrate;
 pub mod migration;
 pub mod pool;
 pub mod precondition;
+pub mod statement;
 
 // The per-test database creator four integration suites each carry their own
 // copy of, in the home every one of their headers names. Behind `test-util` so

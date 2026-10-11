@@ -9,6 +9,7 @@
 
 use std::time::Duration;
 
+use backon::{ConstantBuilder, Retryable as _};
 use tokio::sync::Semaphore;
 
 use crate::Dragonfly;
@@ -37,7 +38,7 @@ static CONNECT_SERIAL: Semaphore = Semaphore::const_new(1);
 /// So a lapsed budget here means "the machine was busy", not "Dragonfly is down",
 /// and three attempts distinguish them. A genuinely absent Dragonfly fails three
 /// times quickly and still fails; a contended one wins a later attempt.
-const CONNECT_RETRY_ATTEMPTS: u32 = 3;
+const CONNECT_RETRY_ATTEMPTS: usize = 3;
 
 /// How long to wait after a lapsed attempt, giving the CPU spike time to pass.
 const RETRY_BACKOFF: Duration = Duration::from_millis(250);
@@ -51,33 +52,27 @@ const RETRY_BACKOFF: Duration = Duration::from_millis(250);
 /// # Errors
 /// Returns the connection attempt's configuration or transport failure.
 pub async fn connect_live(config: &DragonflyConfig) -> Result<Dragonfly> {
-    let mut attempt = 1;
-    loop {
+    (|| async {
         // This private semaphore is never closed. Keeping the acquisition
         // result alive holds the permit for the handshake; `Err` is
         // unconstructible while the only code with access to the semaphore
-        // never calls `close`. It is re-acquired per attempt so a retry queues
-        // behind other tests rather than holding the listener for its backoff.
-        let outcome = {
-            let _permit = CONNECT_SERIAL.acquire().await;
-            Dragonfly::connect(config).await
-        };
-        match outcome {
-            Ok(redis) => return Ok(redis),
-            // Only a lapsed deadline is retried. A refused endpoint, an
-            // unreadable certificate authority, or a malformed URL will answer
-            // the same way three times, and retrying them turns a one-second
-            // diagnosis into a three-second one that reports the same fault.
-            Err(error)
-                if matches!(error.kind(), ErrorKind::ConnectTimeout { .. })
-                    && attempt < CONNECT_RETRY_ATTEMPTS =>
-            {
-                attempt += 1;
-                tokio::time::sleep(RETRY_BACKOFF).await;
-            }
-            Err(error) => return Err(error),
-        }
-    }
+        // never calls `close`. It is re-acquired per attempt, and released when
+        // the attempt ends, so a retry queues behind other tests rather than
+        // holding the listener for its backoff.
+        let _permit = CONNECT_SERIAL.acquire().await;
+        Dragonfly::connect(config).await
+    })
+    .retry(
+        ConstantBuilder::new()
+            .with_delay(RETRY_BACKOFF)
+            .with_max_times(CONNECT_RETRY_ATTEMPTS.saturating_sub(1)),
+    )
+    // Only a lapsed deadline is retried. A refused endpoint, an unreadable
+    // certificate authority, or a malformed URL will answer the same way three
+    // times, and retrying them turns a one-second diagnosis into a three-second
+    // one that reports the same fault.
+    .when(|error| matches!(error.kind(), ErrorKind::ConnectTimeout { .. }))
+    .await
 }
 
 /// The `CLUSTER SLOTS` reply a fake server must answer before a cluster client

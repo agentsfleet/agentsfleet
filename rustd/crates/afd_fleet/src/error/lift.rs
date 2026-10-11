@@ -1,148 +1,44 @@
 //! How a foreign error becomes this crate's.
 //!
-//! Seven [`From`] impls, split from [`super`] because they answer one question
-//! the constructors beside them do not: which failures `?` may lift with no
-//! conversion written at the call site. That is a policy about the crate's
-//! boundary, and `RUST_ERROR_STANDARD` rule 2 is what it implements — compose
-//! with `#[from]` so `?` lifts, and reach for `map_err` only to ADD context the
-//! call site alone knows.
+//! Split from [`super`] because it answers one question the constructors beside
+//! it do not: which failures `?` may lift with no conversion written at the
+//! call site. That is a policy about the crate's boundary, and
+//! `RUST_ERROR_STANDARD` rule 2 is what it implements — compose with `From` so
+//! `?` lifts, and reach for `map_err` only to ADD context the call site alone
+//! knows.
 //!
-//! Two of these types are wrapped in more than one place, and the asymmetry is
-//! deliberate rather than an oversight; each impl below says why.
+//! Each source lands in its own kind. Most are planes that moved to their own
+//! crate — admission, billing, credentials, gates, memory, events, outbound —
+//! while the lease still speaks THIS crate's error, so their faults compose in
+//! with the code and sentence their own plane decided.
+//!
+//! Two foreign types are wrapped in more than one place, and the asymmetry is
+//! deliberate: `afd_core::error::Error` lifts into `Mint` here, while
+//! `RowMalformed` keeps `#[source]` and its own builder, because a column that
+//! will not parse needs the table and column names a bare conversion cannot
+//! supply — and two lifts for one type is two `From` impls for one pair.
+//! `afd_fleet_runtime::Error` lifts whole into `ConfigUnreadable`: a fleet whose
+//! stored config will not parse must not run under a config this daemon
+//! guessed at, and the parser's own error says which rule the document broke.
+//!
+//! `afd_db` and `afd_dragonfly` stay separate kinds because the two datastores
+//! fail independently, and a runner backs off the same way from either only
+//! when the code says which one went down.
 
 use super::{Error, ErrorKind};
 
-/// A pool with nothing to give, or a datastore that is gone.
-///
-/// `#[from]`, so `?` lifts an `afd_db::Error` with no conversion at the call
-/// site (`RUST_ERROR_STANDARD` rule 2).
-impl From<afd_db::Error> for Error {
-    fn from(source: afd_db::Error) -> Self {
-        Self::new(ErrorKind::Datastore { source })
-    }
-}
-
-/// The queue would not answer.
-///
-/// A separate variant from [`ErrorKind::Datastore`] because the two fail
-/// independently and a runner reads them the same way — back off and re-poll —
-/// only when the code says which one went down. Folding Dragonfly into the Postgres
-/// variant would page whoever owns the wrong datastore.
-impl From<afd_dragonfly::Error> for Error {
-    fn from(source: afd_dragonfly::Error) -> Self {
-        Self::new(ErrorKind::Queue { source })
-    }
-}
-
-/// The admission ledger would not answer.
-///
-/// Asked exactly once on the lease path — for the cursor a lost consumer
-/// group is restored at — and its own plane has already decided the code and
-/// the sentence, so both are read off the source rather than restated here.
-impl From<afd_admission::Error> for Error {
-    fn from(source: afd_admission::Error) -> Self {
-        Self::new(ErrorKind::Admission { source })
-    }
-}
-
-/// A money read or charge failed.
-///
-/// The billing store moved to its own crate with its own error, and the
-/// admission pass still speaks THIS crate's: the posture that decides what a
-/// money fault means lives here, so the fault composes in rather than the
-/// posture moving out.
-/// A secret, provider or credential read failed.
-///
-/// The plane that resolves what a run may USE moved to its own crate; the
-/// lease still speaks THIS crate's error, so the fault composes in rather than
-/// the lease's vocabulary moving out.
-/// A policy assembly or gate read failed.
-///
-/// The plane that decides what a fleet may DO moved to its own crate; the
-/// lease still speaks this crate's error, so the fault composes in.
-impl From<afd_gate::Error> for Error {
-    fn from(source: afd_gate::Error) -> Self {
-        Self::new(ErrorKind::Gate { source })
-    }
-}
-
-impl From<afd_credential::Error> for Error {
-    fn from(source: afd_credential::Error) -> Self {
-        Self::new(ErrorKind::Credential { source })
-    }
-}
-
-impl From<afd_billing::Error> for Error {
-    fn from(source: afd_billing::Error) -> Self {
-        Self::new(ErrorKind::Billing { source })
-    }
-}
-
-/// The memory store's failure, whose code and sentence `afd_memory` decides.
-impl From<afd_memory::Error> for Error {
-    fn from(source: afd_memory::Error) -> Self {
-        Self::new(ErrorKind::Memory { source })
-    }
-}
-
-/// A closing's row came back in a shape the event store cannot read.
-///
-/// The store that owns `core.fleet_events` decodes what its own closing
-/// statements return; the lease still speaks this crate's error, so the fault
-/// composes in the way a gate or billing fault does.
-impl From<afd_events::Error> for Error {
-    fn from(source: afd_events::Error) -> Self {
-        Self::new(ErrorKind::Events { source })
-    }
-}
-
-/// The delivery ledger would not answer.
-///
-/// `afd_outbound` owns `core.fleet_obligations` and the report path commits one
-/// through it, on the transaction's own connection. Lifted so `?` carries that
-/// fault without a conversion at the call site — the same shape the event store
-/// above uses, for the same reason: the lease still speaks this crate's error.
-impl From<afd_outbound::Error> for Error {
-    fn from(source: afd_outbound::Error) -> Self {
-        Self::new(ErrorKind::Outbound { source })
-    }
-}
-
-/// An identifier could not be minted — the instant is unrepresentable.
-///
-/// `#[from]` on the KIND, lifted here, so `?` carries a `Uuid7::encode` failure
-/// with no conversion at the call site. `RowMalformed` wraps the same foreign
-/// type but keeps `#[source]` and its own builder, because a column that will
-/// not parse needs the table and column names a bare conversion cannot supply —
-/// and because two `#[from]` for one type is two `From` impls for one pair.
-impl From<afd_core::error::Error> for Error {
-    fn from(source: afd_core::error::Error) -> Self {
-        Self::new(ErrorKind::Mint { source })
-    }
-}
-
-/// The host could not produce the random bytes a credential is built from.
-/// `#[from]` on the KIND, lifted here for the reason the two impls above are:
-/// a fleet whose stored config will not parse must not run under a config this
-/// daemon guessed at, and the parser's own error is what says which rule the
-/// document broke. Converting it to a string here would destroy that.
-impl From<afd_fleet_runtime::Error> for Error {
-    fn from(source: afd_fleet_runtime::Error) -> Self {
-        Self::new(ErrorKind::ConfigUnreadable { source })
-    }
-}
-
-impl From<afd_crypto::error::Error> for Error {
-    fn from(source: afd_crypto::error::Error) -> Self {
-        Self::new(ErrorKind::Entropy { source })
-    }
-}
-
-/// The mask an interim message is scrubbed with could not be built over the
-/// fleet's secret values. Lifted whole, so the matcher's own reason survives in
-/// the chain; the message it guarded is not sent.
-impl From<afr_secrets::Error> for Error {
-    fn from(source: afr_secrets::Error) -> Self {
-        Self::new(ErrorKind::Scrub { source })
-    }
-}
+afd_core::error_lifts!(Error, ErrorKind:
+    afd_db::Error => Datastore,
+    afd_dragonfly::Error => Queue,
+    afd_admission::Error => Admission,
+    afd_gate::Error => Gate,
+    afd_credential::Error => Credential,
+    afd_billing::Error => Billing,
+    afd_memory::Error => Memory,
+    afd_events::Error => Events,
+    afd_outbound::Error => Outbound,
+    afd_core::error::Error => Mint,
+    afd_fleet_runtime::Error => ConfigUnreadable,
+    afd_crypto::error::Error => Entropy,
+    afr_secrets::Error => Scrub,
+);

@@ -5,7 +5,7 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use std::collections::HashMap;
+use afd_core::env::MapEnv;
 
 use super::{Provenance, admitted, finish};
 use crate::error::{Error, ErrorKind};
@@ -24,12 +24,8 @@ const DESCRIBED: [(&str, &str); 3] = [
     (OWNED_VARIABLE, OWNED_VALUE),
 ];
 
-fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> + use<> {
-    let map: HashMap<String, String> = pairs
-        .iter()
-        .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-        .collect();
-    move |key: &str| map.get(key).cloned()
+fn env_of(pairs: &[(&str, &str)]) -> MapEnv {
+    MapEnv::from_pairs(pairs.iter().copied())
 }
 
 #[test]

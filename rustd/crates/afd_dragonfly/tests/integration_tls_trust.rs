@@ -24,6 +24,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 /// The TLS endpoint, which is NOT the one the rest of the lane uses.
@@ -40,8 +41,9 @@ const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 const BAD_CA_KNOB: &str = "TEST_DRAGONFLY_BAD_CA";
 
 fn lane(knob: &str) -> String {
-    std::env::var(knob)
-        .unwrap_or_else(|_| panic!("{knob} unset — run through `make test-integration-rustd`"))
+    ProcessEnv
+        .get(knob)
+        .unwrap_or_else(|| panic!("{knob} unset — run through `make test-integration-rustd`"))
 }
 
 fn tls_config() -> DragonflyConfig {

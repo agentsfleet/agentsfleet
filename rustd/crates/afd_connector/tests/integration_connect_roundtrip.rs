@@ -54,6 +54,7 @@ use afd_connector::grant::Grants;
 use afd_connector::provider::Provider;
 use afd_connector::{Finishing, Landed};
 use afd_core::clock::UnixMillis;
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_crypto::aad::Aad;
 use afd_crypto::entropy::Entropy;
@@ -125,6 +126,10 @@ impl Round {
     }
 
     /// Seeds both workspaces in `lane` and binds the connectors to `vendor`.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the fake vendor listens on loopback; a test client needs neither a deadline nor a proxy rule"
+    )]
     async fn over(lane: TestDatabase, vendor: &FakeAtlassian) -> Self {
         afd_db::test_util::install_subscriber();
         let database = lane.open(DbRole::Api, &[]).await;
@@ -207,10 +212,14 @@ impl Round {
 
 /// The lane's Dragonfly, where a round trip's single-use nonce lives.
 async fn queue() -> Dragonfly {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the panic names the `VarError`, which `ProcessEnv` drops"
+    )]
     let url = std::env::var("TEST_DRAGONFLY_URL")
         .expect("TEST_DRAGONFLY_URL is unset — run this through `make test-integration-rustd`");
     let config = DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(std::env::var("TEST_DRAGONFLY_CA_CERT").ok().map(Into::into));
+        .with_ca_cert_file(ProcessEnv.get("TEST_DRAGONFLY_CA_CERT").map(Into::into));
     afd_dragonfly::test_util::connect_live(&config)
         .await
         .expect("the lane's Dragonfly must be reachable")

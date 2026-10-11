@@ -8,6 +8,8 @@
 
 use sha2::{Digest as _, Sha256};
 
+use crate::lower_hex;
+
 /// Ends every part, so `ab` + `c` and `a` + `bc` never hash alike.
 const SEPARATOR: [u8; 1] = [0];
 /// A bundle name's length: a SHA-256 digest in hexadecimal.
@@ -18,15 +20,11 @@ const NAME_LEN: usize = 64;
 ///
 /// Uppercase is refused rather than folded: the importer writes lowercase, so
 /// accepting `A-F` would give one bundle two names and a cache that answers for
-/// one of them. `is_ascii_hexdigit` is the obvious call and the wrong one,
-/// since it accepts them. A name is also a path segment, so this is the check
-/// that keeps path characters out of one.
+/// one of them. A name is also a path segment, so this is the check that keeps
+/// path characters out of one.
 #[must_use]
 pub fn is_name(name: &str) -> bool {
-    name.len() == NAME_LEN
-        && name
-            .bytes()
-            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    name.len() == NAME_LEN && name.chars().all(lower_hex::is_digit)
 }
 
 /// A bundle's content digest, built part by part in the order the importer

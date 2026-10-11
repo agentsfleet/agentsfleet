@@ -1,25 +1,9 @@
-//! Strong entity tags over one ordered editable surface.
+//! Whether a presented `If-Match` admits the tag an entry carries now.
+//!
+//! The tag itself is `afd_core::etag::compute`, the workspace's one encoding:
+//! a client holds it across deployments and presents it back.
 
 use headers::{ETag, Header as _, IfMatch};
-use sha2::{Digest as _, Sha256};
-
-const FIELD_NULL: u8 = 0;
-const FIELD_PRESENT: u8 = 1;
-
-pub(super) fn compute(fields: &[Option<&str>]) -> String {
-    let mut digest = Sha256::new();
-    for field in fields {
-        match field {
-            Some(value) => {
-                digest.update([FIELD_PRESENT]);
-                digest.update(u64::try_from(value.len()).unwrap_or(u64::MAX).to_be_bytes());
-                digest.update(value.as_bytes());
-            }
-            None => digest.update([FIELD_NULL]),
-        }
-    }
-    format!("\"{}\"", hex::encode(digest.finalize()))
-}
 
 pub(super) fn matches_if_match(raw: &str, current: &str) -> bool {
     let Ok(value) = raw.parse() else {
@@ -37,14 +21,20 @@ pub(super) fn matches_if_match(raw: &str, current: &str) -> bool {
 mod tests {
     use super::*;
 
+    use afd_core::etag::compute;
+
+    /// The tag an entry answered with before this crate used the shared
+    /// encoding, so a client's cached tag still matches after a deploy.
     #[test]
     fn tag_is_quoted_deterministic_and_field_bounded() {
-        let first = compute(&[Some("ab"), Some("c"), None]);
-        assert_eq!(first, compute(&[Some("ab"), Some("c"), None]));
-        assert_ne!(first, compute(&[Some("a"), Some("bc"), None]));
-        assert_ne!(first, compute(&[Some("ab"), Some("c"), Some("")]));
-        assert_eq!(first.len(), 66);
-        assert!(first.starts_with('"') && first.ends_with('"'));
+        let first = compute(&[Some(b"ab"), Some(b"c"), None]);
+        // pin test: literal is the contract
+        assert_eq!(
+            first,
+            "\"6d7eab446fb051dbd0811a427998aea9f4edacf43cc0a8747cec4991d9d13842\""
+        );
+        assert_ne!(first, compute(&[Some(b"a"), Some(b"bc"), None]));
+        assert_ne!(first, compute(&[Some(b"ab"), Some(b"c"), Some(b"")]));
     }
 
     #[test]

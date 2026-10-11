@@ -8,7 +8,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use afd_core::env::EnvSource;
+use afd_core::env::{EnvSource, optional};
+use redis::{ConnectionAddr, IntoConnectionInfo as _};
 
 use crate::error::{Error, ErrorKind, Result};
 
@@ -78,11 +79,9 @@ impl DragonflyConfig {
     /// a Dragonfly URL.
     pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: DragonflyRole) -> Result<Self> {
         let knob = role.url_knob();
-        let url = env
-            .get(knob)
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| Error::new(ErrorKind::MissingUrl { knob }))?;
+        let url = String::from(
+            optional(env, knob).ok_or_else(|| Error::new(ErrorKind::MissingUrl { knob }))?,
+        );
 
         // Through the client's own parser rather than a scheme prefix. A
         // prefix test is not a parse: `redis://[::1` and `redis://h:notaport`
@@ -108,11 +107,8 @@ impl DragonflyConfig {
                     .unwrap_or_default(),
             )?,
             url,
-            ca_cert_file: env
-                .get(CA_CERT_FILE_KNOB)
-                .map(|value| value.trim().to_owned())
-                .filter(|value| !value.is_empty())
-                .map(PathBuf::from),
+            ca_cert_file: optional(env, CA_CERT_FILE_KNOB)
+                .map(|path| PathBuf::from(String::from(path))),
             connect_timeout: timeout_from_env(
                 env,
                 CONNECT_TIMEOUT_KNOB,
@@ -183,10 +179,18 @@ impl DragonflyConfig {
         &self.url
     }
 
-    /// Whether this connection is TLS, which is what `rediss://` means.
+    /// Whether this connection is TLS, decided the way the client decides it.
+    ///
+    /// Read from the client's own parse rather than from a prefix: the client
+    /// dials TLS for `valkeys://` as well as `rediss://`, in any case of the
+    /// scheme, and a prefix test that answered no for those would drop the
+    /// configured certificate authority and trust the system roots instead.
     #[must_use]
     pub fn is_tls(&self) -> bool {
-        self.url.starts_with("rediss://")
+        self.url
+            .as_str()
+            .into_connection_info()
+            .is_ok_and(|info| matches!(info.addr(), ConnectionAddr::TcpTls { .. }))
     }
 
     /// The certificate authority to trust, when it is not the system's.

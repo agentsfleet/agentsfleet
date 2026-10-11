@@ -33,6 +33,7 @@
 //! unnecessary.
 
 use afd_crypto::entropy::Entropy;
+use afd_validate::rules::charset;
 
 use crate::{Result, error};
 
@@ -68,9 +69,12 @@ impl Chosen {
     /// so a long name with a forbidden character is refused for the character.
     pub fn parse(raw: &str) -> Result<Option<Self>> {
         let trimmed = raw.trim_matches(TRIMMED);
-        if trimmed.chars().any(is_forbidden) {
-            return Err(error::workspace_name_invalid());
-        }
+        // Two proofs, not one struct: the character set must refuse before the
+        // blank check, and the blank check before the length bound, so a
+        // whitespace-only name past the cap still means "generate".
+        garde::Unvalidated::new(Clean { name: trimmed })
+            .validate()
+            .map_err(|_report| error::workspace_name_invalid())?;
         // Empty, or whitespace however spelled: the caller chose nothing.
         if trimmed.chars().all(is_unicode_whitespace) {
             return Ok(None);
@@ -88,6 +92,13 @@ impl Chosen {
     }
 }
 
+/// A chosen name once its ends are trimmed, with the characters it may carry.
+#[derive(Debug, garde::Validate)]
+struct Clean<'a> {
+    #[garde(custom(charset(is_permitted)))]
+    name: &'a str,
+}
+
 /// A chosen name once its ends are trimmed, with the bound it must meet.
 ///
 /// Built from the TRIMMED value, so the cap counts what is stored rather than
@@ -96,6 +107,11 @@ impl Chosen {
 struct Trimmed<'a> {
     #[garde(length(chars, max = MAX_NAME_CODEPOINTS))]
     name: &'a str,
+}
+
+/// A code point a stored name may carry: any that is not forbidden.
+const fn is_permitted(codepoint: char) -> bool {
+    !is_forbidden(codepoint)
 }
 
 /// A code point no stored name may carry.

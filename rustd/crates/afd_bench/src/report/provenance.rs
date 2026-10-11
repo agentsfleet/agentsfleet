@@ -26,7 +26,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use crate::knobs::{self, Lookup};
+use afd_core::env::EnvSource;
+
+use crate::knobs;
 
 /// Variable carrying the commit the lane binary was built from.
 pub const REVISION_VARIABLE: &str = "BENCH_REVISION";
@@ -64,7 +66,7 @@ impl Provenance {
     /// `VariableUnset` naming the
     /// first variable that is absent or blank. Called before a lane measures
     /// anything, so an incomplete environment costs no run.
-    pub fn read(env: Lookup<'_>) -> Result<Self> {
+    pub fn read(env: &dyn EnvSource) -> Result<Self> {
         Ok(Self {
             revision: knobs::required(env, REVISION_VARIABLE)?,
             datastore_image: knobs::required(env, DATASTORE_IMAGE_VARIABLE)?,

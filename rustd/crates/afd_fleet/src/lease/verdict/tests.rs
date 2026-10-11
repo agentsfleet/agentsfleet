@@ -2,7 +2,7 @@ use afd_core::event::status;
 use afd_events::sql::MAX_FAILURE_DETAIL_BYTES;
 use afd_wire::report::{FailureClass, Outcome};
 
-use super::{Verdict, truncate};
+use super::Verdict;
 
 #[test]
 fn a_success_discards_wire_fields_that_could_contradict_it() {
@@ -36,7 +36,7 @@ fn every_failure_class_has_its_stable_storage_label() {
         let verdict = Verdict::of(Outcome::FleetError, Some(class), "detail");
         assert!(!verdict.succeeded());
         assert_eq!(verdict.status(), status::FLEET_ERROR);
-        assert_eq!(verdict.label(), Some(expected));
+        assert_eq!(verdict.label().as_deref(), Some(expected));
         assert_eq!(verdict.detail(), Some("detail"));
     }
 }
@@ -57,8 +57,29 @@ fn failure_detail_is_byte_bounded_without_splitting_utf8() {
     detail.push('é');
     detail.push_str("tail");
 
-    let truncated = truncate(&detail, MAX_FAILURE_DETAIL_BYTES);
-    assert_eq!(truncated.len(), MAX_FAILURE_DETAIL_BYTES - 1);
-    assert!(truncated.is_char_boundary(truncated.len()));
-    assert_eq!(truncate("short", MAX_FAILURE_DETAIL_BYTES), "short");
+    let truncated = Verdict::of(Outcome::FleetError, None, &detail).detail();
+    assert_eq!(truncated.map(str::len), Some(MAX_FAILURE_DETAIL_BYTES - 1));
+    assert_eq!(
+        Verdict::of(Outcome::FleetError, None, "short").detail(),
+        Some("short")
+    );
+}
+
+#[test]
+fn a_detail_exactly_at_the_cap_is_stored_whole() {
+    let detail = "a".repeat(MAX_FAILURE_DETAIL_BYTES);
+
+    let stored = Verdict::of(Outcome::FleetError, None, &detail).detail();
+
+    assert_eq!(stored, Some(detail.as_str()));
+}
+
+#[test]
+fn a_breached_budget_is_stored_as_the_gate_spells_its_refusal() {
+    let verdict = Verdict::of(Outcome::FleetError, Some(FailureClass::BudgetBreach), "");
+
+    assert_eq!(
+        verdict.label().as_deref(),
+        Some(afd_core::event::label::BUDGET_BREACH)
+    );
 }

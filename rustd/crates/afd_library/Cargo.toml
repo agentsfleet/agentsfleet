@@ -34,13 +34,11 @@ garde.workspace = true
 afd_validate.workspace = true
 futures-util.workspace = true
 headers.workspace = true
-hex.workspace = true
 object_store.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml_ng.workspace = true
-sha2.workspace = true
 sqlx.workspace = true
 tar.workspace = true
 thiserror.workspace = true
@@ -49,7 +47,10 @@ tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# `net` and `io-util` for the fake proxy the GitHub fetch is proved to dial.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
+# The trace capture a failure line's fields are read back through.
+afd_core = { workspace = true, features = ["test-util"] }
 afd_fleet.workspace = true
 async-trait.workspace = true
 futures-util.workspace = true

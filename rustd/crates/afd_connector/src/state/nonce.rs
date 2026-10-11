@@ -37,13 +37,7 @@ const SLOT_MARK: &str = "1";
 pub fn mint(entropy: &Entropy) -> Result<String> {
     let mut bytes = [0_u8; NONCE_BYTES];
     entropy.fill(&mut bytes)?;
-    let mut rendered = String::with_capacity(NONCE_BYTES * 2);
-    for byte in bytes {
-        use std::fmt::Write as _;
-        // A two-digit lower-case hex write into a `String` cannot fail.
-        let _ = write!(rendered, "{byte:02x}");
-    }
-    Ok(rendered)
+    Ok(hex::encode(bytes))
 }
 
 /// Remembers `nonce` for as long as a connect round-trip may take.
@@ -127,5 +121,18 @@ mod tests {
 
         assert_eq!(nonce.len(), NONCE_BYTES * 2);
         assert!(nonce.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    }
+
+    /// Each byte renders as two lower-case digits, leading zero kept, so the
+    /// slot key a state names is the one the mint remembered.
+    #[test]
+    fn the_rendered_nonce_is_lower_case_with_every_leading_zero() {
+        let (entropy, control) = afd_crypto::entropy::Entropy::new_mocked();
+        control.push_bytes(&[0x0a; NONCE_BYTES]);
+
+        let nonce = super::mint(&entropy).expect("the mock answers");
+
+        // pin test: literal is the contract
+        assert_eq!(nonce, "0a".repeat(NONCE_BYTES));
     }
 }

@@ -15,6 +15,8 @@
 
 use std::process::ExitCode;
 
+use afd_core::env::EnvSource;
+
 use crate::datastores::{
     DATABASE_URL_VARIABLE, DRAGONFLY_CA_CERT_VARIABLE, DRAGONFLY_URL_VARIABLE, Datastores,
 };
@@ -22,11 +24,6 @@ use crate::error::Result;
 use crate::knobs::{required, variable};
 use crate::profile::{PROFILE_VARIABLE, Profile, Target};
 use crate::report::{Lane, Provenance, Report};
-
-/// The environment as a lookup over the real process, for every reader.
-pub fn process_env() -> impl Fn(&str) -> Option<String> {
-    |key: &str| std::env::var(key).ok()
-}
 
 /// The profile a lane runs under, its target admitted, and what the run will
 /// say about itself.
@@ -40,7 +37,7 @@ pub fn process_env() -> impl Fn(&str) -> Option<String> {
 /// An unknown profile name, a production run without its acknowledgement, a
 /// deployed profile with nowhere to point, or a provenance variable that is
 /// unset.
-pub fn admitted(env: &dyn Fn(&str) -> Option<String>) -> Result<(Profile, Target, Provenance)> {
+pub fn admitted(env: &dyn EnvSource) -> Result<(Profile, Target, Provenance)> {
     let profile: Profile = variable(env, PROFILE_VARIABLE)
         .unwrap_or_else(|| Profile::Rig.to_string())
         .parse()?;
@@ -54,7 +51,7 @@ pub fn admitted(env: &dyn Fn(&str) -> Option<String>) -> Result<(Profile, Target
 /// # Errors
 ///
 /// A variable that is unset, or a datastore that would not answer.
-pub async fn datastores(env: &dyn Fn(&str) -> Option<String>) -> Result<Datastores> {
+pub async fn datastores(env: &dyn EnvSource) -> Result<Datastores> {
     Datastores::open(
         &required(env, DATABASE_URL_VARIABLE)?,
         &required(env, DRAGONFLY_URL_VARIABLE)?,

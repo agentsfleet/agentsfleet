@@ -34,14 +34,8 @@ pub use afd_core::error::DETAIL_DATABASE_ERROR;
 /// correlate it with the producer that wrote the entry.
 pub const DETAIL_EVENT_MALFORMED: &str = "leased event malformed";
 
-/// A queue outage, shaped like its database counterpart above.
-///
-/// A detail is not optional here, and answering "Database unavailable" for a
-/// Dragonfly outage would send an operator to the wrong datastore. The CODE is
-/// `UZ-INTERNAL-003`, shared with the rest of the internal-failure family in
-/// `classify.rs` — no registry entry of its own, so the ERROR REGISTRY gate
-/// does not fire.
-pub const DETAIL_QUEUE_UNAVAILABLE: &str = "Queue unavailable";
+/// The detail a caller is told when the queue cannot be reached.
+pub use afd_core::error::DETAIL_QUEUE_UNAVAILABLE;
 
 /// The detail when enrolment could not mint the identifier a client waits on.
 ///

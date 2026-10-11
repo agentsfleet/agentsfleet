@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use afd_core::env::ProcessEnv;
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
     BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostPaths, Manifest,
@@ -156,7 +156,7 @@ pub(crate) fn short_of_disk(parent: &Path) -> Option<String> {
 
 /// Checks every prerequisite, builds the lane, and runs the trials.
 pub(crate) fn main() -> ExitCode {
-    let toolbox = std::env::var(TOOLBOX_VARIABLE).ok();
+    let toolbox = ProcessEnv.get(TOOLBOX_VARIABLE);
     let root = rustix::process::geteuid().is_root();
     // The controllers are delegated first, so the probe reads the cgroup the
     // leases are made under; a host that cannot delegate them is a gap too.

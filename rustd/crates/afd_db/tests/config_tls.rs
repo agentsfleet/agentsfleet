@@ -31,6 +31,10 @@ fn env_with(pairs: &[(&str, &str)]) -> MapEnv {
 /// three rows back as failures, which is the only durable proof that the two
 /// implementations were ever different.
 #[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the precondition is `PGSSLMODE` absent outright; `ProcessEnv` would also call a non-Unicode value unset"
+)]
 fn test_sslmode_detection_pinned_against_hand_rolled() {
     assert!(
         std::env::var_os("PGSSLMODE").is_none(),

@@ -116,6 +116,11 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
         Some(fleet().as_str())
     );
     assert_eq!(line.get("service").map(String::as_str), Some("github"));
+    assert_eq!(
+        line.get("reason"),
+        Some(&unwritable().told()),
+        "the reason is the failure's sentence, its code only in `error_code`"
+    );
 }
 
 /// An open card parks the delivery; every other answer stops it.

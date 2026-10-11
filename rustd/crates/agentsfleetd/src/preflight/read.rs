@@ -8,13 +8,13 @@
 //! half of one.
 
 use std::fmt;
-use std::net::IpAddr;
 
 use afd_connector::Dashboard;
-use afd_core::env::EnvSource;
+use afd_core::env::{EnvSource, optional};
 use afd_core::id::Uuid7;
 use afd_crypto::secret::Kek;
 use afd_identity::ProviderSecret;
+use url::Host;
 
 use super::knobs::{
     APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, OIDC_AUDIENCE_KNOB, OIDC_ISSUER_KNOB,
@@ -24,6 +24,10 @@ use super::knobs::{
     WHY_PLATFORM_ADMIN, WHY_R2, WHY_SECRET, WHY_SLACK_API_URL, WHY_SSE_MAX_STREAMS,
 };
 use super::{BundleStoreConfig, Fault, IdentityConfig};
+
+/// The one host name a plain-http Slack base may name: every other loopback
+/// host is an address the parser has already classified.
+const LOOPBACK_NAME: &str = "localhost";
 
 /// The dashboard base `raw` names, parsed once so a base that is not a URL
 /// refuses boot rather than failing every connect and invite link on its own.
@@ -106,11 +110,7 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
         // Optional by design: the key-set endpoint is DERIVED from the issuer
         // unless an operator has a reason, which is what keeps the two from
         // ever naming different providers.
-        jwks_url: env
-            .get(OIDC_JWKS_URL_KNOB)
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty())
-            .map(Into::into),
+        jwks_url: optional(env, OIDC_JWKS_URL_KNOB),
         api_base: api_base.into(),
         secret,
     })
@@ -123,10 +123,7 @@ pub(super) fn required<E: EnvSource + ?Sized>(
     knob: &'static str,
     why: &'static str,
 ) -> Option<String> {
-    let value = env
-        .get(knob)
-        .map(|raw| raw.trim().to_owned())
-        .filter(|raw| !raw.is_empty());
+    let value = optional(env, knob).map(String::from);
     if value.is_none() {
         faults.push(Fault::Missing { knob, why });
     }
@@ -135,7 +132,7 @@ pub(super) fn required<E: EnvSource + ?Sized>(
 
 /// Whether `knob` carries a value that is not blank.
 pub(super) fn is_set<E: EnvSource + ?Sized>(env: &E, knob: &str) -> bool {
-    env.get(knob).is_some_and(|value| !value.trim().is_empty())
+    optional(env, knob).is_some()
 }
 
 /// Records a resolver's failure as missing or invalid, by whether it was set.
@@ -172,11 +169,9 @@ pub(super) fn classify<T, E: fmt::Display>(
 /// `afd_crypto` deliberately takes hex rather than a knob name — it is the
 /// layer that must not know where a key came from — so the read belongs here.
 pub(super) fn read_kek<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<Kek> {
-    let Some(hex) = env
-        .get(ENCRYPTION_MASTER_KEY_KNOB)
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
-    else {
+    // Held as a secret from the moment it is read, so the hex is zeroed when
+    // the key is built rather than left in a plain string.
+    let Some(hex) = super::optional_secret(env, ENCRYPTION_MASTER_KEY_KNOB) else {
         faults.push(Fault::Missing {
             knob: ENCRYPTION_MASTER_KEY_KNOB,
             why: WHY_KEK,
@@ -189,7 +184,7 @@ pub(super) fn read_kek<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) 
         true,
         ENCRYPTION_MASTER_KEY_KNOB,
         WHY_KEK,
-        Kek::from_hex(&hex),
+        Kek::from_hex(hex.expose()),
     )
 }
 
@@ -200,9 +195,7 @@ pub(super) fn read_kek<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) 
 /// who wrote a number meant it, and silently serving the default would leave a
 /// ceiling they believe they raised exactly where it was.
 pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> usize {
-    env.get(SSE_MAX_STREAMS_KNOB)
-        .map(|raw| raw.trim().to_owned())
-        .filter(|raw| !raw.is_empty())
+    optional(env, SSE_MAX_STREAMS_KNOB)
         .map_or(Some(SSE_MAX_STREAMS_DEFAULT), |raw| {
             classify(
                 faults,
@@ -225,7 +218,7 @@ pub(super) fn slack_api_url<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
 ) -> Option<Box<str>> {
-    let raw = super::optional(env, SLACK_API_URL_KNOB)?;
+    let raw = optional(env, SLACK_API_URL_KNOB)?;
     if reqwest::Url::parse(&raw)
         .is_ok_and(|url| carries_a_token_safely(&url) && takes_a_method(&url))
     {
@@ -240,14 +233,14 @@ pub(super) fn slack_api_url<E: EnvSource + ?Sized>(
 
 /// Whether `url` is https, or http on a loopback host.
 fn carries_a_token_safely(url: &reqwest::Url) -> bool {
-    let loopback = url.host_str().is_some_and(|host| {
-        host == "localhost"
-            || host
-                .trim_start_matches('[')
-                .trim_end_matches(']')
-                .parse::<IpAddr>()
-                .is_ok_and(|address| address.is_loopback())
-    });
+    // The parser has already classified the host — a numeric one is an
+    // address, bracketed or not — so nothing is trimmed or re-parsed here.
+    let loopback = match url.host() {
+        Some(Host::Domain(domain)) => domain == LOOPBACK_NAME,
+        Some(Host::Ipv4(address)) => address.is_loopback(),
+        Some(Host::Ipv6(address)) => address.is_loopback(),
+        None => false,
+    };
     match url.scheme() {
         "https" => url.host_str().is_some(),
         "http" => loopback,
@@ -272,7 +265,7 @@ pub(super) fn platform_admin_workspace<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
 ) -> Option<Uuid7> {
-    let raw = super::optional(env, PLATFORM_ADMIN_WORKSPACE_KNOB)?;
+    let raw = optional(env, PLATFORM_ADMIN_WORKSPACE_KNOB)?;
     classify(
         faults,
         true,

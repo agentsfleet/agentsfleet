@@ -248,3 +248,43 @@ fn test_a_provider_that_never_answers_is_unreachable_not_a_panic() {
         );
     });
 }
+
+/// A dot-segment subject would aim the PATCH at the collection, so the secret
+/// is never sent for it.
+#[test]
+fn test_a_dot_segment_subject_is_refused_before_any_write() {
+    block_on(async {
+        let (base, listener) = silent_listener();
+        let writer = ProviderMetadata::new(base, secret(), TIMEOUT).expect("a client");
+        for dots in [".", ".."] {
+            let subject = Subject::new(dots).expect("a non-blank subject");
+            assert_eq!(
+                writer.write_signup(&subject, TENANT, SCOPES).await,
+                Err(MetadataUnwritten::Unreachable),
+                "{dots}"
+            );
+        }
+        assert!(
+            listener.accept().is_err(),
+            "a dot-segment subject was dialled"
+        );
+    });
+}
+
+/// A loopback port that accepts connections nobody answers, so a test can ask
+/// afterwards whether anything dialled it.
+fn silent_listener() -> (String, std::net::TcpListener) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a loopback port");
+    listener
+        .set_nonblocking(true)
+        .expect("a non-blocking listener");
+    let base = format!("http://{}", listener.local_addr().expect("its address"));
+    (base, listener)
+}
+
+/// An API base no person's resource can hang off is refused at construction.
+#[test]
+fn test_an_api_base_that_is_not_a_url_is_refused_at_construction() {
+    let refused = ProviderMetadata::new("not a url", secret(), TIMEOUT).expect_err("not a URL");
+    assert_eq!(refused, MetadataUnwritten::Unreachable);
+}
