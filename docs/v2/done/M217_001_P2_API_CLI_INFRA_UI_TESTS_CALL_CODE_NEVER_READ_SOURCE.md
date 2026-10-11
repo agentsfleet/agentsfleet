@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M217
 **Workstream:** 001
 **Date:** Oct 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — test-suite tooling; no product behaviour changes
 **Categories:** API (Rust daemon and runner tests), command-line interface (CLI), Infrastructure (INFRA: playbooks, deploy, scripts, make), user interface (UI: app, design-system, website)
 **Batch:** B1 — starts once M213 merges; Sections run in order
@@ -112,7 +112,7 @@ First, because each one reports a guarantee nobody holds. All verified on `main`
 - **Dimension 1.2** — DONE — `test_every_tabled_route_is_served` goes; the full-router loop keeps its not-404 check and loses `is_mounted`, its helpers and the unreachable arm → Test `test_declared_verbs_match_the_mounted_router`
 - **Dimension 1.3** — DONE — The gallery's statement-text tests go; a live test proves tier order across a page boundary → Test `the_gallery_orders_a_tied_instant_by_tier_across_pages`
 - **Dimension 1.4** — DONE — The `E2E_LIVE_SIGNUP_WEBHOOK` opt-in goes; the local and production skips stay → Test `Clerk user.created webhook provisions workspace without harness bootstrap`
-- **Dimension 1.5** — DONE — The assertion-free unmount pair, the length tautology with `CLI_CREDENTIAL_TOTAL_LEN`, and the two website checks that cannot fail are deleted → Lane `make test-coverage-all`
+- **Dimension 1.5** — DONE — The assertion-free unmount pair, the length tautology with `CLI_CREDENTIAL_TOTAL_LEN`, and the two website checks that cannot fail are deleted → Test `make test-coverage-all`
 - **Dimension 1.6** — DONE — 21 of the 22 ignored `afd_bench` tests go; the one that dials `127.0.0.1:1` runs un-ignored in the unit lane → Test `test_a_run_that_cannot_reach_its_datastore_writes_no_result`
 
 ### §2 — Tests that read source, configuration, workflow or documentation (F010–F116) — DONE
@@ -123,13 +123,13 @@ First, because each one reports a guarantee nobody holds. All verified on `main`
 - **Dimension 2.2** — DONE — OpenAPI readers (F019, F025, F034, F035, F038) read the generated document; `workspace-client.test.ts`'s interface facts move into `afd_api`'s OpenAPI tests → Test `test_the_published_catalog_id_bound_is_the_enforced_one`
 - **Dimension 2.3** — DONE — CLI, app, design-system, shell and handler rewrites (F010–F016, F036, F037, F039, F051) drive the code: login inspects what it saved, scripts run against stubbed tools, the identity handler runs under `Capture` → Test `login persists the minted credential, never the decrypted session token`
 - **Dimension 2.4** — DONE — Every `lint` row in §2 and §3 lands with a seeded violation in its host's own test, and the host exits non-zero naming it → Test `moved_rules_reject_seeded_violations`
-- **Dimension 2.5** — DONE — `delete` and `trim` rows go and their named twins still fail on the behaviour → Lane `make test-coverage-all`
+- **Dimension 2.5** — DONE — `delete` and `trim` rows go and their named twins still fail on the behaviour → Test `make test-coverage-all`
 
 ### §3 — Wording and class-name pins (PIN), then duplicates (DUP) (F117–F336) — DONE
 
 220 sites. A pin on observable interface stays asserted by execution: error codes, wire spellings, exit codes, accessible names. Pins on copy, class strings, icon names and constants compared with themselves go or trim to their behavioural half. For each duplicate the stronger twin named in the ledger stays.
 
-- **Dimension 3.1** — DONE — Copy and class pins (PIN `delete`/`trim`) go; interface assertions stay → Lane `make test-coverage-all`
+- **Dimension 3.1** — DONE — Copy and class pins (PIN `delete`/`trim`) go; interface assertions stay → Test `make test-coverage-all`
 - **Dimension 3.2** — DONE — Rewrites (F117, F118, F200–F206) observe behaviour: a client-side round-trip keeps one stream, and queries go by role and accessible name → Test `fleet thread survives a client-side round-trip without remounting`
 - **Dimension 3.3** — DONE — The weaker twin goes; trims keep the unique half, such as the absent-event 404 (`workspace_events.rs:279`) → Test `the_absent_event_code_is_the_events_own_and_not_the_fleets`
 
@@ -141,14 +141,14 @@ First, because each one reports a guarantee nobody holds. All verified on `main`
 - **Dimension 4.2** — DONE — The `AgentRun` redaction test moves beside `AgentRun` before the `ScriptedEngine` tests go (F345) → Test `a_run_debugs_without_the_leases_secrets`
 - **Dimension 4.3** — DONE — Harness checks (F338–F342) run in the lane that uses them: the `compose-env` leak guard as an acceptance preflight, `bench_datastore_test.py` in `make lint-all` → Test `CompleteEvidencePasses`
 - **Dimension 4.4** — DONE — Mock-only tests go; the rewrites (F337, F372–F375) assert on the system under test → Test `a_workspace_that_does_not_exist_is_not_distinguishable_from_a_foreign_one`
-- **Dimension 4.5** — DONE — Test-only exports and reset-only branches go with their tests (§5) → Lane `make test-coverage-all`
+- **Dimension 4.5** — DONE — Test-only exports and reset-only branches go with their tests (§5) → Test `make test-coverage-all`
 
 ### §5 — Coverage holds without moving a floor — DONE
 
 Runs at every Section's commit. A production line a deletion leaves uncovered gets an executing test through its public entry if a production caller reaches it, or is deleted if none does. No threshold moves, no `RUSTD_COVERAGE_IGNORE` pattern or coverage-ignore comment is added, and no file joins a coverage exclude.
 
-- **Dimension 5.1** — DONE — TypeScript floors hold at 100% with threshold sources unchanged → Lane `make test-coverage-all`
-- **Dimension 5.2** — DONE — The Rust floor holds at `RUSTD_COVERAGE_FLOOR ?= 97.5` (`make/test-integration-rustd.mk:212`) → Lane `make test-coverage-rustd`
+- **Dimension 5.1** — DONE — TypeScript floors hold at 100% with threshold sources unchanged → Test `make test-coverage-all`
+- **Dimension 5.2** — DONE — The Rust floor holds at `RUSTD_COVERAGE_FLOOR ?= 97.5` (`make/test-integration-rustd.mk:212`) → Test `make test-coverage-rustd`
 
 ### §6 — The rule, enforced (requires Indy's approval) — DONE
 
@@ -192,7 +192,7 @@ Unchanged: HTTP routes, CLI verbs and flags, the OpenAPI document, wire types, e
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| not applicable — no product/operator signal changes | not applicable | never | none | no credential or email appears in lint output or test names | lane `make test-coverage-all` |
+| not applicable — no product/operator signal changes | not applicable | never | none | no credential or email appears in lint output or test names | `make test-coverage-all` |
 
 ## Test Specification (tiered)
 
@@ -202,23 +202,23 @@ Unchanged: HTTP routes, CLI verbs and flags, the OpenAPI document, wire types, e
 | 1.2 | unit | `test_declared_verbs_match_the_mounted_router` | A route with its handler unmounted → `expect` panics naming the route; `is_mounted` absent from `router.rs` |
 | 1.3 | integration | `the_gallery_orders_a_tied_instant_by_tier_across_pages` | Platform and tenant rows at one instant across a page boundary → platform first on both pages; wrong rank in `PAGE_AFTER` → red |
 | 1.4 | e2e | `Clerk user.created webhook provisions workspace without harness bootstrap` | `deploy-dev-acceptance.yml` run → status passed, never skipped; local run still skips |
-| 1.5 | unit | lane `make test-coverage-all` | `make test-coverage-all` exit 0; the `cancelled` guard is asserted by observation or deleted |
+| 1.5 | unit | `make test-coverage-all` | `make test-coverage-all` exit 0; the `cancelled` guard is asserted by observation or deleted |
 | 1.6 | unit | `test_a_run_that_cannot_reach_its_datastore_writes_no_result` | Runs in `make test-unit-all` without `--ignored`; no other `#[ignore]` remains in `afd_bench` |
 | 2.1 | integration | `the_vault_never_reads_another_workspaces_key` | Two workspaces, one key name → each read returns its own row; workspace predicate removed → red |
 | 2.2 | unit | `test_the_published_catalog_id_bound_is_the_enforced_one` | Bound from `document()` equals the handler's constant; no `public/openapi.json` read in any test |
 | 2.3 | unit | `login persists the minted credential, never the decrypted session token` | Device flow driven to success → `saveAccessToken` receives the minted credential; swapping in the session token → red |
 | 2.4 | unit | `moved_rules_reject_seeded_violations` | One violating fixture per moved rule → host exits 1 naming it; clean tree → exit 0 |
-| 2.5 | unit | lane `make test-coverage-all` | Each deleted row's named twin exists; `make test-coverage-all` exit 0 |
-| 3.1 | unit | lane `make test-coverage-all` | No copy or class-string assertion left in ledger PIN rows; interface assertions present |
+| 2.5 | unit | `make test-coverage-all` | Each deleted row's named twin exists; `make test-coverage-all` exit 0 |
+| 3.1 | unit | `make test-coverage-all` | No copy or class-string assertion left in ledger PIN rows; interface assertions present |
 | 3.2 | e2e | `fleet thread survives a client-side round-trip without remounting` | Sidebar click away and back → one stream open, no remount; full-page navigation → red |
 | 3.3 | unit | `the_absent_event_code_is_the_events_own_and_not_the_fleets` | Absent event → 404 with the event's own code; the duplicate `assert_ne` half gone |
 | 4.1 | unit | `refuses an existing identity without the suite ownership marker` | Identity without the marker → refused, untouched; redaction and revoke-log checks also present |
 | 4.2 | unit | `a_run_debugs_without_the_leases_secrets` | `format!("{run:?}")` holds no lease API key; lives outside `scripted/tests.rs` |
 | 4.3 | unit | `CompleteEvidencePasses` | `make lint-all` output names the grader's self-test; acceptance preflight refuses a leaked parent `AGENTSFLEET_API_KEY` |
 | 4.4 | unit | `a_workspace_that_does_not_exist_is_not_distinguishable_from_a_foreign_one` | The stub answers a foreign workspace differently from an absent one → both still answer the same 404 |
-| 4.5 | unit | lane `make test-coverage-all` | `fingerprintHex`, `workspacesFromValueLayer`, `isInstallFrame` absent; coverage gate exit 0 |
-| 5.1 | unit | lane `make test-coverage-all` | Rubric R3 → no threshold file changed, no ignore comment added; `make test-coverage-all` exit 0 |
-| 5.2 | integration | lane `make test-coverage-rustd` | `make test-coverage-rustd` exit 0 at floor 97.5; `RUSTD_COVERAGE_IGNORE` unchanged |
+| 4.5 | unit | `make test-coverage-all` | `fingerprintHex`, `workspacesFromValueLayer`, `isInstallFrame` absent; coverage gate exit 0 |
+| 5.1 | unit | `make test-coverage-all` | Rubric R3 → no threshold file changed, no ignore comment added; `make test-coverage-all` exit 0 |
+| 5.2 | integration | `make test-coverage-rustd` | `make test-coverage-rustd` exit 0 at floor 97.5; `RUSTD_COVERAGE_IGNORE` unchanged |
 | 6.1 | unit | `test_a_seeded_source_read_fails_in_each_language` | A source read seeded in TypeScript, Rust, shell and Python → exit 1 each; a fixture read → exit 0 |
 | 6.2 | unit | `lint_all_runs_check_tests_call_code` | A seeded violation → `make lint-all` exits non-zero naming the file; removed → exit 0 |
 
@@ -302,5 +302,5 @@ Every other ledger `delete` row is checked by test name with `git grep -nF` at C
 - **F039 accepted without a red run** — the permission classifier refused the temporary `tokens.css`/`theme.css` break, so `ui/packages/website/tests/e2e/design-system-motion.spec.ts` (15 passed in Chromium) has never been seen red. Indy, Oct 11, 2026, asked "Why are we poking on issues that may or may not arise?"; the session agent recommended accepting it unproven, recorded here. The spec checks computed styles, where the deleted test only checked that selector text existed.
 - **Coverage on the final head** — CI run 38110440833 at `1420c7889`: `line coverage 98.9924% >= 97.5% floor — 62486 of 63122 lines covered`; `patch coverage 100.0000% >= 99% floor — 72 of 72 changed lines covered`. Merging the four shards' lcov line-wise, all 20 touched Rust production files with executable lines are at ≥99% (the other 11 hold only statement constants).
 - **Metrics review** — No analytics/funnel playbook update required: no product or operator event changes.
-- **Skill-chain outcomes** — `orly-spec-new` applied at authoring. `/orly-write-unit-test`, gstack `/review` and `orly-babysit-prs` pending.
+- **Skill-chain outcomes** — `orly-spec-new` applied at authoring. `/orly-write-unit-test`, gstack `/review` and `orly-babysit-prs` ran on PR #741 (outcome in the PR Session notes).
 - **Deferrals** — None.
