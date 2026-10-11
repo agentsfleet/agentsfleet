@@ -107,6 +107,19 @@ describe("DataTable", () => {
     expect(headers[1].getAttribute("aria-sort")).toBeNull();
   });
 
+  it("puts a right-aligned header's sort icon after its label", () => {
+    const cols: DataTableColumn<Row>[] = [
+      { key: "spend", header: "Spend", numeric: true, sortValue: (r) => r.spend, cell: (r) => r.spend },
+    ];
+    render(<DataTable columns={cols} rows={ROWS} rowKey={(r) => r.id} />);
+    const sort = screen.getByRole("button", { name: /Spend/ });
+    expect(sort.className).toContain("justify-end");
+    expect(sort.className).not.toContain("flex-row-reverse");
+    // The label is the first child and the icon the last, and nothing reverses them.
+    expect(sort.firstChild?.textContent).toBe("Spend");
+    expect(sort.lastChild?.nodeName.toLowerCase()).toBe("svg");
+  });
+
   it("renders a sortable header's aria-sort from sortKey/sortDirection, not per-column state", () => {
     const cols: DataTableColumn<Row>[] = [
       { key: "name", header: "Name", cell: (r) => r.name, sortable: true },
