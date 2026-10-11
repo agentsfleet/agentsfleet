@@ -255,7 +255,9 @@ async fn namespaces_isolate_subscriptions() {
 // The existing exclusive filter gives socket identification the cluster alone.
 mod integration_hub_exclusive {
     use super::{Duration, FleetStreams, SubscriptionHub, deliver, pair};
-    use crate::hub_exclusive::{clients_across, difference, gap_on, kill_each, nodes_of};
+    use crate::hub_exclusive::{
+        clients_across, deliver as deliver_recovered, difference, gap_on, kill_each, nodes_of,
+    };
     use crate::support::DragonflyHarness;
 
     #[tokio::test(flavor = "multi_thread")]
@@ -269,6 +271,10 @@ mod integration_hub_exclusive {
         let hb = SubscriptionHub::start(cb).await.expect("hub b");
         let mut sb = hb.subscribe("equal-channel");
         deliver(&pb, &mut sb, "b before disconnect").await;
+        // Dial the publisher before the snapshot so only hub sockets are killed.
+        pa.publish("equal-channel", "warm")
+            .await
+            .expect("publisher a is warm");
         let before = clients_across(&nodes).await;
         let ha = SubscriptionHub::start(ca).await.expect("hub a");
         let mut sa = ha.subscribe("equal-channel");
@@ -277,7 +283,8 @@ mod integration_hub_exclusive {
         assert!(!victims.is_empty(), "a opened identifiable sockets");
         kill_each(&nodes, &victims).await;
         gap_on(&mut sa).await;
-        deliver(&pa, &mut sa, "a after disconnect").await;
+        // Multiple lost sockets can produce more than one recovery notice.
+        deliver_recovered(&pa, "equal-channel", "a after disconnect", &mut sa).await;
         tokio::time::timeout(Duration::from_millis(100), sb.recv())
             .await
             .expect_err("b cannot receive a after recovery");
