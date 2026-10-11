@@ -1,8 +1,7 @@
 // Tabular + structured-text rendering. Width-aware (reads
-// process.stdout.columns at call time, defaults to 100). Pulse-currency
-// rule: only formatHelpHeading consumes palette.pulse here. Section
-// titles and table headers are intentionally non-pulse — they're not
-// live signals, they're chrome.
+// process.stdout.columns at call time, defaults to 100). Section titles
+// and table headers are intentionally non-pulse — they're not live
+// signals, they're chrome.
 
 import { palette, type StyleOpts } from "./palette.ts";
 
@@ -136,16 +135,11 @@ function isAllNumeric(values: ReadonlyArray<unknown>): boolean {
 }
 
 // Section titles render in bold default text — they're chrome, not
-// live signals. Pulse is reserved for help headings, the version dot,
-// and live-glyph dots.
+// live signals. Pulse is reserved for the version dot and live-glyph dots.
 export function formatSection(title: string, opts?: FormatOpts): string {
   const head = palette.bold(title, opts);
   const rule = palette.subtle(HORIZONTAL_RULE.repeat(title.length), opts);
   return `\n${head}\n${rule}\n`;
-}
-
-export function formatHelpHeading(title: string, opts?: FormatOpts): string {
-  return palette.pulseBold(title, opts);
 }
 
 // EVIDENCE label in evidence-amber, source ref in default text, "— "<quote>""

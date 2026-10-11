@@ -191,47 +191,6 @@ describe("api url resolution drives every fetch from runCli", () => {
     });
   });
 
-  test("honors creds.api_url when no flag and no env override are set (regression: PR #297 review)", async () => {
-    // Regression: a global arg parser used to bake DEFAULT_API_URL into its
-    // return, making global.apiUrl always truthy and short-circuiting
-    // creds.api_url. A user who ran `agentsfleet login --api http://localhost:3000`
-    // would have their URL written to credentials.json but every subsequent
-    // invocation silently fell through to the production default. Pre-seed
-    // the saved api_url and prove it survives end-to-end as the ctx.apiUrl
-    // that drives fetch.
-    await withFreshStateDir(async () => {
-      await saveCredentials(process.env, {
-        token: FIXTURE_CREDENTIAL,
-        saved_at: Date.now(),
-        session_id: "sess_persisted",
-        api_url: "http://localhost:3000",
-        credential_id: null,
-      });
-
-      const out = bufferStream();
-      const err = bufferStream();
-      const calls: { url: string }[] = [];
-      const fetchImpl = async (url: string): Promise<ResponseLike> => {
-        calls.push({ url });
-        return {
-          ok: true,
-          status: 200,
-          text: async () => JSON.stringify({ status: "ok" }),
-        };
-      };
-
-      await runCli(["doctor"], {
-        stdout: out.stream,
-        stderr: err.stream,
-        env: cliEnv(),
-        fetchImpl: asFetchOverride(fetchImpl),
-      });
-
-      expect(calls.length).toBeGreaterThan(0);
-      expect(calls[0]?.url).toBe("http://localhost:3000/healthz");
-    });
-  });
-
   // Full precedence-chain matrix. The bug fixed in bb1ca7c9 lived in the
   // cross-module short-circuit between the global-arg parser and creds
   // resolution — unit tests on the parser alone could not catch it. This

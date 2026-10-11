@@ -15,10 +15,9 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { FixtureKey } from "./constants";
+import { JWT_CACHE_PATH, type FixtureKey } from "./constants";
 import { refreshSessionToken } from "./clerk-admin";
 
-const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 const UNAUTHORIZED = 401;
 
 interface JwtEntry {

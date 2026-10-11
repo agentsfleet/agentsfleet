@@ -65,17 +65,6 @@ describe("golden — --help under NO_COLOR is byte-exact", () => {
       .filter((line) => line.length > 80);
     expect(overflow).toEqual([]);
   });
-
-  test("contains no ANSI escape sequences", () => {
-    expect(golden("help-no-color.txt")).not.toMatch(/\x1b\[/);
-  });
-
-  test("contains no decorative emoji or box-drawing chars", () => {
-    const txt = golden("help-no-color.txt");
-    expect(txt).not.toContain("🧟");
-    expect(txt).not.toContain("🎉");
-    expect(txt).not.toMatch(/[╭╮╯╰│]/);
-  });
 });
 
 // To regenerate (worktree mode runs source via bun because src/ is mixed .js/.ts

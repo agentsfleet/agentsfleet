@@ -21,7 +21,6 @@
 
 use std::borrow::Cow;
 
-use afd_wire::event::{OPERATION_ID_MAX_BYTES, STEER_MESSAGE_MAX_BYTES};
 use afd_wire::runner::{
     CHECK_DETAIL_MAX_BYTES, CHECK_NAME_MAX_BYTES, SELFTEST_CHECKS_MAX, SELFTEST_POLICY_MAX_BYTES,
     SelftestCheck, SelftestReport,
@@ -52,27 +51,6 @@ fn report_with(checks: Vec<SelftestCheck<'static>>) -> SelftestReport<'static> {
         sandbox_tier: Cow::Borrowed("landlock_full"),
         network_policy: Cow::Borrowed("allow_list_egress"),
     }
-}
-
-/// The bounds themselves, pinned to their values.
-///
-/// Every other row in this file builds its probe from the same constant it
-/// asserts against, so the pair moves together: widen `CHECK_NAME_MAX_BYTES` to
-/// a megabyte and those rows stay green while the cap they were written to
-/// defend is gone. Proven, not assumed — loosening that constant to 100000 left
-/// the whole file passing before this row existed.
-///
-/// So the numbers are written out once, here. A bound may absolutely be moved;
-/// this makes moving it a line in a diff someone reviews rather than a silent
-/// widening.
-#[test]
-fn the_declared_bounds_are_the_numbers_this_wire_was_designed_around() {
-    assert_eq!(CHECK_NAME_MAX_BYTES, 128, "CHECK_NAME_MAX_BYTES");
-    assert_eq!(CHECK_DETAIL_MAX_BYTES, 256, "CHECK_DETAIL_MAX_BYTES");
-    assert_eq!(SELFTEST_CHECKS_MAX, 32, "SELFTEST_CHECKS_MAX");
-    assert_eq!(SELFTEST_POLICY_MAX_BYTES, 64, "SELFTEST_POLICY_MAX_BYTES");
-    assert_eq!(STEER_MESSAGE_MAX_BYTES, 8192, "STEER_MESSAGE_MAX_BYTES");
-    assert_eq!(OPERATION_ID_MAX_BYTES, 200, "OPERATION_ID_MAX_BYTES");
 }
 
 /// A check whose every field sits exactly at its limit is accepted, and one

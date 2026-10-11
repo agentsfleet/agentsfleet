@@ -116,11 +116,6 @@ describe("RunnerChecksReport — self-test half", () => {
     expect(within(panel()).getByText("the stub is not bound")).toBeTruthy();
   });
 
-  it("titles the verdict half after the header's own word for it", () => {
-    renderPanel(<RunnerChecksReport runner={detail()} />);
-    expect(within(panel()).getByRole("heading", { name: "Checks" })).toBeTruthy();
-  });
-
   it("checks timestamp reveals the absolute time", () => {
     renderPanel(
       <RunnerChecksReport

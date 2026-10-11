@@ -3,8 +3,6 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/test_search.sh
-source "$SCRIPT_DIR/../../lib/test_search.sh"
 SCRIPT="$SCRIPT_DIR/02_vercel_env.sh"
 passed=0
 failed=0
@@ -96,15 +94,15 @@ test_should_apply_complete_matrix_without_exposing_values() {
     bad "$name" "$output"
   elif [ "$(find "$captures" -type f | wc -l | tr -d ' ')" -ne 16 ]; then
     bad "$name" "expected sixteen target updates"
-  elif rg --quiet 'vercel-secret|posthog-value|clerk-secret' "$calls"; then
+  elif grep -Eq 'vercel-secret|posthog-value|clerk-secret' "$calls"; then
     bad "$name" "a credential appeared in process arguments"
-  elif ! rg --quiet '"key": "NEXT_PUBLIC_API_URL"' "$captures"; then
+  elif ! grep -ERq '"key": "NEXT_PUBLIC_API_URL"' "$captures"; then
     bad "$name" "dashboard API URL was not managed"
-  elif ! rg --quiet '"key": "CLERK_SECRET_KEY"' "$captures"; then
+  elif ! grep -ERq '"key": "CLERK_SECRET_KEY"' "$captures"; then
     bad "$name" "dashboard Clerk secret was not managed"
-  elif ! rg --quiet '"key": "VITE_APP_BASE_URL"' "$captures"; then
+  elif ! grep -ERq '"key": "VITE_APP_BASE_URL"' "$captures"; then
     bad "$name" "website dashboard URL was not managed"
-  elif rg --quiet 'agentsfleet-agents-dev' "$calls" "$captures"; then
+  elif grep -ERq 'agentsfleet-agents-dev' "$calls" "$captures"; then
     bad "$name" "the static installer received unused environment values"
   else
     ok "$name"
@@ -117,7 +115,7 @@ test_should_require_write_approval() {
   output="$(run_script bash "$SCRIPT" --apply)" || status=$?
   if [ "$status" -eq 0 ]; then
     bad "$name" "Vercel writes ran without approval"
-  elif find "$captures" -type f | rg --quiet .; then
+  elif find "$captures" -type f | grep -q .; then
     bad "$name" "the denied apply wrote Vercel values"
   else
     ok "$name"
@@ -130,7 +128,7 @@ test_should_report_drift_without_writes() {
   output="$(run_script bash "$SCRIPT" --check)" || status=$?
   if [ "$status" -eq 0 ]; then
     bad "$name" "empty Vercel projects passed the drift check"
-  elif find "$captures" -type f | rg --quiet .; then
+  elif find "$captures" -type f | grep -q .; then
     bad "$name" "read-only check wrote Vercel values"
   else
     ok "$name"
@@ -156,8 +154,8 @@ test_should_ignore_ambient_api_endpoint_override() {
   output="$(
     run_script VERCEL_API=https://attacker.example bash "$SCRIPT" --check
   )" || status=$?
-  if [ "$status" -eq 0 ] || rg --quiet attacker.example "$calls" ||
-    ! rg --quiet api.vercel.com "$calls"; then
+  if [ "$status" -eq 0 ] || grep -Eq attacker.example "$calls" ||
+    ! grep -Eq api.vercel.com "$calls"; then
     bad "$name" "check used the ambient endpoint: $output"
     return
   fi
@@ -166,8 +164,8 @@ test_should_ignore_ambient_api_endpoint_override() {
     run_script VERCEL_API=https://attacker.example ALLOW_VERCEL_WRITES=1 \
       bash "$SCRIPT" --apply
   )" || status=$?
-  if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
-    ! rg --quiet api.vercel.com "$calls"; then
+  if [ "$status" -ne 0 ] || grep -Eq attacker.example "$calls" ||
+    ! grep -Eq api.vercel.com "$calls"; then
     bad "$name" "apply used the ambient endpoint: $output"
   else
     ok "$name"

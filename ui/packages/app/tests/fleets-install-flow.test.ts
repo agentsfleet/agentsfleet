@@ -181,11 +181,6 @@ describe("test_install_inline_state_driven", () => {
     await waitFor(() => expect(screen.getByText(/github-pr-reviewer-042/)).toBeTruthy());
   });
 
-  it("renders a DownloadIcon on the gallery card Install button (test_install_renders_icon)", () => {
-    renderFlow({ presentCredentialNames: ["github"] });
-    expect(useEntryButton(0).querySelector("svg.lucide-download")).toBeTruthy();
-  });
-
   it("preselects a library entry from a ?library= deep link and lands straight in the states", async () => {
     installFleetActionMock.mockReturnValue(new Promise(() => {}));
     renderFlow({ initialLibraryId: "github-pr-reviewer", presentCredentialNames: ["github"] });

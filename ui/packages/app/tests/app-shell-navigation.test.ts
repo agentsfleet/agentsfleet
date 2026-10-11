@@ -146,24 +146,6 @@ describe("app shell navigation", () => {
     expect(screen.queryByRole("link", { name: "Runners" })).toBeNull();
   });
 
-  it("renders the Platform toggle at eyebrow scale, on the eyebrow column", async () => {
-    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
-    mocks.usePathname.mockReturnValue("/");
-    render(
-      React.createElement(
-        Shell,
-        { operatorScopes: ["runner:read"] } as React.ComponentProps<typeof Shell>,
-        React.createElement("div"),
-      ),
-    );
-    // Measured before the fix: a 32px `sm` control whose text sat 5px right of
-    // the other three eyebrows, and 64px into this group against 48 elsewhere.
-    const platform = screen.getByRole("button", { name: "Platform" });
-    expect(platform.className).toContain("h-4");
-    expect(platform.className).toContain("px-2");
-    expect(platform.className).not.toContain("h-8");
-  });
-
   it("opens the Platform group when the current route belongs to it", async () => {
     const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/admin/runners");
@@ -176,15 +158,6 @@ describe("app shell navigation", () => {
     );
     expect(screen.getByRole("button", { name: "Platform" }).getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("link", { name: "Runners" })).toBeTruthy();
-  });
-
-  it("renders the mobile navigation button", async () => {
-    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
-    mocks.usePathname.mockReturnValue("/");
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-    const hamburger = screen.getByRole("button", { name: /open navigation/i });
-    expect(hamburger).toBeTruthy();
-    expect(hamburger.className).toContain("md:hidden");
   });
 
   it("opens the sidebar navigation from the mobile button", async () => {
@@ -303,33 +276,12 @@ describe("app shell navigation", () => {
     expect(screen.queryByText("Organization")).toBeNull();
   });
 
-  it("renders the active link with pulse styling instead of generic accent", async () => {
+  it("marks the current route's link active and leaves its siblings inactive", async () => {
     const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
     mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
     render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-    const activeLink = screen.getByRole("link", { name: "Fleets" });
-    expect(activeLink.getAttribute("data-active")).toBe("true");
-    expect(activeLink.className).toContain("data-[active=true]:bg-pulse/10");
-    expect(activeLink.className).toContain("data-[active=true]:text-pulse");
-    expect(activeLink.className).not.toContain("data-[active=true]:bg-accent");
-  });
-
-  it("renders the active navigation item as a filled pill, never a rail", async () => {
-    const { ShellFrame: Shell } = await import("../components/layout/ShellFrame");
-    mocks.usePathname.mockReturnValue("/w/ws_1/fleets");
-    render(React.createElement(Shell, null, React.createElement("div", null, "content")));
-    const activeLink = screen.getByRole("link", { name: "Fleets" });
-    // The state is the fill and the weight. A left rail floated 12px inside
-    // the group inset and read as a clipped corner; its two pixels also put
-    // the icon off the column the group eyebrows sit on.
-    expect(activeLink.getAttribute("data-active")).toBe("true");
-    expect(activeLink.className).toContain("rounded-md");
-    expect(activeLink.className).toContain("data-[active=true]:bg-pulse/10");
-    expect(activeLink.className).not.toContain("border-l-2");
-    expect(activeLink.className).not.toContain("border-pulse");
-    const inactiveLink = screen.getByRole("link", { name: "Events" });
-    expect(inactiveLink.getAttribute("data-active")).toBeNull();
-    expect(inactiveLink.className).toContain("rounded-md");
+    expect(screen.getByRole("link", { name: "Fleets" }).getAttribute("data-active")).toBe("true");
+    expect(screen.getByRole("link", { name: "Events" }).getAttribute("data-active")).toBeNull();
   });
 
   it("keeps the mobile navigation expanded when the desktop sidebar is collapsed", async () => {

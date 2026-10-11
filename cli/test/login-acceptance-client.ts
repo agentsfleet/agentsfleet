@@ -70,6 +70,7 @@ const credentialsLayer = (rec: Recorder): Layer.Layer<Credentials> =>
       Effect.sync(() => {
         rec.savedToken = Redacted.value(input.token);
         rec.savedSessionId = input.sessionId;
+        rec.saves += 1;
       }),
     clearAccessToken: Effect.sync(() => {
       rec.cleared = true;

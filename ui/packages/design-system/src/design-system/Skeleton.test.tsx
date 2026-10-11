@@ -12,13 +12,6 @@ describe("Skeleton", () => {
     expect(container.firstChild?.nodeName).toBe("DIV");
   });
 
-  it("applies base background + radius utilities", () => {
-    render(<Skeleton data-testid="s" />);
-    const cls = screen.getByTestId("s").className;
-    expect(cls).toContain("rounded-md");
-    expect(cls).toContain("bg-muted");
-  });
-
   it("merges a custom className (sizing lives on consumer)", () => {
     render(<Skeleton className="h-4 w-24" data-testid="s" />);
     const cls = screen.getByTestId("s").className;

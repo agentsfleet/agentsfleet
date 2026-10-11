@@ -27,7 +27,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, skillMd, triggerMd } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY, JWT_CACHE_PATH } from "./fixtures/constants";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 // Worktree root, derived from this file's path. This file lives at
@@ -43,8 +43,7 @@ const SOURCE_KIND_UPLOAD = "upload";
 const CLI_CREDENTIALS_PATH = "/v1/cli-credentials";
 
 function loadFixtureCache(): Record<string, { sessionJwt: string }> {
-  const cachePath = path.join(process.cwd(), ".fixture-jwts.json");
-  return JSON.parse(fsSync.readFileSync(cachePath, "utf8"));
+  return JSON.parse(fsSync.readFileSync(JWT_CACHE_PATH, "utf8"));
 }
 
 interface SpawnResult {

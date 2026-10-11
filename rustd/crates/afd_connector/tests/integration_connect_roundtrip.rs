@@ -40,6 +40,8 @@
 mod cases;
 #[path = "integration_connect_roundtrip/disconnect.rs"]
 mod disconnect;
+#[path = "integration_connect_roundtrip/routing.rs"]
+mod routing;
 #[path = "integration_connect_roundtrip/vendor.rs"]
 mod vendor;
 

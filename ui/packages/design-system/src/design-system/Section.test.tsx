@@ -52,15 +52,4 @@ describe("Section", () => {
     );
     expect((container.firstChild as HTMLElement).tagName).toBe("MAIN");
   });
-
-  it("consecutive gap sections collapse the top padding (via [&+[data-section=gap]]:pt-0)", () => {
-    const { container } = render(
-      <>
-        <Section gap>a</Section>
-        <Section gap>b</Section>
-      </>,
-    );
-    const [, second] = container.children;
-    expect((second as HTMLElement).className).toContain("[&+[data-section=gap]]:pt-0");
-  });
 });

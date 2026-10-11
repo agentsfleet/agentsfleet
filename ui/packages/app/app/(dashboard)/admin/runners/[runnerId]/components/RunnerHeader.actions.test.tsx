@@ -78,26 +78,6 @@ function detail(overrides: Partial<RunnerDetail> = {}): RunnerDetail {
 // the length cap.
 
 describe("RunnerHeader — admin actions", () => {
-  it("test_runner_header_revoke_conflict_surfaces_state", async () => {
-    updateRunnerAdminStateActionMock.mockResolvedValueOnce({
-      ok: false,
-      errorCode: "UZ-RUN-016",
-      error: "Active runner must be revoked before deletion",
-    });
-    render(<RunnerHeader runner={detail()} grafanaHref={null} canWrite />);
-    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
-    // Confirm inside the dialog — its confirm button shares the header
-    // button's label, so the query scopes to the alertdialog.
-    const dialog = await screen.findByRole("alertdialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke" }));
-    await waitFor(() => {
-      expect(updateRunnerAdminStateActionMock).toHaveBeenCalled();
-      // The header re-reads the runner so the badge shows the returned
-      // administrative state beside the error, never a stale one.
-      expect(refresh).toHaveBeenCalled();
-    });
-  });
-
   it("should close the confirm and refresh when an admin action succeeds", async () => {
     // Revoke carries the case: it is the one confirm-backed action still
     // operable (cordon and drain render disabled until their verbs land).

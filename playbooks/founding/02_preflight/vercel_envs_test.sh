@@ -3,8 +3,6 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/test_search.sh
-source "$SCRIPT_DIR/../../lib/test_search.sh"
 SCRIPT="$SCRIPT_DIR/03_vercel_envs.sh"
 passed=0
 failed=0
@@ -83,7 +81,7 @@ test_should_accept_complete_project_target_inventory() {
   output="$(run_script bash "$SCRIPT")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif rg --quiet 'vercel-secret' "$calls" <<<"$output"; then
+  elif grep -Fq 'vercel-secret' "$calls" || grep -Fq 'vercel-secret' <<<"$output"; then
     bad "$name" "Vercel token appeared in output or process arguments"
   else
     ok "$name"
@@ -129,8 +127,8 @@ test_should_ignore_ambient_api_endpoint_override() {
   output="$(
     run_script VERCEL_API=https://attacker.example bash "$SCRIPT"
   )" || status=$?
-  if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
-    ! rg --quiet api.vercel.com "$calls"; then
+  if [ "$status" -ne 0 ] || grep -Eq attacker.example "$calls" ||
+    ! grep -Eq api.vercel.com "$calls"; then
     bad "$name" "preflight used the ambient endpoint: $output"
   else
     ok "$name"

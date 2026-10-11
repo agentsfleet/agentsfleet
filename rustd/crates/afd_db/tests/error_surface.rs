@@ -171,21 +171,38 @@ fn test_display_appends_a_captured_backtrace() {
         "an uncaptured backtrace must cost nothing to render: {rendered}"
     );
 
+    let path = child_test_path("test_display_appends_a_captured_backtrace");
     let output = std::process::Command::new(
         std::env::current_exe().expect("the running test binary has a path"),
     )
-    .args([
-        "--exact",
-        "test_display_appends_a_captured_backtrace",
-        "--nocapture",
-    ])
+    .args(["--exact", &path, "--nocapture"])
     .env("RUST_BACKTRACE", "1")
     .output()
     .expect("re-executing the test binary must work");
+    assert_child_ran_one(&path, &output);
+}
+
+/// libtest's summary when the child ran exactly the one test it was asked for
+/// and it passed; a filter that matched nothing reports `0 passed` instead.
+const RAN_ONE: &str = "test result: ok. 1 passed;";
+
+/// The test's path inside the suite binary. This file is a module of the
+/// crate's one test harness (`autotests = false`), so a bare name under
+/// `--exact` matches nothing and the child would report a pass having run
+/// nothing.
+fn child_test_path(test: &str) -> String {
+    let module = module_path!()
+        .split_once("::")
+        .map_or(module_path!(), |(_suite, module)| module);
+    format!("{module}::{test}")
+}
+
+/// Fails unless the child exited cleanly having run exactly one test.
+fn assert_child_ran_one(path: &str, output: &std::process::Output) {
+    let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        output.status.success(),
-        "child run failed:\n{}{}",
-        String::from_utf8_lossy(&output.stdout),
+        output.status.success() && stdout.contains(RAN_ONE),
+        "child run of {path} failed or ran nothing:\n{stdout}{}",
         String::from_utf8_lossy(&output.stderr)
     );
 }

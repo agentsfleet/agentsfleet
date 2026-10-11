@@ -32,7 +32,6 @@ openapi = ["dep:utoipa", "afd_wire/openapi"]
 
 [dev-dependencies]
 serde_json.workspace = true
-walkdir.workspace = true
 
 [lints]
 workspace = true

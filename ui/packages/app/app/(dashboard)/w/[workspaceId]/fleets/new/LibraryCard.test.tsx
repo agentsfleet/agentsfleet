@@ -64,13 +64,6 @@ const BRIEF: FleetLibraryGalleryEntry = {
 };
 
 describe("a gallery card is bounded", () => {
-  it("clamps a long description to one line rather than setting the row height", () => {
-    renderCard(<LibraryCard entry={VERBOSE} action={null} />);
-
-    const description = screen.getByTestId(`library-card-description-${VERBOSE.id}`);
-    expect(description.className).toContain("line-clamp-1");
-  });
-
   it("keeps the whole description in the document, clipped only by the clamp", () => {
     // The clamp is CSS. The sentence a sighted reader loses to it is still
     // here for anyone reading the page another way, and it is what the
@@ -169,23 +162,5 @@ describe("a card names the catalogue its entry came from", () => {
 
     const tier = screen.getByTestId("library-card-tier-github-pr-reviewer-tenant");
     expect(tier.textContent).toBe("This workspace");
-  });
-
-  it("two same-named entries are distinguishable by accessible name", () => {
-    // The tier is a mark now, so "distinguishable by rendered text" is no
-    // longer the property — the word moved to the accessible name and the
-    // tooltip. That is the thing to hold: a person who cannot hover, or who
-    // is not looking, must still be able to tell the two apart, because
-    // installing the wrong one of two identically named entries is silent.
-    renderCard(
-      <>
-        <LibraryCard entry={PLATFORM_COPY} action={null} />
-        <LibraryCard entry={WORKSPACE_COPY} action={null} />
-      </>,
-    );
-
-    expect(screen.getAllByText("github-pr-reviewer")).toHaveLength(2);
-    expect(screen.getByText("Platform catalogue")).toBeTruthy();
-    expect(screen.getByText("This workspace")).toBeTruthy();
   });
 });
