@@ -23,7 +23,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Concurrency rules | C1–C5 | declared producer/consumer, receiver owns the payload · stop→join→drop · no blocking under a consumer's lock · one documented lock per aggregate · task/thread-confined by default | §The five invariants |
 | Long-lived work | supervised control-plane tasks, async connections, and runner tasks | each with a declared spawn point, protection, and stop path | §Thread map |
 | Shutdown flags | none | the half-dead-node window the two flags protected is an ordering here, not shared mutable state | §Why there is no signal watcher |
-| Registered locks | 14 | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
+| Registered locks | 15 | the pub/sub socket is behind none of them — it is owned by one task and reached by command | §Lock-invariant registry |
 | Deadline ownership | one deadline per call site, on both planes | `tokio::time::timeout` or the HTTP client's own timeout; no shared registration map | §The deadline-ownership invariant |
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
@@ -173,6 +173,7 @@ constraint. Each is documented at its declaration (C4).
 | Lock | Declared at | Protects | Ordering |
 |---|---|---|---|
 | hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count, confirmed once)` map and **nothing else** | leaf, sharded per key, and never held across an await — the only things done under it are the command enqueue and a broadcast send (a frame, or a gap on a repeated confirmation), neither of which can block |
+| outbound lane map | `afd_outbound`'s `lanes::Inner` | destination membership and publication against lane retirement | reserve capacity before locking; verify channel identity and publish under one guard; retirement checks for queued work and removes an empty lane under that same guard; no await while held |
 | runner series table | `afd_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
 | reclaim cursor | `afd_runner`'s reclaim sweeper | the keyset cursor one pass resumes from | leaf — held alone, and only by the single sweeper task |
 | repair pacing | `afd_runner`'s repair-verification dispatcher | the interval the dispatcher shortens while a backlog drains | leaf — held alone |
