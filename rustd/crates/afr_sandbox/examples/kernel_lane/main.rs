@@ -49,6 +49,8 @@ mod shared_memory;
 #[cfg(target_os = "linux")]
 mod toolbox;
 #[cfg(target_os = "linux")]
+mod toolbox_size;
+#[cfg(target_os = "linux")]
 mod tools;
 #[cfg(target_os = "linux")]
 mod trials;

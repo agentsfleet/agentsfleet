@@ -151,6 +151,7 @@ pub(crate) fn run(arguments: &Arguments, lane: &Arc<Lane>) -> Conclusion {
     let trials = TRIALS
         .iter()
         .chain(crate::egress::TRIALS)
+        .chain(crate::toolbox_size::TRIALS)
         .map(|&(name, body)| {
             let lane = Arc::clone(lane);
             Trial::test(name, move || body(&lane))
