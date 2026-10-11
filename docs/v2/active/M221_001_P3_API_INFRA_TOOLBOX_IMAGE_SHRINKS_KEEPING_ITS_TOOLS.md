@@ -56,11 +56,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `scripts/toolbox/manifest.txt` | EDIT | The `erofs` line carries the chosen compressor, chunk size and features |
 | `scripts/toolbox/build.sh` | EDIT | Docs, man pages, locales and info are excluded at install, `copyright` files included; `BUILDER_PACKAGES` names a new compressor's library |
 | `scripts/toolbox/measure_first_use.sh` | CREATE | First-use p50 and p99 per step for one image, cold cache, in a sandbox like a lease's |
+| `scripts/toolbox/test_measure_first_use.sh`, `make/test-unit.mk` | CREATE, EDIT | Real-mount failure and interruption cleanup regressions run before the kernel lane |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/main.rs` | EDIT | Wire the sibling size and licence proof into the existing example |
 | `rustd/crates/afr_sandbox/src/toolbox/{manifest.rs,manifest/tests.rs}` | EDIT | `EROFS_FEATURES` is the approved list; each feature is admitted and any other refused |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/{toolbox.rs,toolbox_size.rs,trials.rs}` | EDIT, CREATE | The size cap and the stripped-docs case, in a sibling file so `toolbox.rs` (274 lines) stays under the cap |
 | `docs/architecture/runner_execution.md` | EDIT | §Toolbox names the settings and features; a decision row records the choice and its numbers |
-| `docs/v2/reviews/m221-toolbox-first-use.md` | CREATE | The first-use report for today's image and each candidate |
+| `playbooks/operations/acceptance/baselines/M221_001-first-use-arm64.json` | CREATE | Raw cold samples and p50/p99 for the current baseline and every candidate; the PR carries the readable report |
 | `docs/v2/{pending,active,done}/M221_001_P3_API_INFRA_TOOLBOX_IMAGE_SHRINKS_KEEPING_ITS_TOOLS.md` | EDIT | This spec, moved by CHORE(open) and CHORE(close) |
 | `playbooks/operations/acceptance/baselines/M221_001-<revision>.md` | CREATE | The baseline evidence the header promises, named for the comparison revision |
 
@@ -133,7 +134,7 @@ The release record keeps its fields; `erofs_features` lists more names.
 |------|-------|--------------------------------------------------------|
 | First use regresses | A candidate's p99 for any step exceeds today's by more than 10% | The candidate is not offered as a default; the report marks the step `REGRESSION` → Test `first_use_report_covers_every_candidate` |
 | Unapproved feature | A build's image names a feature outside `EROFS_FEATURES` | Admission refuses the release before mounting it, and the host keeps its last admitted image → Test `should_refuse_a_release_for_another_host_runner_or_kernel` |
-| Builder lacks the compressor | The builder's erofs-utils cannot make the chosen compressor (zstd failed this way on Oct 10) | `mkfs.erofs` exits non-zero, `build.sh` writes no image, and the build fails loudly → Test `build_refuses_an_unavailable_compressor` (manual: `erofs -zzstd` in a scratch manifest exits non-zero with no `.erofs` written) |
+| Builder lacks the compressor | The builder's erofs-utils cannot make the chosen compressor | `mkfs.erofs` exits non-zero, `build.sh` publishes no image, and the build fails loudly → Test `build_refuses_an_unavailable_compressor` (manual: a deliberately nonexistent compressor in a scratch manifest exits non-zero with no published `.erofs`) |
 | Host kernel cannot mount | A runner host's kernel lacks the chosen feature or compressor | The mount fails, the host builds no sandbox and refuses every lease, per `runner_execution.md:164` → Test `test_unbuildable_sandbox_refuses_lease` (kernel lane, existing) |
 | Licence notices lost | A strip pattern removes `copyright` files | The kernel-lane case fails on the count → Test `test_toolbox_keeps_copyright_and_drops_docs` |
 
@@ -154,8 +155,8 @@ The release record keeps its fields; `erofs_features` lists more names.
 |-----------|------|------|---------------------------------------------|
 | 1.1 | manual | `first_use_report_covers_every_candidate` | `measure_first_use.sh` on today and (a), (b), (c) → each step has p50 and p99 per image; the report is committed |
 | 1.2 | manual | `indy_approves_the_feature_list` | Indy's verbatim choice and feature list → quoted in Discovery before `manifest.rs` changes |
-| 2.1 | integration | `test_toolbox_image_fits_its_size_cap` | Release record `length` → at most 80% of today's: 206,736,588 B on arm64; amd64's cap set from CI's current record at §1 |
-| 2.2 | integration | `test_toolbox_keeps_copyright_and_drops_docs` | The mounted image → 157 `copyright` files (today's arm64 count) and no other regular file under `/usr/share/{doc,man,locale,info}` |
+| 2.1 | integration | `test_toolbox_image_fits_its_size_cap` | Release record `length` → at most 80% of the refreshed baseline: 195,624,960 B on arm64 and 198,574,080 B on amd64 |
+| 2.2 | integration | `test_toolbox_keeps_copyright_and_drops_docs` | The mounted image → 156 `copyright` files after M213's approved removal (141 regular files and 15 aliases), every installed package has its notice, and no other regular file under `/usr/share/{doc,man,locale,info}` |
 | 2.3 | integration | `test_toolbox_carries_the_tools` | uv, `node --test`, `git commit` and the version calls → each exits 0 |
 | 2.4 | integration | `test_toolbox_build_is_reproducible` | Two builds of one manifest → identical SHA-256 |
 | 2.5 | integration | `test_start_budgets_with_four_leases` | Four leases on the new image → within the lane's existing budgets |
@@ -190,7 +191,7 @@ N/A — no files deleted. The losing candidates' settings never enter the manife
 
 - Removing packages: Perl (git depends on it), Node and its International Components for Unicode (ICU) library, uv. M213 separately removes Go-built `gh` at Indy's direction; this spec preserves the tools remaining after that removal.
 - Purging apt and dpkg from the image.
-- zstd: the builder's erofs-utils does not offer it, and it needs Linux 6.10 or later.
+- zstd: the current erofs-utils 1.8.6 does offer it, but this change retains LZ4 and does not qualify another compressor family.
 - Moving the snapshot: `M219_002` §6 owns the pin.
 
 ---

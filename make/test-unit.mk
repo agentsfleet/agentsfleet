@@ -94,6 +94,7 @@ KERNEL_LANE_CARGO ?= cargo run
 KERNEL_LANE_HOST = $(shell cd $(RUSTD_DIR) && rustc -vV | sed -n 's/^host: //p' | tr 'a-z-' 'A-Z_')
 
 test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (root, bubblewrap, Landlock, cgroup v2); fails, never skips
+	@$(KERNEL_LANE_RUNNER) bash scripts/toolbox/test_measure_first_use.sh
 	@image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" && \
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
 	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(KERNEL_LANE_RUNNER)" \
