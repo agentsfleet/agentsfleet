@@ -116,6 +116,17 @@ class NotReads(unittest.TestCase):
             ),
         })
 
+    def test_a_read_spelled_inside_a_js_string_or_template_text(self) -> None:
+        self.assert_clean({
+            "cli/test/sample.unit.test.ts": (
+                'const SAMPLE = \'readFileSync(join(import.meta.dir, "../src/commands/login.ts"))\';\n'
+                'const LONG = `\nconst t = readFileSync(join(__dirname, "../src/commands/login.ts"));\n`;\n'
+            ),
+        })
+
+    def test_a_helper_beneath_fixtures_is_not_a_test(self) -> None:
+        self.assert_clean({"cli/test/fixtures/load.ts": 'const text = readFileSync(join(import.meta.dir, "..", "..", "src", "commands", "login.ts"), "utf8");\n'})
+
     def test_a_read_spelled_inside_a_python_string_literal(self) -> None:
         self.assert_clean({
             "scripts/seeds_test.py": (
@@ -147,6 +158,8 @@ MORE_READS = {
     "js copy named in a string": ("cli/test/quoted.unit.test.ts", 'const note = "Bun.write(";\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8");\n', 2),
     "js copy named in a template": ("cli/test/template.unit.test.ts", 'const note = `Bun.write(`;\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8");\n', 2),
     "js copy named in a comment": ("cli/test/remark.unit.test.ts", '// Bun.write(\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8");\n', 2),
+    "js test beneath fixtures": ("cli/test/fixtures/admin.test.ts", 'const text = readFileSync(join(import.meta.dir, "..", "..", "src", "commands", "login.ts"), "utf8");\n', 1),
+    "js read in a template expression": ("cli/test/expr.unit.test.ts", 'const text = `${readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8")}`;\n', 1),
     "js arrow helper": ("cli/test/arrow.unit.test.ts", 'const slurp = (file: string) => {\n  const at = join(file, "login.ts");\n  return readFileSync(at, "utf8");\n};\nslurp(join(import.meta.dir, "..", "src", "commands"));\n', 5),
 }
 

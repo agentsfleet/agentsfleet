@@ -41,32 +41,70 @@ def matching_close(code: str, open_index: int, pair: str = "{}") -> int:
 
 
 def js_literal_end(code: str, index: int) -> int | None:
-    """The offset past the string, template or pattern literal opening at `index`, or None."""
-    if code[index] in "\"'`":
+    """The offset past the quoted string or pattern literal opening at `index`, or None."""
+    if code[index] in "\"'":
         return lib._quoted_end(code, index)
     if code[index] == "/" and lib._regex_may_start(code[max(0, index - JS_LOOKBEHIND) : index]):
         return lib._regex_end(code, index)
     return None
 
 
+def blanked(text: str) -> str:
+    return "".join(c if c == "\n" else " " for c in text)
+
+
+def masked_code(code: str, index: int, nested: bool) -> tuple[str, int]:
+    """Code from `index` with literals blanked, to the end or, when `nested`, past the unmatched `}`."""
+    out, depth = [], 0
+    while index < len(code):
+        char = code[index]
+        if nested and char == "}" and depth == 0:
+            return "".join(out) + " ", index + 1
+        if char == "`":
+            text, index = masked_template(code, index)
+            out.append(text)
+            continue
+        end = js_literal_end(code, index)
+        if end is not None:
+            out.append(blanked(code[index:end]))
+            index = end
+            continue
+        depth += {"{": 1, "}": -1}.get(char, 0)
+        out.append(char)
+        index += 1
+    return "".join(out), index
+
+
+def masked_template(code: str, index: int) -> tuple[str, int]:
+    """The template literal opening at `index` with its text blanked and each `${…}` kept as code."""
+    out, index = [" "], index + 1
+    while index < len(code):
+        if code[index] == "`":
+            return "".join(out) + " ", index + 1
+        if code.startswith("${", index):
+            text, index = masked_code(code, index + 2, nested=True)
+            out.append("  " + text)
+            continue
+        step = 2 if code[index] == "\\" else 1
+        out.append(blanked(code[index : index + step]))
+        index += step
+    return "".join(out), index
+
+
 @functools.lru_cache(maxsize=16)
 def js_code_only(code: str) -> str:
-    """`code` at the same length with comments and literals blanked to spaces, newlines kept.
+    """`code` at the same length with comments and literal text blanked to spaces, newlines kept.
 
     Offsets stay valid, and no text inside a string, template, pattern or
-    comment can open or close a bracket or spell a call.
+    comment can open or close a bracket or spell a call. The code between a
+    template's `${` and `}` still runs, so it stays.
     """
-    code = lib.blank_js_comments(code)
-    out, index = [], 0
-    while index < len(code):
-        end = js_literal_end(code, index)
-        if end is None:
-            out.append(code[index])
-            index += 1
-            continue
-        out.append("".join(c if c == "\n" else " " for c in code[index:end]))
-        index = end
-    return "".join(out)
+    return masked_code(lib.blank_js_comments(code), 0, nested=False)[0]
+
+
+def in_js_literal(code: str, offset: int, language: str) -> bool:
+    """True when the JavaScript character at `offset` is comment or literal text, not code."""
+    return language == "js" and js_code_only(code)[offset] != code[offset]
 
 
 def cfg_test_regions(source: str) -> list[tuple[int, int]]:
