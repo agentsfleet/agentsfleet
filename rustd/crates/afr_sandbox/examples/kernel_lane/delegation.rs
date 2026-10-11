@@ -77,7 +77,7 @@ pub(crate) fn boots_disabled(lane: &Lane) -> Result<(), Failed> {
         )?;
         let parent_before = fs::read_to_string(lane.config.cgroup_root.join(SUBTREE_CONTROL))?;
         let mut paths = lane.config.probe_paths();
-        paths.cgroup_root = root.to_owned();
+        root.clone_into(&mut paths.cgroup_root);
         expect(
             afr_sandbox::BubblewrapRequirements::missing(&probe(&paths)) == Some(CPU),
             "the original startup refusal",
