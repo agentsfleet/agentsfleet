@@ -245,9 +245,12 @@ mod tests {
     /// the schema without one here would turn every duplicate into a fault.
     #[test]
     fn the_duplicate_constraint_is_the_one_the_schema_declares() {
-        assert!(
-            ENTRIES_SCHEMA.contains(&format!("CONSTRAINT {UQ_ENTRY_DOMAIN_KEY}")),
-            "the schema no longer names {UQ_ENTRY_DOMAIN_KEY}"
-        );
+        // Whole words, so a renamed `…_v2` constraint does not pass as a prefix.
+        let declared = ENTRIES_SCHEMA
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .any(|pair| pair == ["CONSTRAINT", UQ_ENTRY_DOMAIN_KEY]);
+        assert!(declared, "the schema no longer names {UQ_ENTRY_DOMAIN_KEY}");
     }
 }
