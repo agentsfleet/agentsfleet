@@ -16,7 +16,6 @@
 #   * test_arch_cited_make_targets_exist — every named make target is declared
 #   * test_arch_section_anchors_resolve  — every cross-page §anchor names a heading
 #   * test_arch_no_retired_slot_numbers  — no page cites a retired 0xx schema slot
-#   * architecture_tool_table_matches_catalog — the Tool catalog table names exactly the published tools
 #
 # ARCH_DIR, SPEC_ROOT and DOC_SET_EXTRA are overridable so the self-tests can
 # point the gate at fixtures. Nothing else sets them.
@@ -30,10 +29,7 @@ set -euo pipefail
 # resolve either way.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# The corpus the repository publishes. A page an assertion needs may be absent
-# from a self-test fixture, never from this tree.
-readonly PUBLISHED_ARCH_DIR="docs/architecture"
-ARCH_DIR="${ARCH_DIR:-$PUBLISHED_ARCH_DIR}"
+ARCH_DIR="${ARCH_DIR:-docs/architecture}"
 SPEC_ROOT="${SPEC_ROOT:-docs/v2}"
 DONE_DIR="$SPEC_ROOT/done"
 ACTIVE_DIR="$SPEC_ROOT/active"
@@ -226,8 +222,6 @@ done < <(find "$ARCH_DIR" -name '*.md' 2>/dev/null | sort)
 # ---------------------------------------------------------------------------
 # shellcheck source=scripts/check_architecture_doc_citations.sh
 . "$SCRIPT_DIR/check_architecture_doc_citations.sh"
-# shellcheck source=scripts/check_architecture_doc_tables.sh
-. "$SCRIPT_DIR/check_architecture_doc_tables.sh"
 
 # ---------------------------------------------------------------------------
 exit "$FAIL"

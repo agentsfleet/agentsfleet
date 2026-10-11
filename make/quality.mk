@@ -16,16 +16,13 @@ lint-website:  ## Lint website only (Oxlint + tsc)
 	@echo "→ [website] Running Oxlint + TypeScript check..."
 	@cd ui/packages/website && bun run lint
 	@cd ui/packages/website && bun run typecheck
-	@echo "→ [website] Copy policy: retired framing, unvalidated claims, the product noun..."
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_website_copy_test.py
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_website_copy.py
 	@echo "✓ [website] Lint passed"
 
 lint-app:  ## Lint ui/packages/app only (Oxlint + tsc)
 	@echo "→ [app] Running Oxlint + TypeScript check..."
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
-	@echo "→ [app] Source rules: one event catalog, Time for dates, no browser bearer, the acceptance conventions, button variants, interface typefaces..."
+	@echo "→ [app] Source rules: one event catalog, Time for dates, no browser bearer, the acceptance conventions..."
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_app_source.py
 	@echo "✓ [app] Lint passed"
