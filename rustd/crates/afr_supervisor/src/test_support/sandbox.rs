@@ -245,18 +245,6 @@ impl Executor for FakeExecutor {
         Ok(())
     }
 
-    async fn append_file(&self, path: &str, data: Bytes) -> afr_executor::Result<()> {
-        self.write_file(path, data).await
-    }
-
-    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
-        match self.writes {
-            Writes::Accept => Ok(()),
-            Writes::Refuse => Err(std::io::Error::other(READ_ONLY).into()),
-            Writes::Stall => std::future::pending().await,
-        }
-    }
-
     async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
         let thawed = self.thawed.load(Ordering::SeqCst);
         if self.writes == Writes::Stall || (thawed && self.freezer == Freezer::ThawsSilent) {

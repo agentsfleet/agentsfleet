@@ -7,7 +7,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
+use crate::error::{Result, file_calls_unsupported};
 use crate::events::Events;
 
 /// A process the executor started, unique for the life of one executor.
@@ -304,18 +304,36 @@ pub trait Executor: Send + Sync + fmt::Debug {
     /// Ends a process and every descendant in its group.
     async fn kill(&self, process: ProcessId) -> Result<()>;
 
+    // The file calls default to one refusal. Only the client serves them for
+    // real; a stand-in executor overrides the ones its suite reaches and
+    // inherits the refusal for the rest, rather than stubbing each.
+
     /// Reads a regular file, at most `max_bytes` of it.
-    async fn read_file(&self, path: &str, max_bytes: u64) -> Result<FileContent>;
+    async fn read_file(&self, _path: &str, _max_bytes: u64) -> Result<FileContent> {
+        Err(file_calls_unsupported())
+    }
 
     /// Writes a regular file, replacing what was there.
-    async fn write_file(&self, path: &str, data: Bytes) -> Result<()>;
+    async fn write_file(&self, _path: &str, _data: Bytes) -> Result<()> {
+        Err(file_calls_unsupported())
+    }
 
     /// Adds to the end of a regular file, making it when absent.
-    async fn append_file(&self, path: &str, data: Bytes) -> Result<()>;
+    async fn append_file(&self, _path: &str, _data: Bytes) -> Result<()> {
+        Err(file_calls_unsupported())
+    }
 
     /// Removes a regular file; a link, a directory or a device is refused.
-    async fn delete_file(&self, path: &str) -> Result<()>;
+    async fn delete_file(&self, _path: &str) -> Result<()> {
+        Err(file_calls_unsupported())
+    }
 
     /// Lists a directory, up to the most one answer carries.
-    async fn list_dir(&self, path: &str) -> Result<Listing>;
+    async fn list_dir(&self, _path: &str) -> Result<Listing> {
+        Err(file_calls_unsupported())
+    }
 }
+
+#[cfg(test)]
+#[path = "api/tests.rs"]
+mod tests;

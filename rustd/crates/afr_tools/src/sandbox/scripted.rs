@@ -11,9 +11,7 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use afr_executor::{
-    Ending, Events, Executor, Feed, FileContent, Listing, Process, ProcessId, Spawn, Stream,
-};
+use afr_executor::{Ending, Events, Executor, Feed, Process, ProcessId, Spawn, Stream};
 use bytes::Bytes;
 
 /// The signal a kill ends a scripted process with.
@@ -22,8 +20,6 @@ const KILLED: i32 = 9;
 const NO_SCRIPT: &str = "no scripted process left";
 /// What a write a process refuses for no reason of its own fails with.
 const WRITE_REFUSED: &str = "the write was refused";
-/// What a file call fails with.
-const PROCESSES_ONLY: &str = "a scripted executor runs processes only";
 
 /// One scripted process: what it prints, and what happens after.
 #[derive(Debug)]
@@ -296,25 +292,5 @@ impl Executor for ScriptedExecutor {
         self.end(process, Ending::Signaled(KILLED))
             .then_some(())
             .ok_or_else(afr_executor::error::unknown_process_refused)
-    }
-
-    async fn read_file(&self, _path: &str, _max_bytes: u64) -> afr_executor::Result<FileContent> {
-        Err(refused(PROCESSES_ONLY))
-    }
-
-    async fn write_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
-        Err(refused(PROCESSES_ONLY))
-    }
-
-    async fn append_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
-        Err(refused(PROCESSES_ONLY))
-    }
-
-    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
-        Err(refused(PROCESSES_ONLY))
-    }
-
-    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
-        Err(refused(PROCESSES_ONLY))
     }
 }
