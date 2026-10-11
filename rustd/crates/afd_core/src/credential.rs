@@ -20,3 +20,31 @@
 /// cache identity excludes, which is why it is declared once rather than
 /// spelled at each of the three sites (RULE UFS).
 pub const FIELD_REFRESH_TOKEN: &str = "refresh_token";
+
+/// The vault-handle field naming the Zoho accounts server a refresh token is
+/// redeemable at.
+///
+/// The connect flow writes it and the refresh exchange reads it, so it is
+/// declared once, below both (RULE UFS).
+pub const FIELD_ACCOUNTS_BASE: &str = "accounts_base";
+
+/// The path every Zoho accounts server serves the token exchange on.
+pub const ZOHO_TOKEN_PATH: &str = "/oauth/v2/token";
+
+/// Every Zoho accounts server, one per data centre, United States first.
+///
+/// The connect flow writes one of these onto a handle and the refresh exchange
+/// posts the platform's client secret to nothing else, so both read this one
+/// list: a data centre added here is written and accepted together, and the
+/// connector's centre enum indexes it, so a centre added there without a server
+/// here fails the build. Canada is the irregular entry: a different apex
+/// domain, as Zoho documents it.
+pub const ZOHO_ACCOUNTS_SERVERS: [&str; 7] = [
+    "https://accounts.zoho.com",
+    "https://accounts.zoho.eu",
+    "https://accounts.zoho.in",
+    "https://accounts.zoho.com.au",
+    "https://accounts.zoho.com.cn",
+    "https://accounts.zoho.jp",
+    "https://accounts.zohocloud.ca",
+];

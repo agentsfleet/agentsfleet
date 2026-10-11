@@ -10,11 +10,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use std::collections::BTreeSet;
-
 use afd_connector::Provider;
 use afd_core::error_code::{self, ErrorCode};
-use afd_credential::credential::oauth;
 use afd_credential::secrets::connector::{Connectors as _, Exchange, Registry};
 use serde_json::{Value, json};
 
@@ -48,29 +45,6 @@ fn every_on_demand_connector_is_a_provider_the_routing_table_knows() {
             "{provider}"
         );
     }
-}
-
-#[test]
-fn every_server_a_zoho_callback_writes_is_one_a_refresh_will_post_to() {
-    // `afd_connector` maps a callback's `location` to the server it writes; the
-    // exchange holds its post to `ZOHO_ACCOUNTS_SERVERS`. A centre added to one
-    // and not the other would leave that region's tenants unable to mint, so
-    // the two lists are held to each other here, where both crates are seen.
-    let locations = [
-        None,
-        Some("eu"),
-        Some("in"),
-        Some("au"),
-        Some("cn"),
-        Some("jp"),
-        Some("ca"),
-    ];
-    let written: BTreeSet<&str> = locations
-        .into_iter()
-        .map(afd_connector::zoho::accounts_base)
-        .collect();
-    let posted: BTreeSet<&str> = oauth::ZOHO_ACCOUNTS_SERVERS.into_iter().collect();
-    assert_eq!(written, posted);
 }
 
 #[test]

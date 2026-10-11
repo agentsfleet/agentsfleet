@@ -258,9 +258,10 @@ impl Plane {
 
 /// Records a stored handle the mint admission refused, and hands it back.
 ///
-/// A forged handle and a stale one answer the runner identically, by design;
-/// this line is where an operator tells them apart. It names the workspace and
-/// the integration asked for, never a byte of the handle.
+/// A forged handle and a legacy one written before the routing row existed
+/// answer the runner identically, by design, and this line cannot tell them
+/// apart either; it gives an operator the workspace and the integration to
+/// look at, never a byte of the handle.
 fn refused(scope: &MintScope, integration: &str, refusal: crate::Error) -> crate::Error {
     let workspace_id = scope.workspace_id.as_str();
     let error_code = refusal.code().as_str();
@@ -269,7 +270,7 @@ fn refused(scope: &MintScope, integration: &str, refusal: crate::Error) -> crate
         error_code,
         workspace_id,
         integration,
-        "a stored handle claimed what its workspace did not connect"
+        "a stored handle names a connection its workspace does not hold"
     );
     refusal
 }

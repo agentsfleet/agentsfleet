@@ -13,36 +13,8 @@
 //! admission, which refuses the same handles earlier and under the provider
 //! they claim to be.
 
+use afd_core::credential::{FIELD_ACCOUNTS_BASE, ZOHO_ACCOUNTS_SERVERS, ZOHO_TOKEN_PATH};
 use serde_json::{Map, Value};
-
-/// The vault-handle field naming the accounts server this refresh token is
-/// redeemable at.
-///
-/// Zoho multi-data-centre only, and absent for the single-region providers,
-/// which fall through to the endpoint their descriptor declares. Refreshing at
-/// the wrong data centre's accounts server fails `invalid_grant` exactly as the
-/// initial exchange would.
-const FIELD_ACCOUNTS_BASE: &str = "accounts_base";
-
-/// The path every Zoho accounts server serves the token exchange on.
-const TOKEN_PATH: &str = "/oauth/v2/token";
-
-/// Every accounts server a Zoho callback can write onto a handle, one per data
-/// centre, exactly as written.
-///
-/// The connect flow resolves a callback's `location` to one of these in
-/// `afd_connector::zoho`; a test in the lease plane, which sees both crates,
-/// holds the two lists to each other. Canada is the irregular entry: a
-/// different apex domain, as Zoho documents it.
-pub const ZOHO_ACCOUNTS_SERVERS: [&str; 7] = [
-    "https://accounts.zoho.com",
-    "https://accounts.zoho.eu",
-    "https://accounts.zoho.in",
-    "https://accounts.zoho.com.au",
-    "https://accounts.zoho.com.cn",
-    "https://accounts.zoho.jp",
-    "https://accounts.zohocloud.ca",
-];
 
 /// Where a stored handle asks its refresh to be posted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,7 +59,7 @@ pub(super) fn endpoint(handle: &Map<String, Value>, declared: &str) -> Option<Bo
     match fields(handle) {
         Steer::Declared => Some(declared.into()),
         Steer::To(base) => {
-            is_zoho_accounts_server(base).then(|| format!("{base}{TOKEN_PATH}").into())
+            is_zoho_accounts_server(base).then(|| format!("{base}{ZOHO_TOKEN_PATH}").into())
         }
     }
 }
