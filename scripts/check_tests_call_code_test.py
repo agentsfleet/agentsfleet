@@ -124,6 +124,9 @@ class NotReads(unittest.TestCase):
             ),
         })
 
+    def test_a_read_spelled_inside_a_jsx_attribute_string(self) -> None:
+        self.assert_clean({"cli/test/attr.unit.test.tsx": 'const el = <p title="readFileSync(join(import.meta.dir, \'../src/commands/login.ts\'))" />;\n'})
+
     def test_a_helper_beneath_fixtures_is_not_a_test(self) -> None:
         self.assert_clean({"cli/test/fixtures/load.ts": 'const text = readFileSync(join(import.meta.dir, "..", "..", "src", "commands", "login.ts"), "utf8");\n'})
 
@@ -160,6 +163,14 @@ MORE_READS = {
     "js copy named in a comment": ("cli/test/remark.unit.test.ts", '// Bun.write(\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8");\n', 2),
     "js test beneath fixtures": ("cli/test/fixtures/admin.test.ts", 'const text = readFileSync(join(import.meta.dir, "..", "..", "src", "commands", "login.ts"), "utf8");\n', 1),
     "js read in a template expression": ("cli/test/expr.unit.test.ts", 'const text = `${readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8")}`;\n', 1),
+    'jsx text apostrophe': ('cli/test/jsx.unit.test.tsx', 'const el = <p>Don\'t {readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8")}</p>;\n', 1),
+    'jsx text quoted span': ('cli/test/span.unit.test.tsx', 'const el = (\n  <p>\'see {readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8")} here\'</p>\n);\n', 2),
+    'line comment brace in template expression': ('cli/test/line.unit.test.ts', 'const t = `${ // }\n  readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8") }`;\n', 2),
+    'block comment brace in template expression': ('cli/test/block.unit.test.ts', 'const t = `${ /* } */ readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8") }`;\n', 1),
+    'regex with a quote before a read': ('cli/test/regex.unit.test.ts', 'const r = /\'/; const t = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8"); const q = \'x\';\n', 1),
+    'read in a nested template': ('cli/test/nested.unit.test.ts', 'const t = `${`${readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8")}`}`;\n', 1),
+    "jsx text that fails as jsx": ("cli/test/broken.unit.test.tsx", 'const el = <p>a > \'b {readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8")} c\'</p>;\n', 1),
+    "copy left open by an unterminated string": ("cli/test/open.unit.test.ts", 'const note = "Bun.write(\nconst t = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8");\n', 2),
     "js arrow helper": ("cli/test/arrow.unit.test.ts", 'const slurp = (file: string) => {\n  const at = join(file, "login.ts");\n  return readFileSync(at, "utf8");\n};\nslurp(join(import.meta.dir, "..", "src", "commands"));\n', 5),
 }
 

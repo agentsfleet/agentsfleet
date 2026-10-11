@@ -200,7 +200,8 @@ def executes(code: str, language: str, start: int, argument: str) -> bool:
     if language != "js":
         return False
     code = js_code_only(code)
-    return any(matching_close(code, copy.end() - 1, "()") > start for copy in JS_COPY.finditer(code, 0, start))
+    # A copy whose parenthesis never closes is a misread, never an exemption.
+    return any(start < matching_close(code, copy.end() - 1, "()") < len(code) for copy in JS_COPY.finditer(code, 0, start))
 
 
 def read_findings(scan: Scan, relative_path: str, regions: list[tuple[int, int]] | None) -> list[lib.Finding]:
