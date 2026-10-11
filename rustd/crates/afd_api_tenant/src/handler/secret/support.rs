@@ -7,6 +7,7 @@
 
 use std::borrow::Cow;
 
+use afd_auth::{Principal, Scope, require_scope};
 use afd_connector::Provider;
 use afd_vault::{SecretName, SecretSummary};
 use axum::body::Bytes;
@@ -54,6 +55,21 @@ pub(super) fn read_body<'b, T: serde::Deserialize<'b>>(body: &'b Bytes) -> Resul
 /// The connector whose connection `name` holds, if it is a grant key.
 pub(super) fn connection_named(name: &SecretName) -> Option<Provider> {
     Provider::parse(name.as_str()).filter(|provider| provider.grant_key() == name.as_str())
+}
+
+/// What deleting a connection by its secret name needs beside `secret:write`.
+///
+/// That delete IS the connector's Disconnect, so it asks what Disconnect's own
+/// route row asks; otherwise a key scoped to secrets could unplug a connector.
+const DISCONNECT: &[Scope] = &[Scope::ConnectorWrite];
+
+/// The guard's own sentence for that requirement, so both refusals read alike.
+pub(super) const DETAIL_DISCONNECT_SCOPE: &str = "Requires scope connector:write";
+
+/// Refuses a caller who may write secrets but may not disconnect a connector.
+pub(super) fn may_disconnect(principal: &Principal) -> Result<(), Refusal> {
+    require_scope(principal, DISCONNECT)
+        .map_err(|denied| Refusal::coded(denied.code(), DETAIL_DISCONNECT_SCOPE))
 }
 
 /// The refusal a delete answers with, on either path.

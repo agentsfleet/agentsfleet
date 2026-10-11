@@ -252,5 +252,38 @@ async fn a_well_formed_request_reaches_the_store_on_every_verb() {
     }
 }
 
+#[tokio::test]
+async fn deleting_a_connection_by_its_name_needs_connector_write_as_well() {
+    // That delete IS the connector's Disconnect, so a key scoped to secrets
+    // alone must not unplug a connector through it.
+    let path = format!("/v1/workspaces/{OWNED_WORKSPACE}/secrets/slack");
+    let refused = authorised(Method::DELETE, &path, "").await;
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    let document = harness::json_body(refused).await;
+    assert_eq!(
+        document.get("error_code").and_then(Value::as_str),
+        Some("UZ-AUTH-022")
+    );
+    assert_eq!(
+        document.get("detail").and_then(Value::as_str),
+        Some("Requires scope connector:write")
+    );
+
+    let both = ScopeSet::from_scopes(&[Scope::SecretWrite, Scope::ConnectorWrite]);
+    let admitted = send(both, Method::DELETE, &path, Some(TENANT_KEY), "").await;
+    assert_eq!(
+        admitted.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "with both scopes the delete reaches the Disconnect's own store"
+    );
+
+    // A plain secret's delete still needs only the route's own scope.
+    assert_reached_the_verb(
+        authorised(Method::DELETE, &item(), "").await,
+        "plain secret",
+    )
+    .await;
+}
+
 #[path = "workspace_secrets/input.rs"]
 mod input;

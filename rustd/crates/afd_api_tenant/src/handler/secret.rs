@@ -34,13 +34,13 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 use serde::Deserialize;
 
-use crate::auth::WorkspaceContext;
+use crate::auth::{Acting, WorkspaceContext};
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceConnectors as _, WorkspaceSecrets as _};
 
 mod support;
 
-use support::{connection_named, delete_refusal, read_body, summary};
+use support::{connection_named, delete_refusal, may_disconnect, read_body, summary};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_STORE: &str = "secret_store_failed";
@@ -270,6 +270,8 @@ pub(crate) async fn replace<D: Services>(
 /// A name that is a connector's grant key IS that connection, so it is
 /// disconnected: a bare vault delete would skip the workspace's turn and leave
 /// routing rows naming an account with no credential behind them.
+/// It needs `connector:write` beside the route's `secret:write`, the scope
+/// Disconnect's own route asks for.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/v1/workspaces/{workspace_id}/secrets/{name}",
@@ -281,7 +283,8 @@ pub(crate) async fn replace<D: Services>(
         "that model registry entries still name returns 409 `UZ-VAULT-004`, ",
         "and its detail counts those entries. A secret named exactly as a ",
         "connector's `{provider}` is deleted as Disconnect deletes it: the ",
-        "connector's event-routing records go with it.",
+        "connector's event-routing records go with it. That delete needs ",
+        "`connector:write` as well.",
     ),
     params(
         afd_http::openapi::path::Secret,
@@ -301,10 +304,12 @@ pub(crate) async fn replace<D: Services>(
 pub(crate) async fn remove<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
+    Acting(principal): Acting,
     Path(SecretPath { name }): Path<SecretPath>,
 ) -> Result<Response, Refusal> {
     let name = SecretName::parse(&name).map_err(Refusal::at(EVENT_DELETE))?;
     if let Some(provider) = connection_named(&name) {
+        may_disconnect(&principal)?;
         // The connector's own Disconnect, answered as this route answers.
         return match services
             .connectors()

@@ -41,12 +41,12 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for WorkspaceContext {
     }
 }
 
-/// The caller themselves, for the two surfaces the layer cannot serve.
+/// The caller themselves, for the three surfaces the layer cannot serve.
 ///
 /// Every other verb is authorized once, by the layer mounted from the route's
-/// own template, and is finished before the answer could go stale. Two are not,
-/// for different reasons, and both need the principal rather than the verdict
-/// the layer reached:
+/// own template, and is finished before the answer could go stale. Three are
+/// not, for different reasons, and each needs the principal rather than the
+/// verdict the layer reached:
 ///
 /// - A live stream is open for as long as somebody has a tab, so its membership
 ///   check has to RUN AGAIN on a tick.
@@ -55,9 +55,12 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for WorkspaceContext {
 ///   so `Ownership::of` mounts nothing and the check happens in the handler, at
 ///   the one point in the order where it is both possible and still ahead of
 ///   the nonce spend. See [`crate::handler::connector::callback`].
+/// - A secret delete whose NAME is a connector's grant key is that connector's
+///   Disconnect, so it needs `connector:write` as well. A route row keys its
+///   scopes by method and cannot see the name, so the handler asks.
 ///
-/// Those are the only reasons it is extractable at all. A third caller is a
-/// route that should have declared its workspace in its template.
+/// Those are the only reasons it is extractable at all. Another caller is a
+/// route that should have declared its workspace or scope in its row.
 #[derive(Debug, Clone)]
 pub struct Acting(pub Principal);
 
