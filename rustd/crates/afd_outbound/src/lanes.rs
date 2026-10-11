@@ -22,8 +22,8 @@
 //! A lane exists only while it holds work. It retires the moment its queue
 //! is empty, holding the same map entry a dispatch takes to find it — the
 //! map is sharded, so that is one shard's lock rather than the whole map's —
-//! so a job never lands in a lane that is leaving: the send fails and the
-//! dispatch spawns a fresh lane, and since the old one drained everything
+//! so a job never lands in a lane that is leaving: publication returns the
+//! job and dispatch spawns a fresh lane, and since the old one drained everything
 //! before it left, the order within the destination holds across the
 //! hand-over.
 //!
@@ -59,6 +59,7 @@ use crate::obligation::AbandonReason;
 use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry};
 use crate::producer::MAX_DELIVERY_CYCLES;
 
+mod dispatch;
 mod retire;
 
 /// How many vendor calls may be in flight at once, across every lane.
@@ -123,6 +124,8 @@ struct Inner<S> {
     /// The obligation ledger, for stamping what a destination actually took.
     database: Db,
     permits: Semaphore,
+    /// Protects lane membership and publication against retirement. Capacity
+    /// is reserved before taking a guard; no guard crosses an await.
     lanes: DashMap<Destination, mpsc::Sender<Job>>,
     tasks: TaskTracker,
     token: CancellationToken,
@@ -148,25 +151,6 @@ impl<S: Deliver + 'static> Lanes<S> {
                 tasks: TaskTracker::new(),
                 token,
             }),
-        }
-    }
-
-    /// Queues `job` on the lane for its destination, spawning the lane if
-    /// none holds work for that destination.
-    ///
-    /// Returns once the lane has taken the job, which is at once unless the
-    /// lane already holds [`LANE_DEPTH`] — then this waits for it to drain
-    /// one, and the caller's read of the stream waits with it.
-    pub async fn dispatch(&self, mut job: Job) {
-        loop {
-            let lane = self.inner.lane_for(&Destination::of(&job));
-            match lane.send(job).await {
-                Ok(()) => return,
-                // The lane retired between the lookup and the send. It left
-                // with an empty queue, so re-dispatching spawns a fresh one
-                // behind everything it delivered.
-                Err(mpsc::error::SendError(returned)) => job = returned,
-            }
         }
     }
 
