@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M220
 **Workstream:** 001
 **Date:** Oct 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — developer tooling and doc accuracy; no product behaviour changes
 **Categories:** DOCS, INFRA
 **Batch:** B1 — one machine setup and documentation corrections, independent of each other
@@ -93,7 +93,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 `afr-kernel` is created as `orb create debian:trixie afr-kernel`, then given the builder tools, bubblewrap, Rust at the workspace's pinned toolchain, and passwordless sudo for the lane's `sudo -E`. OrbStack reports no existing machine, so no deletion is needed. **Implementation default:** keep the name `afr-kernel` because the session learnings and docs already call it that.
 
 - **Dimension 1.1** — DONE — The machine reports Debian 13 → Test `kernel_vm_is_debian_trixie` (manual: `orb -m afr-kernel cat /etc/debian_version` prints `13.`; observed `13.7`)
-- **Dimension 1.2** — DONE — The kernel lane passes on it → Test `test_toolbox_carries_the_tools` with the rest of `make test-runner-kernel` (Debian 13.7, current toolbox and final assertions: 56 passed; 0 failed; 0 ignored; exit 0, capture `025`; all five caller cases also passed in capture `024`)
+- **Dimension 1.2** — DONE — The kernel lane passes on it → Test `test_toolbox_carries_the_tools` with the rest of `make test-runner-kernel` (Debian 13.7, merged current base and final assertions: 56 passed; 0 failed; 0 ignored; exit 0, capture `032`; all five isolated caller cases also passed in capture `037`)
 
 ### §2 — The setup is written down — DONE
 
@@ -119,23 +119,24 @@ Indy requested proof from the bubblewrap caller. The new kernel tests start with
 - **Dimension 4.4** — DONE — A failed schedule or thread request is not retried, and the refusal reaches the model → Test `test_supervisor_does_not_repeat_failed_mutations`
 - **Dimension 4.5** — DONE — Shutdown during a running shell ends the child and removes the sandbox's state → Test `test_supervisor_shutdown_reaps_running_bubblewrap`
 
-All five passed in the complete 56-test Make lane and in the final seed-220
-replay, one isolated native process per case. The latter includes the final
-checks for all known fixture credentials and the redaction marker in child
-output; each case passed once, with zero failures.
+All five passed in the complete 56-test Make lane (`032`) and the seed-220
+replay (`037`), one isolated native process per case. The replay returned
+unused filesystem blocks before each process; the disk guard stayed unchanged.
+Each case passed, including the child-output checks for fixture credentials
+and the redaction marker.
 
 Required-test ledger, written before implementation:
 
 | Changed unit or boundary | Required proof | Status |
 |---|---|---|
-| Kernel trial registration and development dependency wiring | Complete kernel lane builds and runs every new trial | passed — `025`, 56 tests |
-| Supervisor lease → prompt → catalog → engine → executor | Real sandbox, lease instructions and steer observed; file read and local commit verified | passed — §4.1, `024` and `025` |
-| Memory hydrate → recall → capture → report | Fenced requests, captured memory and final report observed in order | passed — §4.2, `024` and `025` |
-| Schedule and message mutations | Typed creation/run results; exact fenced run request; success and failed response; one attempt per call | passed — §4.2 and §4.4, `024` and `025` |
-| Guarded Grafana read | Host-bound credential filled at HTTPS transport and absent from the model; child output excludes all three fixture credentials and the redaction marker | passed — §4.1 and §4.2, `024` and `025` |
-| Remote Git and prohibited HTTP paths | Specific refusals; no origin change or outbound request | passed — §4.3, `024` and `025` |
-| Shutdown and error cleanup | Runner and fake servers joined; child processes, sandbox directory and cgroup removed | passed — §4.4 and §4.5, `024` and `025` |
-| No production Rust or TypeScript change | Changed-production Rust floor remains 99%; canonical TypeScript coverage remains 100% | pending verification |
+| Kernel trial registration and development dependency wiring | Complete kernel lane builds and runs every new trial | passed — `032`, 56 tests |
+| Supervisor lease → prompt → catalog → engine → executor | Real sandbox, lease instructions and steer observed; file read and local commit verified | passed — §4.1, `032` and `037` |
+| Memory hydrate → recall → capture → report | Fenced requests, captured memory and final report observed in order | passed — §4.2, `032` and `037` |
+| Schedule and message mutations | Typed creation/run results; exact fenced run request; success and failed response; one attempt per call | passed — §4.2 and §4.4, `032` and `037` |
+| Guarded Grafana read | Host-bound credential filled at HTTPS transport and absent from the model; child output excludes all three fixture credentials and the redaction marker | passed — §4.1 and §4.2, `032` and `037` |
+| Remote Git and prohibited HTTP paths | Specific refusals; no origin change or outbound request | passed — §4.3, `032` and `037` |
+| Shutdown and error cleanup | Runner and fake servers joined; child processes, sandbox directory and cgroup removed | passed — §4.4 and §4.5, `032` and `037` |
+| No production Rust or TypeScript change | Changed-production Rust floor remains 99%; canonical TypeScript coverage remains 100% | Rust denominator 0; every package coverage gate passed at 100%, repository capture `003` |
 
 Won't-test decisions: allocation failure, failed loopback binding, invalid
 hard-coded fixture JSON and cleanup-deadline panic branches are setup failures
@@ -191,13 +192,13 @@ Production behaviour is unchanged. Caller tests preserve sandbox confinement, ho
 | R2 | The toolbox doc names only the image's tools (§3) | `git grep -n -e chromium-headless-shell -e 'Codex and Claude Code command-line tools' -e 'uv, the coding-engine command-line tools' -- docs/architecture/runner_execution.md` | no output | P1 | ✅ no matches, exit 1, capture `026` |
 | R3 | No build comment says debootstrap (§3) | `git grep -n debootstrap -- .github rustd scripts make` | no output | P2 | ✅ no matches, exit 1, capture `027` |
 | R4 | No comment names `debian:bookworm-slim` (§3) | `git grep -n 'bookworm-slim' -- rustd/Cargo.toml` | no output | P2 | ✅ no matches, exit 1, capture `028` |
-| R5 | This spec's diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint passes | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration passes | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R5 | This spec's diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | ✅ 22 paths; 0 outside declared scope |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ staged evidence updates: ALL GATES GREEN; final closure runs the hook again |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ All unit lanes passed; counts in baseline evidence, repository capture `003` |
+| S3 | Lint passes | `make lint-all` | exit 0 | P0 | ✅ completed before unit lanes, repository capture `003` |
+| S4 | Integration passes | `make test-integration-rustd` | exit 0 | P0 | ✅ capture `009`: 922 main + 2 exclusive passed; 0 failed; exit 0 |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | ✅ all versions match 0.59.0; standalone after `004` |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found; 3 branch commits scanned after `004` |
 
 **Grading protocol (VERIFY):** run each Verify command verbatim; Graded = ✅/❌ plus one decisive output line. Repository-command rows point at the final `orly gate pr` results in PR Session Notes.
 
@@ -244,10 +245,16 @@ N/A — no files deleted.
 - **Disk reclamation:** Concurrent builds and the kernel lane's temporary disks reduced Mac headroom to 837 MiB. `orb -m afr-kernel sudo fstrim -v /` returned freed Linux blocks to the Mac; `df -h /System/Volumes/Data` then reported 11 GiB available. The guide records this optional cleanup. This trim removed no other agent's processes or build directories.
 - **Fresh-machine proof:** The corrected guide passed all 51 kernel tests on `afr-kernel` and independently on `afr-kernel-m220-rebuild`. The fresh machine needed no cache ownership repair. Its evidence was retained before the disposable machine was deleted; `afr-kernel` remains configured for Indy.
 - **Shared-resource cleanup:** Later caller builds reclaimed only generated caches after checking ownership and active processes: npm's cache, an idle M213 incremental directory and this worktree's completed native Cargo target. The final kernel executable and toolbox were retained. No active build, another agent's process, source or installed dependency was removed. Cargo builds use one job, disabled incremental output and zero debug information.
-- **Current-toolbox proof:** After merging `origin/main` at `5cda557a00112de60686680f3bea218e00ad2dbd`, the toolbox excludes the GitHub command-line tool. The final image and assertions passed all 56 kernel tests (`025`); all five caller cases also passed in seeded isolated-process order (`024`). Linux Clippy passed with warnings denied (`023`). All 2,482 measured execution inputs matched after `025`.
+- **Earlier-toolbox proof:** After merging `origin/main` at `5cda557a00112de60686680f3bea218e00ad2dbd`, the toolbox excludes the GitHub command-line tool. That image and assertions passed all 56 kernel tests (`025`); all five caller cases also passed in seeded isolated-process order (`024`). Linux Clippy passed with warnings denied (`023`). All 2,482 measured execution inputs matched after `025`.
+- **Current-base proof:** Base `fea4c98236c91f8d88a6a3587262501cebfdbfa9` passed 56 kernel tests (`032`), Linux Clippy (`033`), and all five isolated caller cases (`037`). All 2,480 measured execution inputs still matched after `037`. Earlier timeout and disk-blocked records remain unchanged; the passing replay returns unused blocks between cases without relaxing the disk guard.
+- **Repository verification:** Lint, every unit lane and package coverage passed in repository capture `003`. Integration linking exhausted shared Mac storage in `003` and retry `004`. After storage recovered, `005` passed 269 tests before encountering a corrupt cached executable left by the disk failure; that artifact and its fingerprint were preserved for diagnosis. Capture `006` was intentionally stopped to apply Indy's requested settings. Retry `007` sources `~/.config/agentsfleet/.env` and uses four Cargo jobs, debug level 1 and disabled incremental compilation; test execution stays serial. The current native executable, toolbox, source and evidence remain. Those attempts left the spec active pending integration.
+- **Owned-cache recovery:** During `007`, 241 older generated executables in this worktree's Cargo target occupied 5.01 GiB. Each predated the new build, and `lsof` found no open references. Removing only those files restored 15 GiB of Mac headroom. Current outputs, source, libraries, build scripts and other workstreams' caches were retained; the file manifest is saved with the local evidence.
+- **Storage guard:** Shared free space later fell to 4.3 GiB, so `007` was stopped before another linker disk failure. With the build stopped and no open cache files, 3.97 GiB of older generated libraries and metadata were removed from this worktree. Current outputs were retained. Capture `008` retried the same four-job settings.
+- **Latest storage stop:** Capture `008` reached 698 passing tests with zero reported failures before an intentional storage stop; its receipt records SIGTERM, not a complete pass. Unused interrupted-build objects supplied another 1.55 GiB after open-reference checks. Shared storage nevertheless filled again. About 10.52 GiB was reclaimed from this worktree alone; current binaries, libraries and source remain, and other workstream caches were untouched.
+- **Storage recovery:** `df -h` later reported 49 GiB available. Capture `009` passed the complete integration target: 922 main and 2 exclusive tests, zero failures or ignored tests, exit 0. It sourced the shared environment with four Cargo jobs, debug level 1 and disabled incremental compilation. All 2,480 execution-input hashes still match. Final review, hooks and the pull request gate remain required; record their outcomes in Pull Request Session notes.
 - **Scope-check correction:** The original R5 command starts at pending-spec creation inside M219, so it includes that workstream's later merged files. R5 now compares this branch with `origin/main`, matching the stated Files Changed check.
 - **Approval:** Indy: "You are free to override orly, orly docs can be skipped." This covers the named workflow comment edit and extra documentation gates; hooks and signing still run. Indy also requested resource care with five agents. The `spec.baseline` override avoids duplicate comparison suites; the expanded caller tests now change example and fixture inputs. Final repository lanes still run.
-- **Skill-chain outcomes:** Unit and integration audits closed the required-test ledger with real caller proof, typed supervisor responses, isolated failure injection and bounded resource cleanup. The final review and PR follow-up outcomes are recorded in Pull Request Session notes. Additional orly documentation and release files are waived by Indy.
+- **Skill-chain outcomes:** Unit and integration audits closed the required-test ledger with real caller proof, typed supervisor responses, isolated failure injection and bounded resource cleanup. Final review and pull request follow-up remain required; record their outcomes in Pull Request Session notes. Additional orly documentation and release files are waived by Indy.
 - **Expanded scope:** Indy asked for tests starting where bubblewrap is called, covering a steer, workspace Git commit, memory, schedules, thread messages and Grafana. The kernel example now owns that proof. Direct `git push` is explicitly refused today; `propose_change` is not implemented. Rust coverage means 99% of changed production lines, as Indy confirmed.
 - **Deferrals** — none. This spec is the home `M219_002`'s deferral names:
   > Indy (2026-10-10 10:00): "Bump snapshot in this PR" — context: the option read "The VM and doc fixes go to their own spec."; then "all changes have to go in 1 branch/worktree", so it lands on `docs/event-runtime-positioning`.
