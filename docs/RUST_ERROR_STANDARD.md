@@ -132,7 +132,7 @@ property their row names.
 | `afd_core` | ✅ | `error_shell!` + `error_lifts!` | `struct Error` + private `ErrorKind`, per M-ERRORS-CANONICAL-STRUCTS. Also DECLARES both macros |
 | `afd_crypto`, `afd_dragonfly`, `afd_mail`, `afd_tenant` | ✅ | `error_shell!` + `error_lifts!` | same shape; each foreign source lifts through the macro |
 | `afd_db` | ✅ | `error_shell!` | same shape; composes no foreign error through `From` |
-| `afd_fleet` | ✅ | `error_shell!` | same shape; composes through hand-written `From`s (`error/lift.rs`) rather than the lift macro |
+| `afd_fleet` | ✅ | `error_shell!` + `error_lifts!` | same shape; its sources lift through the macro in `error/lift.rs` |
 | `afd_bench` | ✅ | `error_shell!` + `error_lifts!` | private `ErrorKind` lifting its fourteen sources; reuses existing registry codes rather than minting a `BENCH_*` family, since a bench refusal is read by the developer running the make target, never rendered to a tenant |
 | `afd_admin`, `afd_admission`, `afd_approval`, `afd_billing`, `afd_connector`, `afd_credential`, `afd_cron`, `afd_events`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_fleet_runtime`, `afd_gate`, `afd_identity`, `afd_ingress`, `afd_library`, `afd_observability`, `afd_outbound`, `afd_runner`, `afd_vault` | ✅ | `error_shell!` + `error_lifts!` | the full shape: private `ErrorKind`, one `answer()` table pairing each kind with its code and sentence, raisers in `error/raise.rs`, and a `one_of_each_kind()` sample behind `test-util` |
 | `afd_memory` | ✅ | `error_shell!` + `error_lifts!` | composes `afd_db`, `sqlx`, `afd_crypto` and `afd_core` errors and carries a context, a detail and a store name, so it takes the hull; it has no `one_of_each_kind()` sample yet |
