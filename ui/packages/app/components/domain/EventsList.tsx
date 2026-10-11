@@ -136,38 +136,13 @@ function createEventColumns(
       ),
     },
     {
-      key: "actor",
-      header: "Actor",
-      sortValue: (row) => senderLabelFor(row.actor),
-      cell: (row) => senderLabelFor(row.actor),
-    },
-    {
-      key: "type",
-      header: "Type",
-      hideOnMobile: true,
-      sortValue: (row) => row.event_type,
-      cell: (row) => row.event_type,
-    },
-    {
-      // How many consecutive identical deliveries this row stands for. Blank
-      // for a row that stands only for itself, so the eye catches the repeats
-      // rather than a column of "×1". It sits after the figures an operator
-      // scans for — time, tokens, duration, cost — and, being a count, aligns
-      // right with them.
-      key: "runs",
-      header: "Runs",
-      numeric: true,
-      sortValue: (row) => runs.countFor(row) ?? 0,
-      cell: (row) => <RunsCell row={row} runs={runs} />,
-    },
-    {
       // Inspect is the only place a failure is explained, deliberately. A
       // Failure column here printed one sentence from `failure_label` and
       // "No failure recorded" on every healthy row, while Status already
       // flagged the failure and this dialog already showed that same sentence
       // plus its recorded cause, the fix hint and the copyable diagnostic.
-      // Last, and right-aligned with the numbers: a row action closes its row
-      // in every table (docs/DESIGN_SYSTEM.md).
+      // Right-aligned: a row action aligns right in every table, and here it
+      // keeps its place after Status (docs/DESIGN_SYSTEM.md).
       key: "details",
       header: "Details",
       numeric: true,
@@ -184,6 +159,32 @@ function createEventColumns(
           <ChevronRightIcon size={14} aria-hidden="true" />
         </Button>
       ),
+    },
+    {
+      key: "actor",
+      header: "Actor",
+      sortValue: (row) => senderLabelFor(row.actor),
+      cell: (row) => senderLabelFor(row.actor),
+    },
+    {
+      key: "type",
+      header: "Type",
+      hideOnMobile: true,
+      sortValue: (row) => row.event_type,
+      cell: (row) => row.event_type,
+    },
+    {
+      // Trailing column: how many consecutive identical deliveries this row
+      // stands for. Blank for a row that stands only for itself, so the eye
+      // catches the repeats rather than a column of "×1". It closes the row
+      // because the figures an operator scans for — time, tokens, duration,
+      // cost — belong beside the fleet, not behind a repeat count. A count, so
+      // it aligns right.
+      key: "runs",
+      header: "Runs",
+      numeric: true,
+      sortValue: (row) => runs.countFor(row) ?? 0,
+      cell: (row) => <RunsCell row={row} runs={runs} />,
     },
   ];
 }

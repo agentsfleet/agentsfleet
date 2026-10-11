@@ -257,9 +257,9 @@ describe("EventsList — the standard workspace events table", () => {
       .find((r) => r.textContent?.includes("gate_blocked"));
     expect(rowC).toBeTruthy();
     const cells = Array.from(rowC!.querySelectorAll("td"));
-    // Fleet, Time, Tokens, Duration, Cost, Status, Actor, then Type at index
-    // 7; Runs and the Details action close the row. No cell restates the failure.
-    expect(cells[7]?.textContent).toBe("chat");
+    // Fleet, Time, Tokens, Duration, Cost, Status, Details, Actor, then Type
+    // at index 8; Runs closes the row. No cell restates the failure.
+    expect(cells[8]?.textContent).toBe("chat");
   });
 
   it("sorts every event data column from its header arrow", () => {
@@ -418,10 +418,10 @@ describe("EventsList — the standard workspace events table", () => {
       "Duration",
       "Cost",
       "Status",
+      "Details",
       "Actor",
       "Type",
       "Runs",
-      "Details",
     ]);
     expect(screen.getByText("$0.02")).toBeTruthy();
     // A count and a row action align right with the other figures.
