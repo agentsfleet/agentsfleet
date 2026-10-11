@@ -36,6 +36,7 @@ use std::time::Duration;
 
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_core::clock::{self, UnixMillis};
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
@@ -263,8 +264,9 @@ impl Sweep for Repairs {
                 Err(failure) => {
                     dispatched.failed += 1;
                     producers::fleet::repair::dispatch_retried();
-                    let reason = failure.told();
+                    let Logged { error_code, reason } = failure.logged();
                     tracing::warn!(
+                        error_code,
                         verification_id = intent.id,
                         workspace_id = intent.workspace_id,
                         due_since_ms = now.as_millis().saturating_sub(intent.verify_after),

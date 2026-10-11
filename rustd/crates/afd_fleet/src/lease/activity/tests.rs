@@ -267,6 +267,10 @@ async fn a_dropped_activity_batch_reason_carries_no_code_prefix() {
         .await;
 
     let line = log.only(super::EVENT_DROPPED);
+    assert!(
+        line.field("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
     let reason = line.field("reason").unwrap_or_default();
     assert!(
         !reason.is_empty() && !reason.contains("[UZ-"),

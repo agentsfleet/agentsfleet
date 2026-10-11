@@ -20,6 +20,7 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use afd_core::error_code::{Coded as _, Logged};
 use afr_executor::{Ending, Executor, Process, ProcessId};
 use tokio::sync::Mutex as Held;
 
@@ -200,9 +201,9 @@ async fn end(executor: &dyn Executor, id: ProcessId, process: Shared) -> bool {
     }
     if let Err(refused) = executor.kill(id).await {
         let session_id = id.get();
-        let reason = refused.told();
+        let Logged { error_code, reason } = refused.logged();
         let event = EVENT_KILL_REFUSED;
-        tracing::debug!(session_id, reason, event);
+        tracing::debug!(error_code, session_id, reason, event);
     }
     completed(id, Ending::Interrupted);
     true

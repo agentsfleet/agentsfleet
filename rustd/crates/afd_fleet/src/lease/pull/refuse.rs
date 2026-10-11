@@ -9,6 +9,7 @@
 //! already had.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::event::label;
 use afd_core::id::Uuid7;
 
@@ -159,7 +160,10 @@ impl Plane {
         fault: &Error,
         now: UnixMillis,
     ) -> Result<String> {
-        let reason = fault.told();
+        let Logged {
+            error_code: config_error_code,
+            reason,
+        } = fault.logged();
         match self.end_unreadable(acquired, runner_id, &reason, now).await {
             Ok(answer) => Ok(answer),
             // Logged, never propagated, and the reasoning is this module's
@@ -181,15 +185,18 @@ impl Plane {
             // failure this whole path exists to stop, wearing a different
             // error code.
             Err(unrecorded) => {
-                let code = unrecorded.code().as_str();
                 let fleet_id_field = acquired.fleet_id.as_str();
                 let event_id_field = acquired.event_id.as_str();
-                let unrecorded_reason = unrecorded.to_string();
+                let Logged {
+                    error_code,
+                    reason: unrecorded_reason,
+                } = unrecorded.logged();
                 tracing::warn!(
-                    error_code = code,
+                    error_code,
                     fleet_id = fleet_id_field,
                     agentsfleet_event_id = event_id_field,
                     reason = unrecorded_reason,
+                    config_error_code,
                     config_reason = reason,
                     event = EVENT_CONFIG_REFUSAL_UNRECORDED,
                     "a fleet with an unreadable config could not be ended; it \

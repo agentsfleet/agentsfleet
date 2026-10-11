@@ -5,6 +5,7 @@
 //! here is fire-and-forget telemetry: no consumer group, no persistence, and a
 //! frame nobody was subscribed for is simply gone.
 
+use afd_core::error_code::{Coded as _, Logged};
 use serde::Serialize;
 
 use super::{FleetStreams, fleet_activity_channel};
@@ -80,8 +81,9 @@ impl FleetStreams {
             return;
         };
         if let Err(unreachable_queue) = self.publish_tail(fleet_id, &payload).await {
-            let reason = unreachable_queue.told();
+            let Logged { error_code, reason } = unreachable_queue.logged();
             tracing::debug!(
+                error_code,
                 fleet_id,
                 reason,
                 event = EVENT_FRAME_DROPPED,
@@ -154,6 +156,12 @@ mod tests {
                 record.fields.get("event").map(String::as_str) == Some(super::EVENT_FRAME_DROPPED)
             })
             .expect("a frame the queue would not take is logged");
+        assert!(
+            dropped
+                .fields
+                .get("error_code")
+                .is_some_and(|code| !code.is_empty())
+        );
         let reason = dropped.fields.get("reason").expect("the drop names why");
         assert!(!reason.is_empty() && !reason.contains("[UZ-"), "{reason}");
     }

@@ -12,6 +12,7 @@
 //! stream, the client sees the connection close, and it reconnects — which is
 //! what an `EventSource` does by itself.
 
+use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::Subscription;
 use afd_dragonfly::hub::Received;
 use futures_util::Stream;
@@ -43,8 +44,8 @@ pub fn tail(subscription: Subscription) -> impl Stream<Item = Frame> + Send {
                 Ok(Received::Gap) => Some((Frame::catching_up(0), (subscription, seq))),
                 Err(closed) => {
                     let channel = subscription.channel();
-                    let reason = closed.told();
-                    tracing::debug!(channel, reason, event = "sse_tail_closed");
+                    let Logged { error_code, reason } = closed.logged();
+                    tracing::debug!(error_code, channel, reason, event = "sse_tail_closed");
                     None
                 }
             }

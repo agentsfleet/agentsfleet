@@ -25,6 +25,7 @@
 //! `Published::of` is total over [`ActivityFrame`], so a new frame variant
 //! fails the build until somebody decides what the dashboard calls it.
 
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_observability::metrics::label::fleet::DeliveryStage;
 use afd_observability::producers;
@@ -104,8 +105,9 @@ impl Leases {
             payloads.extend(serde_json::to_string(published).ok());
         }
         if let Err(unreachable_queue) = streams.publish_tail_batch(fleet, &payloads).await {
-            let reason = unreachable_queue.told();
+            let Logged { error_code, reason } = unreachable_queue.logged();
             tracing::debug!(
+                error_code,
                 fleet_id = fleet,
                 reason,
                 event = EVENT_DROPPED,

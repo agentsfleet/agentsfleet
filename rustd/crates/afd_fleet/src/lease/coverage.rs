@@ -117,8 +117,9 @@ impl Plane {
             // will read the same on every subsequent tick.
             Err(fault) if fault.is_config_permanent() => {
                 let fleet = lease.fleet_id.as_str();
-                let reason = fault.told();
+                let Logged { error_code, reason } = fault.logged();
                 tracing::warn!(
+                    error_code,
                     fleet_id = fleet,
                     lease_id,
                     reason,

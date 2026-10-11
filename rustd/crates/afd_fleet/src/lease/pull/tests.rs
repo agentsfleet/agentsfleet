@@ -50,7 +50,8 @@ async fn an_unacknowledged_terminal_reason_carries_no_code_prefix() {
 }
 
 /// A fleet whose unreadable config cannot even be recorded is answered no
-/// work, and the config's own reason is logged without its code.
+/// work, and neither the config's reason nor the write's failure carries a
+/// code.
 #[tokio::test]
 async fn an_unreadable_config_refusal_reason_carries_no_code_prefix() {
     use afd_core::test_util::trace::Capture;
@@ -73,4 +74,14 @@ async fn an_unreadable_config_refusal_reason_carries_no_code_prefix() {
 
     let line = log.only(super::refuse::EVENT_CONFIG_REFUSAL_UNRECORDED);
     assert_eq!(line.field("config_reason"), Some(fault.told().as_str()));
+    assert_eq!(
+        line.field("config_error_code"),
+        Some(fault.code().as_str()),
+        "the config fault's own code rides beside its reason"
+    );
+    let reason = line.field("reason").unwrap_or_default();
+    assert!(
+        !reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'),
+        "the write's failure is its sentence alone, its code the line's `error_code`: {reason}"
+    );
 }

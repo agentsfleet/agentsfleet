@@ -123,6 +123,12 @@ async fn every_failed_stream_step_reason_carries_no_code_prefix() {
         "ready_remark_failed",
     ] {
         let logged = capture.only(event);
+        assert!(
+            logged
+                .field("error_code")
+                .is_some_and(|code| !code.is_empty()),
+            "{event} names no error_code"
+        );
         let reason = logged.field("reason").expect("a failure line says why");
         assert!(!reason.is_empty(), "{event} says nothing");
         assert!(
