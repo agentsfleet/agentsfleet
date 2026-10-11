@@ -28,6 +28,8 @@ tracing-subscriber = { workspace = true, optional = true }
 # The wire codes a datastore failure answers.
 afd_core.workspace = true
 sqlx.workspace = true
+# The migration lock's bounded poll: a constant schedule, no jitter.
+backon.workspace = true
 # Reads the connection string's query, so the TLS decision is taken from the
 # same parse sqlx acts on rather than from a substring scan over the raw bytes.
 # `sqlx_core::Url` IS this crate at this version, so a second grammar is not

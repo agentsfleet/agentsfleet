@@ -74,6 +74,10 @@ impl Leased {
             (QSTASH_TOKEN_KNOB, QSTASH_TOKEN),
         ];
         let run = scenario_with(supervisor, None, &extra, FLEET_CONFIG_JSON).await;
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+        )]
         let http = reqwest::Client::new();
         let (lease_id, fence) = lease(&http, &run).await;
         Self {

@@ -9,7 +9,8 @@ use std::collections::HashMap;
 
 use afd_api_wire::admin::RunnerEventType;
 use afd_core::id::Uuid7;
-use afd_core::paging::CEILING;
+use afd_core::paging::{CEILING, Cursor};
+use afd_core::spelling::from_spelling;
 use afd_runner::{KeysetCursor, RunnerEventFilter};
 use afd_validate::Limit;
 use garde::Validate as _;
@@ -93,10 +94,6 @@ pub(super) fn page(params: &HashMap<String, String>) -> Result<PageQuery, &'stat
     Ok(PageQuery { cursor, limit })
 }
 
-pub(super) fn runner_id(raw: &str) -> Result<Uuid7, &'static str> {
-    Uuid7::parse(raw).map_err(|_invalid| DETAIL_BAD_RUNNER_ID)
-}
-
 pub(super) fn leases(params: &HashMap<String, String>) -> Result<LeaseQuery, &'static str> {
     let limit = requested_limit(params, DETAIL_BAD_LEASE_LIMIT)?;
     let starting_after = params
@@ -147,16 +144,21 @@ pub(super) fn events(params: &HashMap<String, String>) -> Result<EventQuery, &'s
 }
 
 pub(super) fn format(cursor: &KeysetCursor) -> String {
-    format!("{}:{}", cursor.created_at(), cursor.id())
+    Cursor::Timestamp {
+        at_ms: cursor.created_at(),
+        id: cursor.id().as_str().to_owned(),
+    }
+    .to_string()
 }
 
+/// A timestamp boundary whose identifier is a version-7 id. The text form
+/// parses as a cursor too, and is refused: these lists sort by `created_at`.
 fn cursor(raw: &str) -> Result<KeysetCursor, &'static str> {
-    let (created_at, id) = raw.split_once(':').ok_or(DETAIL_BAD_PAGE)?;
-    let created_at = created_at
-        .parse::<i64>()
-        .map_err(|_invalid| DETAIL_BAD_PAGE)?;
-    let id = Uuid7::parse(id).map_err(|_invalid| DETAIL_BAD_PAGE)?;
-    Ok(KeysetCursor::new(created_at, id))
+    let Ok(Cursor::Timestamp { at_ms, id }) = Cursor::parse(raw) else {
+        return Err(DETAIL_BAD_PAGE);
+    };
+    let id = Uuid7::parse(&id).map_err(|_invalid| DETAIL_BAD_PAGE)?;
+    Ok(KeysetCursor::new(at_ms, id))
 }
 
 /// The page size a list asked for, inside the keyset lists' ceiling, or that
@@ -195,10 +197,7 @@ fn parse_event_types(
 ) -> Result<Vec<RunnerEventType>, &'static str> {
     set.tokens
         .iter()
-        .map(|token| {
-            serde_json::from_value(serde_json::Value::String((*token).to_owned()))
-                .map_err(|_invalid| DETAIL_BAD_EVENTS)
-        })
+        .map(|token| from_spelling(token).ok_or(DETAIL_BAD_EVENTS))
         .collect()
 }
 

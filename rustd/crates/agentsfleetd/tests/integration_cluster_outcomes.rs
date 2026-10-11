@@ -278,6 +278,10 @@ async fn the_fleet_is_still_discoverable_for_its_remaining_work(
 async fn test_cluster_preserves_application_outcomes() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
     let http = reqwest::Client::new();
 
     prove_capabilities(&http, &run).await;

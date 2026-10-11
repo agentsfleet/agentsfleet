@@ -7,6 +7,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::timing::DAY_MS;
+use afd_db::statement::{LIKE_ANY, like_escape};
 use jiff::Timestamp;
 
 use crate::error::{Result, cursor_malformed};
@@ -114,6 +115,9 @@ fn parse_rfc3339_z(input: &str) -> Result<UnixMillis> {
     Ok(UnixMillis::from_millis(at.as_millisecond()))
 }
 
+/// The glob wildcard a client types for any run of characters.
+const GLOB_ANY: char = '*';
+
 /// Translate a client glob into a SQL LIKE pattern.
 ///
 /// `*` becomes `%`; `%`, `_` and `\` are escaped so a literal one cannot become
@@ -123,18 +127,10 @@ fn parse_rfc3339_z(input: &str) -> Result<UnixMillis> {
 /// as a 500 on a filter a user is entitled to type.
 #[must_use]
 pub fn glob_to_like(glob: &str) -> String {
-    let mut pattern = String::with_capacity(glob.len());
-    for character in glob.chars() {
-        match character {
-            '*' => pattern.push('%'),
-            '%' | '_' | '\\' => {
-                pattern.push('\\');
-                pattern.push(character);
-            }
-            literal => pattern.push(literal),
-        }
-    }
-    pattern
+    glob.split(GLOB_ANY)
+        .map(like_escape)
+        .collect::<Vec<_>>()
+        .join(&LIKE_ANY.to_string())
 }
 
 /// Translate a client's actor PREFIX into a SQL LIKE pattern.
@@ -151,14 +147,8 @@ pub fn glob_to_like(glob: &str) -> String {
 /// side; taking it here too is what keeps one rule rather than two.
 #[must_use]
 pub fn prefix_to_like(prefix: &str) -> String {
-    let mut pattern = String::with_capacity(prefix.len() + 1);
-    for character in prefix.chars() {
-        if matches!(character, '%' | '_' | '\\') {
-            pattern.push('\\');
-        }
-        pattern.push(character);
-    }
-    pattern.push('%');
+    let mut pattern = like_escape(prefix);
+    pattern.push(LIKE_ANY);
     pattern
 }
 

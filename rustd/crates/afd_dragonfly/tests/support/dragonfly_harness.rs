@@ -8,6 +8,7 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
@@ -66,7 +67,7 @@ impl DragonflyHarness {
     /// a MISSING or MALFORMED authority is refused has to ask over `rediss://`,
     /// or it asserts nothing and passes for the wrong reason.
     pub(crate) fn tls_config() -> DragonflyConfig {
-        let url = std::env::var(TLS_URL_KNOB).unwrap_or_else(|_| {
+        let url = ProcessEnv.get(TLS_URL_KNOB).unwrap_or_else(|| {
             panic!("{TLS_URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
         DragonflyConfig::from_url(DragonflyRole::Default, url)
@@ -75,11 +76,11 @@ impl DragonflyHarness {
 
     /// The configuration the lane hands this suite.
     pub(crate) fn config() -> DragonflyConfig {
-        let url = std::env::var(URL_KNOB).unwrap_or_else(|_| {
+        let url = ProcessEnv.get(URL_KNOB).unwrap_or_else(|| {
             panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
         DragonflyConfig::from_url(DragonflyRole::Default, url)
-            .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
+            .with_ca_cert_file(ProcessEnv.get(CA_KNOB).map(Into::into))
             .with_request_timeout(Duration::from_secs(5))
     }
 

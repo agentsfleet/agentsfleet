@@ -30,6 +30,10 @@
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the live probes reach the vendors through any proxy the lane's environment sets, which `direct` would refuse"
+)]
 
 use afd_connector::exchange::Exchange;
 use afd_connector::oauth;

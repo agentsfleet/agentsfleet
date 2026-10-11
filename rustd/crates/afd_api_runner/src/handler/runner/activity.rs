@@ -28,7 +28,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
-use crate::handler::refuse;
+use crate::handler::{malformed, refuse};
 use crate::services::{Leasing as _, Services};
 
 /// The scoped event a failed forward is logged under.
@@ -80,12 +80,7 @@ pub(crate) async fn handle<D: Services>(
             .iter()
             .all(|frame| frame.call_id_usable() && frame.outcome_usable())
     }) else {
-        return crate::envelope::ProblemResponse::new(
-            afd_core::error_code::INVALID_REQUEST,
-            DETAIL_MALFORMED,
-            crate::request_id::RequestId::mint(),
-        )
-        .into_response();
+        return malformed(DETAIL_MALFORMED);
     };
 
     match services

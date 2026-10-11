@@ -58,6 +58,36 @@ pub fn retire_held() -> Error {
     ErrorKind::RetireHeld.into()
 }
 
+/// Refuses a fire on a deployment that holds no signing key.
+pub(crate) fn keys_missing() -> Error {
+    ErrorKind::KeysMissing.into()
+}
+
+/// Refuses a fire token past its bound, or one that is not a token.
+pub(crate) fn token_malformed() -> Error {
+    ErrorKind::TokenMalformed.into()
+}
+
+/// Refuses a fire token neither signing key verifies.
+pub(crate) fn signature_invalid() -> Error {
+    ErrorKind::SignatureInvalid.into()
+}
+
+/// Refuses a genuine fire token over bytes it was not minted over.
+pub(crate) fn body_mismatch() -> Error {
+    ErrorKind::BodyMismatch.into()
+}
+
+/// Refuses an API URL that cannot carry a schedule callback.
+pub(crate) fn destination_unusable() -> Error {
+    ErrorKind::DestinationUnusable.into()
+}
+
+/// Refuses an API URL carrying a query or a fragment.
+pub(crate) fn destination_not_plain_origin() -> Error {
+    ErrorKind::DestinationNotPlainOrigin.into()
+}
+
 /// One error of every kind, for tests that walk the whole surface.
 ///
 /// The M-TEST-UTIL seam, and the same argument `afd_db::error` makes for its
@@ -95,6 +125,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         afd_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
     // A URL the builder rejects, so a `reqwest::Error` exists without a request
     // ever leaving the process — this suite reaches no network.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the client only refuses an unparseable URL and sends nothing"
+    )]
     let unreachable = reqwest::Client::new()
         .get("http://[")
         .build()
@@ -138,6 +172,15 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             row_unreadable(super::COLUMN_DESIRED_STATUS),
         ),
         ("retire held", retire_held()),
+        ("keys missing", keys_missing()),
+        ("token malformed", token_malformed()),
+        ("signature invalid", signature_invalid()),
+        ("body mismatch", body_mismatch()),
+        ("destination unusable", destination_unusable()),
+        (
+            "destination not a plain origin",
+            destination_not_plain_origin(),
+        ),
     ]
 }
 

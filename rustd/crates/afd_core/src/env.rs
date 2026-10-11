@@ -4,7 +4,7 @@
 //! environment is shared mutable state and a parallel test suite racing on it
 //! is undefined behaviour. So the environment arrives as a parameter: the
 //! daemon passes [`ProcessEnv`], and tests pass [`MapEnv`], which is how the
-//! role and knob resolution in [`crate::config`] gets exercised at all without
+//! role and knob resolution behind [`optional`] gets exercised at all without
 //! one test's `DATABASE_URL_API` leaking into another's.
 
 /// The environment variable naming how much to log, read by the daemon and
@@ -35,9 +35,22 @@ pub trait EnvSource {
     /// The value for `key`, or `None` when it is unset.
     ///
     /// A blank or whitespace-only value is the caller's business, not this
-    /// trait's: [`crate::config`] treats it as unset, and a source that decided
+    /// trait's: [`optional`] treats it as unset, and a source that decided
     /// that here would hide the distinction from anyone who needs it.
     fn get(&self, key: &str) -> Option<String>;
+}
+
+/// One optional knob, trimmed, and absent when it is unset or blank.
+///
+/// Blank is treated as absent rather than as a value, because an environment
+/// that exports a variable to the empty string is an environment that meant
+/// to unset it. Every string-valued knob in the daemon reads through this one,
+/// so a padded value means the same thing whichever knob carries it.
+#[must_use]
+pub fn optional<E: EnvSource + ?Sized>(env: &E, knob: &str) -> Option<Box<str>> {
+    let value = env.get(knob)?;
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.into())
 }
 
 /// The real process environment.
@@ -45,6 +58,10 @@ pub trait EnvSource {
 pub struct ProcessEnv;
 
 impl EnvSource for ProcessEnv {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "this is the owner: the one read of the process environment"
+    )]
     fn get(&self, key: &str) -> Option<String> {
         std::env::var(key).ok()
     }

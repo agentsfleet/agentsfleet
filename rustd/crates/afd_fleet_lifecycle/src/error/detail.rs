@@ -10,8 +10,8 @@ pub use afd_core::error::DETAIL_DATABASE_UNAVAILABLE as DATABASE_UNAVAILABLE;
 /// The detail a request earns when a statement fails.
 pub use afd_core::error::DETAIL_DATABASE_ERROR as DATABASE_ERROR;
 
-/// A queue outage, shaped like its database counterpart above.
-pub const QUEUE_UNAVAILABLE: &str = "Queue unavailable";
+/// The detail a request earns when the queue cannot be reached.
+pub use afd_core::error::DETAIL_QUEUE_UNAVAILABLE as QUEUE_UNAVAILABLE;
 
 /// A configuration document that does not validate.
 pub const INVALID_CONFIG: &str = "Config JSON is not valid. Check trigger, tools, budget; `name:` must be kebab `^[a-z0-9-]+$`, 1-64 chars.";

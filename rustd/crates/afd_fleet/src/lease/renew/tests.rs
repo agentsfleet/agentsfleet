@@ -58,5 +58,10 @@ fn a_catalogue_fault_logs_the_held_tokens() -> Result<(), &'static str> {
         "the warning names every count the renewal left for a priced slice"
     );
     assert_eq!(event.field("error_code"), Some(fault.code().as_str()));
+    assert_eq!(
+        event.field("reason"),
+        Some(fault.told().as_str()),
+        "the reason is the fault's sentence, its code only in `error_code`"
+    );
     Ok(())
 }

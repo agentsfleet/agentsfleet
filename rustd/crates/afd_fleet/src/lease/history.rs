@@ -21,7 +21,6 @@ use afd_wire::lease::{
 };
 
 use crate::lease::envelope::Acquired;
-use crate::lease::verdict::truncate;
 
 /// The event a chat lease issued without its turns is logged under.
 pub(super) const EVENT_HISTORY_UNAVAILABLE: &str = "lease_history_unavailable";
@@ -181,7 +180,7 @@ fn turn(row: EventDetailRow) -> Option<(Turn<'static>, bool)> {
 /// `text` within [`TURN_TEXT_BYTES_MAX`], never splitting a character, and
 /// whether it had to be cut.
 fn cut(text: &str) -> (String, bool) {
-    let kept = truncate(text, TURN_TEXT_BYTES_MAX);
+    let kept = &text[..text.floor_char_boundary(TURN_TEXT_BYTES_MAX)];
     (kept.to_owned(), kept.len() < text.len())
 }
 

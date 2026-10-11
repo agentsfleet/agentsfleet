@@ -27,6 +27,7 @@
 use std::collections::BTreeSet;
 
 use afd_core::id::Uuid7;
+use afd_core::json::non_empty_str;
 use afd_crypto::secret::SecretBytes;
 use afd_vault::{SecretName, Vault};
 
@@ -85,17 +86,17 @@ impl PlatformApp {
             return Ok(None);
         };
         let (Some(client_id), Some(client_secret)) = (
-            field(&bag, FIELD_CLIENT_ID),
-            field(&bag, FIELD_CLIENT_SECRET),
+            non_empty_str(&bag, FIELD_CLIENT_ID),
+            non_empty_str(&bag, FIELD_CLIENT_SECRET),
         ) else {
             return Ok(None);
         };
         Ok(Some(AppCredentials {
-            client_id,
+            client_id: client_id.to_owned(),
             // Re-wrapped rather than handed out as a slice of the parsed tree:
             // `serde_json` owns that tree on the heap with no destructor that
             // zeroes it, so the copy this carries is the one with the guarantee.
-            client_secret: SecretBytes::new(client_secret.into_bytes()),
+            client_secret: SecretBytes::new(client_secret.as_bytes().to_vec()),
         }))
     }
 
@@ -111,7 +112,8 @@ impl PlatformApp {
         let Some(bag) = self.bag(admin, provider).await? else {
             return Ok(None);
         };
-        Ok(field(&bag, FIELD_SIGNING_SECRET).map(|secret| SecretBytes::new(secret.into_bytes())))
+        Ok(non_empty_str(&bag, FIELD_SIGNING_SECRET)
+            .map(|secret| SecretBytes::new(secret.as_bytes().to_vec())))
     }
 
     /// Which providers this deployment has configured an app for.
@@ -164,12 +166,6 @@ impl PlatformApp {
     }
 }
 
-/// One non-empty string field of the bag.
-fn field(bag: &serde_json::Value, name: &str) -> Option<String> {
-    let value = bag.get(name)?.as_str()?;
-    (!value.is_empty()).then(|| value.to_owned())
-}
-
 #[cfg(test)]
 mod tests {
     #![expect(
@@ -177,7 +173,7 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{FIELD_CLIENT_ID, FIELD_CLIENT_SECRET, FIELD_SIGNING_SECRET, field};
+    use super::{FIELD_CLIENT_ID, FIELD_CLIENT_SECRET, FIELD_SIGNING_SECRET, non_empty_str};
 
     /// Every shape that names no usable value reads as absent.
     ///
@@ -198,7 +194,7 @@ mod tests {
         for stored in unusable {
             let bag: serde_json::Value = serde_json::from_str(stored).expect("valid JSON fixture");
             assert!(
-                field(&bag, FIELD_CLIENT_ID).is_none(),
+                non_empty_str(&bag, FIELD_CLIENT_ID).is_none(),
                 "`{stored}` names no usable client id",
             );
         }
@@ -215,9 +211,9 @@ mod tests {
         )
         .expect("valid JSON fixture");
 
-        assert_eq!(field(&bag, FIELD_CLIENT_ID).as_deref(), Some("cid"));
-        assert_eq!(field(&bag, FIELD_CLIENT_SECRET).as_deref(), Some("csec"));
-        assert_eq!(field(&bag, FIELD_SIGNING_SECRET).as_deref(), Some("ssec"));
+        assert_eq!(non_empty_str(&bag, FIELD_CLIENT_ID), Some("cid"));
+        assert_eq!(non_empty_str(&bag, FIELD_CLIENT_SECRET), Some("csec"));
+        assert_eq!(non_empty_str(&bag, FIELD_SIGNING_SECRET), Some("ssec"));
     }
 
     /// A bag with the OAuth pair and no signing secret is still an OAuth app.
@@ -230,7 +226,7 @@ mod tests {
             serde_json::from_str(r#"{"client_id":"cid","client_secret":"csec"}"#)
                 .expect("valid JSON fixture");
 
-        assert!(field(&bag, FIELD_CLIENT_ID).is_some());
-        assert!(field(&bag, FIELD_SIGNING_SECRET).is_none());
+        assert!(non_empty_str(&bag, FIELD_CLIENT_ID).is_some());
+        assert!(non_empty_str(&bag, FIELD_SIGNING_SECRET).is_none());
     }
 }

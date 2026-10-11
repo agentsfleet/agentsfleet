@@ -13,6 +13,10 @@ fn signing_keys_do_not_render_either_rotation_key() {
 }
 
 #[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the client is only formatted, never sent"
+)]
 fn scheduler_client_does_not_render_its_bearer() {
     let client = QStash::new(
         reqwest::Client::new(),

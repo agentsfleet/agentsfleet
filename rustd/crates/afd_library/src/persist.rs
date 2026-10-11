@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use afd_core::error_code::{Coded as _, Logged};
 use bytes::Bytes;
 use object_store::path::Path as StorePath;
 use object_store::{ObjectStore, ObjectStoreExt as _};
@@ -82,7 +83,8 @@ where
                 tracing::info!(event = "bundle_import_completed", bundle_name = %bundle.name, content_hash = %bundle.content_hash);
             }
             Err(error) => {
-                tracing::warn!(event = "bundle_import_failed", error_code = %error.code(), error = %error);
+                let Logged { error_code, reason } = error.logged();
+                tracing::warn!(event = "bundle_import_failed", error_code = %error_code, reason);
             }
         }
         result

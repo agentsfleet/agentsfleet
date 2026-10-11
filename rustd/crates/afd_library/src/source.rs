@@ -1,5 +1,7 @@
 //! Vendor-source seam and orchestration that keeps fetches ahead of writes.
 
+use afd_core::error_code::{Coded as _, Logged};
+
 use crate::{ImportBody, ImportService, Onboarded, Result};
 
 /// Caller-actionable source failures that need no lower-level cause.
@@ -85,12 +87,15 @@ where
                 bundle_name = %bundle.bundle.name,
                 content_hash = %bundle.bundle.content_hash
             ),
-            Err(error) => tracing::warn!(
-                event = "library_source_import_failed",
-                source_ref = reference,
-                error_code = %error.code(),
-                error = %error
-            ),
+            Err(error) => {
+                let Logged { error_code, reason } = error.logged();
+                tracing::warn!(
+                    event = "library_source_import_failed",
+                    source_ref = reference,
+                    error_code = %error_code,
+                    reason
+                );
+            }
         }
         result
     }

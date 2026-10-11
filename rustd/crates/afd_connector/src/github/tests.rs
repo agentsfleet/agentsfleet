@@ -114,7 +114,7 @@ fn the_grant_carries_the_installation_and_claims_it_exclusively() {
 #[test]
 fn the_user_token_is_read_out_of_the_exchange_answer() {
     assert_eq!(
-        access_token(&json!({"access_token": "gho_x", "token_type": "bearer"})).as_deref(),
+        access_token(&json!({"access_token": "gho_x", "token_type": "bearer"})),
         Some("gho_x")
     );
     for body in [

@@ -2,7 +2,6 @@
 
 use afd_core::bundle::BundleDigest;
 use garde::{Unvalidated, Valid};
-use sha2::{Digest as _, Sha256};
 
 use crate::error::{InvalidBundle, Result};
 use crate::frontmatter;
@@ -93,7 +92,7 @@ fn hashes(body: &ImportBody) -> (String, Vec<SupportManifest>) {
             SupportManifest {
                 path: file.path.clone(),
                 size_bytes: file.content.len(),
-                sha256: hex::encode(Sha256::digest(&file.content)),
+                sha256: afd_core::etag::sha256_hex(&file.content),
             }
         })
         .collect();

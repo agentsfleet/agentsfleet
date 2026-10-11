@@ -304,9 +304,9 @@ fn every_rule_this_module_owns_still_reports_its_own_variant() {
 
 /// A report this module has no rule for degrades to the strictest refusal.
 ///
-/// Every custom rule names itself and every `length` bound sits on a path
-/// `classify` knows, so no [`ImportBody`] reaches this arm through [`body`] —
-/// it is driven directly. What it pins is the direction of the default: a
+/// Every custom rule names itself and every `length` bound but the support
+/// path's sits on a path `classify` knows, so only that bound reaches this arm
+/// through [`body`] — the rest is driven directly. What it pins is the direction of the default: a
 /// bound added to the model without a mapping here must surface as a refusal
 /// the caller cannot mistake for an admitted file, never as a pass.
 #[test]

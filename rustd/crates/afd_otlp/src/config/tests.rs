@@ -11,7 +11,7 @@ use afd_core::env::MapEnv;
 
 use super::{
     DEFAULT_TIMEOUT, Encoding, OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB,
-    OTEL_TIMEOUT_KNOB, OtlpConfig, optional, timeout_from,
+    OTEL_TIMEOUT_KNOB, OtlpConfig, timeout_from,
 };
 
 /// Where a configured deployment sends.
@@ -252,14 +252,4 @@ fn a_resolved_configuration_renders_no_credential() {
         rendered.contains(OTEL_ENDPOINT_KNOB),
         "and the knob's name: {rendered}"
     );
-}
-
-/// `optional` treats blank as unset and trims what it keeps.
-#[test]
-fn optional_trims_and_treats_blank_as_unset() {
-    let env = MapEnv::from_pairs([("A", " value "), ("B", "   ")]);
-
-    assert_eq!(optional(&env, "A").as_deref(), Some("value"));
-    assert_eq!(optional(&env, "B"), None);
-    assert_eq!(optional(&env, "C"), None);
 }

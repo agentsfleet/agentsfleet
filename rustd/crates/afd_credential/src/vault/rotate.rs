@@ -72,10 +72,7 @@ struct EnvelopeRow<'a> {
 
 impl<'a> EnvelopeRow<'a> {
     /// Binds this row to [`sql::UPDATE_SECRET_ENVELOPE`] in `$n` order.
-    fn bind(
-        self,
-        statement: sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
-    ) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    fn bind(self, statement: afd_db::statement::Bound<'a>) -> afd_db::statement::Bound<'a> {
         statement
             .bind(self.key.workspace_id.as_str())
             .bind(self.key.name)

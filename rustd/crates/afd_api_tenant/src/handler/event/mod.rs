@@ -43,6 +43,8 @@ use axum::response::{IntoResponse as _, Response};
 use const_format::concatcp;
 use serde::Deserialize;
 
+use afd_http::handler::{FleetPath, parse_id};
+
 use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
 use crate::services::{Services, WorkspaceEvents as _};
@@ -75,13 +77,6 @@ const DETAIL_EVENT_NOT_FOUND: &str = "Event not found";
 /// there is no shape to validate. This bound only refuses an identifier long
 /// enough to be an attack on the index rather than a lookup.
 const EVENT_ID_MAX_LEN: usize = 256;
-
-/// The segments the per-fleet listing's template carries.
-#[derive(Debug, Deserialize)]
-pub(crate) struct FleetPath {
-    /// The fleet named in the path, still text.
-    pub fleet_id: String,
-}
 
 /// The segments the expanded read's template carries.
 #[derive(Debug, Deserialize, garde::Validate)]
@@ -256,8 +251,11 @@ fn bounded_path<P: garde::Validate<Context = ()>>(path: P) -> Result<garde::Vali
 }
 
 /// The fleet the path names, or the refusal a non-identifier earns.
+///
+/// This surface's own sentence, which predates the shared one and is already
+/// on the wire.
 fn parse_fleet(fleet_id: &str) -> Result<Uuid7, Refusal> {
-    Uuid7::parse(fleet_id).map_err(|_shape| Refusal::malformed(DETAIL_FLEET_ID))
+    parse_id(fleet_id, DETAIL_FLEET_ID)
 }
 
 /// One page, with the cursor the next one resumes from.

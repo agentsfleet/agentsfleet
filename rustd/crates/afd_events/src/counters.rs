@@ -26,6 +26,7 @@
 //! write already returned its connection.
 
 use afd_api_wire::tail::FleetCounters;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use sqlx::PgConnection;
 use sqlx::Row as _;
@@ -92,10 +93,9 @@ fn unread_logged(read: Result<FleetCounters>, fleet_id: &str) -> Option<FleetCou
     match read {
         Ok(counters) => Some(counters),
         Err(error) => {
-            let code = error.code().as_str();
-            let reason = error.to_string();
+            let Logged { error_code, reason } = error.logged();
             let event = EVENT_COUNTERS_UNREAD;
-            tracing::warn!(error_code = code, fleet_id, reason, event);
+            tracing::warn!(error_code, fleet_id, reason, event);
             None
         }
     }

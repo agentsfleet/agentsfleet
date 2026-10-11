@@ -19,8 +19,8 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+use afd_cron::SigningKeys;
 use afd_cron::verifier::{MAX_TOKEN_BYTES, verify_at};
-use afd_cron::{SigningKeys, Unverified};
 use base64::Engine as _;
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::Serialize;
@@ -41,6 +41,10 @@ const BODY: &[u8] = br#"{"schedule_id":"01J0000000000000000000000A"}"#;
 /// Seconds since the epoch, for the `exp`/`nbf` the crate reads a system clock
 /// against. There is no seam to hand an instant in — see `verify_at`'s note —
 /// so the fixtures are placed generously around now rather than pinned.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the token claims want unsigned whole seconds and a panic on a pre-epoch clock, which `clock::now` reports as negative milliseconds instead"
+)]
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -131,8 +135,10 @@ fn a_deployment_holding_no_key_refuses_before_it_reads_the_token() {
     };
 
     assert_eq!(
-        verify_at(&none, DESTINATION, &token, BODY).expect_err("this token must not be believed"),
-        Unverified::KeysMissing,
+        verify_at(&none, DESTINATION, &token, BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "signing_keys_absent",
         "a genuine token is still refused by a deployment that cannot check it"
     );
 }
@@ -157,15 +163,18 @@ fn one_configured_key_is_enough_to_verify() {
 #[test]
 fn an_empty_or_oversized_token_is_malformed() {
     assert_eq!(
-        verify_at(&keys(), DESTINATION, "", BODY).expect_err("this token must not be believed"),
-        Unverified::Malformed
+        verify_at(&keys(), DESTINATION, "", BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "token_malformed"
     );
 
     let oversized = "a".repeat(MAX_TOKEN_BYTES + 1);
     assert_eq!(
         verify_at(&keys(), DESTINATION, &oversized, BODY)
-            .expect_err("this token must not be believed"),
-        Unverified::Malformed,
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "token_malformed",
         "the bound is on the work one unauthenticated request can ask of the \
          decoder, so it is checked before decoding"
     );
@@ -177,8 +186,9 @@ fn a_token_signed_with_a_key_this_deployment_does_not_hold_is_refused() {
 
     assert_eq!(
         verify_at(&keys(), DESTINATION, &forged, BODY)
-            .expect_err("this token must not be believed"),
-        Unverified::SignatureInvalid
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "signature_invalid"
     );
 }
 
@@ -192,8 +202,10 @@ fn a_token_minted_for_another_daemon_is_refused() {
     let token = mint(&claims, CURRENT_KEY);
 
     assert_eq!(
-        verify_at(&keys(), DESTINATION, &token, BODY).expect_err("this token must not be believed"),
-        Unverified::SignatureInvalid,
+        verify_at(&keys(), DESTINATION, &token, BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "signature_invalid",
         "a genuine token for the wrong destination must not fire this deployment"
     );
 }
@@ -205,8 +217,9 @@ fn a_token_from_an_issuer_that_is_not_the_scheduler_is_refused() {
 
     assert_eq!(
         verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
-            .expect_err("this token must not be believed"),
-        Unverified::SignatureInvalid
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "signature_invalid"
     );
 }
 
@@ -218,8 +231,9 @@ fn an_expired_token_is_refused_with_no_leeway() {
 
     assert_eq!(
         verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
-            .expect_err("this token must not be believed"),
-        Unverified::SignatureInvalid,
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "signature_invalid",
         "leeway is zero on purpose: a tolerance is a window a replayed token \
          lives inside"
     );
@@ -233,8 +247,9 @@ fn a_token_whose_window_has_not_opened_is_refused() {
 
     assert_eq!(
         verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
-            .expect_err("this token must not be believed"),
-        Unverified::SignatureInvalid
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "signature_invalid"
     );
 }
 
@@ -252,8 +267,9 @@ fn a_genuine_token_over_different_bytes_is_a_body_mismatch() {
             &token,
             b"{\"schedule_id\":\"substituted\"}"
         )
-        .expect_err("this token must not be believed"),
-        Unverified::BodyMismatch,
+        .expect_err("this token must not be believed")
+        .refusal_word(),
+        "body_mismatch",
         "the token is real, so this is not a signature failure — it is the \
          body being swapped underneath a captured one"
     );
@@ -270,8 +286,9 @@ fn a_body_differing_by_one_byte_is_still_a_mismatch() {
 
     assert_eq!(
         verify_at(&keys(), DESTINATION, &token, &altered)
-            .expect_err("this token must not be believed"),
-        Unverified::BodyMismatch
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "body_mismatch"
     );
 }
 
@@ -279,24 +296,56 @@ fn a_body_differing_by_one_byte_is_still_a_mismatch() {
 /// each is a stable word and no two share one.
 #[test]
 fn every_refusal_reads_under_its_own_stable_reason() {
-    let reasons = [
-        (Unverified::KeysMissing, "signing_keys_absent"),
-        (Unverified::Malformed, "token_malformed"),
-        (Unverified::SignatureInvalid, "signature_invalid"),
-        (Unverified::WrongTarget, "wrong_target"),
-        (Unverified::OutsideWindow, "outside_window"),
-        (Unverified::BodyMismatch, "body_mismatch"),
+    let good = mint(&FireClaims::good(), CURRENT_KEY);
+    let none = SigningKeys {
+        current: afd_crypto::secret::SecretString::new(String::new()),
+        next: afd_crypto::secret::SecretString::new(String::new()),
+    };
+    let refusals = [
+        (
+            verify_at(&none, DESTINATION, &good, BODY),
+            "signing_keys_absent",
+        ),
+        (verify_at(&keys(), DESTINATION, "", BODY), "token_malformed"),
+        (
+            verify_at(&keys(), DESTINATION, &mint(&FireClaims::good(), "x"), BODY),
+            "signature_invalid",
+        ),
+        (
+            verify_at(&keys(), DESTINATION, &good, b"swapped"),
+            "body_mismatch",
+        ),
     ];
 
-    for (variant, expected) in reasons {
-        assert_eq!(variant.reason(), expected);
-    }
+    let reasons: Vec<&str> = refusals
+        .into_iter()
+        .map(|(refused, expected)| {
+            let reason = refused
+                .expect_err("this token must not be believed")
+                .refusal_word();
+            assert_eq!(reason, expected);
+            reason
+        })
+        .collect();
 
-    for (index, (_variant, reason)) in reasons.iter().enumerate() {
-        let duplicate = reasons
-            .iter()
-            .skip(index + 1)
-            .any(|(_other, other_reason)| other_reason == reason);
-        assert!(!duplicate, "`{reason}` is the reason for two variants");
+    for (index, reason) in reasons.iter().enumerate() {
+        assert!(
+            !reasons.iter().skip(index + 1).any(|other| other == reason),
+            "`{reason}` is the reason for two refusals"
+        );
     }
+}
+
+/// Every refusal answers the sender the same code and sentence, whichever
+/// check it failed: telling a prober which one would say whether this daemon
+/// is misconfigured.
+#[test]
+fn every_refusal_answers_the_sender_one_code_and_one_sentence() {
+    let refused = verify_at(&keys(), DESTINATION, "", BODY).expect_err("an empty token is refused");
+
+    assert_eq!(
+        refused.code(),
+        afd_core::error_code::WEBHOOK_SIGNATURE_INVALID
+    );
+    assert_eq!(refused.detail(), afd_cron::error::detail::FIRE_UNVERIFIED);
 }

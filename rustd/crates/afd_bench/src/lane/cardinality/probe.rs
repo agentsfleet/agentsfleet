@@ -41,9 +41,6 @@ pub(super) const EXECUTION_TIME: &str = "Execution Time: ";
 /// The plan line carrying planning time, milliseconds.
 pub(super) const PLANNING_TIME: &str = "Planning Time: ";
 
-/// The status the candidate query filters on, as the lease path binds it.
-const ACTIVE: &str = "active";
-
 /// Milliseconds in a second, for reporting a sampled duration.
 const MILLIS_PER_SECOND: f64 = 1_000.0;
 
@@ -147,7 +144,7 @@ pub(super) async fn postgres_at_population(
     let lines: Vec<String> = sqlx::query(sqlx::AssertSqlSafe(format!(
         "{EXPLAIN}{SELECT_READY_CANDIDATES}"
     )))
-    .bind(ACTIVE)
+    .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
     .bind(runner)
     .bind(&ready)
     .bind(i64::try_from(MAX_READY_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))

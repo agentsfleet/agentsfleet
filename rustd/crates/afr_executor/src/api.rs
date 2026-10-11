@@ -10,6 +10,11 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Result, file_calls_unsupported};
 use crate::events::Events;
 
+mod ending;
+
+pub use self::ending::Ending;
+pub(crate) use self::ending::{SHELL_KILLED_EXIT, SIGKILL};
+
 /// A process the executor started, unique for the life of one executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProcessId(u64);
@@ -38,53 +43,6 @@ pub enum Stream {
     Stderr,
     /// The pseudo-terminal, which merges both.
     Terminal,
-}
-
-/// How a process ended: exactly one of these, exactly once.
-///
-/// The executor's `process/exited` carries this as it is, so the wire and the
-/// caller spell an ending one way: `{"kind":"exited","code":0}`,
-/// `{"kind":"signaled","code":9}`, `{"kind":"timed_out"}`,
-/// `{"kind":"out_of_memory"}`, `{"kind":"interrupted"}`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "code", rename_all = "snake_case")]
-pub enum Ending {
-    /// It exited with this status.
-    Exited(i32),
-    /// This signal ended it.
-    Signaled(i32),
-    /// Its timeout elapsed and the executor killed its group.
-    TimedOut,
-    /// The kernel killed it because its sandbox's tenant processes ran out of
-    /// memory.
-    OutOfMemory,
-    /// No status reached the caller: the executor or its sandbox went away,
-    /// or the executor could not learn how the process ended.
-    Interrupted,
-}
-
-impl Ending {
-    /// How it ended, spelled as the wire's `kind`, for a log line to carry as
-    /// a field; a test holds the two spellings together.
-    #[must_use]
-    pub const fn kind(self) -> &'static str {
-        match self {
-            Self::Exited(_) => "exited",
-            Self::Signaled(_) => "signaled",
-            Self::TimedOut => "timed_out",
-            Self::OutOfMemory => "out_of_memory",
-            Self::Interrupted => "interrupted",
-        }
-    }
-
-    /// The exit status or the signal number, when the ending carries one.
-    #[must_use]
-    pub const fn code(self) -> Option<i32> {
-        match self {
-            Self::Exited(code) | Self::Signaled(code) => Some(code),
-            Self::TimedOut | Self::OutOfMemory | Self::Interrupted => None,
-        }
-    }
 }
 
 /// What the executor says about one process after it starts.

@@ -11,13 +11,9 @@
 //! all six — fleet, shared workspace, filter where there is one, boundary
 //! triple where there is one, limit — so one pipeline serves every shape.
 
+use afd_db::statement::{LIKE_ANY, like_escape};
+
 use crate::page::View;
-
-/// The LIKE metacharacters a searched-for literal has to be escaped past.
-const LIKE_METACHARACTERS: [char; 3] = ['%', '_', '\\'];
-
-/// The escape character the searching statements declare.
-const LIKE_ESCAPE: char = '\\';
 
 /// Free-text search, first page. `$1` fleet, `$2` shared workspace,
 /// `$3` escaped pattern, `$4` limit.
@@ -100,21 +96,13 @@ pub(super) fn filter(view: View<'_>) -> Option<String> {
 
 /// `text` as a contains-pattern with its LIKE metacharacters escaped.
 pub(super) fn pattern(text: &str) -> String {
-    let mut escaped = String::with_capacity(text.len() + 2);
-    escaped.push('%');
-    for character in text.chars() {
-        if LIKE_METACHARACTERS.contains(&character) {
-            escaped.push(LIKE_ESCAPE);
-        }
-        escaped.push(character);
-    }
-    escaped.push('%');
-    escaped
+    format!("{LIKE_ANY}{}{LIKE_ANY}", like_escape(text))
 }
 
 #[cfg(test)]
 mod tests {
     use super::{filter, pattern, statement};
+
     use crate::page::View;
 
     #[test]

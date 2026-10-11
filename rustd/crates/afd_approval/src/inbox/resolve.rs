@@ -14,6 +14,7 @@ use afd_api_wire::approval::status;
 use afd_api_wire::grant::status as grant_status;
 use afd_api_wire::tail::TailFrame;
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::{FleetStreams, ReadyIndex};
 use sqlx::Row as _;
 
@@ -192,9 +193,13 @@ impl Inbox {
     pub(super) async fn wake_parked_delivery(&self, fleet: &str, gate: &str) {
         if let Err(error) = ReadyIndex::new(self.queue.clone()).mark(fleet).await {
             let code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let reason = error.to_string();
+            let Logged {
+                error_code: cause_error_code,
+                reason,
+            } = error.logged();
             tracing::warn!(
                 error_code = code,
+                cause_error_code,
                 event = EVENT_WAKE_READY_MARK_FAILED,
                 fleet_id = fleet,
                 gate_id = gate,
@@ -300,3 +305,7 @@ mod stood;
 #[cfg(test)]
 #[path = "resolve/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "resolve/wake_tests.rs"]
+mod wake_tests;

@@ -3,7 +3,7 @@
 use std::io::Read as _;
 use std::time::Duration;
 
-use afd_validate::charset;
+use afd_validate::{charset, not_relative};
 use flate2::read::GzDecoder;
 use futures_util::StreamExt as _;
 use garde::Unvalidated;
@@ -17,9 +17,6 @@ const USER_AGENT: &str = "agentsfleetd";
 const SKILL_PATH: &str = "SKILL.md";
 const TRIGGER_PATH: &str = "TRIGGER.md";
 const PARENT_SEGMENT: &str = "..";
-const CURRENT_SEGMENT: &str = ".";
-/// What a `.` or `..` segment reports; the caller answers its own variant.
-const REASON_RELATIVE_SEGMENT: &str = "must not be a relative path step";
 const MAX_SEGMENT_LEN: usize = 100;
 const MAX_COMPRESSED_BYTES: usize = 8 * 1024 * 1024;
 const MAX_EXPANDED_BYTES: u64 = 16 * 1024 * 1024;
@@ -93,6 +90,10 @@ impl GithubSource {
         if !valid_segment(&revision) {
             return Err(SourceFailure::InvalidReference.into());
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the GitHub library fetch honours an environment proxy, which `direct` refuses"
+        )]
         let client = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(REQUEST_TIMEOUT)
@@ -226,15 +227,6 @@ fn valid_segment(value: &str) -> bool {
 /// Whether `character` may appear in a segment spliced into a GitHub URL.
 const fn is_segment_char(character: char) -> bool {
     character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
-}
-
-/// Refuses `.` and `..`, which a URL resolves as path steps, not names.
-fn not_relative<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
-    if value == CURRENT_SEGMENT || value == PARENT_SEGMENT {
-        Err(garde::Error::new(REASON_RELATIVE_SEGMENT))
-    } else {
-        Ok(())
-    }
 }
 
 fn extract(compressed: &[u8], reference: &str, revision: &str) -> Result<ImportBody> {

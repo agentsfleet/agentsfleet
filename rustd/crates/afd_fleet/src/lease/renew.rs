@@ -23,6 +23,7 @@
 //! can see both halves at once.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_core::timing::LEASE_TTL_MS;
 use afd_wire::report::RenewRequest;
@@ -295,15 +296,14 @@ pub(super) fn posture_of(lease: &Renewing) -> Posture {
 /// end of the run leaves these tokens uncharged.
 fn hold_tokens(lease: &Renewing, lease_id: &str, cumulative: Cumulative, fault: &crate::Error) {
     let fleet = lease.fleet_id.as_str();
-    let reason = fault.to_string();
-    let code = fault.code().as_str();
+    let Logged { error_code, reason } = fault.logged();
     let Cumulative {
         input,
         cached,
         output,
     } = cumulative;
     tracing::warn!(
-        error_code = code,
+        error_code,
         fleet_id = fleet,
         lease_id,
         input_tokens = input,

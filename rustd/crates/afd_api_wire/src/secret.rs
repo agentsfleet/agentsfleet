@@ -32,7 +32,7 @@ use serde_json::value::RawValue;
 /// agentsfleet ignores fields it does not know, instead of refusing the
 /// request.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StoreSecretRequest<'a> {
     /// The name a fleet interpolates as `${secrets.<name>.<field>}`.
@@ -58,7 +58,7 @@ pub struct StoreSecretRequest<'a> {
 // replaced added an unused field to any secret not keyed `api_key`, left the
 // live credential stale, and answered 200.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReplaceSecretRequest<'a> {
     /// The complete replacement body.

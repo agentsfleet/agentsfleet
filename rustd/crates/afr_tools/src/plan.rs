@@ -5,8 +5,9 @@
 //! model trained on Codex's harness writes them unprompted. The answer lists
 //! every step with its status, which is what the thread shows.
 
+use afd_core::spelling::to_spelling;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::catalog::{Entry, UPDATE_PLAN};
 use crate::handler::Handler;
@@ -14,23 +15,12 @@ use crate::runtime::{ToolContext, ToolOutput};
 
 /// Where a step stands; [`Step::status`]'s doc says what each means, so the
 /// schema stays a plain `enum`.
-#[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Status {
     Pending,
     InProgress,
     Completed,
-}
-
-impl Status {
-    /// The spelling the answer carries, the same as the argument's.
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pending => "pending",
-            Self::InProgress => "in_progress",
-            Self::Completed => "completed",
-        }
-    }
 }
 
 /// One step of the plan.
@@ -67,10 +57,13 @@ impl Handler for UpdatePlan {
     type Arguments = Plan;
 
     async fn run(&self, arguments: Plan, _context: ToolContext<'_, '_>) -> ToolOutput {
-        let steps = arguments
-            .plan
-            .iter()
-            .map(|step| format!("[{}] {}", step.status.as_str(), step.step));
+        // The answer spells a status through the declaration the argument was
+        // read with, so the two cannot drift; a fieldless variant always
+        // serializes to its word, so the empty fallback is never taken.
+        let steps = arguments.plan.iter().map(|step| {
+            let status = to_spelling(&step.status).unwrap_or_default();
+            format!("[{status}] {}", step.step)
+        });
         let lines: Vec<String> = arguments.explanation.into_iter().chain(steps).collect();
         ToolOutput::succeeded(lines.join("\n"))
     }

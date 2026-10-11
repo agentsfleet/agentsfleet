@@ -52,6 +52,10 @@ impl Network {
     ///
     /// # Errors
     /// The TLS backend or the client refused the configuration.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "this is the runner's egress owner: guarded_by wraps the builder to pin DNS to the sandbox allowlist; afd_identity::direct is a daemon crate the runner does not depend on and carries no guard"
+    )]
     pub fn new() -> Result<Self> {
         Self::build(Client::builder(), Arc::new(SystemResolver))
     }
@@ -65,6 +69,10 @@ impl Network {
     /// As [`Network::new`].
     #[cfg(feature = "test-util")]
     pub fn routed(routes: &[(&str, SocketAddr)], root: reqwest::Certificate) -> Result<Self> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the integration lane's routed builder still passes through guarded_by in build; afd_identity::direct is a daemon crate the runner does not depend on"
+        )]
         let builder = routes
             .iter()
             .fold(Client::builder(), |builder, (host, address)| {

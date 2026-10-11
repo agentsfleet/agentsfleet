@@ -36,6 +36,7 @@ use std::time::Duration;
 
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
 use afd_core::clock::{self, UnixMillis};
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
@@ -122,7 +123,7 @@ impl Repairs {
     async fn claim(&self, now: UnixMillis, token: &Uuid7) -> Result<Vec<Due>> {
         let stale_before = now
             .as_millis()
-            .saturating_sub(i64::try_from(CLAIM_STALE.as_millis()).unwrap_or(i64::MAX));
+            .saturating_sub(clock::saturating_millis_signed(CLAIM_STALE));
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query(sql::sweep::CLAIM_DUE_REPAIR_VERIFICATIONS)
             .bind(now.as_millis())
@@ -263,11 +264,13 @@ impl Sweep for Repairs {
                 Err(failure) => {
                     dispatched.failed += 1;
                     producers::fleet::repair::dispatch_retried();
+                    let Logged { error_code, reason } = failure.logged();
                     tracing::warn!(
+                        error_code,
                         verification_id = intent.id,
                         workspace_id = intent.workspace_id,
                         due_since_ms = now.as_millis().saturating_sub(intent.verify_after),
-                        error = %failure,
+                        reason,
                         event = "repair_verification_dispatch_failed",
                         "an intent could not be dispatched; its claim will lapse and it retries"
                     );

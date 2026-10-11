@@ -34,6 +34,7 @@ pub mod retention;
 
 use std::time::Duration;
 
+use afd_core::error_code::{Coded as _, Logged};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Result;
@@ -142,13 +143,16 @@ pub async fn run<S: Sweep>(sweeper: S, token: CancellationToken) {
             // bounded, so a failed pass has cost nothing a later pass cannot
             // redo — and a sweeper that exited on a datastore blip would need a
             // daemon restart to get liveness back.
-            Err(failure) => tracing::warn!(
-                sweeper = name,
-                error_code = failure.code().as_str(),
-                error = %failure,
-                event = EVENT_FAILED,
-                "a sweep failed; the next pass will retry it"
-            ),
+            Err(failure) => {
+                let Logged { error_code, reason } = failure.logged();
+                tracing::warn!(
+                    sweeper = name,
+                    error_code,
+                    reason,
+                    event = EVENT_FAILED,
+                    "a sweep failed; the next pass will retry it"
+                );
+            }
         }
     }
 

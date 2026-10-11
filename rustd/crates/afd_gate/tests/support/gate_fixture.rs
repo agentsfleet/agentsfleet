@@ -13,6 +13,7 @@
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -51,10 +52,14 @@ pub(crate) fn config_gates(gates: &str) -> FleetConfig {
 }
 
 pub(crate) fn dragonfly_config() -> DragonflyConfig {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the panic carries the VarError (unset, or not Unicode); an EnvSource answers an Option and would drop which one it was"
+    )]
     let url = std::env::var(DRAGONFLY_URL_KNOB)
         .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
     DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
+        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5))
 }

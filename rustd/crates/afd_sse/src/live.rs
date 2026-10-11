@@ -17,10 +17,10 @@ use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 
 use crate::ceiling::{Ceiling, Slot};
-use crate::channel;
 use crate::fanin::FanIn;
 use crate::frame::Frame;
 use crate::tail::tail;
+use afd_dragonfly::fleet_activity_channel;
 
 /// What the two stream routes act through.
 #[derive(Debug, Clone)]
@@ -82,7 +82,7 @@ impl Live {
                 // signal that this connection is carrying activity, and an
                 // announcement made before the subscription existed would be a
                 // claim about a stream nobody had attached to yet.
-                let subscription = hub.subscribe(&channel::activity(fleet_id));
+                let subscription = hub.subscribe(&fleet_activity_channel(fleet_id));
                 // Without it the first byte of an idle fleet's body is the
                 // keep-alive heartbeat, `HEARTBEAT_INTERVAL` away. The browser
                 // opens the socket immediately, but the surface reports itself

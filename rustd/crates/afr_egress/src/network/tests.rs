@@ -2,6 +2,10 @@
     clippy::unwrap_used,
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "tests feed a raw builder to the guard under test, or use a plain client so a loopback server answers; afd_identity::direct is a daemon crate the runner does not depend on"
+)]
 
 use std::io::{Read as _, Write as _};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};

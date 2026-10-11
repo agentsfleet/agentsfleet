@@ -4,7 +4,7 @@ use afr_executor::{EDGE_BYTES, Ending, Events, Feed, Process, ProcessId, Stream}
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use super::{Collected, budget, edges, error_code, exit_code, status, with_line};
+use super::{Collected, budget, edges, error_code, status, with_line};
 use crate::runtime::ToolErrorCode;
 
 /// Output a process prints and keeps running after.
@@ -210,24 +210,6 @@ fn should_word_each_ending_as_codex_does() {
         status(Ending::Interrupted),
         "Process interrupted before its ending arrived"
     );
-}
-
-#[test]
-fn should_report_a_signal_as_a_shell_does_and_no_status_without_one() {
-    assert_eq!(exit_code(Ending::Exited(3)), Some(3));
-    assert_eq!(exit_code(Ending::Signaled(9)), Some(137));
-    assert_eq!(
-        exit_code(Ending::Signaled(i32::MAX)),
-        Some(i32::MAX),
-        "saturates, never wraps"
-    );
-    assert_eq!(
-        exit_code(Ending::OutOfMemory),
-        Some(137),
-        "as the SIGKILL it was"
-    );
-    assert_eq!(exit_code(Ending::TimedOut), None);
-    assert_eq!(exit_code(Ending::Interrupted), None);
 }
 
 #[test]

@@ -31,6 +31,9 @@ futures-util.workspace = true
 # The toolbox image is named by its SHA-256, streamed through the hasher.
 digest-io.workspace = true
 hex.workspace = true
+# A toolbox image is staged in a copy of its own and published with one
+# rename; a copy that is refused is removed when it drops.
+tempfile.workspace = true
 # A toolbox release: its manifest's signature checked against the key the
 # runner is built with (ECDSA P-256 over SHA-256, as `cosign` signs), the key
 # read from its PEM, the signature from its base64, and the manifest's fields
@@ -101,7 +104,6 @@ afr_supervisor = { workspace = true, features = ["test-util"] }
 bytes.workspace = true
 libtest-mimic.workspace = true
 serde_json.workspace = true
-tempfile.workspace = true
 # The checkout's interrupt in the kernel lane.
 tokio-util.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "test-util", "time"] }

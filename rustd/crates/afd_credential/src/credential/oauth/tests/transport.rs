@@ -36,6 +36,10 @@ fn serve(status: &str, body: &[u8], advertised_len: usize) -> String {
     format!("http://{address}/token")
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the client dials only the loopback token endpoint each test stands up"
+)]
 async fn exchange(url: &str) -> Outcome {
     let app = OauthApp {
         client_id: "client".to_owned(),

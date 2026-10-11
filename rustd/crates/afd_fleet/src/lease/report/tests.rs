@@ -135,3 +135,18 @@ fn test_a_held_deadline_is_clamped_to_the_window() {
     assert_eq!(asked(latest, 1), Some(latest), "past it, cut to its end");
     assert_eq!(held_until(Some(i64::MAX), now), Some(latest));
 }
+
+#[test]
+fn a_failed_report_step_reason_carries_no_code_prefix() -> Result<(), &'static str> {
+    let log = afd_core::test_util::trace::Capture::install();
+    let lease = reported(Posture::Platform.as_str())?;
+    let failure = crate::error::lease_lost();
+    let (code, told) = (failure.code(), failure.told());
+
+    step("released", &lease, "lease-fixture", Err(failure));
+
+    let line = log.only("report_finalize_step_failed");
+    assert_eq!(line.field("error_code"), Some(code.as_str()));
+    assert_eq!(line.field("reason"), Some(told.as_str()));
+    Ok(())
+}

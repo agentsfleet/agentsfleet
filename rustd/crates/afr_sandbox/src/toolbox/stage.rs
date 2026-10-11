@@ -6,13 +6,14 @@
 //! of one release never write into the same one; the directory is one
 //! runner's, so the start's sweep takes no other runner's copy.
 
-use std::fs::{self, DirBuilder, File, OpenOptions};
-use std::io::{self, Read as _, Write as _};
-use std::os::unix::fs::{DirBuilderExt as _, OpenOptionsExt as _};
+use std::fs::{self, DirBuilder, File, Permissions};
+use std::io::{self, BufReader, Read as _};
+use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
+use digest_io::HashWriter;
 use sha2::{Digest as _, Sha256};
+use tempfile::Builder;
 
 use super::Manifest;
 use crate::error::Result;
@@ -23,10 +24,8 @@ const STAGE_DIR: &str = ".stage";
 const STAGE_MODE: u32 = 0o700;
 /// A published image: anyone may read it, nobody may write it.
 const IMAGE_MODE: u32 = 0o444;
-/// What a copy in progress is named after its digest and its own number.
+/// What a copy in progress is named, after its digest and a part of its own.
 const PARTIAL_SUFFIX: &str = ".partial";
-/// The number the next copy this process makes is named by.
-static COPIES: AtomicU64 = AtomicU64::new(0);
 /// How much of an image one read takes: images run to gigabytes.
 const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 /// The event a partial file a previous run left is logged under.
@@ -51,47 +50,37 @@ pub(super) fn stage(manifest: &Manifest, source: &Path, dir: &Path) -> Result<Pa
         .recursive(true)
         .mode(STAGE_MODE)
         .create(&staging)?;
-    let copy = COPIES.fetch_add(1, Ordering::Relaxed);
-    let partial = staging.join(format!(
-        "{}.{}.{copy}{PARTIAL_SUFFIX}",
-        manifest.sha256(),
-        std::process::id()
-    ));
-    if let Err(refused) = copy_verified(manifest, source, &partial) {
-        // The refusal is what the caller needs; a partial the removal leaves
-        // is the next start's sweep.
-        let _left = fs::remove_file(&partial);
-        return Err(refused);
-    }
+    // The digest leads the name and the suffix ends it, so the sweep knows a
+    // copy; the part between is the copy's own, so no two ever share a file.
+    let digest = format!("{}.", manifest.sha256());
+    let mut partial = Builder::new()
+        .prefix(&digest)
+        .suffix(PARTIAL_SUFFIX)
+        .permissions(Permissions::from_mode(IMAGE_MODE))
+        .tempfile_in(&staging)?;
+    // A refusal drops the copy, which removes it; one a crash leaves is the
+    // next start's sweep.
+    copy_verified(manifest, source, partial.as_file_mut())?;
     let image = published(dir, manifest);
-    fs::rename(&partial, &image)?;
+    // A rename the kernel refuses hands the copy back, and dropping it
+    // removes it; the rename's own failure is what the caller reads.
+    partial.persist(&image).map_err(io::Error::from)?;
     File::open(dir)?.sync_all()?;
     Ok(image)
 }
 
-/// Copies `source` to `partial`, at most one byte past the manifest's length,
-/// and syncs it once its length and digest are the manifest's.
-fn copy_verified(manifest: &Manifest, source: &Path, partial: &Path) -> Result<()> {
-    let mut input = File::open(source)?.take(manifest.length().saturating_add(1));
-    let mut output = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(IMAGE_MODE)
-        .open(partial)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = vec![0; COPY_BUFFER_BYTES];
-    let mut copied: u64 = 0;
-    loop {
-        let read = input.read(&mut buffer)?;
-        let Some(chunk) = buffer.get(..read).filter(|chunk| !chunk.is_empty()) else {
-            break;
-        };
-        hasher.update(chunk);
-        output.write_all(chunk)?;
-        copied = copied.saturating_add(chunk.len() as u64);
-    }
+/// Copies `source` into `output`, at most one byte past the manifest's
+/// length, and syncs it once its length and digest are the manifest's.
+fn copy_verified(manifest: &Manifest, source: &Path, output: &mut File) -> Result<()> {
+    let mut input = BufReader::with_capacity(
+        COPY_BUFFER_BYTES,
+        File::open(source)?.take(manifest.length().saturating_add(1)),
+    );
+    let mut writer = HashWriter::<Sha256, _>::new(output);
+    let copied = io::copy(&mut input, &mut writer)?;
+    let (sha256, output) = writer.into_parts();
     manifest.check_length(copied)?;
-    manifest.check_digest(&hex::encode(hasher.finalize()))?;
+    manifest.check_digest(&hex::encode(sha256.finalize()))?;
     Ok(output.sync_all()?)
 }
 

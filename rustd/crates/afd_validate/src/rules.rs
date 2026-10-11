@@ -18,6 +18,13 @@ pub const HAS_NUL: &str = "must not contain a NUL character";
 pub const NOT_ASCII_DIGITS: &str = "must be ASCII digits only";
 /// What [`charset`] reports.
 pub const OUTSIDE_CHARSET: &str = "must use only the characters this field allows";
+/// What [`not_relative`] reports.
+pub const RELATIVE_SEGMENT: &str = "must not be a relative path step";
+
+/// The path step naming the directory itself.
+const CURRENT_STEP: &str = ".";
+/// The path step naming the parent directory.
+const PARENT_STEP: &str = "..";
 
 /// Refuses NaN and both infinities.
 ///
@@ -67,6 +74,21 @@ pub fn ascii_digits<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
 /// `allowed`.
 pub fn charset<C: ?Sized>(allowed: impl Fn(char) -> bool) -> impl Fn(&str, &C) -> garde::Result {
     move |value, _context| refuse_unless(value.chars().all(&allowed), OUTSIDE_CHARSET)
+}
+
+/// Refuses `.` and `..`, which a URL or a filesystem path resolves as steps,
+/// not names.
+///
+/// A charset that admits `.` admits both, so a segment spliced into a path
+/// declares this beside its charset; every other dotted name passes.
+///
+/// # Errors
+/// [`RELATIVE_SEGMENT`] when the text is exactly `.` or `..`.
+pub fn not_relative<C: ?Sized>(value: &str, _context: &C) -> garde::Result {
+    refuse_unless(
+        value != CURRENT_STEP && value != PARENT_STEP,
+        RELATIVE_SEGMENT,
+    )
 }
 
 /// `Ok` when `holds`, otherwise a report carrying `message`.

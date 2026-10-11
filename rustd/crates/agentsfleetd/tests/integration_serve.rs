@@ -21,7 +21,7 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-use afd_core::env::MapEnv;
+use afd_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use agentsfleetd::serve::boot;
 use agentsfleetd::supervisor::Supervisor;
 
@@ -44,7 +44,7 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
-    std::env::var(knob).unwrap_or_else(|_unset| {
+    ProcessEnv.get(knob).unwrap_or_else(|| {
         panic!("{knob} is unset — run these through `make test-integration-rustd`")
     })
 }

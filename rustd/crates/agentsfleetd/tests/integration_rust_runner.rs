@@ -32,6 +32,10 @@ const FUTURE: &str = "future";
 async fn test_runner_body_with_unknown_field_refused() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
     let http = reqwest::Client::new();
     let (lease_id, fence) = lease(&http, &run).await;
     let mut body = report_body(&lease_id, &run.event_id, fence);

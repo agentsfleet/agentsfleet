@@ -214,7 +214,18 @@ async fn test_a_failed_write_back_still_hands_over_the_minted_token() {
 
     assert_eq!(minted.token.as_str(), ACCESS);
     let warned = breadcrumb(&capture, Level::WARN, &owner);
-    assert!(warned.field("error").is_some(), "{warned:?}");
+    assert!(
+        warned
+            .field("error_code")
+            .is_some_and(|code| code.starts_with("UZ-")),
+        "{warned:?}"
+    );
+    assert!(
+        warned
+            .field("reason")
+            .is_some_and(|reason| !reason.is_empty() && !reason.contains("[UZ-")),
+        "the reason is the fault's sentence, its code kept out of it: {warned:?}"
+    );
     assert_eq!(
         minted.rotated_refresh_token.as_deref().map(String::as_str),
         Some(REPLACEMENT),

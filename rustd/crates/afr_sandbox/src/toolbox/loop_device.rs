@@ -10,6 +10,9 @@ use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::fd::AsRawFd as _;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use backon::{BlockingRetryable as _, ConstantBuilder};
 
 use crate::error::Result;
 use crate::workspace_disk::Caching;
@@ -44,9 +47,9 @@ const LO_FLAGS_AUTOCLEAR: u32 = 4;
 /// `LO_NAME_SIZE` and `LO_KEY_SIZE`.
 const LO_NAME_SIZE: usize = 64;
 const LO_KEY_SIZE: usize = 32;
-/// How many free devices to try: another process may take the one the kernel
-/// offered before this one configures it.
-const ATTACH_ATTEMPTS: usize = 8;
+/// How many more free devices to try after the first: another process may
+/// take the one the kernel offered before this one configures it.
+const ATTACH_RETRIES: usize = 7;
 
 /// `struct loop_info64`, its fields named without the header's `lo_` prefix.
 #[repr(C)]
@@ -140,32 +143,79 @@ pub(crate) fn attach(image: &File) -> Result<Attached> {
         },
         reserved: [0; 8],
     };
-    let mut busy = io::Error::from_raw_os_error(libc::EBUSY);
-    for _attempt in 0..ATTACH_ATTEMPTS {
-        // SAFETY: LOOP_CTL_GET_FREE takes no argument; it returns a device
-        // number, or -1 with errno set.
-        let number = unsafe { libc::ioctl(control.as_raw_fd(), LOOP_CTL_GET_FREE) };
-        if number < 0 {
-            return Err(io::Error::last_os_error().into());
-        }
-        let node = PathBuf::from(format!("{LOOP_NODE_PREFIX}{number}"));
-        let device = File::open(&node)?;
-        // SAFETY: `config` is a `struct loop_config` laid out as the kernel
-        // declares it (asserted above), alive for the call and only read.
-        let configured =
-            unsafe { libc::ioctl(device.as_raw_fd(), LOOP_CONFIGURE, &raw const config) };
-        if configured == 0 {
-            return Ok(Attached {
-                node,
-                _device: device,
-            });
-        }
-        busy = io::Error::last_os_error();
-        if busy.raw_os_error() != Some(libc::EBUSY) {
-            return Err(busy.into());
+    Ok(until_free(|| configure_free(&control, &config))?)
+}
+
+/// Why one try at attaching failed. Only a device another process configured
+/// first is worth asking the kernel for another; an errno alone cannot say
+/// which call failed, so the try says it.
+#[derive(Debug)]
+enum Attempt {
+    /// `LOOP_CONFIGURE` answered `EBUSY`: the device was taken meanwhile.
+    Taken(io::Error),
+    /// Any other failure, of any call, whatever its errno.
+    Failed(io::Error),
+}
+
+impl Attempt {
+    /// `LOOP_CONFIGURE`'s refusal: taken when it is `EBUSY`, final otherwise.
+    fn configure(refused: io::Error) -> Self {
+        if refused.raw_os_error() == Some(libc::EBUSY) {
+            Self::Taken(refused)
+        } else {
+            Self::Failed(refused)
         }
     }
-    Err(busy.into())
+
+    /// Whether another free device is worth trying.
+    const fn taken(&self) -> bool {
+        matches!(self, Self::Taken(_))
+    }
+
+    /// The failure the caller reads.
+    fn into_error(self) -> io::Error {
+        match self {
+            Self::Taken(error) | Self::Failed(error) => error,
+        }
+    }
+}
+
+/// `attempt`, tried again at once while the device it was offered is taken,
+/// [`ATTACH_RETRIES`] times at most; the last failure is the one returned.
+fn until_free<T>(attempt: impl FnMut() -> Result<T, Attempt>) -> io::Result<T> {
+    attempt
+        .retry(
+            ConstantBuilder::default()
+                .with_delay(Duration::ZERO)
+                .with_max_times(ATTACH_RETRIES),
+        )
+        .sleep(std::thread::sleep)
+        .when(Attempt::taken)
+        .call()
+        .map_err(Attempt::into_error)
+}
+
+/// Asks the kernel for a free loop device and configures it with `config`.
+fn configure_free(control: &File, config: &LoopConfig) -> Result<Attached, Attempt> {
+    // SAFETY: LOOP_CTL_GET_FREE takes no argument; it returns a device
+    // number, or -1 with errno set.
+    let number = unsafe { libc::ioctl(control.as_raw_fd(), LOOP_CTL_GET_FREE) };
+    if number < 0 {
+        return Err(Attempt::Failed(io::Error::last_os_error()));
+    }
+    let node = PathBuf::from(format!("{LOOP_NODE_PREFIX}{number}"));
+    let device = File::open(&node).map_err(Attempt::Failed)?;
+    // SAFETY: `config` is a `struct loop_config` laid out as the kernel
+    // declares it (asserted above), alive for the call and only read.
+    let configured = unsafe { libc::ioctl(device.as_raw_fd(), LOOP_CONFIGURE, &raw const *config) };
+    if configured == 0 {
+        Ok(Attached {
+            node,
+            _device: device,
+        })
+    } else {
+        Err(Attempt::configure(io::Error::last_os_error()))
+    }
 }
 
 /// What the loop device at `node` is attached to.
@@ -220,3 +270,7 @@ pub(crate) fn node(major: u32, minor: u32) -> Result<PathBuf> {
             io::Error::other(format!("loop device {major}:{minor} names no node")).into()
         })
 }
+
+#[cfg(test)]
+#[path = "loop_device/tests.rs"]
+mod tests;

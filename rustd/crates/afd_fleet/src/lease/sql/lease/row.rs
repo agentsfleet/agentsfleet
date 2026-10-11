@@ -8,7 +8,7 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 
-use afd_runner::sql::runner::Bound;
+use afd_db::statement::Bound;
 
 /// Open a lease, record the event that opened it, bump the runner's lifetime
 /// acquired tally, and — on a fresh lease — reset the slot's metering cursor,

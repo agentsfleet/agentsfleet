@@ -169,6 +169,15 @@ fn manifest_contains_hashes_not_support_bytes() {
     assert!(encoded.contains("README.md"));
     assert!(encoded.contains("sha256"));
     assert!(!encoded.contains("review notes"));
+    // pin test: literal is the contract
+    assert_eq!(
+        prepared
+            .support_manifest
+            .first()
+            .map(|file| file.sha256.as_str()),
+        Some("1445d4465472d5a32523616cd2f3b4d849c37fa9839df5618621b48e0e69239e"),
+        "the lower-case SHA-256 of the file's bytes, as a reader re-derives it"
+    );
 }
 
 /// The skill name's bound is garde's, read before the version is parsed; a
