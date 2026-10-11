@@ -70,7 +70,7 @@ const STATE_REFERENCED: &str = "referenced";
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_workspace_reads_lists_and_lets_go_of_what_its_vault_actually_holds() {
-    // One test rather than six, because every step past the first depends on
+    // One test rather than seven, because every step past the first depends on
     // the state the one before it left: a disconnect only means something
     // against a connection that was there, and the second disconnect only means
     // something after the first removed it. Split, each would be asserting
@@ -93,6 +93,7 @@ async fn a_workspace_reads_lists_and_lets_go_of_what_its_vault_actually_holds() 
     the_catalogue_marks_only_what_is_held(&router, &fixture).await;
     a_disconnect_a_model_entry_still_names_is_a_conflict(&router, &fixture).await;
     a_disconnect_removes_the_handle_and_repeats_harmlessly(&router, &fixture).await;
+    deleting_the_secret_by_name_disconnects_it(&router, &fixture).await;
     a_secret_that_is_not_a_connector_handle_is_not_a_connection(&router, &fixture).await;
 
     fixture.cleanup().await;

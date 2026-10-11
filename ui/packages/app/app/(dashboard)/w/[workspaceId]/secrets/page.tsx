@@ -1,7 +1,7 @@
 import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
 import { PROVIDER_MODE } from "@/lib/types";
-import { getTenantProviderCached, listSecretsCached } from "./lib/reads";
+import { getConnectorCatalogCached, getTenantProviderCached, listSecretsCached } from "./lib/reads";
 import SecretsList from "./components/SecretsList";
 import AddSecretDialog from "./components/AddSecretDialog";
 import { SECRETS_PAGE_DESCRIPTION, SECRETS_PAGE_TITLE } from "./copy";
@@ -16,9 +16,10 @@ export default async function SecretsPage({
   const { workspaceId } = await params;
   const token = await requireCredential();
 
-  const [secretsResp, providerResult] = await Promise.all([
+  const [secretsResp, providerResult, catalog] = await Promise.all([
     listSecretsCached(workspaceId, token),
     getTenantProviderCached(token),
+    getConnectorCatalogCached(workspaceId, token),
   ]);
   const secrets = secretsResp.secrets;
   // The secret backing the active self-managed provider can't be deleted from
@@ -27,6 +28,11 @@ export default async function SecretsPage({
     providerResult.mode === PROVIDER_MODE.self_managed
         ? providerResult.secret_ref
         : null;
+  // A connected connector's grant secret is named for its catalog id, and
+  // deleting that secret disconnects it — so the dialog must say so.
+  const connections = Object.fromEntries(
+    catalog.filter((entry) => entry.connected).map((entry) => [entry.id, entry.display_name]),
+  );
 
   return (
     <PageLayout fullHeight className="h-full overflow-hidden">
@@ -44,6 +50,7 @@ export default async function SecretsPage({
             workspaceId={workspaceId}
             secrets={secrets}
             protectedSecretName={protectedSecretName}
+            connections={connections}
           />
         </section>
       </Section>

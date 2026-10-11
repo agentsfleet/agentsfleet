@@ -142,9 +142,23 @@ pub(crate) async fn disconnect<D: Services>(
     Path((_workspace, provider_segment)): Path<(String, String)>,
 ) -> Result<Response, Refusal> {
     let provider = provider_of(&provider_segment)?;
+    forget_connection(&*services, &owned.workspace, provider).await
+}
+
+/// Disconnects `provider` from `workspace`: the handle and its routing rows
+/// go in one transaction, under the workspace's turn.
+///
+/// Shared with the generic secret delete, so deleting a connection's
+/// credential by name is this disconnect and not a vault delete that would
+/// leave routing rows naming an account with nothing behind them.
+pub(crate) async fn forget_connection<D: Services>(
+    services: &D,
+    workspace: &afd_core::id::Uuid7,
+    provider: afd_connector::Provider,
+) -> Result<Response, Refusal> {
     let forgotten = services
         .connectors()
-        .forget(&owned.workspace, provider)
+        .forget(workspace, provider)
         .await
         // A credential a model entry still names is the caller's to resolve,
         // so it is a conflict naming its state, as the vault's own delete is.
