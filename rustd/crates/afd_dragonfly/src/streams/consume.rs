@@ -73,7 +73,7 @@ impl FleetStreams {
         consumer: &str,
         read_id: &str,
     ) -> Result<Option<FleetEvent>> {
-        let key = fleet_stream_key(fleet_id);
+        let key = self.redis.key(&fleet_stream_key(fleet_id));
         let options = StreamReadOptions::default()
             .group(FLEET_CONSUMER_GROUP, consumer)
             .count(1);
@@ -119,7 +119,7 @@ impl FleetStreams {
     /// caller must read that as "unknown" and leave the row alone: re-appending
     /// on a stream that would not answer duplicates work it may still hold.
     pub async fn holds_entry(&self, fleet_id: &str, receipt: &EventId) -> Result<bool> {
-        let key = fleet_stream_key(fleet_id);
+        let key = self.redis.key(&fleet_stream_key(fleet_id));
         let mut cmd = redis::cmd(CMD_XRANGE);
         cmd.arg(&key)
             .arg(receipt.as_str())
@@ -135,7 +135,7 @@ impl FleetStreams {
     /// # Errors
     /// Returns a command error when the acknowledgement fails.
     pub async fn ack(&self, fleet_id: &str, id: &EventId) -> Result<bool> {
-        let key = fleet_stream_key(fleet_id);
+        let key = self.redis.key(&fleet_stream_key(fleet_id));
         let mut cmd = redis::cmd(CMD_XACK);
         cmd.arg(&key).arg(FLEET_CONSUMER_GROUP).arg(id.as_str());
         let acknowledged: i64 = self.redis.command(CMD_XACK, &key, &cmd).await?;
@@ -170,7 +170,7 @@ impl FleetStreams {
         consumer: &str,
         min_idle_ms: usize,
     ) -> Result<Option<FleetEvent>> {
-        let key = fleet_stream_key(fleet_id);
+        let key = self.redis.key(&fleet_stream_key(fleet_id));
         let mut cmd = redis::cmd(CMD_XAUTOCLAIM);
         cmd.arg(&key)
             .arg(FLEET_CONSUMER_GROUP)

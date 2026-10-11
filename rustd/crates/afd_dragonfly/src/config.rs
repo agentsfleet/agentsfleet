@@ -63,6 +63,7 @@ impl DragonflyRole {
 #[derive(Debug, Clone)]
 pub struct DragonflyConfig {
     role: DragonflyRole,
+    pub(crate) namespace: crate::namespace::Namespace,
     url: String,
     ca_cert_file: Option<PathBuf>,
     connect_timeout: Duration,
@@ -102,6 +103,10 @@ impl DragonflyConfig {
 
         Ok(Self {
             role,
+            namespace: crate::namespace::Namespace::parse(
+                &env.get(crate::namespace::NAMESPACE_KNOB)
+                    .unwrap_or_default(),
+            )?,
             url,
             ca_cert_file: env
                 .get(CA_CERT_FILE_KNOB)
@@ -127,11 +132,21 @@ impl DragonflyConfig {
     pub fn from_url(role: DragonflyRole, url: String) -> Self {
         Self {
             role,
+            namespace: crate::namespace::Namespace::default(),
             url,
             ca_cert_file: None,
             connect_timeout: Duration::from_millis(CONNECT_TIMEOUT_MS_DEFAULT),
             request_timeout: Duration::from_millis(REQUEST_TIMEOUT_MS_DEFAULT),
         }
+    }
+
+    /// Sets the optional development namespace on every application operation.
+    ///
+    /// # Errors
+    /// Returns a configuration error for unsafe characters or an oversized name.
+    pub fn with_namespace(mut self, namespace: &str) -> Result<Self> {
+        self.namespace = crate::namespace::Namespace::parse(namespace)?;
+        Ok(self)
     }
 
     /// Points this configuration at a certificate authority file.

@@ -212,7 +212,7 @@ impl FleetStreams {
     pub async fn backlog(&self, fleet_id: &str) -> Result<Option<Backlog>> {
         backlog_of(
             &self.redis,
-            &fleet_stream_key(fleet_id),
+            &self.redis.key(&fleet_stream_key(fleet_id)),
             FLEET_CONSUMER_GROUP,
         )
         .await
@@ -229,7 +229,7 @@ impl FleetStreams {
     pub async fn trim(&self, fleet_id: &str) -> Result<Trimmed> {
         trim_history(
             &self.redis,
-            &fleet_stream_key(fleet_id),
+            &self.redis.key(&fleet_stream_key(fleet_id)),
             FLEET_CONSUMER_GROUP,
             ACKNOWLEDGED_HISTORY,
         )
@@ -248,7 +248,7 @@ impl FleetStreams {
     /// recover" — this is the recovery path's own backstop, and a silent false
     /// would leave it inert while looking exactly like an idle system.
     pub async fn has_deliverable(&self, fleet_id: &str) -> Result<bool> {
-        let key = fleet_stream_key(fleet_id);
+        let key = self.redis.key(&fleet_stream_key(fleet_id));
         let mut stream_info = redis::cmd(CMD_XINFO);
         stream_info.arg(XINFO_STREAM).arg(&key);
         let stream: StreamInfoStreamReply =

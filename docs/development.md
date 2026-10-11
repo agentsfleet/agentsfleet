@@ -6,6 +6,93 @@
 > behavior with the incident that taught it. When code changes make a section
 > stale, fix it in the same PR.
 
+## Shared development worktrees
+
+Each checkout runs its own compiled `agentsfleetd` while linked worktrees share Postgres, Dragonfly, Mailpit and Upstash QStash.
+Each daemon gets a separate Postgres database, Dragonfly namespace and stable port.
+Production and deployed `api-dev` continue using their existing deployment settings.
+
+Load the trusted machine environment using the existing `AGENTSFLEET_RUSTD_ENV_FILE` setting.
+It must supply `AUTH_SESSION_CODE_PEPPER` and `ENCRYPTION_MASTER_KEY`.
+Docker, Cargo, Python 3, `lsof` and the native C compiler must be available.
+Linux also requires `ip` from iproute2.
+
+```bash
+FOLLOW_LOGS=0 make up
+```
+
+```text
+<build and infrastructure output varies>
+API: http://127.0.0.1:<WORKTREE_PORT>
+Logs: <WORKTREE_STATE>/daemon.log
+Namespace: wt_<WORKTREE_CHECKSUM>
+```
+
+`make up` starts missing infrastructure, creates the database, compiles this checkout and waits for `/readyz`.
+Repeating it rebuilds and restarts only this daemon while preserving its database.
+The default `FOLLOW_LOGS=1` follows the daemon log after startup.
+
+The launcher reuses existing `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `DRAGONFLY_URL`, `API_URL` and QStash settings with local addresses.
+`API_URL` uses the default network interface's IPv4 address and this worktree's port.
+Native clients and QStash therefore receive the same reachable origin.
+`AGENTSFLEET_DEV_NAMESPACE` is the only new application setting; the launcher supplies it.
+Mailpit shares its inbox, so use distinct development recipients and avoid deleting other worktrees' mail.
+
+### Runner on the existing Linux host
+
+Compile `agentsfleet-runner` from the matching checkout on the existing Linux host.
+Register that runner against this worktree's daemon using the existing runner registration workflow.
+Keep its returned `AGENTSFLEET_RUNNER_TOKEN` private and separate from tokens for other worktrees.
+
+Set `<RUNNER_REACHABLE_URL>` to this development machine's reachable address and the port printed by `make up`.
+Use the existing `RUNNER_STORAGE_HOME` setting to choose the Linux host's storage base.
+
+```bash
+AGENTSFLEET_API_URL=<RUNNER_REACHABLE_URL> bash scripts/local-dev.sh runner-env
+```
+
+```text
+AGENTSFLEET_API_URL=<RUNNER_REACHABLE_URL>
+RUNNER_STORAGE_HOME=/var/lib/agentsfleet-runner/worktrees/<REPOSITORY_CHECKSUM>/wt_<WORKTREE_CHECKSUM>
+```
+
+Apply those settings with the registered token when starting that checkout's runner on Linux.
+The settings helper prints no token and performs no remote host changes.
+On macOS, it requires an explicit runner-reachable URL because Linux cannot use this machine's loopback address.
+
+### Shutdown and recovery
+
+```bash
+make down
+```
+
+```text
+<no output on success>
+```
+
+This stops only this worktree's daemon and preserves its data and the shared services.
+The launcher checks the recorded process start time and executable before signaling it.
+An occupied port or changed process identity causes a refusal.
+
+The following command stops shared services for every worktree.
+Postgres volumes survive, but pending QStash deliveries and Dragonfly memory may be lost.
+
+```bash
+bash scripts/local-dev.sh infra-down
+```
+
+```text
+<Compose shutdown output varies>
+```
+
+The next `make up` restarts infrastructure using the saved snapshot.
+An unhealthy or incomplete existing stack refuses startup; inspect its Compose health before stopping it explicitly.
+Locks wait at most 30 seconds; after an interrupted owner, verify that owner has exited before removing its named lock directory.
+
+Run `bash scripts/local-dev-test.sh` for launcher regression checks and add `--live` for the two-worktree proof.
+`make test-integration-rustd` retains its own disposable stack and destructive reset behavior.
+See [datastore scaling](architecture/datastore_scaling.md#shared-local-development) for the isolation boundaries.
+
 ## Pushing and git hooks
 
 Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githooks`)
