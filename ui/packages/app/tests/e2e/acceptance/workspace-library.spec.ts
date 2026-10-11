@@ -25,6 +25,7 @@ import { FIXTURE_KEY, JWT_CACHE_PATH } from "./fixtures/constants";
 import { getDefaultWorkspaceId, skillMd, triggerMd } from "./fixtures/seed";
 import { CLI_KEY_PREFIX, cleanWorkspaceLibraryEntries } from "./fixtures/teardown";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { DEFAULT_WORKSPACE_SUBPATH } from "@/lib/workspace-routes";
 import {
   cliEnv,
   deleteCliKey,
@@ -127,7 +128,8 @@ test.describe("workspace-library", () => {
     await onboardLibrary(apiUrl, ws, sessionJwtFor(FIXTURE_KEY.regular), name);
 
     await signInAs(page, FIXTURE_KEY.regular);
-    await gotoWorkspace(page, FIXTURE_KEY.regular);
+    await gotoWorkspace(page, FIXTURE_KEY.regular, DEFAULT_WORKSPACE_SUBPATH);
+    await expect(page).toHaveURL(workspaceUrlPattern(DEFAULT_WORKSPACE_SUBPATH));
 
     // Reached from the navigation, not a typed URL: a page nothing links to
     // is a page the operator never finds.
