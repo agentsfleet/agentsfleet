@@ -251,6 +251,10 @@ fn test_envelope_equality_is_component_wise() {
 /// what makes it deterministic rather than dependent on how the suite was
 /// invoked — and the child is a normal instrumented run, so its coverage counts.
 #[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the child marker counts as set whatever its bytes; `ProcessEnv` would call a non-Unicode value unset"
+)]
 fn test_error_display_appends_a_captured_backtrace() {
     const CHILD_MARKER: &str = "AFD_CRYPTO_BACKTRACE_CHILD";
 

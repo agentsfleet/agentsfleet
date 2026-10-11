@@ -203,3 +203,19 @@ async fn test_releasing_a_fleet_not_held_ends_nothing() {
     let ended = releases(&capture);
     assert!(ended.is_empty(), "{ended:?}");
 }
+
+/// A clock that jumped back past the bottom of the range between a park and
+/// its take reads as the longest possible negative hold, not an overflow: the
+/// release profile aborts on one, which would end the runner.
+#[tokio::test]
+async fn test_a_take_across_a_clock_jump_saturates() {
+    let engine = FakeEngine::default();
+    let (holds, clock) = holds(2);
+    park(&holds, &engine, FLEET_A).await;
+
+    clock.set(UnixMillis::from_millis(i64::MIN));
+    let taken = holds.take(&key(FLEET_A)).await.unwrap();
+    holds.shutdown().await;
+
+    assert_eq!(taken.held_ms, i64::MIN);
+}

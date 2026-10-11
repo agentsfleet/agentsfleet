@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use afd_api_wire::team::InviteEmailResponse;
 use afd_core::clock::UnixMillis;
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_mail::{InviteLetter, InviteSend};
 use afd_observability::{InviteEmailOutcome, Telemetry};
@@ -206,15 +206,9 @@ const fn status_of(outcome: InviteEmailOutcome) -> EmailStatus {
 /// A send whose count or result the store would not take. The invite stands
 /// and reads `failed` until an owner sends again.
 fn unrecorded(invite: &Uuid7, error: &afd_tenant::Error) {
-    let code = error.code().as_str();
+    let Logged { error_code, reason } = error.logged();
     let invite_id = invite.as_str();
-    let reason = error.to_string();
-    tracing::warn!(
-        error_code = code,
-        invite_id,
-        reason,
-        event = EVENT_UNRECORDED
-    );
+    tracing::warn!(error_code, invite_id, reason, event = EVENT_UNRECORDED);
 }
 
 #[cfg(test)]
@@ -224,9 +218,10 @@ fn unrecorded(invite: &Uuid7, error: &afd_tenant::Error) {
 )]
 mod tests {
     use afd_core::id::Uuid7;
+    use afd_core::test_util::trace::Capture;
     use afd_tenant::team::EmailAttempt;
 
-    use super::send_of;
+    use super::{EVENT_UNRECORDED, send_of, unrecorded};
 
     const INVITE: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011";
     const LINK: &str = "https://app.test/invites/0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011";
@@ -251,5 +246,23 @@ mod tests {
         assert_eq!((send.to, send.attempt), ("carol@example.test", 2));
         assert_eq!(send.letter.invite_url, LINK);
         assert_eq!(send.invite_id, &invite);
+    }
+
+    /// The line an unrecorded send leaves says why without repeating its code,
+    /// which the line's own `error_code` field already carries, or a backtrace.
+    #[test]
+    fn an_unrecorded_invite_send_reason_carries_no_code_prefix() {
+        let capture = Capture::install();
+        let invite = Uuid7::parse(INVITE).expect("the fixture identifier is UUIDv7");
+        let refused = afd_crypto::secret::Kek::from_hex("not hex")
+            .expect_err("a key that is not hex is refused");
+        let failure = afd_tenant::Error::from(refused);
+
+        unrecorded(&invite, &failure);
+
+        let logged = capture.only(EVENT_UNRECORDED);
+        let reason = logged.field("reason").expect("the line says why");
+        assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+        assert_eq!(logged.field("error_code"), Some(failure.code().as_str()));
     }
 }

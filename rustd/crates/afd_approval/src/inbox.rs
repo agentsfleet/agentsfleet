@@ -32,6 +32,7 @@ mod row;
 mod sweep;
 
 use afd_admission::Admissions;
+use afd_api_wire::approval::GateStatus;
 use afd_core::id::Uuid7;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
@@ -41,7 +42,6 @@ pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
 pub use self::sweep::SweptParts;
 
 use self::row::read_gate;
-use crate::gate_status::GateStatus;
 use crate::sql;
 use crate::{Result, error};
 

@@ -17,6 +17,8 @@ workspace = true
 [dependencies]
 # `error_shell!`, `error_lifts!` and the registry code a refusal is logged under.
 afd_core.workspace = true
+# The charset and relative-step rules a repository binding's halves are held to.
+afd_validate.workspace = true
 # A memory entry's shape and its default category.
 afd_wire.workspace = true
 # The run's memory, which the memory tools read and write.
@@ -40,6 +42,8 @@ schemars.workspace = true
 serde.workspace = true
 # A call's arguments are JSON.
 serde_json.workspace = true
+# A repository binding's halves are declared as a validated segment.
+garde.workspace = true
 thiserror.workspace = true
 # A session's yield is a deadline on its event channel, and a scripted
 # process's events travel on the same channel type the executor's do.

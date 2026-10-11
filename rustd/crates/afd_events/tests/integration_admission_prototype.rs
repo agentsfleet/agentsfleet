@@ -45,6 +45,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use redis::cluster::ClusterClientBuilder;
 use redis::cluster_async::ClusterConnection;
 use redis::{ProtocolVersion, Value};
@@ -340,8 +341,9 @@ async fn del(queue: &mut ClusterConnection, stream: &str) -> usize {
 /// The lane's cluster over its seed: RESP3, bounded dials and replies, and a
 /// redirect allowance — the same builder shape `afd_dragonfly`'s harness uses.
 async fn connect_cluster() -> ClusterConnection {
-    let seed = std::env::var(URL_KNOB)
-        .unwrap_or_else(|_| panic!("{URL_KNOB} must name the lane's Dragonfly cluster"));
+    let seed = ProcessEnv
+        .get(URL_KNOB)
+        .unwrap_or_else(|| panic!("{URL_KNOB} must name the lane's Dragonfly cluster"));
     ClusterClientBuilder::new([seed])
         .use_protocol(ProtocolVersion::RESP3)
         .connection_timeout(CONNECT_BUDGET)

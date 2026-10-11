@@ -27,6 +27,7 @@ pub(super) use self::replies::{ack, answering, chain, done, new_link, refusal, r
 use super::kernel::Kernel;
 use super::netlink::{Netlink, Wire, encode, frames};
 use super::rules::{DROP, u16_of};
+use super::slot::Slots;
 
 mod replies;
 
@@ -77,9 +78,16 @@ struct State {
     entered: usize,
 }
 
-/// The kernel a test states; clones share one state.
-#[derive(Debug, Clone, Default)]
-pub(crate) struct Fake(Arc<Mutex<State>>);
+/// The kernel a test states; clones share one state and one pool of slots,
+/// and each new one starts with every slot free.
+#[derive(Debug, Clone)]
+pub(crate) struct Fake(Arc<Mutex<State>>, &'static Slots);
+
+impl Default for Fake {
+    fn default() -> Self {
+        Self(Arc::default(), Slots::fresh())
+    }
+}
 
 impl Fake {
     /// Every `message_type` on `protocol` answers `errno`.
@@ -163,6 +171,10 @@ impl Fake {
 
 impl Kernel for Fake {
     type Wire = FakeWire;
+
+    fn slots(&self) -> &'static Slots {
+        self.1
+    }
 
     fn route(&self) -> io::Result<Netlink<FakeWire>> {
         self.open(Protocol::Route)

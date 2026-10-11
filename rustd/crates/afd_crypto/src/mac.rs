@@ -136,13 +136,19 @@ impl HmacSha256Tag {
     /// The code as lowercase hexadecimal, the form the daemon stores.
     #[must_use]
     pub fn to_hex(&self) -> String {
-        let mut out = String::with_capacity(HMAC_SHA256_TAG_LEN * 2);
-        for byte in self.0 {
-            // A two-digit lowercase hex write cannot fail into a `String`.
-            use std::fmt::Write as _;
-            let _ = write!(out, "{byte:02x}");
-        }
-        out
+        hex::encode(self.0)
+    }
+
+    /// Whether `presented` is this code's lowercase hex, compared in time
+    /// independent of where the two first differ.
+    ///
+    /// Compared as TEXT rather than decoded: a decoder accepts `A-F`, so an
+    /// upper-cased copy of a genuine tag would verify, and a value this daemon
+    /// signed would gain a second spelling it never wrote. A presented string of
+    /// any other length, or one that is not hex at all, is simply unequal.
+    #[must_use]
+    pub fn verify_hex(&self, presented: &str) -> bool {
+        self.to_hex().as_bytes().ct_eq(presented.as_bytes()).into()
     }
 }
 

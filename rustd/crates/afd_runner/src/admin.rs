@@ -129,7 +129,7 @@ impl Runners {
         let row = sqlx::query(sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
             .bind(runner.as_str())
             .bind(state_wire(AdminState::Revoked))
-            .bind(super::sweep::reclaim::STATUS_ACTIVE)
+            .bind(sql::LEASE_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_DELETE))?
@@ -281,7 +281,8 @@ pub const fn target(action: RunnerAdminAction) -> Option<AdminState> {
     }
 }
 
-const fn state_wire(state: AdminState) -> &'static str {
+/// The stored spelling of `state`, which every statement guarding on it binds.
+pub(crate) const fn state_wire(state: AdminState) -> &'static str {
     match state {
         AdminState::Active => "active",
         AdminState::Cordoned => "cordoned",

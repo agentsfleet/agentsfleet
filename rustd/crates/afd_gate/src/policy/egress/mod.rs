@@ -33,25 +33,14 @@ pub const API_HOST: &str = "api.github.com";
 /// The credential admitted at that host.
 pub const CREDENTIAL_GITHUB: &str = "github";
 
-/// Why a write binding could not be turned into rules that bound anything.
-///
-/// Three arms, and every one is a FLEET AUTHOR's mistake rather than an
-/// operational fault — which is the distinction the caller needs and the reason
-/// this is a type instead of a message. Each ends the event with something an
-/// operator can act on; none is worth a retry, because nothing about the next
-/// poll will be different.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum Misconfigured {
-    /// No branch was authorised for this lease to write on.
-    #[error("a write binding needs the branch its lease authorised")]
-    NoRepairBranch,
-    /// The binding names no base for a Pull Request to open against.
-    #[error("a write binding must name the base it opens against")]
-    NoBaseBranch,
-    /// The binding names none, or several, where the locked rules bound one.
-    #[error("a write binding bounds exactly one repository")]
-    NotExactlyOneRepository,
-}
+/// Why a write binding names no branch for its lease to write on.
+pub const DETAIL_NO_REPAIR_BRANCH: &str = "a write binding needs the branch its lease authorised";
+
+/// Why a write binding names no base for a Pull Request to open against.
+pub const DETAIL_NO_BASE_BRANCH: &str = "a write binding must name the base it opens against";
+
+/// Why a write binding names none, or several, where the locked rules bound one.
+pub const DETAIL_NOT_EXACTLY_ONE_REPOSITORY: &str = "a write binding bounds exactly one repository";
 
 /// The rules a lease's repository binding authorises.
 ///
@@ -61,17 +50,15 @@ pub enum Misconfigured {
 /// push must still be able to look at what it is pushing to.
 ///
 /// # Errors
-/// [`Misconfigured`] for a write binding this cannot bound.
-///
-/// The error type is spelled explicitly rather than defaulting to the crate's,
-/// which is the carve-out `RULE ERR-RS` names for a signature answering a
-/// different error. It is deliberate: these are the fleet author's mistakes,
-/// and the caller must tell them from a datastore fault WITHOUT matching on a
-/// message. One ends the event naming the key to fix; the other is retried.
+/// A rejection, [`crate::Error::is_rejected`], for a write binding this cannot
+/// bound. These are the fleet author's mistakes, and the caller tells them from
+/// a datastore fault by that predicate rather than by a message: a rejection
+/// ends the event with its [`crate::Error::detail`] naming the key to fix, and
+/// any other kind is retried.
 pub fn build<'a>(
     binding: &RepositoryBinding,
     repair_branch: Option<&str>,
-) -> crate::Result<Vec<HttpOriginPolicy<'a>>, Misconfigured> {
+) -> crate::Result<Vec<HttpOriginPolicy<'a>>> {
     let mut requests: Vec<HttpRequestRule<'a>> = binding
         .repositories()
         .iter()

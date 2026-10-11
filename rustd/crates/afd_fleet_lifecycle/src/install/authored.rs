@@ -118,11 +118,16 @@ pub(super) fn read(entry: Entry, mention: Option<&Mention>) -> Result<Authored> 
 /// The KIND is passed in rather than derived here, so the caller names its own
 /// file and the sentence says which of the two to open.
 fn within_bounds(document: &str, rejected: ErrorKind) -> Result<&str> {
-    if document.is_empty() || document.len() > MAX_MARKDOWN_LEN {
-        return Err(rejected.into());
-    }
-    Ok(document)
+    Document(document)
+        .validate()
+        .map(|()| document)
+        .map_err(|_out_of_bounds| rejected.into())
 }
+
+/// An authored document, with the length bound this daemon stores within.
+#[derive(Debug, Validate)]
+#[garde(transparent)]
+struct Document<'a>(#[garde(length(bytes, min = 1, max = MAX_MARKDOWN_LEN))] &'a str);
 
 /// The `TRIGGER.md` a bundle that carried none installs with: woken by an API
 /// call, no tools, held to the default daily ceiling.
@@ -165,7 +170,10 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the restriction set is for the daemon"
     )]
-    use super::{MAX_TAG_LEN, MAX_TAGS, default_trigger, tags_fit};
+    use super::{
+        ErrorKind, MAX_MARKDOWN_LEN, MAX_TAG_LEN, MAX_TAGS, default_trigger, tags_fit,
+        within_bounds,
+    };
 
     #[test]
     fn a_generated_trigger_declares_an_api_wake_and_a_ceiling() {
@@ -200,5 +208,28 @@ mod tests {
         assert!(!tags_fit(&one("")), "an empty tag matches nothing");
         assert!(tags_fit(&vec![one("a").remove(0); MAX_TAGS]));
         assert!(!tags_fit(&vec![one("a").remove(0); MAX_TAGS + 1]));
+    }
+
+    #[test]
+    fn each_document_is_kept_up_to_its_cap_and_refused_empty_or_past_it() {
+        let at_cap = "a".repeat(MAX_MARKDOWN_LEN);
+        let past_cap = "a".repeat(MAX_MARKDOWN_LEN + 1);
+        let kinds: [fn() -> ErrorKind; 2] =
+            [|| ErrorKind::SkillRejected, || ErrorKind::TriggerRejected];
+
+        for rejected in kinds {
+            assert_eq!(
+                within_bounds(&at_cap, rejected()).ok(),
+                Some(at_cap.as_str())
+            );
+            for refused in ["", past_cap.as_str()] {
+                let failure = within_bounds(refused, rejected()).expect_err("out of bounds");
+                assert_eq!(
+                    core::mem::discriminant(failure.kind()),
+                    core::mem::discriminant(&rejected()),
+                    "each document is refused as itself"
+                );
+            }
+        }
     }
 }

@@ -42,6 +42,10 @@ const SERVED: &str = "served";
 const CONNECT_DELAY: Duration = Duration::from_millis(10);
 const CONNECT_TRIES: usize = 500;
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the scratch directory is a path the parent set as raw OS bytes; afd_core::env reads String values and would lose a non-Unicode path"
+)]
 fn main() -> ExitCode {
     if std::env::var_os(CHILD).is_some() {
         let scratch = PathBuf::from(std::env::var_os(SCRATCH).unwrap_or_default());
@@ -99,6 +103,10 @@ fn parent() -> Result<(), String> {
         .prefix("afr-confine")
         .tempdir_in(SCRATCH_PARENT)
         .map_err(|error| error.to_string())?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "LLVM_PROFILE_FILE is a path read as raw OS bytes; afd_core::env reads String values and would lose a non-Unicode path"
+    )]
     let profile = std::env::var_os(PROFILE).map(PathBuf::from);
     fs::create_dir(scratch.path().join(ROOT)).map_err(|error| error.to_string())?;
     let mut child = Command::new(std::env::current_exe().map_err(|error| error.to_string())?);

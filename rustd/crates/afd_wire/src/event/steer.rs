@@ -51,42 +51,12 @@ pub struct SteerRequest<'a> {
     // `UNIQUE (producer, producer_key)` and is answered from the first row.
     // Optional on purpose: a human in a terminal has no operation to name, and
     // forcing one would make every caller invent a value whose only job is to
-    // be unique.
+    // be unique. NUL is refused because the ledger stores the id in a Postgres
+    // `text` column, which cannot hold it: accepted, it failed the insert as a
+    // 500.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
-    #[garde(inner(custom(rules::usable_operation_id)))]
+    #[garde(inner(length(bytes, min = 1, max = OPERATION_ID_MAX_BYTES), custom(nul_free)))]
     pub operation_id: Option<Cow<'a, str>>,
-}
-
-/// Whether `id` can name an operation: 1 to [`OPERATION_ID_MAX_BYTES`] bytes,
-/// none of them NUL.
-///
-/// NUL is refused here because the ledger stores the id in a Postgres `text`
-/// column, which cannot hold it: accepted, it failed the insert as a 500.
-#[must_use]
-pub fn operation_id_usable(id: &str) -> bool {
-    (1..=OPERATION_ID_MAX_BYTES).contains(&id.len()) && nul_free(id, &()).is_ok()
-}
-
-/// The garde rules a steer's fields name, under one lint expectation because
-/// garde fixes every custom validator's signature the same way.
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "garde fixes the custom-validator signature at `fn(&T, &C) -> Result`; the `()` context arrives by reference because the derive passes it that way"
-)]
-mod rules {
-    use super::operation_id_usable;
-
-    /// The garde rule over [`operation_id_usable`].
-    pub(super) fn usable_operation_id(id: &str, (): &()) -> garde::Result {
-        if operation_id_usable(id) {
-            Ok(())
-        } else {
-            Err(garde::Error::new(OPERATION_ID_UNUSABLE))
-        }
-    }
-
-    /// What garde reports for an unusable operation id.
-    const OPERATION_ID_UNUSABLE: &str = "operation id is empty, too long, or holds NUL";
 }
 
 /// The longest client operation identity a steer may carry.

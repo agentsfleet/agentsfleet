@@ -160,3 +160,43 @@ fn no_refusal_answers_an_untyped_failure() {
         }
     }
 }
+
+/// A rotated refresh token the vault would not take back is logged, never
+/// raised, and the warning carries the code beside the failure's sentence.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn an_unrotated_refresh_token_reason_carries_no_code_prefix() {
+    use crate::lease::scope::MintScope;
+    use crate::lease::test_dead;
+
+    let log = afd_core::test_util::trace::Capture::install();
+    let scope = MintScope {
+        workspace_id: test_dead::id(2),
+        fleet_id: test_dead::id(1),
+        event_id: "1767225600000-1".into(),
+        binding: None,
+    };
+    let handle = serde_json::Value::Object(serde_json::Map::from_iter([(
+        afd_core::credential::FIELD_REFRESH_TOKEN.to_owned(),
+        serde_json::Value::from("rt_posted"),
+    )]));
+    let rotated = Minted {
+        rotated_refresh_token: Some(Zeroizing::new("rt_rotated".to_owned())),
+        ..minted()
+    };
+
+    test_dead::plane()
+        .persist_rotation(&scope, "github", &handle, &rotated, test_dead::AT)
+        .await;
+
+    let line = log.only(super::EVENT_REFRESH_ROTATED);
+    let reason = line.field("reason").unwrap_or_default();
+    assert!(
+        line.field("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
+    assert!(
+        !reason.is_empty() && !reason.contains("[UZ-") && !reason.contains("rt_"),
+        "the code is the line's `error_code`, and no token rides the reason: {reason}"
+    );
+}

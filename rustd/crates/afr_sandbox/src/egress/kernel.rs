@@ -14,6 +14,7 @@ use netlink_sys::protocols::{NETLINK_NETFILTER, NETLINK_ROUTE};
 use rustix::thread::{LinkNameSpaceType, UnshareFlags};
 
 use super::netlink::{Netlink, Wire};
+use super::slot::{HOST, Slots};
 use crate::error::{Result as SandboxResult, Step, netlink};
 
 /// The network namespace of the calling thread, as a file another thread can
@@ -26,6 +27,10 @@ const PANICKED: &str = "the thread working inside a network namespace panicked";
 pub(crate) trait Kernel: Sync {
     /// What its sockets speak over.
     type Wire: Wire;
+
+    /// The slots its scopes claim, one pool per kernel: every scope built in
+    /// the same namespace must draw from the same one.
+    fn slots(&self) -> &'static Slots;
 
     /// A route-netlink conversation, in the calling thread's namespace.
     ///
@@ -97,6 +102,10 @@ pub(crate) struct Host;
 
 impl Kernel for Host {
     type Wire = Socket;
+
+    fn slots(&self) -> &'static Slots {
+        &HOST
+    }
 
     fn route(&self) -> io::Result<Netlink<Socket>> {
         Netlink::open(NETLINK_ROUTE)

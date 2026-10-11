@@ -21,6 +21,7 @@
 //! the unsupervised spawn path Dimension 7.5 says does not exist.
 
 mod accept;
+mod clients;
 pub mod drain;
 mod exporting;
 mod optional;
@@ -186,6 +187,7 @@ async fn open(
         &runtime.queue,
         &runtime.kek,
         runtime.hub,
+        runtime.outbound_client,
     )
     .await;
     report_workers(supervisor, &analytics);

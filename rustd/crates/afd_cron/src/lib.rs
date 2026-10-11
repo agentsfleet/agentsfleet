@@ -59,4 +59,4 @@ pub use self::service::{Reconciled, Schedules as ScheduleService};
 pub use self::store::{Change, FireTarget, NewSchedule, Refused, SYNC_LEASE_MS, Schedules};
 
 pub use self::validate::Invalid;
-pub use self::verifier::{SigningKeys, Unverified, VerifiedFire};
+pub use self::verifier::{SigningKeys, VerifiedFire};

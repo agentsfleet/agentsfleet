@@ -2,8 +2,8 @@
 
 use garde::Validate as _;
 
-use super::{HAS_NUL, NOT_ASCII_DIGITS, NOT_FINITE, OUTSIDE_CHARSET};
-use super::{ascii_digits, charset, finite, nul_free};
+use super::{HAS_NUL, NOT_ASCII_DIGITS, NOT_FINITE, OUTSIDE_CHARSET, RELATIVE_SEGMENT};
+use super::{ascii_digits, charset, finite, not_relative, nul_free};
 
 /// The rules as an author declares them: beside garde's own bounds, through
 /// the attribute, on borrowed and owned text alike.
@@ -103,4 +103,18 @@ fn a_rule_and_a_length_on_one_field_both_report() {
     let reported = messages(&value);
     assert_eq!(reported.len(), 2, "{reported:?}");
     assert!(reported.iter().all(|(path, _)| path == "name"));
+}
+
+#[test]
+fn not_relative_refuses_only_the_two_path_steps() {
+    for step in [".", ".."] {
+        assert_eq!(
+            not_relative(step, &()).map_err(|error| error.message().to_owned()),
+            Err(RELATIVE_SEGMENT.to_owned()),
+            "{step}"
+        );
+    }
+    for name in ["...", ".hidden", "a.b", "..x", ""] {
+        assert!(not_relative(name, &()).is_ok(), "{name:?}");
+    }
 }

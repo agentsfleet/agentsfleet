@@ -12,121 +12,15 @@ use std::time::Duration;
 
 use sqlx::postgres::PgConnectOptions;
 
+mod sizing;
 mod tls;
 
+use self::sizing::{
+    ACQUIRE_TIMEOUT_MS_DEFAULT, CONNECT_TIMEOUT_MS_DEFAULT, min_connections_default,
+    pool_size_default,
+};
 use crate::error::{Error, ErrorKind, Result};
-use afd_core::env::EnvSource;
-
-/// The pool's ceiling, sized the way `core_api` sizes its own.
-///
-/// It used to be the API's in-flight ceiling over a "per-connection
-/// request-sharing factor" — 256 / 64. The 256 is real and defined elsewhere;
-/// the 64 was asserted and never derived, and four connections is what it
-/// produced.
-///
-/// Four is too few, and the failure it causes is not a slow request. sqlx opens
-/// connections lazily, so a burst against a cold pool queues behind connection
-/// ESTABLISHMENT — measured on this lane's Postgres at 147 ms typically and
-/// 337 ms under load — and blows the two-second acquire budget while Postgres
-/// sits healthy. `Db::acquire` then reads a pool below its ceiling as evidence
-/// the datastore is absent and answers 503.
-///
-/// The ceiling is a share of the DATABASE's capacity, not the host's.
-///
-/// A connection costs a Postgres backend process, and how many the server can
-/// serve has nothing to do with how many cores this replica has. Sizing from
-/// `available_parallelism` produced a per-replica fifty, and a stock Postgres
-/// admits a hundred connections with three reserved for superusers — so two
-/// replicas at fifty exhaust the ordinary slots before a migration, an
-/// operator session, or any other service has asked for one.
-///
-/// So the default divides a budget by the replicas expected to share it. Both
-/// numbers are deliberately conservative, because being wrong low costs queuing
-/// on one replica and being wrong high costs every client of that database at
-/// once — including the ones that would have to be running for anyone to
-/// notice.
-///
-/// A deployment that knows its own budget sets `DATABASE_POOL_SIZE`
-/// (role-suffixable as `DATABASE_POOL_SIZE_API`), which is where a real number
-/// belongs: it travels with the Postgres `max_connections` the deployment
-/// actually runs, and that is not a fact this file can know.
-fn pool_size_default() -> u32 {
-    /// Ordinary slots this service may take of a stock hundred-connection
-    /// Postgres, after the three superuser reservations and a margin for the
-    /// migrator, operator sessions, and monitoring.
-    const SERVICE_CONNECTION_BUDGET: u32 = 80;
-
-    /// Replicas expected to share that budget.
-    const EXPECTED_REPLICAS: u32 = 4;
-
-    SERVICE_CONNECTION_BUDGET / EXPECTED_REPLICAS
-}
-
-/// How much of the pool is established BEFORE a request needs it.
-///
-/// The knob that stops a connection being opened in a request's path. Without
-/// it the pool starts at zero — `connect_lazy_with` — and the first traffic
-/// after boot pays an establishment measured at 147-337 ms inside an acquire
-/// budget sized for a wait, not a handshake.
-///
-/// **This floor is established by [`crate::Db::warm`], not by sqlx.** Passing
-/// `min_connections` to the builder is necessary and not sufficient: sqlx only
-/// bootstraps the floor from zero when BOTH `max_lifetime` and `idle_timeout`
-/// are `None` (`pool/inner.rs`, the `(None, None)` arm), and `pool.rs` pins
-/// both. Every other arm reaches the floor through the idle reaper, whose body
-/// is `for _ in 0..num_idle()` — zero on a pool that has never opened a
-/// connection, so the body never runs and the floor is never approached. The
-/// setting still earns its place: once connections exist, the reaper does keep
-/// the pool from falling below it.
-///
-/// A quarter of the ceiling rather than all of it: connections held open cost
-/// Postgres slots whether or not traffic exists, and the point is to remove the
-/// cold start, not to reserve the whole pool against a burst that may not come.
-/// The right number is a measured steady-state concurrency, which this file
-/// cannot know; `DATABASE_MIN_POOL_SIZE` is where a measured one goes.
-fn min_connections_default(max_connections: u32) -> u32 {
-    const WARM_FRACTION: u32 = 4;
-    (max_connections / WARM_FRACTION).max(1)
-}
-
-/// How long an acquire may take, INCLUDING opening a connection if the pool
-/// has to.
-///
-/// This was two seconds, on the reasoning that a starved pool should fail fast
-/// rather than read as a slow request. That reasoning is sound and the number
-/// was still wrong, because it is not only the wait: sqlx spends ONE deadline
-/// on both halves. `PoolInner::acquire` sets `deadline = now + acquire_timeout`
-/// and hands that same deadline to `connect()`
-/// (`sqlx-core-0.9.0/src/pool/inner.rs`), and upstream's own `Debug` impl
-/// prints the field as `connect_timeout` (`options.rs:590`). There is no
-/// second knob.
-///
-/// So a budget below the handshake cost is a pool that can never grow. Every
-/// attempt to open a connection expires, [`crate::Db::warm`] reaches zero, the
-/// pool stays empty, and every request pays — and loses — the same race. A
-/// probe against the development database through the production pool showed
-/// exactly that: the boot handshake took 2.7 s, warm established 0 of 2 inside
-/// a 10 s deadline, and all eight callers failed their first acquire with the
-/// pool below its ceiling. Identical on the direct port and through
-/// `PgBouncer`,
-/// which is what rules the pooler out as the cause.
-///
-/// Five seconds covers a cross-region TLS handshake with headroom while still
-/// failing inside any sensible gateway timeout. A saturated pool now makes a
-/// caller wait longer before its 503, which is the trade: an answer at five
-/// seconds beats a refusal at two when the connection would have opened.
-///
-/// A deployment whose database is in the same region can lower it with
-/// `DATABASE_ACQUIRE_TIMEOUT_MS`. Do not lower it below the p99 establishment
-/// that deployment actually measures.
-const ACQUIRE_TIMEOUT_MS_DEFAULT: u64 = 5_000;
-
-/// The handshake budget for the BOOT PROBE, which is the one place this crate
-/// can bound a handshake on its own.
-///
-/// Not the pool's: see [`ACQUIRE_TIMEOUT_MS_DEFAULT`] for why the pool cannot
-/// be given a separate one. Not tunable per role.
-const CONNECT_TIMEOUT_MS_DEFAULT: u64 = 10_000;
+use afd_core::env::{EnvSource, optional};
 
 const POOL_SIZE_KNOB: &str = "DATABASE_POOL_SIZE";
 /// The warm floor, overridable for a host that wants a different one.
@@ -201,11 +95,10 @@ impl PoolConfig {
     /// a Postgres connection URL.
     pub fn resolve<E: EnvSource + ?Sized>(env: &E, role: DbRole) -> Result<Self> {
         let knob = role.url_knob();
-        let url = env
-            .get(knob)
-            .map(|value| value.trim().to_owned())
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| Error::new(ErrorKind::MissingDatabaseUrl { knob }))?;
+        let url = String::from(
+            optional(env, knob)
+                .ok_or_else(|| Error::new(ErrorKind::MissingDatabaseUrl { knob }))?,
+        );
 
         let max_connections =
             read_knob(env, POOL_SIZE_KNOB, role).map_or_else(pool_size_default, clamp_pool_size);
@@ -347,86 +240,5 @@ pub fn parse_env_bool(raw: &str) -> EnvBool {
 }
 
 #[cfg(test)]
-mod pool_sizing_tests {
-    use super::{ACQUIRE_TIMEOUT_MS_DEFAULT, min_connections_default, pool_size_default};
-
-    /// The acquire budget covers opening a connection, not only waiting for one.
-    ///
-    /// sqlx spends ONE deadline on both halves — `PoolInner::acquire` hands its
-    /// `acquire_timeout` deadline straight to `connect()` — so a budget under
-    /// the handshake cost is a pool that can never grow. It does not degrade,
-    /// it stops: `warm` reaches zero, the pool stays empty, and every request
-    /// pays and loses the same race while the census reads "below the
-    /// ceiling", which is indistinguishable from an outage.
-    ///
-    /// The floor asserted here is a MEASURED handshake, not a guess: a probe
-    /// against the development database through the production pool took
-    /// 2.7 s to complete one, and at the previous 2 s budget warmed 0 of 2 and
-    /// failed all eight callers. Anything at or below that number reproduces
-    /// the failure exactly, so the test names it.
-    #[test]
-    fn test_the_acquire_budget_can_outlast_a_connection_handshake() {
-        /// The slowest establishment measured against a real deployment, in
-        /// milliseconds. A budget at or below this cannot open a connection.
-        const MEASURED_SLOW_HANDSHAKE_MS: u64 = 2_700;
-
-        // Through `black_box` so the comparison survives as a comparison:
-        // both sides are constants, and clippy rejects an assertion it can
-        // fold away — correctly, since a folded assert proves nothing at run
-        // time. The budget is read the way a caller reads it instead.
-        let budget = std::hint::black_box(ACQUIRE_TIMEOUT_MS_DEFAULT);
-        let handshake = std::hint::black_box(MEASURED_SLOW_HANDSHAKE_MS);
-
-        assert!(
-            budget > handshake,
-            "an acquire budget of {budget}ms cannot open a connection that takes {handshake}ms: \
-             the pool would warm to zero and answer every request from empty"
-        );
-    }
-
-    /// The ceiling is a real number, not four.
-    ///
-    /// Four was `256 / 64`, and the 64 was a "per-connection request-sharing
-    /// factor" that nothing ever derived. What four produced was a pool that
-    /// spends its life below
-    /// its own ceiling, which is the exact state `Db::acquire` reads as an
-    /// absent datastore — so an undersized pool answered 503 while Postgres was
-    /// healthy. This asserts the floor that failure sat under.
-    #[test]
-    fn test_the_pool_ceiling_is_not_the_undersized_default_it_replaced() {
-        const THE_OLD_DEFAULT: u32 = 256 / 64;
-
-        let ceiling = pool_size_default();
-
-        assert!(
-            ceiling > THE_OLD_DEFAULT,
-            "the ceiling must exceed the four connections that produced 503s \
-             under an ordinary burst: {ceiling}"
-        );
-        assert!(
-            ceiling <= 100,
-            "and must stay inside a stock Postgres connection ceiling, which is \
-             what `core_api` sizes against: {ceiling}"
-        );
-    }
-
-    /// Some of the pool is warm before any request arrives.
-    ///
-    /// This is the clause that removes a connection handshake from a request's
-    /// path. A floor of zero is what `connect_lazy_with` gives on its own, and
-    /// it is what made a cold pool's first traffic queue behind establishment
-    /// — measured at 147 ms typically and 337 ms under load — inside a budget
-    /// meant only for waiting.
-    #[test]
-    fn test_some_of_the_pool_is_established_before_it_is_asked_for() {
-        let ceiling = pool_size_default();
-        let warm = min_connections_default(ceiling);
-
-        assert!(warm >= 1, "a pool that starts empty opens in the hot path");
-        assert!(
-            warm <= ceiling,
-            "a floor above the ceiling is a pool that cannot satisfy its own \
-             maintenance: {warm} > {ceiling}"
-        );
-    }
-}
+#[path = "config/pool_sizing_tests.rs"]
+mod pool_sizing_tests;

@@ -31,6 +31,10 @@ async fn mailpit_search_to(address: &str) -> Value {
 }
 
 fn mailpit_url(path: &str, query: &[(&str, &str)]) -> reqwest::Url {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the panic carries the VarError beside the lane hint; ProcessEnv::get returns an Option and would drop it"
+    )]
     let base =
         std::env::var(MAILPIT_URL).expect("make test-integration-rustd exports the Mailpit URL");
     reqwest::Url::parse_with_params(&format!("{base}{path}"), query).expect("a Mailpit URL")
@@ -52,6 +56,10 @@ async fn mailpit_fetch(url: reqwest::Url) -> Value {
 #[ignore = "needs live Postgres and Mailpit: make test-integration-rustd"]
 async fn test_invite_email_carries_accept_link() {
     let members = Members::create().await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the panic carries the VarError beside the lane hint; ProcessEnv::get returns an Option and would drop it"
+    )]
     let port = std::env::var(MAILPIT_SMTP_PORT)
         .expect("make test-integration-rustd exports the Mailpit SMTP port")
         .parse()

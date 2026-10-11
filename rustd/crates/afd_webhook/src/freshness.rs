@@ -11,10 +11,7 @@
 //!
 //! Because a boundary test that reads the clock twice races itself, and fails
 //! at an exact ±drift edge whenever the clock ticks between the reads. The
-//! decision takes an explicit instant, and only the production entry point
-//! reads a clock.
-
-use std::time::{SystemTime, UNIX_EPOCH};
+//! decision takes an explicit instant, and the caller reads its own clock.
 
 /// The freshness window every provider on this surface is held to.
 ///
@@ -55,24 +52,6 @@ pub fn is_fresh_at(timestamp: &str, now_unix_seconds: i64, max_drift: i64) -> bo
         return false;
     }
     now_unix_seconds.saturating_sub(signed_at) <= max_drift
-}
-
-/// Whether `timestamp` is within [`MAX_DRIFT_SECONDS`] of the wall clock.
-///
-/// The production entry point, and the only thing here that reads a clock.
-///
-/// A clock before the epoch answers `false` for every delivery rather than
-/// panicking: a host whose clock is that wrong cannot judge freshness, and
-/// refusing everything is the fail-closed answer.
-#[must_use]
-pub fn is_fresh(timestamp: &str) -> bool {
-    let Ok(since_epoch) = SystemTime::now().duration_since(UNIX_EPOCH) else {
-        return false;
-    };
-    let Ok(now) = i64::try_from(since_epoch.as_secs()) else {
-        return false;
-    };
-    is_fresh_at(timestamp, now, MAX_DRIFT_SECONDS)
 }
 
 #[cfg(test)]
@@ -148,48 +127,5 @@ mod tests {
         // Saturating arithmetic, proven at both ends rather than asserted.
         assert!(!is_fresh_at("1700000000", i64::MAX, MAX_DRIFT_SECONDS));
         assert!(!is_fresh_at("1700000000", i64::MIN, MAX_DRIFT_SECONDS));
-    }
-}
-
-#[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    reason = "a test asserts by panicking; an unmet precondition should stop it"
-)]
-mod wall_clock_tests {
-    use super::is_fresh;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    /// The wall-clock wrapper agrees with the windowed function it delegates to.
-    ///
-    /// [`is_fresh_at`] carries the window logic and is tested exhaustively
-    /// against a frozen `now`. What is left here is the wrapper: that it reads
-    /// the real clock, in SECONDS, and hands the timestamp through unparsed.
-    ///
-    /// A unit slip is the failure worth catching. Passing milliseconds where
-    /// seconds are meant puts every honest delivery ~53,000 years in the future
-    /// and refuses all of them — an outage that looks like every sender
-    /// simultaneously breaking their signing.
-    #[test]
-    fn a_timestamp_from_the_real_clock_is_fresh_and_the_epoch_is_not() {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("the host clock is not before the epoch")
-            .as_secs();
-
-        assert!(
-            is_fresh(&now.to_string()),
-            "a delivery signed at this instant must be fresh — a false here is \
-             the seconds/millis slip that refuses every honest sender"
-        );
-        assert!(
-            !is_fresh("0"),
-            "the epoch is fifty-odd years stale, and is refused before the \
-             window arithmetic rather than by accident of it"
-        );
-        assert!(
-            !is_fresh("not a timestamp"),
-            "a header that will not parse is not fresh"
-        );
     }
 }

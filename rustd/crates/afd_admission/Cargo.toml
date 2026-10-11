@@ -51,6 +51,8 @@ test-util = [
 ]
 
 [dev-dependencies]
+# The `tracing` capture the failure-line suites read a `reason` back through.
+afd_core = { workspace = true, features = ["test-util"] }
 # `net`, `io-util` and `sync` serve the fake queue `tests/receipt_faults.rs`
 # borrows from `afd_dragonfly`'s support tree.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"] }

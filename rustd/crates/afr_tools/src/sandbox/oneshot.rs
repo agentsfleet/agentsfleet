@@ -62,7 +62,7 @@ pub(super) async fn run_to_end(
     };
     ToolOutput {
         text,
-        exit_code: output::exit_code(ending),
+        exit_code: ending.exit_code(),
         error_code: output::error_code(ending),
         image: None,
     }

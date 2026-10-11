@@ -14,6 +14,10 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a step \
               indexes the JSON it just built"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
+)]
 
 use afd_crypto::entropy::Entropy;
 use afd_runner::Runners;

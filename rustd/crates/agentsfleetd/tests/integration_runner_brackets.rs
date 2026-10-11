@@ -14,6 +14,10 @@
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
+)]
 
 use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;

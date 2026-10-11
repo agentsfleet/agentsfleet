@@ -13,6 +13,7 @@ use std::io;
 use std::net::IpAddr;
 
 use afd_core::net::is_blocked;
+use url::{Host, Url};
 
 use crate::error::Result;
 
@@ -62,6 +63,21 @@ pub fn unblocked(addresses: Vec<IpAddr>) -> Result<Vec<IpAddr>, BlockedAddress> 
     } else {
         Ok(addresses)
     }
+}
+
+/// Whether `url` names an address literal [`unblocked`] would refuse.
+///
+/// A name answers `false`: it is judged by the resolver once it is dialled,
+/// whereas a literal never reaches a resolver, so whoever admits a URL asks
+/// this first. The caller keeps its own refusal.
+#[must_use]
+pub fn blocked_literal(url: &Url) -> bool {
+    let address: Option<IpAddr> = match url.host() {
+        Some(Host::Ipv4(address)) => Some(address.into()),
+        Some(Host::Ipv6(address)) => Some(address.into()),
+        Some(Host::Domain(_)) | None => None,
+    };
+    address.is_some_and(is_blocked)
 }
 
 #[cfg(test)]

@@ -35,6 +35,7 @@
 //! shape.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_wire::event::EventType;
 
@@ -263,10 +264,9 @@ impl Plane {
             .acknowledge(&acquired.fleet_id, &acquired.receipt)
             .await
         {
-            let code = failure.code().as_str();
-            let reason = failure.to_string();
+            let Logged { error_code, reason } = failure.logged();
             tracing::warn!(
-                error_code = code,
+                error_code,
                 fleet_id,
                 agentsfleet_event_id,
                 reason,

@@ -34,9 +34,9 @@
 use std::time::Duration;
 
 use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::fleet_activity_channel;
 use afd_dragonfly::streams::FleetStreams;
 use afd_sse::ceiling::Ceiling;
-use afd_sse::channel;
 use afd_sse::frame::Frame;
 use afd_sse::tail::tail;
 use afd_sse::{KIND_HELLO, Live};
@@ -86,7 +86,7 @@ async fn test_sse_sequencing_semantics() {
     let lane = SseLane::connect().await;
     let publisher = FleetStreams::new(lane.redis.clone());
     let fleet = lane.fleet("sequencing");
-    let activity = channel::activity(&fleet);
+    let activity = fleet_activity_channel(&fleet);
 
     let hub = SubscriptionHub::start(SseLane::config())
         .await
@@ -124,7 +124,7 @@ async fn test_fleet_stream_opens_with_hello_before_any_activity() {
     let lane = SseLane::connect().await;
     let publisher = FleetStreams::new(lane.redis.clone());
     let fleet = lane.fleet("hello");
-    let activity = channel::activity(&fleet);
+    let activity = fleet_activity_channel(&fleet);
 
     let hub = SubscriptionHub::start(SseLane::config())
         .await

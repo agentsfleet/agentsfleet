@@ -2,4 +2,4 @@
 
 pub(crate) mod runner;
 
-pub(crate) use afd_http::handler::{malformed, refuse};
+pub(crate) use afd_http::handler::{malformed, refuse, reject};

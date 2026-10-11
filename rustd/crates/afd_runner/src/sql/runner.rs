@@ -6,15 +6,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use sqlx::Postgres;
-use sqlx::postgres::PgArguments;
-use sqlx::query::Query;
-
-/// A statement bound and ready to execute.
-///
-/// Named once so the binder signatures below read as one line each rather than
-/// as three lines of sqlx generics.
-pub type Bound<'q> = Query<'q, Postgres, PgArguments>;
+use afd_db::statement::Bound;
 
 /// Enrol a runner and record its enrolment event atomically.
 ///

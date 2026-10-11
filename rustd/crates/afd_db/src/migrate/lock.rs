@@ -8,6 +8,8 @@
 //! `pg_try_advisory_lock` a bounded number of times and then fails loudly with
 //! a named error, which puts "lock held" in front of an operator in seconds.
 //! The bound IS the stop path: [`RetryPolicy`] is the only way out of a held lock.
+//! The polls are a constant `backon` schedule with no jitter, so the bound an
+//! operator reads is the bound that runs.
 //!
 //! # Why a query error is not a retry
 //!
@@ -15,8 +17,10 @@
 //! propagates immediately rather than burning the whole bound first and
 //! reporting the wrong cause thirty seconds late.
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
+use backon::{ConstantBuilder, RetryableWithContext as _};
 use sqlx::pool::PoolConnection;
 use sqlx::{Executor as _, Postgres, Row as _};
 
@@ -62,30 +66,17 @@ impl RetryPolicy {
     }
 }
 
-/// One poll's verdict.
+/// Why one poll did not end the wait.
 ///
-/// A named decision rather than a condition inline in the loop: it is the part
-/// worth testing without a database, so [`classify`] owns it on its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Attempt {
-    /// This session now holds the lock.
-    Acquired,
-    /// Someone else holds it and there are polls left.
-    Retry,
-    /// Someone else holds it and the bound is spent.
-    Exhausted,
-}
-
-/// Classifies a single poll. Pure, so the bound is provable without a database.
-#[must_use]
-pub const fn classify(acquired: bool, attempt: u32, policy: RetryPolicy) -> Attempt {
-    if acquired {
-        Attempt::Acquired
-    } else if attempt >= policy.attempts {
-        Attempt::Exhausted
-    } else {
-        Attempt::Retry
-    }
+/// The retry reads this to decide whether to poll again, which is why a query
+/// failure is its own arm: a dropped connection is not contention, and only
+/// contention is worth another poll.
+#[derive(Debug)]
+enum Unheld {
+    /// Another session holds the lock.
+    Contended,
+    /// The poll itself failed.
+    Failed(Error),
 }
 
 /// A held migration lock, owning the session that holds it.
@@ -107,51 +98,54 @@ impl MigrationLock {
     /// query error when the poll itself fails — a dropped connection is not
     /// contention and is not retried.
     pub async fn acquire(
-        mut connection: PoolConnection<Postgres>,
+        connection: PoolConnection<Postgres>,
         policy: RetryPolicy,
     ) -> Result<Self> {
-        for attempt in 1..=policy.attempts {
-            let acquired: bool = sqlx::query("SELECT pg_try_advisory_lock($1)")
-                .bind(ADVISORY_KEY)
-                .fetch_one(&mut *connection)
-                .await
-                .map_err(|source| query(OP_ACQUIRE, source))?
-                .try_get(0)
-                .map_err(|source| query(OP_ACQUIRE, source))?;
-
-            match classify(acquired, attempt, policy) {
-                Attempt::Acquired => {
-                    if attempt > 1 {
-                        tracing::info!(attempt, event = "migrate_lock_acquired_after_contention");
-                    }
-                    return Ok(Self { connection });
-                }
-                Attempt::Retry => {
-                    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-                    let retry_ms = policy.interval.as_millis();
-                    tracing::warn!(
-                        attempt,
-                        max_attempts = policy.attempts,
-                        retry_ms,
-                        event = "migrate_lock_contended"
-                    );
-                    tokio::time::sleep(policy.interval).await;
-                }
-                Attempt::Exhausted => break,
-            }
+        // A policy with no polls refuses without touching the database: the
+        // retry below always makes its first call, which could win the lock.
+        if policy.attempts == 0 {
+            return Err(exhausted(policy));
         }
+        let polls = AtomicU32::new(0);
+        let retries = usize::try_from(policy.attempts.saturating_sub(1)).unwrap_or(usize::MAX);
+        let (connection, polled) = (|mut connection: PoolConnection<Postgres>| {
+            polls.fetch_add(1, Ordering::Relaxed);
+            async move {
+                let polled = try_lock(&mut connection).await;
+                (connection, polled)
+            }
+        })
+        .retry(
+            ConstantBuilder::new()
+                .with_delay(policy.interval)
+                .with_max_times(retries),
+        )
+        .context(connection)
+        .when(|unheld| matches!(unheld, Unheld::Contended))
+        .notify(|_contended, _delay| {
+            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+            let attempt = polls.load(Ordering::Relaxed);
+            let retry_ms = policy.interval.as_millis();
+            tracing::warn!(
+                attempt,
+                max_attempts = policy.attempts,
+                retry_ms,
+                event = "migrate_lock_contended"
+            );
+        })
+        .await;
 
-        let waited_ms = policy.budget().as_millis();
-        let error_code = error_code::STARTUP_MIGRATION_CHECK.as_str();
-        tracing::warn!(
-            attempts = policy.attempts,
-            waited_ms,
-            error_code,
-            event = "migrate_lock_exhausted"
-        );
-        Err(Error::new(ErrorKind::MigrationLockUnavailable {
-            waited_ms,
-        }))
+        match polled {
+            Ok(()) => {
+                let attempt = polls.load(Ordering::Relaxed);
+                if attempt > 1 {
+                    tracing::info!(attempt, event = "migrate_lock_acquired_after_contention");
+                }
+                Ok(Self { connection })
+            }
+            Err(Unheld::Contended) => Err(exhausted(policy)),
+            Err(Unheld::Failed(error)) => Err(error),
+        }
     }
 
     /// The locked session, for the work that must happen under the lock.
@@ -179,6 +173,35 @@ impl MigrationLock {
             );
         }
     }
+}
+
+/// One poll for the lock on `connection`.
+async fn try_lock(connection: &mut PoolConnection<Postgres>) -> Result<(), Unheld> {
+    let acquired: bool = sqlx::query("SELECT pg_try_advisory_lock($1)")
+        .bind(ADVISORY_KEY)
+        .fetch_one(&mut **connection)
+        .await
+        .map_err(|source| Unheld::Failed(query(OP_ACQUIRE, source)))?
+        .try_get(0)
+        .map_err(|source| Unheld::Failed(query(OP_ACQUIRE, source)))?;
+    if acquired {
+        Ok(())
+    } else {
+        Err(Unheld::Contended)
+    }
+}
+
+/// The refusal a spent bound answers, logged once where it is raised.
+fn exhausted(policy: RetryPolicy) -> Error {
+    let waited_ms = policy.budget().as_millis();
+    let error_code = error_code::STARTUP_MIGRATION_CHECK.as_str();
+    tracing::warn!(
+        attempts = policy.attempts,
+        waited_ms,
+        error_code,
+        event = "migrate_lock_exhausted"
+    );
+    Error::new(ErrorKind::MigrationLockUnavailable { waited_ms })
 }
 
 /// Whether the migration lock is currently free, without holding it.

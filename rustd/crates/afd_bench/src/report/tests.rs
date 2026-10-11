@@ -28,6 +28,10 @@ struct Scratch {
 }
 
 impl Scratch {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a scratch name needs nanoseconds to stay unique, finer than `clock::now`'s milliseconds"
+    )]
     fn new(label: &str) -> Self {
         let unique = format!(
             "afd-bench-{label}-{}-{:?}",

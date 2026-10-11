@@ -23,11 +23,6 @@ const BYTES_PER_TOKEN: usize = 4;
 /// The tokens of output a call reads back when the model names no budget:
 /// Codex's `DEFAULT_MAX_OUTPUT_TOKENS`.
 const OUTPUT_TOKENS_DEFAULT: usize = 10_000;
-/// What a shell adds to a signal's number to report it as an exit status.
-const SIGNAL_EXIT_BASE: i32 = 128;
-/// The signal the kernel's out-of-memory killer sends, `SIGKILL`, whose
-/// number every Unix fixes at 9.
-const OUT_OF_MEMORY_SIGNAL: i32 = 9;
 /// How a process that exited reads.
 const EXITED: &str = "Process exited with code";
 /// How a session still running reads.
@@ -215,17 +210,6 @@ pub(super) fn status(ending: Ending) -> String {
         Ending::TimedOut => TIMED_OUT.to_owned(),
         Ending::OutOfMemory => OUT_OF_MEMORY.to_owned(),
         Ending::Interrupted => INTERRUPTED.to_owned(),
-    }
-}
-
-/// The exit status the ledger reads: the process's own, or a shell's spelling
-/// of the signal that ended it; none when no status arrived.
-pub(super) fn exit_code(ending: Ending) -> Option<i32> {
-    match ending {
-        Ending::Exited(code) => Some(code),
-        Ending::Signaled(signal) => Some(SIGNAL_EXIT_BASE.saturating_add(signal)),
-        Ending::OutOfMemory => Some(SIGNAL_EXIT_BASE + OUT_OF_MEMORY_SIGNAL),
-        Ending::TimedOut | Ending::Interrupted => None,
     }
 }
 

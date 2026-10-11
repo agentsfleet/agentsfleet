@@ -26,10 +26,13 @@
 //! between the vendor's rotation and this daemon's redeploy.
 
 use afd_crypto::secret::SecretString;
+use garde::Unvalidated;
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
+
+use crate::error::{self, Result};
 
 /// The one algorithm this daemon will read a fire token under.
 ///
@@ -47,54 +50,14 @@ const EXPECTED_ISSUER: &str = "Upstash";
 /// decoder.
 pub const MAX_TOKEN_BYTES: usize = 8 * 1024;
 
-/// Why a fire was not believed.
+/// The fire token as it arrived, with the bound it must hold before the
+/// decoder reads a byte of it.
 ///
-/// One variant per reason an operator would act differently on: a key that is
-/// missing is a deployment to configure, a mismatched destination is a schedule
-/// registered against the wrong daemon, and a body mismatch is the one that
-/// means somebody is replaying a captured token.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Unverified {
-    /// This deployment holds no signing key to check against.
-    ///
-    /// Fail-closed: with no key there is nothing to verify, and accepting the
-    /// fire would let anyone who found the URL wake every fleet on it.
-    KeysMissing,
-    /// The token is longer than [`MAX_TOKEN_BYTES`], or is not a token at all.
-    Malformed,
-    /// Neither the current nor the next key produced this signature.
-    SignatureInvalid,
-    /// The token is not for this daemon, or not from the scheduler.
-    ///
-    /// Issuer and subject together: the subject is the destination URL the
-    /// schedule was registered against, so a token minted for another
-    /// deployment fails here rather than waking a fleet on this one.
-    WrongTarget,
-    /// The token's window has passed, or has not opened.
-    OutsideWindow,
-    /// The token is genuine and the body is not the one it was minted over.
-    BodyMismatch,
-}
-
-impl Unverified {
-    /// The scoped reason an operator reads in the log.
-    ///
-    /// A stable word per variant rather than a `Debug` rendering: this is the
-    /// value somebody greps for when a schedule stops firing, and a derived
-    /// spelling would change under a rename that meant nothing to them
-    /// (`LOGGING_STANDARD` §8A also refuses positional formatting in an emit).
-    #[must_use]
-    pub const fn reason(self) -> &'static str {
-        match self {
-            Self::KeysMissing => "signing_keys_absent",
-            Self::Malformed => "token_malformed",
-            Self::SignatureInvalid => "signature_invalid",
-            Self::WrongTarget => "wrong_target",
-            Self::OutsideWindow => "outside_window",
-            Self::BodyMismatch => "body_mismatch",
-        }
-    }
-}
+/// Declared on the field rather than checked by hand: an empty header and an
+/// oversized one are the same refusal, [`MAX_TOKEN_BYTES`].
+#[derive(Debug, Clone, Copy, garde::Validate)]
+#[garde(transparent)]
+struct Token<'a>(#[garde(length(bytes, min = 1, max = MAX_TOKEN_BYTES))] &'a str);
 
 /// What a believed fire carries.
 #[derive(Debug, Clone)]
@@ -139,20 +102,23 @@ pub struct SigningKeys {
 /// function accepted and did not use, which is worse than not taking one.
 ///
 /// # Errors
-/// [`Unverified`], one variant per reason — see that type on why they are not
-/// collapsed.
+/// One kind per reason a fire is not believed, read through
+/// [`crate::Error::refusal_word`]: a missing key is a deployment to configure, a body
+/// mismatch is somebody replaying a captured token. The keys are checked
+/// before the token, so a deployment that cannot verify says so whatever
+/// arrived.
 pub fn verify_at(
     keys: &SigningKeys,
     destination: &str,
     token: &str,
     body: &[u8],
-) -> Result<VerifiedFire, Unverified> {
+) -> Result<VerifiedFire> {
     if keys.current.is_empty() && keys.next.is_empty() {
-        return Err(Unverified::KeysMissing);
+        return Err(error::keys_missing());
     }
-    if token.is_empty() || token.len() > MAX_TOKEN_BYTES {
-        return Err(Unverified::Malformed);
-    }
+    let token = Unvalidated::new(Token(token))
+        .validate()
+        .map_err(|_bound| error::token_malformed())?;
 
     let mut validation = Validation::new(EXPECTED_ALGORITHM);
     validation.set_issuer(&[EXPECTED_ISSUER]);
@@ -172,7 +138,7 @@ pub fn verify_at(
         .filter(|key| !key.is_empty())
         .find_map(|key| {
             jsonwebtoken::decode::<Claims>(
-                token,
+                token.0,
                 &DecodingKey::from_secret(key.as_bytes()),
                 &validation,
             )
@@ -185,13 +151,12 @@ pub fn verify_at(
         // `ErrorKind` set that would have to be re-classified here to tell them
         // apart per key. What matters operationally is which SIDE failed, and
         // a second pass with the checks relaxed would be a second decode of an
-        // untrusted token. Reported as a signature failure, with the window and
-        // target variants reserved for the checks this file makes itself.
-        return Err(Unverified::SignatureInvalid);
+        // untrusted token. Reported as a signature failure.
+        return Err(error::signature_invalid());
     };
 
     if !body_matches(&decoded.claims.body, body) {
-        return Err(Unverified::BodyMismatch);
+        return Err(error::body_mismatch());
     }
 
     Ok(VerifiedFire {

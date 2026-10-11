@@ -23,7 +23,8 @@ afd_core.workspace = true
 # report names.
 afd_wire.workspace = true
 # The guard every outbound client carries: the resolver that refuses a
-# private address, no proxy, no redirect. A tenant's custom: endpoint meets it.
+# private address, no proxy, no redirect. A tenant's custom: endpoint meets it,
+# and the same blocked ranges judge an address literal it names.
 afr_egress.workspace = true
 # The bounded retry of a turn's send, the crate the supervisor's daemon calls
 # retry through.

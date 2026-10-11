@@ -89,3 +89,34 @@ fn unusable_platform_rows_emit_their_diagnostic() {
     let subscriber = tracing_subscriber::fmt().with_test_writer().finish();
     tracing::subscriber::with_default(subscriber, || unusable("github-app"));
 }
+
+/// A row that will not open leaves a line saying why without repeating the
+/// code its own `error_code` field carries, or a backtrace, and never the
+/// key's bytes.
+#[tokio::test]
+async fn an_unreadable_platform_credential_reason_carries_no_code_prefix() {
+    let capture = afd_core::test_util::trace::Capture::install();
+    let kek = afd_crypto::secret::Kek::from_hex(&"0".repeat(64)).expect("a 32-byte key");
+    let vault = crate::vault::Vault::new(
+        afd_db::test_util::unreachable_db(),
+        std::sync::Arc::new(kek),
+    );
+    let workspace = afd_core::id::Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011")
+        .expect("a fixture identifier");
+
+    assert!(
+        super::read(&vault, &workspace, "github_app")
+            .await
+            .is_none()
+    );
+
+    let logged = capture.only("platform_credential_unreadable");
+    let reason = logged.field("reason").expect("the line says why");
+    assert!(!reason.is_empty() && !reason.contains("[UZ-") && !reason.contains('\n'));
+    assert!(
+        logged
+            .field("error_code")
+            .is_some_and(|code| code.starts_with("UZ-"))
+    );
+    assert_eq!(logged.field("key"), Some("github_app"));
+}

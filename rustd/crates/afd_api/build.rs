@@ -28,6 +28,10 @@ const GIT: &str = "git";
 /// The knob an operator, `make` or CI sets to state the commit outright.
 const KNOB: &str = "GIT_COMMIT";
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a build script has no build-dependency on afd_core, and adding one for a single read would compile it for the host"
+)]
 fn main() {
     // Re-run when HEAD moves. Without this cargo caches the stamp and a
     // rebuild after a commit would report the previous one — a wrong answer,

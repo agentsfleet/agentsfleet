@@ -3,7 +3,7 @@
     clippy::unwrap_used,
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
-use super::object_from_slice;
+use super::{non_empty_str, object_from_slice};
 use serde::Deserialize;
 
 /// Two fields, which is what makes the positional reading reachable at all.
@@ -222,4 +222,22 @@ fn the_strict_reader_keeps_the_object_and_trailing_byte_refusals() {
         .expect_err("an array is still not an object");
     super::strict_object_from_slice::<Pair>(br#"{"provider":"a","api_key":"b"} more"#)
         .expect_err("trailing content is still refused");
+}
+
+/// Absent, not a string, and empty are one `None`; whitespace is kept as given.
+#[test]
+fn a_non_empty_string_member_is_the_only_one_read() {
+    let object = serde_json::json!({
+        "name": "acme",
+        "blank": "",
+        "padded": "  ",
+        "number": 7,
+    });
+
+    assert_eq!(non_empty_str(&object, "name"), Some("acme"));
+    assert_eq!(non_empty_str(&object, "padded"), Some("  "));
+    assert_eq!(non_empty_str(&object, "blank"), None);
+    assert_eq!(non_empty_str(&object, "number"), None);
+    assert_eq!(non_empty_str(&object, "missing"), None);
+    assert_eq!(non_empty_str(&serde_json::json!(["name"]), "name"), None);
 }

@@ -46,9 +46,10 @@ use std::collections::BTreeSet;
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::SubscriptionHub;
+use afd_dragonfly::fleet_activity_channel;
 use afd_dragonfly::streams::FleetStreams;
 use afd_events::{Filter, History, MAX_LIMIT};
-use afd_sse::{channel, tail};
+use afd_sse::tail;
 use futures_util::StreamExt as _;
 
 use crate::support::{DELIVERY_BUDGET, EventsLane};
@@ -187,7 +188,7 @@ async fn test_sse_reconnect_backfill() {
 /// intended it to.
 async fn deliver_live(lane: &EventsLane, ids: &[&str]) -> Vec<String> {
     let publisher = FleetStreams::new(lane.queue.clone());
-    let activity = channel::activity(&lane.fleet);
+    let activity = fleet_activity_channel(&lane.fleet);
     let hub = SubscriptionHub::start(EventsLane::redis())
         .await
         .expect("the hub starts");

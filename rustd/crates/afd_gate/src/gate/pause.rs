@@ -17,6 +17,7 @@
 //! a running fleet from every later poll.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 
 use super::sql;
@@ -88,8 +89,9 @@ impl Gates {
         // Only after the pause committed. See the module note.
         if let Err(fault) = self.ready().force_clear(fleet).await {
             afd_observability::producers::fleet::ready_write_failed();
-            let reason = fault.to_string();
+            let Logged { error_code, reason } = fault.logged();
             tracing::warn!(
+                error_code,
                 event = EVENT_READY_STALE,
                 fleet_id = fleet,
                 reason,

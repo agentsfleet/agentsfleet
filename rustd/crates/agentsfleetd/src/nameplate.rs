@@ -20,6 +20,8 @@
 
 use std::io::Write as _;
 
+use afd_core::env::EnvSource as _;
+
 /// The product name, letter-spaced, hard-coded.
 ///
 /// Spelled out rather than derived from the crate name at runtime: deriving it
@@ -103,8 +105,16 @@ impl Conditions {
     pub fn sense() -> Self {
         Self {
             stdout_is_terminal: std::io::IsTerminal::is_terminal(&std::io::stdout()),
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "a presence check: NO_COLOR set to any value, blank or non-UTF-8 included, disables colour, and afd_core::env would read either as unset"
+            )]
             no_colour: std::env::var_os(NO_COLOUR_KNOB).is_some(),
-            term: std::env::var(TERM_KNOB).ok(),
+            term: afd_core::env::ProcessEnv.get(TERM_KNOB),
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "a presence check: any value a service manager exports counts, and afd_core::env would read a blank or non-UTF-8 one as unset"
+            )]
             under_service_manager: std::env::var_os(SERVICE_MANAGER_KNOB).is_some(),
         }
     }

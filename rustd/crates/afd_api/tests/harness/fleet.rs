@@ -1,5 +1,10 @@
 //! Construction and fluent configuration for the HTTP test fleet.
 
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the harness's clients stand in for production's vendor, Slack and scheduler clients and reach only stubs or nothing; a proxy rule and a deadline are not what the router suites prove"
+)]
+
 use afd_connector::{Connectors, Exchange, Grants, PlatformApp};
 use afd_cron::{Fire, QStash, ScheduleService, Schedules as CronSchedules};
 use afd_ingress::Ingress;

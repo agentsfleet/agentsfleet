@@ -25,6 +25,7 @@
 
 use afd_billing::Nanos;
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::EventId;
 use afd_events::Closed;
@@ -169,10 +170,9 @@ pub(super) fn step(step: &'static str, lease: &Reported, lease_id: &str, outcome
     };
     let fleet = lease.fleet_id.as_str();
     let event = lease.event_id.as_str();
-    let reason = failure.to_string();
-    let code = failure.code().as_str();
+    let Logged { error_code, reason } = failure.logged();
     tracing::warn!(
-        error_code = code,
+        error_code,
         fleet_id = fleet,
         agentsfleet_event_id = event,
         lease_id,

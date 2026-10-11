@@ -8,7 +8,7 @@ use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse as _, Response};
 
 use super::query;
-use crate::handler::{malformed, refuse};
+use crate::handler::{malformed, parse_id, refuse};
 use crate::services::Services;
 
 const EVENT: &str = "runner_leases_failed";
@@ -63,9 +63,9 @@ pub(crate) async fn list<D: Services>(
     Path(raw): Path<String>,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    let runner = match query::runner_id(&raw) {
+    let runner = match parse_id(&raw, query::DETAIL_BAD_RUNNER_ID) {
         Ok(runner) => runner,
-        Err(detail) => return malformed(detail),
+        Err(refused) => return refused.into_response(),
     };
     let query = match query::leases(&params) {
         Ok(query) => query,

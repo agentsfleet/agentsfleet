@@ -161,6 +161,10 @@ impl Staged {
     /// Composed the way the daemon's root composes it, with a broker over a
     /// deployment holding no platform app: a drained fleet declares no
     /// integration, so nothing here is ever asked to mint.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a drained fleet declares no integration, so the broker's vendor client never sends a request"
+    )]
     pub(super) fn plane(&self, stores: &Datastores) -> Plane {
         let database = stores.database.clone();
         Plane {

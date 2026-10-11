@@ -202,6 +202,10 @@ async fn refusal_drains(preended: bool) {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     connect_and_declare(&run).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
     let http = reqwest::Client::new();
     let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
     assert_eq!(beat.status().as_u16(), 200);

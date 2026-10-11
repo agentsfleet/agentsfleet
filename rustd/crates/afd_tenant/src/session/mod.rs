@@ -317,7 +317,7 @@ impl Sessions {
 /// value and the blob carries the same instant, and two constants would let
 /// them drift by exactly the amount nobody notices.
 fn session_ttl_millis() -> i64 {
-    i64::try_from(afd_dragonfly::session::SESSION_TTL.as_millis()).unwrap_or(i64::MAX)
+    afd_core::clock::saturating_millis_signed(afd_dragonfly::session::SESSION_TTL)
 }
 
 /// Refuses a session id that is not a version 7 identifier.
@@ -335,3 +335,10 @@ pub type SessionError = Error;
 
 mod response;
 pub use self::response::{Cancelled, Opened, Redeemed, Waiting};
+
+#[cfg(test)]
+#[test]
+fn a_session_expires_on_the_queues_own_ttl() {
+    let ttl = u128::try_from(session_ttl_millis()).ok();
+    assert_eq!(ttl, Some(afd_dragonfly::session::SESSION_TTL.as_millis()));
+}

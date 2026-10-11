@@ -5,6 +5,7 @@
 //! here is fire-and-forget telemetry: no consumer group, no persistence, and a
 //! frame nobody was subscribed for is simply gone.
 
+use afd_core::error_code::{Coded as _, Logged};
 use serde::Serialize;
 
 use super::{FleetStreams, fleet_activity_channel};
@@ -80,8 +81,9 @@ impl FleetStreams {
             return;
         };
         if let Err(unreachable_queue) = self.publish_tail(fleet_id, &payload).await {
-            let reason = unreachable_queue.to_string();
+            let Logged { error_code, reason } = unreachable_queue.logged();
             tracing::debug!(
+                error_code,
                 fleet_id,
                 reason,
                 event = EVENT_FRAME_DROPPED,
@@ -130,5 +132,37 @@ mod tests {
         )
         .await
         .expect("the frame is dropped at serialization, not after a connect attempt");
+    }
+
+    /// A frame the queue would not take is logged with the failure's sentence
+    /// and its causes, not its rendered `[CODE]` and backtrace.
+    #[tokio::test]
+    async fn a_dropped_frame_reason_carries_no_code_prefix() {
+        let recorder = afd_core::test_util::trace::Capture::install();
+        let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE.to_owned())
+            .with_request_timeout(Duration::from_millis(200));
+        let queue = Dragonfly::unreachable(&config).expect("a lazy handle opens no socket");
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            FleetStreams::new(queue).publish_frame("fleet-1", &"frame"),
+        )
+        .await
+        .expect("the publish gives up within its request budget");
+
+        let events = recorder.events();
+        let dropped = events
+            .iter()
+            .find(|record| {
+                record.fields.get("event").map(String::as_str) == Some(super::EVENT_FRAME_DROPPED)
+            })
+            .expect("a frame the queue would not take is logged");
+        assert!(
+            dropped
+                .fields
+                .get("error_code")
+                .is_some_and(|code| !code.is_empty())
+        );
+        let reason = dropped.fields.get("reason").expect("the drop names why");
+        assert!(!reason.is_empty() && !reason.contains("[UZ-"), "{reason}");
     }
 }

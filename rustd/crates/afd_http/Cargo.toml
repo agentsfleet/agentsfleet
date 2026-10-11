@@ -20,6 +20,8 @@ openapi = ["dep:utoipa"]
 
 [dependencies]
 percent-encoding.workspace = true
+# A request id is its entropy in lowercase hex.
+hex.workspace = true
 afd_admin.workspace = true
 afd_approval.workspace = true
 afd_auth.workspace = true
@@ -84,6 +86,8 @@ afd_core = { workspace = true, features = ["test-util"] }
 afd_connector = { workspace = true, features = ["test-util"] }
 afd_cron = { workspace = true, features = ["test-util"] }
 afd_ingress = { workspace = true, features = ["test-util"] }
+# The mocked entropy a request id is minted from in its own suite.
+afd_crypto = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower = { workspace = true, features = ["util"] }
 

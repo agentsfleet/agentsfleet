@@ -10,13 +10,14 @@
 //!
 //! # Why the character rules are not regular expressions
 //!
-//! All three are single-pass byte predicates over ASCII. A regex crate would be
-//! a dependency, a compile step and an allocation for what `bytes().all(…)`
-//! answers in one line — and the daemon parses a config on every claim.
+//! All three are single-pass predicates over ASCII. A regex crate would be a
+//! dependency, a compile step and an allocation for what one `chars().all(…)`
+//! answers — and the daemon parses a config on every claim.
 
 use std::fmt;
 
-use garde::{Unvalidated, Valid};
+use afd_validate::rules::{OUTSIDE_CHARSET, charset};
+use garde::{Report, Validate as _};
 
 use crate::error::{ErrorKind, Result};
 
@@ -46,7 +47,12 @@ impl FleetName {
     /// # Errors
     /// [`Error::InvalidName`] naming which rule was broken.
     pub fn parse(authored: &str) -> Result<Self> {
-        refusal(authored, MAX_NAME_LEN, is_slug_byte, REASON_NAME_CHARSET).map_or_else(
+        refusal(
+            AuthoredName { text: authored }.validate(),
+            authored,
+            REASON_NAME_CHARSET,
+        )
+        .map_or_else(
             || Ok(Self(authored.into())),
             |reason| {
                 Err(ErrorKind::InvalidName {
@@ -73,9 +79,8 @@ impl CredentialName {
     /// [`Error::InvalidCredentialRef`] naming which rule was broken.
     pub fn parse(authored: &str) -> Result<Self> {
         refusal(
+            AuthoredCredential { text: authored }.validate(),
             authored,
-            MAX_CREDENTIAL_LEN,
-            is_credential_byte,
             REASON_CREDENTIAL_CHARSET,
         )
         .map_or_else(
@@ -155,54 +160,60 @@ authored_str!(
     Version => "version",
 );
 
-/// An authored name, with the length its caller allows passed as context.
-///
-/// The bound is garde's; the charset is the reader's, and it runs only on a
-/// value this bound proved, so it never walks an over-long string.
+/// An authored fleet name: its bound and its charset, both declared here.
 #[derive(Debug, garde::Validate)]
-#[garde(context(usize as max_len))]
-struct Authored<'a> {
-    #[garde(length(bytes, min = 1, max = *max_len))]
+struct AuthoredName<'a> {
+    #[garde(length(bytes, min = 1, max = MAX_NAME_LEN), custom(charset(is_slug_char)))]
     text: &'a str,
 }
 
-/// The reason `authored` is not a bounded ASCII slug, or `None` if it is one.
+/// An authored credential reference, as [`AuthoredName`] with its own rules.
+#[derive(Debug, garde::Validate)]
+struct AuthoredCredential<'a> {
+    #[garde(
+        length(bytes, min = 1, max = MAX_CREDENTIAL_LEN),
+        custom(charset(is_credential_char))
+    )]
+    text: &'a str,
+}
+
+/// The reason `verdict` refused `authored`, or `None` if it kept its rules.
 ///
 /// Answers the reason rather than a built [`Error`] because each caller raises
 /// its OWN kind — `InvalidName` names a fleet, `InvalidCredentialRef` names a
 /// vault reference — and one error type per surface is `RUST_ERROR_STANDARD`
-/// rule 1. What the two share is the ORDER: the bound before the charset, so
-/// an empty or over-long name is never reported as a charset violation.
+/// rule 1. What the two share is the ORDER: garde reports every rule a field
+/// breaks, so a length break wins over a charset one here, and an empty or
+/// over-long name is never reported as a charset violation.
 fn refusal(
+    verdict: Result<(), Report>,
     authored: &str,
-    max_len: usize,
-    allowed: fn(u8) -> bool,
     charset_reason: &'static str,
 ) -> Option<&'static str> {
-    match Unvalidated::new(Authored { text: authored }).validate_with(&max_len) {
-        Ok(proved) => charset_refusal(&proved, allowed, charset_reason),
-        Err(_report) if authored.is_empty() => Some(REASON_EMPTY),
-        Err(_report) => Some(REASON_TOO_LONG),
-    }
+    let report = verdict.err()?;
+    let reason = match (length_broke(&report), authored.is_empty()) {
+        (false, _) => charset_reason,
+        (true, true) => REASON_EMPTY,
+        (true, false) => REASON_TOO_LONG,
+    };
+    Some(reason)
 }
 
-/// The charset reason a proved name breaks, or `None`.
-fn charset_refusal(
-    proved: &Valid<Authored<'_>>,
-    allowed: fn(u8) -> bool,
-    reason: &'static str,
-) -> Option<&'static str> {
-    (!proved.text.bytes().all(allowed)).then_some(reason)
+/// Whether any rule but the charset broke: the only other rule is the length.
+fn length_broke(report: &Report) -> bool {
+    report
+        .iter()
+        .any(|(_path, broken)| broken.message() != OUTSIDE_CHARSET)
 }
 
-/// Whether `byte` may appear in a kebab slug.
-const fn is_slug_byte(byte: u8) -> bool {
-    byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+/// Whether `character` may appear in a kebab slug.
+const fn is_slug_char(character: char) -> bool {
+    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
 }
 
-/// Whether `byte` may appear in a credential reference.
-const fn is_credential_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
+/// Whether `character` may appear in a credential reference.
+const fn is_credential_char(character: char) -> bool {
+    character.is_ascii_alphanumeric() || character == '_'
 }
 
 #[cfg(test)]

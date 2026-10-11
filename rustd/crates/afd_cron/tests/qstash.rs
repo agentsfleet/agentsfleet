@@ -21,7 +21,15 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_cron::qstash::{INGRESS_PATH, InvalidDestination, MAX_DESTINATION_BYTES, destination_url};
+use afd_cron::error::detail::{DESTINATION_NOT_PLAIN_ORIGIN, DESTINATION_UNUSABLE};
+use afd_cron::qstash::{INGRESS_PATH, MAX_DESTINATION_BYTES, destination_url};
+
+/// The sentence `url`'s refusal tells, so each case names WHICH refusal.
+fn refusal(url: &str) -> &'static str {
+    destination_url(url)
+        .expect_err("this url must not become a callback")
+        .detail()
+}
 
 /// A deployment's API URL, as an operator would configure it.
 const API: &str = "https://api.example.com";
@@ -50,16 +58,16 @@ fn a_trailing_slash_does_not_become_a_double_one() {
 #[test]
 fn a_url_carrying_a_query_is_refused_rather_than_stripped() {
     assert_eq!(
-        destination_url(&format!("{API}/?tenant=acme")),
-        Err(InvalidDestination::NotAPlainOrigin)
+        refusal(&format!("{API}/?tenant=acme")),
+        DESTINATION_NOT_PLAIN_ORIGIN
     );
 }
 
 #[test]
 fn a_url_carrying_a_fragment_is_refused_rather_than_stripped() {
     assert_eq!(
-        destination_url(&format!("{API}/#section")),
-        Err(InvalidDestination::NotAPlainOrigin)
+        refusal(&format!("{API}/#section")),
+        DESTINATION_NOT_PLAIN_ORIGIN
     );
 }
 
@@ -90,8 +98,8 @@ fn a_value_that_is_not_a_url_at_all_is_unusable() {
         "://missing-scheme",
     ] {
         assert_eq!(
-            destination_url(candidate),
-            Err(InvalidDestination::Unusable),
+            refusal(candidate),
+            DESTINATION_UNUSABLE,
             "`{candidate}` is not a URL this daemon can register a callback on"
         );
     }
@@ -103,8 +111,8 @@ fn a_destination_over_the_cap_is_refused() {
     let long = format!("{API}/{}", "a".repeat(MAX_DESTINATION_BYTES));
 
     assert_eq!(
-        destination_url(&long),
-        Err(InvalidDestination::Unusable),
+        refusal(&long),
+        DESTINATION_UNUSABLE,
         "a destination longer than the cap must not be registered"
     );
 }
@@ -124,8 +132,8 @@ fn the_cap_is_measured_after_the_path_is_appended() {
         just_over.len()
     );
     assert_eq!(
-        destination_url(&just_over),
-        Err(InvalidDestination::Unusable),
+        refusal(&just_over),
+        DESTINATION_UNUSABLE,
         "it is only over once the ingress path is on it"
     );
 }
