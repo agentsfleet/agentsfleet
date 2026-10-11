@@ -6,8 +6,10 @@ M211_001 Discovery requires six spikes before EXECUTE. This page holds their raw
 
 | Machine | Role | Facts |
 |---|---|---|
-| `afr-kernel` | kernel lane, the root-mode build, S1, S2, S3, S5, S6 | Ubuntu 24.04.5 arm64 on OrbStack, kernel 7.0.14-orbstack, 7 CPUs, 7 GB of memory; Linux Security Modules (LSM) `capability,landlock,yama,bpf`; cgroup v2 controllers `cpuset cpu io memory pids`; no `/dev/kvm`; rustc 1.98.1, bubblewrap 0.9.0, mmdebstrap 1.4.3, erofs-utils 1.7.1, cryptsetup 2.7.0 |
+| `afr-kernel` | kernel lane, the root-mode build, S1, S2, S3, S5, S6 | Oct 04 measurements: Ubuntu 24.04.5 arm64 on OrbStack, kernel 7.0.14-orbstack, 7 CPUs, 7 GB of memory; Linux Security Modules (LSM) `capability,landlock,yama,bpf`; cgroup v2 controllers `cpuset cpu io memory pids`; no `/dev/kvm`; rustc 1.98.1, bubblewrap 0.9.0, mmdebstrap 1.4.3, erofs-utils 1.7.1, cryptsetup 2.7.0. M220_001 now uses Debian 13.7; see the [setup guide](../../development.md#runner-kernel-lane-on-debian-13). |
 | `afr-build-a`, `afr-build-b` | the two clean unprivileged builders for S4 | Ubuntu 24.04 arm64 on OrbStack |
+
+The spike results below remain measurements from the Oct 04 machines.
 
 ## The spike image
 
