@@ -30,6 +30,7 @@
 )]
 
 use afd_core::clock::UnixMillis;
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_core::id::Uuid7;
 use afd_cron::{NewSchedule, Refused, Schedule, Schedules, Source};
 use afd_crypto::entropy::Entropy;
@@ -193,13 +194,13 @@ impl CronLane {
 
     /// The lane's Dragonfly configuration.
     pub(crate) fn redis() -> DragonflyConfig {
-        let url = std::env::var(DRAGONFLY_URL_KNOB).unwrap_or_else(|_unset| {
+        let url = ProcessEnv.get(DRAGONFLY_URL_KNOB).unwrap_or_else(|| {
             panic!(
                 "{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`"
             )
         });
         DragonflyConfig::from_url(DragonflyRole::Default, url)
-            .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
+            .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
             .with_request_timeout(REQUEST_BUDGET)
     }
 

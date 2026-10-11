@@ -58,6 +58,10 @@ pub fn optional<E: EnvSource + ?Sized>(env: &E, knob: &str) -> Option<Box<str>> 
 pub struct ProcessEnv;
 
 impl EnvSource for ProcessEnv {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "this is the owner: the one read of the process environment"
+    )]
     fn get(&self, key: &str) -> Option<String> {
         std::env::var(key).ok()
     }

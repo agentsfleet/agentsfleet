@@ -126,6 +126,21 @@ pub(crate) fn vendor_exchange_client() -> reqwest::Result<reqwest::Client> {
 ///
 /// # Errors
 /// A builder that will not build, which refuses boot.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the scheduler's client honours an environment proxy, which afd_identity::direct refuses"
+)]
 pub(crate) fn schedule_client() -> reqwest::Result<reqwest::Client> {
     reqwest::Client::builder().timeout(SCHEDULE_TIMEOUT).build()
+}
+
+/// [`schedule_client`], for the suite that proves it honours an environment
+/// proxy: that suite writes the process environment, so it is a binary of its
+/// own and cannot reach a crate-private item.
+///
+/// # Errors
+/// As [`schedule_client`].
+#[cfg(feature = "test-util")]
+pub fn proxied_schedule_client() -> reqwest::Result<reqwest::Client> {
+    schedule_client()
 }

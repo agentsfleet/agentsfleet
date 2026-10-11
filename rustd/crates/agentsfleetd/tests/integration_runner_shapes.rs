@@ -126,6 +126,10 @@ const MEMORY_SHAPE: &[&str] = &[
 async fn test_seeded_row_shapes() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
     let http = reqwest::Client::new();
 
     let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;

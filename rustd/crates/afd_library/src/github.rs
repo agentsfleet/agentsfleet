@@ -90,6 +90,10 @@ impl GithubSource {
         if !valid_segment(&revision) {
             return Err(SourceFailure::InvalidReference.into());
         }
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the GitHub library fetch honours an environment proxy, which `direct` refuses"
+        )]
         let client = reqwest::Client::builder()
             .connect_timeout(CONNECT_TIMEOUT)
             .timeout(REQUEST_TIMEOUT)

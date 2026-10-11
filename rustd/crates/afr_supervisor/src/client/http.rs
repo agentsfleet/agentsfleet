@@ -48,6 +48,10 @@ impl HttpRunnerApi {
         let mut authorization = HeaderValue::from_str(&bearer)
             .map_err(|_unprintable| error::config(DETAIL_TOKEN_UNPRINTABLE))?;
         authorization.set_sensitive(true);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the runner's client to its own daemon; afd_identity::direct is a daemon crate the runner does not depend on, and its no_proxy would change how this client routes on a host with an environment proxy"
+        )]
         let client = reqwest::Client::builder()
             .timeout(CALL_TIMEOUT)
             .default_headers(HeaderMap::from_iter([(AUTHORIZATION, authorization)]))

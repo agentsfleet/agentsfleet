@@ -19,6 +19,7 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
+use afd_core::env::{EnvSource, ProcessEnv};
 use tokio::sync::Mutex;
 
 use afd_bench::datastores::Datastores;
@@ -38,19 +39,19 @@ pub(crate) static LANE: Mutex<()> = Mutex::const_new(());
 
 /// The lane's Dragonfly URL, for the outbound lane's dedicated reader.
 pub(crate) fn dragonfly_url() -> String {
-    std::env::var(DRAGONFLY_KNOB).unwrap_or_else(|_unset| {
+    ProcessEnv.get(DRAGONFLY_KNOB).unwrap_or_else(|| {
         panic!("{DRAGONFLY_KNOB} is unset — run through make test-integration-rustd")
     })
 }
 
 /// The lane's Dragonfly certificate authority, when it serves TLS.
 pub(crate) fn ca_cert() -> Option<String> {
-    std::env::var(CA_KNOB).ok()
+    ProcessEnv.get(CA_KNOB)
 }
 
 /// Both datastores, opened the way a lane opens them.
 pub(crate) async fn datastores() -> Datastores {
-    let database = std::env::var(DATABASE_KNOB).unwrap_or_else(|_unset| {
+    let database = ProcessEnv.get(DATABASE_KNOB).unwrap_or_else(|| {
         panic!("{DATABASE_KNOB} is unset — run through make test-integration-rustd")
     });
     Datastores::open(&database, &dragonfly_url(), ca_cert())

@@ -14,6 +14,7 @@
 
 use std::time::Instant;
 
+use afd_core::env::{EnvSource, ProcessEnv};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
@@ -25,13 +26,14 @@ const CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 const SAMPLES: usize = 40;
 
 fn lane(knob: &str) -> String {
-    std::env::var(knob)
-        .unwrap_or_else(|_| panic!("{knob} unset — run through `make test-integration-rustd`"))
+    ProcessEnv
+        .get(knob)
+        .unwrap_or_else(|| panic!("{knob} unset — run through `make test-integration-rustd`"))
 }
 
 fn config() -> DragonflyConfig {
     DragonflyConfig::from_url(DragonflyRole::Default, lane("TEST_DRAGONFLY_URL"))
-        .with_ca_cert_file(std::env::var(CA_KNOB).ok().map(Into::into))
+        .with_ca_cert_file(ProcessEnv.get(CA_KNOB).map(Into::into))
 }
 
 /// The value at a percentile, indexed with integers.

@@ -4,6 +4,10 @@
     clippy::expect_used,
     reason = "test construction failures should stop the mapping proof"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the plane is built only to compare store addresses; its clients never send a request"
+)]
 
 use std::sync::Arc;
 

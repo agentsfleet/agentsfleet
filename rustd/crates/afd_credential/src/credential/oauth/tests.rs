@@ -10,6 +10,10 @@
     clippy::unwrap_used,
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "no client here sends: one builds a request to read its form, the other backs a mint that refuses before dialling"
+)]
 
 use serde_json::{Value, json};
 use zeroize::Zeroizing;

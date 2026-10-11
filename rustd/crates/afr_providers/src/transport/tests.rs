@@ -3,6 +3,10 @@
     clippy::indexing_slicing,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the transport under test wraps a plain loopback client; the egress guard and afd_identity::direct are not what these tests prove"
+)]
 
 use std::convert::Infallible;
 use std::error::Error as StdError;

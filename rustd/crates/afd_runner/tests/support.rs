@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use afd_core::env::{EnvSource as _, ProcessEnv};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use tracing::field::{Field, Visit};
@@ -18,11 +19,11 @@ const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
 const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 pub(crate) async fn connect_redis() -> Dragonfly {
-    let url = std::env::var(DRAGONFLY_URL_KNOB).unwrap_or_else(|_| {
+    let url = ProcessEnv.get(DRAGONFLY_URL_KNOB).unwrap_or_else(|| {
         panic!("{DRAGONFLY_URL_KNOB} is unset; use the integration make target")
     });
     let config = DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(std::env::var(DRAGONFLY_CA_KNOB).ok().map(Into::into))
+        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
         .with_connect_timeout(Duration::from_secs(5))
         .with_request_timeout(Duration::from_secs(5));
     afd_dragonfly::test_util::connect_live(&config)

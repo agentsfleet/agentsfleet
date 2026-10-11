@@ -74,6 +74,10 @@ pub(crate) const IDENTITY_KNOBS: [&str; 5] = [
 /// a sink; the point is evaluation, not reading.
 pub(crate) fn install_subscriber() {
     static ONCE: std::sync::Once = std::sync::Once::new();
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a presence check: AFD_TEST_LOG set to any value, blank or non-UTF-8 included, turns logging on, and afd_core::env would read either as unset"
+    )]
     ONCE.call_once(|| {
         // A sink by default, stderr under `AFD_TEST_LOG`. The default is what
         // keeps a passing lane readable; the switch is what makes a live-service

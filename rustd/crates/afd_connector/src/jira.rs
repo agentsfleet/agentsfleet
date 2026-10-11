@@ -129,6 +129,10 @@ mod tests {
     /// The token rides as `Bearer <token>`, marked sensitive so a request that
     /// is rendered for a log or a debugger never shows it.
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the client only builds a request for inspection and sends nothing"
+    )]
     fn the_site_listing_presents_the_token_as_a_sensitive_bearer() {
         let built = request(
             &reqwest::Client::new(),

@@ -130,6 +130,10 @@ mod tests {
         let mut supervisor = Supervisor::new();
         let log = afd_core::test_util::trace::Capture::install();
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the worker never connects, so its poster client is never used and needs no bounds"
+        )]
         super::spawn(
             &mut supervisor,
             &config,

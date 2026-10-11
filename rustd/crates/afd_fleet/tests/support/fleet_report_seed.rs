@@ -239,6 +239,10 @@ impl Fixtures {
     /// why the suites next door use that. The coverage GATES are not: they read
     /// the wallet through `Accounts` and the fleet's ceiling through the config
     /// parser, so proving a refusal needs the composed plane the daemon builds.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the broker's vendors hold Platform::empty(), so this client never exchanges a credential or sends a request; afd_identity::direct's deadline and no_proxy have nothing to bound"
+    )]
     pub(crate) fn plane(&self) -> Plane {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
         Plane {

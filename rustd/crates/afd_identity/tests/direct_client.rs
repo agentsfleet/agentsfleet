@@ -60,6 +60,10 @@ async fn serve() -> String {
 /// reaches the endpoint, and a client built the default way does not: the
 /// control proves the variables are read at all.
 #[test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the control: a default-built client that honours the environment proxy `direct` refuses"
+)]
 fn a_direct_client_ignores_an_environment_proxy() {
     for variable in PROXY_VARIABLES {
         // SAFETY: this binary's one test, before any runtime or thread exists,

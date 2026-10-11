@@ -2,6 +2,10 @@
     clippy::unwrap_used,
     reason = "test module: a failed precondition should fail the test loudly"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "tests build a SystemTime-based HTTP date for retry_after and a plain client to provoke a refused connect; neither is a knob or a credentialed call"
+)]
 
 use std::time::{Duration, SystemTime};
 

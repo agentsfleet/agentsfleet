@@ -56,6 +56,10 @@ fn answered(marker: &AnswerMarker) -> String {
     )
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the client dials only the loopback fake; the read sets its own deadline"
+)]
 async fn check(fake: &FakeSlack) -> Result<bool, Unavailable> {
     let token = SecretString::new(TOKEN.to_owned());
     slack::holds_answer(

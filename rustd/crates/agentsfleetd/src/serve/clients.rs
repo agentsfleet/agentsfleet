@@ -64,6 +64,10 @@ mod tests {
     /// A builder failure, raised the way a refused build raises one: a request
     /// whose URL will not parse fails in the same `reqwest::Error` type.
     fn refused() -> reqwest::Result<reqwest::Client> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the client only builds a request that fails to parse; it never sends"
+        )]
         let failure = reqwest::Client::new()
             .get("not a url")
             .build()

@@ -14,7 +14,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use afd_core::env::MapEnv;
+use afd_core::env::{EnvSource, MapEnv, ProcessEnv};
 use afd_db::config::{DbRole, PoolConfig};
 
 pub(crate) const LANE_KNOB: &str = "TEST_DATABASE_URL";
@@ -28,9 +28,9 @@ pub(crate) const CONNECT_BUDGET: Duration = Duration::from_millis(ACQUIRE_BUDGET
 
 /// The lane's Postgres, as an address a proxy can forward to.
 pub(crate) fn lane_target() -> SocketAddr {
-    let url = std::env::var(LANE_KNOB).unwrap_or_else(|_| {
-        panic!("{LANE_KNOB} is unset — run these through the integration lane")
-    });
+    let url = ProcessEnv
+        .get(LANE_KNOB)
+        .unwrap_or_else(|| panic!("{LANE_KNOB} is unset — run these through the integration lane"));
     let after_scheme = url.split_once("://").expect("a URL has a scheme").1;
     let authority = after_scheme
         .rsplit_once('@')
@@ -56,9 +56,9 @@ pub(crate) fn lane_target() -> SocketAddr {
 
 /// The lane's own database, for the faults that only need a socket to die on.
 pub(crate) fn lane_database() -> String {
-    let url = std::env::var(LANE_KNOB).unwrap_or_else(|_| {
-        panic!("{LANE_KNOB} is unset — run these through the integration lane")
-    });
+    let url = ProcessEnv
+        .get(LANE_KNOB)
+        .unwrap_or_else(|| panic!("{LANE_KNOB} is unset — run these through the integration lane"));
     let after_scheme = url.split_once("://").expect("a URL has a scheme").1;
     let path = after_scheme
         .split_once('/')
