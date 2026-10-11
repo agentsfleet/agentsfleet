@@ -40,28 +40,18 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::{Recorded, RepositoryBinding};
-use moka::Expiry;
 use moka::future::Cache;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
-use zeroize::Zeroizing;
 
+use self::cache::{Cached, PerToken, Refused};
+pub use self::vendors::{Exchanger, Vendors};
 use crate::credential::outcome::{Minted, Outcome, Retry};
-use crate::credential::platform::Platform;
-use crate::credential::{github, oauth};
-use crate::secrets::connector::{Connector, Connectors, Exchange, FIELD_INTEGRATION};
-
-/// Re-mint this many milliseconds BEFORE the upstream expiry.
-///
-/// A token handed to a tool call has to outlive the call, and the daemon cannot
-/// know how long that is. Erring early is the only safe direction: too much
-/// slack costs a re-mint, too little costs a 401 mid-run.
-const EXPIRY_SKEW_MS: i64 = 60_000;
+use crate::secrets::connector::{Connector, Connectors, FIELD_INTEGRATION};
 
 /// How many live tokens the process will hold.
 ///
@@ -87,9 +77,6 @@ const ROTATING_FIELDS: [&str; 3] = [
     "access_token",
     FIELD_EXPIRES_AT_MS,
 ];
-
-/// The vault-handle field a `static` connector's credential sits in.
-const FIELD_TOKEN: &str = "token";
 
 /// What one runner is asking for.
 #[derive(Debug, Clone, Copy)]
@@ -137,228 +124,6 @@ struct Scope<'a> {
     binding: Option<Recorded<'a>>,
 }
 
-/// A token this process is holding on to.
-#[derive(Clone)]
-struct Cached {
-    /// The credential.
-    token: Zeroizing<String>,
-    /// When it stops working upstream.
-    expires_at_ms: i64,
-    /// A refresh token the exchange rotated, held only until the caller that
-    /// performed that exchange has taken it — see [`Broker::mint`].
-    rotated_refresh_token: Option<Zeroizing<String>>,
-    /// How long this entry may stay cached, skew already subtracted.
-    live_for: Duration,
-}
-
-// Hand-written for [`Minted`]'s reason: a derived one prints the token, and
-// `Debug` is what a `tracing` field renders through.
-impl std::fmt::Debug for Cached {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Cached")
-            .field(FIELD_EXPIRES_AT_MS, &self.expires_at_ms)
-            .field("live_for", &self.live_for)
-            .finish_non_exhaustive()
-    }
-}
-
-impl Cached {
-    /// The cache entry for a freshly minted credential.
-    fn new(minted: Minted, now_ms: i64) -> Self {
-        // Saturating, and then clamped at zero by the conversion: a provider
-        // that returned a token expiring inside the skew is cached for no time
-        // at all rather than for a negative one. The CALLER still receives it —
-        // what it does not get is a second caller a minute later.
-        let live_ms = minted
-            .expires_at_ms
-            .saturating_sub(now_ms)
-            .saturating_sub(EXPIRY_SKEW_MS);
-        Self {
-            token: minted.token,
-            expires_at_ms: minted.expires_at_ms,
-            rotated_refresh_token: minted.rotated_refresh_token,
-            live_for: Duration::from_millis(u64::try_from(live_ms).unwrap_or(0)),
-        }
-    }
-
-    /// Whether this entry is still worth handing over at `now_ms`.
-    ///
-    /// Checked against the INJECTED clock rather than left to `moka`'s own
-    /// expiry alone, which is what keeps the decision provable without waiting
-    /// for wall-clock time to pass. The two agree; this one is the earlier of
-    /// them and the one a test can drive.
-    const fn is_live(&self, now_ms: i64) -> bool {
-        now_ms < self.expires_at_ms.saturating_sub(EXPIRY_SKEW_MS)
-    }
-
-    /// This entry with the rotation dropped.
-    ///
-    /// Written back over the fresh entry as soon as the minting caller has the
-    /// replacement, so a refresh token does not sit in a process-wide cache for
-    /// the life of the access token beside it.
-    fn without_rotation(&self) -> Self {
-        Self {
-            token: self.token.clone(),
-            expires_at_ms: self.expires_at_ms,
-            rotated_refresh_token: None,
-            live_for: self.live_for,
-        }
-    }
-}
-
-/// Expires each entry by its OWN remaining life.
-///
-/// A single `time_to_live` cannot: a GitHub installation token lasts an hour, a
-/// Zoho access token whatever Zoho said, and a `static` handle forever. Left to
-/// an LRU alone, a dead token would sit in memory until something else needed
-/// the slot.
-struct PerToken;
-
-impl Expiry<Key, Cached> for PerToken {
-    fn expire_after_create(
-        &self,
-        _key: &Key,
-        value: &Cached,
-        _created_at: std::time::Instant,
-    ) -> Option<Duration> {
-        Some(value.live_for)
-    }
-}
-
-/// Why a mint produced no credential.
-///
-/// The non-`Ok` half of [`Outcome`], as its own type because `moka`'s
-/// `try_get_with` needs an error to hand every waiter — and because a value
-/// that cannot hold a token is what keeps a refusal out of the cache by
-/// construction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Refused {
-    /// A human must connect the integration again.
-    Reconnect,
-    /// The exchange produced nothing.
-    Failed(Retry),
-    /// The handle names a connector this registry does not carry.
-    Unknown,
-    /// This deployment holds no platform credential for the connector.
-    Unconfigured,
-}
-
-impl From<Refused> for Outcome {
-    fn from(refused: Refused) -> Self {
-        match refused {
-            Refused::Reconnect => Self::ReconnectRequired,
-            Refused::Failed(retry) => Self::MintFailed(retry),
-            Refused::Unknown => Self::UnknownIntegration,
-            Refused::Unconfigured => Self::Unconfigured,
-        }
-    }
-}
-
-/// Performs one exchange, whatever the connector's kind.
-///
-/// The seam the production dispatch and a test's counting stand-in both sit
-/// behind. Boxed rather than an `async fn` in the trait because the broker
-/// holds it as `dyn` — one allocation per COLD mint, against an HTTPS round
-/// trip.
-pub trait Exchanger: std::fmt::Debug + Send + Sync {
-    /// Mints through `connector`, or says why it could not.
-    fn exchange<'a>(
-        &'a self,
-        connector: &'a dyn Connector,
-        ask: Ask<'a>,
-    ) -> std::pin::Pin<Box<dyn Future<Output = Outcome> + Send + 'a>>;
-}
-
-/// The production dispatch: this deployment's platform credentials, and one
-/// HTTP client.
-#[derive(Debug)]
-pub struct Vendors {
-    /// This deployment's own App and OAuth clients.
-    platform: Platform,
-    /// Shared, so the connection pool and the timeout are one decision.
-    http: reqwest::Client,
-}
-
-impl Vendors {
-    /// The dispatch over `platform`, posting through `http`.
-    #[must_use]
-    pub const fn new(platform: Platform, http: reqwest::Client) -> Self {
-        Self { platform, http }
-    }
-}
-
-impl Exchanger for Vendors {
-    /// One `match`, and it is the only one in the broker.
-    ///
-    /// Adding a connector that mints the way an existing one does adds nothing
-    /// here — that is what [`Exchange`] being data on the descriptor buys, and
-    /// what the three refresh providers sharing one arm demonstrates.
-    fn exchange<'a>(
-        &'a self,
-        connector: &'a dyn Connector,
-        ask: Ask<'a>,
-    ) -> std::pin::Pin<Box<dyn Future<Output = Outcome> + Send + 'a>> {
-        Box::pin(async move {
-            match connector.exchange() {
-                Exchange::Stored => stored(ask.handle),
-                Exchange::GithubApp => match self.platform.github() {
-                    Some(app) => {
-                        github::mint(github::Exchange {
-                            app,
-                            handle: ask.handle,
-                            binding: ask.binding,
-                            now_ms: ask.now_ms,
-                        })
-                        .await
-                    }
-                    // The tenant connected an App this deployment cannot
-                    // authenticate as. An operator's to fix, and no retry
-                    // helps — and it is not a failed exchange, because no
-                    // exchange was attempted.
-                    None => Outcome::Unconfigured,
-                },
-                Exchange::OAuthRefresh { token_url } => {
-                    match self.platform.oauth(connector.name()) {
-                        Some(app) => {
-                            oauth::mint(oauth::Refresh {
-                                app,
-                                handle: ask.handle,
-                                token_url,
-                                http: &self.http,
-                                now_ms: ask.now_ms,
-                            })
-                            .await
-                        }
-                        None => Outcome::Unconfigured,
-                    }
-                }
-            }
-        })
-    }
-}
-
-/// The `static` connector's whole exchange: there isn't one.
-///
-/// The stored handle already holds a usable credential, so this hands it back
-/// with no upstream expiry. It reaches the broker even though the lease path
-/// delivers static credentials inline, because the runner may ask for anything
-/// its fleet declared and refusing here would be a refusal the tenant cannot
-/// act on.
-fn stored(handle: &Value) -> Outcome {
-    handle
-        .get(FIELD_TOKEN)
-        .and_then(Value::as_str)
-        .map_or(Outcome::ReconnectRequired, |token| {
-            Outcome::Ok(Minted {
-                token: Zeroizing::new(token.to_owned()),
-                // A stored credential has no upstream expiry this daemon knows
-                // of, so it carries the far-future sentinel.
-                expires_at_ms: i64::MAX,
-                rotated_refresh_token: None,
-            })
-        })
-}
-
 /// The on-demand credential broker.
 #[derive(Debug)]
 pub struct Broker {
@@ -383,6 +148,16 @@ impl Broker {
             connectors,
             vendors,
         }
+    }
+
+    /// The connector set this broker resolves every handle through.
+    ///
+    /// A check that must agree with the broker about which connector a handle
+    /// names reads this one, not a registry of its own: two sets could differ,
+    /// and a connector only one of them carries would mint unchecked.
+    #[must_use]
+    pub fn connectors(&self) -> &dyn Connectors {
+        &*self.connectors
     }
 
     /// Resolves one ask to a credential.
@@ -495,6 +270,9 @@ impl Key {
         })
     }
 }
+
+mod cache;
+mod vendors;
 
 #[cfg(test)]
 mod tests;
