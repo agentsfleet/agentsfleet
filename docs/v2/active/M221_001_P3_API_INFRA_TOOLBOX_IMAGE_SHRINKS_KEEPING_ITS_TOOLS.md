@@ -83,7 +83,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Prior-Art / Reference Implementations
 
-- **Reference:** Debian's official container images, built by debuerreotype, exclude docs, man pages and locales through dpkg `path-exclude` and keep each `copyright` file through `path-include`. The strip follows that list rather than deleting files after install, so dpkg's database matches the tree. unverified: the exact upstream file name for that list; reading debuerreotype's repository at PLAN settles it.
+- **Reference:** Debian's debuerreotype uses [`scripts/.slimify-excludes`](https://github.com/debuerreotype/debuerreotype/blob/master/scripts/.slimify-excludes) for docs, info, man pages and locales, and [`scripts/.slimify-includes`](https://github.com/debuerreotype/debuerreotype/blob/master/scripts/.slimify-includes) to preserve copyright notices. Its `debuerreotype-slimify` script also prunes dangling aliases after applying dpkg filters. These upstream files were read and verified; this build excludes regular documentation during installation and removes the aliases and regenerated info index afterward.
 - **Measured input:** `.gstack/tmp/tbx-size.sh` and `.gstack/tmp/tbx-squeeze.sh` produced every number in Discovery. They were scratch files in the M219 worktree; §1's script replaces them.
 
 ## Sections (implementation slices)
@@ -169,10 +169,10 @@ The release record keeps its fields; `erofs_features` lists more names.
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The image is at most 80% of today's, docs stripped, licences kept (§2) | `make test-runner-kernel 2>&1 \| grep -cE 'test_toolbox_(image_fits_its_size_cap\|keeps_copyright_and_drops_docs) \.\.\. ok'` (on afr-kernel) | `2` | P1 | |
-| R2 | No first-use step regresses past 10% p99 (§1) | `grep -c REGRESSION docs/v2/reviews/m221-toolbox-first-use.md` | `0` for the chosen candidate's rows | P1 | |
+| R2 | No first-use step regresses past 10% p99 (§1) | `python3 -c 'import json; d=json.load(open("playbooks/operations/acceptance/baselines/M221_001-first-use-arm64.json")); print(sum(s["result"] == "REGRESSION" for s in d["candidates"][d["selected"]]["steps"].values()))'` | `0` for the chosen candidate's rows | P1 | |
 | R3 | Admission takes exactly the approved features (§3) | `cd rustd && cargo test -p afr_sandbox --lib toolbox::manifest` | `test result: ok` | P0 | |
 | R4 | Tools, rebuilds and start budgets hold (§2) | `make test-runner-kernel` (on afr-kernel) | exit 0 | P0 | |
-| R5 | The architecture page names the settings (§4) | `git grep -c -e 'Eztailpacking' -e 'path-exclude' -- docs/architecture/runner_execution.md` | at least 1 per term for candidate (a) | P2 | |
+| R5 | The architecture page names the settings (§4) | Published-documentation update waived by Indy's quoted override in Discovery | Explicit waiver | P2 | WAIVED — `docs.updated` override commit `166c7c650` |
 | R6 | This spec's diff stays inside Files Changed | `git diff --name-only $(git log --diff-filter=A --format=%H -- 'docs/v2/*/M221_001_*.md' \| tail -1)..HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |

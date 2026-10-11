@@ -86,7 +86,8 @@ test-coverage-all:  ## Run coverage gates across app, website, agentsfleet, and 
 # it FAILS naming what is missing rather than skipping — a lane that skips
 # passes without proving anything. Cargo builds as the invoking user; only the
 # lane binary runs as root, through cargo's runner. KERNEL_LANE_RUNNER is that
-# elevation (empty when already root, as in a container).
+# elevation (empty when already root, as in a container). Cargo's runner must
+# still name a command, so an already-root invocation uses env.
 # The runner is set through cargo's per-host variable rather than `--config`,
 # so `KERNEL_LANE_CARGO="cargo llvm-cov run ..."` measures the same run in CI.
 KERNEL_LANE_RUNNER ?= sudo -E
@@ -97,7 +98,7 @@ test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (
 	@$(KERNEL_LANE_RUNNER) bash scripts/toolbox/test_measure_first_use.sh
 	@image="$$($(KERNEL_LANE_RUNNER) bash scripts/toolbox/build.sh "$(TOOLBOX_DIR)")" && \
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
-	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(KERNEL_LANE_RUNNER)" \
+	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(or $(KERNEL_LANE_RUNNER),env)" \
 	  $(KERNEL_LANE_CARGO) -p afr_sandbox --features test-util --example kernel_lane
 
 # The kernel lane under coverage: the same run, with the instrument in
