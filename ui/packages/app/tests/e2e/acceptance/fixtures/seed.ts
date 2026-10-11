@@ -12,6 +12,7 @@ import type { ClientHandle } from "./api-client";
 import type { FixtureKey, FleetStatus } from "./constants";
 import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { clientFor } from "./api-client";
+import { HTTP_REQUEST } from "./constants";
 
 const FIXTURE_LIBRARY_NAME = "acceptance-seed";
 
@@ -56,7 +57,7 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
 // spec-local copy that drifts from that
 // set fails every install with UZ-BUNDLE-001, which is why no spec defines its
 // own (pinned by seed.test.ts).
-export function triggerMd(name: string): string {
+export function triggerMd(name: string, tool: string = HTTP_REQUEST): string {
   // Use cron here so seeded fleets keep a concrete wake rule.
   return [
     "---",
@@ -67,7 +68,7 @@ export function triggerMd(name: string): string {
     "    - type: cron",
     '      schedule: "0 0 * * *"',
     "  tools:",
-    "    - agentmail",
+    `    - ${tool}`,
     "  budget:",
     "    daily_dollars: 1.0",
     "---",
@@ -96,7 +97,7 @@ export function webhookTriggerMd(name: string, credentialName: string): string {
     `        - ${WEBHOOK_EVENT_WORKFLOW_RUN}`,
     `      credential_name: ${credentialName}`,
     "  tools:",
-    "    - agentmail",
+    `    - ${HTTP_REQUEST}`,
     "  budget:",
     "    daily_dollars: 1.0",
     "---",
@@ -117,21 +118,6 @@ export function skillMd(name: string): string {
     `# ${name}`,
     "",
     "Body for fixture fleet used by e2e harness.",
-    "",
-  ].join("\n");
-}
-
-// Same frontmatter as skillMd, body deliberately EMPTY: the runner refuses to
-// execute an instruction-less skill as a generic chat, so every delivery fails
-// closed at startup — the one deterministic, model-free way to place a failed
-// lease on a runner from the outside.
-export function emptyBodySkillMd(name: string): string {
-  return [
-    "---",
-    `name: ${name}`,
-    "description: Fixture skill with an empty body; every delivery fails its startup check.",
-    "version: 0.1.0",
-    "---",
     "",
   ].join("\n");
 }
