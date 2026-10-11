@@ -289,7 +289,7 @@ class LiveTests(unittest.TestCase):
     @classmethod
     def cleanup(cls):
         for repo in cls.repos:
-            subprocess.run(["make", "down"], cwd=repo, env=cls.env, check=False)
+            subprocess.run(["make", "down"], cwd=repo, env=cls.env, check=True)
             if cls.owned:
                 subprocess.run(["git", "worktree", "remove", str(repo)], cwd=SOURCE, check=True)
         if cls.owned: cls.tmp.cleanup()
