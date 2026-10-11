@@ -28,7 +28,7 @@ Logs: <WORKTREE_STATE>/daemon.log
 Namespace: wt_<WORKTREE_CHECKSUM>
 ```
 
-`make up` starts missing infrastructure, creates the database, compiles this checkout and waits for `/readyz`.
+`make up` starts missing infrastructure, creates the database, compiles this checkout, migrates its database and waits for `/readyz`.
 Repeating it rebuilds and restarts only this daemon while preserving its database.
 The default `FOLLOW_LOGS=1` follows the daemon log after startup.
 
@@ -87,7 +87,7 @@ bash scripts/local-dev.sh infra-down
 
 The next `make up` restarts infrastructure using the saved snapshot.
 An unhealthy or incomplete existing stack refuses startup; inspect its Compose health before stopping it explicitly.
-Locks wait at most 30 seconds; after an interrupted owner, verify that owner has exited before removing its named lock directory.
+Lock waits are bounded separately: 6 minutes for infrastructure, 20 minutes for builds and 30 minutes for this worktree's process operation. After an interrupted owner, verify that owner has exited before removing its named lock directory.
 
 Run `bash scripts/local-dev-test.sh` for launcher regression checks and add `--live` for the two-worktree proof.
 `make test-integration-rustd` retains its own disposable stack and destructive reset behavior.

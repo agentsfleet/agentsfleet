@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Launchers are exercised through their public commands and external tool seams.
 set -euo pipefail
-python3 - "$(cd "$(dirname "$0")/.." && pwd -P)" "${1:-}" <<'PY'
+python3 - "$(cd "$(dirname "$0")/.." && pwd -P)" "${1:-}" "${2:-}" <<'PY'
 import concurrent.futures
 import json
 import os
@@ -15,7 +15,6 @@ import tempfile
 import time
 import unittest
 import urllib.request
-
 SOURCE = Path(sys.argv[1])
 LIVE = sys.argv[2] == "--live"
 DOCKER = '''#!/usr/bin/env python3
@@ -61,7 +60,6 @@ else:
     time.sleep(0.05)
     if __import__("os").getenv("FAIL_BOOT"): sys.exit(7)
 '''
-
 class LauncherTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -146,6 +144,9 @@ class LauncherTests(unittest.TestCase):
         self.run_dev("up", env=dict(self.env, FAIL_HEALTH="1"), expected=1)
         self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
     def test_concurrent_cold_starts_wait_for_infrastructure_and_build_owners(self):
+        for repo in self.repos:
+            launcher = repo / "scripts/local-dev.sh"
+            launcher.write_text(launcher.read_text().replace("_ATTEMPTS=10", "_ATTEMPTS=100"))
         env = dict(self.env, FAKE_DOCKER_DELAY="1", FAKE_BUILD_DELAY="1")
         with concurrent.futures.ThreadPoolExecutor() as pool:
             list(pool.map(lambda i: self.run_dev("up", i, env=env), [0, 1]))
@@ -171,7 +172,14 @@ class LauncherTests(unittest.TestCase):
             record.write_text(f"{foreign.pid}\n{started}\n")
             self.run_dev("down", expected=1)
             self.assertIsNone(foreign.poll())
-            record.unlink()
+            foreign.terminate()
+            deadline = time.monotonic() + 5
+            while "Z" not in subprocess.run(["ps", "-p", str(foreign.pid), "-o", "stat="], capture_output=True, text=True).stdout:
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.05)
+            self.run_dev("down")
+            self.assertFalse(record.exists())
+            foreign.wait()
             self.run_dev("up", env=dict(self.env, FAIL_BUILD="1"), expected=1)
             self.assertFalse(record.exists())
         finally:
@@ -265,26 +273,26 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("$(LOCAL_DAEMON_URL)/healthz", (SOURCE / "make/bench.mk").read_text())
         self.assertNotIn("\ninfra-down:", makefile)
         self.assertNotIn("\nrunner-env:", makefile)
-
 class LiveTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(prefix="dev-live-")
-        cls.repos = []
+        cls.owned = not sys.argv[3]
+        cls.tmp = tempfile.TemporaryDirectory(prefix="dev-live-") if cls.owned else None
+        cls.repos = [Path(cls.tmp.name) / name for name in ["a", "b"]] if cls.owned else [SOURCE, Path(sys.argv[3]).resolve()]
         cls.addClassCleanup(cls.cleanup)
         cls.env = dict(os.environ, FOLLOW_LOGS="0", ENCRYPTION_MASTER_KEY=os.urandom(32).hex())
-        for name in ["a", "b"]:
-            repo = Path(cls.tmp.name) / name
-            subprocess.run(["git", "worktree", "add", "--detach", str(repo), "HEAD"], cwd=SOURCE, check=True)
-            cls.repos.append(repo)
+        for repo in cls.repos:
+            if cls.owned:
+                subprocess.run(["git", "worktree", "add", "--detach", str(repo), "HEAD"], cwd=SOURCE, check=True)
             if (repo / "scripts/local-dev.sh").read_bytes() != (SOURCE / "scripts/local-dev.sh").read_bytes():
                 raise RuntimeError("commit the launcher before its live worktree proof")
     @classmethod
     def cleanup(cls):
         for repo in cls.repos:
             subprocess.run(["make", "down"], cwd=repo, env=cls.env, check=False)
-            subprocess.run(["git", "worktree", "remove", str(repo)], cwd=SOURCE, check=True)
-        cls.tmp.cleanup()
+            if cls.owned:
+                subprocess.run(["git", "worktree", "remove", str(repo)], cwd=SOURCE, check=True)
+        if cls.owned: cls.tmp.cleanup()
     def run_make(self, action, index):
         subprocess.run(["make", action], cwd=self.repos[index], env=self.env, check=True)
     def context(self, index):
@@ -293,8 +301,7 @@ class LiveTests(unittest.TestCase):
         return dict(zip(["project", "database", "state", "url", "origin"], values))
     def sql(self, index, query):
         command = 'source scripts/local-dev.sh; dev_compose exec -T postgres psql -U agentsfleet -d "$DEV_DB" -v ON_ERROR_STOP=1 -At'
-        return subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env,
-                                       input=query, text=True).strip()
+        return subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env, input=query, text=True).strip()
     def services(self, index):
         command = 'source scripts/local-dev.sh; dev_compose ps --format json'
         result = subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env, text=True)
@@ -304,6 +311,7 @@ class LiveTests(unittest.TestCase):
             self.assertEqual(response.status, 200)
     def test_two_worktrees_share_infrastructure_end_to_end(self):
         self.run_make("up", 0)
+        self.table = "worktree_probe_" + os.urandom(4).hex()
         original = self.services(0)
         self.assertEqual(set(original), {"postgres", "dragonfly", "mailpit", "qstash"})
         self.run_make("up", 1)
@@ -316,25 +324,27 @@ class LiveTests(unittest.TestCase):
             self.ready(context)
             command = 'source scripts/local-dev.sh; dev_compose exec -T qstash bun -e "fetch(process.argv[1]).then(r=>process.exit(r.status===200?0:1))" "$1/readyz"'
             subprocess.run(["bash", "-c", command, "probe", context["origin"]], cwd=self.repos[index], env=self.env, check=True)
-            self.sql(index, f"CREATE TABLE public.worktree_probe (value integer NOT NULL); INSERT INTO public.worktree_probe VALUES ({index});")
+            self.addCleanup(self.sql, index, f"DROP TABLE IF EXISTS public.{self.table}")
+            self.sql(index, f"CREATE TABLE public.{self.table} (value integer NOT NULL); INSERT INTO public.{self.table} VALUES ({index});")
         self.run_make("up", 0)
-        self.assertEqual(self.sql(0, "SELECT value FROM public.worktree_probe"), "0")
-        self.assertEqual(self.sql(1, "SELECT value FROM public.worktree_probe"), "1")
+        self.assertEqual(self.sql(0, f"SELECT value FROM public.{self.table}"), "0")
+        self.assertEqual(self.sql(1, f"SELECT value FROM public.{self.table}"), "1")
         self.assertEqual(original, self.services(0))
         self.run_make("down", 0)
         self.assertFalse((Path(a["state"]) / "daemon.pid").exists())
         self.ready(b)
-        self.assertEqual(self.sql(1, "SELECT value FROM public.worktree_probe"), "1")
+        self.assertEqual(self.sql(1, f"SELECT value FROM public.{self.table}"), "1")
         print("development_start_preserves_each_database: passed", flush=True)
-        self.sql(0, "INSERT INTO audit.schema_migrations (version, applied_at) SELECT MAX(version) + 10, 1 FROM audit.schema_migrations;")
+        version = int(self.sql(0, "SELECT MAX(version) + 10 FROM audit.schema_migrations"))
+        self.addCleanup(self.sql, 0, f"DELETE FROM audit.schema_migrations WHERE version = {version}")
+        self.sql(0, f"INSERT INTO audit.schema_migrations (version, applied_at) VALUES ({version}, 1)")
         failed = subprocess.run(["make", "up"], cwd=self.repos[0], env=self.env, capture_output=True, text=True)
         self.assertNotEqual(failed.returncode, 0)
         self.assertNotIn("API:", failed.stdout)
         self.ready(b)
-        self.assertEqual(self.sql(0, "SELECT value FROM public.worktree_probe"), "0")
-        self.assertEqual(self.sql(1, "SELECT value FROM public.worktree_probe"), "1")
+        self.assertEqual(self.sql(0, f"SELECT value FROM public.{self.table}"), "0")
+        self.assertEqual(self.sql(1, f"SELECT value FROM public.{self.table}"), "1")
         print("migration_refusal_preserves_both_databases: passed", flush=True)
-
 suite = unittest.defaultTestLoader.loadTestsFromTestCase(LiveTests if LIVE else LauncherTests)
 sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
 PY
