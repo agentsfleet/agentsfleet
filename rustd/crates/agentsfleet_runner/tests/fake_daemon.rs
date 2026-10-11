@@ -39,6 +39,7 @@ pub(crate) struct FakeDaemon {
     /// The base address the binary is pointed at.
     pub(crate) url: String,
     reports: mpsc::UnboundedReceiver<Value>,
+    _server: crate::http_server::Server,
 }
 
 impl FakeDaemon {
@@ -81,8 +82,14 @@ impl FakeDaemon {
                 )
             }
         });
-        let url = serve(app).await;
-        Self { url, reports }
+        let server = crate::http_server::Server::serve(app)
+            .await
+            .expect("a loopback port");
+        Self {
+            url: server.url.clone(),
+            reports,
+            _server: server,
+        }
     }
 
     /// The next report the binary posts, or `None` past `within`.
@@ -143,6 +150,7 @@ pub(crate) struct FakeCollector {
     /// The endpoint the binary exports to.
     pub(crate) url: String,
     received: Arc<Mutex<Vec<(String, Value)>>>,
+    _server: crate::http_server::Server,
 }
 
 impl FakeCollector {
@@ -164,8 +172,14 @@ impl FakeCollector {
                 ""
             }
         });
-        let url = serve(app).await;
-        Self { url, received }
+        let server = crate::http_server::Server::serve(app)
+            .await
+            .expect("a loopback port");
+        Self {
+            url: server.url.clone(),
+            received,
+            _server: server,
+        }
     }
 
     /// Every document posted to `path`.
@@ -178,14 +192,4 @@ impl FakeCollector {
             .map(|(_, document)| document.clone())
             .collect()
     }
-}
-
-/// Serves `app` on a free loopback port; its base address.
-async fn serve(app: axum::Router) -> String {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a loopback port");
-    let address = listener.local_addr().expect("the bound address");
-    tokio::spawn(async move { axum::serve(listener, app).await });
-    format!("http://{address}")
 }

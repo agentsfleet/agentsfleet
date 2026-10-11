@@ -41,6 +41,9 @@ mod git;
 #[cfg(target_os = "linux")]
 mod hold;
 #[cfg(target_os = "linux")]
+#[path = "../../../agentsfleet_runner/tests/http_server.rs"]
+mod http_server;
+#[cfg(target_os = "linux")]
 mod lane;
 #[cfg(target_os = "linux")]
 mod release;
@@ -49,11 +52,28 @@ mod run;
 #[cfg(target_os = "linux")]
 mod shared_memory;
 #[cfg(target_os = "linux")]
+mod supervisor;
+#[cfg(target_os = "linux")]
+mod supervisor_checks;
+#[cfg(target_os = "linux")]
+mod supervisor_model;
+#[cfg(target_os = "linux")]
+mod supervisor_plane;
+#[cfg(target_os = "linux")]
+mod supervisor_trials;
+#[cfg(target_os = "linux")]
 mod toolbox;
 #[cfg(target_os = "linux")]
 mod tools;
 #[cfg(target_os = "linux")]
 mod trials;
+#[cfg(target_os = "linux")]
+#[path = "../../../agentsfleetd/tests/support/https.rs"]
+#[allow(
+    dead_code,
+    reason = "shared upstream support: the kernel lane uses HTTPS routes and observations"
+)]
+mod upstream;
 
 use std::process::ExitCode;
 
