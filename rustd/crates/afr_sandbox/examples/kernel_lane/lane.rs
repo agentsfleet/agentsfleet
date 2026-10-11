@@ -9,8 +9,8 @@ use std::sync::Arc;
 use afd_core::env::ProcessEnv;
 use afr_sandbox::egress_testing::forwarding_on;
 use afr_sandbox::{
-    BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, KernelMounter, Manifest, MountedToolboxes,
-    ProbePaths, REQUIRED_CONTROLLERS, SUBTREE_CONTROL, ToolboxHome, probe,
+    BubblewrapBackend, BubblewrapConfig, BubblewrapEngine, CGROUP_ROOT, HostPaths, Manifest,
+    ProbePaths, REQUIRED_CONTROLLERS, Resources, SUBTREE_CONTROL, ToolboxHome, boot, probe,
 };
 use libtest_mimic::Failed;
 
@@ -63,7 +63,7 @@ pub(crate) struct Lane {
     /// image it runs on.
     pub(crate) signer: Signer,
     pub(crate) manifest: Manifest,
-    toolboxes: MountedToolboxes<KernelMounter>,
+    resources: Box<dyn Resources>,
     state: tempfile::TempDir,
 }
 
@@ -104,7 +104,7 @@ pub(crate) fn missing(paths: &ProbePaths, toolbox: Option<&str>, root: bool) -> 
     if !root {
         gaps.push("root: mounts and cgroups need it".to_owned());
     }
-    if let Some(mechanism) = probe(paths).missing() {
+    if let Some(mechanism) = afr_sandbox::BubblewrapRequirements::missing(&probe(paths)) {
         gaps.push(format!(
             "{mechanism}: the kernel lacks it or it is not delegated"
         ));
@@ -192,7 +192,7 @@ pub(crate) fn main() -> ExitCode {
     // trial has ended, so the lane and its toolbox have one owner again.
     let Some(Lane {
         config,
-        toolboxes,
+        resources,
         state,
         ..
     }) = Arc::into_inner(lane)
@@ -201,7 +201,7 @@ pub(crate) fn main() -> ExitCode {
         return ExitCode::FAILURE;
     };
     drop(config);
-    let closed = toolboxes.close();
+    let closed = resources.close();
     drop(state);
     if let Err(stayed) = closed {
         eprintln!("the lane's toolbox stayed mounted: {stayed}");
@@ -223,24 +223,28 @@ fn build(image: &Path, paths: ProbePaths) -> Result<Lane, Failed> {
     let home = ToolboxHome::open(state.path().join(TOOLBOX_DIR))?;
     signer.stage(image, manifest.sha256(), &home.incoming())?;
     let entry = install_entry(state.path())?;
-    let booted = BubblewrapEngine::boot(
-        paths.cgroup_root,
-        state.path().join(LEASES_DIR),
+    let release = signer.release()?;
+    let backend = BubblewrapBackend {
         entry,
-        &signer.release()?,
-        &home,
-        &ProcessEnv,
-    )?;
+        release: &release,
+        home: &home,
+        env: &ProcessEnv,
+    };
+    let host_paths = HostPaths {
+        cgroup_root: paths.cgroup_root,
+        state_dir: state.path().join(LEASES_DIR),
+    };
+    let booted = boot(backend, &host_paths)?;
     let image = LaneImage {
         path: image.to_owned(),
-        digest: booted.engine.config().toolbox.digest().to_owned(),
+        digest: booted.started.engine.config().toolbox.digest().to_owned(),
     };
     Ok(Lane {
-        config: booted.engine.config().clone(),
+        config: booted.started.engine.config().clone(),
         image,
         signer,
         manifest,
-        toolboxes: booted.toolboxes,
+        resources: booted.started.resources,
         state,
     })
 }
