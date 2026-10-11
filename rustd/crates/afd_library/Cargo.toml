@@ -34,8 +34,6 @@ garde.workspace = true
 afd_validate.workspace = true
 futures-util.workspace = true
 headers.workspace = true
-# The one builder for a client that must reach its endpoint directly.
-afd_identity.workspace = true
 object_store.workspace = true
 reqwest.workspace = true
 serde.workspace = true

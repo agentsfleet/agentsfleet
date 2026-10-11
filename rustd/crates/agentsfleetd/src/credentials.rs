@@ -119,11 +119,13 @@ pub(crate) fn vendor_exchange_client() -> reqwest::Result<reqwest::Client> {
 
 /// The client the scheduler's management calls go out on.
 ///
-/// Direct, for the reason a vendor exchange is: each call carries this
-/// deployment's scheduler bearer token, which no environment proxy should see.
+/// It honours an environment proxy, as the default client it replaced did: a
+/// deployment whose egress runs through one still reaches the scheduler. What
+/// it adds is a deadline, so a scheduler that stops answering fails the
+/// tenant's schedule write instead of holding it open.
 ///
 /// # Errors
 /// A builder that will not build, which refuses boot.
 pub(crate) fn schedule_client() -> reqwest::Result<reqwest::Client> {
-    afd_identity::direct(SCHEDULE_TIMEOUT).build()
+    reqwest::Client::builder().timeout(SCHEDULE_TIMEOUT).build()
 }
