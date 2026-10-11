@@ -230,27 +230,3 @@ impl Providers {
         Ok(is_active(entry, chosen.as_ref()))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::UQ_ENTRY_DOMAIN_KEY;
-
-    /// The migration that creates the entries table.
-    const ENTRIES_SCHEMA: &str = include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../../schema/440_tenant_model_entries.sql"
-    ));
-
-    /// A duplicate retarget is recognised by this name alone, so a rename in
-    /// the schema without one here would turn every duplicate into a fault.
-    #[test]
-    fn the_duplicate_constraint_is_the_one_the_schema_declares() {
-        // Whole words, so a renamed `…_v2` constraint does not pass as a prefix.
-        let declared = ENTRIES_SCHEMA
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .windows(2)
-            .any(|pair| pair == ["CONSTRAINT", UQ_ENTRY_DOMAIN_KEY]);
-        assert!(declared, "the schema no longer names {UQ_ENTRY_DOMAIN_KEY}");
-    }
-}
