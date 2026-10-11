@@ -222,6 +222,25 @@ pub(super) async fn deleting_the_secret_by_name_disconnects_it(
         fixture.workspace,
         HELD.grant_key()
     );
+    // A model entry still naming it refuses the delete in this route's own
+    // words, counting the entries, and leaves the connection whole.
+    let entry = fixture.reference_handle(HELD).await;
+    let refused = send(router, Method::DELETE, &secret, Some(&fixture.token), "").await;
+    let status = refused.status();
+    let document = json_body(refused).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{document}");
+    assert_eq!(
+        document.get("detail").and_then(Value::as_str),
+        Some("Secret is referenced by 1 model registry entry"),
+        "{document}"
+    );
+    assert_eq!(
+        fixture.routed(HELD, ROUTED_ACCOUNT).await,
+        1,
+        "a refused delete leaves the routing row"
+    );
+    fixture.drop_entry(&entry).await;
+
     let gone = send(router, Method::DELETE, &secret, Some(&fixture.token), "").await;
     assert_eq!(gone.status(), StatusCode::NO_CONTENT);
     assert_eq!(

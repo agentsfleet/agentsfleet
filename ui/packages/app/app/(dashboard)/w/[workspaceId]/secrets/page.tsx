@@ -19,7 +19,10 @@ export default async function SecretsPage({
   const [secretsResp, providerResult, catalog] = await Promise.all([
     listSecretsCached(workspaceId, token),
     getTenantProviderCached(token),
-    getConnectorCatalogCached(workspaceId, token),
+    // Only the delete dialog's wording rides on this read, so a failed one
+    // costs the warning rather than the page. The server disconnects a
+    // connection's secret on delete either way.
+    getConnectorCatalogCached(workspaceId, token).catch(() => []),
   ]);
   const secrets = secretsResp.secrets;
   // The secret backing the active self-managed provider can't be deleted from

@@ -135,3 +135,30 @@ impl From<Refused> for Outcome {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use zeroize::Zeroizing;
+
+    use super::{Cached, EXPIRY_SKEW_MS};
+    use crate::credential::outcome::Minted;
+
+    /// The token a fixture mints; it must never reach a log line.
+    const TOKEN: &str = "ghs_cached_fixture_token";
+
+    /// A cached entry renders its expiry and nothing a reader could use.
+    #[test]
+    fn a_cached_entry_renders_without_its_token() {
+        let cached = Cached::new(
+            Minted {
+                token: Zeroizing::new(TOKEN.to_owned()),
+                expires_at_ms: EXPIRY_SKEW_MS * 3,
+                rotated_refresh_token: Some(Zeroizing::new(TOKEN.to_owned())),
+            },
+            0,
+        );
+        let rendered = format!("{cached:?}");
+        assert!(!rendered.contains(TOKEN), "{rendered}");
+        assert!(rendered.contains("expires_at_ms"), "{rendered}");
+    }
+}

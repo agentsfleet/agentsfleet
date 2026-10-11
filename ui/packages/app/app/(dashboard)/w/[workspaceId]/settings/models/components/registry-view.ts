@@ -13,7 +13,8 @@ const SORT_KEYS = ["model", "provider", "context", "rates"] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 export type SortState = { key: SortKey; dir: "ascending" | "descending" } | null;
 
-/** Where an entry with no figure sorts: below every real one, as Events does. */
+/** An entry with no figure sorts before every real one when ascending, as
+ * Events does. */
 const ABSENT_FIGURE = -1;
 
 function isSortKey(key: string): key is SortKey {
