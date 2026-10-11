@@ -214,3 +214,10 @@ workspace = true
 [[test]]
 name = "daemon_suite"
 path = "tests/daemon_suite.rs"
+
+# A binary of its own: its one test writes the process environment, which is
+# sound only while no other test runs beside it.
+[[test]]
+name = "schedule_proxy"
+path = "tests/schedule_proxy.rs"
+required-features = ["test-util"]
