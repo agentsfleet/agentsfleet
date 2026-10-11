@@ -60,7 +60,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_sandbox/examples/kernel_lane/main.rs` | EDIT | Wire the sibling size and licence proof into the existing example |
 | `rustd/crates/afr_sandbox/src/toolbox/{manifest.rs,manifest/tests.rs}` | EDIT | `EROFS_FEATURES` is the approved list; each feature is admitted and any other refused |
 | `rustd/crates/afr_sandbox/examples/kernel_lane/{toolbox.rs,toolbox_size.rs,trials.rs}` | EDIT, CREATE | The size cap and the stripped-docs case, in a sibling file so `toolbox.rs` (274 lines) stays under the cap |
-| `docs/architecture/runner_execution.md` | EDIT | §Toolbox names the settings and features; a decision row records the choice and its numbers |
+| `docs/architecture/runner_execution.md` | WAIVED | Published documentation waived by Indy's quoted override; measured results stay in the PR |
 | `playbooks/operations/acceptance/baselines/M221_001-first-use-arm64.json` | CREATE | Raw cold samples and p50/p99 for the current baseline and every candidate; the PR carries the readable report |
 | `docs/v2/{pending,active,done}/M221_001_P3_API_INFRA_TOOLBOX_IMAGE_SHRINKS_KEEPING_ITS_TOOLS.md` | EDIT | This spec, moved by CHORE(open) and CHORE(close) |
 | `playbooks/operations/acceptance/baselines/M221_001-<revision>.md` | CREATE | The baseline evidence the header promises, named for the comparison revision |
@@ -97,7 +97,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Implementation default:** (a), because it keeps LZ4 high compression (LZ4HC), and the format bar at `runner_execution.md:184` then needs no exception.
 
-- **Dimension 1.1** — The report lists every step's p50 and p99 for today and each candidate on afr-kernel → Test `first_use_report_covers_every_candidate` (manual: the report file, rubric R2)
+- **Dimension 1.1** — The report lists every step's p50 and p99 for today and each mountable candidate on afr-kernel; a rejected kernel-incompatible alternative records its actual mount error and no samples → Test `first_use_report_covers_every_candidate` (manual: the report file, rubric R2)
 - **Dimension 1.2** — Indy picks a candidate and approves its exact EROFS feature list → Test `indy_approves_the_feature_list` (manual: verbatim quote in Discovery)
 
 ### §2 — The image is smaller and holds the same tools
@@ -117,9 +117,9 @@ The `erofs` line carries the chosen settings. `build.sh` passes mmdebstrap `--dp
 - **Dimension 3.1** — An image carrying each approved feature is admitted → Test `should_admit_each_approved_erofs_feature` (unit, new)
 - **Dimension 3.2** — An image carrying a feature outside the list is refused → Test `should_refuse_a_release_for_another_host_runner_or_kernel` (unit, existing; its case moves to a feature still unapproved)
 
-### §4 — The architecture page records the choice
+### §4 — The architecture page records the choice — WAIVED
 
-- **Dimension 4.1** — §Toolbox names the compressor, chunk size, features and doc strip, and a decision row carries the sizes and first-use numbers → Test `toolbox_doc_names_the_settings` (grep, rubric R5)
+- **Dimension 4.1 — WAIVED** — Published architecture and release-note updates are waived by Indy's quoted override; the PR carries the measurements and feature choice → Test `toolbox_doc_names_the_settings` (explicit waiver, rubric R5)
 
 ## Interfaces
 
@@ -153,7 +153,7 @@ The release record keeps its fields; `erofs_features` lists more names.
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | manual | `first_use_report_covers_every_candidate` | `measure_first_use.sh` on today and (a), (b), (c) → each step has p50 and p99 per image; the report is committed |
+| 1.1 | manual | `first_use_report_covers_every_candidate` | `measure_first_use.sh` on today and mountable candidates → all eight steps have 100 cold samples, p50 and p99; unsupported alternatives carry actual mount errors and no invented latency; the report is committed |
 | 1.2 | manual | `indy_approves_the_feature_list` | Indy's verbatim choice and feature list → quoted in Discovery before `manifest.rs` changes |
 | 2.1 | integration | `test_toolbox_image_fits_its_size_cap` | Release record `length` → at most 80% of the refreshed baseline: 195,624,960 B on arm64 and 198,574,080 B on amd64 |
 | 2.2 | integration | `test_toolbox_keeps_copyright_and_drops_docs` | The mounted image → 156 `copyright` files after M213's approved removal (141 regular files and 15 aliases), every installed package has its notice, and no other regular file under `/usr/share/{doc,man,locale,info}` |
@@ -162,7 +162,7 @@ The release record keeps its fields; `erofs_features` lists more names.
 | 2.5 | integration | `test_start_budgets_with_four_leases` | Four leases on the new image → within the lane's existing budgets |
 | 3.1 | unit | `should_admit_each_approved_erofs_feature` | A signed release naming each approved feature → admitted |
 | 3.2 | unit | `should_refuse_a_release_for_another_host_runner_or_kernel` | A release naming an unapproved feature → `ToolboxRefusal` for the kernel |
-| 4.1 | unit | `toolbox_doc_names_the_settings` | `git grep -c` for the chosen `erofs` line in `runner_execution.md` → at least 1 |
+| 4.1 | manual | `toolbox_doc_names_the_settings` | Indy's published-documentation waiver → override commit `166c7c650`; measurements remain required |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -173,7 +173,7 @@ The release record keeps its fields; `erofs_features` lists more names.
 | R3 | Admission takes exactly the approved features (§3) | `cd rustd && cargo test -p afr_sandbox --lib toolbox::manifest` | `test result: ok` | P0 | |
 | R4 | Tools, rebuilds and start budgets hold (§2) | `make test-runner-kernel` (on afr-kernel) | exit 0 | P0 | |
 | R5 | The architecture page names the settings (§4) | Published-documentation update waived by Indy's quoted override in Discovery | Explicit waiver | P2 | WAIVED — `docs.updated` override commit `166c7c650` |
-| R6 | This spec's diff stays inside Files Changed | `git diff --name-only $(git log --diff-filter=A --format=%H -- 'docs/v2/*/M221_001_*.md' \| tail -1)..HEAD` | 0 paths missing from the Files Changed table | P0 | |
+| R6 | This spec's diff stays inside Files Changed | `git diff --name-only "$(git merge-base origin/main HEAD)" HEAD` | 0 paths missing from the Files Changed table | P0 | |
 | S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
 | S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Lint passes | `make lint-all` | exit 0 | P0 | |
@@ -225,6 +225,12 @@ N/A — no files deleted. The losing candidates' settings never enter the manife
 - **Measured feature approval under delegated authority** — `dump.erofs -s` on the native LZ4 high compression (LZ4HC) level-9, 64 KiB, tail-packing/deduplication trial reports exactly `sb_csum mtime 0padding compr_cfgs big_pcluster ztailpacking fragments dedupe`. Indy's quoted override delegates this list's approval before admission is edited. Each feature and their combination get signed-admission proofs; an unknown feature remains refused. Final compressor settings still require the first-use comparison. Level 9 is an additional candidate because level 12's first native compression consumed over twenty CPU minutes.
 
 - **Install-filter findings** — dpkg retains documentation symlinks, and `install-info` regenerates `/usr/share/info/dir` after installation. The customize hook removes excluded-file aliases and that generated index, preserving copyright aliases and shared licence directories. The mounted-image comparison checks licence contents and package identity; the new kernel case rejects other documentation and broken links.
+
+- **Observed alternative rejection** — The current LZMA candidate builds at 114,790,400 bytes, but the actual ARM kernel rejects its mount with exit 32, `fsconfig() failed: Operation not supported` (review capture 010). Its report records kernel incompatibility and zero latency samples. Selected-candidate acceptance still requires all eight tools, 100 cold runs and no p99 ratio above 1.10.
+
+- **Review repair** — Actual regression probes reproduced a supplied JSON null baseline silently bypassing comparison and a predictable temporary report path following a planted symlink. The sampler rejects non-object baselines before running tools and writes through an exclusively created unique temporary file. Six permanent real-mount cases pass (capture 013). Successful measurement plus unmount failure already returns 1 under the existing shell's `errexit`; capture 011 disproved that suspected finding, and the stronger test remains.
+
+- **Build-resource steering** — Indy supplied the Cargo job-cap fix and requested sourcing `~/.config/agentsfleet/.env` again. Host build commands now load `CARGO_PROFILE_DEV_DEBUG=1`, `CARGO_PROFILE_TEST_DEBUG=1`, `CARGO_INCREMENTAL=0` and `CARGO_BUILD_JOBS=4`, applying the other branch's cap through the environment. The native instrumented cache retains its established debug-zero settings and one-job limit.
 
 - **Consults** — Oct 10, 2026: Indy asked "Why is the image size big? How can we bring down the size", then "write me a follow on prompt so let me decide to do it or not in reducing the image size", then "i recommend you to push this spec as well". Measured on afr-kernel, arm64, rebuilding today's tree:
 
