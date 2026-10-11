@@ -11,12 +11,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M223
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — development infrastructure consumes one stack per repository
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — datastore isolation precedes attaching development processes
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** feat/m223-shared-dev
+**Baseline revision:** 9b3d4dae029f5ee344185884b2a40c7dc2c84d09
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report revision, commands, environment and passed/failed/skipped counts
 **Depends on:** none
@@ -33,7 +33,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 - **PR title (eventual):** feat: share development datastores across isolated worktrees
 - **Intent (one sentence):** Run concurrent worktrees without paying for another infrastructure stack or mixing the work they execute.
-- **Handshake:** pending until PLAN; the approved proposal supplies the scope. ASSUMPTIONS I'M MAKING: shared infrastructure is local development only; tenant data models and production defaults stay intact; runner execution remains on the existing Linux host.
+- **Handshake:** Each native daemon uses its worktree database and a validated Dragonfly prefix, including blocking readers and subscriptions. The launcher owns only that daemon; the repository owns the infrastructure snapshot. ASSUMPTIONS I'M MAKING: shared infrastructure is local development only; tenant data models and production defaults stay intact; runner execution remains on the existing Linux host. Quality ceiling: database isolation and one connection-boundary namespace preserve existing business logic; changing every entity's tenant model would add migration and query risk without improving this development workflow. Surface review: no OpenAPI, product command-line flags, release version or application schema changes; internal developer commands and documentation change; no spec/rules conflict.
 
 ## Implementing agent — read these first
 
@@ -50,7 +50,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_dragonfly/Cargo.toml` | EDIT | Reuse the workspace validator for namespace input |
 | `rustd/Cargo.lock` | EDIT | Record the validator dependency graph if required |
 | `rustd/crates/afd_dragonfly/src/{lib.rs,config.rs,client.rs,dedicated.rs,error.rs,error/samples.rs}` | EDIT | Carry validated namespace with every connection; preserve error classes |
-| `rustd/crates/afd_dragonfly/src/{namespace.rs,namespace/tests.rs,client/tests.rs}` | CREATE | Key mapping and configuration proofs; extract inline tests where needed |
+| `rustd/crates/afd_dragonfly/src/{namespace.rs,namespace/tests.rs,client/commands.rs,session/operations.rs}` | CREATE | Key mapping and configuration proofs; split existing oversized command implementations |
 | `rustd/crates/afd_dragonfly/src/{kv.rs,streams.rs,streams/consume.rs,streams/retain.rs,streams/tail.rs,streams/render.rs,ready.rs,outbound.rs,outbound/reader.rs,session.rs,session/tests.rs,capacity.rs}` | EDIT, CREATE | Scope key operations and scans; split existing oversized inline tests |
 | `rustd/crates/afd_dragonfly/src/{hub.rs,hub/channels.rs,hub/dispatch.rs,hub/pump.rs,hub/repair.rs,hub/repair/tests.rs,hub/detached.rs}` | EDIT | Scope subscriptions without leaking physical channel names to callers |
 | `rustd/crates/afd_dragonfly/tests/{datastore_suite.rs,integration_namespace.rs,keys_and_config.rs}` | EDIT, CREATE | Prove isolation on a real shared cluster |
