@@ -105,6 +105,18 @@ impl Fixture {
         assert!(sealed.is_ok(), "the fixture secret {key} seals: {sealed:?}");
     }
 
+    /// Removes this deployment's app credentials for `provider`, as an
+    /// operator rotating them out mid-connect would.
+    pub(crate) async fn withdraw_app(&self, provider: Provider) {
+        let mut connection = self.database.acquire().await.expect("an API connection");
+        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2")
+            .bind(self.admin.as_str())
+            .bind(provider.app_key())
+            .execute(&mut *connection)
+            .await
+            .expect("the app credentials are withdrawn");
+    }
+
     /// The grant this workspace holds for `provider`, opened.
     ///
     /// Read through the vault rather than off the row, because the row holds

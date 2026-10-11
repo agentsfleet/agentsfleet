@@ -15,6 +15,7 @@ import {
   modelLabel,
   type RateFields,
 } from "@/lib/models/display";
+import { libraryRateFor, rowRateFor } from "./registry-view";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 
 // Presentational cells + row actions for ModelsRegistryTable, split out so the
@@ -34,32 +35,6 @@ const RATES_NOT_APPLICABLE = "Billed by provider";
 
 export function rowKey(row: RegistryRow): string {
   return row.kind === "default" ? "default" : row.entry.id;
-}
-
-/** The library row pricing (provider, model_id) — null when the library
- * doesn't price it (custom endpoints, or the library fetch failed). */
-export function libraryRateFor(
-  models: LibraryModel[],
-  provider: string | undefined,
-  modelId: string,
-): LibraryModel | null {
-  if (!provider) return null;
-  return models.find((m) => m.provider === provider && m.id === modelId) ?? null;
-}
-
-function rowRateFor(row: TenantModelEntry | TenantPlatformDefault): RateFields | null {
-  if (
-    row.input_nanos_per_mtok == null ||
-    row.cached_input_nanos_per_mtok == null ||
-    row.output_nanos_per_mtok == null
-  ) {
-    return null;
-  }
-  return {
-    input_nanos_per_mtok: row.input_nanos_per_mtok,
-    cached_input_nanos_per_mtok: row.cached_input_nanos_per_mtok,
-    output_nanos_per_mtok: row.output_nanos_per_mtok,
-  };
 }
 
 export function ModelCell({

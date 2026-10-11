@@ -141,8 +141,11 @@ function createEventColumns(
       // "No failure recorded" on every healthy row, while Status already
       // flagged the failure and this dialog already showed that same sentence
       // plus its recorded cause, the fix hint and the copyable diagnostic.
+      // Right-aligned: a row action aligns right in every table, and here it
+      // keeps its place after Status (docs/DESIGN_SYSTEM.md).
       key: "details",
       header: "Details",
+      numeric: true,
       cell: (row) => (
         <Button
           type="button"
@@ -175,9 +178,11 @@ function createEventColumns(
       // stands for. Blank for a row that stands only for itself, so the eye
       // catches the repeats rather than a column of "×1". It closes the row
       // because the figures an operator scans for — time, tokens, duration,
-      // cost — belong beside the fleet, not behind a repeat count.
+      // cost — belong beside the fleet, not behind a repeat count. A count, so
+      // it aligns right.
       key: "runs",
       header: "Runs",
+      numeric: true,
       sortValue: (row) => runs.countFor(row) ?? 0,
       cell: (row) => <RunsCell row={row} runs={runs} />,
     },

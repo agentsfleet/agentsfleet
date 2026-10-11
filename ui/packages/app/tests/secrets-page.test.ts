@@ -17,6 +17,7 @@ const redirect = vi.fn((path: string) => {
 const auth = vi.fn();
 const listSecretsCached = vi.fn();
 const getTenantProviderCached = vi.fn();
+const getConnectorCatalogCached = vi.fn();
 
 vi.mock("next/navigation", () => ({
   redirect,
@@ -24,7 +25,11 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
 
-vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/lib/reads", () => ({ listSecretsCached, getTenantProviderCached }));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/lib/reads", () => ({
+  listSecretsCached,
+  getTenantProviderCached,
+  getConnectorCatalogCached,
+}));
 
 // The page's own contract is just: pass workspaceId/secrets/protectedSecretName
 // through to SecretsList, and workspaceId through to AddSecretDialog.
@@ -33,16 +38,19 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList", () =
     workspaceId,
     secrets,
     protectedSecretName,
+    connections,
   }: {
     workspaceId: string;
     secrets: Array<{ name: string }>;
     protectedSecretName?: string | null;
+    connections?: Record<string, string>;
   }) =>
     React.createElement("div", {
       "data-testid": "secrets-list",
       "data-workspace": workspaceId,
       "data-secret-count": secrets.length,
       "data-protected-secret": protectedSecretName ?? "",
+      "data-connections": JSON.stringify(connections ?? {}),
     }),
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretDialog", () => ({
@@ -91,6 +99,7 @@ beforeEach(() => {
   // Default: platform mode, no protected secret — most tests below override
   // listSecretsCached only and don't care about the provider branch.
   getTenantProviderCached.mockResolvedValue(platformProvider());
+  getConnectorCatalogCached.mockResolvedValue([]);
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -153,6 +162,31 @@ describe("Secrets page", () => {
 
     const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
     await expect(renderPage(Page)).rejects.toThrow("503");
+  });
+
+  it("hands the list only the connections the workspace has live", async () => {
+    listSecretsCached.mockResolvedValue({ secrets: [] });
+    getConnectorCatalogCached.mockResolvedValue([
+      { id: "github", archetype: "app_install", display_name: "GitHub", configured: true, connected: true },
+      { id: "jira", archetype: "oauth2", display_name: "Jira", configured: true, connected: false },
+    ]);
+
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
+
+    expect(getConnectorCatalogCached).toHaveBeenCalledWith(WORKSPACE_ID, "token_123");
+    expect(markup).toContain(`data-connections="${JSON.stringify({ github: "GitHub" }).replaceAll('"', "&quot;")}"`);
+  });
+
+  it("still renders, with no connections, when the connector catalogue read fails", async () => {
+    listSecretsCached.mockResolvedValue({ secrets: [] });
+    getConnectorCatalogCached.mockRejectedValue(new Error("503"));
+
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/secrets/page");
+    const markup = renderToStaticMarkup(await renderPage(Page));
+
+    expect(markup).toContain('data-testid="secrets-list"');
+    expect(markup).toContain('data-connections="{}"');
   });
 
   it("redirects to /sign-in when unauthenticated", async () => {
