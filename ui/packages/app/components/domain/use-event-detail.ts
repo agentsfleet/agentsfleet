@@ -13,8 +13,8 @@ import type { EventDetail, EventRow } from "@/lib/api/events";
  * operator actually opened.
  *
  * Routed through a Server Action, never a browser fetch: the dashboard's
- * credential does not leave the server, and a gate enforces it
- * (`tests/grep-gates/no-api-template-mint.test.ts`). That is also why this hook
+ * credential does not leave the server, and a lint enforces it
+ * (`scripts/check_app_source.py`, rule app-client-credential). That is also why this hook
  * takes no token and no caller threads one down.
  *
  * Returns `null` while in flight and on failure. Both render as "not recorded"

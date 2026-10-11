@@ -134,12 +134,31 @@ async fn assert_the_retry_commits_all_four(
          destination and nothing is owed; the report-owes-destination suite proves the \
          owed branch"
     );
-    assert!(
-        closed.is_some(),
+    let closed = closed.expect(
         "the terminal write closed a row, and the frame announcing it rides that row rather \
-         than a second read taken after the commit"
+         than a second read taken after the commit",
     );
+    assert_closing_carries_the_counters(held, &closed).await;
     assert_all_four_landed(held, settled_at.as_millis()).await;
+}
+
+/// The closing hands back the fleet's counters in their own slots.
+///
+/// Both are integers read by position, so a statement that swapped them would
+/// decode clean; the two differ here (one event, one charged slice), and the
+/// closing must agree with the counters read on their own.
+async fn assert_closing_carries_the_counters(held: &Held, closed: &afd_events::Closed) {
+    let stored = afd_events::fleet_counters(&held.fixtures.database, &held.fleet)
+        .await
+        .expect("the counters read back");
+    assert_ne!(
+        stored.events_processed, stored.budget_used_nanos,
+        "the two counters must differ for a swap to be visible"
+    );
+    assert_eq!(
+        closed.counters, stored,
+        "the closing's counters are the database's"
+    );
 }
 
 /// The response is lost, the runner re-sends, and nothing moves.

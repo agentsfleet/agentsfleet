@@ -13,7 +13,6 @@ import {
   formatTable,
   formatKeyValue,
   formatSection,
-  formatHelpHeading,
   formatEvidence,
   type FormatOpts,
   type TableColumn,
@@ -25,12 +24,9 @@ import { detectColorMode, isTty, resetCapabilityWarning, ColorMode } from "./cap
 
 export interface UiTheme {
   readonly ok: (s: string) => string;
-  readonly info: (s: string) => string;
   readonly warn: (s: string) => string;
   readonly err: (s: string) => string;
-  readonly head: (s: string) => string;
   readonly dim: (s: string) => string;
-  readonly label: (s: string) => string;
 }
 
 // `ui` proxy — call-time capability resolution. Each member resolves
@@ -38,12 +34,9 @@ export interface UiTheme {
 // per test without re-importing the module.
 export const ui: UiTheme = {
   ok:    (s) => withGlyph(glyph.ok, s),
-  info:  (s) => palette.muted(s),
   warn:  (s) => `${glyph.warn().render()} ${palette.warn(s)}`,
   err:   (s) => `${glyph.error().render()} ${palette.error(s)}`,
-  head:  (s) => formatHelpHeading(s),
   dim:   (s) => palette.subtle(s),
-  label: (s) => palette.subtle(s),
 };
 
 export interface WriteStream {
@@ -82,7 +75,6 @@ export {
   AGE_KEY,
   formatKeyValue,
   formatSection,
-  formatHelpHeading,
   formatEvidence,
   detectColorMode,
   isTty,

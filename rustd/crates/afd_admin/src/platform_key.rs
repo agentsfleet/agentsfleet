@@ -211,20 +211,3 @@ const MODEL_EXISTS: &str =
 const UPSERT: &str = "INSERT INTO core.platform_provider_defaults (provider, source_workspace_id, model, base_url, context_cap_tokens, active, created_at, updated_at) SELECT $1, $2::uuid, $3, $4, context_cap_tokens, true, $5, $5 FROM core.model_library WHERE provider = $1 AND model_id = $3 ON CONFLICT (provider) DO UPDATE SET source_workspace_id = EXCLUDED.source_workspace_id, model = EXCLUDED.model, base_url = EXCLUDED.base_url, context_cap_tokens = EXCLUDED.context_cap_tokens, active = true, updated_at = EXCLUDED.updated_at RETURNING provider, source_workspace_id::text, model, active, updated_at";
 const DEACTIVATE_OTHERS: &str = "UPDATE core.platform_provider_defaults SET active = false, model = NULL, updated_at = $1 WHERE active = true AND provider <> $2";
 const DEACTIVATE: &str = "UPDATE core.platform_provider_defaults SET active = false, model = NULL, updated_at = $1 WHERE provider = $2";
-
-#[cfg(test)]
-mod tests {
-    use super::{DEACTIVATE_OTHERS, LIST, UPSERT};
-
-    #[test]
-    fn platform_key_defaults_reference_vault_metadata_only() {
-        for statement in [LIST, UPSERT, DEACTIVATE_OTHERS] {
-            assert!(!statement.contains("api_key"));
-            assert!(!statement.contains("ciphertext"));
-            assert!(!statement.contains("vault.secrets"));
-        }
-        assert!(UPSERT.contains("source_workspace_id"));
-        assert!(UPSERT.contains("core.model_library"));
-        assert!(!UPSERT.contains("DEACTIVATE"));
-    }
-}

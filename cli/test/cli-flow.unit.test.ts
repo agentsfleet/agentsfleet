@@ -13,7 +13,6 @@ import {
   decryptJwt,
   deriveSharedKey,
   encryptJwtForTest,
-  fingerprintHex,
   generateCliKeypair,
 } from "../src/lib/cli-flow.ts";
 
@@ -112,16 +111,5 @@ describe("cli-flow crypto mirror", () => {
     await expect(
       decryptJwt(cliKey, ciphertextBase64Url, shortNonce),
     ).rejects.toThrow(/nonce length/);
-  });
-
-  test("fingerprintHex returns 64-char lowercase hex sha256", async () => {
-    const hex = await fingerprintHex("session-id-abc");
-    expect(hex).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test("fingerprintHex is deterministic for the same input", async () => {
-    const a = await fingerprintHex("input");
-    const b = await fingerprintHex("input");
-    expect(a).toBe(b);
   });
 });

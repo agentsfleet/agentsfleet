@@ -302,8 +302,8 @@ interface CreateWorkspaceResp {
 }
 
 // POST /v1/workspaces — name is optional; server picks a Heroku-style name
-// when omitted. Used by multi-workspace.spec.ts to ensure the fixture user
-// has at least two workspaces for the WorkspaceSwitcher dropdown.
+// when omitted. Global setup and the workspace specs use it to ensure the
+// fixture user has at least two workspaces for the WorkspaceSwitcher dropdown.
 export async function ensureSecondWorkspace(
   key: FixtureKey,
   desiredName: string,

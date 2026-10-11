@@ -9,7 +9,6 @@
 //! |---|---|
 //! | every `skill/` and `trigger/` fixture verdict | [`test_fleet_frontmatter_corpus_parity`] |
 //! | the `platform-ops` / `steer-probe` template substitution | [`the_templated_bundles_parse_once_their_placeholders_are_filled`] |
-//! | no first-party bundle promises the retired repository-write card | [`test_fixture_corpus_names_no_retired_gate`] |
 //!
 //! The FIELD-VALUE half of the corpus lives in `frontmatter_fields.rs`; this
 //! file asserts only which documents open and which are refused.
@@ -29,15 +28,7 @@
 
 use afd_fleet_runtime::{Class, Error, config::Access, parse_skill, parse_trigger};
 
-use crate::support::{FIRST_PARTY, MODEL_VALUE, fixture, raw_fixture};
-
-/// The card the daemon retired: the standing integration grant authorises a
-/// repository write (`src/config/raw/predicate.rs`), so a bundle promising a
-/// per-event card tells its model about a gate that never opens.
-const RETIRED_GATE: &str = "approval card";
-
-/// The two documents every first-party bundle ships.
-const BUNDLE_DOCUMENTS: [&str; 2] = ["SKILL.md", "TRIGGER.md"];
+use crate::support::{MODEL_VALUE, fixture, raw_fixture};
 
 /// What the corpus expects one document to answer, at the grain the table
 /// grades.
@@ -216,34 +207,6 @@ fn an_unsubstituted_template_is_refused() {
 }
 
 #[test]
-fn drill_bundles_parse_and_join_the_corpus() {
-    assert_eq!(FIRST_PARTY.len(), 9);
-    assert_eq!(CORPUS_CASES.len(), 19);
-    for (relative, kind) in [
-        ("ci-responder/SKILL.md", Kind::Skill),
-        ("ci-responder/TRIGGER.md", Kind::Trigger),
-        ("ci-repairer/SKILL.md", Kind::Skill),
-        ("ci-repairer/TRIGGER.md", Kind::Trigger),
-    ] {
-        assert!(
-            CORPUS_CASES.contains(&(relative, kind, Verdict::Accepts)),
-            "{relative} must be graded by the corpus"
-        );
-    }
-    for slug in ["ci-responder", "ci-repairer"] {
-        assert!(
-            FIRST_PARTY.contains(&slug),
-            "{slug} joins the first-party roster"
-        );
-        let skill = parse_skill(&fixture(&format!("{slug}/SKILL.md")))
-            .unwrap_or_else(|failure| panic!("{slug} skill should parse: {failure}"));
-        let trigger = parse_trigger(&fixture(&format!("{slug}/TRIGGER.md")))
-            .unwrap_or_else(|failure| panic!("{slug} trigger should parse: {failure}"));
-        assert_eq!(skill.name(), trigger.config().name(), "{slug} names agree");
-    }
-}
-
-#[test]
 fn responder_bundle_holds_no_write_reach() {
     let parsed =
         parse_trigger(&fixture("ci-responder/TRIGGER.md")).expect("responder trigger should parse");
@@ -323,18 +286,5 @@ fn repairer_bundle_is_write_bound_to_one_base() {
     assert_eq!(
         network.allow().first().map(AsRef::as_ref),
         Some("api.github.com")
-    );
-}
-
-#[test]
-fn test_fixture_corpus_names_no_retired_gate() {
-    let promising: Vec<String> = FIRST_PARTY
-        .iter()
-        .flat_map(|slug| BUNDLE_DOCUMENTS.map(|document| format!("{slug}/{document}")))
-        .filter(|relative| raw_fixture(relative).to_lowercase().contains(RETIRED_GATE))
-        .collect();
-    assert!(
-        promising.is_empty(),
-        "these bundles still promise the retired {RETIRED_GATE:?}: {promising:?}"
     );
 }

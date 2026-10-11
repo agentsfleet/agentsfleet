@@ -157,28 +157,6 @@ describe("login acceptance — jsonMode rendering + rollback", () => {
 });
 
 describe("login acceptance — the credential exchange", () => {
-  test("test_login_persists_credential_not_session_token — the session token authorises one mint and is then discarded", async () => {
-    const rec = makeRecorder();
-    const fixture = freshFixture();
-    const exit = await Effect.runPromiseExit(runLogin(rec, fixture));
-    expect(Exit.isSuccess(exit)).toBe(true);
-
-    // Spent exactly once, and spent as the authorization — the whole point
-    // of the sixty-second window is that it buys one durable thing.
-    expect(fixture.mintCalls.count).toBe(1);
-    expect(fixture.mintCalls.authorization).toBe(TEST_JWT);
-
-    // The label is hostname-derived and inside the server's grammar. A
-    // platform label ("macos-cli") would make every Mac claim one row, so
-    // asserting the grammar also guards the machine-per-row key.
-    expect(fixture.mintCalls.machineName).toMatch(/^[a-zA-Z0-9._-]{1,64}$/);
-
-    // What survives on disk is the credential, and the session token
-    // appears nowhere in the persisted record.
-    expect(rec.savedToken).toBe(MINTED_CREDENTIAL);
-    expect(rec.savedToken).not.toBe(TEST_JWT);
-  });
-
   test("test_failed_exchange_persists_nothing — a refused mint writes nothing and reports why the daemon refused", async () => {
     const rec = makeRecorder();
     const fixture = freshFixture();

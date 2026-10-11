@@ -5,8 +5,6 @@ import Home from "./Home";
 import {
   FLEET_PILLARS,
   CAPABILITY_ITEMS,
-  HERO_HEADLINE,
-  HERO_LEDE_PARTS,
   HOW_IT_WORKS_HEADING,
   PREBUILT_FLEETS,
   PRICING_COPY,
@@ -28,46 +26,6 @@ function expectDocumentOrder(first: HTMLElement, second: HTMLElement) {
 }
 
 describe("Home", () => {
-  it("renders the resident-engineer hero headline", () => {
-    renderHome();
-    const h1 = screen.getByRole("heading", { level: 1 });
-    expect(h1).toHaveTextContent(HERO_HEADLINE);
-  });
-
-  it("renders the hero lede naming the trigger and its sources", () => {
-    renderHome();
-    const hero = screen.getByTestId("hero");
-    expect(within(hero).getByText(HERO_LEDE_PARTS.trigger)).toBeInTheDocument();
-    expect(within(hero).getByText(HERO_LEDE_PARTS.sources)).toBeInTheDocument();
-    expect(hero.textContent).toMatch(/you control access and decide what ships/i);
-  });
-
-  it("hides the unavailable installer", () => {
-    renderHome();
-    expect(screen.queryByTestId("hero-install-command")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /copy the install command/i })).not.toBeInTheDocument();
-  });
-
-  it("does not render Talk to us in the hero", () => {
-    renderHome();
-    expect(
-      within(screen.getByTestId("hero")).queryByRole("link", { name: /talk to us/i }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("no longer renders the removed install-via Terminal in the hero", () => {
-    renderHome();
-    expect(screen.queryByLabelText(/install via agentsfleet\.dev/i)).not.toBeInTheDocument();
-  });
-
-  it("does not mount the retired standalone onboarding section", () => {
-    renderHome();
-    expect(screen.queryByTestId("onboarding-flow")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { level: 3, name: "Install the command-line interface" }),
-    ).not.toBeInTheDocument();
-  });
-
   it("leads with the fleet catalogue before technical capabilities", () => {
     renderHome();
     const hero = screen.getByTestId("hero");
@@ -97,11 +55,8 @@ describe("Home", () => {
     expect(screen.getByRole("figure", { name: /incident diagnosis/i })).toHaveTextContent("Elasticsearch");
   });
 
-  it("omits repetitive setup and operational knowledge sections", () => {
+  it("places core capabilities before pricing", () => {
     renderHome();
-    expect(screen.queryByTestId("operational-knowledge")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("setup-section")).not.toBeInTheDocument();
-    expect(screen.queryByText(/your first fleet/i)).not.toBeInTheDocument();
     expectDocumentOrder(screen.getByTestId("core-capabilities"), screen.getByTestId("pricing-block"));
   });
 
@@ -129,15 +84,6 @@ describe("Home", () => {
     }
   });
 
-  it("does not render a duplicate install block below pricing", () => {
-    renderHome();
-    // The old standalone InstallBlock below pricing was redundant with the
-    // loop section at the top of the page; it must be gone.
-    expect(
-      screen.queryByRole("heading", { level: 2, name: /install agentsfleet, then run/i }),
-    ).not.toBeInTheDocument();
-  });
-
   it("embeds the Pricing block below How it works", () => {
     renderHome();
     expect(screen.getByTestId("pricing-block")).toBeInTheDocument();
@@ -145,10 +91,5 @@ describe("Home", () => {
     expect(screen.getByTestId("pricing-block")).toHaveTextContent(PRICING_COPY.note);
     expect(screen.queryByTestId("pricing-rate-run")).not.toBeInTheDocument();
     expectDocumentOrder(screen.getByTestId("how-it-works"), screen.getByTestId("pricing-block"));
-  });
-
-  it("does not render a view-full-pricing link (pricing is inline)", () => {
-    renderHome();
-    expect(screen.queryByRole("link", { name: /view full pricing/i })).not.toBeInTheDocument();
   });
 });

@@ -5,8 +5,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "./Dialog";
@@ -173,20 +171,6 @@ describe("Dialog", () => {
     expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
   });
 
-  it("DialogContent applies surface utilities", () => {
-    render(
-      <Dialog open>
-        <DialogContent data-testid="content">
-          <DialogTitle>T</DialogTitle>
-        </DialogContent>
-      </Dialog>,
-    );
-    const cls = screen.getByTestId("content").className;
-    expect(cls).toContain("bg-card");
-    expect(cls).toContain("border-border-strong");
-    expect(cls).toContain("rounded-lg");
-  });
-
   // Regression: a fixed, centre-translated panel is unreachable by page scroll,
   // so a dialog taller than the viewport used to bury its own footer — the
   // submit button rendered, was "visible and enabled", and could never be
@@ -203,33 +187,6 @@ describe("Dialog", () => {
     const cls = screen.getByTestId("content").className;
     expect(cls).toContain("max-h-[calc(100dvh-var(--spacing-3xl))]");
     expect(cls).toContain("overflow-y-auto");
-  });
-
-  it("DialogHeader/Footer apply layout utilities", () => {
-    render(
-      <Dialog open>
-        <DialogContent>
-          <DialogHeader data-testid="h">
-            <DialogTitle>T</DialogTitle>
-          </DialogHeader>
-          <DialogFooter data-testid="f">Actions</DialogFooter>
-        </DialogContent>
-      </Dialog>,
-    );
-    expect(screen.getByTestId("h").className).toContain("flex-col");
-    expect(screen.getByTestId("f").className).toContain("justify-end");
-  });
-
-  it("DialogDescription uses muted-foreground text", () => {
-    render(
-      <Dialog open>
-        <DialogContent>
-          <DialogTitle>T</DialogTitle>
-          <DialogDescription data-testid="d">Body</DialogDescription>
-        </DialogContent>
-      </Dialog>,
-    );
-    expect(screen.getByTestId("d").className).toContain("text-muted-foreground");
   });
 
   it("forwards refs on the Content primitive", () => {

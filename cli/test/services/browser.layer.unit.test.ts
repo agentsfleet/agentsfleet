@@ -49,14 +49,6 @@ const runOpen = (url: string): Promise<boolean> =>
   );
 
 describe("browserLayer", () => {
-  test("provides a Browser service exposing `open`", () => {
-    const program = Effect.gen(function* () {
-      const browser = yield* Browser;
-      expect(typeof browser.open).toBe("function");
-    }).pipe(Effect.provide(browserLayer));
-    return Effect.runPromise(program);
-  });
-
   test("BROWSER=false returns false without spawning", async () => {
     process.env.BROWSER = "false";
     const result = await runOpen("https://example.test/login");
@@ -81,11 +73,5 @@ describe("browserLayer", () => {
     process.env.SSH_CLIENT = "1.2.3.4 4321 22";
     const result = await runOpen("https://example.test/login");
     expect(result).toBe(false);
-  });
-
-  test("open never throws — error channel is `never`", async () => {
-    process.env.BROWSER = "false";
-    const result = await runOpen("not-a-url");
-    expect(typeof result).toBe("boolean");
   });
 });

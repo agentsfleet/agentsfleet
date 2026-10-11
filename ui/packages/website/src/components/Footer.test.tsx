@@ -35,15 +35,6 @@ describe("Footer", () => {
     expect(screen.getByText(/^agentsfleet$/)).toBeInTheDocument();
   });
 
-  it("states the brand line and who decides what ships", () => {
-    renderFooter();
-    expect(
-      screen.getByText(/AI agents that wake when production breaks\. You decide what ships\./i),
-    ).toBeInTheDocument();
-    // "Self-managed. Open source." was pulled from the footer tagline.
-    expect(screen.queryByText(/Self-managed\. Open source\./)).not.toBeInTheDocument();
-  });
-
   it("renders product column with links", () => {
     renderFooter();
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();

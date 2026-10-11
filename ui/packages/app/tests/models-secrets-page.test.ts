@@ -1,6 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { within } from "@testing-library/react";
 import { MODELS_PAGE_DESCRIPTION } from "../app/(dashboard)/w/[workspaceId]/settings/models/copy";
 
 // Server-component page test for the Models page (M121: the registry
@@ -105,6 +106,18 @@ describe("Models page", () => {
     expect(markup).toContain('data-entry-count="2"');
     // A successful read carries no error — the two are mutually exclusive.
     expect(markup).toContain('data-error-kind=""');
+  });
+
+  it("marks the streaming registry region busy, so loading reads without motion", async () => {
+    // Under reduced motion the skeleton pulse freezes; aria-busy plus an
+    // announced status is what keeps "loading" distinguishable from "empty".
+    listTenantModelEntriesCached.mockResolvedValue(registryList(0));
+    const { default: Page } = await import("../app/(dashboard)/w/[workspaceId]/settings/models/page");
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(await renderPage(Page));
+    const status = within(host).getByRole("status");
+    expect(status.textContent).toMatch(/loading/i);
+    expect(status.closest("[aria-busy]")?.getAttribute("aria-busy")).toBe("true");
   });
 
   it("surfaces a typed read error rather than an empty registry when the fetch fails", async () => {

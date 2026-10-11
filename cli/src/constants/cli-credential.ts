@@ -18,11 +18,6 @@ export const TENANT_KEY_PREFIX = "agt_t" as const;
 // random bytes rendered as lower-case hex.
 export const CLI_CREDENTIAL_BODY_LEN = 64;
 
-// Prefix plus hex body — the total the shape check in that module measures
-// against, which composes the two rather than naming a constant of its own.
-export const CLI_CREDENTIAL_TOTAL_LEN =
-  CLI_CREDENTIAL_PREFIX.length + CLI_CREDENTIAL_BODY_LEN;
-
 // Mirrors the pair `CredentialKind::of` + `accepts_shape` in that module:
 // exact length, exact prefix, and a body of lower-case hex. Anchored, so a
 // value carrying trailing bytes is refused rather than matched on its head.

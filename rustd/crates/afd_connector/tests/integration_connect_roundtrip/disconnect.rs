@@ -15,13 +15,13 @@ use super::*;
 mod rollback;
 
 /// The provider these cases connect: one with inbound routing rows.
-const PROVIDER: Provider = Provider::Slack;
+pub(super) const PROVIDER: Provider = Provider::Slack;
 
 /// The account the first connect routes, before [`account`] scopes it.
-const ACCOUNT_A: &str = "T0FIXTUREA";
+pub(super) const ACCOUNT_A: &str = "T0FIXTUREA";
 
 /// The account a reconnect routes in its place.
-const ACCOUNT_B: &str = "T0FIXTUREB";
+pub(super) const ACCOUNT_B: &str = "T0FIXTUREB";
 
 /// How long a case waits for a writer to queue behind a held row lock.
 const QUEUE_DEADLINE: Duration = Duration::from_secs(10);
@@ -242,12 +242,12 @@ async fn assert_both_or_neither(round: &Round) {
 /// `label` scoped to this round's workspace. Routing rows are unique by
 /// provider and account across every workspace, so two cases sharing an
 /// account would repoint each other's rows when the lane runs them together.
-fn account(round: &Round, label: &str) -> String {
+pub(super) fn account(round: &Round, label: &str) -> String {
     format!("{label}-{}", round.workspace.as_str())
 }
 
 /// A Slack grant routing `account` to whichever workspace lands it.
-fn grant(account: &str) -> Grant {
+pub(super) fn grant(account: &str) -> Grant {
     let mut handle = Map::new();
     handle.insert("integration".to_owned(), Value::from("slack"));
     handle.insert(

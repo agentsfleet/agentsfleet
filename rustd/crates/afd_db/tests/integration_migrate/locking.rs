@@ -1,5 +1,7 @@
 //! Advisory-lock, failure-ledger, retry, and availability proofs.
 
+use std::sync::LazyLock;
+
 use super::*;
 
 /// Dimension 2.2 — two migrators on one fresh database: one applies, the other
@@ -50,24 +52,29 @@ async fn test_migrate_advisory_lock_contention() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_migrate_failure_bookkeeping() {
-    static FAILING: &[Migration] = &[
-        Migration::for_test(
-            900_001,
-            "900001_creates_a_table.sql",
-            "CREATE TABLE afd_migrate_probe (id INTEGER PRIMARY KEY);",
-        ),
-        Migration::for_test(
-            900_002,
-            "900002_refers_to_nothing.sql",
-            "INSERT INTO a_table_that_does_not_exist (id) VALUES (1);",
-        ),
-    ];
+    // Built on first use rather than in a `const` context: the migrator takes
+    // a `'static` slice, and a `LazyLock` gives one while the constructor runs
+    // as the code under test rather than at compile time.
+    static FAILING: LazyLock<[Migration; 2]> = LazyLock::new(|| {
+        [
+            Migration::for_test(
+                900_001,
+                "900001_creates_a_table.sql",
+                "CREATE TABLE afd_migrate_probe (id INTEGER PRIMARY KEY);",
+            ),
+            Migration::for_test(
+                900_002,
+                "900002_refers_to_nothing.sql",
+                "INSERT INTO a_table_that_does_not_exist (id) VALUES (1);",
+            ),
+        ]
+    });
 
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
 
     let error = Migrator::new()
-        .with_migrations(FAILING)
+        .with_migrations(&*FAILING)
         .run(&db)
         .await
         .expect_err("a migration against a missing table must fail");

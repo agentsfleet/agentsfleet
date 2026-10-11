@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  TIME_DEFAULT_LOCALE,
   TIME_INVALID_FALLBACK,
   coerceDate,
   formatTimeAbsolute,
@@ -12,12 +11,9 @@ import {
 
 const ISO = "2026-05-03T10:00:00.000Z";
 const NOW = new Date("2026-05-03T12:00:00Z");
-
-describe("TIME_DEFAULT_LOCALE", () => {
-  it("is en-US", () => {
-    expect(TIME_DEFAULT_LOCALE).toBe("en-US");
-  });
-});
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 
 describe("coerceDate", () => {
   it("returns the same instance when given a Date", () => {
@@ -92,14 +88,14 @@ describe("formatTimeRelative — sub-5s 'just now' band", () => {
 describe("formatTimeRelative — past direction", () => {
   it.each([
     [30_000, "30 seconds ago"],
-    [60_000, "1 minute ago"],
-    [5 * 60_000, "5 minutes ago"],
-    [60 * 60_000, "1 hour ago"],
-    [3 * 60 * 60_000, "3 hours ago"],
-    [24 * 60 * 60_000, "1 day ago"],
-    [10 * 24 * 60 * 60_000, "10 days ago"],
-    [30 * 24 * 60 * 60_000, "1 month ago"],
-    [365 * 24 * 60 * 60_000, "1 year ago"],
+    [MINUTE_MS, "1 minute ago"],
+    [5 * MINUTE_MS, "5 minutes ago"],
+    [HOUR_MS, "1 hour ago"],
+    [3 * HOUR_MS, "3 hours ago"],
+    [DAY_MS, "1 day ago"],
+    [10 * DAY_MS, "10 days ago"],
+    [30 * DAY_MS, "1 month ago"],
+    [365 * DAY_MS, "1 year ago"],
   ])("delta=%i ms → %s", (deltaMs, expected) => {
     expect(formatTimeRelative(new Date(NOW.getTime() - deltaMs), NOW)).toBe(expected);
   });
@@ -108,12 +104,12 @@ describe("formatTimeRelative — past direction", () => {
 describe("formatTimeRelative — future direction", () => {
   it.each([
     [30_000, "in 30 seconds"],
-    [60_000, "in 1 minute"],
-    [10 * 60_000, "in 10 minutes"],
-    [60 * 60_000, "in 1 hour"],
-    [24 * 60 * 60_000, "in 1 day"],
-    [60 * 24 * 60 * 60_000, "in 2 months"],
-    [2 * 365 * 24 * 60 * 60_000, "in 2 years"],
+    [MINUTE_MS, "in 1 minute"],
+    [10 * MINUTE_MS, "in 10 minutes"],
+    [HOUR_MS, "in 1 hour"],
+    [DAY_MS, "in 1 day"],
+    [2 * 30 * DAY_MS, "in 2 months"],
+    [2 * 365 * DAY_MS, "in 2 years"],
   ])("delta=+%i ms → %s", (deltaMs, expected) => {
     expect(formatTimeRelative(new Date(NOW.getTime() + deltaMs), NOW)).toBe(expected);
   });
@@ -121,19 +117,19 @@ describe("formatTimeRelative — future direction", () => {
 
 describe("formatTimeRelative — singular vs plural", () => {
   it("singularises every unit when n === 1", () => {
-    expect(formatTimeRelative(new Date(NOW.getTime() - 60_000), NOW)).toContain("1 minute ");
-    expect(formatTimeRelative(new Date(NOW.getTime() - 60 * 60_000), NOW)).toContain("1 hour ");
-    expect(formatTimeRelative(new Date(NOW.getTime() - 24 * 60 * 60_000), NOW)).toContain("1 day ");
+    expect(formatTimeRelative(new Date(NOW.getTime() - MINUTE_MS), NOW)).toContain("1 minute ");
+    expect(formatTimeRelative(new Date(NOW.getTime() - HOUR_MS), NOW)).toContain("1 hour ");
+    expect(formatTimeRelative(new Date(NOW.getTime() - DAY_MS), NOW)).toContain("1 day ");
   });
   it("pluralises when n !== 1", () => {
-    expect(formatTimeRelative(new Date(NOW.getTime() - 2 * 60_000), NOW)).toContain("2 minutes");
-    expect(formatTimeRelative(new Date(NOW.getTime() - 2 * 60 * 60_000), NOW)).toContain("2 hours");
+    expect(formatTimeRelative(new Date(NOW.getTime() - 2 * MINUTE_MS), NOW)).toContain("2 minutes");
+    expect(formatTimeRelative(new Date(NOW.getTime() - 2 * HOUR_MS), NOW)).toContain("2 hours");
   });
 });
 
 describe("formatTimeRelative — accepts string input", () => {
   it("parses an ISO string the same as a Date instance", () => {
-    const past = new Date(NOW.getTime() - 90 * 60_000);
+    const past = new Date(NOW.getTime() - 90 * MINUTE_MS);
     expect(formatTimeRelative(past.toISOString(), NOW)).toBe(
       formatTimeRelative(past, NOW),
     );
@@ -212,7 +208,7 @@ describe("visibleTimeLabel", () => {
     );
   });
   it("'relative' returns formatTimeRelative(value) using wall-clock now", () => {
-    const past = new Date(Date.now() - 3 * 60_000).toISOString();
+    const past = new Date(Date.now() - 3 * MINUTE_MS).toISOString();
     expect(visibleTimeLabel(past, "relative", "en-US", past)).toMatch(/\d+ minutes? ago/);
   });
   it("'absolute' respects the passed locale", () => {

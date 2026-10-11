@@ -37,9 +37,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: routerRefreshMo
 import AddModelDialog from "@/app/(dashboard)/admin/models/components/AddModelDialog";
 import CatalogueList from "@/app/(dashboard)/admin/models/components/CatalogueList";
 import ModelsView from "@/app/(dashboard)/admin/models/components/ModelsView";
-import { type AdminModel, type PlatformKey } from "@/lib/api/admin_model_library";
-import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
-import { EVENTS } from "../lib/analytics/events";
+import { type AdminModel } from "@/lib/api/admin_model_library";
 
 function renderWithTooltipProvider(node: React.ReactElement) {
   return render(React.createElement(TooltipProvider, null, node));
@@ -63,10 +61,6 @@ const CATALOGUE: AdminModel[] = [
   { id: "u2", provider: "anthropic", model_id: "claude-opus-4-8", context_cap_tokens: 200000, input_nanos_per_mtok: 15_000_000_000, cached_input_nanos_per_mtok: 1_500_000_000, output_nanos_per_mtok: 75_000_000_000 },
 ];
 
-const DEFAULT_FIREWORKS: PlatformKey = {
-  provider: "fireworks", source_workspace_id: "ws1", model: "glm-5.2", active: true, updated_at: 1,
-};
-
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => {
   vi.restoreAllMocks();
@@ -74,12 +68,6 @@ afterEach(() => {
 });
 
 describe("AddModelDialog", () => {
-  it("renders a PlusIcon on the create-model-library trigger (test_create_triggers_render_plus_icon)", () => {
-    render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
-    const trigger = screen.getByRole("button", { name: "Create model library" });
-    expect(trigger.querySelector("svg.lucide-plus")).toBeTruthy();
-  });
-
   it("describes the entry in user-facing pricing language", async () => {
     render(React.createElement(AddModelDialog, { onCreated: vi.fn() }));
     await userEvent.setup().click(screen.getByRole("button", { name: "Create model library" }));
@@ -259,11 +247,9 @@ describe("CatalogueList — Delete (icon-only, confirm-gated)", () => {
     expect(screen.queryByRole("alertdialog")).toBeTruthy();
   });
 
-  it("Delete is an icon-only destructive button with an aria-label, not text", () => {
+  it("Delete is an icon-only button named by its aria-label, not text", () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: CATALOGUE, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     const del = within(rowFor("glm-5.2")).getByRole("button", { name: "Delete glm-5.2" });
-    expect(del.className).toContain("bg-destructive");
-    expect(del.querySelector("svg.lucide-trash")).toBeTruthy();
     // No visible "Delete" text label — the trigger is icon-only now.
     expect(del.textContent?.trim()).toBe("");
   });

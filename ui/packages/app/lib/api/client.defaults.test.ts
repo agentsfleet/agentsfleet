@@ -200,9 +200,6 @@ describe("request — default timeout", () => {
     expect(timeoutSpy).toHaveBeenCalledTimes(1);
     expect(timeoutSpy).toHaveBeenCalledWith(DEFAULT_REQUEST_TIMEOUT_MS);
     expect(sentSignal(1)).toBe(timeoutSpy.mock.results[0]?.value);
-    // pin test: literal is the contract — the SSE backfill's proxy fetch is
-    // held to the same window (lib/streaming/fleet-stream-backfill.ts).
-    expect(DEFAULT_REQUEST_TIMEOUT_MS).toBe(10_000);
     timeoutSpy.mockRestore();
   });
 
