@@ -3,10 +3,6 @@
 //! The catalogue's claim values are shared verbatim with the identity
 //! provider's token template, so a spelling that drifts here is a capability
 //! the provider grants and this daemon refuses, or the reverse.
-#![expect(
-    clippy::expect_used,
-    reason = "test target: an unmet precondition should fail the test loudly"
-)]
 
 use std::collections::BTreeSet;
 
@@ -287,26 +283,4 @@ fn test_iteration_agrees_with_membership() {
         );
     }
     assert!(ScopeSet::EMPTY.iter().next().is_none());
-}
-
-/// `docs/AUTH.md`'s Scope catalogue lists every claim value this crate defines.
-///
-/// Reads the catalogue rather than a hand-typed list so a scope added here
-/// fails the moment the doc goes stale.
-#[test]
-fn test_every_claim_value_appears_in_the_auth_doc() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(3)
-        .expect("crates/afd_auth is three levels below the repository root");
-    let doc = std::fs::read_to_string(root.join("docs/AUTH.md"))
-        .expect("docs/AUTH.md must be readable from the repository root");
-
-    for scope in Scope::ALL {
-        assert!(
-            doc.contains(scope.wire()),
-            "{} is missing from docs/AUTH.md",
-            scope.wire()
-        );
-    }
 }

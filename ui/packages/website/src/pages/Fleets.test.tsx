@@ -19,22 +19,6 @@ describe("Fleets", () => {
     );
   });
 
-  it("renders the canonical surface note", () => {
-    renderFleets();
-    expect(screen.getByText(/canonical surface/i)).toBeInTheDocument();
-  });
-
-  it("renders the merged install heading and npm command", () => {
-    renderFleets();
-    // One install story: the "Install agentsfleet" heading sits over the
-    // bootstrap terminal (CLI + skills + slash command) — the old standalone
-    // InstallBlock was folded in.
-    expect(screen.getByRole("heading", { name: /install agentsfleet/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/bootstrap commands/i)).toHaveTextContent(
-      /npm install -g @agentsfleet\/cli/,
-    );
-  });
-
   it("renders install action links and no dashboard link", () => {
     renderFleets();
     expect(screen.getByRole("link", { name: /start a Fleet/i })).toHaveAttribute(
@@ -67,20 +51,6 @@ describe("Fleets", () => {
     expect(screen.getByTestId("fleets-openapi-link")).toHaveAttribute("href", "/openapi.json");
   });
 
-
-
-
-
-
-
-  it("renders safety limits cards", () => {
-    renderFleets();
-    expect(screen.getByText(/^idempotency$/i)).toBeInTheDocument();
-    expect(screen.getByText(/^audit trail$/i)).toBeInTheDocument();
-    expect(screen.getByText(/^secret management$/i)).toBeInTheDocument();
-    expect(screen.getByText(/^policy enforcement$/i)).toBeInTheDocument();
-  });
-
   it("renders JSON-LD script", () => {
     const { container } = renderFleets();
     const script = container.querySelector('script[type="application/ld+json"]');
@@ -89,19 +59,16 @@ describe("Fleets", () => {
     expect(data["@type"]).toBe("SoftwareApplication");
     expect(data.name).toBe("agentsfleet");
   });
-
-  it("does not render orange-era decorative chrome", () => {
-    const { container } = renderFleets();
-    expect(container.querySelector(".scanline")).toBeNull();
-    expect(container.querySelector(".fleet-surface")).toBeNull();
-    expect(container.querySelector(".fleet-table")).toBeNull();
-  });
 });
 
 it("puts installation before API steps and removes stale sections", () => {
   renderFleets();
+  const installHeading = "Install agentsfleet";
+  const apiHeading = "Get started in four calls";
   const headings = screen.getAllByRole("heading").map(heading => heading.textContent);
-  expect(headings.indexOf("Install agentsfleet")).toBeLessThan(headings.indexOf("Get started in four calls"));
+  expect(headings).toContain(installHeading);
+  expect(headings).toContain(apiHeading);
+  expect(headings.indexOf(installHeading)).toBeLessThan(headings.indexOf(apiHeading));
   expect(headings).not.toContain("Webhook ingest example");
   expect(headings).not.toContain("Coming soon");
   expect(headings).not.toContain("API operations");

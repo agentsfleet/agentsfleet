@@ -2,8 +2,6 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=test_search.sh
-source "$script_dir/test_search.sh"
 script_under_test="$script_dir/platform_secret_sync.sh"
 
 passed=0
@@ -191,7 +189,7 @@ test_creates_complete_github_bag_without_leaking() {
 
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! rg --fixed-strings --quiet \
+  elif ! grep -Fq \
     'POST|https://api-dev.agentsfleet.net/v1/workspaces/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210/secrets' \
     "$work_dir/calls"; then
     bad "$name" "create did not use the workspace collection"
@@ -210,7 +208,7 @@ test_replaces_existing_bag_in_one_put() {
 
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! rg --fixed-strings --quiet \
+  elif ! grep -Fq \
     'PUT|https://api-dev.agentsfleet.net/v1/workspaces/0190f5a2-4b2d-7c11-8d5e-2a5f31d98210/secrets/github-app' \
     "$work_dir/calls"; then
     bad "$name" "replacement did not use the item route"
@@ -318,9 +316,9 @@ test_ignores_ambient_api_endpoint_override() {
   output="$(run_sync github-app 0 API_BASE=https://attacker.example)" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif rg --quiet attacker.example "$work_dir/calls"; then
+  elif grep -Eq attacker.example "$work_dir/calls"; then
     bad "$name" "provider secrets were sent to the ambient endpoint"
-  elif ! rg --quiet api-dev.agentsfleet.net "$work_dir/calls"; then
+  elif ! grep -Eq api-dev.agentsfleet.net "$work_dir/calls"; then
     bad "$name" "the canonical development endpoint was not used"
   else
     ok "$name"

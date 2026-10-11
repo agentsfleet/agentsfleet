@@ -6,8 +6,6 @@
 // after. Node's own `Request`, because a browser-like one would refuse to let
 // a test set `Origin` and `Host`.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/errors";
 import { STEER_MESSAGE_MAX_BYTES, steerMessagesUrl } from "@/lib/api/fleets-types";
@@ -36,7 +34,6 @@ const PROBLEM_TYPE = "application/problem+json";
 const OPERATION_ID_MAX_BYTES = 200;
 // A control character: JSON's widest escape, six bytes on the wire for one.
 const WIDEST_ESCAPE = "\u0001";
-const ROUTE_DIR = path.join(__dirname, "..", "app", "live", "v1", "workspaces", "[workspaceId]", "fleets", "[fleetId]", "messages");
 
 type Init = { headers?: Record<string, string>; body?: BodyInit | null };
 
@@ -173,8 +170,7 @@ describe("steer route — what it passes on", () => {
     expect(await res.json()).not.toHaveProperty("error_code");
   });
 
-  it("is served by a handler on disk, outside every rewrite's prefix", async () => {
-    expect(fs.existsSync(path.join(ROUTE_DIR, "route.ts"))).toBe(true);
+  it("is served outside every rewrite's prefix", async () => {
     const rewrites = await nextConfig.rewrites?.();
     const rules = Array.isArray(rewrites) ? rewrites : (rewrites?.beforeFiles ?? []);
     const url = steerMessagesUrl(WS, FLEET);

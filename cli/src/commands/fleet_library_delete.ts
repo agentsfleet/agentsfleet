@@ -20,8 +20,6 @@ import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsLibraryEntryPath } from "../lib/api-paths.ts";
 import { HTTP_METHOD } from "../constants/http-method.ts";
 
-export const REMOVE_USAGE = "usage: agentsfleet library delete <entry_id>" as const;
-
 export const removedNotice = (entryId: string): string =>
   `${entryId} is no longer in this workspace's Fleet library. ` +
   `Fleets already installed from it keep running.`;

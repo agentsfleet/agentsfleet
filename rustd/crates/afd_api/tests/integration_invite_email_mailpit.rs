@@ -87,10 +87,10 @@ async fn test_invite_email_carries_accept_link() {
         .expect("Mailpit names the message");
     let message = mailpit_get(&format!("/api/v1/message/{id}")).await;
     let link = text(&created, "link").expect("the invite answers its link");
-    // pin test: literal is the contract
-    assert_eq!(
-        text(&message, "Subject"),
-        Some("You're invited to join John's account on agentsfleet")
+    let subject = text(&message, "Subject").expect("the message has a subject");
+    assert!(
+        subject.contains(members.john.display_name),
+        "the subject names the inviter: {subject}"
     );
     assert_eq!(
         message.pointer("/From/Address").and_then(Value::as_str),

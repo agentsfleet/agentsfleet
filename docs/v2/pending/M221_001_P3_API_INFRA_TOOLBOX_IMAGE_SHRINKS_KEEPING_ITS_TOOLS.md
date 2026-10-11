@@ -88,7 +88,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §1 — First use is measured, and Indy picks
 
-`measure_first_use.sh` mounts one image read-only, drops the page cache, and times each step inside bubblewrap with the image as `/`, as a lease sees it. The steps are `node --test`, a Python import, `git commit`, `node -e 0`, and `--version` for uv, gh, rg, jq and curl. It runs at least 20 times per image and marks any step whose p99 exceeds today's by more than 10% as `REGRESSION`. It runs for today's image and three candidates:
+`measure_first_use.sh` mounts one image read-only, drops the page cache, and times each step inside bubblewrap with the image as `/`, as a lease sees it. The steps are `node --test`, a Python import, `git commit`, `node -e 0`, and `--version` for uv, rg, jq and curl. It runs at least 20 times per image and marks any step whose p99 exceeds the comparison image's by more than 10% as `REGRESSION`. Remeasure the comparison image after M213's approved `gh` removal; the historical sizes below do not supply that baseline. It runs for the comparison image and three candidates:
 - (a) lz4hc `-C65536 -Eztailpacking,dedupe` plus the doc strip
 - (b) lzma with 64 KiB chunks
 - (c) deflate with 64 KiB chunks
@@ -187,7 +187,7 @@ N/A — no files deleted. The losing candidates' settings never enter the manife
 
 ## Out of Scope
 
-- Removing packages: Perl (git depends on it), Node and its International Components for Unicode (ICU) library, gh, uv.
+- Removing packages: Perl (git depends on it), Node and its International Components for Unicode (ICU) library, uv. M213 separately removes Go-built `gh` at Indy's direction; this spec preserves the tools remaining after that removal.
 - Purging apt and dpkg from the image.
 - zstd: the builder's erofs-utils does not offer it, and it needs Linux 6.10 or later.
 - Moving the snapshot: `M219_002` §6 owns the pin.

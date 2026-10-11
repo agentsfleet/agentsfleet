@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
@@ -45,7 +43,7 @@ function renderList(response: ApiKeyListResponse) {
 afterEach(() => cleanup());
 
 describe("ApiKeyList timestamps", () => {
-  it("test_apikeylist_uses_time_no_fmt", () => {
+  it("renders created and last-used as <time> elements carrying ISO datetimes", () => {
     const { container } = renderList(makeResponse());
 
     // Row renders <time> elements for created + last-used, each carrying the
@@ -54,11 +52,6 @@ describe("ApiKeyList timestamps", () => {
     const isos = times.map((t) => t.getAttribute("dateTime"));
     expect(isos).toContain(new Date(CREATED_AT).toISOString());
     expect(isos).toContain(new Date(LAST_USED_AT).toISOString());
-
-    // Source is free of the bare, unpinned formatter it replaced.
-    const src = readFileSync(join(__dirname, "ApiKeyList.tsx"), "utf8");
-    expect(src).not.toContain("function fmt(");
-    expect(src).not.toContain("toLocaleString");
   });
 
   it("renders no Time for a null last_used_at (guard preserved)", () => {

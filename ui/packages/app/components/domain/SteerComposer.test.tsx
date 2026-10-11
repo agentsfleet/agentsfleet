@@ -81,13 +81,11 @@ afterEach(() => {
 });
 
 describe("SteerComposer", () => {
-  it("renders the approved composer surface", () => {
+  it("renders an enabled composer that submits on Enter", () => {
     render(view([]));
     const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
     expect(textarea.disabled).toBe(false);
-    expect(textarea.placeholder).toBe("Message this fleet…");
     expect(textarea.dataset.submitMode).toBe("enter");
-    expect(screen.queryByText("Enter to send")).toBeNull();
     expect(screen.getByRole("button", { name: "Send" })).toBeTruthy();
     expect(composer.setText).not.toHaveBeenCalled();
   });

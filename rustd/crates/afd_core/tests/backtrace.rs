@@ -20,8 +20,9 @@ use afd_core::limits::WorkerCount;
 /// Set in the child so it runs the assertions instead of spawning again.
 const CHILD_MARKER: &str = "AFD_BACKTRACE_CHILD";
 
-/// What libtest prints when the child ran the one test it was asked for.
-const RAN_ONE: &str = "1 passed";
+/// libtest's summary when the child ran exactly the one test it was asked for
+/// and it passed; a filter that matched nothing reports `0 passed` instead.
+const RAN_ONE: &str = "test result: ok. 1 passed;";
 
 #[test]
 fn should_render_the_backtrace_only_when_the_environment_asks_for_one() {

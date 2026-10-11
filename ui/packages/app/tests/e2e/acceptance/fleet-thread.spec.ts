@@ -16,7 +16,8 @@ import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { SSE_CONTENT_TYPE, sseFrame } from "./fixtures/sse";
-import { FRAME_KIND } from "@/lib/api/events-types";
+import { auditStream, documentIsMarked, markDocument, streamCount } from "./fixtures/soft-navigation";
+import { FRAME_KIND, streamFleetEventsUrl } from "@/lib/api/events-types";
 
 const CHAT_LABEL = "Fleet chat";
 const COMPOSER_LABEL = "Chat composer";
@@ -49,9 +50,12 @@ const LONG_REPLY_ID = "9100000000000-1";
 const FUTURE_RUN_OFFSET_MS = 60_000;
 // Below this much chat above the composer there is no room to show history.
 const HISTORY_ROOM_PX = 48;
+// The round-trip runs well inside the stream registry's 30s idle grace.
+const ROUND_TRIP_TIMEOUT_MS = 10_000;
+const ONE_OPEN_STREAM = { created: 1, open: 1 };
 
 test.describe("fleet thread surface", () => {
-  // Same shape as lifecycle.spec.ts: prefix-scoped so parallel workers
+  // Prefix-scoped so parallel workers
   // sharing the regular fixture workspace never delete a sibling's fleet.
   test.afterEach(async () => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
@@ -210,14 +214,12 @@ test.describe("fleet thread surface", () => {
     }
   });
 
-  test("survives a /w/[workspaceId]/fleets ↔ /w/[workspaceId]/fleets/[id] round-trip without unmounting the surface", async ({
-    page,
-  }) => {
-    // Pins the registry behavior end-to-end: navigating away and back
-    // to the same fleet within the registry's idle window must NOT lose
-    // the thread surface (a regression where the layout-level subscription
-    // tears down on every nav would manifest as a CONNECTING flash on
-    // every revisit, observable here as the badge value).
+  test("fleet thread survives a client-side round-trip without remounting", async ({ page }) => {
+    // A sidebar click away and a tile click back stay inside one document, and
+    // the fleet's stream outlives the visit: the registry holds it through its
+    // idle grace, so the return reuses the open EventSource. A full page load
+    // drops the document mark; a layout that tore the stream down on every
+    // navigation would open a second one.
     await signInAs(page, FIXTURE_KEY.regular);
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const tag = Math.random().toString(36).slice(2, 8);
@@ -225,26 +227,22 @@ test.describe("fleet thread surface", () => {
       name: `${REVISIT_PREFIX}${tag}`,
     });
     await waitForFleetActive(FIXTURE_KEY.regular, workspaceId, fleet.id);
+    await auditStream(page, streamFleetEventsUrl(workspaceId, fleet.id));
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
+    await expect.poll(() => streamCount(page), { timeout: ROUND_TRIP_TIMEOUT_MS }).toEqual(ONE_OPEN_STREAM);
+    await markDocument(page);
 
-    await page.goto(workspaceHref(workspaceId, "fleets"));
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Fleets" }).click();
     await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
+    await page.getByRole("main").getByRole("link", { name: fleet.name }).click();
+    await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
-    // Return. The thread surface must re-render; behavior parity with the
-    // first mount is the assertion — we don't claim "no reconnect" at the
-    // network layer from a Playwright test (that's the registry unit-test
-    // surface), only that the user-visible surface comes back cleanly.
-    await page.goto(workspaceHref(workspaceId, `fleets/${fleet.id}`));
-    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(
-      page.getByLabel(COMPOSER_LABEL),
-    ).toBeVisible();
+    await expect(page.getByLabel(CHAT_LABEL)).toBeVisible({ timeout: ROUND_TRIP_TIMEOUT_MS });
+    await expect(page.getByLabel(COMPOSER_LABEL)).toBeVisible();
+    expect(await documentIsMarked(page)).toBe(true);
+    expect(await streamCount(page)).toEqual(ONE_OPEN_STREAM);
   });
 
   test("steer submits via a Server Action and no same-origin request carries a client Authorization header", async ({

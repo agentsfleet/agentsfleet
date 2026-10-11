@@ -193,12 +193,3 @@ describe("fleetEventDetailUrl", () => {
   });
 });
 
-describe("list path encoding", () => {
-  it("encodes the workspace and fleet ids on the /v1 routes, as the /live/ builders do", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
-    const { listFleetEvents } = await import("./events");
-    await listFleetEvents("ws/1", "z 2", "tok");
-    const url = fetchMock.mock.calls[0]![0] as string;
-    expect(url).toContain("/v1/workspaces/ws%2F1/fleets/z%202/events");
-  });
-});

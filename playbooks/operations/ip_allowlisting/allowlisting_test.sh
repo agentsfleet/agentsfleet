@@ -3,8 +3,6 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/test_search.sh
-source "$SCRIPT_DIR/../../lib/test_search.sh"
 readonly APPLY="$SCRIPT_DIR/03_planetscale_apply.sh"
 readonly VERIFY="$SCRIPT_DIR/04_verify.sh"
 readonly INVENTORY="$SCRIPT_DIR/01_egress_inventory.sh"
@@ -128,9 +126,9 @@ test_should_find_planetscale_entry_on_later_page() {
   output="$(run_script PLANETSCALE_LIST_MODE=paginated bash "$APPLY")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! rg --quiet 'page=2&per_page=100' "$calls"; then
+  elif ! grep -Eq 'page=2&per_page=100' "$calls"; then
     bad "$name" "apply did not request the second PlanetScale page"
-  elif rg --quiet -- '--request (POST|PATCH)' "$calls"; then
+  elif grep -Eq -- '--request (POST|PATCH)' "$calls"; then
     bad "$name" "apply mutated an entry that exists on a later page"
     return
   fi
@@ -138,7 +136,7 @@ test_should_find_planetscale_entry_on_later_page() {
   output="$(run_script PLANETSCALE_LIST_MODE=paginated bash "$VERIFY")" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! rg --quiet 'page=2&per_page=100' "$calls"; then
+  elif ! grep -Eq 'page=2&per_page=100' "$calls"; then
     bad "$name" "verify did not request the second PlanetScale page"
   else
     ok "$name"
@@ -196,8 +194,8 @@ test_should_ignore_ambient_provider_endpoint_overrides() {
     PLANETSCALE_LIST_MODE=empty \
     PLANETSCALE_API_BASE=https://attacker.example \
     bash "$APPLY")" || status=$?
-  if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
-    ! rg --quiet api.planetscale.com "$calls"; then
+  if [ "$status" -ne 0 ] || grep -Eq attacker.example "$calls" ||
+    ! grep -Eq api.planetscale.com "$calls"; then
     bad "$name" "apply used the ambient endpoint: $output"
     return
   fi
@@ -206,8 +204,8 @@ test_should_ignore_ambient_provider_endpoint_overrides() {
     PLANETSCALE_LIST_MODE=verify \
     PLANETSCALE_API_BASE=https://attacker.example \
     bash "$VERIFY")" || status=$?
-  if [ "$status" -ne 0 ] || rg --quiet attacker.example "$calls" ||
-    ! rg --quiet api.planetscale.com "$calls"; then
+  if [ "$status" -ne 0 ] || grep -Eq attacker.example "$calls" ||
+    ! grep -Eq api.planetscale.com "$calls"; then
     bad "$name" "verify used the ambient endpoint: $output"
   else
     ok "$name"

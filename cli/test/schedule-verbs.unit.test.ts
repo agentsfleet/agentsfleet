@@ -58,7 +58,10 @@ describe("a refusal names a verb the parser accepts", () => {
 
   test.each([
     ["create", ["schedule", "create", BAD_ID, "--cron", "* * * * *", "--message", "hi"]],
+    ["list", ["schedule", "list", BAD_ID]],
+    ["update", ["schedule", "update", BAD_ID, BAD_ID, "--message", "hi"]],
     ["delete", ["schedule", "delete", BAD_ID, BAD_ID]],
+    ["sync", ["schedule", "sync", BAD_ID, BAD_ID]],
     ["show", ["schedule", "show", BAD_ID, BAD_ID]],
   ])("%s refuses a malformed id naming its own spelling", async (verb, argv) => {
     const { code, stderr } = await help(argv as ReadonlyArray<string>);
@@ -66,17 +69,6 @@ describe("a refusal names a verb the parser accepts", () => {
     expect(stderr).toContain(`agentsfleet schedule ${verb}`);
     for (const [retired] of RENAMED)
       expect(stderr).not.toContain(`agentsfleet schedule ${retired}`);
-  });
-
-  test("no usage line in the schedule module names a retired verb", async () => {
-    const { readFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const text = readFileSync(
-      join(import.meta.dir, "..", "src", "commands", "fleet_schedule.ts"),
-      "utf8",
-    );
-    for (const [retired] of RENAMED)
-      expect(text).not.toContain(`agentsfleet schedule ${retired}`);
   });
 });
 
@@ -86,20 +78,10 @@ describe("no command description names a scheduling vendor", () => {
   // dates the help the moment the platform moves.
   const VENDORS = ["qstash", "upstash", "cloudflare", "vercel cron"] as const;
 
-  test("the command tree's descriptions are vendor-free", async () => {
-    const { readdirSync, readFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const dir = join(import.meta.dir, "..", "src", "program", "tree");
-    const offenders: string[] = [];
-    for (const file of readdirSync(dir).filter((f) => f.endsWith(".ts"))) {
-      const text = readFileSync(join(dir, file), "utf8").toLowerCase();
-      for (const vendor of VENDORS) if (text.includes(vendor)) offenders.push(`${file}:${vendor}`);
-    }
-    expect(offenders).toEqual([]);
-  });
-
-  test("sync says what it does, not where it sends it", async () => {
-    const { stdout } = await help(["schedule", "--help"]);
-    expect(stdout).toContain("Re-apply a hosted schedule");
+  test("schedule --help names no scheduling vendor", async () => {
+    const { code, stdout } = await help(["schedule", "--help"]);
+    expect(code).toBe(0);
+    const listing = stdout.toLowerCase();
+    expect(VENDORS.filter((vendor) => listing.includes(vendor))).toEqual([]);
   });
 });

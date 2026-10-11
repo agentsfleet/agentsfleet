@@ -145,10 +145,13 @@ async fn an_api_key_holds_only_its_own_account(workspaces: &Workspaces, bob: &Ac
         1,
         "an api-key holds only the account it was minted in"
     );
-    assert!(
-        by_key
-            .get(&id(&bob.tenant))
-            .is_some_and(|account| account.role == Role::Owner)
+    let own = by_key
+        .get(&id(&bob.tenant))
+        .expect("Bob's own account is held");
+    assert_eq!(
+        (own.role, own.owner_name.as_str()),
+        (Role::Owner, bob.name),
+        "the claimed account is named after the person who owns it"
     );
 }
 
@@ -160,6 +163,9 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
     let fixture = Fixture::create().await;
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
     let unknown = format!("user_unknown_{}", mint_id());
+    // The account's own name stops matching its owner's, so the name read back
+    // can only be the owner's if the owner join found them.
+    rename_account(&fixture, &fixture.john.tenant).await;
 
     let claim = session(&fixture.john.tenant, &unknown);
     let claimed = workspaces
@@ -168,10 +174,13 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
         .expect("the account read answers");
     assert_eq!(claimed.home, id(&fixture.john.tenant));
     assert_eq!(claimed.held.len(), 1, "{claimed:?}");
-    assert!(
-        claimed
-            .get(&id(&fixture.john.tenant))
-            .is_some_and(|account| account.role == Role::Owner)
+    let johns = claimed
+        .get(&id(&fixture.john.tenant))
+        .expect("the claimed account is held");
+    assert_eq!(
+        (johns.role, johns.owner_name.as_str()),
+        (Role::Owner, fixture.john.name),
+        "the claimed account is named after its owner, not its own stored name"
     );
 
     let nowhere = mint_id();
@@ -183,4 +192,18 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
     assert_eq!(empty.home, id(&nowhere));
     assert!(empty.held.is_empty(), "{empty:?}");
     fixture.cleanup().await;
+}
+
+/// A name for an account that is not its owner's name.
+const RENAMED_ACCOUNT: &str = "Renamed account";
+
+/// Gives `tenant`'s account a stored name of its own.
+async fn rename_account(fixture: &Fixture, tenant: &str) {
+    let mut connection = fixture.database.acquire().await.expect("a connection");
+    sqlx::query("UPDATE core.tenants SET name = $2 WHERE id = $1::uuid")
+        .bind(tenant)
+        .bind(RENAMED_ACCOUNT)
+        .execute(&mut *connection)
+        .await
+        .expect("the account renames");
 }

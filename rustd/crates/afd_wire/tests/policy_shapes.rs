@@ -1,4 +1,4 @@
-//! Policy shapes as the published document and the wire carry them.
+//! Policy shapes as the derived schema and the wire carry them.
 
 #![expect(
     clippy::expect_used,
@@ -11,20 +11,23 @@ use afd_wire::policy::{HttpMethod, HttpPathMatch, HttpRequestRule};
 
 /// The stage fraction is published as what the parser enforces: a fraction of
 /// the context window, 0 to 1, so a reader never writes a percentage.
+#[cfg(feature = "openapi")]
 #[test]
 fn test_the_published_stage_chunk_threshold_is_a_unit_fraction() {
-    let openapi = include_str!("../../../../public/openapi.json");
-    let document: serde_json::Value =
-        serde_json::from_str(openapi).expect("the published document is JSON");
+    let schema =
+        serde_json::to_value(<afd_wire::policy::ContextBudget as utoipa::PartialSchema>::schema())
+            .expect("the derived schema serializes");
     let bound = |name: &str| {
-        document
-            .pointer(&format!(
-                "/components/schemas/ContextBudget/properties/stage_chunk_threshold/{name}"
-            ))
+        schema
+            .pointer(&format!("/properties/stage_chunk_threshold/{name}"))
             .and_then(serde_json::Value::as_f64)
     };
 
-    assert_eq!((bound("minimum"), bound("maximum")), (Some(0.0), Some(1.0)));
+    assert_eq!(
+        (bound("minimum"), bound("maximum")),
+        (Some(0.0), Some(1.0)),
+        "{schema}"
+    );
 }
 
 /// A blob write rule carrying `permitted_fields` as given.

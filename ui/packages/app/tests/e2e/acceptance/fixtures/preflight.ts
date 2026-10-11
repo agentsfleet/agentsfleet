@@ -53,7 +53,7 @@ interface ApiErrorBody {
   request_id?: string;
 }
 
-export class ReleasePreflightError extends Error {
+class ReleasePreflightError extends Error {
   constructor(message: string) {
     super(`[release-preflight] ${message}`);
     this.name = "ReleasePreflightError";
@@ -68,7 +68,7 @@ function apiBase(): string {
 
 // ── Pure deciders (unit-tested without a deployment) ─────────────────────────
 
-export function assertServiceHealthy(healthzStatus: number, readyzReady: boolean): void {
+function assertServiceHealthy(healthzStatus: number, readyzReady: boolean): void {
   if (healthzStatus !== 200) {
     throw new ReleasePreflightError(
       `deployed service is not live: ${HEALTHZ_PATH} returned ${healthzStatus}`,
@@ -82,7 +82,7 @@ export function assertServiceHealthy(healthzStatus: number, readyzReady: boolean
   }
 }
 
-export function assertRuntimeModelAvailable(list: Pick<TenantModelEntryList, "platform_default_available">): void {
+function assertRuntimeModelAvailable(list: Pick<TenantModelEntryList, "platform_default_available">): void {
   if (!list.platform_default_available) {
     throw new ReleasePreflightError(
       "no platform default model is available to tenants. Register the platform " +
@@ -91,7 +91,7 @@ export function assertRuntimeModelAvailable(list: Pick<TenantModelEntryList, "pl
   }
 }
 
-export function assertConnectorConfigured(entries: readonly ConnectorCatalogEntry[]): void {
+function assertConnectorConfigured(entries: readonly ConnectorCatalogEntry[]): void {
   if (entries.length === 0) {
     throw new ReleasePreflightError("the connector registry returned no providers");
   }
@@ -103,7 +103,7 @@ export function assertConnectorConfigured(entries: readonly ConnectorCatalogEntr
   }
 }
 
-export function assertRunnerOnline(runners: Pick<RunnerListResponse, "items">): void {
+function assertRunnerOnline(runners: Pick<RunnerListResponse, "items">): void {
   const live = runners.items.some((item) => LIVE_RUNNER_STATES.includes(item.liveness));
   if (!live) {
     throw new ReleasePreflightError(
@@ -113,7 +113,7 @@ export function assertRunnerOnline(runners: Pick<RunnerListResponse, "items">): 
   }
 }
 
-export function assertRunnerHeartbeatAdvanced(
+function assertRunnerHeartbeatAdvanced(
   first: RunnerHeartbeatSnapshot,
   second: RunnerHeartbeatSnapshot | undefined,
 ): void {
@@ -129,8 +129,8 @@ export function assertRunnerHeartbeatAdvanced(
   }
 }
 
-export function assertCliArtifactPresent(exists: boolean = fs.existsSync(AGENTSFLEET_CLI_ENTRY)): void {
-  if (!exists) throw new ReleasePreflightError(CLI_ARTIFACT_MISSING_DIAGNOSIS);
+export function assertCliArtifactPresent(): void {
+  if (!fs.existsSync(AGENTSFLEET_CLI_ENTRY)) throw new ReleasePreflightError(CLI_ARTIFACT_MISSING_DIAGNOSIS);
 }
 
 /**

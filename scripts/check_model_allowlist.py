@@ -24,6 +24,12 @@ So the file's invariants are checked here rather than trusted to review:
   5. sentinel rates announce themselves — a rate small enough to be a placeholder
                               must carry `rate_basis`, or it reads as a real
                               price nobody meant to charge.
+  6. row shape follows source — a `manual` provider lists rate objects carrying
+                              exactly the seeder's keys (a positive integer
+                              context cap, non-negative rates, cached input no
+                              dearer than input); an `api` provider lists bare
+                              ids its feed prices. Nothing downstream checks the
+                              shape: seed-models.mjs maps the fields straight in.
 
 Exit 0 if clean, 1 with one line per violation.
 """
@@ -74,6 +80,10 @@ CN_HOSTS = (
 RATE_BASIS_FLOOR = "activation_floor"
 
 
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def _is_cn(base_url: str) -> bool:
     return any(host in base_url for host in CN_HOSTS)
 
@@ -120,7 +130,8 @@ def check_region_agreement(name: str, cfg: dict) -> list[str]:
 
 def check_floor_is_marked(name: str, cfg: dict) -> list[str]:
     """A sentinel rate must announce itself, or it reads as a real price."""
-    models = [m for m in (cfg.get("models") or []) if isinstance(m, dict)]
+    # A non-numeric rate is check_row_shape's finding; comparing it here would crash.
+    models = [m for m in (cfg.get("models") or []) if isinstance(m, dict) and _is_number(m.get("input", 1))]
     if not models:
         return []
     tiny = all(m.get("input", 1) < 0.0001 for m in models)
@@ -131,7 +142,64 @@ def check_floor_is_marked(name: str, cfg: dict) -> list[str]:
     return []
 
 
+MANUAL_SOURCE = "manual"
+API_SOURCE = "api"
+ROW_REQUIRED = ("model_id", "context_cap_tokens", *RATE_FIELDS)
+ROW_OPTIONAL = ("note", "tier")
+
+
+def _rate_row_problems(label: str, model: dict) -> list[str]:
+    problems = [f"{label}: missing required key {key}" for key in ROW_REQUIRED if key not in model]
+    problems += [
+        f"{label}: unexpected key {key}" for key in model if key not in ROW_REQUIRED + ROW_OPTIONAL
+    ]
+    context = model.get("context_cap_tokens")
+    if not isinstance(context, int) or isinstance(context, bool) or context <= 0:
+        problems.append(f"{label}: context_cap_tokens must be a positive integer, got {context!r}")
+    for key in RATE_FIELDS:
+        rate = model.get(key)
+        if not _is_number(rate) or rate < 0:
+            problems.append(f"{label}: {key} must be a non-negative number, got {rate!r}")
+    cached, fresh = model.get("cached_input"), model.get("input")
+    if _is_number(cached) and _is_number(fresh) and cached > fresh:
+        problems.append(f"{label}: cached_input {cached} exceeds input {fresh}")
+    return problems
+
+
+def check_row_shape(name: str, cfg: dict) -> list[str]:
+    """Each row is the shape its provider's source declares, and appears once."""
+    source = cfg.get("source")
+    if source not in (MANUAL_SOURCE, API_SOURCE):
+        return [f"{name}: source must be {MANUAL_SOURCE!r} or {API_SOURCE!r}, got {source!r}"]
+    models = cfg.get("models", [])
+    if not isinstance(models, list):
+        return [f"{name}: models must be an array, got {type(models).__name__}"]
+    problems: list[str] = []
+    seen: set[str] = set()
+    for model in models:
+        if isinstance(model, str):
+            identifier = model
+            if source != API_SOURCE:
+                problems.append(f"{name}/{model}: bare model id under source {source!r} — only {API_SOURCE} lists ids")
+        elif isinstance(model, dict):
+            identifier = model.get("model_id")
+            label = f"{name}/{identifier}"
+            if source != MANUAL_SOURCE:
+                problems.append(f"{label}: inline rate row under source {source!r} — only {MANUAL_SOURCE} carries rates")
+            if not isinstance(identifier, str) or not identifier:
+                problems.append(f"{label}: model_id must be a non-empty string")
+            problems += _rate_row_problems(label, model)
+        else:
+            problems.append(f"{name}: model entry must be a bare id or a rate object, got {type(model).__name__}")
+            continue
+        if isinstance(identifier, str) and identifier in seen:
+            problems.append(f"{name}: duplicate model id {identifier}")
+        seen.add(identifier)
+    return problems
+
+
 CHECKS = (
+    check_row_shape,
     check_priced_xor_reasoned,
     check_reason_vocabulary,
     check_no_zero_rates,
@@ -153,22 +221,34 @@ def check_legend_covers_vocabulary(doc: dict) -> list[str]:
     return problems
 
 
-def main() -> int:
-    try:
-        with ALLOWLIST.open(encoding="utf-8") as handle:
-            doc = json.load(handle)
-    except FileNotFoundError:
-        print(f"✗ {ALLOWLIST} not found — run from the repository root", file=sys.stderr)
-        return 1
-    except json.JSONDecodeError as err:
-        print(f"✗ {ALLOWLIST} is not valid JSON: {err}", file=sys.stderr)
-        return 1
-
+def check_document(doc: dict) -> list[str]:
+    """Every invariant over one parsed allowlist."""
     problems = check_legend_covers_vocabulary(doc)
-    providers = doc.get("providers", {})
+    providers = doc.get("providers")
+    if not isinstance(providers, dict):
+        return problems + [f"providers must be an object, got {type(providers).__name__}"]
     for name, cfg in providers.items():
+        if not isinstance(cfg, dict):
+            problems.append(f"{name}: provider entry must be an object, got {type(cfg).__name__}")
+            continue
         for check in CHECKS:
             problems.extend(check(name, cfg))
+    return problems
+
+
+def main(allowlist: Path = ALLOWLIST) -> int:
+    try:
+        with allowlist.open(encoding="utf-8") as handle:
+            doc = json.load(handle)
+    except FileNotFoundError:
+        print(f"✗ {allowlist} not found — run from the repository root", file=sys.stderr)
+        return 1
+    except json.JSONDecodeError as err:
+        print(f"✗ {allowlist} is not valid JSON: {err}", file=sys.stderr)
+        return 1
+
+    problems = check_document(doc)
+    providers = doc.get("providers", {})
 
     if problems:
         for line in problems:

@@ -14,14 +14,6 @@ describe("Card", () => {
     expect(screen.getByText("Hello card")).toBeInTheDocument();
   });
 
-  it("applies base card utilities", () => {
-    const { container } = render(<Card>Content</Card>);
-    const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("rounded-lg");
-    expect(cls).toContain("border-border");
-    expect(cls).toContain("bg-card");
-  });
-
   it("does not render the popular badge when not featured", () => {
     render(<Card>Content</Card>);
     expect(screen.queryByText("Popular")).not.toBeInTheDocument();

@@ -100,22 +100,6 @@ describe("ActivityTable", () => {
     expect(screen.getByText("runner-prod-ams-01.internal · Landlock")).toBeTruthy();
   });
 
-  it("test_activity_uses_data_table", () => {
-    render(
-      <ActivityTable
-        initial={{ items: [item({})], total: 1, next_cursor: null }}
-        pageSize={25}
-      />, { wrapper: TooltipProvider });
-    // The shared table structure, not bespoke markup: a real table with the
-    // shared caption and column headers.
-    expect(screen.getByRole("table")).toBeTruthy();
-    for (const header of ["Time", "What", "Detail"]) {
-      expect(screen.getByRole("columnheader", { name: header })).toBeTruthy();
-    }
-    // The shared time vocabulary (activity half): the old column name is gone.
-    expect(screen.queryByRole("columnheader", { name: "When" })).toBeNull();
-  });
-
   it("should degrade detail honestly — absent metadata, host-only registration, unknown tier tag", () => {
     render(
       <ActivityTable

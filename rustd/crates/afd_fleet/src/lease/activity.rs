@@ -38,6 +38,11 @@ use crate::lease::sql;
 use crate::lease::store::Leases;
 
 mod published;
+#[cfg(feature = "test-util")]
+mod vocabulary;
+
+#[cfg(feature = "test-util")]
+pub use self::vocabulary::{ACTIVITY_VARIANTS, RenderedFrame, rendered_frames};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_TARGET: &str = "activity lease load";

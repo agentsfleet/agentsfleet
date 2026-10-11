@@ -12,6 +12,7 @@ use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
 use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
+use afd_runner::sql::LEASE_STATUS_ACTIVE;
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 
@@ -109,6 +110,39 @@ async fn a_stranded_lease_the_index_will_not_mark_is_logged_and_not_counted() {
     );
     let reason = logged.get("reason").expect("the failed mark says why");
     assert!(!reason.contains("[UZ-"), "the code is repeated: {reason}");
+    fixture.cleanup().await;
+}
+
+/// The ledger question marks a stranded fleet ready and flips nothing: the
+/// re-lease path reads the expired lease from PostgreSQL alone, so the lease
+/// must still be `active` after the pass that found it.
+#[tokio::test]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn a_stranded_lease_is_marked_ready_and_left_active() {
+    let _lane = RECLAIM_LANE.lock().await;
+    let fixture = Fixture::seed(true).await;
+    let queue = connect_redis().await;
+
+    Reclaim::new(fixture.database.clone(), queue.clone(), "reclaim-ledger")
+        .sweep()
+        .await
+        .expect("the pass completes");
+
+    let index = ReadyIndex::new(queue.clone());
+    assert!(
+        index
+            .token_for(&fixture.fleet)
+            .await
+            .expect("readable")
+            .is_some(),
+        "the ledger's stranded fleet is marked ready"
+    );
+    assert_eq!(
+        fixture.lease_statuses().await,
+        [LEASE_STATUS_ACTIVE],
+        "the pass that found the expired lease left it for the re-lease path"
+    );
+    let _cleared = index.force_clear(&fixture.fleet).await;
     fixture.cleanup().await;
 }
 
@@ -226,6 +260,16 @@ impl Fixture {
         .execute(connection)
         .await
         .expect("the stranded lease seeds");
+    }
+
+    /// Every lease status the fixture's fleet holds.
+    async fn lease_statuses(&self) -> Vec<String> {
+        let mut connection = self.database.acquire().await.expect("a connection");
+        sqlx::query_scalar("SELECT status FROM fleet.runner_leases WHERE fleet_id = $1::uuid")
+            .bind(&self.fleet)
+            .fetch_all(&mut *connection)
+            .await
+            .expect("the lease statuses read")
     }
 
     async fn cleanup(self) {

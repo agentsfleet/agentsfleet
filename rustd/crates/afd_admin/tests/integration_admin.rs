@@ -7,8 +7,8 @@
 )]
 
 use afd_admin::{
-    CreateModel, DeleteModel, ModelInput, ModelRates, Models, PlatformKeyInput, PlatformKeys,
-    SetPlatformKey,
+    CreateModel, DeleteModel, ModelInput, ModelRates, Models, PlatformKey, PlatformKeyInput,
+    PlatformKeys, SetPlatformKey,
 };
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -139,6 +139,7 @@ async fn assert_active_key_guards_model(
     };
     assert!(key.is_active());
     assert_eq!(key.model(), Some(model_id));
+    assert_listed_as_set(keys, &key, fixtures).await;
     assert_eq!(
         models
             .delete(anthropic.id(), NOW)
@@ -159,6 +160,23 @@ async fn assert_active_key_guards_model(
             .expect("unreferenced model deletes"),
         DeleteModel::Deleted
     );
+}
+
+/// The list answers the metadata the upsert wrote, field for field.
+///
+/// The row names the vault key by its owning workspace and provider; the list
+/// carries nothing else, and what it carries is what the set returned.
+async fn assert_listed_as_set(keys: &PlatformKeys, set: &PlatformKey, fixtures: &Fixtures) {
+    let listed = keys
+        .list()
+        .await
+        .expect("keys list")
+        .into_iter()
+        .find(|key| key.provider() == set.provider())
+        .expect("the activated default lists");
+    assert_eq!(&listed, set, "the list reads back what the upsert returned");
+    assert_eq!(listed.source_workspace_id(), &fixtures.workspace);
+    assert_eq!(listed.updated_at(), NOW);
 }
 
 async fn create(models: &Models, provider: &str, model_id: &str) -> afd_admin::Model {

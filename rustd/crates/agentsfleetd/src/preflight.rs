@@ -20,8 +20,6 @@
 //! there is no window in which a daemon with an unusable KEK has already
 //! opened a listening socket.
 
-#[cfg(test)]
-mod ceiling_tests;
 mod config;
 #[cfg(test)]
 mod knob_tests;

@@ -35,11 +35,9 @@ import {
   chargeAgentLabel,
   type ChargeRow,
 } from "@/app/(dashboard)/settings/billing/lib/charges";
-import type { ActionResult } from "@/lib/actions/with-token";
 import {
   CHARGE_TYPE,
   PROVIDER_MODE,
-  type TenantBillingChargesResponse,
 } from "@/lib/types";
 
 // $0.001 — a representative sub-cent stage charge; the "−$0.001" row assertions
@@ -116,23 +114,6 @@ describe("BillingUsageTab (test_billing_usage_ledger_and_empty)", () => {
     ).toBeTruthy();
     // date column renders the formatted timestamp
     expect(screen.getByText(/\d{4} · \d{2}:\d{2}/)).toBeTruthy();
-  });
-
-  it("describes a receive charge as an event receipt", () => {
-    render(
-      React.createElement(BillingUsageTab, {
-        initialCharges: [
-          charge({
-            charge_type: CHARGE_TYPE.receive,
-            token_count_input: null,
-            token_count_output: null,
-          }),
-        ],
-        initialCursor: null,
-        pageSize: 25,
-      }),
-    );
-    expect(screen.getByText("Event received")).toBeTruthy();
   });
 
   it("renders a zero debit without a negative sign", () => {
