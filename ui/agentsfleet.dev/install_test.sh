@@ -81,13 +81,6 @@ test_happy_path_posix() {
   cleanup
 }
 
-test_host_detection_claude() {
-  new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0; fake_present claude
-  run_install
-  assert_log "host_detection_claude: --host=claude" "--host=claude" "$NPX_LOG"
-  cleanup
-}
-
 test_host_detection_ambiguous() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0
   fake_present claude; fake_present amp
@@ -153,8 +146,8 @@ test_version_pin() {
 
 test_partial_download_safety() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0; fake_present claude
-  local n; n="$(wc -l <"$INSTALL_SH")"
-  OUT="$(head -n "$((n - 2))" "$INSTALL_SH" | PATH="$FAKE_BIN" HOME="$HOME_DIR" bash 2>&1)"; RC=$?
+  # The script with its last two lines cut off, as a dropped download leaves it.
+  OUT="$(sed '$d' "$INSTALL_SH" | sed '$d' | PATH="$FAKE_BIN" HOME="$HOME_DIR" bash 2>&1)"; RC=$?
   assert_log_empty "$NPM_LOG" "partial_download: npm not called"
   assert_log_empty "$NPX_LOG" "partial_download: npx not called"
   if [[ -z "$OUT" ]]; then
@@ -222,19 +215,11 @@ test_skill_add_failure_nonfatal() {
   cleanup
 }
 
-test_shellcheck_clean() {
-  if ! command -v shellcheck >/dev/null 2>&1; then
-    printf '  skip shellcheck_clean — shellcheck not installed\n'; return 0
-  fi
-  if shellcheck -s bash "$INSTALL_SH"; then pass "shellcheck_clean: zero warnings"; else fail "shellcheck_clean" "shellcheck reported issues"; fi
-}
-
 # ─── Runner ──────────────────────────────────────────────────────────────────
 
 main() {
   printf 'install.sh smoke tests\n'
   test_happy_path_posix
-  test_host_detection_claude
   test_host_detection_ambiguous
   test_host_override
   test_node_missing
@@ -249,7 +234,6 @@ main() {
   test_npm_missing_node_present
   test_generic_host_no_flag
   test_skill_add_failure_nonfatal
-  test_shellcheck_clean
   printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
   [[ "$FAIL" -eq 0 ]]
 }

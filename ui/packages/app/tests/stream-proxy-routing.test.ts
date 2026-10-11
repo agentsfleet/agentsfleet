@@ -7,9 +7,7 @@
  * `next start` resolves the handler first, so the defect is invisible until
  * deploy — which is exactly why it needs a test rather than a comment.
  */
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import nextConfig from "../next.config";
 import {
   backfillFleetEventsUrl,
@@ -21,23 +19,46 @@ import {
 } from "@/lib/api/events-types";
 import { steerMessagesUrl } from "@/lib/api/fleets-types";
 
-const APP_DIR = path.join(__dirname, "..", "app");
+// The handlers load their credential and API origin at import; neither is
+// reached here, so both stand in.
+vi.mock("@clerk/nextjs/server", () => ({ auth: () => Promise.resolve({ getToken: vi.fn() }) }));
+vi.mock("@/lib/api/client", () => ({ API_ORIGIN: "https://api.example.test", request: vi.fn() }));
+
 const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "z_1";
 const EVENT_ID = "1790573387481-566";
 const CALL_ID = "7:3";
 
 // Every browser-facing URL whose request MUST be intercepted by a Route
-// Handler that injects the api-audience Bearer server-side.
-const PROXY_URLS = [
-  streamWorkspaceEventsUrl(WORKSPACE_ID),
-  streamFleetEventsUrl(WORKSPACE_ID, FLEET_ID),
-  backfillWorkspaceEventsUrl(WORKSPACE_ID),
-  backfillFleetEventsUrl(WORKSPACE_ID, FLEET_ID),
-  fleetEventDetailUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID),
-  fleetToolCallUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID, CALL_ID),
-  steerMessagesUrl(WORKSPACE_ID, FLEET_ID),
+// Handler that injects the api-audience Bearer server-side, with the method
+// the browser sends it.
+const PROXY_ROUTES: ReadonlyArray<readonly [string, "GET" | "POST"]> = [
+  [streamWorkspaceEventsUrl(WORKSPACE_ID), "GET"],
+  [streamFleetEventsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
+  [backfillWorkspaceEventsUrl(WORKSPACE_ID), "GET"],
+  [backfillFleetEventsUrl(WORKSPACE_ID, FLEET_ID), "GET"],
+  [fleetEventDetailUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID), "GET"],
+  [fleetToolCallUrl(WORKSPACE_ID, FLEET_ID, EVENT_ID, CALL_ID), "GET"],
+  [steerMessagesUrl(WORKSPACE_ID, FLEET_ID), "POST"],
 ];
+const PROXY_URLS = PROXY_ROUTES.map(([url]) => url);
+
+// The app-router segment each identifier fills, so a URL names the module
+// Next would route it to.
+const SEGMENTS: ReadonlyArray<readonly [string, string]> = [
+  [WORKSPACE_ID, "[workspaceId]"],
+  [FLEET_ID, "[fleetId]"],
+  [EVENT_ID, "[eventId]"],
+  [encodeURIComponent(CALL_ID), "[callId]"],
+];
+
+function routeModule(url: string): string {
+  const routePath = (url.split("?")[0] ?? url)
+    .split("/")
+    .map((part) => SEGMENTS.find(([id]) => id === part)?.[1] ?? part)
+    .join("/");
+  return `../app${routePath}/route`;
+}
 
 async function rewriteSources(): Promise<string[]> {
   const rewrites = await nextConfig.rewrites?.();
@@ -50,19 +71,6 @@ async function rewriteSources(): Promise<string[]> {
 function literalPrefix(source: string): string {
   const firstParam = source.indexOf("/:");
   return (firstParam < 0 ? source : source.slice(0, firstParam)) + "/";
-}
-
-function routeHandlerPaths(dir: string, prefix = ""): string[] {
-  const found: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      found.push(...routeHandlerPaths(full, `${prefix}/${entry.name}`));
-    } else if (entry.name === "route.ts") {
-      found.push(prefix);
-    }
-  }
-  return found;
 }
 
 describe("token-minting proxy routes stay out of rewrite prefixes", () => {
@@ -80,20 +88,10 @@ describe("token-minting proxy routes stay out of rewrite prefixes", () => {
     }
   });
 
-  it("should back every proxy URL with a real route handler on disk", () => {
+  it.each(PROXY_ROUTES)("should back %s with a route handler for %s", async (url, method) => {
     // A URL with no handler is the same failure with no local symptom at all.
-    const handlers = routeHandlerPaths(APP_DIR).map((p) =>
-      p.replace(/\[([^\]]+)\]/g, "PARAM"),
-    );
-    for (const url of PROXY_URLS) {
-      const shape = url
-        .split("?")[0]!
-        .replace(WORKSPACE_ID, "PARAM")
-        .replace(FLEET_ID, "PARAM")
-        .replace(EVENT_ID, "PARAM")
-        .replace(encodeURIComponent(CALL_ID), "PARAM");
-      expect(handlers, `no route handler backs ${url}`).toContain(shape);
-    }
+    const route = (await import(routeModule(url))) as Record<string, unknown>;
+    expect(typeof route[method], `the module routing ${url} exports no ${method}`).toBe("function");
   });
 
   it("should keep every proxy handler on one prefix", () => {

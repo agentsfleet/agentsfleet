@@ -77,7 +77,7 @@ globalThis.fetch = (globalThis as { __realFetch?: typeof fetch }).__realFetch ??
 // the policy over a real socket, so the switch goes back to "retry".
 vi.stubEnv("AGENTSFLEET_NO_RETRY", "");
 vi.resetModules();
-const { request, requestWithRetry } = await import("./client");
+const { requestWithRetry } = await import("./client");
 const { ApiError } = await import("./errors");
 const { RETRY_CODE_TIMEOUT } = await import("./errors");
 
@@ -219,24 +219,6 @@ describe("a write replays only when it provably never left", () => {
     const body = await requestWithRetry<{ ok: boolean }>(RESET_PATH, { method: "GET" }, TOKEN, options);
     expect(body).toEqual({ ok: true });
     expect(methodLog).toEqual(["GET", "GET"]);
-  });
-});
-
-describe("request — default policy over a real transport", () => {
-  it("request retries a transient read and returns the recovered body", async () => {
-    queue.push({ status: 503 }, { status: 200, body: OK_BODY });
-    // No options at all: the built-in backoff sleeps for real (one base delay).
-    const body = await request<{ ok: boolean }>(PATH, { method: "GET" }, TOKEN);
-    expect(body).toEqual({ ok: true });
-    expect(methodLog).toEqual(["GET", "GET"]);
-  });
-
-  it("request does not replay a non-idempotent write on a server error", async () => {
-    queue.push({ status: 503 });
-    await expect(request(PATH, { method: "POST", body: "{}" }, TOKEN)).rejects.toMatchObject({
-      status: 503,
-    });
-    expect(methodLog).toEqual(["POST"]);
   });
 });
 

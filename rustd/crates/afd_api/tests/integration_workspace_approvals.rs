@@ -44,20 +44,9 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
 /// The address the fixture seeds on its `core.users` row.
 ///
 /// The fixture's SQL cannot take a constant — the statement is a `&str` whose other
-/// braces rule out `format!`, and every `$n` slot is spoken for — so the pair is
-/// pinned by [`the_fixture_seeds_the_address_the_assertion_expects`] instead.
+/// braces rule out `format!`, and every `$n` slot is spoken for — so a fixture
+/// that seeds another address fails the read's assertion on this one.
 const SEEDED_EMAIL: &str = "approval-live@example.test";
-
-/// The fixture SQL and the assertion name one address. A rename that touches
-/// only one of them fails here rather than in a confusing body assertion.
-#[test]
-fn the_fixture_seeds_the_address_the_assertion_expects() {
-    assert!(
-        include_str!("integration_workspace_approvals_fixture.rs")
-            .contains(&format!("'{SEEDED_EMAIL}'")),
-        "the fixture SQL no longer seeds {SEEDED_EMAIL}"
-    );
-}
 
 async fn assert_approval_reads(
     router: &axum::Router,

@@ -58,19 +58,3 @@ export const workspacesLayer = (
         }),
     }),
   );
-
-export const workspacesFromValueLayer = (
-  initial: WorkspacesValue,
-): Layer.Layer<Workspaces> => {
-  let current: WorkspacesValue = { ...initial, items: [...initial.items] };
-  return Layer.succeed(
-    Workspaces,
-    Workspaces.of({
-      load: Effect.sync(() => current),
-      save: (next) =>
-        Effect.sync(() => {
-          current = { ...next, items: [...next.items] };
-        }),
-    }),
-  );
-};

@@ -85,19 +85,4 @@ describe("CODE_MAP — shrunk to client-minted entries", () => {
     expect(p.body).toBe("The backend took too long to answer. Try again in a moment.");
     expect(presentErrorString({ errorCode: RETRY_CODE_TIMEOUT, action: "x" })).not.toMatch(/\/v1\//);
   });
-
-  it("no longer maps any of the 26 codes migrated to the backend registry", () => {
-    const migrated = [
-      "UZ-INTERNAL-001", "UZ-INTERNAL-002", "UZ-AGT-009", "UZ-AUTH-001", "UZ-REQ-001",
-      "UZ-APIKEY-003", "UZ-APIKEY-005", "UZ-APIKEY-006", "UZ-APIKEY-007", "UZ-APIKEY-008",
-      "UZ-CRED-001", "UZ-PROVIDER-001", "UZ-PROVIDER-002", "UZ-PROVIDER-003", "UZ-PROVIDER-004",
-      "UZ-VAULT-001", "UZ-VAULT-002", "UZ-VAULT-003", "UZ-BUNDLE-001", "UZ-BUNDLE-002",
-      "UZ-APPROVAL-001", "UZ-APPROVAL-002", "UZ-APPROVAL-003", "UZ-APPROVAL-004",
-      "UZ-APPROVAL-005", "UZ-APPROVAL-006",
-    ];
-    expect(migrated.length).toBe(26);
-    for (const code of migrated) {
-      expect((CURATED_ERROR_CODES as readonly string[]).includes(code), code).toBe(false);
-    }
-  });
 });

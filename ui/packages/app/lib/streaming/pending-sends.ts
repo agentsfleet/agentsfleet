@@ -322,5 +322,4 @@ export function __resetPendingSendsForTests({ keepStorage = false }: { keepStora
     removeMirrored(() => true);
     claimReader(null);
   }
-  for (const key of LISTENERS.keys()) notify(key);
 }

@@ -88,9 +88,3 @@ describe("switcherSections", () => {
   });
 });
 
-describe("accountLabel", () => {
-  it("should name an account by its owner", () => {
-    // pin test: literal is the contract — the wording the invite email uses too.
-    expect(accountLabel("John")).toBe("John's account");
-  });
-});

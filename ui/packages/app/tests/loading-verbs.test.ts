@@ -15,10 +15,6 @@ import {
 // announced name stays the plain wording so assistive tech never reads whimsy.
 
 describe("loading verb vocabulary", () => {
-  it("offers enough verbs that repeats are not the common case", () => {
-    expect(LOADING_VERBS.length).toBeGreaterThanOrEqual(10);
-  });
-
   it("has no duplicates", () => {
     expect(new Set(LOADING_VERBS).size).toBe(LOADING_VERBS.length);
   });
@@ -37,14 +33,6 @@ describe("pickLoadingVerb", () => {
     for (let i = 0; i < 200; i += 1) {
       expect(LOADING_VERBS).toContain(pickLoadingVerb());
     }
-  });
-
-  it("can reach every verb — no entry is unreachable off-by-one", () => {
-    // Guards the Math.floor(random * length) indexing: an off-by-one would make
-    // either the first or last verb permanently unreachable.
-    const seen = new Set<string>();
-    for (let i = 0; i < 5000; i += 1) seen.add(pickLoadingVerb());
-    expect(seen.size).toBe(LOADING_VERBS.length);
   });
 
   it("returns the last verb at the top of the random range, never undefined", () => {

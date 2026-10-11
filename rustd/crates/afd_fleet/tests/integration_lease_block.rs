@@ -113,12 +113,15 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
     );
     // The closing reads the counters beside the row it ends, so the frame it
     // announces carries the figures the database holds at that instant.
+    // The two counters differ (one event, nothing charged), so a closing that
+    // swapped their positions would disagree with the read below.
     if let Ended::Now(closed) = &ended {
+        let stored = afd_events::fleet_counters(&fixtures.database, fleet.as_str())
+            .await
+            .expect("the counters read back");
+        assert_ne!(stored.events_processed, stored.budget_used_nanos);
         assert_eq!(
-            closed.counters,
-            afd_events::fleet_counters(&fixtures.database, fleet.as_str())
-                .await
-                .expect("the counters read back"),
+            closed.counters, stored,
             "the closing's snapshot is the database's"
         );
     }

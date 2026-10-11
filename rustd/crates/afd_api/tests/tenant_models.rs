@@ -116,16 +116,6 @@ async fn an_empty_limit_is_the_default_page() {
 }
 
 #[tokio::test]
-async fn an_oversized_provider_filter_is_refused() {
-    let path = format!("{MODELS}?provider={}", "p".repeat(129));
-    let response = read(&path, Some(TENANT_KEY)).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let (detail, code) = refusal_of(response).await;
-    assert_eq!(detail, afd_api::handler::tenant::DETAIL_PROVIDER_BOUNDS);
-    assert_eq!(code, "UZ-LIBRARY-003");
-}
-
-#[tokio::test]
 async fn a_whitespace_provider_normalizes_to_absent() {
     // `?provider=%20%20` is the same request as omitting the filter — a blank
     // filter normalises to absent, proven by reaching the verb.

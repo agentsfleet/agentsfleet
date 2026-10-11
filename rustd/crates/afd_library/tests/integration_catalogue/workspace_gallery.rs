@@ -15,6 +15,8 @@ use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
+
+use super::gallery_seed::{parse, seed_platform, seed_scope, seed_workspace};
 use afd_library::{Destination, Libraries, LibraryImports, Tier};
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -191,82 +193,8 @@ async fn an_onboarding_lands_in_the_workspaces_own_library_and_nobody_elses() {
     lane.cleanup().await;
 }
 
-/// A tenant and one workspace under it, which the library rows reference.
-///
-/// `tenant_fleet_library.workspace_id` is a real foreign key into
-/// `core.workspaces` — a minted id alone is refused, and rightly: a library
-/// entry belonging to no workspace is exactly the orphan the constraint is
-/// there to prevent.
-async fn seed_scope(database: &afd_db::Db, workspace: &str) {
-    let mut connection = database.acquire().await.expect("an API connection");
-    sqlx::query(
-        "WITH tenant AS ( \
-           INSERT INTO core.tenants (id, name, created_at, updated_at) \
-           VALUES ($1::uuid, 'Gallery fixture', 1, 1) \
-           RETURNING id \
-         ) \
-         INSERT INTO core.workspaces (id, tenant_id, name, created_by, created_at) \
-         SELECT $2::uuid, id, $2, 'test', 1 FROM tenant",
-    )
-    .bind(mint_id())
-    .bind(workspace)
-    .execute(&mut *connection)
-    .await
-    .expect("the gallery scope seeds");
-}
-
-/// A published platform row, visible to every workspace.
-async fn seed_platform(database: &afd_db::Db, id: &str, created_at: i64) {
-    let mut connection = database.acquire().await.expect("an API connection");
-    sqlx::query(
-        "INSERT INTO core.fleet_library ( \
-           id, name, description, source_repo, source_path, source_ref, \
-           required_credentials, required_credentials_reasons, required_tools, \
-           network_hosts, visibility, content_hash, skill_markdown, trigger_markdown, \
-           support_files_json, created_at, updated_at) \
-         VALUES ($1, $1, 'platform fixture', $1, '', 'main', \
-           '[]', '{}', '[]', '[]', 'public', 'abc123', '# Fixture', NULL, '[]', $2, $2)",
-    )
-    .bind(id)
-    .bind(created_at)
-    .execute(&mut *connection)
-    .await
-    .expect("the platform row seeds");
-}
-
-/// A row in one workspace's own library.
-async fn seed_workspace(database: &afd_db::Db, workspace: &str, id: &str, created_at: i64) {
-    let mut connection = database.acquire().await.expect("an API connection");
-    sqlx::query(
-        "INSERT INTO core.tenant_fleet_library ( \
-           id, workspace_id, name, description, source_kind, source_ref, visibility, \
-           content_hash, skill_markdown, trigger_markdown, support_files_json, \
-           requirements_json, created_at, updated_at) \
-         VALUES ($1::uuid, $2::uuid, $3, 'tenant fixture', 'github', 'main', 'workspace', \
-           $5, '# Fixture', NULL, '[]', \
-           '{\"credentials\":[],\"tools\":[],\"network_hosts\":[],\"trigger_present\":false}', \
-           $4, $4)",
-    )
-    .bind(mint_id())
-    .bind(workspace)
-    .bind(id)
-    .bind(created_at)
-    // The domain key is (workspace_id, content_hash), so two rows in one
-    // workspace need two hashes — a shared literal would make the second seed
-    // an upsert over the first and leave the merge with nothing to interleave.
-    .bind(format!("hash-{id}"))
-    .execute(&mut *connection)
-    .await
-    .expect("the workspace row seeds");
-}
-
-/// The fixture identifier as the store takes it.
-fn parse(id: &str) -> afd_core::id::Uuid7 {
-    afd_core::id::Uuid7::parse(id).expect("the minted fixture id is UUIDv7")
-}
-
 /// A one-file bundle, gzipped as GitHub serves a tarball.
-fn archive(name: &str) -> Vec<u8> {
+pub(super) fn archive(name: &str) -> Vec<u8> {
     let document = format!(
         "---\nname: {name}\ndescription: deterministic onboarding\nversion: 1.0.0\n---\nRun."
     );
@@ -284,7 +212,7 @@ fn archive(name: &str) -> Vec<u8> {
 }
 
 /// A single-shot HTTP origin serving `body`, for the fetch to reach locally.
-fn serve(body: &[u8]) -> String {
+pub(super) fn serve(body: &[u8]) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("the fixture server binds");
     let address = listener.local_addr().expect("the fixture address resolves");
     let body = body.to_vec();

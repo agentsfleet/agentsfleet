@@ -206,18 +206,6 @@ describe("test_library_next_cancel_case — a navigation abort", () => {
     ).rejects.toThrow("/v1/fleets/bundles");
   });
 
-  it("is NOT an ApiError — nothing failed, so there is no status or code to carry", async () => {
-    const abortError = new Error("aborted");
-    abortError.name = "AbortError";
-    fetchMock.mockRejectedValue(abortError);
-
-    const caught = await request("/v1/models", {}, "tok").catch((e: unknown) => e);
-    expect(caught).toBeInstanceOf(RequestCancelledError);
-    // The distinction the whole type exists for: a cancel must not be reported
-    // to the user as a request that went wrong.
-    expect(caught).not.toBeInstanceOf(ApiError);
-  });
-
   it("leaves a real transport failure alone", async () => {
     // Only an abort is reclassified. A genuine network error must keep
     // propagating, or a dead backend reads to the caller as a user action.

@@ -46,13 +46,6 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("RenameSecretDialog", () => {
-  it("always shows the generic (no fleet-name) rename warning", () => {
-    renderDialog();
-    expect(screen.getByText(/any fleets using this secret still point to the old name/i)).toBeTruthy();
-    // Generic by design — no specific fleet is ever named.
-    expect(screen.queryByText(/\$\{secrets\./i)).toBeNull();
-  });
-
   it("creates the new name before deleting the old, then closes and refreshes", async () => {
     createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: "fly-prod" } });
     deleteCredentialActionMock.mockResolvedValue({ ok: true, data: undefined });

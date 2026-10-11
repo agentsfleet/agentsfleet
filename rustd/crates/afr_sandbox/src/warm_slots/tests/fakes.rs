@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use afr_executor::{Executor, FileContent, Listing, Process, ProcessId, Spawn};
+use afr_executor::{Executor, Process, ProcessId, Spawn};
 use bytes::Bytes;
 
 use crate::engine::{Engine, Sandbox, SandboxRequest};
@@ -27,21 +27,6 @@ impl Executor for Idle {
         unused()
     }
     async fn kill(&self, _process: ProcessId) -> afr_executor::Result<()> {
-        unused()
-    }
-    async fn read_file(&self, _path: &str, _max_bytes: u64) -> afr_executor::Result<FileContent> {
-        unused()
-    }
-    async fn write_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
-        unused()
-    }
-    async fn append_file(&self, _path: &str, _data: Bytes) -> afr_executor::Result<()> {
-        unused()
-    }
-    async fn delete_file(&self, _path: &str) -> afr_executor::Result<()> {
-        unused()
-    }
-    async fn list_dir(&self, _path: &str) -> afr_executor::Result<Listing> {
         unused()
     }
 }

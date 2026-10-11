@@ -8,9 +8,6 @@ use std::collections::BTreeSet;
 use super::*;
 use crate::stub::Stub;
 
-/// The architecture document whose §"Tool catalog" table the catalog mirrors.
-const ARCHITECTURE: &str = include_str!("../../../../../docs/architecture/runner_execution.md");
-
 fn catalog() -> Catalog {
     Catalog::new(vec![
         Stub::boxed(&HTTP_REQUEST),
@@ -157,24 +154,6 @@ fn every_published_name_is_distinct() {
             .iter()
             .all(|entry| published(entry.name()) == Some(*entry))
     );
-}
-
-#[test]
-fn the_catalog_publishes_exactly_the_architecture_table() {
-    let section = ARCHITECTURE
-        .split("## Tool catalog")
-        .nth(1)
-        .and_then(|rest| rest.split("\n## ").next())
-        .unwrap();
-    let documented: BTreeSet<&str> = section
-        .lines()
-        .filter(|line| line.starts_with("| `"))
-        .filter_map(|line| line.split('|').nth(1))
-        .flat_map(|cell| cell.split('`').skip(1).step_by(2))
-        .collect();
-    let published: BTreeSet<&str> = PUBLISHED.iter().map(|entry| entry.name()).collect();
-
-    assert_eq!(published, documented);
 }
 
 /// The name a test-built entry carries; no published tool has it.

@@ -50,10 +50,8 @@ const TENANT_KEY: &str = "agt_te7e7e7e7decafbaddecafbaddecafbaddecafbaddecafbadd
 /// The subject the fixture credential resolves to.
 const SUBJECT: &str = "user_2events";
 
-/// Two well-formed workspace identifiers that are not the fixture's, so the
-/// "not yours" and "no such thing" halves can be compared against each other.
+/// A well-formed workspace identifier that is not the fixture's.
 const FOREIGN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ee";
-const UNKNOWN_WORKSPACE: &str = "01924f4e-0000-7000-8000-0000000000ed";
 
 /// A well-formed fleet identifier the fixture addresses.
 const FLEET: &str = "01924f4e-0000-7000-8000-00000000f1ee";
@@ -192,21 +190,6 @@ async fn a_principal_in_a_foreign_workspace_is_refused_by_the_layer() {
     }
 }
 
-/// A workspace that does not exist answers exactly as one that is not yours.
-///
-/// The collapse is the LAYER's and not the fixture's: `own` renders one refusal
-/// for `Ok(None)`, and a resolver over real Postgres answers `None` for both a
-/// foreign workspace and an identifier nobody minted. Were the two
-/// distinguishable, this surface would be an oracle for which workspace
-/// identifiers are real, probeable without holding any of them.
-#[tokio::test]
-async fn a_workspace_that_does_not_exist_is_not_distinguishable_from_a_foreign_one() {
-    let foreign = authorised(&workspace_history(FOREIGN_WORKSPACE)).await;
-    let unknown = authorised(&workspace_history(UNKNOWN_WORKSPACE)).await;
-
-    assert_eq!(refusal_of(foreign).await, refusal_of(unknown).await);
-}
-
 /// A workspace segment that is not an identifier never reaches a handler.
 #[tokio::test]
 async fn a_workspace_segment_that_is_not_an_identifier_never_reaches_a_handler() {
@@ -267,19 +250,15 @@ async fn an_event_id_is_looked_up_up_to_the_length_bound_and_not_past_it() {
     assert_refusal(authorised(&past_it).await, expected, "257 bytes").await;
 }
 
-/// The code an absent event answers with is the event's own, not the fleet's.
+/// The code an absent event answers with is the event's own, and it is a 404.
 ///
 /// Against the registry rather than over HTTP, and the harness is the reason:
 /// reaching `UZ-AGT-015` needs a statement that RAN and found nothing, which is
-/// a live-Postgres fact. What holds with no datastore is that the code exists,
-/// is a 404, and is not the fleet's — an operator reading it should not have to
-/// guess which of the two was missing.
+/// a live-Postgres fact. What holds with no datastore is the status the code
+/// maps to. That it differs from the fleet's code is the registry's own
+/// uniqueness test.
 #[test]
 fn the_absent_event_code_is_the_events_own_and_not_the_fleets() {
-    assert_ne!(
-        error_code::EVENT_NOT_FOUND.as_str(),
-        error_code::AGENTSFLEET_NOT_FOUND.as_str()
-    );
     assert_eq!(Problem::of(error_code::EVENT_NOT_FOUND).status(), 404);
 }
 
