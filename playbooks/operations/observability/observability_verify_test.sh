@@ -3,8 +3,6 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/test_search.sh
-source "$SCRIPT_DIR/../../lib/test_search.sh"
 PROVIDER_DIR="$SCRIPT_DIR"
 VERIFY="$PROVIDER_DIR/04_verify.sh"
 passed=0
@@ -90,13 +88,18 @@ case "$url" in
   */alertrules/*-dev)
     name="${url##*/}"
     base_name="${name%-dev}"
+    # Rendered through the same function the apply and the drift check use,
+    # for the reason the dashboard branch above gives.
+    rendered="$(mktemp)"
+    (
+      # shellcheck source=lib.sh
+      source "$PROVIDER_DIR/lib.sh"
+      obs_render_alerts "$rendered" "$PROVIDER_DIR"
+    )
     expression="$(
-      jq -r \
-        --arg name "$base_name" \
-        '.[] | select(.name == $name) | .expr' \
-        "$PROVIDER_DIR/assets/alerts.json" |
-        sed 's/__RUNNER_OFFLINE_SECONDS__/90/g'
+      jq -r --arg name "$base_name" '.[] | select(.name == $name) | .expr' "$rendered"
     )"
+    rm -f "$rendered"
     [ "${MOCK_DRIFT:-}" != alert ] || expression=drift
     jq -n \
       --arg name "$name" \
@@ -141,7 +144,7 @@ test_should_accept_matching_resources() {
     bad "$name" "$output"
   elif [[ "$output" != *"resources match the repository"* ]]; then
     bad "$name" "verification omitted its success verdict"
-  elif rg --quiet grafana-secret "$calls"; then
+  elif grep -Eq grafana-secret "$calls"; then
     bad "$name" "Grafana token appeared in process arguments"
   else
     ok "$name"

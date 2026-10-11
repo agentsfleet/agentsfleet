@@ -109,16 +109,6 @@ export async function decryptJwt(
   return textDecoder.decode(plaintext);
 }
 
-// Client fingerprint = sha256(remote_addr || user_agent || session_id),
-// lowercase hex. On the CLI side we don't have a server-visible remote
-// address; the server computes the canonical fingerprint from its own
-// view of the request. The CLI never needs to compute or send the
-// fingerprint — this helper is exported for testing parity only.
-export async function fingerprintHex(input: string): Promise<string> {
-  const bytes = await subtle.digest(HASH_SHA256, textEncoder.encode(input));
-  return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export async function encryptJwtForTest(
   key: CryptoKey,
   jwt: string,

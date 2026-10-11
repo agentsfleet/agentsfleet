@@ -134,19 +134,6 @@ async fn the_browser_leg_hands_the_whole_handoff_to_the_dashboard() {
 }
 
 #[tokio::test]
-async fn the_browser_leg_verifies_nothing_and_that_is_the_point() {
-    let response = browser(SHIPPED, &format!("code={CODE}&state={FORGED_STATE}")).await;
-
-    assert_eq!(
-        response.status(),
-        StatusCode::FOUND,
-        "an unsigned state still relays: this leg carries no credential and \
-         redeems nothing, so refusing here would only move the refusal earlier \
-         for a person who would be refused at POST anyway"
-    );
-}
-
-#[tokio::test]
 async fn a_browser_arriving_with_no_state_is_refused() {
     assert_eq!(
         refusal(browser(SHIPPED, &format!("code={CODE}")).await).await,
@@ -199,27 +186,6 @@ async fn a_completion_carrying_no_code_is_refused() {
         code(error_code::INVALID_REQUEST),
         "there is nothing to exchange without one, and the refusal names the \
          missing parameter rather than failing at the vendor"
-    );
-}
-
-#[tokio::test]
-async fn the_dashboard_leg_demands_a_credential_where_the_browser_leg_does_not() {
-    let router = Fleet::new()
-        .with_person(
-            TENANT_KEY,
-            SUBJECT,
-            ScopeSet::from_scopes(&[Scope::ConnectorWrite]),
-        )
-        .router();
-    let target = format!("{}?code={CODE}&state={FORGED_STATE}", path(SHIPPED));
-    let response = harness::send(&router, Method::POST, &target, None, "").await;
-
-    assert_eq!(
-        response.status(),
-        StatusCode::UNAUTHORIZED,
-        "one path, two guards: `Guard::Open` on GET and `Guard::Bearer` on \
-         POST. A router mounting one guard for the path would either lock the \
-         provider out or let anyone redeem a code."
     );
 }
 

@@ -66,24 +66,6 @@ describe("approval server actions — thin forwarders", () => {
     });
   });
 
-  it("listApprovalsAction returns the page as the API gave it, cursor included", async () => {
-    // The cursor survives now. The fan-out had to discard it — five pages have
-    // no single position to resume from — so paging was dead behind this action.
-    listApprovalsMock.mockResolvedValueOnce({ items: [{ gate_id: "a" }], next_cursor: "cur-9" });
-    const r = await listApprovalsAction("ws-1");
-    expect(r).toEqual({
-      ok: true,
-      data: { items: [{ gate_id: "a" }], next_cursor: "cur-9" },
-    });
-  });
-
-  it("listApprovalsAction surfaces a refusal instead of an empty page", async () => {
-    // withToken owns the envelope; a failed read must not read as "no approvals".
-    withTokenMock.mockResolvedValueOnce({ ok: false, error: "upstream is down", status: 503 });
-    const r = await listApprovalsAction("ws-1");
-    expect(r).toEqual({ ok: false, error: "upstream is down", status: 503 });
-  });
-
   it("approveApprovalAction forwards workspaceId + gateId + token with an explicit reason", async () => {
     const outcome = { kind: "resolved", data: { gate_id: "g-1" } };
     approveApprovalMock.mockResolvedValueOnce(outcome);

@@ -165,3 +165,7 @@ pub trait AgentEngine: Send + Sync + fmt::Debug {
     /// could not run.
     async fn run(&self, run: AgentRun<'_>) -> Result<RunOutput>;
 }
+
+#[cfg(test)]
+#[path = "engine/tests.rs"]
+mod tests;

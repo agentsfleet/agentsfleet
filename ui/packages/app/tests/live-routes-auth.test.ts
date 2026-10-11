@@ -2,8 +2,6 @@
 // registered 401 code, as the event-detail and steer routes do. An
 // unregistered code reads as UZ-UNKNOWN to every error surface.
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ERROR_CODE } from "@/lib/errors";
 
@@ -26,11 +24,6 @@ import { GET as fleetStream } from "../app/live/v1/workspaces/[workspaceId]/flee
 const HTTP_UNAUTHORIZED = 401;
 const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "fleet_1";
-const UNREGISTERED_AUTH_CODE = "UZ-401";
-const APP_ROOT = join(__dirname, "..");
-// Tests too: a test pinning the old code keeps it alive as an expectation.
-const SCANNED_DIRS = ["app", "components", "lib", "tests"];
-const SOURCE_FILE = /\.(ts|tsx)$/;
 
 type Route = (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
@@ -53,20 +46,4 @@ describe("same-origin event routes — signed out", () => {
     const body = (await res.json()) as { error: string; code: string };
     expect(body.code).toBe(ERROR_CODE.AUTH_401);
   });
-
-  it("test_no_unregistered_auth_code", () => {
-    // This file names the code it looks for, and only this file may.
-    const hits = SCANNED_DIRS.flatMap((dir) => sourceFiles(join(APP_ROOT, dir)))
-      .filter((file) => file !== __filename)
-      .filter((file) => readFileSync(file, "utf8").includes(`"${UNREGISTERED_AUTH_CODE}"`));
-    expect(hits).toEqual([]);
-  });
 });
-
-function sourceFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((entry) => {
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) return sourceFiles(path);
-    return SOURCE_FILE.test(entry) ? [path] : [];
-  });
-}

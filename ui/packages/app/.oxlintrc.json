@@ -77,7 +77,13 @@
     "no-thenable": "off",
     "typescript/no-confusing-non-null-assertion": "error",
     "typescript/no-non-null-asserted-nullish-coalescing": "error",
-    "typescript/no-non-null-asserted-optional-chain": "error"
+    "typescript/no-non-null-asserted-optional-chain": "error",
+    "no-restricted-imports": ["error", {
+      "paths": [{
+        "name": "@clerk/nextjs/server",
+        "message": "Take the bearer from lib/auth/credential.ts; only it and proxy.ts reach the identity provider's server SDK."
+      }]
+    }]
   },
   "ignorePatterns": [
     ".next/**",
@@ -97,7 +103,26 @@
         "no-throw-literal": "off",
         "typescript/no-non-null-assertion": "off",
         "typescript/no-unnecessary-condition": "off",
-        "typescript/consistent-type-imports": "off"
+        "typescript/consistent-type-imports": "off",
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["lib/auth/credential.ts"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["proxy.ts"],
+      "rules": {
+        "no-restricted-imports": ["error", {
+          "paths": [{
+            "name": "@clerk/nextjs/server",
+            "importNames": ["auth"],
+            "message": "The middleware takes clerkMiddleware; auth() is handed out by lib/auth/credential.ts alone."
+          }]
+        }]
       }
     }
   ]

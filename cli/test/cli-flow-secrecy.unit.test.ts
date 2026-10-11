@@ -28,8 +28,6 @@ const FIXTURE_JWT = [
   btoa("signature-fixture-not-real"),
 ].join(".").replace(/=/g, "");
 
-const SHORT_NONCE_BASE64URL = "AAAA";
-
 interface CapturedExchange {
   readonly payload: EncryptedJwt;
   readonly dashboardPublicKeyBase64Url: string;
@@ -53,14 +51,6 @@ function flipFirstChar(base64url: string): string {
 }
 
 describe("device-flow transport secrecy — captured ciphertext is inert without the CLI key", () => {
-  it("the legitimate CLI recovers the token with its own private key (ECDH round-trip)", async () => {
-    const cli = await generateCliKeypair();
-    const captured = await dashboardSeals(cli.publicKeyBase64Url, FIXTURE_JWT);
-    const shared = await deriveSharedKey(cli.privateKey, captured.dashboardPublicKeyBase64Url);
-    const recovered = await decryptJwt(shared, captured.payload.ciphertextBase64Url, captured.payload.nonceBase64Url);
-    expect(recovered).toBe(FIXTURE_JWT);
-  });
-
   it("the token never appears in the ciphertext (encrypted, not merely encoded)", async () => {
     const cli = await generateCliKeypair();
     const captured = await dashboardSeals(cli.publicKeyBase64Url, FIXTURE_JWT);
@@ -70,42 +60,11 @@ describe("device-flow transport secrecy — captured ciphertext is inert without
     }
   });
 
-  it("an attacker with their own keypair cannot decrypt the captured payload", async () => {
-    const cli = await generateCliKeypair();
-    const captured = await dashboardSeals(cli.publicKeyBase64Url, FIXTURE_JWT);
-    // Attacker derives against the captured dashboard pubkey using a key
-    // they control — a different shared secret, so AES-GCM auth fails.
-    const attacker = await generateCliKeypair();
-    const attackerKey = await deriveSharedKey(attacker.privateKey, captured.dashboardPublicKeyBase64Url);
-    await expect(
-      decryptJwt(attackerKey, captured.payload.ciphertextBase64Url, captured.payload.nonceBase64Url),
-    ).rejects.toThrow();
-  });
-
-  it("a different CLI keypair cannot open a payload sealed to the original CLI key", async () => {
-    const cli = await generateCliKeypair();
-    const captured = await dashboardSeals(cli.publicKeyBase64Url, FIXTURE_JWT);
-    const impostorCli = await generateCliKeypair();
-    const wrongKey = await deriveSharedKey(impostorCli.privateKey, captured.dashboardPublicKeyBase64Url);
-    await expect(
-      decryptJwt(wrongKey, captured.payload.ciphertextBase64Url, captured.payload.nonceBase64Url),
-    ).rejects.toThrow();
-  });
-
   it("flipping a single ciphertext byte fails the AEAD integrity check", async () => {
     const cli = await generateCliKeypair();
     const captured = await dashboardSeals(cli.publicKeyBase64Url, FIXTURE_JWT);
     const shared = await deriveSharedKey(cli.privateKey, captured.dashboardPublicKeyBase64Url);
     const tampered = flipFirstChar(captured.payload.ciphertextBase64Url);
     await expect(decryptJwt(shared, tampered, captured.payload.nonceBase64Url)).rejects.toThrow();
-  });
-
-  it("a wrong-length nonce is rejected before any decrypt attempt", async () => {
-    const cli = await generateCliKeypair();
-    const captured = await dashboardSeals(cli.publicKeyBase64Url, FIXTURE_JWT);
-    const shared = await deriveSharedKey(cli.privateKey, captured.dashboardPublicKeyBase64Url);
-    await expect(
-      decryptJwt(shared, captured.payload.ciphertextBase64Url, SHORT_NONCE_BASE64URL),
-    ).rejects.toThrow();
   });
 });

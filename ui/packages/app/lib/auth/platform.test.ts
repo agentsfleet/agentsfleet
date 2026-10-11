@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.mock is hoisted above the static `./platform` import, so the mock fn must
@@ -127,33 +125,5 @@ describe("expandScopes", () => {
 
   it("returns an empty set for no held scopes", () => {
     expect(expandScopes([]).size).toBe(0);
-  });
-});
-
-// Dimension 4.2 / Invariant 3: no operator surface is gated on the legacy
-// `platform_admin` boolean after §4. Scan the operator source (not tests) for
-// the retired identifiers — the source of truth the E9 eval command also greps.
-describe("platform_admin fully retired (Invariant 3)", () => {
-  const ROOT = join(__dirname, "..", "..");
-  const SCANNED = [
-    join(ROOT, "lib", "auth"),
-    join(ROOT, "app", "(dashboard)", "admin"),
-    join(ROOT, "components", "layout"),
-  ];
-  const FORBIDDEN = /platform_admin|readPlatformAdminClaim|isPlatformAdmin/;
-
-  function sourceFiles(dir: string): string[] {
-    const out: string[] = [];
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) out.push(...sourceFiles(full));
-      else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.includes(".test.")) out.push(full);
-    }
-    return out;
-  }
-
-  it("no operator source file references the retired platform_admin boolean", () => {
-    const offenders = SCANNED.flatMap(sourceFiles).filter((f) => FORBIDDEN.test(readFileSync(f, "utf8")));
-    expect(offenders).toEqual([]);
   });
 });

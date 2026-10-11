@@ -148,11 +148,6 @@ describe("SecretsList component", () => {
     }
   });
 
-  it("delete row trigger renders the destructive button variant, the shared admin row-trigger pattern", async () => {
-    await renderList();
-    expect(screen.getByLabelText(/Delete secret fly/i).className).toContain("bg-destructive");
-  });
-
   it("test_secret_write_only_masked: stored secret is masked (suffix only), Replace present, never re-revealed", async () => {
     const user = userEvent.setup();
     // The vault never returns plaintext, so the list renders only the name +

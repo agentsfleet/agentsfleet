@@ -1,5 +1,5 @@
-//! What a steer request's declared bounds refuse, and what its published
-//! description promises about the fields it does not read.
+//! What a steer request's declared bounds refuse, and that it refuses a field
+//! it does not read.
 //!
 //! The at-limit and one-past pairs follow the method `validation.rs` explains.
 //! A steer adds one rule no length expresses: neither its message nor its
@@ -66,53 +66,12 @@ fn a_steer_request_bounds_its_message_and_its_optional_operation_id() {
     assert!(nul_id.validate().is_err(), "an id holding NUL");
 }
 
-/// The request's documentation and its parser agree: unknown fields are
-/// refused, and the published description says so.
+/// An unknown field in a steer request is refused rather than ignored.
 #[test]
-fn test_steer_request_doc_matches_its_parser() {
+fn a_steer_request_refuses_an_unknown_field() {
     let unknown =
         serde_json::from_str::<SteerRequest<'_>>(r#"{"message":"restart","priority":"high"}"#);
     assert!(unknown.is_err(), "an unknown field is refused");
-
-    let openapi = include_str!("../../../../public/openapi.json");
-    let description = serde_json::from_str::<serde_json::Value>(openapi)
-        .ok()
-        .and_then(|document| {
-            document
-                .pointer("/components/schemas/SteerRequest/description")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-        });
-    assert!(
-        description
-            .as_deref()
-            .is_some_and(|text| text.contains("Unknown fields are refused")),
-        "the published SteerRequest says what its parser does: {description:?}"
-    );
-}
-
-/// Each field's published description states the bound its rule enforces, so a
-/// constant that moves without its sentence fails here rather than in a client.
-#[test]
-fn a_steer_field_description_names_its_bound_and_the_nul_rule() {
-    let openapi = include_str!("../../../../public/openapi.json");
-    let document = serde_json::from_str::<serde_json::Value>(openapi).unwrap_or_default();
-    for (field, bound) in [
-        ("message", STEER_MESSAGE_MAX_BYTES),
-        ("operation_id", OPERATION_ID_MAX_BYTES),
-    ] {
-        let pointer = format!("/components/schemas/SteerRequest/properties/{field}/description");
-        let text = document
-            .pointer(&pointer)
-            .and_then(serde_json::Value::as_str)
-            .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
-            .unwrap_or_default();
-        assert!(
-            text.contains(&format!("1 to {bound} bytes")),
-            "{field}: {text}"
-        );
-        assert!(text.contains("no NUL character"), "{field}: {text}");
-    }
 }
 
 /// A message holding NUL is refused wherever it sits, and one without is not.

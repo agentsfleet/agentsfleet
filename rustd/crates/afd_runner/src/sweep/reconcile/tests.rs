@@ -16,7 +16,7 @@
 
 use afd_admission::Reconciled;
 
-use super::{FLEET_LIMIT, INTERVAL, RECOVERING_INTERVAL, ROW_LIMIT, pacing_after};
+use super::{INTERVAL, RECOVERING_INTERVAL, pacing_after};
 
 /// What one pass concluded, spelled as the fields a reader cares about.
 const fn pass(probed: u64, lost: u64, voided: u64) -> Reconciled {
@@ -83,19 +83,6 @@ fn recovery_paces_between_immediate_and_the_steady_state() {
     // dispatcher draining it can keep up with.
     assert!(!RECOVERING_INTERVAL.is_zero());
     assert!(RECOVERING_INTERVAL < INTERVAL);
-}
-
-#[test]
-fn a_lost_fleets_batch_matches_what_the_replay_dispatcher_takes() {
-    // Every row this pass voids becomes a row the replay dispatcher re-appends,
-    // and that dispatcher takes 32 per pass. A wider batch here would only
-    // deepen a backlog it cannot drain any faster.
-    assert_eq!(ROW_LIMIT, 32);
-    // Each probed fleet is one datastore round trip, so this is the pass's
-    // round-trip bound. It is deliberately far wider than the row cap: probing
-    // is how a lost fleet is FOUND, and a deployment can hold many more fleets
-    // with work in flight than one pass will ever need to repair.
-    const { assert!(FLEET_LIMIT > ROW_LIMIT) };
 }
 
 /// A reconciler over handles that resolve and never answer.

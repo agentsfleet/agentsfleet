@@ -19,3 +19,5 @@ mod integration_list_no_decrypt;
 mod integration_projection_parity;
 #[path = "integration_reference_lock.rs"]
 mod integration_reference_lock;
+#[path = "integration_workspace_scope.rs"]
+mod integration_workspace_scope;

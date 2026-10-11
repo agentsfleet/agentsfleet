@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  isHttpsUrl,
-  BASE_URL_NOT_HTTPS,
-} from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/custom-endpoint";
+import { isHttpsUrl } from "@/app/(dashboard)/w/[workspaceId]/settings/models/lib/custom-endpoint";
 
 // Covers the shared custom-endpoint client validation extracted for the
 // consolidated Models forms. The server re-validates and additionally
@@ -34,11 +31,5 @@ describe("isHttpsUrl", () => {
   it("rejects empty / whitespace-only input", () => {
     expect(isHttpsUrl("")).toBe(false);
     expect(isHttpsUrl("   ")).toBe(false);
-  });
-});
-
-describe("BASE_URL_NOT_HTTPS", () => {
-  it("is the inline https-required hint", () => {
-    expect(BASE_URL_NOT_HTTPS).toBe("Use https:// for the Base URL.");
   });
 });

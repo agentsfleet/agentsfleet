@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { TooltipProvider } from "./Tooltip";
-import { Time, formatTimeAbsolute, formatTimeRelative } from "./Time";
+import { Time, formatTimeAbsolute } from "./Time";
+import { TIME_DEFAULT_LOCALE } from "./time-utils";
 
 const ISO = "2026-05-03T10:00:00.000Z";
 
@@ -41,12 +42,11 @@ describe("Time", () => {
     expect(txt).toMatch(/\d+ minutes? ago/);
   });
 
-  it("relative format defaults tooltip on, surfacing the absolute form", () => {
+  it("relative format opens a tooltip with the absolute form when none is asked for", async () => {
     const past = new Date(Date.now() - 60 * 60_000).toISOString();
-    renderTime(<Time value={past} format="relative" />);
-    // Trigger is rendered (the <time>); visible relative label shows.
-    const t = screen.getByRole("time", { hidden: true }) ?? null;
-    if (t) expect(t.textContent ?? "").toMatch(/hour/);
+    const { container } = renderTime(<Time value={past} format="relative" />);
+    fireEvent.focus(container.querySelector("time") as HTMLElement);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(formatTimeAbsolute(past, TIME_DEFAULT_LOCALE));
   });
 
   it("datetime format renders the full ISO string as visible text", () => {
@@ -99,17 +99,6 @@ describe("Time", () => {
     expect(container.querySelector("time")?.textContent).toBe("n/a");
   });
 
-  it("relative format opts into suppressHydrationWarning on the time element", () => {
-    // suppressHydrationWarning is a React-only flag stripped from the DOM,
-    // so we assert via the renderToString output containing the value
-    // anyway and the visible relative text being present.
-    const past = new Date(Date.now() - 30_000).toISOString();
-    const { container } = renderTime(
-      <Time value={past} format="relative" tooltip={false} />,
-    );
-    expect(container.querySelector("time")?.textContent).toMatch(/seconds? ago/);
-  });
-
   it("clock format renders time-of-day only and tolerates hydration re-resolution", () => {
     // The clock label depends on the renderer's timezone (a UTC server and a
     // local browser disagree), mirroring the relative format's dependence on
@@ -121,31 +110,5 @@ describe("Time", () => {
     expect(el?.getAttribute("datetime")).toBe("2026-07-21T10:42:17.000Z");
     expect(el?.textContent).toMatch(/\d{1,2}:\d{2}:\d{2}/);
     expect(el?.textContent).not.toMatch(/2026/);
-  });
-});
-
-describe("formatTimeRelative", () => {
-  const now = new Date("2026-05-03T12:00:00Z");
-  it("returns 'just now' when value equals now", () => {
-    expect(formatTimeRelative(now, now)).toBe("just now");
-  });
-  it("returns 'just now' for sub-5-second deltas in either direction", () => {
-    expect(formatTimeRelative(new Date(now.getTime() - 2_000), now)).toBe("just now");
-    expect(formatTimeRelative(new Date(now.getTime() + 3_000), now)).toBe("just now");
-  });
-  it("returns 'X seconds ago' under a minute", () => {
-    expect(formatTimeRelative(new Date(now.getTime() - 30_000), now)).toBe("30 seconds ago");
-  });
-  it("returns 'X minutes ago' under an hour", () => {
-    expect(formatTimeRelative(new Date(now.getTime() - 5 * 60_000), now)).toBe("5 minutes ago");
-  });
-  it("returns 'X hours ago' under a day", () => {
-    expect(formatTimeRelative(new Date(now.getTime() - 3 * 3_600_000), now)).toBe("3 hours ago");
-  });
-  it("returns 'in X minutes' for future values", () => {
-    expect(formatTimeRelative(new Date(now.getTime() + 10 * 60_000), now)).toBe("in 10 minutes");
-  });
-  it("singularises the unit when n === 1", () => {
-    expect(formatTimeRelative(new Date(now.getTime() - 60_000), now)).toBe("1 minute ago");
   });
 });

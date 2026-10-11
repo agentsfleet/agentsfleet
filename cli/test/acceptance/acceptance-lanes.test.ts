@@ -1,15 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import {
-  DETERMINISTIC_ACCEPTANCE_FILES,
-  LIVE_ACCEPTANCE_FILES,
-  LIVE_FILE_CONCURRENCY,
   LIVE_HANDSHAKE_FILE,
   LIVE_SERIAL_FILE,
   acceptanceTestCommand,
+  deterministicAcceptanceFiles,
+  laneOutcome,
   liveExecutionPlan,
   parseLaneCounts,
 } from "./run-lane.ts";
@@ -17,9 +16,11 @@ import { resolveLiveAcceptancePreflight } from "./global-setup.ts";
 import { extractLoginUrl } from "./fixtures/pty.ts";
 
 const CLI_ROOT = path.resolve(import.meta.dir, "..", "..");
-const ACCEPTANCE_SPEC_GLOB = "test/acceptance/*.spec.ts";
-const LIVE_STEER_SPEC = "test/acceptance/steer-live.spec.ts";
-const LIVE_STREAMING_SPEC = "test/acceptance/streaming-follow.spec.ts";
+const NEW_SPEC = "test/acceptance/brand-new.spec.ts";
+const NEW_HARNESS_CHECK = "test/acceptance/fixtures/brand-new.test.ts";
+const HARNESS_HELPER = "test/acceptance/fixtures/brand-new.ts";
+const COUNTS_CLEAN = { registered: 3, passed: 3, failed: 0, skipped: 0 };
+const COUNTS_WITH_SKIP = { registered: 3, passed: 2, failed: 0, skipped: 1 };
 const API_URL = "https://api-dev.agentsfleet.net";
 const DASHBOARD_URL = "https://app-dev.agentsfleet.net";
 const CLERK_SECRET = "fixture-clerk-secret";
@@ -85,30 +86,31 @@ describe("CLI acceptance lane membership", () => {
     }
   }, 45_000);
 
-  it("classifies every acceptance spec into exactly one lane", async () => {
-    const discovered: string[] = [];
-    const glob = new Bun.Glob(ACCEPTANCE_SPEC_GLOB);
-    for await (const file of glob.scan({ cwd: CLI_ROOT })) discovered.push(file);
+  it("runs every acceptance file the live list does not name in the deterministic lane", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "agentsfleet-lane-tree-"));
+    try {
+      await mkdir(path.join(root, "test", "acceptance", "fixtures"), { recursive: true });
+      for (const file of [NEW_SPEC, NEW_HARNESS_CHECK, HARNESS_HELPER, LIVE_HANDSHAKE_FILE, LIVE_SERIAL_FILE]) {
+        await Bun.write(path.join(root, file), "");
+      }
 
-    const classified = [
-      ...DETERMINISTIC_ACCEPTANCE_FILES,
-      ...LIVE_ACCEPTANCE_FILES,
-    ].filter((file) => file.endsWith(".spec.ts"));
-
-    expect([...new Set(classified)].sort()).toEqual(discovered.sort());
-    expect(classified).toHaveLength(discovered.length);
+      expect(deterministicAcceptanceFiles(root)).toEqual([NEW_HARNESS_CHECK, NEW_SPEC].sort());
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
-  it("keeps remote steer work out of the deterministic lane", () => {
-    expect(DETERMINISTIC_ACCEPTANCE_FILES).not.toContain(LIVE_STEER_SPEC);
-    expect(DETERMINISTIC_ACCEPTANCE_FILES).toContain(LIVE_STREAMING_SPEC);
-    expect(LIVE_ACCEPTANCE_FILES).toContain(LIVE_STEER_SPEC);
-    expect(LIVE_ACCEPTANCE_FILES).not.toContain(LIVE_STREAMING_SPEC);
+  it("fails the deterministic lane when any test skips", () => {
+    expect(laneOutcome("deterministic", 0, COUNTS_WITH_SKIP)).toEqual({
+      exitCode: 1,
+      terminalOutcome: "tests_skipped",
+    });
+    expect(laneOutcome("deterministic", 0, COUNTS_CLEAN)).toEqual({ exitCode: 0, terminalOutcome: "passed" });
   });
 
-  it("bounds live file concurrency and serializes tenant-wide provider mutation", () => {
-    expect(LIVE_FILE_CONCURRENCY).toBe(2);
-    expect(LIVE_ACCEPTANCE_FILES).toContain(LIVE_SERIAL_FILE);
+  it("lets the live lane skip, and reports a failing run as failed in either lane", () => {
+    expect(laneOutcome("live", 0, COUNTS_WITH_SKIP)).toEqual({ exitCode: 0, terminalOutcome: "passed" });
+    expect(laneOutcome("deterministic", 1, COUNTS_CLEAN)).toEqual({ exitCode: 1, terminalOutcome: "failed" });
   });
 
   it("runs the release-critical browser handoff before every other live file", () => {

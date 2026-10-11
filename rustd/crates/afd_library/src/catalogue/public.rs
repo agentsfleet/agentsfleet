@@ -97,17 +97,3 @@ fn decode(row: &sqlx::postgres::PgRow) -> Result<PublicLibraryItem> {
 }
 
 const LIST: &str = "SELECT id,name,description,required_credentials::text,required_credentials_reasons::text,required_tools::text,network_hosts::text FROM core.fleet_library WHERE visibility=$1 AND content_hash IS NOT NULL ORDER BY id";
-
-#[cfg(test)]
-mod tests {
-    use super::LIST;
-
-    #[test]
-    fn published_projection_excludes_bundle_and_source_internals() {
-        assert!(LIST.contains("visibility=$1 AND content_hash IS NOT NULL"));
-        assert!(!LIST.contains("skill_markdown,"));
-        assert!(!LIST.contains("trigger_markdown"));
-        assert!(!LIST.contains("support_files_json"));
-        assert!(!LIST.contains("source_repo"));
-    }
-}

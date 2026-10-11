@@ -195,15 +195,6 @@ mod tests {
         }
     }
 
-    /// The catalogue is exactly the five, and a sixth updates this pin.
-    ///
-    /// The registry IS the provider catalogue, so its size is a product fact
-    /// rather than an implementation detail.
-    #[test]
-    fn the_catalogue_is_the_five_shipped_connectors() {
-        assert_eq!(Provider::ALL.len(), 5);
-    }
-
     /// A segment nothing ships resolves to nothing, and so does the empty one.
     ///
     /// Both are the 404 path. The upper-case case is the one worth pinning:

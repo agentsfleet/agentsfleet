@@ -75,6 +75,11 @@ pub(crate) fn tenant_unavailable(source: std::io::Error) -> Error {
     ErrorKind::TenantUnavailable { source }.into()
 }
 
+/// A file call to an executor that serves none.
+pub(crate) fn file_calls_unsupported() -> Error {
+    ErrorKind::FileCallsUnsupported.into()
+}
+
 /// Parameters that decoded but cannot be used.
 pub(crate) fn invalid_params(detail: &'static str) -> Error {
     ErrorKind::InvalidParams { detail }.into()
