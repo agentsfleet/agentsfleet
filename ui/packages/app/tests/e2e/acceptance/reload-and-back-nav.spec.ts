@@ -6,9 +6,11 @@
  *      session cookie SSR. A regression that drops the `azp` claim, races
  *      cookie write, or fails to rehydrate the detail-page React Server
  *      Component tree lands as a /sign-in redirect or empty render.
- *   2. Soft App-Router nav away and back — Next caches RSC payloads
- *      per-segment. A regression in revalidatePath or the workspace
- *      resolver shows up as stale data after returning to /w/<id>/fleets/<id>.
+ *   2. Client-side nav away (a sidebar click) and back (browser history) —
+ *      Next caches RSC payloads per-segment. A regression in revalidatePath
+ *      or the workspace resolver shows up as a missing surface after
+ *      returning to /w/<id>/fleets/<id>. The document mark proves neither leg
+ *      fell back to a full page load.
  *
  * Seeds a fleet via API for speed (install-form coverage already lives
  * in login-install-lifecycle.spec.ts); the signal here is the navigation
@@ -20,11 +22,12 @@ import { getDefaultWorkspaceId, seedFleet } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
+import { documentIsMarked, markDocument } from "./fixtures/soft-navigation";
 
 const NAV_TIMEOUT_MS = 15_000;
 
 test.describe("reload + back-nav mid-session", () => {
-  test("fleet detail survives hard reload and a soft round-trip", async ({ page }) => {
+  test("fleet detail survives a hard reload and a client-side round-trip", async ({ page }) => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const name = `nav-${Math.random().toString(36).slice(2, 8)}`;
     const seeded = await seedFleet(FIXTURE_KEY.regular, ws, { name });
@@ -45,16 +48,16 @@ test.describe("reload + back-nav mid-session", () => {
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));
     await expect(triggerSection).toBeVisible({ timeout: NAV_TIMEOUT_MS });
 
-    // 2. Soft nav away (/events) and back. Uses page.goto rather than a
-    // sidebar click — the navigation mechanics are the regression signal;
-    // selector flakiness on the Shell nav is a different surface.
-    await page.goto(workspaceHref(ws, "events"));
+    // 2. Client-side nav away through the sidebar, and back through history.
+    await markDocument(page);
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Events" }).click();
     await expect(page).toHaveURL(workspaceUrlPattern("events"));
     await expect(page.getByRole("heading", { name: /^events$/i })).toBeVisible();
 
-    await page.goto(workspaceHref(ws, `fleets/${seeded.id}?view=trigger`));
+    await page.goBack();
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${seeded.id}`));
     await expect(triggerSection).toBeVisible({ timeout: NAV_TIMEOUT_MS });
+    expect(await documentIsMarked(page)).toBe(true);
   });
 
   test.afterEach(async () => {

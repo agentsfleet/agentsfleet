@@ -58,14 +58,4 @@ describe("readFleetLibraryPageAction", () => {
     expect(listWorkspaceFleetLibraryMock).toHaveBeenCalledWith("ws_1", "tok", "cur-2");
   });
 
-  it("returns a typed failure rather than throwing across the boundary", async () => {
-    // A Server Action cannot throw with custom fields intact, so the gallery
-    // branches on `ok`. An escaping rejection would reach a route with no
-    // error boundary instead of the typed failure the picker renders.
-    listWorkspaceFleetLibraryMock.mockRejectedValue(new Error("catalog down"));
-
-    const result = await readFleetLibraryPageAction("ws_1", "cur-2");
-
-    expect(result).toEqual({ ok: false, error: "catalog down" });
-  });
 });

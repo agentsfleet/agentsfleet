@@ -2,6 +2,7 @@ import { SAMPLE_TEMPLATES } from "./harness";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { within } from "@testing-library/react";
 import { authMock as auth } from "../helpers/dashboard-mocks";
 import { listWorkspaceFleetLibraryMock, listSecretsMock } from "../helpers/dashboard-app-mocks";
 
@@ -36,6 +37,24 @@ describe("fleets routes — install page", () => {
     expect(markup).toContain("Install fleet"); // PageTitle in the shell
     expect(markup).toContain("animate-pulse"); // Skeleton fallback
     expect(markup).not.toContain("GitHub PR reviewer"); // data not yet resolved
+  });
+
+  it("fleets new page marks the streaming gallery region busy, so loading reads without motion", async () => {
+    // Under reduced motion the skeleton pulse freezes; aria-busy plus a name is
+    // what keeps "loading" distinguishable from "loaded and empty".
+    listWorkspaceFleetLibraryMock.mockResolvedValue({ items: SAMPLE_TEMPLATES, next_cursor: null, total: null });
+    listSecretsMock.mockResolvedValue({ secrets: [] });
+    const { default: Page } =
+      await import("../../app/(dashboard)/w/[workspaceId]/fleets/new/page");
+    const host = document.createElement("div");
+    host.innerHTML = renderToStaticMarkup(
+      await Page({
+        params: Promise.resolve({ workspaceId: "ws_1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    const region = within(host).getByLabelText(/loading/i);
+    expect(region.getAttribute("aria-busy")).toBe("true");
   });
 
   it("fleets new page renders the gallery-first install flow when a workspace exists", async () => {

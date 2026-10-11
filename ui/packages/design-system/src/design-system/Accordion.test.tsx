@@ -32,12 +32,6 @@ describe("Accordion", () => {
     expect(t2.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("AccordionItem applies bottom border utility", () => {
-    render(<Sample />);
-    const item = screen.getByRole("button", { name: /Question one\?/ }).closest("div[class*='border-b']");
-    expect(item).toBeTruthy();
-  });
-
   it("renders content for the open item via defaultValue", () => {
     render(<Sample defaultValue="q1" />);
     expect(screen.getByText("Answer one.")).toBeTruthy();

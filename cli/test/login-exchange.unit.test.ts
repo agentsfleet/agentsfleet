@@ -1,6 +1,7 @@
 // The credential exchange's own proofs: what a stored value must look like
 // before it is carried on a request, what the machine label may contain, and
-// that the retired session-token persistence has no caller left.
+// that a completed login saves the minted credential rather than the session
+// token it was exchanged for.
 //
 // The load-shape check is the one that matters most. It is the mechanism
 // that makes "a session token reached disk" a failure at read rather than a
@@ -8,8 +9,6 @@
 // each refusal case below is a regression this file exists to catch.
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
 import { saveCredentials } from "../src/lib/state.ts";
@@ -20,11 +19,14 @@ import {
 } from "../src/commands/login-exchange.ts";
 import {
   CLI_CREDENTIAL_BODY_LEN,
+  CLI_CREDENTIAL_PATTERN,
   CLI_CREDENTIAL_PREFIX,
   MAX_MACHINE_NAME_LEN,
   TENANT_KEY_PREFIX,
 } from "../src/constants/cli-credential.ts";
 import { CLI_CREDENTIALS_PATH } from "../src/lib/api-paths.ts";
+import { TEST_JWT, makeRecorder } from "./login-acceptance-fixtures.ts";
+import { freshFixture, runLogin } from "./login-acceptance-client.ts";
 import {
   HttpClient,
   type HttpRequestInput,
@@ -211,31 +213,26 @@ describe("test_unusable_mint_response_fails_the_exchange", () => {
   });
 });
 
-describe("test_session_token_persistence_has_no_caller", () => {
-  // A pin, not a proof: the retired shape was `persistSuccess(sessionId,
-  // token)`, passing the decrypted session token straight to persistence.
-  // Reverting to it is the most likely way this regresses, and the type
-  // signature alone would not catch a future overload taking a raw string.
-  test("login.ts persists a minted credential, never the decrypted session token", () => {
-    const source = readFileSync(
-      path.join(import.meta.dir, "..", "src", "commands", "login.ts"),
-      "utf8",
-    );
-    expect(source).not.toContain("persistSuccess(sessionId, token)");
-    expect(source).toContain("persistSuccess(sessionId, minted)");
-  });
+describe("what login saves", () => {
+  test("login persists the minted credential, never the decrypted session token", async () => {
+    const rec = makeRecorder();
+    const fixture = freshFixture();
+    const exit = await Effect.runPromiseExit(runLogin(rec, fixture));
+    expect(Exit.isSuccess(exit)).toBe(true);
 
-  test("no source file outside the exchange builds a mint request", () => {
-    const loginHelpers = readFileSync(
-      path.join(import.meta.dir, "..", "src", "commands", "login-helpers.ts"),
-      "utf8",
-    );
-    expect(loginHelpers).not.toContain("machine_name");
-    // Stronger than it used to be. This file once held saveDirectToken, the
-    // second path that wrote credentials.json; §3 removed it, so the device
-    // flow is now the only writer and the helpers persist nothing at all.
-    // A new `saveAccessToken` call appearing here would be a second writer
-    // reintroduced, which is the regression this line exists to catch.
-    expect(loginHelpers).not.toContain("saveAccessToken");
+    // The session token is spent once, as the mint's authorization — the
+    // sixty-second window buys one durable thing.
+    expect(fixture.mintCalls.count).toBe(1);
+    expect(fixture.mintCalls.authorization).toBe(TEST_JWT);
+
+    // The label is hostname-derived and inside the server's grammar. A
+    // platform label ("macos-cli") would make every Mac claim one row.
+    expect(fixture.mintCalls.machineName).toMatch(/^[a-zA-Z0-9._-]{1,64}$/);
+
+    // One write, and what it wrote is a credential the load check accepts,
+    // not the session token the flow was holding.
+    expect(rec.saves).toBe(1);
+    expect(rec.savedToken ?? "").toMatch(CLI_CREDENTIAL_PATTERN);
+    expect(rec.savedToken).not.toBe(TEST_JWT);
   });
 });

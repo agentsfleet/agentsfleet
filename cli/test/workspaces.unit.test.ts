@@ -1,11 +1,8 @@
 // Direct unit tests for src/services/workspaces.ts.
 //
-// Three surfaces under test:
-//   1. workspacesLayer  — wraps the on-disk loadWorkspacesRaw / saveWorkspacesRaw
-//      via Effect.tryPromise; error path (lines 30-35) fires when the
-//      underlying fs call throws (unreadable file).
-//   2. workspacesFromValueLayer — in-memory snapshot variant (lines 52-64).
-//      load returns current, save replaces it; isolated from disk entirely.
+// workspacesLayer wraps the on-disk loadWorkspacesRaw / saveWorkspacesRaw
+// via Effect.tryPromise; its error path fires when the underlying fs call
+// throws (unreadable file).
 //
 // Every test runs inside withFreshStateDir so disk reads/writes go to a
 // temp dir; process.env.AGENTSFLEET_STATE_DIR is restored on exit.
@@ -17,7 +14,6 @@ import { Cause, Effect, Exit, Option } from "effect";
 import {
   Workspaces,
   workspacesLayer,
-  workspacesFromValueLayer,
   type WorkspacesValue,
 } from "../src/services/workspaces.ts";
 import { UnexpectedError } from "../src/errors/index.ts";
@@ -167,101 +163,5 @@ describe("workspacesLayer — save error path (lines 30-35)", () => {
       expect(ue.detail).toMatch(/workspaces save failed/);
       expect(ue.suggestion).toMatch(/permissions/);
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// workspacesFromValueLayer — in-memory snapshot (lines 52-64)
-// ---------------------------------------------------------------------------
-
-describe("workspacesFromValueLayer — in-memory", () => {
-  test("load returns the initial value", async () => {
-    const layer = workspacesFromValueLayer(WS_A);
-    const result = await Effect.runPromise(
-      Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
-        Effect.provide(layer),
-      ),
-    );
-    expect(result.current_workspace_id).toBe("ws-1");
-    expect(result.items).toHaveLength(1);
-  });
-
-  test("save then load reflects the saved value", async () => {
-    const layer = workspacesFromValueLayer(EMPTY_WS);
-    const result = await Effect.runPromise(
-      Effect.flatMap(Workspaces, (svc) =>
-        Effect.flatMap(svc.save(WS_A), () => svc.load),
-      ).pipe(Effect.provide(layer)),
-    );
-    expect(result.current_workspace_id).toBe("ws-1");
-    expect(result.items[0]?.name).toBe("Alpha");
-  });
-
-  test("multiple saves accumulate correctly — last write wins", async () => {
-    const layer = workspacesFromValueLayer(EMPTY_WS);
-    const result = await Effect.runPromise(
-      Effect.flatMap(Workspaces, (svc) =>
-        Effect.flatMap(svc.save(WS_A), () =>
-          Effect.flatMap(svc.save(WS_B), () => svc.load),
-        ),
-      ).pipe(Effect.provide(layer)),
-    );
-    expect(result.current_workspace_id).toBe("ws-2");
-    expect(result.items).toHaveLength(2);
-  });
-
-  test("initial value is defensively cloned — external mutation does not bleed in", async () => {
-    const mutable: WorkspacesValue = {
-      current_workspace_id: "ws-orig",
-      items: [{ workspace_id: "ws-orig", name: "Orig", created_at: 0 }],
-    };
-    const layer = workspacesFromValueLayer(mutable);
-    // Mutate the source after layer construction.
-    (mutable as { current_workspace_id: string | null }).current_workspace_id = "mutated";
-    (mutable.items as WorkspacesValue["items"]).push({
-      workspace_id: "extra",
-      name: "Extra",
-      created_at: 1,
-    });
-    const result = await Effect.runPromise(
-      Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
-        Effect.provide(layer),
-      ),
-    );
-    expect(result.current_workspace_id).toBe("ws-orig");
-    expect(result.items).toHaveLength(1);
-  });
-
-  test("saved value is defensively cloned — post-save mutation does not change state", async () => {
-    const layer = workspacesFromValueLayer(EMPTY_WS);
-    const saved: WorkspacesValue = {
-      current_workspace_id: "ws-snap",
-      items: [{ workspace_id: "ws-snap", name: "Snap", created_at: 0 }],
-    };
-    await Effect.runPromise(
-      Effect.flatMap(Workspaces, (svc) => svc.save(saved)).pipe(
-        Effect.provide(layer),
-      ),
-    );
-    // Mutate the value that was passed to save.
-    (saved as { current_workspace_id: string | null }).current_workspace_id = "corrupted";
-    const result = await Effect.runPromise(
-      Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
-        Effect.provide(layer),
-      ),
-    );
-    expect(result.current_workspace_id).toBe("ws-snap");
-  });
-
-  test("empty items list is preserved across save/load", async () => {
-    const layer = workspacesFromValueLayer(WS_A);
-    const cleared: WorkspacesValue = { current_workspace_id: null, items: [] };
-    const result = await Effect.runPromise(
-      Effect.flatMap(Workspaces, (svc) =>
-        Effect.flatMap(svc.save(cleared), () => svc.load),
-      ).pipe(Effect.provide(layer)),
-    );
-    expect(result.current_workspace_id).toBeNull();
-    expect(result.items).toHaveLength(0);
   });
 });

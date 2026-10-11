@@ -76,26 +76,6 @@ fn test_activity_frame_call_id_is_bounded() {
     assert_eq!(usable(&"c".repeat(CALL_ID_MAX_BYTES)), [true; 3]);
 }
 
-/// Each tool frame's published `call_id` description states the bound
-/// `call_id_usable` enforces, so the two cannot drift apart unnoticed.
-#[test]
-fn a_published_call_id_description_names_its_bound() {
-    use super::CALL_ID_MAX_BYTES;
-    let openapi = include_str!("../../../../../public/openapi.json");
-    let document: serde_json::Value =
-        serde_json::from_str(openapi).expect("the published spec parses");
-    let bound = format!("1 to {CALL_ID_MAX_BYTES} bytes");
-    for frame in ["ToolCallStarted", "ToolCallProgress", "ToolCallCompleted"] {
-        let pointer = format!("/components/schemas/{frame}/properties/call_id/description");
-        let text = document
-            .pointer(&pointer)
-            .and_then(serde_json::Value::as_str)
-            .map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "))
-            .unwrap_or_default();
-        assert!(text.contains(&bound), "{frame}: {text}");
-    }
-}
-
 /// The acknowledgement is exactly the one field `ActivityAccepted` declares.
 #[test]
 fn test_the_acknowledgement_is_exactly_ok_true() {

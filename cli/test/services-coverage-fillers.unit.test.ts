@@ -1,49 +1,12 @@
-// Targeted tests filling the remaining coverage holes on the
-// substrate: cliConfigFromValuesLayer override merge, Credentials error
-// path through a non-writable state dir.
+// Targeted test filling a coverage hole on the substrate: the Credentials
+// error path through a non-writable state dir.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Option, Redacted } from "effect";
-import {
-  CliConfig,
-  cliConfigFromValuesLayer,
-} from "../src/services/config.ts";
 import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
-
-describe("cliConfigFromValuesLayer", () => {
-  test("merges overrides on top of env-resolved defaults", async () => {
-    const layer = cliConfigFromValuesLayer({
-      jsonMode: true,
-      apiUrl: "https://override.test.local",
-    });
-    const result = await Effect.runPromise(
-      Effect.provide(
-        Effect.gen(function* () {
-          return yield* CliConfig;
-        }),
-        layer,
-      ),
-    );
-    expect(result.jsonMode).toBe(true);
-    expect(result.apiUrl).toBe("https://override.test.local");
-    expect(Option.isNone(result.accessToken) || Option.isSome(result.accessToken)).toBe(true);
-  });
-  test("no-args uses env-resolved defaults", async () => {
-    const result = await Effect.runPromise(
-      Effect.provide(
-        Effect.gen(function* () {
-          return yield* CliConfig;
-        }),
-        cliConfigFromValuesLayer(),
-      ),
-    );
-    expect(typeof result.apiUrl).toBe("string");
-    expect(typeof result.dashboardUrl).toBe("string");
-  });
-});
 
 describe("Credentials error path", () => {
   let tempDir: string;

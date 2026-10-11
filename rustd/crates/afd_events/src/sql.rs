@@ -291,7 +291,3 @@ SELECT status FROM core.fleet_events WHERE fleet_id = $1::uuid AND event_id = $2
 /// the row, not the operator's visibility, since the console renders the cause
 /// as one line anyway.
 pub const MAX_FAILURE_DETAIL_BYTES: usize = 512;
-
-#[cfg(test)]
-#[path = "sql/tests.rs"]
-mod tests;

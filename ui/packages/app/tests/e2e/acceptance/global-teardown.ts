@@ -37,7 +37,6 @@
  * Never throws: a teardown failure must not mask the suite's real result.
  */
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { deleteUser, listUsersByQuery, revokeSession } from "./fixtures/clerk-admin";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
 import {
@@ -46,9 +45,8 @@ import {
   sweepLeakedFixtureLibraries,
 } from "./fixtures/teardown";
 import { revokeBrowserSessions } from "./fixtures/browser-sessions";
-import { TEST_INBOX_DOMAIN } from "./fixtures/constants";
+import { JWT_CACHE_PATH, TEST_INBOX_DOMAIN } from "./fixtures/constants";
 
-const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
 /** Old enough that no live suite run can still be using the user. */
 const STALE_AFTER_MS = 60 * 60 * 1000;

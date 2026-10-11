@@ -8,7 +8,6 @@ import { Effect } from "effect";
 import { Readable } from "node:stream";
 import {
   makeLive,
-  stdinLayer,
   stdinFromStreamLayer,
   Stdin,
 } from "../src/services/stdin.ts";
@@ -80,21 +79,5 @@ describe("Stdin layer factories", () => {
     );
     expect(result.text).toBe("agt_tpiped\n");
     expect(result.isTTY).toBe(false);
-  });
-
-  test("stdinLayer (process.stdin default) resolves an isTTY boolean", async () => {
-    // Only read isTTY — draining the real process.stdin would block the
-    // runner. Constructing + resolving the layer is what counts the
-    // makeLive() default-argument closure.
-    const isTTY = await Effect.runPromise(
-      Effect.provide(
-        Effect.gen(function* () {
-          const s = yield* Stdin;
-          return s.isTTY;
-        }),
-        stdinLayer,
-      ),
-    );
-    expect(typeof isTTY).toBe("boolean");
   });
 });

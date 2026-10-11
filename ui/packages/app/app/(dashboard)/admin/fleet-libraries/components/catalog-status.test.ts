@@ -43,13 +43,6 @@ function entry(visibility: CatalogVisibility, content_hash: string | null): Plat
 const HASH = "b7f2c1d9e4a8";
 
 describe("catalogStatus", () => {
-  // Dimension 1.1 — the hole M130 closes. A hand-inserted row (the API refuses to
-  // create one: publishing checks the hash in SQL) is public with no bundle, and
-  // the old derivation called it "published" on visibility alone.
-  it("calls a public row with no bundle broken, not published", () => {
-    expect(catalogStatus(entry(CATALOG_PUBLIC, null))).toBe(CATALOG_STATUS_BROKEN);
-  });
-
   it("is total over every visibility x bundle combination", () => {
     expect(catalogStatus(entry(CATALOG_PUBLIC, HASH))).toBe(CATALOG_STATUS_PUBLISHED);
     expect(catalogStatus(entry(CATALOG_PUBLIC, null))).toBe(CATALOG_STATUS_BROKEN);

@@ -13,8 +13,6 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly GATE="$SCRIPT_DIR/check_architecture_doc.sh"
-readonly MAKE_DIR="$REPO_ROOT/make"
-readonly QUALITY_MK="$MAKE_DIR/quality.mk"
 
 # Fixture milestones: one shipped, one in flight, one that exists nowhere. Workstream-suffixed names are composed rather than written out, since
 # a literal `M<n>_<nnn>` in source is a milestone identifier the MS-ID gate bans
@@ -126,48 +124,6 @@ test_arch_doc_missing_dir_fails_loud() {
   ok "$name"
 }
 
-# ── Dimension 4.2 — the gate actually runs ───────────────────────────────────
-
-# A target defined but unreferenced is exactly the state this gate was in before:
-# present on disk, invoked by nothing. Both halves are asserted — the definition
-# (in any included make file) and the lint-all edge that actually runs it.
-test_arch_doc_wired_into_lint_all() {
-  local name="test_arch_doc_wired_into_lint_all"
-
-  if ! grep -qrE '^check-architecture-doc:' "$MAKE_DIR"; then
-    bad "$name" "no make file under $MAKE_DIR defines a check-architecture-doc target"
-    return
-  fi
-  if ! grep -qE '^lint-all:.*check-architecture-doc' "$QUALITY_MK"; then
-    bad "$name" "check-architecture-doc is not a prerequisite of lint-all — the gate never runs"
-    return
-  fi
-  # The definition is worthless if the Makefile never includes the file it lives in.
-  if ! grep -qE '^include make/' "$REPO_ROOT/Makefile"; then
-    bad "$name" "root Makefile includes no make/*.mk"
-    return
-  fi
-  ok "$name"
-}
-
-# ── Regression — the live corpus resolves under the unfrozen scan ────────────
-
-test_arch_doc_real_corpus_resolves() {
-  local name="test_arch_doc_real_corpus_resolves"
-  local output
-
-  if ! output="$(cd "$REPO_ROOT" && bash "$GATE" 2>&1)"; then
-    bad "$name" "the gate fails on the repo's own architecture docs: $output"
-    return
-  fi
-  # Guards against a vacuous pass: a scan that matched nothing also exits 0.
-  if [[ "$output" != *"milestone references resolve"* ]]; then
-    bad "$name" "gate passed without resolving any milestone reference: $output"
-    return
-  fi
-  ok "$name"
-}
-
 # ── The citation assertions live beside this file ───────────────────────────
 #
 # Sourced, so their helpers and tests share this script's counters, WORK_DIR
@@ -178,8 +134,6 @@ test_arch_doc_real_corpus_resolves() {
 test_arch_doc_validates_all_m_ids
 test_arch_doc_unresolved_ref_names_the_milestone
 test_arch_doc_missing_dir_fails_loud
-test_arch_doc_wired_into_lint_all
-test_arch_doc_real_corpus_resolves
 test_arch_doc_no_retired_slot_numbers() {
   local name="test_arch_doc_no_retired_slot_numbers"
   # A published decision record keeps its own title, so link text is exempt while

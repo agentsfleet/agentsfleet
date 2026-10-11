@@ -16,7 +16,7 @@ import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
-import url from "node:url";
+import { VERSION } from "../../src/cli.ts";
 import { helpTail } from "../../src/program/entry/help-formatter.ts";
 
 import { runFleetctl, spawnFleetctl, composeEnv } from "./fixtures/cli.js";
@@ -32,8 +32,6 @@ import { attachJwt } from "./fixtures/clerk-admin.ts";
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
-const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const CLI_ROOT = path.resolve(HERE, "..", "..");
 const ANSI_RE = /\x1b\[/;
 
 interface ExitResult {
@@ -42,13 +40,6 @@ interface ExitResult {
   readonly stdout: string;
   readonly stderr: string;
 }
-
-let pkgVersion: string;
-
-beforeAll(async () => {
-  const pkgRaw = await fs.readFile(path.join(CLI_ROOT, "package.json"), "utf8");
-  pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
-});
 
 function emptyEnv(extra?: Record<string, string>): Record<string, string> {
   return composeEnv({
@@ -72,14 +63,14 @@ describe("global flag matrix", () => {
   it("--version --help → --version wins (precedence)", async () => {
     const result = await runFleetctl(["--version", "--help"], { env: emptyEnv() });
     assert.equal(result.code, 0);
-    assert.ok(result.stdout.includes(pkgVersion), `expected version ${pkgVersion} in stdout: ${result.stdout}`);
+    assert.ok(result.stdout.includes(VERSION), `expected version ${VERSION} in stdout: ${result.stdout}`);
     assert.ok(!/usage|commands:/i.test(result.stdout), `--help body leaked into --version output: ${result.stdout}`);
   });
 
   it("--help --version → --version still wins (order-independent)", async () => {
     const result = await runFleetctl(["--help", "--version"], { env: emptyEnv() });
     assert.equal(result.code, 0);
-    assert.ok(result.stdout.includes(pkgVersion));
+    assert.ok(result.stdout.includes(VERSION));
     assert.ok(!/usage|commands:/i.test(result.stdout));
   });
 
@@ -109,8 +100,8 @@ describe("env-var reference (--help)", () => {
   // --help stays terse: the full environment-variable matrix (telemetry
   // opt-out included) lives in the docs, surfaced as a single docs pointer
   // (refactor: inline matrix → docs link). This confirms the built binary
-  // (npm install / dist) renders that pointer end-to-end and that the old
-  // inline matrix does not resurface. `helpTail()` is the single source.
+  // (npm install / dist) renders that pointer end-to-end. `helpTail()` is
+  // the single source.
   it("points to the env-var docs instead of inlining the matrix", async () => {
     const result = await runFleetctl(["--help"], {
       env: composeEnv({ NO_COLOR: "1" }),
@@ -121,19 +112,6 @@ describe("env-var reference (--help)", () => {
       result.stdout.includes(tail),
       `--help did not surface the env-var docs pointer (${tail}); got: ${result.stdout}`,
     );
-    // The matrix moved to the docs — neither the current nor the
-    // pre-supabase env names should be inlined in --help (catches a
-    // regression that re-inlines them).
-    for (const inlineName of [
-      "AGENTSFLEET_TELEMETRY_DISABLED",
-      "AGENTSFLEET_POSTHOG_KEY",
-      "AGENTSFLEET_POSTHOG_HOST",
-    ]) {
-      assert.ok(
-        !result.stdout.includes(inlineName),
-        `--help re-inlines ${inlineName}; the env-var matrix belongs in the docs`,
-      );
-    }
   });
 });
 

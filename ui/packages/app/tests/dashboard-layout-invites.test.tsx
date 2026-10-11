@@ -1,5 +1,7 @@
 import React, { type ReactElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@agentsfleet/design-system";
 
 // The layout's reads each stand in for a network call; what is under test is
 // what the shell is handed when the invite read succeeds or fails, and that
@@ -35,7 +37,10 @@ function shellProps(tree: ReactNode): { waitingInvites?: unknown } {
   return shellProps((tree.props as { children?: ReactNode }).children);
 }
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => {
+  cleanup();
+  vi.resetAllMocks();
+});
 
 describe("dashboard layout invites", () => {
   it("should hand the shell the invites waiting for the signed-in person", async () => {
@@ -58,5 +63,22 @@ describe("dashboard layout invites", () => {
     await DashboardLayout({ children: null });
     await expect(loadWaitingInvites()).resolves.toEqual(WAITING);
     expect(listWaitingInvitesCached.mock.calls).toEqual([[TOKEN], [TOKEN]]);
+  });
+});
+
+describe("dashboard layout tooltip provider", () => {
+  // Radix's tooltip Root reads provider context unconditionally and throws
+  // without it, so an island that renders a bare Tooltip must mount under the
+  // layout alone.
+  it("should mount an island's bare Tooltip without a provider of its own", async () => {
+    listWaitingInvitesCached.mockResolvedValue([]);
+    const island = (
+      <Tooltip>
+        <TooltipTrigger>trigger</TooltipTrigger>
+        <TooltipContent>hint</TooltipContent>
+      </Tooltip>
+    );
+    render(await DashboardLayout({ children: island }));
+    expect(screen.getByRole("button", { name: "trigger" })).toBeTruthy();
   });
 });

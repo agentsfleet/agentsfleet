@@ -37,14 +37,6 @@ describe("Badge", () => {
     expect((c.firstChild as HTMLElement).className).toContain("text-info");
   });
 
-  it("always applies base pill shape + typography utilities", () => {
-    const { container } = render(<Badge>X</Badge>);
-    const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("rounded-sm");
-    expect(cls).toContain("font-sans");
-    expect(cls).toContain("uppercase");
-  });
-
   it("merges a custom className", () => {
     const { container } = render(<Badge className="my-badge">X</Badge>);
     const cls = (container.firstChild as HTMLElement).className;

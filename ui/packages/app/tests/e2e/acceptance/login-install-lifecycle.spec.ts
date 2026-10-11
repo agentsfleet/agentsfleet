@@ -9,7 +9,7 @@
  * in both Clerk DEV and Clerk PROD by globalSetup.
  *
  * Why cookie-mount instead of the sign-in form: form-driven login is covered
- * by signup.spec.ts (in DEV). Scenario 2 is about the lifecycle after auth,
+ * by signup-lifecycle.spec.ts (in DEV). Scenario 2 is about the lifecycle after auth,
  * not the login mechanism — cookie-mount keeps every PROD deploy run fast
  * and isolates the spec from Clerk SignIn component drift.
  */

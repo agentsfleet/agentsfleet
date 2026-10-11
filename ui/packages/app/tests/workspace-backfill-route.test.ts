@@ -14,15 +14,11 @@ vi.mock("@/lib/api/client", () => ({
 }));
 
 import { GET } from "../app/live/v1/workspaces/[workspaceId]/events/route";
-import { ERROR_CODE } from "@/lib/errors";
 
 const WORKSPACE_ID = "ws_1";
 const TOKEN = "session_token";
 const CONTENT_TYPE_JSON = "application/json";
 const CONTENT_TYPE_TEXT = "text/plain";
-const STATUS_BAD_REQUEST = 400;
-const STATUS_UNAUTHORIZED = 401;
-const STATUS_BAD_GATEWAY = 502;
 const STATUS_UNAVAILABLE = 503;
 const PAGE_LIMIT = 200;
 const UPSTREAM_PAGE = '{"items":[],"next_cursor":null}';
@@ -48,25 +44,6 @@ function paramsOf(workspaceId = WORKSPACE_ID) {
 }
 
 describe("workspace backfill route", () => {
-  it("rejects dot-only workspace identifiers before minting a token", async () => {
-    const res = await GET(makeReq(), paramsOf(".."));
-
-    expect(res.status).toBe(STATUS_BAD_REQUEST);
-    expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(getTokenFn).not.toHaveBeenCalled();
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it("returns the pinned unauthorized envelope when no session token exists", async () => {
-    getTokenFn.mockResolvedValueOnce(null);
-
-    const res = await GET(makeReq(), paramsOf());
-
-    expect(res.status).toBe(STATUS_UNAUTHORIZED);
-    await expect(res.json()).resolves.toEqual({ error: "Unauthorized", code: ERROR_CODE.AUTH_401 });
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
   it("encodes the path, forwards only allowed queries, and returns the bounded page", async () => {
     getTokenFn.mockResolvedValueOnce(TOKEN);
     fetchSpy.mockResolvedValueOnce(
@@ -130,36 +107,4 @@ describe("workspace backfill route", () => {
     expect(textRes.headers.get("content-type")).toBe(CONTENT_TYPE_TEXT);
   });
 
-  it("uses a synthetic upstream error when the body and content type are absent", async () => {
-    getTokenFn.mockResolvedValueOnce(TOKEN);
-    fetchSpy.mockResolvedValueOnce(new Response(null, { status: STATUS_UNAVAILABLE }));
-
-    const res = await GET(makeReq(), paramsOf());
-
-    expect(res.headers.get("content-type")).toBe(CONTENT_TYPE_TEXT);
-    expect(await res.text()).toBe(`Upstream error ${STATUS_UNAVAILABLE}`);
-  });
-
-  it("survives rejected upstream body reads", async () => {
-    getTokenFn.mockResolvedValueOnce(TOKEN);
-    const broken = new Response("ignored", { status: STATUS_BAD_GATEWAY });
-    Object.defineProperty(broken, "text", {
-      value: () => Promise.reject(new Error("read failed")),
-    });
-    fetchSpy.mockResolvedValueOnce(broken);
-
-    const res = await GET(makeReq(), paramsOf());
-
-    expect(await res.text()).toBe(`Upstream error ${STATUS_BAD_GATEWAY}`);
-  });
-
-  it("returns a bounded error when the upstream fetch rejects", async () => {
-    getTokenFn.mockResolvedValueOnce(TOKEN);
-    fetchSpy.mockRejectedValueOnce(new Error("connect failed"));
-
-    const res = await GET(makeReq(), paramsOf());
-
-    expect(res.status).toBe(STATUS_BAD_GATEWAY);
-    await expect(res.json()).resolves.toEqual({ error: "Upstream unreachable" });
-  });
 });

@@ -10,15 +10,6 @@ describe("Refpill", () => {
     expect(screen.getByText("billing-bot")).toBeInTheDocument();
   });
 
-  it("applies the rounded mono chip base classes", () => {
-    const { container } = render(<Refpill>x</Refpill>);
-    const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("rounded-full");
-    expect(cls).toContain("border");
-    expect(cls).toContain("font-mono");
-    expect(cls).toContain("text-muted-foreground");
-  });
-
   it("merges a custom className", () => {
     const { container } = render(<Refpill className="text-primary">x</Refpill>);
     const cls = (container.firstChild as HTMLElement).className;

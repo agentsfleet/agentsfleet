@@ -110,7 +110,7 @@ fn test_banner_draws_the_mark_on_a_terminal() {
     assert!(rendered.contains("redis:api"));
 }
 
-/// The fatal renders the message, every cause, and the bomb.
+/// The fatal renders the message and every cause.
 #[test]
 fn test_fatal_renders_the_whole_causal_chain() {
     let error = Layered {
@@ -140,12 +140,10 @@ fn test_fatal_renders_the_whole_causal_chain() {
         2,
         "one line per cause, not per error: {rendered}"
     );
-    assert!(rendered.contains("We flunked!"), "the bomb speaks");
-    assert!(rendered.contains(",####."), "and is drawn");
     assert!(!rendered.contains(ESCAPE), "plain stays plain");
 }
 
-/// An error with no cause still gets a message and a bomb.
+/// An error with no cause still gets its message.
 ///
 /// The Ruby original returned early when the filtered trace was empty, so the
 /// loudest failures produced the quietest output. This is that bug, asserted
@@ -163,10 +161,6 @@ fn test_fatal_still_speaks_for_an_error_with_no_cause() {
     assert!(
         !rendered.contains("caused by:"),
         "no chain means no chain lines"
-    );
-    assert!(
-        rendered.contains("We flunked!"),
-        "an uncaused error is still fatal, and still says so"
     );
 }
 
@@ -249,5 +243,4 @@ fn test_fatal_adds_no_frame_block_when_nothing_is_ours() {
         !rendered.contains("rt.rs"),
         "a trace with none of our frames contributes nothing: {rendered}"
     );
-    assert!(rendered.contains("We flunked!"), "and the bomb still drops");
 }

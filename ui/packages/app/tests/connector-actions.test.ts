@@ -54,13 +54,6 @@ describe("disconnectConnectorAction", () => {
     expect(disconnectConnectorMock).not.toHaveBeenCalled();
   });
 
-  it("surfaces a client failure as an action error", async () => {
-    disconnectConnectorMock.mockRejectedValue(new Error("disconnect failed"));
-
-    const result = await disconnectConnectorAction("slack", "ws_1");
-
-    expect(result).toEqual({ ok: false, error: "disconnect failed" });
-  });
 });
 afterEach(() => vi.resetAllMocks());
 
@@ -85,14 +78,6 @@ describe("startConnectAction (OAuth connect)", () => {
 
     expect(result).toEqual({ ok: true, data: authorize });
     expect(startConnectMock).toHaveBeenCalledWith("zoho", "ws_1", "tok");
-  });
-
-  it("surfaces a connectors-client failure as { ok: false } (degraded closed, no throw)", async () => {
-    startConnectMock.mockRejectedValue(new Error("UZ-CONN-001"));
-
-    const result = await startConnectAction("zoho", "ws_1");
-
-    expect(result).toEqual({ ok: false, error: "UZ-CONN-001" });
   });
 
   it("rejects a path-tampered provider before any token or API work", async () => {

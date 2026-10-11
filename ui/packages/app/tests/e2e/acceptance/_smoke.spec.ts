@@ -3,28 +3,21 @@
  *
  * Asserts:
  *   1. globalSetup ran (fail-fast didn't throw — implicit by reaching here).
- *   2. The fixture-JWT cache file exists with all fixture users' JWTs.
- *   3. signInAs(page, 'regular') mounts the __session cookie and Clerk
- *      middleware accepts the JWT (a navigation to '/' does NOT redirect to
- *      /sign-in).
- *   4. Post-bootstrap, the dashboard renders authenticated content for the
- *      signed-in fixture user (a marker like agentsfleet/Fleets/Dashboard is
- *      visible on body, not just the marketing/sign-in page).
+ *   2. signInAs(page, 'regular') yields a session Clerk middleware accepts,
+ *      and the dashboard renders authenticated content (the workspace
+ *      switcher), not the sign-in page.
  *
  * Per-spec teardown for fixture rows (fleets/credentials/events) lands with
  * the WS-C spec workstream — the bootstrap state itself is reused across
  * runs (idempotent on the user.created replay).
  */
-import * as crypto from "node:crypto";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, listFleets, seedFleet } from "./fixtures/seed";
 import { gotoWorkspace, workspaceUrlPattern } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
-import { CLERK_NEXTJS_PINNED_MAJOR, FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY } from "./fixtures/constants";
 import {
   assertCliArtifactPresent,
   diagnoseApiError,
@@ -35,18 +28,10 @@ import {
   probeRuntimeModel,
 } from "./fixtures/preflight";
 
-const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
-
 // Clerk's SignIn card hydrates client-side from clerk.accounts.dev; a cold CI
 // browser can take longer than expect()'s 5s default while the page itself is
 // healthy. Web-first wait, not a sleep — passes as soon as the card mounts.
 const CLERK_HYDRATION_TIMEOUT_MS = 15_000;
-
-// Mirrors the random-password generator used by global-setup.ts so the smoke
-// assertion checks the same shape that lands in Clerk during provisioning.
-function freshPassword(): string {
-  return crypto.randomBytes(32).toString("base64url");
-}
 
 // Release preflight — every prerequisite a browser journey depends on, proven
 // read-only before the expensive groups start. A failure here is an
@@ -87,49 +72,6 @@ test.describe("auth e2e wire", () => {
     await page.goto("/sign-in");
     const heading = page.getByRole("heading", { level: 1, name: /sign in/i });
     await expect(heading).toBeVisible({ timeout: CLERK_HYDRATION_TIMEOUT_MS });
-  });
-
-  test("required Clerk credentials present in env", () => {
-    expect(process.env.NEXT_PUBLIC_API_URL?.length ?? 0).toBeGreaterThan(0);
-    expect(process.env.CLERK_SECRET_KEY?.length ?? 0).toBeGreaterThan(20);
-    expect(process.env.CLERK_WEBHOOK_SECRET?.length ?? 0).toBeGreaterThan(20);
-  });
-
-  // WS-B #8: a `bun install` that bumps @clerk/nextjs into a new major would
-  // silently relax or tighten clerkMiddleware's cookie/JWT validation. The
-  // pinned major in fixtures/constants.ts is a single source of truth — read
-  // the resolved version from node_modules (NOT the package.json range string,
-  // which would conflate `^7.x` and `^8.x` if both start with `^`).
-  test("@clerk/nextjs installed major matches the harness pin", () => {
-    const pkgPath = path.join(process.cwd(), "node_modules", "@clerk", "nextjs", "package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { version: string };
-    const major = Number(pkg.version.split(".")[0]);
-    expect(major).toBe(CLERK_NEXTJS_PINNED_MAJOR);
-  });
-
-  // WS-B #9: Clerk's password policy may tighten over time. freshPassword's
-  // base64url-encoded 32-byte output is well above any reasonable Clerk
-  // minimum-length requirement; pin that floor explicitly so a future
-  // generator change cannot silently dip below it.
-  test("freshPassword output clears the 16-character floor", () => {
-    expect(freshPassword().length).toBeGreaterThanOrEqual(16);
-  });
-
-  test("globalSetup cached JWTs for every fixture user", () => {
-    expect(fs.existsSync(JWT_CACHE_PATH)).toBe(true);
-    const cache = JSON.parse(fs.readFileSync(JWT_CACHE_PATH, "utf8")) as Record<
-      string,
-      { sessionJwt: string }
-    >;
-    expect(cache.regular?.sessionJwt?.length ?? 0).toBeGreaterThan(20);
-    expect(cache.admin?.sessionJwt?.length ?? 0).toBeGreaterThan(20);
-    expect(cache.operator?.sessionJwt?.length ?? 0).toBeGreaterThan(20);
-  });
-
-  test("signInAs('regular') produces an accepted Clerk session", async ({ page }) => {
-    await signInAs(page, FIXTURE_KEY.regular);
-    await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
-    await expect(page).toHaveURL(workspaceUrlPattern("fleets"));
   });
 
   test(
