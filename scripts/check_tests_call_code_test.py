@@ -144,6 +144,9 @@ MORE_READS = {
     "js helper with a quoted brace": ("cli/test/brace.unit.test.ts", 'function slurp(file: string) {\n  const marker = "}";\n  return readFileSync(file, "utf8");\n}\nslurp(join(__dirname, "..", "src", "commands", "login.ts"));\n', 5),
     "js helper copies then reads": ("cli/test/later.unit.test.ts", 'async function load(file: string) {\n  await Bun.write(destination, Bun.file(file))\n  return readFileSync(file, "utf8")\n}\nload(join(import.meta.dir, "..", "src", "commands", "login.ts"))\n', 5),
     "js copy then a read": ("cli/test/after.unit.test.ts", 'await Bun.write(destination, Bun.file(join(import.meta.dir, "..", "bunfig.toml")))\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8")\n', 2),
+    "js copy named in a string": ("cli/test/quoted.unit.test.ts", 'const note = "Bun.write(";\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8");\n', 2),
+    "js copy named in a template": ("cli/test/template.unit.test.ts", 'const note = `Bun.write(`;\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8");\n', 2),
+    "js copy named in a comment": ("cli/test/remark.unit.test.ts", '// Bun.write(\nconst text = readFileSync(join(import.meta.dir, "..", "src", "commands", "login.ts"), "utf8");\n', 2),
     "js arrow helper": ("cli/test/arrow.unit.test.ts", 'const slurp = (file: string) => {\n  const at = join(file, "login.ts");\n  return readFileSync(at, "utf8");\n};\nslurp(join(import.meta.dir, "..", "src", "commands"));\n', 5),
 }
 
