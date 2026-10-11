@@ -98,7 +98,7 @@ The ledger names each site by row; this table names the roles.
 
 ## Sections (implementation slices)
 
-### §1 — Audit: every crate swept, every finding verified
+### §1 — Audit: every crate swept, every finding verified — DONE
 
 Preparation Section; its output is the ledger. **Groups:** G1 shared (`afd_core`, `afd_wire`, `afd_validate`, `afd_http`, `afd_db`, `afd_crypto`, `afd_observability`, `afd_otlp`, `afd_dragonfly`); G2 HTTP planes and identity (`afd_api`, `afd_api_ingress`, `afd_api_operator`, `afd_api_runner`, `afd_api_tenant`, `afd_api_wire`, `afd_auth`, `afd_identity`, `afd_sse`, `afd_state`, `afd_webhook`); G3 tenant and credentials (`afd_admin`, `afd_tenant`, `afd_credential`, `afd_vault`, `afd_connector`, `afd_library`, `afd_mail`, `afd_billing`); G4 event pipeline (`afd_admission`, `afd_approval`, `afd_cron`, `afd_events`, `afd_gate`, `afd_ingress`, `afd_memory`, `afd_outbound`, `afd_runner`); G5 fleet and daemon (`afd_fleet`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `afd_fleet_runtime`, `afd_bench`, `agentsfleetd`); G6 runner (`afr_*`, `agentsfleet_runner`).
 
@@ -106,56 +106,56 @@ Per group, a finder agent reads every `src/` file and proposes rows. A separate 
 
 **Bar for a new crate (tier c), all seven:** it replaces two or more hand-written copies, or one that parses untrusted input; licence MIT or Apache-2.0; a release within the last 12 months and no open RustSec advisory; builds on `rust-toolchain.toml` with `default-features = false` and only the features used; adds no second version of a locked crate (the `multiple_crate_versions` allowance covers `syn` only); removes more lines than it adds, counting its `[workspace.dependencies]` note; Indy approves it at PLAN, with every package it adds to `Cargo.lock` listed in its row. A crate locked only transitively meets the last three as well. **Prior decisions, not reopened without new evidence the verifier confirms:** `ipnet` for `afd_core/src/net.rs` (transitive only; `afd_core` stays minimal), `itertools`/`indexmap` for first-seen dedup (a one-line `HashSet` filter), `rtnetlink`/`netlink-proto` (unlocked and async), and every row of `rust-ownership.md` §Ownership decisions. **Seeded families, confirmed by grep at authoring:** LOG, ERR, URL, HEX, BOUND, CLOCK, ENV, RETRY, HTTP (§2–§4 cite sites) and SLOT (§5). **Required human decision:** Indy approves the ledger's Section assignments and each tier (c) crate at PLAN for §2.
 
-- **Dimension 1.1** — The coverage table names all 54 crates, each with a finder and a verifier verdict → Test `ledger_names_every_crate`
-- **Dimension 1.2** — Every confirmed row carries site `file:line`, family, owner item with crate and locked version, tier, rubric scores, verifier verdict and proof → Test `ledger_rows_carry_evidence`
-- **Dimension 1.3** — Every seeded family is re-confirmed on post-M213 `main` or marked vanished with the removing commit → Test `seed_families_reconciled`
-- **Dimension 1.4** — No row proposes a previously rejected crate without a confirmed `New evidence:` cell → Test `prior_rejections_hold`
-- **Dimension 1.5** — Each tier (c) crate meets the bar and carries Indy's approval → Test `new_dependencies_are_approved`
+- **Dimension 1.1** — DONE — The coverage table names all 54 crates, each with a finder and a verifier verdict → Test `ledger_names_every_crate` (rubric R1 prints nothing)
+- **Dimension 1.2** — DONE — Every confirmed row carries site `file:line`, family, owner item with crate and locked version, tier, rubric scores, verifier verdict and proof → Test `ledger_rows_carry_evidence` (Test Specification 1.2 awk prints nothing)
+- **Dimension 1.3** — DONE — Every seeded family is re-confirmed on post-M213 `main` or marked vanished with the removing commit → Test `seed_families_reconciled` (every seeded family has a row)
+- **Dimension 1.4** — DONE — No row proposes a previously rejected crate without a confirmed `New evidence:` cell → Test `prior_rejections_hold` (no row proposes a rejected crate)
+- **Dimension 1.5** — DONE — Each tier (c) crate meets the bar and carries Indy's approval → Test `new_dependencies_are_approved` (no tier (c) crate; `Cargo.lock` gains no package)
 
-### §2 — Error types and log lines on the shared hull
+### §2 — Error types and log lines on the shared hull — DONE
 
 First, because it spans the most crates. **LOG:** `afd_outbound/src/worker.rs:333-334` logs `error_code = failure.code().as_str()` with `reason = failure.to_string()`, so `reason` repeats `[CODE]` and any captured backtrace. 12 such pairs exist on `main`, 3 after M213, beside 62 `let reason = x.to_string();` sites (`git grep` on the M213 branch). **ERR:** `agentsfleetd/src/error.rs:141,224` (`BootFailure`, `MigrateFailure`) is the standard's one open row; `afd_api_wire`, `afd_memory`, `afd_otlp`, `afd_validate`, `afr_memory`, `afr_providers`, `afr_secrets`, `afr_telemetry`, `afr_tools` and `agentsfleet_runner` are missing from its table; `afd_gate/src/policy/egress/mod.rs:44`, `afd_otlp/src/error.rs:31`, `afd_runner/src/bounds.rs:66` and `afd_observability/src/metrics/registry/column.rs:131` are second types to justify or fold. **Implementation default:** a `reason` that renders a `Coded` failure is `Coded::told()`, the shape M213 set for the runner; event names, `error_code` values and severities keep their bytes.
 
-- **Dimension 2.1** — Every log of a `Coded` failure binds `Logged`; no site pairs `x.code()` with `x.to_string()` → Test `a_logged_failure_reason_carries_no_code_prefix`
-- **Dimension 2.2** — `agentsfleetd`'s two types take the hull, or the standard names the property that keeps them off it → Test `test_every_boot_failure_renders_a_reason`
-- **Dimension 2.3** — The conformance table names all 54 crates and every second type's discriminating caller → Test `the_error_standard_accounts_for_every_crate`
+- **Dimension 2.1** — DONE — Every log of a `Coded` failure binds `Logged`; no site pairs `x.code()` with `x.to_string()` → Test `a_logged_failure_reason_carries_no_code_prefix` (`afd_outbound/src/worker/tests.rs`)
+- **Dimension 2.2** — DONE — `agentsfleetd`'s two types take the hull, or the standard names the property that keeps them off it → Test `test_every_boot_failure_renders_a_reason` (`agentsfleetd/tests/serve.rs`)
+- **Dimension 2.3** — DONE — The conformance table names all 54 crates and every second type's discriminating caller → Test `the_error_standard_accounts_for_every_crate` (rubric R4 prints nothing)
 
-### §3 — Parsing, encoding and bounds on locked crates
+### §3 — Parsing, encoding and bounds on locked crates — DONE
 
 **URL:** `afd_connector/src/endpoint.rs:63` splits on `"://"` by hand while `callback.rs:106` in the same crate calls `Url::parse`; `afd_vault/src/projection.rs:206` and `afd_db/src/test_util.rs:162` (beside `Url::parse` at `afd_db/src/config/tls.rs:113`) do the same. Refusals of an empty host, userinfo and a backslash hold; `url` normalises a backslash in special schemes, so that check reads the raw input. **HEX:** `afd_core/src/etag.rs:66`, `afd_crypto/src/mac.rs:144`, `afd_connector/src/state/nonce.rs:44` → `hex::encode`. **BOUND:** `afd_fleet_runtime/src/name.rs:196` checks a charset by hand after garde proves the length, while `config/trigger.rs:73` in the same crate uses `custom(charset(..))`; `afd_tenant/src/workspace/name.rs:76`, `afd_cron/src/verifier.rs:153` and `afd_library/src/validate.rs:177` follow. A byte cap on a raw body before parsing (`afd_api_tenant/src/handler/preference.rs:287`) is outside garde's reach; the verifier judges it. **CLOCK, ENV:** `afd_bench/src/lane/lease/drive.rs:107` is `afd_core::clock::now()` (`clock.rs:130`); `afd_bench/src/fixture.rs:44` and `afd_webhook/src/freshness.rs:71` repeat the epoch arithmetic; `afd_bench/src/cli.rs:27` is `afd_core::env::ProcessEnv` (`env.rs:45`). Refusal reasons and their order stay.
 
-- **Dimension 3.1** — URL origins and authorities come from `url::Url`, with every existing refusal kept → Test `a_pin_that_is_not_a_usable_origin_refuses`
-- **Dimension 3.2** — Hex renders through `hex::encode`, byte for byte → Test `the_tag_is_the_zig_encoding_to_the_byte`
-- **Dimension 3.3** — Charsets and lengths on typed untrusted values are garde attributes or `afd_validate` rules → Test `the_length_rule_is_asked_before_the_charset_rule`
-- **Dimension 3.4** — No crate outside `afd_core` defines its own wall clock or process-environment reader → Test `no_private_clock_or_environment_reader`
+- **Dimension 3.1** — DONE — URL origins and authorities come from `url::Url` where that keeps every existing refusal; a guard the ledger refutes (D067, D160, D179) keeps its stricter hand split → Test `a_pin_that_is_not_a_usable_origin_refuses` (`afd_connector/src/endpoint.rs`)
+- **Dimension 3.2** — DONE — Hex renders through `hex::encode`, byte for byte → Test `the_tag_is_the_zig_encoding_to_the_byte` (`afd_core/src/etag.rs`)
+- **Dimension 3.3** — DONE — Charsets and lengths on typed untrusted values are garde attributes or `afd_validate` rules → Test `the_length_rule_is_asked_before_the_charset_rule` (`afd_fleet_runtime/src/name/tests.rs`)
+- **Dimension 3.4** — DONE — No crate outside `afd_core` defines its own wall clock or process-environment reader → Test `no_private_clock_or_environment_reader` (Test Specification 3.4 grep prints nothing)
 
-### §4 — Retries on `backon`, one direct HTTP client
+### §4 — Retries on `backon`, one direct HTTP client — DONE
 
 **RETRY:** `afd_db/src/migrate/lock.rs:114` polls by hand (30 × 1 s from `RetryPolicy` at `:39`); `afd_dragonfly/src/hub/repair.rs:133` and `afd_dragonfly/src/test_util.rs:55` loop and sleep. Each moves to `backon` with the same attempts, interval, classifier and log events, without jitter where the loop had none. `afd_tenant/src/workspace/directory.rs:206` regenerates a name on collision with no wait; the verifier decides whether it is a retry or domain policy. **HTTP:** `afd_identity/src/jwks/http.rs:71`, `metadata.rs:66`, `provider.rs:128` and `agentsfleetd/src/credentials.rs:98` each build a timeout-plus-`no_proxy()` client; the last one's comment says it makes the key-set fetcher's call for the same reason. **Implementation default:** one `afd_identity` function returning `reqwest::Result<Client>` (`agentsfleetd` already depends on `afd_identity`), so each caller keeps its own error mapping. **Required human decision:** `credentials.rs:106` substitutes `Client::default()`, which reads environment proxies (ESO); the default is to refuse boot instead, and Indy confirms at PLAN.
 
-- **Dimension 4.1** — Hand-written retry loops run on `backon` with unchanged budgets and events → Test `test_migrate_gives_up_when_the_lock_never_frees`
-- **Dimension 4.2** — Every direct client comes from the one builder and ignores an environment proxy → Test `a_direct_client_ignores_an_environment_proxy`
-- **Dimension 4.3** — A vendor client that cannot build refuses boot rather than fall back → Test `a_vendor_client_that_cannot_build_refuses_boot`
+- **Dimension 4.1** — DONE — Hand-written retry loops run on `backon` with unchanged budgets and events → Test `test_migrate_gives_up_when_the_lock_never_frees` (`afd_db/tests/integration_migrate/locking.rs`, live, with `test_a_held_lock_is_polled_exactly_its_attempts`)
+- **Dimension 4.2** — DONE — Every direct client comes from the one builder and ignores an environment proxy → Test `a_direct_client_ignores_an_environment_proxy` (`afd_identity/tests/direct_client.rs`)
+- **Dimension 4.3** — DONE — A vendor client that cannot build refuses boot rather than fall back → Test `a_vendor_client_that_cannot_build_refuses_boot` (`agentsfleetd/src/serve/clients.rs`)
 
-### §5 — The egress slot bitmap behind the `Kernel` seam (survey item 13)
+### §5 — The egress slot bitmap behind the `Kernel` seam (survey item 13) — DONE
 
 `static CLAIMED` (`afr_sandbox/src/egress/slot.rs:35` on the M213 branch) makes every slot-claiming test take the process-wide `TEST_CLAIMS` lock (`:155`), at 13 `claims_held()` call sites; `bit()` (`:101`) is a four-arm hand index. **Implementation default:** `Slots([AtomicU64; 4])` with `static HOST: Slots`; `Kernel::slots() -> &'static Slots`, where `Host` returns the static and `Fake` its own leaked instance; `Claim` holds `&'static Slots`; `bit()` becomes `.get(word)`. This diverges from `M-AVOID-STATICS` on purpose: one host-wide pool, backed by the `flock`. `fetch_or`/`fetch_and` ordering and `abandon` (`mem::forget`) stay; `make test-runner-kernel` re-proves it on Linux.
 
-- **Dimension 5.1** — Concurrent claims stay disjoint with `TEST_CLAIMS` and `claims_held` gone → Test `test_concurrent_claims_never_share_a_slot`
-- **Dimension 5.2** — Exhaustion still stops at the last network → Test `test_slots_stop_at_the_last_network`
+- **Dimension 5.1** — DONE — Concurrent claims stay disjoint with `TEST_CLAIMS` and `claims_held` gone → Test `test_concurrent_claims_never_share_a_slot` (`afr_sandbox/src/egress/slot_tests.rs`, Linux)
+- **Dimension 5.2** — DONE — Exhaustion still stops at the last network → Test `test_slots_stop_at_the_last_network` (`afr_sandbox/src/egress/slot_tests.rs`, Linux)
 
 ### §6 — The remaining ledger rows
 
 Rows §1 verified outside §2–§5 land in `rust-ownership.md`'s order: consequence 3 with burden 3, then demonstrated defects, then duplicated mechanisms an existing owner covers. Each lands with its proof, or moves by Indy's decision quoted in Discovery. A copy whose deletion uncovers a caller's path gets an executing test through that caller.
 
-- **Dimension 6.1** — No ledger row stays `open` → Test `every_ledger_row_is_resolved`
+- **Dimension 6.1** — DONE — No ledger row stays `open` → Test `every_ledger_row_is_resolved` (rubric R7 prints `0`)
 - **Dimension 6.2** — The Rust coverage floor holds at 97.5 → Test `rust_coverage_floor_holds`
 
-### §7 — The families Clippy can see, enforced (requires Indy's approval)
+### §7 — The families Clippy can see, enforced (requires Indy's approval) — DONE
 
 `rustd/clippy.toml` lists `disallowed-methods` for `std::time::SystemTime::now` (owner `afd_core::clock`), `std::env::var` and `std::env::var_os` (owner `afd_core::env`), and `reqwest::Client::new`/`reqwest::Client::builder` (owners named in the ledger). The workspace denies `clippy::style`, which holds `disallowed_methods`, so `make lint-rustd` fails on a new copy. Each owner and each caller the ledger keeps carries `#[expect(clippy::disallowed_methods, reason = "…")]`. **Required human decision:** Indy approves the list and every `expect` at PLAN; declined → drop §7, Dimension 7.1 and Invariant 1's Clippy clause, and record those invariants as review-enforced in Discovery.
 
-- **Dimension 7.1** — A seeded `std::env::var` call outside `afd_core` fails the lint, naming `disallowed_methods` → Test `clippy_refuses_a_seeded_disallowed_call`
+- **Dimension 7.1** — DONE — A seeded `std::env::var` call outside `afd_core` fails the lint, naming `disallowed_methods` → Test `clippy_refuses_a_seeded_disallowed_call` (red run Oct 11, 2026: `make lint-rustd` exit 2, `error: use of a disallowed method std::env::var` at the seed in `afd_tenant/src/lib.rs`; seed removed)
 
 ## Interfaces
 
@@ -312,6 +312,8 @@ Regression: every surviving test passes with its expected values; 7 of the 20 ro
 - **Behaviour decisions (agent)** — Behaviour is preserved except Interfaces' two intended changes and four tightening defect fixes: Dragonfly `is_tls` takes redis's own decision; a vault URL is hidden when its raw or parsed form carries userinfo; `.` and `..` subject segments are refused; the QStash client gains a 10 s timeout (it had none, so a silent scheduler held a tenant's request open). Review found the QStash and GitHub-fetch clients had also moved onto `direct`, which drops an environment proxy and would break both behind an egress proxy; both are reverted (D083 refuted), pending Indy's call. A row that would change any other input's outcome is refuted with that input: `If-Match`/`If-None-Match` widening, JSON-array 400s, clamp-to-refuse limits, runner token trimming, and URL guards stricter than `url::Url` (D067, D160, D179, and D178, the connector pin's duplicate row). D068 lands instead: the vault guard keeps its raw check and adds the parsed-userinfo one.
 - **Log and error decisions (agent)** — LOG follows Interfaces' log-field rule. `agentsfleetd`'s `BootFailure` and `MigrateFailure` stay off the hull, and `RUST_ERROR_STANDARD.md` names the property: their Display is the operator sentence and the analytics reason, so the hull's `[CODE]` and backtrace would repeat the code and reach PostHog (the product-analytics service).
 - **Review (gstack `/review`, Oct 11, 2026)** — Six specialists and an adversarial pass; Codex reviews are disabled in this checkout's config. Indy did not answer two questions within the window, so the agent took the behaviour-preserving answer to each, open to his review: the QStash and GitHub-fetch clients revert to honouring an environment proxy, and lines that lost their code gain `error_code`. Also fixed: a missed `to_string()` reason in the config-refusal line, the `Bound` alias at its four remaining sites, a third `.`/`..` copy now calling `afd_validate::not_relative`, an over-cap `await_owner` and `open_runtime`, and eight files over the length cap that this branch touched. New red-capable tests: the dot-segment guard never dials, the migration lock's exact poll count, the Jira bearer's sensitivity, the duplicate-constraint name against its schema, and the failure-class label against its wire spelling. Left for Indy: vault rows projected before the userinfo guard keep their plaintext password (no backfill); an `api_base` that will not parse now disables the identity surface at boot; a subject's `/ % ? #` are now escaped on the wire; `told()`'s cause chain can carry a `reqwest` URL into a log line.
+- **Indy's decisions after the review** — Oct 11, 2026, in session; recorded from the session checkpoint as a summary, not a verbatim quote. **§7: add `rustd/clippy.toml`** with the full list (`SystemTime::now`, `env::var`, `env::var_os`, reqwest `Client::new`/`builder`); landed in `3e26e8eca` with 82 `expect` annotations, each naming its reason. **Proxy: test, then add**: the suites proving the scheduler and the GitHub fetch honour `HTTPS_PROXY` land here (`25a611119`); an explicit proxy with a declared host list is the follow-up spec `M222_001`. **Log codes: add**: the review's `error_code` became `cause_error_code` beside each line's own code, at 17 sites (`c78685958`). `cause_error_code` is a field name `LOGGING_STANDARD.md` §5 does not define yet; the standard's update belongs to the orly repository.
+- **Red runs (Oct 11, 2026)** — Each new check failed on its seeded defect and passed on restore: `.no_proxy()` in `schedule_client` fails `the_scheduler_client_goes_through_an_environment_proxy`; the constraint constant cut to `…_secret` fails `the_duplicate_constraint_is_the_one_the_schema_declares`; a raw `std::env::var` in `afd_tenant` fails `make lint-rustd` (Dimension 7.1).
 - **Measurement** — The baseline comes from CI on PR #739, not a local run: the host's disk was shared with four other build directories. The 99% per-file Rust coverage bar is read from the branch's Codecov (the coverage-report service) report; no local coverage run.
 - **Metrics review** — No analytics or funnel playbook update required: no product or operator event changes.
 - **Skill-chain outcomes** — `orly-spec-new` applied at authoring. `/orly-write-unit-test`, gstack `/review` and `orly-babysit-prs` pending.
