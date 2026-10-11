@@ -243,7 +243,17 @@ Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/hold.r
 - No workspace restore exists yet, so the first model call waits for the sandbox and the bundle's files.
 - The operator's extra binds on the assigned policy are stored, validated and shown, and no runner binds them: the sandbox's host paths are the fixed set above (`afr_sandbox/src/bubblewrap.rs`).
 
-The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root (`afr_supervisor/src/config.rs`). The bare-metal unit makes that directory writable under `ProtectSystem=strict` and delegates the `cpu io memory pids` controllers the probe requires (`deploy/baremetal/agentsfleet-runner.service`). The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`afr_sandbox/examples/kernel_lane/lane.rs`).
+The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root (`afr_supervisor/src/config.rs`). The bare-metal unit makes that directory writable under `ProtectSystem=strict` and delegates the `cpu io memory pids` controllers the probe requires (`deploy/baremetal/agentsfleet-runner.service`).
+
+`run` defaults to bubblewrap; `run --engine bubblewrap` selects it explicitly, and unsupported engine names refuse argument parsing.
+
+Before probing or admitting a toolbox, `afr_sandbox::boot` enables those controllers in the delegated service root (`afr_sandbox/src/cgroup/delegated.rs`). `DelegateSubgroup=runner` keeps the runner in its own leaf so that the root can distribute controllers to lease children. Discovery refuses a process outside the expected `runner` subgroup. Activation writes only positive controller commands in that root; it never changes ancestors or moves processes. Unavailable controllers and kernel activation errors stop startup, with the original error cause preserved.
+
+The probe reports host facts; `Backend::validate` interprets them before `Backend::start` admits resources. `BubblewrapBackend` uses `BubblewrapRequirements` to retain every shipping capability check and admits the signed toolbox. `Started` couples the engine to a `Resources` guard; the runner retains that guard until serving and the runtime have ended, and the kernel lane explicitly closes it. The supervisor still receives `Box<dyn Engine>`. Adding a backend supplies startup policy and resources through these interfaces; no additional backend is shipped.
+
+The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`afr_sandbox/examples/kernel_lane/lane.rs`); its delegation trials boot from disabled controllers and prove restart, child limits, missing-controller refusal and a populated-root failure (`afr_sandbox/examples/kernel_lane/delegation.rs`).
+
+`make test-runner-startup` also runs the shipping binary under a copy of the deployed systemd unit (`scripts/test-runner-startup.sh`). Both engine selections must reach absent-toolbox admission after host preparation, and refuse invalid delegation, activation failures and missing capabilities. This matrix keeps the release key; healthy service startup with the signed release is a deployment acceptance proof.
 
 ## Workspace between leases
 
