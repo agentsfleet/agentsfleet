@@ -35,6 +35,9 @@ use crate::lease::store::Leases;
 /// Statement name, for the context a query failure carries.
 const CONTEXT_SCOPE: &str = "lease mint scope";
 
+/// Statement name for the installation-ownership read.
+const CONTEXT_INSTALL_HELD: &str = "lease mint installation owner";
+
 /// The event a diagnostic names when a fleet's stored config will not parse.
 const EVENT_CONFIG_UNPARSED: &str = "credential_mint_config_unparsed";
 
@@ -99,6 +102,31 @@ impl Leases {
             event_id: event_id.into(),
             binding: binding_of(&config_json),
         }))
+    }
+
+    /// Whether `workspace` connected `provider`'s external account `account`.
+    ///
+    /// The id a stored handle names is bytes the workspace wrote; the routing
+    /// row is what the connect flow wrote after the provider proved the
+    /// workspace's access to it. A mint spends the first only when the second
+    /// agrees.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub async fn holds_install(
+        &self,
+        workspace: &Uuid7,
+        provider: &str,
+        account: &str,
+    ) -> Result<bool> {
+        let mut connection = self.pool().acquire().await?;
+        sqlx::query_scalar(sql::lease::SELECT_CONNECTOR_INSTALL_HELD)
+            .bind(provider)
+            .bind(account)
+            .bind(workspace.as_str())
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_INSTALL_HELD))
     }
 }
 

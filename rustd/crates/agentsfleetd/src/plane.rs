@@ -28,7 +28,6 @@ use afd_api::router::{Dependencies, ReadyInputs};
 use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::Accounts;
 use afd_credential::provider::Providers;
-use afd_credential::secrets::Registry;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
 use afd_events::History;
@@ -281,7 +280,6 @@ impl ServingPlane {
                 thread: Arc::new(History::new(database.clone())),
                 vault: Vault::new(database, kek),
                 broker,
-                connectors: Registry::default(),
             },
         }
     }

@@ -16,22 +16,17 @@
 //!   `serde_urlencoded`. This matters beyond tidiness: the values are
 //!   provider-issued opaque bytes, and a `&` or `=` that escapes its field
 //!   changes the SHAPE of the form the token endpoint parses.
-//! - The token path. A handle's path must carry no query, fragment or
-//!   whitespace, because it decides where platform credentials get `POST`ed.
-//!   The URL parser answers that, and answers it the way the client that will
-//!   actually dial the address does.
 //! - A float `expires_in`. `Duration`'s own checked constructor rejects a
 //!   hostile provider float and cannot trap.
 //!
-//! # The accounts base is checked, never trusted
+//! # The accounts base is held, never trusted
 //!
 //! `accounts_base` is a field on the VAULT HANDLE — Zoho's multi-data-centre
 //! shape, where a token is redeemable only at the accounts server it was issued
-//! by. Checking only the path appended to it would let a handle written with an
-//! attacker's host POST this deployment's `client_secret` to that host. Here
-//! the composed endpoint goes through [`crate::provider::validate_endpoint`] —
-//! the same `https`-and-SSRF guard a tenant's `base_url` passes — and a refused
-//! one fails the mint rather than dialling.
+//! by. The handle is bytes the workspace wrote, and this exchange posts the
+//! deployment's `client_secret` to whatever it names, so [`steer`] holds it to
+//! the servers a Zoho callback writes and a handle naming any other refuses
+//! the mint before anything is sent.
 
 use afd_core::credential::FIELD_REFRESH_TOKEN;
 use std::time::Duration;
@@ -42,28 +37,6 @@ use zeroize::Zeroizing;
 
 use crate::credential::outcome::{Minted, Outcome, Retry};
 use crate::credential::platform::OauthApp;
-use crate::provider::validate_endpoint;
-
-/// The vault-handle field naming the accounts server this refresh token is
-/// redeemable at.
-///
-/// Zoho multi-data-centre only, and absent for the single-region providers,
-/// which fall through to the endpoint their descriptor declares. Refreshing at
-/// the wrong data centre's accounts server fails `invalid_grant` exactly as the
-/// initial exchange would.
-const FIELD_ACCOUNTS_BASE: &str = "accounts_base";
-
-/// The vault-handle field overriding the path appended to
-/// [`FIELD_ACCOUNTS_BASE`].
-///
-/// Per-handle configuration rather than a provider branch — which is the whole
-/// reason it is a handle field and not a fourth arm of the exchange enum.
-const FIELD_TOKEN_PATH: &str = "token_path";
-
-/// The path appended to an `accounts_base` that names none of its own.
-///
-/// The Zoho shape, which is the only provider that carries a base at all.
-const DEFAULT_TOKEN_PATH: &str = "/oauth/v2/token";
 
 /// The OAuth 2.0 error code meaning the refresh token is dead.
 ///
@@ -200,8 +173,8 @@ pub async fn mint(refresh: Refresh<'_>) -> Outcome {
         // never finished. A human reconnects it.
         return Outcome::ReconnectRequired;
     };
-    // A base this daemon will not dial, or a path that would move where the
-    // client secret is posted, refuses here — nothing is sent.
+    // An accounts server this daemon will not dial refuses here: nothing is
+    // sent, so the client secret never reaches a host the handle chose.
     let Some(endpoint) = endpoint(handle, refresh.token_url) else {
         return Outcome::MintFailed(Retry::Permanent);
     };
@@ -244,38 +217,6 @@ pub async fn mint(refresh: Refresh<'_>) -> Outcome {
     }
 }
 
-/// Where this exchange posts.
-///
-/// The handle's own accounts server wins over the descriptor's declared
-/// endpoint — a refresh token is redeemable at one data centre and posting it
-/// at another fails `invalid_grant`. `None` refuses the mint.
-///
-/// The composed URL is validated even though only the base is tenant-adjacent,
-/// because the check is about the address that will be DIALLED and the path is
-/// part of composing it.
-fn endpoint(handle: &serde_json::Map<String, Value>, declared: &str) -> Option<Box<str>> {
-    let Some(base) = handle.get(FIELD_ACCOUNTS_BASE).and_then(Value::as_str) else {
-        // No override: the descriptor's endpoint, which is a compile-time
-        // constant in this repository and has nothing to validate.
-        return Some(declared.into());
-    };
-    let path = handle
-        .get(FIELD_TOKEN_PATH)
-        .and_then(Value::as_str)
-        .unwrap_or(DEFAULT_TOKEN_PATH);
-    let composed = format!("{base}{path}");
-    // The guard answers `https`, a parseable authority, and a host outside the
-    // SSRF ranges. What it does NOT answer is whether the path smuggled a query
-    // or a fragment, which is the one thing `isValidTokenPath` was for — asked
-    // here of the parse rather than of the bytes.
-    let parsed = url::Url::parse(&composed).ok()?;
-    if parsed.query().is_some() || parsed.fragment().is_some() {
-        return None;
-    }
-    validate_endpoint(&composed).ok()?;
-    Some(composed.into())
-}
-
 /// The outcome of a 2xx body.
 ///
 /// A success status with no `access_token` is a malformed body, not a mint: the
@@ -295,9 +236,9 @@ fn granted(answered: &Answered, posted: &str, now_ms: i64) -> Outcome {
             lifetime
         }
     };
-    let Ok(lifetime_ms) = i64::try_from(lifetime.as_millis()) else {
-        return Outcome::MintFailed(Retry::Permanent);
-    };
+    // Saturating, and never saturated: both arms above bound the lifetime by
+    // `MAX_ACCESS_TTL`, ten years, whose milliseconds sit far inside `i64`.
+    let lifetime_ms = i64::try_from(lifetime.as_millis()).unwrap_or(i64::MAX);
 
     Outcome::Ok(Minted {
         token: Zeroizing::new(token.to_owned()),
@@ -340,6 +281,11 @@ fn classify(status: reqwest::StatusCode, answered: Option<&Answered>) -> Outcome
         Outcome::MintFailed(Retry::Permanent)
     }
 }
+
+mod steer;
+
+use self::steer::endpoint;
+pub use self::steer::{Steer, is_zoho_accounts_server, steer};
 
 #[cfg(test)]
 mod tests;

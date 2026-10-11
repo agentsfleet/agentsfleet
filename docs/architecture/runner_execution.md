@@ -161,9 +161,25 @@ Chromium does not start inside a bubblewrap lease. Its own sandbox needs a neste
 
 ## Toolbox
 
-The toolbox is a minimal Debian root filesystem with pinned git, Python 3 with uv, Node, ripgrep, jq and curl. It excludes Go and the Go-built GitHub command-line tool (`gh`); GitHub API calls use the supervisor's `http_request`. Chromium (`chromium-headless-shell`) and the Codex and Claude Code command-line tools wait for their engine integrations. It ships as a compressed read-only EROFS image, is mounted once per host, and is bound read-only into every lease. Each lease writes to its own workspace disk, mounted at `/workspace`. The capability report states whether the host kernel can mount the toolbox's filesystem, beside whether `/dev/kvm` is present; a host that cannot mount the toolbox cannot build a sandbox, so it refuses every lease.
+The toolbox is a minimal Debian root filesystem. Its pinned packages are `ca-certificates`, `coreutils`, git, Python 3, Node, ripgrep, jq, and curl. Vendored uv and uvx come from the same pinned uv release.
 
-**Built from pinned inputs.** `make toolbox-image` runs mmdebstrap over `scripts/toolbox/manifest.txt` on a native builder for each architecture, and `mkfs.erofs` compresses the result with LZ4 high compression (LZ4HC). The release record pins the snapshot.debian.org inputs for main, updates and security; every package's version and hash; the builder's mmdebstrap, apt, dpkg, erofs-utils and compression-library versions; every binary that does not come from Debian (uv, the coding-engine command-line tools) by URL and SHA-256; the EROFS features enabled; the runner versions the image serves; and the digests of the image and its Software Bill of Materials (SBOM). Two builds of one record are byte-identical, and a changed dependency is a new release, never an edit to an old one. Rebuilding a release proves we can build it again; it does not prove an upstream prebuilt binary came from its claimed source.
+It excludes Go and the Go-built GitHub command-line tool (`gh`); GitHub API calls use the supervisor's `http_request`. Chromium, Codex and Claude Code await their engine integrations.
+
+It ships as a compressed read-only EROFS image, mounted once per host and bound read-only into every lease. Each lease writes to its own workspace disk, mounted at `/workspace`. The capability report states whether the host kernel can mount the toolbox's filesystem and whether `/dev/kvm` is present.
+
+A host that cannot mount the toolbox cannot build a sandbox, so it refuses every lease.
+
+**Built from pinned inputs.** `make toolbox-image` runs mmdebstrap over `scripts/toolbox/manifest.txt` on a native builder for each architecture. `mkfs.erofs` compresses the result with LZ4 high compression (LZ4HC).
+
+The release record pins:
+
+- The snapshot.debian.org inputs for main, updates and security, and every package's version and hash.
+- The builder's mmdebstrap, apt, dpkg, erofs-utils and compression-library versions.
+- The upstream uv archive containing uv and uvx, the only vendored binaries, by URL and SHA-256.
+- The EROFS features enabled and the runner versions the image serves.
+- The digests of the image and its Software Bill of Materials (SBOM).
+
+Two builds of one record are byte-identical. A changed dependency is a new release, never an edit to an old one. Rebuilding proves we can build a release again; it does not prove an upstream binary came from its claimed source.
 
 **Signed and scanned.** Syft, Grype and cosign are installed on the Continuous Integration (CI) host after the immutable image is built; they never enter the toolbox. Syft scans a read-only mount and writes the SBOM outside it. Syft and Grype use separate caches under the job's temporary directory so a privileged scan cannot block the unprivileged database reader. Findings in Debian packages are reconciled against Debian's security tracker, because a backported fix keeps a version number a version-only scanner calls vulnerable. A fixable Critical blocks signing and deployment. cosign signs the release manifest, and the runner checks that signature offline against a public key it is built with, so no lease waits on Sigstore. The amd64 build refuses an image above 262,848,512 bytes, the existing image measured in dev run 38072785909. Vulnerabilities are evaluated daily, the snapshot is refreshed weekly, and an actively exploited vulnerability with a usable fix gets a new release within 24 hours.
 
@@ -243,7 +259,17 @@ Teardown runs at lease end, before settle (`afr_supervisor/src/lease_loop/hold.r
 - No workspace restore exists yet, so the first model call waits for the sandbox and the bundle's files.
 - The operator's extra binds on the assigned policy are stored, validated and shown, and no runner binds them: the sandbox's host paths are the fixed set above (`afr_sandbox/src/bubblewrap.rs`).
 
-The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root (`afr_supervisor/src/config.rs`). The bare-metal unit makes that directory writable under `ProtectSystem=strict` and delegates the `cpu io memory pids` controllers the probe requires (`deploy/baremetal/agentsfleet-runner.service`). The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`afr_sandbox/examples/kernel_lane/lane.rs`).
+The storage home is `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` names another root (`afr_supervisor/src/config.rs`). The bare-metal unit makes that directory writable under `ProtectSystem=strict` and delegates the `cpu io memory pids` controllers the probe requires (`deploy/baremetal/agentsfleet-runner.service`).
+
+`run` defaults to bubblewrap; `run --engine bubblewrap` selects it explicitly, and unsupported engine names refuse argument parsing.
+
+Before probing or admitting a toolbox, `afr_sandbox::boot` enables those controllers in the delegated service root (`afr_sandbox/src/cgroup/delegated.rs`). `DelegateSubgroup=runner` keeps the runner in its own leaf so that the root can distribute controllers to lease children. Discovery refuses a process outside the expected `runner` subgroup. Activation writes only positive controller commands in that root; it never changes ancestors or moves processes. Unavailable controllers and kernel activation errors stop startup, with the original error cause preserved.
+
+The probe reports host facts; `Backend::validate` interprets them before `Backend::start` admits resources. `BubblewrapBackend` uses `BubblewrapRequirements` to retain every shipping capability check and admits the signed toolbox. `Started` couples the engine to a `Resources` guard; the runner retains that guard until serving and the runtime have ended, and the kernel lane explicitly closes it. The supervisor still receives `Box<dyn Engine>`. Adding a backend supplies startup policy and resources through these interfaces; no additional backend is shipped.
+
+The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`afr_sandbox/examples/kernel_lane/lane.rs`); its delegation trials boot from disabled controllers and prove restart, child limits, missing-controller refusal and a populated-root failure (`afr_sandbox/examples/kernel_lane/delegation.rs`).
+
+`make test-runner-startup` also runs the shipping binary under a copy of the deployed systemd unit (`scripts/test-runner-startup.sh`). Both engine selections must reach absent-toolbox admission after host preparation, and refuse invalid delegation, activation failures and missing capabilities. This matrix keeps the release key; healthy service startup with the signed release is a deployment acceptance proof.
 
 ## Workspace between leases
 

@@ -72,5 +72,8 @@ afd_db = { workspace = true, features = ["test-util"] }
 # A loopback GitHub for the mint's two calls, so the token request's body is
 # read by a real HTTP server rather than searched for in socket bytes.
 axum.workspace = true
+# A fresh RSA App key per run for the signed mint, so no private key is
+# committed.
+rcgen.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber.workspace = true

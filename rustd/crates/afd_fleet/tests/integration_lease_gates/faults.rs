@@ -1,7 +1,8 @@
 //! The pass's failure and repeat arms, each driven by a real injected failure:
-//! a queue that will not acknowledge, a payer read that will not answer, and
-//! an unreadable fleet offered a second time.
+//! a queue that will not acknowledge, a payer read that will not answer, an
+//! unreadable fleet offered a second time, and a claim another runner won.
 
+use super::seed::seed_provider_resolution;
 use super::*;
 
 use afd_billing::Accounts;
@@ -215,6 +216,64 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
         None,
         "no row was written for an event whose refusal could not be recorded"
     );
+
+    fixtures.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
+    // Every gate admits the run, and by the time the lease row is written a
+    // second runner holds the slot. The fenced insert writes nothing, and the
+    // pass answers no work rather than a lease two runners would execute.
+    let fixtures = Fixtures::create_with_queue().await;
+    let (fleet, workspace, tenant, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
+    let event_id = crate::queue::enqueue(
+        fixtures.queue(),
+        &fleet,
+        &workspace,
+        ACTOR,
+        EVENT_TYPE_CHAT,
+        REQUEST_JSON,
+        ENROLLED_AT,
+    )
+    .await;
+    let seeded = Ready {
+        runner,
+        fleet,
+        event_id,
+        tenant,
+    };
+    set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    let claimed = claim(&fixtures, &seeded).await;
+    let lapsed = claimed.leased_until.saturating_add_millis(1);
+    let won = fixtures
+        .leases()
+        .claim(
+            &claimed.fleet_id,
+            &rival,
+            lapsed,
+            afd_core::timing::LEASE_TTL_MS,
+        )
+        .await
+        .expect("the claim statement answers");
+    assert!(won.is_some(), "the rival takes the lapsed slot");
+
+    let log = Capture::install();
+    let answer = drive(&fixtures, &seeded, claimed).await;
+    let lost = log.only("lease_claim_lost").fields;
+    drop(log);
+
+    assert!(
+        answer.contains(NO_LEASE),
+        "a lost claim issued a lease: {answer}"
+    );
+    assert_eq!(
+        lost.get("runner_id"),
+        Some(&seeded.runner.as_str().to_owned())
+    );
+    assert_eq!(lost.get("agentsfleet_event_id"), Some(&seeded.event_id));
 
     fixtures.cleanup().await;
 }

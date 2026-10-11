@@ -25,6 +25,7 @@ use std::sync::Arc;
 use afd_api_wire::secret::{
     ReplaceSecretRequest, SecretsResponse, StoreSecretRequest, StoredSecretResponse,
 };
+use afd_connector::Forgotten;
 use afd_vault::{Deleted, SecretBody, SecretName};
 use axum::Json;
 use axum::body::Bytes;
@@ -33,13 +34,13 @@ use axum::response::{IntoResponse as _, Response};
 use http::StatusCode;
 use serde::Deserialize;
 
-use crate::auth::WorkspaceContext;
+use crate::auth::{Acting, WorkspaceContext};
 use crate::handler::Refusal;
-use crate::services::{Services, WorkspaceSecrets as _};
+use crate::services::{Services, WorkspaceConnectors as _, WorkspaceSecrets as _};
 
 mod support;
 
-use support::{read_body, referenced_detail, summary};
+use support::{connection_named, delete_refusal, may_disconnect, read_body, summary};
 
 /// The scoped events each verb's failures are logged under.
 const EVENT_STORE: &str = "secret_store_failed";
@@ -265,6 +266,12 @@ pub(crate) async fn replace<D: Services>(
 /// A credential the tenant's model registry still names is a 409 carrying the
 /// COUNT. The count comes from the statement that locked those entries, so it
 /// cannot have changed between the decision and this sentence.
+///
+/// A name that is a connector's grant key IS that connection, so it is
+/// disconnected: a bare vault delete would skip the workspace's turn and leave
+/// routing rows naming an account with no credential behind them.
+/// It needs `connector:write` beside the route's `secret:write`, the scope
+/// Disconnect's own route asks for.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
     path = "/v1/workspaces/{workspace_id}/secrets/{name}",
@@ -274,7 +281,10 @@ pub(crate) async fn replace<D: Services>(
     description = concat!(
         "Idempotent — returns 204 whether or not the secret existed. A secret ",
         "that model registry entries still name returns 409 `UZ-VAULT-004`, ",
-        "and its detail counts those entries.",
+        "and its detail counts those entries. A secret named exactly as a ",
+        "connector's `{provider}` is deleted as Disconnect deletes it: the ",
+        "connector's event-routing records go with it. That delete needs ",
+        "`connector:write` as well.",
     ),
     params(
         afd_http::openapi::path::Secret,
@@ -294,24 +304,28 @@ pub(crate) async fn replace<D: Services>(
 pub(crate) async fn remove<D: Services>(
     State(services): State<Arc<D>>,
     WorkspaceContext(owned): WorkspaceContext,
+    Acting(principal): Acting,
     Path(SecretPath { name }): Path<SecretPath>,
 ) -> Result<Response, Refusal> {
     let name = SecretName::parse(&name).map_err(Refusal::at(EVENT_DELETE))?;
+    if let Some(provider) = connection_named(&name) {
+        may_disconnect(&principal)?;
+        // The connector's own Disconnect, answered as this route answers.
+        return match services
+            .connectors()
+            .forget(&owned.workspace, provider)
+            .await
+        {
+            Ok(Forgotten::Disconnected | Forgotten::AlreadyAbsent) => {
+                Ok(StatusCode::NO_CONTENT.into_response())
+            }
+            Err(refused) => Err(delete_refusal(refused.referenced_by(), refused)),
+        };
+    }
 
     match services.secrets().remove(&owned.workspace, &name).await {
         Ok(Deleted::Removed | Deleted::AlreadyAbsent) => Ok(StatusCode::NO_CONTENT.into_response()),
-        // The one refusal whose sentence the call site knows better than the
-        // error's own table does: `detail()` is a `&'static str` and the count
-        // is not, so the counted form is rendered here — the same split
-        // `Refusal::preconditioned` makes for a stale `ETag`.
-        Err(refused) => Err(match refused.referenced_by() {
-            Some(entries) => Refusal::conflict_detailed(
-                EVENT_DELETE,
-                referenced_detail(entries),
-                STATE_REFERENCED,
-            )(refused),
-            None => Refusal::at(EVENT_DELETE)(refused),
-        }),
+        Err(refused) => Err(delete_refusal(refused.referenced_by(), refused)),
     }
 }
 

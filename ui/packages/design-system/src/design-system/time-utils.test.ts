@@ -1,19 +1,22 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   TIME_INVALID_FALLBACK,
   coerceDate,
   formatTimeAbsolute,
   formatTimeClock,
   formatTimeRelative,
+  MS_PER_SECOND,
+  SECONDS_PER_DAY,
+  SECONDS_PER_HOUR,
+  SECONDS_PER_MINUTE,
+  SECONDS_PER_MONTH,
+  SECONDS_PER_YEAR,
   toIso,
   visibleTimeLabel,
 } from "./time-utils";
 
 const ISO = "2026-05-03T10:00:00.000Z";
 const NOW = new Date("2026-05-03T12:00:00Z");
-const MINUTE_MS = 60_000;
-const HOUR_MS = 60 * MINUTE_MS;
-const DAY_MS = 24 * HOUR_MS;
 
 describe("coerceDate", () => {
   it("returns the same instance when given a Date", () => {
@@ -85,6 +88,12 @@ describe("formatTimeRelative — sub-5s 'just now' band", () => {
   });
 });
 
+const MINUTE_MS = SECONDS_PER_MINUTE * MS_PER_SECOND;
+const HOUR_MS = SECONDS_PER_HOUR * MS_PER_SECOND;
+const DAY_MS = SECONDS_PER_DAY * MS_PER_SECOND;
+const MONTH_MS = SECONDS_PER_MONTH * MS_PER_SECOND;
+const YEAR_MS = SECONDS_PER_YEAR * MS_PER_SECOND;
+
 describe("formatTimeRelative — past direction", () => {
   it.each([
     [30_000, "30 seconds ago"],
@@ -94,8 +103,8 @@ describe("formatTimeRelative — past direction", () => {
     [3 * HOUR_MS, "3 hours ago"],
     [DAY_MS, "1 day ago"],
     [10 * DAY_MS, "10 days ago"],
-    [30 * DAY_MS, "1 month ago"],
-    [365 * DAY_MS, "1 year ago"],
+    [MONTH_MS, "1 month ago"],
+    [YEAR_MS, "1 year ago"],
   ])("delta=%i ms → %s", (deltaMs, expected) => {
     expect(formatTimeRelative(new Date(NOW.getTime() - deltaMs), NOW)).toBe(expected);
   });
@@ -108,8 +117,8 @@ describe("formatTimeRelative — future direction", () => {
     [10 * MINUTE_MS, "in 10 minutes"],
     [HOUR_MS, "in 1 hour"],
     [DAY_MS, "in 1 day"],
-    [2 * 30 * DAY_MS, "in 2 months"],
-    [2 * 365 * DAY_MS, "in 2 years"],
+    [2 * MONTH_MS, "in 2 months"],
+    [2 * YEAR_MS, "in 2 years"],
   ])("delta=+%i ms → %s", (deltaMs, expected) => {
     expect(formatTimeRelative(new Date(NOW.getTime() + deltaMs), NOW)).toBe(expected);
   });
@@ -129,7 +138,7 @@ describe("formatTimeRelative — singular vs plural", () => {
 
 describe("formatTimeRelative — accepts string input", () => {
   it("parses an ISO string the same as a Date instance", () => {
-    const past = new Date(NOW.getTime() - 90 * MINUTE_MS);
+    const past = new Date(NOW.getTime() - 90 * 60_000);
     expect(formatTimeRelative(past.toISOString(), NOW)).toBe(
       formatTimeRelative(past, NOW),
     );
@@ -208,7 +217,7 @@ describe("visibleTimeLabel", () => {
     );
   });
   it("'relative' returns formatTimeRelative(value) using wall-clock now", () => {
-    const past = new Date(Date.now() - 3 * MINUTE_MS).toISOString();
+    const past = new Date(Date.now() - 3 * 60_000).toISOString();
     expect(visibleTimeLabel(past, "relative", "en-US", past)).toMatch(/\d+ minutes? ago/);
   });
   it("'absolute' respects the passed locale", () => {
@@ -220,5 +229,32 @@ describe("visibleTimeLabel", () => {
     expect(visibleTimeLabel(ISO, "clock", "en-US", ISO)).toBe(
       formatTimeClock(ISO, "en-US"),
     );
+  });
+});
+
+describe("formatter reuse", () => {
+  const ISO_AT = "2026-03-04T05:06:07Z";
+
+  it("builds no formatter per call for the default locale", () => {
+    const built = vi.spyOn(Intl, "DateTimeFormat");
+    try {
+      formatTimeAbsolute(ISO_AT);
+      formatTimeClock(ISO_AT);
+      expect(built).not.toHaveBeenCalled();
+    } finally {
+      built.mockRestore();
+    }
+  });
+
+  it("builds one for a locale the caller names", () => {
+    const built = vi.spyOn(Intl, "DateTimeFormat");
+    try {
+      expect(formatTimeClock(ISO_AT, "en-GB")).toBe(
+        new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(ISO_AT)),
+      );
+      expect(built).toHaveBeenCalledWith("en-GB", expect.any(Object));
+    } finally {
+      built.mockRestore();
+    }
   });
 });
