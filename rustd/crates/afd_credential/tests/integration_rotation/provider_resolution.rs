@@ -1,4 +1,4 @@
-//! Self-managed provider resolution through its real selection and vault rows.
+//! Provider resolution through its real selection, default and vault rows.
 
 use afd_crypto::entropy::Entropy;
 use std::sync::Arc;
@@ -57,6 +57,41 @@ async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() 
         "a negative stored cap clamps"
     );
     assert_eq!(resolved.api_key().expose(), "sk-self-managed");
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_tenant_with_no_selection_resolves_the_platform_default() {
+    // The arm every tenant that never chose a provider takes. The default row
+    // names the workspace its key lives in; the tenant's own vault is not read.
+    let fixture = Fixture::create().await;
+    let provider = format!("platform-fixture-{}", afd_db::test_util::mint_id());
+    fixture
+        .seed(
+            &provider,
+            br#"{"provider":"anthropic","api_key":"sk-platform"}"#,
+        )
+        .await;
+    let model = format!("model-fixture-{}", afd_db::test_util::mint_id());
+    fixture.seed_catalogue(&provider, &model, 64_000).await;
+    let held = fixture
+        .seed_platform_default(&provider, &model, 64_000)
+        .await;
+
+    let resolved = Providers::new(
+        fixture.database.clone(),
+        Arc::clone(&fixture.kek),
+        Entropy::new(),
+    )
+    .resolve(&fixture.tenant)
+    .await
+    .expect("the platform default resolves");
+
+    assert_eq!(resolved.posture, Posture::Platform);
+    assert_eq!(&*resolved.provider, provider.as_str());
+    assert_eq!(resolved.api_key().expose(), "sk-platform");
+    drop(held);
     fixture.cleanup().await;
 }
 
