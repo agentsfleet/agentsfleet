@@ -150,12 +150,14 @@ dev_infrastructure() (
 
 dev_owned_process() {
   [ -s "$DEV_PID_FILE" ] || return 1
-  local pid started command
+  local pid started command state
   pid="$(sed -n '1p' "$DEV_PID_FILE")"
   case "$pid" in ''|*[!0-9]*) dev_fail 'invalid daemon process record' ;; esac
   kill -0 "$pid" 2>/dev/null || return 1
-  started="$(ps -p "$pid" -o lstart=)"
-  command="$(ps -ww -p "$pid" -o command=)"
+  state="$(ps -p "$pid" -o stat=)" || return 1
+  case "$state" in *Z*) return 1 ;; esac
+  started="$(ps -p "$pid" -o lstart=)" || return 1
+  command="$(ps -ww -p "$pid" -o command=)" || return 1
   [ "$started" = "$(sed -n '2p' "$DEV_PID_FILE")" ] && \
     [ "$command" = "$DEV_BINARY serve --port $DEV_PORT" ] || dev_fail 'daemon process identity changed; refusing to signal it'
 }
