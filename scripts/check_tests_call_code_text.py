@@ -25,8 +25,12 @@ JS_FUNCTION = re.compile(
     r"\((?P<arrow_params>[^)]*)\)[^=;{]*=>\s*\{"
 )
 JS_PARAM = re.compile(r"\s*(?:\.\.\.)?(?P<name>[A-Za-z_$][\w$]*)")
-# How much code before a slash decides whether it opens a pattern literal.
+# How much code before a slash, quote or `<` decides whether it opens a literal.
 JS_LOOKBEHIND = 64
+# Keywords a string may follow; after any other name a quote is JSX text or a misread.
+STRING_AFTER_WORDS = lib.REGEX_AFTER_WORDS | {"from", "import", "export", "default"}
+# A JSX opening tag or fragment; `<T,>` and `<T extends U>` are type parameters.
+JSX_TAG = re.compile(r"<(?:>|[A-Za-z][\w.:-]*(?![\w.:-])(?!\s*(?:,|extends\b)))")
 
 
 def matching_close(code: str, open_index: int, pair: str = "{}") -> int:
@@ -40,17 +44,64 @@ def matching_close(code: str, open_index: int, pair: str = "{}") -> int:
     return len(code)
 
 
-def js_literal_end(code: str, index: int) -> int | None:
-    """The offset past the quoted string or pattern literal opening at `index`, or None."""
-    if code[index] in "\"'":
-        return lib._quoted_end(code, index)
-    if code[index] == "/" and lib._regex_may_start(code[max(0, index - JS_LOOKBEHIND) : index]):
-        return lib._regex_end(code, index)
-    return None
+class Ambiguous(Exception):
+    """Text that may or may not be a literal: from where it opened to the end of `offset`'s line, it stays code."""
+
+    def __init__(self, code: str, offset: int) -> None:
+        super().__init__(offset)
+        newline = code.find("\n", offset)
+        self.end = len(code) if newline == -1 else newline
 
 
 def blanked(text: str) -> str:
     return "".join(c if c == "\n" else " " for c in text)
+
+
+def quoted_end(code: str, index: int) -> int:
+    """The offset past the quoted string opening at `index`; a line ending first is ambiguous."""
+    quote, index = code[index], index + 1
+    while index < len(code) and code[index] != "\n":
+        if code[index] == quote:
+            return index + 1
+        index += 2 if code[index] == "\\" else 1
+    raise Ambiguous(code, index)
+
+
+def string_may_start(before: str) -> bool:
+    """Whether a quote after `before` can open a string: never straight after a name or a closer."""
+    before = before.rstrip()
+    if not before or not (before[-1].isalnum() or before[-1] in "_$)]"):
+        return True
+    word = lib.IDENTIFIER_TAIL.search(before)
+    return bool(word) and word.group(0) in STRING_AFTER_WORDS
+
+
+def comment_end(code: str, index: int) -> int:
+    if code.startswith("//", index):
+        newline = code.find("\n", index)
+        return len(code) if newline == -1 else newline
+    close = code.find("*/", index + 2)
+    if close == -1:
+        raise Ambiguous(code, len(code))
+    return close + 2
+
+
+def masked_literal(code: str, index: int) -> tuple[str, int] | None:
+    """The comment or literal opening at `index` masked, and the offset past it; None when none opens."""
+    char, before = code[index], code[max(0, index - JS_LOOKBEHIND) : index]
+    if code.startswith(("//", "/*"), index):
+        end = comment_end(code, index)
+    elif char == "`":
+        return masked_template(code, index)
+    elif char in "\"'" and string_may_start(before):
+        end = quoted_end(code, index)
+    elif char == "/" and lib._regex_may_start(before):
+        end = lib._regex_end(code, index)  # no closing slash on the line: a division
+    elif char == "<" and lib._regex_may_start(before) and JSX_TAG.match(code, index):
+        return masked_jsx(code, index)
+    else:
+        return None
+    return None if end is None else (blanked(code[index:end]), end)
 
 
 def masked_code(code: str, index: int, nested: bool) -> tuple[str, int]:
@@ -60,18 +111,21 @@ def masked_code(code: str, index: int, nested: bool) -> tuple[str, int]:
         char = code[index]
         if nested and char == "}" and depth == 0:
             return "".join(out) + " ", index + 1
-        if char == "`":
-            text, index = masked_template(code, index)
-            out.append(text)
-            continue
-        end = js_literal_end(code, index)
-        if end is not None:
-            out.append(blanked(code[index:end]))
-            index = end
+        try:
+            literal = masked_literal(code, index)
+        except Ambiguous as ambiguous:
+            if nested:
+                raise
+            literal = code[index : ambiguous.end], ambiguous.end
+        if literal is not None:
+            out.append(literal[0])
+            index = literal[1]
             continue
         depth += {"{": 1, "}": -1}.get(char, 0)
         out.append(char)
         index += 1
+    if nested:
+        raise Ambiguous(code, len(code))
     return "".join(out), index
 
 
@@ -82,28 +136,71 @@ def masked_template(code: str, index: int) -> tuple[str, int]:
         if code[index] == "`":
             return "".join(out) + " ", index + 1
         if code.startswith("${", index):
-            text, index = masked_code(code, index + 2, nested=True)
-            out.append("  " + text)
+            expression, index = masked_code(code, index + 2, nested=True)
+            out.append("  " + expression)
             continue
         step = 2 if code[index] == "\\" else 1
         out.append(blanked(code[index : index + step]))
         index += step
-    return "".join(out), index
+    raise Ambiguous(code, len(code))
+
+
+def masked_jsx_part(code: str, index: int, children: bool) -> tuple[str, int]:
+    """A JSX tag (attribute strings blanked) or child (text kept): each `{…}` masked as code."""
+    char = code[index]
+    if char == "{":
+        expression, end = masked_code(code, index + 1, nested=True)
+        return " " + expression, end
+    if children and char == "<":
+        return masked_jsx(code, index)
+    if not children and char in "\"'":
+        end = quoted_end(code, index)
+        return blanked(code[index:end]), end
+    if char in ("}>" if children else "<};"):
+        raise Ambiguous(code, index)  # never legal here: this may never have been JSX
+    return char, index + 1
+
+
+def masked_tag(code: str, index: int) -> tuple[str, int]:
+    out, index = ["<"], index + 1
+    while index < len(code):
+        if code[index] == ">":
+            return "".join(out) + ">", index + 1
+        text, index = masked_jsx_part(code, index, children=False)
+        out.append(text)
+    raise Ambiguous(code, len(code))
+
+
+def masked_jsx(code: str, index: int) -> tuple[str, int]:
+    """The JSX element opening at `index`; text that fails as JSX is ambiguous."""
+    tag, index = masked_tag(code, index)
+    if tag.endswith("/>"):
+        return tag, index
+    out = [tag]
+    while index < len(code):
+        if code.startswith("</", index):
+            close, index = masked_tag(code, index)
+            return "".join(out) + close, index
+        text, index = masked_jsx_part(code, index, children=True)
+        out.append(text)
+    raise Ambiguous(code, len(code))
 
 
 @functools.lru_cache(maxsize=16)
 def js_code_only(code: str) -> str:
     """`code` at the same length with comments and literal text blanked to spaces, newlines kept.
 
-    Offsets stay valid, and no text inside a string, template, pattern or
-    comment can open or close a bracket or spell a call. The code between a
-    template's `${` and `}` still runs, so it stays.
+    Fail-closed: text is blanked only when it is certainly a comment or a
+    literal. A quote straight after a name opens nothing, and an unterminated
+    string, template or comment, or text that fails as JSX, stays code to the
+    end of the line where it failed. A template's `${…}` and JSX `{…}` are code;
+    JSX child text is kept, so its quotes open nothing.
     """
-    return masked_code(lib.blank_js_comments(code), 0, nested=False)[0]
+    return masked_code(code, 0, nested=False)[0]
 
 
 def in_js_literal(code: str, offset: int, language: str) -> bool:
-    """True when the JavaScript character at `offset` is comment or literal text, not code."""
+    """True when the JavaScript character at `offset` is certainly comment or literal text."""
     return language == "js" and js_code_only(code)[offset] != code[offset]
 
 
