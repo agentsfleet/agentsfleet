@@ -284,8 +284,13 @@ pub(crate) async fn admit_against(lane: &Lane, rules: &[(&str, Reply)]) -> Run {
     }
 }
 
-/// Replays every owed row against a fake queue answering `rules`, keeping the
-/// events logged for `lane`'s fleet: the pass reaches every fleet in the lane.
+/// Replays every owed row against a fake queue answering `rules`, returning
+/// every event the pass logged.
+///
+/// Not filtered to `lane`'s fleet: a pass stops at the first append the queue
+/// refuses, and parallel tests leave owed rows of their own in the shared lane,
+/// so the row that meets the refusal may be another fleet's. Every row in the
+/// pass meets the same fake queue, so its line is the one a caller asserts on.
 pub(crate) async fn replay_against(
     lane: &Lane,
     rules: &[(&str, Reply)],
@@ -303,14 +308,10 @@ pub(crate) async fn replay_against(
             .await
             .expect("a queue that will not take an append is the pass's outcome, not its error");
     }
-    let events = events
+    events
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .clone();
-    events
-        .into_iter()
-        .filter(|fields| fields.get("fleet_id") == Some(&lane.fleet))
-        .collect()
+        .clone()
 }
 
 /// How far past now a replay reads, so a row admitted a moment ago qualifies.
