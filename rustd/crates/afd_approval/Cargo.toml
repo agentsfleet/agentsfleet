@@ -58,6 +58,11 @@ test-util = [
 ]
 
 [dev-dependencies]
+# The `tracing` capture, and the pool and queue that refuse every call, the
+# wake's failure-line test reads its `reason` back through.
+afd_core = { workspace = true, features = ["test-util"] }
+afd_db = { workspace = true, features = ["test-util"] }
+afd_dragonfly = { workspace = true, features = ["test-util"] }
 # The race the resolve exists to decide is worthless single-threaded: the
 # interleaving two operators produce cannot happen without threads under it.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

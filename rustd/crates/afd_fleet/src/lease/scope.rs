@@ -23,6 +23,7 @@
 //! branch.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::config::{FleetConfig, RepositoryBinding};
 use sqlx::Row as _;
@@ -139,12 +140,37 @@ fn binding_of(config_json: &str) -> Option<RepositoryBinding> {
     match FleetConfig::stored(config_json) {
         Ok(config) => config.repository_binding().cloned(),
         Err(unreadable) => {
+            let Logged { error_code, reason } = unreadable.logged();
             tracing::warn!(
                 event = EVENT_CONFIG_UNPARSED,
-                error = %unreadable,
+                error_code,
+                reason,
                 "a fleet's stored config would not parse; a repository-scoped mint will refuse"
             );
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EVENT_CONFIG_UNPARSED, binding_of};
+
+    #[test]
+    fn an_unparsed_scope_config_reason_carries_no_code_prefix() {
+        let log = afd_core::test_util::trace::Capture::install();
+
+        assert!(binding_of("not a document").is_none());
+
+        let line = log.only(EVENT_CONFIG_UNPARSED);
+        let reason = line.field("reason").unwrap_or_default();
+        assert!(
+            line.field("error_code")
+                .is_some_and(|code| !code.is_empty())
+        );
+        assert!(
+            !reason.is_empty() && !reason.contains("[UZ-"),
+            "the code is the line's `error_code`, never the reason's prefix: {reason}"
+        );
     }
 }

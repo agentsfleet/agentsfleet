@@ -155,6 +155,16 @@ fn assert_read_gates_fail_open_and_the_debit_retries(
             Some(afd_core::error_code::INTERNAL_DB_QUERY.as_str()),
             "{event} names the registry code"
         );
+        let reason = line.get("reason").map_or("", String::as_str);
+        assert!(
+            !reason.is_empty() && !reason.contains("[UZ-"),
+            "{event}'s reason is the fault's sentence, its code kept out of it: {reason}"
+        );
+        assert!(
+            line.get("cause_error_code")
+                .is_some_and(|code| code.starts_with("UZ-")),
+            "{event}: the ledger fault's own code rides `cause_error_code`: {line:?}"
+        );
     }
 }
 

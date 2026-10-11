@@ -13,6 +13,7 @@ use afd_bench::knobs::number;
 use afd_bench::lane::{cardinality, sweep};
 use afd_bench::profile::Parameter;
 use afd_bench::report::Lane;
+use afd_core::env::ProcessEnv;
 
 /// The ladder's top rung when the caller does not say.
 ///
@@ -28,7 +29,7 @@ async fn main() -> ExitCode {
 
 /// Resolve, admit, measure, sweep, write.
 async fn measure() -> Result<String> {
-    let env = cli::process_env();
+    let env = ProcessEnv;
     let (profile, target, provenance) = cli::admitted(&env)?;
     let parameters = cardinality::Parameters {
         fleets: number(&env, Parameter::Fleets.name(), DEFAULT_FLEETS)?,

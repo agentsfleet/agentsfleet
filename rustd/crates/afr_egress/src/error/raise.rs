@@ -105,6 +105,10 @@ pub(crate) fn upstream_unreachable(host: &str, reason: &'static str) -> Error {
     reason = "a sample builder whose own preconditions fail should stop the suite"
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a sample client that only builds a request from a bad URL; it never sends, so neither the egress guard nor a proxy rule applies"
+    )]
     let unbuilt = reqwest::Client::new()
         .get("not a url")
         .build()

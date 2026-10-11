@@ -161,10 +161,7 @@ impl Leases {
     }
 
     /// Run a prepared fence statement and check its columns are sequences.
-    async fn read_fence(
-        &self,
-        statement: sqlx::query::Query<'_, sqlx::Postgres, sqlx::postgres::PgArguments>,
-    ) -> Result<Option<Fence>> {
+    async fn read_fence(&self, statement: afd_db::statement::Bound<'_>) -> Result<Option<Fence>> {
         let mut connection = self.pool().acquire().await?;
         let Some(row) = statement
             .fetch_optional(&mut *connection)

@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::validate::{
     MAX_MARKDOWN_LEN, MAX_SOURCE_REF_LEN, MAX_SUPPORT_FILE_LEN, MAX_SUPPORT_FILES,
+    MAX_SUPPORT_PATH_LEN,
 };
 
 /// Where a bundle's untrusted bytes originated.
@@ -60,10 +61,13 @@ impl SourceKind {
 pub struct SupportFile {
     /// Relative, slash-separated path inside the bundle.
     ///
-    /// Path safety is not a bound, so it is a custom rule: the refusal turns on
-    /// traversal components and root-document collision, neither of which a
-    /// length expresses.
-    #[garde(custom(crate::validate::safe_path))]
+    /// The length is a bound; path safety is not, so it is a custom rule: the
+    /// refusal turns on traversal components and root-document collision,
+    /// neither of which a length expresses.
+    #[garde(
+        length(bytes, min = 1, max = MAX_SUPPORT_PATH_LEN),
+        custom(crate::validate::safe_path)
+    )]
     pub path: String,
     /// Untrusted file bytes.
     #[garde(length(max = MAX_SUPPORT_FILE_LEN))]

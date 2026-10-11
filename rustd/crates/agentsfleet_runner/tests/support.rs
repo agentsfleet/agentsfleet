@@ -24,6 +24,10 @@ pub(crate) struct Runner(Command);
 
 impl Runner {
     /// The binary run with `args`.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the coverage profile path is passed through as raw OS bytes; afd_core::env reads String values and would drop a non-UTF-8 path"
+    )]
     pub(crate) fn new(args: &[&str]) -> Self {
         let mut command = Command::new(BINARY);
         command.args(args).env_clear();

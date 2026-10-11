@@ -52,7 +52,6 @@ use afd_crypto::mac::HmacSha256Tag;
 use afd_crypto::secret::SecretBytes;
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as BASE64URL;
-use subtle::ConstantTimeEq as _;
 
 use crate::registry::{STATE_TTL_SECONDS, StateBinding};
 
@@ -167,11 +166,7 @@ impl Verified {
         secret: &SecretBytes,
         subject: &str,
     ) -> bool {
-        let expected = subject_tag(binding, secret, subject);
-        self.subject_tag
-            .as_bytes()
-            .ct_eq(expected.as_bytes())
-            .into()
+        subject_tag(binding, secret, subject).verify_hex(&self.subject_tag)
     }
 }
 
@@ -190,12 +185,12 @@ pub fn sign(
     now: UnixMillis,
 ) -> String {
     let expiry = now.saturating_add_millis(i64::from(STATE_TTL_SECONDS) * MS_PER_SECOND);
-    let tag = subject_tag(binding, secret, subject);
+    let tag = subject_tag(binding, secret, subject).to_hex();
     let payload = format!(
         "{workspace}{FIELD_SEP}{tag}{FIELD_SEP}{nonce}{FIELD_SEP}{}",
         expiry.as_millis(),
     );
-    let mac = mac_hex(binding, secret, payload.as_bytes());
+    let mac = mac(binding, secret, payload.as_bytes()).to_hex();
     format!("{}{MAC_SEP}{mac}", BASE64URL.encode(payload.as_bytes()))
 }
 
@@ -220,9 +215,7 @@ pub fn verify(
 
     // The tag is checked BEFORE the payload is split, so nothing downstream
     // ever reads fields out of bytes this deployment did not sign.
-    let expected = mac_hex(binding, secret, &payload);
-    let matched: bool = tag.as_bytes().ct_eq(expected.as_bytes()).into();
-    if !matched {
+    if !mac(binding, secret, &payload).verify_hex(tag) {
         return Err(Rejected::BadSignature);
     }
 
@@ -255,12 +248,12 @@ pub fn verify(
 }
 
 /// The authentication tag over `payload`, in the provider's own domain.
-fn mac_hex(binding: StateBinding, secret: &SecretBytes, payload: &[u8]) -> String {
-    HmacSha256Tag::compute_peppered(secret, &[binding.domain_prefix.as_bytes(), payload]).to_hex()
+fn mac(binding: StateBinding, secret: &SecretBytes, payload: &[u8]) -> HmacSha256Tag {
+    HmacSha256Tag::compute_peppered(secret, &[binding.domain_prefix.as_bytes(), payload])
 }
 
 /// The keyed tag standing in for a person's subject on a public URL.
-fn subject_tag(binding: StateBinding, secret: &SecretBytes, subject: &str) -> String {
+fn subject_tag(binding: StateBinding, secret: &SecretBytes, subject: &str) -> HmacSha256Tag {
     HmacSha256Tag::compute_peppered(
         secret,
         &[
@@ -269,5 +262,4 @@ fn subject_tag(binding: StateBinding, secret: &SecretBytes, subject: &str) -> St
             subject.as_bytes(),
         ],
     )
-    .to_hex()
 }

@@ -81,6 +81,14 @@ impl Error {
 /// plane the request happened to hit.
 pub const DETAIL_DATABASE_UNAVAILABLE: &str = "Database unavailable";
 
+/// The sentence a caller is told when the queue cannot be reached.
+///
+/// Shaped like [`DETAIL_DATABASE_UNAVAILABLE`] and kept apart from it:
+/// answering "Database unavailable" for a Dragonfly outage would send an
+/// operator to the wrong datastore. The code stays the internal-failure one,
+/// so the sentence names the datastore without a registry entry of its own.
+pub const DETAIL_QUEUE_UNAVAILABLE: &str = "Queue unavailable";
+
 /// The sentence a caller is told when a statement reached the datastore and
 /// would not run.
 ///

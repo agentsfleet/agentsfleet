@@ -37,6 +37,7 @@
 use std::time::Instant;
 
 use afd_core::error_code;
+use afd_core::test_util::trace::Capture;
 use afd_fleet_lifecycle::{Install, LibrarySource};
 
 use crate::support::{LIBRARY_ID, Lane};
@@ -88,6 +89,9 @@ async fn a_queue_that_never_answers_rolls_the_row_back_and_leaves_no_orphan() {
     // orphan here is a fleet nobody can see, lease or delete.
     let lane = Lane::create().await;
     let before = lane.fleet_count(&lane.workspace).await;
+    // After the lane is up, so only the install's own events land here; the
+    // rollback runs inline in the install's future, on this thread.
+    let log = Capture::install();
 
     let failure = lane
         .with_dead_queue()
@@ -104,6 +108,18 @@ async fn a_queue_that_never_answers_rolls_the_row_back_and_leaves_no_orphan() {
         lane.fleet_count(&lane.workspace).await,
         before,
         "the INSERT is rolled back on a fresh connection — no orphan row"
+    );
+    let rolled_back = log.only("install_rolled_back");
+    assert_eq!(
+        rolled_back.field("error_code"),
+        Some(error_code::AGENTSFLEET_INSTALL_ROLLED_BACK.as_str())
+    );
+    assert!(
+        rolled_back
+            .field("cause_error_code")
+            .is_some_and(|code| code.starts_with("UZ-")
+                && code != error_code::AGENTSFLEET_INSTALL_ROLLED_BACK.as_str()),
+        "the unreachable queue's own code rides `cause_error_code`: {rolled_back:?}"
     );
 
     lane.cleanup().await;

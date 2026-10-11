@@ -213,3 +213,34 @@ fn a_dashboard_base_that_is_not_a_url_refuses_boot() {
         );
     }
 }
+
+/// A blank or padded optional knob reads as the trimmed value, or as unset:
+/// a blank analytics key is analytics off, never a fault, and a padded key
+/// (a heredoc's trailing newline) is still that key.
+#[test]
+fn blank_optionals_read_as_unset_and_padded_ones_as_their_value() {
+    let blank = preflight(&with_optional([
+        ("POSTHOG_API_KEY", "   "),
+        ("POSTHOG_HOST", "https://events.example.test"),
+        ("OIDC_JWKS_URL", " "),
+        ("SSE_MAX_STREAMS", ""),
+    ]))
+    .expect("blank optionals are unset, not faults");
+    assert!(blank.posthog().is_none());
+    assert!(blank.identity().jwks_url.is_none());
+    assert_eq!(blank.sse_max_streams(), 256);
+
+    let padded = preflight(&with_optional([
+        ("POSTHOG_API_KEY", " ph_fixture\n"),
+        ("POSTHOG_HOST", "  "),
+        (APP_URL_KNOB, " https://dashboard.example.test "),
+    ]))
+    .expect("padded optionals are their trimmed values");
+    let analytics = padded.posthog().expect("a padded key is still a key");
+    assert_eq!(analytics.project_key.as_ref(), "ph_fixture");
+    assert_eq!(
+        analytics.host, None,
+        "a blank host keeps the client default"
+    );
+    assert_eq!(padded.app_url().as_str(), "https://dashboard.example.test/");
+}

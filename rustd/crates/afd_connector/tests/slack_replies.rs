@@ -11,6 +11,10 @@
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
+#![expect(
+    clippy::disallowed_methods,
+    reason = "each test hands the read a plain client that dials a loopback fake or a closed port; the read sets its own deadline"
+)]
 
 use std::time::{Duration, Instant};
 

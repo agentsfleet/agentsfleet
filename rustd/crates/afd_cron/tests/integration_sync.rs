@@ -175,6 +175,10 @@ async fn the_scheduler_key_is_adopted_and_a_delete_names_it() {
 
 #[tokio::test]
 #[ignore = "needs the lane's Postgres"]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the client aims at a `.test` host that resolves nowhere, so it never connects"
+)]
 async fn a_scheduler_that_cannot_be_reached_keeps_its_reason_on_the_row() {
     // Dimension 3.3's half that needs no vendor: the store and the upstream
     // diverge, and the row says so in a way the next `:sync` can act on.

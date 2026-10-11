@@ -95,6 +95,10 @@ static MINTED_INSTALLATIONS: AtomicU64 = AtomicU64::new(0);
 /// digits taken off one are the digits taken off the next, and every test
 /// went back to fighting over one id.
 fn fresh_installation() -> String {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a pre-epoch host reads as zero here; afd_core::clock::now would read it as negative and put a minus sign in the id"
+    )]
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());

@@ -28,6 +28,17 @@ use afd_cron::error::{detail, one_of_each_kind};
 /// change to `is_retryable` instead of following it.
 const RETRYABLE: &[&str] = &["datastore", "upstream unreachable"];
 
+/// The kinds a refused schedule fire is raised as, by sample label.
+const FIRE_REFUSALS: &[&str] = &[
+    "keys missing",
+    "token malformed",
+    "signature invalid",
+    "body mismatch",
+];
+
+/// The word every kind that is not a refused fire reads under.
+const OPERATIONAL_REASON: &str = "operational_fault";
+
 #[test]
 fn every_kind_renders_leading_with_its_code() {
     let kinds = one_of_each_kind();
@@ -112,6 +123,9 @@ fn every_sentence_is_one_of_the_declared_details() {
         detail::OPERATION_FAILED,
         detail::UPSTREAM_UNAVAILABLE,
         detail::RETIRE_HELD,
+        detail::FIRE_UNVERIFIED,
+        detail::DESTINATION_UNUSABLE,
+        detail::DESTINATION_NOT_PLAIN_ORIGIN,
     ];
     for (label, error) in one_of_each_kind() {
         assert!(
@@ -183,5 +197,19 @@ fn a_vendor_status_never_reaches_the_caller() {
 fn the_backtrace_accessor_answers_for_every_kind() {
     for (_label, error) in one_of_each_kind() {
         let _status = error.backtrace().status();
+    }
+}
+
+/// Only a refused fire reads under a refusal's own word; every other kind is
+/// this daemon failing, and they share one so the answer stays total.
+#[test]
+fn only_a_refused_fire_reads_under_a_refusal_word() {
+    for (label, error) in one_of_each_kind() {
+        assert_eq!(
+            error.refusal_word() == OPERATIONAL_REASON,
+            !FIRE_REFUSALS.contains(&label),
+            "{label} reads as `{}`",
+            error.refusal_word()
+        );
     }
 }

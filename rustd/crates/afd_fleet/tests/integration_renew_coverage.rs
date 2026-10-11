@@ -267,6 +267,11 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     assert_eq!(warned.field("input_tokens"), Some("12000"));
     assert_eq!(warned.field("cached_input_tokens"), Some("3000"));
     assert_eq!(warned.field("output_tokens"), Some("500"));
+    assert!(
+        warned
+            .field("error_code")
+            .is_some_and(|code| !code.is_empty())
+    );
     assert_eq!(
         warned.field("lease_id"),
         Some(held.issued.lease_id.as_str())

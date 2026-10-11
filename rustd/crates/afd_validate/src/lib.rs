@@ -24,5 +24,5 @@ mod limit;
 mod sentences;
 
 pub use self::limit::{Ceiling, Limit, LimitBreak};
-pub use self::rules::{ascii_digits, charset, finite, nul_free};
+pub use self::rules::{ascii_digits, charset, finite, not_relative, nul_free};
 pub use self::sentences::{PathTable, Sentences};

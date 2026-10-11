@@ -24,7 +24,7 @@ use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use afd_core::env::MapEnv;
+use afd_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use agentsfleetd::cli::{Cli, SUCCESS, run};
 use clap::Parser as _;
 
@@ -50,7 +50,7 @@ const PATIENCE: Duration = Duration::from_secs(20);
 
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
-    std::env::var(knob).unwrap_or_else(|_unset| {
+    ProcessEnv.get(knob).unwrap_or_else(|| {
         panic!("{knob} is unset — run these through `make test-integration-rustd`")
     })
 }

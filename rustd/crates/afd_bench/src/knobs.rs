@@ -7,8 +7,10 @@
 //! Every reader here answers the value, the documented default when the
 //! variable is absent, or a refusal naming the variable and what it held.
 //!
-//! Environment arrives as a lookup, as it does for the profile, so a test can
-//! hand in a map rather than mutate the process.
+//! Environment arrives as an [`EnvSource`], as it does for the profile, so a
+//! test can hand in a map rather than mutate the process.
+
+use afd_core::env::EnvSource;
 
 use crate::error::{ErrorKind, Result};
 
@@ -21,13 +23,14 @@ pub const SLOW_FRACTION_VARIABLE: &str = "BENCH_SLOW_FRACTION";
 /// Fraction of delivery destinations scripted to refuse.
 pub const RETRYABLE_FRACTION_VARIABLE: &str = "BENCH_RETRYABLE_FRACTION";
 
-/// The environment as a lookup.
-pub type Lookup<'a> = &'a dyn Fn(&str) -> Option<String>;
-
-/// A variable's value, or nothing when it is unset or blank.
+/// A variable's value as it was set, or nothing when it is unset or blank.
+///
+/// Untrimmed, unlike `afd_core::env::optional`: provenance records the
+/// revision and image byte for byte, and only the exact ownership word counts
+/// as one.
 #[must_use]
-pub fn variable(env: Lookup<'_>, key: &str) -> Option<String> {
-    env(key).filter(|value| !value.trim().is_empty())
+pub fn variable(env: &dyn EnvSource, key: &str) -> Option<String> {
+    env.get(key).filter(|value| !value.trim().is_empty())
 }
 
 /// A variable that must be set.
@@ -35,7 +38,7 @@ pub fn variable(env: Lookup<'_>, key: &str) -> Option<String> {
 /// # Errors
 ///
 /// `VariableUnset` naming the variable.
-pub fn required(env: Lookup<'_>, key: &'static str) -> Result<String> {
+pub fn required(env: &dyn EnvSource, key: &'static str) -> Result<String> {
     variable(env, key).ok_or_else(|| ErrorKind::VariableUnset { variable: key }.into())
 }
 
@@ -45,7 +48,7 @@ pub fn required(env: Lookup<'_>, key: &'static str) -> Result<String> {
 ///
 /// `VariableUnreadable` when the variable is set to something that
 /// is not a whole number.
-pub fn number(env: Lookup<'_>, key: &'static str, fallback: u64) -> Result<u64> {
+pub fn number(env: &dyn EnvSource, key: &'static str, fallback: u64) -> Result<u64> {
     match variable(env, key) {
         None => Ok(fallback),
         Some(value) => value.trim().parse().map_err(|_unparsed| {
@@ -64,7 +67,7 @@ pub fn number(env: Lookup<'_>, key: &'static str, fallback: u64) -> Result<u64> 
 ///
 /// `VariableUnreadable` when the variable is set to something that
 /// is not a number in that range.
-pub fn fraction(env: Lookup<'_>, key: &'static str, fallback: f64) -> Result<f64> {
+pub fn fraction(env: &dyn EnvSource, key: &'static str, fallback: f64) -> Result<f64> {
     match variable(env, key) {
         None => Ok(fallback),
         Some(value) => value

@@ -45,7 +45,7 @@ use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
 
 use crate::auth::RunnerIdentity;
-use crate::handler::refuse;
+use crate::handler::{malformed, refuse};
 use crate::services::{Leasing as _, Services};
 
 /// The scoped event a failed report is logged under.
@@ -92,12 +92,7 @@ pub(crate) async fn handle<D: Services>(
     // written straight into columns, so owning them here would copy a run's
     // whole output for nothing.
     let Ok(request) = afd_http::handler::read_body::<ReportRequest<'_>>(&body) else {
-        return crate::envelope::ProblemResponse::new(
-            afd_core::error_code::INVALID_REQUEST,
-            DETAIL_MALFORMED,
-            crate::request_id::RequestId::mint(),
-        )
-        .into_response();
+        return malformed(DETAIL_MALFORMED);
     };
 
     match services
@@ -134,6 +129,10 @@ pub(crate) async fn handle<D: Services>(
             // Read here rather than reused from `services.now()`: that instant
             // was taken BEFORE the settle, and the span's end is the moment the
             // run's record actually closed.
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "a span ends at a SystemTime at the host's full precision; afd_core::clock::now truncates to milliseconds"
+            )]
             delivery_of(&settled, &request).record(SystemTime::now());
             meter(&settled, &request, runner.id().as_str());
             Json(ReportResponse { ok: true }).into_response()

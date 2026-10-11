@@ -23,12 +23,10 @@
 //! `normalize_openai_base_url`). Any other path is dialled as written.
 
 use std::collections::HashMap;
-use std::net::IpAddr;
 
 use afd_wire::policy::CUSTOM_PROVIDER_PREFIX;
 use reqwest::Url;
 use serde::Deserialize;
-use url::Host;
 
 use crate::error::{Result, raise};
 
@@ -146,7 +144,9 @@ impl Registry {
             let shown = format!("{CUSTOM_PROVIDER_PREFIX}{}", bare(base));
             return Err(raise::unhosted(&shown));
         }
-        if private_literal(&base) {
+        // A name is checked by the client's resolver when it is dialled; a
+        // literal never reaches a resolver, so it is refused here.
+        if afr_egress::blocked_literal(&base) {
             return Err(raise::blocked_endpoint(provider));
         }
         Ok(Route {
@@ -177,18 +177,6 @@ fn bare(mut base: Url) -> Url {
     base.set_query(None);
     base.set_fragment(None);
     base
-}
-
-/// Whether `base` names a private, loopback or reserved address literal. A
-/// name is checked by the client's resolver when it is dialled; a literal
-/// never reaches a resolver, so it is refused here.
-fn private_literal(base: &Url) -> bool {
-    let address: Option<IpAddr> = match base.host() {
-        Some(Host::Ipv4(address)) => Some(address.into()),
-        Some(Host::Ipv6(address)) => Some(address.into()),
-        Some(Host::Domain(_)) | None => None,
-    };
-    address.is_some_and(afd_core::net::is_blocked)
 }
 
 /// The base a `custom:` endpoint's chat turns resolve against.

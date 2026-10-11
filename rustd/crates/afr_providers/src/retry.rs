@@ -142,6 +142,10 @@ fn answered(sent: reqwest::Result<Response>) -> std::result::Result<Response, Un
 }
 
 /// The wait `Retry-After` names: whole seconds, or an HTTP date from now.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the HTTP date parses to a SystemTime and the wait is a Duration between two SystemTimes; afd_core::clock::now returns millisecond UnixMillis, which would change the arithmetic"
+)]
 fn retry_after(headers: &HeaderMap) -> Option<Duration> {
     let value = headers.get(RETRY_AFTER)?.to_str().ok()?.trim();
     value

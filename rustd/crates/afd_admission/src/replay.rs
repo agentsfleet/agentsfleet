@@ -22,7 +22,8 @@
 
 use std::time::Duration;
 
-use afd_core::clock::UnixMillis;
+use afd_core::clock::{self, UnixMillis};
+use afd_core::error_code::{Coded as _, Logged};
 use afd_dragonfly::FleetStreams;
 use afd_observability::metrics::label::fleet::ReplayOutcome;
 use afd_observability::producers::fleet::admission as metrics;
@@ -105,7 +106,7 @@ impl Admissions {
     pub async fn replay(&self, now: UnixMillis, min_age: Duration, limit: i64) -> Result<Replayed> {
         let cutoff = now
             .as_millis()
-            .saturating_sub(i64::try_from(min_age.as_millis()).unwrap_or(i64::MAX));
+            .saturating_sub(clock::saturating_millis_signed(min_age));
         let mut connection = self.database.acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_REPLAY))?;
         let rows = sqlx::query(sql::SELECT_UNRECEIPTED)
@@ -175,9 +176,8 @@ impl Admissions {
                     (ReplayOutcome::Failed, "admission_replay_failed")
                 };
                 metrics::replayed(outcome);
-                let code = unreachable_queue.code().as_str();
-                let reason = unreachable_queue.to_string();
-                tracing::warn!(error_code = code, fleet_id, event_id, reason, event,);
+                let Logged { error_code, reason } = unreachable_queue.logged();
+                tracing::warn!(error_code, fleet_id, event_id, reason, event,);
                 return Ok(false);
             }
         };

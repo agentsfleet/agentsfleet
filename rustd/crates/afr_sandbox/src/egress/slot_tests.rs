@@ -5,7 +5,7 @@
 
 use std::net::Ipv4Addr;
 
-use super::{Claim, LINK_PREFIX, SLOTS, Slot, TABLE_PREFIX, claims_held};
+use super::{Claim, LINK_PREFIX, SLOTS, Slot, Slots, TABLE_PREFIX};
 
 /// Every name and address a slot carries is derived from its index, so the
 /// builder, the sweep and the tests can never disagree on one.
@@ -50,40 +50,40 @@ fn test_only_names_this_crate_makes_read_as_slots() {
 }
 
 /// A slot is held by one claim at a time and free again once that claim is
-/// dropped; an abandoned one stays held. Indices the other tests never claim,
-/// since the bitmap is the whole process's.
+/// dropped; an abandoned one stays held.
 #[test]
 fn test_a_slot_is_held_by_one_claim_at_a_time() {
-    let _claims = claims_held();
+    let pool = Slots::fresh();
     let slot = Slot::new(250).unwrap();
 
-    let held = Claim::exactly(slot).unwrap();
+    let held = Claim::exactly(pool, slot).unwrap();
     assert!(
-        Claim::exactly(slot).is_none(),
+        Claim::exactly(pool, slot).is_none(),
         "a second claim waits its turn"
     );
     assert!(
-        Claim::exactly(slot).is_none(),
+        Claim::exactly(pool, slot).is_none(),
         "and a refused claim frees nothing"
     );
     assert_eq!(held.slot(), slot);
     drop(held);
-    let again = Claim::exactly(slot);
+    let again = Claim::exactly(pool, slot);
     assert!(again.is_some(), "free once released");
     drop(again);
 
     let kept = Slot::new(251).unwrap();
-    Claim::exactly(kept).unwrap().abandon();
-    assert!(Claim::exactly(kept).is_none(), "abandoned for good");
+    Claim::exactly(pool, kept).unwrap().abandon();
+    assert!(Claim::exactly(pool, kept).is_none(), "abandoned for good");
 }
 
-/// Claims made at once from many threads never hand one slot out twice.
+/// Claims made at once from many threads never hand one slot out twice, and
+/// every thread is answered: sixty-four claims fit in the pool.
 #[test]
 fn test_concurrent_claims_never_share_a_slot() {
-    let _claims = claims_held();
+    let pool = Slots::fresh();
     let claims: Vec<Claim> = std::thread::scope(|scope| {
         let workers: Vec<_> = (0..16)
-            .map(|_| scope.spawn(|| (0..4).filter_map(|_| Claim::any()).collect::<Vec<_>>()))
+            .map(|_| scope.spawn(|| (0..4).filter_map(|_| Claim::any(pool)).collect::<Vec<_>>()))
             .collect();
         workers
             .into_iter()
@@ -95,5 +95,34 @@ fn test_concurrent_claims_never_share_a_slot() {
     let claimed = slots.len();
     slots.sort_unstable();
     slots.dedup();
+    assert_eq!(claimed, 64, "no claim is refused while slots are free");
     assert_eq!(slots.len(), claimed, "every claim holds its own slot");
+}
+
+/// Two pools hold the same slot independently: a fake kernel's claims never
+/// touch the running kernel's, nor another fake's.
+#[test]
+fn test_each_pool_holds_its_own_slots() {
+    let slot = Slot::new(0).unwrap();
+    let (one, other) = (Slots::fresh(), Slots::fresh());
+
+    let held = Claim::exactly(one, slot).unwrap();
+
+    assert!(Claim::exactly(one, slot).is_none());
+    assert!(Claim::exactly(other, slot).is_some());
+    drop(held);
+}
+
+/// The last slot claimed, the pool answers no more.
+#[test]
+fn test_a_full_pool_refuses_the_next_claim() {
+    let pool = Slots::fresh();
+    let held: Vec<Claim> = std::iter::from_fn(|| Claim::any(pool)).collect();
+
+    assert_eq!(held.len(), usize::from(SLOTS));
+    assert_eq!(
+        held.last().map(|claim| claim.slot().index()),
+        Some(SLOTS - 1)
+    );
+    assert!(Claim::any(pool).is_none());
 }

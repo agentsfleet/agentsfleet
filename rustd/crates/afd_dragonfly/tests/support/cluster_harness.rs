@@ -20,6 +20,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
+use afd_core::env::{EnvSource, ProcessEnv};
 use redis::cluster::ClusterClientBuilder;
 use redis::cluster_async::ClusterConnection;
 use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
@@ -77,10 +78,10 @@ impl ClusterHarness {
     /// after this point would be about a cluster that does not exist.
     pub(crate) fn from_lane() -> Self {
         install_subscriber();
-        let seed = std::env::var(URL_KNOB).unwrap_or_else(|_unset| {
+        let seed = ProcessEnv.get(URL_KNOB).unwrap_or_else(|| {
             panic!("{URL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
-        let control = std::env::var(CONTROL_KNOB).unwrap_or_else(|_unset| {
+        let control = ProcessEnv.get(CONTROL_KNOB).unwrap_or_else(|| {
             panic!("{CONTROL_KNOB} is unset — run these through `make test-integration-rustd`")
         });
         Self {

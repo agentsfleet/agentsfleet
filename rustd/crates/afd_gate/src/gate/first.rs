@@ -17,6 +17,7 @@
 //! `budget.daily_dollars`, and `agentsfleet grant delete`.
 
 use afd_core::clock::UnixMillis;
+use afd_core::error_code::{Coded as _, Logged};
 use serde_json::Value;
 
 use crate::gate::claim::Claim;
@@ -144,8 +145,9 @@ impl Gates {
     async fn stop(&self, request: &Check<'_>, trigger: Trigger, now: UnixMillis) -> Verdict {
         if let Err(fault) = self.pause(request.fleet_id, trigger, now).await {
             let fleet = request.fleet_id.as_str();
-            let reason = fault.to_string();
+            let Logged { error_code, reason } = fault.logged();
             tracing::error!(
+                error_code,
                 event = EVENT_PAUSE_FAILED,
                 fleet_id = fleet,
                 trigger = trigger.as_str(),

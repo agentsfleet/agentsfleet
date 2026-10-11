@@ -19,7 +19,6 @@
 //! with the deployed-environment follow-up in the spec's Discovery.
 
 use core::fmt;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Leading token on every object a lane creates, so a sweep can recognise its
 /// own work and a human can recognise it in a console.
@@ -41,10 +40,7 @@ impl RunPrefix {
     /// which is the outcome the sweep is for.
     #[must_use]
     pub fn mint() -> Self {
-        let millis = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis();
+        let millis = afd_core::clock::now().as_millis();
         Self {
             value: format!("{PREFIX_TOKEN}-{millis}-{}", std::process::id()),
         }

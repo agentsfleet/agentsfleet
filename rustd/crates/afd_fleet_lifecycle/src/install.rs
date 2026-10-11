@@ -26,6 +26,8 @@
 
 mod authored;
 mod grants;
+#[cfg(all(test, feature = "test-util"))]
+mod reason_tests;
 mod rollback;
 mod row;
 
@@ -35,7 +37,7 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
-use afd_core::error_code;
+use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_fleet_runtime::FleetName;
 use afd_fleet_runtime::config::Mention;
@@ -286,10 +288,14 @@ impl Fleets {
             .retry(stream_backoff())
             .when(afd_dragonfly::Error::is_unavailable)
             .notify(|failure: &afd_dragonfly::Error, delay: Duration| {
-                let sleep_ms = u64::try_from(delay.as_millis()).unwrap_or(u64::MAX);
-                let reason = failure.to_string();
+                let sleep_ms = afd_core::clock::saturating_millis(delay);
+                let Logged {
+                    error_code: cause_error_code,
+                    reason,
+                } = failure.logged();
                 tracing::warn!(
                     error_code = error_code::INTERNAL_OPERATION_FAILED.as_str(),
+                    cause_error_code,
                     fleet,
                     sleep_ms,
                     reason,

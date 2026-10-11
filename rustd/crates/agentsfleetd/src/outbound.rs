@@ -25,6 +25,7 @@
 //! that starts delivers them.
 
 use afd_connector::Grants;
+use afd_core::error_code::{Coded as _, Logged};
 use afd_db::Db;
 use afd_dragonfly::{
     Dedicated, Dragonfly, DragonflyConfig, OutboundQueue, OutboundReader, outbound_consumer,
@@ -67,8 +68,7 @@ pub async fn spawn(
         Ok(connection) => connection,
         Err(failure) => {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let error_code = failure.code().as_str();
-            let reason = failure.to_string();
+            let Logged { error_code, reason } = failure.logged();
             tracing::warn!(error_code, reason, event = "outbound_worker_connect_failed");
             return;
         }
@@ -90,4 +90,71 @@ pub async fn spawn(
     // and the append, and a queue that lost the entry afterwards.
     let producer = Producer::new(OutboundQueue::new(queue.clone()), database.clone());
     supervisor.spawn(OUTBOUND_PRODUCER, move |token| producer.run(token));
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the restriction set is for the daemon"
+    )]
+
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use afd_crypto::entropy::Entropy;
+    use afd_crypto::secret::Kek;
+    use afd_dragonfly::Dragonfly;
+    use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+
+    use crate::supervisor::Supervisor;
+
+    /// A worker whose dedicated connection will not open starts nothing, and
+    /// the warning carries the code beside the failure's sentence alone.
+    #[tokio::test]
+    async fn an_unconnected_outbound_worker_reason_carries_no_code_prefix() {
+        let config =
+            DragonflyConfig::from_url(DragonflyRole::Api, "redis://127.0.0.1:1".to_owned())
+                .with_connect_timeout(Duration::from_millis(25));
+        let queue = Dragonfly::unreachable(&config).expect("a lazy manager opens no socket");
+        let database = afd_db::test_util::unreachable_db();
+        let grants = afd_connector::Grants::new(
+            afd_vault::Vault::new(
+                database.clone(),
+                Arc::new(Kek::from_bytes([7; afd_crypto::KEY_LEN])),
+                Entropy::new(),
+            ),
+            database.clone(),
+            Entropy::new(),
+        );
+        let mut supervisor = Supervisor::new();
+        let log = afd_core::test_util::trace::Capture::install();
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the worker never connects, so its poster client is never used and needs no bounds"
+        )]
+        super::spawn(
+            &mut supervisor,
+            &config,
+            &database,
+            &queue,
+            grants,
+            reqwest::Client::new(),
+            String::new(),
+        )
+        .await;
+
+        let line = log.only("outbound_worker_connect_failed");
+        let reason = line.field("reason").unwrap_or_default();
+        assert!(
+            line.field("error_code")
+                .is_some_and(|code| !code.is_empty())
+        );
+        assert!(
+            !reason.is_empty() && !reason.contains("[UZ-"),
+            "the code is the line's `error_code`, never the reason's prefix: {reason}"
+        );
+        assert!(supervisor.inventory().is_empty(), "no worker was started");
+    }
 }

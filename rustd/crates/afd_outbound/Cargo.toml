@@ -70,7 +70,8 @@ afd_db = { workspace = true, features = ["test-util"] }
 # and respelling the RESP here is how the first fake and this one drifted.
 afd_dragonfly = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
-afd_core.workspace = true
+# The `tracing` capture the worker's failure-line test reads a `reason` back through.
+afd_core = { workspace = true, features = ["test-util"] }
 # `XPENDING` and `DEL` in `tests/support/outbound_harness.rs`. The library never
 # spells a Redis command itself — `afd_dragonfly` owns every one it issues — but the
 # integration suite has to ask Redis what the worker LEFT BEHIND, and an

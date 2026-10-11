@@ -307,3 +307,33 @@ async fn assert_runner_patch_policy(writer: &axum::Router) {
     .await;
     assert_eq!(reached.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
+
+/// Every runner route refuses an id that is not a `UUIDv7` with one sentence,
+/// before any read, and only after the caller's scope admitted them.
+#[tokio::test]
+async fn every_runner_route_refuses_a_malformed_runner_id_with_one_sentence() {
+    let operator = Fleet::new()
+        .with_person(
+            TENANT_KEY,
+            OPERATOR,
+            ScopeSet::from_scopes(&[Scope::RunnerRead, Scope::RunnerWrite]),
+        )
+        .router();
+    for (method, tail) in [
+        (Method::GET, ""),
+        (Method::GET, "/events"),
+        (Method::GET, "/leases"),
+        (Method::PATCH, ""),
+        (Method::DELETE, ""),
+    ] {
+        let path = format!("/v1/fleets/runners/not-a-runner-id{tail}");
+        let refused = send(&operator, method, &path, Some(TENANT_KEY), "").await;
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{path}");
+        let body = json_body(refused).await;
+        assert_eq!(
+            body.get("detail").and_then(serde_json::Value::as_str),
+            Some("runner_id must be a valid UUIDv7"),
+            "{path}"
+        );
+    }
+}

@@ -23,6 +23,7 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
+use afd_db::constraint::violates_unique;
 use sqlx::{Acquire as _, Transaction};
 
 use super::page::read_entry;
@@ -32,6 +33,10 @@ use crate::error::{Result, query};
 use crate::provider::selection::read_selection;
 use crate::provider::sql as provider_sql;
 use crate::provider::store::Providers;
+
+/// The entry's domain key, `(tenant, model, secret_ref)`: the one unique
+/// constraint a retarget can collide with (`schema/440_tenant_model_entries.sql`).
+const UQ_ENTRY_DOMAIN_KEY: &str = "uq_tenant_model_entries_tenant_id_model_id_secret_ref";
 
 /// The context a failed registry write reports under.
 const CONTEXT_WRITE: &str = "tenant model registry write";
@@ -124,7 +129,9 @@ impl Providers {
             // entry onto a model this credential already carries collides with
             // the tenant's OTHER row. `ON CONFLICT` cannot express that: the
             // statement would have to update a row it is not addressing.
-            Err(unique) if is_unique_violation(&unique) => Ok(Retargeted::Duplicate),
+            Err(unique) if violates_unique(&unique, UQ_ENTRY_DOMAIN_KEY) => {
+                Ok(Retargeted::Duplicate)
+            }
             Err(other) => Err(query(CONTEXT_WRITE)(other)),
         }
     }
@@ -222,13 +229,4 @@ impl Providers {
         let chosen = row.as_ref().map(read_selection).transpose()?;
         Ok(is_active(entry, chosen.as_ref()))
     }
-}
-
-/// Whether a datastore failure is the domain key refusing a second row.
-///
-/// Asked of the DATABASE's own classification rather than of the message text:
-/// `23505` is the SQLSTATE for a unique violation, and matching on a rendered
-/// sentence would break the first time a locale or a driver version changed it.
-fn is_unique_violation(error: &sqlx::Error) -> bool {
-    matches!(error, sqlx::Error::Database(failure) if failure.is_unique_violation())
 }

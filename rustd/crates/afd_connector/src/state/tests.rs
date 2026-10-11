@@ -12,7 +12,7 @@
 use afd_core::clock::UnixMillis;
 use afd_crypto::secret::SecretBytes;
 
-use super::{Rejected, sign, verify};
+use super::{Rejected, Verified, sign, verify};
 use crate::provider::Provider;
 use crate::registry::STATE_TTL_SECONDS;
 
@@ -109,6 +109,63 @@ fn a_tampered_authentication_tag_is_refused() {
     assert_eq!(refused.err(), Some(Rejected::BadSignature));
 }
 
+/// A genuine tag in a spelling this daemon never writes is a bad signature.
+///
+/// Upper-casing changes no byte of the code, so a decoder would accept it; the
+/// tag is compared as the lowercase text it was signed as, so a state keeps one
+/// spelling. A tag that is not hex at all, or is the wrong width, is a bad
+/// signature too, and never `Malformed`: the payload is not read until the tag
+/// has matched.
+#[test]
+fn a_tag_in_any_other_spelling_is_a_bad_signature() {
+    let state = minted(Provider::Slack);
+    let (encoded, tag) = state
+        .rsplit_once('.')
+        .expect("a minted state carries a tag");
+
+    for presented in [
+        tag.to_uppercase(),
+        tag.chars().skip(1).collect(),
+        format!("{tag}0"),
+        "z".repeat(tag.len()),
+        String::new(),
+    ] {
+        let refused = verify(
+            Provider::Slack.state_binding(),
+            &secret(),
+            &format!("{encoded}.{presented}"),
+            UnixMillis::from_millis(NOW),
+        );
+
+        assert_eq!(refused.err(), Some(Rejected::BadSignature), "`{presented}`");
+    }
+}
+
+/// A subject tag that is not the starter's lowercase code matches nobody.
+///
+/// Unreachable through [`verify`], which only reads a payload whose MAC passed
+/// and [`sign`] always writes lowercase; built directly so the comparison's
+/// refusal is pinned on its own.
+#[test]
+fn a_subject_tag_in_any_other_spelling_matches_nobody() {
+    let binding = Provider::Slack.state_binding();
+    let genuine = super::subject_tag(binding, &secret(), STARTER).to_hex();
+
+    for subject_tag in [
+        genuine.to_uppercase(),
+        genuine.chars().skip(1).collect(),
+        "zz".to_owned(),
+    ] {
+        let verified = Verified {
+            workspace: WORKSPACE.to_owned(),
+            subject_tag,
+            nonce: NONCE.to_owned(),
+        };
+
+        assert!(!verified.subject_matches(binding, &secret(), STARTER));
+    }
+}
+
 /// A state signed under another deployment's secret does not verify.
 #[test]
 fn a_state_signed_under_a_foreign_secret_is_refused() {
@@ -202,7 +259,7 @@ fn nothing_that_is_not_a_state_verifies_as_one() {
 fn a_correctly_signed_payload_with_an_extra_field_is_malformed() {
     let binding = Provider::Slack.state_binding();
     let payload = format!("{WORKSPACE}|tag|{NONCE}|{}|extra", NOW + 60_000);
-    let mac = super::mac_hex(binding, &secret(), payload.as_bytes());
+    let mac = super::mac(binding, &secret(), payload.as_bytes()).to_hex();
     let encoded =
         base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, &payload);
 

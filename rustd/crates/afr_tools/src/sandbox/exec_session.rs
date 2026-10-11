@@ -240,7 +240,7 @@ fn reply(
     };
     ToolOutput {
         text: output::with_line(text, &state),
-        exit_code: ended.and_then(output::exit_code),
+        exit_code: ended.and_then(Ending::exit_code),
         error_code: ended.and_then(output::error_code),
         image: None,
     }

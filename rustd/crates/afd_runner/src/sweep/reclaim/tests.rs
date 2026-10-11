@@ -5,7 +5,22 @@
 //! against real rows; the cursor decides what that statement resumes AFTER, and
 //! is proven here because it reads nothing.
 
-use super::{CURSOR_START_ID, Cursor};
+#![expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+)]
+
+use afd_core::test_util::trace::Capture;
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
+
+use super::{CURSOR_START_ID, Cursor, Reclaim};
+
+/// A queue address nothing listens on.
+const NOWHERE: &str = "redis://127.0.0.1:1";
+
+/// The fleet each step is asked about; nothing answers, so any will do.
+const FLEET: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c1c01";
 
 #[test]
 fn a_fresh_cursor_starts_below_every_real_row() {
@@ -36,4 +51,56 @@ fn a_rewound_cursor_is_a_fresh_one() {
     let fresh = Cursor::default();
     assert_eq!(rewound.after_updated_at(), fresh.after_updated_at());
     assert_eq!(rewound.after_id(), fresh.after_id());
+}
+
+/// A reclaim pass over a pool and a queue that both refuse.
+fn unreachable_reclaim() -> Reclaim {
+    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
+        DragonflyRole::Default,
+        NOWHERE.to_owned(),
+    ))
+    .expect("a lazy handle opens no socket and cannot fail");
+    Reclaim::new(
+        afd_db::test_util::unreachable_db(),
+        queue,
+        "reclaim-unreachable",
+    )
+}
+
+/// Each stream step that could not reach the queue is logged under its own
+/// event, with a `reason` free of the registry code and of a backtrace.
+#[tokio::test]
+async fn every_failed_stream_step_reason_carries_no_code_prefix() {
+    let capture = Capture::install();
+    let reclaim = unreachable_reclaim();
+
+    assert_eq!(reclaim.claim_strays(FLEET).await, 0);
+    assert!(!reclaim.remark_if_deliverable(FLEET, false).await);
+    assert!(!reclaim.mark_ready(FLEET).await);
+
+    for event in [
+        "reclaim_claim_failed",
+        "deliverable_probe_failed",
+        "ready_remark_failed",
+    ] {
+        let logged = capture.only(event);
+        assert!(
+            logged
+                .field("error_code")
+                .is_some_and(|code| !code.is_empty()),
+            "{event} names no error_code"
+        );
+        let reason = logged.field("reason").expect("a failure line says why");
+        assert!(!reason.is_empty(), "{event} says nothing");
+        assert!(
+            !reason.contains("[UZ-"),
+            "{event} repeats its code: {reason}"
+        );
+        assert!(
+            !reason.contains('\n'),
+            "{event} carries a backtrace: {reason}"
+        );
+        assert_eq!(logged.field("error"), None, "{event} kept the old field");
+        assert_eq!(logged.field("fleet_id"), Some(FLEET));
+    }
 }

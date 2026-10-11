@@ -37,6 +37,7 @@
 //! no row to be active — so a failed cleanup orphans keys that age out, and is
 //! worth a log line rather than failing a purge that already succeeded.
 
+use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
 
 use crate::error::{self, ErrorKind, Result};
@@ -164,9 +165,13 @@ async fn purge_children(connection: &mut sqlx::PgConnection, fleet: &str) -> Res
 /// what is left behind is unreachable rather than harmful. Paging somebody for
 /// keys that age out on their own would train them to ignore the signal.
 fn report(fleet: &str, failure: &afd_dragonfly::Error, event: &'static str) {
-    let reason = failure.to_string();
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = failure.logged();
     tracing::warn!(
         error_code = afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+        cause_error_code,
         fleet,
         reason,
         hint = HINT_STREAM_ORPHANED,
@@ -193,6 +198,32 @@ mod tests {
                 "{label} renders to something an operator can act on"
             );
             super::report("fleet-fixture", &failure, "fleet_purge_stream_orphaned");
+        }
+    }
+
+    #[test]
+    fn a_purge_cleanup_reason_carries_no_code_prefix() {
+        for (label, failure) in afd_dragonfly::error::one_of_each_kind() {
+            let log = afd_core::test_util::trace::Capture::install();
+
+            super::report("fleet-fixture", &failure, "fleet_purge_stream_orphaned");
+
+            let line = log.only("fleet_purge_stream_orphaned");
+            assert_eq!(
+                line.field("error_code"),
+                Some(afd_core::error_code::INTERNAL_OPERATION_FAILED.as_str()),
+                "{label}"
+            );
+            assert_eq!(
+                line.field("cause_error_code"),
+                Some(failure.code().as_str()),
+                "{label}"
+            );
+            assert_eq!(
+                line.field("reason"),
+                Some(failure.told().as_str()),
+                "{label}"
+            );
         }
     }
 }

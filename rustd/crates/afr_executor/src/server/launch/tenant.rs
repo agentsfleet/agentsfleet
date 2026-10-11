@@ -23,9 +23,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use afd_core::error_code;
 use rustix::fs::OFlags;
 use rustix::io::{Errno, FdFlags};
-use rustix::process::Signal;
 
-use crate::api::Ending;
+use crate::api::{Ending, SHELL_KILLED_EXIT, SIGKILL};
 use crate::error::{self, Result};
 
 /// What a process writes to `cgroup.procs` to move itself.
@@ -34,13 +33,6 @@ const SELF: &[u8] = b"0";
 const OOM_KILL: &str = "oom_kill";
 /// Room for the whole of `memory.events`: six short lines.
 const EVENTS_MAX_BYTES: usize = 256;
-/// The signal the out-of-memory killer sends.
-const SIGKILL: i32 = Signal::KILL.as_raw();
-/// What a POSIX shell adds to a signal's number to report a child that
-/// signal killed as its own exit status.
-const SHELL_SIGNAL_BASE: i32 = 128;
-/// The exit of a shell whose forked child was killed by `SIGKILL`.
-const SHELL_KILLED_EXIT: i32 = SHELL_SIGNAL_BASE + SIGKILL;
 /// A `memory.events` read failed, so a kill reads as the ending reported.
 const EVENT_EVENTS_UNREAD: &str = "executor_memory_events_unread";
 

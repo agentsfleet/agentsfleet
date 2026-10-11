@@ -72,13 +72,18 @@ impl<'a> Verdict<'a> {
     }
 
     /// The stored `failure_label`, which a clean run has none of.
-    pub(super) fn label(self) -> Option<&'static str> {
+    ///
+    /// The wire enum's own `snake_case` serde spelling, so a stored class
+    /// reads the same as the reported one and a new class is spelled the
+    /// moment it is declared. `budget_breach` is also the gate's refusal label
+    /// (`afd_core::event::label::BUDGET_BREACH`): one string for the ceiling
+    /// hit at issue and the ceiling hit mid-run, so an operator greps once.
+    pub(super) fn label(self) -> Option<String> {
         match self {
-            Self::Succeeded => None,
-            Self::Failed { class, .. } => match class {
-                Some(class) => Some(class_label(class)),
-                None => None,
-            },
+            Self::Succeeded | Self::Failed { class: None, .. } => None,
+            Self::Failed {
+                class: Some(class), ..
+            } => afd_core::spelling::to_spelling(&class),
         }
     }
 
@@ -89,51 +94,11 @@ impl<'a> Verdict<'a> {
             // NULL rather than an empty string — so a consumer testing
             // `IS NULL` cannot be fooled by a runner that sent `""`.
             Self::Succeeded | Self::Failed { detail: "", .. } => None,
-            Self::Failed { detail, .. } => Some(truncate(detail, MAX_FAILURE_DETAIL_BYTES)),
+            Self::Failed { detail, .. } => {
+                Some(&detail[..detail.floor_char_boundary(MAX_FAILURE_DETAIL_BYTES)])
+            }
         }
     }
-}
-
-/// The stored spelling of one failure class.
-///
-/// Each string is the wire enum's `snake_case` serde spelling, so a stored
-/// class reads the same as the reported one. Exhaustive, so a new class fails
-/// the build until it is given a spelling rather than writing rows nothing
-/// queries.
-fn class_label(class: FailureClass) -> &'static str {
-    match class {
-        FailureClass::StartupPosture => "startup_posture",
-        FailureClass::PolicyDeny => "policy_deny",
-        FailureClass::TimeoutKill => "timeout_kill",
-        FailureClass::OomKill => "oom_kill",
-        FailureClass::ResourceKill => "resource_kill",
-        FailureClass::RunnerCrash => "runner_crash",
-        FailureClass::TransportLoss => "transport_loss",
-        FailureClass::LandlockDeny => "landlock_deny",
-        FailureClass::LeaseExpired => "lease_expired",
-        FailureClass::RenewalTerminate => "renewal_terminate",
-        // Spelled identically to the gate's own refusal label, which is why it
-        // is imported rather than written out: one string for the ceiling hit
-        // at issue and the ceiling hit mid-run, so an operator greps once.
-        FailureClass::BudgetBreach => afd_core::event::label::BUDGET_BREACH,
-    }
-}
-
-/// `text` capped to `max` bytes, never splitting a character.
-///
-/// [`str::is_char_boundary`] asks directly whether a byte starts a character,
-/// so no byte masking is needed to find one. The walk is bounded by three: no
-/// character encodes to more than four bytes, so at most three continuations
-/// precede a boundary.
-pub(super) fn truncate(text: &str, max: usize) -> &str {
-    if text.len() <= max {
-        return text;
-    }
-    let mut end = max;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    &text[..end]
 }
 
 /// What the terminal row records about a finished run.

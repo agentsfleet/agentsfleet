@@ -262,11 +262,11 @@ fn decode(row_value: &sqlx::postgres::PgRow) -> Result<Model> {
 }
 
 fn bind_create<'a>(
-    query: sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
+    query: afd_db::statement::Bound<'a>,
     id: &'a Uuid7,
     input: &'a ModelInput,
     now: UnixMillis,
-) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
+) -> afd_db::statement::Bound<'a> {
     query
         .bind(id.as_str())
         .bind(&input.identifier)
@@ -279,11 +279,11 @@ fn bind_create<'a>(
 }
 
 fn bind_rates<'a>(
-    query: sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
+    query: afd_db::statement::Bound<'a>,
     id: &'a Uuid7,
     rates: ModelRates,
     now: UnixMillis,
-) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
+) -> afd_db::statement::Bound<'a> {
     query
         .bind(id.as_str())
         .bind(rates.context_cap_tokens)

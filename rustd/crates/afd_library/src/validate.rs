@@ -38,7 +38,7 @@ use crate::model::ImportBody;
 pub(crate) const MAX_SOURCE_REF_LEN: usize = 512;
 pub(crate) const MAX_MARKDOWN_LEN: usize = 200 * 1024;
 pub(crate) const MAX_SUPPORT_FILES: usize = 32;
-const MAX_SUPPORT_PATH_LEN: usize = 160;
+pub(crate) const MAX_SUPPORT_PATH_LEN: usize = 160;
 /// A path segment naming its own directory. `Path::components` normalizes it
 /// away, but the archive writer does too, so the importer's digest and the
 /// runner's would disagree on `a/./b`.
@@ -117,7 +117,8 @@ fn refuse_credentials(body: &Valid<&ImportBody>) -> Result<(), InvalidBundle> {
 /// Maps one reported violation back to the variant its classification rides on.
 ///
 /// A custom rule names itself, so it is matched first; what remains is a
-/// `length` bound, and the path alone identifies which.
+/// `length` bound, and the path alone identifies which. A support file's path
+/// bound lands in the last arm, which is the path refusal it is.
 fn classify(path: &str, message: &str) -> InvalidBundle {
     match message {
         CODE_MISSING_SKILL => return InvalidBundle::MissingSkill,
@@ -169,13 +170,13 @@ pub(crate) fn trigger_non_empty(value: &Option<Vec<u8>>, _: &()) -> garde::Resul
 /// Refuses a support path that could escape the bundle or shadow a root
 /// document.
 ///
+/// Its length is a `garde` bound beside this rule on [`crate::SupportFile`].
+///
 /// # Errors
-/// [`CODE_UNSAFE_PATH`] for an empty, over-long, absolute, traversing,
-/// backslash-bearing, `.`-bearing, or root-colliding path.
+/// [`CODE_UNSAFE_PATH`] for an absolute, traversing, backslash-bearing,
+/// `.`-bearing, empty-segment, or root-colliding path.
 pub(crate) fn safe_path(raw: &str, _: &()) -> garde::Result {
-    let invalid_text = raw.is_empty()
-        || raw.len() > MAX_SUPPORT_PATH_LEN
-        || raw.contains('\\')
+    let invalid_text = raw.contains('\\')
         || raw
             .split('/')
             .any(|segment| segment.is_empty() || segment == CURRENT_DIR)
