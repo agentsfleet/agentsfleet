@@ -57,7 +57,7 @@ const STALE_AFTER_MS = 60 * 60 * 1000;
  * mailinator one, so legacy leftovers keep getting reaped) — and the team
  * invitees' address in Resend's test inbox, `TEST_INBOX_LOCAL_PREFIX` plus the
  * tag at `TEST_INBOX_DOMAIN` (`team-invitee` stays for earlier runs' leftovers).
- * The persistent regular/admin/operator fixtures deliberately do NOT match:
+ * The persistent fixture identities deliberately do NOT match:
  * they are provisioned on purpose and re-used across runs. A real user can
  * never match this shape, which is the safety boundary of a sweep that deletes.
  */

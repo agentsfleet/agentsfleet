@@ -42,6 +42,15 @@ async fn simultaneous_dispatchers_deliver_every_answer_once() {
     let delivered = poster.delivered();
     assert_eq!(delivered.len(), DISPATCHERS);
     assert_eq!(delivered.into_iter().collect::<BTreeSet<_>>(), expected);
+    let expected_acks: BTreeSet<String> = (0..DISPATCHERS)
+        .map(|n| format!("1700000000{n:03}-0"))
+        .collect();
+    let acknowledgements = server.acks();
+    assert_eq!(acknowledgements.len(), DISPATCHERS);
+    assert_eq!(
+        acknowledgements.into_iter().collect::<BTreeSet<_>>(),
+        expected_acks
+    );
     assert!(poster.high_water() > 1 && poster.high_water() <= IN_FLIGHT_DELIVERIES);
     await_until("every concurrent lane to retire", || lanes.active() == 0).await;
     token.cancel();

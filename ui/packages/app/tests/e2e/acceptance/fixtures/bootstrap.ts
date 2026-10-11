@@ -23,6 +23,7 @@ const FIXTURE_FIRST_NAME: Record<FixtureKey, string> = {
   [FIXTURE_KEY.regular]: "Regular",
   [FIXTURE_KEY.admin]: "Admin",
   [FIXTURE_KEY.operator]: "Operator",
+  [FIXTURE_KEY.policyEditor]: "Policy Editor",
 };
 
 // The daemon opens an account only under a primary address the provider
