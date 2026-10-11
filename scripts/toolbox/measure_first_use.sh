@@ -57,7 +57,9 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -68,6 +70,7 @@ MIN_RUNS = 20
 REGRESSION_LIMIT = 1.10
 COMMAND_TIMEOUT_SECONDS = 120
 NANOSECONDS_PER_MILLISECOND = 1_000_000
+SHA256_PATTERN = r"[0-9a-f]{64}"
 DROP_CACHES = Path("/proc/sys/vm/drop_caches")
 NODE_TEST = """const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -99,6 +102,9 @@ def validate_baseline():
         return
     if not isinstance(baseline, dict):
         raise SystemExit("baseline must be a JSON object")
+    digest = baseline.get("image_sha256")
+    if not isinstance(digest, str) or re.fullmatch(SHA256_PATTERN, digest) is None:
+        raise SystemExit("baseline needs a SHA-256 image digest")
     if (baseline.get("arch") != platform.machine()
             or baseline.get("kernel") != platform.release()
             or baseline.get("cache") != "cold"
@@ -147,6 +153,28 @@ def percentile(samples, percent):
     return sorted(samples)[math.ceil(len(samples) * percent / 100) - 1]
 
 
+def publish_report(report):
+    def cancelled(signum, _frame):
+        raise SystemExit(128 + signum)
+
+    signal.signal(signal.SIGTERM, cancelled)
+    # Defer cancellation until the exclusively created file has a cleanup owner.
+    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    try:
+        descriptor, filename = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
+        temporary = Path(filename)
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+            with os.fdopen(descriptor, "w") as handle:
+                json.dump(report, handle, indent=2, sort_keys=True)
+                handle.write("\n")
+            os.replace(temporary, output)
+        finally:
+            temporary.unlink(missing_ok=True)
+    finally:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+
+
 validate_baseline()
 with image.open("rb") as handle:
     digest = hashlib.file_digest(handle, "sha256").hexdigest()
@@ -174,15 +202,7 @@ for name, command in STEPS.items():
             regressions.append(name)
     report["steps"][name] = step
 report["baseline_sha256"] = baseline["image_sha256"] if baseline else None
-descriptor, filename = tempfile.mkstemp(prefix=f".{output.name}.", suffix=".tmp", dir=output.parent)
-temporary = Path(filename)
-try:
-    with os.fdopen(descriptor, "w") as handle:
-        json.dump(report, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-    os.replace(temporary, output)
-finally:
-    temporary.unlink(missing_ok=True)
+publish_report(report)
 print(json.dumps({"report": str(output), "regressions": regressions}))
 sys.exit(1 if regressions else 0)
 PY
