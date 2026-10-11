@@ -1,6 +1,6 @@
 import { AGE_KEY, ago, entityColumns } from "../src/output/index.ts";
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer, Option, Redacted } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
 import {
   scheduleAddEffectFromArgs,
@@ -221,5 +221,33 @@ describe("schedule create/list/update/delete/sync effects", () => {
     expect(Exit.isSuccess(syncExit)).toBe(true);
     expect(syncCalls[0]?.method).toBe("POST");
     expect(syncCalls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}/sync`);
+  });
+});
+
+describe("each schedule refusal suggests a verb the parser accepts", () => {
+  // The rename moved the verbs and left these usage lines behind once, so a
+  // bad input answered with `usage: agentsfleet schedule rm ...`. A missing
+  // fleet id is what earns the usage line, and the parser answers for it
+  // before a handler runs, so the handler's own suggestion is driven here.
+  const MISSING_ID = undefined;
+  const RETIRED = ["add", "rm", "status"] as const;
+  const cases = [
+    ["create", scheduleAddEffectFromArgs(MISSING_ID, { cron: "0 9 * * *", message: "summarize" })],
+    ["list", scheduleListEffectFromArgs(MISSING_ID, {})],
+    ["update", scheduleUpdateEffectFromArgs(MISSING_ID, SCHEDULE_ID, { message: "again" })],
+    ["delete", scheduleRmEffectFromArgs(MISSING_ID, SCHEDULE_ID, {})],
+    ["sync", scheduleSyncEffectFromArgs(MISSING_ID, SCHEDULE_ID, {})],
+    ["show", scheduleStatusEffectFromArgs(MISSING_ID, SCHEDULE_ID, {})],
+  ] as const;
+
+  test.each(cases)("%s names its own spelling", async (verb, effect) => {
+    const calls: HttpRequestInput[] = [];
+    const exit = await Effect.runPromiseExit(provide(effect, newCapture(), calls, scheduleRow));
+    const failure = Exit.isFailure(exit) ? Option.getOrNull(Cause.findErrorOption(exit.cause)) : null;
+    const suggestion = (failure as { readonly suggestion?: string } | null)?.suggestion ?? "";
+
+    expect(calls).toEqual([]);
+    expect(suggestion).toContain(`agentsfleet schedule ${verb} `);
+    for (const retired of RETIRED) expect(suggestion).not.toContain(`agentsfleet schedule ${retired} `);
   });
 });

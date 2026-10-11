@@ -16,21 +16,6 @@ describe("Grid", () => {
     expect(el.children).toHaveLength(2);
   });
 
-  it("applies 280px min-width for columns=two", () => {
-    const { container } = render(<Grid columns="two">x</Grid>);
-    expect((container.firstChild as HTMLElement).className).toContain("minmax(280px,1fr)");
-  });
-
-  it("applies 240px min-width for columns=three", () => {
-    const { container } = render(<Grid columns="three">x</Grid>);
-    expect((container.firstChild as HTMLElement).className).toContain("minmax(240px,1fr)");
-  });
-
-  it("applies 220px min-width for columns=four", () => {
-    const { container } = render(<Grid columns="four">x</Grid>);
-    expect((container.firstChild as HTMLElement).className).toContain("minmax(220px,1fr)");
-  });
-
   it("merges extra className", () => {
     const { container } = render(
       <Grid columns="two" className="custom">

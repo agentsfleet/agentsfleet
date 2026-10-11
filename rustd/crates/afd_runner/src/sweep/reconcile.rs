@@ -98,6 +98,19 @@ const _: () = {
         ROW_LIMIT <= 128,
         "a batch this large holds row locks a live producer waits behind"
     );
+    // Every row this pass voids becomes a row the replay dispatcher
+    // re-appends, so a wider batch here would only deepen a backlog that
+    // dispatcher cannot drain any faster.
+    assert!(
+        ROW_LIMIT == super::replay::BATCH_LIMIT,
+        "a lost fleet's batch is the batch the replay dispatcher takes"
+    );
+    // Probing is how a lost fleet is FOUND, and a deployment can hold many more
+    // fleets with work in flight than one pass will ever need to repair.
+    assert!(
+        FLEET_LIMIT > ROW_LIMIT,
+        "the probe budget is wider than the per-fleet repair batch"
+    );
     // A zero interval would spin this pass against Postgres and the datastore
     // forever on an idle deployment.
     assert!(

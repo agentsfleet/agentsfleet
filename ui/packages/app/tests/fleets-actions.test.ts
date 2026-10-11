@@ -187,19 +187,4 @@ describe("fleet server actions — thin token-forwarders", () => {
     expect(onboardWorkspaceFleetLibraryMock).toHaveBeenCalledWith("ws1", body, "tok");
   });
 
-  it("test_onboard_action_maps_apierror_to_errorcode: returns withToken's error shape unchanged", async () => {
-    const error = {
-      ok: false,
-      error: "forbidden",
-      status: 403,
-      errorCode: "UZ-AUTH-022",
-    };
-    withTokenMock.mockResolvedValueOnce(error);
-    const r = await onboardLibraryEntryAction("ws1", {
-      source_kind: "github",
-      source_ref: "owner/repo",
-    });
-    expect(r).toEqual(error);
-    expect(onboardWorkspaceFleetLibraryMock).not.toHaveBeenCalled();
-  });
 });

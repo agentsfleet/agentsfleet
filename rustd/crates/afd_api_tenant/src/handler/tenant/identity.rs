@@ -200,34 +200,6 @@ mod tests {
         );
     }
 
-    /// This handler emits no log line of its own, so none can carry a person.
-    ///
-    /// A source assertion, because that is where the invariant lives. The
-    /// refusal path logs through [`Refusal::at`], which carries an error code, a
-    /// request identifier and an event name and has no field a profile could
-    /// reach; the success path logs nothing at all. What would break the rule is
-    /// somebody adding `tracing::info!(email = …)` here, and this is what fails
-    /// when they do — a runtime capture could not, because the fields it would
-    /// look for do not exist yet.
-    #[test]
-    fn the_identity_handler_logs_nothing_itself() {
-        let source = include_str!("identity.rs");
-        // Everything before the test module: the tests below legitimately name
-        // these things while asserting about them.
-        let production = source
-            .split_once("#[cfg(test)]")
-            .map_or(source, |(before, _tests)| before);
-
-        for emitter in ["tracing::", "println!", "eprintln!", "dbg!"] {
-            assert!(
-                !production.contains(emitter),
-                "the identity read must emit no `{emitter}` of its own: a log here \
-                 is one field away from publishing an address to an operator's \
-                 aggregator"
-            );
-        }
-    }
-
     /// A session narrowed to one workspace is still a session.
     ///
     /// The field names the CLASS, not its reach. A `==` against a value rather

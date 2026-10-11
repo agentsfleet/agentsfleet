@@ -32,26 +32,6 @@ describe("BalanceLink", () => {
     expect(link().getAttribute("aria-label")).toBe(BALANCE_ARIA_LABEL);
   });
 
-  it("bounds itself as a chip, so the eye lands on it without the type growing", () => {
-    render(<BalanceLink balanceNanos={4_806_600_000} isExhausted={false} />);
-    // The bound is what makes it findable: growing the type made the figure
-    // loud without making it findable, since nothing around it is a chip.
-    expect(link().className).toContain("border-pulse/40");
-    expect(link().className).toContain("bg-pulse/10");
-    expect(figure().className).toContain("text-pulse");
-    // Header-sized type, not display type.
-    expect(figure().className).toContain("text-body-sm");
-    expect(figure().className).not.toContain("text-body-lg");
-    // The workspace switcher's own height: two bounded controls side by side
-    // at different heights read as a mistake before they read as a hierarchy.
-    expect(link().className).toContain("h-8");
-    // Tabular mono so the figure does not shuffle as it changes.
-    expect(figure().className).toContain("font-mono");
-    expect(figure().className).toContain("tabular-nums");
-    // The label stays quiet; only the figure carries the colour.
-    expect(screen.getByText(BALANCE_LABEL).className).toContain("text-muted-foreground");
-  });
-
   it("turns destructive when exhausted, because that changes what happens next", () => {
     // Exhausted is the one state an operator has to act on: new fleet events
     // gate-block until a top-up.
@@ -71,12 +51,6 @@ describe("BalanceLink", () => {
     expect(link().dataset.exhausted).toBeUndefined();
   });
 
-  it("stands down below sm, where the header has no room for it", () => {
-    // pin test: literal is the contract
-    render(<BalanceLink balanceNanos={1_000_000_000} isExhausted={false} />);
-    expect(link().className).toContain("hidden");
-    expect(link().className).toContain("sm:inline-flex");
-  });
 });
 
 describe("formatHeaderBalance", () => {

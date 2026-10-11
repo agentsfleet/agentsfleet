@@ -3,8 +3,6 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/test_search.sh
-source "$SCRIPT_DIR/../../lib/test_search.sh"
 SCRIPT_UNDER_TEST="$SCRIPT_DIR/02_service_health.sh"
 passed=0
 failed=0
@@ -68,17 +66,17 @@ test_should_verify_development_services() {
   output="$(run_health dev)" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! rg --fixed-strings --quiet \
+  elif ! grep -Fq \
     'https://api-dev.agentsfleet.net/healthz' "$calls" ||
-    ! rg --fixed-strings --quiet \
+    ! grep -Fq \
       'https://api-dev.agentsfleet.net/readyz' "$calls" ||
-    ! rg --fixed-strings --quiet \
+    ! grep -Fq \
       'https://app-dev.agentsfleet.net/sign-in' "$calls"; then
     bad "$name" "development endpoints were not all checked"
-  elif ! rg --quiet -- '--config .* --fail .*app-dev.agentsfleet.net/sign-in' \
+  elif ! grep -Eq -- '--config .* --fail .*app-dev.agentsfleet.net/sign-in' \
     "$calls"; then
     bad "$name" "development sign-in omitted the deployment-protection config"
-  elif [[ "$output" == *bypass-secret* ]] || rg --quiet bypass-secret "$calls"; then
+  elif [[ "$output" == *bypass-secret* ]] || grep -Eq bypass-secret "$calls"; then
     bad "$name" "deployment-protection credential escaped into output or arguments"
   else
     ok "$name"
@@ -91,16 +89,16 @@ test_should_verify_production_services_without_bypass() {
   output="$(run_health prod)" || status=$?
   if [ "$status" -ne 0 ]; then
     bad "$name" "$output"
-  elif ! rg --fixed-strings --quiet \
+  elif ! grep -Fq \
     'https://api.agentsfleet.net/healthz' "$calls" ||
-    ! rg --fixed-strings --quiet \
+    ! grep -Fq \
       'https://api.agentsfleet.net/readyz' "$calls" ||
-    ! rg --fixed-strings --quiet \
+    ! grep -Fq \
       'https://app.agentsfleet.net/sign-in' "$calls"; then
     bad "$name" "production endpoints were not all checked"
-  elif rg --quiet 'vercel-bypass-app' "$calls"; then
+  elif grep -Eq 'vercel-bypass-app' "$calls"; then
     bad "$name" "production verification read the development bypass credential"
-  elif rg --quiet -- '--config .*app.agentsfleet.net/sign-in' "$calls"; then
+  elif grep -Eq -- '--config .*app.agentsfleet.net/sign-in' "$calls"; then
     bad "$name" "production sign-in used deployment protection"
   else
     ok "$name"

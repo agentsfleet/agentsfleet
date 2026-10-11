@@ -13,6 +13,12 @@
  * exactly).
  */
 
+import * as path from "node:path";
+
+// Where global setup caches the minted fixture JWTs. It must sit outside every
+// folder Playwright uploads as a CI artifact, or live session tokens ride along.
+export const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
+
 export const AGENTSFLEET_STATUS = {
   active: "active",
   paused: "paused",
@@ -73,12 +79,3 @@ export const SECOND_WORKSPACE_NAME = "fixture-secondary";
 // suite runs every test carrying this tag alone, after the parallel groups.
 export const FRAME_BUDGET_TAG = "@frame-budget";
 
-/**
- * `@clerk/nextjs` major version that the harness was tested against. A bump
- * of this dependency's major is intentionally a breaking change: clerkMiddleware
- * may tighten cookie/JWT validation (e.g. start enforcing real dev-browser
- * tokens, rotate publicMetadata embedding), which would silently break or
- * silently relax the fixture wire. _smoke.spec.ts asserts the installed major
- * equals this constant so a `bun install` bump surfaces immediately.
- */
-export const CLERK_NEXTJS_PINNED_MAJOR = 7;

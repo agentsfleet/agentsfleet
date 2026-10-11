@@ -1,7 +1,7 @@
 // Single-sourced PostHog product-event catalog. Event names and per-event prop
 // shapes live here and nowhere else — call sites import EVENTS and
-// captureProductEvent and never re-spell an event name (the analytics-events
-// grep test fails on drift).
+// captureProductEvent and never re-spell an event name (scripts/check_app_source.py,
+// rule app-event-literal, fails on drift).
 //
 // Props discipline: IDs, names, and enum values only. Never a token, raw API
 // key, credential payload, or free-text typed into a sensitive field.

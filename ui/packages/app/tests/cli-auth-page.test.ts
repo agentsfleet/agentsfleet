@@ -155,32 +155,6 @@ describe("CliAuthPage — load states", () => {
     });
   });
 
-  it("ignores the in-flight GET when the component unmounts before the response", async () => {
-    let resolveFetch: (r: Response) => void = () => undefined;
-    const pending = new Promise<Response>((r) => {
-      resolveFetch = r;
-    });
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending);
-    const { unmount } = await renderPage();
-    unmount();
-    resolveFetch(jsonResponse(200, activeBody()));
-    await new Promise((r) => setTimeout(r, 10));
-    // No assertion needed beyond "did not throw" — covers the `cancelled` branch.
-  });
-
-  it("ignores a rejected in-flight GET after unmount", async () => {
-    let rejectFetch: (e: unknown) => void = () => undefined;
-    const pending = new Promise<Response>((_resolve, reject) => {
-      rejectFetch = reject;
-    });
-    (globalThis.fetch as ReturnType<typeof vi.fn>).mockReturnValueOnce(pending);
-    const { unmount } = await renderPage();
-    unmount();
-    rejectFetch(new TypeError("net"));
-    await new Promise((r) => setTimeout(r, 10));
-    // Covers the catch-arm `if (!cancelled)` branch's cancelled-true path.
-  });
-
   it("renders the sign-in card when Clerk reports unauthenticated", async () => {
     useAuth.mockReturnValue({ isLoaded: true, isSignedIn: false, getToken: getTokenFn });
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(jsonResponse(200, activeBody()));

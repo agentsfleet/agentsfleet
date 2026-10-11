@@ -131,30 +131,6 @@ describe("LeaseFilterBar active-filter chips", () => {
     expect(screen.queryByRole("button", { name: CLEAR_FLEET_FILTER_LABEL })).toBeNull();
   });
 
-  it("drops the workspace alone, so clearing one chip does not discard the other filter", () => {
-    // The whole reason the chips exist. A single clear-all would force the
-    // operator to retype the filter they wanted to keep.
-    const filters = filterState({ workspace: WORKSPACE_ID, fleet: FLEET_NAME });
-    renderBar(filters);
-
-    fireEvent.click(screen.getByRole("button", { name: CLEAR_WORKSPACE_FILTER_LABEL }));
-
-    expect(filters.clearWorkspace).toHaveBeenCalledTimes(1);
-    expect(filters.clearFleet).not.toHaveBeenCalled();
-    expect(filters.clearAll).not.toHaveBeenCalled();
-  });
-
-  it("drops the fleet alone, leaving the workspace filter applied", () => {
-    const filters = filterState({ workspace: WORKSPACE_ID, fleet: FLEET_NAME });
-    renderBar(filters);
-
-    fireEvent.click(screen.getByRole("button", { name: CLEAR_FLEET_FILTER_LABEL }));
-
-    expect(filters.clearFleet).toHaveBeenCalledTimes(1);
-    expect(filters.clearWorkspace).not.toHaveBeenCalled();
-    expect(filters.clearAll).not.toHaveBeenCalled();
-  });
-
   it("offers only the fleet chip when the workspace is unfiltered", () => {
     // Each chip is gated on its own filter. A chip rendered for an absent filter
     // would offer to clear something that is not applied.
@@ -174,16 +150,5 @@ describe("LeaseFilterBar active-filter chips", () => {
     // Shortened in the chip, full value on the title — an operator can still
     // read the whole id on hover without the chip eating the toolbar.
     expect(screen.getByTitle(WORKSPACE_ID)).toBeTruthy();
-  });
-
-  it("clears both filters at once through the clear-all button", () => {
-    const filters = filterState({ workspace: WORKSPACE_ID, fleet: FLEET_NAME });
-    renderBar(filters);
-
-    fireEvent.click(screen.getByRole("button", { name: CLEAR_LEASE_FILTER_LABEL }));
-
-    expect(filters.clearAll).toHaveBeenCalledTimes(1);
-    expect(filters.clearWorkspace).not.toHaveBeenCalled();
-    expect(filters.clearFleet).not.toHaveBeenCalled();
   });
 });

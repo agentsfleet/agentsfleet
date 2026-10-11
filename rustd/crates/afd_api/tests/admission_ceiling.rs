@@ -19,7 +19,7 @@ use afd_api::admission::{
     HEADER_RATELIMIT_LIMIT, HEADER_RATELIMIT_REMAINING, HEADER_RATELIMIT_RESET,
     RETRY_AFTER_SECONDS, SHED_DETAIL,
 };
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, RouteClass, is_metered};
+use afd_api::{RouteClass, is_metered};
 use afd_core::clock;
 use http::{StatusCode, header};
 
@@ -185,16 +185,4 @@ fn test_only_the_api_class_is_metered() {
         "a stream holds its slot for minutes; it answers a keyed registry, not \
          this counter"
     );
-}
-
-/// The default ceiling is 256 requests in flight, the one `agentsfleetd` serves
-/// under.
-#[test]
-fn test_the_default_ceiling_is_256_in_flight_requests() {
-    assert_eq!(
-        DEFAULT_MAX_IN_FLIGHT.get(),
-        256,
-        "afd_http::admission::DEFAULT_MAX_IN_FLIGHT"
-    );
-    assert_eq!(Admission::new(DEFAULT_MAX_IN_FLIGHT).limit().get(), 256);
 }

@@ -10,6 +10,9 @@ import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
 import { bufferStream, cliEnv } from "./helpers-cli-state.ts";
+import { WS_ID, authedScope, jsonResponse, withMockApi, type MockRoutes } from "./helpers-fleet-install.ts";
+
+const LIBRARY = "library";
 
 const RENAMED = [
   ["add", "create"],
@@ -50,47 +53,52 @@ describe("the library verbs match the rest of the surface", () => {
   });
 });
 
-describe("no usage line names a verb the parser refuses", () => {
-  // The schedule rename moved the verbs and left the usage lines behind, so a
-  // bad input answered with `usage: agentsfleet schedule rm ...` — a sentence
-  // naming the one spelling the parser had just stopped accepting. A
-  // suggestion that cannot be typed is worse than none.
-  //
-  // Read from source rather than driven through the handler: every one of
-  // these sentences sits behind a credential check, so invoking the verb in a
-  // signed-out fixture answers with an auth refusal and grades nothing.
-  // A plain array, not `as const`: `test.each` over a readonly tuple widens
-  // its callback argument to `unknown`.
-  const MODULES: string[] = [
-    "fleet_library.ts",
-    "fleet_library_create.ts",
-    "fleet_library_delete.ts",
-    "fleet_library_list.ts",
+describe("every hint a library verb prints names a verb the parser accepts", () => {
+  // The schedule rename moved the verbs and left the hints behind, so a bad
+  // input answered with a sentence naming the one spelling the parser had
+  // just stopped accepting. Each hint sits behind a credential check, so the
+  // verbs run signed in against a mock API, and every `agentsfleet library
+  // <verb>` they print must have a help page of its own.
+  const ENTRY_ID = "01900000-0000-7000-8000-0000000aa001";
+  const GALLERY_PATH = `/v1/workspaces/${WS_ID}/fleet-libraries`;
+  const OWNED_PATH = `/v1/workspaces/${WS_ID}/library-entries`;
+  const HINTED_VERB = /agentsfleet library ([a-z-]+)/g;
+  const STATUS_OK = 200;
+  const STATUS_NO_CONTENT = 204;
+  const ENTRY = { id: ENTRY_ID, name: "github-pr-reviewer", visibility: "platform", source_kind: "github" };
+  const listing = (items: ReadonlyArray<unknown>) => () => jsonResponse(STATUS_OK, { items });
+
+  const signedIn = (argv: ReadonlyArray<string>, routes: MockRoutes) =>
+    authedScope(() =>
+      withMockApi(routes, async (apiUrl) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        out.stream.isTTY = true;
+        await runCli([...argv], { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) });
+        return `${out.read()}${err.read()}`;
+      }),
+    );
+
+  const cases: ReadonlyArray<readonly [string, ReadonlyArray<string>, MockRoutes]> = [
+    ["an empty gallery", [LIBRARY], { [`GET ${GALLERY_PATH}`]: listing([]) }],
+    ["an empty workspace", [LIBRARY, "list"], { [`GET ${OWNED_PATH}`]: listing([]) }],
+    ["a listed entry", [LIBRARY, "list"], { [`GET ${OWNED_PATH}`]: listing([ENTRY]) }],
+    ["a removed entry", [LIBRARY, "delete", ENTRY_ID], {
+      [`DELETE ${OWNED_PATH}/${ENTRY_ID}`]: () => new Response(null, { status: STATUS_NO_CONTENT }),
+    }],
+    ["a create with no source", [LIBRARY, "create"], {}],
   ];
 
-  test.each(MODULES)("%s names no retired library verb", async (module) => {
-    const { readFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const text = readFileSync(join(import.meta.dir, "..", "src", "commands", module), "utf8");
-    for (const [retired] of RENAMED) {
-      expect(text).not.toContain(`agentsfleet library ${retired}`);
-    }
-  });
+  test.each(cases)("%s", async (_label, argv, routes) => {
+    const output = await signedIn(argv, routes);
+    const hinted = [...output.matchAll(HINTED_VERB)].map(([, verb]) => verb ?? "");
 
-  test("the dashboard's empty state names a verb the CLI accepts", async () => {
-    // The hint an operator reads when the collection is empty is where a
-    // retired spelling survives longest, because no parser refuses a string,
-    // and this copy lives in the app rather than the CLI.
-    const { readFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const copy = join(
-      import.meta.dir, "..", "..", "ui", "packages", "app", "app",
-      "(dashboard)", "w", "[workspaceId]", "library", "copy.ts",
-    );
-    const text = readFileSync(copy, "utf8");
-    for (const [retired] of RENAMED) {
-      expect(text).not.toContain(`agentsfleet library ${retired}`);
+    expect(hinted.length).toBeGreaterThan(0);
+    // An unknown verb's --help falls back to the group's page, whose usage
+    // line reads `library <subcommand>`; a real verb's page names itself.
+    for (const verb of new Set(hinted)) {
+      const { stdout } = await help([LIBRARY, verb, "--help"]);
+      expect(stdout).toContain(`agentsfleet library ${verb} `);
     }
-    expect(text).toContain("agentsfleet library create");
   });
 });

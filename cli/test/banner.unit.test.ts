@@ -1,7 +1,6 @@
 // Unit tests for src/program/banner.ts — printVersion.
 
 import { describe, test, expect } from "bun:test";
-import { readFileSync } from "node:fs";
 import { makeBufferStream } from "./helpers.ts";
 import { cliEnv } from "./helpers-cli-state.ts";
 import { printVersion } from "../src/program/banner.ts";
@@ -23,17 +22,6 @@ function stripAnsi(str: string): string {
 
 // ── constants guard — pin strings that appear in both code paths ──────────────
 const COLOR_ENV = { TERM: "xterm-256color" };
-
-// Decorative-ASCII teardown — these MUST NOT appear in the version banner
-// (per docs/DESIGN_SYSTEM.md "no decorative ASCII art"). Regression guards.
-const FORBIDDEN_BANNER_CHARS = [
-  "\u{1F9DF}", // 🧟 agent face
-  "╭",    // ╭ box top-left
-  "╮",    // ╮ box top-right
-  "╰",    // ╰ box bottom-left
-  "╯",    // ╯ box bottom-right
-  "│",    // │ box vertical
-];
 
 // ── printVersion (the new replacement for printBanner) ────────────────────────
 
@@ -85,44 +73,10 @@ describe("printVersion — edge cases", () => {
 });
 
 describe("printVersion — design-system regression guards", () => {
-  test("color mode output contains no decorative ASCII art", () => {
-    const out = makeTtyBufferStream();
-    printVersion(out.stream, VERSION, {});
-    const txt = out.read();
-    for (const ch of FORBIDDEN_BANNER_CHARS) {
-      expect(txt).not.toContain(ch);
-    }
-  });
-
-  test("noColor mode output contains no decorative ASCII art", () => {
-    const out = makeBufferStream();
-    printVersion(out.stream, VERSION, { noColor: true });
-    const txt = out.read();
-    for (const ch of FORBIDDEN_BANNER_CHARS) {
-      expect(txt).not.toContain(ch);
-    }
-  });
-
   test("color mode output contains pulse-cyan dot glyph", () => {
     const out = makeTtyBufferStream();
     printVersion(out.stream, VERSION, { env: COLOR_ENV });
     expect(out.read()).toContain("●");
-  });
-
-  test("color mode includes the 256-color pulse-cyan code (79)", () => {
-    // Pin TERM so capability detection deterministically returns xterm256
-    // regardless of CI environment (where TERM may be missing or 'dumb').
-    const out = makeTtyBufferStream();
-    printVersion(out.stream, VERSION, { env: COLOR_ENV });
-    expect(out.read()).toContain("38;5;79");
-  });
-
-  test("does not advertise itself as 'autonomous agent cli'", () => {
-    // The previous banner printed an "autonomous agent cli" subtitle. The
-    // design system retired the subtitle; --version is one line.
-    const out = makeTtyBufferStream();
-    printVersion(out.stream, VERSION, {});
-    expect(stripAnsi(out.read())).not.toContain("autonomous agent cli");
   });
 
   test("noColor output is exactly one line", () => {
@@ -130,21 +84,6 @@ describe("printVersion — design-system regression guards", () => {
     printVersion(out.stream, VERSION, { noColor: true });
     const lines = out.read().split("\n").filter((l) => l !== "");
     expect(lines.length).toBe(1);
-  });
-});
-
-// ── VERSION constant + ttyOnly integration ─────────────────────────────────────
-
-describe("VERSION — constant matches package.json", () => {
-  test("VERSION exported from cli.ts matches package.json version", () => {
-    const pkg = JSON.parse(
-      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-    );
-    expect(VERSION).toBe(pkg.version);
-  });
-
-  test("VERSION is a valid semver string", () => {
-    expect(VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 });
 

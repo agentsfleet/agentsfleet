@@ -4,8 +4,6 @@
 import { describe, test, expect } from "bun:test";
 import { Effect, Layer } from "effect";
 import {
-  makeStdioOutput,
-  OUTPUT_FORMAT,
   Output,
   outputFromStreamsLayer,
 } from "../src/services/output.ts";
@@ -205,21 +203,5 @@ describe("Output service", () => {
     expect(text).toContain("Name");
     expect(text).toContain("alpha");
     expect(text).toContain("ws-2");
-  });
-});
-
-describe("makeStdioOutput", () => {
-  test("factory composes the live shape from a stream pair", () => {
-    const stdout = new BufStream();
-    const stderr = new BufStream();
-    const shape = makeStdioOutput({
-      stdout: stdout as unknown as NodeJS.WritableStream,
-      stderr: stderr as unknown as NodeJS.WritableStream,
-      format: OUTPUT_FORMAT.text,
-    });
-    expect(typeof shape.intro).toBe("function");
-    expect(typeof shape.printJson).toBe("function");
-    expect(typeof shape.printSection).toBe("function");
-    expect(typeof shape.printKeyValue).toBe("function");
   });
 });

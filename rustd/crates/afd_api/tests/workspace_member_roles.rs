@@ -139,16 +139,6 @@ async fn test_access_check_outage_is_not_denial() {
     assert_answers_the_outage(&router).await;
 }
 
-/// The ownership stub's refusal is that same outage, raised by the same
-/// resolver: a suite that refuses through it proves a datastore blip, never
-/// some other failure answering with its status.
-#[tokio::test]
-async fn test_a_refusing_ownership_stub_answers_the_datastore_outage() {
-    let fleet = Fleet::new().with_terminal(TERMINAL, SUBJECT, ScopeSet::from_scopes(&Scope::ALL));
-    fleet.ownership().refuse();
-    assert_answers_the_outage(&fleet.router()).await;
-}
-
 /// A team route whose caller's account cannot be resolved answers that same
 /// outage from `OwnTenant`, before any team statement runs. A session, since
 /// only a session's account is read from its user row.

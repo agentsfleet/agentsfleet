@@ -1,151 +1,65 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, waitFor } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
-// ── §5 — interaction-only islands are code-split via next/dynamic ───────────
-//
-// Each island below is rendered only on user interaction (a dialog opened from
-// a trigger, or a form inside a collapsed disclosure). Wrapping it in a
-// `next/dynamic` client shim keeps its chunk out of the route's *initial* JS
-// bundle: the call site imports the shim, never the raw component, so the
-// component's code is fetched after hydration instead of shipped up front.
-//
-// 5.1 is a source-level assertion (the deterministic, build-free equivalent of
-// a build-manifest check — the production `next build` confirms the actual
-// chunk split). 5.2 proves the shim mounts its inner component. 5.3 guards the
-// assistant-ui chat surface's on-brand styling.
+// Interaction-only islands load through a `next/dynamic` shim. Each shim's
+// loader must resolve to the right inner component and hand it every prop the
+// call site passed; a `.then` mapper reading the wrong export, or a shim that
+// drops props, renders nothing or the wrong thing here.
 
-const APP_ROOT = resolve(__dirname, "..");
-const SHIM_DIR = "components/domain/island-dynamic";
-
-function read(rel: string): string {
-  return readFileSync(resolve(APP_ROOT, rel), "utf8");
-}
-
-type Island = {
-  name: string;
-  shim: string; // shim filename under SHIM_DIR (no extension)
-  rawImportFragment: string; // path fragment the shim's dynamic import targets
-  callSite: string; // file that renders the island
-  rawComponent: string; // raw component basename (for the static-import guard)
-};
-
-const ISLANDS: Island[] = [
-  {
-    name: "EditSecretDialog",
-    shim: "EditSecretDialogDynamic",
-    rawImportFragment: "secrets/components/EditSecretDialog",
-    callSite: "app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx",
-    rawComponent: "EditSecretDialog",
-  },
-  {
-    name: "RenameSecretDialog",
-    shim: "RenameSecretDialogDynamic",
-    rawImportFragment: "secrets/components/RenameSecretDialog",
-    callSite: "app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx",
-    rawComponent: "RenameSecretDialog",
-  },
-  {
-    name: "AddSecretForm",
-    shim: "AddSecretFormDynamic",
-    rawImportFragment: "secrets/components/AddSecretForm",
-    // Secrets is its own page now; the add
-    // form mounts inside AddSecretDialog, not the page directly.
-    callSite: "app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretDialog.tsx",
-    rawComponent: "AddSecretForm",
-  },
-  {
-    name: "CreateWorkspaceDialog",
-    shim: "CreateWorkspaceDialogDynamic",
-    rawImportFragment: "layout/CreateWorkspaceDialog",
-    callSite: "components/layout/WorkspaceSwitcherMenu.tsx",
-    rawComponent: "CreateWorkspaceDialog",
-  },
-  {
-    name: "CreateApiKeyDialog",
-    shim: "CreateApiKeyDialogDynamic",
-    rawImportFragment: "settings/api-keys/components/CreateApiKeyDialog",
-    callSite: "app/(dashboard)/settings/api-keys/components/ApiKeysView.tsx",
-    rawComponent: "CreateApiKeyDialog",
-  },
-  {
-    name: "InviteDialog",
-    shim: "InviteDialogDynamic",
-    rawImportFragment: "settings/members/components/InviteDialog",
-    callSite: "app/(dashboard)/settings/members/components/MembersView.tsx",
-    rawComponent: "InviteDialog",
-  },
-  {
-    name: "AddRunnerDialog",
-    shim: "AddRunnerDialogDynamic",
-    rawImportFragment: "admin/runners/components/AddRunnerDialog",
-    callSite: "app/(dashboard)/admin/runners/components/RunnersView.tsx",
-    rawComponent: "AddRunnerDialog",
-  },
-  {
-    name: "EditPolicyDialog",
-    shim: "EditPolicyDialogDynamic",
-    rawImportFragment: "admin/runners/components/EditPolicyDialog",
-    callSite: "app/(dashboard)/admin/runners/[runnerId]/components/RunnerHeader.tsx",
-    rawComponent: "EditPolicyDialog",
-  },
-];
-
-describe("interaction-only islands are excluded from the route's initial chunk", () => {
-  for (const island of ISLANDS) {
-    it(`${island.name}: shim pulls the component in via next/dynamic`, () => {
-      const shim = read(`${SHIM_DIR}/${island.shim}.tsx`);
-      expect(shim).toContain("next/dynamic");
-      // The dynamic import (not a static top-level import) targets the component.
-      expect(shim).toMatch(new RegExp(`import\\(\\s*["'][^"']*${island.rawImportFragment}["']`));
-      expect(shim).toContain("ssr: false");
-    });
-
-    it(`${island.name}: call site imports the shim, never the raw component statically`, () => {
-      const src = read(island.callSite);
-      // It imports the dynamic shim …
-      expect(src).toContain(`${SHIM_DIR}/${island.shim}`);
-      // … and has no static `import X from "…/<RawComponent>"` (the trailing
-      // quote ensures the shim path, which ends in `…Dynamic"`, never matches).
-      expect(src).not.toMatch(
-        new RegExp(`import\\s+\\w+\\s+from\\s+["'][^"']*${island.rawComponent}["']`),
-      );
-    });
-  }
+const { INNER_ATTR, PROPS_ATTR, innerStub } = vi.hoisted(() => {
+  const INNER_ATTR = "data-inner";
+  const PROPS_ATTR = "data-prop-keys";
+  type CreateElement = (type: string, props: Record<string, string>) => unknown;
+  // Each stub names the module it stands in for and lists the props it got.
+  const innerStub = (name: string, createElement: CreateElement) =>
+    function InnerStub(props: Record<string, unknown>) {
+      return createElement("div", { [INNER_ATTR]: name, [PROPS_ATTR]: Object.keys(props).sort().join(",") });
+    };
+  return { INNER_ATTR, PROPS_ATTR, innerStub };
 });
 
-// Stub the heavy inner modules so calling the dynamic loader (below) resolves
-// to a light component without pulling clerk / design-system / form deps.
-vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/RenameSecretDialog", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", () => ({ default: () => null }));
-vi.mock("@/components/layout/CreateWorkspaceDialog", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/settings/members/components/InviteDialog", () => ({ default: () => null }));
-vi.mock("@/app/(dashboard)/admin/runners/components/AddRunnerDialog", () => ({ default: () => null }));
-// Named export — the shim's `.then` mapper reads `mod.EditPolicyDialog`, not `default`.
-vi.mock("@/app/(dashboard)/admin/runners/components/EditPolicyDialog", () => ({ EditPolicyDialog: () => null }));
+// Each stub keeps the real module's export shape: every inner is a default
+// export except EditPolicyDialog, which is named.
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog", async () => ({
+  default: innerStub("EditSecretDialog", (await import("react")).createElement),
+}));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/RenameSecretDialog", async () => ({
+  default: innerStub("RenameSecretDialog", (await import("react")).createElement),
+}));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", async () => ({
+  default: innerStub("AddSecretForm", (await import("react")).createElement),
+}));
+vi.mock("@/components/layout/CreateWorkspaceDialog", async () => ({
+  default: innerStub("CreateWorkspaceDialog", (await import("react")).createElement),
+}));
+vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", async () => ({
+  default: innerStub("CreateApiKeyDialog", (await import("react")).createElement),
+}));
+vi.mock("@/app/(dashboard)/settings/members/components/InviteDialog", async () => ({
+  default: innerStub("InviteDialog", (await import("react")).createElement),
+}));
+vi.mock("@/app/(dashboard)/admin/runners/components/AddRunnerDialog", async () => ({
+  default: innerStub("AddRunnerDialog", (await import("react")).createElement),
+}));
+vi.mock("@/app/(dashboard)/admin/runners/components/EditPolicyDialog", async () => ({
+  EditPolicyDialog: innerStub("EditPolicyDialog", (await import("react")).createElement),
+}));
 
-// 5.2 — the shim mounts its inner component after the dynamic-load tick. Mock
-// next/dynamic so the mount path is deterministic without the Next.js loader
-// (mirrors tests/fleet-thread-dynamic.test.ts).
+// A deterministic stand-in for the Next.js loader: await the shim's own
+// factory and render whatever component it resolves to, with the props given.
 vi.mock("next/dynamic", () => {
-  type Loader = () => Promise<unknown>;
+  type Loaded = { default: React.ComponentType<Record<string, unknown>> };
   type LoaderOpts = { loading?: () => React.ReactNode };
   return {
-    default: (loader: Loader, opts: LoaderOpts) =>
-      function MockedDynamic() {
-        const [ready, setReady] = React.useState(false);
+    default: (loader: () => Promise<Loaded>, opts: LoaderOpts) =>
+      function MockedDynamic(props: Record<string, unknown>) {
+        const [inner, setInner] = React.useState<Loaded["default"] | null>(null);
         React.useEffect(() => {
-          // Exercise the real import factory + its `.then` default-mapper so the
-          // shim's loader is covered (mirrors tests/fleet-thread-dynamic.test.ts).
-          void loader();
-          setReady(true);
+          void loader().then((mod) => setInner(() => mod.default));
         }, []);
-        if (!ready && opts.loading) return opts.loading();
-        return React.createElement("div", { "data-testid": "mounted-inner" }, "inner");
+        if (!inner) return opts.loading ? opts.loading() : null;
+        return React.createElement(inner, props);
       },
   };
 });
@@ -161,12 +75,13 @@ import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPoli
 
 afterEach(() => cleanup());
 
-describe("dynamic island shims mount their inner component", () => {
+describe("dynamic island shims load their own inner component with the caller's props", () => {
   const noop = () => {};
 
-  const cases: Array<[string, React.ReactElement]> = [
+  const cases: Array<[string, string, React.ReactElement]> = [
     [
       "EditCredentialDialogDynamic",
+      "EditSecretDialog",
       React.createElement(EditCredentialDialogDynamic, {
         workspaceId: "ws_1",
         name: "github",
@@ -176,6 +91,7 @@ describe("dynamic island shims mount their inner component", () => {
     ],
     [
       "RenameCredentialDialogDynamic",
+      "RenameSecretDialog",
       React.createElement(RenameCredentialDialogDynamic, {
         workspaceId: "ws_1",
         name: "github",
@@ -186,10 +102,12 @@ describe("dynamic island shims mount their inner component", () => {
     ],
     [
       "AddCredentialFormDynamic",
+      "AddSecretForm",
       React.createElement(AddCredentialFormDynamic, { workspaceId: "ws_1" }),
     ],
     [
       "CreateWorkspaceDialogDynamic",
+      "CreateWorkspaceDialog",
       React.createElement(CreateWorkspaceDialogDynamic, {
         open: true,
         pending: false,
@@ -200,18 +118,22 @@ describe("dynamic island shims mount their inner component", () => {
     ],
     [
       "CreateApiKeyDialogDynamic",
+      "CreateApiKeyDialog",
       React.createElement(CreateApiKeyDialogDynamic, { onCreated: noop }),
     ],
     [
       "InviteDialogDynamic",
+      "InviteDialog",
       React.createElement(InviteDialogDynamic, { onSettled: noop }),
     ],
     [
       "AddRunnerDialogDynamic",
+      "AddRunnerDialog",
       React.createElement(AddRunnerDialogDynamic, { onCreated: noop }),
     ],
     [
       "EditPolicyDialogDynamic",
+      "EditPolicyDialog",
       React.createElement(EditPolicyDialogDynamic, {
         runnerId: "run_1",
         current: null,
@@ -220,31 +142,14 @@ describe("dynamic island shims mount their inner component", () => {
     ],
   ];
 
-  for (const [name, element] of cases) {
-    it(`${name} mounts after the dynamic-load tick`, async () => {
-      const { findByTestId } = render(element);
-      await waitFor(async () => {
-        expect(await findByTestId("mounted-inner")).toBeTruthy();
+  for (const [shim, inner, element] of cases) {
+    it(`${shim} renders ${inner} with every prop it was given`, async () => {
+      const { container } = render(element);
+      await waitFor(() => {
+        expect(container.querySelector(`[${INNER_ATTR}]`)?.getAttribute(INNER_ATTR)).toBe(inner);
       });
+      const given = Object.keys(element.props as Record<string, unknown>).sort().join(",");
+      expect(container.querySelector(`[${INNER_ATTR}]`)?.getAttribute(PROPS_ATTR)).toBe(given);
     });
   }
-});
-
-describe("FleetThread uses design-system tokens, not raw assistant-ui defaults", () => {
-  const source = [
-    read("components/domain/FleetThread.tsx"),
-    read("components/domain/FleetThreadViewport.tsx"),
-  ].join("\n");
-
-  it("styles with design-system token utilities", () => {
-    // Spacing + surface + text tokens from @agentsfleet/design-system — not raw
-    // pixel/hex values or assistant-ui's stock theme.
-    expect(source).toContain("bg-background");
-    expect(source).toContain("border-border");
-    expect(source).toContain("text-muted-foreground");
-  });
-
-  it("carries no raw `aui-`-prefixed assistant-ui theme classes", () => {
-    expect(source).not.toMatch(/className=["'][^"']*\baui-/);
-  });
 });

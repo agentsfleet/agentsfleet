@@ -1,13 +1,11 @@
 // Unit tests for src/output/format.js — table, key-value, section,
-// help-heading, evidence-line rendering. Width-aware, alignment-aware.
-// Pulse-cyan currency: only formatHelpHeading consumes pulse here.
+// evidence-line rendering. Width-aware, alignment-aware.
 
 import { describe, test, expect } from "bun:test";
 import {
   formatTable,
   formatKeyValue,
   formatSection,
-  formatHelpHeading,
   formatEvidence,
   cell,
   EMPTY_CELL,
@@ -35,18 +33,6 @@ describe("cell — one glyph for nothing, across every table", () => {
     expect(cell(null)).toBe(EMPTY_CELL);
     expect(cell(undefined)).toBe(EMPTY_CELL);
     expect(cell("")).toBe(EMPTY_CELL);
-  });
-});
-
-describe("formatHelpHeading — the only pulse-currency callsite in format.js", () => {
-  test("emits pulse-cyan + bold in xterm256", () => {
-    expect(formatHelpHeading("USAGE", STYLED)).toBe(
-      `${ESC}[1;38;5;79mUSAGE${ESC}[0m`,
-    );
-  });
-
-  test("emits plain text in 'none' mode", () => {
-    expect(formatHelpHeading("USAGE", PLAIN)).toBe("USAGE");
   });
 });
 

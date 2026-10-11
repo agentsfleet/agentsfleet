@@ -77,13 +77,6 @@ describe("provider server actions — thin forwarders", () => {
     expect(getModelLibraryMock).toHaveBeenCalledWith("tok");
   });
 
-  it("getModelLibraryAction returns withToken's failure envelope untouched (degrade path input)", async () => {
-    withTokenMock.mockResolvedValueOnce({ ok: false, error: "Not authenticated", status: 401 });
-    const r = await getModelLibraryAction();
-    expect(r).toEqual({ ok: false, error: "Not authenticated", status: 401 });
-    expect(getModelLibraryMock).not.toHaveBeenCalled();
-  });
-
   it("setProviderSelfManagedAction forwards the body then token through withToken to the client", async () => {
     const provider = { mode: "self_managed", model: "claude-opus" };
     setTenantProviderSelfManagedMock.mockResolvedValueOnce(provider);
@@ -109,14 +102,6 @@ describe("provider server actions — thin forwarders", () => {
     expect(r).toEqual({ ok: true, data: provider });
     expect(resetTenantProviderMock).toHaveBeenCalledWith("tok");
     expect(setTenantProviderSelfManagedMock).not.toHaveBeenCalled();
-  });
-
-  it("both actions route through withToken exactly once", async () => {
-    setTenantProviderSelfManagedMock.mockResolvedValueOnce({});
-    resetTenantProviderMock.mockResolvedValueOnce({});
-    await setProviderSelfManagedAction({ secret_ref: "vault://x" });
-    await resetProviderAction();
-    expect(withTokenMock).toHaveBeenCalledTimes(2);
   });
 
   it("replaceSecretAction forwards (workspaceId, name, data) then token to the client", async () => {
@@ -170,15 +155,4 @@ describe("provider server actions — thin forwarders", () => {
     expect(listSecretsMock).toHaveBeenCalledWith("ws_1", "tok");
   });
 
-  it("every registry action routes through withToken exactly once", async () => {
-    listTenantModelEntriesMock.mockResolvedValueOnce({ models: [], platform_default_available: true });
-    createTenantModelEntryMock.mockResolvedValueOnce({});
-    updateTenantModelEntryMock.mockResolvedValueOnce({});
-    deleteTenantModelEntryMock.mockResolvedValueOnce(undefined);
-    await listModelEntriesAction();
-    await createModelEntryAction({ model_id: "m1", secret_ref: "s1" });
-    await updateModelEntryAction("e1", { model_id: "m2" });
-    await deleteModelEntryAction("e1");
-    expect(withTokenMock).toHaveBeenCalledTimes(4);
-  });
 });

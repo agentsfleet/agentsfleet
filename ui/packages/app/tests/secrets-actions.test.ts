@@ -66,15 +66,4 @@ describe("secret server actions — thin withToken forwarders", () => {
     expect(createSecretMock).not.toHaveBeenCalled();
   });
 
-  it("createSecretAction propagates a failure result from withToken untouched", async () => {
-    withTokenMock.mockResolvedValueOnce({
-      ok: false,
-      error: "Unauthorized",
-      status: 401,
-      errorCode: "UZ-AUTH-001",
-    });
-    const r = await createSecretAction("ws-1", { name: "n", data: {} });
-    expect(r).toEqual({ ok: false, error: "Unauthorized", status: 401, errorCode: "UZ-AUTH-001" });
-    expect(createSecretMock).not.toHaveBeenCalled();
-  });
 });

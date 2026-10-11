@@ -8,6 +8,8 @@ mod integration_hold_plans;
 mod integration_reclaim;
 #[path = "integration_reclaim_faults.rs"]
 mod integration_reclaim_faults;
+#[path = "integration_reclaim_paging.rs"]
+mod integration_reclaim_paging;
 #[path = "integration_repair_dispatch.rs"]
 mod integration_repair_dispatch;
 #[path = "integration_repair_faults.rs"]

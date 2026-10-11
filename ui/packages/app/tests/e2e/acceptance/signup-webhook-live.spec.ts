@@ -6,10 +6,10 @@
  * `user.created` webhook to the configured backend, and the test waits for
  * the backend's Clerk metadata writeback before checking the dashboard.
  *
- * Skipped by default:
- * - local cannot receive Clerk's hosted webhook without a tunnel.
- * - production signup mutates real identity + tenant data, so it requires a
- *   second explicit opt-in.
+ * Runs against every deployed stack the acceptance lane targets. Skipped:
+ * - locally, which cannot receive Clerk's hosted webhook without a tunnel.
+ * - against production unless opted in, since signup there mutates real
+ *   identity and tenant data.
  */
 import * as crypto from "node:crypto";
 import { expect, test } from "@playwright/test";
@@ -18,7 +18,6 @@ import { signUpAs } from "./fixtures/signup";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 
 const PASSWORD = "SignupFixture!2026-live";
-const LIVE_WEBHOOK_FLAG = "E2E_LIVE_SIGNUP_WEBHOOK";
 const PROD_WEBHOOK_FLAG = "E2E_ALLOW_PROD_SIGNUP_WEBHOOK";
 const FLOW_TIMEOUT_MS = 90_000;
 
@@ -30,12 +29,10 @@ function uniqueEmail(): string {
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "";
 const isLocal = !process.env.BASE_URL;
 const isProdApi = apiUrl.includes("api.agentsfleet.net");
-const liveWebhookEnabled = process.env[LIVE_WEBHOOK_FLAG] === "1";
 const prodWebhookEnabled = process.env[PROD_WEBHOOK_FLAG] === "1";
 
 test.describe("signup webhook live", () => {
   test.skip(isLocal, "live webhook signup requires a public app URL");
-  test.skip(!liveWebhookEnabled, `${LIVE_WEBHOOK_FLAG}=1 is required`);
   test.skip(isProdApi && !prodWebhookEnabled, `${PROD_WEBHOOK_FLAG}=1 is required for production`);
   test.setTimeout(FLOW_TIMEOUT_MS);
 

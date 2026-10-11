@@ -24,13 +24,13 @@ use crate::support::{LIBRARY_ID, Lane, mint};
 const PAGE: u32 = 50;
 
 /// Where a fleet that has run stands, as its trigger would have left it.
-const RAN: FleetCounters = FleetCounters {
+pub(crate) const RAN: FleetCounters = FleetCounters {
     events_processed: 3,
     budget_used_nanos: 21,
 };
 
 /// Seeds the counter row the triggers maintain, for a fleet that "ran".
-async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCounters) {
+pub(crate) async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCounters) {
     sqlx::query(
         "INSERT INTO core.fleet_activity_counters
            (fleet_id, events_processed, budget_used_nanos, created_at, updated_at)

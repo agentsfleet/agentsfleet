@@ -6,7 +6,7 @@
 # Enforced by scripts/enforce-coverage.mjs (Bun 1.4.x parses but does not
 # enforce the bunfig threshold itself).
 #
-# The acceptance suite (`test/acceptance/*.spec.js`) runs under the
+# The acceptance suite (`test/acceptance/*.spec.ts`) runs under the
 # same `bun:test` runtime as the rest of the suite — Captain
 # consolidated the dual-runner split (was node:test for acceptance,
 # bun:test elsewhere). The prior rationale was bound-cleanly concerns
@@ -14,8 +14,9 @@
 # subprocesses); if those resurface live, revisit. Acceptance specs
 # self-gate on AGENTSFLEET_ACCEPTANCE_TARGET being an https URL — without
 # the env they register skip-only placeholders. Default `bun test`
-# globs match `*.test.{js,ts}` so `*.spec.js` files are picked up
-# only by the explicit `bun test test/acceptance` invocation.
+# globs match `*.test.{js,ts}` so `*.spec.ts` files run only through
+# test/acceptance/run-lane.ts (`bun run test:acceptance:deterministic`
+# and `:live`).
 #
 # Coverage scope: production code under src/ only. test/** is
 # excluded because helpers, fixtures, and matrix tables are scaffolding,

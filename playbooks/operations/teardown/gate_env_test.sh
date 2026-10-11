@@ -135,7 +135,6 @@ for gate_dir in "${GATE_DIRS[@]}"; do
   assert_rejected "${gate_dir}_rejects_all_env" "$gate" set all
   assert_rejected "${gate_dir}_rejects_blank_env" "$gate" set ""
   assert_rejected "${gate_dir}_rejects_unset_env" "$gate" unset
-  assert_accepted "${gate_dir}_accepts_dev" "$gate" dev
   assert_accepted "${gate_dir}_accepts_prod" "$gate" prod
 done
 

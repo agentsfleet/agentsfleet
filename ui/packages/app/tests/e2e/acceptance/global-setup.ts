@@ -40,6 +40,7 @@ import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import {
   FIXTURE_KEY,
+  JWT_CACHE_PATH,
   SECOND_WORKSPACE_NAME,
   VERCEL_BYPASS_STATE_FILENAME,
 } from "./fixtures/constants";
@@ -99,7 +100,6 @@ function fixtureUsers(): FixtureUserSpec[] {
   ];
 }
 
-const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
 function failLoud(missing: string): never {
   throw new Error(
