@@ -48,6 +48,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `rustd/crates/afd_fleet/src/lease/assign.rs` — the ready-first poll and its cost tally (`PollCost`), which the new read must keep honest.
 3. `docs/architecture/runner_fleet.md` §Datastore topology — the sixteen hashes, why they are partitioned on a cluster, and the reclaim sweeper that repairs a lost mark.
 4. `rustd/crates/afr_supervisor/src/lease_loop.rs` — where `lease_completed` is logged.
+5. `rustd/crates/afd_fleet/src/lease/answer.rs` — where `runner_lease_issued` is logged; the daemon holds the admission's `created_at` and the issue instant on one clock, so `queue_wait_ms` is computed here and nowhere else.
 
 ## Files Changed (blast radius)
 
@@ -57,12 +58,13 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_dragonfly/src/ready/partition.rs` | EDIT | the dirty key's name beside `READY_INDEX_KEY` |
 | `rustd/crates/afd_dragonfly/src/ready/tests.rs` | EDIT | dirty-set unit tests |
 | `rustd/crates/afd_fleet/src/lease/assign.rs` | EDIT | read dirty partitions before the rotation; tally the read in `PollCost` |
-| `rustd/crates/afd_fleet/src/lease/affinity_tests.rs` | EDIT | the next-poll and idle-cost proofs |
+| `rustd/crates/afd_fleet/src/lease/affinity_tests.rs` | EDIT | the next-poll, two-fleet and idle-cost proofs |
+| `rustd/crates/afd_fleet/src/lease/answer.rs` | EDIT | `queue_wait_ms` on `runner_lease_issued`, measured on the daemon clock |
 | `rustd/crates/afr_supervisor/src/lease_loop.rs` | EDIT | phase durations on `lease_completed` |
 | `rustd/crates/afr_supervisor/src/lease_telemetry_tests.rs` | EDIT | the phase-field proof |
 | `docs/architecture/runner_fleet.md` | EDIT | the dirty key in the datastore table |
 | `docs/architecture/lease_flow.md` | EDIT | the poll step reads the dirty key first |
-| `docs/architecture/scaling.md` | EDIT | idle poll cost restated: two Dragonfly reads, zero Postgres |
+| `docs/architecture/scaling.md` | EDIT | idle poll cost restated as two Dragonfly reads, zero Postgres, at the three places that say one: §Per-request volume (the `HRANDFIELD` row), §Measured ceilings (the `1.00 Dragonfly command` row) and anti-pattern 7 |
 
 ## Applicable Rules
 
@@ -95,20 +97,24 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.2** — An idle poll with an empty dirty set costs exactly two Dragonfly commands, the dirty read and one rotation peek, and zero Postgres statements; the peek stays because it is Dimension 1.4's fallback for a lost dirty bit → Test `test_idle_poll_cost_is_bounded`
 - **Dimension 1.3** — A mark written between a poll's dirty read and its clear survives the clear → Test `test_mark_racing_a_clear_survives`
 - **Dimension 1.4** — A lost dirty bit costs only latency: the rotation still finds the fleet within one full turn → Test `test_lost_dirty_bit_falls_back_to_rotation`
+- **Dimension 1.5** — Two fleets marked in different partitions are both leased within one poll interval by two different workers: the dirty set holds both partitions, and a poll that takes one leaves the other's bit for the next poll → Test `test_two_marked_fleets_lease_within_one_interval`
 
 ### §2 — Every settled lease logs its phases
 
-- **Dimension 2.1** — `lease_completed` carries `queue_wait_ms` (event creation to lease), `bundle_ms`, `sandbox_ms`, `first_token_ms`, `model_ms`, `tools_ms` and `report_ms`, and `bundle_ms + sandbox_ms + model_ms + tools_ms + report_ms` is within 5 ms of the lease's own wall time (`queue_wait_ms` precedes the lease; `first_token_ms` is part of `model_ms`) → Test `test_lease_completed_logs_its_phases`
+- **Dimension 2.1** — `lease_completed` carries `bundle_ms`, `sandbox_ms`, `first_token_ms`, `model_ms`, `tools_ms` and `report_ms`, and `bundle_ms + sandbox_ms + model_ms + tools_ms + report_ms` is within 5 ms of the lease's own wall time (`first_token_ms` is part of `model_ms`) → Test `test_lease_completed_logs_its_phases`
 - **Dimension 2.2** — A lease that fails before a phase starts logs that phase as absent, not zero → Test `test_unstarted_phase_is_absent`
+- **Dimension 2.3** — `runner_lease_issued` on the daemon carries `queue_wait_ms`, the admission's `created_at` to the issue instant, both read on the daemon's clock. The runner never computes it: the event's `created_at` is stamped on Fly's clock and the runner host keeps its own, so a runner-side subtraction would carry the clock skew between the two → Test `test_runner_lease_issued_logs_queue_wait`
 
 ### §3 — Measured on dev
 
-- **Dimension 3.1** — Ten steers on dev after deploy: pickup p50 ≤250 ms and max ≤1,000 ms, read from `queue_wait_ms` → Test `test_dev_pickup_p50_under_250ms`
+- **Dimension 3.1** — Ten steers on dev after deploy: pickup p50 ≤250 ms and max ≤1,000 ms, read from `queue_wait_ms` on the daemon's `runner_lease_issued` lines (`flyctl logs`), never from the runner journal → Test `test_dev_pickup_p50_under_250ms`
+- **Dimension 3.2** — Two `github-pr-reviewer` fleets in two workspaces, one `pull_request` delivery each within the same second: both `runner_lease_issued` lines carry `queue_wait_ms` ≤1,000 and name different runner workers → Test `test_dev_two_fleets_pick_up_in_parallel`
 
 ## Interfaces
 
 ```
-lease_completed  lease_id=… queue_wait_ms=… bundle_ms=… sandbox_ms=… first_token_ms=… model_ms=… tools_ms=… report_ms=…
+runner_lease_issued  lease_id=… fleet_id=… event_id=… queue_wait_ms=…      (daemon, one clock)
+lease_completed      lease_id=… bundle_ms=… sandbox_ms=… first_token_ms=… model_ms=… tools_ms=… report_ms=…   (runner)
 Dragonfly: fleet:ready:{p} (unchanged) + one dirty key named in runner_fleet.md
 Wire: LeaseResponse unchanged; retry_after_ms unchanged
 ```
@@ -131,7 +137,8 @@ Wire: LeaseResponse unchanged; retry_after_ms unchanged
 
 | Metric / event | Owner | Fires when | Properties allowed | Privacy guard | Test proof |
 |----------------|-------|------------|--------------------|---------------|------------|
-| `lease_completed` (new fields) | ops | a runner settles a lease | the seven phase durations, lease identifier | durations only — no prompt, reply or tool content | `test_lease_completed_logs_its_phases` |
+| `lease_completed` (new fields) | ops | a runner settles a lease | the six in-lease phase durations, lease identifier | durations only — no prompt, reply or tool content | `test_lease_completed_logs_its_phases` |
+| `runner_lease_issued` (new field) | ops | the daemon issues a lease | `queue_wait_ms`, lease, fleet and event identifiers | a duration and identifiers only | `test_runner_lease_issued_logs_queue_wait` |
 
 ## Test Specification (tiered)
 
@@ -141,9 +148,12 @@ Wire: LeaseResponse unchanged; retry_after_ms unchanged
 | 1.2 | integration | `test_idle_poll_cost_is_bounded` | empty index and empty dirty set → `PollCost` reads 2 Dragonfly commands, 0 Postgres round trips |
 | 1.3 | integration | `test_mark_racing_a_clear_survives` | clear with the stale token after a new mark → the bit remains |
 | 1.4 | integration | `test_lost_dirty_bit_falls_back_to_rotation` | mark with the dirty write failed → leased within 16 polls |
-| 2.1 | unit | `test_lease_completed_logs_its_phases` | a fake daemon lease → seven fields present; the five in-lease phases sum within 5 ms of wall time |
+| 1.5 | integration | `test_two_marked_fleets_lease_within_one_interval` | fleets in partitions 3 and 11 both marked, two consumers poll once each → each leases a different fleet |
+| 2.1 | unit | `test_lease_completed_logs_its_phases` | a fake daemon lease → six fields present; the five in-lease phases sum within 5 ms of wall time |
 | 2.2 | unit | `test_unstarted_phase_is_absent` | a refusal before sandbox start → `sandbox_ms` absent |
-| 3.1 | manual | `test_dev_pickup_p50_under_250ms` | ten steers → p50 ≤250 ms, max ≤1,000 ms; journal lines pasted |
+| 2.3 | integration | `test_runner_lease_issued_logs_queue_wait` | an admission created at T, leased at T+350 ms on a paused test clock → `queue_wait_ms=350` |
+| 3.1 | manual | `test_dev_pickup_p50_under_250ms` | ten steers → p50 ≤250 ms, max ≤1,000 ms; `flyctl logs` lines pasted |
+| 3.2 | manual | `test_dev_two_fleets_pick_up_in_parallel` | one PR event per workspace in the same second → two `runner_lease_issued` lines, different workers, both ≤1,000 ms |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -171,9 +181,9 @@ N/A — no files deleted.
 
 ## Out of Scope
 
-- The model's own time: a one-line chat spent `wall_ms` 1,285 on dev; §2 measures how much is time to first token, and a faster model or provider is a catalogue decision, not this spec.
-- Runner OTLP export on dev (`telemetry_export_disabled`): the runner's host collector is "built later" per `docs/architecture/observability.md`.
-- A refused egress write costing 167,429 tokens and 166 s as the model retried variants (dev event `1791777420543-1356`); recorded for Indy to place.
+- The model's own time: a one-line chat spent `wall_ms` 1,285 on dev; §2 measures how much is time to first token, and a faster model or provider is a catalogue decision, not this spec. A 500 ms reply end to end is reachable only if time to first token on the dev model (GLM 5.3) allows it; §3 measures `first_token_ms` before anyone promises that number.
+- Runner OTLP export on dev (`telemetry_export_disabled`): the runner's host collector is "built later" per `docs/architecture/observability.md`. Until then the §2 phase fields are readable only in the runner journal; `queue_wait_ms` lives on the daemon and is readable in `flyctl logs` today.
+- A refused egress write costing 167,429 tokens and 166 s as the model retried variants (dev event `1791777420543-1356`): a cost bug, not a latency one; recorded for Indy to place, in this spec or its own.
 
 ## Product Clarity (authoring record)
 
@@ -199,6 +209,8 @@ N/A — no files deleted.
 - **Consults** — Measured on dev, Oct 12, 2026, during M213_001's close-out: four steers picked up in 1.9 s, 2.2 s, 2.95 s and 3.8 s; four workers poll about once a second each (`runner_lease_no_work` bursts in `flyctl logs`); the dev host reaches the API in about 60 ms, so the network is not the wait. `READY_PARTITIONS` is 16 (`afd_dragonfly/src/ready/partition.rs:31`) and `NO_WORK_RETRY_AFTER_MS` is 1,000 (`afd_core/src/timing.rs:75`).
   > Indy (2026-10-12): "How do we make this performant? and reduce 1.2s to may be 500ms? What is causign the 1.2s, can we add logging tracing to the code to see what happens?" — context: the request this spec answers.
   > Indy (2026-10-12): "New spec, wake hint (Recommended)" — context: the mechanism, over a long poll.
-- **Metrics review** — `lease_completed` gains seven duration fields; no analytics or funnel playbook update required: operator log only.
+- **Metrics review** — `lease_completed` gains six duration fields and `runner_lease_issued` gains one; no analytics or funnel playbook update required: operator log only.
+- **Review (Oct 12, 2026, before CHORE(open))** — six points folded in. (1) `queue_wait_ms` moved from the runner to the daemon (Dimension 2.3): the admission's `created_at` is Fly's clock and the runner journal is OVH's, so only the daemon has both instants on one clock. (2) The idle poll budget is two Dragonfly reads since `13c02638d`; `docs/architecture/scaling.md` says one at three places, all named in Files Changed. (3) Two fleets in parallel gained a proof (Dimensions 1.5 and 3.2): the dirty set holds both partitions and two workers take one each. (4) The §2 phase fields ride the runner journal only, because runner OTLP is off on dev; open for Indy below. (5) The model's own time stays out of scope; `first_token_ms` shows it, and the 500 ms wish is measured before it is promised. (6) The 167K-token retry is a cost bug; open for Indy below.
+- **Open for Indy** — (a) Does M225 also point dev's runner at a collector, or do the phase fields stay journal-only until the "runner collector built later" note in `docs/architecture/observability.md` lands? (b) Does the refused-write retry cap (make `request_policy_not_allowed` and `secret_not_found` terminal for a request shape, cap identical refusals per lease) fold into M225 or get its own spec?
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
