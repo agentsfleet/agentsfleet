@@ -70,7 +70,7 @@
 _migrate-test-db: $(TEST_STATE_DEP)
 	@echo "→ [infra] Applying migrations once, for the whole lane..."; \
 	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
-	  cargo run --quiet --bin agentsfleetd -- migrate \
+	  $(RUST_CARGO) run --quiet --bin agentsfleetd -- migrate \
 	  || { echo "✗ [infra] migrate failed"; exit 1; }
 	@echo "✓ [infra] Schema applied"
 
@@ -141,9 +141,9 @@ EXCLUSIVE_FILTER := integration_hub_exclusive
 test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Dragonfly
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --skip $(EXCLUSIVE_FILTER))
+	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,$(RUST_CARGO) test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --skip $(EXCLUSIVE_FILTER))
 	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
-	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
+	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),$(RUST_CARGO) test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 
 # The ONE invocation that executes both tiers, and therefore the one that
 # measures them.
@@ -327,7 +327,7 @@ RUSTD_SHARD ?= $(RUSTD_SHARDS)
 # real kernel rather than datastores and so is not a shard.
 RUSTD_COVERAGE_REPORTS := $(RUSTD_SHARDS) kernel
 
-_RUSTD_COVER := cargo llvm-cov --no-report --all-features
+_RUSTD_COVER := $(RUST_CARGO) llvm-cov --no-report --all-features
 _rustd_packages = $(foreach package,$(1),-p $(package))
 _RUSTD_SUBSTRATE := --workspace $(foreach package,afd_bench $(RUSTD_RUNNER_PACKAGES) $(RUSTD_DAEMON_PACKAGES),--exclude $(package))
 _RUSTD_SHARD_UNKNOWN := $(filter-out $(RUSTD_SHARDS),$(RUSTD_SHARD))
@@ -368,10 +368,10 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	@$(if $(_RUSTD_SHARD_UNKNOWN),echo "✗ [rustd] unknown RUSTD_SHARD: $(_RUSTD_SHARD_UNKNOWN) (known: $(RUSTD_SHARDS))"; exit 1,true)
 	@$(if $(or $(_RUSTD_SHARD_ALL),$(_RUSTD_SHARD_ONE)),true,echo "✗ [rustd] RUSTD_SHARD is one shard or unset; '$(RUSTD_SHARD)' would grade part of the lane"; exit 1)
 	@echo "→ [rustd] Removing stale instrumented workspace artifacts..."; \
-	cd $(RUSTD_DIR) && cargo llvm-cov clean --workspace
+	cd $(RUSTD_DIR) && $(RUST_CARGO) llvm-cov clean --workspace
 	@echo "→ [infra] Applying migrations through the instrumented daemon..."; \
 	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
-	  cargo llvm-cov run --all-features --no-report --bin agentsfleetd -- migrate \
+	  $(RUST_CARGO) llvm-cov run --all-features --no-report --bin agentsfleetd -- migrate \
 	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
 	@echo "✓ [infra] Instrumented schema applied"
 ifneq ($(filter runner,$(RUSTD_SHARD)),)
@@ -390,13 +390,13 @@ ifneq ($(filter substrate,$(RUSTD_SHARD)),)
 endif
 ifeq ($(_RUSTD_SHARD_ALL),yes)
 	@echo "→ [rustd] Rendering the run's profile, then grading the floor..."; \
-	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
+	cd $(RUSTD_DIR) && $(RUST_CARGO) llvm-cov report --workspace \
 	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-all.info \
 	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
 	@$(_RUSTD_COVERAGE_JUDGE) --out $(RUSTD_DIR)/lcov.info $(RUSTD_DIR)/lcov-all.info
 else
 	@echo "→ [rustd] Rendering shard $(RUSTD_SHARD)'s profile; test-coverage-rustd-merge grades the floor..."; \
-	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
+	cd $(RUSTD_DIR) && $(RUST_CARGO) llvm-cov report --workspace \
 	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-$(RUSTD_SHARD).info \
 	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
 	@git rev-parse HEAD > $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).rev

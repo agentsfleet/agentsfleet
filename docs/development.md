@@ -95,13 +95,53 @@ Run `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` for the two-wor
 `make test-integration-rustd` retains its own disposable stack and destructive reset behavior.
 See [datastore scaling](architecture/datastore_scaling.md#shared-local-development) for the isolation boundaries.
 
+## Compiler cache for Rust gates
+
+`~/bin/provision-env-1password`, owned by the dotfiles repository, generates the shared environment file.
+The Make lint and test recipes use `scripts/cargo_local.py` to load its build defaults.
+The trusted file is `$XDG_CONFIG_HOME/agentsfleet/.env`, or `~/.config/agentsfleet/.env` when that variable is unset.
+The launcher reads only these settings:
+
+```sh
+export CARGO_PROFILE_DEV_DEBUG=1
+export CARGO_PROFILE_TEST_DEBUG=1
+export CARGO_INCREMENTAL=0
+export RUSTC_WRAPPER=sccache
+export SCCACHE_DIR="$HOME/.cache/agentsfleet-sccache"
+export SCCACHE_CACHE_SIZE=10G
+```
+
+Existing environment values take precedence, including an empty `RUSTC_WRAPPER` to disable the compiler wrapper.
+A missing machine file leaves Cargo's behavior unchanged; invalid configuration stops the command.
+The launcher never imports datastore addresses, credentials or target-directory settings from that file.
+
+Install `sccache` before selecting it as the wrapper.
+The shared cache reuses eligible compiled dependencies across checkouts with matching compiler settings.
+Each worktree keeps its own `rustd/target` directory unless the caller explicitly changes it.
+This avoids a shared Cargo output lock between concurrent worktrees.
+
+The installed `sccache` 0.18.0 refuses `CARGO_INCREMENTAL=1`; keep `CARGO_INCREMENTAL=0` with this wrapper.
+For a native incremental comparison, set both `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1` on the Make command.
+Disabling incremental compilation also reduces each worktree's disk use.
+Debug level `1` retains line tables while reducing debug output size.
+Test execution and executable linking are not cached by `sccache`.
+Eligible library metadata can be cached, but observed Clippy invocations bypassed the cache with `sccache` 0.18.0.
+Repeated lint also benefits from Cargo's existing output in that worktree.
+Changing debug settings causes a first rebuild; compare subsequent runs with matching settings.
+
+`make lint-rustd` and `make test-unit-rustd` keep their complete checks and failing exit statuses.
+Their callers, including the push hook and `orly gate pr`, use the same launcher.
+`orly gate work` runs conformance checks and gains no compiler-cache speedup.
+Direct Cargo commands still require the caller to export its build settings.
+See [Cargo's build cache](https://doc.rust-lang.org/cargo/reference/build-cache.html) and [sccache's Rust limits](https://github.com/mozilla/sccache/blob/main/docs/Rust.md).
+
 ## Pushing and git hooks
 
 Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githooks`)
 — not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 - **pre-push classifies the outgoing range into lint and unit surfaces** by file
-  pattern (`*.rs`/`rustd/*` → `lint-rustd` + `test-unit-rustd`, `cli/*` → cli,
+  pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → cli,
   `ui/packages/app/*` → app, website → website, design-system → both it and
   app). Zero matches → `"no test-relevant files — nothing to run"` and the push
   sails through. A genuinely docs-only push skips the suite entirely.
@@ -144,8 +184,9 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   in isolation. Retry serially before suspecting the diff.
 - **`main` is branch-protected** (required checks; direct pushes are declined).
   Everything lands via a feature branch + PR — including specs.
-- Pre-push runs the lanes matching what you pushed: `*.rs` or anything under
-  `rustd/` triggers `test-unit-rustd`, and each TypeScript package triggers its own.
+- Pre-push runs the lanes matching what you pushed: Rust changes trigger lint;
+  each TypeScript package triggers its own unit lane.
+  Rust units run at `orly gate pr` and in Continuous Integration (CI).
 
 ## Test lanes — what the names mean
 
