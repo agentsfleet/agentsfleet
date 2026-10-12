@@ -12,6 +12,10 @@ Each checkout runs its own compiled `agentsfleetd` while linked worktrees share 
 Each daemon gets a separate Postgres database, Dragonfly namespace and stable port.
 Production and deployed `api-dev` continue using their existing deployment settings.
 
+Shared state lives under `${XDG_STATE_HOME:-$HOME/.local/state}/agentsfleet/dev-<USER_ID>-<REPOSITORY_CHECKSUM>`.
+Linked worktrees share that directory; Git metadata supplies the clone identity, not the state location.
+The saved Compose snapshot and port settings remain available after a checkout disappears.
+
 Load the trusted machine environment using the existing `AGENTSFLEET_RUSTD_ENV_FILE` setting.
 It must supply `AUTH_SESSION_CODE_PEPPER` and `ENCRYPTION_MASTER_KEY`.
 Docker, Cargo, Python 3, `lsof` and the native C compiler must be available.
@@ -74,23 +78,41 @@ This stops only this worktree's daemon and preserves its data and the shared ser
 The launcher checks the recorded process start time and executable before signaling it.
 An occupied port or changed process identity causes a refusal.
 
-The following command stops shared services for every worktree.
-Postgres volumes survive, but pending QStash deliveries and Dragonfly memory may be lost.
+Inspect all saved stacks, registered roots and container states:
 
 ```bash
-bash scripts/local-dev.sh infra-down
+make status
 ```
 
 ```text
-<Compose shutdown output varies>
+Stack: agentsfleet-dev-<REPOSITORY_CHECKSUM>
+State: <SHARED_STATE>
+  worktree wt_<WORKTREE_CHECKSUM>: <WORKTREE_ROOT> (live|gone)
+  <container states vary>
+  containers: running|stopped
 ```
 
-The next `make up` restarts infrastructure using the saved snapshot.
+An existing registered root counts as live even after `make down`; a missing root counts as gone.
+Startup and teardown use the same infrastructure lock to protect registration.
+
+**The following command deletes the selected stack's containers and volumes, including its databases and pending deliveries.**
+Replace `<COMPOSE_PROJECT>` with the project printed by `make status`.
+Teardown refuses and names all live registered roots; it uses the saved `ports.env` after the original checkout disappears.
+
+```bash
+make down DEV_STACK=<COMPOSE_PROJECT>
+```
+
+```text
+<registered roots and Compose shutdown output vary>
+```
+
+There is no fallback to the former state location inside `.git`.
 An unhealthy or incomplete existing stack refuses startup; inspect its Compose health before stopping it explicitly.
 Lock waits are bounded separately: 6 minutes for infrastructure, 20 minutes for builds and 30 minutes for this worktree's process operation. After an interrupted owner, verify that owner has exited before removing its named lock directory.
 
 Run `bash scripts/local-dev-test.sh` for launcher regression checks; success prints `OK` and exits 0.
-Set `<SIBLING_CHECKOUT>` to an existing sibling checkout's absolute path; its `scripts/local-dev.sh` must match this checkout.
+Set `<SIBLING_CHECKOUT>` to an existing sibling checkout's absolute path; its `local-dev.sh` and `local-dev-state.sh` must match this checkout.
 Run `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` for the two-worktree proof; success prints `OK` and exits 0.
 `make test-integration-rustd` retains its own disposable stack and destructive reset behavior.
 See [datastore scaling](architecture/datastore_scaling.md#shared-local-development) for the isolation boundaries.

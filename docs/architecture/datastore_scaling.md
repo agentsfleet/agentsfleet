@@ -300,8 +300,10 @@ Raw command methods accept physical keys; `Dragonfly::physical_key` and `Dedicat
 Application code uses the scoped stores. The default policy preserves names and exposes every matching key to raw scans, including development prefixes on a shared cluster.
 
 `make down` stops only the verified daemon belonging to the current worktree.
-The launcher's maintenance command stops the repository's shared services and preserves their volumes.
-Dragonfly's in-memory state and pending QStash deliveries can disappear during infrastructure shutdown; Postgres remains the durable source.
+Shared snapshots and registered roots live under `${XDG_STATE_HOME:-$HOME/.local/state}/agentsfleet`, outside Git metadata.
+`make status` lists saved stacks, live or gone worktree roots, and container states.
+`make down DEV_STACK=<COMPOSE_PROJECT>` refuses existing registered roots and removes an orphan stack's containers and volumes using its saved port settings.
+Teardown deletes that stack's databases, Dragonfly state and pending QStash deliveries.
 
 The disposable stack used by `make test-integration-rustd` has separate project names, ports and volumes.
 Its schema resets and cluster fault tests must never use the shared development project.

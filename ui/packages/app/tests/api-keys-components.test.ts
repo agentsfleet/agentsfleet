@@ -92,7 +92,8 @@ describe("ApiKeyList component", () => {
     expect(screen.getByRole("button", { name: /^name$/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /^time$/i })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Name" }).getAttribute("aria-sort")).toBe("none");
-    expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("descending");
+    expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("none");
+    expect(screen.getByRole("button", { name: /^time$/i }).querySelector(".lucide-chevrons-up-down")).toBeTruthy();
   });
 
   it("renders active + revoked rows with status badges and 'never used'", async () => {
@@ -235,12 +236,15 @@ describe("ApiKeyList component", () => {
     expect(listApiKeysActionMock).not.toHaveBeenCalled();
   });
 
-  it("clicking the active Time column header toggles its direction in place", async () => {
+  it("clicking Time selects ascending order and toggles in place", async () => {
     await renderList(listResponse([ACTIVE, REVOKED]));
     expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
     fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
     expect(shownNames()).toEqual(["old-zapier", "ci-runner"]);
     expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("ascending");
+    fireEvent.click(screen.getByRole("button", { name: /^time$/i }));
+    expect(shownNames()).toEqual(["ci-runner", "old-zapier"]);
+    expect(screen.getByRole("columnheader", { name: "Time" }).getAttribute("aria-sort")).toBe("descending");
     expect(listApiKeysActionMock).not.toHaveBeenCalled();
   });
 

@@ -11,7 +11,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M223
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — development infrastructure consumes one stack per repository
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — datastore isolation precedes attaching development processes
@@ -67,12 +67,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/design-system/src/design-system/DataTableView.tsx` | EDIT | Align sortable numeric values beneath their labels in every consuming table |
 | `scripts/{local-dev.sh,local-dev-test.sh}` | CREATE | One launcher for identity, shared infrastructure and processes; separate regression proofs |
 | `scripts/{local-dev-state.sh,local-dev-live-test.sh}` | CREATE | Keep state ownership and retained live proofs cohesive within the file-length cap |
-| `make/dev.mk` and `Makefile` | EDIT | Keep existing up/down as the developer workflow; add no Make targets |
+| `make/dev.mk` and `Makefile` | EDIT | Extend existing down for orphan teardown; add the requested status target to inspect all shared stacks |
 | `make/{quality,test-unit,test-integration-rustd}.mk` | RESTORE | Remove Cargo wrapper wiring; retain original recipes |
 | `scripts/{cargo_local.py,cargo_local_test.py}` | DELETE | Remove the rejected configuration launcher and its dedicated tests |
 | `~/Projects/dotfiles/{.zshenv,.zshrc}` | EDIT (owning repository) | Load the existing generated environment for non-interactive zsh commands |
 | `make/dry.mk` and `make/bench.mk` | EDIT | Read this worktree's daemon URL |
-| `docs/architecture/datastore_scaling.md` and `docs/development.md` | EDIT | Record the isolation mechanism and development commands with implementation |
+| `README.md`, `docs/AUTH.md`, `docs/architecture/datastore_scaling.md` and `docs/development.md` | EDIT | Record isolation and developer commands; correct native startup, secret loading and worktree URLs |
 | `playbooks/operations/ci_rust_images/001_playbook.md` | EDIT | Remove the obsolete development caller of the release builder |
 | `docs/v2/{pending,active,done}/M223_001_P2_API_DOCS_INFRA_WORKTREES_SHARE_DEVELOPMENT_DATASTORES.md` | EDIT | Lifecycle metadata and evidence |
 | `playbooks/operations/acceptance/baselines/M223_001-*.md` | CREATE | Comparison-revision verification evidence |
@@ -149,21 +149,23 @@ Proofs: datastore-free identity, prefix-boundary and hash-tag tests; existing re
 
 ### §7 — Requested table presentation matches existing dashboard patterns
 Prerequisite: §6. Keep default API-key creation-time ordering separate from an explicit column selection. Match the existing shared table's neutral chevrons, active direction indicators and keyboard controls. Reuse Secrets' desktop name-slot widths for model copy-button alignment. Keep the raw model identifier as the copied value.
-- **Dimension 7.1** — IN_PROGRESS — API Keys starts with paired sort chevrons and header clicks still reorder locally → Test `renders Name and Time as clickable, sortable column headers once keys exist`.
-- **Dimension 7.2** — IN_PROGRESS — Model names of different lengths share one desktop copy-button column while narrow rows remain usable → Test `the model cell shows the name and keeps the id on hover`.
-- **Dimension 7.3** — IN_PROGRESS — Event inspection keeps technical identifiers in copy controls and diagnostics; source and type have readable labels → Test `keeps technical identifiers out of the heading and labels the request source and type`.
-- **Dimension 7.4** — IN_PROGRESS — Event replies render markdown through the existing safe chat renderer without treating the entire answer as a title → Test `renders reply markdown without executing embedded HTML`.
-- **Dimension 7.5** — IN_PROGRESS — Numeric table values align beneath sortable labels and row actions retain their alignment → Test `numeric_table_alignment` (manual browser measurement and existing shared table behavior tests).
+- **Dimension 7.1** — DONE — API Keys starts with paired sort chevrons and header clicks still reorder locally → Test `renders Name and Time as clickable, sortable column headers once keys exist`.
+- **Dimension 7.2** — DONE — Model names of different lengths share one desktop copy-button column while narrow rows remain usable → Test `the model cell shows the name and keeps the id on hover`.
+- **Dimension 7.3** — DONE — Event inspection keeps technical identifiers in copy controls and diagnostics; source and type have readable labels → Test `keeps technical identifiers out of the heading and labels the request source and type`.
+- **Dimension 7.4** — DONE — Event replies render markdown through the existing safe chat renderer without treating the entire answer as a title → Test `renders reply markdown without executing embedded HTML`.
+- **Dimension 7.5** — DONE — Numeric table values align beneath sortable labels and row actions retain their alignment → Test `numeric_table_alignment` (manual browser measurement and existing shared table behavior tests).
 
 ### §8 — Shared stack state survives checkout removal and has visible ownership
 
 Prerequisite: §7. Indy's call: "move the shared dev stack's state out of .git/, and give it an owner-aware status and teardown". Use `${XDG_STATE_HOME:-$HOME/.local/state}/agentsfleet/dev-$(id -u)-$DEV_REPO_ID`; retain the clone identity and project name, with no old-path fallback. Register each root under `worktrees/<id>/worktree` while holding the same infrastructure lock used for teardown. An existing root is live even without a daemon; a missing root is gone. Inspect every stack from its saved snapshot, even after its clone disappears. Extend `make down DEV_STACK=<COMPOSE_PROJECT>` to remove containers and volumes only when no registered root exists; name live roots on refusal and always use `ports.env`. `make status` is the distinct requested all-stack inspection caller; no existing status target exists. Extract state operations and the existing live test to stay within file caps.
 
-- **Dimension 8.1** — IN_PROGRESS — State lives outside Git metadata with stable clone sharing → Test `test_state_home_is_outside_git_metadata`.
-- **Dimension 8.2** — IN_PROGRESS — Teardown names and preserves every live registered root → Test `test_stack_teardown_refuses_live_worktrees`.
-- **Dimension 8.3** — IN_PROGRESS — Teardown of gone-only registrations uses the saved environment and removes volumes → Test `test_stack_teardown_removes_gone_worktrees`.
-- **Dimension 8.4** — IN_PROGRESS — Status lists live and gone registrations and running/stopped containers across stacks → Test `test_status_reports_all_stack_owners`.
-- **Dimension 8.5** — IN_PROGRESS — Symlinked state refuses inspection or mutation → Test `test_symlinked_state_is_refused`.
+- **Dimension 8.1** — DONE — State lives outside Git metadata with stable clone sharing → Test `test_state_home_is_outside_git_metadata`.
+- **Dimension 8.2** — DONE — Teardown names and preserves every live registered root → Test `test_stack_teardown_refuses_live_worktrees`.
+- **Dimension 8.3** — DONE — Teardown of gone-only registrations uses the saved environment and removes volumes → Test `test_stack_teardown_removes_gone_worktrees`.
+- **Dimension 8.4** — DONE — Status lists live and gone registrations and running/stopped containers across stacks → Test `test_status_reports_all_stack_owners`.
+- **Dimension 8.5** — DONE — Symlinked state refuses inspection or mutation → Test `test_symlinked_state_is_refused`.
+
+Browser proof: the actual components and production styles with synthetic data at 1440px and 375px. Tokens/duration/cost label and value edges differ by 0px; three model copy buttons share one position. API-key clicks toggle ascending/descending with zero reads. Reply markdown and footer copies render; the mobile page has no horizontal overflow. Preview source and bundles were deleted after verification.
 
 ## Interfaces
 
@@ -171,7 +173,7 @@ Prerequisite: §7. Indy's call: "move the shared dev stack's state out of .git/,
 Indy's instruction: "I need them in this PR". API Keys initially shows the same paired sort chevrons as Platform Fleet library. Explicit clicks still sort immediately, with accessible direction state and no fetch. The initial creation-time order and stable tie ordering remain intact. Model library uses Secrets' fixed desktop name slot so short and long names share one copy-button column; narrow screens can shrink the name. Copy keeps the provider model identifier and its existing accessible label.
 Indy's Events screenshots add inspection readability to this scope. Keep relative creation time, failure cues, recorded causes, remediation and diagnostic copying. Remove the identifier chip from the heading while retaining its copy action and diagnostic value. Label source and event type in plain text. Render the bounded response with `FleetMarkdown`; preserve the unformatted diagnostic data. Reserve the shared numeric sort-icon space in sortable numeric cells so label and value edges coincide. Keep dates and text left-aligned, numeric values and actions right-aligned, and the sort icon after its label, per `docs/DESIGN_SYSTEM.md`.
 
-This refinement touches two existing components and one existing behavior test. Reuse `DataTable`, `CopyButton` and the `trim` width tokens. No new component, endpoint, configuration, dependency or published workflow is introduced. Verify with existing canonical app tests, lint and the final combined PR gate. Larger table or page restructuring adds scope without helping these two requests.
+This refinement touches four existing components and two behavior tests. Reuse `DataTable`, `CopyButton` and the `trim` width tokens. No new component, endpoint, configuration, dependency or published workflow is introduced. Verify with existing canonical app tests, lint and the final combined PR gate. Larger table or page restructuring adds scope without helping these two requests.
 
 ```text
 AGENTSFLEET_DEV_NAMESPACE: optional validated ASCII namespace; unset keeps existing keys.
@@ -258,22 +260,22 @@ No product analytics or funnel signals change. The development launcher reports 
 
 ## Acceptance Rubric (single scoring surface)
 
-For R3, replace `<SIBLING_CHECKOUT>` with an existing sibling checkout's absolute path; its `scripts/local-dev.sh` must match this checkout.
+For R3, replace `<SIBLING_CHECKOUT>` with an existing sibling checkout's absolute path; its `scripts/local-dev.sh` and `scripts/local-dev-state.sh` must match this checkout.
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
 | R1 | Namespaced datastore behavior | `make test-integration-rustd` | exit 0; namespace isolation cases pass | P0 | ✅ exit 0; 947 integration passes, including physical-state sweep and raw access |
-| R2 | Launcher safety and reuse | `bash scripts/local-dev-test.sh` | exit 0; all launcher cases pass | P0 | ✅ 19 tests; exit 0, both shutdown exit seams covered |
-| R3 | Two-worktree developer flow | `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` | exit 0; both daemon URLs healthy, one infrastructure project, sibling survives stop | P0 | ✅ 1 live test; both URLs, callbacks, data preservation and cleanup passed |
+| R2 | Launcher safety and reuse | `bash scripts/local-dev-test.sh` | exit 0; all launcher cases pass | P0 | ✅ 25 tests; exit 0, ownership/status/teardown and both shutdown exit seams covered |
+| R3 | Two-worktree developer flow | `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` | exit 0; both daemon URLs healthy, one infrastructure project, sibling survives stop | P0 | ✅ prior live proof: both URLs, callbacks, data preservation and cleanup; state-home move covered by R2 |
 | R4 | Conform | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN; exit 0 |
-| R5 | Lint | `make lint-all` | exit 0 | P0 | ✅ final declared lint-all invocation exit 0 |
-| R6 | Unit | `make test-unit-all` | exit 0 | P0 | ✅ 10194 passes, 0 failures, 964 ignored/skipped; exit 0 |
+| R5 | Lint | `make lint-all` | exit 0 | P0 | ✅ merged-branch invocation exit 0; 158.157 seconds |
+| R6 | Unit | `make test-unit-all` | exit 0 | P0 | ✅ 10219 passes, 0 failures, 966 ignored/skipped; exit 0; 561.832 seconds |
 | R7 | Version | `make check-version` | exit 0 | P0 | ✅ all versions match 0.59.0 |
 | R8 | Secrets | `gitleaks detect` | exit 0 | P0 | ✅ no leaks found; 10 branch commits scanned |
 | R9 | Scoped diff | `git diff --name-only origin/main...HEAD` | 0 paths outside Files Changed | P0 | ✅ implementation and carried spec paths listed above |
 
 **Grading protocol:** Record decisive output for spec-specific proofs; repository-wide results come from the final `orly gate pr` run. Baseline counts are measured for the recorded comparison revision before the Pull Request.
-R4–R9 retain the previously measured PR-ready candidate's results. The final close commit reruns the complete PR gate; its current-revision output belongs in the final session notes.
+R1/R3 retain their recorded live proofs; R5/R6 were rerun after merging `978e696d1`. The final close commit receives the complete PR gate; its current-revision output belongs in the final session notes.
 
 ## Dead Code Sweep
 
