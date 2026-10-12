@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ## Overview
 
-**Goal (testable):** `test_marked_fleet_is_leased_on_the_next_poll` — a fleet marked ready is offered on the very next lease poll whichever partition the cursor names, and an idle poll still costs one Dragonfly command and no Postgres statement.
+**Goal (testable):** `test_marked_fleet_is_leased_on_the_next_poll` — a fleet marked ready is offered on the very next lease poll whichever partition the cursor names, and an idle poll costs two Dragonfly commands (the dirty read and one partition peek) and no Postgres statement.
 **Problem:** A fleet owner sends a steer and nothing happens for 2–4 s before the model even starts. Measured on dev, Oct 12, 2026: pickup took 1.9 s, 2.2 s, 2.95 s and 3.8 s across four steers; in the 3.8 s case the steer was admitted at 03:34:23.232 and leased at 03:34:26.178, after 11 polls answered `no leasable work`. The reply itself took `wall_ms` 1,285 for a one-line chat, and nothing says how much of that was sandbox, model or report.
 **Solution summary:** Each poll reads one of `READY_PARTITIONS` (16) readiness hashes in rotation (`afd_fleet/src/lease/assign.rs`), and four workers on the 1 s `NO_WORK_RETRY_AFTER_MS` turn the rotation once in about 4 s. Admission now also marks the fleet's partition dirty in one small key; a poll reads that key first and peeks a dirty partition before falling back to the rotation. The runner's `lease_completed` line gains per-phase durations, so the time a reply takes is readable without a collector.
 
@@ -62,7 +62,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_supervisor/src/lease_telemetry_tests.rs` | EDIT | the phase-field proof |
 | `docs/architecture/runner_fleet.md` | EDIT | the dirty key in the datastore table |
 | `docs/architecture/lease_flow.md` | EDIT | the poll step reads the dirty key first |
-| `docs/architecture/scaling.md` | EDIT | idle poll cost restated |
+| `docs/architecture/scaling.md` | EDIT | idle poll cost restated: two Dragonfly reads, zero Postgres |
 
 ## Applicable Rules
 
@@ -92,7 +92,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Implementation default:** one dirty key per deployment holding the set of partition numbers that gained a mark, read with one command before the rotation peek; a poll that finds its dirty partition empty clears that bit only if no newer mark set it. Rejected: a server-held long poll, because it needs cross-machine wake-ups through Dragonfly and holds a request per worker (Indy, Oct 12, 2026: "New spec, wake hint (Recommended)").
 
 - **Dimension 1.1** — A fleet marked in any partition is offered on the next poll, whichever partition the cursor names → Test `test_marked_fleet_is_leased_on_the_next_poll`
-- **Dimension 1.2** — An idle poll with an empty dirty set still costs one Dragonfly command and zero Postgres statements → Test `test_idle_poll_cost_is_unchanged`
+- **Dimension 1.2** — An idle poll with an empty dirty set costs exactly two Dragonfly commands, the dirty read and one rotation peek, and zero Postgres statements; the peek stays because it is Dimension 1.4's fallback for a lost dirty bit → Test `test_idle_poll_cost_is_bounded`
 - **Dimension 1.3** — A mark written between a poll's dirty read and its clear survives the clear → Test `test_mark_racing_a_clear_survives`
 - **Dimension 1.4** — A lost dirty bit costs only latency: the rotation still finds the fleet within one full turn → Test `test_lost_dirty_bit_falls_back_to_rotation`
 
@@ -138,7 +138,7 @@ Wire: LeaseResponse unchanged; retry_after_ms unchanged
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
 | 1.1 | integration | `test_marked_fleet_is_leased_on_the_next_poll` | mark a fleet in partition 9, cursor at 0 → the next poll leases it |
-| 1.2 | integration | `test_idle_poll_cost_is_unchanged` | empty index → `PollCost` reads 1 Dragonfly command, 0 Postgres round trips |
+| 1.2 | integration | `test_idle_poll_cost_is_bounded` | empty index and empty dirty set → `PollCost` reads 2 Dragonfly commands, 0 Postgres round trips |
 | 1.3 | integration | `test_mark_racing_a_clear_survives` | clear with the stale token after a new mark → the bit remains |
 | 1.4 | integration | `test_lost_dirty_bit_falls_back_to_rotation` | mark with the dirty write failed → leased within 16 polls |
 | 2.1 | unit | `test_lease_completed_logs_its_phases` | a fake daemon lease → seven fields present; the five in-lease phases sum within 5 ms of wall time |
@@ -150,7 +150,7 @@ Wire: LeaseResponse unchanged; retry_after_ms unchanged
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | Fresh work is leased on the next poll (§1) | `make test-integration-rustd` | exit 0, `test_marked_fleet_is_leased_on_the_next_poll` passed | P0 | |
-| R2 | Idle poll cost unchanged (§1) | `make test-integration-rustd` | `test_idle_poll_cost_is_unchanged` passed | P0 | |
+| R2 | Idle poll cost bounded at two Dragonfly reads and no Postgres (§1) | `make test-integration-rustd` | `test_idle_poll_cost_is_bounded` passed | P0 | |
 | R3 | Each lease logs its phases (§2) | `make test-unit-all` | `test_lease_completed_logs_its_phases` passed | P0 | |
 | R4 | Dev pickup p50 ≤250 ms (§3) | manual — ten `queue_wait_ms` values in Session Notes | p50 ≤250, max ≤1,000 | P0 | |
 | R5 | Diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | 0 paths missing from the Files Changed table | P0 | |
@@ -183,7 +183,7 @@ N/A — no files deleted.
 4. **Rebuild-vs-iterate** — Iterate: the readiness index stays; one key joins it.
 5. **What we build** — A dirty-partition key, a poll that reads it first, seven phase fields.
 6. **What we do NOT build** — A long poll; runner OTLP on dev; model or provider changes.
-7. **Fit with existing features** — Must not raise idle poll cost, which `docs/architecture/scaling.md` budgets.
+7. **Fit with existing features** — Idle poll cost rises from one Dragonfly read to two and stays at zero Postgres; `docs/architecture/scaling.md` restates the budget in the same Pull Request.
 8. **Surface order** — N/A — no user surface; operators read the journal.
 9. **Dashboard restraint** — N/A — no dashboard change.
 10. **Confused-user next step** — An operator greps the lease's `lease_completed` line and reads which phase was slow.
