@@ -216,6 +216,19 @@ done < <(find "$ARCH_DIR" -name '*.md' 2>/dev/null | sort)
 [ "$retired_runner_hits" = 0 ] \
   && ok "architecture_names_no_retired_runner: no page names Zig, zlint or NullClaw outside a dated row"
 
+# The Rust tree names no retired runner either: after the cutover a test
+# moved between crates carried a Zig name back in. `target/`
+# and the local coverage report are build output, never source.
+RUST_DIR="${RUST_DIR:-rustd}"
+rust_hits=0
+while IFS= read -r hit; do
+  [ -n "$hit" ] || continue
+  err "rust_names_no_retired_runner: $hit"
+  rust_hits=$((rust_hits + 1))
+done <<<"$(grep -rniIE "$RETIRED_RUNNER" "$RUST_DIR" --exclude-dir=target --exclude='lcov*.info' 2>/dev/null || true)"
+[ "$rust_hits" = 0 ] \
+  && ok "rust_names_no_retired_runner: no file under $RUST_DIR names Zig, zlint or NullClaw"
+
 # ---------------------------------------------------------------------------
 # Citation assertions live beside this file and run in this shell, sharing
 # `err`, `ok`, `FAIL`, `ARCH_DIR` and `SCRIPT_DIR`. Split at the length cap.
