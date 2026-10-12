@@ -70,13 +70,13 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@# retired gate, the stream ceiling on a measured rung.
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source_test.py
 	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/check_rust_source.py
-	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- $(RUST_CARGO) fmt --check
+	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] rustfmt --check" -- cargo fmt --check
 	@# --all-features, not the default set: a crate's `test-util` feature gates
 	@# its mockable input/output core (M-MOCKABLE-SYSCALLS), and without this
 	@# flag that code is never compiled here — so the one module whose whole job
 	@# is to be exercised by tests would be the one module lint never sees.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] clippy -D warnings" -- \
-	  $(RUST_CARGO) clippy --workspace --all-targets --all-features -- -D warnings
+	  cargo clippy --workspace --all-targets --all-features -- -D warnings
 	@# The configuration that ships: each binary, no features. Every other lane
 	@# turns `openapi` and `test-util` on, so an import that exists only for an
 	@# annotation broke the production build once without any lane noticing.
@@ -86,9 +86,9 @@ lint-rustd:  ## Lint the Rust workspace (rustfmt + clippy, warnings are errors)
 	@# under `cfg(debug_assertions)` turns unused, is proved by CI's
 	@# `build-daemon-musl` job, which builds both with the `dist` profile.
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleetd (no features)" -- \
-	  $(RUST_CARGO) check -p agentsfleetd --bin agentsfleetd
+	  cargo check -p agentsfleetd --bin agentsfleetd
 	@cd $(RUSTD_DIR) && $(WITH_PROGRESS) "[rustd] check --bin agentsfleet-runner (no features)" -- \
-	  $(RUST_CARGO) check -p agentsfleet_runner --bin agentsfleet-runner
+	  cargo check -p agentsfleet_runner --bin agentsfleet-runner
 
 SHELLCHECK ?= shellcheck
 
