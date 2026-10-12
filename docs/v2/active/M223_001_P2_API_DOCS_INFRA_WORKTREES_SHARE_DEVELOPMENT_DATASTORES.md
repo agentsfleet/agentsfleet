@@ -136,9 +136,16 @@ Prerequisite: §4. Agent choice: the existing dotfiles generator owns build sett
 
 Indy's instruction: "why do you need cargo_local.py and cargo_local_test.py? If its one of script nuke it". The reduced implementation adds no repository helper or configuration parser.
 
-- **Dimension 5.1** — IN_PROGRESS — Non-interactive zsh loads the generated build settings in both existing worktrees → Test `shell_startup_exports_build_settings` (manual, allowlisted output only).
-- **Dimension 5.2** — IN_PROGRESS — Missing environment file is tolerated; explicit command-level overrides work; Cargo failure remains nonzero → Test `shell_startup_and_cargo_failures` (manual, temporary startup fixture and canonical Make).
-- **Dimension 5.3** — IN_PROGRESS — Existing worktrees reuse eligible compiled dependencies with separate output; canonical lint and unit lanes run their checks without a helper → Test `compiler_cache_across_existing_worktrees` (manual, cache counters and complete Make logs).
+- **Dimension 5.1** — DONE — Non-interactive zsh loads the generated build settings in both existing worktrees → Test `shell_startup_exports_build_settings` (manual, allowlisted output only).
+- **Dimension 5.2** — DONE — Missing environment file is tolerated; explicit command-level overrides work; Cargo failure remains nonzero → Test `shell_startup_and_cargo_failures` (manual, temporary startup fixture and canonical Make).
+- **Dimension 5.3** — DONE — Existing worktrees reuse eligible compiled dependencies with separate output; canonical lint and unit lanes run their checks without a helper → Test `compiler_cache_across_existing_worktrees` (manual, cache counters and complete Make logs).
+
+### §6 — Reduce namespace plumbing at the datastore boundary
+
+Prerequisite: §5. Indy explicitly requires the original Dragonfly abstraction work in this same tree and Pull Request. A GPT-6 Astra High conceptual review compares the transparent connection adapter with typed alternatives before implementation. The chosen design must preserve raw-command meaning, default behavior, cluster routing, scripts, scans and subscription recovery while reducing namespace knowledge in operation modules. Its exact file manifest and behavioral proofs are amended here before Rust edits.
+
+- **Dimension 6.1** — IN_PROGRESS — Independent conceptual review selects the smallest safe abstraction and records the exact file manifest → Test `namespace_boundary_design_review` (manual, GPT-6 Astra High source review).
+- **Dimension 6.2** — PENDING — The selected refactor preserves default behavior and isolated values, sessions, streams, scans and subscriptions → Test `namespace_boundary_regression` (existing namespace unit cases and complete canonical integration lane after implementation).
 
 ## Interfaces
 
@@ -180,14 +187,17 @@ The generated identifier is stable for an absolute worktree path, changes on rel
 
 ## Metrics & Observability
 
-Compiler-cache evidence (Oct 12, 2026): `/private/tmp/agentsfleet-m223-cache-evidence/` retains complete private command logs and JSON timings. `make lint-rustd` passed at 138.828 seconds initially and 17.759 seconds warm. `make test-unit-rustd` passed twice with 4528 passed and 948 ignored (302.202 and 215.142 seconds). The launcher has 10 passing process-boundary tests; three deliberate mutations of precedence, environment isolation and failure propagation were rejected. Invalid machine configuration makes both canonical lint and daemon-unit targets fail.
+Compiler-cache evidence (Oct 12, 2026): `/private/tmp/agentsfleet-m223-cache-evidence/` retains private logs and JSON timings. Shell startup checks passed for `zsh -c` and `zsh -lc` in both existing worktrees, with the six cache variables initially removed. Both inherited the same cache directory with no shared target override. Missing-file and command-level override checks passed; a deliberately missing compiler wrapper made canonical daemon-unit Make fail with exit 2.
 
-The existing measurement checkout ran `make test-unit-rustd-runner` with only its Cargo command routed through the new launcher: 1228 passed, a separate fresh target directory, 177.254 seconds, 288 Rust cache hits and 77 misses. These are single samples under shared machine load, not an isolated speedup benchmark. The first unit attempt used an incorrect restrictive measurement umask; its file-mode assertion failed, and the corrected normal-permission rerun passed. `sccache` 0.18.0 rejects `CARGO_INCREMENTAL=1`; a native incremental comparison must also clear `RUSTC_WRAPPER`.
+The final helper-free measurement checkout ran `make test-unit-rustd-runner`: 1228 passed, 0 failed, 111.385 seconds. Active-checkout `make lint-rustd` passed formatting, Clippy and both no-feature binary checks. `make test-unit-rustd` passed: 4528 passed, 0 failed, 948 ignored; 1373.280 seconds including rebuilds and contention. This run verifies correctness, not an isolated speedup. Initial sandbox-restricted attempts failed on process/cache permissions and do not count as successful verification.
 
+Earlier samples with the removed launcher: `make lint-rustd` passed at 138.828 seconds initially and 17.759 seconds warm. `make test-unit-rustd` passed twice with 4528 passed and 948 ignored (302.202 and 215.142 seconds). A fresh separate measurement target recorded 288 Rust cache hits and 77 misses. These single samples ran under shared machine load; they establish reuse, not an isolated speedup benchmark. Launcher-only tests were deleted with their implementation.
 
-No product analytics or funnel signals change. The launcher reports its namespace, daemon URL, dependency failure and attach/start outcome to the local terminal without credentials. Existing daemon telemetry keeps its current meaning. Launcher regression tests assert failure statuses and absence of token output.
+Native incremental lint, with `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1`, passed at 97.004 seconds initially and 10.719 seconds warm. These samples do not prove a universal winner: incremental compilation serves repeated edits; `sccache` shares eligible dependencies across disposable worktrees. Installed `sccache` 0.18.0 refuses incremental compilation, so the existing machine policy stays at `CARGO_INCREMENTAL=0`.
 
-Native incremental lint, with `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1`, passed at 97.004 seconds initially and 10.719 seconds warm. These samples do not prove a universal winner: incremental compilation serves repeated edits; `sccache` shares eligible dependencies across disposable worktrees. Keep the existing machine policy rather than silently changing it. The authoritative generator already emits all six settings in dotfiles commit `d3ddb2f`; its checkout was clean. The generator needs no change or regeneration. The final startup fix and Make verification are pending; the launcher-specific evidence above describes the superseded implementation.
+The generator already emits the six settings. Dotfiles commit `b2ac777` moves the shared environment load to `.zshenv`; existing dotfiles Pull Request #41 contains that startup fix and its 10G cache setting. Protected `master` requires review, so neither repository's pull request was merged. No generated environment file was rewritten.
+
+No product analytics or funnel signals change. The development launcher reports its namespace, daemon URL, dependency failure and attach/start outcome without credentials. Existing daemon telemetry keeps its current meaning.
 
 ## Test Specification (tiered)
 
@@ -210,6 +220,8 @@ Native incremental lint, with `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1`, passed
 | 5.1 | manual | `shell_startup_exports_build_settings` | Non-interactive shells in both checkouts export the six generated settings; Cargo targets differ |
 | 5.2 | manual | `shell_startup_and_cargo_failures` | Missing file starts normally; command-level override reaches Cargo; failing Cargo makes canonical Make fail |
 | 5.3 | manual | `compiler_cache_across_existing_worktrees` | Two existing checkouts, distinct target directories, shared cache hits; full canonical lint/unit results recorded |
+| 6.1 | manual | `namespace_boundary_design_review` | Source-based comparison → selected mechanism, exact file manifest and failure proofs before code edits |
+| 6.2 | unit, integration | `namespace_boundary_regression` | Default configuration preserves behavior; equal logical names across namespaces remain isolated through every supported surface |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -268,4 +280,4 @@ Delete the rejected Cargo launcher and its dedicated tests; restore all Make cal
 - **Skill-chain outcomes:** Structural validation clean; unit/integration diff ledgers reviewed with explicit scope exceptions for generic load, allocator and random-order proofs. gstack review and native adversarial pass clean on `51b934c82`; optional external review disabled. Full declared gate passed; the closed metadata receives a fresh gate before publication. Live revalidation passed using the existing sibling checkout, with synthetic state removed and owned cleanup required to succeed. Two source-text tests were replaced by shutdown behavior; Make expansion and measured disposable-stack isolation supply their manual proofs.
 - **Deferrals:** None. Existing Linux-host execution is an explicit user decision; provisioning that host is outside this workstream.
 
-Oct 12, 2026: Indy requested compiler-cache wiring and measured lint/unit gate reuse in this existing tree and Pull Request. Namespace-abstraction and Compose redesign remain separate from this compiler-cache slice.
+Oct 12, 2026: Indy requested compiler-cache wiring and measured lint/unit gate reuse in this existing tree and Pull Request. Indy then required the original Dragonfly refactor in this same workstream and requested GPT-6 Astra High conceptual review. Compose reuse remains under review; disposable test isolation must survive any change.

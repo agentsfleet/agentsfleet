@@ -98,9 +98,8 @@ See [datastore scaling](architecture/datastore_scaling.md#shared-local-developme
 ## Compiler cache for Rust gates
 
 `~/bin/provision-env-1password`, owned by the dotfiles repository, generates the shared environment file.
-The Make lint and test recipes use `scripts/cargo_local.py` to load its build defaults.
-The trusted file is `$XDG_CONFIG_HOME/agentsfleet/.env`, or `~/.config/agentsfleet/.env` when that variable is unset.
-The launcher reads only these settings:
+Dotfiles loads `~/.config/agentsfleet/.env` from `.zshenv`, so interactive and non-interactive zsh commands inherit these settings.
+Cargo, Make and orly use the exported environment directly.
 
 ```sh
 export CARGO_PROFILE_DEV_DEBUG=1
@@ -111,9 +110,16 @@ export SCCACHE_DIR="$HOME/.cache/agentsfleet-sccache"
 export SCCACHE_CACHE_SIZE=10G
 ```
 
-Existing environment values take precedence, including an empty `RUSTC_WRAPPER` to disable the compiler wrapper.
-A missing machine file leaves Cargo's behavior unchanged; invalid configuration stops the command.
-The launcher never imports datastore addresses, credentials or target-directory settings from that file.
+Start a new zsh session after updating dotfiles.
+For an existing session or another shell, source the trusted generated file before running gates:
+
+```sh
+source "$HOME/.config/agentsfleet/.env"
+```
+
+The command produces no output on success.
+Command-level assignments override the loaded settings, including `RUSTC_WRAPPER=` to disable the wrapper.
+A missing machine file leaves Cargo's defaults unchanged in a fresh shell.
 
 Install `sccache` before selecting it as the wrapper.
 The shared cache reuses eligible compiled dependencies across checkouts with matching compiler settings.
@@ -130,9 +136,9 @@ Repeated lint also benefits from Cargo's existing output in that worktree.
 Changing debug settings causes a first rebuild; compare subsequent runs with matching settings.
 
 `make lint-rustd` and `make test-unit-rustd` keep their complete checks and failing exit statuses.
-Their callers, including the push hook and `orly gate pr`, use the same launcher.
+Their callers, including the push hook and `orly gate pr`, inherit the same exported settings.
 `orly gate work` runs conformance checks and gains no compiler-cache speedup.
-Direct Cargo commands still require the caller to export its build settings.
+Direct Cargo commands inherit these settings too; no repository-specific launcher is required.
 See [Cargo's build cache](https://doc.rust-lang.org/cargo/reference/build-cache.html) and [sccache's Rust limits](https://github.com/mozilla/sccache/blob/main/docs/Rust.md).
 
 ## Pushing and git hooks

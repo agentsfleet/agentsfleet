@@ -8,7 +8,6 @@
 # through `tee` into a parsed tally is unaffected. Set WITH_PROGRESS_DISABLE=1
 # to pass commands straight through.
 WITH_PROGRESS := $(CURDIR)/scripts/with-progress.sh
-RUST_CARGO := python3 "$(CURDIR)/scripts/cargo_local.py"
 
 include make/dev.mk
 include make/quality.mk

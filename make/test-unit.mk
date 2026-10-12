@@ -28,7 +28,7 @@ _RUSTD_UNIT_DAEMON_LIBS = $(filter-out $(_RUSTD_UNIT_RUNNER) $(_RUSTD_UNIT_DAEMO
 # --all-features for the same reason lint-rustd carries it: the `test-util`
 # mocks are how the failure paths a real datastore will not produce on demand
 # get reached at all, and a default-feature run silently skips them.
-_RUSTD_UNIT_TEST = $(RUST_CARGO) test --all-features
+_RUSTD_UNIT_TEST = cargo test --all-features
 _RUSTD_NEED_CARGO = command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 
 test-unit-rustd: test-unit-rustd-runner test-unit-rustd-daemon test-unit-rustd-daemon-libs  ## Run the Rust workspace unit tests (cargo), shard by shard
@@ -42,7 +42,6 @@ test-unit-rustd-daemon:  ## Rust unit shard: agentsfleetd, the daemon binary and
 	@$(call _rust_lane,rustd-unit-daemon.log,[rustd] unit: daemon,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON)))
 
 test-unit-rustd-daemon-libs:  ## Rust unit shard: the daemon's library crates (afd_*)
-	@PYTHONDONTWRITEBYTECODE=1 python3 scripts/cargo_local_test.py
 	@bash scripts/local-dev-test.sh
 	@$(_RUSTD_NEED_CARGO)
 	@$(call _rust_lane,rustd-unit-daemon-libs.log,[rustd] unit: daemon libraries,$(_RUSTD_UNIT_TEST) $(call _rustd_packages,$(_RUSTD_UNIT_DAEMON_LIBS)))
@@ -103,15 +102,15 @@ test-runner-kernel:  ## Prove the Rust runner's sandbox on a real Linux kernel (
 	  test -f "$$image" && image="$$(realpath "$$image")" && \
 	  cd $(RUSTD_DIR) && AFR_TOOLBOX_IMAGE="$$image" \
 	  CARGO_TARGET_$(KERNEL_LANE_HOST)_RUNNER="$(or $(KERNEL_LANE_RUNNER),env)" \
-	  $(RUST_CARGO) run -p afr_sandbox --features test-util --example kernel_lane
+	  cargo run -p afr_sandbox --features test-util --example kernel_lane
 	@$(MAKE) --no-print-directory test-runner-startup
 
 # Uses the deployed unit and the shipping binary, including its release key.
 # An absent toolbox must refuse admission after successful host preparation.
 # The kernel lane above separately proves signed admission and child limits.
 test-runner-startup:  ## Prove default/explicit engine startup under systemd on a Linux host
-	@cd $(RUSTD_DIR) && $(RUST_CARGO) build -p agentsfleet_runner --bin agentsfleet-runner
-	@target="$$(cd $(RUSTD_DIR) && $(RUST_CARGO) metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')" && \
+	@cd $(RUSTD_DIR) && cargo build -p agentsfleet_runner --bin agentsfleet-runner
+	@target="$$(cd $(RUSTD_DIR) && cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')" && \
 	  $(KERNEL_LANE_RUNNER) bash scripts/test-runner-startup.sh "$$target/debug/agentsfleet-runner" deploy/baremetal/agentsfleet-runner.service
 
 # The kernel lane under coverage: both the example and the systemd binary
@@ -122,10 +121,10 @@ test-runner-startup:  ## Prove default/explicit engine startup under systemd on 
 test-coverage-runner-kernel:  ## Measure the kernel lane under coverage into rustd/lcov-kernel.info for test-coverage-rustd-merge
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
 	@set -e; cd $(RUSTD_DIR); \
-	  coverage_env="$$($(RUST_CARGO) llvm-cov show-env --sh)"; eval "$$coverage_env"; \
-	  $(RUST_CARGO) llvm-cov clean --workspace; \
+	  coverage_env="$$(cargo llvm-cov show-env --sh)"; eval "$$coverage_env"; \
+	  cargo llvm-cov clean --workspace; \
 	  cd ..; $(MAKE) --no-print-directory test-runner-kernel; \
-	  cd $(RUSTD_DIR); $(RUST_CARGO) llvm-cov report --workspace \
+	  cd $(RUSTD_DIR); cargo llvm-cov report --workspace \
 	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-kernel.info \
 	  || { echo "✗ [rustd] kernel lane lcov report failed"; exit 1; }
 	@git rev-parse HEAD > $(RUSTD_DIR)/lcov-kernel.rev
