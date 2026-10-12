@@ -294,13 +294,11 @@ export default function PlatformCatalogTable({
   ];
 
   return (
-    // Fills the height its page already reserves. `FleetLibrariesView` wraps
-    // this in `h-full overflow-hidden` + `flex min-h-0 flex-1 flex-col`, but
-    // the table stopped at its own content, so a one-row catalog floated in
-    // the top of the screen with its pagination bar tucked beneath it while
-    // the workspace Fleet library — same data, same DataTable — spanned. The
-    // shell was never the difference; this wrapper was.
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
+    // Ends at its rows, the way the Models registry table does: a one-row
+    // catalog is one row with its pagination bar directly beneath, not a
+    // table stretched to the bottom of the viewport with the bar at the
+    // foot of an empty pane (Indy, Oct 12, 2026).
+    <div className="flex flex-col gap-4">
       {error ? (
         <p role="alert" data-testid="catalog-error" className="text-sm text-destructive">
           {error}
@@ -308,8 +306,6 @@ export default function PlatformCatalogTable({
       ) : null}
 
       <DataTable
-        className="flex min-h-0 flex-1 flex-col"
-        viewportClassName="min-h-0 flex-1 max-h-none"
         columns={columns}
         rows={currentEntries}
         rowKey={(row) => row.id}

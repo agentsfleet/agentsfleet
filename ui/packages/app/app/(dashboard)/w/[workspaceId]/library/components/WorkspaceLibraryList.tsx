@@ -229,7 +229,7 @@ export default function WorkspaceLibraryList({ workspaceId, entries, initialCurs
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
+    <div className="flex flex-col gap-3">
       {/* "Nothing onboarded" is the server's claim to make: the optimistic
           hide of the last row keeps the table shell until the removal is
           answered, so the status region never announces an emptiness the
@@ -242,7 +242,6 @@ export default function WorkspaceLibraryList({ workspaceId, entries, initialCurs
         />
       ) : (
         <DataTable
-          className="flex min-h-0 flex-1 flex-col"
           columns={buildColumns({
             onRemove: (entry) => {
               setError(null);
@@ -252,7 +251,6 @@ export default function WorkspaceLibraryList({ workspaceId, entries, initialCurs
           rows={visible}
           rowKey={(entry) => entry.id}
           caption={LIBRARY_SECTION_LABEL}
-          viewportClassName="min-h-0 flex-1 max-h-none"
         />
       )}
       {cursor === null ? null : (

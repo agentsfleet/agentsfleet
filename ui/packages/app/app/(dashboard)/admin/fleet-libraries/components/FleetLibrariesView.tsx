@@ -58,7 +58,7 @@ export default function FleetLibrariesView({ entries }: { entries: PlatformCatal
         <PageTitle>{FLEET_LIBRARY_TITLE}</PageTitle>
       </PageHeader>
 
-      <Section aria-label="Platform fleet catalog" className="flex min-h-0 flex-1 flex-col gap-xl">
+      <Section aria-label="Platform fleet catalog" className="flex flex-col gap-xl">
         <SectionHeader
           as="p"
           actions={
