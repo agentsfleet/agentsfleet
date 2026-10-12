@@ -45,7 +45,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Implementing agent — read these first
 
 1. `.github/workflows/release.yml` — the whole launch: credentials gate, tag/`VERSION` agreement, static builds, toolbox signing, npm `next`, the GitHub Release, the three production deploy jobs.
-2. `docs/v2/active/M213_001_P0_API_DOCS_INFRA_RUST_RUNNER_CUTOVER_ZIG_RETIRED.md` — Discovery holds the toolbox key, the 262,848,512-byte image ceiling and the dev proofs this launch repeats on production (it moves to `docs/v2/done/` when it closes).
+2. `docs/v2/done/M213_001_P0_API_DOCS_INFRA_RUST_RUNNER_CUTOVER_ZIG_RETIRED.md` — Discovery holds the toolbox key, the 262,848,512-byte image ceiling and the dev proofs this launch repeats on production.
 3. `docs/architecture/scenarios/slack-incident-responder.md` — the mention and repair-line threads, and what each must show.
 4. `playbooks/deploy/prod/001_playbook.md` — production diagnosis rules (no shell in the API image).
 
@@ -189,7 +189,8 @@ N/A — no files deleted.
   > Indy (2026-10-12): "release tag - defer/park i will push a production push later" — context: M213_001 R4, the first production launch.
   > Indy (2026-10-12): "Move to a launch spec (Recommended)" — context: where M213_001's P0 release row goes.
   > Indy (2026-10-12): "Only the two GitHub ones" — context: which bundle triggers M213_001 runs; the Slack pair moves here.
-  Dimension 3.3 (`incident-repairer`) was one of "the two GitHub ones"; it could not run on dev for the blockers below, and its transfer here waits on Indy's word in M213_001's close-out.
+  Dimension 3.3 (`incident-repairer`) was one of "the two GitHub ones"; it could not run on dev for the blockers below.
+  > Indy (2026-10-12): "Move to M224 (Recommended)" — context: the `incident-repairer` `workflow_run` proof, which needs a library entry, a source repository and `elastic`/`grafana` secrets dev lacks.
   Known blockers found while closing M213_001: `api.agentsfleet.net` does not resolve (smoke run 38176618397, `ENOTFOUND`); the dev platform library holds only `github-pr-reviewer`; no `incident-repairer` source repository exists; the dev workspace holds no secrets.
 - **Metrics review** — no analytics or funnel playbook update required: no product signal changes.
 - **Skill-chain outcomes** — pending.
