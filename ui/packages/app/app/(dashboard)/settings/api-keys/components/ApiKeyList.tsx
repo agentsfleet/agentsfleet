@@ -43,7 +43,7 @@ export default function ApiKeyList({
 }) {
   const [pending, startTransition] = useTransition();
   const [items, setItems] = useState<ApiKeyRow[]>(initial.items);
-  const [sort, setSort] = useState<ApiKeySort>(DEFAULT_SORT);
+  const [sort, setSort] = useState<ApiKeySort | null>(null);
   const [target, setTarget] = useState<ConfirmTarget>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +57,7 @@ export default function ApiKeyList({
       }
       setError(null);
       setItems(r.data.items);
-      setSort(DEFAULT_SORT);
+      setSort(null);
     });
   }
 
@@ -94,9 +94,9 @@ export default function ApiKeyList({
     });
   }
 
-  const rows = useMemo(() => sortApiKeys(items, sort), [items, sort]);
-  const sortKey = sort === "-created_at" || sort === "created_at" ? "activity" : "name";
-  const sortDirection = sort === "key_name" || sort === "created_at" ? "ascending" : "descending";
+  const rows = useMemo(() => sortApiKeys(items, sort ?? DEFAULT_SORT), [items, sort]);
+  const sortKey = sort === null ? undefined : sort === "-created_at" || sort === "created_at" ? "activity" : "name";
+  const sortDirection = sort === null ? undefined : sort === "key_name" || sort === "created_at" ? "ascending" : "descending";
 
   return (
     <div className="space-y-4">
@@ -111,7 +111,7 @@ export default function ApiKeyList({
         caption="API keys"
         sortKey={sortKey}
         sortDirection={sortDirection}
-        onSortChange={(key) => setSort(NEXT_SORT[key as "name" | "activity"][sort])}
+        onSortChange={(key) => setSort(NEXT_SORT[key as "name" | "activity"][sort ?? DEFAULT_SORT])}
         pagination={false}
         empty={
           <EmptyState

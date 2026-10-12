@@ -64,6 +64,7 @@ pub mod dedicated;
 pub mod error;
 pub mod hub;
 pub mod kv;
+mod namespace;
 pub mod outbound;
 pub mod preflight;
 pub mod ready;
@@ -82,6 +83,7 @@ pub use crate::config::{DragonflyConfig, DragonflyRole};
 pub use crate::dedicated::Dedicated;
 pub use crate::error::Error;
 pub use crate::hub::{Message, Subscription, SubscriptionHub, production_backoff};
+pub use crate::namespace::NAMESPACE_KNOB;
 pub use crate::outbound::{
     OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundDelivery, OutboundJob, OutboundQueue,
     OutboundReader, outbound_consumer,

@@ -1,6 +1,6 @@
-# agentsfleet local dev — Postgres + Redis + agentsfleetd API
-# `make up` prepares the matching local linux binary in `dist/` and passes
-# `TARGETARCH` to docker compose. CI does not use this path.
+# agentsfleet disposable container stack — datastores and agentsfleetd API
+# `make up` uses compose.dev-infra.yml and a native daemon per worktree.
+# Integration tests use this stack with isolated project names and reset state.
 #
 # The four test-infra services (postgres, redis, dragonfly, qstash) carry NO
 # `container_name`, so several git worktrees can run `make test-integration` at

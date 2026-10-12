@@ -45,7 +45,7 @@ function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey |
           provider dashboards use, is one hover away, and the copy button
           reaches it on touch or a keyboard, as on the workspace table. */}
       <span className="flex min-w-0 items-center gap-1">
-        <span className="truncate" title={model.model_id}>
+        <span className="block min-w-0 truncate sm:min-w-trim sm:max-w-trim" title={model.model_id}>
           {modelLabel(model.model_id)}
         </span>
         <CopyButton value={model.model_id} label={modelIdCopyLabel(model.model_id)} />

@@ -22,7 +22,7 @@ describe("EventDetailsDialog", () => {
     // is not a claim about the reply and does not appear here.
     await renderDialogWithBody(event({ status: "processed", response_text: null, failure_label: null }));
     // pin test: the literal is the contract the dialog renders
-    expect(screen.getByText("No result recorded")).toBeTruthy();
+    expect(await screen.findByText("No result recorded")).toBeTruthy();
     expect(screen.queryByText(OUTCOME.COMPLETED)).toBeNull();
     expect(screen.queryByText(/no reply/i)).toBeNull();
   });
@@ -61,7 +61,7 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("Fix")).toBeNull();
   });
 
-  it("keeps the identifier and relative created time in the header and the copy icon in the footer", async () => {
+  it("keeps technical identifiers out of the heading and labels the request source and type", async () => {
     await renderDialogWithBody(event({
       event_id: "evt_header",
       actor: "github-app",
@@ -69,8 +69,10 @@ describe("EventDetailsDialog", () => {
     }));
 
     expect(screen.getByRole("heading", { name: "Event details" })).toBeTruthy();
-    expect(screen.getByText("ID")).toBeTruthy();
-    expect(screen.getByText("evt_header")).toBeTruthy();
+    expect(screen.queryByText("ID")).toBeNull();
+    expect(screen.queryByText("evt_header")).toBeNull();
+    expect(screen.getByText(/Source:/).textContent).toBe("Source: GitHub App");
+    expect(screen.getByText(/Type:/).textContent).toBe("Type: webhook");
     expect(screen.getByRole("button", { name: "Copy event ID" })).toBeTruthy();
     const copyDiagnostic = screen.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL });
     expect(copyDiagnostic.closest("div")?.className).toContain("justify-end");
@@ -86,6 +88,20 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("Status")).toBeNull();
     expect(screen.queryByText("Actor")).toBeNull();
     expect(screen.queryByText("Type")).toBeNull();
+  });
+
+  it("renders reply markdown without executing embedded HTML", async () => {
+    const response = "**Answer**\n\n1. Read the `instructions`\n2. Reply\n\n<script>alert('unsafe')</script>\n\n[Unsafe](javascript:alert(1))";
+    await renderDialogWithBody(event({ status: "processed", response_text: response }));
+    await screen.findByText("Answer");
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector("strong")?.textContent).toBe("Answer");
+    expect(dialog.querySelectorAll("ol > li")).toHaveLength(2);
+    expect(dialog.querySelector("code")?.textContent).toBe("instructions");
+    expect(dialog.querySelector("script")).toBeNull();
+    expect(dialog.querySelector("a")?.getAttribute("href") ?? "").not.toMatch(/^javascript:/);
+    expect(screen.getByLabelText("Successful event")).toBeTruthy();
   });
 
   it("formats request context into readable fields and removes internal metadata", async () => {

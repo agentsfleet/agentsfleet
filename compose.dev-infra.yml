@@ -1,0 +1,74 @@
+# One infrastructure project per repository. local-dev.sh owns its snapshot.
+services:
+  postgres:
+    image: mirror.gcr.io/library/postgres:18-alpine
+    environment:
+      POSTGRES_USER: agentsfleet
+      POSTGRES_PASSWORD: agentsfleet
+      POSTGRES_DB: postgres
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:${AGENTSFLEET_PG_HOST_PORT}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentsfleet -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0
+    entrypoint: ["bash", "/scripts/dragonfly-cluster.sh"]
+    command: ["serve"]
+    environment:
+      DRAGONFLY_BASE_PORT: ${AGENTSFLEET_DRAGONFLY_BASE_PORT}
+    ports:
+      - "127.0.0.1:${AGENTSFLEET_DRAGONFLY_BASE_PORT}-${AGENTSFLEET_DRAGONFLY_LAST_PORT}:${AGENTSFLEET_DRAGONFLY_BASE_PORT}-${AGENTSFLEET_DRAGONFLY_LAST_PORT}"
+    volumes:
+      - ./scripts/dragonfly-cluster.sh:/scripts/dragonfly-cluster.sh:ro
+      - dragonfly-data:/data
+    healthcheck:
+      test: ["CMD", "bash", "/scripts/dragonfly-cluster.sh", "healthy"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "127.0.0.1:${AGENTSFLEET_MAILPIT_SMTP_PORT}:1025"
+      - "127.0.0.1:${AGENTSFLEET_MAILPIT_UI_PORT}:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  qstash:
+    image: mirror.gcr.io/oven/bun:1
+    command:
+      - sh
+      - -c
+      - |
+        cd /tmp
+        bun add @upstash/qstash-cli@2.37.18
+        bun node_modules/@upstash/qstash-cli/install.js
+        exec node_modules/@upstash/qstash-cli/bin/qstash dev -port 8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${AGENTSFLEET_QSTASH_HOST_PORT}:8080"
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:8080/').then(()=>process.exit(0)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  dragonfly-data:

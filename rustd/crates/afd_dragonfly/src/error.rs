@@ -58,6 +58,14 @@ pub(crate) enum ErrorKind {
     #[error("{knob} must be a redis:// or rediss:// URL")]
     InvalidUrl { knob: &'static str },
 
+    #[error(
+        "AGENTSFLEET_DEV_NAMESPACE must contain at most 64 ASCII letters, digits, underscores or hyphens"
+    )]
+    InvalidNamespace {
+        #[source]
+        source: garde::Report,
+    },
+
     #[error("the TLS certificate authority file {path} could not be read")]
     CaCertUnreadable {
         path: String,
@@ -196,6 +204,7 @@ impl Error {
             self.inner.kind,
             ErrorKind::MissingUrl { .. }
                 | ErrorKind::InvalidUrl { .. }
+                | ErrorKind::InvalidNamespace { .. }
                 | ErrorKind::CaCertUnreadable { .. }
                 | ErrorKind::ConfigRejected { .. }
         )

@@ -93,7 +93,7 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
                       ? () => onSortChange(header.column.id)
                       : header.column.getToggleSortingHandler()}
                     className={cn(
-                      "w-full justify-start gap-1.5 rounded-none border-0 px-3 text-label uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none",
+                      "w-full justify-start gap-1.5 rounded-none border-0 px-3 text-label uppercase tracking-label hover:bg-transparent focus-visible:ring-inset focus-visible:ring-offset-0 motion-reduce:transition-none [&_svg]:size-3.5",
                       definition?.numeric && "justify-end",
                     )}
                   >
@@ -142,6 +142,9 @@ function DataTableBody<T extends DataTableRowData>({
                 className={cn(
                   "px-3 py-2 align-middle text-foreground",
                   definition?.numeric && "text-right tabular-nums",
+                  // The heading's trailing sort icon takes 14px plus a 6px
+                  // gap; reserve the same space so values end beneath labels.
+                  definition?.numeric && cell.column.getCanSort() && "pr-3xl",
                   definition?.hideOnMobile && "hidden sm:table-cell",
                 )}
               >

@@ -2,85 +2,23 @@
 # DEV — local development
 # =============================================================================
 
-.PHONY: up down seed-models _ensure-local-daemon
+# The URL is derived without starting infrastructure or reading credentials.
+LOCAL_DAEMON_URL := $(shell bash scripts/local-dev.sh url)
 
-LOCAL_UNAME_M := $(shell uname -m)
-ifeq ($(LOCAL_UNAME_M),arm64)
-LOCAL_DOCKER_ARCH := arm64
-LOCAL_DIST_PLATFORM := aarch64
-else ifeq ($(LOCAL_UNAME_M),aarch64)
-LOCAL_DOCKER_ARCH := arm64
-LOCAL_DIST_PLATFORM := aarch64
-else
-LOCAL_DOCKER_ARCH := amd64
-LOCAL_DIST_PLATFORM := x86_64
-endif
+.PHONY: up down status _ensure-local-daemon seed-models
 
-# The binary the image COPYs, under the name the Dockerfile reads. That name is
-# the whole reason this rule exists: the local build once wrote
-# `dist/agentsfleetd-linux-$(LOCAL_DOCKER_ARCH)` while the Dockerfile read
-# `dist/agentsfleetd-rs-linux-$(TARGETARCH)`. Two names for one slot, so
-# `make up` built one file and the image build looked for another and failed at
-# COPY. It survived locally only while a stale artifact from an earlier
-# `make _dist-daemons` happened to be sitting in dist/.
-LOCAL_DAEMON_BINARY := dist/agentsfleetd-rs-linux-$(LOCAL_DOCKER_ARCH)
+up:  ## Reuse shared infrastructure and start this worktree's native daemon
+	@bash scripts/local-dev.sh up
+	@if [ "$${FOLLOW_LOGS:-1}" = "1" ]; then bash scripts/local-dev.sh logs; fi
 
-# A real file target with real prerequisites, not a phony that rebuilds blindly:
-# `make up` in a loop then costs one `stat` sweep rather than a release
-# cross-compile, and a touched crate still rebuilds. The find is measured at
-# 28ms against a 675ms make parse.
-RUSTD_SOURCES := $(shell find rustd/crates -name '*.rs' 2>/dev/null) rustd/Cargo.toml rustd/Cargo.lock
+down:  ## Stop this daemon, or remove an orphan stack with DEV_STACK=<compose project>
+	@if [ -n "$(DEV_STACK)" ]; then bash scripts/local-dev.sh infra-down "$(DEV_STACK)"; else bash scripts/local-dev.sh down; fi
 
-$(LOCAL_DAEMON_BINARY): $(RUSTD_SOURCES)
-	@echo "Preparing the local daemon for linux/$(LOCAL_DOCKER_ARCH)..."
-	@$(MAKE) --no-print-directory _dist-daemons \
-	  DIST_ARCH_PAIRS=$(LOCAL_DOCKER_ARCH):$(LOCAL_DIST_PLATFORM)
+status:  ## List shared development stacks, registered worktrees and container states
+	@bash scripts/local-dev.sh status
 
-up: $(LOCAL_DAEMON_BINARY) ## Start all services and tail app logs
-	@echo "Starting agentsfleet..."
-	@TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose up -d --build
-	@echo ""
-	@echo "Services:"
-	@echo "  API:       http://localhost:3000"
-	@echo "  Postgres:  localhost:5432"
-	@echo ""
-	@if [ "$${FOLLOW_LOGS:-1}" = "1" ]; then \
-		TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose logs -f agentsfleetd; \
-	fi
-
-# Where a locally-composed daemon answers, and the container whose resident set
-# is its own. Named here because dev.mk is what stands the stack up; the lanes
-# that measure it read these rather than each spelling out a port.
-LOCAL_DAEMON_READY_TIMEOUT_SEC := 90
-
-# Boot the stack and do not return until it answers. `up` alone is not enough:
-# `docker compose up -d` returns when the container is STARTED, and the image
-# carries no healthcheck to wait on (it is distroless — see docker-compose.yml),
-# so a lane that ran straight after it would probe a socket nothing is listening
-# on yet and report the daemon missing. This is the wait that makes
-# `make dry-app-rustd` a single command.
 _ensure-local-daemon:
 	@FOLLOW_LOGS=0 $(MAKE) --no-print-directory up
-	@echo "→ [dev] Waiting for $(LOCAL_DAEMON_URL)/healthz (up to $(LOCAL_DAEMON_READY_TIMEOUT_SEC)s)..."
-	@deadline=$$(( $$(date +%s) + $(LOCAL_DAEMON_READY_TIMEOUT_SEC) )); \
-	until curl --silent --fail --max-time 2 "$(LOCAL_DAEMON_URL)/healthz" >/dev/null 2>&1; do \
-	  if [ "$$(date +%s)" -ge "$$deadline" ]; then \
-	    echo "✗ [dev] $(LOCAL_DAEMON_URL) never answered."; \
-	    echo "  Most likely the daemon refused boot on missing environment."; \
-	    echo "  Check:   docker compose logs agentsfleetd"; \
-	    echo "  Fix:     provision ~/Projects/agentsfleet/.env (docs/AUTH.md §Where secrets live),"; \
-	    echo "           then re-run. AUTH_SESSION_CODE_PEPPER and the OIDC/provider knobs"; \
-	    echo "           come from the LOCAL_DEV vault entry; never hand-write them."; \
-	    exit 1; \
-	  fi; \
-	  sleep 1; \
-	done
-	@echo "✓ [dev] the local daemon is answering at $(LOCAL_DAEMON_URL)"
-
-down:  ## Stop all services and remove their volumes
-	@echo "Stopping all services..."
-	@docker compose down --volumes
-	@echo "Cleanup complete."
 
 # One target for both the first fill and the monthly refresh — an empty catalogue
 # emits INSERTs, a populated one emits UPSERTs for drift only, so the refresh path

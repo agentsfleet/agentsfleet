@@ -115,6 +115,7 @@ pub const fn production_backoff() -> ExponentialBuilder {
 #[derive(Debug)]
 pub struct Subscription {
     channel: String,
+    physical_channel: String,
     receiver: broadcast::Receiver<Delivery>,
     hub: Arc<HubInner>,
     /// This reader's handle on the pump. Held here rather than reached through
@@ -182,7 +183,7 @@ pub enum Received {
 
 impl Drop for Subscription {
     fn drop(&mut self) {
-        self.hub.release(&self.channel, &self.commands);
+        self.hub.release(&self.physical_channel, &self.commands);
     }
 }
 
@@ -212,7 +213,10 @@ impl SubscriptionHub {
         schedule: ExponentialBuilder,
     ) -> Result<Self> {
         let (commands, receiver) = mpsc::unbounded_channel();
-        let inner = Arc::new(HubInner::new());
+        let inner = Arc::new(HubInner {
+            namespace: config.namespace.clone(),
+            ..HubInner::new()
+        });
 
         pump::spawn(config, schedule, Arc::clone(&inner), receiver).await?;
         Ok(Self { inner, commands })
@@ -224,7 +228,8 @@ impl SubscriptionHub {
     /// channel; the rest are handed a receiver on the same broadcast.
     #[must_use]
     pub fn subscribe(&self, channel: &str) -> Subscription {
-        let receiver = match self.inner.channels.entry(channel.to_owned()) {
+        let physical_channel = self.inner.namespace.key(channel);
+        let receiver = match self.inner.channels.entry(physical_channel.clone()) {
             Entry::Occupied(mut held) => {
                 let entry = held.get_mut();
                 entry.readers += 1;
@@ -244,7 +249,9 @@ impl SubscriptionHub {
                     readers: 1,
                     confirmed: false,
                 });
-                let _ = self.commands.send(Command::Subscribe(channel.to_owned()));
+                let _ = self
+                    .commands
+                    .send(Command::Subscribe(physical_channel.clone()));
                 drop(held);
                 receiver
             }
@@ -252,6 +259,7 @@ impl SubscriptionHub {
 
         Subscription {
             channel: channel.to_owned(),
+            physical_channel,
             receiver,
             hub: Arc::clone(&self.inner),
             commands: self.commands.clone(),
@@ -263,7 +271,7 @@ impl SubscriptionHub {
     pub fn readers(&self, channel: &str) -> usize {
         self.inner
             .channels
-            .get(channel)
+            .get(&self.inner.namespace.key(channel))
             .map_or(0, |entry| entry.readers)
     }
 
