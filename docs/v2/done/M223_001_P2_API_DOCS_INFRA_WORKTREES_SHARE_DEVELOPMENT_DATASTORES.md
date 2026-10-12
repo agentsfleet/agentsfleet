@@ -118,7 +118,7 @@ Prerequisite: none. Agent choice: a validated optional namespace is part of conn
 Prerequisite: §1. Agent choice: one project per repository, derived from the Git common-directory path; copy the first caller's infrastructure definition and cluster script into repository-scoped development state. Subsequent callers address that canonical snapshot. A bounded exclusive startup lock prevents two callers provisioning the same services concurrently. Healthy existing services are reused without issuing configuration-replacing up commands.
 - **Dimension 2.1** — DONE — Stable identities distinguish worktrees and share the infrastructure project across them → Test `worktree_identity_is_stable_and_distinct`.
 - **Dimension 2.2** — DONE — Concurrent startup performs one provisioning operation and both callers attach; a second branch cannot replace the snapshot → Test `concurrent_start_reuses_one_infrastructure_stack`.
-- **Dimension 2.3** — DONE — Missing Docker, unhealthy dependencies, conflicting ports or a held lock fail with an actionable error and no application startup → Test `infrastructure_refusal_stops_application_start`.
+- **Dimension 2.3** — DONE — Recover stopped/missing services without recreation, restart only unhealthy services, and refuse application startup if health still fails → Test `infrastructure_refusal_stops_application_start`.
 
 ### §3 — Processes, migrations and shutdown belong to the worktree
 Prerequisite: §2. Agent choice: start a native daemon compiled from this worktree to preserve the cluster's loopback routing without another application container. Share the repository's Cargo build cache under a build lock, copying the completed binary to the worktree's process directory before releasing that lock. Load the existing trusted machine environment file without printing it. Override only development datastore addresses, namespace and callback origin. Create the worktree database idempotently and migrate it through this worktree's daemon before serving. Process metadata records the executable and process identity; shutdown verifies both before signaling. Stable ports refuse collisions rather than silently selecting another worktree's listener.
@@ -152,7 +152,7 @@ Prerequisite: §6. Keep default API-key creation-time ordering separate from an 
 - **Dimension 7.1** — DONE — API Keys starts with paired sort chevrons and header clicks still reorder locally → Test `renders Name and Time as clickable, sortable column headers once keys exist`.
 - **Dimension 7.2** — DONE — Model names of different lengths share one desktop copy-button column while narrow rows remain usable → Test `the model cell shows the name and keeps the id on hover`.
 - **Dimension 7.3** — DONE — Event inspection keeps technical identifiers in copy controls and diagnostics; source and type have readable labels → Test `keeps technical identifiers out of the heading and labels the request source and type`.
-- **Dimension 7.4** — DONE — Event replies render markdown through the existing safe chat renderer without treating the entire answer as a title → Test `renders reply markdown without executing embedded HTML`.
+- **Dimension 7.4** — DONE — Event replies load the existing safe markdown renderer on demand within route bundle budgets → Test `renders reply markdown without executing embedded HTML` and application build/size gate.
 - **Dimension 7.5** — DONE — Numeric table values align beneath sortable labels and row actions retain their alignment → Test `numeric_table_alignment` (manual browser measurement and existing shared table behavior tests).
 
 ### §8 — Shared stack state survives checkout removal and has visible ownership
@@ -233,8 +233,8 @@ No product analytics or funnel signals change. The development launcher reports 
 | 1.3 | integration | `namespaces_isolate_streams_readiness_and_outbound` | Work enqueued in A → B sees none; dedicated A reader recovers/acknowledges A |
 | 1.4 | integration | `namespaces_isolate_subscriptions` | A publication → only A receives logical channel; resubscription stays scoped |
 | 2.1 | unit | `worktree_identity_is_stable_and_distinct` | Same path → same namespace/port; distinct paths → distinct identity/common project |
-| 2.2 | unit | `concurrent_start_reuses_one_infrastructure_stack` | Concurrent stubbed Docker callers → one provision and canonical config reuse |
-| 2.3 | unit | `infrastructure_refusal_stops_application_start` | Unhealthy/missing service, held lock or port → nonzero and no daemon invocation |
+| 2.2 | unit | `concurrent_start_reuses_one_infrastructure_stack` | Concurrent callers → one provision; stopped/missing services recover using the canonical snapshot |
+| 2.3 | unit | `infrastructure_refusal_stops_application_start` | Failed recovery/health wait → nonzero and no daemon; retry preserves volumes and healthy services |
 | 3.1 | integration | `development_start_preserves_each_database` | Repeated A startup → A's row survives; B's database differs |
 | 3.2 | unit | `development_down_preserves_sibling_processes` | A down → only verified A signaled; no Compose down or data removal |
 | 3.3 | unit | `runner_environment_is_worktree_scoped` | A/B settings → different URL/storage; no token output; existing missing-token refusal |

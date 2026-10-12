@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import nextDynamic from "next/dynamic";
 import {
   Alert,
   AlertDescription,
@@ -26,7 +27,6 @@ import {
 } from "lucide-react";
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import { useEventDetail } from "./use-event-detail";
-import { FleetMarkdown } from "./FleetMarkdown";
 import {
   copiedRequestContext,
   formatRequestValue,
@@ -47,6 +47,12 @@ type EventDetailsDialogProps = {
   row: EventRow | null;
   onOpenChange: (open: boolean) => void;
 };
+
+// Keep the markdown runtime out of initial route bundles, as in fleet chat.
+const FleetMarkdown = nextDynamic(
+  () => import("./FleetMarkdown").then((mod) => mod.FleetMarkdown),
+  { ssr: false },
+);
 
 type EventTone = {
   alertVariant: AlertVariant;

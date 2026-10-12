@@ -22,7 +22,7 @@ describe("EventDetailsDialog", () => {
     // is not a claim about the reply and does not appear here.
     await renderDialogWithBody(event({ status: "processed", response_text: null, failure_label: null }));
     // pin test: the literal is the contract the dialog renders
-    expect(screen.getByText("No result recorded")).toBeTruthy();
+    expect(await screen.findByText("No result recorded")).toBeTruthy();
     expect(screen.queryByText(OUTCOME.COMPLETED)).toBeNull();
     expect(screen.queryByText(/no reply/i)).toBeNull();
   });
@@ -93,6 +93,7 @@ describe("EventDetailsDialog", () => {
   it("renders reply markdown without executing embedded HTML", async () => {
     const response = "**Answer**\n\n1. Read the `instructions`\n2. Reply\n\n<script>alert('unsafe')</script>\n\n[Unsafe](javascript:alert(1))";
     await renderDialogWithBody(event({ status: "processed", response_text: response }));
+    await screen.findByText("Answer");
 
     const dialog = screen.getByRole("dialog");
     expect(dialog.querySelector("strong")?.textContent).toBe("Answer");
