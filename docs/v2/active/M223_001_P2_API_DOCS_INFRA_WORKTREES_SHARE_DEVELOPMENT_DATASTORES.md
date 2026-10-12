@@ -66,6 +66,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/tests/event-details-dialog.test.tsx` | EDIT | Prove simplified metadata, rendered markdown and safe untrusted response handling |
 | `ui/packages/design-system/src/design-system/DataTableView.tsx` | EDIT | Align sortable numeric values beneath their labels in every consuming table |
 | `scripts/{local-dev.sh,local-dev-test.sh}` | CREATE | One launcher for identity, shared infrastructure and processes; separate regression proofs |
+| `scripts/{local-dev-state.sh,local-dev-live-test.sh}` | CREATE | Keep state ownership and retained live proofs cohesive within the file-length cap |
 | `make/dev.mk` and `Makefile` | EDIT | Keep existing up/down as the developer workflow; add no Make targets |
 | `make/{quality,test-unit,test-integration-rustd}.mk` | RESTORE | Remove Cargo wrapper wiring; retain original recipes |
 | `scripts/{cargo_local.py,cargo_local_test.py}` | DELETE | Remove the rejected configuration launcher and its dedicated tests |
@@ -127,7 +128,7 @@ Prerequisite: §2. Agent choice: start a native daemon compiled from this worktr
 - **Dimension 3.4** — DONE — Migration failure, port collision, stale process identity and missing configuration produce a nonzero status without signaling foreign processes → Test `development_refuses_unsafe_process_operations`.
 
 ### §4 — Developer flows and destructive test lanes stay coherent
-Prerequisite: §3. Agent choice: existing up/down use the shared development launcher; add no Make targets. The launcher's maintenance command stops the shared project while preserving volumes. Mailpit filtering uses distinct development recipients and never global deletion. QStash callbacks use each daemon's reachable origin. No new product endpoint or tenant model is introduced.
+Prerequisite: §3. Agent choice: existing up/down use the shared development launcher. Section 8 adds the requested status caller and replaces maintenance shutdown with owner-aware teardown. Mailpit filtering uses distinct development recipients and never global deletion. QStash callbacks use each daemon's reachable origin. No new product endpoint or tenant model is introduced.
 - **Dimension 4.1** — DONE — Two real daemons share the infrastructure, answer their own URLs and retain independent data after either stops → Test `two_worktrees_share_infrastructure_end_to_end`.
 - **Dimension 4.2** — DONE — Disposable integration resets use their own project and datastore addresses → Test `disposable_reset_keeps_shared_development` (manual: complete integration while two development daemons and four unchanged shared containers remain present).
 - **Dimension 4.3** — DONE — Development, dry and benchmark commands select the worktree URL; documentation names runner registration, mail filtering and explicit infrastructure shutdown → Test `runner_environment_is_worktree_scoped` and manual Make dry-run expansion for `dry-app-rustd` and `_bench-loadgen`.
@@ -154,6 +155,16 @@ Prerequisite: §6. Keep default API-key creation-time ordering separate from an 
 - **Dimension 7.4** — IN_PROGRESS — Event replies render markdown through the existing safe chat renderer without treating the entire answer as a title → Test `renders reply markdown without executing embedded HTML`.
 - **Dimension 7.5** — IN_PROGRESS — Numeric table values align beneath sortable labels and row actions retain their alignment → Test `numeric_table_alignment` (manual browser measurement and existing shared table behavior tests).
 
+### §8 — Shared stack state survives checkout removal and has visible ownership
+
+Prerequisite: §7. Indy's call: "move the shared dev stack's state out of .git/, and give it an owner-aware status and teardown". Use `${XDG_STATE_HOME:-$HOME/.local/state}/agentsfleet/dev-$(id -u)-$DEV_REPO_ID`; retain the clone identity and project name, with no old-path fallback. Register each root under `worktrees/<id>/worktree` while holding the same infrastructure lock used for teardown. An existing root is live even without a daemon; a missing root is gone. Inspect every stack from its saved snapshot, even after its clone disappears. Extend `make down DEV_STACK=<COMPOSE_PROJECT>` to remove containers and volumes only when no registered root exists; name live roots on refusal and always use `ports.env`. `make status` is the distinct requested all-stack inspection caller; no existing status target exists. Extract state operations and the existing live test to stay within file caps.
+
+- **Dimension 8.1** — IN_PROGRESS — State lives outside Git metadata with stable clone sharing → Test `test_state_home_is_outside_git_metadata`.
+- **Dimension 8.2** — IN_PROGRESS — Teardown names and preserves every live registered root → Test `test_stack_teardown_refuses_live_worktrees`.
+- **Dimension 8.3** — IN_PROGRESS — Teardown of gone-only registrations uses the saved environment and removes volumes → Test `test_stack_teardown_removes_gone_worktrees`.
+- **Dimension 8.4** — IN_PROGRESS — Status lists live and gone registrations and running/stopped containers across stacks → Test `test_status_reports_all_stack_owners`.
+- **Dimension 8.5** — IN_PROGRESS — Symlinked state refuses inspection or mutation → Test `test_symlinked_state_is_refused`.
+
 ## Interfaces
 
 ### UI table refinement requested for this Pull Request
@@ -166,7 +177,8 @@ This refinement touches two existing components and one existing behavior test. 
 AGENTSFLEET_DEV_NAMESPACE: optional validated ASCII namespace; unset keeps existing keys.
 make up: ensure shared infrastructure, compile/migrate/start this worktree's daemon.
 make down: stop this worktree's daemon; keep infrastructure and data.
-local-dev.sh infra-down: maintenance shutdown of shared infrastructure; keep volumes.
+local-dev.sh status: inspect all stacks and registered roots under the state home.
+make down DEV_STACK=<COMPOSE_PROJECT>: refuse live roots; remove orphan containers and volumes.
 local-dev.sh runner-env: emit existing runner URL/storage settings, never a token.
 RUNNER_STORAGE_HOME and AGENTSFLEET_API_URL: existing runner inputs.
 DATABASE_URL_API / DATABASE_URL_MIGRATOR: worktree database on shared Postgres.
@@ -238,6 +250,11 @@ No product analytics or funnel signals change. The development launcher reports 
 | 7.3 | unit | `keeps technical identifiers out of the heading and labels the request source and type` | Identifier chip absent; source/type labeled; identifier copy and diagnostics preserved |
 | 7.4 | unit | `renders reply markdown without executing embedded HTML` | Bold text, lists and code render; untrusted HTML creates no executable element |
 | 7.5 | unit, manual | `numeric_table_alignment` | Browser label/value edges match; existing sorting, accessibility and row-action checks remain green |
+| 8.1 | unit | `test_state_home_is_outside_git_metadata` | XDG state home → shared state outside metadata; same clone still shares one project |
+| 8.2 | unit | `test_stack_teardown_refuses_live_worktrees` | Existing registered root → nonzero, named root, no Docker down |
+| 8.3 | unit | `test_stack_teardown_removes_gone_worktrees` | Missing registered roots → down with saved ports.env and --volumes |
+| 8.4 | unit | `test_status_reports_all_stack_owners` | Two stacks → both projects, live/gone roots and container states reported |
+| 8.5 | unit | `test_symlinked_state_is_refused` | Symlinked state → nonzero before Docker or outside-file mutation |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -279,8 +296,8 @@ Delete the rejected Cargo launcher and its dedicated tests; restore all Make cal
 5. **What we build** — Namespace support, shared infrastructure definition, worktree launcher, scoped runner settings and behavior proofs.
 6. **What we do NOT build** — Remote runner provisioning or shared fault-testing infrastructure; neither is required for the developer moment.
 7. **Fit with existing features** — Compose health checks, the real cluster, role-separated migrations and runner configuration remain the underlying mechanisms.
-8. **Surface order** — Make commands first; this is contributor infrastructure with no product command or dashboard change.
-9. **Dashboard restraint** — N/A; no dashboard controls or quality claims are added.
+8. **Surface order** — Make commands first; requested table and inspection corrections preserve the dashboard's existing workflows.
+9. **Dashboard restraint** — Reuse the shared table, dialog, markdown renderer and copy controls; add no new dashboard abstraction.
 10. **Confused-user next step** — Read the launcher error and `docs/development.md`; runner setup uses its existing registration workflow.
 
 ## Decomposition & alternatives (patch vs refactor)
@@ -292,7 +309,7 @@ Delete the rejected Cargo launcher and its dedicated tests; restore all Make cal
 ## Discovery (consult log)
 
 - **Consults:** Indy approved the proposal: "Yes create a spec and lets start the work". Runner decision: "Use the existing Linux runner host". Source inspection found deployment-wide readiness/outbound keys, loopback cluster announcements, no dotenv loading in the daemon entry point and destructive integration resets. Architecture changes land with their implementation.
-- **Developer workflow:** Indy requested "i will just use make up , make down in each of my work trees" and "Ensure thatthe envs that you have build are not redundant and standard and reuse the existing." Runtime helpers are consolidated into one launcher; no Make targets or duplicate runner URL settings are added. The requested pre-push target, script and environment tables were supplied before publication.
+- **Developer workflow:** Indy requested "i will just use make up , make down in each of my work trees" and "Ensure thatthe envs that you have build are not redundant and standard and reuse the existing." Existing up/down remain the workflow; the requested status caller inspects all stacks. No duplicate runner URL settings are added.
 - **Metrics review:** No product analytics or funnel playbook update is required; contributor startup diagnostics expose no secrets.
 - **Skill-chain outcomes:** Structural validation clean; unit/integration diff ledgers reviewed with explicit scope exceptions for generic load, allocator and random-order proofs. gstack review and native adversarial pass clean on `51b934c82`; optional external review disabled. Full declared gate passed; the closed metadata receives a fresh gate before publication. Live revalidation passed using the existing sibling checkout, with synthetic state removed and owned cleanup required to succeed. Two source-text tests were replaced by shutdown behavior; Make expansion and measured disposable-stack isolation supply their manual proofs.
 - **Deferrals:** None. Existing Linux-host execution is an explicit user decision; provisioning that host is outside this workstream.
