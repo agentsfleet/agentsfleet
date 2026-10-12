@@ -11,7 +11,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M223
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P2 — development infrastructure consumes one stack per repository
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — datastore isolation precedes attaching development processes
@@ -57,7 +57,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `compose.dev-infra.yml` | CREATE | Infrastructure-only development definition, independent of disposable tests |
 | `scripts/{local-dev.sh,local-dev-test.sh}` | CREATE | One launcher for identity, shared infrastructure and processes; separate regression proofs |
 | `make/dev.mk` and `Makefile` | EDIT | Keep existing up/down as the developer workflow; add no Make targets |
-| `make/test-unit.mk` | EDIT | Include launcher regression proofs in the declared unit lane |
+| `make/{quality,test-unit,test-integration-rustd}.mk` | EDIT | Route host Cargo lint/test invocations through shared build settings; retain all checks |
+| `scripts/{cargo_local.py,cargo_local_test.py}` | CREATE | Load only machine build defaults, preserve caller overrides, and prove failures and isolation |
 | `make/dry.mk` and `make/bench.mk` | EDIT | Read this worktree's daemon URL |
 | `docs/architecture/datastore_scaling.md` and `docs/development.md` | EDIT | Record the isolation mechanism and development commands with implementation |
 | `playbooks/operations/ci_rust_images/001_playbook.md` | EDIT | Remove the obsolete development caller of the release builder |
@@ -128,6 +129,14 @@ Prerequisite: §3. Agent choice: existing up/down use the shared development lau
 - **Dimension 4.2** — DONE — Disposable integration resets use their own project and datastore addresses → Test `disposable_reset_keeps_shared_development` (manual: complete integration while two development daemons and four unchanged shared containers remain present).
 - **Dimension 4.3** — DONE — Development, dry and benchmark commands select the worktree URL; documentation names runner registration, mail filtering and explicit infrastructure shutdown → Test `runner_environment_is_worktree_scoped` and manual Make dry-run expansion for `dry-app-rustd` and `_bench-loadgen`.
 
+### §5 — Compiler caching reaches every canonical Rust gate
+
+Prerequisite: §4. Agent choice: one Cargo launcher reads the six existing build/cache settings from the trusted machine environment file. Existing caller values, including an empty wrapper, win. Only these settings cross the loader boundary; test datastore addresses and target directories retain their caller values. Every host Cargo invocation in lint and test recipes uses the launcher. No machine configuration means unchanged Cargo behavior. The cache directory is shared; Cargo output remains per worktree. No suite or failure check is skipped.
+
+- **Dimension 5.1** — IN_PROGRESS — Machine defaults reach Cargo without changing arguments, working directory, explicit overrides or unrelated environment → Test `test_loads_build_defaults_without_datastore_overrides`.
+- **Dimension 5.2** — IN_PROGRESS — Missing config works; invalid config, missing compiler and failing Cargo refuse with nonzero status and no sensitive config output → Test `test_configuration_failure_stops_cargo_without_output`.
+- **Dimension 5.3** — IN_PROGRESS — Existing worktrees reuse eligible compiled dependencies while keeping separate output; canonical lint and unit lanes still run all checks → Test `compiler_cache_across_existing_worktrees` (manual, cache counters and complete Make logs).
+
 ## Interfaces
 
 ```text
@@ -188,6 +197,9 @@ No product analytics or funnel signals change. The launcher reports its namespac
 | 4.1 | e2e | `two_worktrees_share_infrastructure_end_to_end` | Two subprocess daemons → separate healthy URLs/state on one infrastructure project |
 | 4.2 | integration, manual | `disposable_reset_keeps_shared_development` | Disposable integration runs on its own project and URLs; two development daemons and shared container identities survive |
 | 4.3 | unit, manual | `runner_environment_is_worktree_scoped` | Runner settings and manual `make -n dry-app-rustd` / `make -n _bench-loadgen` expansions select this worktree's URL |
+| 5.1 | unit | `test_loads_build_defaults_without_datastore_overrides` | Machine build settings reach Cargo; caller values and datastore addresses remain unchanged |
+| 5.2 | unit | `test_configuration_failure_stops_cargo_without_output` | Invalid config exits nonzero before Cargo; no config output escapes; absent config and Cargo failure are covered separately |
+| 5.3 | manual | `compiler_cache_across_existing_worktrees` | Two existing checkouts, distinct target directories, shared cache hits; full canonical lint/unit results recorded |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -245,3 +257,5 @@ No files or public symbols are deleted. Replace the existing destructive develop
 - **Metrics review:** No product analytics or funnel playbook update is required; contributor startup diagnostics expose no secrets.
 - **Skill-chain outcomes:** Structural validation clean; unit/integration diff ledgers reviewed with explicit scope exceptions for generic load, allocator and random-order proofs. gstack review and native adversarial pass clean on `51b934c82`; optional external review disabled. Full declared gate passed; the closed metadata receives a fresh gate before publication. Live revalidation passed using the existing sibling checkout, with synthetic state removed and owned cleanup required to succeed. Two source-text tests were replaced by shutdown behavior; Make expansion and measured disposable-stack isolation supply their manual proofs.
 - **Deferrals:** None. Existing Linux-host execution is an explicit user decision; provisioning that host is outside this workstream.
+
+Oct 12, 2026: Indy requested compiler-cache wiring and measured lint/unit gate reuse in this existing tree and Pull Request. Namespace-abstraction and Compose redesign remain separate from this compiler-cache slice.
