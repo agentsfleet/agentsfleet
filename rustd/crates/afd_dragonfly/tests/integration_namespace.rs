@@ -23,7 +23,7 @@ async fn pair() -> (DragonflyConfig, Dragonfly, DragonflyConfig, Dragonfly) {
         .with_namespace(&harness.name("a"))
         .expect("namespace a");
     let b = DragonflyHarness::config()
-        .with_namespace(&harness.name("b"))
+        .with_namespace(&harness.name("ab"))
         .expect("namespace b");
     let ra = Dragonfly::connect(&a).await.expect("connect a");
     let rb = Dragonfly::connect(&b).await.expect("connect b");
@@ -138,6 +138,19 @@ async fn namespaces_isolate_streams_readiness_and_outbound() {
     );
     assert!(!fb.ack("same-fleet", &id).await.expect("foreign ack"));
     assert!(fa.ack("same-fleet", &id).await.expect("own ack"));
+    assert_eq!(
+        afd_dragonfly::test_util::fleet_entries(&a, "same-fleet")
+            .await
+            .expect("scoped history a")
+            .len(),
+        1
+    );
+    assert_eq!(
+        afd_dragonfly::test_util::fleet_entries(&b, "same-fleet")
+            .await
+            .expect("scoped history b"),
+        [] as [afd_dragonfly::FleetEvent; 0]
+    );
     let ia = ReadyIndex::new(a.clone());
     let ib = ReadyIndex::new(b.clone());
     let token = ia.mark("same-fleet").await.expect("mark a");
@@ -154,6 +167,9 @@ async fn namespaces_isolate_streams_readiness_and_outbound() {
     );
     outbound_isolation(ca, a, cb, b).await;
 }
+
+#[path = "integration_namespace/sweep.rs"]
+mod sweep;
 
 async fn outbound_isolation(ca: DragonflyConfig, a: Dragonfly, cb: DragonflyConfig, b: Dragonfly) {
     let qa = OutboundQueue::new(a);

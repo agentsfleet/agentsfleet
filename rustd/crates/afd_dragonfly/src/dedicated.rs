@@ -111,7 +111,11 @@ impl Dedicated {
         })
     }
 
-    pub(crate) fn key(&self, logical: &str) -> String {
+    /// Maps a logical key or channel for this connection's raw commands.
+    ///
+    /// Default configuration preserves the name. Map each logical name once.
+    #[must_use]
+    pub fn physical_key(&self, logical: &str) -> String {
         self.namespace.key(logical)
     }
 

@@ -125,7 +125,7 @@ pub fn cluster_shards_reply(port: u16) -> Vec<u8> {
 /// # Errors
 /// Returns a command error when the stream cannot be read.
 pub async fn fleet_entries(redis: &Dragonfly, fleet_id: &str) -> Result<Vec<FleetEvent>> {
-    let key = crate::streams::fleet_stream_key(fleet_id);
+    let key = redis.physical_key(&crate::streams::fleet_stream_key(fleet_id));
     let mut cmd = redis::cmd(CMD_XRANGE);
     cmd.arg(&key).arg(RANGE_OLDEST).arg(RANGE_NEWEST);
     let reply: redis::streams::StreamRangeReply = redis.command(CMD_XRANGE, &key, &cmd).await?;
@@ -143,7 +143,34 @@ pub async fn fleet_entries(redis: &Dragonfly, fleet_id: &str) -> Result<Vec<Flee
         .collect())
 }
 
+/// Active sharded subscription channels matching a physical pattern, per primary.
+///
+/// # Errors
+/// Returns a topology or command error when any primary cannot be inspected.
+pub async fn shard_channels(redis: &Dragonfly, pattern: &str) -> Result<Vec<String>> {
+    use redis::cluster_routing::{RoutingInfo, SingleNodeRoutingInfo};
+
+    let primaries = crate::topology::primaries(redis).await?;
+    let mut channels = Vec::new();
+    for node in primaries {
+        let mut cmd = redis::cmd(CMD_PUBSUB);
+        cmd.arg(SHARD_CHANNELS).arg(pattern);
+        let routing = RoutingInfo::SingleNode(SingleNodeRoutingInfo::ByAddress {
+            host: node.host,
+            port: node.port,
+        });
+        channels.extend(
+            redis
+                .route::<Vec<String>>(CMD_PUBSUB, pattern, &cmd, routing)
+                .await?,
+        );
+    }
+    Ok(channels)
+}
+
 /// The command [`fleet_entries`] issues, and its bounds.
 const CMD_XRANGE: &str = "XRANGE";
 const RANGE_OLDEST: &str = "-";
 const RANGE_NEWEST: &str = "+";
+const CMD_PUBSUB: &str = "PUBSUB";
+const SHARD_CHANNELS: &str = "SHARDCHANNELS";

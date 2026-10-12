@@ -211,6 +211,10 @@ impl FleetStreams {
         Self { redis }
     }
 
+    fn stream_key(&self, fleet_id: &str) -> String {
+        self.redis.physical_key(&fleet_stream_key(fleet_id))
+    }
+
     /// Creates the consumer group, delivering from the stream's beginning.
     ///
     /// Idempotent: an existing group answers `BUSYGROUP`, which is the expected
@@ -266,7 +270,7 @@ impl FleetStreams {
     }
 
     async fn create_group(&self, fleet_id: &str, start: &str) -> Result<()> {
-        let key = self.redis.key(&fleet_stream_key(fleet_id));
+        let key = self.stream_key(fleet_id);
         self.refuse_occupied_key(&key).await?;
         let mut cmd = redis::cmd(CMD_XGROUP);
         cmd.arg("CREATE")
@@ -293,7 +297,7 @@ impl FleetStreams {
     /// datastore refuses to grow, and an unexpected-reply error when Dragonfly
     /// answers with something that is not an id.
     pub async fn append(&self, fleet_id: &str, fields: &[(&str, &str)]) -> Result<EventId> {
-        let key = self.redis.key(&fleet_stream_key(fleet_id));
+        let key = self.stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_XADD);
         cmd.arg(&key).arg("*");
         for (name, value) in fields {
@@ -324,7 +328,7 @@ impl FleetStreams {
     /// The purge logs and continues: Postgres has already committed, and the
     /// keys left behind are unreachable rather than harmful.
     pub async fn forget(&self, fleet_id: &str) -> Result<()> {
-        let key = self.redis.key(&fleet_stream_key(fleet_id));
+        let key = self.stream_key(fleet_id);
         let mut cmd = redis::cmd(CMD_DEL);
         cmd.arg(&key);
         let _removed: i64 = self.redis.command(CMD_DEL, &key, &cmd).await?;

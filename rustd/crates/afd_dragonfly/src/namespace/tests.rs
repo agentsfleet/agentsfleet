@@ -68,3 +68,43 @@ fn namespace_config_accepts_unset_blank_and_safe_values_for_every_role() {
         config(raw).expect("blank or safe namespace");
     }
 }
+
+#[test]
+fn namespace_default_preserves_every_logical_name() {
+    for raw in ["", " \n"] {
+        let namespace = config(raw).expect("default configuration").namespace;
+        for logical in ["key", "fleet:{tag}:events", "dev:other:key"] {
+            assert_eq!(namespace.key(logical), logical);
+            assert_eq!(namespace.logical(logical), Some(logical));
+        }
+    }
+}
+
+#[test]
+fn namespace_round_trip_rejects_foreign_prefixes() {
+    let namespace = config("x").expect("partitioned configuration").namespace;
+    assert_eq!(namespace.key("key"), "dev:x:key");
+    assert_eq!(namespace.logical("dev:x:key"), Some("key"));
+    for foreign in ["dev:xy:key", "dev:y:key", "key", "dev:x"] {
+        assert_eq!(namespace.logical(foreign), None, "{foreign}");
+    }
+}
+
+#[test]
+fn namespace_preserves_hash_tags_and_namespace_like_logical_names() {
+    let namespace = config("x").expect("partitioned configuration").namespace;
+    let tagged = "fleet:{tag}:events";
+    assert_eq!(
+        redis::cluster_routing::Slot::for_key(tagged),
+        redis::cluster_routing::Slot::for_key(namespace.key(tagged))
+    );
+    assert_ne!(
+        redis::cluster_routing::Slot::for_key("key"),
+        redis::cluster_routing::Slot::for_key(namespace.key("key"))
+    );
+    for logical in ["fleet:{tag}:events", "dev:y:key", "STREAMS", "dev:x:key"] {
+        let physical = namespace.key(logical);
+        assert_eq!(physical, format!("dev:x:{logical}"));
+        assert_eq!(namespace.logical(&physical), Some(logical));
+    }
+}

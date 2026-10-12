@@ -292,9 +292,12 @@ The namespace accepts at most 64 ASCII letters, digits, underscores or hyphens.
 Unset or blank values retain existing datastore names; production and deployed `api-dev` keep their deployment configuration.
 Replicas in one deployment use the same database and namespace so they can process the same deployment's work.
 
-`afd_dragonfly` applies prefixes at each application operation boundary, including dedicated blocking readers and the subscription hub.
+`afd_dragonfly` selects one validated, immutable namespace policy during configuration.
+Stores resolve fixed outbound keys at construction and dynamic fleet/session keys through private key builders.
+Arbitrary-key operations, dedicated blocking readers and the subscription hub apply the same policy.
 Scans and delivered subscription messages return logical names to callers.
-Raw command methods retain physical keys for administration; application code uses the scoped operations.
+Raw command methods accept physical keys; `Dragonfly::physical_key` and `Dedicated::physical_key` map logical names for these callers.
+Application code uses the scoped stores. The default policy preserves names and exposes every matching key to raw scans, including development prefixes on a shared cluster.
 
 `make down` stops only the verified daemon belonging to the current worktree.
 The launcher's maintenance command stops the repository's shared services and preserves their volumes.

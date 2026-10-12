@@ -122,8 +122,10 @@ impl DragonflyConfig {
         })
     }
 
-    /// Builds a configuration directly from a URL, for tests and for the
-    /// subscription hub reusing an already-resolved connection string.
+    /// Builds a configuration from a URL with default, unpartitioned key names.
+    ///
+    /// Use [`Self::with_namespace`] to select a namespace, or clone the resolved
+    /// configuration when opening another connection for the same deployment.
     #[must_use]
     pub fn from_url(role: DragonflyRole, url: String) -> Self {
         Self {
