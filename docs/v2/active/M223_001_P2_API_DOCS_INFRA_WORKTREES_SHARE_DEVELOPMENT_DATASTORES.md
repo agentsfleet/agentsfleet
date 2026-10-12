@@ -50,11 +50,14 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_dragonfly/Cargo.toml` | EDIT | Reuse the workspace validator for namespace input |
 | `rustd/Cargo.lock` | EDIT | Record the validator dependency graph if required |
 | `rustd/crates/afd_dragonfly/src/{lib.rs,config.rs,client.rs,dedicated.rs,error.rs,error/samples.rs}` | EDIT | Carry validated namespace with every connection; preserve error classes |
-| `rustd/crates/afd_dragonfly/src/{namespace.rs,namespace/tests.rs,client/commands.rs,session/operations.rs}` | CREATE | Key mapping and configuration proofs; split existing oversized command implementations |
+| `rustd/crates/afd_dragonfly/src/{namespace.rs,namespace/tests.rs,session/operations.rs}` | CREATE | Validated namespace policy and proofs; split oversized session operations |
+| `rustd/crates/afd_dragonfly/src/client/commands.rs` | DELETE | Recombine bounded execution into the existing client within the file cap |
+| `rustd/crates/afd_dragonfly/src/test_util.rs` | EDIT | Map fleet history reads and expose primary-local subscription inspection for isolation proofs |
 | `rustd/crates/afd_dragonfly/src/{kv.rs,streams.rs,streams/consume.rs,streams/retain.rs,streams/tail.rs,streams/render.rs,ready.rs,outbound.rs,outbound/reader.rs,session.rs,session/tests.rs,capacity.rs}` | EDIT, CREATE | Scope key operations and scans; split existing oversized inline tests |
 | `rustd/crates/afd_dragonfly/src/{hub.rs,hub/channels.rs,hub/dispatch.rs,hub/pump.rs,hub/repair.rs,hub/repair/tests.rs,hub/detached.rs}` | EDIT | Scope subscriptions without leaking physical channel names to callers |
 | `rustd/crates/afd_dragonfly/tests/{datastore_suite.rs,integration_namespace.rs,keys_and_config.rs}` | EDIT, CREATE | Prove isolation on a real shared cluster |
 | `compose.dev-infra.yml` | CREATE | Infrastructure-only development definition, independent of disposable tests |
+| `docker-compose.yml` | EDIT | Correct the header describing the disposable container stack; preserve service configuration |
 | `scripts/{local-dev.sh,local-dev-test.sh}` | CREATE | One launcher for identity, shared infrastructure and processes; separate regression proofs |
 | `make/dev.mk` and `Makefile` | EDIT | Keep existing up/down as the developer workflow; add no Make targets |
 | `make/{quality,test-unit,test-integration-rustd}.mk` | RESTORE | Remove Cargo wrapper wiring; retain original recipes |
@@ -142,10 +145,14 @@ Indy's instruction: "why do you need cargo_local.py and cargo_local_test.py? If 
 
 ### §6 — Reduce namespace plumbing at the datastore boundary
 
-Prerequisite: §5. Indy explicitly requires the original Dragonfly abstraction work in this same tree and Pull Request. A GPT-6 Astra High conceptual review compares the transparent connection adapter with typed alternatives before implementation. The chosen design must preserve raw-command meaning, default behavior, cluster routing, scripts, scans and subscription recovery while reducing namespace knowledge in operation modules. Its exact file manifest and behavioral proofs are amended here before Rust edits.
+Prerequisite: §5. Independent GPT-6 Astra High and Claude Fable source reviews select the existing concrete, validated `Namespace` with store-specific key builders. Publish `physical_key` on shared and dedicated connections so raw callers can map explicitly; raw execution retains physical-key semantics. Resolve outbound keys once at construction, centralize fleet/session key construction, recombine client execution, fix the unmapped fleet-history test helper and clarify `from_url` defaults. Keep the cluster driver and subscription routing/recovery intact. No trait, mode enum, command parser or new production module is required.
 
-- **Dimension 6.1** — IN_PROGRESS — Independent conceptual review selects the smallest safe abstraction and records the exact file manifest → Test `namespace_boundary_design_review` (manual, GPT-6 Astra High source review).
-- **Dimension 6.2** — PENDING — The selected refactor preserves default behavior and isolated values, sessions, streams, scans and subscriptions → Test `namespace_boundary_regression` (existing namespace unit cases and complete canonical integration lane after implementation).
+Implementation manifest for this refinement: `src/{client,config,dedicated,kv,outbound,ready,capacity,test_util,streams}.rs`, `src/client/commands.rs` (delete), `src/outbound/reader.rs`, `src/streams/{consume,retain,tail}.rs`, `src/session/operations.rs`, `src/namespace/tests.rs`, `tests/integration_namespace.rs`, architecture prose and the Compose header. Namespace production code and hub implementation stay as reviewed. The final crate diff is expected to contain 25 files against the base: remove the client extraction and add the existing test-util module. Preserve the session extraction because its original file exceeds the cap.
+
+Proofs: datastore-free identity, prefix-boundary and hash-tag tests; existing real-cluster isolation/recovery cases; namespaced fleet-history read; prefix-of-prefix isolation; raw physical-key access; and a marker-scoped sweep of writes and active subscription channels on every primary. Run canonical lint, unit and integration lanes at the final boundary. No transport concurrency, retry or command semantics are changed.
+
+- **Dimension 6.1** — DONE — Independent conceptual reviews select the concrete policy and store helpers with the manifest above → Test `namespace_boundary_design_review` (manual, GPT-6 Astra High and Claude Fable source reviews).
+- **Dimension 6.2** — IN_PROGRESS — The selected refactor preserves default behavior and isolated values, sessions, streams, scans and subscriptions → Test `namespace_boundary_regression` (namespace unit cases, marker-scoped sweep and complete canonical integration lane after implementation).
 
 ## Interfaces
 
