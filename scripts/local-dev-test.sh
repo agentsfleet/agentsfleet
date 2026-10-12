@@ -15,23 +15,23 @@ import sys
 import tempfile
 import time
 import unittest
-import urllib.request
 SOURCE = Path(sys.argv[1])
 DOCKER = '''#!/usr/bin/env python3
 import os, pathlib, sys, time
 a = sys.argv[1:]
 d = pathlib.Path(a[a.index("--project-directory")+1])
 state = d.parent / "docker-ready"
-action = next(x for x in a if x in ["ps", "up", "down", "exec"])
+action = next(x for x in a if x in ["ps", "up", "down", "exec", "restart"])
 with (d.parent / "docker-calls").open("a") as f: f.write(action + "\\n")
 with (d.parent / "docker-args").open("a") as f: f.write(__import__("json").dumps(a) + "\\n")
 if action == "up":
-    if os.getenv("FAIL_DOCKER"): sys.exit(42)
+    if os.getenv("FAIL_DOCKER") or os.getenv("FAIL_HEALTH"): sys.exit(42)
     time.sleep(float(os.getenv("FAKE_DOCKER_DELAY", "0.1")))
     state.write_text("ready")
 elif action == "ps" and state.exists():
-    for name in ["postgres", "dragonfly", "mailpit", "qstash"]:
-        print(name, "running", "unhealthy" if os.getenv("FAIL_HEALTH") else "healthy")
+    for name in (["postgres"] if state.read_text() == "partial" else ["postgres", "dragonfly", "mailpit", "qstash"]):
+        print(name, "running" if state.read_text() == "ready" else "exited", "unhealthy" if name == "postgres" and os.getenv("FAIL_HEALTH") else "healthy")
+elif action == "restart": state.write_text("ready")
 elif action == "exec":
     with (d.parent / "database-calls").open("a") as f: f.write(sys.stdin.read())
 elif action == "down": state.unlink(missing_ok=True)
@@ -135,7 +135,10 @@ class LauncherTests(unittest.TestCase):
         self.assertEqual((self.shared() / "docker-calls").read_text().splitlines().count("up"), 1)
         snapshot = (self.shared() / "infrastructure/compose.yml").read_bytes()
         (self.repos[1] / "compose.dev-infra.yml").write_text("branch drift")
-        self.run_dev("up", 1, infra=True)
+        for state in ["stopped", "partial"]:
+            (self.shared() / "docker-ready").write_text(state)
+            self.run_dev("up", 1, infra=True)
+        self.assertEqual((self.shared() / "docker-calls").read_text().splitlines().count("up"), 3)
         self.assertEqual((self.shared() / "infrastructure/compose.yml").read_bytes(), snapshot)
     def test_infrastructure_refusal_stops_application_start(self):
         self.run_dev("up", env=dict(self.env, FAIL_DOCKER="1"), expected=1)
@@ -143,6 +146,11 @@ class LauncherTests(unittest.TestCase):
         self.run_dev("up", infra=True)
         self.run_dev("up", env=dict(self.env, FAIL_HEALTH="1"), expected=1)
         self.assertFalse(list(self.shared().glob("worktrees/*/daemon.pid")))
+        calls = [json.loads(line) for line in (self.shared() / "docker-args").read_text().splitlines()]
+        self.assertEqual([a[a.index("restart") + 1:] for a in calls if "restart" in a], [["postgres"]])
+        self.assertTrue(all("--no-recreate" in a for a in calls if "up" in a))
+        self.assertTrue(all("down" not in a and "--volumes" not in a for a in calls))
+        self.run_dev("up", infra=True)
     def test_concurrent_cold_starts_wait_for_infrastructure_and_build_owners(self):
         for repo in self.repos:
             launcher = repo / "scripts/local-dev.sh"

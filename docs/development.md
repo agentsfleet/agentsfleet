@@ -33,7 +33,7 @@ Namespace: wt_<WORKTREE_CHECKSUM>
 ```
 
 `make up` starts missing infrastructure, creates the database, compiles this checkout, migrates its database and waits for `/readyz`.
-Repeating it rebuilds and restarts only this daemon while preserving its database.
+With healthy shared services, repeating it rebuilds and restarts only this daemon while preserving its database.
 The default `FOLLOW_LOGS=1` follows the daemon log after startup.
 
 The launcher reuses existing `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `DRAGONFLY_URL`, `API_URL` and QStash settings with local addresses.
@@ -108,7 +108,9 @@ make down DEV_STACK=<COMPOSE_PROJECT>
 ```
 
 There is no fallback to the former state location inside `.git`.
-An unhealthy or incomplete existing stack refuses startup; inspect its Compose health before stopping it explicitly.
+Run `make up` to recover stopped or missing shared services using the saved snapshot without recreating existing containers or deleting volumes.
+It restarts only services reported unhealthy, then waits for the whole stack to become healthy before starting the daemon.
+If health still fails, inspect the failing service; teardown remains restricted to stacks with no live registered roots.
 Lock waits are bounded separately: 6 minutes for infrastructure, 20 minutes for builds and 30 minutes for this worktree's process operation. After an interrupted owner, verify that owner has exited before removing its named lock directory.
 
 Run `bash scripts/local-dev-test.sh` for launcher regression checks; success prints `OK` and exits 0.

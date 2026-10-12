@@ -118,18 +118,20 @@ EOF
 
 dev_infra_up() {
   dev_snapshot
-  local status count=0 service state health
+  local status count=0 service state health restart=()
   status="$(dev_compose ps --all --format '{{.Service}} {{.State}} {{.Health}}')"
   if [ -n "$status" ]; then
     while read -r service state health; do
       case "$service" in postgres|dragonfly|mailpit|qstash) ;; *) dev_fail 'unexpected shared service' ;; esac
-      [ "$state" = running ] && [ "$health" = healthy ] || dev_fail "shared $service is unhealthy; inspect it before restarting infrastructure"
-      count=$((count + 1))
+      if [ "$state" = running ] && [ "$health" = healthy ]; then count=$((count + 1)); fi
+      if [ "$state" = running ] && [ "$health" = unhealthy ]; then restart+=("$service"); fi
     done <<<"$status"
-    [ "$count" = 4 ] || dev_fail 'shared stack is incomplete; inspect it before restarting infrastructure'
+  fi
+  if [ "$count" = 4 ]; then
     printf 'Reusing shared infrastructure %s\n' "$DEV_PROJECT"
     return
   fi
+  if [ "${#restart[@]}" -gt 0 ]; then dev_compose restart "${restart[@]}"; fi
   dev_compose up -d --wait --wait-timeout 330 --no-recreate
 }
 
