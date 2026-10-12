@@ -60,8 +60,8 @@ fn a_changed_name_line_renames_the_fleet() {
 
 #[test]
 fn an_edit_keeping_the_name_line_keeps_the_installed_name() {
-    // `probe-b` was drawn at install because `probe` was taken; giving it
-    // a tool must not collapse it back onto the name it was kept off.
+    // `probe-b` was named at install apart from its documents' `probe`;
+    // giving it a tool must not collapse it back onto `probe`.
     let with_a_tool = TRIGGER.replace("tools: []", "tools:\n    - shell");
     let request = Patch {
         config: Some(ConfigSource::Trigger(with_a_tool.clone())),

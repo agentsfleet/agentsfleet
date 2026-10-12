@@ -95,7 +95,7 @@ impl Rewrite {
             .map_err(error::skill)?;
 
         // The documents' name before and after this write. The row's name is
-        // not it: an install whose name was taken draws a suffixed one
+        // not it: an install may choose the row's name or draw a suffixed one
         // (`install/row.rs`), so `probe-b` can hold documents naming `probe`.
         let authored_before = current.authored_name();
         let authored_after = trigger
