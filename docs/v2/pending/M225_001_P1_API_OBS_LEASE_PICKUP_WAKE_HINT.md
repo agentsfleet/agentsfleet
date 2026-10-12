@@ -98,7 +98,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ### §2 — Every settled lease logs its phases
 
-- **Dimension 2.1** — `lease_completed` carries `queue_wait_ms` (event creation to lease), `bundle_ms`, `sandbox_ms`, `first_token_ms`, `model_ms`, `tools_ms` and `report_ms`, and they sum to within 5 ms of the lease's own wall time → Test `test_lease_completed_logs_its_phases`
+- **Dimension 2.1** — `lease_completed` carries `queue_wait_ms` (event creation to lease), `bundle_ms`, `sandbox_ms`, `first_token_ms`, `model_ms`, `tools_ms` and `report_ms`, and `bundle_ms + sandbox_ms + model_ms + tools_ms + report_ms` is within 5 ms of the lease's own wall time (`queue_wait_ms` precedes the lease; `first_token_ms` is part of `model_ms`) → Test `test_lease_completed_logs_its_phases`
 - **Dimension 2.2** — A lease that fails before a phase starts logs that phase as absent, not zero → Test `test_unstarted_phase_is_absent`
 
 ### §3 — Measured on dev
@@ -141,7 +141,7 @@ Wire: LeaseResponse unchanged; retry_after_ms unchanged
 | 1.2 | integration | `test_idle_poll_cost_is_unchanged` | empty index → `PollCost` reads 1 Dragonfly command, 0 Postgres round trips |
 | 1.3 | integration | `test_mark_racing_a_clear_survives` | clear with the stale token after a new mark → the bit remains |
 | 1.4 | integration | `test_lost_dirty_bit_falls_back_to_rotation` | mark with the dirty write failed → leased within 16 polls |
-| 2.1 | unit | `test_lease_completed_logs_its_phases` | a fake daemon lease → seven fields present, sum within 5 ms of wall time |
+| 2.1 | unit | `test_lease_completed_logs_its_phases` | a fake daemon lease → seven fields present; the five in-lease phases sum within 5 ms of wall time |
 | 2.2 | unit | `test_unstarted_phase_is_absent` | a refusal before sandbox start → `sandbox_ms` absent |
 | 3.1 | manual | `test_dev_pickup_p50_under_250ms` | ten steers → p50 ≤250 ms, max ≤1,000 ms; journal lines pasted |
 
