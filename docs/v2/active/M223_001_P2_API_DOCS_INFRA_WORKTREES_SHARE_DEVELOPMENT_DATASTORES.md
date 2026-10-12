@@ -11,7 +11,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M223
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P2 — development infrastructure consumes one stack per repository
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — datastore isolation precedes attaching development processes
@@ -57,8 +57,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `compose.dev-infra.yml` | CREATE | Infrastructure-only development definition, independent of disposable tests |
 | `scripts/{local-dev.sh,local-dev-test.sh}` | CREATE | One launcher for identity, shared infrastructure and processes; separate regression proofs |
 | `make/dev.mk` and `Makefile` | EDIT | Keep existing up/down as the developer workflow; add no Make targets |
-| `make/{quality,test-unit,test-integration-rustd}.mk` | EDIT | Route host Cargo lint/test invocations through shared build settings; retain all checks |
-| `scripts/{cargo_local.py,cargo_local_test.py}` | CREATE | Load only machine build defaults, preserve caller overrides, and prove failures and isolation |
+| `make/{quality,test-unit,test-integration-rustd}.mk` | RESTORE | Remove Cargo wrapper wiring; retain original recipes |
+| `scripts/{cargo_local.py,cargo_local_test.py}` | DELETE | Remove the rejected configuration launcher and its dedicated tests |
+| `~/Projects/dotfiles/{.zshenv,.zshrc}` | EDIT (owning repository) | Load the existing generated environment for non-interactive zsh commands |
 | `make/dry.mk` and `make/bench.mk` | EDIT | Read this worktree's daemon URL |
 | `docs/architecture/datastore_scaling.md` and `docs/development.md` | EDIT | Record the isolation mechanism and development commands with implementation |
 | `playbooks/operations/ci_rust_images/001_playbook.md` | EDIT | Remove the obsolete development caller of the release builder |
@@ -131,11 +132,13 @@ Prerequisite: §3. Agent choice: existing up/down use the shared development lau
 
 ### §5 — Compiler caching reaches every canonical Rust gate
 
-Prerequisite: §4. Agent choice: one Cargo launcher reads the six existing build/cache settings from the trusted machine environment file. Existing caller values, including an empty wrapper, win. Only these settings cross the loader boundary; test datastore addresses and target directories retain their caller values. Every host Cargo invocation in lint and test recipes uses the launcher. No machine configuration means unchanged Cargo behavior. The cache directory is shared; Cargo output remains per worktree. No suite or failure check is skipped.
+Prerequisite: §4. Agent choice: the existing dotfiles generator owns build settings; zsh startup exports them to ordinary Cargo, Make and orly invocations. Move the shared environment load from interactive startup to `.zshenv`. Delete the Cargo launcher and restore the original Make recipes. Each worktree retains its own target directory while sharing eligible compiler outputs through sccache. No suite or failure check is skipped.
 
-- **Dimension 5.1** — DONE — Machine defaults reach Cargo without changing arguments, working directory, explicit overrides or unrelated environment → Test `test_loads_build_defaults_without_datastore_overrides`.
-- **Dimension 5.2** — DONE — Missing config works; invalid config, missing compiler and failing Cargo refuse with nonzero status and no sensitive config output → Test `test_configuration_failure_stops_cargo_without_output`.
-- **Dimension 5.3** — DONE — Existing worktrees reuse eligible compiled dependencies while keeping separate output; canonical lint and unit lanes still run all checks → Test `compiler_cache_across_existing_worktrees` (manual, cache counters and complete Make logs).
+Indy's instruction: "why do you need cargo_local.py and cargo_local_test.py? If its one of script nuke it". The reduced implementation adds no repository helper or configuration parser.
+
+- **Dimension 5.1** — IN_PROGRESS — Non-interactive zsh loads the generated build settings in both existing worktrees → Test `shell_startup_exports_build_settings` (manual, allowlisted output only).
+- **Dimension 5.2** — IN_PROGRESS — Missing environment file is tolerated; explicit command-level overrides work; Cargo failure remains nonzero → Test `shell_startup_and_cargo_failures` (manual, temporary startup fixture and canonical Make).
+- **Dimension 5.3** — IN_PROGRESS — Existing worktrees reuse eligible compiled dependencies with separate output; canonical lint and unit lanes run their checks without a helper → Test `compiler_cache_across_existing_worktrees` (manual, cache counters and complete Make logs).
 
 ## Interfaces
 
@@ -184,7 +187,7 @@ The existing measurement checkout ran `make test-unit-rustd-runner` with only it
 
 No product analytics or funnel signals change. The launcher reports its namespace, daemon URL, dependency failure and attach/start outcome to the local terminal without credentials. Existing daemon telemetry keeps its current meaning. Launcher regression tests assert failure statuses and absence of token output.
 
-Native incremental lint, with `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1`, passed at 97.004 seconds initially and 10.719 seconds warm. These samples do not prove a universal winner: incremental compilation serves repeated edits; `sccache` shares eligible dependencies across disposable worktrees. Keep the existing machine policy rather than silently changing it. The authoritative generator already emits all six settings in dotfiles commit `d3ddb2f`; its checkout was clean. No dotfiles edit or environment regeneration was needed.
+Native incremental lint, with `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1`, passed at 97.004 seconds initially and 10.719 seconds warm. These samples do not prove a universal winner: incremental compilation serves repeated edits; `sccache` shares eligible dependencies across disposable worktrees. Keep the existing machine policy rather than silently changing it. The authoritative generator already emits all six settings in dotfiles commit `d3ddb2f`; its checkout was clean. The generator needs no change or regeneration. The final startup fix and Make verification are pending; the launcher-specific evidence above describes the superseded implementation.
 
 ## Test Specification (tiered)
 
@@ -204,8 +207,8 @@ Native incremental lint, with `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1`, passed
 | 4.1 | e2e | `two_worktrees_share_infrastructure_end_to_end` | Two subprocess daemons → separate healthy URLs/state on one infrastructure project |
 | 4.2 | integration, manual | `disposable_reset_keeps_shared_development` | Disposable integration runs on its own project and URLs; two development daemons and shared container identities survive |
 | 4.3 | unit, manual | `runner_environment_is_worktree_scoped` | Runner settings and manual `make -n dry-app-rustd` / `make -n _bench-loadgen` expansions select this worktree's URL |
-| 5.1 | unit | `test_loads_build_defaults_without_datastore_overrides` | Machine build settings reach Cargo; caller values and datastore addresses remain unchanged |
-| 5.2 | unit | `test_configuration_failure_stops_cargo_without_output` | Invalid config exits nonzero before Cargo; no config output escapes; absent config and Cargo failure are covered separately |
+| 5.1 | manual | `shell_startup_exports_build_settings` | Non-interactive shells in both checkouts export the six generated settings; Cargo targets differ |
+| 5.2 | manual | `shell_startup_and_cargo_failures` | Missing file starts normally; command-level override reaches Cargo; failing Cargo makes canonical Make fail |
 | 5.3 | manual | `compiler_cache_across_existing_worktrees` | Two existing checkouts, distinct target directories, shared cache hits; full canonical lint/unit results recorded |
 
 ## Acceptance Rubric (single scoring surface)
@@ -228,7 +231,7 @@ For R3, replace `<SIBLING_CHECKOUT>` with an existing sibling checkout's absolut
 
 ## Dead Code Sweep
 
-No files or public symbols are deleted. Replace the existing destructive development down recipe and its help text; keep disposable test-reset consumers unchanged. Any extracted inline tests move with their registration and retain their behavior-based names.
+Delete the rejected Cargo launcher and its dedicated tests; restore all Make callers. No Rust public symbols are deleted. Replace the existing destructive development down recipe and its help text; keep disposable test-reset consumers unchanged. Any extracted inline tests move with their registration and retain their behavior-based names.
 
 ## Out of Scope
 
