@@ -92,7 +92,7 @@ mod tests {
     /// encoding is pinned to its bytes: markers, length prefixes, the absent
     /// field's marker, lowercase hex and the quotes.
     #[test]
-    fn the_tag_is_the_zig_encoding_to_the_byte() {
+    fn the_tag_is_pinned_to_the_byte() {
         // pin test: literal is the contract
         assert_eq!(
             compute(&[Some(b"hello")]),
