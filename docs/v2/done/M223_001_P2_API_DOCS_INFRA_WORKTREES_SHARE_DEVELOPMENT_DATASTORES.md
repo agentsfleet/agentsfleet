@@ -11,7 +11,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M223
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — development infrastructure consumes one stack per repository
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — datastore isolation precedes attaching development processes
@@ -133,9 +133,9 @@ Prerequisite: §3. Agent choice: existing up/down use the shared development lau
 
 Prerequisite: §4. Agent choice: one Cargo launcher reads the six existing build/cache settings from the trusted machine environment file. Existing caller values, including an empty wrapper, win. Only these settings cross the loader boundary; test datastore addresses and target directories retain their caller values. Every host Cargo invocation in lint and test recipes uses the launcher. No machine configuration means unchanged Cargo behavior. The cache directory is shared; Cargo output remains per worktree. No suite or failure check is skipped.
 
-- **Dimension 5.1** — IN_PROGRESS — Machine defaults reach Cargo without changing arguments, working directory, explicit overrides or unrelated environment → Test `test_loads_build_defaults_without_datastore_overrides`.
-- **Dimension 5.2** — IN_PROGRESS — Missing config works; invalid config, missing compiler and failing Cargo refuse with nonzero status and no sensitive config output → Test `test_configuration_failure_stops_cargo_without_output`.
-- **Dimension 5.3** — IN_PROGRESS — Existing worktrees reuse eligible compiled dependencies while keeping separate output; canonical lint and unit lanes still run all checks → Test `compiler_cache_across_existing_worktrees` (manual, cache counters and complete Make logs).
+- **Dimension 5.1** — DONE — Machine defaults reach Cargo without changing arguments, working directory, explicit overrides or unrelated environment → Test `test_loads_build_defaults_without_datastore_overrides`.
+- **Dimension 5.2** — DONE — Missing config works; invalid config, missing compiler and failing Cargo refuse with nonzero status and no sensitive config output → Test `test_configuration_failure_stops_cargo_without_output`.
+- **Dimension 5.3** — DONE — Existing worktrees reuse eligible compiled dependencies while keeping separate output; canonical lint and unit lanes still run all checks → Test `compiler_cache_across_existing_worktrees` (manual, cache counters and complete Make logs).
 
 ## Interfaces
 
@@ -177,7 +177,14 @@ The generated identifier is stable for an absolute worktree path, changes on rel
 
 ## Metrics & Observability
 
+Compiler-cache evidence (Oct 12, 2026): `/private/tmp/agentsfleet-m223-cache-evidence/` retains complete private command logs and JSON timings. `make lint-rustd` passed at 138.828 seconds initially and 17.759 seconds warm. `make test-unit-rustd` passed twice with 4528 passed and 948 ignored (302.202 and 215.142 seconds). The launcher has 10 passing process-boundary tests; three deliberate mutations of precedence, environment isolation and failure propagation were rejected. Invalid machine configuration makes both canonical lint and daemon-unit targets fail.
+
+The existing measurement checkout ran `make test-unit-rustd-runner` with only its Cargo command routed through the new launcher: 1228 passed, a separate fresh target directory, 177.254 seconds, 288 Rust cache hits and 77 misses. These are single samples under shared machine load, not an isolated speedup benchmark. The first unit attempt used an incorrect restrictive measurement umask; its file-mode assertion failed, and the corrected normal-permission rerun passed. `sccache` 0.18.0 rejects `CARGO_INCREMENTAL=1`; a native incremental comparison must also clear `RUSTC_WRAPPER`.
+
+
 No product analytics or funnel signals change. The launcher reports its namespace, daemon URL, dependency failure and attach/start outcome to the local terminal without credentials. Existing daemon telemetry keeps its current meaning. Launcher regression tests assert failure statuses and absence of token output.
+
+Native incremental lint, with `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1`, passed at 97.004 seconds initially and 10.719 seconds warm. These samples do not prove a universal winner: incremental compilation serves repeated edits; `sccache` shares eligible dependencies across disposable worktrees. Keep the existing machine policy rather than silently changing it. The authoritative generator already emits all six settings in dotfiles commit `d3ddb2f`; its checkout was clean. No dotfiles edit or environment regeneration was needed.
 
 ## Test Specification (tiered)
 
