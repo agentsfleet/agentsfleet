@@ -11,7 +11,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M223
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** DONE
+**Status:** IN_PROGRESS
 **Priority:** P2 — development infrastructure consumes one stack per repository
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — datastore isolation precedes attaching development processes
@@ -59,6 +59,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_dragonfly/tests/integration_namespace/sweep.rs` | CREATE | Marker-scoped write and subscription sweep within the test-file length cap |
 | `compose.dev-infra.yml` | CREATE | Infrastructure-only development definition, independent of disposable tests |
 | `docker-compose.yml` | EDIT | Correct the header describing the disposable container stack; preserve service configuration |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/components/ApiKeyList.tsx` | EDIT | Show the shared unsorted chevrons until a person selects a column; keep the default row order |
+| `ui/packages/app/app/(dashboard)/admin/models/components/CatalogueList.tsx` | EDIT | Align model copy buttons with the existing Secrets name-slot tokens |
+| `ui/packages/app/tests/api-keys-components.test.ts` | EDIT | Pin initial sort affordances and preserve in-place sorting and mutation behavior |
+| `ui/packages/app/components/domain/EventDetailsDialog.tsx` | EDIT | De-emphasize identifiers, label source/type and render response markdown through the existing chat renderer |
+| `ui/packages/app/tests/event-details-dialog.test.tsx` | EDIT | Prove simplified metadata, rendered markdown and safe untrusted response handling |
+| `ui/packages/design-system/src/design-system/DataTableView.tsx` | EDIT | Align sortable numeric values beneath their labels in every consuming table |
 | `scripts/{local-dev.sh,local-dev-test.sh}` | CREATE | One launcher for identity, shared infrastructure and processes; separate regression proofs |
 | `make/dev.mk` and `Makefile` | EDIT | Keep existing up/down as the developer workflow; add no Make targets |
 | `make/{quality,test-unit,test-integration-rustd}.mk` | RESTORE | Remove Cargo wrapper wiring; retain original recipes |
@@ -101,61 +107,60 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Sections (implementation slices)
 
 ### §1 — Every Dragonfly surface carries its development namespace
-
 Prerequisite: none. Agent choice: a validated optional namespace is part of connection configuration, cloned with connections and inherited by dedicated readers and the subscription hub. Empty/unset uses existing key names. Namespace text introduces no braces or glob metacharacters, preserving existing cluster hash tags.
-
 - **Dimension 1.1** — DONE — Invalid, oversized or unsafe namespace input refuses before connecting; unset configuration retains existing names → Test `namespace_config_refuses_unsafe_input`.
 - **Dimension 1.2** — DONE — Equal logical keys in different namespaces hold independent values, sessions, counters and scan results → Test `namespaces_isolate_values_sessions_and_scans`.
 - **Dimension 1.3** — DONE — Fleet streams, readiness and outbound readers process only their namespace, including acknowledgment and pending recovery → Test `namespaces_isolate_streams_readiness_and_outbound`.
 - **Dimension 1.4** — DONE — Subscription delivery and reconnect use scoped physical channels while callers receive logical channel names → Test `namespaces_isolate_subscriptions`.
 
 ### §2 — Infrastructure is started once and safely reused
-
 Prerequisite: §1. Agent choice: one project per repository, derived from the Git common-directory path; copy the first caller's infrastructure definition and cluster script into repository-scoped development state. Subsequent callers address that canonical snapshot. A bounded exclusive startup lock prevents two callers provisioning the same services concurrently. Healthy existing services are reused without issuing configuration-replacing up commands.
-
 - **Dimension 2.1** — DONE — Stable identities distinguish worktrees and share the infrastructure project across them → Test `worktree_identity_is_stable_and_distinct`.
 - **Dimension 2.2** — DONE — Concurrent startup performs one provisioning operation and both callers attach; a second branch cannot replace the snapshot → Test `concurrent_start_reuses_one_infrastructure_stack`.
 - **Dimension 2.3** — DONE — Missing Docker, unhealthy dependencies, conflicting ports or a held lock fail with an actionable error and no application startup → Test `infrastructure_refusal_stops_application_start`.
 
 ### §3 — Processes, migrations and shutdown belong to the worktree
-
 Prerequisite: §2. Agent choice: start a native daemon compiled from this worktree to preserve the cluster's loopback routing without another application container. Share the repository's Cargo build cache under a build lock, copying the completed binary to the worktree's process directory before releasing that lock. Load the existing trusted machine environment file without printing it. Override only development datastore addresses, namespace and callback origin. Create the worktree database idempotently and migrate it through this worktree's daemon before serving. Process metadata records the executable and process identity; shutdown verifies both before signaling. Stable ports refuse collisions rather than silently selecting another worktree's listener.
-
 - **Dimension 3.1** — DONE — Repeated startup keeps database state and selects the same worktree URL; another worktree uses its own database → Test `development_start_preserves_each_database`.
 - **Dimension 3.2** — DONE — Down signals only an owned daemon, preserves data, and never shuts down shared infrastructure → Test `development_down_preserves_sibling_processes`.
 - **Dimension 3.3** — DONE — Runner configuration points to this daemon and a separate Linux-host storage root; token provisioning uses the existing runner registration workflow → Test `runner_environment_is_worktree_scoped`.
 - **Dimension 3.4** — DONE — Migration failure, port collision, stale process identity and missing configuration produce a nonzero status without signaling foreign processes → Test `development_refuses_unsafe_process_operations`.
 
 ### §4 — Developer flows and destructive test lanes stay coherent
-
 Prerequisite: §3. Agent choice: existing up/down use the shared development launcher; add no Make targets. The launcher's maintenance command stops the shared project while preserving volumes. Mailpit filtering uses distinct development recipients and never global deletion. QStash callbacks use each daemon's reachable origin. No new product endpoint or tenant model is introduced.
-
 - **Dimension 4.1** — DONE — Two real daemons share the infrastructure, answer their own URLs and retain independent data after either stops → Test `two_worktrees_share_infrastructure_end_to_end`.
 - **Dimension 4.2** — DONE — Disposable integration resets use their own project and datastore addresses → Test `disposable_reset_keeps_shared_development` (manual: complete integration while two development daemons and four unchanged shared containers remain present).
 - **Dimension 4.3** — DONE — Development, dry and benchmark commands select the worktree URL; documentation names runner registration, mail filtering and explicit infrastructure shutdown → Test `runner_environment_is_worktree_scoped` and manual Make dry-run expansion for `dry-app-rustd` and `_bench-loadgen`.
 
 ### §5 — Compiler caching reaches every canonical Rust gate
-
 Prerequisite: §4. Agent choice: the existing dotfiles generator owns build settings; zsh startup exports them to ordinary Cargo, Make and orly invocations. Move the shared environment load from interactive startup to `.zshenv`. Delete the Cargo launcher and restore the original Make recipes. Each worktree retains its own target directory while sharing eligible compiler outputs through sccache. No suite or failure check is skipped.
-
 Indy's instruction: "why do you need cargo_local.py and cargo_local_test.py? If its one of script nuke it". The reduced implementation adds no repository helper or configuration parser.
-
 - **Dimension 5.1** — DONE — Non-interactive zsh loads the generated build settings in both existing worktrees → Test `shell_startup_exports_build_settings` (manual, allowlisted output only).
 - **Dimension 5.2** — DONE — Missing environment file is tolerated; explicit command-level overrides work; Cargo failure remains nonzero → Test `shell_startup_and_cargo_failures` (manual, temporary startup fixture and canonical Make).
 - **Dimension 5.3** — DONE — Existing worktrees reuse eligible compiled dependencies with separate output; canonical lint and unit lanes run their checks without a helper → Test `compiler_cache_across_existing_worktrees` (manual, cache counters and complete Make logs).
 
 ### §6 — Reduce namespace plumbing at the datastore boundary
-
 Prerequisite: §5. Independent GPT-6 Astra High and Claude Fable source reviews select the existing concrete, validated `Namespace` with store-specific key builders. Publish `physical_key` on shared and dedicated connections so raw callers can map explicitly; raw execution retains physical-key semantics. Resolve outbound keys once at construction, centralize fleet/session key construction, recombine client execution, fix the unmapped fleet-history test helper and clarify `from_url` defaults. Keep the cluster driver and subscription routing/recovery intact. No trait, mode enum, command parser or new production module is required.
-
 Implementation manifest for this refinement: `src/{client,config,dedicated,kv,outbound,ready,capacity,test_util,streams}.rs`, `src/client/commands.rs` (delete), `src/outbound/reader.rs`, `src/streams/{consume,retain,tail}.rs`, `src/session/operations.rs`, `src/namespace/tests.rs`, `tests/integration_namespace.rs`, `tests/integration_namespace/sweep.rs`, architecture prose and the Compose header. Namespace production code and hub implementation stay as reviewed. The final crate diff is expected to contain 26 files against the base: remove the client extraction, add the existing test-util module and a sweep test module to honor the test-file cap. Preserve the session extraction because its original file exceeds the cap.
-
 Proofs: datastore-free identity, prefix-boundary and hash-tag tests; existing real-cluster isolation/recovery cases; namespaced fleet-history read; prefix-of-prefix isolation; raw physical-key access; and a marker-scoped sweep of writes and active subscription channels on every primary. Run canonical lint, unit and integration lanes at the final boundary. No transport concurrency, retry or command semantics are changed.
-
 - **Dimension 6.1** — DONE — Independent conceptual reviews select the concrete policy and store helpers with the manifest above → Test `namespace_boundary_design_review` (manual, GPT-6 Astra High and Claude Fable source reviews).
 - **Dimension 6.2** — DONE — The selected refactor preserves default behavior and isolated values, sessions, streams, scans and subscriptions → Test `namespace_boundary_regression` (namespace unit cases, marker-scoped sweep and complete canonical integration lane after implementation).
 
+### §7 — Requested table presentation matches existing dashboard patterns
+Prerequisite: §6. Keep default API-key creation-time ordering separate from an explicit column selection. Match the existing shared table's neutral chevrons, active direction indicators and keyboard controls. Reuse Secrets' desktop name-slot widths for model copy-button alignment. Keep the raw model identifier as the copied value.
+- **Dimension 7.1** — IN_PROGRESS — API Keys starts with paired sort chevrons and header clicks still reorder locally → Test `renders Name and Time as clickable, sortable column headers once keys exist`.
+- **Dimension 7.2** — IN_PROGRESS — Model names of different lengths share one desktop copy-button column while narrow rows remain usable → Test `the model cell shows the name and keeps the id on hover`.
+- **Dimension 7.3** — IN_PROGRESS — Event inspection keeps technical identifiers in copy controls and diagnostics; source and type have readable labels → Test `keeps technical identifiers out of the heading and labels the request source and type`.
+- **Dimension 7.4** — IN_PROGRESS — Event replies render markdown through the existing safe chat renderer without treating the entire answer as a title → Test `renders reply markdown without executing embedded HTML`.
+- **Dimension 7.5** — IN_PROGRESS — Numeric table values align beneath sortable labels and row actions retain their alignment → Test `numeric_table_alignment` (manual browser measurement and existing shared table behavior tests).
+
 ## Interfaces
+
+### UI table refinement requested for this Pull Request
+Indy's instruction: "I need them in this PR". API Keys initially shows the same paired sort chevrons as Platform Fleet library. Explicit clicks still sort immediately, with accessible direction state and no fetch. The initial creation-time order and stable tie ordering remain intact. Model library uses Secrets' fixed desktop name slot so short and long names share one copy-button column; narrow screens can shrink the name. Copy keeps the provider model identifier and its existing accessible label.
+Indy's Events screenshots add inspection readability to this scope. Keep relative creation time, failure cues, recorded causes, remediation and diagnostic copying. Remove the identifier chip from the heading while retaining its copy action and diagnostic value. Label source and event type in plain text. Render the bounded response with `FleetMarkdown`; preserve the unformatted diagnostic data. Reserve the shared numeric sort-icon space in sortable numeric cells so label and value edges coincide. Keep dates and text left-aligned, numeric values and actions right-aligned, and the sort icon after its label, per `docs/DESIGN_SYSTEM.md`.
+
+This refinement touches two existing components and one existing behavior test. Reuse `DataTable`, `CopyButton` and the `trim` width tokens. No new component, endpoint, configuration, dependency or published workflow is introduced. Verify with existing canonical app tests, lint and the final combined PR gate. Larger table or page restructuring adds scope without helping these two requests.
 
 ```text
 AGENTSFLEET_DEV_NAMESPACE: optional validated ASCII namespace; unset keeps existing keys.
@@ -196,21 +201,13 @@ The generated identifier is stable for an absolute worktree path, changes on rel
 ## Metrics & Observability
 
 Namespace refinement evidence (Oct 12, 2026): `make test-unit-rustd-daemon-libs _RUSTD_UNIT_DAEMON_LIBS=afd_dragonfly` passed with 143 passed, 0 failed and 43 ignored. The final assertions include identity, foreign-prefix rejection and actual cluster hash-slot preservation.
-
 The old fleet-history mapping was restored temporarily for a regression proof. `make test-integration-rustd` failed at the new history assertion: 0 entries instead of 1. With the fix restored, the complete lane passed: 947 passed, 0 failed, including 3 exclusive cluster-recovery tests. Private logs and checksums are in `dragonfly-history-red.json` and `dragonfly-integration-green.json` under the evidence directory below.
-
 `WITH_PROGRESS_DISABLE=1 make lint-rustd` passed Clippy, formatting and both no-feature binary checks. This disables the optional progress display and keeps every check. The final source review and native adversarial pass found no remaining defects. Repository-wide boundary results are recorded in the Pull Request's final session notes after `orly gate pr`.
-
 Compiler-cache evidence (Oct 12, 2026): `/private/tmp/agentsfleet-m223-cache-evidence/` retains private logs and JSON timings. Shell startup checks passed for `zsh -c` and `zsh -lc` in both existing worktrees, with the six cache variables initially removed. Both inherited the same cache directory with no shared target override. Missing-file and command-level override checks passed; a deliberately missing compiler wrapper made canonical daemon-unit Make fail with exit 2.
-
 The final helper-free measurement checkout ran `make test-unit-rustd-runner`: 1228 passed, 0 failed, 111.385 seconds. Active-checkout `make lint-rustd` passed formatting, Clippy and both no-feature binary checks. `make test-unit-rustd` passed: 4528 passed, 0 failed, 948 ignored; 1373.280 seconds including rebuilds and contention. This run verifies correctness, not an isolated speedup. Initial sandbox-restricted attempts failed on process/cache permissions and do not count as successful verification.
-
 Earlier samples with the removed launcher: `make lint-rustd` passed at 138.828 seconds initially and 17.759 seconds warm. `make test-unit-rustd` passed twice with 4528 passed and 948 ignored (302.202 and 215.142 seconds). A fresh separate measurement target recorded 288 Rust cache hits and 77 misses. These single samples ran under shared machine load; they establish reuse, not an isolated speedup benchmark. Launcher-only tests were deleted with their implementation.
-
 Native incremental lint, with `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1`, passed at 97.004 seconds initially and 10.719 seconds warm. These samples do not prove a universal winner: incremental compilation serves repeated edits; `sccache` shares eligible dependencies across disposable worktrees. Installed `sccache` 0.18.0 refuses incremental compilation, so the existing machine policy stays at `CARGO_INCREMENTAL=0`.
-
 The generator already emits the six settings. Dotfiles commit `b2ac777` moves the shared environment load to `.zshenv`; existing dotfiles Pull Request #41 contains that startup fix and its 10G cache setting. Protected `master` requires review, so neither repository's pull request was merged. No generated environment file was rewritten.
-
 No product analytics or funnel signals change. The development launcher reports its namespace, daemon URL, dependency failure and attach/start outcome without credentials. Existing daemon telemetry keeps its current meaning.
 
 ## Test Specification (tiered)
@@ -236,6 +233,11 @@ No product analytics or funnel signals change. The development launcher reports 
 | 5.3 | manual | `compiler_cache_across_existing_worktrees` | Two existing checkouts, distinct target directories, shared cache hits; full canonical lint/unit results recorded |
 | 6.1 | manual | `namespace_boundary_design_review` | Source-based comparison → selected mechanism, exact file manifest and failure proofs before code edits |
 | 6.2 | unit, integration | `namespace_boundary_regression` | Default configuration preserves behavior; equal logical names across namespaces remain isolated through every supported surface |
+| 7.1 | unit | `renders Name and Time as clickable, sortable column headers once keys exist` | Initial headers show neutral chevrons; existing click cases change direction and row order without another read |
+| 7.2 | unit, manual | `the model cell shows the name and keeps the id on hover` | Model name slots match Secrets at desktop; full identifier remains accessible and copied |
+| 7.3 | unit | `keeps technical identifiers out of the heading and labels the request source and type` | Identifier chip absent; source/type labeled; identifier copy and diagnostics preserved |
+| 7.4 | unit | `renders reply markdown without executing embedded HTML` | Bold text, lists and code render; untrusted HTML creates no executable element |
+| 7.5 | unit, manual | `numeric_table_alignment` | Browser label/value edges match; existing sorting, accessibility and row-action checks remain green |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -254,7 +256,6 @@ For R3, replace `<SIBLING_CHECKOUT>` with an existing sibling checkout's absolut
 | R9 | Scoped diff | `git diff --name-only origin/main...HEAD` | 0 paths outside Files Changed | P0 | ✅ implementation and carried spec paths listed above |
 
 **Grading protocol:** Record decisive output for spec-specific proofs; repository-wide results come from the final `orly gate pr` run. Baseline counts are measured for the recorded comparison revision before the Pull Request.
-
 R4–R9 retain the previously measured PR-ready candidate's results. The final close commit reruns the complete PR gate; its current-revision output belongs in the final session notes.
 
 ## Dead Code Sweep
@@ -295,5 +296,4 @@ Delete the rejected Cargo launcher and its dedicated tests; restore all Make cal
 - **Metrics review:** No product analytics or funnel playbook update is required; contributor startup diagnostics expose no secrets.
 - **Skill-chain outcomes:** Structural validation clean; unit/integration diff ledgers reviewed with explicit scope exceptions for generic load, allocator and random-order proofs. gstack review and native adversarial pass clean on `51b934c82`; optional external review disabled. Full declared gate passed; the closed metadata receives a fresh gate before publication. Live revalidation passed using the existing sibling checkout, with synthetic state removed and owned cleanup required to succeed. Two source-text tests were replaced by shutdown behavior; Make expansion and measured disposable-stack isolation supply their manual proofs.
 - **Deferrals:** None. Existing Linux-host execution is an explicit user decision; provisioning that host is outside this workstream.
-
 Oct 12, 2026: Indy requested compiler-cache wiring and measured lint/unit gate reuse in this existing tree and Pull Request. Indy then required the original Dragonfly refactor in this same workstream and requested GPT-6 Astra High conceptual review. Compose reuse remains under review; disposable test isolation must survive any change.
