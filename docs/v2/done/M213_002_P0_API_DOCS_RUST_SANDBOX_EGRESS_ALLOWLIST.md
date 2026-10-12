@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M213
 **Workstream:** 002
 **Date:** Oct 06, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — M213_001 cannot cut over without it: on `allow_all` the Zig child shares the host network today and the Rust sandbox reaches nothing, so every package install inside a sandbox breaks on the day of the cutover
 **Categories:** API, DOCS
 **Batch:** B1 — ships in M213_001's Pull Request (Indy, Oct 06, 2026)
@@ -211,18 +211,18 @@ Host objects:    one nftables table and one veth pair per slot, both named with 
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R1 | All three policies hold on a real kernel (§1, §2) | `make test-runner-kernel` | exit 0, `egress` cases listed as passed | P0 | |
-| R2 | The probe is measured, not pinned (§2) | `grep -rn 'egress_enforcement: false' rustd/crates/afr_supervisor/src --include='*.rs' \| grep -v tests \| wc -l` | `0` | P0 | |
-| R3 | No shell-out to `nft` or `ip` (§2) | `grep -rnE 'Command::new\("(nft\|ip)"\)' rustd/crates \| wc -l` | `0` | P0 | |
-| R4 | Pages describe enforcement (§3) | `bash scripts/check_architecture_doc.sh && ! grep -rqi 'allowlist egress is not enforced' docs/architecture` | exit 0 | P0 | |
-| R5 | Dev runner assigned `allow_list_egress` reads healthy and runs a lease that installs a package from the registry baseline (§2) | manual — `agentsfleet runners list` output and the thread link in Session Notes | healthy row, settled thread | P0 | |
-| R6 | Diff stays inside Files Changed (this spec and M213_001 together) | `git diff --name-only origin/main...HEAD` | 0 paths missing from the two tables | P0 | |
-| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | |
-| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Lint green | `make lint-all` | exit 0 | P0 | |
-| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | |
-| S5 | Version in sync | `make check-version` | exit 0 | P0 | |
-| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | |
+| R1 | All three policies hold on a real kernel (§1, §2) | `make test-runner-kernel` | exit 0, `egress` cases listed as passed | P0 | ✅ `coverage (kernel)` pass on #747, the last merge into `main` ([job 114570643032](https://github.com/agentsfleet/agentsfleet/actions/runs/38173419361/job/114570643032)) |
+| R2 | The probe is measured, not pinned (§2) | `grep -rn 'egress_enforcement: false' rustd/crates/afr_supervisor/src --include='*.rs' \| grep -v tests \| wc -l` | `0` | P0 | ✅ `0` |
+| R3 | No shell-out to `nft` or `ip` (§2) | `grep -rnE 'Command::new\("(nft\|ip)"\)' rustd/crates \| wc -l` | `0` | P0 | ✅ `0` |
+| R4 | Pages describe enforcement (§3) | `bash scripts/check_architecture_doc.sh && ! grep -rqi 'allowlist egress is not enforced' docs/architecture` | exit 0 | P0 | ✅ exit 0 |
+| R5 | Dev runner assigned `allow_list_egress` reads healthy and runs a lease that installs a package from the registry baseline (§2) | manual — `agentsfleet runners list` output and the thread link in Session Notes | healthy row, settled thread | P0 | ✅ dev runner under `allow_list_egress` read `degraded: False`, `egress_enforcement: True`; event `1791779245245-1360` settled `processed`: `uv pip install six==1.16.0` printed `1.16.0`, `curl https://example.com` exit 6 |
+| R6 | Diff stays inside Files Changed (this spec and M213_001 together) | `git diff --name-only origin/main...HEAD` | 0 paths missing from the two tables | P0 | ✅ #738 closed under its gate; the close-out branch touches none of this table's files |
+| S1 | Conform gates green | `make harness-verify` | exit 0 | P0 | ✅ see M213_001 S1 |
+| S2 | Unit tests pass | `make test-unit-all` | exit 0 | P0 | ✅ see M213_001 S2 |
+| S3 | Lint green | `make lint-all` | exit 0 | P0 | ✅ see M213_001 S3 |
+| S4 | Integration green | `make test-integration-rustd` | exit 0 | P0 | ✅ `939 passed`, exclusive 2 passed |
+| S5 | Version in sync | `make check-version` | exit 0 | P0 | ✅ `✓ all versions match 0.59.0` |
+| S6 | No secrets | `gitleaks detect` | exit 0 | P0 | ✅ `no leaks found` |
 
 **Command source rule:** copy every declared `conform` and `verify.*` invocation from `.oracle/orly.json` into a Verify cell, verbatim, with an Expected value. Include conditional suites; the final gate decides applicability from the actual branch diff. Additional spec-specific commands, secret scans, and named manual checks are allowed. See `dispatch/lifecycle.md` for command timing; baseline metadata is pending at opening and measured before the Pull Request.
 
@@ -271,6 +271,7 @@ Host objects:    one nftables table and one veth pair per slot, both named with 
 
 - **Consults** — Indy (in-session, Oct 06, 2026): "I think the allowlist also is managed via the api, just create a new spec and make it depend on M213 and they must ship in 1 PR". Source-verified: `PATCH /v1/fleets/runners/{runner_id}` takes `assigned_policy` (`public/openapi.json`); `PATCH /v1/workspaces/{workspace_id}/fleets/{fleet_id}` takes `trigger_markdown` and `config_json`, whose `network` block `afd_gate/src/policy/shape.rs:18` reads. Agent choices recorded for review: `read_only` fleet hosts stay out of the kernel set; the inference endpoint leaves the merged set.
 - **Acceptance status (Oct 10, 2026)** — Dimension 2.13 closes on the successful kernel coverage job above. [Pull Request #738's Session notes 2](https://github.com/agentsfleet/agentsfleet/pull/738) records 51 kernel cases passed and the combined Rust coverage floors passed. R5 still needs a healthy dev runner under `allow_list_egress` and a settled package-install thread. [Dev run 38067700170](https://github.com/agentsfleet/agentsfleet/actions/runs/38067700170) skipped deployment and acceptance after the toolbox scan's cache-permission failure. This spec stays `IN_PROGRESS` until that live proof lands; M213_001 records the approved cache fix.
+- **Live proof (Oct 12, 2026)** — Indy approved "Yes, run and restore (Recommended)": the dev runner was switched to `allow_list_egress` and fleet `latency-proof-glm53-b` given the `shell` tool, then both restored from backups. The runner read `degraded: False`, `egress_enforcement: True`, `online`. Event `1791779245245-1360` settled `processed`: `uv venv` and `uv pip install six==1.16.0` from `pypi.org`/`files.pythonhosted.org` exited 0 and printed `1.16.0`; `curl https://example.com` exited 6, `Could not resolve host`. Two findings for Indy to place: the toolbox ships `nodejs` without `npm` (`scripts/toolbox/manifest.txt`), so Product Clarity's `npm install` moment cannot happen as written; and the daemon accepted `tools: [bash]` in `trigger_markdown` while the runner refused it at lease time (`the fleet names a tool this runner cannot host`, event `1791779150331-1358`), the same `tool_refused_not_hosted` the dev journal shows twice.
 - **Port divergences from the Zig reference (Oct 08, 2026, agent)** — (1) the Zig per-worker tables each carried a `policy drop` forward chain, which drops every other worker's and the host's forwarded traffic; here every chain accepts by policy and every drop names the slot's link. (2) Return traffic is admitted by connection state, not by source address, so an allow-listed server cannot open a connection inward and path-MTU errors still arrive. (3) A scope is built and removed with its sandbox; a held sandbox's set is emptied and refilled in place on resume (Dimension 2.14). (4) The probe builds its scope in namespaces of its own, so `agentsfleet-runner probe` beside a live runner neither meets nor removes its scopes; only the engine's boot sweep touches the host namespace. (5) Slots are claimed from a process-wide bitmap, so two engines in one process never share a slot's names.
 - **Internal addresses (decided)** — the question: an entry in a fleet's `network.allow` resolved to a link-local (`169.254.169.254`) or private address was admitted as resolved, as the Zig reference did (`AllowList.zig` admitted `my.private.registry`). Indy (in-session, Oct 08, 2026): "Okay go, what are the internal addressed you will add, are these static?" Built as Dimension 2.8: fleet-supplied hosts are held to `afd_core::net::is_blocked`, the compiled-in table the daemon's endpoint check and `http_request` already share, so the ranges change only with the code; the addresses are resolved per lease. Registry hosts are exempt because the operator sets them. `192.0.0.0/24`, first a reviewer's suggestion: Indy (in-session, Oct 08, 2026) chose "Add it (Recommended)" for fleet hosts, `http_request` and the daemon's endpoint check alike.
 - **Host-level egress gaps (decided)** — the review found that a host `nft flush ruleset` deleted every live table, that the probe passed a host whose own forward chain drops, and that a second runner process swept the first one's scopes. Indy (in-session, Oct 08, 2026) chose "Fix all three (Recommended)": built as Dimensions 2.9–2.11. The kernel-level trials the same review asked for (UDP to port 53, the host's own listener, an inbound connection) are Dimension 2.12. The kernel lane runs in CI: asked whether it needs a nested virtual machine, Indy (Oct 08) read the answer that a hosted Ubuntu runner is one, with root, and chose "Add the job (Recommended)" (Dimension 2.13).
