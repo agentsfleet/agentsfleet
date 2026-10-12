@@ -95,13 +95,21 @@ describe("uniqueProviders", () => {
 });
 
 describe("providerLabel", () => {
-  it("maps the known provider ids to human labels", () => {
+  it("maps the known provider ids to the vendor's own spelling", () => {
     expect(providerLabel("anthropic")).toBe("Anthropic");
     expect(providerLabel("openai")).toBe("OpenAI");
     expect(providerLabel("openai-compatible")).toBe("Custom — OpenAI-compatible");
+    expect(providerLabel("fireworks")).toBe("Fireworks");
+    expect(providerLabel("openrouter")).toBe("OpenRouter");
+    expect(providerLabel("nearai")).toBe("NEAR AI");
+    expect(providerLabel("vercel-ai")).toBe("Vercel AI");
+    expect(providerLabel("atlas-cloud")).toBe("Atlas Cloud");
   });
 
-  it("falls back to the raw slug for an unknown provider id", () => {
-    expect(providerLabel("fireworks")).toBe("fireworks");
+  it("title-cases an unknown provider id instead of showing the raw slug", () => {
+    expect(providerLabel("together")).toBe("Together");
+    expect(providerLabel("deep-infra")).toBe("Deep Infra");
+    expect(providerLabel("some_vendor")).toBe("Some Vendor");
+    expect(providerLabel("")).toBe("");
   });
 });
