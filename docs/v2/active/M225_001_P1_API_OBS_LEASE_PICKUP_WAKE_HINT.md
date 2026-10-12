@@ -16,12 +16,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M225
 **Workstream:** 001
 **Date:** Oct 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — every steer waits about 2 s, up to about 4 s, before any runner looks at it
 **Categories:** API, OBS
 **Batch:** B1 — one Pull Request; the wake hint and the segment timings ship together so the second measures the first
-**Branch:** pending — set at CHORE(open)
-**Baseline revision:** pending — record the full comparison commit at CHORE(open)
+**Branch:** `feat/m225-lease-pickup-wake-hint` (worktree `~/Projects/agentsfleet-m225-lease-pickup`)
+**Baseline revision:** `4a53b948c727cfdc860373bb3c77b08f80bb418d` (`origin/main`, the M223 merge)
 **Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
 **Depends on:** none
@@ -71,6 +71,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `docs/architecture/runner_fleet.md` | EDIT | the directory in the datastore table |
 | `docs/architecture/lease_flow.md` | EDIT | the poll step reads the directory first and keeps the rotation peek |
 | `docs/architecture/scaling.md` | EDIT | idle poll cost restated as two Dragonfly reads plus the one Postgres authentication read line 19 already names, at the three places that say one Dragonfly command: §Per-request volume (the `HRANDFIELD` row), §Measured ceilings (the `1.00 Dragonfly command` row) and anti-pattern 7 |
+
+**Ride-along scope (Indy, Oct 12, 2026 — carried from `fix/egress-refusal-tells-the-model-to-stop` and asked for at CHORE(open); outside the lease work, inside this Pull Request):**
+
+| File | Action | Why |
+|------|--------|-----|
+| `rustd/crates/afr_egress/src/error.rs` | EDIT | a fixed refusal (`RequestPolicyNotAllowed`, `SecretNotFound`) tells the model the rules are fixed for the run, so it stops retrying variants — the 167K-token run in Out of Scope |
+| `rustd/crates/afr_egress/src/error/tests.rs` | EDIT | pins the two sentences |
+| `docs/architecture/lease_flow.md` | EDIT | §3 step 4 records the wording and that the loop still counts nothing |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/PlatformCatalogTable.tsx` | EDIT | the platform Fleet library table ends at its rows, like the Models table |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.tsx` | EDIT | the section stops stretching the table to the viewport |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/components/WorkspaceLibraryList.tsx` | EDIT | the workspace Fleet library table ends at its rows |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/page.tsx` | EDIT | the section stops stretching the table to the viewport |
+| `ui/packages/app/lib/api/model-library-types.ts` | EDIT | every provider the picker lists gets a display name; an unknown slug is title-cased instead of shown raw |
+| `ui/packages/app/lib/api/model_library.test.ts` | EDIT | the label table and the fallback |
 
 ## Applicable Rules
 
@@ -249,6 +263,10 @@ N/A — no files deleted.
 - **Metrics review** — `lease_completed` and `lease_failed` gain seven fields, `runner_lease_issued` gains one, and one failure counter joins the readiness metrics; no analytics or funnel playbook update required: operator log only.
 - **Review (Oct 12, 2026, before CHORE(open))** — six points folded in. (1) `queue_wait_ms` moved from the runner to the daemon (Dimension 2.3): the admission's `created_at` is Fly's clock and the runner journal is OVH's, so only the daemon has both instants on one clock. (2) The idle poll budget is two Dragonfly reads since `13c02638d`; `docs/architecture/scaling.md` says one at three places, all named in Files Changed. (3) Two fleets in parallel gained a proof (Dimensions 1.5 and 4.2): the directory holds both partitions and two workers take one each. (4) The §2 segment fields ride the runner journal only, because runner OTLP is off on dev; open for Indy below. (5) The model's own time stays out of scope; `first_token_ms` shows it, and the 500 ms wish is measured before it is promised. (6) The 167K-token retry is a cost bug; open for Indy below.
 - **Review (Oct 12, 2026, Codex and ChatGPT, before CHORE(open))** — both reviews returned "ship with these changes" and agreed on every finding; Aiwa verified each against source and folded them in. (1) The empty-check-and-clear script crossed slots (`partition.rs:144` hash-tags each partition; `datastore_scaling.md` §What the cluster probe showed records `CROSSSLOT`): the dirty set became a directory hash of partition → minted token, deleted by compare-and-delete inside the one key (Dimensions 1.1 to 1.3, Prior-Art). (2) A busy partition would have starved the rotation, because a running fleet keeps its mark and the candidate query skips live slots (`lease/sql/lease.rs:169`): the rotation peek now runs on every poll and dirty partitions are served oldest token first (Dimensions 1.6, 1.7, Invariant 3). (3) `HRANDFIELD` samples 64 of a partition (`ready.rs:247`), so "next poll" promises a visit, not a lease (Dimension 1.1, Failure Modes). (4) Every poll authenticates with a Postgres read (`guard.rs:88`, `credentials/mod.rs:70`), so the idle back-off stays at 1,000 ms, the cost claim names that read, and `scaling.md` line 19 stands (Dimension 1.2, Invariant 2, Out of Scope). (5) The directory is one slot every poll reads first, so a sick node would stall every poll for Dragonfly's 5 s timeout (`config.rs:17`), where a sick partition stalls one in sixteen: directory commands carry `READY_HINT_DEADLINE_MS` (Dimension 1.8). Aiwa first argued the existing mark had the same exposure and withdrew that on the blast-radius difference. (6) Workers spawn together and sleep the same hint (`worker_pool.rs:49`, `:147`), so the 250 ms median assumed a stagger nobody wrote: Dimension 3.4. (7) The 250 ms batch timer (`activity.rs` `FLUSH_EVERY`) would have hidden §1's gain behind a dead quarter second: Dimensions 3.1 to 3.3, through the existing poster queue. (8) The timing sum skipped memory hydrate (`lease_loop.rs:277`), `wall_ms` is captured before the report post (`settle.rs`), the sink's clock starts before setup, and `lease_failed` logged nothing: Dimension 2.1 and 2.2 rewritten with disjoint boundaries. (9) The 3.8 s baseline sentence quoted the 2.95 s timestamps; corrected. (10) "Delivers exactly once" overclaimed; now "leased once and settled once". Not taken: reshaping the directory before a benchmark, and a pub/sub wake (both Out of Scope).
+- **CHORE(open) (Oct 12, 2026)** — worktree cut from `origin/main` after the M223 merge; the three commits of `fix/egress-refusal-tells-the-model-to-stop` (spec review, egress wording, review fold) cherry-picked in and that branch deleted locally and on origin. Ride-along scope added at Indy's ask:
+  > Indy (2026-10-12): "prior to chore(open) in the fix/egress-refusal-tells-the-model-to-stop changes must be in your new worktree from main, since merged a PR in main. If you have cherrypicked then prune fix/egress-refusal-tells-the-model-to-stop" — context: the worktree and the branch prune.
+  > Indy (2026-10-12): "along with this change cna you make both the `Fleet Library` table adhere to the table like [the Models table]" — context: both Fleet library tables stop filling the viewport.
+  > Indy (2026-10-12): "Can this be capitalized or so? it doesnt look good." — context: the provider picker in Create model showed raw slugs (`fireworks`, `openrouter`, `atlas-cloud`) beside `Anthropic`.
 - **Open for Indy** — (a) Does M225 also point dev's runner at a collector, or do the segment fields stay journal-only until the "runner collector built later" note in `docs/architecture/observability.md` lands? (b) Does the refused-write retry cap (make `request_policy_not_allowed` and `secret_not_found` terminal for a request shape, cap identical refusals per lease) fold into M225 or get its own spec?
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — none.
