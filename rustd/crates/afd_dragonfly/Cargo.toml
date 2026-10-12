@@ -26,6 +26,8 @@ test-util = ["afd_core/test-util", "afd_crypto/test-util"]
 # say that nothing else can is that its pub/sub connection was re-established.
 afd_observability.workspace = true
 afd_core.workspace = true
+afd_validate.workspace = true
+garde.workspace = true
 # The random half of a readiness token — see `ready::ReadyToken::mint`. The
 # crate every other identifier draws its entropy from, so this one is not a
 # second `getrandom` call site.

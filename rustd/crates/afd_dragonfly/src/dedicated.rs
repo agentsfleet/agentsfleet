@@ -68,6 +68,7 @@ use crate::transport;
 pub struct Dedicated {
     role: DragonflyRole,
     connection: ClusterConnection,
+    namespace: crate::namespace::Namespace,
 }
 
 impl std::fmt::Debug for Dedicated {
@@ -105,8 +106,17 @@ impl Dedicated {
         tracing::debug!(role, park_ms, event = "dragonfly_dedicated_connected");
         Ok(Self {
             role: config.role(),
+            namespace: config.namespace.clone(),
             connection,
         })
+    }
+
+    /// Maps a logical key or channel for this connection's raw commands.
+    ///
+    /// Default configuration preserves the name. Map each logical name once.
+    #[must_use]
+    pub fn physical_key(&self, logical: &str) -> String {
+        self.namespace.key(logical)
     }
 
     /// The role this connection serves.

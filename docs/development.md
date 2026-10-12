@@ -6,13 +6,172 @@
 > behavior with the incident that taught it. When code changes make a section
 > stale, fix it in the same PR.
 
+## Shared development worktrees
+
+Each checkout runs its own compiled `agentsfleetd` while linked worktrees share Postgres, Dragonfly, Mailpit and Upstash QStash.
+Each daemon gets a separate Postgres database, Dragonfly namespace and stable port.
+Production and deployed `api-dev` continue using their existing deployment settings.
+
+Shared state lives under `${XDG_STATE_HOME:-$HOME/.local/state}/agentsfleet/dev-<USER_ID>-<REPOSITORY_CHECKSUM>`.
+Linked worktrees share that directory; Git metadata supplies the clone identity, not the state location.
+The saved Compose snapshot and port settings remain available after a checkout disappears.
+
+Load the trusted machine environment using the existing `AGENTSFLEET_RUSTD_ENV_FILE` setting.
+It must supply `AUTH_SESSION_CODE_PEPPER` and `ENCRYPTION_MASTER_KEY`.
+Docker, Cargo, Python 3, `lsof` and the native C compiler must be available.
+Linux also requires `ip` from iproute2.
+
+```bash
+FOLLOW_LOGS=0 make up
+```
+
+```text
+<build and infrastructure output varies>
+API: http://127.0.0.1:<WORKTREE_PORT>
+Logs: <WORKTREE_STATE>/daemon.log
+Namespace: wt_<WORKTREE_CHECKSUM>
+```
+
+`make up` starts missing infrastructure, creates the database, compiles this checkout, migrates its database and waits for `/readyz`.
+With healthy shared services, repeating it rebuilds and restarts only this daemon while preserving its database.
+The default `FOLLOW_LOGS=1` follows the daemon log after startup.
+
+The launcher reuses existing `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `DRAGONFLY_URL`, `API_URL` and QStash settings with local addresses.
+`API_URL` uses the default network interface's IPv4 address and this worktree's port.
+Native clients and QStash therefore receive the same reachable origin.
+`AGENTSFLEET_DEV_NAMESPACE` is the only new application setting; the launcher supplies it.
+Mailpit shares its inbox, so use distinct development recipients and avoid deleting other worktrees' mail.
+
+### Runner on the existing Linux host
+
+Compile `agentsfleet-runner` from the matching checkout on the existing Linux host.
+Register that runner against this worktree's daemon using the existing runner registration workflow.
+Keep its returned `AGENTSFLEET_RUNNER_TOKEN` private and separate from tokens for other worktrees.
+
+Set `<RUNNER_REACHABLE_URL>` to this development machine's reachable address and the port printed by `make up`.
+Use the existing `RUNNER_STORAGE_HOME` setting to choose the Linux host's storage base.
+
+```bash
+AGENTSFLEET_API_URL=<RUNNER_REACHABLE_URL> bash scripts/local-dev.sh runner-env
+```
+
+```text
+AGENTSFLEET_API_URL=<RUNNER_REACHABLE_URL>
+RUNNER_STORAGE_HOME=/var/lib/agentsfleet-runner/worktrees/<REPOSITORY_CHECKSUM>/wt_<WORKTREE_CHECKSUM>
+```
+
+Apply those settings with the registered token when starting that checkout's runner on Linux.
+The settings helper prints no token and performs no remote host changes.
+On macOS, it requires an explicit runner-reachable URL because Linux cannot use this machine's loopback address.
+
+### Shutdown and recovery
+
+```bash
+make down
+```
+
+```text
+<no output on success>
+```
+
+This stops only this worktree's daemon and preserves its data and the shared services.
+The launcher checks the recorded process start time and executable before signaling it.
+An occupied port or changed process identity causes a refusal.
+
+Inspect all saved stacks, registered roots and container states:
+
+```bash
+make status
+```
+
+```text
+Stack: agentsfleet-dev-<REPOSITORY_CHECKSUM>
+State: <SHARED_STATE>
+  worktree wt_<WORKTREE_CHECKSUM>: <WORKTREE_ROOT> (live|gone)
+  <container states vary>
+  containers: running|stopped
+```
+
+An existing registered root counts as live even after `make down`; a missing root counts as gone.
+Startup and teardown use the same infrastructure lock to protect registration.
+
+**The following command deletes the selected stack's containers and volumes, including its databases and pending deliveries.**
+Replace `<COMPOSE_PROJECT>` with the project printed by `make status`.
+Teardown refuses and names all live registered roots; it uses the saved `ports.env` after the original checkout disappears.
+
+```bash
+make down DEV_STACK=<COMPOSE_PROJECT>
+```
+
+```text
+<registered roots and Compose shutdown output vary>
+```
+
+There is no fallback to the former state location inside `.git`.
+Run `make up` to recover stopped or missing shared services using the saved snapshot without recreating existing containers or deleting volumes.
+It restarts only services reported unhealthy, then waits for the whole stack to become healthy before starting the daemon.
+If health still fails, inspect the failing service; teardown remains restricted to stacks with no live registered roots.
+Lock waits are bounded separately: 6 minutes for infrastructure, 20 minutes for builds and 30 minutes for this worktree's process operation. After an interrupted owner, verify that owner has exited before removing its named lock directory.
+
+Run `bash scripts/local-dev-test.sh` for launcher regression checks; success prints `OK` and exits 0.
+Set `<SIBLING_CHECKOUT>` to an existing sibling checkout's absolute path; its `local-dev.sh` and `local-dev-state.sh` must match this checkout.
+Run `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` for the two-worktree proof; success prints `OK` and exits 0.
+`make test-integration-rustd` retains its own disposable stack and destructive reset behavior.
+See [datastore scaling](architecture/datastore_scaling.md#shared-local-development) for the isolation boundaries.
+
+## Compiler cache for Rust gates
+
+`~/bin/provision-env-1password`, owned by the dotfiles repository, generates the shared environment file.
+Dotfiles loads `~/.config/agentsfleet/.env` from `.zshenv`, so interactive and non-interactive zsh commands inherit these settings.
+Cargo, Make and orly use the exported environment directly.
+
+```sh
+export CARGO_PROFILE_DEV_DEBUG=1
+export CARGO_PROFILE_TEST_DEBUG=1
+export CARGO_INCREMENTAL=0
+export RUSTC_WRAPPER=sccache
+export SCCACHE_DIR="$HOME/.cache/agentsfleet-sccache"
+export SCCACHE_CACHE_SIZE=10G
+```
+
+Start a new zsh session after updating dotfiles.
+For an existing session or another shell, source the trusted generated file before running gates:
+
+```sh
+source "$HOME/.config/agentsfleet/.env"
+```
+
+The command produces no output on success.
+Command-level assignments override the loaded settings, including `RUSTC_WRAPPER=` to disable the wrapper.
+A missing machine file leaves Cargo's defaults unchanged in a fresh shell.
+
+Install `sccache` before selecting it as the wrapper.
+The shared cache reuses eligible compiled dependencies across checkouts with matching compiler settings.
+Each worktree keeps its own `rustd/target` directory unless the caller explicitly changes it.
+This avoids a shared Cargo output lock between concurrent worktrees.
+
+The installed `sccache` 0.18.0 refuses `CARGO_INCREMENTAL=1`; keep `CARGO_INCREMENTAL=0` with this wrapper.
+For a native incremental comparison, set both `RUSTC_WRAPPER=` and `CARGO_INCREMENTAL=1` on the Make command.
+Disabling incremental compilation also reduces each worktree's disk use.
+Debug level `1` retains line tables while reducing debug output size.
+Test execution and executable linking are not cached by `sccache`.
+Eligible library metadata can be cached, but observed Clippy invocations bypassed the cache with `sccache` 0.18.0.
+Repeated lint also benefits from Cargo's existing output in that worktree.
+Changing debug settings causes a first rebuild; compare subsequent runs with matching settings.
+
+`make lint-rustd` and `make test-unit-rustd` keep their complete checks and failing exit statuses.
+Their callers, including the push hook and `orly gate pr`, inherit the same exported settings.
+`orly gate work` runs conformance checks and gains no compiler-cache speedup.
+Direct Cargo commands inherit these settings too; no repository-specific launcher is required.
+See [Cargo's build cache](https://doc.rust-lang.org/cargo/reference/build-cache.html) and [sccache's Rust limits](https://github.com/mozilla/sccache/blob/main/docs/Rust.md).
+
 ## Pushing and git hooks
 
 Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githooks`)
 — not in any contributor's dotfiles. Hook fixes are normal repo PRs.
 
 - **pre-push classifies the outgoing range into lint and unit surfaces** by file
-  pattern (`*.rs`/`rustd/*` → `lint-rustd` + `test-unit-rustd`, `cli/*` → cli,
+  pattern (`*.rs`/`rustd/*` → `lint-rustd`, `cli/*` → cli,
   `ui/packages/app/*` → app, website → website, design-system → both it and
   app). Zero matches → `"no test-relevant files — nothing to run"` and the push
   sails through. A genuinely docs-only push skips the suite entirely.
@@ -55,8 +214,9 @@ Hooks live **in this repo** at `.githooks/` (`git config core.hooksPath=.githook
   in isolation. Retry serially before suspecting the diff.
 - **`main` is branch-protected** (required checks; direct pushes are declined).
   Everything lands via a feature branch + PR — including specs.
-- Pre-push runs the lanes matching what you pushed: `*.rs` or anything under
-  `rustd/` triggers `test-unit-rustd`, and each TypeScript package triggers its own.
+- Pre-push runs the lanes matching what you pushed: Rust changes trigger lint;
+  each TypeScript package triggers its own unit lane.
+  Rust units run at `orly gate pr` and in Continuous Integration (CI).
 
 ## Test lanes — what the names mean
 

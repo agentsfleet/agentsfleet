@@ -64,6 +64,7 @@ impl DragonflyRole {
 #[derive(Debug, Clone)]
 pub struct DragonflyConfig {
     role: DragonflyRole,
+    pub(crate) namespace: crate::namespace::Namespace,
     url: String,
     ca_cert_file: Option<PathBuf>,
     connect_timeout: Duration,
@@ -101,6 +102,10 @@ impl DragonflyConfig {
 
         Ok(Self {
             role,
+            namespace: crate::namespace::Namespace::parse(
+                &env.get(crate::namespace::NAMESPACE_KNOB)
+                    .unwrap_or_default(),
+            )?,
             url,
             ca_cert_file: optional(env, CA_CERT_FILE_KNOB)
                 .map(|path| PathBuf::from(String::from(path))),
@@ -117,17 +122,29 @@ impl DragonflyConfig {
         })
     }
 
-    /// Builds a configuration directly from a URL, for tests and for the
-    /// subscription hub reusing an already-resolved connection string.
+    /// Builds a configuration from a URL with default, unpartitioned key names.
+    ///
+    /// Use [`Self::with_namespace`] to select a namespace, or clone the resolved
+    /// configuration when opening another connection for the same deployment.
     #[must_use]
     pub fn from_url(role: DragonflyRole, url: String) -> Self {
         Self {
             role,
+            namespace: crate::namespace::Namespace::default(),
             url,
             ca_cert_file: None,
             connect_timeout: Duration::from_millis(CONNECT_TIMEOUT_MS_DEFAULT),
             request_timeout: Duration::from_millis(REQUEST_TIMEOUT_MS_DEFAULT),
         }
+    }
+
+    /// Sets the optional development namespace on every application operation.
+    ///
+    /// # Errors
+    /// Returns a configuration error for unsafe characters or an oversized name.
+    pub fn with_namespace(mut self, namespace: &str) -> Result<Self> {
+        self.namespace = crate::namespace::Namespace::parse(namespace)?;
+        Ok(self)
     }
 
     /// Points this configuration at a certificate authority file.

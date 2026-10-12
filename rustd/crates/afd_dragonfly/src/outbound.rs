@@ -202,13 +202,15 @@ pub struct OutboundDelivery {
 #[derive(Debug, Clone)]
 pub struct OutboundQueue {
     redis: Dragonfly,
+    stream_key: String,
 }
 
 impl OutboundQueue {
     /// Binds the queue to a connection.
     #[must_use]
-    pub const fn new(redis: Dragonfly) -> Self {
-        Self { redis }
+    pub fn new(redis: Dragonfly) -> Self {
+        let stream_key = redis.physical_key(OUTBOUND_STREAM_KEY);
+        Self { redis, stream_key }
     }
 
     /// Creates the consumer group, delivering from the stream's beginning.
@@ -226,7 +228,7 @@ impl OutboundQueue {
         // `DbSlice::AddNew`, and Dragonfly v1.40.2 aborts the node there rather
         // than answering `WRONGTYPE` when the key holds something else.
         let mut probe = redis::cmd(CMD_TYPE);
-        probe.arg(OUTBOUND_STREAM_KEY);
+        probe.arg(&self.stream_key);
         let holds: String = self
             .redis
             .command(CMD_TYPE, OUTBOUND_STREAM_KEY, &probe)
@@ -237,7 +239,7 @@ impl OutboundQueue {
 
         let mut cmd = redis::cmd(CMD_XGROUP);
         cmd.arg(XGROUP_CREATE)
-            .arg(OUTBOUND_STREAM_KEY)
+            .arg(&self.stream_key)
             .arg(OUTBOUND_CONSUMER_GROUP)
             .arg(GROUP_START_BEGIN)
             .arg(XGROUP_MKSTREAM);
@@ -265,7 +267,7 @@ impl OutboundQueue {
     /// answers with something that is not an id.
     pub async fn enqueue(&self, job: OutboundJob<'_>) -> Result<EventId> {
         let mut cmd = redis::cmd(CMD_XADD);
-        cmd.arg(OUTBOUND_STREAM_KEY)
+        cmd.arg(&self.stream_key)
             .arg("*")
             .arg(FIELD_PROVIDER)
             .arg(job.provider)
@@ -309,7 +311,7 @@ impl OutboundQueue {
     /// Returns a command error when the acknowledgement fails.
     pub async fn ack(&self, id: &EventId) -> Result<bool> {
         let mut cmd = redis::cmd(CMD_XACK);
-        cmd.arg(OUTBOUND_STREAM_KEY)
+        cmd.arg(&self.stream_key)
             .arg(OUTBOUND_CONSUMER_GROUP)
             .arg(id.as_str());
         let acknowledged: i64 = self
@@ -331,7 +333,7 @@ impl OutboundQueue {
     pub async fn trim(&self) -> Result<Trimmed> {
         retain::trim_history(
             &self.redis,
-            OUTBOUND_STREAM_KEY,
+            &self.stream_key,
             OUTBOUND_CONSUMER_GROUP,
             ACKNOWLEDGED_HISTORY,
         )

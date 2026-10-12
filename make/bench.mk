@@ -26,7 +26,7 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 	  exit 1; \
 	}
 	@set -e; \
-	 URL="$${API_BENCH_URL:-http://127.0.0.1:3000/healthz}"; \
+	 URL="$${API_BENCH_URL:-$(LOCAL_DAEMON_URL)/healthz}"; \
 	 curl -fsS --max-time 3 "$$URL" >/dev/null 2>&1 || { \
 	   echo "✗ No live server at $$URL — Tier-2 bench needs a running API."; \
 	   echo "  Start it first:  FOLLOW_LOGS=0 make up"; \

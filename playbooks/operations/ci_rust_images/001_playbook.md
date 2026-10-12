@@ -42,7 +42,7 @@ off.
 
 | Image | Arch | Consumed by |
 | --- | --- | --- |
-| `ghcr.io/agentsfleet/ci-rust-alpine` | amd64 + arm64 | `make/build.mk` (`_dist-daemons`, and therefore `build`, `build-dev` and `make up`); the release lane's musl job |
+| `ghcr.io/agentsfleet/ci-rust-alpine` | amd64 + arm64 | `make/build.mk` (`_dist-daemons`, and therefore `build` and `build-dev`); the release lane's musl job |
 
 Both architectures are published deliberately. `docker run --platform` on a
 foreign host runs the entire compile under QEMU, and that emulation costs more

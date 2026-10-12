@@ -34,7 +34,7 @@ dry-app-smoke:  ## Run app dry smoke lane — fast Vitest + Playwright smoke, no
 # against the daemon being retired must render against the one replacing it,
 # proven by the identical suite rather than a parallel copy of it.
 #
-# `_ensure-local-daemon` boots the stack and waits for /healthz first, so this
+# `_ensure-local-daemon` reuses shared infrastructure and waits for /readyz first, so this
 # is one command rather than a docker step and a make step that have to agree
 # about a port.
 dry-app-rustd: _ensure-local-daemon  ## Run the app dry lane against the locally-booted Rust daemon

@@ -49,6 +49,7 @@ pub struct Dragonfly {
     role: DragonflyRole,
     connection: ClusterConnection,
     request_timeout: Duration,
+    pub(crate) namespace: crate::namespace::Namespace,
 }
 
 impl std::fmt::Debug for Dragonfly {
@@ -120,6 +121,7 @@ impl Dragonfly {
         let connection = transport::connect(config, config.request_timeout()).await?;
         let redis = Self {
             role: config.role(),
+            namespace: config.namespace.clone(),
             connection,
             request_timeout: config.request_timeout(),
         };
@@ -148,6 +150,7 @@ impl Dragonfly {
     pub fn unreachable(config: &DragonflyConfig) -> Result<Self> {
         Ok(Self {
             role: config.role(),
+            namespace: config.namespace.clone(),
             connection: transport::pending(config, config.request_timeout())?,
             request_timeout: config.request_timeout(),
         })
@@ -159,12 +162,23 @@ impl Dragonfly {
         self.role
     }
 
+    /// Maps a logical key or channel for raw commands, pipelines and scripts.
+    ///
+    /// Default configuration preserves the name. Pass logical names to the
+    /// typed stores; map once when constructing a raw command instead.
+    #[must_use]
+    pub fn physical_key(&self, logical: &str) -> String {
+        self.namespace.key(logical)
+    }
+
     /// How long any one command may take.
     #[must_use]
     pub const fn request_timeout(&self) -> Duration {
         self.request_timeout
     }
+}
 
+impl Dragonfly {
     /// Runs one command under this connection's deadline, routed by its key.
     ///
     /// `name` is what a failure reports; it is the command verb rather than the
@@ -239,7 +253,7 @@ impl Dragonfly {
     /// than a transport-level `Err`, so `extract_error` lifts it before
     /// classification; otherwise `NOGROUP` would decode as an unexpected reply
     /// instead of the recoverable class it is.
-    async fn bounded<T: FromRedisValue>(
+    pub(super) async fn bounded<T: FromRedisValue>(
         &self,
         name: &'static str,
         context: &str,

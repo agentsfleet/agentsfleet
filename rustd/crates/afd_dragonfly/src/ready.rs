@@ -159,7 +159,7 @@ impl ReadyIndex {
 
     /// The key `partition`'s hash lives under in THIS index.
     fn key_of(&self, partition: Partition) -> String {
-        partition.key_under(&self.prefix)
+        self.redis.physical_key(&partition.key_under(&self.prefix))
     }
 
     /// The key a fleet's mark lives under in THIS index.
