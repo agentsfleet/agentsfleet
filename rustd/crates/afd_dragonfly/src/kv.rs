@@ -83,7 +83,7 @@ impl Dragonfly {
     /// unexpected-reply error when the value is not a string.
     pub async fn get_string(&self, key: &str) -> Result<Option<String>> {
         let mut command = redis::cmd(CMD_GET);
-        command.arg(self.key(key));
+        command.arg(self.physical_key(key));
         self.command(CMD_GET, key, &command).await
     }
 
@@ -96,7 +96,7 @@ impl Dragonfly {
     pub async fn set_for(&self, key: &str, value: &str, ttl_seconds: i64) -> Result<()> {
         let mut command = redis::cmd(CMD_SET);
         command
-            .arg(self.key(key))
+            .arg(self.physical_key(key))
             .arg(value)
             .arg(ARG_EXPIRE_SECONDS)
             .arg(ttl_seconds);
@@ -122,7 +122,7 @@ impl Dragonfly {
     /// slot somebody else already spent.
     pub async fn spend_key(&self, key: &str) -> Result<bool> {
         let mut command = redis::cmd(CMD_DEL);
-        command.arg(self.key(key));
+        command.arg(self.physical_key(key));
         let removed: i64 = self.command(CMD_DEL, key, &command).await?;
         Ok(removed == 1)
     }
@@ -137,7 +137,7 @@ impl Dragonfly {
     /// Returns a command error when Dragonfly will not answer.
     pub async fn increment_in_window(&self, key: &str, window_seconds: u32) -> Result<i64> {
         let mut invocation = INCREMENT_IN_WINDOW_SCRIPT.prepare_invoke();
-        invocation.key(self.key(key)).arg(window_seconds);
+        invocation.key(self.physical_key(key)).arg(window_seconds);
         self.script(CMD_EVAL, key, &invocation).await
     }
 
@@ -174,7 +174,7 @@ impl Dragonfly {
         // `SCAN` is a walk of one node, not a keyed command, so it is asked of
         // every primary the cluster currently names — concurrently, because
         // the nodes are independent and a key lives on exactly one of them.
-        let glob = self.key(glob);
+        let glob = self.physical_key(glob);
         let primaries = crate::topology::primaries(self).await?;
         let walks = primaries
             .into_iter()

@@ -16,12 +16,16 @@ impl SessionStore {
         Self { redis }
     }
 
+    fn key_of(&self, session_id: &str) -> String {
+        self.redis.physical_key(&session_key(session_id))
+    }
+
     /// Writes a session, refreshing its time-to-live.
     ///
     /// # Errors
     /// Returns a command error when the write fails.
     pub async fn put(&self, state: &SessionState) -> Result<()> {
-        let key = self.redis.key(&session_key(&state.session_id));
+        let key = self.key_of(&state.session_id);
         let blob =
             serde_json::to_string(state).map_err(|_json| error::unexpected_reply(CMD_SET))?;
         let mut cmd = redis::cmd(CMD_SET);
@@ -36,7 +40,7 @@ impl SessionStore {
     /// Returns a command error when the read fails, and an unexpected-reply
     /// error when the stored blob is not a session.
     pub async fn get(&self, session_id: &str) -> Result<Option<SessionState>> {
-        let key = self.redis.key(&session_key(session_id));
+        let key = self.key_of(session_id);
         let mut cmd = redis::cmd(CMD_GET);
         cmd.arg(&key);
         let blob: Option<String> = self.redis.command(CMD_GET, &key, &cmd).await?;
@@ -63,7 +67,7 @@ impl SessionStore {
         now_ms: i64,
         request_fingerprint_hex: &str,
     ) -> Result<VerifyOutcome> {
-        let key = self.redis.key(&session_key(session_id));
+        let key = self.key_of(session_id);
         let mut invocation = VERIFY_AND_CONSUME.prepare_invoke();
         invocation
             .key(&key)
@@ -91,7 +95,7 @@ impl SessionStore {
     /// unexpected-reply error when the script answers with a shape this client
     /// does not know.
     pub async fn approve(&self, approval: &Approval<'_>, now_ms: i64) -> Result<ApproveOutcome> {
-        let key = self.redis.key(&session_key(approval.session_id));
+        let key = self.key_of(approval.session_id);
         let mut invocation = APPROVE.prepare_invoke();
         invocation
             .key(&key)
@@ -171,7 +175,7 @@ impl SessionStore {
 
     /// Aborts the session at one already-built key.
     async fn abort_key(&self, key: &str, owner: &str, reason: AbortReason) -> Result<AbortOutcome> {
-        let key = &self.redis.key(key);
+        let key = &self.redis.physical_key(key);
         let mut invocation = ABORT.prepare_invoke();
         invocation
             .key(key)

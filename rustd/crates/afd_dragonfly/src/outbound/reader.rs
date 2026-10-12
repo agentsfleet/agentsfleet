@@ -22,6 +22,7 @@ use crate::streams::EventId;
 #[derive(Debug)]
 pub struct OutboundReader {
     connection: Dedicated,
+    stream_key: String,
     consumer: String,
     /// Where the next resume read starts.
     ///
@@ -44,8 +45,10 @@ impl OutboundReader {
     /// this reader will block on cannot also be somebody else's.
     #[must_use]
     pub fn new(connection: Dedicated, consumer: String) -> Self {
+        let stream_key = connection.physical_key(OUTBOUND_STREAM_KEY);
         Self {
             connection,
+            stream_key,
             consumer,
             pending_cursor: OWN_PENDING.to_owned(),
         }
@@ -120,9 +123,7 @@ impl OutboundReader {
         for arg in options.to_redis_args() {
             cmd.arg(arg);
         }
-        cmd.arg("STREAMS")
-            .arg(self.connection.key(OUTBOUND_STREAM_KEY))
-            .arg(read_id);
+        cmd.arg("STREAMS").arg(&self.stream_key).arg(read_id);
 
         let reply: redis::streams::StreamReadReply = self
             .connection
@@ -158,7 +159,7 @@ impl OutboundReader {
     /// next turn tries again.
     async fn drop_undeliverable(&mut self, id: &str) {
         let mut cmd = redis::cmd(CMD_XACK);
-        cmd.arg(self.connection.key(OUTBOUND_STREAM_KEY))
+        cmd.arg(&self.stream_key)
             .arg(OUTBOUND_CONSUMER_GROUP)
             .arg(id);
         let acknowledged: Result<i64> = self

@@ -11,7 +11,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M223
 **Workstream:** 001
 **Date:** Oct 11, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — development infrastructure consumes one stack per repository
 **Categories:** API, DOCS, INFRA
 **Batch:** B1 — datastore isolation precedes attaching development processes
@@ -153,7 +153,7 @@ Implementation manifest for this refinement: `src/{client,config,dedicated,kv,ou
 Proofs: datastore-free identity, prefix-boundary and hash-tag tests; existing real-cluster isolation/recovery cases; namespaced fleet-history read; prefix-of-prefix isolation; raw physical-key access; and a marker-scoped sweep of writes and active subscription channels on every primary. Run canonical lint, unit and integration lanes at the final boundary. No transport concurrency, retry or command semantics are changed.
 
 - **Dimension 6.1** — DONE — Independent conceptual reviews select the concrete policy and store helpers with the manifest above → Test `namespace_boundary_design_review` (manual, GPT-6 Astra High and Claude Fable source reviews).
-- **Dimension 6.2** — IN_PROGRESS — The selected refactor preserves default behavior and isolated values, sessions, streams, scans and subscriptions → Test `namespace_boundary_regression` (namespace unit cases, marker-scoped sweep and complete canonical integration lane after implementation).
+- **Dimension 6.2** — DONE — The selected refactor preserves default behavior and isolated values, sessions, streams, scans and subscriptions → Test `namespace_boundary_regression` (namespace unit cases, marker-scoped sweep and complete canonical integration lane after implementation).
 
 ## Interfaces
 
@@ -194,6 +194,12 @@ The generated identifier is stable for an absolute worktree path, changes on rel
 6. Credentials never enter logs or generated runner settings — settings contain addresses/storage only; existing environment and registration supply secrets.
 
 ## Metrics & Observability
+
+Namespace refinement evidence (Oct 12, 2026): `make test-unit-rustd-daemon-libs _RUSTD_UNIT_DAEMON_LIBS=afd_dragonfly` passed with 143 passed, 0 failed and 43 ignored. The final assertions include identity, foreign-prefix rejection and actual cluster hash-slot preservation.
+
+The old fleet-history mapping was restored temporarily for a regression proof. `make test-integration-rustd` failed at the new history assertion: 0 entries instead of 1. With the fix restored, the complete lane passed: 947 passed, 0 failed, including 3 exclusive cluster-recovery tests. Private logs and checksums are in `dragonfly-history-red.json` and `dragonfly-integration-green.json` under the evidence directory below.
+
+`WITH_PROGRESS_DISABLE=1 make lint-rustd` passed Clippy, formatting and both no-feature binary checks. This disables the optional progress display and keeps every check. The final source review and native adversarial pass found no remaining defects. Repository-wide boundary results are recorded in the Pull Request's final session notes after `orly gate pr`.
 
 Compiler-cache evidence (Oct 12, 2026): `/private/tmp/agentsfleet-m223-cache-evidence/` retains private logs and JSON timings. Shell startup checks passed for `zsh -c` and `zsh -lc` in both existing worktrees, with the six cache variables initially removed. Both inherited the same cache directory with no shared target override. Missing-file and command-level override checks passed; a deliberately missing compiler wrapper made canonical daemon-unit Make fail with exit 2.
 
@@ -237,7 +243,7 @@ For R3, replace `<SIBLING_CHECKOUT>` with an existing sibling checkout's absolut
 
 | # | Criterion | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|-----------|---------------------|----------|----------|-----------------|
-| R1 | Namespaced datastore behavior | `make test-integration-rustd` | exit 0; namespace isolation cases pass | P0 | ✅ exit 0; 945 integration passes, including four namespace cases |
+| R1 | Namespaced datastore behavior | `make test-integration-rustd` | exit 0; namespace isolation cases pass | P0 | ✅ exit 0; 947 integration passes, including physical-state sweep and raw access |
 | R2 | Launcher safety and reuse | `bash scripts/local-dev-test.sh` | exit 0; all launcher cases pass | P0 | ✅ 19 tests; exit 0, both shutdown exit seams covered |
 | R3 | Two-worktree developer flow | `bash scripts/local-dev-test.sh --live "<SIBLING_CHECKOUT>"` | exit 0; both daemon URLs healthy, one infrastructure project, sibling survives stop | P0 | ✅ 1 live test; both URLs, callbacks, data preservation and cleanup passed |
 | R4 | Conform | `make harness-verify` | exit 0 | P0 | ✅ ALL GATES GREEN; exit 0 |
@@ -248,6 +254,8 @@ For R3, replace `<SIBLING_CHECKOUT>` with an existing sibling checkout's absolut
 | R9 | Scoped diff | `git diff --name-only origin/main...HEAD` | 0 paths outside Files Changed | P0 | ✅ implementation and carried spec paths listed above |
 
 **Grading protocol:** Record decisive output for spec-specific proofs; repository-wide results come from the final `orly gate pr` run. Baseline counts are measured for the recorded comparison revision before the Pull Request.
+
+R4–R9 retain the previously measured PR-ready candidate's results. The final close commit reruns the complete PR gate; its current-revision output belongs in the final session notes.
 
 ## Dead Code Sweep
 
