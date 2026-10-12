@@ -926,20 +926,16 @@ Every named credential / token / identifier in the auth surface, with sensitivit
 In production `AUTH_SESSION_CODE_PEPPER` is loaded from Vault into `agentsfleetd`
 process memory and never written anywhere. That is unchanged.
 
-Local development cannot do this: `agentsfleetd` runs under `docker-compose`,
-which reads an `env_file` off the filesystem, so the pepper has to exist as a
-file for `make up` to boot. The single permitted file is
-`~/.config/agentsfleet/agentsfleetd.env.local` at mode 0600.
-`.githooks/post-checkout` symlinks it into each worktree as
-`.env.agentsfleetd.local`; the symlink is what keeps one copy on the machine
-rather than one per checkout, so a rotation reaches every tree at once.
+For local development, `make up` starts a native `agentsfleetd` process.
+The launcher loads the machine-owned file named by `AGENTSFLEET_RUSTD_ENV_FILE`
+before starting the daemon. The single permitted secret file is
+`~/.config/agentsfleet/agentsfleetd.env.local` at mode 0600; every worktree reads
+that same file, without a worktree symlink.
 
-Two consequences a reader should not have to infer. A **real file** at that path
-inside a checkout is a defect, not a convenience — it multiplies the copies the
-row above forbids, and it is how the value ends up at mode 0644. And the file is
-`.gitignore`d (`.env.*`), which is a backstop, not the control: the control is
-that the value lives in `~/.config/agentsfleet/` and reaches the repository only
-through a link.
+A **real secret file** inside a checkout multiplies credential copies and
+violates this rule. The `.env.*` ignore pattern is only a backstop: the secret
+stays under `~/.config/agentsfleet/` and enters the native daemon's environment
+through the launcher. Restart each daemon after rotating the shared file.
 
 ---
 

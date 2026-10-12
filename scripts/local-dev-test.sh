@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Launchers are exercised through their public commands and external tool seams.
 set -euo pipefail
+if [ "${1:-}" = --live ]; then exec bash "$(dirname "$0")/local-dev-live-test.sh" "${2:-}"; fi
 python3 - "$(cd "$(dirname "$0")/.." && pwd -P)" "${1:-}" "${2:-}" <<'PY'
 import concurrent.futures
 import json
@@ -15,7 +16,7 @@ import tempfile
 import time
 import unittest
 import urllib.request
-SOURCE, LIVE = Path(sys.argv[1]), sys.argv[2] == "--live"
+SOURCE = Path(sys.argv[1])
 DOCKER = '''#!/usr/bin/env python3
 import os, pathlib, sys, time
 a = sys.argv[1:]
@@ -23,6 +24,7 @@ d = pathlib.Path(a[a.index("--project-directory")+1])
 state = d.parent / "docker-ready"
 action = next(x for x in a if x in ["ps", "up", "down", "exec"])
 with (d.parent / "docker-calls").open("a") as f: f.write(action + "\\n")
+with (d.parent / "docker-args").open("a") as f: f.write(__import__("json").dumps(a) + "\\n")
 if action == "up":
     if os.getenv("FAIL_DOCKER"): sys.exit(42)
     time.sleep(float(os.getenv("FAKE_DOCKER_DELAY", "0.1")))
@@ -83,7 +85,7 @@ class LauncherTests(unittest.TestCase):
         for repo in self.repos:
             (repo / "scripts").mkdir(parents=True)
             (repo / "rustd").mkdir()
-            for name in ["local-dev.sh", "dragonfly-cluster.sh"]:
+            for name in ["local-dev.sh", "local-dev-state.sh", "dragonfly-cluster.sh"]:
                 shutil.copyfile(SOURCE / "scripts" / name, repo / "scripts" / name)
             launcher = repo / "scripts/local-dev.sh"
             launcher.write_text(launcher.read_text().replace("DEV_INFRA_LOCK_ATTEMPTS=1800", "DEV_INFRA_LOCK_ATTEMPTS=10").replace("DEV_BUILD_LOCK_ATTEMPTS=6000", "DEV_BUILD_LOCK_ATTEMPTS=10").replace("DEV_PROCESS_LOCK_ATTEMPTS=9000", "DEV_PROCESS_LOCK_ATTEMPTS=10"))
@@ -94,12 +96,12 @@ class LauncherTests(unittest.TestCase):
         for name, output in [("route", "interface: en0"), ("ipconfig", "192.0.2.10"), ("ip", "1.1.1.1 src 192.0.2.10")]:
             (self.bin / name).write_text(f'#!/bin/sh\nprintf "%s\\n" "{output}"\n')
             (self.bin / name).chmod(0o700)
-        self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", TMPDIR=str(self.base),
+        self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", TMPDIR=str(self.base), XDG_STATE_HOME=str(self.base / "state-home"),
                         FAKE_EVENTS=str(self.base / "events"), FAKE_COMMON=str(self.common), FAKE_NATIVE=str(self.native), FAKE_BOOT_FAILURE=str(self.failed), FAKE_UNBOUND=str(self.unbound),
                         AUTH_SESSION_CODE_PEPPER="test-pepper", ENCRYPTION_MASTER_KEY="test-key",
                         AGENTSFLEET_RUSTD_ENV_FILE=str(self.base / "absent"))
     def tearDown(self):
-        for record in self.common.glob("agentsfleet-dev-*/worktrees/*/daemon.pid"):
+        for record in (self.base / "state-home/agentsfleet").glob("dev-*/worktrees/*/daemon.pid"):
             raw = record.read_text().splitlines()[0]
             if not raw.isdecimal():
                 continue
@@ -118,7 +120,8 @@ class LauncherTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, result.stdout)
         return result
     def shared(self):
-        return next(self.common.glob("agentsfleet-dev-*"))
+        command = 'source scripts/local-dev.sh; printf "%s\\n" "$DEV_SHARED"'
+        return Path(subprocess.check_output(["bash", "-c", command], cwd=self.repos[0], env=self.env, text=True).strip())
     def state(self, repo=0):
         return self.shared() / "worktrees" / self.run_dev("identity", repo).stdout.strip()
     def test_worktree_identity_is_stable_and_distinct(self):
@@ -216,7 +219,7 @@ class LauncherTests(unittest.TestCase):
         with socket.socket() as occupied:
             occupied.bind(("0.0.0.0", port))
             self.run_dev("up", expected=1)
-        self.assertFalse(list(self.common.glob("agentsfleet-dev-*/docker-calls")))
+        self.assertFalse(list((self.base / "state-home/agentsfleet").glob("dev-*/docker-calls")))
     def test_corrupt_process_record_cannot_signal_another_process(self):
         self.run_dev("up", infra=True)
         record = self.state() / "daemon.pid"
@@ -283,68 +286,57 @@ class LauncherTests(unittest.TestCase):
                                         cwd=self.repos[0], env=self.env, capture_output=True, text=True, timeout=45)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertFalse(record.exists())
-class LiveTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        if not sys.argv[3]: raise ValueError("--live requires an existing sibling checkout")
-        cls.repos = [SOURCE, Path(sys.argv[3]).resolve()]
-        cls.env = dict(os.environ, FOLLOW_LOGS="0", ENCRYPTION_MASTER_KEY=os.urandom(32).hex())
-        for repo in cls.repos:
-            cls.addClassCleanup(subprocess.run, ["make", "down"], cwd=repo, env=cls.env, check=True)
-            if (repo / "scripts/local-dev.sh").read_bytes() != (SOURCE / "scripts/local-dev.sh").read_bytes():
-                raise RuntimeError("commit the launcher before its live worktree proof")
-    def run_make(self, action, index):
-        subprocess.run(["make", action], cwd=self.repos[index], env=self.env, check=True)
-    def context(self, index):
-        command = 'source scripts/local-dev.sh; printf "%s\\n" "$DEV_PROJECT" "$DEV_DB" "$DEV_STATE" "$DEV_URL" "$(dev_api_origin)"'
-        values = subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env, text=True).splitlines()
-        return dict(zip(["project", "database", "state", "url", "origin"], values))
-    def sql(self, index, query):
-        command = 'source scripts/local-dev.sh; dev_compose exec -T postgres psql -U agentsfleet -d "$DEV_DB" -v ON_ERROR_STOP=1 -At'
-        return subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env, input=query, text=True).strip()
-    def services(self, index):
-        command = 'source scripts/local-dev.sh; dev_compose ps --format json'
-        result = subprocess.check_output(["bash", "-c", command], cwd=self.repos[index], env=self.env, text=True)
-        return {item["Service"]: item["ID"] for item in map(json.loads, result.splitlines())}
-    def ready(self, context):
-        with urllib.request.urlopen(context["url"] + "/readyz", timeout=5) as response:
-            self.assertEqual(response.status, 200)
-    def test_two_worktrees_share_infrastructure_end_to_end(self):
-        self.run_make("up", 0)
-        self.table = "worktree_probe_" + os.urandom(4).hex()
-        original = self.services(0)
-        self.assertEqual(set(original), {"postgres", "dragonfly", "mailpit", "qstash"})
-        self.run_make("up", 1)
-        a, b = self.context(0), self.context(1)
-        self.assertEqual(a["project"], b["project"])
-        self.assertNotEqual(a["database"], b["database"])
-        self.assertNotEqual(a["url"], b["url"])
-        self.assertEqual(original, self.services(1))
-        for index, context in enumerate([a, b]):
-            self.ready(context)
-            command = 'source scripts/local-dev.sh; dev_compose exec -T qstash bun -e "fetch(process.argv[1]).then(r=>process.exit(r.status===200?0:1))" "$1/readyz"'
-            subprocess.run(["bash", "-c", command, "probe", context["origin"]], cwd=self.repos[index], env=self.env, check=True)
-            self.addCleanup(self.sql, index, f"DROP TABLE IF EXISTS public.{self.table}")
-            self.sql(index, f"CREATE TABLE public.{self.table} (value integer NOT NULL); INSERT INTO public.{self.table} VALUES ({index});")
-        self.run_make("up", 0)
-        self.assertEqual(self.sql(0, f"SELECT value FROM public.{self.table}"), "0")
-        self.assertEqual(self.sql(1, f"SELECT value FROM public.{self.table}"), "1")
-        self.assertEqual(original, self.services(0))
-        self.run_make("down", 0)
-        self.assertFalse((Path(a["state"]) / "daemon.pid").exists())
-        self.ready(b)
-        self.assertEqual(self.sql(1, f"SELECT value FROM public.{self.table}"), "1")
-        print("development_start_preserves_each_database: passed", flush=True)
-        version = int(self.sql(0, "SELECT MAX(version) + 10 FROM audit.schema_migrations"))
-        self.addCleanup(self.sql, 0, f"DELETE FROM audit.schema_migrations WHERE version = {version}")
-        self.sql(0, f"INSERT INTO audit.schema_migrations (version, applied_at) VALUES ({version}, 1)")
-        failed = subprocess.run(["make", "up"], cwd=self.repos[0], env=self.env, capture_output=True, text=True)
-        self.assertNotEqual(failed.returncode, 0)
-        self.assertNotIn("API:", failed.stdout)
-        self.ready(b)
-        self.assertEqual(self.sql(0, f"SELECT value FROM public.{self.table}"), "0")
-        self.assertEqual(self.sql(1, f"SELECT value FROM public.{self.table}"), "1")
-        print("migration_refusal_preserves_both_databases: passed", flush=True)
-suite = unittest.defaultTestLoader.loadTestsFromTestCase(LiveTests if LIVE else LauncherTests)
+    def test_state_home_is_outside_git_metadata(self):
+        command = 'source scripts/local-dev.sh; printf "%s\\n" "$DEV_SHARED"'
+        state = subprocess.check_output(["bash", "-c", command], cwd=self.repos[0], env=self.env, text=True).strip()
+        self.assertTrue(Path(state).is_relative_to(self.base / "state-home/agentsfleet"))
+        self.assertFalse(Path(state).is_relative_to(self.common))
+        fallback = subprocess.check_output(["bash", "-c", command], cwd=self.repos[0],
+                                          env=dict(self.env, XDG_STATE_HOME="", HOME=str(self.base)), text=True).strip()
+        self.assertTrue(Path(fallback).is_relative_to(self.base / ".local/state/agentsfleet"))
+    def test_stack_teardown_refuses_live_worktrees(self):
+        self.run_dev("up", infra=True)
+        self.run_dev("up", 1, infra=True)
+        self.run_dev("down")
+        result = self.run_dev("down", infra=True, expected=1)
+        for root in self.repos: self.assertIn(str(root), result.stderr)
+        self.assertNotIn("down", (self.shared() / "docker-calls").read_text().splitlines())
+    def test_stack_teardown_removes_gone_worktrees(self):
+        self.run_dev("up", infra=True)
+        owner = self.shared() / "worktrees/gone"
+        owner.mkdir(exist_ok=True)
+        (owner / "worktree").write_text(str(self.base / "missing-root"))
+        marker = self.state() / "worktree"
+        marker.unlink(missing_ok=True)
+        self.run_dev("down", infra=True)
+        argv = json.loads((self.shared() / "docker-args").read_text().splitlines()[-1])
+        self.assertIn("--volumes", argv)
+        self.assertEqual(argv[argv.index("--env-file") + 1], str(self.shared() / "infrastructure/ports.env"))
+        self.assertFalse((self.shared() / "docker-ready").exists())
+    def test_status_reports_all_stack_owners(self):
+        self.run_dev("up", infra=True)
+        other_common = self.base / "other-common"
+        other_common.mkdir()
+        other_env = dict(self.env, FAKE_COMMON=str(other_common))
+        self.run_dev("up", 1, env=other_env, infra=True)
+        stacks = list((self.base / "state-home/agentsfleet").glob("dev-*"))
+        self.assertEqual(len(stacks), 2)
+        other = next(stack for stack in stacks if stack != self.shared())
+        (other / "worktrees" / self.run_dev("identity", 1).stdout.strip() / "worktree").write_text(str(self.base / "missing-root"))
+        (other / "docker-ready").unlink()
+        report = self.run_dev("status").stdout
+        for stack in stacks: self.assertIn("agentsfleet-dev-" + stack.name.rsplit("-", 1)[1], report)
+        for word in ["live", "gone", "running", "stopped", str(self.repos[0])]: self.assertIn(word, report)
+    def test_symlinked_state_is_refused(self):
+        self.run_dev("up", infra=True)
+        state = self.shared()
+        elsewhere = self.base / "elsewhere"
+        state.rename(elsewhere)
+        state.symlink_to(elsewhere, target_is_directory=True)
+        for action in ["infra-up", "status", "infra-down"]:
+            result = self.run_dev(action, expected=1)
+            self.assertIn("symlink", result.stderr)
+        self.assertEqual((elsewhere / "docker-calls").read_text().splitlines().count("up"), 1)
+suite = unittest.defaultTestLoader.loadTestsFromTestCase(LauncherTests)
 sys.exit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
 PY

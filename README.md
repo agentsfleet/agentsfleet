@@ -60,8 +60,8 @@ Define an agent in Markdown, connect a webhook, and get an evidenced diagnosis a
 git clone https://github.com/agentsfleet/agentsfleet.git
 cd agentsfleet
 
-# Populate .env before running make up. See playbooks/founding/01_bootstrap/001_playbook.md for the full bootstrap.
-make up           # Postgres + Dragonfly + QStash + agentsfleetd (auto-migrates DB)
+# Run provision-env-1password first. See docs/development.md for shared-worktree setup.
+make up           # Shared services + this worktree's native daemon; migrate before serving
 
 # Install in this order. The root install alone does NOT reach the workspace
 # packages, and the coverage lane then fails resolving `next/headers` — a
@@ -70,6 +70,7 @@ bun install
 (cd cli && bun install && bun run build)
 for pkg in ui/packages/*/; do (cd "$pkg" && bun install); done
 
+export NEXT_PUBLIC_API_URL="$(bash scripts/local-dev.sh url)"
 cd ui/packages/app && bun run dev
 ```
 
@@ -80,6 +81,9 @@ and `AGENTSFLEET_RUSTD_ENV_FILE`. Local UI and daemon tests read their files
 directly; the runner path is available to tests that need it. No worktree
 environment-file symlinks are needed. The app refuses to guess a backend when
 `NEXT_PUBLIC_API_URL` is unset.
+
+See [shared development worktrees](docs/development.md#shared-development-worktrees)
+for startup, status, ownership and teardown.
 
 **Verify:**
 
@@ -93,11 +97,11 @@ make test-integration-rustd   # needs Docker: live Postgres + Dragonfly
 
 ## CLI
 
-`agentsfleet` defaults to **production**. Point it at your local stack with the `--api` flag, or persist it via the environment:
+`agentsfleet` defaults to **production**. From the repository root, select this worktree's URL with `--api` or the environment. Replace `<COMMAND>` with your command.
 
 ```bash
-agentsfleet --api http://localhost:3000 <command>
-export AGENTSFLEET_API_URL=http://localhost:3000   # or set it once
+agentsfleet --api "$(bash scripts/local-dev.sh url)" <COMMAND>
+export AGENTSFLEET_API_URL="$(bash scripts/local-dev.sh url)"
 ```
 
 ---

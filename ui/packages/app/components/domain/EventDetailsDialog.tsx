@@ -6,7 +6,6 @@ import {
   AlertDescription,
   AlertTitle,
   type AlertVariant,
-  Badge,
   CopyButton,
   Dialog,
   DialogContent,
@@ -27,6 +26,7 @@ import {
 } from "lucide-react";
 import type { EventDetail, EventRow } from "@/lib/api/events";
 import { useEventDetail } from "./use-event-detail";
+import { FleetMarkdown } from "./FleetMarkdown";
 import {
   copiedRequestContext,
   formatRequestValue,
@@ -70,6 +70,8 @@ const NO_REQUEST_CONTEXT = "No request context recorded";
 const REQUEST_CONTEXT_TITLE = "Request context";
 const REQUEST_CONTEXT_OMITTED = "Additional fields not shown";
 const RUNNER_DIAGNOSTIC_TITLE = "Runner diagnostic";
+const SOURCE_LABEL = "Source:";
+const TYPE_LABEL = "Type:";
 
 const WARNING_TONE: EventTone = {
   alertVariant: "warning",
@@ -130,6 +132,7 @@ function EventDetails({ row, detail }: { row: EventRow; detail: EventDetail | nu
         <RequestContext row={row} detail={detail} />
         {guidance ? <StartupFix guidance={guidance} hasCause={hasCause(row)} /> : null}
         <DialogFooter className="border-t border-border pt-lg">
+          <CopyButton value={row.event_id} label={COPY_EVENT_ID_LABEL} />
           <CopyButton value={diagnostic} label={COPY_DIAGNOSTIC_LABEL} />
         </DialogFooter>
       </div>
@@ -156,16 +159,7 @@ function EventDetailsHeader({ row, result }: { row: EventRow; result: string }) 
     <DialogHeader className="gap-lg border-b border-border pb-lg pr-4xl">
       <div className="flex flex-col gap-lg sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-md">
-            <DialogTitle>{EVENT_DETAILS_TITLE}</DialogTitle>
-            <div className="flex min-w-0 max-w-full items-center gap-sm rounded-sm border border-border bg-muted/30 px-md py-sm">
-              <span className="text-label uppercase tracking-label text-muted-foreground">ID</span>
-              <span className="min-w-0 max-w-xs truncate font-mono text-mono leading-mono text-foreground" title={row.event_id}>
-                {row.event_id}
-              </span>
-              <CopyButton value={row.event_id} label={COPY_EVENT_ID_LABEL} />
-            </div>
-          </div>
+          <DialogTitle>{EVENT_DETAILS_TITLE}</DialogTitle>
           <DialogDescription className="sr-only">
             {row.status}: {result}. {actor}, {row.event_type}.
           </DialogDescription>
@@ -192,9 +186,9 @@ function EventResult({ result, tone }: { result: string; tone: EventTone }) {
     <Alert variant={tone.alertVariant} className="block" aria-labelledby={resultId}>
       <div className="flex items-start gap-md">
         <Icon size={18} className="mt-xs shrink-0" aria-label={tone.iconLabel} />
-        <AlertTitle id={resultId} className="whitespace-pre-wrap text-foreground">
-          {result}
-        </AlertTitle>
+        <AlertDescription id={resultId} className="min-w-0 flex-1 text-foreground">
+          <FleetMarkdown>{result}</FleetMarkdown>
+        </AlertDescription>
       </div>
     </Alert>
   );
@@ -213,8 +207,8 @@ function RequestContext({ row, detail }: { row: EventRow; detail: EventDetail | 
           {REQUEST_CONTEXT_TITLE}
         </h3>
         <div className="flex flex-wrap items-center gap-sm">
-          <Badge title={row.actor}>{actor}</Badge>
-          <Badge>{row.event_type}</Badge>
+          <span className="text-label text-muted-foreground">{SOURCE_LABEL} <span title={row.actor}>{actor}</span></span>
+          <span className="text-label text-muted-foreground">{TYPE_LABEL} <span>{row.event_type}</span></span>
         </div>
       </div>
       <RequestContextBody context={context} githubSource={actor === SENDER.GITHUB_APP} />

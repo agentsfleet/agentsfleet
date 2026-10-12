@@ -24,129 +24,7 @@ dev_hash() {
   printf '%s' "$1" | cksum | awk '{printf "%08x", $1}'
 }
 
-dev_identity() {
-  DEV_ROOT="$(git rev-parse --show-toplevel)"
-  DEV_ROOT="$(cd "$DEV_ROOT" && pwd -P)"
-  DEV_COMMON="$(git rev-parse --path-format=absolute --git-common-dir)"
-  DEV_COMMON="$(cd "$DEV_COMMON" && pwd -P)"
-  DEV_REPO_ID="$(dev_hash "$DEV_COMMON")"
-  DEV_ID="wt_$(dev_hash "$DEV_ROOT")"
-  DEV_SHARED="$DEV_COMMON/agentsfleet-dev-$(id -u)-$DEV_REPO_ID"
-  DEV_STATE="$DEV_SHARED/worktrees/$DEV_ID"
-  DEV_INFRA="$DEV_SHARED/infrastructure"
-  DEV_PROJECT="agentsfleet-dev-$DEV_REPO_ID"
-  DEV_PORT=$((DEV_DAEMON_PORT_START + 16#${DEV_ID#wt_} % DEV_DAEMON_PORT_COUNT))
-  DEV_URL="http://127.0.0.1:$DEV_PORT"
-  DEV_DB="dev_$DEV_ID"
-  DEV_PID_FILE="$DEV_STATE/daemon.pid"
-  DEV_BINARY="$DEV_STATE/build/debug/agentsfleetd"
-  DEV_LOG="$DEV_STATE/daemon.log"
-  local base=$((DEV_INFRA_PORT_START + 16#$DEV_REPO_ID % DEV_INFRA_SLOTS * DEV_INFRA_STRIDE))
-  export AGENTSFLEET_PG_HOST_PORT="$base" AGENTSFLEET_DRAGONFLY_BASE_PORT="$((base + 1))" AGENTSFLEET_DRAGONFLY_LAST_PORT="$((base + 5))"
-  export AGENTSFLEET_QSTASH_HOST_PORT="$((base + 10))" AGENTSFLEET_MAILPIT_SMTP_PORT="$((base + 11))" AGENTSFLEET_MAILPIT_UI_PORT="$((base + 12))"
-}
-
-dev_state() {
-  umask 077
-  [ ! -L "$DEV_SHARED" ] && [ ! -L "$DEV_STATE" ] && [ ! -L "$DEV_SHARED/worktrees" ] || dev_fail 'development state directory is a symlink'
-  mkdir -p "$DEV_STATE"
-  [ -O "$DEV_SHARED" ] || dev_fail 'development state directory belongs to another user'
-}
-
-dev_marker() {
-  local file="$1" value="$2"
-  if [ -f "$file" ]; then
-    [ "$(cat "$file")" = "$value" ] || dev_fail 'development identifier collision'
-  else
-    printf '%s\n' "$value" >"$file"
-  fi
-}
-
-dev_lock() {
-  DEV_LOCK="$1"
-  local attempt=0 attempts=$DEV_PROCESS_LOCK_ATTEMPTS
-  case "$DEV_LOCK" in
-    "$DEV_SHARED/infrastructure.lock") attempts=$DEV_INFRA_LOCK_ATTEMPTS ;;
-    "$DEV_SHARED/build.lock") attempts=$DEV_BUILD_LOCK_ATTEMPTS ;;
-  esac
-  until mkdir "$DEV_LOCK" 2>/dev/null; do
-    attempt=$((attempt + 1))
-    [ "$attempt" -lt "$attempts" ] || dev_fail "lock wait expired: $DEV_LOCK"
-    sleep "$DEV_LOCK_INTERVAL"
-  done
-  trap 'rmdir "$DEV_LOCK"' EXIT
-  if [ "$DEV_LOCK" = "$DEV_SHARED/infrastructure.lock" ]; then
-    dev_marker "$DEV_SHARED/repository" "$DEV_COMMON"
-  else
-    dev_marker "$DEV_STATE/worktree" "$DEV_ROOT"
-  fi
-}
-
-dev_compose() {
-  docker compose --project-name "$DEV_PROJECT" --project-directory "$DEV_INFRA" \
-    --env-file "$DEV_INFRA/ports.env" --file "$DEV_INFRA/compose.yml" "$@"
-}
-
-
-dev_snapshot() {
-  [ ! -L "$DEV_INFRA" ] || dev_fail 'infrastructure snapshot is a symlink'
-  if [ -d "$DEV_INFRA" ]; then
-    [ -s "$DEV_INFRA/compose.yml" ] && [ -s "$DEV_INFRA/ports.env" ] || dev_fail 'incomplete infrastructure snapshot'
-    return
-  fi
-  local staging="$DEV_SHARED/infrastructure-new-$$"
-  mkdir -p "$staging/scripts"
-  cp "$DEV_ROOT/compose.dev-infra.yml" "$staging/compose.yml"
-  cp "$DEV_ROOT/scripts/dragonfly-cluster.sh" "$staging/scripts/dragonfly-cluster.sh"
-  cat >"$staging/ports.env" <<EOF
-AGENTSFLEET_PG_HOST_PORT=$AGENTSFLEET_PG_HOST_PORT
-AGENTSFLEET_DRAGONFLY_BASE_PORT=$AGENTSFLEET_DRAGONFLY_BASE_PORT
-AGENTSFLEET_DRAGONFLY_LAST_PORT=$AGENTSFLEET_DRAGONFLY_LAST_PORT
-AGENTSFLEET_QSTASH_HOST_PORT=$AGENTSFLEET_QSTASH_HOST_PORT
-AGENTSFLEET_MAILPIT_SMTP_PORT=$AGENTSFLEET_MAILPIT_SMTP_PORT
-AGENTSFLEET_MAILPIT_UI_PORT=$AGENTSFLEET_MAILPIT_UI_PORT
-EOF
-  mv "$staging" "$DEV_INFRA"
-}
-
-dev_infra_up() {
-  dev_snapshot
-  local status count=0 service state health
-  status="$(dev_compose ps --all --format '{{.Service}} {{.State}} {{.Health}}')"
-  if [ -n "$status" ]; then
-    while read -r service state health; do
-      case "$service" in postgres|dragonfly|mailpit|qstash) ;; *) dev_fail 'unexpected shared service' ;; esac
-      [ "$state" = running ] && [ "$health" = healthy ] || dev_fail "shared $service is unhealthy; inspect it before restarting infrastructure"
-      count=$((count + 1))
-    done <<<"$status"
-    [ "$count" = 4 ] || dev_fail 'shared stack is incomplete; inspect it before restarting infrastructure'
-    printf 'Reusing shared infrastructure %s\n' "$DEV_PROJECT"
-    return
-  fi
-  dev_compose up -d --wait --wait-timeout 330 --no-recreate
-}
-
-dev_database() {
-  dev_infra_up
-  # DEV_DB comes only from the fixed prefix and worktree checksum.
-  printf "SELECT 'CREATE DATABASE \"%s\"' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '%s')\\gexec\n" \
-    "$DEV_DB" "$DEV_DB" | dev_compose exec -T postgres psql -U agentsfleet -d postgres -v ON_ERROR_STOP=1
-}
-
-
-dev_infrastructure() (
-  dev_state
-  dev_lock "$DEV_SHARED/infrastructure.lock"
-  case "$1" in
-    up) dev_infra_up ;;
-    database) dev_database ;;
-    down)
-      [ -d "$DEV_INFRA" ] || exit 0
-      dev_compose down
-      ;;
-  esac
-)
-
+source "$(dirname "${BASH_SOURCE[0]}")/local-dev-state.sh"
 
 dev_process_stamp() {
   if [ "$(uname -s)" = Linux ]; then
@@ -301,6 +179,14 @@ dev_runner_environment() {
     "${RUNNER_STORAGE_HOME:-/var/lib/agentsfleet-runner}/worktrees/$DEV_REPO_ID/$DEV_ID"
 }
 
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  case "${1:-}" in
+    status) dev_status; exit 0 ;;
+    infra-down) dev_state_home; dev_identity_project="${2:-}"
+      if [ -z "$dev_identity_project" ]; then dev_identity; dev_identity_project="$DEV_PROJECT"; fi
+      dev_stack_down "$dev_identity_project"; exit 0 ;;
+  esac
+fi
 dev_identity
 [ "${BASH_SOURCE[0]}" = "$0" ] || return 0
 
@@ -309,7 +195,6 @@ case "${1:-up}" in
   identity) printf '%s\n' "$DEV_ID" ;;
   runner-env) dev_runner_environment ;;
   infra-up) dev_infrastructure up ;;
-  infra-down) dev_infrastructure down ;;
   up|down)
     dev_state
     dev_lock "$DEV_STATE/process.lock"
@@ -319,5 +204,5 @@ case "${1:-up}" in
     [ -f "$DEV_LOG" ] || dev_fail 'no daemon log exists; run make up first'
     tail -f "$DEV_LOG"
     ;;
-  *) dev_fail 'expected up, down, infra-up, infra-down, url, identity, runner-env or logs' ;;
+  *) dev_fail 'expected up, down, infra-up, infra-down, url, identity, runner-env, status or logs' ;;
 esac
