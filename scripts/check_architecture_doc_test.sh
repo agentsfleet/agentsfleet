@@ -281,6 +281,40 @@ test_arch_doc_names_no_retired_runner() {
   ok "$name"
 }
 
+# ── No Rust file names a retired runner ─────────────────────────────────────
+#
+# A test name moved between crates is how one came back after the cutover, so
+# the planted case is exactly that shape. Build output under `target/` passes.
+
+test_rust_tree_names_no_zig() {
+  local name="test_rust_tree_names_no_zig"
+  local check="rust_names_no_retired_runner"
+  local spec_root="$WORK_DIR/specs" arch rust output
+  build_spec_root "$spec_root"
+  arch="$(build_schedule_arch_dir "$WORK_DIR/rust_arch" 'The sandbox is built by `afr_sandbox`.')"
+  rust="$WORK_DIR/rust_tree"
+  mkdir -p "$rust/crates/etag/src" "$rust/target/debug"
+  printf 'fn the_tag_is_pinned_to_the_byte() {}\n' >"$rust/crates/etag/src/lib.rs"
+  printf 'zig build output\n' >"$rust/target/debug/notes.txt"
+  if ! (cd "$REPO_ROOT" && ARCH_DIR="$arch" SPEC_ROOT="$spec_root" DOC_SET_EXTRA="" \
+    RUST_DIR="$rust" bash "$GATE" >/dev/null 2>&1); then
+    bad "$name" "a Rust tree naming no retired runner was rejected"
+    return
+  fi
+  printf 'fn the_tag_is_the_zig_encoding_to_the_byte() {}\n' >"$rust/crates/etag/src/lib.rs"
+  output="$(cd "$REPO_ROOT" && ARCH_DIR="$arch" SPEC_ROOT="$spec_root" DOC_SET_EXTRA="" \
+    RUST_DIR="$rust" bash "$GATE" 2>&1)" && {
+    bad "$name" "a Rust file naming Zig passed"
+    return
+  }
+  if [[ "$output" != *"$check: $rust/crates/etag/src/lib.rs:1:"* ]]; then
+    bad "$name" "the failure did not name $check at lib.rs:1: $output"
+    return
+  fi
+  ok "$name"
+}
+
+test_rust_tree_names_no_zig
 test_arch_doc_cited_paths_resolve
 test_arch_doc_cited_tables_exist
 test_arch_doc_names_no_retired_runner
