@@ -621,9 +621,10 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        directory's three oldest dirty partitions too, taken in turn as the
        cursor moves; both peeks' fleets reach the scan, the rotation's
        first; empty peeks answer at once and read no Postgres. Afterwards
-       spend the directory entry unless this poll leased from the
-       rotation's partition, or leased from the dirty one while its peek
-       held other fleets. Keep the active fleets whose required_tags are a
+       spend the directory entry, a faulted poll's included, unless this
+       poll leased from the rotation's partition while the dirty one held
+       fleets, or leased from the dirty one while its peek held other
+       fleets. Keep the active fleets whose required_tags are a
        subset of the runner's labels and whose slot no live runner holds;
        order them the rotation's partition first, then sticky by
        last_runner_id, ties at random, and keep at most 64;

@@ -131,23 +131,14 @@ impl Leases {
         if let Some(acquired) = self.held_first(runner_id, held, now, cost).await? {
             return Ok(Some(acquired));
         }
-        let (offer, hint) = self.ready_this_poll(runner_id, cost).await?;
-        cost.candidates_scanned = u64::try_from(offer.ready.len()).unwrap_or(u64::MAX);
-        // The readiness depth this poll saw, published for the gauge that
-        // reports it: the index is a network round trip, and a collection
-        // callback cannot make one.
-        producers::fleet::ready_depth_observed(cost.candidates_scanned);
-        // The zero-Postgres path. Skipping the scan here is what makes idle
-        // cost scale with runner count alone instead of runners × fleets.
-        let acquired = if offer.ready.is_empty() {
-            None
-        } else {
-            self.first_offered(runner_id, &offer.ready, offer.cursor, now, cost)
-                .await?
-        };
-        self.spend_hint(runner_id, hint, acquired.as_ref(), cost)
-            .await;
-        Ok(acquired)
+        let (offer, hint) = self.ready_this_poll(runner_id, cost).await;
+        let acquired = self.offered(runner_id, offer, now, cost).await;
+        // On every exit, a failed one included: a poll that faulted leased
+        // nothing from the hinted partition, and keeping its entry would send
+        // every later poll back to the same fault.
+        let leased = acquired.as_ref().ok().and_then(Option::as_ref);
+        self.spend_hint(runner_id, hint, leased, cost).await;
+        acquired
     }
 
     /// The eligible fleets among `ready`, those in `cursor` first, then in

@@ -140,6 +140,10 @@ fn test_a_dry_finished_or_unreadable_partition_spends_its_entry() {
         "a stale entry over an empty partition"
     );
     assert!(
+        !keeps_entry(dirty, Some(0), Some(&elsewhere)),
+        "an empty hinted peek has nothing to come back for, wherever the poll leased"
+    );
+    assert!(
         !keeps_entry(dirty, None, Some(&elsewhere)),
         "a failed peek is never come back to"
     );

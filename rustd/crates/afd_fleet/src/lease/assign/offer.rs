@@ -8,9 +8,11 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::Ready;
+use afd_observability::producers;
 use futures_util::future::join_all;
 
 use super::diagnostics::warn_held_read;
+use super::hint::Offer;
 use super::{PollCost, peeked};
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
@@ -72,6 +74,33 @@ impl Leases {
                 }
             })
             .collect()
+    }
+
+    /// The fleet this poll leases from `offer`, if any.
+    ///
+    /// # Errors
+    /// The offer's own error, when no peek answered, and whatever the scan or
+    /// a claim raises.
+    pub(super) async fn offered(
+        &self,
+        runner_id: &Uuid7,
+        offer: Result<Offer>,
+        now: UnixMillis,
+        cost: &mut PollCost,
+    ) -> Result<Option<Acquired>> {
+        let offer = offer?;
+        cost.candidates_scanned = u64::try_from(offer.ready.len()).unwrap_or(u64::MAX);
+        // The readiness depth this poll saw, published for the gauge that
+        // reports it: the index is a network round trip, and a collection
+        // callback cannot make one.
+        producers::fleet::ready_depth_observed(cost.candidates_scanned);
+        // The zero-Postgres path. Skipping the scan here is what makes idle
+        // cost scale with runner count alone instead of runners × fleets.
+        if offer.ready.is_empty() {
+            return Ok(None);
+        }
+        self.first_offered(runner_id, &offer.ready, offer.cursor, now, cost)
+            .await
     }
 
     /// The first of `ready` the candidate scan offers and this runner wins:

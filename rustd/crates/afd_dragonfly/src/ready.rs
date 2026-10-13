@@ -46,9 +46,7 @@ use crate::client::Dragonfly;
 use crate::error::Result;
 
 pub use self::directory::Dirty;
-pub use self::partition::{
-    Partition, READY_DIRECTORY_TAG, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix,
-};
+pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix};
 
 /// Delete the field only if it still carries the token the caller observed.
 ///
@@ -83,10 +81,11 @@ const ARG_WITHVALUES: &str = "WITHVALUES";
 
 /// Names one generation of a fleet's readiness mark.
 ///
-/// Minted rather than counted: nothing ever compares two tokens for order, only
-/// for equality, and every counter shape breaks on reuse — a clear deletes the
+/// Minted rather than counted: a compare-and-clear compares two tokens for
+/// equality, and every counter shape breaks on reuse — a clear deletes the
 /// field, so a per-fleet count restarts and re-mints a token a stale poll still
-/// holds.
+/// holds. The readiness directory also orders them, oldest mark first, which
+/// is what the derived `Ord` is for.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReadyToken(String);
 
@@ -100,9 +99,10 @@ impl ReadyToken {
     /// A new generation: a version-7 identifier at `now`, its random half drawn
     /// from `entropy`.
     ///
-    /// Version 7 for its ten random bytes, not its ordering — two marks in one
-    /// millisecond still differ, which is the only property a compare-and-clear
-    /// reads.
+    /// Version 7 for its ten random bytes and its ordering: two marks in one
+    /// millisecond still differ, which is what a compare-and-clear reads, and
+    /// tokens sort by the millisecond they were minted, which is what the
+    /// readiness directory reads to serve the oldest mark first.
     ///
     /// Public so a suite building a claim's envelope without a peek has a
     /// generation to carry. [`ReadyIndex::mark`] still takes none, so a token
