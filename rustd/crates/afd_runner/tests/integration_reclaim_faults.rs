@@ -11,7 +11,7 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
-use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex};
+use afd_dragonfly::{Dragonfly, FleetStreams, Partition, ReadyIndex};
 use afd_runner::sql::LEASE_STATUS_ACTIVE;
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
@@ -68,12 +68,8 @@ async fn an_entry_a_dead_consumer_left_idle_is_claimed_and_its_fleet_marked() {
     );
     let index = ReadyIndex::new(queue.clone());
     assert!(
-        index
-            .token_for(&fixture.fleet)
-            .await
-            .expect("readable")
-            .is_some(),
-        "a claimed entry is deliverable, so its fleet is marked"
+        hinted(&index, &fixture.fleet).await,
+        "a claimed entry is deliverable, so its fleet is marked, and hinted so the next poll takes it"
     );
     let _cleared = index.force_clear(&fixture.fleet).await;
     let _gone = streams.forget(&fixture.fleet).await;
@@ -130,12 +126,8 @@ async fn a_stranded_lease_is_marked_ready_and_left_active() {
 
     let index = ReadyIndex::new(queue.clone());
     assert!(
-        index
-            .token_for(&fixture.fleet)
-            .await
-            .expect("readable")
-            .is_some(),
-        "the ledger's stranded fleet is marked ready"
+        hinted(&index, &fixture.fleet).await,
+        "the ledger's stranded fleet is marked ready, and hinted so the next poll takes it"
     );
     assert_eq!(
         fixture.lease_statuses().await,
@@ -144,6 +136,22 @@ async fn a_stranded_lease_is_marked_ready_and_left_active() {
     );
     let _cleared = index.force_clear(&fixture.fleet).await;
     fixture.cleanup().await;
+}
+
+/// Whether `fleet` is marked and the directory names its partition under that
+/// mark or a later one: a sibling marked since may have rewritten the entry,
+/// never with an earlier token.
+async fn hinted(index: &ReadyIndex, fleet: &str) -> bool {
+    let Some(token) = index.token_for(fleet).await.expect("readable") else {
+        return false;
+    };
+    let partition = Partition::of(fleet);
+    index
+        .dirty()
+        .await
+        .expect("the directory is readable")
+        .iter()
+        .any(|entry| entry.partition == partition && entry.token >= token)
 }
 
 /// Sets the entry's idle clock past the sweep's threshold, as time would.

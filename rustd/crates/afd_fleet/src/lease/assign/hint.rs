@@ -29,7 +29,9 @@
 //! to work no runner can take. So an entry is deleted once a poll tried
 //! its partition and could not lease from it: nothing leased at all, its only
 //! fleet leased, its peek found nothing or failed, or the poll itself failed,
-//! a claim that faults included, so one broken fleet cannot hold every poll.
+//! a claim that faults included, so one broken fleet cannot keep sending
+//! every poll back to its fault. A fault elsewhere, a Postgres error say,
+//! spends a healthy entry too, and the rotation reaches its fleets in turn.
 //! A poll that leased from the rotation's partition keeps the entry, because
 //! the hinted fleets may never have been tried. Nothing leased usually means
 //! every fleet offered was tried; when the rotation's partition fills the

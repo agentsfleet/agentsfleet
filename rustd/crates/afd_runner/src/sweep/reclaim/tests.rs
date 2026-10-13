@@ -14,7 +14,7 @@ use afd_core::test_util::trace::Capture;
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
-use super::{CURSOR_START_ID, Cursor, Reclaim};
+use super::{CURSOR_START_ID, Cursor, Reclaim, Remark};
 
 /// A queue address nothing listens on.
 const NOWHERE: &str = "redis://127.0.0.1:1";
@@ -76,7 +76,7 @@ async fn every_failed_stream_step_reason_carries_no_code_prefix() {
 
     assert_eq!(reclaim.claim_strays(FLEET).await, 0);
     assert!(!reclaim.remark_if_deliverable(FLEET, false).await);
-    assert!(!reclaim.mark_ready(FLEET).await);
+    assert!(!reclaim.mark_ready(FLEET, Remark::Stranded).await);
 
     for event in [
         "reclaim_claim_failed",

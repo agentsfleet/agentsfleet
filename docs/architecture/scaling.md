@@ -349,7 +349,7 @@ Step 4: Emit configuration
 6. **Treat SSE streams as dedicated threads.** Rust serves async bodies under `SSE_MAX_STREAMS`; API admission and viewer capacity are separate budgets.
 7. **Include fleet count in the idle term.** It is not there any more. An idle poll costs two Dragonfly reads and no database work beyond its authentication regardless of how many fleets exist; fleet count appears only in the readiness *recovery* bound ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Sizing an idle deployment by fleet population is the pre-M141 mistake, and it is the reason the idle figure in §"Per-request volume" used to be wrong.
 8. **Reach for a bare `LIMIT` on the candidate scan.** It was considered and rejected: a bare limit caps discovery throughput without removing the per-poll Postgres cost, and it silently starves every fleet past the bound because the scan is ordered, not sampled. The ceiling only works *because* the readiness slice above it is randomized.
-9. **Sum `agentsfleet_fleet_ready_depth` across replicas.** Every replica samples the same shared index, each from its own polls' peeks, so the fleet-wide value is any single instance's series. Summing multiplies it by replica count.
+9. **Sum `agentsfleet_fleet_ready_depth` across replicas.** Each replica's series is its own polls' sample of at most two of the sixteen partitions, so read one replica's series or the maximum across them. Summing multiplies it by replica count.
 
 ---
 

@@ -66,7 +66,7 @@ fn each_hint_failure_logs_under_its_own_event() -> Result<(), &'static str> {
         .into_iter()
         .next()
         .ok_or("one datastore failure")?;
-    // pin test: each event name is the contract an operator searches by.
+    // pin test: each event name is what an operator searches the log by.
     for (hint, event) in [
         (ReadyHint::Write, "ready_hint_write_failed"),
         (ReadyHint::Read, "assign_ready_hint_read_failed"),
