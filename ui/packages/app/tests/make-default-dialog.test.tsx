@@ -20,6 +20,9 @@ const MODEL: AdminModel = {
   output_nanos_per_mtok: 1_200_000_000,
 };
 
+/** How the dialog names `MODEL.provider`. */
+const PROVIDER_SHOWN = "Atlas Cloud";
+
 afterEach(cleanup);
 
 describe("the make-default dialog", () => {
@@ -33,7 +36,20 @@ describe("the make-default dialog", () => {
     );
 
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Atlas Cloud")).toBeTruthy();
+    expect(within(dialog).getByText(PROVIDER_SHOWN)).toBeTruthy();
     expect(within(dialog).queryByText(MODEL.provider)).toBeNull();
+  });
+
+  it("keeps the provider badge, a block element, out of a paragraph", () => {
+    render(
+      React.createElement(
+        TooltipProvider,
+        null,
+        React.createElement(MakeDefaultDialog, { model: MODEL, onOpenChange: vi.fn(), onDone: vi.fn() }),
+      ),
+    );
+
+    const badge = within(screen.getByRole("dialog")).getByText(PROVIDER_SHOWN);
+    expect(badge.closest("p")).toBeNull();
   });
 });

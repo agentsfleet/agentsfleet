@@ -14,6 +14,11 @@ const KNOWN_PROVIDER = "atlas-cloud";
 const UNLISTED_PROVIDER = "lambda-labs";
 const MODEL_ID = "claude-sonnet-5-5";
 const TRAILING = "Default";
+/** The neutral badge fill, and the info colour a status badge carries. */
+const NEUTRAL = "bg-muted";
+const STATUS_INFO = "text-info";
+/** The fixed name width a table opts into to line up what follows the name. */
+const TRIMMED = "sm:max-w-trim";
 /** How a value the viewer cannot change, or that is absent, reads. */
 const MUTED = "text-muted-foreground";
 
@@ -40,6 +45,13 @@ describe("ProviderBadge", () => {
     expect(unknown.className).not.toContain("normal-case");
   });
 
+  it("reads as a name, not a status: the neutral badge, not a status colour", () => {
+    renderCell(<ProviderBadge provider={KNOWN_PROVIDER} />);
+    const classes = screen.getByText("Atlas Cloud").className;
+    expect(classes).toContain(NEUTRAL);
+    expect(classes).not.toContain(STATUS_INFO);
+  });
+
   it("does not shout the name: the badge's uppercase is overridden", () => {
     renderCell(<ProviderBadge provider={KNOWN_PROVIDER} />);
     expect(screen.getByText("Atlas Cloud").className).toContain("normal-case");
@@ -47,6 +59,15 @@ describe("ProviderBadge", () => {
 });
 
 describe("ModelName", () => {
+  it("sizes the name to its column unless the table asks for the trimmed width", () => {
+    const { unmount } = renderCell(<ModelName modelId={MODEL_ID} />);
+    expect(screen.getByTitle(MODEL_ID).className).not.toContain(TRIMMED);
+    unmount();
+
+    renderCell(<ModelName modelId={MODEL_ID} trimmed />);
+    expect(screen.getByTitle(MODEL_ID).className).toContain(TRIMMED);
+  });
+
   it("shows the marketed name, keeps the id on hover and reaches it by a copy button", () => {
     renderCell(<ModelName modelId={MODEL_ID} />);
     expect(screen.getByTitle(MODEL_ID).textContent).toBe("Sonnet 5.5");

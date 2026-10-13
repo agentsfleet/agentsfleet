@@ -181,6 +181,22 @@ describe("CatalogueList — rows + rates + empty state", () => {
     expect(order).toEqual([haiku, kimi]);
   });
 
+  it("sorts the Provider column by the name it shows, not the slug", () => {
+    const base = CATALOGUE[0]!;
+    // By slug `hunyuan` sorts before `openai`; by the name a reader sees,
+    // OpenAI precedes Tencent Hunyuan.
+    const models = [
+      { ...base, id: "t", provider: "hunyuan", model_id: "hunyuan-t1" },
+      { ...base, id: "o", provider: "openai", model_id: "gpt-6" },
+    ];
+    renderWithTooltipProvider(React.createElement(CatalogueList, { models, activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Provider" }));
+    const [openai, hunyuan] = ["OpenAI", "Tencent Hunyuan"];
+    const shown = screen.getAllByText(new RegExp(`^(${openai}|${hunyuan})$`)).map((badge) => badge.textContent);
+    expect(shown).toEqual([openai, hunyuan]);
+  });
+
   it("shows the empty state when there are no models", () => {
     renderWithTooltipProvider(React.createElement(CatalogueList, { models: [], activeDefault: null, onDeleted: vi.fn(), onUpdated: vi.fn() }));
     expect(screen.getByText("No models yet")).toBeTruthy();

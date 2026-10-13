@@ -31,8 +31,10 @@ export function ProviderBadge({ provider }: { provider: string | undefined }) {
   // The badge primitive uppercases by default, which is right for a status
   // and wrong for a name: "ATLAS-CLOUD" reads as a slug, "Atlas Cloud" reads
   // as a vendor. Same override the approvals and lease filter badges carry.
+  // The neutral variant, because a name is not a status: colour stays for
+  // the badges that say something, such as a row's Default.
   return (
-    <Badge variant="cyan" className="normal-case">
+    <Badge className="normal-case">
       {providerLabel(provider)}
     </Badge>
   );
@@ -51,9 +53,12 @@ export function PlatformManagedMark() {
 export function ModelName({
   modelId,
   managedByPlatform = false,
+  trimmed = false,
   trailing,
 }: {
   modelId: string;
+  /** A fixed name width, so what follows the name lines up down the table. */
+  trimmed?: boolean;
   /** Marks the row as a platform admin's, which a tenant admin cannot edit. */
   managedByPlatform?: boolean;
   /** What follows the name on this table, such as the library's Default badge. */
@@ -66,7 +71,7 @@ export function ModelName({
         {/* A row a tenant admin cannot edit reads muted, as it did before
             the two tables shared this cell. */}
         <span
-          className={cn("block min-w-0 truncate sm:min-w-trim sm:max-w-trim", managedByPlatform && MUTED)}
+          className={cn("block min-w-0 truncate", trimmed && "sm:min-w-trim sm:max-w-trim", managedByPlatform && MUTED)}
           title={modelId}
         >
           {modelLabel(modelId)}

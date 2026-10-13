@@ -104,15 +104,15 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.tsx` | EDIT | the section stops stretching the table to the viewport |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/components/WorkspaceLibraryList.tsx` | EDIT | the workspace Fleet library table ends at its rows |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/page.tsx` | EDIT | the section stops stretching the table to the viewport |
-| `ui/packages/app/lib/api/model-library-types.ts` | EDIT | every provider the picker lists gets a display name; an unknown slug is title-cased instead of shown raw |
-| `ui/packages/app/lib/api/model_library.test.ts` | EDIT | the label table and the fallback |
-| `ui/packages/app/components/domain/ModelCells.tsx` | NEW | one provider badge and one model cell, shared by the workspace Models table and the admin Model library table |
+| `ui/packages/app/lib/api/model-library-types.ts` | EDIT | every provider the picker lists gets a display name; an unknown slug is title-cased instead of shown raw; the label `Map` holds only the spellings title case would miss |
+| `ui/packages/app/lib/api/model_library.test.ts`, `ui/packages/app/tests/admin-models-ui.test.ts`, `ui/packages/app/tests/admin-models-management.test.ts`, `ui/packages/app/tests/models-registry-table.test.tsx` | EDIT | the label table and the fallback; both Provider columns sort by the label they show; the Model library's shrink-not-grow classes |
+| `ui/packages/app/components/domain/ModelCells.tsx` | NEW | one provider badge, neutral because a name is not a status, and one model cell, shared by the workspace Models table and the admin Model library table; only the library trims the name to a fixed width |
 | `ui/packages/app/components/domain/ModelCells.test.tsx` | NEW | the shared cells: vendor label, unknown slug, the platform-managed lock, the copy button |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryCells.tsx` | EDIT | provider and model cells delegate to the shared ones |
-| `ui/packages/app/app/(dashboard)/admin/models/components/CatalogueList.tsx` | EDIT | the raw-slug badge and the local model cell give way to the shared ones |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryCells.tsx`, `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view.ts` | EDIT | provider and model cells delegate to the shared ones; the Provider sort reads the label |
+| `ui/packages/app/app/(dashboard)/admin/models/components/CatalogueList.tsx`, `ui/packages/app/app/(dashboard)/admin/models/components/ModelsView.tsx` | EDIT | the raw-slug badge and the local model cell give way to the shared ones; the Provider sort reads the label; the library ends at its rows, as the Fleet library tables do |
 | `ui/packages/app/tests/e2e/acceptance/logs-detail.spec.ts` | EDIT | the acceptance journey follows the event dialog PR #748 shipped: the identifier left the heading for the footer's copy button |
 | `ui/packages/app/tests/event-details-dialog.test.tsx` | EDIT | pins what the journey asserts at unit level, so the two fail together |
-| `ui/packages/app/app/(dashboard)/admin/models/components/MakeDefaultDialog.tsx` | EDIT | the provider shows through the shared `ProviderBadge`, not as a raw uppercase slug |
+| `ui/packages/app/app/(dashboard)/admin/models/components/MakeDefaultDialog.tsx` | EDIT | the provider shows through the shared `ProviderBadge`, not as a raw uppercase slug, inside a description rendered as a div, so the badge is valid markup |
 | `ui/packages/app/tests/make-default-dialog.test.tsx` | NEW | the dialog's provider label |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.test.tsx` | EDIT | pins the catalogue section's shrink-not-grow classes |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/components/WorkspaceLibraryList.test.tsx` | EDIT | pins the list's shrink-not-grow classes |
