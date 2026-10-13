@@ -40,6 +40,10 @@ pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
 pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
 
+/// Rate ÷ polls = Dragonfly cost per poll; an idle poll adds two.
+pub const LEASE_POLL_DRAGONFLY_COMMANDS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_lease_poll_dragonfly_commands_total");
+
 /// Bytes of earlier turns each chat lease carries.
 pub const LEASE_HISTORY_BYTES: Declared<HistogramKind> =
     Declared::new("agentsfleet_lease_history_bytes");
@@ -81,6 +85,12 @@ pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fl
 /// Dragonfly index writes failing.
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_write_failures_total");
+
+/// Readiness-directory commands failing or outliving their deadline.
+///
+/// Labels: `kind`.
+pub const FLEET_READY_HINT_FAILURES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_fleet_ready_hint_failures_total");
 
 /// Installed fleets by lifecycle status, as the last census pass counted them.
 ///

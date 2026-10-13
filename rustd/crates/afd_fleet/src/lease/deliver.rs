@@ -172,12 +172,17 @@ impl Plane {
         let lease_id = issued.lease_id.as_str();
         let fleet_id = admitted.acquired.fleet_id.as_str();
         let agentsfleet_event_id = admitted.acquired.event_id.as_str();
+        // How long the event waited for a runner: its admission's stamp to
+        // this poll, both read on this daemon's clock. Computed here and not
+        // on the runner, whose clock is another machine's.
+        let queue_wait_ms = now.saturating_millis_since(admitted.acquired.event_created_at);
         tracing::info!(
             event = EVENT_LEASED,
             runner_id,
             lease_id,
             fleet_id,
             agentsfleet_event_id,
+            queue_wait_ms,
             "a lease was issued"
         );
         let history = history::turns(

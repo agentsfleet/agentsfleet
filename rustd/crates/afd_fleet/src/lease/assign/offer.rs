@@ -31,7 +31,7 @@ impl Leases {
         now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        let ready = self.held_ready(runner_id, held).await;
+        let ready = self.held_ready(runner_id, held, cost).await;
         if ready.is_empty() {
             return Ok(None);
         }
@@ -42,10 +42,16 @@ impl Leases {
     /// once. A read that fails costs its own fleet and no other: it is logged
     /// and skipped, and the poll goes on to the partition, because a held
     /// fleet only reorders what the partition pass would offer anyway.
-    async fn held_ready(&self, runner_id: &Uuid7, held: &[Uuid7]) -> Vec<Ready> {
+    async fn held_ready(
+        &self,
+        runner_id: &Uuid7,
+        held: &[Uuid7],
+        cost: &mut PollCost,
+    ) -> Vec<Ready> {
         let mut fleets: Vec<&Uuid7> = held.iter().collect();
         fleets.sort_unstable();
         fleets.dedup();
+        cost.dragonfly_commands += u64::try_from(fleets.len()).unwrap_or(u64::MAX);
         let index = self.ready();
         let reads = fleets.into_iter().map(|fleet| {
             let index = &index;

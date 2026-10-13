@@ -30,10 +30,14 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
                              XADD fleet:{id}:events  (receipt)             Dragonfly ← a receipt
                              UPDATE admissions SET receipt                 Postgres
                              HSET fleet:ready:{p}  (mark, 16 partitions)   Dragonfly
+                             HSET fleet:ready:{directory} p=token  (hint)  Dragonfly, ≤100 ms
                          6 202 {matched, enqueued}
 
  RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
-   (every ~1 s)          a peek ONE ready partition, ≤64 fleets, zero Postgres if empty
+   (every ~1 s)          a HGETALL fleet:ready:{directory} ∥ peek the rotation's partition, then
+                           the oldest dirty one; ≤64 fleets taken in turn; zero Postgres
+                           if both are empty; afterwards the entry is spent unless this
+                           poll leased from it and its peek held other fleets
                          b SELECT_READY_CANDIDATES: active, slot free, labels, sticky first
                          c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
                              leased_until = now+30 s            ← THE FENCE IS MINTED HERE

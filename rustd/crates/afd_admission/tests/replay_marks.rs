@@ -54,6 +54,11 @@ const HSET_TAKEN: &str = ":1\r\n";
 /// The write a readiness mark is.
 const CMD_HSET: &str = "HSET";
 
+/// What a mark that lands sends: the mark, then its readiness-directory
+/// entry. A refused mark sends the first alone, because the entry follows
+/// the mark and never leads it.
+const HSETS_PER_LANDED_MARK: usize = 2;
+
 /// A stopped fleet and the rows above it, removed by [`Seeded::cleanup`].
 struct Seeded {
     handle: TestDatabase,
@@ -196,6 +201,10 @@ async fn a_resend_marks_the_fleet_its_first_call_could_not() {
         resent.stored.id, first.stored.id,
         "the first call's id stands"
     );
-    assert_eq!(marks(&server), 2, "the replay marked the fleet again");
+    assert_eq!(
+        marks(&server),
+        1 + HSETS_PER_LANDED_MARK,
+        "the replay marked the fleet again, and named its partition dirty"
+    );
     fleet.cleanup().await;
 }

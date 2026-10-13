@@ -308,3 +308,26 @@ async fn test_lease_history_stops_at_its_own_event() {
     assert!(leased.history.is_empty(), "{:?}", leased.history);
     chat.fixtures.cleanup().await;
 }
+
+/// The issued-lease line carries how long its event waited for a runner, on
+/// the daemon's own clock: admitted at T, leased at T + 350 ms, logged 350.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_runner_lease_issued_logs_queue_wait() {
+    const WAITED_MS: i64 = 350;
+    let chat = Chat::open().await;
+    chat.ask(EventType::Chat, FIRST_MESSAGE, ENROLLED_AT).await;
+
+    let log = afd_core::test_util::trace::Capture::install();
+    chat.lease(&chat.runner, ENROLLED_AT + WAITED_MS).await;
+    let issued = log.only("runner_lease_issued");
+    drop(log);
+
+    assert_eq!(
+        issued.field("queue_wait_ms"),
+        Some(WAITED_MS.to_string().as_str()),
+        "{:?}",
+        issued.fields
+    );
+    chat.fixtures.cleanup().await;
+}

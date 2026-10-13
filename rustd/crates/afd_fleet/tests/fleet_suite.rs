@@ -60,6 +60,8 @@ mod integration_lease_issue;
 mod integration_lease_ready;
 #[path = "integration_lease_started.rs"]
 mod integration_lease_started;
+#[path = "integration_lease_wake.rs"]
+mod integration_lease_wake;
 #[path = "integration_ledger_fleet_name.rs"]
 mod integration_ledger_fleet_name;
 #[path = "integration_ledger_orphan_charge.rs"]

@@ -48,7 +48,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `rustd/crates/afd_fleet/src/lease/assign.rs` — the ready-first poll and its cost tally (`PollCost`), which the new read must keep honest.
 3. `docs/architecture/runner_fleet.md` §Datastore topology — the sixteen hashes, why they are partitioned on a cluster, and the reclaim sweeper that repairs a lost mark.
 4. `rustd/crates/afr_supervisor/src/lease_loop.rs` — where `lease_completed` and `lease_failed` are logged, and the order of bundle, hydrate, sandbox, run and settle the segment boundaries follow.
-5. `rustd/crates/afd_fleet/src/lease/answer.rs` — where `runner_lease_issued` is logged; the daemon holds the admission's `created_at` and the issue instant on one clock, so `queue_wait_ms` is computed here and nowhere else.
+5. `rustd/crates/afd_fleet/src/lease/deliver.rs` — where `runner_lease_issued` is logged (its name is declared in `answer.rs`); the daemon holds the admission's `created_at` and the issue instant on one clock, so `queue_wait_ms` is computed here and nowhere else.
 6. `rustd/crates/afr_supervisor/src/activity.rs` — the batcher: `FLUSH_EVERY`, the bounded poster queue and the held-frame accounting the first-frame flush must keep.
 7. `rustd/crates/afr_supervisor/src/worker_pool.rs` — where workers spawn together and sleep the same hint, which is why they poll in lockstep today.
 
@@ -58,11 +58,31 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 |------|--------|-----|
 | `rustd/crates/afd_dragonfly/src/ready.rs` | EDIT | `mark` also writes the partition's directory entry under a fresh token; a directory read and a compare-and-delete, both under the hint deadline |
 | `rustd/crates/afd_dragonfly/src/ready/partition.rs` | EDIT | the directory key's name beside `READY_INDEX_KEY`, hash-tagged to one slot and routed through `physical_key` like the partitions |
-| `rustd/crates/afd_dragonfly/src/ready/tests.rs` | EDIT | directory unit tests |
+| `rustd/crates/afd_dragonfly/src/ready/directory.rs` | NEW | the directory: `note_dirty` (called by `mark`), `dirty` oldest first, `spend` by token, every command under the hint deadline |
+| `rustd/crates/afd_dragonfly/src/ready/directory/tests.rs` | NEW | oldest-first order, skipped fields, the deadline on a command that never answers, the warning a lost write leaves |
+| `rustd/crates/afd_dragonfly/src/ready/partition/tests.rs` | EDIT | the directory key's shape |
+| `rustd/crates/afd_dragonfly/src/lib.rs` | EDIT | re-exports `Dirty` |
 | `rustd/crates/afd_fleet/src/lease/assign.rs` | EDIT | read the directory first, peek the oldest dirty partition ahead of the rotation peek, keep the rotation peek on every poll; tally every read in `PollCost` |
 | `rustd/crates/afd_core/src/timing.rs` | EDIT | `READY_HINT_DEADLINE_MS` beside the other lease constants; the worker poll offset derives from `NO_WORK_RETRY_AFTER_MS` |
-| `rustd/crates/afd_fleet/src/lease/affinity_tests.rs` | EDIT | the next-poll, two-fleet, busy-partition, oldest-first, deadline and cost proofs |
-| `rustd/crates/afd_fleet/src/lease/answer.rs` | EDIT | `queue_wait_ms` on `runner_lease_issued`, measured on the daemon clock |
+| `rustd/crates/afd_fleet/src/lease/assign/hint.rs` | NEW | the directory's part in a poll: the two peeks, the interleave, and when an entry is spent (`assign.rs` is at its length cap) |
+| `rustd/crates/afd_fleet/src/lease/assign/hint/tests.rs` | NEW | keep-or-spend and the interleave |
+| `rustd/crates/afd_fleet/src/lease/assign/diagnostics.rs` | EDIT | the two hint warnings and their events |
+| `rustd/crates/afd_fleet/src/lease/assign/offer.rs` | EDIT | held-fleet reads join the Dragonfly tally |
+| `rustd/crates/afd_fleet/src/lease/assign/measured.rs` | EDIT | `dragonfly_commands` on the measurement |
+| `rustd/crates/afd_fleet/src/lease/assign/tests.rs` | EDIT | the hint warnings render every Dragonfly failure |
+| `rustd/crates/afd_fleet/tests/integration_lease_wake.rs` | NEW | the live §1 proofs |
+| `rustd/crates/afd_fleet/tests/integration_lease_wake/scene.rs` | NEW | the private-index scene those proofs poll |
+| `rustd/crates/afd_fleet/tests/fleet_suite.rs` | EDIT | registers the suite |
+| `rustd/crates/afd_observability/src/metrics/declared/fleet.rs` | EDIT | `agentsfleet_lease_poll_dragonfly_commands_total`, `agentsfleet_fleet_ready_hint_failures_total` |
+| `rustd/crates/afd_observability/src/metrics/label/fleet.rs` | EDIT | the `ReadyHint` set: write, read, delete |
+| `rustd/crates/afd_observability/src/producers/fleet.rs` | EDIT | `lease_polled` takes the command count; `ready_hint_failed` |
+| `rustd/crates/afd_observability/tests/producers_drive.rs` | EDIT | drives both producers |
+| `docs/metrics.census.tsv` | EDIT | the two new families |
+| `rustd/crates/afd_bench/tests/lease_instrument.rs` | EDIT | the new `lease_polled` argument |
+| `rustd/crates/afd_admission/tests/replay_marks.rs` | EDIT | a landed mark now sends two `HSET`s, the mark and its entry |
+| `rustd/crates/afd_fleet/src/lease/deliver.rs` | EDIT | `queue_wait_ms` on `runner_lease_issued`, measured on the daemon clock (the event name is declared in `answer.rs`; the line is logged here) |
+| `rustd/crates/afd_fleet/tests/integration_lease_gates/history.rs` | EDIT | the `queue_wait_ms` proof |
+| `rustd/crates/afd_dragonfly/tests/integration_namespace/sweep.rs` | EDIT | the directory is one of the keys a namespaced index writes, inside its namespace |
 | `rustd/crates/afr_supervisor/src/lease_loop.rs` | EDIT | the lease's wall clock and timeline; bundle and memory timed; the terminal line moved into `segments.rs` |
 | `rustd/crates/afr_supervisor/src/lease_loop/segments.rs` | NEW | the timeline, the stopwatch that records on drop, and `lease_completed` / `lease_failed` with the segment fields |
 | `rustd/crates/afr_supervisor/src/lease_loop/segments_tests.rs` | NEW | the segment-field proofs on both terminal lines (`lease_telemetry_tests.rs` is already past the length cap on main) |
@@ -127,20 +147,20 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 **Implementation default:** one directory hash per deployment, partition number → token minted at the mark, hash-tagged to one slot and namespaced through `physical_key` like the partition keys. A poll reads the directory, peeks the dirty partition with the oldest token, then makes the rotation peek it makes today; the two candidate lists merge under `MAX_READY_CANDIDATES_PER_POLL`. A dirty peek that finds its partition empty deletes the entry only if the token is unchanged, with a script that touches the directory alone. Both directory commands run under `READY_HINT_DEADLINE_MS`; a timeout or error warns once with the operation and partition, counts, and falls through to the rotation. The rotation peek never skips a poll, so a partition whose fleets are all mid-run (a running fleet keeps its mark, and the candidate query skips live slots) cannot starve the other fifteen. Rejected: a server-held long poll, because it needs cross-machine wake-ups through Dragonfly and holds a request per worker (Indy, Oct 12, 2026: "New spec, wake hint (Recommended)").
 
-- **Dimension 1.1** — A fleet marked in a partition holding at most `MAX_READY_CANDIDATES_PER_POLL` marks is offered on the next poll, whichever partition the cursor names. A partition above that is sampled, so the promise is "visited on the next poll", not "leased on the next poll" → Test `test_marked_fleet_is_leased_on_the_next_poll`
-- **Dimension 1.2** — An idle poll with an empty directory costs exactly two Dragonfly commands and zero Postgres statements in the scheduler (`PollCost`). A poll with one dirty entry costs three Dragonfly commands plus the candidate query, and a fourth command when the entry is deleted. The request's authentication read is the HTTP guard's, outside the tally, and stays in `scaling.md`'s budget → Test `test_idle_poll_cost_is_bounded`
-- **Dimension 1.3** — A mark written between a poll's directory read and its delete survives: the mark rewrote the token, and the compare-and-delete sees a different one → Test `test_mark_racing_a_clear_survives`
-- **Dimension 1.4** — A lost directory entry costs only latency: the rotation peek, made on every poll, visits the fleet's partition within one full turn of this daemon's cursor → Test `test_lost_dirty_bit_falls_back_to_rotation`
-- **Dimension 1.5** — Two fleets marked in different partitions are both leased within one poll interval by two different workers: the directory holds both partitions, and a poll that takes one leaves the other's entry for the next poll → Test `test_two_marked_fleets_lease_within_one_interval`
-- **Dimension 1.6** — A directory entry whose partition gave this poll no lease is deleted under its token, unless the lease came from that partition and its peek held other fleets: a partition whose only marked fleet is mid-run loses its entry after one dry poll, the next mark there restores it, and a fleet marked in another partition is reached by the hint or, with its directory write lost, by the rotation peek every poll makes → Test `test_busy_dirty_partition_does_not_starve_rotation`
-- **Dimension 1.7** — With several dirty entries the poll peeks the oldest token first, so two partitions dirtied in turn are served in that order → Test `test_dirty_partitions_served_oldest_first`
-- **Dimension 1.8** — A directory command that exceeds `READY_HINT_DEADLINE_MS` costs the poll that deadline and no more, counts once, and the poll makes the rotation peek alone; an admission whose directory write timed out still succeeds → Test `test_hint_deadline_falls_through`
+- **Dimension 1.1** — DONE — A fleet marked in a partition holding at most `MAX_READY_CANDIDATES_PER_POLL` marks is offered on the next poll, whichever partition the cursor names. A partition above that is sampled, so the promise is "visited on the next poll", not "leased on the next poll" → Test `test_marked_fleet_is_leased_on_the_next_poll`
+- **Dimension 1.2** — DONE — An idle poll with an empty directory costs exactly two Dragonfly commands and zero Postgres statements in the scheduler (`PollCost`, published as `agentsfleet_lease_poll_dragonfly_commands_total`). A poll with one dirty entry costs three Dragonfly commands plus the candidate query, and a fourth command when the entry is spent. The request's authentication read is the HTTP guard's, outside the tally, and stays in `scaling.md`'s budget → Test `test_idle_poll_cost_is_bounded`
+- **Dimension 1.3** — DONE — A mark written between a poll's directory read and its delete survives: the mark rewrote the token, and the compare-and-delete sees a different one → Test `test_mark_racing_a_clear_survives`
+- **Dimension 1.4** — DONE — A lost directory entry costs only latency: the rotation peek, made on every poll, visits the fleet's partition within one full turn of this daemon's cursor → Test `test_lost_dirty_bit_falls_back_to_rotation`
+- **Dimension 1.5** — DONE — Two fleets marked in different partitions are both leased within one poll interval by two different workers: the directory holds both partitions, and a poll that takes one leaves the other's entry for the next poll → Test `test_two_marked_fleets_lease_within_one_interval`
+- **Dimension 1.6** — DONE — A directory entry whose partition gave this poll no lease is deleted under its token, unless the lease came from that partition and its peek held other fleets: a partition whose only marked fleet is mid-run loses its entry after one dry poll, the next mark there restores it, and a fleet marked in another partition is reached by the hint or, with its directory write lost, by the rotation peek every poll makes → Test `test_busy_dirty_partition_does_not_starve_rotation`
+- **Dimension 1.7** — DONE — With several dirty entries the poll peeks the oldest token first, so two partitions dirtied in turn are served in that order → Test `test_dirty_partitions_come_back_oldest_first`
+- **Dimension 1.8** — DONE — A directory command that exceeds `READY_HINT_DEADLINE_MS` costs the poll that deadline and no more, counts once, and the poll makes the rotation peek alone; an admission whose directory write timed out still succeeds → Test `test_hint_deadline_falls_through`
 
 ### §2 — Every terminal lease line logs its segments
 
 - **Dimension 2.1** — DONE — `lease_completed` and `lease_failed` carry `bundle_ms`, `memory_ms`, `sandbox_ms`, `model_ms`, `tools_ms`, `report_ms` and `first_token_ms`. The six durations have boundaries that do not overlap: bundle fetch; memory hydrate; sandbox take-or-prepare and land; model calls; tool calls; hold-or-destroy, memory push, report spool and report post. `first_token_ms` is the first answer chunk measured from the first model call, inside `model_ms`, never from the sink's birth (today's sink starts before hydrate, so its first-chunk duration includes setup). The six sum within 5 ms of the `wall_ms` the terminal line itself carries, taken when it is logged, after the report post; `tools_ms` is present and zero for a run that called no tool; the report body's own `wall_ms`, captured before the post, is unchanged → Test `test_lease_completed_logs_its_segments`
 - **Dimension 2.2** — DONE — A lease that fails before a segment starts logs that segment as absent, not zero, on `lease_failed` → Test `test_unstarted_segment_is_absent`
-- **Dimension 2.3** — `runner_lease_issued` on the daemon carries `queue_wait_ms`, the admission's `created_at` to the issue instant, both read on the daemon's clock. The runner never computes it: the event's `created_at` is stamped on Fly's clock and the runner host keeps its own, so a runner-side subtraction would carry the clock skew between the two → Test `test_runner_lease_issued_logs_queue_wait`
+- **Dimension 2.3** — DONE — `runner_lease_issued` on the daemon carries `queue_wait_ms`, the admission's `created_at` to the issue instant, both read on the daemon's clock. The runner never computes it: the event's `created_at` is stamped on Fly's clock and the runner host keeps its own, so a runner-side subtraction would carry the clock skew between the two → Test `test_runner_lease_issued_logs_queue_wait`
 
 ### §3 — The runner neither waits a timer nor polls in lockstep
 
@@ -196,14 +216,14 @@ Constants: READY_HINT_DEADLINE_MS (afd_core timing.rs); worker offset = n × NO_
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | integration | `test_marked_fleet_is_leased_on_the_next_poll` | mark a fleet in partition 9, cursor at 0 → the next poll leases it |
-| 1.2 | integration | `test_idle_poll_cost_is_bounded` | empty index and empty directory → `PollCost` reads 2 Dragonfly commands, 0 Postgres round trips; one dirty entry with one marked fleet → 3 before the candidate query; a stale entry → 4 |
+| 1.1 | integration | `test_marked_fleet_is_leased_on_the_next_poll` | a fleet outside partition 0 marked, fresh cursor at 0 → the first poll leases it, at 4 Dragonfly commands, and its spent entry is gone |
+| 1.2 | integration | `test_idle_poll_cost_is_bounded` | empty index → 2 Dragonfly commands, 0 Postgres round trips; a stale entry over an empty partition → 4 and 0, and the entry is spent |
 | 1.3 | integration | `test_mark_racing_a_clear_survives` | delete with the stale token after a new mark → the entry remains with the new token |
-| 1.4 | integration | `test_lost_dirty_bit_falls_back_to_rotation` | mark with the directory write failed → leased within 16 polls |
-| 1.5 | integration | `test_two_marked_fleets_lease_within_one_interval` | fleets in partitions 3 and 11 both marked, two consumers poll once each → each leases a different fleet |
+| 1.4 | integration | `test_lost_dirty_bit_falls_back_to_rotation` | mark, then every directory entry spent → leased within 16 polls |
+| 1.5 | integration | `test_two_marked_fleets_lease_within_one_interval` | two fleets in two partitions marked in turn → the directory lists them oldest first, and each fleet's runner leases it on its first poll |
 | 1.6 | integration | `test_busy_dirty_partition_does_not_starve_rotation` | fleet A leased and running; A re-marked → one dry poll deletes A's entry; fleet B then marked in another partition → leased on the next poll |
-| 1.7 | integration | `test_dirty_partitions_served_oldest_first` | partitions 2 then 7 dirtied → the next poll peeks 2 first |
-| 1.8 | integration | `test_hint_deadline_falls_through` | a directory read that never answers → the poll returns the rotation's result after `READY_HINT_DEADLINE_MS`, counter +1; a directory write that never answers → the admission returns success and the mark is in the partition hash |
+| 1.7 | unit | `test_dirty_partitions_come_back_oldest_first` | entries for partitions 7 (newer token) and 2 (older) → `[2, 7]` |
+| 1.8 | integration | `test_hint_deadline_falls_through` | a string where the directory hash should be → the mark lands, the write and every read count as hint failures, and the rotation leases the fleet; the deadline itself is proved by `test_a_hint_that_never_answers_returns_at_its_deadline` in `afd_dragonfly` |
 | 2.1 | unit | `test_lease_completed_logs_its_segments` | a fake daemon lease → seven fields present; the six durations sum within 5 ms of the wall time at the log line |
 | 2.2 | unit | `test_unstarted_segment_is_absent` | a lease with no bundle whose memory hydrate is refused → `lease_failed` with `memory_ms` and `report_ms` present; `bundle_ms`, `sandbox_ms`, `model_ms`, `tools_ms` and `first_token_ms` absent |
 | 2.3 | integration | `test_runner_lease_issued_logs_queue_wait` | an admission created at T, leased at T+350 ms on a paused test clock → `queue_wait_ms=350` |
