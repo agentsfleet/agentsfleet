@@ -5,16 +5,15 @@ import {
   CopyButton,
   IconAction,
 } from "@agentsfleet/design-system";
-import { ArrowLeftRightIcon, EyeIcon, LockIcon, PencilIcon, Trash2Icon } from "lucide-react";
-import { type LibraryModel, providerLabel } from "@/lib/api/model-library-types";
+import { ArrowLeftRightIcon, EyeIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { type LibraryModel } from "@/lib/api/model-library-types";
 import {
   EMPTY_VALUE,
   formatContextTokens,
   formatRatesPerMtok,
-  modelIdCopyLabel,
-  modelLabel,
   type RateFields,
 } from "@/lib/models/display";
+import { ModelName, PlatformManagedMark, ProviderBadge } from "@/components/domain/ModelCells";
 import { libraryRateFor, rowRateFor } from "./registry-view";
 import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 
@@ -44,37 +43,12 @@ export function ModelCell({
   row: RegistryRow;
   platformDefault: TenantPlatformDefault | null;
 }) {
-  if (row.kind === "default") {
-    return (
-      <span className="flex min-w-0 items-center gap-2">
-        {/* The lock is the whole statement: this row is the platform default
-            and a tenant admin cannot edit it. The word "Default" beside it said
-            the same thing twice and pushed the model id out of view. */}
-        <LockIcon size={12} className="shrink-0 text-muted-foreground" aria-label="Managed by a platform admin" />
-        {platformDefault ? (
-          // The id is one hover away on a pointer; on touch or a keyboard the
-          // copy button is the way to it, spaced as on every entry row.
-          <span className="flex min-w-0 items-center gap-1">
-            <span className="truncate text-muted-foreground" title={platformDefault.model}>
-              {modelLabel(platformDefault.model)}
-            </span>
-            <CopyButton value={platformDefault.model} label={modelIdCopyLabel(platformDefault.model)} />
-          </span>
-        ) : null}
-      </span>
-    );
-  }
-  // The marketed name reads, as in the model library. The id is what a user
-  // pastes into fleet config and provider dashboards: it is the hover, and the
-  // clipboard carries it whole.
-  return (
-    <span className="flex min-w-0 items-center gap-1">
-      <span className="truncate" title={row.entry.model_id}>
-        {modelLabel(row.entry.model_id)}
-      </span>
-      <CopyButton value={row.entry.model_id} label={modelIdCopyLabel(row.entry.model_id)} />
-    </span>
-  );
+  if (row.kind === "entry") return <ModelName modelId={row.entry.model_id} />;
+  // The lock is the whole statement: this row is the platform default and a
+  // tenant admin cannot edit it. With no default configured the lock stands
+  // alone; the actions column says why.
+  if (!platformDefault) return <PlatformManagedMark />;
+  return <ModelName modelId={platformDefault.model} managedByPlatform />;
 }
 
 export function ProviderCell({
@@ -85,16 +59,12 @@ export function ProviderCell({
   platformDefault: TenantPlatformDefault | null;
 }) {
   if (row.kind === "default") {
-    return (
-      <div className="min-w-0">
-        {platformDefault ? <div className="text-sm">{providerLabel(platformDefault.provider)}</div> : null}
-      </div>
-    );
+    return <div className="min-w-0">{platformDefault ? <ProviderBadge provider={platformDefault.provider} /> : null}</div>;
   }
   const { entry } = row;
   return (
-    <div className="min-w-0">
-      <div className="text-sm">{entry.provider ? providerLabel(entry.provider) : "Unknown"}</div>
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <ProviderBadge provider={entry.provider} />
       {entry.base_url ? (
         <div className="flex min-w-0 items-center gap-1">
           <div className="truncate font-mono text-mono leading-mono text-muted-foreground">{entry.base_url}</div>
