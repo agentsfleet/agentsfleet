@@ -4,12 +4,36 @@
 //! Each test overwrites a partition's hash with a string, which every hash
 //! command refuses, and restores it before cleaning up.
 
+use std::time::{Duration, Instant};
+
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+use afd_core::test_util::trace::Capture as Trace;
+use afd_core::timing::READY_HINT_DEADLINE_MS;
+use afd_crypto::entropy::Entropy;
+use afd_dragonfly::Dragonfly;
+use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::fleet_stream_key;
+use afd_fleet::lease::Leases;
+use afd_observability::metrics::label::fleet::ReadyHint;
+use afd_observability::test_util::Capture;
 
 use super::scene::{partition, scene};
-use super::{CMD_DEL, CMD_SET, NOT_A_HASH};
+use super::{CMD_DEL, CMD_SET, HINT_FAILURES, KIND, NOT_A_HASH};
+use crate::fake_redis::{FakeRedis, Reply};
 use crate::requests::ENROLLED_AT;
+use crate::seed::select_within_one_rotation;
+use crate::support::Fixtures;
+
+/// How long the fake node's peeks may wait before the client gives up.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
+
+/// A directory naming partition 5, as the fake answers `HGETALL`.
+const DIRECTORY_NAMING_FIVE: &str =
+    "*2\r\n$1\r\n5\r\n$36\r\n0190a5d0-0000-7000-8000-000000000005\r\n";
+
+/// The runner the deadline poll is made for; no row backs it.
+const DEADLINE_RUNNER: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
 
 /// The cursor's partition cannot be read, but the directory's names another:
 /// the hinted peek serves the poll and its fleet is leased.
@@ -88,4 +112,92 @@ async fn test_a_hinted_claim_that_faults_spends_its_entry() {
         "the faulting partition's entry is spent"
     );
     scene.fixtures.cleanup().await;
+}
+
+/// A directory that cannot be read or written costs the hint and nothing else:
+/// the mark lands, both failures are counted, and the rotation leases the
+/// fleet. The one write is this test's own line: the counters are the whole
+/// process's, and a sibling test breaking a directory moves them too.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_an_unusable_directory_falls_through_to_the_rotation() {
+    let capture = Capture::install();
+    let log = Trace::install();
+    let scene = scene("broken").await;
+    let fleet = scene.fleet(&[]).await;
+    let partition = fleet.partition().index().to_string();
+    let directory = scene.directory_key();
+    scene.raw(&directory, CMD_SET, Some(NOT_A_HASH)).await;
+    let writes = capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Write.as_str())]);
+    let reads = capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Read.as_str())]);
+
+    scene.send(&fleet).await;
+    assert!(
+        scene
+            .index
+            .token_for(&fleet.id)
+            .await
+            .expect("readable")
+            .is_some(),
+        "the mark landed though its entry did not"
+    );
+    let leased = select_within_one_rotation(
+        &scene.leases,
+        &fleet.runners[0],
+        UnixMillis::from_millis(ENROLLED_AT),
+    )
+    .await;
+
+    assert_eq!(
+        leased.map(|acquired| acquired.fleet_id.to_string()),
+        Some(fleet.id)
+    );
+    let unwritten = log.only("ready_hint_write_failed");
+    assert_eq!(unwritten.field("partition"), Some(partition.as_str()));
+    assert!(
+        capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Write.as_str())]) > writes,
+        "the write is counted"
+    );
+    assert!(
+        capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Read.as_str())]) > reads,
+        "and every read"
+    );
+    scene.raw(&directory, CMD_DEL, None).await;
+    scene.fixtures.cleanup().await;
+}
+
+/// The node holding the rotation's partition and the hinted one accepts their
+/// peeks and never answers: the rotation peek waits out the request timeout,
+/// and the hinted peek after it gives up at the hint deadline rather than
+/// waiting that timeout out a second time.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_hint_deadline_falls_through() {
+    let server = FakeRedis::spawn(&[
+        ("PING", Reply::Raw("+PONG\r\n")),
+        ("HGETALL", Reply::Raw(DIRECTORY_NAMING_FIVE)),
+        ("HRANDFIELD", Reply::Silent),
+    ])
+    .await;
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
+        .with_request_timeout(REQUEST_TIMEOUT);
+    let queue = Dragonfly::connect(&config)
+        .await
+        .expect("a fake that answers PONG is accepted");
+    let fixtures = Fixtures::create().await;
+    let leases = Leases::new(fixtures.database.clone(), queue, Entropy::new());
+    let runner = Uuid7::parse(DEADLINE_RUNNER).expect("a runner id");
+    let started = Instant::now();
+
+    let (polled, _cost) = leases
+        .select_measured(&runner, &[], UnixMillis::from_millis(ENROLLED_AT))
+        .await;
+
+    let hint = Duration::from_millis(READY_HINT_DEADLINE_MS);
+    assert!(polled.is_err(), "neither peek answered");
+    assert!(
+        started.elapsed() < REQUEST_TIMEOUT + hint * 3,
+        "one request timeout and one hint deadline, not two timeouts: {:?}",
+        started.elapsed()
+    );
 }

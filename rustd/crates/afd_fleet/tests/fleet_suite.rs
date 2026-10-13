@@ -7,6 +7,16 @@
 //! declared once here and reached as `crate::<name>` from each suite,
 //! which is the shape `afd_api` already uses for its four planes.
 
+#[path = "../../afd_dragonfly/tests/support/fake_redis.rs"]
+#[allow(
+    unused_imports,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing,
+    clippy::format_push_string,
+    reason = "test support shared with `afd_dragonfly`, which uses the half this suite does not"
+)]
+mod fake_redis;
 #[path = "support/fleet_lease_reads.rs"]
 mod lease_reads;
 #[path = "support/fleet_queue.rs"]
@@ -23,6 +33,8 @@ mod report_seed;
 mod requests;
 #[path = "support/fleet_lease_seed.rs"]
 mod seed;
+#[path = "../../afd_dragonfly/tests/support/subscriber.rs"]
+mod subscriber;
 #[path = "support/fleet_fixtures.rs"]
 mod support;
 #[path = "support/view_heartbeat.rs"]

@@ -24,20 +24,7 @@ async fn namespaced_surface_writes_nothing_outside_its_prefix() {
         .expect("scoped connection");
     let payload = "dev:foreign:STREAMS {tag} \0 opaque";
     write_values_and_session(&redis, &marker, payload).await;
-    let streams = FleetStreams::new(redis.clone());
-    streams.ensure_group(&marker).await.expect("fleet group");
-    let id = streams
-        .append(&marker, &[("dev:field", payload)])
-        .await
-        .expect("append");
-    let entry = streams
-        .read_new(&marker, &marker)
-        .await
-        .expect("read")
-        .expect("entry");
-    assert_eq!(entry.field("dev:field"), Some(payload));
-    assert!(streams.ack(&marker, &id).await.expect("ack"));
-    streams.trim(&marker).await.expect("trim");
+    let streams = round_trip_stream(&redis, &marker, payload).await;
     let ready_prefix = ReadyPrefix::private(&marker);
     let ready = ReadyIndex::under(redis.clone(), ready_prefix.clone());
     ready.mark(&marker).await.expect("mark");
@@ -83,6 +70,26 @@ async fn namespaced_surface_writes_nothing_outside_its_prefix() {
             .await
             .expect("remove owned state");
     }
+}
+
+/// Appends `payload` to `marker`'s fleet stream, reads it back, acknowledges
+/// and trims it, so the stream and its group exist under the namespace.
+async fn round_trip_stream(redis: &Dragonfly, marker: &str, payload: &str) -> FleetStreams {
+    let streams = FleetStreams::new(redis.clone());
+    streams.ensure_group(marker).await.expect("fleet group");
+    let id = streams
+        .append(marker, &[("dev:field", payload)])
+        .await
+        .expect("append");
+    let entry = streams
+        .read_new(marker, marker)
+        .await
+        .expect("read")
+        .expect("entry");
+    assert_eq!(entry.field("dev:field"), Some(payload));
+    assert!(streams.ack(marker, &id).await.expect("ack"));
+    streams.trim(marker).await.expect("trim");
+    streams
 }
 
 async fn write_values_and_session(redis: &Dragonfly, marker: &str, payload: &str) {

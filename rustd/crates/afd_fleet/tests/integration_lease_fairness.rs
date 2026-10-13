@@ -16,7 +16,9 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
 use afd_dragonfly::ready::{Partition, READY_PARTITIONS, ReadyIndex, ReadyPrefix};
+use afd_fleet::lease::{Acquired, Leases};
 use afd_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
 
 use crate::queue;
@@ -41,6 +43,9 @@ const HOT_TAG: &str = "fixture:nobody-carries-this";
 /// How long apart two marks are written: tokens order by their mint
 /// millisecond, so two marks in one millisecond order at random.
 const MARK_GAP: Duration = Duration::from_millis(2);
+
+/// Polls after the first in which the hinted fleet must be leased.
+const LATER_POLLS: usize = 2;
 
 /// The `nth` distinct fleet id derived from `base` that lands in `partition`.
 ///
@@ -199,32 +204,8 @@ async fn test_the_cursor_partition_leases_before_the_hint() {
         &placement_tag(&population.base),
     );
     for fleet in [&hinted, &cursor] {
-        let tag = placement_tag(fleet);
-        fixtures
-            .seed_fleet(
-                fleet,
-                &population.workspace,
-                &population.tenant,
-                &tag,
-                ENROLLED_AT,
-            )
-            .await;
-        request.labels.push(Cow::Owned(tag));
-        queue::enqueue(
-            fixtures.queue(),
-            fleet,
-            &population.workspace,
-            ACTOR,
-            EVENT_TYPE,
-            REQUEST_JSON,
-            ENROLLED_AT,
-        )
-        .await;
-        index
-            .mark(fleet)
-            .await
-            .expect("the private index takes a mark");
-        tokio::time::sleep(MARK_GAP).await;
+        seed_marked(&fixtures, &index, &population, fleet).await;
+        request.labels.push(Cow::Owned(placement_tag(fleet)));
     }
     let runner = fixtures
         .runners()
@@ -249,16 +230,7 @@ async fn test_the_cursor_partition_leases_before_the_hint() {
         .await
         .expect("a poll must not fault");
     let kept = index.dirty().await.expect("the directory is readable");
-    let mut later = None;
-    for _poll in 0..2 {
-        later = store
-            .select(&runner, &[], now)
-            .await
-            .expect("a poll must not fault");
-        if later.is_some() {
-            break;
-        }
-    }
+    let later = leased_within(&store, &runner, now, LATER_POLLS).await;
 
     for fleet in [&hinted, &cursor] {
         queue::clear_ready(fixtures.queue(), fleet).await;
@@ -278,4 +250,58 @@ async fn test_the_cursor_partition_leases_before_the_hint() {
         Some(hinted),
         "a later poll's hint leases the fleet it named"
     );
+}
+
+/// Seeds `fleet` into `population`, queues one event for it and marks it,
+/// then waits [`MARK_GAP`], so fleets seeded in turn have entries in that turn.
+async fn seed_marked(
+    fixtures: &Fixtures,
+    index: &ReadyIndex,
+    population: &Population,
+    fleet: &str,
+) {
+    let tag = placement_tag(fleet);
+    fixtures
+        .seed_fleet(
+            fleet,
+            &population.workspace,
+            &population.tenant,
+            &tag,
+            ENROLLED_AT,
+        )
+        .await;
+    queue::enqueue(
+        fixtures.queue(),
+        fleet,
+        &population.workspace,
+        ACTOR,
+        EVENT_TYPE,
+        REQUEST_JSON,
+        ENROLLED_AT,
+    )
+    .await;
+    index
+        .mark(fleet)
+        .await
+        .expect("the private index takes a mark");
+    tokio::time::sleep(MARK_GAP).await;
+}
+
+/// The first lease `store` hands `runner` within `polls` polls.
+async fn leased_within(
+    store: &Leases,
+    runner: &Uuid7,
+    now: UnixMillis,
+    polls: usize,
+) -> Option<Acquired> {
+    for _poll in 0..polls {
+        let leased = store
+            .select(runner, &[], now)
+            .await
+            .expect("a poll must not fault");
+        if leased.is_some() {
+            return leased;
+        }
+    }
+    None
 }
