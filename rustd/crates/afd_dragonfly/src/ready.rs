@@ -191,14 +191,34 @@ impl ReadyIndex {
     /// reported where it fails and never returned, because the mark it points
     /// at has landed.
     pub async fn mark(&self, fleet_id: &str) -> Result<ReadyToken> {
+        let (partition, token) = self.write_mark(fleet_id).await?;
+        self.note_dirty(partition, &token).await;
+        Ok(token)
+    }
+
+    /// Marks `fleet_id` ready without naming its partition in the directory.
+    ///
+    /// For the reclaim sweeper's backstop, which re-marks fleets already
+    /// marked or mid-run every pass: the rotation reaches the mark in its
+    /// turn, and naming it would send a poll every pass to each partition a
+    /// running fleet holds.
+    ///
+    /// # Errors
+    /// As [`ReadyIndex::mark`].
+    pub async fn mark_unhinted(&self, fleet_id: &str) -> Result<ReadyToken> {
+        let (_partition, token) = self.write_mark(fleet_id).await?;
+        Ok(token)
+    }
+
+    /// Writes a new generation of `fleet_id`'s mark into its partition.
+    async fn write_mark(&self, fleet_id: &str) -> Result<(Partition, ReadyToken)> {
         let token = ReadyToken::mint(&self.entropy, afd_core::clock::now())?;
         let partition = Partition::of(fleet_id);
         let key = self.key_of(partition);
         let mut cmd = redis::cmd(CMD_HSET);
         cmd.arg(&key).arg(fleet_id).arg(token.as_str());
         let _: i64 = self.redis.command(CMD_HSET, &key, &cmd).await?;
-        self.note_dirty(partition, &token).await;
-        Ok(token)
+        Ok((partition, token))
     }
 
     /// The token currently stored for `fleet_id`, if any.
