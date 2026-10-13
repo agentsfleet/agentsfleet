@@ -42,21 +42,40 @@ fn every_queue_and_hint_reporter_renders_every_redis_failure() -> Result<(), &'s
         super::diagnostics::warn_queue("lease_poll_queue_failed", &runner, &error);
         super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
         let partition = afd_dragonfly::Partition::new(3).ok_or("3 is a partition")?;
-        for (event, hint, named) in [
-            (diagnostics::EVENT_HINT_READ_FAILED, ReadyHint::Read, None),
-            (
-                diagnostics::EVENT_HINT_PEEK_FAILED,
-                ReadyHint::Peek,
-                Some(partition),
-            ),
-            (
-                diagnostics::EVENT_HINT_DELETE_FAILED,
-                ReadyHint::Delete,
-                Some(partition),
-            ),
+        for (hint, named) in [
+            (ReadyHint::Write, Some(partition)),
+            (ReadyHint::Read, None),
+            (ReadyHint::Peek, Some(partition)),
+            (ReadyHint::Delete, Some(partition)),
         ] {
-            diagnostics::warn_hint(event, hint, &runner, named, &error);
+            diagnostics::warn_hint(hint, &runner, named, &error);
         }
+    }
+    Ok(())
+}
+
+/// Each kind of hint failure logs under an event of its own, a write under the
+/// one a mark reports where it fails, so a swapped arm cannot pass unseen.
+#[cfg(feature = "test-util")]
+#[test]
+fn each_hint_failure_logs_under_its_own_event() -> Result<(), &'static str> {
+    use afd_core::test_util::trace::Capture;
+
+    let runner = runner_id()?;
+    let (_label, error) = afd_dragonfly::error::one_of_each_kind()
+        .into_iter()
+        .next()
+        .ok_or("one datastore failure")?;
+    // pin test: each event name is the contract an operator searches by.
+    for (hint, event) in [
+        (ReadyHint::Write, "ready_hint_write_failed"),
+        (ReadyHint::Read, "assign_ready_hint_read_failed"),
+        (ReadyHint::Peek, "assign_ready_hint_peek_failed"),
+        (ReadyHint::Delete, "assign_ready_hint_delete_failed"),
+    ] {
+        let log = Capture::install();
+        diagnostics::warn_hint(hint, &runner, None, &error);
+        let _logged = log.only(event);
     }
     Ok(())
 }

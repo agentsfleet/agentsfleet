@@ -174,7 +174,7 @@ fn test_the_cursor_partition_leads_the_offer() {
             "hinted-1"
         ]
     );
-    assert_eq!(offer.cursor, 3);
+    assert_eq!(offer.from_cursor, 3);
 }
 
 /// Two full peeks are both offered whole, so nothing the hint found is
@@ -190,7 +190,7 @@ fn test_two_full_peeks_are_offered_whole() {
     let offer = cursor_first(full("rotation"), full("hinted"));
 
     assert_eq!(offer.ready.len(), 2 * MAX_READY_CANDIDATES_PER_POLL);
-    assert_eq!(offer.cursor, MAX_READY_CANDIDATES_PER_POLL);
+    assert_eq!(offer.from_cursor, MAX_READY_CANDIDATES_PER_POLL);
 }
 
 /// A delete the datastore refuses is logged once, naming the partition it

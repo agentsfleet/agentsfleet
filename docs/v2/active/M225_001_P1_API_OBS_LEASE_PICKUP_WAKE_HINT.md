@@ -69,7 +69,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/assign/diagnostics.rs` | EDIT | the two hint warnings and their events |
 | `rustd/crates/afd_fleet/src/lease/assign/offer.rs` | EDIT | held-fleet reads join the Dragonfly tally |
 | `rustd/crates/afd_fleet/src/lease/assign/measured.rs` | EDIT | `dragonfly_commands` on the measurement |
-| `rustd/crates/afd_fleet/src/lease/assign/tests.rs` | EDIT | the hint warnings render every Dragonfly failure |
+| `rustd/crates/afd_fleet/src/lease/assign/tests.rs` | EDIT | the hint warnings render every Dragonfly failure, and each kind logs under its own event |
 | `rustd/crates/afd_fleet/tests/integration_lease_wake.rs`, `rustd/crates/afd_fleet/tests/integration_lease_wake/order.rs`, `rustd/crates/afd_fleet/tests/integration_lease_wake/broken.rs`, `rustd/crates/afd_fleet/tests/integration_lease_wake/tally.rs`, `rustd/crates/afd_fleet/tests/integration_lease_plan.rs` | NEW | the live §1 proofs; `integration_lease_plan.rs` the scan's cursor-first sort key under a generic plan; `order.rs` holds the ones on which dirty partition a poll is sent to; `broken.rs` the polls whose peeks the datastore refuses; `tally.rs` the claim path's dropped-entry and restored-group commands |
 | `rustd/crates/afd_fleet/tests/integration_lease_wake/scene.rs` | NEW | the private-index scene those proofs poll; its marks land a millisecond apart, so their order is the order sent |
 | `rustd/crates/afd_fleet/tests/fleet_suite.rs` | EDIT | registers the suites, and the fake Redis support `afd_dragonfly` and `afd_admission` already share |

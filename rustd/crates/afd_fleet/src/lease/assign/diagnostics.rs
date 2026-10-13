@@ -93,19 +93,31 @@ pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dr
     );
 }
 
+/// The event a failure of `hint` logs under: one per command a poll sends, and
+/// for a write the event a mark reports where it fails, so each kind of hint
+/// failure has one name wherever it is logged.
+const fn hint_event(hint: ReadyHint) -> &'static str {
+    match hint {
+        ReadyHint::Write => afd_dragonfly::ready::EVENT_HINT_WRITE_FAILED,
+        ReadyHint::Read => EVENT_HINT_READ_FAILED,
+        ReadyHint::Peek => EVENT_HINT_PEEK_FAILED,
+        ReadyHint::Delete => EVENT_HINT_DELETE_FAILED,
+    }
+}
+
 /// Reports a readiness-hint command a poll could not complete, counted under
 /// `hint`, and the partition it concerned when it concerned one.
 ///
 /// A `warn` and not a failed poll: the rotation's partition is still read, so
 /// the work behind the hint is reached within one rotation.
 pub(super) fn warn_hint(
-    event: &'static str,
     hint: ReadyHint,
     runner_id: &Uuid7,
     partition: Option<Partition>,
     error: &afd_dragonfly::Error,
 ) {
     producers::fleet::ready_hint_failed(hint);
+    let event = hint_event(hint);
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let runner = runner_id.as_str();
     let named = partition.map(Partition::index);

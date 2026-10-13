@@ -99,7 +99,7 @@ impl Leases {
         if offer.ready.is_empty() {
             return Ok(None);
         }
-        self.first_offered(runner_id, &offer.ready, offer.cursor, now, cost)
+        self.first_offered(runner_id, &offer.ready, offer.from_cursor, now, cost)
             .await
     }
 
@@ -110,14 +110,14 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         ready: &[Ready],
-        cursor: usize,
+        from_cursor: usize,
         now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
         let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
-        let first: Vec<&str> = ids.iter().take(cursor).copied().collect();
+        let cursor_ids: Vec<&str> = ids.iter().take(from_cursor).copied().collect();
         cost.database_roundtrips += 1;
-        let offered = self.candidates(runner_id, &ids, &first, now).await?;
+        let offered = self.candidates(runner_id, &ids, &cursor_ids, now).await?;
         for (fleet_id, token) in peeked(offered, ready) {
             cost.database_roundtrips += 1;
             if let Some(acquired) = self

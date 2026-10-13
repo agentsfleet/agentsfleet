@@ -44,7 +44,7 @@ use crate::error::{self, Result};
 const CMD_HGETALL: &str = "HGETALL";
 
 /// The `event` a mark logs when its directory entry was not written.
-const EVENT_HINT_WRITE_FAILED: &str = "ready_hint_write_failed";
+pub const EVENT_HINT_WRITE_FAILED: &str = "ready_hint_write_failed";
 
 /// [`READY_HINT_DEADLINE_MS`] as the duration a timeout takes.
 const HINT_DEADLINE: Duration = Duration::from_millis(READY_HINT_DEADLINE_MS);

@@ -152,7 +152,7 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         ready: &[&str],
-        cursor: &[&str],
+        cursor_ids: &[&str],
         now: UnixMillis,
     ) -> Result<Vec<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
@@ -164,7 +164,7 @@ impl Leases {
             .bind(now.as_millis())
             .bind(RUNNER_OFFLINE_AFTER_MS)
             .bind(sql::ADMIN_STATE_ACTIVE)
-            .bind(cursor)
+            .bind(cursor_ids)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_CANDIDATES))?;

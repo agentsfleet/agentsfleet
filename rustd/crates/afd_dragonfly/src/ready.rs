@@ -45,7 +45,7 @@ use futures_util::future::try_join_all;
 use crate::client::Dragonfly;
 use crate::error::Result;
 
-pub use self::directory::Dirty;
+pub use self::directory::{Dirty, EVENT_HINT_WRITE_FAILED};
 pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix};
 
 /// Delete the field only if it still carries the token the caller observed.
