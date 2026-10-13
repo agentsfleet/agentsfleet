@@ -138,7 +138,7 @@ a lock between those tasks (`rustd/crates/afr_supervisor/src/lib.rs`).
 
 Cross-task and cross-process channels, with producer/consumer roles and payload
 ownership. Dragonfly stream/channel **names** are canonical in
-[`data_flow.md`](./data_flow.md) §"Two streams + one pub/sub channel"; the roles
+[`data_flow.md`](./data_flow.md) §"Two streams + two pub/sub channels"; the roles
 below are the concurrency view.
 
 | Channel | Kind | Producer → Consumer | Payload ownership |
