@@ -61,6 +61,21 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("Fix")).toBeNull();
   });
 
+  it("shows an operator what the logs-detail journey asserts: labels, context heading, both copy buttons", async () => {
+    // The acceptance spec (tests/e2e/acceptance/logs-detail.spec.ts) claims
+    // this exact shape on the live stack; pinned here so the two surfaces
+    // cannot drift apart again without a unit failure first.
+    await renderDialogWithBody(event({ actor: "github-app", event_type: "webhook" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Event details" });
+    expect(within(dialog).queryByText("ID", { exact: true })).toBeNull();
+    expect(within(dialog).getByText(/^Source:/)).toBeTruthy();
+    expect(within(dialog).getByText(/^Type:/)).toBeTruthy();
+    expect(within(dialog).getByRole("heading", { name: "Request context" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Copy event ID" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Copy diagnostic" })).toBeTruthy();
+  });
+
   it("keeps technical identifiers out of the heading and labels the request source and type", async () => {
     await renderDialogWithBody(event({
       event_id: "evt_header",
