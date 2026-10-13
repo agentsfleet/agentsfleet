@@ -4,16 +4,23 @@
 //! # Two peeks, every poll
 //!
 //! A poll reads the directory and peeks the rotation's next partition
-//! together, then peeks the oldest dirty partition when that is a different
-//! one. The rotation peek is never skipped for the hint: it is what reaches a
-//! mark whose directory entry was lost, and what keeps one busy partition from
-//! taking every poll.
+//! together, then peeks one of the oldest dirty partitions when that is a
+//! different one. The rotation peek is never skipped for the hint: it is what
+//! reaches a mark whose directory entry was lost, and what keeps one busy
+//! partition from taking every poll.
+//!
+//! # One of the oldest few, not the oldest
+//!
+//! Every poll reads the same directory, so sending each to the oldest entry
+//! sends them all to one partition, where they race for its few fleets and all
+//! but one lose their claim. Each poll is sent to one of the oldest
+//! [`HINT_SPREAD`] instead, taken in turn as the cursor moves.
 //!
 //! # When an entry is spent
 //!
 //! A leased fleet keeps its mark for as long as it runs, so its partition
-//! would stay dirty, and the oldest-first directory would keep sending every
-//! poll to work no runner can take. So an entry is deleted once a poll tried
+//! would stay dirty, and the oldest-first directory would keep sending polls
+//! to work no runner can take. So an entry is deleted once a poll tried
 //! its partition and could not lease from it: nothing leased at all, which
 //! means every fleet offered was tried, or its only fleet leased, or its peek
 //! failed. A poll that leased from the rotation's partition keeps the entry,
@@ -24,8 +31,8 @@
 //! # Every read under the hint deadline
 //!
 //! The directory read and the hinted peek both give up at the hint deadline,
-//! because every poll is sent to the same oldest entry: one sick node there
-//! must cost each poll a tenth of a second, not the datastore's five. A hinted
+//! because most polls are sent to the same few entries: one sick node holding
+//! them must cost each poll a tenth of a second, not the datastore's five. A hinted
 //! peek that fails spends its entry, so the next poll is not sent back.
 
 use afd_core::id::Uuid7;
@@ -42,6 +49,12 @@ use super::{MAX_READY_CANDIDATES_PER_POLL, PollCost};
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
+
+/// How many of the oldest dirty partitions a poll may be sent to.
+///
+/// One sends every poll to the same partition. More than a few would send
+/// polls to marks that landed after work which has waited longer.
+const HINT_SPREAD: usize = 3;
 
 /// The dirty partition a poll was sent to, and how many fleets its peek
 /// found, `None` when the peek failed.
@@ -74,7 +87,7 @@ impl Leases {
         cost.dragonfly_commands += 2;
         let rotation =
             rotation.inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error));
-        let oldest = directory
+        let sent_to = directory
             .inspect_err(|error| {
                 warn_hint(
                     EVENT_HINT_READ_FAILED,
@@ -85,8 +98,8 @@ impl Leases {
                 );
             })
             .ok()
-            .and_then(|dirty| dirty.into_iter().next());
-        let Some(dirty) = oldest else {
+            .and_then(|dirty| spread(dirty, partition));
+        let Some(dirty) = sent_to else {
             return Ok((rotation?, None));
         };
         if dirty.partition == partition {
@@ -168,6 +181,19 @@ fn keeps_entry(partition: Partition, found: Option<usize>, leased: Option<&str>)
         // Leased from the rotation: the hinted fleets may never have been tried.
         Some(_) => true,
     }
+}
+
+/// The dirty partition this poll is sent to: one of the oldest
+/// [`HINT_SPREAD`] in `dirty`, which is oldest first, chosen by the cursor's
+/// `position`.
+///
+/// The cursor moves on every poll through this process, so consecutive polls
+/// take the oldest few in turn; each replica turns its own, so polls through
+/// different replicas spread the same way without coordinating.
+fn spread(dirty: Vec<Dirty>, position: Partition) -> Option<Dirty> {
+    let reach = dirty.len().min(HINT_SPREAD);
+    let turn = usize::from(position.index()).checked_rem(reach)?;
+    dirty.into_iter().nth(turn)
 }
 
 /// `hinted` and `rotation` taken in turn, up to the poll's ceiling, so

@@ -91,7 +91,10 @@ impl ReadyIndex {
     ///
     /// Oldest first because the tokens are version-7 identifiers, which sort
     /// by the instant they were minted: two partitions dirtied in turn are
-    /// served in that turn.
+    /// served in that turn. The instant is the clock of whichever replica
+    /// marked, so skew between replicas reorders entries and loses none:
+    /// an entry stays until a poll spends it, and the rotation reaches every
+    /// partition regardless.
     ///
     /// # Errors
     /// Returns a timeout error past the hint deadline, and a command error
@@ -112,10 +115,10 @@ impl ReadyIndex {
     /// Samples the partition the directory named, as [`ReadyIndex::peek`]
     /// does, but under the hint deadline.
     ///
-    /// Every poll that reads the directory is sent to the same oldest entry,
-    /// so a peek waiting out the datastore's request timeout there would stall
-    /// every poll on every runner, where a sick partition reached by the
-    /// rotation stalls one poll in sixteen.
+    /// Most polls that read the directory are sent to the same few oldest
+    /// entries, so a peek waiting out the datastore's request timeout there
+    /// would stall most polls on every runner, where a sick partition reached
+    /// by the rotation stalls one poll in sixteen.
     ///
     /// # Errors
     /// Returns a timeout error past the hint deadline, and a command error

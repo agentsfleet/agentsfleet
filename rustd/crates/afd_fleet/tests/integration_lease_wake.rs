@@ -23,6 +23,8 @@ use afd_observability::test_util::Capture;
 use crate::requests::ENROLLED_AT;
 use crate::seed::select_within_one_rotation;
 
+#[path = "integration_lease_wake/order.rs"]
+mod order;
 #[path = "integration_lease_wake/scene.rs"]
 mod scene;
 
@@ -131,38 +133,6 @@ async fn test_lost_dirty_bit_falls_back_to_rotation() {
     assert_eq!(
         leased.map(|acquired| acquired.fleet_id.to_string()),
         Some(fleet.id)
-    );
-    scene.fixtures.cleanup().await;
-}
-
-/// Two fleets marked in two partitions are leased by two workers, one poll
-/// each, oldest mark first.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_two_marked_fleets_lease_within_one_interval() {
-    let scene = scene("two").await;
-    let first = scene.fleet(&[partition(0), partition(1)]).await;
-    let second = scene
-        .fleet(&[partition(0), partition(1), first.partition()])
-        .await;
-    scene.send(&first).await;
-    scene.send(&second).await;
-    assert_eq!(
-        scene.dirty().await,
-        [first.partition().index(), second.partition().index()],
-        "oldest mark first"
-    );
-
-    let (one, _) = scene.poll(&first.runners[0]).await;
-    let (two, _) = scene.poll(&second.runners[0]).await;
-
-    assert_eq!(
-        one.map(|acquired| acquired.fleet_id.to_string()),
-        Some(first.id)
-    );
-    assert_eq!(
-        two.map(|acquired| acquired.fleet_id.to_string()),
-        Some(second.id)
     );
     scene.fixtures.cleanup().await;
 }

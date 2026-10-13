@@ -35,8 +35,9 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
 
  RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
    (every ~1 s)          a HGETALL fleet:ready:{directory} ∥ peek the rotation's partition, then
-                           the oldest dirty one; ≤64 fleets taken in turn; zero Postgres
-                           if both are empty; afterwards the entry is spent unless this
+                           one of the 3 oldest dirty ones, taken in turn by the cursor;
+                           ≤64 fleets taken in turn; zero Postgres if both are empty;
+                           afterwards the entry is spent unless this
                            poll leased from it and its peek held other fleets
                          b SELECT_READY_CANDIDATES: active, slot free, labels, sticky first
                          c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
