@@ -19358,7 +19358,7 @@
           "time_to_first_token_ms": {
             "type": "integer",
             "format": "int32",
-            "description": "Milliseconds until the first token arrived.",
+            "description": "Milliseconds from the start of the run to its first answer chunk, or\n`0` when it sent none.\n\nThe run starts once the bundle, memory and sandbox are ready, so setup\nis not counted here; `wall_ms` counts it.",
             "minimum": 0
           },
           "wall_ms": {
