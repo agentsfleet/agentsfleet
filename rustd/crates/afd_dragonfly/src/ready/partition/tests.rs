@@ -107,20 +107,17 @@ fn clones_share_one_rotation() {
     );
 }
 
-/// The directory sits beside the production partitions under its own tag,
-/// and no partition's key is ever the directory's.
+/// A partition's doorbell channel carries the partition's own hash tag, so it
+/// routes to the slot the mark was written on, and no two partitions share one.
 #[test]
-fn test_the_directory_key_is_tagged_and_never_a_partitions() {
+fn test_a_wake_channel_shares_its_partitions_slot() {
     let production = ReadyPrefix::production();
-    let directory = production.directory_key();
-
-    assert_eq!(directory, format!("{READY_INDEX_KEY}:{{directory}}"));
+    let mut channels = BTreeSet::new();
     for partition in Partition::all() {
-        assert_ne!(
-            partition.key_under(&production),
-            directory,
-            "partition {} would share the directory's key",
-            partition.index()
-        );
+        let channel = partition.wake_channel_under(&production);
+        let tag = format!("{{{}}}", partition.index());
+
+        assert_eq!(channel, format!("{READY_INDEX_KEY}:{tag}:wake"));
+        assert!(channels.insert(channel), "two partitions share a channel");
     }
 }

@@ -10,7 +10,7 @@
 use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
 use afd_dragonfly::Partition;
-use afd_observability::metrics::label::fleet::ReadyHint;
+use afd_observability::metrics::label::fleet::ReadyWake;
 use afd_observability::producers;
 
 /// The readiness index would not answer.
@@ -32,17 +32,9 @@ pub(super) const EVENT_LEASE_RECLAIMED: &str = "lease_reclaimed";
 /// A held fleet's readiness could not be read; the poll went on without it.
 pub(super) const EVENT_HELD_READ_FAILED: &str = "assign_held_read_failed";
 
-/// The readiness directory could not be read; the poll went on with the
-/// rotation's partition alone.
-pub(super) const EVENT_HINT_READ_FAILED: &str = "assign_ready_hint_read_failed";
-
-/// The partition the directory named could not be peeked; its entry is spent
-/// and the poll went on with the rotation's partition.
-pub(super) const EVENT_HINT_PEEK_FAILED: &str = "assign_ready_hint_peek_failed";
-
-/// A spent directory entry could not be deleted; the next poll peeks its
-/// partition once more.
-pub(super) const EVENT_HINT_DELETE_FAILED: &str = "assign_ready_hint_delete_failed";
+/// The partition the doorbell rang could not be peeked; the poll went on with
+/// the rotation's partition, and the ring is not rung again.
+pub(super) const EVENT_WAKE_PEEK_FAILED: &str = "assign_ready_wake_peek_failed";
 
 /// Reports a queue failure that ended a poll before any fleet was examined.
 ///
@@ -93,34 +85,20 @@ pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dr
     );
 }
 
-/// The event a failure of `hint` logs under: one per command a poll sends, and
-/// for a write the event a mark reports where it fails, so each kind of hint
-/// failure has one name wherever it is logged.
-const fn hint_event(hint: ReadyHint) -> &'static str {
-    match hint {
-        ReadyHint::Write => afd_dragonfly::ready::EVENT_HINT_WRITE_FAILED,
-        ReadyHint::Read => EVENT_HINT_READ_FAILED,
-        ReadyHint::Peek => EVENT_HINT_PEEK_FAILED,
-        ReadyHint::Delete => EVENT_HINT_DELETE_FAILED,
-    }
-}
-
-/// Reports a readiness-hint command a poll could not complete, counted under
-/// `hint`, and the partition it concerned when it concerned one.
+/// Reports a rung partition a poll could not peek, counted as a failed wake,
+/// naming the partition.
 ///
 /// A `warn` and not a failed poll: the rotation's partition is still read, so
-/// the work behind the hint is reached within one rotation.
-pub(super) fn warn_hint(
-    hint: ReadyHint,
+/// the work behind the ring is reached within one rotation.
+pub(super) fn warn_rung_peek(
     runner_id: &Uuid7,
-    partition: Option<Partition>,
+    partition: Partition,
     error: &afd_dragonfly::Error,
 ) {
-    producers::fleet::ready_hint_failed(hint);
-    let event = hint_event(hint);
+    producers::fleet::ready_wake_failed(ReadyWake::Peek);
     let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
     let runner = runner_id.as_str();
-    let named = partition.map(Partition::index);
+    let index = partition.index();
     let Logged {
         error_code: cause_error_code,
         reason,
@@ -128,11 +106,11 @@ pub(super) fn warn_hint(
     tracing::warn!(
         error_code = code,
         cause_error_code,
-        event,
+        event = EVENT_WAKE_PEEK_FAILED,
         runner_id = runner,
-        partition = named,
+        partition = index,
         reason,
-        "a readiness hint was not used; the poll goes on with its rotation"
+        "a rung partition could not be peeked; the poll goes on with its rotation"
     );
 }
 

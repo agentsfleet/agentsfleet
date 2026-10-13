@@ -26,8 +26,8 @@ const ROUNDTRIPS: u64 = 2;
 /// Dragonfly commands the fake poll claims to have issued.
 const COMMANDS: u64 = 3;
 
-/// What an idle poll asks of Dragonfly: the directory read and one partition.
-const IDLE_COMMANDS: u64 = 2;
+/// What an idle poll asks of Dragonfly: one partition's peek.
+const IDLE_COMMANDS: u64 = 1;
 
 /// Both counter readings live in ONE test on purpose.
 ///
@@ -80,7 +80,7 @@ fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
     assert_eq!(idle.polls, 1);
     assert_eq!(
         idle.dragonfly_commands, IDLE_COMMANDS,
-        "an idle poll asks Dragonfly twice"
+        "an idle poll asks Dragonfly once"
     );
     assert_eq!(
         idle.roundtrips, 0,

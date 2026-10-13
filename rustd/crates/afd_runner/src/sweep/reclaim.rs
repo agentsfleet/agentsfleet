@@ -119,15 +119,15 @@ pub struct Reclaim {
     stranded_after: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
-/// Why the sweeper re-marks a fleet, which decides whether the readiness
-/// directory names its partition.
+/// Why the sweeper re-marks a fleet, which decides whether the mark rings its
+/// partition's readiness doorbell.
 #[derive(Clone, Copy)]
 enum Remark {
     /// Work a dead holder left, claimed off its consumer or owed by an
-    /// expired lease: hinted, so the next poll takes it.
+    /// expired lease: rung, so the next poll takes it.
     Stranded,
     /// The stream probe's backstop, which also finds fleets mid-run, whose
-    /// entries stay pending while they run: unhinted, so a pass over running
+    /// entries stay pending while they run: quiet, so a pass over running
     /// fleets sends no polls, and the rotation reaches the mark in its turn.
     Probed,
 }
@@ -252,7 +252,7 @@ impl Reclaim {
     async fn mark_ready(&self, fleet_id: &str, remark: Remark) -> bool {
         let marked = match remark {
             Remark::Stranded => self.ready.mark(fleet_id).await,
-            Remark::Probed => self.ready.mark_unhinted(fleet_id).await,
+            Remark::Probed => self.ready.mark_quiet(fleet_id).await,
         };
         match marked {
             Ok(_token) => true,

@@ -82,7 +82,7 @@ pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
 
 /// Ready fleets a poll's peeks offered (not summable across replicas).
 ///
-/// The rotation's partition and one of the directory's oldest dirty ones,
+/// The rotation's partition and the one the readiness doorbell rang, if any,
 /// at most twice the poll ceiling, of which the candidate scan returns at
 /// most the ceiling.
 pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
@@ -91,11 +91,11 @@ pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fl
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_write_failures_total");
 
-/// Readiness-directory commands failing or outliving their deadline.
+/// Readiness-doorbell rings and rung peeks failing.
 ///
 /// Labels: `kind`.
-pub const FLEET_READY_HINT_FAILURES_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_fleet_ready_hint_failures_total");
+pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_fleet_ready_wake_failures_total");
 
 /// Installed fleets by lifecycle status, as the last census pass counted them.
 ///

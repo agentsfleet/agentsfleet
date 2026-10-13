@@ -1,13 +1,11 @@
 //! The readiness index: which fleets currently hold work.
 //!
 //! A fixed set of hashes — one per [`Partition`] — with a field per fleet and
-//! a token for its value, and one more hash, the [`directory`], naming the
-//! partitions that gained a mark. A lease poll reads the directory and ONE
-//! partition, the one its cursor names, before it opens a Postgres
-//! connection, so an idle poll costs two bounded Dragonfly reads and no
-//! database round-trip at all; a rotation of polls visits every partition
-//! whatever one of them holds, and the directory sends a poll straight to the
-//! partition fresh work landed in.
+//! a token for its value. A lease poll reads ONE partition, the one its
+//! cursor names, before it opens a Postgres connection, so an idle poll costs
+//! one bounded Dragonfly read and no database round-trip at all; a rotation
+//! of polls visits every partition whatever one of them holds, and the
+//! [`doorbell`] sends a poll straight to the partition fresh work landed in.
 //!
 //! # It is a hint, never the record
 //!
@@ -35,7 +33,7 @@
 //! [`ReadyIndex::mark`] draws a version-7 identifier for every write and no
 //! caller can hand it a value to reuse.
 
-pub mod directory;
+pub mod doorbell;
 pub mod partition;
 
 use afd_core::clock::UnixMillis;
@@ -45,7 +43,7 @@ use futures_util::future::try_join_all;
 use crate::client::Dragonfly;
 use crate::error::Result;
 
-pub use self::directory::{Dirty, EVENT_HINT_WRITE_FAILED};
+pub use self::doorbell::{Doorbell, EVENT_WAKE_RING_FAILED};
 pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix};
 
 /// Delete the field only if it still carries the token the caller observed.
@@ -81,11 +79,10 @@ const ARG_WITHVALUES: &str = "WITHVALUES";
 
 /// Names one generation of a fleet's readiness mark.
 ///
-/// Minted rather than counted: a compare-and-clear compares two tokens for
-/// equality, and every counter shape breaks on reuse — a clear deletes the
+/// Minted rather than counted: nothing ever compares two tokens for order, only
+/// for equality, and every counter shape breaks on reuse — a clear deletes the
 /// field, so a per-fleet count restarts and re-mints a token a stale poll still
-/// holds. The readiness directory also orders them, serving the partition
-/// whose latest mark is oldest first, which is what the derived `Ord` is for.
+/// holds.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReadyToken(String);
 
@@ -99,11 +96,9 @@ impl ReadyToken {
     /// A new generation: a version-7 identifier at `now`, its random half drawn
     /// from `entropy`.
     ///
-    /// Version 7 for its ten random bytes and its ordering: two marks in one
-    /// millisecond still differ, which is what a compare-and-clear reads, and
-    /// tokens sort by the millisecond they were minted, which is what the
-    /// readiness directory reads to serve the partition whose latest mark is
-    /// oldest first.
+    /// Version 7 for its ten random bytes, not its ordering — two marks in one
+    /// millisecond still differ, which is the only property a compare-and-clear
+    /// reads.
     ///
     /// Public so a suite building a claim's envelope without a peek has a
     /// generation to carry. [`ReadyIndex::mark`] still takes none, so a token
@@ -176,37 +171,36 @@ impl ReadyIndex {
     }
 
     /// Marks a fleet as holding work, under a token minted for this write,
-    /// and names its partition dirty in the [`directory`] under the same
-    /// token.
+    /// and rings its partition's [`doorbell`].
     ///
     /// Every call writes a new generation, so a poll that peeked the previous
     /// one can no longer clear this one — see the module note on why no caller
-    /// supplies the token. The directory entry follows the mark, never leads
-    /// it: a poll sent to the partition finds the mark already there.
+    /// supplies the token. The ring follows the mark, never leads it: a poll
+    /// the ring sends to the partition finds the mark already there.
     ///
     /// # Errors
     /// Returns an unmintable error when no token could be drawn, and a command
     /// error when the mark's write fails. Callers on the ingress path log and
     /// continue: the append already succeeded, and the sweeper re-derives what
-    /// a lost mark would have said. A directory entry that is not written is
-    /// reported where it fails and never returned, because the mark it points
-    /// at has landed.
+    /// a lost mark would have said. A ring that is not published is reported
+    /// where it fails and never returned, because the mark it announces has
+    /// landed.
     pub async fn mark(&self, fleet_id: &str) -> Result<ReadyToken> {
         let (partition, token) = self.write_mark(fleet_id).await?;
-        self.note_dirty(partition, &token).await;
+        self.ring(partition, &token).await;
         Ok(token)
     }
 
-    /// Marks `fleet_id` ready without naming its partition in the directory.
+    /// Marks `fleet_id` ready without ringing its partition.
     ///
     /// For the reclaim sweeper's stream probe, which re-marks fleets already
     /// marked or mid-run every pass: the rotation reaches the mark in its
-    /// turn, and naming it would send a poll every pass to each partition a
+    /// turn, and ringing it would send a poll every pass to each partition a
     /// running fleet holds.
     ///
     /// # Errors
     /// As [`ReadyIndex::mark`].
-    pub async fn mark_unhinted(&self, fleet_id: &str) -> Result<ReadyToken> {
+    pub async fn mark_quiet(&self, fleet_id: &str) -> Result<ReadyToken> {
         let (_partition, token) = self.write_mark(fleet_id).await?;
         Ok(token)
     }

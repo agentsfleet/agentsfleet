@@ -1,18 +1,26 @@
-//! Which dirty partition a poll is sent to when the directory names several:
-//! the oldest first from a fresh cursor, then the oldest few in turn as the
-//! cursor moves, so consecutive polls do not all race for one partition.
+//! Which rung partition a poll takes when the doorbell holds several: the
+//! first at or after its cursor, so consecutive polls take different ones
+//! and each ring is answered once.
 
 use afd_fleet::lease::Acquired;
 
-use super::scene::{partition, scene};
+use super::scene::{Fleet, partition, scene};
 
 /// The fleet a poll leased, if it leased one.
 fn leased(acquired: Option<Acquired>) -> Option<String> {
     acquired.map(|acquired| acquired.fleet_id.to_string())
 }
 
+/// `fleets` in the order their partitions sit after partition 0.
+fn by_partition<'a>(fleets: &[&'a Fleet]) -> Vec<&'a Fleet> {
+    let mut ordered = fleets.to_vec();
+    ordered.sort_by_key(|fleet| fleet.partition());
+    ordered
+}
+
 /// Two fleets marked in two partitions are leased by two workers, one poll
-/// each, oldest mark first.
+/// each: the first takes the ring nearest its cursor and the second the one
+/// left.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_two_marked_fleets_lease_within_one_interval() {
@@ -23,27 +31,24 @@ async fn test_two_marked_fleets_lease_within_one_interval() {
         .await;
     scene.send(&first).await;
     scene.send(&second).await;
-    assert_eq!(
-        scene.dirty().await,
-        [first.partition().index(), second.partition().index()],
-        "oldest mark first"
-    );
+    let [near, far] = by_partition(&[&first, &second])[..] else {
+        unreachable!("two fleets");
+    };
 
-    let (one, _) = scene.poll(&first.runners[0]).await;
-    let (two, _) = scene.poll(&second.runners[0]).await;
+    let (one, _) = scene.poll(&near.runners[0]).await;
+    let (two, _) = scene.poll(&far.runners[0]).await;
 
-    assert_eq!(leased(one), Some(first.id));
-    assert_eq!(leased(two), Some(second.id));
+    assert_eq!(leased(one), Some(near.id.clone()));
+    assert_eq!(leased(two), Some(far.id.clone()));
     scene.fixtures.cleanup().await;
 }
 
-/// Three fleets marked in turn are leased by three polls, the second of which
-/// is sent past the oldest entry left. Each fleet's runners serve only that
-/// fleet, so a poll sent to the wrong partition would lease nothing and spend
-/// the entry another fleet's poll needed.
+/// Three fleets marked in three partitions are leased by three polls in a
+/// row. Each fleet's runners serve only that fleet, so a poll that took the
+/// wrong ring would lease nothing and leave another fleet's ring clear.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_consecutive_polls_take_the_oldest_entries_in_turn() {
+async fn test_consecutive_polls_take_different_rung_partitions() {
     let scene = scene("spread").await;
     let mut avoid = vec![partition(0), partition(1), partition(2)];
     let first = scene.fleet(&avoid).await;
@@ -54,21 +59,12 @@ async fn test_consecutive_polls_take_the_oldest_entries_in_turn() {
     for fleet in [&first, &second, &third] {
         scene.send(fleet).await;
     }
-    assert_eq!(
-        scene.dirty().await,
-        [&first, &second, &third].map(|fleet| fleet.partition().index()),
-        "oldest mark first"
-    );
 
-    // The cursor stands at 0: the first poll takes the oldest of three and
-    // spends it. At 1 the second takes the second of the two left, which an
-    // oldest-only hint would never send it to.
-    let (one, _) = scene.poll(&first.runners[0]).await;
-    let (two, _) = scene.poll(&third.runners[0]).await;
-    let (three, _) = scene.poll(&second.runners[0]).await;
-
-    assert_eq!(leased(one), Some(first.id));
-    assert_eq!(leased(two), Some(third.id), "sent past the oldest entry");
-    assert_eq!(leased(three), Some(second.id));
+    // The cursors stand at 0, 1 and 2, all below every rung partition, so
+    // each poll takes the nearest ring the polls before it left.
+    for fleet in by_partition(&[&first, &second, &third]) {
+        let (polled, _) = scene.poll(&fleet.runners[0]).await;
+        assert_eq!(leased(polled), Some(fleet.id.clone()));
+    }
     scene.fixtures.cleanup().await;
 }

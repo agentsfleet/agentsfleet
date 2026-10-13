@@ -25,8 +25,8 @@ pub struct PollMeasurement {
     /// Statements this poll issued. Zero is the whole point of the empty
     /// path: see the ordering note at the top of `assign.rs`.
     pub database_roundtrips: u64,
-    /// Commands this poll sent Dragonfly. Two on an idle poll: the
-    /// directory read and the rotation's peek.
+    /// Commands this poll sent Dragonfly. One on an idle poll, the
+    /// rotation's peek, and two when the doorbell rang another partition.
     pub dragonfly_commands: u64,
 }
 

@@ -30,14 +30,14 @@ async fn test_an_undecodable_entry_counts_its_drop() {
         REQUEST_JSON,
     )
     .await;
-    scene.index.mark(&fleet.id).await.expect("mark");
+    scene.mark(&fleet).await;
 
     let (none, cost) = scene.poll(&fleet.runners[0]).await;
 
     assert!(none.is_none(), "the fleet's only entry cannot be leased");
     assert_eq!(
-        cost.dragonfly_commands, 7,
-        "read, rotation, hinted peek, takeover, new read, drop, spend: {cost:?}"
+        cost.dragonfly_commands, 5,
+        "rotation, rung peek, takeover, new read, drop: {cost:?}"
     );
     assert_eq!(
         cost.database_roundtrips, 2,
@@ -77,9 +77,9 @@ async fn test_a_restored_group_counts_its_type_check_and_create() {
     assert_eq!(leased.fleet_id.as_str(), fleet.id);
     assert!(!leased.redelivered, "a new read is not owed");
     assert_eq!(
-        cost.dragonfly_commands, 9,
-        "read, rotation, hinted peek, the takeover that found no group, type \
-         check, create, takeover, new read, spend: {cost:?}"
+        cost.dragonfly_commands, 7,
+        "rotation, rung peek, the takeover that found no group, type check, \
+         create, takeover, new read: {cost:?}"
     );
     scene.fixtures.cleanup().await;
 }

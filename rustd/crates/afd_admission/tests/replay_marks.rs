@@ -54,10 +54,8 @@ const HSET_TAKEN: &str = ":1\r\n";
 /// The write a readiness mark is.
 const CMD_HSET: &str = "HSET";
 
-/// What a mark that lands sends: the mark, then its readiness-directory
-/// entry. A refused mark sends the first alone, because the entry follows
-/// the mark and never leads it.
-const HSETS_PER_LANDED_MARK: usize = 2;
+/// The ring a mark that lands sends after it, and a refused one never does.
+const CMD_SPUBLISH: &str = "SPUBLISH";
 
 /// A stopped fleet and the rows above it, removed by [`Seeded::cleanup`].
 struct Seeded {
@@ -162,10 +160,18 @@ impl Seeded {
 
 /// How many readiness marks the fake was sent.
 fn marks(server: &FakeRedis) -> usize {
+    sent(server, CMD_HSET)
+}
+
+fn rings(server: &FakeRedis) -> usize {
+    sent(server, CMD_SPUBLISH)
+}
+
+fn sent(server: &FakeRedis, verb: &str) -> usize {
     server
         .seen()
         .iter()
-        .filter(|command| command.starts_with(CMD_HSET))
+        .filter(|command| command.starts_with(verb))
         .count()
 }
 
@@ -193,6 +199,7 @@ async fn a_resend_marks_the_fleet_its_first_call_could_not() {
     let first = fleet.admit(&admissions, &key).await;
     assert!(!first.replayed, "the first call inserts the row");
     assert_eq!(marks(&server), 1, "the first call tried to mark");
+    assert_eq!(rings(&server), 0, "a refused mark rings nothing");
 
     server.set_reply(CMD_HSET, Reply::Raw(HSET_TAKEN));
     let resent = fleet.admit(&admissions, &key).await;
@@ -201,10 +208,7 @@ async fn a_resend_marks_the_fleet_its_first_call_could_not() {
         resent.stored.id, first.stored.id,
         "the first call's id stands"
     );
-    assert_eq!(
-        marks(&server),
-        1 + HSETS_PER_LANDED_MARK,
-        "the replay marked the fleet again, and named its partition dirty"
-    );
+    assert_eq!(marks(&server), 2, "the replay marked the fleet again");
+    assert_eq!(rings(&server), 1, "and rang its partition once it landed");
     fleet.cleanup().await;
 }

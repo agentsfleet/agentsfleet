@@ -255,20 +255,15 @@ closed_set! {
 }
 
 closed_set! {
-    /// Which readiness-directory command failed or ran past its deadline.
+    /// Which part of the readiness doorbell failed.
     ///
-    /// Four, because each costs something different when it is lost: a
-    /// write leaves fresh work to the rotation, a read leaves one poll to the
-    /// rotation, a peek leaves the partition the directory named to the
-    /// rotation, and a delete leaves a stale entry one more poll will peek.
-    ReadyHint {
-        /// A mark's directory entry was not written.
-        Write => "write",
-        /// A poll could not read the directory.
-        Read => "read",
-        /// A poll could not peek the partition the directory named.
+    /// Two, because each costs something different when it is lost: a ring
+    /// leaves fresh work to the rotation on every replica, and a peek leaves
+    /// the partition one poll was sent to for the rotation to reach.
+    ReadyWake {
+        /// A mark's ring was not published.
+        Ring => "ring",
+        /// A poll could not peek the partition its doorbell rang.
         Peek => "peek",
-        /// A poll could not delete an entry it had spent.
-        Delete => "delete",
     }
 }

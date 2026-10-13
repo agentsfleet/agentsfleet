@@ -34,7 +34,7 @@ use core::time::Duration;
 use afd_observability::metrics::instrument::Instruments;
 use afd_observability::metrics::label::cost::{ChargeClass, ErrorType};
 use afd_observability::metrics::label::fleet::{
-    AdmissionOutcome, ReadyHint, ReplayOutcome, SignupFailure, SyntheticEvent, VerifierRun,
+    AdmissionOutcome, ReadyWake, ReplayOutcome, SignupFailure, SyntheticEvent, VerifierRun,
 };
 use afd_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
@@ -87,13 +87,8 @@ fn test_every_fleet_producer_runs_its_body() {
     producers::fleet::signup_replayed();
     producers::fleet::lease_polled(11, 2, 3);
     producers::fleet::ready_write_failed();
-    for hint in [
-        ReadyHint::Write,
-        ReadyHint::Read,
-        ReadyHint::Peek,
-        ReadyHint::Delete,
-    ] {
-        producers::fleet::ready_hint_failed(hint);
+    for wake in [ReadyWake::Ring, ReadyWake::Peek] {
+        producers::fleet::ready_wake_failed(wake);
     }
     producers::fleet::retention_swept(9);
     producers::fleet::retention_failed();

@@ -12,7 +12,7 @@ use afd_observability::producers;
 use futures_util::future::join_all;
 
 use super::diagnostics::warn_held_read;
-use super::hint::Offer;
+use super::wake::Offer;
 use super::{PollCost, peeked};
 use crate::error::Result;
 use crate::lease::envelope::Acquired;

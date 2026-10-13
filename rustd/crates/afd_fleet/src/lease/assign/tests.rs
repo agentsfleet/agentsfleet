@@ -1,6 +1,5 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
-use afd_observability::metrics::label::fleet::ReadyHint;
 
 use super::diagnostics;
 
@@ -17,7 +16,7 @@ fn runner_id() -> Result<Uuid7, &'static str> {
     .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
 }
 
-/// Every queue and hint reporter renders every Dragonfly failure kind without
+/// Every queue and wake reporter renders every Dragonfly failure kind without
 /// panicking.
 ///
 /// Thin, and deliberately so. These are `tracing::warn!` calls with no
@@ -31,7 +30,7 @@ fn runner_id() -> Result<Uuid7, &'static str> {
 /// second copy of every field expression, and a panic in the copy that does
 /// run would take down a path whose entire job is to report calmly.
 #[test]
-fn every_queue_and_hint_reporter_renders_every_redis_failure() -> Result<(), &'static str> {
+fn every_queue_and_wake_reporter_renders_every_redis_failure() -> Result<(), &'static str> {
     let runner = runner_id()?;
 
     for (label, error) in afd_dragonfly::error::one_of_each_kind() {
@@ -42,23 +41,16 @@ fn every_queue_and_hint_reporter_renders_every_redis_failure() -> Result<(), &'s
         super::diagnostics::warn_queue("lease_poll_queue_failed", &runner, &error);
         super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
         let partition = afd_dragonfly::Partition::new(3).ok_or("3 is a partition")?;
-        for (hint, named) in [
-            (ReadyHint::Write, Some(partition)),
-            (ReadyHint::Read, None),
-            (ReadyHint::Peek, Some(partition)),
-            (ReadyHint::Delete, Some(partition)),
-        ] {
-            diagnostics::warn_hint(hint, &runner, named, &error);
-        }
+        diagnostics::warn_rung_peek(&runner, partition, &error);
     }
     Ok(())
 }
 
-/// Each kind of hint failure logs under an event of its own, a write under the
-/// one a mark reports where it fails, so a swapped arm cannot pass unseen.
+/// A rung peek that fails logs under its own event, naming the partition the
+/// doorbell rang, so an operator can tell a sick partition from a sick poll.
 #[cfg(feature = "test-util")]
 #[test]
-fn each_hint_failure_logs_under_its_own_event() -> Result<(), &'static str> {
+fn a_failed_rung_peek_logs_its_event_and_partition() -> Result<(), &'static str> {
     use afd_core::test_util::trace::Capture;
 
     let runner = runner_id()?;
@@ -66,17 +58,14 @@ fn each_hint_failure_logs_under_its_own_event() -> Result<(), &'static str> {
         .into_iter()
         .next()
         .ok_or("one datastore failure")?;
-    // pin test: each event name is what an operator searches the log by.
-    for (hint, event) in [
-        (ReadyHint::Write, "ready_hint_write_failed"),
-        (ReadyHint::Read, "assign_ready_hint_read_failed"),
-        (ReadyHint::Peek, "assign_ready_hint_peek_failed"),
-        (ReadyHint::Delete, "assign_ready_hint_delete_failed"),
-    ] {
-        let log = Capture::install();
-        diagnostics::warn_hint(hint, &runner, None, &error);
-        let _logged = log.only(event);
-    }
+    let partition = afd_dragonfly::Partition::new(3).ok_or("3 is a partition")?;
+    let log = Capture::install();
+
+    diagnostics::warn_rung_peek(&runner, partition, &error);
+
+    // pin test: the event name is what an operator searches the log by.
+    let logged = log.only("assign_ready_wake_peek_failed");
+    assert_eq!(logged.field("partition"), Some("3"));
     Ok(())
 }
 
