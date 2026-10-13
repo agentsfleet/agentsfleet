@@ -73,11 +73,15 @@ export default function MakeDefaultDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Make this the platform default</DialogTitle>
-          <DialogDescription>
+          {/* A div, not the paragraph Radix renders by default: the provider
+              badge is a block element, and a div inside a p is invalid. */}
+          <DialogDescription asChild>
+            <div>
             Every fleet runs <ProviderBadge provider={model.provider} />{" "}
             <span className="font-mono">{model.model_id}</span> when a user hasn&apos;t brought their own key,
             billed at its catalogue rate. Enter the provider API key — it&apos;s stored in your vault and
             never shown again.
+            </div>
           </DialogDescription>
         </DialogHeader>
 

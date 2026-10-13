@@ -21,6 +21,7 @@ import {
   formatRatesPerMtok,
 } from "@/lib/models/display";
 import { ModelName, ProviderBadge } from "@/components/domain/ModelCells";
+import { providerLabel } from "@/lib/api/model-library-types";
 import { presentErrorString } from "@/lib/errors";
 import {
   default as EditModelDialogDynamic,
@@ -39,6 +40,7 @@ function isDefault(m: AdminModel, active: PlatformKey | null): boolean {
 function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey | null }) {
   return (
     <ModelName
+      trimmed
       modelId={model.model_id}
       trailing={isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
     />
@@ -117,7 +119,13 @@ function buildColumns({
   onDelete: (m: AdminModel) => void;
 }): DataTableColumn<AdminModel>[] {
   return [
-    { key: "provider", header: "Provider", sortValue: (m) => m.provider, cell: (m) => <ProviderBadge provider={m.provider} /> },
+    {
+      key: "provider",
+      header: "Provider",
+      // By the name the badge shows, so the column reads in order.
+      sortValue: (m) => (m.provider ? providerLabel(m.provider) : ""),
+      cell: (m) => <ProviderBadge provider={m.provider} />,
+    },
     {
       key: "model",
       header: "Model",
@@ -210,14 +218,15 @@ export default function CatalogueList({
   });
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    // Ends at its rows, as the Fleet library tables do: nothing here grows the
+    // table, and `min-h-0` lets a library longer than the screen shrink so the
+    // DataTable's own viewport scrolls its rows with the pagination bar in view.
+    <div className="flex min-h-0 flex-col">
       <DataTable
-        className="flex min-h-0 flex-1 flex-col"
         columns={columns}
         rows={models}
         rowKey={(m) => m.id}
         caption="Model library"
-        viewportClassName="min-h-0 flex-1 max-h-none"
         empty={
           <EmptyState
             icon={<CoinsIcon size={28} />}
