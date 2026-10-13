@@ -13,6 +13,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
+use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
 use afd_dragonfly::ready::{Partition, READY_PARTITIONS, ReadyIndex, ReadyPrefix};
@@ -36,6 +37,10 @@ const COLD_FLEETS: u16 = 3;
 
 /// The tag every hot fleet requires and the runner does not carry.
 const HOT_TAG: &str = "fixture:nobody-carries-this";
+
+/// How long apart two marks are written: tokens order by their mint
+/// millisecond, so two marks in one millisecond order at random.
+const MARK_GAP: Duration = Duration::from_millis(2);
 
 /// The `nth` distinct fleet id derived from `base` that lands in `partition`.
 ///
@@ -175,7 +180,8 @@ async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
 /// A private index, so this run's directory holds only its own two entries,
 /// and a fresh store, so the cursor's first partition is 0. The hinted fleet
 /// is marked first, so its entry is the oldest and the first poll is sent to
-/// it while the cursor names the other fleet's partition.
+/// it while the cursor names the other fleet's partition. It is also sticky
+/// to the runner, so only the cursor-first ordering puts the other ahead.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_cursor_partition_leases_before_the_hint() {
@@ -218,6 +224,7 @@ async fn test_the_cursor_partition_leases_before_the_hint() {
             .mark(fleet)
             .await
             .expect("the private index takes a mark");
+        tokio::time::sleep(MARK_GAP).await;
     }
     let runner = fixtures
         .runners()
@@ -225,6 +232,15 @@ async fn test_the_cursor_partition_leases_before_the_hint() {
         .await
         .expect("enrolment must succeed")
         .runner_id;
+    fixtures
+        .make_sticky(&hinted, runner.as_str(), ENROLLED_AT)
+        .await;
+    let before = index.dirty().await.expect("the directory is readable");
+    assert_eq!(
+        before.first().map(|entry| entry.partition.index()),
+        Some(5),
+        "the hinted mark is the oldest: {before:?}"
+    );
     let store = fixtures.leases().with_ready_prefix(prefix);
     let now = UnixMillis::from_millis(ENROLLED_AT);
 

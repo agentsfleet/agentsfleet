@@ -1,6 +1,8 @@
 //! The scene every readiness-directory test polls: a private index, a store
 //! over it with a fresh cursor, and fleets seeded into chosen partitions.
 
+use std::time::Duration;
+
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::{Partition, ReadyIndex, ReadyPrefix};
@@ -14,6 +16,10 @@ use crate::support::Fixtures;
 
 /// How many fleets a test may seed looking for one outside a partition set.
 const SEED_ATTEMPTS: usize = 64;
+
+/// How long apart two sends write their marks: tokens order by their mint
+/// millisecond, so two marks in one millisecond would order at random.
+const MARK_GAP: Duration = Duration::from_millis(2);
 
 /// One seeded fleet: its id, its workspace and its two runners.
 pub(super) struct Fleet {
@@ -91,6 +97,7 @@ impl Scene {
             .mark(&fleet.id)
             .await
             .expect("the private index takes a mark");
+        tokio::time::sleep(MARK_GAP).await;
     }
 
     /// One poll by `runner`, and what it cost.

@@ -12,7 +12,7 @@ use afd_crypto::entropy::Entropy;
 use afd_dragonfly::ready::READY_PARTITIONS;
 use afd_dragonfly::{Dirty, Partition, Ready, ReadyToken};
 
-use super::{Hint, MAX_READY_CANDIDATES_PER_POLL, PollCost, cursor_first, keeps_entry, spread};
+use super::{MAX_READY_CANDIDATES_PER_POLL, cursor_first, keeps_entry, spread};
 
 /// The instant every fixture token is minted at.
 const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
@@ -198,6 +198,7 @@ async fn test_a_refused_spend_is_logged_and_counted() {
     use afd_core::test_util::trace::Capture;
 
     use super::super::diagnostics::EVENT_HINT_DELETE_FAILED;
+    use super::{Hint, PollCost};
     use crate::lease::test_dead::{id, leases};
 
     let log = Capture::install();
