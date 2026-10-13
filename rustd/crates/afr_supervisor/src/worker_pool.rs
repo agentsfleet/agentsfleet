@@ -109,8 +109,17 @@ impl Worker {
         tracing::info!(worker, event);
     }
 
-    /// Polls, runs, and pauses between, until leasing stops.
+    /// Polls, runs, and pauses between, until leasing stops. The first poll
+    /// waits this worker's share of the idle interval, so a pool started at
+    /// once spreads its polls over the interval instead of landing them
+    /// together: with four workers on a one-second hint, fresh work waits a
+    /// quarter second at most for the next poll rather than the whole second.
     async fn serve(&mut self, leasing: &CancellationToken) {
+        let offset = first_poll_offset(self.number, self.assignment.borrow().workers);
+        tokio::select! {
+            () = leasing.cancelled() => return,
+            () = tokio::time::sleep(offset) => {}
+        }
         while let Some(pause) = self.next().await {
             tokio::select! {
                 () = leasing.cancelled() => break,
@@ -168,6 +177,16 @@ impl Worker {
         );
         self.failures.next().unwrap_or(MIN_POLL_PAUSE)
     }
+}
+
+/// How long worker `number` of `workers` waits before its first poll: its
+/// share of the idle interval, `number × interval / workers`, so the pool's
+/// polls are spread evenly over it. A worker numbered past the count takes
+/// the share of its place in the rotation.
+pub(crate) fn first_poll_offset(number: u32, workers: u32) -> Duration {
+    let workers = u64::from(workers.max(1));
+    let place = u64::from(number) % workers;
+    Duration::from_millis(u64::from(NO_WORK_RETRY_AFTER_MS) * place / workers)
 }
 
 #[cfg(test)]

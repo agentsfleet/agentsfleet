@@ -63,11 +63,18 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_core/src/timing.rs` | EDIT | `READY_HINT_DEADLINE_MS` beside the other lease constants; the worker poll offset derives from `NO_WORK_RETRY_AFTER_MS` |
 | `rustd/crates/afd_fleet/src/lease/affinity_tests.rs` | EDIT | the next-poll, two-fleet, busy-partition, oldest-first, deadline and cost proofs |
 | `rustd/crates/afd_fleet/src/lease/answer.rs` | EDIT | `queue_wait_ms` on `runner_lease_issued`, measured on the daemon clock |
-| `rustd/crates/afr_supervisor/src/lease_loop.rs` | EDIT | segment durations on `lease_completed` and `lease_failed`, at boundaries that do not overlap |
-| `rustd/crates/afr_supervisor/src/lease_telemetry_tests.rs` | EDIT | the segment-field proof on both terminal lines |
+| `rustd/crates/afr_supervisor/src/lease_loop.rs` | EDIT | the lease's wall clock and timeline; bundle and memory timed; the terminal line moved into `segments.rs` |
+| `rustd/crates/afr_supervisor/src/lease_loop/segments.rs` | NEW | the timeline, the stopwatch that records on drop, and `lease_completed` / `lease_failed` with the segment fields |
+| `rustd/crates/afr_supervisor/src/lease_loop/segments_tests.rs` | NEW | the segment-field proofs on both terminal lines (`lease_telemetry_tests.rs` is already past the length cap on main) |
+| `rustd/crates/afr_supervisor/src/lease_loop/drive.rs` | EDIT | the run clock starts at the first model call; model and tool time read off it |
+| `rustd/crates/afr_supervisor/src/lease_loop/workspace.rs` | EDIT | the sandbox segment, stopped after landing so every refusal exit records it |
+| `rustd/crates/afr_supervisor/src/lease_loop/settle.rs` | EDIT | reads the lease's own start; the report body's `wall_ms` is unchanged |
 | `rustd/crates/afr_supervisor/src/activity.rs` | EDIT | the first frame of a lease, and the first answer chunk, post without waiting for `FLUSH_EVERY` |
-| `rustd/crates/afr_supervisor/src/activity/tests.rs` | EDIT | first-frame, ordering, stalled-poster and drop-count proofs |
+| `rustd/crates/afr_supervisor/src/activity/timing.rs` | NEW | the run clock: first answer chunk and tool time, read off the frames the sink already sees |
+| `rustd/crates/afr_supervisor/src/activity/tests.rs` | EDIT | two batching proofs updated for the early flush |
+| `rustd/crates/afr_supervisor/src/activity/early_tests.rs` | NEW | first-frame, ordering, drop-count and run-clock proofs |
 | `rustd/crates/afr_supervisor/src/worker_pool.rs` | EDIT | workers offset their first poll by a share of the idle interval |
+| `rustd/crates/afr_supervisor/src/worker_pool/tests.rs` | EDIT | the stagger proof on a paused clock |
 | `docs/architecture/runner_fleet.md` | EDIT | the directory in the datastore table |
 | `docs/architecture/lease_flow.md` | EDIT | the poll step reads the directory first and keeps the rotation peek |
 | `docs/architecture/scaling.md` | EDIT | idle poll cost restated as two Dragonfly reads plus the one Postgres authentication read line 19 already names, at the three places that say one Dragonfly command: §Per-request volume (the `HRANDFIELD` row), §Measured ceilings (the `1.00 Dragonfly command` row) and anti-pattern 7 |
@@ -85,6 +92,12 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/page.tsx` | EDIT | the section stops stretching the table to the viewport |
 | `ui/packages/app/lib/api/model-library-types.ts` | EDIT | every provider the picker lists gets a display name; an unknown slug is title-cased instead of shown raw |
 | `ui/packages/app/lib/api/model_library.test.ts` | EDIT | the label table and the fallback |
+| `ui/packages/app/components/domain/ModelCells.tsx` | NEW | one provider badge and one model cell, shared by the workspace Models table and the admin Model library table |
+| `ui/packages/app/components/domain/ModelCells.test.tsx` | NEW | the shared cells: vendor label, unknown slug, the platform-managed lock, the copy button |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryCells.tsx` | EDIT | provider and model cells delegate to the shared ones |
+| `ui/packages/app/app/(dashboard)/admin/models/components/CatalogueList.tsx` | EDIT | the raw-slug badge and the local model cell give way to the shared ones |
+| `ui/packages/app/tests/e2e/acceptance/logs-detail.spec.ts` | EDIT | the acceptance journey follows the event dialog PR #748 shipped: the identifier left the heading for the footer's copy button |
+| `ui/packages/app/tests/event-details-dialog.test.tsx` | EDIT | pins what the journey asserts at unit level, so the two fail together |
 
 ## Applicable Rules
 
@@ -119,22 +132,22 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.3** — A mark written between a poll's directory read and its delete survives: the mark rewrote the token, and the compare-and-delete sees a different one → Test `test_mark_racing_a_clear_survives`
 - **Dimension 1.4** — A lost directory entry costs only latency: the rotation peek, made on every poll, visits the fleet's partition within one full turn of this daemon's cursor → Test `test_lost_dirty_bit_falls_back_to_rotation`
 - **Dimension 1.5** — Two fleets marked in different partitions are both leased within one poll interval by two different workers: the directory holds both partitions, and a poll that takes one leaves the other's entry for the next poll → Test `test_two_marked_fleets_lease_within_one_interval`
-- **Dimension 1.6** — A partition whose only marked fleet is mid-run stays dirty and never clears, and a fleet marked in another partition with its directory write lost is still leased within one rotation, because the rotation peek runs on every poll → Test `test_busy_dirty_partition_does_not_starve_rotation`
+- **Dimension 1.6** — A directory entry whose partition gave this poll no lease is deleted under its token, unless the lease came from that partition and its peek held other fleets: a partition whose only marked fleet is mid-run loses its entry after one dry poll, the next mark there restores it, and a fleet marked in another partition is reached by the hint or, with its directory write lost, by the rotation peek every poll makes → Test `test_busy_dirty_partition_does_not_starve_rotation`
 - **Dimension 1.7** — With several dirty entries the poll peeks the oldest token first, so two partitions dirtied in turn are served in that order → Test `test_dirty_partitions_served_oldest_first`
 - **Dimension 1.8** — A directory command that exceeds `READY_HINT_DEADLINE_MS` costs the poll that deadline and no more, counts once, and the poll makes the rotation peek alone; an admission whose directory write timed out still succeeds → Test `test_hint_deadline_falls_through`
 
 ### §2 — Every terminal lease line logs its segments
 
-- **Dimension 2.1** — `lease_completed` and `lease_failed` carry `bundle_ms`, `memory_ms`, `sandbox_ms`, `model_ms`, `tools_ms`, `report_ms` and `first_token_ms`. The six durations have boundaries that do not overlap: bundle fetch; memory hydrate; sandbox take-or-prepare and land; model calls; tool calls; hold-or-destroy, memory push, report spool and report post. `first_token_ms` is the first answer chunk measured from the first model call, inside `model_ms`, never from the sink's birth (today's sink starts before hydrate, so its first-chunk duration includes setup). The six sum within 5 ms of a wall time taken when the terminal line is logged, after the report post; the report body's own `wall_ms`, captured before the post, is unchanged → Test `test_lease_completed_logs_its_segments`
-- **Dimension 2.2** — A lease that fails before a segment starts logs that segment as absent, not zero, on `lease_failed` → Test `test_unstarted_segment_is_absent`
+- **Dimension 2.1** — DONE — `lease_completed` and `lease_failed` carry `bundle_ms`, `memory_ms`, `sandbox_ms`, `model_ms`, `tools_ms`, `report_ms` and `first_token_ms`. The six durations have boundaries that do not overlap: bundle fetch; memory hydrate; sandbox take-or-prepare and land; model calls; tool calls; hold-or-destroy, memory push, report spool and report post. `first_token_ms` is the first answer chunk measured from the first model call, inside `model_ms`, never from the sink's birth (today's sink starts before hydrate, so its first-chunk duration includes setup). The six sum within 5 ms of the `wall_ms` the terminal line itself carries, taken when it is logged, after the report post; `tools_ms` is present and zero for a run that called no tool; the report body's own `wall_ms`, captured before the post, is unchanged → Test `test_lease_completed_logs_its_segments`
+- **Dimension 2.2** — DONE — A lease that fails before a segment starts logs that segment as absent, not zero, on `lease_failed` → Test `test_unstarted_segment_is_absent`
 - **Dimension 2.3** — `runner_lease_issued` on the daemon carries `queue_wait_ms`, the admission's `created_at` to the issue instant, both read on the daemon's clock. The runner never computes it: the event's `created_at` is stamped on Fly's clock and the runner host keeps its own, so a runner-side subtraction would carry the clock skew between the two → Test `test_runner_lease_issued_logs_queue_wait`
 
 ### §3 — The runner neither waits a timer nor polls in lockstep
 
-- **Dimension 3.1** — The first activity frame of a lease is handed to the poster at once, once per lease, through the same bounded queue with the same held accounting; later frames batch as today. If every poster slot is held the frame waits in the batch and never on the emitting path → Test `test_first_frame_posts_without_waiting`
-- **Dimension 3.2** — The first answer chunk also flushes, carrying any buffered earlier frames ahead of it, so order holds and the first visible token does not wait for `FLUSH_EVERY` → Test `test_first_answer_chunk_flushes_in_order`
-- **Dimension 3.3** — Drop and abandonment counts are exact with the early flush: a stalled poster plus a full queue drops exactly the batches it dropped before → Test `test_early_flush_keeps_drop_accounting`
-- **Dimension 3.4** — Worker `n` of `N` makes its first idle poll after `n × NO_WORK_RETRY_AFTER_MS / N`, so four workers on a 1 s hint poll about 250 ms apart and the median wait for a fresh mark is about 125 ms rather than 500 ms → Test `test_workers_stagger_first_poll`
+- **Dimension 3.1** — DONE — The first activity frame of a lease is handed to the poster at once, once per lease, through the same bounded queue with the same held accounting; later frames batch as today. If every poster slot is held the frame waits in the batch and never on the emitting path → Test `test_first_frame_posts_without_waiting`
+- **Dimension 3.2** — DONE — The first answer chunk also flushes, carrying any buffered earlier frames ahead of it, so order holds and the first visible token does not wait for `FLUSH_EVERY` → Test `test_first_answer_chunk_flushes_in_order`
+- **Dimension 3.3** — DONE — Drop and abandonment counts are exact with the early flush: a stalled poster plus a full queue drops exactly the batches it dropped before → Test `test_early_flush_keeps_drop_accounting`
+- **Dimension 3.4** — DONE — Worker `n` of `N` makes its first idle poll after `n × NO_WORK_RETRY_AFTER_MS / N`, so four workers on a 1 s hint poll about 250 ms apart and the median wait for a fresh mark is about 125 ms rather than 500 ms → Test `test_workers_stagger_first_poll`
 
 ### §4 — Measured on dev
 
@@ -145,7 +158,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 ```
 runner_lease_issued  lease_id=… fleet_id=… event_id=… queue_wait_ms=…      (daemon, one clock)
-lease_completed      lease_id=… bundle_ms=… memory_ms=… sandbox_ms=… model_ms=… tools_ms=… report_ms=… first_token_ms=…   (runner)
+lease_completed      lease_id=… wall_ms=… bundle_ms=… memory_ms=… sandbox_ms=… model_ms=… tools_ms=… report_ms=… first_token_ms=…   (runner)
 lease_failed         lease_id=… the same fields, absent where the segment never started                               (runner)
 Dragonfly: fleet:ready:{p} (unchanged) + one directory hash, partition → token, named in runner_fleet.md
 Wire: LeaseResponse unchanged; retry_after_ms unchanged (1,000); the activity POST unchanged
@@ -160,7 +173,7 @@ Constants: READY_HINT_DEADLINE_MS (afd_core timing.rs); worker offset = n × NO_
 | Directory read fails or times out | Dragonfly error, or the deadline passes, on the poll | counted; the poll makes the rotation peek alone and took at most the deadline longer |
 | Mark races a delete | admission marks while a poll deletes | the token differs; the entry stays |
 | Stale entry | the fleet was drained by another runner | the peek finds nothing; compare-and-delete removes the entry |
-| Busy partition stays dirty | its marked fleets are mid-run | the rotation peek on every poll keeps the other partitions served; the entry goes when the partition empties |
+| Busy partition | its marked fleets are mid-run, or not this runner's labels | the entry is deleted after one poll that could not lease from it; the next mark there restores it; a label-restricted fleet whose entry another runner deleted is found by the rotation, today's speed |
 | A partition holds more marks than one peek samples | thousands ready in one partition | the fleet is leased within a few visits; the hint shortens the wait to the visit, not to one sample |
 
 ## Invariants
@@ -188,14 +201,14 @@ Constants: READY_HINT_DEADLINE_MS (afd_core timing.rs); worker offset = n × NO_
 | 1.3 | integration | `test_mark_racing_a_clear_survives` | delete with the stale token after a new mark → the entry remains with the new token |
 | 1.4 | integration | `test_lost_dirty_bit_falls_back_to_rotation` | mark with the directory write failed → leased within 16 polls |
 | 1.5 | integration | `test_two_marked_fleets_lease_within_one_interval` | fleets in partitions 3 and 11 both marked, two consumers poll once each → each leases a different fleet |
-| 1.6 | integration | `test_busy_dirty_partition_does_not_starve_rotation` | partition 5 dirty with its only fleet leased and running; a fleet in partition 12 marked with its directory write failed → leased within 16 polls while 5 stays dirty |
+| 1.6 | integration | `test_busy_dirty_partition_does_not_starve_rotation` | fleet A leased and running; A re-marked → one dry poll deletes A's entry; fleet B then marked in another partition → leased on the next poll |
 | 1.7 | integration | `test_dirty_partitions_served_oldest_first` | partitions 2 then 7 dirtied → the next poll peeks 2 first |
 | 1.8 | integration | `test_hint_deadline_falls_through` | a directory read that never answers → the poll returns the rotation's result after `READY_HINT_DEADLINE_MS`, counter +1; a directory write that never answers → the admission returns success and the mark is in the partition hash |
 | 2.1 | unit | `test_lease_completed_logs_its_segments` | a fake daemon lease → seven fields present; the six durations sum within 5 ms of the wall time at the log line |
-| 2.2 | unit | `test_unstarted_segment_is_absent` | a refusal before sandbox start → `lease_failed` with `sandbox_ms` absent and `bundle_ms` present |
+| 2.2 | unit | `test_unstarted_segment_is_absent` | a lease with no bundle whose memory hydrate is refused → `lease_failed` with `memory_ms` and `report_ms` present; `bundle_ms`, `sandbox_ms`, `model_ms`, `tools_ms` and `first_token_ms` absent |
 | 2.3 | integration | `test_runner_lease_issued_logs_queue_wait` | an admission created at T, leased at T+350 ms on a paused test clock → `queue_wait_ms=350` |
 | 3.1 | unit | `test_first_frame_posts_without_waiting` | one frame emitted, no tick → the poster receives it; a second frame → stays batched until the tick |
-| 3.2 | unit | `test_first_answer_chunk_flushes_in_order` | a tool frame then an answer chunk inside one period → one batch, tool frame first |
+| 3.2 | unit | `test_first_answer_chunk_flushes_in_order` | a start frame, then a progress frame, a tool completion and the first answer chunk inside one period → two posts, `[start]` then `[progress, completion, chunk]`, in emission order |
 | 3.3 | unit | `test_early_flush_keeps_drop_accounting` | poster stalled, four full batches → exactly the batches over the cap are dropped and counted; held returns to zero on drain |
 | 3.4 | unit | `test_workers_stagger_first_poll` | four workers, 1,000 ms hint, paused clock → first polls at 0, 250, 500, 750 ms |
 | 4.1 | manual | `test_dev_pickup_p50_under_250ms` | ten steers → p50 ≤250 ms, max ≤1,000 ms; `flyctl logs` lines pasted |
@@ -267,6 +280,10 @@ N/A — no files deleted.
   > Indy (2026-10-12): "prior to chore(open) in the fix/egress-refusal-tells-the-model-to-stop changes must be in your new worktree from main, since merged a PR in main. If you have cherrypicked then prune fix/egress-refusal-tells-the-model-to-stop" — context: the worktree and the branch prune.
   > Indy (2026-10-12): "along with this change cna you make both the `Fleet Library` table adhere to the table like [the Models table]" — context: both Fleet library tables stop filling the viewport.
   > Indy (2026-10-12): "Can this be capitalized or so? it doesnt look good." — context: the provider picker in Create model showed raw slugs (`fireworks`, `openrouter`, `atlas-cloud`) beside `Anthropic`.
+- **Decisions during EXECUTE (Oct 12, 2026)** — (1) Building §1 showed the reviewed rule still starved the hint: a leased fleet keeps its mark while it runs, so its partition stays dirty, and oldest-first kept choosing it while a new steer elsewhere waited for the rotation. Dimension 1.6 now deletes an entry after a poll that could not lease from it.
+  > Indy (2026-10-12): "Delete after a dry poll (Recommended)" — context: asked whether a busy directory entry is deleted after one poll that could not lease from it, at the cost of a label-restricted fleet falling back to the rotation.
+  (2) §4 needs this branch on dev, and dev deploys only from `main` (`.github/workflows/deploy-dev.yml` `on: push: branches: main`). §4 stays IN_PROGRESS through the Pull Request and runs after the merge deploys.
+  > Indy (2026-10-12): "Defer §4 to after merge (Recommended)" — context: the ten dev steers and the two-workspace check wait for the merge's dev deploy.
 - **Open for Indy** — (a) Does M225 also point dev's runner at a collector, or do the segment fields stay journal-only until the "runner collector built later" note in `docs/architecture/observability.md` lands? (b) Does the refused-write retry cap (make `request_policy_not_allowed` and `secret_not_found` terminal for a request shape, cap identical refusals per lease) fold into M225 or get its own spec?
 - **Skill-chain outcomes** — pending.
-- **Deferrals** — none.
+- **Deferrals** — §4 (Dimensions 4.1, 4.2) to after the merge, quoted above.

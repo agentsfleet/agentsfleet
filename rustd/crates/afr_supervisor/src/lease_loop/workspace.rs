@@ -16,6 +16,7 @@ use afr_telemetry::labels::SandboxStart;
 use afr_telemetry::record;
 
 use super::hold::{Kept, Worked, mark_reused};
+use super::segments::{Segment, Stopwatch};
 use super::{DETAIL_RENEWAL, LeaseRun, failed};
 use crate::activity::ActivitySink;
 use crate::bundles::Bundle;
@@ -55,6 +56,8 @@ impl LeaseRun<'_> {
         bundle: Option<&Bundle>,
         sink: ActivitySink,
     ) -> Worked {
+        // Timed from here to the landed workspace, whichever way it ends.
+        let setup = self.timeline.start(Segment::Sandbox);
         let limits = match sized(self.lease.limits, self.lessee.limits) {
             Ok(limits) => limits,
             Err(failure) => {
@@ -89,7 +92,7 @@ impl LeaseRun<'_> {
         };
         let ending = match checked_out {
             Ok(()) => {
-                self.in_sandbox(memory, bundle, sandbox.as_ref(), sink)
+                self.in_sandbox(memory, bundle, sandbox.as_ref(), sink, setup)
                     .await
             }
             Err(refused) => *refused,
@@ -174,6 +177,7 @@ impl LeaseRun<'_> {
         bundle: Option<&Bundle>,
         sandbox: &dyn Sandbox,
         sink: ActivitySink,
+        setup: Stopwatch<'_>,
     ) -> Ending {
         let landed = tokio::select! {
             landed = materialize(sandbox.executor(), bundle) => landed,
@@ -184,6 +188,7 @@ impl LeaseRun<'_> {
         if let Err(failure) = landed {
             return self.refuse(&failure, EVENT_LANDING_FAILED, DETAIL_LANDING);
         }
+        setup.stop();
         self.drive(memory, Some(sandbox.executor()), sink).await
     }
 }

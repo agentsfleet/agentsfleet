@@ -59,12 +59,15 @@ impl LeaseRun<'_> {
             self.interrupt.cancelled().await;
             tokio::time::sleep(ENGINE_STOP_GRACE).await;
         };
+        sink.run_started();
         let output = tokio::select! {
             biased;
             output = run => Some(output),
             () = abandoned => None,
         };
-        let first_chunk = sink.first_chunk();
+        let timing = sink.timing();
+        let first_chunk = timing.first_chunk;
+        self.timeline.ran(timing);
         drop(sink);
         match output {
             Some(Ok(Ok(output))) => Ending::Ran {
