@@ -52,10 +52,7 @@ use futures_util::future::join;
 
 use afd_observability::metrics::label::fleet::ReadyHint;
 
-use super::diagnostics::{
-    EVENT_HINT_DELETE_FAILED, EVENT_HINT_PEEK_FAILED, EVENT_HINT_READ_FAILED,
-    EVENT_READY_PEEK_FAILED, warn_hint, warn_queue,
-};
+use super::diagnostics::{EVENT_READY_PEEK_FAILED, warn_hint, warn_queue};
 use super::{MAX_READY_CANDIDATES_PER_POLL, PollCost};
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
@@ -74,14 +71,14 @@ pub(super) struct Offer {
     /// Every fleet the two peeks found, the cursor's partition's first.
     pub(super) ready: Vec<Ready>,
     /// How many of `ready`, from the front, came from the cursor's partition.
-    pub(super) cursor: usize,
+    pub(super) from_cursor: usize,
 }
 
 impl Offer {
     /// An offer from one partition, which the cursor named.
     fn cursor_only(ready: Vec<Ready>) -> Self {
-        let cursor = ready.len();
-        Self { ready, cursor }
+        let from_cursor = ready.len();
+        Self { ready, from_cursor }
     }
 }
 
@@ -119,13 +116,7 @@ impl Leases {
             rotation.inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error));
         let sent_to = directory
             .inspect_err(|error| {
-                warn_hint(
-                    EVENT_HINT_READ_FAILED,
-                    ReadyHint::Read,
-                    runner_id,
-                    None,
-                    error,
-                );
+                warn_hint(ReadyHint::Read, runner_id, None, error);
             })
             .ok()
             .and_then(|dirty| spread(dirty, partition));
@@ -144,13 +135,7 @@ impl Leases {
             .await
             .inspect_err(|error| {
                 let named = Some(dirty.partition);
-                warn_hint(
-                    EVENT_HINT_PEEK_FAILED,
-                    ReadyHint::Peek,
-                    runner_id,
-                    named,
-                    error,
-                );
+                warn_hint(ReadyHint::Peek, runner_id, named, error);
             });
         let found = hinted.as_ref().ok().map(Vec::len);
         let offer = match (hinted, rotation) {
@@ -158,7 +143,7 @@ impl Leases {
             // The rotation's partition is sick; the directory's still serves.
             (Ok(hinted), Err(_)) => Ok(Offer {
                 ready: hinted,
-                cursor: 0,
+                from_cursor: 0,
             }),
             (Err(_), Ok(rotation)) => Ok(Offer::cursor_only(rotation)),
             (Err(_), Err(error)) => Err(error.into()),
@@ -187,13 +172,7 @@ impl Leases {
         cost.dragonfly_commands += 1;
         if let Err(error) = self.ready().spend(&hint.dirty).await {
             let named = Some(hint.dirty.partition);
-            warn_hint(
-                EVENT_HINT_DELETE_FAILED,
-                ReadyHint::Delete,
-                runner_id,
-                named,
-                &error,
-            );
+            warn_hint(ReadyHint::Delete, runner_id, named, &error);
         }
     }
 }
@@ -239,9 +218,9 @@ fn spread(dirty: Vec<Dirty>, position: Partition) -> Option<Dirty> {
 /// No fleet appears twice: the two come from different partitions, and a
 /// fleet lives in one.
 fn cursor_first(rotation: Vec<Ready>, hinted: Vec<Ready>) -> Offer {
-    let cursor = rotation.len();
+    let from_cursor = rotation.len();
     let ready = rotation.into_iter().chain(hinted).collect();
-    Offer { ready, cursor }
+    Offer { ready, from_cursor }
 }
 
 #[cfg(test)]
