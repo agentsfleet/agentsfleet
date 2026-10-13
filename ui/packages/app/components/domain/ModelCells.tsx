@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Badge, CopyButton } from "@agentsfleet/design-system";
+import { Badge, CopyButton, cn } from "@agentsfleet/design-system";
 import { LockIcon } from "lucide-react";
 import { providerLabel } from "@/lib/api/model-library-types";
 import { modelIdCopyLabel, modelLabel } from "@/lib/models/display";
@@ -18,21 +18,29 @@ export const PLATFORM_MANAGED_LABEL = "Managed by a platform admin";
 const PROVIDER_UNKNOWN = "Unknown";
 const LOCK_ICON_SIZE = 12;
 
-/** The vendor's own spelling of a provider id, in the badge both tables share. */
+/** Muted text: a value that is absent or that this viewer cannot change. */
+const MUTED = "text-muted-foreground";
+
+/**
+ * The vendor's own spelling of a provider id, in the badge both tables share.
+ * A row with no provider reads as plain muted text, so an absent value never
+ * looks like a vendor named Unknown.
+ */
 export function ProviderBadge({ provider }: { provider: string | undefined }) {
+  if (!provider) return <span className={MUTED}>{PROVIDER_UNKNOWN}</span>;
   // The badge primitive uppercases by default, which is right for a status
   // and wrong for a name: "ATLAS-CLOUD" reads as a slug, "Atlas Cloud" reads
   // as a vendor. Same override the approvals and lease filter badges carry.
   return (
     <Badge variant="cyan" className="normal-case">
-      {provider ? providerLabel(provider) : PROVIDER_UNKNOWN}
+      {providerLabel(provider)}
     </Badge>
   );
 }
 
 /** The lock a platform-managed model carries; the label is its whole meaning. */
 export function PlatformManagedMark() {
-  return <LockIcon size={LOCK_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-label={PLATFORM_MANAGED_LABEL} />;
+  return <LockIcon size={LOCK_ICON_SIZE} className={cn("shrink-0", MUTED)} aria-label={PLATFORM_MANAGED_LABEL} />;
 }
 
 /**
@@ -55,7 +63,12 @@ export function ModelName({
     <span className="flex min-w-0 items-center gap-2">
       {managedByPlatform ? <PlatformManagedMark /> : null}
       <span className="flex min-w-0 items-center gap-1">
-        <span className="block min-w-0 truncate sm:min-w-trim sm:max-w-trim" title={modelId}>
+        {/* A row a tenant admin cannot edit reads muted, as it did before
+            the two tables shared this cell. */}
+        <span
+          className={cn("block min-w-0 truncate sm:min-w-trim sm:max-w-trim", managedByPlatform && MUTED)}
+          title={modelId}
+        >
           {modelLabel(modelId)}
         </span>
         <CopyButton value={modelId} label={modelIdCopyLabel(modelId)} />

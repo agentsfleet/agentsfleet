@@ -106,8 +106,27 @@ describe("providerLabel", () => {
     expect(providerLabel("atlas-cloud")).toBe("Atlas Cloud");
   });
 
+  it("spells the registry's providers the way each vendor does, where title case would not", () => {
+    // pin test: literal is the contract — each is a vendor's own casing.
+    expect(providerLabel("xai")).toBe("xAI");
+    expect(providerLabel("deepseek")).toBe("DeepSeek");
+    expect(providerLabel("huggingface")).toBe("Hugging Face");
+    expect(providerLabel("minimax")).toBe("MiniMax");
+    expect(providerLabel("nvidia")).toBe("NVIDIA");
+    expect(providerLabel("siliconflow")).toBe("SiliconFlow");
+    expect(providerLabel("ovhcloud")).toBe("OVHcloud");
+    expect(providerLabel("glm")).toBe("GLM");
+    expect(providerLabel("together")).toBe("Together AI");
+  });
+
+  it("reads only its own labels, so an inherited name falls back to title case", () => {
+    expect(providerLabel("__proto__")).toBe("Proto");
+    expect(providerLabel("constructor")).toBe("Constructor");
+    expect(providerLabel("toString")).toBe("ToString");
+  });
+
   it("title-cases an unknown provider id instead of showing the raw slug", () => {
-    expect(providerLabel("together")).toBe("Together");
+    expect(providerLabel("lambda-labs")).toBe("Lambda Labs");
     expect(providerLabel("deep-infra")).toBe("Deep Infra");
     expect(providerLabel("some_vendor")).toBe("Some Vendor");
     expect(providerLabel("")).toBe("");

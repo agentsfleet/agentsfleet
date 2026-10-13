@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import {
-  Badge,
   Button,
   Dialog,
   DialogContent,
@@ -14,6 +13,7 @@ import {
   Spinner,
 } from "@agentsfleet/design-system";
 import { type AdminModel } from "@/lib/api/admin_model_library";
+import { ProviderBadge } from "@/components/domain/ModelCells";
 import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
 import { presentErrorString } from "@/lib/errors";
 import { captureProductEvent } from "@/lib/analytics/posthog";
@@ -74,7 +74,7 @@ export default function MakeDefaultDialog({
         <DialogHeader>
           <DialogTitle>Make this the platform default</DialogTitle>
           <DialogDescription>
-            Every fleet runs <Badge variant="cyan">{model.provider}</Badge>{" "}
+            Every fleet runs <ProviderBadge provider={model.provider} />{" "}
             <span className="font-mono">{model.model_id}</span> when a user hasn&apos;t brought their own key,
             billed at its catalogue rate. Enter the provider API key — it&apos;s stored in your vault and
             never shown again.
