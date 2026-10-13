@@ -21,7 +21,6 @@ use std::time::Duration;
 
 use afd_core::error_code;
 use afd_core::id::Uuid7;
-use afd_core::spelling::to_spelling;
 use afd_wire::lease::LeasePayload;
 use afd_wire::memory::MemoryHydrateResponse;
 use afd_wire::report::FailureClass;
@@ -45,12 +44,14 @@ mod drive;
 mod hold;
 mod lessee;
 mod refusal;
+mod segments;
 mod settle;
 mod workspace;
 
 use self::hold::Worked;
 pub(crate) use self::lessee::Lessee;
 use self::refusal::failed;
+use self::segments::{Segment, Timeline};
 
 /// How long a settled lease waits for its live tail to finish posting.
 pub(crate) const ACTIVITY_DRAIN_WAIT: Duration = Duration::from_secs(5);
@@ -92,6 +93,10 @@ pub(super) struct LeaseRun<'a> {
     interrupt: CancellationToken,
     /// What the run has spent so far, read into every renewal.
     meter: Meter,
+    /// When the lease began, for its wall time.
+    started: Instant,
+    /// Where the lease's time went, for its last line.
+    timeline: Timeline,
 }
 
 /// Which of a lease's side tasks are still going.
@@ -134,25 +139,15 @@ impl Lessee {
             },
             interrupt: CancellationToken::new(),
             meter: Meter::default(),
+            started: Instant::now(),
+            timeline: Timeline::default(),
         };
         let _busy = self.holds.occupy(run.ids.fleet.clone());
         let lease_id = run.ids.lease.as_str();
         let event = EVENT_ACQUIRED;
         tracing::info!(lease_id, event);
-        match run.lease(turns).await {
-            Ending::Ran { .. } => {
-                let event = EVENT_COMPLETED;
-                tracing::info!(lease_id, event);
-            }
-            Ending::Failed { class, detail } => {
-                // The spelling the report carries, so the log and the report
-                // name a failure alike.
-                let class = to_spelling(&class);
-                let class = class.as_deref();
-                let event = EVENT_FAILED;
-                tracing::info!(lease_id, class, detail, event);
-            }
-        }
+        let ending = run.lease(turns).await;
+        run.conclude(&ending);
         Ok(())
     }
 }
@@ -161,7 +156,6 @@ impl LeaseRun<'_> {
     /// The run, its renewal and its live tail, then the settle.
     async fn lease(&self, turns: &FleetTurns) -> Ending {
         let lessee = self.lessee;
-        let started = Instant::now();
         let (sink, mut pump) = activity::channel(&lessee.plane, &self.ids.lease);
         let renewal = Renewal::new(
             &lessee.plane,
@@ -202,10 +196,11 @@ impl LeaseRun<'_> {
             Some((class, detail)) => ran.cut(class, detail),
             None => ran,
         };
+        let reporting = self.timeline.start(Segment::Report);
         {
             let settle = async {
                 let held_until = self.keep(kept, &ending).await;
-                let superseded = self.settle(&mut ending, started, held_until).await;
+                let superseded = self.settle(&mut ending, held_until).await;
                 if superseded && held_until.is_some() {
                     lessee.holds.supersede(self.ids.lease.clone());
                 }
@@ -220,6 +215,7 @@ impl LeaseRun<'_> {
                 }
             }
         }
+        reporting.stop();
         if live.pumping
             && tokio::time::timeout(ACTIVITY_DRAIN_WAIT, &mut pumping)
                 .await
@@ -260,9 +256,11 @@ impl LeaseRun<'_> {
             return failed(FailureClass::StartupPosture, DETAIL_TURN).into();
         };
         let bundle = match &self.lease.bundle {
-            Some(manifest) => match lessee
-                .bundles
-                .fetch(&lessee.plane, &manifest.content_hash)
+            Some(manifest) => match self
+                .timed(
+                    Segment::Bundle,
+                    lessee.bundles.fetch(&lessee.plane, &manifest.content_hash),
+                )
                 .await
             {
                 Ok(bundle) => bundle,
@@ -274,6 +272,7 @@ impl LeaseRun<'_> {
             },
             None => None,
         };
+        let hydrating = self.timeline.start(Segment::Memory);
         let hydrated = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
             Ok(hydrated) => hydrated,
             Err(failure) => {
@@ -290,6 +289,7 @@ impl LeaseRun<'_> {
                     .into();
             }
         };
+        hydrating.stop();
         let recaller = memory::Recaller::new(&lessee.plane, &self.ids.fleet, self.lease);
         let seed = Seed {
             window: &memory.memory,
