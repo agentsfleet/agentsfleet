@@ -190,7 +190,7 @@ impl Leases {
 /// Each candidate beside the generation its fleet's peek saw.
 ///
 /// The query only narrows the peek, so every candidate has one; the pairing
-/// keeps the query's order, which is the sticky order.
+/// keeps the query's order: the cursor's partition first, then sticky.
 fn peeked(candidates: Vec<Uuid7>, ready: &[Ready]) -> impl Iterator<Item = (Uuid7, &ReadyToken)> {
     candidates.into_iter().filter_map(move |fleet| {
         ready

@@ -27,10 +27,14 @@
 //! A leased fleet keeps its mark for as long as it runs, so its partition
 //! would stay dirty, and the oldest-first directory would keep sending polls
 //! to work no runner can take. So an entry is deleted once a poll tried
-//! its partition and could not lease from it: nothing leased at all, which
-//! means every fleet offered was tried, or its only fleet leased, or its peek
-//! failed. A poll that leased from the rotation's partition keeps the entry,
-//! because the hinted fleets may never have been tried. The next mark there
+//! its partition and could not lease from it: nothing leased at all, or its
+//! only fleet leased, or its peek failed. A poll that leased from the
+//! rotation's partition keeps the entry, because the hinted fleets may never
+//! have been tried. Nothing leased usually means every fleet offered was
+//! tried; when the rotation's partition fills the scan's ceiling with fleets
+//! none of which leases, stale marks after a burst say, the hinted ones are
+//! cut untried, the entry goes anyway, and the rotation reaches them within a
+//! turn. The next mark there
 //! writes a deleted entry again. The delete compares the token the poll read,
 //! so a mark landing while the poll ran survives it.
 //!
@@ -205,7 +209,8 @@ fn keeps_entry(partition: Partition, found: Option<usize>, leased: Option<&str>)
         return false;
     };
     match leased {
-        // Nothing leased: every fleet offered was tried, the hinted ones too.
+        // Nothing leased: every fleet offered was tried, unless the rotation's
+        // filled the scan; then the rotation reaches the hinted ones.
         None => false,
         Some(fleet) if Partition::of(fleet) == partition => found > 1,
         // Leased from the rotation: the hinted fleets may never have been tried.

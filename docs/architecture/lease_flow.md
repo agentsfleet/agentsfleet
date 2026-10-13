@@ -37,8 +37,9 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
    (every ~1 s)          a HGETALL fleet:ready:{directory} ∥ peek the rotation's partition, then
                            one of the 3 oldest dirty ones, taken in turn by the cursor;
                            rotation's fleets ahead of the hint's; zero Postgres if both empty;
-                           afterwards the entry is spent unless this
-                           poll leased from it and its peek held other fleets
+                           afterwards the entry is spent unless this poll
+                           leased from the rotation's partition, or from the
+                           hinted one while its peek held other fleets
                          b SELECT_READY_CANDIDATES ≤64: active, slot free, labels, then sticky
                          c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
                              leased_until = now+30 s            ← THE FENCE IS MINTED HERE
@@ -83,7 +84,7 @@ GitHub gives this whole path ten seconds and never auto-redelivers (`docs/archit
 `POST /v1/runners/me/leases` (`afd_api_runner/src/handler/runner/lease.rs`, body not read) calls `Plane::lease` (`afd_fleet/src/lease/pull.rs`). A degraded runner gets no work. Then `Leases::select` (`afd_fleet/src/lease/assign.rs`):
 
 1. advance a process-wide cursor to the next of 16 partitions and `peek` at most `MAX_READY_CANDIDATES_PER_POLL = 64` fleets; an empty peek answers no-work with zero Postgres reads;
-2. `SELECT_READY_CANDIDATES` (`afd_fleet/src/lease/sql/lease.rs`): `status = active`, id in the peeked set, `leased_until IS NULL OR < now`, `required_tags <@ runner labels`, ordered `last_runner_id = this runner DESC, random()` (sticky is a hint);
+2. `SELECT_READY_CANDIDATES` (`afd_fleet/src/lease/sql/lease.rs`): `status = active`, id in the peeked set, `leased_until IS NULL OR < now`, `required_tags <@ runner labels`, ordered `id in the cursor's partition DESC, last_runner_id = this runner DESC, random()` (sticky is a hint), at most 64 of the two peeks' fleets;
 3. per candidate, `try_candidate`: `claim` → `CLAIM_AFFINITY_SLOT` (`sql/lease.rs`), a conditional upsert on `fleet.runner_affinity` (`schema/630_runner_affinity.sql`) that wins only if `leased_until < now`, bumps `fencing_seq + 1`, sets `leased_until = now + LEASE_TTL_MS` (30 s, `afd_core/src/timing.rs`) and returns the new `fencing_seq`. That returned number is the `Fence` (`afd_fleet/src/lease/affinity.rs`), the only source of a fencing token in the system;
 4. `take_claimed` (`assign.rs`): if the fleet still has an `active` lease row (a holder that stopped renewing), `RECLAIM_PRIOR_ACTIVE` (`sql/lease.rs`) flips it to `expired` and re-reads the body from `core.fleet_events` in one statement (`afd_fleet/src/lease/reclaim.rs`); otherwise `acquire_fresh` takes the group's oldest pending entry then a new one (`docs/architecture/data_flow.md`), and an empty fleet releases the claim and clears its mark. `from_fresh` refuses an entry missing any of the six fields (`afd_fleet/src/lease/envelope.rs`).
 

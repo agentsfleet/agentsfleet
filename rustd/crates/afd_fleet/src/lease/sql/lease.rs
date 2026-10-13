@@ -157,12 +157,12 @@ FROM bumped b
 JOIN core.fleet_events e
   ON e.fleet_id = b.fleet_id AND e.event_id = b.event_id";
 
-/// Eligible active fleets for one lease poll, sticky-first and bounded.
+/// Eligible active fleets for one poll, cursor-first then sticky, bounded.
 ///
 /// Readiness NARROWS the input; it never decides eligibility. The label gate
 /// and the sticky ordering are properties of this query — `required_tags <@
 /// labels` still filters (empty tags are a subset of any labels, so any runner
-/// qualifies) and the runner's own affinity still sorts to the front. The `$3`
+/// qualifies) and the runner's own affinity still sorts first within its peek. The `$3`
 /// membership restriction is the readiness index's contribution, and `$4` is
 /// the ceiling that makes per-poll cost independent of how many fleets exist.
 ///
