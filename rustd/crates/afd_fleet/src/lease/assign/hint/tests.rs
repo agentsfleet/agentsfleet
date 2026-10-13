@@ -71,10 +71,15 @@ fn test_polls_take_the_oldest_three_entries_in_turn() {
         "{sent:?}"
     );
     for oldest in [7, 3, 12] {
-        assert!(sent.contains(&Some(oldest)), "{oldest} is reached: {sent:?}");
+        assert!(
+            sent.contains(&Some(oldest)),
+            "{oldest} is reached: {sent:?}"
+        );
     }
     assert!(
-        sent.iter().flatten().all(|index| [7, 3, 12].contains(index)),
+        sent.iter()
+            .flatten()
+            .all(|index| [7, 3, 12].contains(index)),
         "{sent:?}"
     );
 }
