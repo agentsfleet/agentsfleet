@@ -34,6 +34,13 @@ use crate::error::Result;
 use crate::lease::assign::warn_queue_fleet;
 use crate::lease::store::Leases;
 
+/// An entry a fresh read found, and whether it was owed rather than new.
+pub(super) struct Pulled {
+    pub(super) event: FleetEvent,
+    /// Taken over from the group's pending list, not read new.
+    pub(super) redelivered: bool,
+}
+
 /// The group's pending list would not answer the takeover.
 const EVENT_PEL_READ_FAILED: &str = "assign_pel_read_failed";
 
@@ -68,7 +75,7 @@ impl Leases {
         fleet: &str,
         consumer: &str,
         sent: &mut u64,
-    ) -> Result<Option<FleetEvent>> {
+    ) -> Result<Option<Pulled>> {
         let streams = self.streams();
         let read = match owed_then_new(&streams, fleet, consumer, sent).await {
             Err(lost) if lost.is_group_missing() => {
@@ -105,7 +112,7 @@ async fn owed_then_new(
     fleet: &str,
     consumer: &str,
     sent: &mut u64,
-) -> afd_dragonfly::error::Result<Option<FleetEvent>> {
+) -> afd_dragonfly::error::Result<Option<Pulled>> {
     *sent += 1;
     let pending = streams
         .take_over_oldest(fleet, consumer)
@@ -113,10 +120,14 @@ async fn owed_then_new(
         .inspect_err(|error| warn_queue_fleet(EVENT_PEL_READ_FAILED, fleet, error))?;
     let Some(event) = pending else {
         *sent += 1;
-        return streams
+        let read = streams
             .read_new(fleet, consumer)
             .await
-            .inspect_err(|error| warn_queue_fleet(EVENT_STREAM_READ_FAILED, fleet, error));
+            .inspect_err(|error| warn_queue_fleet(EVENT_STREAM_READ_FAILED, fleet, error))?;
+        return Ok(read.map(|event| Pulled {
+            event,
+            redelivered: false,
+        }));
     };
     let id = event.receipt.as_str();
     tracing::debug!(
@@ -125,5 +136,8 @@ async fn owed_then_new(
         receipt = id,
         "an entry pending in the group was taken over and is being re-delivered"
     );
-    Ok(Some(event))
+    Ok(Some(Pulled {
+        event,
+        redelivered: true,
+    }))
 }

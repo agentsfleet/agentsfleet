@@ -110,6 +110,10 @@ pub struct Acquired {
     /// reclaimed event's first attempt may have run in that sandbox, so it
     /// starts clean.
     pub resume_hold: bool,
+    /// Taken over from the group's pending list rather than read new: a
+    /// re-poll, a parked event or a dead replica's strand, whose admission
+    /// stamp says nothing about how long a runner took to pick it up.
+    pub redelivered: bool,
 }
 
 /// Build the acquired envelope from a reclaimed lease.
@@ -139,6 +143,7 @@ pub(crate) fn from_reclaim(
         reused: Some(prior.reused),
         ready: ready.clone(),
         resume_hold: false,
+        redelivered: false,
     })
 }
 
@@ -155,6 +160,7 @@ pub(crate) fn from_fresh(
     claimed: &Claimed,
     ready: &ReadyToken,
     event: &FleetEvent,
+    redelivered: bool,
 ) -> Result<Acquired> {
     let field = |name: &'static str| {
         event
@@ -185,6 +191,7 @@ pub(crate) fn from_fresh(
         reused: None,
         ready: ready.clone(),
         resume_hold: claimed.resume_hold,
+        redelivered,
     })
 }
 
@@ -283,7 +290,7 @@ mod tests {
         };
 
         let ready = ready();
-        let acquired = super::from_fresh(&fleet_id(), &claimed(), &ready, &event)
+        let acquired = super::from_fresh(&fleet_id(), &claimed(), &ready, &event, false)
             .expect("a producer's own entry must be readable by the reader");
 
         assert_eq!(acquired.actor, "steer:user_1");
@@ -326,7 +333,7 @@ mod tests {
                 receipt: afd_dragonfly::EventId::of(ENTRY_ID),
                 fields,
             };
-            let refused = super::from_fresh(&fleet_id(), &claimed(), &ready(), &event);
+            let refused = super::from_fresh(&fleet_id(), &claimed(), &ready(), &event, false);
             let name = pairs.get(dropped).map_or("?", |(name, _)| name);
             assert!(refused.is_err(), "dropping {name} must refuse the entry");
             // And refused FOR that field: a reader naming the wrong one sends

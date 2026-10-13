@@ -20,7 +20,7 @@ use afd_approval::{Origin, Requested, Wanted};
 
 use crate::error::Result;
 use crate::lease::answer::{EVENT_LEASED, no_work, render};
-use crate::lease::envelope::{Acquired, Kind};
+use crate::lease::envelope::Acquired;
 use crate::lease::history;
 use crate::lease::issue::Billed;
 use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
@@ -177,16 +177,7 @@ impl Plane {
         let lease_id = issued.lease_id.as_str();
         let fleet_id = admitted.acquired.fleet_id.as_str();
         let agentsfleet_event_id = admitted.acquired.event_id.as_str();
-        // How long a fresh event waited for a runner: its admission's stamp
-        // to this lease's write, both on the daemon replicas' clocks rather
-        // than the runner's, which is another machine's. The poll's own reads
-        // and writes count, measured from `began` on the monotonic clock. A
-        // reclaimed lease logs none: its stamp predates the run it replaces.
-        let polled = i64::try_from(began.elapsed().as_millis()).unwrap_or(i64::MAX);
-        let queue_wait_ms = (admitted.acquired.kind == Kind::Fresh).then(|| {
-            now.saturating_add_millis(polled)
-                .saturating_millis_since(admitted.acquired.event_created_at)
-        });
+        let queue_wait_ms = queue_wait::of(&admitted.acquired, queue_wait::issued_at(now, began));
         tracing::info!(
             event = EVENT_LEASED,
             runner_id,
@@ -344,6 +335,8 @@ const fn answers(asked: Option<Requested>) -> Ungranted {
         Some(Requested::Approved) | None => Ungranted::Retries,
     }
 }
+
+mod queue_wait;
 
 #[cfg(test)]
 mod tests;
