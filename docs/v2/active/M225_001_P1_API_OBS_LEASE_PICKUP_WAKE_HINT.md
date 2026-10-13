@@ -70,7 +70,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afd_fleet/src/lease/assign/offer.rs` | EDIT | held-fleet reads join the Dragonfly tally |
 | `rustd/crates/afd_fleet/src/lease/assign/measured.rs` | EDIT | `dragonfly_commands` on the measurement |
 | `rustd/crates/afd_fleet/src/lease/assign/tests.rs` | EDIT | the hint warnings render every Dragonfly failure |
-| `rustd/crates/afd_fleet/tests/integration_lease_wake.rs`, `rustd/crates/afd_fleet/tests/integration_lease_wake/order.rs`, `rustd/crates/afd_fleet/tests/integration_lease_wake/broken.rs` | NEW | the live §1 proofs; `order.rs` holds the ones on which dirty partition a poll is sent to; `broken.rs` the polls whose peeks the datastore refuses |
+| `rustd/crates/afd_fleet/tests/integration_lease_wake.rs`, `rustd/crates/afd_fleet/tests/integration_lease_wake/order.rs`, `rustd/crates/afd_fleet/tests/integration_lease_wake/broken.rs`, `rustd/crates/afd_fleet/tests/integration_lease_wake/tally.rs` | NEW | the live §1 proofs; `order.rs` holds the ones on which dirty partition a poll is sent to; `broken.rs` the polls whose peeks the datastore refuses; `tally.rs` the claim path's dropped-entry and restored-group commands |
 | `rustd/crates/afd_fleet/tests/integration_lease_wake/scene.rs` | NEW | the private-index scene those proofs poll; its marks land a millisecond apart, so their order is the order sent |
 | `rustd/crates/afd_fleet/tests/fleet_suite.rs` | EDIT | registers the suite |
 | `rustd/crates/afd_observability/src/metrics/declared/fleet.rs` | EDIT | `agentsfleet_lease_poll_dragonfly_commands_total`, `agentsfleet_fleet_ready_hint_failures_total` |

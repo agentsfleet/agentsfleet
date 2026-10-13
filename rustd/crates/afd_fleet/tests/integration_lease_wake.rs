@@ -29,6 +29,8 @@ mod broken;
 mod order;
 #[path = "integration_lease_wake/scene.rs"]
 mod scene;
+#[path = "integration_lease_wake/tally.rs"]
+mod tally;
 
 use scene::{partition, scene};
 
@@ -56,6 +58,7 @@ async fn test_marked_fleet_is_leased_on_the_next_poll() {
     let leased = leased.expect("the hint sends the first poll to the fleet's partition");
     assert_eq!(leased.fleet_id.as_str(), fleet.id);
     assert_eq!(cost.dragonfly_commands, 6, "{cost:?}");
+    assert_eq!(cost.database_roundtrips, 2, "scan and claim: {cost:?}");
     assert!(
         scene.dirty().await.is_empty(),
         "the only fleet there is running"
