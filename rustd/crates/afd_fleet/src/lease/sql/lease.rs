@@ -181,9 +181,14 @@ JOIN core.fleet_events e
 /// A fleet another runner holds and can still lease is skipped the same way,
 /// by the claim's own hold condition (see [`CLAIM_AFFINITY_SLOT`]).
 ///
+/// The cursor's partition's fleets (`$8`) sort ahead of the readiness
+/// directory's: a poll the rotation sends to a partition with work leases from
+/// it, so one rotation of polls still reaches every placeable fleet, and the
+/// directory's hint takes what that partition leaves.
+///
 /// `$1` active status, `$2` runner id, `$3` ready fleet ids, `$4` ceiling,
 /// `$5` now, `$6` how long a silent runner stays live, `$7` the admin state
-/// that may lease.
+/// that may lease, `$8` the ids among `$3` from the cursor's partition.
 pub const SELECT_READY_CANDIDATES: &str = "\
 SELECT z.id::text
 FROM core.fleets z
@@ -206,7 +211,8 @@ WHERE z.status = $1
                 FROM fleet.runners WHERE id = $2::uuid)
              ) AS e
       )
-ORDER BY (a.last_runner_id = $2::uuid) DESC NULLS LAST, random()
+ORDER BY z.id = ANY(($8::text[])::uuid[]) DESC,
+         (a.last_runner_id = $2::uuid) DESC NULLS LAST, random()
 LIMIT $4";
 
 /// What one lease authorises a mint to reach.

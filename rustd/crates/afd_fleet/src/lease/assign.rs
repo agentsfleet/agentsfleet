@@ -48,11 +48,13 @@ pub(crate) use diagnostics::warn_queue_fleet;
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CANDIDATES: &str = "lease candidate scan";
 
-/// How many ready fleets one poll will consider.
+/// How many ready fleets one peek samples, and how many candidates one poll's
+/// scan returns.
 ///
 /// The ceiling is what makes per-poll cost independent of how many fleets
 /// exist — without it a runner polling an idle deployment pays for every fleet
-/// on it, every second.
+/// on it, every second. A poll peeks at most two partitions, so its scan reads
+/// at most twice this many identifiers.
 pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
 
 /// What one lease poll cost, gathered as it runs.
@@ -129,25 +131,27 @@ impl Leases {
         if let Some(acquired) = self.held_first(runner_id, held, now, cost).await? {
             return Ok(Some(acquired));
         }
-        let (ready, hint) = self.ready_this_poll(runner_id, cost).await?;
-        cost.candidates_scanned = u64::try_from(ready.len()).unwrap_or(u64::MAX);
+        let (offer, hint) = self.ready_this_poll(runner_id, cost).await?;
+        cost.candidates_scanned = u64::try_from(offer.ready.len()).unwrap_or(u64::MAX);
         // The readiness depth this poll saw, published for the gauge that
         // reports it: the index is a network round trip, and a collection
         // callback cannot make one.
         producers::fleet::ready_depth_observed(cost.candidates_scanned);
         // The zero-Postgres path. Skipping the scan here is what makes idle
         // cost scale with runner count alone instead of runners × fleets.
-        let acquired = if ready.is_empty() {
+        let acquired = if offer.ready.is_empty() {
             None
         } else {
-            self.first_offered(runner_id, &ready, now, cost).await?
+            self.first_offered(runner_id, &offer.ready, offer.cursor, now, cost)
+                .await?
         };
         self.spend_hint(runner_id, hint, acquired.as_ref(), cost)
             .await;
         Ok(acquired)
     }
 
-    /// The eligible fleets among `ready`, in the query's own sticky order.
+    /// The eligible fleets among `ready`, those in `cursor` first, then in
+    /// the query's own sticky order.
     ///
     /// The ordering must come from the statement and not from the peek, because
     /// sticky preference lives in its `ORDER BY`. `now` is what the held-slot
@@ -157,6 +161,7 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         ready: &[&str],
+        cursor: &[&str],
         now: UnixMillis,
     ) -> Result<Vec<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
@@ -168,6 +173,7 @@ impl Leases {
             .bind(now.as_millis())
             .bind(RUNNER_OFFLINE_AFTER_MS)
             .bind(sql::ADMIN_STATE_ACTIVE)
+            .bind(cursor)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_CANDIDATES))?;

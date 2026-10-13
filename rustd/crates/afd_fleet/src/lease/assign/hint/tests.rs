@@ -1,6 +1,6 @@
 //! The hint's three decisions that need no datastore: which dirty partition
-//! a poll is sent to, whether its entry outlives the poll, and how two peeks
-//! share the scan.
+//! a poll is sent to, whether its entry outlives the poll, and the order two
+//! peeks reach the scan in.
 
 #![expect(
     clippy::expect_used,
@@ -12,7 +12,7 @@ use afd_crypto::entropy::Entropy;
 use afd_dragonfly::ready::READY_PARTITIONS;
 use afd_dragonfly::{Dirty, Partition, Ready, ReadyToken};
 
-use super::{Hint, MAX_READY_CANDIDATES_PER_POLL, PollCost, interleave, keeps_entry, spread};
+use super::{Hint, MAX_READY_CANDIDATES_PER_POLL, PollCost, cursor_first, keeps_entry, spread};
 
 /// The instant every fixture token is minted at.
 const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
@@ -146,49 +146,47 @@ fn test_a_dry_finished_or_unreadable_partition_spends_its_entry() {
     assert!(!keeps_entry(dirty, None, None));
 }
 
-/// The two peeks take turns, so the hinted partition is offered first and
-/// the rotation's fleets still reach the scan.
+/// The cursor's partition's fleets lead the offer and the hint's follow, so
+/// the scan claims a rotation visit's work before the hint's.
 #[test]
-fn test_two_peeks_take_turns_in_the_scan() {
-    let hinted: Vec<Ready> = (0..2).map(|n| ready(format!("hinted-{n}"))).collect();
+fn test_the_cursor_partition_leads_the_offer() {
     let rotation: Vec<Ready> = (0..3).map(|n| ready(format!("rotation-{n}"))).collect();
+    let hinted: Vec<Ready> = (0..2).map(|n| ready(format!("hinted-{n}"))).collect();
 
-    let merged = interleave(hinted, rotation);
+    let offer = cursor_first(rotation, hinted);
 
-    let order: Vec<&str> = merged.iter().map(|entry| entry.fleet_id.as_str()).collect();
+    let order: Vec<&str> = offer
+        .ready
+        .iter()
+        .map(|entry| entry.fleet_id.as_str())
+        .collect();
     assert_eq!(
         order,
         [
-            "hinted-0",
             "rotation-0",
-            "hinted-1",
             "rotation-1",
-            "rotation-2"
+            "rotation-2",
+            "hinted-0",
+            "hinted-1"
         ]
     );
+    assert_eq!(offer.cursor, 3);
 }
 
-/// Two full peeks still offer at most the poll's ceiling, half from each.
+/// Two full peeks are both offered whole, so nothing the hint found is
+/// dropped before the scan decides which fleets are eligible.
 #[test]
-fn test_two_full_peeks_share_the_ceiling() {
+fn test_two_full_peeks_are_offered_whole() {
     let full = |side: &str| -> Vec<Ready> {
         (0..MAX_READY_CANDIDATES_PER_POLL)
             .map(|n| ready(format!("{side}-{n}")))
             .collect()
     };
 
-    let merged = interleave(full("hinted"), full("rotation"));
+    let offer = cursor_first(full("rotation"), full("hinted"));
 
-    assert_eq!(merged.len(), MAX_READY_CANDIDATES_PER_POLL);
-    let hinted = merged
-        .iter()
-        .filter(|entry| entry.fleet_id.starts_with("hinted"))
-        .count();
-    assert_eq!(
-        hinted,
-        MAX_READY_CANDIDATES_PER_POLL / 2,
-        "neither side crowds the other out"
-    );
+    assert_eq!(offer.ready.len(), 2 * MAX_READY_CANDIDATES_PER_POLL);
+    assert_eq!(offer.cursor, MAX_READY_CANDIDATES_PER_POLL);
 }
 
 /// A delete the datastore refuses is logged once, naming the partition it

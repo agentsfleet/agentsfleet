@@ -36,10 +36,10 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
  RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
    (every ~1 s)          a HGETALL fleet:ready:{directory} ∥ peek the rotation's partition, then
                            one of the 3 oldest dirty ones, taken in turn by the cursor;
-                           ≤64 fleets taken in turn; zero Postgres if both are empty;
+                           rotation's fleets ahead of the hint's; zero Postgres if both empty;
                            afterwards the entry is spent unless this
                            poll leased from it and its peek held other fleets
-                         b SELECT_READY_CANDIDATES: active, slot free, labels, sticky first
+                         b SELECT_READY_CANDIDATES ≤64: active, slot free, labels, then sticky
                          c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
                              leased_until = now+30 s            ← THE FENCE IS MINTED HERE
                          d reclaim a dead holder's active lease? else XAUTOCLAIM/XREADGROUP 1
@@ -275,7 +275,7 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 - Workers per host: default 1, between 1 and 64 (`afd_core/src/limits.rs`).
 - Activity: 64 KiB batches, 4 held (`afr_supervisor/src/activity.rs`). Memory: a 256 KiB hydrate window (`afd_wire/src/memory.rs`).
 - Timers: lease TTL 30 s, renew every 5 s, max runtime 12 h, runner offline after 90 s, heartbeat 10 s, empty-poll hint 1 s, sandbox hold 10 min (`afd_core/src/timing.rs`).
-- Poll and admission: `MAX_READY_CANDIDATES_PER_POLL` = 64 fleets peeked per poll (`afd_fleet/src/lease/assign.rs`); `FLEET_BACKLOG_BUDGET` = 10,000 outstanding stream entries per fleet before its producers are refused (`afd_admission/src/budget.rs`).
+- Poll and admission: `MAX_READY_CANDIDATES_PER_POLL` = 64 fleets sampled per peek, at most two peeks a poll, and 64 candidates per scan (`afd_fleet/src/lease/assign.rs`); `FLEET_BACKLOG_BUDGET` = 10,000 outstanding stream entries per fleet before its producers are refused (`afd_admission/src/budget.rs`).
 
 ---
 

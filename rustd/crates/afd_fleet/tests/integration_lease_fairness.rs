@@ -15,7 +15,7 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 
 use afd_core::clock::UnixMillis;
-use afd_dragonfly::ready::{Partition, READY_PARTITIONS};
+use afd_dragonfly::ready::{Partition, READY_PARTITIONS, ReadyIndex, ReadyPrefix};
 use afd_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
 
 use crate::queue;
@@ -165,5 +165,101 @@ async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
     assert_eq!(
         leased, expected,
         "one rotation of polls must lease every placeable fleet, hot partition or not"
+    );
+}
+
+/// A poll the rotation sends to a partition with work leases that work before
+/// the directory's hint: the hinted fleet's entry survives the poll, and a
+/// later poll's hint leases it.
+///
+/// A private index, so this run's directory holds only its own two entries,
+/// and a fresh store, so the cursor's first partition is 0. The hinted fleet
+/// is marked first, so its entry is the oldest and the first poll is sent to
+/// it while the cursor names the other fleet's partition.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_the_cursor_partition_leases_before_the_hint() {
+    let fixtures = Fixtures::create_with_queue().await;
+    let population = Population::from(unique_ids());
+    let run = afd_core::clock::now().as_millis();
+    let prefix = ReadyPrefix::private(&format!("cursor-first-{}-{run}", std::process::id()));
+    let index = ReadyIndex::under(fixtures.queue().clone(), prefix.clone());
+    let hinted = fleet_in(&population.base, Partition::new(5).expect("a partition"), 0);
+    let cursor = fleet_in(&population.base, Partition::new(0).expect("a partition"), 0);
+    let mut request = enrolment_tagged(
+        SandboxTier::LandlockFull,
+        NetworkPolicy::AllowListEgress,
+        1,
+        &placement_tag(&population.base),
+    );
+    for fleet in [&hinted, &cursor] {
+        let tag = placement_tag(fleet);
+        fixtures
+            .seed_fleet(
+                fleet,
+                &population.workspace,
+                &population.tenant,
+                &tag,
+                ENROLLED_AT,
+            )
+            .await;
+        request.labels.push(Cow::Owned(tag));
+        queue::enqueue(
+            fixtures.queue(),
+            fleet,
+            &population.workspace,
+            ACTOR,
+            EVENT_TYPE,
+            REQUEST_JSON,
+            ENROLLED_AT,
+        )
+        .await;
+        index
+            .mark(fleet)
+            .await
+            .expect("the private index takes a mark");
+    }
+    let runner = fixtures
+        .runners()
+        .register(&request, UnixMillis::from_millis(ENROLLED_AT))
+        .await
+        .expect("enrolment must succeed")
+        .runner_id;
+    let store = fixtures.leases().with_ready_prefix(prefix);
+    let now = UnixMillis::from_millis(ENROLLED_AT);
+
+    let first = store
+        .select(&runner, &[], now)
+        .await
+        .expect("a poll must not fault");
+    let kept = index.dirty().await.expect("the directory is readable");
+    let mut later = None;
+    for _poll in 0..2 {
+        later = store
+            .select(&runner, &[], now)
+            .await
+            .expect("a poll must not fault");
+        if later.is_some() {
+            break;
+        }
+    }
+
+    for fleet in [&hinted, &cursor] {
+        queue::clear_ready(fixtures.queue(), fleet).await;
+    }
+    fixtures.cleanup().await;
+    assert_eq!(
+        first.map(|acquired| acquired.fleet_id.as_str().to_owned()),
+        Some(cursor),
+        "the cursor's partition is claimed before the hint's"
+    );
+    assert!(
+        kept.iter().any(|entry| entry.partition.index() == 5),
+        "the untried hint survives the poll: {kept:?}"
+    );
+    assert_eq!(
+        later.map(|acquired| acquired.fleet_id.as_str().to_owned()),
+        Some(hinted),
+        "a later poll's hint leases the fleet it named"
     );
 }

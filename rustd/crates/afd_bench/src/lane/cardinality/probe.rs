@@ -155,6 +155,9 @@ pub(super) async fn postgres_at_population(
     // to bind at all: the lease path's own binds for the hold condition.
     .bind(afd_core::timing::RUNNER_OFFLINE_AFTER_MS)
     .bind(afd_fleet::lease::sql::ADMIN_STATE_ACTIVE)
+    // The ids the cursor's partition offered, which sort first: every sampled
+    // id here, so the plan carries the ordering key a live poll's does.
+    .bind(&ready)
     .fetch_all(&mut *connection)
     .await?
     .iter()
