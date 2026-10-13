@@ -1,10 +1,14 @@
 //! Where a run's time went, read off the frames it emitted.
 //!
 //! The sink sees every frame the run emits, and two of them bracket a tool
-//! call, so the run's tool time is summed here without a hook into the engine:
-//! a completed call's own `ms`, and for a call cut before it completed, the
-//! time from its start frame to the run's end. The model's time is what is
-//! left of the run once its tools are taken out.
+//! call, so the run's tool time is read here without a hook into the engine:
+//! the time during which at least one call was open, from a start frame to the
+//! completion that closed the last open call, and a call cut before it
+//! completed counted to the run's end. A union and not a sum, because a run's
+//! children are polled beside its root loop and their calls overlap the
+//! root's; a sum would count those stretches twice and leave the model less
+//! than nothing. The model's time is what is left of the run once its tools
+//! are taken out.
 //!
 //! The clock starts when the run is started, not when the sink is made: the
 //! sink is made before the bundle, the memory and the sandbox are ready, and a
@@ -22,7 +26,8 @@ use tokio::time::Instant;
 pub(crate) struct RunTiming {
     /// From the run's start to its end.
     pub(crate) elapsed: Duration,
-    /// Inside `elapsed`: every tool call, a cut one counted to the end.
+    /// Inside `elapsed`: the time any tool call was open, a cut one counted
+    /// to the end.
     pub(crate) tools: Duration,
     /// Inside `elapsed`: the first answer chunk, when one came.
     pub(crate) first_chunk: Option<Duration>,
@@ -48,10 +53,28 @@ pub(crate) struct RunClock {
 struct Clocked {
     started: Option<Instant>,
     first_chunk: Option<Duration>,
-    /// Calls started and not yet completed, by the id their frames share.
-    open: HashMap<String, Instant>,
-    /// Every completed call's own duration.
-    completed: Duration,
+    /// Calls started and not yet completed, counted by the id their frames
+    /// share: a child reusing an id keeps it open until its last completion.
+    open: HashMap<String, u32>,
+    /// When the current stretch with a call open began.
+    busy_since: Option<Instant>,
+    /// Every finished stretch with a call open, and the own duration of each
+    /// completion no start frame paired.
+    busy: Duration,
+}
+
+impl Clocked {
+    /// Closes one open call under `id`; whether there was one to close.
+    fn close(&mut self, id: &str) -> bool {
+        let Some(count) = self.open.get_mut(id) else {
+            return false;
+        };
+        *count -= 1;
+        if *count == 0 {
+            self.open.remove(id);
+        }
+        true
+    }
 }
 
 impl RunClock {
@@ -79,15 +102,26 @@ impl RunClock {
             }
             ActivityFrame::ToolCallStarted(body) => {
                 if let Some(id) = body.call_id.as_deref() {
-                    clocked.open.insert(id.to_owned(), Instant::now());
+                    if clocked.open.is_empty() {
+                        clocked.busy_since = Some(Instant::now());
+                    }
+                    *clocked.open.entry(id.to_owned()).or_default() += 1;
                 }
             }
             ActivityFrame::ToolCallCompleted(body) => {
-                if let Some(id) = body.call_id.as_deref() {
-                    clocked.open.remove(id);
+                let paired = body.call_id.as_deref().is_some_and(|id| clocked.close(id));
+                if paired {
+                    if clocked.open.is_empty()
+                        && let Some(since) = clocked.busy_since.take()
+                    {
+                        clocked.busy += since.elapsed();
+                    }
+                } else if clocked.open.is_empty() {
+                    // No start frame to pair with: its own duration is all
+                    // there is, and an open stretch would already cover it.
+                    let ms = u64::try_from(body.ms).unwrap_or_default();
+                    clocked.busy += Duration::from_millis(ms);
                 }
-                let ms = u64::try_from(body.ms).unwrap_or_default();
-                clocked.completed += Duration::from_millis(ms);
             }
             ActivityFrame::ToolCallProgress(_) => {}
         }
@@ -97,10 +131,11 @@ impl RunClock {
     pub(crate) fn read(&self) -> RunTiming {
         let clocked = self.lock();
         let since = clocked.started.unwrap_or(self.made);
-        let cut: Duration = clocked.open.values().map(Instant::elapsed).sum();
+        let elapsed = since.elapsed();
+        let open = clocked.busy_since.map(|since| since.elapsed());
         RunTiming {
-            elapsed: since.elapsed(),
-            tools: clocked.completed + cut,
+            elapsed,
+            tools: (clocked.busy + open.unwrap_or_default()).min(elapsed),
             first_chunk: clocked.first_chunk,
         }
     }

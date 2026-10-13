@@ -18,6 +18,7 @@ use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::{Counter, MAX_BATCH_BYTES, channel, encoded_len};
 use crate::client::Verb;
+use crate::error;
 use crate::test_support::{Answer, LEASE_ID, drain, json, plane};
 
 /// The tool every frame here names.
@@ -246,4 +247,23 @@ fn a_frame_is_measured_as_encoded_and_the_counter_keeps_count() {
         serde_json::to_vec(&frame).unwrap().len()
     );
     assert_eq!(counter.0, 3, "a flush keeps the count");
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_post_is_only_logged() {
+    let (plane, mut calls) = plane(|_call| Answer::Fail(error::unavailable(Verb::Activity, 503)));
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let (sink, mut pump) = channel(&plane, &lease);
+    sink.emit(tool(TOOL));
+    drop(sink);
+
+    let (tally, recorded) = Tally::new();
+    scoped(tally, pump.run()).await;
+
+    assert_eq!(drain(&mut calls).len(), 1, "posted once, not retried");
+    assert_eq!(
+        recorded.try_iter().collect::<Vec<_>>(),
+        vec![Recorded::FramesDropped(FrameDrop::PostFailed, 1)],
+        "the frame the daemon did not take is counted as lost"
+    );
 }

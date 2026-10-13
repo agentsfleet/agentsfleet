@@ -16,6 +16,7 @@ use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::tests::{CALL, TOOL, chunk, completed, posted_frames, progress, started, tool};
 use super::{MAX_BATCH_BYTES, channel};
+use crate::test_support::{Answer, LEASE_ID, drain, json, plane};
 
 /// A second tool call, open while the answer streams.
 const SECOND_CALL: &str = "call-2";
@@ -23,9 +24,11 @@ const SECOND_CALL: &str = "call-2";
 const ANSWER: &str = "hello";
 /// The model time between the second call's start and the first chunk.
 const MODEL_STEP: Duration = Duration::from_millis(60);
-use crate::client::Verb;
-use crate::error;
-use crate::test_support::{Answer, LEASE_ID, drain, json, plane};
+/// How long the first tool call ran.
+const FIRST_CALL: Duration = Duration::from_millis(40);
+/// What a completion frame says its call took; a paired call is timed by its
+/// frames instead, so the figure is not read.
+const OWN_MS: i64 = 60;
 
 /// The lease's first frame is handed to the poster the moment it arrives,
 /// once; the frame after it waits for the tick as every later one does.
@@ -138,44 +141,80 @@ async fn test_the_run_clock_splits_tools_from_the_model() {
     sink.run_started();
     tokio::time::advance(Duration::from_millis(100)).await;
     sink.emit(started(CALL));
+    tokio::time::advance(FIRST_CALL).await;
     sink.emit(completed(CALL, 40));
     sink.emit(started(SECOND_CALL));
     tokio::time::advance(MODEL_STEP).await;
     sink.emit(chunk(ANSWER.to_owned()));
     sink.emit(progress(SECOND_CALL));
     sink.emit(completed("call-3", -1));
-    tokio::time::advance(Duration::from_millis(40)).await;
+    tokio::time::advance(FIRST_CALL).await;
 
     let timing = sink.timing();
     assert_eq!(
         timing.elapsed,
-        Duration::from_millis(200),
+        Duration::from_millis(240),
         "from the start, not the making"
     );
-    assert_eq!(timing.first_chunk, Some(Duration::from_millis(160)));
+    assert_eq!(timing.first_chunk, Some(Duration::from_millis(200)));
     assert_eq!(
         timing.tools,
         Duration::from_millis(140),
-        "40 ms completed, and the cut call's 100 ms to now"
+        "the first call's 40 ms, and the cut call's 100 ms to now"
     );
-    assert_eq!(timing.model(), MODEL_STEP);
+    assert_eq!(timing.model(), Duration::from_millis(100));
 }
 
+/// Calls that overlap, as a child's and the root's do, count once: the run's
+/// tool time is the time any call was open, so tools and model never add up
+/// to more than the run.
 #[tokio::test(start_paused = true)]
-async fn a_failed_post_is_only_logged() {
-    let (plane, mut calls) = plane(|_call| Answer::Fail(error::unavailable(Verb::Activity, 503)));
+async fn test_overlapping_calls_count_their_union() {
+    let (plane, _calls) = plane(|_call| json(&ActivityAccepted { ok: true }));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let (sink, mut pump) = channel(&plane, &lease);
-    sink.emit(tool(TOOL));
-    drop(sink);
+    let (sink, _pump) = channel(&plane, &lease);
+    sink.run_started();
+    sink.emit(started(CALL));
+    tokio::time::advance(MODEL_STEP).await;
+    sink.emit(started(SECOND_CALL));
+    tokio::time::advance(MODEL_STEP).await;
+    sink.emit(completed(CALL, 120));
+    tokio::time::advance(MODEL_STEP).await;
+    sink.emit(completed(SECOND_CALL, 120));
+    sink.emit(completed("unpaired", 30));
+    tokio::time::advance(FIRST_CALL).await;
 
-    let (tally, recorded) = Tally::new();
-    scoped(tally, pump.run()).await;
-
-    assert_eq!(drain(&mut calls).len(), 1, "posted once, not retried");
+    let timing = sink.timing();
     assert_eq!(
-        recorded.try_iter().collect::<Vec<_>>(),
-        vec![Recorded::FramesDropped(FrameDrop::PostFailed, 1)],
-        "the frame the daemon did not take is counted as lost"
+        timing.tools,
+        Duration::from_millis(210),
+        "180 open, then 30 unpaired"
     );
+    assert_eq!(timing.elapsed, Duration::from_millis(220));
+    assert_eq!(timing.model(), Duration::from_millis(10));
+}
+
+/// A child reusing a call id keeps that id open until its last completion,
+/// so the stretch it covers is not closed by the first one.
+#[tokio::test(start_paused = true)]
+async fn test_a_reused_call_id_stays_open_until_its_last_completion() {
+    let (plane, _calls) = plane(|_call| json(&ActivityAccepted { ok: true }));
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let (sink, _pump) = channel(&plane, &lease);
+    sink.run_started();
+    sink.emit(started(CALL));
+    sink.emit(started(CALL));
+    tokio::time::advance(MODEL_STEP).await;
+    sink.emit(completed(CALL, OWN_MS));
+    tokio::time::advance(MODEL_STEP).await;
+    sink.emit(completed(CALL, OWN_MS));
+    tokio::time::advance(FIRST_CALL).await;
+
+    let timing = sink.timing();
+    assert_eq!(
+        timing.tools,
+        MODEL_STEP * 2,
+        "open until the second completion"
+    );
+    assert_eq!(timing.model(), FIRST_CALL);
 }

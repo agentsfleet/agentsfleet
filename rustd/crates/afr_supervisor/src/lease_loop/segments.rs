@@ -59,7 +59,6 @@ impl Timeline {
             timeline: self,
             segment,
             started: Instant::now(),
-            recorded: false,
         }
     }
 
@@ -90,32 +89,25 @@ impl Timeline {
 }
 
 /// One segment being timed. Dropping it records the time so far, so a step
-/// that returns early still leaves its segment on the line.
+/// that returns early still leaves its segment on the line, and stopping it
+/// is dropping it where the segment ends.
 #[derive(Debug)]
 pub(super) struct Stopwatch<'a> {
     timeline: &'a Timeline,
     segment: Segment,
     started: Instant,
-    recorded: bool,
 }
 
 impl Stopwatch<'_> {
     /// The segment ends here.
-    pub(super) fn stop(mut self) {
-        self.record();
-    }
-
-    fn record(&mut self) {
-        if !self.recorded {
-            self.recorded = true;
-            self.timeline.set(self.segment, self.started.elapsed());
-        }
+    pub(super) fn stop(self) {
+        drop(self);
     }
 }
 
 impl Drop for Stopwatch<'_> {
     fn drop(&mut self) {
-        self.record();
+        self.timeline.set(self.segment, self.started.elapsed());
     }
 }
 
@@ -140,44 +132,28 @@ impl LeaseRun<'_> {
         let tools_ms = segments.tools.map(saturating_millis);
         let report_ms = segments.report.map(saturating_millis);
         let first_token_ms = segments.first_token.map(saturating_millis);
-        match ending {
-            Ending::Ran { .. } => {
-                let event = EVENT_COMPLETED;
-                tracing::info!(
-                    lease_id,
-                    wall_ms,
-                    bundle_ms,
-                    memory_ms,
-                    sandbox_ms,
-                    model_ms,
-                    tools_ms,
-                    report_ms,
-                    first_token_ms,
-                    event
-                );
-            }
-            Ending::Failed { class, detail } => {
-                // The spelling the report carries, so the log and the report
-                // name a failure alike.
-                let class = to_spelling(class);
-                let class = class.as_deref();
-                let event = EVENT_FAILED;
-                tracing::info!(
-                    lease_id,
-                    class,
-                    detail,
-                    wall_ms,
-                    bundle_ms,
-                    memory_ms,
-                    sandbox_ms,
-                    model_ms,
-                    tools_ms,
-                    report_ms,
-                    first_token_ms,
-                    event
-                );
-            }
-        }
+        // A failure carries its class in the spelling the report carries, so
+        // the log and the report name it alike; a completion carries neither
+        // field, and tracing leaves a `None` off the line.
+        let (event, class, detail) = match ending {
+            Ending::Ran { .. } => (EVENT_COMPLETED, None, None),
+            Ending::Failed { class, detail } => (EVENT_FAILED, to_spelling(class), Some(*detail)),
+        };
+        let class = class.as_deref();
+        tracing::info!(
+            lease_id,
+            class,
+            detail,
+            wall_ms,
+            bundle_ms,
+            memory_ms,
+            sandbox_ms,
+            model_ms,
+            tools_ms,
+            report_ms,
+            first_token_ms,
+            event
+        );
     }
 }
 
