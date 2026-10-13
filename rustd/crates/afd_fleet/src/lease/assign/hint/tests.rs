@@ -194,6 +194,7 @@ fn test_two_full_peeks_share_the_ceiling() {
 /// A delete the datastore refuses is logged once, naming the partition it
 /// concerned, and still counted as the command the poll sent; the poll goes on
 /// without raising it.
+#[cfg(feature = "test-util")]
 #[tokio::test]
 async fn test_a_refused_spend_is_logged_and_counted() {
     use afd_core::test_util::trace::Capture;
