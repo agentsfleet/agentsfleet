@@ -7,6 +7,8 @@
 //! terminal row and answers no-work, while a construction failure here means
 //! the fleet's own configuration cannot be enforced.
 
+use std::time::Instant;
+
 use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
@@ -37,6 +39,7 @@ impl Plane {
         runner_id: &Uuid7,
         admitted: Admission2,
         now: UnixMillis,
+        began: Instant,
     ) -> Result<Step<Leased>> {
         let declared = self
             .vault
@@ -90,7 +93,8 @@ impl Plane {
             // raised rather than ending the event for good.
             Err(fault) => return Err(fault.into()),
         };
-        self.issue_ready(runner_id, &admitted, *policy, now).await
+        self.issue_ready(runner_id, &admitted, *policy, now, began)
+            .await
     }
 
     /// Ask for the grant this delivery needs, and say what the poll answers.
@@ -143,6 +147,7 @@ impl Plane {
         admitted: &Admission2,
         policy: ExecutionPolicy<'_>,
         now: UnixMillis,
+        began: Instant,
     ) -> Result<Step<Leased>> {
         // LAST, and only once everything above succeeded.
         let Some(issued) = self
@@ -173,11 +178,15 @@ impl Plane {
         let fleet_id = admitted.acquired.fleet_id.as_str();
         let agentsfleet_event_id = admitted.acquired.event_id.as_str();
         // How long a fresh event waited for a runner: its admission's stamp
-        // to this poll, both on the daemon replicas' clocks rather than the
-        // runner's, which is another machine's. A reclaimed lease logs none:
-        // its admission's stamp predates the run it replaces.
-        let queue_wait_ms = (admitted.acquired.kind == Kind::Fresh)
-            .then(|| now.saturating_millis_since(admitted.acquired.event_created_at));
+        // to this lease's write, both on the daemon replicas' clocks rather
+        // than the runner's, which is another machine's. The poll's own reads
+        // and writes count, measured from `began` on the monotonic clock. A
+        // reclaimed lease logs none: its stamp predates the run it replaces.
+        let polled = i64::try_from(began.elapsed().as_millis()).unwrap_or(i64::MAX);
+        let queue_wait_ms = (admitted.acquired.kind == Kind::Fresh).then(|| {
+            now.saturating_add_millis(polled)
+                .saturating_millis_since(admitted.acquired.event_created_at)
+        });
         tracing::info!(
             event = EVENT_LEASED,
             runner_id,

@@ -39,8 +39,9 @@ const CMD_SET: &str = "SET";
 const CMD_DEL: &str = "DEL";
 
 /// A fleet marked away from the cursor's partition is leased on the very next
-/// poll, which costs the directory read, the rotation peek, the hinted peek
-/// and the delete of its now-spent entry.
+/// poll, which costs the directory read, the rotation peek, the hinted peek,
+/// the two stream reads that take its event, and the delete of its now-spent
+/// entry.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_marked_fleet_is_leased_on_the_next_poll() {
@@ -52,7 +53,7 @@ async fn test_marked_fleet_is_leased_on_the_next_poll() {
 
     let leased = leased.expect("the hint sends the first poll to the fleet's partition");
     assert_eq!(leased.fleet_id.as_str(), fleet.id);
-    assert_eq!(cost.dragonfly_commands, 4, "{cost:?}");
+    assert_eq!(cost.dragonfly_commands, 6, "{cost:?}");
     assert!(
         scene.dirty().await.is_empty(),
         "the only fleet there is running"
@@ -86,6 +87,40 @@ async fn test_idle_poll_cost_is_bounded() {
         "{stale:?}"
     );
     assert!(scene.dirty().await.is_empty(), "the stale entry is spent");
+    scene.fixtures.cleanup().await;
+}
+
+/// A claim that finds its fleet drained counts every command it sent: the
+/// takeover and the new read that both came back empty, and the clear of the
+/// mark that sent it there, beside the directory read, both peeks and the
+/// spend of the entry.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_drained_claim_counts_its_stream_reads_and_clear() {
+    let scene = scene("drained").await;
+    let fleet = scene.fleet(&[partition(0)]).await;
+    afd_dragonfly::FleetStreams::new(scene.fixtures.queue().clone())
+        .ensure_group(&fleet.id)
+        .await
+        .expect("the group exists before a read");
+    scene.index.mark(&fleet.id).await.expect("mark");
+
+    let (none, cost) = scene.poll(&fleet.runners[0]).await;
+
+    assert!(none.is_none(), "the fleet holds nothing to lease");
+    assert_eq!(
+        cost.dragonfly_commands, 7,
+        "read, rotation, hinted peek, takeover, new read, clear, spend: {cost:?}"
+    );
+    assert!(
+        scene
+            .index
+            .token_for(&fleet.id)
+            .await
+            .expect("readable")
+            .is_none(),
+        "the drained fleet's mark is cleared"
+    );
     scene.fixtures.cleanup().await;
 }
 
@@ -225,8 +260,8 @@ async fn test_hint_deadline_falls_through() {
 }
 
 /// A hint naming the partition the cursor names is served by the one peek
-/// the poll makes anyway: the directory read, that peek, and the spend of
-/// the entry whose only fleet it leased.
+/// the poll makes anyway: the directory read, that peek, the two stream reads
+/// that take the event, and the spend of the entry whose only fleet it leased.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_hint_naming_the_rotations_partition_is_peeked_once() {
@@ -244,7 +279,7 @@ async fn test_a_hint_naming_the_rotations_partition_is_peeked_once() {
         leased.map(|acquired| acquired.fleet_id.to_string()),
         Some(fleet.id.clone())
     );
-    assert_eq!(cost.dragonfly_commands, 3, "{cost:?}");
+    assert_eq!(cost.dragonfly_commands, 5, "{cost:?}");
     assert!(scene.dirty().await.is_empty(), "the entry is spent");
     scene.fixtures.cleanup().await;
 }
