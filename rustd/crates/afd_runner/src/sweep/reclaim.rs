@@ -119,6 +119,19 @@ pub struct Reclaim {
     stranded_after: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
+/// Why the sweeper re-marks a fleet, which decides whether the readiness
+/// directory names its partition.
+#[derive(Clone, Copy)]
+enum Remark {
+    /// Work a dead holder left, claimed off its consumer or owed by an
+    /// expired lease: hinted, so the next poll takes it.
+    Stranded,
+    /// The stream probe's backstop, which also finds fleets mid-run, whose
+    /// entries stay pending while they run: unhinted, so a pass over running
+    /// fleets sends no polls, and the rotation reaches the mark in its turn.
+    Probed,
+}
+
 impl Reclaim {
     /// A sweeper claiming into `consumer`.
     #[must_use]
@@ -223,7 +236,12 @@ impl Reclaim {
                 }
             }
         }
-        self.mark_ready(fleet_id).await
+        let remark = if claimed_any {
+            Remark::Stranded
+        } else {
+            Remark::Probed
+        };
+        self.mark_ready(fleet_id, remark).await
     }
 
     /// Marks one fleet ready, answering whether the mark was written.
@@ -231,10 +249,12 @@ impl Reclaim {
     /// The one path both of this sweeper's writers share — the stream probe
     /// above and the ledger question below — so a mark that fails is counted
     /// and logged the same way whichever question raised it.
-    async fn mark_ready(&self, fleet_id: &str) -> bool {
-        // Unhinted: this pass re-marks fleets mid-run too, and the rotation
-        // reaches every mark it writes without the directory sending polls.
-        match self.ready.mark_unhinted(fleet_id).await {
+    async fn mark_ready(&self, fleet_id: &str, remark: Remark) -> bool {
+        let marked = match remark {
+            Remark::Stranded => self.ready.mark(fleet_id).await,
+            Remark::Probed => self.ready.mark_unhinted(fleet_id).await,
+        };
+        match marked {
             Ok(_token) => true,
             Err(failure) => {
                 producers::fleet::ready_write_failed();
@@ -311,7 +331,7 @@ impl Sweep for Reclaim {
         // The ledger's answer, after the stream's: a fleet the stream could
         // not vouch for may still hold a lease a dead runner never finished.
         for fleet_id in self.stranded_fleets(clock::now()).await? {
-            if self.mark_ready(&fleet_id).await {
+            if self.mark_ready(&fleet_id, Remark::Stranded).await {
                 swept.changed += 1;
                 tracing::info!(
                     fleet_id,

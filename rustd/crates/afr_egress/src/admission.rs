@@ -125,13 +125,14 @@ impl<'p> Admission<'p> {
             None => self.statics.field_names(secret.name),
         };
         match fields {
-            Some(mut fields) => {
+            // A credential with no string field has none to name.
+            Some(mut fields) if !fields.is_empty() => {
                 // Sorted, so the sentence reads the same whatever order the
                 // policy wrote the fields in.
                 fields.sort_unstable();
                 Error::secret_field_not_found(secret.name, secret.field, &fields)
             }
-            None => Error::secret_not_found(secret.name, secret.field),
+            Some(_) | None => Error::secret_not_found(secret.name, secret.field),
         }
     }
 

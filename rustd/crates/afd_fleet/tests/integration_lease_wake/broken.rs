@@ -187,17 +187,28 @@ async fn test_hint_deadline_falls_through() {
     let fixtures = Fixtures::create().await;
     let leases = Leases::new(fixtures.database.clone(), queue, Entropy::new());
     let runner = Uuid7::parse(DEADLINE_RUNNER).expect("a runner id");
+    let log = Trace::install();
     let started = Instant::now();
 
     let (polled, _cost) = leases
         .select_measured(&runner, &[], UnixMillis::from_millis(ENROLLED_AT))
         .await;
 
-    let hint = Duration::from_millis(READY_HINT_DEADLINE_MS);
+    let elapsed = started.elapsed();
     assert!(polled.is_err(), "neither peek answered");
+    let refused = log.only("assign_ready_hint_peek_failed");
+    let gave_up = format!("within {READY_HINT_DEADLINE_MS}ms");
     assert!(
-        started.elapsed() < REQUEST_TIMEOUT + hint * 3,
-        "one request timeout and one hint deadline, not two timeouts: {:?}",
-        started.elapsed()
+        refused
+            .field("reason")
+            .is_some_and(|why| why.contains(&gave_up)),
+        "the hinted peek gave up at the hint deadline: {:?}",
+        refused.fields
+    );
+    // Two request timeouts would take twice REQUEST_TIMEOUT; one and the
+    // hint's deadlines stay well under one and a half.
+    assert!(
+        elapsed < REQUEST_TIMEOUT + REQUEST_TIMEOUT / 2,
+        "one request timeout and the hint's deadlines, not two timeouts: {elapsed:?}"
     );
 }

@@ -150,6 +150,27 @@ fn should_name_a_static_credentials_fields_for_a_field_it_lacks() {
     );
 }
 
+/// A credential with no string field has no field to name, so it is refused
+/// as a secret the fleet does not have, never with an empty field list.
+#[test]
+fn should_refuse_a_credential_with_no_string_field_as_absent() {
+    let mut policy = crate::fixture::policy(false);
+    policy.secrets_map = Some(serde_json::json!({"numbers": {"ttl": 30}}));
+    let refused = super::Admission::new(&policy)
+        .admit(draft(
+            "GET",
+            "https://demo-grafana.internal/api/health",
+            &[("Authorization", "${secrets.numbers.token}")],
+            None,
+        ))
+        .err();
+
+    assert_eq!(
+        refused.as_ref().map(shown),
+        Some(shown(&Error::secret_not_found("numbers", "token")))
+    );
+}
+
 #[test]
 fn should_refuse_every_placeholder_when_the_tool_carries_no_credential() {
     let mut fetch = draft("GET", "https://${secrets.grafana.host}/", &[], None);

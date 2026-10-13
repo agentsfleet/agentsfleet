@@ -133,9 +133,10 @@ impl Leases {
         }
         let (offer, hint) = self.ready_this_poll(runner_id, cost).await;
         let acquired = self.offered(runner_id, offer, now, cost).await;
-        // On every exit, a failed one included: a poll that faulted leased
-        // nothing from the hinted partition, and keeping its entry would send
-        // every later poll back to the same fault.
+        // On every exit, a failed one included: when the fault was the hinted
+        // fleet's, keeping its entry would send every later poll back to it. A
+        // fault elsewhere, a Postgres error say, spends the entry too; the
+        // rotation still reaches the hinted fleets in its turn.
         let leased = acquired.as_ref().ok().and_then(Option::as_ref);
         self.spend_hint(runner_id, hint, leased, cost).await;
         acquired

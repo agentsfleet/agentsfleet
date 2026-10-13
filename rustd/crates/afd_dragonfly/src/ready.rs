@@ -84,8 +84,8 @@ const ARG_WITHVALUES: &str = "WITHVALUES";
 /// Minted rather than counted: a compare-and-clear compares two tokens for
 /// equality, and every counter shape breaks on reuse — a clear deletes the
 /// field, so a per-fleet count restarts and re-mints a token a stale poll still
-/// holds. The readiness directory also orders them, oldest mark first, which
-/// is what the derived `Ord` is for.
+/// holds. The readiness directory also orders them, serving the partition
+/// whose latest mark is oldest first, which is what the derived `Ord` is for.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReadyToken(String);
 
@@ -102,7 +102,8 @@ impl ReadyToken {
     /// Version 7 for its ten random bytes and its ordering: two marks in one
     /// millisecond still differ, which is what a compare-and-clear reads, and
     /// tokens sort by the millisecond they were minted, which is what the
-    /// readiness directory reads to serve the oldest mark first.
+    /// readiness directory reads to serve the partition whose latest mark is
+    /// oldest first.
     ///
     /// Public so a suite building a claim's envelope without a peek has a
     /// generation to carry. [`ReadyIndex::mark`] still takes none, so a token
@@ -198,7 +199,7 @@ impl ReadyIndex {
 
     /// Marks `fleet_id` ready without naming its partition in the directory.
     ///
-    /// For the reclaim sweeper's backstop, which re-marks fleets already
+    /// For the reclaim sweeper's stream probe, which re-marks fleets already
     /// marked or mid-run every pass: the rotation reaches the mark in its
     /// turn, and naming it would send a poll every pass to each partition a
     /// running fleet holds.
