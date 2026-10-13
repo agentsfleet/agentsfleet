@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   Badge,
   ConfirmDialog,
-  CopyButton,
   DataTable,
   type DataTableColumn,
   EmptyState,
@@ -20,9 +19,8 @@ import {
   compareModelIds,
   formatContextTokens,
   formatRatesPerMtok,
-  modelIdCopyLabel,
-  modelLabel,
 } from "@/lib/models/display";
+import { ModelName, ProviderBadge } from "@/components/domain/ModelCells";
 import { presentErrorString } from "@/lib/errors";
 import {
   default as EditModelDialogDynamic,
@@ -40,18 +38,10 @@ function isDefault(m: AdminModel, active: PlatformKey | null): boolean {
 
 function ModelCell({ model, active }: { model: AdminModel; active: PlatformKey | null }) {
   return (
-    <span className="flex min-w-0 items-center gap-2">
-      {/* The marketed name reads; the provider id, which fleet configs and
-          provider dashboards use, is one hover away, and the copy button
-          reaches it on touch or a keyboard, as on the workspace table. */}
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="block min-w-0 truncate sm:min-w-trim sm:max-w-trim" title={model.model_id}>
-          {modelLabel(model.model_id)}
-        </span>
-        <CopyButton value={model.model_id} label={modelIdCopyLabel(model.model_id)} />
-      </span>
-      {isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
-    </span>
+    <ModelName
+      modelId={model.model_id}
+      trailing={isDefault(model, active) ? <Badge variant="cyan">Default</Badge> : null}
+    />
   );
 }
 
@@ -127,7 +117,7 @@ function buildColumns({
   onDelete: (m: AdminModel) => void;
 }): DataTableColumn<AdminModel>[] {
   return [
-    { key: "provider", header: "Provider", sortValue: (m) => m.provider, cell: (m) => <Badge variant="cyan">{m.provider}</Badge> },
+    { key: "provider", header: "Provider", sortValue: (m) => m.provider, cell: (m) => <ProviderBadge provider={m.provider} /> },
     {
       key: "model",
       header: "Model",
