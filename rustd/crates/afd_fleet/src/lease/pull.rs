@@ -153,13 +153,14 @@ impl Plane {
         degraded: bool,
         now: UnixMillis,
     ) -> Result<String> {
+        let began = std::time::Instant::now();
         if degraded {
             return no_work(runner_id, "the runner's verdict is degraded or unreadable");
         }
         let Some(acquired) = self.leases.select(runner_id, held, now).await? else {
             return no_work(runner_id, "no leasable work");
         };
-        self.run_claimed(acquired, runner_id, now).await
+        self.run_claimed(acquired, runner_id, now, began).await
     }
 
     /// Every gate over one already-claimed event.

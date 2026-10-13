@@ -59,13 +59,18 @@ impl Leases {
     /// say where to resume. Both are logged here, because the lease poll
     /// propagates them and the handler's line would otherwise be the only
     /// record.
+    ///
+    /// `sent` gains one for every command this sends Dragonfly, so the poll's
+    /// tally counts them: the takeover, the new read when nothing was pending,
+    /// and the type check and create of a restored group.
     pub(super) async fn read_fresh(
         &self,
         fleet: &str,
         consumer: &str,
+        sent: &mut u64,
     ) -> Result<Option<FleetEvent>> {
         let streams = self.streams();
-        let read = match owed_then_new(&streams, fleet, consumer).await {
+        let read = match owed_then_new(&streams, fleet, consumer, sent).await {
             Err(lost) if lost.is_group_missing() => {
                 let cursor = self.admissions().delivered_cursor(fleet).await?;
                 // Hoisted: see the `tracing` note in the workspace Cargo.toml.
@@ -78,8 +83,9 @@ impl Leases {
                     event = EVENT_GROUP_RESTORED,
                     "the fleet's consumer group was gone and was recreated where the ledgers say delivery stopped"
                 );
+                *sent += 2;
                 streams.restore_group(fleet, &cursor).await?;
-                owed_then_new(&streams, fleet, consumer).await
+                owed_then_new(&streams, fleet, consumer, sent).await
             }
             other => other,
         };
@@ -98,25 +104,26 @@ async fn owed_then_new(
     streams: &FleetStreams,
     fleet: &str,
     consumer: &str,
+    sent: &mut u64,
 ) -> afd_dragonfly::error::Result<Option<FleetEvent>> {
+    *sent += 1;
     let pending = streams
         .take_over_oldest(fleet, consumer)
         .await
         .inspect_err(|error| warn_queue_fleet(EVENT_PEL_READ_FAILED, fleet, error))?;
-    match pending {
-        Some(event) => {
-            let id = event.receipt.as_str();
-            tracing::debug!(
-                event = EVENT_PEL_REDELIVERED,
-                fleet_id = fleet,
-                receipt = id,
-                "an entry pending in the group was taken over and is being re-delivered"
-            );
-            Ok(Some(event))
-        }
-        None => streams
+    let Some(event) = pending else {
+        *sent += 1;
+        return streams
             .read_new(fleet, consumer)
             .await
-            .inspect_err(|error| warn_queue_fleet(EVENT_STREAM_READ_FAILED, fleet, error)),
-    }
+            .inspect_err(|error| warn_queue_fleet(EVENT_STREAM_READ_FAILED, fleet, error));
+    };
+    let id = event.receipt.as_str();
+    tracing::debug!(
+        event = EVENT_PEL_REDELIVERED,
+        fleet_id = fleet,
+        receipt = id,
+        "an entry pending in the group was taken over and is being re-delivered"
+    );
+    Ok(Some(event))
 }

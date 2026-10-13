@@ -7,6 +7,8 @@
 //! with the claim still held, and the fleet's next event waited out the
 //! claim's whole lifetime behind an answer that had already been given.
 
+use std::time::Instant;
+
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_dragonfly::ReadyToken;
@@ -30,11 +32,15 @@ impl Plane {
     /// A lease keeps it. Anything else frees it, and a park also clears the
     /// fleet's mark with the generation the poll peeked, because the answer a
     /// person owes re-marks the fleet and nothing else will change before it.
+    ///
+    /// `began` is when the poll began on the monotonic clock, so the issued
+    /// lease's queue wait can count the time the poll itself took.
     pub(super) async fn run_claimed(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
         now: UnixMillis,
+        began: Instant,
     ) -> Result<String> {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
@@ -46,7 +52,7 @@ impl Plane {
             .await
             .map(Step::proceed)
         {
-            Ok(Ok(admitted)) => self.deliver(runner_id, admitted, now).await,
+            Ok(Ok(admitted)) => self.deliver(runner_id, admitted, now, began).await,
             Ok(Err(ended)) => Ok(ended),
             Err(fault) => Err(fault),
         };
@@ -97,7 +103,12 @@ mod tests {
         let fleet = acquired.fleet_id.clone();
 
         let fault = test_dead::plane()
-            .run_claimed(acquired, &test_dead::id(9), test_dead::AT)
+            .run_claimed(
+                acquired,
+                &test_dead::id(9),
+                test_dead::AT,
+                std::time::Instant::now(),
+            )
             .await
             .expect_err("an installed-fleet read with no datastore is a fault, not a decision");
 

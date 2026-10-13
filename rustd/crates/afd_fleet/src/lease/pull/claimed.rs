@@ -36,6 +36,7 @@ impl Plane {
         runner_id: &Uuid7,
         now: UnixMillis,
     ) -> Result<String> {
-        self.run_claimed(acquired, runner_id, now).await
+        self.run_claimed(acquired, runner_id, now, std::time::Instant::now())
+            .await
     }
 }

@@ -310,7 +310,8 @@ async fn test_lease_history_stops_at_its_own_event() {
 }
 
 /// The issued-lease line carries how long its event waited for a runner, on
-/// the daemon's own clock: admitted at T, leased at T + 350 ms, logged 350.
+/// the daemon's own clock: admitted at T, polled at T + 350 ms, logged 350
+/// plus the time the poll itself took to write the lease.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_runner_lease_issued_logs_queue_wait() {
@@ -319,14 +320,20 @@ async fn test_runner_lease_issued_logs_queue_wait() {
     chat.ask(EventType::Chat, FIRST_MESSAGE, ENROLLED_AT).await;
 
     let log = afd_core::test_util::trace::Capture::install();
+    let polled = std::time::Instant::now();
     chat.lease(&chat.runner, ENROLLED_AT + WAITED_MS).await;
+    let call_ms = i64::try_from(polled.elapsed().as_millis()).expect("a short call");
     let issued = log.only("runner_lease_issued");
     drop(log);
 
-    assert_eq!(
-        issued.field("queue_wait_ms"),
-        Some(WAITED_MS.to_string().as_str()),
-        "{:?}",
+    let logged: i64 = issued
+        .field("queue_wait_ms")
+        .and_then(|millis| millis.parse().ok())
+        .expect("a fresh lease logs its queue wait");
+    assert!(
+        (WAITED_MS..=WAITED_MS + call_ms).contains(&logged),
+        "{logged} ms outside {WAITED_MS}..={} ms: {:?}",
+        WAITED_MS + call_ms,
         issued.fields
     );
     chat.fixtures.cleanup().await;

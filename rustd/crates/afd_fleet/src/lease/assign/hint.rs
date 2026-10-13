@@ -200,6 +200,12 @@ fn spread(dirty: Vec<Dirty>, position: Partition) -> Option<Dirty> {
 /// neither partition's fleets can crowd the other's out of the candidate
 /// scan. No fleet appears twice: the two come from different partitions,
 /// and a fleet lives in one.
+///
+/// When both peeks hold more than half the ceiling, some hinted fleets are
+/// left out, and a poll that then leases nothing spends the entry before they
+/// were offered. Two partitions that full means a loaded deployment, whose
+/// polls bring the cursor round to every partition within a fraction of a
+/// second, so the fleet waits a turn of the rotation and loses no work.
 fn interleave(hinted: Vec<Ready>, rotation: Vec<Ready>) -> Vec<Ready> {
     let (mut hinted, mut rotation) = (hinted.into_iter(), rotation.into_iter());
     std::iter::from_fn(|| match (hinted.next(), rotation.next()) {

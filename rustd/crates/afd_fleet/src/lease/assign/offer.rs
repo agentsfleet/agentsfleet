@@ -88,7 +88,10 @@ impl Leases {
         let offered = self.candidates(runner_id, &ids, now).await?;
         for (fleet_id, token) in peeked(offered, ready) {
             cost.database_roundtrips += 1;
-            if let Some(acquired) = self.try_candidate(&fleet_id, token, runner_id, now).await? {
+            if let Some(acquired) = self
+                .try_candidate(&fleet_id, token, runner_id, now, cost)
+                .await?
+            {
                 return Ok(Some(acquired));
             }
         }
