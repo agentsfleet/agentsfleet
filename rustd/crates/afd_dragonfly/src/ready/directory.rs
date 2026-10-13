@@ -34,7 +34,10 @@ use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::timing::READY_HINT_DEADLINE_MS;
 use afd_observability::metrics::label::fleet::ReadyHint;
 
-use super::{CLEAR_IF_TOKEN_MATCHES_SCRIPT, CMD_EVAL, CMD_HSET, Partition, ReadyIndex, ReadyToken};
+use super::{
+    CLEAR_IF_TOKEN_MATCHES_SCRIPT, CMD_EVAL, CMD_HRANDFIELD, CMD_HSET, Partition, Ready,
+    ReadyIndex, ReadyToken,
+};
 use crate::error::{self, Result};
 
 /// The directory read: every entry at once, at most one per partition.
@@ -104,6 +107,21 @@ impl ReadyIndex {
         )
         .await?;
         Ok(oldest_first(entries))
+    }
+
+    /// Samples the partition the directory named, as [`ReadyIndex::peek`]
+    /// does, but under the hint deadline.
+    ///
+    /// Every poll that reads the directory is sent to the same oldest entry,
+    /// so a peek waiting out the datastore's request timeout there would stall
+    /// every poll on every runner, where a sick partition reached by the
+    /// rotation stalls one poll in sixteen.
+    ///
+    /// # Errors
+    /// Returns a timeout error past the hint deadline, and a command error
+    /// when the read fails.
+    pub async fn peek_hinted(&self, partition: Partition, count: usize) -> Result<Vec<Ready>> {
+        within(HINT_DEADLINE, CMD_HRANDFIELD, self.peek(partition, count)).await
     }
 
     /// Deletes `dirty`'s entry, but only if no mark has named its partition

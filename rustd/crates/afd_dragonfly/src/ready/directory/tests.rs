@@ -177,3 +177,50 @@ async fn test_a_directory_nobody_answers_costs_only_the_hint() {
     );
     assert!(index.spend(&dirty).await.is_err(), "and so does the delete");
 }
+
+/// A directory whose node accepts and never answers costs each command the
+/// hint deadline and no more: the read, the hinted peek and the delete hand
+/// their timeout back, and the write is reported where it fails. Without the
+/// deadline each would wait out the datastore's own request timeout.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn test_every_hint_command_gives_up_at_the_hint_deadline() {
+    use crate::{Dragonfly, DragonflyConfig, DragonflyRole};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a loopback port");
+    let address = listener.local_addr().expect("a bound address");
+    let _silent = tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((socket, _peer)) = listener.accept().await {
+            held.push(socket);
+        }
+    });
+    let config = DragonflyConfig::from_url(DragonflyRole::Default, format!("redis://{address}"));
+    let waited = config.request_timeout();
+    let index = super::ReadyIndex::new(Dragonfly::unreachable(&config).expect("a lazy handle"));
+    let partition = Partition::new(4).expect("4 is a partition");
+    let dirty = super::Dirty {
+        partition,
+        token: token(EARLIER),
+    };
+    let capture = Capture::install();
+    let started = Instant::now();
+
+    assert!(index.dirty().await.is_err(), "the read gives up");
+    assert!(
+        index.peek_hinted(partition, 1).await.is_err(),
+        "the hinted peek gives up"
+    );
+    assert!(index.spend(&dirty).await.is_err(), "the delete gives up");
+    index.note_dirty(partition, &dirty.token).await;
+    let line = capture.only(EVENT_HINT_WRITE_FAILED);
+    assert_eq!(line.field("partition"), Some("4"));
+
+    assert!(
+        started.elapsed() < waited / 2,
+        "four hint deadlines, not the datastore's {waited:?}: {:?}",
+        started.elapsed()
+    );
+}

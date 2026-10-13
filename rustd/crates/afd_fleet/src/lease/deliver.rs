@@ -18,7 +18,7 @@ use afd_approval::{Origin, Requested, Wanted};
 
 use crate::error::Result;
 use crate::lease::answer::{EVENT_LEASED, no_work, render};
-use crate::lease::envelope::Acquired;
+use crate::lease::envelope::{Acquired, Kind};
 use crate::lease::history;
 use crate::lease::issue::Billed;
 use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
@@ -172,10 +172,12 @@ impl Plane {
         let lease_id = issued.lease_id.as_str();
         let fleet_id = admitted.acquired.fleet_id.as_str();
         let agentsfleet_event_id = admitted.acquired.event_id.as_str();
-        // How long the event waited for a runner: its admission's stamp to
-        // this poll, both read on this daemon's clock. Computed here and not
-        // on the runner, whose clock is another machine's.
-        let queue_wait_ms = now.saturating_millis_since(admitted.acquired.event_created_at);
+        // How long a fresh event waited for a runner: its admission's stamp
+        // to this poll, both on the daemon replicas' clocks rather than the
+        // runner's, which is another machine's. A reclaimed lease logs none:
+        // its admission's stamp predates the run it replaces.
+        let queue_wait_ms = (admitted.acquired.kind == Kind::Fresh)
+            .then(|| now.saturating_millis_since(admitted.acquired.event_created_at));
         tracing::info!(
             event = EVENT_LEASED,
             runner_id,

@@ -22,8 +22,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Batch:** B1 — one Pull Request; the wake hint and the segment timings ship together so the second measures the first
 **Branch:** `feat/m225-lease-pickup-wake-hint` (worktree `~/Projects/agentsfleet-m225-lease-pickup`)
 **Baseline revision:** `4a53b948c727cfdc860373bb3c77b08f80bb418d` (`origin/main`, the M223 merge)
-**Test Baseline:** pending — measure declared unit and integration lanes before the Pull Request
-**Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
+**Test Baseline:** unit=10301 integration=947
+**Baseline evidence:** playbooks/operations/acceptance/baselines/M225_001-20261013.md
 **Depends on:** none
 **Provenance:** LLM-drafted (Claude Opus 5.5, Oct 12, 2026) from dev measurements during M213_001's close-out (runner journal on `zombie-dev-worker-ant`, `flyctl logs` on the dev API) and `rustd/crates/afd_fleet/src/lease/assign.rs`
 **Canonical architecture:** `docs/architecture/runner_fleet.md` §Datastore topology (the readiness index); `docs/architecture/lease_flow.md`; `docs/architecture/scaling.md` (idle poll cost)
@@ -96,16 +96,10 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `rustd/crates/afr_supervisor/src/worker_pool.rs` | EDIT | workers offset their first poll by a share of the idle interval |
 | `rustd/crates/afr_supervisor/src/worker_pool/tests.rs` | EDIT | the stagger proof on a paused clock |
 | `docs/architecture/runner_fleet.md` | EDIT | the directory in the datastore table |
-| `docs/architecture/lease_flow.md` | EDIT | the poll step reads the directory first and keeps the rotation peek |
+| `docs/architecture/lease_flow.md` | EDIT | the poll step reads the directory first and keeps the rotation peek; §3 step 4 records the egress wording |
 | `docs/architecture/scaling.md` | EDIT | idle poll cost restated as two Dragonfly reads plus the one Postgres authentication read line 19 already names, at the three places that say one Dragonfly command: §Per-request volume (the `HRANDFIELD` row), §Measured ceilings (the `1.00 Dragonfly command` row) and anti-pattern 7 |
-
-**Ride-along scope (Indy, Oct 12, 2026 — carried from `fix/egress-refusal-tells-the-model-to-stop` and asked for at CHORE(open); outside the lease work, inside this Pull Request):**
-
-| File | Action | Why |
-|------|--------|-----|
 | `rustd/crates/afr_egress/src/error.rs` | EDIT | a fixed refusal (`RequestPolicyNotAllowed`, `SecretNotFound`) tells the model the rules are fixed for the run, so it stops retrying variants — the 167K-token run in Out of Scope |
 | `rustd/crates/afr_egress/src/error/tests.rs` | EDIT | pins the two sentences |
-| `docs/architecture/lease_flow.md` | EDIT | §3 step 4 records the wording and that the loop still counts nothing |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/PlatformCatalogTable.tsx` | EDIT | the platform Fleet library table ends at its rows, like the Models table |
 | `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.tsx` | EDIT | the section stops stretching the table to the viewport |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/components/WorkspaceLibraryList.tsx` | EDIT | the workspace Fleet library table ends at its rows |
@@ -118,6 +112,19 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 | `ui/packages/app/app/(dashboard)/admin/models/components/CatalogueList.tsx` | EDIT | the raw-slug badge and the local model cell give way to the shared ones |
 | `ui/packages/app/tests/e2e/acceptance/logs-detail.spec.ts` | EDIT | the acceptance journey follows the event dialog PR #748 shipped: the identifier left the heading for the footer's copy button |
 | `ui/packages/app/tests/event-details-dialog.test.tsx` | EDIT | pins what the journey asserts at unit level, so the two fail together |
+| `ui/packages/app/app/(dashboard)/admin/models/components/MakeDefaultDialog.tsx` | EDIT | the provider shows through the shared `ProviderBadge`, not as a raw uppercase slug |
+| `ui/packages/app/tests/make-default-dialog.test.tsx` | NEW | the dialog's provider label |
+| `ui/packages/app/app/(dashboard)/admin/fleet-libraries/components/FleetLibrariesView.test.tsx` | EDIT | pins the catalogue section's shrink-not-grow classes |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/components/WorkspaceLibraryList.test.tsx` | EDIT | pins the list's shrink-not-grow classes |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/library/page.test.tsx` | EDIT | pins the section's shrink-not-grow classes |
+| `docs/architecture/datastore_scaling.md` | EDIT | the poll reads the directory beside its partition; why a one-slot hint is tolerable |
+| `docs/architecture/data_flow.md` | EDIT | the lease handler's readiness step reads the directory and spends its entry |
+| `rustd/crates/afd_fleet/src/lease/pull/claimed.rs` | EDIT | module doc: a poll peeks the rotation's partition and the directory's |
+| `rustd/crates/afd_bench/src/instrument.rs` | EDIT | reads `agentsfleet_lease_poll_dragonfly_commands_total` back |
+| `rustd/crates/afd_bench/src/instrument/tests.rs` | EDIT | the new counter field |
+| `playbooks/operations/acceptance/baselines/M225_001-20261013.md` | NEW | the comparison-revision baseline report |
+
+**Ride-along rows** — the `afr_egress` and `ui/` rows are scope (Indy, Oct 12, 2026 — carried from `fix/egress-refusal-tells-the-model-to-stop` and asked for at CHORE(open); outside the lease work, inside this Pull Request):**
 
 ## Applicable Rules
 
@@ -152,9 +159,9 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 - **Dimension 1.3** — DONE — A mark written between a poll's directory read and its delete survives: the mark rewrote the token, and the compare-and-delete sees a different one → Test `test_mark_racing_a_clear_survives`
 - **Dimension 1.4** — DONE — A lost directory entry costs only latency: the rotation peek, made on every poll, visits the fleet's partition within one full turn of this daemon's cursor → Test `test_lost_dirty_bit_falls_back_to_rotation`
 - **Dimension 1.5** — DONE — Two fleets marked in different partitions are both leased within one poll interval by two different workers: the directory holds both partitions, and a poll that takes one leaves the other's entry for the next poll → Test `test_two_marked_fleets_lease_within_one_interval`
-- **Dimension 1.6** — DONE — A directory entry whose partition gave this poll no lease is deleted under its token, unless the lease came from that partition and its peek held other fleets: a partition whose only marked fleet is mid-run loses its entry after one dry poll, the next mark there restores it, and a fleet marked in another partition is reached by the hint or, with its directory write lost, by the rotation peek every poll makes → Test `test_busy_dirty_partition_does_not_starve_rotation`
+- **Dimension 1.6** — DONE — A directory entry is deleted under its token once a poll tried its partition and could not lease from it: nothing leased at all, its only fleet leased, or its peek failed. A poll that leased from the rotation's partition keeps the entry, because the hinted fleets may never have been tried; one that leased from the dirty partition keeps it while that peek held other fleets. A partition whose only marked fleet is mid-run loses its entry after one dry poll, the next mark there restores it, and a fleet marked in another partition is reached by the hint or, with its directory write lost, by the rotation peek every poll makes → Test `test_busy_dirty_partition_does_not_starve_rotation`
 - **Dimension 1.7** — DONE — With several dirty entries the poll peeks the oldest token first, so two partitions dirtied in turn are served in that order → Test `test_dirty_partitions_come_back_oldest_first`
-- **Dimension 1.8** — DONE — A directory command that exceeds `READY_HINT_DEADLINE_MS` costs the poll that deadline and no more, counts once, and the poll makes the rotation peek alone; an admission whose directory write timed out still succeeds → Test `test_hint_deadline_falls_through`
+- **Dimension 1.8** — DONE — A directory command, or the peek of the partition the directory named, that exceeds `READY_HINT_DEADLINE_MS` costs the poll that deadline and no more and counts once; a failed hinted peek spends its entry so the next poll is not sent back; the poll makes the rotation peek alone; an admission whose directory write timed out still succeeds → Test `test_hint_deadline_falls_through`
 
 ### §2 — Every terminal lease line logs its segments
 
@@ -193,7 +200,8 @@ Constants: READY_HINT_DEADLINE_MS (afd_core timing.rs); worker offset = n × NO_
 | Directory read fails or times out | Dragonfly error, or the deadline passes, on the poll | counted; the poll makes the rotation peek alone and took at most the deadline longer |
 | Mark races a delete | admission marks while a poll deletes | the token differs; the entry stays |
 | Stale entry | the fleet was drained by another runner | the peek finds nothing; compare-and-delete removes the entry |
-| Busy partition | its marked fleets are mid-run, or not this runner's labels | the entry is deleted after one poll that could not lease from it; the next mark there restores it; a label-restricted fleet whose entry another runner deleted is found by the rotation, today's speed |
+| A peek fails or times out | the hinted partition, or the rotation's, is on a sick node | a failed hinted peek counts under `kind="peek"` and spends its entry; either peek's fleets are still offered when the other fails; the poll fails only when both do |
+| Busy partition | its marked fleets are mid-run, or not this runner's labels | the entry is deleted after one poll that could not lease from it; the next mark there restores it; a label-restricted fleet whose entry another runner deleted, and a steer admitted while its fleet ran, are found by the held-sandbox read or the rotation, today's speed |
 | A partition holds more marks than one peek samples | thousands ready in one partition | the fleet is leased within a few visits; the hint shortens the wait to the visit, not to one sample |
 
 ## Invariants
@@ -201,7 +209,7 @@ Constants: READY_HINT_DEADLINE_MS (afd_core timing.rs); worker offset = n × NO_
 1. The readiness index and the directory are hints; the streams are the record — enforced by the reclaim sweeper re-deriving readiness, already proven, and by Dimensions 1.4 and 1.6.
 2. An idle poll's scheduler touches no Postgres — enforced by the `PollCost` tally asserted in Dimension 1.2. The request's authentication read belongs to the HTTP guard (`afd_http/src/auth/guard.rs`), is counted in `scaling.md`, and is why the idle back-off stays at 1,000 ms.
 3. The rotation peek is made on every poll, dirty entry or not — enforced by Dimension 1.6.
-4. No directory command waits longer than `READY_HINT_DEADLINE_MS` — enforced by Dimension 1.8.
+4. No directory command, and no peek of the partition the directory named, waits longer than `READY_HINT_DEADLINE_MS` — enforced by Dimension 1.8 and `test_every_hint_command_gives_up_at_the_hint_deadline`.
 5. The early flush changes when a frame is posted, never whether it is counted — enforced by Dimension 3.3.
 
 ## Metrics & Observability
@@ -304,6 +312,9 @@ N/A — no files deleted.
   > Indy (2026-10-12): "Delete after a dry poll (Recommended)" — context: asked whether a busy directory entry is deleted after one poll that could not lease from it, at the cost of a label-restricted fleet falling back to the rotation.
   (2) §4 needs this branch on dev, and dev deploys only from `main` (`.github/workflows/deploy-dev.yml` `on: push: branches: main`). §4 stays IN_PROGRESS through the Pull Request and runs after the merge deploys.
   > Indy (2026-10-12): "Defer §4 to after merge (Recommended)" — context: the ten dev steers and the two-workspace check wait for the merge's dev deploy.
+- **REVIEW (Oct 13, 2026, gstack `/review`)** — seven readers: testing, maintainability, security, performance, design, simplification, and an adversarial pass. Fixed: the hinted peek ran under the 5 s request timeout and kept a failed entry, so one sick node could stall every poll (now under the hint deadline and spent on failure, `peek` label, Dimension 1.8); the Fleet library tables clipped long lists because `min-h-0` went with `flex-1` (shrink kept, grow dropped); tool time summed overlapping child calls (now the union of open calls); a lease from the rotation's partition deleted a hint it never tried (kept now, Dimension 1.6); a failed rotation peek threw away a good hint; `queue_wait_ms` on a reclaimed lease counted the previous run (logged for fresh leases only); provider lookups resolved inherited keys (`Object.hasOwn`); vendor spellings for the runner registry's providers; the Make-default dialog's raw slug; the platform-default row's muted name; a missing provider no longer looks like a vendor; stale docs in three architecture pages, the census and two metric docs; `LeaseRun::lease` over the method cap; tests added for every coverage gap named. Skipped with reasons in the Pull Request: the extra round trip of the spend before delivery, per-poll allocations, a log line per failed poll.
+- **Bench (Oct 13, 2026, `make bench-lease PROFILE=rig` against `bench/baselines/lease.rig.json`)** — drain lease p95 56.5 → 48.1 ms, drain report p95 21.5 → 16.9 ms, leases per second 171.6 → 176.9, idle Postgres statements per poll 0 → 0, idle Dragonfly calls per poll 1.0 → 2.0 (the directory read), wasted claim rate 0.278 → 0.333.
+- **Open for Indy after review** — (a) every poll is sent to the same oldest dirty partition, and the wasted claim rate rose 20% on the rig; spreading polls over the oldest few entries is the candidate fix. (b) The directory slot has a deadline but no breaker: a sick node there still receives every poll's command. (c) A steer admitted while its fleet runs loses its entry to the next dry poll and is found by the held-sandbox read or the rotation; re-noting the directory when a run settles would keep it. (d) Oldest-first trusts each replica's clock. (e) The worker stagger sets only the first poll; later polls drift.
 - **Open for Indy** — (a) Does M225 also point dev's runner at a collector, or do the segment fields stay journal-only until the "runner collector built later" note in `docs/architecture/observability.md` lands? (b) Does the refused-write retry cap (make `request_policy_not_allowed` and `secret_not_found` terminal for a request shape, cap identical refusals per lease) fold into M225 or get its own spec?
 - **Skill-chain outcomes** — pending.
 - **Deferrals** — §4 (Dimensions 4.1, 4.2) to after the merge, quoted above.

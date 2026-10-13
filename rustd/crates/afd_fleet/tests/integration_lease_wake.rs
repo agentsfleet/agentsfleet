@@ -16,6 +16,8 @@
 )]
 
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
+use afd_observability::metrics::label::fleet::ReadyHint;
 use afd_observability::test_util::Capture;
 
 use crate::requests::ENROLLED_AT;
@@ -29,6 +31,10 @@ use scene::{partition, scene};
 /// The counter a failed or late directory command moves, and its label.
 const HINT_FAILURES: &str = "agentsfleet_fleet_ready_hint_failures_total";
 const KIND: &str = "kind";
+/// What a test puts where a hash should be.
+const NOT_A_HASH: &str = "not-a-hash";
+const CMD_SET: &str = "SET";
+const CMD_DEL: &str = "DEL";
 
 /// A fleet marked away from the cursor's partition is leased on the very next
 /// poll, which costs the directory read, the rotation peek, the hinted peek
@@ -209,9 +215,10 @@ async fn test_hint_deadline_falls_through() {
     let capture = Capture::install();
     let scene = scene("broken").await;
     let fleet = scene.fleet(&[]).await;
-    scene.raw("SET", Some("not-a-hash")).await;
-    let writes = capture.sum(HINT_FAILURES, &[(KIND, "write")]);
-    let reads = capture.sum(HINT_FAILURES, &[(KIND, "read")]);
+    let directory = scene.directory_key();
+    scene.raw(&directory, CMD_SET, Some(NOT_A_HASH)).await;
+    let writes = capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Write.as_str())]);
+    let reads = capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Read.as_str())]);
 
     scene.send(&fleet).await;
     assert!(
@@ -234,14 +241,98 @@ async fn test_hint_deadline_falls_through() {
         leased.map(|acquired| acquired.fleet_id.to_string()),
         Some(fleet.id)
     );
-    assert!(
-        capture.sum(HINT_FAILURES, &[(KIND, "write")]) > writes,
-        "the write is counted"
+    assert_eq!(
+        capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Write.as_str())]),
+        writes + 1,
+        "the one write is counted once"
     );
     assert!(
-        capture.sum(HINT_FAILURES, &[(KIND, "read")]) > reads,
+        capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Read.as_str())]) > reads,
         "and every read"
     );
-    scene.raw("DEL", None).await;
+    scene.raw(&directory, CMD_DEL, None).await;
+    scene.fixtures.cleanup().await;
+}
+
+/// A hint naming the partition the cursor names is served by the one peek
+/// the poll makes anyway: the directory read, that peek, and the spend of
+/// the entry whose only fleet it leased.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_hint_naming_the_rotations_partition_is_peeked_once() {
+    let scene = scene("same").await;
+    let fleet = scene.fleet(&[]).await;
+    for _idle in 0..fleet.partition().index() {
+        let (none, _cost) = scene.poll(&fleet.runners[0]).await;
+        assert!(none.is_none(), "nothing is marked yet");
+    }
+    scene.send(&fleet).await;
+
+    let (leased, cost) = scene.poll(&fleet.runners[0]).await;
+
+    assert_eq!(
+        leased.map(|acquired| acquired.fleet_id.to_string()),
+        Some(fleet.id.clone())
+    );
+    assert_eq!(cost.dragonfly_commands, 3, "{cost:?}");
+    assert!(scene.dirty().await.is_empty(), "the entry is spent");
+    scene.fixtures.cleanup().await;
+}
+
+/// A hinted peek that fails is counted, spends its entry so the next poll is
+/// not sent back, and leaves the poll its rotation.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_hinted_peek_that_fails_spends_its_entry() {
+    let capture = Capture::install();
+    let scene = scene("unpeekable").await;
+    let fleet = scene.fleet(&[partition(0)]).await;
+    scene.index.mark(&fleet.id).await.expect("mark");
+    let broken = scene.partition_key(fleet.partition());
+    scene.raw(&broken, CMD_SET, Some(NOT_A_HASH)).await;
+    let peeks = capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Peek.as_str())]);
+
+    let (none, cost) = scene.poll(&fleet.runners[0]).await;
+
+    assert!(none.is_none(), "the rotation's partition holds nothing");
+    assert_eq!(
+        cost.dragonfly_commands, 4,
+        "read, rotation, hinted peek, spend: {cost:?}"
+    );
+    assert_eq!(
+        capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Peek.as_str())]),
+        peeks + 1
+    );
+    assert!(
+        scene.dirty().await.is_empty(),
+        "the unreadable partition's entry is spent"
+    );
+    scene.raw(&broken, CMD_DEL, None).await;
+    scene.fixtures.cleanup().await;
+}
+
+/// A held fleet's readiness read joins the poll's Dragonfly tally once,
+/// however often the runner names it.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_held_fleet_reads_join_the_dragonfly_tally() {
+    let scene = scene("held").await;
+    let fleet = scene.fleet(&[]).await;
+    let held = Uuid7::parse(&fleet.id).expect("a fleet id");
+
+    let (polled, cost) = scene
+        .leases
+        .select_measured(
+            &fleet.runners[0],
+            &[held.clone(), held],
+            UnixMillis::from_millis(ENROLLED_AT),
+        )
+        .await;
+
+    assert!(polled.expect("the poll must not fault").is_none());
+    assert_eq!(
+        cost.dragonfly_commands, 3,
+        "one held read, then directory and rotation: {cost:?}"
+    );
     scene.fixtures.cleanup().await;
 }

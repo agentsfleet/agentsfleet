@@ -56,6 +56,10 @@ fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
     );
     assert_eq!(worked.candidates, CANDIDATES);
     assert_eq!(worked.roundtrips, ROUNDTRIPS);
+    assert_eq!(
+        worked.dragonfly_commands, COMMANDS,
+        "the poll's Dragonfly cost is published"
+    );
 
     // A second install hands back the first instrument rather than building
     // a provider nothing records into: it reads exactly what the first reads.
@@ -75,6 +79,10 @@ fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
 
     assert_eq!(idle.polls, 1);
     assert_eq!(
+        idle.dragonfly_commands, IDLE_COMMANDS,
+        "an idle poll asks Dragonfly twice"
+    );
+    assert_eq!(
         idle.roundtrips, 0,
         "an idle poll costing a round trip would make idle cost scale with \
          fleets rather than with runners"
@@ -87,11 +95,13 @@ fn test_a_delta_never_runs_backwards() {
         polls: 5,
         candidates: 50,
         roundtrips: 10,
+        dragonfly_commands: 20,
     };
     let earlier = PollCounters {
         polls: 9,
         candidates: 90,
         roundtrips: 18,
+        dragonfly_commands: 36,
     };
 
     let delta = later.since(earlier);

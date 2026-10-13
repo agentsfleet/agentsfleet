@@ -44,33 +44,46 @@ fn test_a_partition_still_holding_work_keeps_its_entry() {
     let dirty = partition(5);
     let leased = fleet_in(dirty);
 
-    assert!(keeps_entry(dirty, 2, Some(&leased)));
+    assert!(keeps_entry(dirty, Some(2), Some(&leased)));
 }
 
-/// Every other outcome spends the entry: nothing leased, a lease from the
-/// rotation's partition, or the only fleet there leased.
+/// A poll that leased from the rotation's partition keeps the entry: the
+/// candidate scan may have offered the rotation's fleet first, so the hinted
+/// fleets were never tried.
 #[test]
-fn test_a_dry_or_finished_partition_spends_its_entry() {
+fn test_a_lease_from_the_rotation_keeps_the_hint() {
+    let dirty = partition(5);
+    let elsewhere = fleet_in(partition(9));
+
+    assert!(keeps_entry(dirty, Some(3), Some(&elsewhere)));
+}
+
+/// A partition the poll tried and could not lease from spends its entry:
+/// nothing leased, its only fleet leased, a stale entry over an empty
+/// partition, or a peek that failed.
+#[test]
+fn test_a_dry_finished_or_unreadable_partition_spends_its_entry() {
     let dirty = partition(5);
     let here = fleet_in(dirty);
     let elsewhere = fleet_in(partition(9));
 
     assert!(
-        !keeps_entry(dirty, 3, None),
-        "nothing leased: the partition was dry"
+        !keeps_entry(dirty, Some(3), None),
+        "nothing leased: every fleet offered was tried"
     );
     assert!(
-        !keeps_entry(dirty, 3, Some(&elsewhere)),
-        "leased from the rotation: this partition gave nothing"
-    );
-    assert!(
-        !keeps_entry(dirty, 1, Some(&here)),
+        !keeps_entry(dirty, Some(1), Some(&here)),
         "its only fleet is the one now running"
     );
     assert!(
-        !keeps_entry(dirty, 0, None),
+        !keeps_entry(dirty, Some(0), None),
         "a stale entry over an empty partition"
     );
+    assert!(
+        !keeps_entry(dirty, None, Some(&elsewhere)),
+        "a failed peek is never come back to"
+    );
+    assert!(!keeps_entry(dirty, None, None));
 }
 
 /// The two peeks take turns, so the hinted partition is offered first and

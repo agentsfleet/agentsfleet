@@ -29,7 +29,7 @@ pub const SIGNUP_REPLAYED_TOTAL: Declared<CounterKind> =
 pub const SIGNUP_FAILED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_signup_failed_total");
 
-/// The denominator for the two below.
+/// The denominator for the three below.
 pub const LEASE_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_lease_polls_total");
 
 /// Rate ÷ polls = fan-out per poll.
@@ -79,7 +79,9 @@ pub const FLEET_RUNS_STARTED_TOTAL: Declared<CounterKind> =
 pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
     Declared::new("agentsfleet_fleet_delivery_stage_seconds");
 
-/// Readiness backlog (not summable across replicas).
+/// Ready fleets a poll's peeks offered: the rotation's partition and the
+/// directory's oldest dirty one, at most the poll ceiling (not summable across
+/// replicas).
 pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
 
 /// Dragonfly index writes failing.

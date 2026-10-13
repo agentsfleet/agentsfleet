@@ -1,5 +1,8 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::{ENTROPY_LEN, Uuid7};
+use afd_observability::metrics::label::fleet::ReadyHint;
+
+use super::diagnostics;
 
 /// A runner identifier for the two reporting helpers.
 ///
@@ -28,7 +31,7 @@ fn runner_id() -> Result<Uuid7, &'static str> {
 /// second copy of every field expression, and a panic in the copy that does
 /// run would take down a path whose entire job is to report calmly.
 #[test]
-fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str> {
+fn every_queue_and_hint_reporter_renders_every_redis_failure() -> Result<(), &'static str> {
     let runner = runner_id()?;
 
     for (label, error) in afd_dragonfly::error::one_of_each_kind() {
@@ -39,9 +42,21 @@ fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str>
         super::diagnostics::warn_queue("lease_poll_queue_failed", &runner, &error);
         super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
         let partition = afd_dragonfly::Partition::new(3).ok_or("3 is a partition")?;
-        super::diagnostics::warn_hint_unread(&runner, None, &error);
-        super::diagnostics::warn_hint_unread(&runner, Some(partition), &error);
-        super::diagnostics::warn_hint_unspent(&runner, partition, &error);
+        for (event, hint, named) in [
+            (diagnostics::EVENT_HINT_READ_FAILED, ReadyHint::Read, None),
+            (
+                diagnostics::EVENT_HINT_PEEK_FAILED,
+                ReadyHint::Peek,
+                Some(partition),
+            ),
+            (
+                diagnostics::EVENT_HINT_DELETE_FAILED,
+                ReadyHint::Delete,
+                Some(partition),
+            ),
+        ] {
+            diagnostics::warn_hint(event, hint, &runner, named, &error);
+        }
     }
     Ok(())
 }
