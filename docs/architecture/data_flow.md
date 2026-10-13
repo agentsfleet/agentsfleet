@@ -617,8 +617,9 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 
      Leases::select():
        read fleet:ready:{directory} together with one fleet:ready:{p}
-       partition (sixteen, rotated per poll), then peek the directory's
-       oldest dirty partition too; at most 64 fleets with work, taken in
+       partition (sixteen, rotated per poll), then peek one of the
+       directory's three oldest dirty partitions too, taken in turn as the
+       cursor moves; at most 64 fleets with work, taken in
        turn; empty peeks answer at once and read no Postgres. Afterwards
        spend the directory entry unless this poll leased from the
        rotation's partition, or leased from the dirty one while its peek

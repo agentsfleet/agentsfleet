@@ -4,8 +4,8 @@
 //! re-polls on the backoff the reply carries. The pass is READY-FIRST, and the
 //! ordering is the design:
 //!
-//! 1. Peek the shared readiness index, BEFORE touching Postgres: the
-//!    directory's oldest dirty partition and the rotation's next one. An empty
+//! 1. Peek the shared readiness index, BEFORE touching Postgres: one of the
+//!    directory's oldest dirty partitions and the rotation's next one. An empty
 //!    index answers no-work with zero database round-trips, which is the
 //!    dominant steady state on any deployment holding more fleets than
 //!    concurrent events.

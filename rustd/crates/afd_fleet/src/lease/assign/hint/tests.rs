@@ -1,5 +1,6 @@
-//! The hint's two decisions that need no datastore: whether a dirty
-//! partition's entry outlives a poll, and how two peeks share the scan.
+//! The hint's three decisions that need no datastore: which dirty partition
+//! a poll is sent to, whether its entry outlives the poll, and how two peeks
+//! share the scan.
 
 #![expect(
     clippy::expect_used,
@@ -8,9 +9,10 @@
 
 use afd_core::clock::UnixMillis;
 use afd_crypto::entropy::Entropy;
-use afd_dragonfly::{Partition, Ready, ReadyToken};
+use afd_dragonfly::ready::READY_PARTITIONS;
+use afd_dragonfly::{Dirty, Partition, Ready, ReadyToken};
 
-use super::{MAX_READY_CANDIDATES_PER_POLL, interleave, keeps_entry};
+use super::{MAX_READY_CANDIDATES_PER_POLL, interleave, keeps_entry, spread};
 
 /// The instant every fixture token is minted at.
 const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
@@ -26,15 +28,68 @@ fn fleet_in(partition: Partition) -> String {
         .expect("sixteen partitions are all reachable")
 }
 
+/// A fresh token minted at [`AT`].
+fn token() -> ReadyToken {
+    ReadyToken::mint(&Entropy::new(), AT).expect("the host has entropy")
+}
+
 fn ready(fleet_id: String) -> Ready {
     Ready {
         fleet_id,
-        token: ReadyToken::mint(&Entropy::new(), AT).expect("the host has entropy"),
+        token: token(),
     }
 }
 
 fn partition(index: u16) -> Partition {
     Partition::new(index).expect("a partition below sixteen")
+}
+
+fn dirty(index: u16) -> Dirty {
+    Dirty {
+        partition: partition(index),
+        token: token(),
+    }
+}
+
+/// The partition each cursor position sends a poll to, over `directory`.
+fn sent_to(directory: &[Dirty]) -> Vec<Option<u16>> {
+    (0..READY_PARTITIONS)
+        .map(|position| spread(directory.to_vec(), partition(position)))
+        .map(|sent| sent.map(|dirty| dirty.partition.index()))
+        .collect()
+}
+
+/// Consecutive polls take the oldest three entries in turn, so a herd of
+/// polls splits three ways, and the fourth-oldest waits for one of them to be
+/// spent.
+#[test]
+fn test_polls_take_the_oldest_three_entries_in_turn() {
+    let sent = sent_to(&[7, 3, 12, 9, 1].map(dirty));
+
+    assert!(
+        sent.starts_with(&[Some(7), Some(3), Some(12), Some(7)]),
+        "{sent:?}"
+    );
+    for oldest in [7, 3, 12] {
+        assert!(sent.contains(&Some(oldest)), "{oldest} is reached: {sent:?}");
+    }
+    assert!(
+        sent.iter().flatten().all(|index| [7, 3, 12].contains(index)),
+        "{sent:?}"
+    );
+}
+
+/// A directory shorter than the spread shares the polls among what it holds,
+/// and an empty one sends no poll anywhere.
+#[test]
+fn test_a_short_directory_bounds_the_spread() {
+    let alternating = (0..READY_PARTITIONS)
+        .map(|position| Some(if position.is_multiple_of(2) { 4 } else { 11 }))
+        .collect::<Vec<_>>();
+
+    assert!(sent_to(&[dirty(4)]).iter().all(|sent| *sent == Some(4)));
+    assert_eq!(sent_to(&[dirty(4), dirty(11)]), alternating);
+    assert!(sent_to(&[]).iter().all(Option::is_none));
 }
 
 /// A poll that leased from the dirty partition, while its peek held other
