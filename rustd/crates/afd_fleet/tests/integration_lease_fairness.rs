@@ -13,11 +13,10 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
-use std::time::Duration;
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_dragonfly::ready::{Partition, READY_PARTITIONS, ReadyIndex, ReadyPrefix};
+use afd_dragonfly::ready::{Doorbell, Partition, READY_PARTITIONS, ReadyIndex, ReadyPrefix};
 use afd_fleet::lease::{Acquired, Leases};
 use afd_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
 
@@ -40,11 +39,7 @@ const COLD_FLEETS: u16 = 3;
 /// The tag every hot fleet requires and the runner does not carry.
 const HOT_TAG: &str = "fixture:nobody-carries-this";
 
-/// How long apart two marks are written: tokens order by their mint
-/// millisecond, so two marks in one millisecond order at random.
-const MARK_GAP: Duration = Duration::from_millis(2);
-
-/// Polls after the first in which the hinted fleet must be leased.
+/// Polls after the first in which the rung fleet must be leased.
 const LATER_POLLS: usize = 2;
 
 /// The `nth` distinct fleet id derived from `base` that lands in `partition`.
@@ -179,23 +174,24 @@ async fn test_skewed_workload_preserves_discovery_and_delivery_fairness() {
 }
 
 /// A poll the rotation sends to a partition with work leases that work before
-/// the directory's hint: the hinted fleet's entry survives the poll, and a
-/// later poll's hint leases it.
+/// the doorbell's: the rung partition is rung again, because its fleet was
+/// never tried, and a later poll leases it.
 ///
-/// A private index, so this run's directory holds only its own two entries,
-/// and a fresh store, so the cursor's first partition is 0. The hinted fleet
-/// is marked first, so its entry is the oldest and the first poll is sent to
-/// it while the cursor names the other fleet's partition. It is also sticky
-/// to the runner, so only the cursor-first ordering puts the other ahead.
+/// A private index, so this run's partitions hold only its own two marks,
+/// and a fresh store, so the cursor's first partition is 0. The store's
+/// doorbell holds partition 5 rung, so the first poll peeks it while the
+/// cursor names the other fleet's partition. The rung fleet is also sticky to
+/// the runner, so only the cursor-first ordering puts the other ahead.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_the_cursor_partition_leases_before_the_hint() {
+async fn test_the_cursor_partition_leases_before_the_rung_one() {
     let fixtures = Fixtures::create_with_queue().await;
     let population = Population::from(unique_ids());
     let run = afd_core::clock::now().as_millis();
     let prefix = ReadyPrefix::private(&format!("cursor-first-{}-{run}", std::process::id()));
     let index = ReadyIndex::under(fixtures.queue().clone(), prefix.clone());
-    let hinted = fleet_in(&population.base, Partition::new(5).expect("a partition"), 0);
+    let rung = Partition::new(5).expect("a partition");
+    let behind_the_ring = fleet_in(&population.base, rung, 0);
     let cursor = fleet_in(&population.base, Partition::new(0).expect("a partition"), 0);
     let mut request = enrolment_tagged(
         SandboxTier::LandlockFull,
@@ -203,7 +199,7 @@ async fn test_the_cursor_partition_leases_before_the_hint() {
         1,
         &placement_tag(&population.base),
     );
-    for fleet in [&hinted, &cursor] {
+    for fleet in [&behind_the_ring, &cursor] {
         seed_marked(&fixtures, &index, &population, fleet).await;
         request.labels.push(Cow::Owned(placement_tag(fleet)));
     }
@@ -214,46 +210,41 @@ async fn test_the_cursor_partition_leases_before_the_hint() {
         .expect("enrolment must succeed")
         .runner_id;
     fixtures
-        .make_sticky(&hinted, runner.as_str(), ENROLLED_AT)
+        .make_sticky(&behind_the_ring, runner.as_str(), ENROLLED_AT)
         .await;
-    let before = index.dirty().await.expect("the directory is readable");
-    assert_eq!(
-        before.first().map(|entry| entry.partition.index()),
-        Some(5),
-        "the hinted mark is the oldest: {before:?}"
-    );
-    let store = fixtures.leases().with_ready_prefix(prefix);
+    let doorbell = Doorbell::new();
+    doorbell.ring(rung);
+    let store = fixtures
+        .leases()
+        .with_ready_prefix(prefix)
+        .with_doorbell(doorbell.clone());
     let now = UnixMillis::from_millis(ENROLLED_AT);
 
     let first = store
         .select(&runner, &[], now)
         .await
         .expect("a poll must not fault");
-    let kept = index.dirty().await.expect("the directory is readable");
+    let rung_again = doorbell.is_rung(rung);
     let later = leased_within(&store, &runner, now, LATER_POLLS).await;
 
-    for fleet in [&hinted, &cursor] {
+    for fleet in [&behind_the_ring, &cursor] {
         queue::clear_ready(fixtures.queue(), fleet).await;
     }
     fixtures.cleanup().await;
     assert_eq!(
         first.map(|acquired| acquired.fleet_id.as_str().to_owned()),
         Some(cursor),
-        "the cursor's partition is claimed before the hint's"
+        "the cursor's partition is claimed before the rung one's"
     );
-    assert!(
-        kept.iter().any(|entry| entry.partition.index() == 5),
-        "the untried hint survives the poll: {kept:?}"
-    );
+    assert!(rung_again, "the untried partition is rung again");
     assert_eq!(
         later.map(|acquired| acquired.fleet_id.as_str().to_owned()),
-        Some(hinted),
-        "a later poll's hint leases the fleet it named"
+        Some(behind_the_ring),
+        "a later poll takes the ring and leases the fleet behind it"
     );
 }
 
-/// Seeds `fleet` into `population`, queues one event for it and marks it,
-/// then waits [`MARK_GAP`], so fleets seeded in turn have entries in that turn.
+/// Seeds `fleet` into `population`, queues one event for it and marks it.
 async fn seed_marked(
     fixtures: &Fixtures,
     index: &ReadyIndex,
@@ -284,7 +275,6 @@ async fn seed_marked(
         .mark(fleet)
         .await
         .expect("the private index takes a mark");
-    tokio::time::sleep(MARK_GAP).await;
 }
 
 /// The first lease `store` hands `runner` within `polls` polls.

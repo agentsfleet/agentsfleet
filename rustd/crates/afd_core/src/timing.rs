@@ -74,18 +74,6 @@ pub const SANDBOX_HOLD_IDLE_MS: i64 = 600_000;
 /// `retry_after_ms`.
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
 
-/// How long a readiness-directory command, or the peek of the partition it
-/// names, may take before its caller goes on without it.
-///
-/// The directory is one key on one slot, and every lease poll reads it first,
-/// then peeks the one partition it names.
-/// Under the datastore's own request timeout a sick node there would stall
-/// every poll on every runner for seconds; a partition key is one slot in
-/// sixteen, so the same fault there stalls one poll in sixteen. The directory
-/// is only a hint, so a poll that gives up on it still makes the rotation
-/// peek, and a mark whose entry timed out still landed.
-pub const READY_HINT_DEADLINE_MS: u64 = 100;
-
 /// One day, in the milliseconds every span here is counted in.
 ///
 /// Not a lease value. It is the one spelling of a day for whatever counts in

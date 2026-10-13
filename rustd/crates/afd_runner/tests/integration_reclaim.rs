@@ -11,7 +11,7 @@ use afd_dragonfly::{FleetStreams, ReadyIndex};
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 
-use crate::support::connect_redis;
+use crate::support::{RING_QUIET_FOR, connect_redis, heard_ring, listen_for_rings};
 
 #[tokio::test]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
@@ -34,6 +34,7 @@ async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
         .await
         .expect("the empty group exists");
 
+    let (_hub, mut rings) = listen_for_rings(&fixture.deliverable).await;
     let reclaim = Reclaim::new(fixture.database.clone(), queue.clone(), "sweep-test");
     let swept = reclaim.sweep().await.expect("the reclaim pass completes");
     assert!(swept.scanned >= 2, "the two fixture fleets are scanned");
@@ -51,12 +52,11 @@ async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
         .await
         .expect("the readiness index is readable")
         .expect("a lost readiness hint is reconstructed from the stream");
-    // A backstop the rotation reaches in its turn: naming it in the directory
-    // would send a poll every pass to each partition a running fleet holds.
-    let directory = index.dirty().await.expect("the directory is readable");
+    // A backstop the rotation reaches in its turn: ringing it would send a
+    // poll every pass to each partition a running fleet holds.
     assert!(
-        !directory.iter().any(|entry| entry.token == remarked),
-        "the sweep's re-mark names no partition in the directory"
+        !heard_ring(&mut rings, &remarked, RING_QUIET_FOR).await,
+        "the sweep's re-mark rings no doorbell"
     );
     assert!(
         index

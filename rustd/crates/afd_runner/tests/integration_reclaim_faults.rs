@@ -11,12 +11,12 @@ use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::{FLEET_CONSUMER_GROUP, fleet_stream_key};
-use afd_dragonfly::{Dragonfly, FleetStreams, Partition, ReadyIndex};
+use afd_dragonfly::{Dragonfly, FleetStreams, ReadyIndex, Subscription};
 use afd_runner::sql::LEASE_STATUS_ACTIVE;
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 
-use crate::support::{Recorder, connect_redis};
+use crate::support::{RING_HEARD_WITHIN, Recorder, connect_redis, heard_ring, listen_for_rings};
 
 /// Held by every test that runs a reclaim pass: a pass sweeps every active
 /// fleet in the lane, so two passes in parallel claim each other's entries.
@@ -55,6 +55,7 @@ async fn an_entry_a_dead_consumer_left_idle_is_claimed_and_its_fleet_marked() {
         .expect("and is handed the entry");
     age(&queue, &fixture.fleet, receipt.as_str()).await;
     let sweeper = format!("reclaim-{}", fixture.fleet);
+    let (_hub, mut rings) = listen_for_rings(&fixture.fleet).await;
 
     Reclaim::new(fixture.database.clone(), queue.clone(), sweeper.as_str())
         .sweep()
@@ -68,8 +69,8 @@ async fn an_entry_a_dead_consumer_left_idle_is_claimed_and_its_fleet_marked() {
     );
     let index = ReadyIndex::new(queue.clone());
     assert!(
-        hinted(&index, &fixture.fleet).await,
-        "a claimed entry is deliverable, so its fleet is marked, and hinted so the next poll takes it"
+        rang(&index, &mut rings, &fixture.fleet).await,
+        "a claimed entry is deliverable, so its fleet is marked, and rung so the next poll takes it"
     );
     let _cleared = index.force_clear(&fixture.fleet).await;
     let _gone = streams.forget(&fixture.fleet).await;
@@ -118,6 +119,7 @@ async fn a_stranded_lease_is_marked_ready_and_left_active() {
     let _lane = RECLAIM_LANE.lock().await;
     let fixture = Fixture::seed(true).await;
     let queue = connect_redis().await;
+    let (_hub, mut rings) = listen_for_rings(&fixture.fleet).await;
 
     Reclaim::new(fixture.database.clone(), queue.clone(), "reclaim-ledger")
         .sweep()
@@ -126,8 +128,8 @@ async fn a_stranded_lease_is_marked_ready_and_left_active() {
 
     let index = ReadyIndex::new(queue.clone());
     assert!(
-        hinted(&index, &fixture.fleet).await,
-        "the ledger's stranded fleet is marked ready, and hinted so the next poll takes it"
+        rang(&index, &mut rings, &fixture.fleet).await,
+        "the ledger's stranded fleet is marked ready, and rung so the next poll takes it"
     );
     assert_eq!(
         fixture.lease_statuses().await,
@@ -138,20 +140,12 @@ async fn a_stranded_lease_is_marked_ready_and_left_active() {
     fixture.cleanup().await;
 }
 
-/// Whether `fleet` is marked and the directory names its partition under that
-/// mark or a later one: a sibling marked since may have rewritten the entry,
-/// never with an earlier token.
-async fn hinted(index: &ReadyIndex, fleet: &str) -> bool {
+/// Whether `fleet` is marked and its mark rang the partition's doorbell.
+async fn rang(index: &ReadyIndex, rings: &mut Subscription, fleet: &str) -> bool {
     let Some(token) = index.token_for(fleet).await.expect("readable") else {
         return false;
     };
-    let partition = Partition::of(fleet);
-    index
-        .dirty()
-        .await
-        .expect("the directory is readable")
-        .iter()
-        .any(|entry| entry.partition == partition && entry.token >= token)
+    heard_ring(rings, &token, RING_HEARD_WITHIN).await
 }
 
 /// Sets the entry's idle clock past the sweep's threshold, as time would.

@@ -39,12 +39,11 @@ const _: () = assert!(
 /// a hash tag, so the number alone decides the slot.
 pub const READY_INDEX_KEY: &str = "fleet:ready";
 
-/// The hash tag the readiness directory lives under.
+/// The segment after a partition's tag that names its doorbell channel.
 ///
-/// One hash on one slot, beside the partitions' numbered tags, read by every
-/// poll. A word rather than a number, so no partition count can ever make a
-/// partition's key and the directory's collide.
-const READY_DIRECTORY_TAG: &str = "directory";
+/// After the tag, so the channel hashes to the partition's own slot and a ring
+/// lands on the node that took the mark.
+const READY_WAKE_SEGMENT: &str = "wake";
 
 /// The segment a private index inserts between [`READY_INDEX_KEY`] and its
 /// caller's name, so one glance at a key says whose it is.
@@ -94,17 +93,6 @@ impl ReadyPrefix {
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
-    }
-
-    /// The key this index's directory lives under: partition number → the
-    /// token of the last mark that named it.
-    ///
-    /// Shaped like a partition's key, the tag in braces after the prefix, so
-    /// a private index keeps its directory beside its own partitions and the
-    /// production one beside the production ones.
-    #[must_use]
-    pub fn directory_key(&self) -> String {
-        format!("{}:{{{READY_DIRECTORY_TAG}}}", self.as_str())
     }
 }
 
@@ -161,6 +149,15 @@ impl Partition {
     #[must_use]
     pub fn key_under(self, prefix: &ReadyPrefix) -> String {
         format!("{}:{{{}}}", prefix.as_str(), self.0)
+    }
+
+    /// The channel a mark in this partition rings, under `prefix`.
+    ///
+    /// The partition's key plus one segment, so the channel shares the key's
+    /// hash tag and its slot, and a private index rings only its own polls.
+    #[must_use]
+    pub fn wake_channel_under(self, prefix: &ReadyPrefix) -> String {
+        format!("{}:{READY_WAKE_SEGMENT}", self.key_under(prefix))
     }
 }
 

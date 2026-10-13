@@ -181,10 +181,10 @@ JOIN core.fleet_events e
 /// A fleet another runner holds and can still lease is skipped the same way,
 /// by the claim's own hold condition (see [`CLAIM_AFFINITY_SLOT`]).
 ///
-/// The cursor's partition's fleets (`$8`) sort ahead of the readiness
-/// directory's: a poll the rotation sends to a partition with work leases from
-/// it, so one rotation of polls still reaches every placeable fleet, and the
-/// directory's hint takes what that partition leaves. The ids are cast inside
+/// The cursor's partition's fleets (`$8`) sort ahead of the partition the
+/// readiness doorbell rang: a poll the rotation sends to a partition with work
+/// leases from it, so one rotation of polls still reaches every placeable
+/// fleet, and the rung partition gives what that partition leaves. The ids are cast inside
 /// a scalar subquery, which Postgres runs once per scan; cast in the sort key
 /// itself, a generic plan casts all of them again for every candidate row.
 /// The outer cast is what makes `ANY` read the subquery as one array.

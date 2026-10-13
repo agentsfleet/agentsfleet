@@ -1,11 +1,11 @@
-//! The readiness directory as a lease poll uses it: fresh work is leased on
-//! the next poll whichever partition the cursor names, an idle poll costs two
-//! Dragonfly commands and no Postgres, a mark racing a delete survives it,
-//! and neither a lost entry nor a busy partition costs more than today's
-//! rotation.
+//! The readiness doorbell as a lease poll uses it: fresh work is leased on
+//! the next poll whichever partition the cursor names, an idle poll costs one
+//! Dragonfly command and no Postgres, and neither a lost ring nor a busy
+//! partition costs more than the rotation.
 //!
-//! Each test polls a PRIVATE index, so its directory and partitions hold only
-//! what it wrote, and a fresh store, so its cursor starts at partition 0.
+//! Each test polls a PRIVATE index whose channels ring its own doorbell, so
+//! its partitions and rings hold only what it wrote, and a fresh store, so
+//! its cursor starts at partition 0.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing datastores; `make test-integration-rustd` runs them.
@@ -18,11 +18,12 @@
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
 use afd_core::test_util::trace::Capture as Trace;
-use afd_observability::metrics::label::fleet::ReadyHint;
+use afd_observability::metrics::label::fleet::ReadyWake;
 use afd_observability::test_util::Capture;
 
+use crate::queue;
 use crate::requests::ENROLLED_AT;
-use crate::seed::select_within_one_rotation;
+use crate::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, select_within_one_rotation};
 
 #[path = "integration_lease_wake/broken.rs"]
 mod broken;
@@ -35,8 +36,8 @@ mod tally;
 
 use scene::{partition, scene};
 
-/// The counter a failed or late directory command moves, and its label.
-const HINT_FAILURES: &str = "agentsfleet_fleet_ready_hint_failures_total";
+/// The counter a failed ring or rung peek moves, and its label.
+const WAKE_FAILURES: &str = "agentsfleet_fleet_ready_wake_failures_total";
 const KIND: &str = "kind";
 /// What a test puts where a hash should be.
 const NOT_A_HASH: &str = "not-a-hash";
@@ -44,9 +45,9 @@ const CMD_SET: &str = "SET";
 const CMD_DEL: &str = "DEL";
 
 /// A fleet marked away from the cursor's partition is leased on the very next
-/// poll, which costs the directory read, the rotation peek, the hinted peek,
-/// the two stream reads that take its event, and the delete of its now-spent
-/// entry.
+/// poll, which costs the rotation peek, the rung peek beside it, and the two
+/// stream reads that take its event; its partition is left clear, because its
+/// only fleet is the one now running.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_marked_fleet_is_leased_on_the_next_poll() {
@@ -56,19 +57,20 @@ async fn test_marked_fleet_is_leased_on_the_next_poll() {
 
     let (leased, cost) = scene.poll(&fleet.runners[0]).await;
 
-    let leased = leased.expect("the hint sends the first poll to the fleet's partition");
+    let leased = leased.expect("the ring sends the first poll to the fleet's partition");
     assert_eq!(leased.fleet_id.as_str(), fleet.id);
-    assert_eq!(cost.dragonfly_commands, 6, "{cost:?}");
+    assert_eq!(cost.dragonfly_commands, 4, "{cost:?}");
     assert_eq!(cost.database_roundtrips, 2, "scan and claim: {cost:?}");
     assert!(
-        scene.dirty().await.is_empty(),
+        !scene.rung(fleet.partition()),
         "the only fleet there is running"
     );
     scene.fixtures.cleanup().await;
 }
 
-/// An idle poll asks Dragonfly twice and Postgres never; a stale entry over an
-/// empty partition costs one peek and one delete, and still no Postgres.
+/// An idle poll asks Dragonfly once and Postgres never; a ring over a
+/// partition that has since emptied costs one more peek, still no Postgres,
+/// and is not rung again.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_idle_poll_cost_is_bounded() {
@@ -79,27 +81,26 @@ async fn test_idle_poll_cost_is_bounded() {
     assert!(none.is_none());
     assert_eq!(
         (idle.dragonfly_commands, idle.database_roundtrips),
-        (2, 0),
+        (1, 0),
         "{idle:?}"
     );
 
-    scene.index.mark(&fleet.id).await.expect("mark");
+    scene.mark(&fleet).await;
     scene.index.force_clear(&fleet.id).await.expect("clear");
     let (none, stale) = scene.poll(&fleet.runners[0]).await;
     assert!(none.is_none());
     assert_eq!(
         (stale.dragonfly_commands, stale.database_roundtrips),
-        (4, 0),
+        (2, 0),
         "{stale:?}"
     );
-    assert!(scene.dirty().await.is_empty(), "the stale entry is spent");
+    assert!(!scene.rung(fleet.partition()), "the stale ring is taken");
     scene.fixtures.cleanup().await;
 }
 
 /// A claim that finds its fleet drained counts every command it sent: the
 /// takeover and the new read that both came back empty, and the clear of the
-/// mark that sent it there, beside the directory read, both peeks and the
-/// spend of the entry.
+/// mark that sent it there, beside both peeks.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_drained_claim_counts_its_stream_reads_and_clear() {
@@ -109,14 +110,14 @@ async fn test_a_drained_claim_counts_its_stream_reads_and_clear() {
         .ensure_group(&fleet.id)
         .await
         .expect("the group exists before a read");
-    scene.index.mark(&fleet.id).await.expect("mark");
+    scene.mark(&fleet).await;
 
     let (none, cost) = scene.poll(&fleet.runners[0]).await;
 
     assert!(none.is_none(), "the fleet holds nothing to lease");
     assert_eq!(
-        cost.dragonfly_commands, 7,
-        "read, rotation, hinted peek, takeover, new read, clear, spend: {cost:?}"
+        cost.dragonfly_commands, 5,
+        "rotation, rung peek, takeover, new read, clear: {cost:?}"
     );
     assert!(
         scene
@@ -130,39 +131,28 @@ async fn test_a_drained_claim_counts_its_stream_reads_and_clear() {
     scene.fixtures.cleanup().await;
 }
 
-/// A mark written between a poll's read and its delete survives the delete,
-/// because it rewrote the token the delete compares.
+/// A mark whose ring is lost is still leased within one rotation.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_mark_racing_a_clear_survives() {
-    let scene = scene("race").await;
-    let fleet = scene.fleet(&[]).await;
-    scene.index.mark(&fleet.id).await.expect("mark");
-    let read = scene.index.dirty().await.expect("readable");
-    let seen = read.first().expect("the mark named its partition");
-
-    scene.index.mark(&fleet.id).await.expect("the racing mark");
-
-    assert!(
-        !scene.index.spend(seen).await.expect("the delete runs"),
-        "the newer entry stays"
-    );
-    let now = scene.index.dirty().await.expect("readable");
-    let kept = now.first().expect("still dirty");
-    assert_eq!(kept.partition, fleet.partition());
-    assert_ne!(kept.token, seen.token, "it carries the racing mark's token");
-    assert!(scene.index.spend(kept).await.expect("the delete runs"));
-    scene.fixtures.cleanup().await;
-}
-
-/// With its directory entry lost, a fleet is still leased within one rotation.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_lost_dirty_bit_falls_back_to_rotation() {
+async fn test_a_lost_ring_falls_back_to_rotation() {
     let scene = scene("lost").await;
     let fleet = scene.fleet(&[]).await;
-    scene.send(&fleet).await;
-    scene.lose_directory().await;
+    queue::enqueue(
+        scene.fixtures.queue(),
+        &fleet.id,
+        &fleet.workspace,
+        ACTOR,
+        EVENT_TYPE,
+        REQUEST_JSON,
+        ENROLLED_AT,
+    )
+    .await;
+    scene
+        .index
+        .mark_quiet(&fleet.id)
+        .await
+        .expect("the private index takes a mark");
+    assert!(!scene.rung(fleet.partition()), "nothing rang");
 
     let leased = select_within_one_rotation(
         &scene.leases,
@@ -178,12 +168,12 @@ async fn test_lost_dirty_bit_falls_back_to_rotation() {
     scene.fixtures.cleanup().await;
 }
 
-/// A running fleet's partition gives up its entry after one dry poll, so a
-/// steer to another fleet is leased on the next one rather than waiting out
-/// the rotation behind it.
+/// A running fleet's partition is left clear after one dry poll, so a steer
+/// to another fleet is leased on the next one rather than waiting out the
+/// rotation behind it.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_busy_dirty_partition_does_not_starve_rotation() {
+async fn test_a_busy_rung_partition_does_not_starve_rotation() {
     let scene = scene("busy").await;
     let running = scene
         .fleet(&[partition(0), partition(1), partition(2)])
@@ -204,8 +194,8 @@ async fn test_busy_dirty_partition_does_not_starve_rotation() {
     let (dry, _) = scene.poll(&running.runners[1]).await;
     assert!(dry.is_none(), "its slot is held by a live runner");
     assert!(
-        scene.dirty().await.is_empty(),
-        "the dry poll spent the busy entry"
+        !scene.rung(running.partition()),
+        "the dry poll left the busy partition clear"
     );
 
     scene.send(&waiting).await;
@@ -217,12 +207,11 @@ async fn test_busy_dirty_partition_does_not_starve_rotation() {
     scene.fixtures.cleanup().await;
 }
 
-/// A hint naming the partition the cursor names is served by the one peek
-/// the poll makes anyway: the directory read, that peek, the two stream reads
-/// that take the event, and the spend of the entry whose only fleet it leased.
+/// A ring on the partition the cursor names is served by the one peek the
+/// poll makes anyway: that peek and the two stream reads that take the event.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_hint_naming_the_rotations_partition_is_peeked_once() {
+async fn test_a_ring_on_the_rotations_partition_is_peeked_once() {
     let scene = scene("same").await;
     let fleet = scene.fleet(&[]).await;
     for _idle in 0..fleet.partition().index() {
@@ -237,40 +226,37 @@ async fn test_a_hint_naming_the_rotations_partition_is_peeked_once() {
         leased.map(|acquired| acquired.fleet_id.to_string()),
         Some(fleet.id.clone())
     );
-    assert_eq!(cost.dragonfly_commands, 5, "{cost:?}");
-    assert!(scene.dirty().await.is_empty(), "the entry is spent");
+    assert_eq!(cost.dragonfly_commands, 3, "{cost:?}");
+    assert!(!scene.rung(fleet.partition()), "the ring is taken");
     scene.fixtures.cleanup().await;
 }
 
-/// A hinted peek that fails is counted, spends its entry so the next poll is
-/// not sent back, and leaves the poll its rotation.
+/// A rung peek that fails is counted, logged with its partition, and left
+/// clear so the next poll is not sent back; the poll keeps its rotation.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_hinted_peek_that_fails_spends_its_entry() {
+async fn test_a_rung_peek_that_fails_leaves_the_ring_clear() {
     let capture = Capture::install();
     let scene = scene("unpeekable").await;
     let fleet = scene.fleet(&[partition(0)]).await;
-    scene.index.mark(&fleet.id).await.expect("mark");
+    scene.mark(&fleet).await;
     let broken = scene.partition_key(fleet.partition());
     scene.raw(&broken, CMD_SET, Some(NOT_A_HASH)).await;
-    let peeks = capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Peek.as_str())]);
+    let peeks = capture.sum(WAKE_FAILURES, &[(KIND, ReadyWake::Peek.as_str())]);
 
     let log = Trace::install();
 
     let (none, cost) = scene.poll(&fleet.runners[0]).await;
 
     assert!(none.is_none(), "the rotation's partition holds nothing");
-    assert_eq!(
-        cost.dragonfly_commands, 4,
-        "read, rotation, hinted peek, spend: {cost:?}"
-    );
-    let refused = log.only("assign_ready_hint_peek_failed");
+    assert_eq!(cost.dragonfly_commands, 2, "rotation, rung peek: {cost:?}");
+    let refused = log.only("assign_ready_wake_peek_failed");
     let named = fleet.partition().index().to_string();
     assert_eq!(refused.field("partition"), Some(named.as_str()));
-    assert!(capture.sum(HINT_FAILURES, &[(KIND, ReadyHint::Peek.as_str())]) > peeks);
+    assert!(capture.sum(WAKE_FAILURES, &[(KIND, ReadyWake::Peek.as_str())]) > peeks);
     assert!(
-        scene.dirty().await.is_empty(),
-        "the unreadable partition's entry is spent"
+        !scene.rung(fleet.partition()),
+        "the unreadable partition is left clear"
     );
     scene.raw(&broken, CMD_DEL, None).await;
     scene.fixtures.cleanup().await;
@@ -296,8 +282,8 @@ async fn test_held_fleet_reads_join_the_dragonfly_tally() {
 
     assert!(polled.expect("the poll must not fault").is_none());
     assert_eq!(
-        cost.dragonfly_commands, 3,
-        "one held read, then directory and rotation: {cost:?}"
+        cost.dragonfly_commands, 2,
+        "one held read, then the rotation: {cost:?}"
     );
     scene.fixtures.cleanup().await;
 }

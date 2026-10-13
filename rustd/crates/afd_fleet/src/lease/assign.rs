@@ -4,9 +4,9 @@
 //! re-polls on the backoff the reply carries. The pass is READY-FIRST, and the
 //! ordering is the design:
 //!
-//! 1. Peek the shared readiness index, BEFORE touching Postgres: one of the
-//!    directory's oldest dirty partitions and the rotation's next one. An empty
-//!    index answers no-work with zero database round-trips, which is the
+//! 1. Peek the shared readiness index, BEFORE touching Postgres: the rotation's
+//!    next partition, and the one the doorbell rang if it rang another. An
+//!    empty index answers no-work with zero database round-trips, which is the
 //!    dominant steady state on any deployment holding more fleets than
 //!    concurrent events.
 //! 2. Run the candidate query, restricted to those fleets and capped. Readiness
@@ -40,8 +40,8 @@ use crate::lease::store::Leases;
 
 mod claim;
 mod diagnostics;
-mod hint;
 mod offer;
+mod wake;
 
 pub(crate) use diagnostics::warn_queue_fleet;
 
@@ -69,9 +69,10 @@ struct PollCost {
     candidates_scanned: u64,
     /// Statements this poll issued.
     database_roundtrips: u64,
-    /// Commands this poll sent Dragonfly: two on an idle poll, the directory
-    /// read and the rotation's peek. A claim adds its stream reads, and the
-    /// mark clear or the dead entry's acknowledgement when it takes nothing.
+    /// Commands this poll sent Dragonfly: one on an idle poll, the rotation's
+    /// peek, and two when the doorbell rang another partition. A claim adds its
+    /// stream reads, and the mark clear or the dead entry's acknowledgement
+    /// when it takes nothing.
     dragonfly_commands: u64,
 }
 
@@ -131,14 +132,14 @@ impl Leases {
         if let Some(acquired) = self.held_first(runner_id, held, now, cost).await? {
             return Ok(Some(acquired));
         }
-        let (offer, hint) = self.ready_this_poll(runner_id, cost).await;
+        let (offer, rung) = self.ready_this_poll(runner_id, cost).await;
         let acquired = self.offered(runner_id, offer, now, cost).await;
-        // On every exit, a failed one included: when the fault was the hinted
-        // fleet's, keeping its entry would send every later poll back to it. A
-        // fault elsewhere, a Postgres error say, spends the entry too; the
-        // rotation still reaches the hinted fleets in its turn.
+        // On every exit, a failed one included: when the fault was a rung
+        // fleet's, ringing again would send every later poll back to it. A
+        // fault elsewhere, a Postgres error say, leaves the ring clear too; the
+        // rotation still reaches the rung fleets in its turn.
         let leased = acquired.as_ref().ok().and_then(Option::as_ref);
-        self.spend_hint(runner_id, hint, leased, cost).await;
+        self.ring_again(rung, leased);
         acquired
     }
 

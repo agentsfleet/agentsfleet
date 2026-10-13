@@ -13,7 +13,9 @@
 use afd_admission::Admissions;
 use afd_crypto::entropy::Entropy;
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyPrefix};
+use afd_dragonfly::{
+    Doorbell, Dragonfly, FleetStreams, OutboundQueue, ReadyCursor, ReadyIndex, ReadyPrefix,
+};
 
 /// Lease-plane reads and writes, over the api-role pool and the queue.
 ///
@@ -36,6 +38,10 @@ use afd_dragonfly::{Dragonfly, FleetStreams, OutboundQueue, ReadyCursor, ReadyIn
 /// names, and a cursor per handle would let every handle start at the same
 /// partition and leave the rest to luck. One counter per process is what
 /// makes a rotation of polls reach every partition.
+///
+/// The doorbell is the fifth, shared for the same reason: the hub's listener
+/// rings it and every poll takes from it, so a clone with a doorbell of its
+/// own would never hear a ring.
 #[derive(Debug, Clone)]
 pub struct Leases {
     database: Db,
@@ -43,6 +49,7 @@ pub struct Leases {
     entropy: Entropy,
     cursor: ReadyCursor,
     ready_prefix: ReadyPrefix,
+    doorbell: Doorbell,
 }
 
 impl Leases {
@@ -55,7 +62,18 @@ impl Leases {
             entropy,
             cursor: ReadyCursor::new(),
             ready_prefix: ReadyPrefix::production(),
+            doorbell: Doorbell::new(),
         }
+    }
+
+    /// The same store, taking rung partitions from `doorbell`.
+    ///
+    /// Without one nothing rings, and polls find fresh work through the
+    /// rotation alone. The daemon hands in the doorbell its hub listens for.
+    #[must_use]
+    pub fn with_doorbell(mut self, doorbell: Doorbell) -> Self {
+        self.doorbell = doorbell;
+        self
     }
 
     /// The same store, polling the readiness index `prefix` names.
@@ -92,6 +110,11 @@ impl Leases {
     /// The partition cursor every poll through this store turns.
     pub(crate) const fn cursor(&self) -> &ReadyCursor {
         &self.cursor
+    }
+
+    /// The doorbell every poll through this store takes rung partitions from.
+    pub(crate) const fn doorbell(&self) -> &Doorbell {
+        &self.doorbell
     }
 
     /// The fleet event streams, bound to this store's connection.

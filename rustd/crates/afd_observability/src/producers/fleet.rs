@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::error::Result;
 use crate::metrics::declared::fleet as declared;
 use crate::metrics::instrument::{Instruments, Reading};
-use crate::metrics::label::fleet::{DeliveryStage, ReadyHint, RunStart, SignupFailure};
+use crate::metrics::label::fleet::{DeliveryStage, ReadyWake, RunStart, SignupFailure};
 use crate::metrics::observed::Observed;
 use crate::producers::installed;
 use crate::runner::RunnerMetrics;
@@ -95,7 +95,7 @@ pub struct Handles {
     runs_started: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_write_failures: Counter<u64>,
-    ready_hint_failures: Counter<u64>,
+    ready_wake_failures: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
     admissions: Counter<u64>,
@@ -145,8 +145,8 @@ impl Handles {
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_write_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WRITE_FAILURES_TOTAL)?,
-            ready_hint_failures: instruments
-                .counter_u64(&declared::FLEET_READY_HINT_FAILURES_TOTAL)?,
+            ready_wake_failures: instruments
+                .counter_u64(&declared::FLEET_READY_WAKE_FAILURES_TOTAL)?,
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
                 .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
@@ -308,15 +308,14 @@ pub fn ready_write_failed() {
     }
 }
 
-/// Records a readiness-directory command that failed or outlived its
-/// deadline. The work behind it is never lost: the rotation still visits
-/// every partition.
-pub fn ready_hint_failed(hint: ReadyHint) {
+/// Records a readiness-doorbell ring or rung peek that failed. The work
+/// behind it is never lost: the rotation still visits every partition.
+pub fn ready_wake_failed(wake: ReadyWake) {
     if let Some(producers) = installed() {
         producers
             .fleet
-            .ready_hint_failures
-            .add(1, &[KeyValue::new(semconv::LABEL_KIND, hint.as_str())]);
+            .ready_wake_failures
+            .add(1, &[KeyValue::new(semconv::LABEL_KIND, wake.as_str())]);
     }
 }
 
