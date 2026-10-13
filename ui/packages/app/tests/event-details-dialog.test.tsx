@@ -61,35 +61,24 @@ describe("EventDetailsDialog", () => {
     expect(screen.queryByText("Fix")).toBeNull();
   });
 
-  it("shows an operator what the logs-detail journey asserts: labels, context heading, both copy buttons", async () => {
-    // The acceptance spec (tests/e2e/acceptance/logs-detail.spec.ts) claims
-    // this exact shape on the live stack; pinned here so the two surfaces
-    // cannot drift apart again without a unit failure first.
-    await renderDialogWithBody(event({ actor: "github-app", event_type: "webhook" }));
-
-    const dialog = screen.getByRole("dialog", { name: "Event details" });
-    expect(within(dialog).queryByText("ID", { exact: true })).toBeNull();
-    expect(within(dialog).getByText(/^Source:/)).toBeTruthy();
-    expect(within(dialog).getByText(/^Type:/)).toBeTruthy();
-    expect(within(dialog).getByRole("heading", { name: "Request context" })).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Copy event ID" })).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Copy diagnostic" })).toBeTruthy();
-  });
-
   it("keeps technical identifiers out of the heading and labels the request source and type", async () => {
+    // The acceptance journey (tests/e2e/acceptance/logs-detail.spec.ts)
+    // claims this shape inside the dialog on the live stack; scoped the same
+    // way here so the two cannot drift apart without a unit failure first.
     await renderDialogWithBody(event({
       event_id: "evt_header",
       actor: "github-app",
       event_type: "webhook",
     }));
 
-    expect(screen.getByRole("heading", { name: "Event details" })).toBeTruthy();
-    expect(screen.queryByText("ID")).toBeNull();
-    expect(screen.queryByText("evt_header")).toBeNull();
-    expect(screen.getByText(/Source:/).textContent).toBe("Source: GitHub App");
-    expect(screen.getByText(/Type:/).textContent).toBe("Type: webhook");
-    expect(screen.getByRole("button", { name: "Copy event ID" })).toBeTruthy();
-    const copyDiagnostic = screen.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL });
+    const dialog = within(screen.getByRole("dialog", { name: "Event details" }));
+    expect(dialog.getByRole("heading", { name: "Event details" })).toBeTruthy();
+    expect(dialog.queryByText("ID", { exact: true })).toBeNull();
+    expect(dialog.queryByText("evt_header")).toBeNull();
+    expect(dialog.getByText(/Source:/).textContent).toBe("Source: GitHub App");
+    expect(dialog.getByText(/Type:/).textContent).toBe("Type: webhook");
+    expect(dialog.getByRole("button", { name: "Copy event ID" })).toBeTruthy();
+    const copyDiagnostic = dialog.getByRole("button", { name: COPY_DIAGNOSTIC_LABEL });
     expect(copyDiagnostic.closest("div")?.className).toContain("justify-end");
     expect(screen.queryByText(COPY_DIAGNOSTIC_LABEL)).toBeNull();
     expect(screen.queryByText("Copy event details")).toBeNull();

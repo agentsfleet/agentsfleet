@@ -294,11 +294,14 @@ export default function PlatformCatalogTable({
   ];
 
   return (
-    // Ends at its rows, the way the Models registry table does: a one-row
-    // catalog is one row with its pagination bar directly beneath, not a
-    // table stretched to the bottom of the viewport with the bar at the
-    // foot of an empty pane (Indy, Oct 12, 2026).
-    <div className="flex flex-col gap-4">
+    // Ends at its rows and still fits the screen. No `flex-1` here or on the
+    // section above, so nothing grows the table: a one-row catalog is one row
+    // with its pagination bar directly beneath, not a table stretched to the
+    // foot of an empty pane (Indy, Oct 12, 2026). `min-h-0` stays, because the
+    // page is `fullHeight` with its overflow hidden: a catalog longer than the
+    // screen must shrink, so the DataTable's own viewport scrolls its rows and
+    // the pagination bar stays in view instead of being clipped.
+    <div className="flex min-h-0 flex-col gap-4">
       {error ? (
         <p role="alert" data-testid="catalog-error" className="text-sm text-destructive">
           {error}

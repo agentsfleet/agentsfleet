@@ -11,9 +11,11 @@ import { ModelName, PLATFORM_MANAGED_LABEL, PlatformManagedMark, ProviderBadge }
 afterEach(() => cleanup());
 
 const KNOWN_PROVIDER = "atlas-cloud";
-const UNLISTED_PROVIDER = "together";
+const UNLISTED_PROVIDER = "lambda-labs";
 const MODEL_ID = "claude-sonnet-5-5";
 const TRAILING = "Default";
+/** How a value the viewer cannot change, or that is absent, reads. */
+const MUTED = "text-muted-foreground";
 
 function renderCell(cell: React.ReactNode) {
   return render(<TooltipProvider>{cell}</TooltipProvider>);
@@ -28,12 +30,14 @@ describe("ProviderBadge", () => {
 
   it("title-cases a provider the label table has not met", () => {
     renderCell(<ProviderBadge provider={UNLISTED_PROVIDER} />);
-    expect(screen.getByText("Together")).toBeTruthy();
+    expect(screen.getByText("Lambda Labs")).toBeTruthy();
   });
 
-  it("reads Unknown for a row the server sent no provider for", () => {
+  it("reads a plain, muted Unknown for a row the server sent no provider for", () => {
     renderCell(<ProviderBadge provider={undefined} />);
-    expect(screen.getByText("Unknown")).toBeTruthy();
+    const unknown = screen.getByText("Unknown");
+    expect(unknown.className).toContain(MUTED);
+    expect(unknown.className).not.toContain("normal-case");
   });
 
   it("does not shout the name: the badge's uppercase is overridden", () => {
@@ -54,6 +58,15 @@ describe("ModelName", () => {
     renderCell(<ModelName modelId={MODEL_ID} managedByPlatform />);
     expect(screen.getByLabelText(PLATFORM_MANAGED_LABEL)).toBeTruthy();
     expect(screen.getByTitle(MODEL_ID)).toBeTruthy();
+  });
+
+  it("mutes the name of a row a tenant admin cannot edit, and only that row", () => {
+    renderCell(<ModelName modelId={MODEL_ID} managedByPlatform />);
+    expect(screen.getByTitle(MODEL_ID).className).toContain(MUTED);
+
+    cleanup();
+    renderCell(<ModelName modelId={MODEL_ID} />);
+    expect(screen.getByTitle(MODEL_ID).className).not.toContain(MUTED);
   });
 
   it("renders what the table puts after the name", () => {

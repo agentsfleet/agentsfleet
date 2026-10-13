@@ -17,7 +17,22 @@ const { listCachedMock, requireCredentialMock } = vi.hoisted(() => ({
 vi.mock("@/lib/auth/credential", () => ({ requireCredential: requireCredentialMock }));
 vi.mock("./lib/reads", () => ({ listLibraryEntriesCached: listCachedMock }));
 
+import type { ReactElement } from "react";
 import LibraryPage from "./page";
+import { LIBRARY_SECTION_LABEL } from "./copy";
+
+type Props = { "aria-label"?: string; className?: string; children?: unknown };
+
+/** The element in `tree` whose accessible name is `label`, searched depth first. */
+function labelled(tree: unknown, label: string): ReactElement<Props> | undefined {
+  if (Array.isArray(tree)) {
+    return tree.map((child) => labelled(child, label)).find(Boolean);
+  }
+  if (tree === null || typeof tree !== "object" || !("props" in tree)) return undefined;
+  const element = tree as ReactElement<Props>;
+  if (element.props["aria-label"] === label) return element;
+  return labelled(element.props.children, label);
+}
 
 describe("the library page's read", () => {
   it("reads the owned collection for the workspace in the path", async () => {
@@ -27,6 +42,17 @@ describe("the library page's read", () => {
     await LibraryPage({ params: Promise.resolve({ workspaceId: "ws_1" }) });
 
     expect(listCachedMock).toHaveBeenCalledWith("ws_1", "token-1");
+  });
+
+  it("lets the section shrink to the page without stretching it", async () => {
+    requireCredentialMock.mockResolvedValue("token-1");
+    listCachedMock.mockResolvedValue({ items: [], total: null, next_cursor: null });
+
+    const tree = await LibraryPage({ params: Promise.resolve({ workspaceId: "ws_1" }) });
+
+    const classes = labelled(tree, LIBRARY_SECTION_LABEL)?.props.className?.split(" ") ?? [];
+    expect(classes).toContain("min-h-0");
+    expect(classes).not.toContain("flex-1");
   });
 
   it("hands the list exactly what the server answered", async () => {
