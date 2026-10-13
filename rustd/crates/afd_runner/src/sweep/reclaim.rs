@@ -232,7 +232,9 @@ impl Reclaim {
     /// above and the ledger question below — so a mark that fails is counted
     /// and logged the same way whichever question raised it.
     async fn mark_ready(&self, fleet_id: &str) -> bool {
-        match self.ready.mark(fleet_id).await {
+        // Unhinted: this pass re-marks fleets mid-run too, and the rotation
+        // reaches every mark it writes without the directory sending polls.
+        match self.ready.mark_unhinted(fleet_id).await {
             Ok(_token) => true,
             Err(failure) => {
                 producers::fleet::ready_write_failed();

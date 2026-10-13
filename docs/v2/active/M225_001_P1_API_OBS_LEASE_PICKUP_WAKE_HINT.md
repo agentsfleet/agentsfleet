@@ -56,7 +56,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 | File | Action | Why |
 |------|--------|-----|
-| `rustd/crates/afd_dragonfly/src/ready.rs` | EDIT | `mark` also writes the partition's directory entry under a fresh token; a directory read and a compare-and-delete, both under the hint deadline |
+| `rustd/crates/afd_dragonfly/src/ready.rs`, `rustd/crates/afd_runner/src/sweep/reclaim.rs`, `rustd/crates/afd_runner/tests/integration_reclaim.rs` | EDIT | `mark` also writes the partition's directory entry under a fresh token; a directory read and a compare-and-delete, both under the hint deadline; the reclaim sweeper's re-mark goes through `mark_unhinted`, so a pass over fleets mid-run names no partition |
 | `rustd/crates/afd_dragonfly/src/ready/partition.rs` | EDIT | the directory key's name beside `READY_INDEX_KEY`, hash-tagged to one slot and routed through `physical_key` like the partitions |
 | `rustd/crates/afd_dragonfly/src/ready/directory.rs` | NEW | the directory: `note_dirty` (called by `mark`), `dirty` oldest first, `spend` by token, every command under the hint deadline |
 | `rustd/crates/afd_dragonfly/src/ready/directory/tests.rs` | NEW | oldest-first order, skipped fields, the deadline on a command that never answers, the warning a lost write leaves |

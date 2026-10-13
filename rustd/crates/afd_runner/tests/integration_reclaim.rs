@@ -46,13 +46,17 @@ async fn reclaim_restores_only_a_fleet_with_deliverable_work() {
     // sample of one partition, and once the lane holds more marks there than
     // the sample takes, a mark that IS present can be missed.
     let index = ReadyIndex::new(queue.clone());
+    let remarked = index
+        .token_for(&fixture.deliverable)
+        .await
+        .expect("the readiness index is readable")
+        .expect("a lost readiness hint is reconstructed from the stream");
+    // A backstop the rotation reaches in its turn: naming it in the directory
+    // would send a poll every pass to each partition a running fleet holds.
+    let directory = index.dirty().await.expect("the directory is readable");
     assert!(
-        index
-            .token_for(&fixture.deliverable)
-            .await
-            .expect("the readiness index is readable")
-            .is_some(),
-        "a lost readiness hint is reconstructed from the stream"
+        !directory.iter().any(|entry| entry.token == remarked),
+        "the sweep's re-mark names no partition in the directory"
     );
     assert!(
         index
