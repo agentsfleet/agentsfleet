@@ -14,7 +14,10 @@
 //! batcher and keeps taking frames, so a streamed answer joins it rather than
 //! being dropped piecemeal; only a batch that has filled while it waited is
 //! dropped, counted and logged. The last batch of a run waits for room
-//! instead.
+//! instead. Two frames skip the tick: a lease's first frame, and its first
+//! answer chunk with whatever was buffered before it, so the live tail shows
+//! a run has started, and its first words, without the batching delay (see
+//! [`Early`]).
 //!
 //! A lease that stops waiting for the drain drops the pump with frames still
 //! held — in the batch, the queue, a post in flight, or the channel from the
@@ -48,7 +51,8 @@ pub(crate) use self::timing::RunTiming;
 pub(crate) const MAX_BATCHES_HELD: usize = 4;
 /// The most frame bytes one batch carries; a single larger frame rides alone.
 pub(crate) const MAX_BATCH_BYTES: usize = 64 * 1024;
-/// How long a partial batch waits for company before it is sent anyway.
+/// How long a partial batch waits for company before it is sent anyway; a
+/// lease's first frame and first answer chunk do not wait (see `Early`).
 const FLUSH_EVERY: Duration = Duration::from_millis(250);
 const EVENT_BATCH_DROPPED: &str = "activity_batch_dropped";
 const EVENT_POST_FAILED: &str = "activity_frame_write_failed";

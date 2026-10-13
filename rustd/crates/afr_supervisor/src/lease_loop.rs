@@ -17,6 +17,7 @@
 //! is waited on, and that wait is bounded: the tail is best-effort, the report
 //! is the record.
 
+use std::pin::Pin;
 use std::time::Duration;
 
 use afd_core::error_code;
@@ -48,7 +49,7 @@ mod segments;
 mod settle;
 mod workspace;
 
-use self::hold::Worked;
+use self::hold::{Kept, Worked};
 pub(crate) use self::lessee::Lessee;
 use self::refusal::failed;
 use self::segments::{Segment, Timeline};
@@ -192,17 +193,32 @@ impl LeaseRun<'_> {
         // A cut keeps what the run handed back, its tokens and memory with it,
         // and reports the cut as the reason it ended.
         let Worked { ending: ran, kept } = worked;
-        let mut ending = match cut {
+        let ending = match cut {
             Some((class, detail)) => ran.cut(class, detail),
             None => ran,
         };
+        self.settle_and_drain(kept, ending, renewal, pumping, live)
+            .await
+    }
+
+    /// The hold and the report, with the renewal and the live tail still
+    /// polled beside them, then the wait the tail gets to drain. Timed as the
+    /// report segment up to the drain.
+    async fn settle_and_drain(
+        &self,
+        kept: Option<Kept>,
+        mut ending: Ending,
+        mut renewal: Pin<&mut impl Future<Output = FailureClass>>,
+        mut pumping: Pin<&mut impl Future<Output = ()>>,
+        mut live: Live,
+    ) -> Ending {
         let reporting = self.timeline.start(Segment::Report);
         {
             let settle = async {
                 let held_until = self.keep(kept, &ending).await;
                 let superseded = self.settle(&mut ending, held_until).await;
                 if superseded && held_until.is_some() {
-                    lessee.holds.supersede(self.ids.lease.clone());
+                    self.lessee.holds.supersede(self.ids.lease.clone());
                 }
             };
             tokio::pin!(settle);

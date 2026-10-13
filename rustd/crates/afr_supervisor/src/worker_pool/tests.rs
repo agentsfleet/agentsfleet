@@ -204,6 +204,38 @@ async fn test_workers_stagger_first_poll() {
     );
 }
 
+/// A pool shut down while its workers wait out their offsets polls no more:
+/// only the worker with no offset has polled, and the pool joins at once
+/// rather than after the offsets run out.
+#[tokio::test(start_paused = true)]
+async fn test_a_worker_cancelled_during_its_offset_never_polls() {
+    const CANCEL_AFTER: Duration = Duration::from_millis(100);
+    let polls = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&polls);
+    let rig = polling(move |_polled| {
+        seen.fetch_add(1, Ordering::SeqCst);
+        idle(Some(10_000))
+    });
+    let (_published, watching) = watch::channel(assigned(4));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(CANCEL_AFTER).await;
+    let cancelled_at = tokio::time::Instant::now();
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(
+        polls.load(Ordering::SeqCst),
+        1,
+        "only the zero-offset worker polled"
+    );
+    assert!(
+        cancelled_at.elapsed() < first_poll_offset(1, 4).saturating_sub(CANCEL_AFTER),
+        "the pool did not wait out the offsets: {:?}",
+        cancelled_at.elapsed()
+    );
+}
+
 /// Once a lease leaves its sandbox held, the next poll names that fleet, so
 /// the daemon offers the fleet's next event here first.
 #[tokio::test(start_paused = true)]
