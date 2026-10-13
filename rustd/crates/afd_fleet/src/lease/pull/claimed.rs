@@ -1,11 +1,13 @@
 //! The suite's entry into the lease verb, below the one step it cannot steer.
 //!
 //! [`Plane::lease`] begins by asking the readiness index for work, and that
-//! call peeks the partition a cursor the process shares names, plus the one the
-//! readiness directory names as oldest dirty. Neither is the suite's to choose,
-//! so a suite that wants its own fleet polls until that fleet comes up — `integration_terminal_redelivery.rs` budgets eight
-//! rotations for it and says, at length, that a loop falling through silently
-//! has been misdiagnosed as the wrong bug five times.
+//! call peeks the partition a cursor the process shares names, plus one of the
+//! three oldest dirty partitions the readiness directory names, taken in turn
+//! as the cursor moves. Neither is the suite's to choose, so a suite that
+//! wants its own fleet polls until that fleet comes up —
+//! `integration_terminal_redelivery.rs` budgets eight rotations for it and
+//! says, at length, that a loop falling through silently has been
+//! misdiagnosed as the wrong bug five times.
 //!
 //! Everything BELOW the claim is deterministic: the same event, the same fleet,
 //! the same gates, the same answer. So the suite claims the event itself —

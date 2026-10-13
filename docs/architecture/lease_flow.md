@@ -38,8 +38,10 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
                            one of the 3 oldest dirty ones, taken in turn by the cursor;
                            rotation's fleets ahead of the hint's; zero Postgres if both empty;
                            afterwards the entry is spent unless this poll
-                           leased from the rotation's partition, or from the
-                           hinted one while its peek held other fleets
+                           leased from the rotation's partition while the
+                           hinted peek found fleets, or from the hinted one
+                           while its peek held other fleets; a poll that
+                           faults spends it too
                          b SELECT_READY_CANDIDATES ≤64: active, slot free, labels, then sticky
                          c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
                              leased_until = now+30 s            ← THE FENCE IS MINTED HERE

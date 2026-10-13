@@ -27,16 +27,17 @@
 //! A leased fleet keeps its mark for as long as it runs, so its partition
 //! would stay dirty, and the oldest-first directory would keep sending polls
 //! to work no runner can take. So an entry is deleted once a poll tried
-//! its partition and could not lease from it: nothing leased at all, or its
-//! only fleet leased, or its peek failed. A poll that leased from the
-//! rotation's partition keeps the entry, because the hinted fleets may never
-//! have been tried. Nothing leased usually means every fleet offered was
-//! tried; when the rotation's partition fills the scan's ceiling with fleets
-//! none of which leases, stale marks after a burst say, the hinted ones are
-//! cut untried, the entry goes anyway, and the rotation reaches them within a
-//! turn. The next mark there
-//! writes a deleted entry again. The delete compares the token the poll read,
-//! so a mark landing while the poll ran survives it.
+//! its partition and could not lease from it: nothing leased at all, its only
+//! fleet leased, its peek found nothing or failed, or the poll itself failed,
+//! a claim that faults included, so one broken fleet cannot hold every poll.
+//! A poll that leased from the rotation's partition keeps the entry, because
+//! the hinted fleets may never have been tried. Nothing leased usually means
+//! every fleet offered was tried; when the rotation's partition fills the
+//! scan's ceiling with fleets none of which leases, stale marks after a burst
+//! say, the hinted ones are cut untried, the entry goes anyway, and the
+//! rotation reaches them within a turn. The next mark there writes a deleted
+//! entry again. The delete compares the token the poll read, so a mark
+//! landing while the poll ran survives it.
 //!
 //! # Every read under the hint deadline
 //!
@@ -96,15 +97,16 @@ impl Leases {
     /// The ready fleets this poll offers the candidate scan, and the hint
     /// that sent it to one of their partitions, if one did.
     ///
-    /// # Errors
-    /// Reports a rotation peek that failed when no hinted peek answered in its
-    /// place. A directory read or a hinted peek that failed is logged and
-    /// counted, and the rotation's fleets are offered alone.
+    /// The hint comes back whatever the offer did, so the poll spends it on
+    /// every exit. The offer is an error when the rotation peek failed and no
+    /// hinted peek answered in its place. A directory read or a hinted peek
+    /// that failed is logged and counted, and the rotation's fleets are
+    /// offered alone.
     pub(super) async fn ready_this_poll(
         &self,
         runner_id: &Uuid7,
         cost: &mut PollCost,
-    ) -> Result<(Offer, Option<Hint>)> {
+    ) -> (Result<Offer>, Option<Hint>) {
         let index = self.ready();
         let partition = self.cursor().advance();
         let (directory, rotation) = join(
@@ -128,13 +130,13 @@ impl Leases {
             .ok()
             .and_then(|dirty| spread(dirty, partition));
         let Some(dirty) = sent_to else {
-            return Ok((Offer::cursor_only(rotation?), None));
+            return (rotation.map(Offer::cursor_only).map_err(Into::into), None);
         };
         if dirty.partition == partition {
             // One key, already read: the rotation's answer is the hint's too.
-            let ready = rotation?;
-            let found = Some(ready.len());
-            return Ok((Offer::cursor_only(ready), Some(Hint { dirty, found })));
+            let found = rotation.as_ref().ok().map(Vec::len);
+            let offer = rotation.map(Offer::cursor_only).map_err(Into::into);
+            return (offer, Some(Hint { dirty, found }));
         }
         cost.dragonfly_commands += 1;
         let hinted = index
@@ -151,20 +153,17 @@ impl Leases {
                 );
             });
         let found = hinted.as_ref().ok().map(Vec::len);
-        let hint = Some(Hint { dirty, found });
-        match (hinted, rotation) {
-            (Ok(hinted), Ok(rotation)) => Ok((cursor_first(rotation, hinted), hint)),
+        let offer = match (hinted, rotation) {
+            (Ok(hinted), Ok(rotation)) => Ok(cursor_first(rotation, hinted)),
             // The rotation's partition is sick; the directory's still serves.
-            (Ok(hinted), Err(_)) => Ok((
-                Offer {
-                    ready: hinted,
-                    cursor: 0,
-                },
-                hint,
-            )),
-            (Err(_), Ok(rotation)) => Ok((Offer::cursor_only(rotation), hint)),
+            (Ok(hinted), Err(_)) => Ok(Offer {
+                ready: hinted,
+                cursor: 0,
+            }),
+            (Err(_), Ok(rotation)) => Ok(Offer::cursor_only(rotation)),
             (Err(_), Err(error)) => Err(error.into()),
-        }
+        };
+        (offer, Some(Hint { dirty, found }))
     }
 
     /// Deletes the hint's entry unless this poll should come back to it.
@@ -208,6 +207,10 @@ fn keeps_entry(partition: Partition, found: Option<usize>, leased: Option<&str>)
         // A failed peek: keeping the entry would send the next poll back.
         return false;
     };
+    if found == 0 {
+        // Nothing there to come back for, wherever the poll leased.
+        return false;
+    }
     match leased {
         // Nothing leased: every fleet offered was tried, unless the rotation's
         // filled the scan; then the rotation reaches the hinted ones.

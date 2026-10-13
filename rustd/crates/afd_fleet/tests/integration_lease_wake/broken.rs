@@ -5,6 +5,7 @@
 //! command refuses, and restores it before cleaning up.
 
 use afd_core::clock::UnixMillis;
+use afd_dragonfly::streams::fleet_stream_key;
 
 use super::scene::{partition, scene};
 use super::{CMD_DEL, CMD_SET, NOT_A_HASH};
@@ -53,5 +54,38 @@ async fn test_both_peeks_refused_fail_the_poll() {
     scene.raw(&hinted, CMD_DEL, None).await;
 
     assert!(polled.is_err(), "no peek answered, so the poll cannot");
+    assert!(
+        scene.dirty().await.is_empty(),
+        "the unreadable hint is spent, so the next poll is not sent back"
+    );
+    scene.fixtures.cleanup().await;
+}
+
+/// Both peeks answer but the hinted fleet's claim faults, its stream
+/// unreadable: the poll fails, and it spends the entry, so later polls are not
+/// sent back to the same fault while the rotation still reaches the fleet.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_hinted_claim_that_faults_spends_its_entry() {
+    let scene = scene("broken-claim").await;
+    let fleet = scene.fleet(&[partition(0)]).await;
+    scene.send(&fleet).await;
+    let stream = scene
+        .fixtures
+        .queue()
+        .physical_key(&fleet_stream_key(&fleet.id));
+    scene.raw(&stream, CMD_SET, Some(NOT_A_HASH)).await;
+
+    let (polled, _cost) = scene
+        .leases
+        .select_measured(&fleet.runners[0], &[], UnixMillis::from_millis(ENROLLED_AT))
+        .await;
+    scene.raw(&stream, CMD_DEL, None).await;
+
+    assert!(polled.is_err(), "the hinted fleet's stream read faulted");
+    assert!(
+        scene.dirty().await.is_empty(),
+        "the faulting partition's entry is spent"
+    );
     scene.fixtures.cleanup().await;
 }

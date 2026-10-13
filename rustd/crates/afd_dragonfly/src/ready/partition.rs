@@ -44,7 +44,7 @@ pub const READY_INDEX_KEY: &str = "fleet:ready";
 /// One hash on one slot, beside the partitions' numbered tags, read by every
 /// poll. A word rather than a number, so no partition count can ever make a
 /// partition's key and the directory's collide.
-pub const READY_DIRECTORY_TAG: &str = "directory";
+const READY_DIRECTORY_TAG: &str = "directory";
 
 /// The segment a private index inserts between [`READY_INDEX_KEY`] and its
 /// caller's name, so one glance at a key says whose it is.

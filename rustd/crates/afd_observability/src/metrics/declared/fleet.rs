@@ -40,7 +40,8 @@ pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
 pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
 
-/// Rate ÷ polls = Dragonfly cost per poll; an idle poll adds two.
+/// Rate ÷ polls = Dragonfly cost per poll; an idle poll adds two, plus one per
+/// sandbox the runner holds.
 pub const LEASE_POLL_DRAGONFLY_COMMANDS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_dragonfly_commands_total");
 
