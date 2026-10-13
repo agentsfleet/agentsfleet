@@ -23,6 +23,12 @@ const CANDIDATES: u64 = 11;
 /// Round trips the fake poll claims to have issued.
 const ROUNDTRIPS: u64 = 2;
 
+/// Dragonfly commands the fake poll claims to have issued.
+const COMMANDS: u64 = 3;
+
+/// What an idle poll asks of Dragonfly: the directory read and one partition.
+const IDLE_COMMANDS: u64 = 2;
+
 /// Both counter readings live in ONE test on purpose.
 ///
 /// The instruments are process-global — `producers::install` writes a
@@ -37,7 +43,7 @@ fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
     let instrument = LeaseInstrument::install().expect("the census must install");
 
     let before_worked = instrument.read().expect("the counters must be readable");
-    producers::fleet::lease_polled(CANDIDATES, ROUNDTRIPS);
+    producers::fleet::lease_polled(CANDIDATES, ROUNDTRIPS, COMMANDS);
     let worked = instrument
         .read()
         .expect("the counters must be readable")
@@ -64,7 +70,7 @@ fn test_the_lease_counters_are_read_back_from_the_daemons_own_instrument() {
     // returns before touching Postgres, so the poll counts and the round trips
     // do not. This is the number a million idle fleets multiply.
     let before_idle = instrument.read().expect("readable");
-    producers::fleet::lease_polled(0, 0);
+    producers::fleet::lease_polled(0, 0, IDLE_COMMANDS);
     let idle = instrument.read().expect("readable").since(before_idle);
 
     assert_eq!(idle.polls, 1);

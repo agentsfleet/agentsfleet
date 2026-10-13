@@ -14,7 +14,8 @@ fn runner_id() -> Result<Uuid7, &'static str> {
     .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
 }
 
-/// Both queue reporters render every Dragonfly failure kind without panicking.
+/// Every queue and hint reporter renders every Dragonfly failure kind without
+/// panicking.
 ///
 /// Thin, and deliberately so. These are `tracing::warn!` calls with no
 /// return value, so what there is to prove is that each field expression
@@ -35,8 +36,12 @@ fn both_queue_reporters_render_every_redis_failure() -> Result<(), &'static str>
             !error.to_string().is_empty(),
             "{label} renders to something a reader can act on"
         );
-        super::warn_queue("lease_poll_queue_failed", &runner, &error);
+        super::diagnostics::warn_queue("lease_poll_queue_failed", &runner, &error);
         super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
+        let partition = afd_dragonfly::Partition::new(3).ok_or("3 is a partition")?;
+        super::diagnostics::warn_hint_unread(&runner, None, &error);
+        super::diagnostics::warn_hint_unread(&runner, Some(partition), &error);
+        super::diagnostics::warn_hint_unspent(&runner, partition, &error);
     }
     Ok(())
 }
@@ -112,7 +117,7 @@ fn a_poll_queue_failure_reason_carries_no_code_prefix() -> Result<(), &'static s
     let told = error.told();
 
     let log = Capture::install();
-    super::warn_queue("lease_poll_queue_failed", &runner, &error);
+    super::diagnostics::warn_queue("lease_poll_queue_failed", &runner, &error);
     super::warn_queue_fleet("lease_claim_queue_failed", "fleet-fixture", &error);
 
     for event in ["lease_poll_queue_failed", "lease_claim_queue_failed"] {

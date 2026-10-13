@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor};
+use super::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix};
 
 /// The same fleet lands in the same partition every time, and every
 /// partition is one the index knows.
@@ -105,4 +105,22 @@ fn clones_share_one_rotation() {
         (first + 1) % READY_PARTITIONS,
         "a clone restarted the rotation"
     );
+}
+
+/// The directory sits beside the production partitions under its own tag,
+/// and no partition's key is ever the directory's.
+#[test]
+fn test_the_directory_key_is_tagged_and_never_a_partitions() {
+    let production = ReadyPrefix::production();
+    let directory = production.directory_key();
+
+    assert_eq!(directory, format!("{READY_INDEX_KEY}:{{directory}}"));
+    for partition in Partition::all() {
+        assert_ne!(
+            partition.key_under(&production),
+            directory,
+            "partition {} would share the directory's key",
+            partition.index()
+        );
+    }
 }

@@ -1,10 +1,13 @@
 //! The readiness index: which fleets currently hold work.
 //!
 //! A fixed set of hashes — one per [`Partition`] — with a field per fleet and
-//! a token for its value. A lease poll reads ONE partition, the one its
-//! cursor names, before it opens a Postgres connection, so an idle poll costs
-//! one bounded Dragonfly read and no database round-trip at all, and a rotation
-//! of polls visits every partition whatever one of them holds.
+//! a token for its value, and one more hash, the [`directory`], naming the
+//! partitions that gained a mark. A lease poll reads the directory and ONE
+//! partition, the one its cursor names, before it opens a Postgres
+//! connection, so an idle poll costs two bounded Dragonfly reads and no
+//! database round-trip at all; a rotation of polls visits every partition
+//! whatever one of them holds, and the directory sends a poll straight to the
+//! partition fresh work landed in.
 //!
 //! # It is a hint, never the record
 //!
@@ -32,6 +35,7 @@
 //! [`ReadyIndex::mark`] draws a version-7 identifier for every write and no
 //! caller can hand it a value to reuse.
 
+pub mod directory;
 pub mod partition;
 
 use afd_core::clock::UnixMillis;
@@ -41,7 +45,10 @@ use futures_util::future::try_join_all;
 use crate::client::Dragonfly;
 use crate::error::Result;
 
-pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix};
+pub use self::directory::Dirty;
+pub use self::partition::{
+    Partition, READY_DIRECTORY_TAG, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix,
+};
 
 /// Delete the field only if it still carries the token the caller observed.
 ///
@@ -167,23 +174,30 @@ impl ReadyIndex {
         self.key_of(Partition::of(fleet_id))
     }
 
-    /// Marks a fleet as holding work, under a token minted for this write.
+    /// Marks a fleet as holding work, under a token minted for this write,
+    /// and names its partition dirty in the [`directory`] under the same
+    /// token.
     ///
     /// Every call writes a new generation, so a poll that peeked the previous
     /// one can no longer clear this one — see the module note on why no caller
-    /// supplies the token.
+    /// supplies the token. The directory entry follows the mark, never leads
+    /// it: a poll sent to the partition finds the mark already there.
     ///
     /// # Errors
     /// Returns an unmintable error when no token could be drawn, and a command
-    /// error when the write fails. Callers on the ingress path log and
+    /// error when the mark's write fails. Callers on the ingress path log and
     /// continue: the append already succeeded, and the sweeper re-derives what
-    /// a lost mark would have said.
+    /// a lost mark would have said. A directory entry that is not written is
+    /// reported where it fails and never returned, because the mark it points
+    /// at has landed.
     pub async fn mark(&self, fleet_id: &str) -> Result<ReadyToken> {
         let token = ReadyToken::mint(&self.entropy, afd_core::clock::now())?;
-        let key = self.key_for(fleet_id);
+        let partition = Partition::of(fleet_id);
+        let key = self.key_of(partition);
         let mut cmd = redis::cmd(CMD_HSET);
         cmd.arg(&key).arg(fleet_id).arg(token.as_str());
         let _: i64 = self.redis.command(CMD_HSET, &key, &cmd).await?;
+        self.note_dirty(partition, &token).await;
         Ok(token)
     }
 

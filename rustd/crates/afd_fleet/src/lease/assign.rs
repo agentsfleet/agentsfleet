@@ -4,10 +4,11 @@
 //! re-polls on the backoff the reply carries. The pass is READY-FIRST, and the
 //! ordering is the design:
 //!
-//! 1. Peek the shared readiness index, BEFORE touching Postgres. An empty index
-//!    answers no-work with zero database round-trips, which is the dominant
-//!    steady state on any deployment holding more fleets than concurrent
-//!    events.
+//! 1. Peek the shared readiness index, BEFORE touching Postgres: the
+//!    directory's oldest dirty partition and the rotation's next one. An empty
+//!    index answers no-work with zero database round-trips, which is the
+//!    dominant steady state on any deployment holding more fleets than
+//!    concurrent events.
 //! 2. Run the candidate query, restricted to those fleets and capped. Readiness
 //!    NARROWS the input; it never decides eligibility — the label gate, the
 //!    held-slot filter and the sticky ordering are properties of the query.
@@ -39,10 +40,11 @@ use crate::lease::sql;
 use crate::lease::store::Leases;
 
 mod diagnostics;
+mod hint;
 mod offer;
 
 pub(crate) use diagnostics::warn_queue_fleet;
-use diagnostics::{EVENT_LEASE_RECLAIMED, EVENT_READY_PEEK_FAILED, drop_undecodable, warn_queue};
+use diagnostics::{EVENT_LEASE_RECLAIMED, drop_undecodable};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CANDIDATES: &str = "lease candidate scan";
@@ -66,6 +68,9 @@ struct PollCost {
     candidates_scanned: u64,
     /// Statements this poll issued.
     database_roundtrips: u64,
+    /// Commands this poll sent Dragonfly: two on an idle poll, the directory
+    /// read and the rotation's peek.
+    dragonfly_commands: u64,
 }
 
 impl Leases {
@@ -105,7 +110,11 @@ impl Leases {
         // On EVERY exit path, including the one where the peek itself failed:
         // a poll that could not read the index is still a poll, and a total
         // that skipped it would make idle cost look lower than it is.
-        producers::fleet::lease_polled(cost.candidates_scanned, cost.database_roundtrips);
+        producers::fleet::lease_polled(
+            cost.candidates_scanned,
+            cost.database_roundtrips,
+            cost.dragonfly_commands,
+        );
         (selected, cost)
     }
 
@@ -120,26 +129,22 @@ impl Leases {
         if let Some(acquired) = self.held_first(runner_id, held, now, cost).await? {
             return Ok(Some(acquired));
         }
-        // One partition per poll, the next in the rotation: the read stays one
-        // bounded round trip, and the partitions this poll did not visit are
-        // the next polls' — whichever runner makes them.
-        let partition = self.cursor().advance();
-        let ready = self
-            .ready()
-            .peek(partition, MAX_READY_CANDIDATES_PER_POLL)
-            .await
-            .inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error))?;
+        let (ready, hint) = self.ready_this_poll(runner_id, cost).await?;
         cost.candidates_scanned = u64::try_from(ready.len()).unwrap_or(u64::MAX);
         // The readiness depth this poll saw, published for the gauge that
         // reports it: the index is a network round trip, and a collection
         // callback cannot make one.
         producers::fleet::ready_depth_observed(cost.candidates_scanned);
-        // The zero-Postgres path. Returning here is what makes idle cost scale
-        // with runner count alone instead of runners × fleets.
-        if ready.is_empty() {
-            return Ok(None);
-        }
-        self.first_offered(runner_id, &ready, now, cost).await
+        // The zero-Postgres path. Skipping the scan here is what makes idle
+        // cost scale with runner count alone instead of runners × fleets.
+        let acquired = if ready.is_empty() {
+            None
+        } else {
+            self.first_offered(runner_id, &ready, now, cost).await?
+        };
+        self.spend_hint(runner_id, hint, acquired.as_ref(), cost)
+            .await;
+        Ok(acquired)
     }
 
     /// The eligible fleets among `ready`, in the query's own sticky order.

@@ -9,6 +9,9 @@
 
 use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
+use afd_dragonfly::Partition;
+use afd_observability::metrics::label::fleet::ReadyHint;
+use afd_observability::producers;
 
 /// The readiness index would not answer.
 ///
@@ -28,6 +31,14 @@ pub(super) const EVENT_LEASE_RECLAIMED: &str = "lease_reclaimed";
 
 /// A held fleet's readiness could not be read; the poll went on without it.
 pub(super) const EVENT_HELD_READ_FAILED: &str = "assign_held_read_failed";
+
+/// The readiness directory, or the partition it named, could not be read;
+/// the poll went on with the rotation's partition alone.
+pub(super) const EVENT_HINT_READ_FAILED: &str = "assign_ready_hint_read_failed";
+
+/// A spent directory entry could not be deleted; the next poll peeks its
+/// partition once more.
+pub(super) const EVENT_HINT_DELETE_FAILED: &str = "assign_ready_hint_delete_failed";
 
 /// Reports a queue failure that ended a poll before any fleet was examined.
 ///
@@ -75,6 +86,60 @@ pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dr
         fleet_id = fleet,
         reason,
         "a held fleet's readiness could not be read; the poll goes on without it"
+    );
+}
+
+/// Reports a readiness hint a poll could not read: the directory itself when
+/// `partition` is `None`, else the partition it named.
+///
+/// A `warn` and not a failed poll: the rotation's partition was still read,
+/// so the work behind the hint is reached within one rotation.
+pub(super) fn warn_hint_unread(
+    runner_id: &Uuid7,
+    partition: Option<Partition>,
+    error: &afd_dragonfly::Error,
+) {
+    producers::fleet::ready_hint_failed(ReadyHint::Read);
+    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let runner = runner_id.as_str();
+    let named = partition.map(Partition::index);
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
+    tracing::warn!(
+        error_code = code,
+        cause_error_code,
+        event = EVENT_HINT_READ_FAILED,
+        runner_id = runner,
+        partition = named,
+        reason,
+        "the readiness hint could not be read; the poll goes on with its rotation"
+    );
+}
+
+/// Reports a spent directory entry the poll could not delete.
+pub(super) fn warn_hint_unspent(
+    runner_id: &Uuid7,
+    partition: Partition,
+    error: &afd_dragonfly::Error,
+) {
+    producers::fleet::ready_hint_failed(ReadyHint::Delete);
+    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let runner = runner_id.as_str();
+    let index = partition.index();
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
+    tracing::warn!(
+        error_code = code,
+        cause_error_code,
+        event = EVENT_HINT_DELETE_FAILED,
+        runner_id = runner,
+        partition = index,
+        reason,
+        "a spent readiness hint could not be deleted; the next poll peeks it once more"
     );
 }
 

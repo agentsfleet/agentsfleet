@@ -51,6 +51,7 @@ async fn namespaced_surface_writes_nothing_outside_its_prefix() {
         afd_dragonfly::session::session_key(&marker),
         afd_dragonfly::fleet_stream_key(&marker),
         Partition::of(&marker).key_under(&ready_prefix),
+        ready_prefix.directory_key(),
         OUTBOUND_STREAM_KEY.to_owned(),
     ]
     .into_iter()

@@ -16,7 +16,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
 | Dragonfly connection budget | 3·R at normal boot | one shared command socket, one hub socket, one outbound reader socket per replica | §Connection budget after the cutover |
-| Idle request volume | `N_runners / poll_s` requests/sec | each idle poll = one bounded `HRANDFIELD` + one indexed auth read; ~72,000/hour at 20 runners, 1 s | §Per-request volume |
+| Idle request volume | `N_runners / poll_s` requests/sec | each idle poll = two bounded Dragonfly reads (the readiness directory `HGETALL` and one `HRANDFIELD`) + one indexed auth read; ~72,000/hour at 20 runners, 1 s | §Per-request volume |
 | Idle-cost knob | `NO_WORK_RETRY_AFTER_MS` = 1000 | trades idle bill against idle pickup latency; single-sourced in `rustd/crates/afd_core/src/timing.rs` | §Tuneup knobs |
 | Per-poll fan-out ceiling | `MAX_READY_CANDIDATES_PER_POLL` = 64, compile-time | randomized readiness slice; per-poll cost independent of population, even when the index is wrong | §The per-poll bound |
 | Auth read per request | one indexed single-row read | M143_001 removed the per-process memo, so cordon/drain/revoke bite fleet-wide the moment they commit | §Per-request volume |
@@ -126,7 +126,7 @@ Idle cost is the runner lease-poll loop, fully idle:
 
 | Source | Requests per hour |
 |---|---|
-| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **one** bounded `HRANDFIELD` read of the readiness index and **one** indexed `fleet.runners` auth read (M143_001 removed the memo — see below) | `R_runners × 3600` at the 1 s default |
+| Runner lease polls (`R_runners × 3600 / poll_seconds`), each doing **two** bounded Dragonfly reads of the readiness index (the directory `HGETALL` and one partition's `HRANDFIELD`) and **one** indexed `fleet.runners` auth read (M143_001 removed the memo — see below) | `R_runners × 3600` at the 1 s default |
 | (No watcher loop, no per-fleet BLOCK loops — both deleted) | 0 |
 
 "Zero Postgres round-trips" is about the CANDIDATE SCAN, not authentication. The
@@ -168,7 +168,7 @@ Two consequences worth carrying into a sizing conversation:
 - **Fleet count no longer appears in the idle term at all.** It appears only in the *recovery* term — see the readiness recovery bound in [`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model", which scales with `active_fleets / sweep batch`.
 - **Randomized sampling interacts with label placement.** The slice is drawn at random; the label gate (`required_tags <@ labels`) filters it in Postgres afterwards. A runner whose labels match only a small share of ready fleets may therefore need several polls to draw one it can serve. It is a latency effect, never a loss, and it self-corrects across polls; the ceiling is sized generously for exactly this reason. Label-aware placement is M85_001's concern, not a knob here.
 
-Watch `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` for mean fan-out per poll, and `agentsfleet_lease_poll_db_roundtrips_total / agentsfleet_lease_polls_total` for mean database cost per poll. The denominator is not optional: without it a traffic increase and a fan-out regression look identical.
+Watch `agentsfleet_lease_poll_candidates_scanned_total / agentsfleet_lease_polls_total` for mean fan-out per poll, `agentsfleet_lease_poll_db_roundtrips_total / agentsfleet_lease_polls_total` for mean database cost per poll, and `agentsfleet_lease_poll_dragonfly_commands_total / agentsfleet_lease_polls_total` for mean Dragonfly cost per poll, two when idle. The denominator is not optional: without it a traffic increase and a fan-out regression look identical.
 
 #### Which recurring Postgres reads are index-served
 
@@ -268,7 +268,7 @@ says why each correction is there.
 
 | Path | What it costs | The number that decides |
 |------|---------------|-------------------------|
-| Idle lease poll | 1.00 Dragonfly command, 0 Postgres statements and 0 commits per poll (75 382 polls after a 200-fleet drain, readiness index empty, nothing force-cleared) | Idle cost scales with runners, not fleets. The lease clears a drained fleet's readiness mark, so once work runs out the index is empty and an idle poll never reaches Postgres. |
+| Idle lease poll | 1.00 Dragonfly command, 0 Postgres statements and 0 commits per poll (75 382 polls after a 200-fleet drain, readiness index empty, nothing force-cleared), measured before the readiness directory; M225 adds one read, so the expected figure is 2.00 until it is re-measured (`agentsfleet_lease_poll_dragonfly_commands_total ÷ agentsfleet_lease_polls_total`) | Idle cost scales with runners, not fleets. The lease clears a drained fleet's readiness mark, so once work runs out the index is empty and an idle poll never reaches Postgres. |
 | Contended lease | 1 928 leases/s; 2.4 Postgres round trips per issued lease; 27.8% of polls find nothing; p95 7.8 ms (200 ready, 8 runners, pool 20, window ended at exhaustion) | A lease costs about two round trips under contention, down from 11.3 at `e2d250172`. |
 | Lease through report (drain) | 50.0 Postgres statements and 26.8 commits per lease issued, the polls that missed and the report included; 14.1 Dragonfly commands per lease; 172 leases/s; lease p95 56.5 ms, report p95 21.5 ms; all 200 events processed once, 2 ledger rows each (200 fleets, 8 runners, the drain half of `make bench-lease`) | What one event costs the scheduler and the ledger end to end through `Plane::lease` and `Plane::report`, counted by Postgres rather than by the lane. |
 | Steer ingress | 3.04 Dragonfly commands per steer, 1.94 Postgres transactions; 1 639/s at p95 7.4 ms (8 submitters, 50 fleets) | Ingress writes the admission ledger, about two Postgres transactions per steer. The readiness index fills to the population and holds until a runner drains it. |
@@ -347,7 +347,7 @@ Step 4: Emit configuration
 4. **Raise `DRAGONFLY_REQUEST_TIMEOUT_MS` above 5000.** A healthy datastore's p99 is single-digit-ms, and in-region 6PN is below that; >5 s is failure, not slowness.
 5. **Put `SUBSCRIBE` on the shared command socket.** The hub owns a separate connection and fans out locally; request-path commands keep their multiplexed socket.
 6. **Treat SSE streams as dedicated threads.** Rust serves async bodies under `SSE_MAX_STREAMS`; API admission and viewer capacity are separate budgets.
-7. **Include fleet count in the idle term.** It is not there any more. An idle poll costs one Dragonfly read and no database work regardless of how many fleets exist; fleet count appears only in the readiness *recovery* bound ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Sizing an idle deployment by fleet population is the pre-M141 mistake, and it is the reason the idle figure in §"Per-request volume" used to be wrong.
+7. **Include fleet count in the idle term.** It is not there any more. An idle poll costs two Dragonfly reads and no database work beyond its authentication regardless of how many fleets exist; fleet count appears only in the readiness *recovery* bound ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Sizing an idle deployment by fleet population is the pre-M141 mistake, and it is the reason the idle figure in §"Per-request volume" used to be wrong.
 8. **Reach for a bare `LIMIT` on the candidate scan.** It was considered and rejected: a bare limit caps discovery throughput without removing the per-poll Postgres cost, and it silently starves every fleet past the bound because the scan is ordered, not sampled. The ceiling only works *because* the readiness slice above it is randomized.
 9. **Sum `agentsfleet_fleet_ready_depth` across replicas.** Every replica samples the same shared hash, so the fleet-wide value is any single instance's series. Summing multiplies it by replica count.
 
