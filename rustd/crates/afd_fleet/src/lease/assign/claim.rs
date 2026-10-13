@@ -121,7 +121,7 @@ impl Leases {
     ) -> Result<Option<Acquired>> {
         let streams = self.streams();
         let fleet = fleet_id.as_str();
-        let Some(event) = self
+        let Some(pulled) = self
             .read_fresh(fleet, &runner_consumer(), &mut cost.dragonfly_commands)
             .await?
         else {
@@ -136,7 +136,8 @@ impl Leases {
             self.clear_mark(fleet_id, token).await;
             return Ok(None);
         };
-        match from_fresh(fleet_id, claimed, token, &event) {
+        let event = pulled.event;
+        match from_fresh(fleet_id, claimed, token, &event, pulled.redelivered) {
             Ok(acquired) => Ok(Some(acquired)),
             Err(undecodable) => {
                 cost.dragonfly_commands += 1;
