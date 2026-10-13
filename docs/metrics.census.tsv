@@ -52,7 +52,7 @@ agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reas
 agentsfleet_signup_bootstrapped_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: fresh accounts
 agentsfleet_signup_replayed_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: idempotent replays
 agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:7	no	errors	rejected signups per cause
-agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the two below
+agentsfleet_lease_polls_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	the denominator for the three below
 agentsfleet_lease_poll_candidates_scanned_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = fan-out per poll
 agentsfleet_lease_poll_db_roundtrips_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = DB cost per poll; idle polls must add zero
 agentsfleet_lease_poll_dragonfly_commands_total	counter	u64	1	cumulative	-	-	fixed:1	no	latency	rate ÷ polls = Dragonfly cost per poll; an idle poll adds two
@@ -63,9 +63,9 @@ agentsfleet_lease_history_read_failures_total	counter	u64	{lease}	cumulative	-	-
 agentsfleet_lease_claims_empty_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	won claims that found nothing deliverable; each clears one drained mark
 agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed share is runners dying mid-run
 agentsfleet_fleet_delivery_stage_seconds	histogram	f64	s	delta	stage	0.05,0.1,0.25,0.5,1,2,5,10,20,40,80,160,320	fixed:4	no	latency	event-to-lease, lease-to-first-chunk, event-to-first-chunk and zombie-to-first-chunk latency
-agentsfleet_fleet_ready_depth	gauge	u64	{fleet}	-	-	-	fixed:1	no	saturation	readiness backlog (not summable across replicas)
+agentsfleet_fleet_ready_depth	gauge	u64	{fleet}	-	-	-	fixed:1	no	saturation	ready fleets a poll's peeks offered, the rotation's partition and the directory's oldest dirty one, at most the poll ceiling (not summable across replicas)
 agentsfleet_fleet_ready_write_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	Redis index writes failing
-agentsfleet_fleet_ready_hint_failures_total	counter	u64	1	cumulative	kind	-	fixed:3	no	errors	readiness-directory commands failing or past their deadline, by kind; the rotation still finds the work
+agentsfleet_fleet_ready_hint_failures_total	counter	u64	1	cumulative	kind	-	fixed:4	no	errors	readiness-directory commands, and peeks of the partition it named, failing or past their deadline, by kind; the rotation still finds the work
 agentsfleet_fleets	gauge	u64	{fleet}	-	status	-	fixed:5	yes	traffic	installed fleets by lifecycle status; active is the leasable set, a rising paused count is the anomaly gate holding work
 agentsfleet_runner_retention_swept_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	retention pruning throughput
 agentsfleet_runner_retention_sweep_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	retention sweeps failing

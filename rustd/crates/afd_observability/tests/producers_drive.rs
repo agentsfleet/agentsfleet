@@ -87,7 +87,12 @@ fn test_every_fleet_producer_runs_its_body() {
     producers::fleet::signup_replayed();
     producers::fleet::lease_polled(11, 2, 3);
     producers::fleet::ready_write_failed();
-    for hint in [ReadyHint::Write, ReadyHint::Read, ReadyHint::Delete] {
+    for hint in [
+        ReadyHint::Write,
+        ReadyHint::Read,
+        ReadyHint::Peek,
+        ReadyHint::Delete,
+    ] {
         producers::fleet::ready_hint_failed(hint);
     }
     producers::fleet::retention_swept(9);

@@ -118,22 +118,32 @@ impl Scene {
         }
     }
 
-    /// Sends `verb` at the directory's physical key: a test puts a wrong type
-    /// there to break it, then deletes it.
-    pub(super) async fn raw(&self, verb: &'static str, value: Option<&str>) {
-        let key = self
-            .fixtures
+    /// The directory's physical key.
+    pub(super) fn directory_key(&self) -> String {
+        self.fixtures
             .queue()
-            .physical_key(&self.prefix.directory_key());
+            .physical_key(&self.prefix.directory_key())
+    }
+
+    /// `partition`'s physical key in this scene's index.
+    pub(super) fn partition_key(&self, partition: Partition) -> String {
+        self.fixtures
+            .queue()
+            .physical_key(&partition.key_under(&self.prefix))
+    }
+
+    /// Sends `verb` at `key`: a test puts a wrong type there to break it,
+    /// then deletes it.
+    pub(super) async fn raw(&self, key: &str, verb: &'static str, value: Option<&str>) {
         let mut cmd = redis::cmd(verb);
-        cmd.arg(&key);
+        cmd.arg(key);
         if let Some(value) = value {
             cmd.arg(value);
         }
         let _: redis::Value = self
             .fixtures
             .queue()
-            .command(verb, &key, &cmd)
+            .command(verb, key, &cmd)
             .await
             .expect(verb);
     }
