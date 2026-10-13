@@ -19,6 +19,20 @@ fn test_static_secrets_read_fields_and_host() {
     assert!(!secrets.contains("slack"));
 }
 
+/// A refusal may name a credential's fields: the names come back, never a
+/// value, and only string fields count, as `field` reads them.
+#[test]
+fn test_field_names_name_string_fields_and_no_values() {
+    let map = json!({"github": {"token": "ghp_1", "host": "api.github.com", "n": 7}});
+    let secrets = StaticSecrets::new(Some(&map));
+
+    let mut names = secrets.field_names("github").unwrap_or_default();
+    names.sort_unstable();
+
+    assert_eq!(names, vec!["host", "token"]);
+    assert_eq!(secrets.field_names("slack"), None);
+}
+
 #[test]
 fn test_static_secret_values_skip_the_host_and_non_strings() {
     let map = json!({

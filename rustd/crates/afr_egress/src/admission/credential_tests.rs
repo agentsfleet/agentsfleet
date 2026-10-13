@@ -118,7 +118,35 @@ fn should_send_a_minted_credential_only_where_an_origin_policy_names_it() {
                 None
             )
         ),
-        Some(shown(&Error::secret_not_found("github", "password")))
+        Some((
+            Some(Refusal::SecretNotFound),
+            "this fleet's secret github has no field password; its fields are token".to_owned()
+        )),
+        "a wrong field of a secret the fleet has names the fields it has"
+    );
+}
+
+/// A static credential asked for a field it lacks names the fields it has,
+/// and none of their values.
+#[test]
+fn should_name_a_static_credentials_fields_for_a_field_it_lacks() {
+    let refusal = refused(
+        false,
+        draft(
+            "GET",
+            "https://demo-grafana.internal/api/health",
+            &[("Authorization", "${secrets.grafana.password}")],
+            None,
+        ),
+    );
+
+    assert_eq!(
+        refusal,
+        Some((
+            Some(Refusal::SecretNotFound),
+            "this fleet's secret grafana has no field password; its fields are host, token"
+                .to_owned()
+        ))
     );
 }
 

@@ -113,6 +113,19 @@ pub(crate) enum ErrorKind {
         field: String,
     },
 
+    /// A placeholder names a field a secret this fleet has does not carry. The
+    /// sentence names the fields it does carry, because the other refusal says
+    /// no spelling will be found, and here one of them would be.
+    #[error("this fleet's secret {name} has no field {field}; its fields are {fields}")]
+    SecretFieldNotFound {
+        /// The credential's name.
+        name: String,
+        /// The field asked for.
+        field: String,
+        /// The fields it has, comma-separated.
+        fields: String,
+    },
+
     /// The host's origin rules admit no request of this shape. The sentence
     /// says the rules are fixed for the run, because a model that reads only
     /// "not admitted" tries other paths, other APIs and other credentials, one
@@ -177,6 +190,16 @@ impl Error {
         })
     }
 
+    /// The fleet's secret `name` has no field `field`; it has `fields`.
+    #[must_use]
+    pub fn secret_field_not_found(name: &str, field: &str, fields: &[&str]) -> Self {
+        Self::from(ErrorKind::SecretFieldNotFound {
+            name: name.to_owned(),
+            field: field.to_owned(),
+            fields: fields.join(", "),
+        })
+    }
+
     /// The daemon would not mint a credential: `detail` in the words the
     /// model reads, which must carry no secret, under the daemon's `code`.
     #[must_use]
@@ -208,7 +231,9 @@ impl Error {
             ErrorKind::AddressNotAllowed { .. } => Refusal::AddressNotAllowed,
             ErrorKind::PlacementNotAllowed { .. } => Refusal::PlacementNotAllowed,
             ErrorKind::CredentialHostNotAllowed { .. } => Refusal::CredentialHostNotAllowed,
-            ErrorKind::SecretNotFound { .. } => Refusal::SecretNotFound,
+            ErrorKind::SecretNotFound { .. } | ErrorKind::SecretFieldNotFound { .. } => {
+                Refusal::SecretNotFound
+            }
             ErrorKind::RequestPolicyNotAllowed { .. } => Refusal::RequestPolicyNotAllowed,
             ErrorKind::CredentialMintRefused { .. } | ErrorKind::Unmaskable { .. } => {
                 Refusal::CredentialMintRefused
@@ -231,7 +256,9 @@ impl Error {
             | ErrorKind::PlacementNotAllowed { .. }
             | ErrorKind::CredentialHostNotAllowed { .. }
             | ErrorKind::RequestPolicyNotAllowed { .. } => error_code::INVALID_REQUEST,
-            ErrorKind::SecretNotFound { .. } => error_code::SECRET_NOT_FOUND,
+            ErrorKind::SecretNotFound { .. } | ErrorKind::SecretFieldNotFound { .. } => {
+                error_code::SECRET_NOT_FOUND
+            }
             ErrorKind::CredentialMintRefused { code, .. } => *code,
             ErrorKind::Client { .. }
             | ErrorKind::Unmaskable { .. }

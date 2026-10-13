@@ -128,6 +128,10 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("secret not found", Error::secret_not_found("n", "f")),
         (
+            "secret field not found",
+            Error::secret_field_not_found("n", "f", &["token"]),
+        ),
+        (
             "request policy not allowed",
             request_policy_not_allowed("h.example", "POST", "/", None),
         ),

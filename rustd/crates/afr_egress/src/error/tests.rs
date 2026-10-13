@@ -22,7 +22,9 @@ fn expected(name: &str) -> (Option<Refusal>, ErrorCode) {
         "placement not allowed" => refused(Refusal::PlacementNotAllowed),
         "credential host not allowed" => refused(Refusal::CredentialHostNotAllowed),
         "request policy not allowed" => refused(Refusal::RequestPolicyNotAllowed),
-        "secret not found" => (Some(Refusal::SecretNotFound), error_code::SECRET_NOT_FOUND),
+        "secret not found" | "secret field not found" => {
+            (Some(Refusal::SecretNotFound), error_code::SECRET_NOT_FOUND)
+        }
         "mint refused" => (
             Some(Refusal::CredentialMintRefused),
             error_code::GH_MINT_FAILED,
