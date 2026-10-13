@@ -79,8 +79,9 @@ pub const FLEET_RUNS_STARTED_TOTAL: Declared<CounterKind> =
 pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
     Declared::new("agentsfleet_fleet_delivery_stage_seconds");
 
-/// Ready fleets a poll's peeks offered: the rotation's partition and the
-/// directory's oldest dirty one, at most the poll ceiling (not summable across
+/// Ready fleets a poll's peeks offered: the rotation's partition and one of
+/// the directory's oldest dirty ones, at most twice the poll ceiling, of which
+/// the candidate scan returns at most the ceiling (not summable across
 /// replicas).
 pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
 
