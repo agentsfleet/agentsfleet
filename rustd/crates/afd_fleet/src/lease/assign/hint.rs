@@ -9,6 +9,12 @@
 //! reaches a mark whose directory entry was lost, and what keeps one busy
 //! partition from taking every poll.
 //!
+//! Both peeks' fleets reach the candidate scan, the cursor's partition's
+//! first, and the scan claims them first. A poll the rotation sends to a
+//! partition with work leases that work, as it did before the directory, so
+//! one rotation of polls still reaches every placeable fleet; the hint takes
+//! what the cursor's partition leaves.
+//!
 //! # One of the oldest few, not the oldest
 //!
 //! Every poll reads the same directory, so sending each to the oldest entry
@@ -56,6 +62,24 @@ use crate::lease::store::Leases;
 /// polls to marks that landed after work which has waited longer.
 const HINT_SPREAD: usize = 3;
 
+/// The fleets one poll offers the candidate scan, the cursor's partition's
+/// first.
+#[derive(Debug)]
+pub(super) struct Offer {
+    /// Every fleet the two peeks found, the cursor's partition's first.
+    pub(super) ready: Vec<Ready>,
+    /// How many of `ready`, from the front, came from the cursor's partition.
+    pub(super) cursor: usize,
+}
+
+impl Offer {
+    /// An offer from one partition, which the cursor named.
+    fn cursor_only(ready: Vec<Ready>) -> Self {
+        let cursor = ready.len();
+        Self { ready, cursor }
+    }
+}
+
 /// The dirty partition a poll was sent to, and how many fleets its peek
 /// found, `None` when the peek failed.
 #[derive(Debug)]
@@ -76,7 +100,7 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         cost: &mut PollCost,
-    ) -> Result<(Vec<Ready>, Option<Hint>)> {
+    ) -> Result<(Offer, Option<Hint>)> {
         let index = self.ready();
         let partition = self.cursor().advance();
         let (directory, rotation) = join(
@@ -100,13 +124,13 @@ impl Leases {
             .ok()
             .and_then(|dirty| spread(dirty, partition));
         let Some(dirty) = sent_to else {
-            return Ok((rotation?, None));
+            return Ok((Offer::cursor_only(rotation?), None));
         };
         if dirty.partition == partition {
             // One key, already read: the rotation's answer is the hint's too.
             let ready = rotation?;
             let found = Some(ready.len());
-            return Ok((ready, Some(Hint { dirty, found })));
+            return Ok((Offer::cursor_only(ready), Some(Hint { dirty, found })));
         }
         cost.dragonfly_commands += 1;
         let hinted = index
@@ -125,10 +149,16 @@ impl Leases {
         let found = hinted.as_ref().ok().map(Vec::len);
         let hint = Some(Hint { dirty, found });
         match (hinted, rotation) {
-            (Ok(hinted), Ok(rotation)) => Ok((interleave(hinted, rotation), hint)),
+            (Ok(hinted), Ok(rotation)) => Ok((cursor_first(rotation, hinted), hint)),
             // The rotation's partition is sick; the directory's still serves.
-            (Ok(hinted), Err(_)) => Ok((hinted, hint)),
-            (Err(_), Ok(rotation)) => Ok((rotation, hint)),
+            (Ok(hinted), Err(_)) => Ok((
+                Offer {
+                    ready: hinted,
+                    cursor: 0,
+                },
+                hint,
+            )),
+            (Err(_), Ok(rotation)) => Ok((Offer::cursor_only(rotation), hint)),
             (Err(_), Err(error)) => Err(error.into()),
         }
     }
@@ -196,25 +226,14 @@ fn spread(dirty: Vec<Dirty>, position: Partition) -> Option<Dirty> {
     dirty.into_iter().nth(turn)
 }
 
-/// `hinted` and `rotation` taken in turn, up to the poll's ceiling, so
-/// neither partition's fleets can crowd the other's out of the candidate
-/// scan. No fleet appears twice: the two come from different partitions,
-/// and a fleet lives in one.
-///
-/// When both peeks hold more than half the ceiling, some hinted fleets are
-/// left out, and a poll that then leases nothing spends the entry before they
-/// were offered. Two partitions that full means a loaded deployment, whose
-/// polls bring the cursor round to every partition within a fraction of a
-/// second, so the fleet waits a turn of the rotation and loses no work.
-fn interleave(hinted: Vec<Ready>, rotation: Vec<Ready>) -> Vec<Ready> {
-    let (mut hinted, mut rotation) = (hinted.into_iter(), rotation.into_iter());
-    std::iter::from_fn(|| match (hinted.next(), rotation.next()) {
-        (None, None) => None,
-        (first, second) => Some(first.into_iter().chain(second)),
-    })
-    .flatten()
-    .take(MAX_READY_CANDIDATES_PER_POLL)
-    .collect()
+/// The cursor's partition's fleets, then the hint's, none dropped: each
+/// peek returns at most the ceiling, so the scan reads at most twice that.
+/// No fleet appears twice: the two come from different partitions, and a
+/// fleet lives in one.
+fn cursor_first(rotation: Vec<Ready>, hinted: Vec<Ready>) -> Offer {
+    let cursor = rotation.len();
+    let ready = rotation.into_iter().chain(hinted).collect();
+    Offer { ready, cursor }
 }
 
 #[cfg(test)]

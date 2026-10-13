@@ -35,7 +35,8 @@ impl Leases {
         if ready.is_empty() {
             return Ok(None);
         }
-        self.first_offered(runner_id, &ready, now, cost).await
+        self.first_offered(runner_id, &ready, ready.len(), now, cost)
+            .await
     }
 
     /// The held fleets with a readiness mark, each named once and all read at
@@ -73,19 +74,21 @@ impl Leases {
             .collect()
     }
 
-    /// The first of `ready` the candidate scan offers and this runner wins,
-    /// tried in the scan's sticky order: one statement for the scan, then one
-    /// per claim.
+    /// The first of `ready` the candidate scan offers and this runner wins:
+    /// the first `cursor` of `ready` before the rest, sticky first within
+    /// each. One statement for the scan, then one per claim.
     pub(super) async fn first_offered(
         &self,
         runner_id: &Uuid7,
         ready: &[Ready],
+        cursor: usize,
         now: UnixMillis,
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
         let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
+        let first: Vec<&str> = ids.iter().take(cursor).copied().collect();
         cost.database_roundtrips += 1;
-        let offered = self.candidates(runner_id, &ids, now).await?;
+        let offered = self.candidates(runner_id, &ids, &first, now).await?;
         for (fleet_id, token) in peeked(offered, ready) {
             cost.database_roundtrips += 1;
             if let Some(acquired) = self

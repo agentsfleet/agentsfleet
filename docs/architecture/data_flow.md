@@ -619,13 +619,14 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        read fleet:ready:{directory} together with one fleet:ready:{p}
        partition (sixteen, rotated per poll), then peek one of the
        directory's three oldest dirty partitions too, taken in turn as the
-       cursor moves; at most 64 fleets with work, taken in
-       turn; empty peeks answer at once and read no Postgres. Afterwards
+       cursor moves; both peeks' fleets reach the scan, the rotation's
+       first; empty peeks answer at once and read no Postgres. Afterwards
        spend the directory entry unless this poll leased from the
        rotation's partition, or leased from the dirty one while its peek
        held other fleets. Keep the active fleets whose required_tags are a
        subset of the runner's labels and whose slot no live runner holds;
-       order them sticky by last_runner_id, ties at random;
+       order them the rotation's partition first, then sticky by
+       last_runner_id, ties at random, and keep at most 64;
        claim the per-fleet fleet.runner_affinity slot (wins iff free or
        its leased_until has passed) and bump the monotonic fencing_seq.
        A lease past lease_expires_at is RECLAIMED: its event envelope +
