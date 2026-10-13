@@ -12,7 +12,7 @@ use afd_crypto::entropy::Entropy;
 use afd_dragonfly::ready::READY_PARTITIONS;
 use afd_dragonfly::{Dirty, Partition, Ready, ReadyToken};
 
-use super::{MAX_READY_CANDIDATES_PER_POLL, interleave, keeps_entry, spread};
+use super::{Hint, MAX_READY_CANDIDATES_PER_POLL, PollCost, interleave, keeps_entry, spread};
 
 /// The instant every fixture token is minted at.
 const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
@@ -189,4 +189,31 @@ fn test_two_full_peeks_share_the_ceiling() {
         MAX_READY_CANDIDATES_PER_POLL / 2,
         "neither side crowds the other out"
     );
+}
+
+/// A delete the datastore refuses is logged once, naming the partition it
+/// concerned, and still counted as the command the poll sent; the poll goes on
+/// without raising it.
+#[tokio::test]
+async fn test_a_refused_spend_is_logged_and_counted() {
+    use afd_core::test_util::trace::Capture;
+
+    use super::super::diagnostics::EVENT_HINT_DELETE_FAILED;
+    use crate::lease::test_dead::{id, leases};
+
+    let log = Capture::install();
+    let mut cost = PollCost::default();
+    let hint = Hint {
+        dirty: dirty(5),
+        found: Some(0),
+    };
+
+    leases()
+        .spend_hint(&id(9), Some(hint), None, &mut cost)
+        .await;
+
+    assert_eq!(cost.dragonfly_commands, 1, "the refused delete was sent");
+    let refused = log.only(EVENT_HINT_DELETE_FAILED);
+    assert_eq!(refused.field("partition"), Some("5"));
+    assert_eq!(refused.field("runner_id"), Some(id(9).as_str()));
 }
