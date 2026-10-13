@@ -24,7 +24,7 @@ const MARK_GAP: Duration = Duration::from_millis(2);
 /// One seeded fleet: its id, its workspace and its two runners.
 pub(super) struct Fleet {
     pub(super) id: String,
-    workspace: String,
+    pub(super) workspace: String,
     pub(super) runners: [Uuid7; 2],
 }
 
