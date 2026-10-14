@@ -39,7 +39,8 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
                            under 100 ms; rotation's fleets first; zero Postgres if both
                            empty; the bit is set again, in process, only when the poll
                            leased and the scan offered a fleet from it the poll never
-                           tried, or was cut at its 64-fleet ceiling
+                           tried, or was cut at its 64-fleet ceiling; never when the
+                           rung peek itself failed
                          b SELECT_READY_CANDIDATES ≤64: active, slot free, labels, then sticky
                          c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
                              leased_until = now+30 s            ← THE FENCE IS MINTED HERE

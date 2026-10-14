@@ -15,6 +15,7 @@ use afd_fleet::lease::assign::MAX_READY_CANDIDATES_PER_POLL;
 use afd_wire::runner::{NetworkPolicy, SandboxTier};
 
 use super::scene::{Fleet, Scene, partition, scene};
+use super::{CMD_DEL, CMD_SET, NOT_A_HASH, RUNG_PEEK_FAILURES};
 use crate::requests::{ENROLLED_AT, enrolment_tagged, placement_tag};
 
 /// The partition a fresh store's cursor names first.
@@ -130,5 +131,38 @@ async fn test_a_scan_cut_at_its_ceiling_rings_again() {
     assert!(scene.rung(partition(RUNG)), "the cut partition rings again");
     let (second, _) = scene.poll(&runners[1]).await;
     assert_eq!(leased(second), behind.id, "the next poll takes the ring");
+    scene.fixtures.cleanup().await;
+}
+
+/// A rung partition whose peek fails is left clear even when the rotation's
+/// scan is cut behind a lease: ringing it again would send every later poll
+/// back to the partition that failed, each paying the doorbell's deadline.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_failed_rung_peek_is_not_rung_again_by_a_cut_scan() {
+    let _counted_alone = RUNG_PEEK_FAILURES.lock().await;
+    let scene = scene("cut-broken").await;
+    let (tag, runners) = shared_runners(&scene).await;
+    for _ in 0..MAX_READY_CANDIDATES_PER_POLL {
+        let filler = fleet_in(&scene, partition(CURSOR), &tag, &runners).await;
+        scene.send_quietly(&filler).await;
+    }
+    let behind = fleet_in(&scene, partition(RUNG), &tag, &runners).await;
+    scene.send(&behind).await;
+    let broken = scene.partition_key(partition(RUNG));
+    scene.raw(&broken, CMD_SET, Some(NOT_A_HASH)).await;
+
+    let (first, _) = scene.poll(&runners[0]).await;
+
+    assert_ne!(
+        leased(first),
+        behind.id,
+        "the cursor's fleets fill the scan"
+    );
+    assert!(
+        !scene.rung(partition(RUNG)),
+        "the failed partition is left clear"
+    );
+    scene.raw(&broken, CMD_DEL, None).await;
     scene.fixtures.cleanup().await;
 }

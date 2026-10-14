@@ -160,9 +160,31 @@ async fn test_a_refused_rung_peek_is_logged_and_left_clear() {
 
 /// A poll dropped before it settles its rung partition, its runner gone,
 /// gives the ring back rather than losing it.
+#[test]
+fn test_a_dropped_poll_gives_its_ring_back() {
+    use afd_dragonfly::Doorbell;
+
+    use super::Rung;
+
+    let doorbell = Doorbell::new();
+    doorbell.ring(partition(5));
+    let taken = doorbell.take(partition(0)).expect("partition 5 was rung");
+    let rung = Rung::new(taken, &doorbell);
+    assert!(!doorbell.is_rung(partition(5)), "the poll took the ring");
+
+    drop(rung);
+
+    assert!(
+        doorbell.is_rung(partition(5)),
+        "the unsettled ring came back"
+    );
+}
+
+/// A rung peek that did not answer settles its partition clear at once, so
+/// even a poll dropped after it does not send the next poll back there.
 #[cfg(feature = "test-util")]
 #[tokio::test]
-async fn test_a_dropped_poll_gives_its_ring_back() {
+async fn test_a_failed_rung_peek_is_settled_clear_even_if_dropped() {
     use afd_dragonfly::Doorbell;
 
     use super::PollCost;
@@ -174,11 +196,11 @@ async fn test_a_dropped_poll_gives_its_ring_back() {
     let mut cost = PollCost::default();
 
     let (_offer, rung) = store.ready_this_poll(&id(9), &mut cost).await;
-    assert!(!doorbell.is_rung(partition(5)), "the poll took the ring");
+    assert!(rung.is_none(), "nothing is owed a partition that failed");
     drop(rung);
 
     assert!(
-        doorbell.is_rung(partition(5)),
-        "the unsettled ring came back"
+        !doorbell.is_rung(partition(5)),
+        "the failed partition stays clear"
     );
 }
