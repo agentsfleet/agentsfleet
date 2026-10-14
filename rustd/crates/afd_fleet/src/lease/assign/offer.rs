@@ -7,23 +7,45 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_dragonfly::Ready;
+use afd_dragonfly::{Partition, Ready};
 use afd_observability::producers;
 use futures_util::future::join_all;
 
 use super::diagnostics::warn_held_read;
 use super::wake::Offer;
-use super::{PollCost, peeked};
+use super::{MAX_READY_CANDIDATES_PER_POLL, PollCost, peeked};
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
 
 /// What one pass over offered fleets ended with: the fleet it leased, if any,
-/// and the fleets the scan offered after it, which it never tried.
+/// the fleets the scan offered after it, which it never tried, and whether the
+/// scan was cut at its ceiling behind that lease.
 #[derive(Debug, Default)]
-pub(super) struct Claimed {
+pub(super) struct Pass {
     pub(super) acquired: Option<Acquired>,
     pub(super) untried: Vec<Uuid7>,
+    /// The scan returned its ceiling and the pass leased one of them, so
+    /// eligible fleets past the ceiling, a rung partition's among them, were
+    /// never offered at all.
+    pub(super) cut: bool,
+}
+
+impl Pass {
+    /// Whether this pass left `partition` work it could have offered the
+    /// next poll: a fleet the scan offered from it that the pass never tried,
+    /// or any fleet at all when the scan was cut behind a lease.
+    ///
+    /// A cut rings without knowing the partition had a fleet past it, so it
+    /// may cost the next poll one peek for nothing; it can never loop,
+    /// because only a pass that leased is cut.
+    pub(super) fn left_work_in(&self, partition: Partition) -> bool {
+        self.cut
+            || self
+                .untried
+                .iter()
+                .any(|fleet| Partition::of(fleet.as_str()) == partition)
+    }
 }
 
 impl Leases {
@@ -97,7 +119,7 @@ impl Leases {
         offer: Result<Offer>,
         now: UnixMillis,
         cost: &mut PollCost,
-    ) -> Result<Claimed> {
+    ) -> Result<Pass> {
         let offer = offer?;
         cost.candidates_scanned = u64::try_from(offer.ready.len()).unwrap_or(u64::MAX);
         // The readiness depth this poll saw, published for the gauge that
@@ -107,7 +129,7 @@ impl Leases {
         // The zero-Postgres path. Skipping the scan here is what makes idle
         // cost scale with runner count alone instead of runners × fleets.
         if offer.ready.is_empty() {
-            return Ok(Claimed::default());
+            return Ok(Pass::default());
         }
         self.first_offered(runner_id, &offer.ready, offer.from_cursor, now, cost)
             .await
@@ -124,12 +146,13 @@ impl Leases {
         from_cursor: usize,
         now: UnixMillis,
         cost: &mut PollCost,
-    ) -> Result<Claimed> {
+    ) -> Result<Pass> {
         let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
         let cursor_ids: Vec<&str> = ids.iter().take(from_cursor).copied().collect();
         cost.database_roundtrips += 1;
         let offered = self.candidates(runner_id, &ids, &cursor_ids, now).await?;
-        let mut queue = peeked(offered, ready).collect::<Vec<_>>().into_iter();
+        let cut = offered.len() >= MAX_READY_CANDIDATES_PER_POLL;
+        let mut queue = peeked(offered, ready);
         while let Some((fleet_id, token)) = queue.next() {
             cost.database_roundtrips += 1;
             if let Some(acquired) = self
@@ -137,12 +160,13 @@ impl Leases {
                 .await?
             {
                 let untried = queue.map(|(fleet, _token)| fleet).collect();
-                return Ok(Claimed {
+                return Ok(Pass {
                     acquired: Some(acquired),
                     untried,
+                    cut,
                 });
             }
         }
-        Ok(Claimed::default())
+        Ok(Pass::default())
     }
 }

@@ -20,8 +20,9 @@
 //! Taking a ring clears it, so the next poll is not sent back to work no
 //! runner can take: a leased fleet keeps its mark for as long as it runs. The
 //! poll rings the partition again, in process and with no Dragonfly command,
-//! only when the candidate scan offered a fleet from it that this poll never
-//! tried to claim, because it leased something ahead of it. A fleet the scan
+//! only when it leased something and left the partition work behind it: the
+//! scan offered a fleet from it that the poll never tried, or the scan was cut
+//! at its ceiling, so a rung fleet past it was never offered. A fleet the scan
 //! left out, running or not this runner's labels, never holds the bell, and
 //! every other exit leaves it clear, a faulted poll's included, so one broken
 //! fleet cannot keep drawing every poll. A poll dropped before it decides, its
@@ -38,6 +39,7 @@ use afd_dragonfly::{Doorbell, Partition, Ready};
 use futures_util::future::join;
 
 use super::diagnostics::{EVENT_READY_PEEK_FAILED, warn_queue, warn_rung_peek};
+use super::offer::Pass;
 use super::{MAX_READY_CANDIDATES_PER_POLL, PollCost};
 use crate::error::Result;
 use crate::lease::store::Leases;
@@ -117,16 +119,16 @@ impl Leases {
         (offer, rung)
     }
 
-    /// Rings `rung` again when the scan offered a fleet from it that this poll
-    /// never tried, and settles it either way.
+    /// Rings `rung` again when the poll's `pass` left work in it, and settles
+    /// it either way; a poll that failed has no pass and leaves it clear.
     ///
     /// No Dragonfly command: the bit is this process's own, and only its
     /// later polls read it.
-    pub(super) fn ring_again(&self, rung: Option<Rung>, untried: &[Uuid7]) {
+    pub(super) fn ring_again(&self, rung: Option<Rung>, pass: Option<&Pass>) {
         let Some(mut rung) = rung else {
             return;
         };
-        if offered_untried(rung.partition, untried) {
+        if pass.is_some_and(|pass| pass.left_work_in(rung.partition)) {
             self.doorbell().ring(rung.partition);
         }
         rung.settled = true;
@@ -177,22 +179,17 @@ impl Leases {
     }
 }
 
-/// Whether `untried`, the fleets the scan offered that this poll never tried
-/// to claim, holds one from `partition`.
-fn offered_untried(partition: Partition, untried: &[Uuid7]) -> bool {
-    untried
-        .iter()
-        .any(|fleet| Partition::of(fleet.as_str()) == partition)
-}
-
 /// The cursor's partition's fleets, then the rung one's, none dropped: each
 /// peek returns at most the ceiling, so the scan reads at most twice that.
 /// No fleet appears twice: the two come from different partitions, and a
 /// fleet lives in one.
-fn cursor_first(rotation: Vec<Ready>, rung: Vec<Ready>) -> Offer {
+fn cursor_first(mut rotation: Vec<Ready>, rung: Vec<Ready>) -> Offer {
     let from_cursor = rotation.len();
-    let ready = rotation.into_iter().chain(rung).collect();
-    Offer { ready, from_cursor }
+    rotation.extend(rung);
+    Offer {
+        ready: rotation,
+        from_cursor,
+    }
 }
 
 #[cfg(test)]

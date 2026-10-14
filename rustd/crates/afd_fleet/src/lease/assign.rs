@@ -138,12 +138,8 @@ impl Leases {
         // fleet's, ringing again would send every later poll back to it. A
         // fault elsewhere, a Postgres error say, leaves the ring clear too; the
         // rotation still reaches the rung fleets in its turn.
-        let untried = claimed
-            .as_ref()
-            .map(|claimed| claimed.untried.as_slice())
-            .unwrap_or_default();
-        self.ring_again(rung, untried);
-        claimed.map(|claimed| claimed.acquired)
+        self.ring_again(rung, claimed.as_ref().ok());
+        claimed.map(|pass| pass.acquired)
     }
 
     /// The eligible fleets among `ready`, those in `cursor` first, then in

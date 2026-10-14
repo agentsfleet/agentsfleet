@@ -117,9 +117,10 @@ async fn production_plane_maps_every_service_to_its_owned_store() {
     assert!(plane.now().as_millis() > 0);
 }
 
-/// The daemon's doorbell listens on the live-stream hub: a ring published on a
-/// partition's production channel reaches it. Without this wiring every suite
-/// still passes and pickup quietly falls back to the rotation.
+/// The doorbell `ServingPlane::new` builds listens on the live-stream hub: a
+/// ring published on a partition's production channel reaches it. This proves
+/// the helper the plane calls, not that the plane hands its result to the
+/// lease store; that hand-off is one line beside it in `plane.rs`.
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn test_the_daemon_doorbell_hears_its_hub() {

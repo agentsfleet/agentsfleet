@@ -24,6 +24,8 @@ use afd_observability::test_util::Capture;
 use crate::requests::ENROLLED_AT;
 use crate::seed::select_within_one_rotation;
 
+#[path = "integration_lease_wake/behind.rs"]
+mod behind;
 #[path = "integration_lease_wake/broken.rs"]
 mod broken;
 #[path = "integration_lease_wake/order.rs"]
