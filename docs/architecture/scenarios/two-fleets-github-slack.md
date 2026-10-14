@@ -62,13 +62,17 @@ Installing runs nothing. It writes the fleet down and builds its empty inbox; a 
   │                                                                      │
   │  1. load SKILL.md + TRIGGER.md from the library entry                │
   │  2. check the secrets it needs exist  (by NAME only, never values)   │
-  │  3. Postgres  INSERT core.fleets            ← the fleet exists       │
+  │  3. Postgres  INSERT core.fleets  status=installing                  │
   │               (tenant comes from the workspace row, never the caller)│
-  │  4. Postgres  INSERT core.integration_grants (fleet, "github")       │
-  │               approved   ← lets it mint a GitHub token later         │
-  │  5. Dragonfly XGROUP CREATE MKSTREAM fleet:{id}:events fleet_lease   │
+  │  4. Dragonfly XGROUP CREATE MKSTREAM fleet:{id}:events fleet_lease   │
   │               ← the inbox and its "lease" reader group               │
   │               (retries ~1.4 s; failing, the Postgres row rolls back) │
+  │  5. Postgres  UPDATE core.fleets  installing → active                │
+  │               ← steps 3–5 succeed together or the row goes back      │
+  │  6. Postgres  INSERT core.integration_grants (fleet, "github")       │
+  │               approved   ← BEST-EFFORT: a failed write is logged and │
+  │               the install still succeeds; the grant card raised on   │
+  │               the first delivery closes the gap                      │
   │                                                                      │
   └──────────────────────────────┬───────────────────────────────────────┘
                                  ▼
@@ -78,8 +82,9 @@ Installing runs nothing. It writes the fleet down and builds its empty inbox; a 
 ```
   Postgres                                   Dragonfly
   ────────                                   ─────────
-  core.fleets              ✔                 fleet:{A}:events  (empty) + group ✔
-  core.integration_grants  ✔                 fleet:{B}:events  (empty) + group ✔
+  core.fleets  (active)    ✔                 fleet:{A}:events  (empty) + group ✔
+  core.integration_grants  ✔ usually         fleet:{B}:events  (empty) + group ✔
+                           (best-effort; missing ≠ a failed install)
   core.fleet_admissions    ✗  (no work yet)
   core.fleet_events        ✗                 fleet:{id}:activity  ✗ (exists from
   fleet.runner_leases      ✗                                       its first PUBLISH)
