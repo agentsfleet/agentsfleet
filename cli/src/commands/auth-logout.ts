@@ -28,7 +28,9 @@ export interface LogoutFlags {
   readonly all: boolean;
 }
 
-const ALL_SESSIONS_PATH = `${AUTH_SESSIONS_PATH}/all`;
+// The collection itself: the daemon scopes it to the caller, so this aborts
+// only the logins this person approved and never redeemed.
+const OWN_SESSIONS_PATH = AUTH_SESSIONS_PATH;
 
 const LOGGED_OUT = "Logged out" as const;
 const STATUS_OK = "ok" as const;
@@ -57,7 +59,7 @@ const revokeAllSessions = (
     const http = yield* HttpClient;
     return yield* http
       .request<{ aborted_count?: number }>({
-        path: ALL_SESSIONS_PATH,
+        path: OWN_SESSIONS_PATH,
         method: "DELETE",
         token,
       })
@@ -115,7 +117,7 @@ const renderLogoutOutcome = (
 // `--all` is rejected with prose pointing at the actual behaviour. Logout
 // already does both server-side revokes it can do, so the flag would add
 // nothing — but it must not be refused with a sentence claiming more than the
-// daemon delivers. `DELETE /v1/auth/sessions/all` aborts sessions still in the
+// daemon delivers. `DELETE /v1/auth/sessions` aborts the caller's sessions still in the
 // device-flow, and its own description says it does NOT revoke minted JWTs; the
 // credential revoke covers this machine. Other machines keep working.
 const rejectAllFlag: Effect.Effect<never, ValidationError, never> = Effect.fail(

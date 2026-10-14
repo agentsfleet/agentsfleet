@@ -202,9 +202,8 @@ pub(crate) fn items(page: &Value) -> &[Value] {
 /// What every path parameter is filled with while probing.
 ///
 /// A UUID rather than a word, so a substitution can never collide with a
-/// literal sibling segment: `/v1/auth/sessions/{session_id}` and
-/// `/v1/auth/sessions/all` are different routes, and a placeholder spelled
-/// `all` would silently probe the wrong one.
+/// literal sibling segment such as `.../approve`, where a placeholder spelled
+/// like that literal would silently probe the wrong route.
 const PARAMETER_FILL: &str = "00000000-0000-7000-8000-000000000000";
 
 /// A concrete path for `template`, with every `{parameter}` filled.
