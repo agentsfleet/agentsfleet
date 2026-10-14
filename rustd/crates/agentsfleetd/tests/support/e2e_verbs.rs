@@ -42,6 +42,8 @@ pub(crate) const THREAD: &str = "1712345678.000200";
 
 /// The header `QStash` reads a schedule's expression from.
 const HEADER_CRON: &str = "Upstash-Cron";
+/// The header `QStash` files a schedule under, when the caller names an id.
+const HEADER_SCHEDULE_ID: &str = "Upstash-Schedule-Id";
 /// The fixture bearer the daemon presents to the fake scheduler.
 pub(crate) const QSTASH_TOKEN: &str = "qstash-fixture-token";
 
@@ -95,7 +97,13 @@ impl FakeQStash {
                     let status = refusal
                         .and_then(|code| axum::http::StatusCode::from_u16(code).ok())
                         .unwrap_or(axum::http::StatusCode::OK);
-                    let body = json!({"scheduleId": format!("scd_fixture_{}", held.len())});
+                    // As `QStash` does: a schedule is filed under the id the
+                    // caller named, and under one of its own only when none was.
+                    let filed = headers
+                        .get(HEADER_SCHEDULE_ID)
+                        .and_then(|value| value.to_str().ok())
+                        .map_or_else(|| format!("scd_fixture_{}", held.len()), str::to_owned);
+                    let body = json!({"scheduleId": filed});
                     (status, axum::Json(body))
                 }
             })

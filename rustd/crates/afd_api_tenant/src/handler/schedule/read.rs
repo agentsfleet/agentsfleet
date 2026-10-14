@@ -19,11 +19,13 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse as _, Response};
 
+use crate::auth::WorkspaceContext;
 use crate::handler::Refusal;
-use crate::handler::fleet::detail::parse_fleet_id;
+use crate::handler::fleet::detail::{FleetPath, parse_fleet_id};
 use crate::services::{FleetSchedules as _, Services};
 
 use super::EVENT_READ;
+use super::support::SchedulePath;
 
 /// `GET …/schedules`.
 ///
@@ -37,7 +39,8 @@ use super::EVENT_READ;
     summary = "List hosted schedules",
     description = concat!(
         "Lists the hosted schedules for a Fleet. The result is bounded by the ",
-        "per-Fleet schedule cap. ",
+        "per-Fleet schedule cap. An unknown Fleet, or one in another ",
+        "workspace, lists empty rather than answering 404. ",
     ),
     params(
         afd_http::openapi::path::Fleet,
@@ -54,12 +57,13 @@ use super::EVENT_READ;
 ))]
 pub(crate) async fn list<D: Services>(
     State(services): State<Arc<D>>,
-    Path((_workspace, fleet_id)): Path<(String, String)>,
+    WorkspaceContext(owned): WorkspaceContext,
+    Path(FleetPath { fleet_id }): Path<FleetPath>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let schedules = services
         .schedules()
-        .list(&fleet)
+        .list(&owned.workspace, &fleet)
         .await
         .map_err(Refusal::at(EVENT_READ))?;
 
@@ -106,14 +110,18 @@ pub(crate) async fn list<D: Services>(
 ))]
 pub(crate) async fn one<D: Services>(
     State(services): State<Arc<D>>,
-    Path((_workspace, fleet_id, schedule_id)): Path<(String, String, String)>,
+    WorkspaceContext(owned): WorkspaceContext,
+    Path(SchedulePath {
+        fleet_id,
+        schedule_id,
+    }): Path<SchedulePath>,
 ) -> Result<Response, Refusal> {
     let fleet = parse_fleet_id(&fleet_id)?;
     let schedule = parse_fleet_id(&schedule_id)?;
 
     let found = services
         .schedules()
-        .one(&fleet, &schedule)
+        .one(&owned.workspace, &fleet, &schedule)
         .await
         .map_err(Refusal::at(EVENT_READ))?;
 

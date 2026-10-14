@@ -12,7 +12,7 @@ source "$RUNNER_LIB_DIR/../../../deploy/baremetal/layout.sh"
 
 readonly CGROUP_ROOT="/sys/fs/cgroup"
 # The runner's host probe refuses to start without each of these
-# (`REQUIRED_CONTROLLERS` in rustd/crates/afr_sandbox/src/probe.rs), and the
+# (`REQUIRED_CONTROLLERS` in rustd/crates/afr_sandbox/src/probe/mod.rs), and the
 # Delegate= line in deploy/baremetal/agentsfleet-runner.service names the same
 # ones. No test compares the three lists, so a controller the probe gains is
 # added to all three in one change.

@@ -24,6 +24,13 @@
 //! the schedule while this one was talking upstream, and its state is the newer
 //! one — overwriting it with this attempt's outcome would resurrect a change
 //! the operator had already replaced.
+//!
+//! A fence lost BEFORE the push is refused the same way, before the scheduler
+//! is called: every push names one upstream id per schedule, so a syncer that
+//! stalled past its lease would otherwise remove the registration a newer
+//! resume made, or overwrite a newer edit, and its refused finalize would leave
+//! the row marked synced. A stall between that read and the request still
+//! races; per-revision upstream ids are what close it.
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
@@ -32,6 +39,7 @@ use crate::error::Result;
 use crate::model::{DesiredStatus, Schedule};
 use crate::qstash::QStash;
 use crate::store::Schedules as Store;
+use crate::upstream::upstream_id;
 
 /// What one reconcile did.
 ///
@@ -91,22 +99,25 @@ impl Schedules {
         token: &Uuid7,
         now: UnixMillis,
     ) -> Result<Reconciled> {
+        // As late as the row can be read; see the module note on a lost fence.
+        if !self.store.holds_fence(held, token).await? {
+            log_overtaken(held);
+            return Ok(Reconciled::Superseded);
+        }
         let missed = missed(held, now);
         let pushed = match held.desired_status {
             // A paused schedule is REMOVED upstream rather than left registered
             // and ignored here. Leaving it would keep the scheduler calling a
             // fire this daemon then drops — real traffic, real cost, no effect.
             DesiredStatus::Paused | DesiredStatus::Deleting => {
-                self.upstream.remove(&held.source_key).await.map(|()| None)
+                self.unregister(held).await.map(|()| None)
             }
             // A one-off past its moment is removed rather than registered a
             // year late; see `missed`.
-            DesiredStatus::Active if missed => {
-                self.upstream.remove(&held.source_key).await.map(|()| None)
-            }
+            DesiredStatus::Active if missed => self.unregister(held).await.map(|()| None),
             DesiredStatus::Active => self
                 .upstream
-                .upsert(&held.cron, &held.timezone, &held.message)
+                .upsert(&held.schedule_id, &held.cron, &held.timezone, &held.message)
                 .await
                 .map(Some),
         };
@@ -124,14 +135,11 @@ impl Schedules {
                     Ok(Reconciled::Superseded)
                 }
             }
-            // The scheduler's own key is ADOPTED here, not discarded. A create
-            // invents a placeholder (`{fleet_id}-{millis}`) because it has not
-            // spoken to the scheduler yet; this is the first moment the real key
-            // exists, and the last moment it can be stored before a pause or a
-            // delete has to name it. Dropping it made `remove` name a key the
-            // scheduler never issued, which answers 404 — read as success by
-            // design — so the row reported Removed while the schedule kept
-            // firing. `None` on the pause path teaches nothing and keeps the key.
+            // The registered id is RECORDED here, replacing the placeholder a
+            // create stores before anything was pushed. `upsert` refuses an
+            // answer naming any id but the derived one, so what is stored is
+            // the id the fire path resolves. `None` on the pause path registers
+            // nothing and keeps the key.
             Ok(registered) => Ok(self
                 .store
                 .finalize_synced(
@@ -155,6 +163,17 @@ impl Schedules {
             }
         }
     }
+
+    /// Removes `held`'s registration upstream, under the id derived from it.
+    ///
+    /// The derived id and not the recorded key: a push the scheduler accepted
+    /// whose answer never arrived filed the schedule under the derived id while
+    /// the row kept the placeholder its create stored. A placeholder is never
+    /// registered, so removing it answers 404 — success by design — while the
+    /// real registration keeps firing.
+    async fn unregister(&self, held: &Schedule) -> Result<()> {
+        self.upstream.remove(&upstream_id(&held.schedule_id)).await
+    }
 }
 
 /// A `once` schedule not registered upstream, synced after the instant it
@@ -171,8 +190,8 @@ fn missed(held: &Schedule, now: UnixMillis) -> bool {
 /// Whether `QStash` holds no registration of this schedule.
 ///
 /// A fleet's schedule is keyed by its own id until its first successful sync
-/// adopts the key `QStash` files it under (see [`Schedules::reconcile`]), and
-/// a one-off goes back to its own id when a pause removes it
+/// records the derived id `QStash` files it under (see [`Schedules::reconcile`]),
+/// and a one-off goes back to its own id when a pause removes it
 /// ([`unregistered_key`]); a `once` schedule is only ever a fleet's.
 fn never_registered(held: &Schedule) -> bool {
     held.source_key == held.schedule_id.as_str()
@@ -196,3 +215,14 @@ fn log_missed(held: &Schedule) {
 
 /// A one-off removed because it was not registered before its moment.
 const EVENT_ONCE_MISSED: &str = "schedule_once_missed";
+
+/// Logs a push refused because another syncer took the schedule first.
+fn log_overtaken(held: &Schedule) {
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let fleet_id = held.fleet_id.as_str();
+    let schedule_id = held.schedule_id.as_str();
+    tracing::warn!(fleet_id, schedule_id, event = EVENT_SYNC_OVERTAKEN);
+}
+
+/// A syncer that lost its fence before pushing, so it pushed nothing.
+const EVENT_SYNC_OVERTAKEN: &str = "schedule_sync_overtaken";

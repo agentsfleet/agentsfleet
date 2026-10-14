@@ -33,12 +33,13 @@ pub(crate) fn row_unreadable(column: &'static str) -> Error {
     ErrorKind::RowUnreadable { column }.into()
 }
 
-/// Reports an external scheduler whose answer this daemon could not read.
+/// Reports an external scheduler whose answer this daemon could not read, or
+/// that named a schedule other than the one pushed.
 ///
 /// Classified as a REFUSAL rather than as unreachable, and the status is the
 /// one the vendor actually sent: the call reached them and they answered, so
 /// retrying it unchanged has no reason to do better. `0` is not a real status
-/// and says so — there was an answer, and it was not one this build parses.
+/// and says so — there was an answer, and it was not one this build accepts.
 pub(crate) fn upstream_unreadable() -> Error {
     ErrorKind::UpstreamRefused { status: 0 }.into()
 }

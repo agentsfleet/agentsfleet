@@ -46,6 +46,7 @@ pub mod error;
 pub mod model;
 pub mod qstash;
 pub mod sql;
+pub mod upstream;
 pub mod validate;
 pub mod verifier;
 
@@ -57,6 +58,7 @@ pub use self::model::{
 pub use self::qstash::QStash;
 pub use self::service::{Reconciled, Schedules as ScheduleService};
 pub use self::store::{Change, FireTarget, NewSchedule, Refused, SYNC_LEASE_MS, Schedules};
+pub use self::upstream::{HEADER_SCHEDULE_ID, schedule_of, upstream_id};
 
 pub use self::validate::Invalid;
 pub use self::verifier::{SigningKeys, VerifiedFire};

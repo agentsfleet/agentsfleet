@@ -10,6 +10,8 @@
 //! per run. Which store holds the memory behind `agentsfleetd` is its choice;
 //! the runner holds no credential for any of them.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod error;
 
 mod hydrated;

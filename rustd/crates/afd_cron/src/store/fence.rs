@@ -219,6 +219,26 @@ impl Schedules {
 
         Ok(row.is_some())
     }
+
+    /// Whether `token` still holds `held`.
+    ///
+    /// `false` is the not-mine state [`Self::finalize_synced`] answers `None`
+    /// for, learned before the scheduler is called instead of after.
+    ///
+    /// # Errors
+    /// As [`Self::list`].
+    pub async fn holds_fence(&self, held: &Schedule, token: &Uuid7) -> Result<bool> {
+        let mut connection = self.database.acquire().await?;
+        let row = sqlx::query(sql::HOLDS_FENCE)
+            .bind(held.schedule_id.as_str())
+            .bind(held.generation)
+            .bind(token.as_str())
+            .fetch_optional(connection.as_mut())
+            .await
+            .map_err(error::query(CONTEXT_CLAIM))?;
+
+        Ok(row.is_some())
+    }
 }
 
 /// Whether `change` moves the moment a schedule fires at.

@@ -6,6 +6,8 @@ mod harness;
 mod fleet_schedules_input;
 #[path = "integration_fleet_schedules.rs"]
 mod integration_fleet_schedules;
+#[path = "integration_fleet_schedules_ownership.rs"]
+mod integration_fleet_schedules_ownership;
 
 #[path = "connector_callback_route.rs"]
 mod connector_callback_route;

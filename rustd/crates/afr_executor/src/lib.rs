@@ -22,6 +22,8 @@
 //! [`Client`] is the supervisor's end and implements [`Executor`] over the
 //! socket. Both read the other's messages as untrusted.
 
+#![deny(clippy::self_named_module_files)]
+
 pub mod error;
 
 mod api;

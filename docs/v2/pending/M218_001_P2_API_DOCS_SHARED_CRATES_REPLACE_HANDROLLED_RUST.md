@@ -46,7 +46,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 2. `docs/RUST_ERROR_STANDARD.md` — `error_shell!`/`error_lifts!`, the property test for which crates take the hull, and the conformance table §2 completes.
 3. `docs/v2/reviews/m217-test-audit-findings-2026-10-08.md` — the ledger shape this milestone mirrors: provenance, reconciliation, one row per site, verifier rejections kept.
 4. `rustd/crates/afd_validate/src/rules.rs` — `charset`, `nul_free`, `ascii_digits`, `finite`: what garde lacks, and what a hand-written bound becomes.
-5. `rustd/crates/afr_providers/src/retry.rs` — `backon` with `.when`, `.adjust` and `.notify`: the shape a hand-written retry loop becomes.
+5. `rustd/crates/afr_providers/src/retry/mod.rs` — `backon` with `.when`, `.adjust` and `.notify`: the shape a hand-written retry loop becomes.
 6. `.orly/dispatch/write_rust.md` — Rust error discipline (ERR-RS), functional design (FN-RS), constants (UFS), and the reference-guideline read every Rust review cites.
 
 ## Files Changed (blast radius)
@@ -64,7 +64,7 @@ The ledger names each site by row; this table names the roles.
 | `rustd/crates/afd_fleet_runtime/src/name.rs`, `afd_tenant/src/workspace/name.rs`, `afd_cron/src/verifier.rs`, `afd_library/src/validate.rs` | EDIT | §3 bounds on garde and `afd_validate` |
 | `rustd/crates/afd_bench/src/lane/lease/drive.rs`, `afd_bench/src/fixture.rs`, `afd_bench/src/cli.rs`, `afd_webhook/src/freshness.rs` | EDIT | §3 clock and environment |
 | `rustd/crates/afd_db/src/migrate/lock.rs`, `afd_dragonfly/src/hub/repair.rs`, `afd_dragonfly/src/test_util.rs`, `afd_tenant/src/workspace/directory.rs` | EDIT | §4 retries |
-| `rustd/crates/afr_sandbox/src/egress/slot.rs`, `egress/kernel.rs`, `egress/testing.rs`, `egress/slot_tests.rs`, `egress/scope_tests.rs`, `egress/tests.rs` | EDIT | §5 |
+| `rustd/crates/afr_sandbox/src/egress/slot.rs`, `egress/kernel.rs`, `egress/testing/mod.rs`, `egress/slot_tests.rs`, `egress/scope_tests.rs`, `egress/tests.rs` | EDIT | §5 |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/*/Cargo.toml` | EDIT | Dependencies a row moves onto; a new-to-graph crate only after Indy approves |
 | `rustd/clippy.toml` | CREATE | §7, after Indy approves |
 | `docs/RUST_ERROR_STANDARD.md`, `docs/architecture/rust-ownership.md` | EDIT | Every crate in the table; each new owner and each refuted replacement recorded |
@@ -93,7 +93,7 @@ The ledger names each site by row; this table names the roles.
 
 - **Decision record:** `docs/architecture/rust-ownership.md` — the September 2026 audit's rubric and owners; this milestone appends rows to it.
 - **Audit-then-fix:** M217_001 and its ledger — finder plus second reviewer, rows located by `file:line`, rejected findings kept.
-- **Per family:** `afd_auth/src/directory.rs:78` (`hex::encode` over a `write!` loop); `afd_fleet_runtime/src/config/trigger.rs:73` (`custom(charset(..))` on the type); `afd_connector/src/callback.rs:106` (`Url::parse` in the crate that also splits on `"://"`); `afr_providers/src/retry.rs:109` (`backon`).
+- **Per family:** `afd_auth/src/directory.rs:78` (`hex::encode` over a `write!` loop); `afd_fleet_runtime/src/config/trigger.rs:73` (`custom(charset(..))` on the type); `afd_connector/src/callback.rs:106` (`Url::parse` in the crate that also splits on `"://"`); `afr_providers/src/retry/mod.rs:109` (`backon`).
 - **Reference checkouts:** `~/Projects/oss/rs/arrow-rs` for workspace structure and `~/Projects/oss/rs/builder/components/builder-core/` for cause-preserving parsing; `~/Projects/oss/rs/exonum` is not checked out, so search `~/Projects/oss/rs/` and ask before cloning.
 
 ## Sections (implementation slices)

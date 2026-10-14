@@ -41,6 +41,7 @@ import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import {
   FIXTURE_KEY,
   JWT_CACHE_PATH,
+  LIBRARY_LAYOUT_WORKSPACE_NAME,
   SECOND_WORKSPACE_NAME,
   VERCEL_BYPASS_STATE_FILENAME,
 } from "./fixtures/constants";
@@ -215,6 +216,7 @@ export default async function globalSetup(): Promise<void> {
     // parallel specs racing ensureSecondWorkspace's list-then-create would
     // otherwise collide on the (tenant, name) uniqueness during a first run.
     await ensureSecondWorkspace(FIXTURE_KEY.regular, SECOND_WORKSPACE_NAME);
+    await ensureSecondWorkspace(FIXTURE_KEY.regular, LIBRARY_LAYOUT_WORKSPACE_NAME);
     console.log(
       `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); ` +
         `${fixtures.length} fixture users provisioned in Clerk + bootstrapped in agentsfleetd; ` +

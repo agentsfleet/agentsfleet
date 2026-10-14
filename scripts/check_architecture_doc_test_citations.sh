@@ -42,7 +42,7 @@ test_arch_doc_cited_paths_resolve() {
   # The shorthand form (leading directories dropped) must keep resolving — the
   # pages use it throughout, and rejecting it would be a rewrite, not a check.
   assert_citation_shape test_arch_doc_cited_paths_resolve paths \
-    'Reads `afr_supervisor/src/lease_loop.rs` and `schema/100_schemas.sql`.' \
+    'Reads `afr_supervisor/src/lease_loop/mod.rs` and `schema/100_schemas.sql`.' \
     'Reads `http/router_that_never_existed.rs`.'
 }
 
