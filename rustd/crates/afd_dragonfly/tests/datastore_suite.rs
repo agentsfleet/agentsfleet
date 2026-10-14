@@ -94,6 +94,8 @@ mod group_create_faults;
 mod hub_connect_deadline;
 #[path = "hub_gap_faults.rs"]
 mod hub_gap_faults;
+#[path = "hub_redial_climb.rs"]
+mod hub_redial_climb;
 #[path = "hub_repair_faults.rs"]
 mod hub_repair_faults;
 #[path = "hub_repair_hold.rs"]
@@ -138,6 +140,8 @@ mod keys_and_config;
 mod misbehaving_server;
 #[path = "preflight_refusals.rs"]
 mod preflight_refusals;
+#[path = "ready_wake_deadline.rs"]
+mod ready_wake_deadline;
 #[path = "retention_faults.rs"]
 mod retention_faults;
 #[path = "verify_outcomes.rs"]
