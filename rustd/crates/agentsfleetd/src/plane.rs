@@ -30,6 +30,7 @@ use afd_billing::Accounts;
 use afd_credential::provider::Providers;
 use afd_crypto::entropy::Entropy;
 use afd_crypto::secret::SecretBytes;
+use afd_dragonfly::{Doorbell, ReadyPrefix};
 use afd_events::History;
 use afd_fleet::bundle::Bundles;
 use afd_fleet::lease::{Leases, Plane};
@@ -187,6 +188,7 @@ impl ServingPlane {
         // second place a deployment could point at a different pool, and the
         // whole point of the ledger is that acceptance has one home.
         let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
+        let doorbell = listening_doorbell(&live);
         let (bundles, uploads) = stores.split();
         let library_imports = match uploads {
             Some(store) => LibraryImports::new(database.clone(), store, Entropy::new()),
@@ -266,7 +268,8 @@ impl ServingPlane {
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database.clone(), Entropy::new()),
             leases: Plane {
-                leases: Leases::new(database.clone(), queue.clone(), Entropy::new()),
+                leases: Leases::new(database.clone(), queue.clone(), Entropy::new())
+                    .with_doorbell(doorbell),
                 gates: Gates::new(database.clone(), queue, Entropy::new()),
                 // The same surface the tenant plane's `grants` field holds,
                 // over the same table: a delivery that finds no grant asks
@@ -291,6 +294,18 @@ mod platform;
 pub use self::config::{LoginConfig, PlaneParts, ScheduleConfig};
 
 mod services;
+
+/// The doorbell every poll the lease plane makes takes rung partitions from,
+/// rung by this replica's hub. One per process: a second would hear rings no
+/// poll reads. With no hub nothing rings, and polls find fresh work through
+/// the rotation alone.
+fn listening_doorbell(live: &Live) -> Doorbell {
+    let doorbell = Doorbell::new();
+    if let Some(hub) = live.hub() {
+        doorbell.listen(hub, &ReadyPrefix::production());
+    }
+    doorbell
+}
 
 impl Dependencies for ServingPlane {
     fn probe(&self) -> impl Future<Output = ReadyInputs> + Send {

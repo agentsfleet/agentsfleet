@@ -253,3 +253,20 @@ closed_set! {
         Reclaimed => "reclaimed",
     }
 }
+
+closed_set! {
+    /// Which part of the readiness doorbell failed.
+    ///
+    /// Three, because each costs something different when it is lost: a ring
+    /// leaves fresh work to the rotation on every replica, a peek leaves the
+    /// partition one poll was sent to for the rotation to reach, and a gap
+    /// leaves whatever rang during it to the rotation on one replica.
+    ReadyWake {
+        /// A mark's ring was not published within the doorbell's deadline.
+        Ring => "ring",
+        /// A poll could not peek the partition its doorbell rang in time.
+        Peek => "peek",
+        /// A replica's subscription lost or lagged rings it cannot name.
+        Gap => "gap",
+    }
+}

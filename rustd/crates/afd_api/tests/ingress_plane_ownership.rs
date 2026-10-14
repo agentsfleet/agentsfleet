@@ -12,7 +12,7 @@
 //! The verb starts being served by the plane that does not authenticate its
 //! caller. `ConnectorRoute::Connect` answered here would let anyone who can
 //! reach the ingress surface start an OAuth flow against a workspace they do
-//! not own; `AuthRoute::DeleteAllSessions` would let them end somebody's.
+//! not own; `AuthRoute::DeleteOwnSessions` would let them end somebody's.
 //! Neither shows up as a failure anywhere else — the route still resolves and
 //! still answers — which is why the roster is asserted rather than the shape.
 #![cfg(feature = "test-util")]

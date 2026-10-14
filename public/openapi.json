@@ -1888,15 +1888,13 @@
           }
         },
         "security": []
-      }
-    },
-    "/v1/auth/sessions/all": {
+      },
       "delete": {
         "tags": [
           "Authentication"
         ],
         "summary": "Bulk-abort every in-flight login session for the caller",
-        "description": "Caller-scoped bulk delete. Enumerates every session with the caller's `clerk_user_id` whose status is `pending` or `verification_pending` and transitions each to `aborted` with `reason=\"explicit_cancel\"`. Does NOT revoke already-minted JWTs; revoking those is the identity provider's concern, and an active CLI continues to work until its short-lived JWT expires. This endpoint clears in-flight login sessions only. ",
+        "description": "Caller-scoped bulk delete. Accepts the person's browser session or their own `afc_` command-line credential; a tenant api-key is refused. `agentsfleet logout` uses it to end the logins it left unfinished. Transitions every session the caller approved (status `verification_pending`, owned by the caller's `clerk_user_id`) to `aborted` with `reason=\"explicit_cancel\"`. A `pending` session has no owner until it is approved, so this cannot reach it; it expires on its own five-minute time-to-live. Revokes no credential: `DELETE /v1/cli-credentials/{id}` does that.",
         "operationId": "delete_all_auth_sessions",
         "responses": {
           "200": {
@@ -19358,7 +19356,7 @@
           "time_to_first_token_ms": {
             "type": "integer",
             "format": "int32",
-            "description": "Milliseconds until the first token arrived.",
+            "description": "Milliseconds from the start of the run to its first answer chunk, or\n`0` when it sent none.\n\nThe run starts once the bundle, memory and sandbox are ready, so setup\nis not counted here; `wall_ms` counts it.",
             "minimum": 0
           },
           "wall_ms": {

@@ -6,6 +6,7 @@ use afd_core::error_code::GH_MINT_FAILED;
 
 use crate::error::Error;
 use crate::fixture::{GRAFANA_TOKEN, LEASE_ID, policy, shown};
+use crate::refusal::Refusal;
 use crate::testing::CountingMint;
 
 /// When every suite's clock starts.
@@ -126,6 +127,9 @@ async fn should_refuse_a_minted_credentials_field_other_than_its_token() {
 
     assert_eq!(
         filled.err().as_ref().map(shown),
-        Some(shown(&Error::secret_not_found("github", "password")))
+        Some((
+            Some(Refusal::SecretNotFound),
+            "this fleet's secret github has no field password; its fields are token".to_owned()
+        ))
     );
 }

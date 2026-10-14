@@ -72,6 +72,20 @@ impl<'p> StaticSecrets<'p> {
         self.fields(name)?.get(field)?.as_str()
     }
 
+    /// The names of credential `name`'s string fields, never their values;
+    /// `None` when there is no such credential.
+    #[must_use]
+    pub fn field_names(self, name: &str) -> Option<Vec<&'p str>> {
+        let fields = self.fields(name)?;
+        Some(
+            fields
+                .iter()
+                .filter(|(_field, value)| value.is_string())
+                .map(|(field, _value)| field.as_str())
+                .collect(),
+        )
+    }
+
     /// The host credential `name` may be sent to.
     #[must_use]
     pub fn host(self, name: &str) -> Option<&'p str> {

@@ -44,7 +44,7 @@ pub(super) async fn open_live(config: &DragonflyConfig, max_streams: usize) -> L
                 cause_error_code,
                 reason,
                 event = "hub_unavailable",
-                "the live-stream surface will carry no frames; every other verb is unaffected"
+                "the live-stream surface will carry no frames and lease polls find fresh work through the rotation alone; every other verb is unaffected"
             );
             Live::detached(ceiling)
         }

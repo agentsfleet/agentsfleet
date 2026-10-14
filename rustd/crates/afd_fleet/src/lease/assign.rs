@@ -4,10 +4,11 @@
 //! re-polls on the backoff the reply carries. The pass is READY-FIRST, and the
 //! ordering is the design:
 //!
-//! 1. Peek the shared readiness index, BEFORE touching Postgres. An empty index
-//!    answers no-work with zero database round-trips, which is the dominant
-//!    steady state on any deployment holding more fleets than concurrent
-//!    events.
+//! 1. Peek the shared readiness index, BEFORE touching Postgres: the rotation's
+//!    next partition, and the one the doorbell rang if it rang another. An
+//!    empty index answers no-work with zero database round-trips, which is the
+//!    dominant steady state on any deployment holding more fleets than
+//!    concurrent events.
 //! 2. Run the candidate query, restricted to those fleets and capped. Readiness
 //!    NARROWS the input; it never decides eligibility — the label gate, the
 //!    held-slot filter and the sticky ordering are properties of the query.
@@ -26,32 +27,34 @@
 
 use afd_core::clock::UnixMillis;
 use afd_core::id::Uuid7;
-use afd_core::timing::{LEASE_TTL_MS, RUNNER_OFFLINE_AFTER_MS};
+use afd_core::timing::RUNNER_OFFLINE_AFTER_MS;
 use afd_dragonfly::{Ready, ReadyToken};
 use afd_observability::metrics::label::fleet::RunStart;
 use afd_observability::producers;
 use sqlx::Row as _;
 
 use crate::error::{Result, query};
-use crate::lease::affinity;
-use crate::lease::envelope::{Acquired, Kind, from_fresh, from_reclaim};
+use crate::lease::envelope::{Acquired, Kind};
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
+mod claim;
 mod diagnostics;
 mod offer;
+mod wake;
 
 pub(crate) use diagnostics::warn_queue_fleet;
-use diagnostics::{EVENT_LEASE_RECLAIMED, EVENT_READY_PEEK_FAILED, drop_undecodable, warn_queue};
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CANDIDATES: &str = "lease candidate scan";
 
-/// How many ready fleets one poll will consider.
+/// How many ready fleets one peek samples, and how many candidates one poll's
+/// scan returns.
 ///
 /// The ceiling is what makes per-poll cost independent of how many fleets
 /// exist — without it a runner polling an idle deployment pays for every fleet
-/// on it, every second.
+/// on it, every second. A poll peeks at most two partitions, so its scan reads
+/// at most twice this many identifiers.
 pub const MAX_READY_CANDIDATES_PER_POLL: usize = 64;
 
 /// What one lease poll cost, gathered as it runs.
@@ -66,6 +69,11 @@ struct PollCost {
     candidates_scanned: u64,
     /// Statements this poll issued.
     database_roundtrips: u64,
+    /// Commands this poll sent Dragonfly: one on an idle poll, the rotation's
+    /// peek, and two when the doorbell rang another partition. A claim adds its
+    /// stream reads, and the mark clear or the dead entry's acknowledgement
+    /// when it takes nothing.
+    dragonfly_commands: u64,
 }
 
 impl Leases {
@@ -105,7 +113,11 @@ impl Leases {
         // On EVERY exit path, including the one where the peek itself failed:
         // a poll that could not read the index is still a poll, and a total
         // that skipped it would make idle cost look lower than it is.
-        producers::fleet::lease_polled(cost.candidates_scanned, cost.database_roundtrips);
+        producers::fleet::lease_polled(
+            cost.candidates_scanned,
+            cost.database_roundtrips,
+            cost.dragonfly_commands,
+        );
         (selected, cost)
     }
 
@@ -120,29 +132,18 @@ impl Leases {
         if let Some(acquired) = self.held_first(runner_id, held, now, cost).await? {
             return Ok(Some(acquired));
         }
-        // One partition per poll, the next in the rotation: the read stays one
-        // bounded round trip, and the partitions this poll did not visit are
-        // the next polls' — whichever runner makes them.
-        let partition = self.cursor().advance();
-        let ready = self
-            .ready()
-            .peek(partition, MAX_READY_CANDIDATES_PER_POLL)
-            .await
-            .inspect_err(|error| warn_queue(EVENT_READY_PEEK_FAILED, runner_id, error))?;
-        cost.candidates_scanned = u64::try_from(ready.len()).unwrap_or(u64::MAX);
-        // The readiness depth this poll saw, published for the gauge that
-        // reports it: the index is a network round trip, and a collection
-        // callback cannot make one.
-        producers::fleet::ready_depth_observed(cost.candidates_scanned);
-        // The zero-Postgres path. Returning here is what makes idle cost scale
-        // with runner count alone instead of runners × fleets.
-        if ready.is_empty() {
-            return Ok(None);
-        }
-        self.first_offered(runner_id, &ready, now, cost).await
+        let (offer, rung) = self.ready_this_poll(runner_id, cost).await;
+        let claimed = self.offered(runner_id, offer, now, cost).await;
+        // On every exit, a failed one included: when the fault was a rung
+        // fleet's, ringing again would send every later poll back to it. A
+        // fault elsewhere, a Postgres error say, leaves the ring clear too; the
+        // rotation still reaches the rung fleets in its turn.
+        self.ring_again(rung, claimed.as_ref().ok());
+        claimed.map(|pass| pass.acquired)
     }
 
-    /// The eligible fleets among `ready`, in the query's own sticky order.
+    /// The eligible fleets among `ready`, those in `cursor` first, then in
+    /// the query's own sticky order.
     ///
     /// The ordering must come from the statement and not from the peek, because
     /// sticky preference lives in its `ORDER BY`. `now` is what the held-slot
@@ -152,6 +153,7 @@ impl Leases {
         &self,
         runner_id: &Uuid7,
         ready: &[&str],
+        cursor_ids: &[&str],
         now: UnixMillis,
     ) -> Result<Vec<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
@@ -163,6 +165,7 @@ impl Leases {
             .bind(now.as_millis())
             .bind(RUNNER_OFFLINE_AFTER_MS)
             .bind(sql::ADMIN_STATE_ACTIVE)
+            .bind(cursor_ids)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_CANDIDATES))?;
@@ -174,131 +177,12 @@ impl Leases {
             })
             .collect()
     }
-
-    /// Claim one candidate and take its work, or answer `None` and move on.
-    async fn try_candidate(
-        &self,
-        fleet_id: &Uuid7,
-        token: &ReadyToken,
-        runner_id: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Option<Acquired>> {
-        // Recorded on the ONE exit that hands work out. A `None` — a lost
-        // claim, an empty stream, a dropped entry — reaches nothing here,
-        // because nothing started.
-        self.try_candidate_unrecorded(fleet_id, token, runner_id, now)
-            .await
-            .inspect(|found| {
-                if let Some(acquired) = found {
-                    producers::fleet::run_started(started(acquired.kind));
-                    affinity::count_resumed(acquired);
-                }
-            })
-    }
-
-    /// [`Self::try_candidate`] without the recording, so the outcome exists
-    /// before anything is said about it.
-    async fn try_candidate_unrecorded(
-        &self,
-        fleet_id: &Uuid7,
-        token: &ReadyToken,
-        runner_id: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Option<Acquired>> {
-        let Some(claimed) = self.claim(fleet_id, runner_id, now, LEASE_TTL_MS).await? else {
-            // Taken by a live holder. No event was read, so nothing is orphaned.
-            return Ok(None);
-        };
-        // A fault between the win and a lease frees the claim before it is
-        // raised, through the release the pull's endings share. Left held, the
-        // held-slot filter would hide the fleet for a full TTL.
-        match self
-            .take_claimed(fleet_id, &claimed, token, runner_id, now)
-            .await
-        {
-            Err(fault) => {
-                self.let_go(fleet_id, claimed.fence, now).await;
-                Err(fault)
-            }
-            outcome => outcome,
-        }
-    }
-
-    /// The work a won claim takes: a lapsed holder's event, else a fresh one.
-    async fn take_claimed(
-        &self,
-        fleet_id: &Uuid7,
-        claimed: &crate::lease::affinity::Claimed,
-        token: &ReadyToken,
-        runner_id: &Uuid7,
-        now: UnixMillis,
-    ) -> Result<Option<Acquired>> {
-        // A won claim over a lapsed holder means its lease is still `active`
-        // and still names the work it never finished.
-        if let Some(prior) = self.reclaim_prior_active(fleet_id, now).await? {
-            let fleet = fleet_id.as_str();
-            let runner = runner_id.as_str();
-            let lease = prior.lease_id.as_str();
-            let event_id = prior.event_id.as_str();
-            let fence = claimed.fence.as_i64();
-            tracing::debug!(
-                event = EVENT_LEASE_RECLAIMED,
-                fleet_id = fleet,
-                runner_id = runner,
-                lease_id = lease,
-                agentsfleet_event_id = event_id,
-                fencing_token = fence,
-                "re-leasing a lapsed holder's event under a higher fence"
-            );
-            return from_reclaim(fleet_id, claimed, token, prior).map(Some);
-        }
-        self.acquire_fresh(fleet_id, claimed, token, now).await
-    }
-
-    /// Pull the next event for a claimed fleet: the group's oldest pending
-    /// entry first, whichever consumer holds it, then a new entry.
-    ///
-    /// Pending-first is safe precisely BECAUSE the claim was won: that proves no
-    /// live lease exists, so a pending entry is a re-poll, a parked event or a
-    /// dead replica's strand rather than work somebody else is doing.
-    async fn acquire_fresh(
-        &self,
-        fleet_id: &Uuid7,
-        claimed: &crate::lease::affinity::Claimed,
-        token: &ReadyToken,
-        now: UnixMillis,
-    ) -> Result<Option<Acquired>> {
-        let streams = self.streams();
-        let fleet = fleet_id.as_str();
-        let Some(event) = self.read_fresh(fleet, &runner_consumer()).await? else {
-            // Both reads answered, and both were empty — the only evidence this
-            // code ever has that a fleet holds nothing deliverable. Free the
-            // claim so the next event is not blocked behind it, then clear the
-            // mark this poll peeked: a drained fleet left marked is a claim,
-            // a read and a release on every poll that samples it, forever.
-            self.release(fleet_id, claimed.fence, now).await?;
-            producers::fleet::lease_claimed_empty();
-            self.clear_mark(fleet_id, token).await;
-            return Ok(None);
-        };
-        match from_fresh(fleet_id, claimed, token, &event) {
-            Ok(acquired) => Ok(Some(acquired)),
-            Err(undecodable) => {
-                drop_undecodable(&streams, fleet, &event.receipt, &undecodable).await;
-                // Freed for the reason the empty arm frees it: this fleet holds
-                // nothing this poll can lease. Holding the claim would cost a
-                // full TTL of silence on a fleet whose next event may be fine.
-                self.release(fleet_id, claimed.fence, now).await?;
-                Ok(None)
-            }
-        }
-    }
 }
 
 /// Each candidate beside the generation its fleet's peek saw.
 ///
 /// The query only narrows the peek, so every candidate has one; the pairing
-/// keeps the query's order, which is the sticky order.
+/// keeps the query's order: the cursor's partition first, then sticky.
 fn peeked(candidates: Vec<Uuid7>, ready: &[Ready]) -> impl Iterator<Item = (Uuid7, &ReadyToken)> {
     candidates.into_iter().filter_map(move |fleet| {
         ready

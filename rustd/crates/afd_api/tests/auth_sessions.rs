@@ -19,8 +19,10 @@ const SESSIONS: &str = "/v1/auth/sessions";
 const SESSION: &str = "/v1/auth/sessions/0195b4ba-8d3a-7f13-8abc-2b3e1e0f7051";
 const APPROVE: &str = "/v1/auth/sessions/0195b4ba-8d3a-7f13-8abc-2b3e1e0f7051/approve";
 const VERIFY: &str = "/v1/auth/sessions/0195b4ba-8d3a-7f13-8abc-2b3e1e0f7051/verify";
-const ALL: &str = "/v1/auth/sessions/all";
+const ALL: &str = "/v1/auth/sessions";
 const DASHBOARD_TOKEN: &str = "fixture.header.payload";
+/// An `afc_` command-line credential, the class `agentsfleet logout` presents.
+const TERMINAL: &str = "afc_fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
 const TENANT_KEY: &str = "agt_t5151515151515151515151515151515151515151515151515151515151515151";
 const SUBJECT: &str = "user_2device_flow";
 const OPEN_BODY: &str = r#"{"public_key":"fixture-public-key","token_name":"laptop"}"#;
@@ -101,7 +103,6 @@ async fn dashboard_mutations_require_a_verified_session_class() {
     for (method, path, body) in [
         (Method::PATCH, APPROVE, APPROVE_BODY),
         (Method::DELETE, SESSION, ""),
-        (Method::DELETE, ALL, ""),
     ] {
         let missing = dashboard_router(method.clone(), path, None, body).await;
         assert_eq!(missing.status(), StatusCode::UNAUTHORIZED, "{path}");
@@ -112,6 +113,31 @@ async fn dashboard_mutations_require_a_verified_session_class() {
         let wrong_class = harness::send(&tenant_router, method, path, Some(TENANT_KEY), body).await;
         assert_eq!(wrong_class.status(), StatusCode::UNAUTHORIZED, "{path}");
     }
+}
+
+/// `agentsfleet logout` ends the logins it left unfinished with its own `afc_`
+/// credential, so the bulk abort admits a person's terminal as well as their
+/// browser; an organisation's api-key still may not manage a person's logins.
+#[tokio::test]
+async fn the_bulk_abort_admits_a_persons_own_terminal_and_refuses_a_tenant_key() {
+    let missing = dashboard_router(Method::DELETE, ALL, None, "").await;
+    assert_eq!(missing.status(), StatusCode::UNAUTHORIZED);
+
+    let terminal_router = Fleet::new()
+        .with_terminal(TERMINAL, SUBJECT, ScopeSet::EMPTY)
+        .router();
+    let terminal = harness::send(&terminal_router, Method::DELETE, ALL, Some(TERMINAL), "").await;
+    assert_eq!(
+        terminal.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "the terminal reaches the session service"
+    );
+
+    let tenant_router = Fleet::new()
+        .with_person(TENANT_KEY, SUBJECT, ScopeSet::EMPTY)
+        .router();
+    let tenant = harness::send(&tenant_router, Method::DELETE, ALL, Some(TENANT_KEY), "").await;
+    assert_eq!(tenant.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

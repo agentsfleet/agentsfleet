@@ -118,7 +118,56 @@ fn should_send_a_minted_credential_only_where_an_origin_policy_names_it() {
                 None
             )
         ),
-        Some(shown(&Error::secret_not_found("github", "password")))
+        Some((
+            Some(Refusal::SecretNotFound),
+            "this fleet's secret github has no field password; its fields are token".to_owned()
+        )),
+        "a wrong field of a secret the fleet has names the fields it has"
+    );
+}
+
+/// A static credential asked for a field it lacks names the fields it has,
+/// and none of their values.
+#[test]
+fn should_name_a_static_credentials_fields_for_a_field_it_lacks() {
+    let refusal = refused(
+        false,
+        draft(
+            "GET",
+            "https://demo-grafana.internal/api/health",
+            &[("Authorization", "${secrets.grafana.password}")],
+            None,
+        ),
+    );
+
+    assert_eq!(
+        refusal,
+        Some((
+            Some(Refusal::SecretNotFound),
+            "this fleet's secret grafana has no field password; its fields are host, token"
+                .to_owned()
+        ))
+    );
+}
+
+/// A credential with no string field has no field to name, so it is refused
+/// as a secret the fleet does not have, never with an empty field list.
+#[test]
+fn should_refuse_a_credential_with_no_string_field_as_absent() {
+    let mut policy = crate::fixture::policy(false);
+    policy.secrets_map = Some(serde_json::json!({"numbers": {"ttl": 30}}));
+    let refused = super::Admission::new(&policy)
+        .admit(draft(
+            "GET",
+            "https://demo-grafana.internal/api/health",
+            &[("Authorization", "${secrets.numbers.token}")],
+            None,
+        ))
+        .err();
+
+    assert_eq!(
+        refused.as_ref().map(shown),
+        Some(shown(&Error::secret_not_found("numbers", "token")))
     );
 }
 

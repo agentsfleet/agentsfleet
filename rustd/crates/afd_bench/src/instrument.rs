@@ -56,6 +56,9 @@ const CANDIDATES: &str = "agentsfleet_lease_poll_candidates_scanned_total";
 /// Total Postgres round trips those polls issued.
 const ROUNDTRIPS: &str = "agentsfleet_lease_poll_db_roundtrips_total";
 
+/// Total Dragonfly commands those polls issued.
+const DRAGONFLY_COMMANDS: &str = "agentsfleet_lease_poll_dragonfly_commands_total";
+
 /// What a poisoned capture lock reports, rather than panicking a bench run.
 const POISONED: &str = "the captured counters lock was poisoned";
 
@@ -71,6 +74,8 @@ pub struct PollCounters {
     pub candidates: u64,
     /// Postgres round trips those polls issued.
     pub roundtrips: u64,
+    /// Dragonfly commands those polls issued.
+    pub dragonfly_commands: u64,
 }
 
 impl PollCounters {
@@ -81,6 +86,9 @@ impl PollCounters {
             polls: self.polls.saturating_sub(earlier.polls),
             candidates: self.candidates.saturating_sub(earlier.candidates),
             roundtrips: self.roundtrips.saturating_sub(earlier.roundtrips),
+            dragonfly_commands: self
+                .dragonfly_commands
+                .saturating_sub(earlier.dragonfly_commands),
         }
     }
 }
@@ -138,6 +146,7 @@ impl CapturingExporter {
                     POLLS => captured.polls = total,
                     CANDIDATES => captured.candidates = total,
                     ROUNDTRIPS => captured.roundtrips = total,
+                    DRAGONFLY_COMMANDS => captured.dragonfly_commands = total,
                     _ => {}
                 }
             }

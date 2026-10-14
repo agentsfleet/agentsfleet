@@ -39,6 +39,12 @@ const _: () = assert!(
 /// a hash tag, so the number alone decides the slot.
 pub const READY_INDEX_KEY: &str = "fleet:ready";
 
+/// The segment after a partition's tag that names its doorbell channel.
+///
+/// After the tag, so the channel hashes to the partition's own slot and a ring
+/// lands on the node that took the mark.
+const READY_WAKE_SEGMENT: &str = "wake";
+
 /// The segment a private index inserts between [`READY_INDEX_KEY`] and its
 /// caller's name, so one glance at a key says whose it is.
 #[cfg(feature = "test-util")]
@@ -143,6 +149,15 @@ impl Partition {
     #[must_use]
     pub fn key_under(self, prefix: &ReadyPrefix) -> String {
         format!("{}:{{{}}}", prefix.as_str(), self.0)
+    }
+
+    /// The channel a mark in this partition rings, under `prefix`.
+    ///
+    /// The partition's key plus one segment, so the channel shares the key's
+    /// hash tag and its slot, and a private index rings only its own polls.
+    #[must_use]
+    pub fn wake_channel_under(self, prefix: &ReadyPrefix) -> String {
+        format!("{}:{READY_WAKE_SEGMENT}", self.key_under(prefix))
     }
 }
 

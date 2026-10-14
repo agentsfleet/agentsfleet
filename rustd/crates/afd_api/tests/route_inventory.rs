@@ -34,7 +34,6 @@ use afd_api::route::{Ownership, TenantRoute};
 const INVENTORY: &[&str] = &[
     // §1 — the device-flow login surface.
     "/v1/auth/sessions",
-    "/v1/auth/sessions/all",
     "/v1/auth/sessions/{session_id}",
     "/v1/auth/sessions/{session_id}/approve",
     "/v1/auth/sessions/{session_id}/verify",

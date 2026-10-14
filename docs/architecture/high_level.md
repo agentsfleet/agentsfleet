@@ -14,7 +14,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | The pillars | open source · self-managed provider keys · markdown-defined | §1 |
 | Deployment | hosted-only in v2; self-host deferred to v3 | §1 |
 | The wedge | `platform-ops`: GitHub Actions deploy-failure responder + manual operator steer | §1, §2 |
-| The MVP promise | "Operational outcomes do not fall into limbo" | §4 |
+| The minimum viable product (MVP) promise | "Operational outcomes do not fall into limbo" | §4 |
 | The existence bar | if local Claude answers "what should I do next?" as well, v2 has not earned its existence | §1 |
 | The Slack bot | acquisition on-ramp, reactive only — agency, not memory, is the line to the durable agent | §5.2 |
 
@@ -61,13 +61,13 @@ Three structural pillars carry v2:
 - **Self-managed provider keys.** Operators can bring their own large-language-model provider key; new tenants start on the platform-managed default ([`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §1). The control plane resolves it and the runner's supervisor uses it for the inference call only; it never enters a sandbox. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
 - **Markdown-defined.** Operational behaviour lives in `SKILL.md`, optional `TRIGGER.md`, and optional support files carried by a Fleet Bundle, not in a typed workflow engine. Iteration is editing prose and policy, not redeploying code.
 
-**Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
+**Self-host is deferred to v3.** v2 ships hosted-only on `api.agentsfleet.net`, signing users in through Clerk with Open Authorization (OAuth). The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean Linux host outside Fly.io is a v3 workstream.
 
-The `agentsfleet` CLI plus the first-party Fleet library ([`user_flow.md`](./user_flow.md) §8.0) is what makes the v2 pillars reachable from a cold start.
+The `agentsfleet` command-line interface (CLI) plus the first-party Fleet library ([`user_flow.md`](./user_flow.md) §8.0) is what makes the v2 pillars reachable from a cold start.
 
 ### The first problem we solve
 
-The first problem v2 solves is deploy and production failure handling. When a deploy fails, or production looks unhealthy, the operator should not have to manually bounce between CI, logs, infra dashboards, chat, and shell history while also remembering what they already tried. The fleet should take ownership of that outcome: gather evidence, explain what is wrong, preserve the timeline, request approval when necessary, and continue until resolved or blocked.
+The first problem v2 solves is deploy and production failure handling. When a deploy fails, or production looks unhealthy, the operator should not have to manually bounce between continuous integration (CI), logs, infra dashboards, chat, and shell history while also remembering what they already tried. The fleet should take ownership of that outcome: gather evidence, explain what is wrong, preserve the timeline, request approval when necessary, and continue until resolved or blocked.
 
 The flagship workflow: `platform-ops`. The wedge surface is **GitHub Actions deploy-failure responder + manual operator steer** — one fleet that wakes on a failed deploy webhook (continuous-deployment failure), gathers evidence, posts a diagnosis to Slack, and is also reachable via `agentsfleet steer` for manual investigation.
 
@@ -99,7 +99,7 @@ The MVP wedge is:
 - approvals where needed
 - one flagship workflow
 
-The flagship workflow is `platform-ops`: when a GitHub Actions CD pipeline fails, the fleet wakes from the webhook, gathers the right evidence from Fly.io, Dragonfly, Postgres, and adjacent sources, explains what is wrong, and posts a remediation suggestion to Slack. The same fleet can also be steered manually for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
+The flagship workflow is `platform-ops`: when a GitHub Actions continuous-deployment (CD) pipeline fails, the fleet wakes from the webhook, gathers the right evidence from Fly.io, Dragonfly, Postgres, and adjacent sources, explains what is wrong, and posts a remediation suggestion to Slack. The same fleet can also be steered manually for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
 
 ---
 
@@ -109,7 +109,7 @@ The flagship workflow is `platform-ops`: when a GitHub Actions CD pipeline fails
 
 Three shifts make this MVP plausible now:
 
-1. LLMs can reason over messy operational evidence well enough to choose the next step when paired with constrained tools and clear instructions.
+1. Large language models (LLMs) can reason over messy operational evidence well enough to choose the next step when paired with constrained tools and clear instructions.
 2. Operators already maintain personal assistants and prompt files locally, but those assistants are ephemeral and session-bound. They do not own outcomes across time, triggers, retries, approvals, and failures.
 3. The integration surface already exists in the real workflow: deploy webhooks, cron checks, logs APIs, secret stores, approval policies, and shell-accessible recovery tasks. The missing piece is durable orchestration around them.
 
@@ -143,7 +143,7 @@ Counterarguments:
 
 - A deterministic deploy watcher plus logs fetcher may solve enough of the problem without an LLM.
 - The hard part may be trust, approvals, and evidence quality, not reasoning.
-- The market is adjacent to incident automation and AI SRE tooling, which already exist.
+- The market is adjacent to incident automation and AI site-reliability-engineering (SRE) tooling, which already exist.
 - If the fleet mostly summarizes logs but does not move the outcome forward, the product will feel ornamental.
 
 That is why the MVP bar is strict: the fleet must make a real operational outcome faster and safer to complete, not merely easier to read about.
@@ -158,7 +158,7 @@ agentsfleet v2 should be judged on one promise:
 
 For the MVP, that means:
 
-- a trigger arrives from webhook (GH Actions failure), cron, or operator steer
+- a trigger arrives from webhook (GitHub Actions failure), cron, or operator steer
 - the fleet gathers the right evidence
 - the fleet reasons over the situation using LLM + constrained tools
 - every step is persisted with actor provenance
@@ -167,7 +167,7 @@ For the MVP, that means:
 - the fleet can resume after interruption
 - the operator resumes from state, not memory
 
-If the product cannot prove that loop on a real GH Actions deploy failure and a real approval-gated destructive workflow, the thesis is not validated.
+If the product cannot prove that loop on a real GitHub Actions deploy failure and a real approval-gated destructive workflow, the thesis is not validated.
 
 ---
 
@@ -193,7 +193,7 @@ All three flow through the same reasoning loop. The fleet does not branch on act
 
 ### 5.2 Slack-resident channel bot — the on-ramp (M106)
 
-The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth (Open Authorization) install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired agent (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable agent, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. The hired-agent Rung 1 is the follow-on, and M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
+The first surface that meets non-terminal users — support, ops — where they already work. A first-party multi-tenant `@agentsfleet` Slack app: one OAuth install per workspace, and in any channel it's invited to, an `@mention` is answered in-thread, read-only, learning that channel over time (the channel's memory namespace is a per-channel resident fleet, keyed by its `fleet_id`). It is **reactive** — it answers, never acts unattended — which is the deliberate boundary to the durable hired agent (§5.1's platform-ops is the active form). This is acquisition, not a second product: the reactive bot's job is to convert to a durable agent, so it does **not** make v2 "just a chat UI over tools" — agency, not memory, is the line. Specced in `docs/v2/done/M106_001_P1_API_DOCS_INFRA_UI_SLACK_RESIDENT_CHANNEL_BOT.md` and shipped in `agentsfleetd` by M206_002. The hired-agent Rung 1 is the follow-on, and M206's channel subscription is its first slice: an installed fleet answering mentions in one channel ([`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md)).
 
 ## 6. Where this points after v2
 
@@ -203,13 +203,13 @@ Direction, not commitment. Recorded so a spec author does not foreclose it.
 
 Where the v2 wedge points after launch. Not part of v2; documented so spec authors don't foreclose it.
 
-The MVP ships an internal-only diagnosis posted to the operator's Slack. The longer-term play is the **bastion** — one durable surface where internal triage continues as today (Slack post, evidence trail, follow-up steers) and external customer communication is derived from the *same* incident state (status-page updates, broadcast email/SMS, embedded widgets). The same fleet owns both; the diagnosis and the customer-facing narrative come from one event log, not two. This is the structural competitor to manual status-page tools.
+The MVP ships an internal-only diagnosis posted to the operator's Slack. The longer-term play is the **bastion** — one durable surface where internal triage continues as today (Slack post, evidence trail, follow-up steers) and external customer communication is derived from the *same* incident state (status-page updates, broadcast email or text message, embedded widgets). The same fleet owns both; the diagnosis and the customer-facing narrative come from one event log, not two. This is the structural competitor to manual status-page tools.
 
 Structural changes from MVP to bastion:
 
 1. **Per-fleet audience routing** — `TRIGGER.md` / `x-agentsfleet:` gains `audiences: [internal_slack, customer_status, customer_email]`; `SKILL.md` prose drafts per-audience summaries from the same evidence.
 2. **Status-page rendering surface** — a hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
-3. **Broadcast channels** — the fleet's `tools:` grows `email_send`, `sms_send` (approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
+3. **Broadcast channels** — the fleet's `tools:` grows `email_send`, `sms_send` (text message; approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
 4. **Approval gating per audience** — `SKILL.md` can require human approval for customer-facing audiences while internal Slack flows automatically (the M47 approval inbox handles the mechanic).
 5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `core.fleet_events` retention becomes per-actor configurable.
 
@@ -229,7 +229,7 @@ A customer-facing prebuilt fleet whose job is **security testing on the customer
 
 ### 6.4 Still deferred, each owned elsewhere
 
-- **Flow-1 active-MITM closure** — URL-fragment public-key binding + HKDF transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.
+- **Flow-1 active man-in-the-middle (MITM) closure** — URL-fragment public-key binding + HMAC-based Key Derivation Function (HKDF) transcript binding. See [`../AUTH.md`](../AUTH.md) *threats this flow does NOT close*.
 - **Dashboard token model** — see [`web_app.md`](./web_app.md) §"Where this is headed — a Backend-for-Frontend".
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
 - **Trust-scoped sticky affinity** — still deferred. Once runners can be local / low-trust (laptops, untrusted hosts), affinity selection must add **trust class + scope** (allowed tenants/workspaces) and sandbox-tier eligibility before the sticky preference — "prefer the last runner *among the eligible set*," never an override of eligibility. M85_001 intentionally shipped labels only; the trust/scope/tier funnel remains its own security workstream.

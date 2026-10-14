@@ -26,7 +26,7 @@ pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc
         AuthRoute::PollSession => Some(get(handler::auth::poll::<D>)),
         AuthRoute::ApproveSession => Some(patch(handler::auth::approve::<D>)),
         AuthRoute::VerifySession => Some(post(handler::auth::verify::<D>)),
-        AuthRoute::DeleteAllSessions => Some(delete(handler::auth::delete_all::<D>)),
+        AuthRoute::DeleteOwnSessions => Some(delete(handler::auth::delete_all::<D>)),
         AuthRoute::DeleteSession => Some(delete(handler::auth::delete_one::<D>)),
         AuthRoute::IdentityEventClerk => None,
     }

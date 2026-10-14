@@ -19,7 +19,7 @@ use std::sync::Arc;
 use crate::error::Result;
 use crate::metrics::declared::fleet as declared;
 use crate::metrics::instrument::{Instruments, Reading};
-use crate::metrics::label::fleet::{DeliveryStage, RunStart, SignupFailure};
+use crate::metrics::label::fleet::{DeliveryStage, ReadyWake, RunStart, SignupFailure};
 use crate::metrics::observed::Observed;
 use crate::producers::installed;
 use crate::runner::RunnerMetrics;
@@ -86,6 +86,7 @@ pub struct Handles {
     lease_polls: Counter<u64>,
     lease_candidates: Counter<u64>,
     lease_roundtrips: Counter<u64>,
+    lease_dragonfly_commands: Counter<u64>,
     lease_claims_empty: Counter<u64>,
     history_bytes: Histogram<f64>,
     history_cuts: Counter<u64>,
@@ -94,6 +95,7 @@ pub struct Handles {
     runs_started: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_write_failures: Counter<u64>,
+    ready_wake_failures: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
     admissions: Counter<u64>,
@@ -131,6 +133,8 @@ impl Handles {
             lease_candidates: instruments
                 .counter_u64(&declared::LEASE_POLL_CANDIDATES_SCANNED_TOTAL)?,
             lease_roundtrips: instruments.counter_u64(&declared::LEASE_POLL_DB_ROUNDTRIPS_TOTAL)?,
+            lease_dragonfly_commands: instruments
+                .counter_u64(&declared::LEASE_POLL_DRAGONFLY_COMMANDS_TOTAL)?,
             lease_claims_empty: instruments.counter_u64(&declared::LEASE_CLAIMS_EMPTY_TOTAL)?,
             history_bytes: instruments.histogram_f64(&declared::LEASE_HISTORY_BYTES)?,
             history_cuts: instruments.counter_u64(&declared::LEASE_HISTORY_CUTS_TOTAL)?,
@@ -141,6 +145,8 @@ impl Handles {
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_write_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WRITE_FAILURES_TOTAL)?,
+            ready_wake_failures: instruments
+                .counter_u64(&declared::FLEET_READY_WAKE_FAILURES_TOTAL)?,
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
                 .counter_u64(&declared::RUNNER_RETENTION_SWEEP_FAILURES_TOTAL)?,
@@ -237,11 +243,12 @@ pub fn signup_failed(reason: SignupFailure) {
 
 /// Records one finished lease poll and what it cost.
 ///
-/// All three counters move together, on every exit path, because the ratio is
+/// All four counters move together, on every exit path, because the ratio is
 /// the number worth reading: candidates per poll says how much work a poll
-/// examined, and round-trips per poll says how much of that reached Postgres.
-/// A poll that recorded only some of them would skew both.
-pub fn lease_polled(candidates_scanned: u64, database_roundtrips: u64) {
+/// examined, round-trips per poll says how much of that reached Postgres, and
+/// commands per poll says what it asked of Dragonfly. A poll that recorded
+/// only some of them would skew the rest.
+pub fn lease_polled(candidates_scanned: u64, database_roundtrips: u64, dragonfly_commands: u64) {
     if let Some(producers) = installed() {
         producers.fleet.lease_polls.add(1, &[]);
         producers
@@ -252,6 +259,10 @@ pub fn lease_polled(candidates_scanned: u64, database_roundtrips: u64) {
             .fleet
             .lease_roundtrips
             .add(database_roundtrips, &[]);
+        producers
+            .fleet
+            .lease_dragonfly_commands
+            .add(dragonfly_commands, &[]);
     }
 }
 
@@ -294,6 +305,17 @@ pub fn delivery_stage(stage: DeliveryStage, elapsed: core::time::Duration) {
 pub fn ready_write_failed() {
     if let Some(producers) = installed() {
         producers.fleet.ready_write_failures.add(1, &[]);
+    }
+}
+
+/// Records a readiness-doorbell ring or rung peek that failed. The work
+/// behind it is never lost: the rotation still visits every partition.
+pub fn ready_wake_failed(wake: ReadyWake) {
+    if let Some(producers) = installed() {
+        producers
+            .fleet
+            .ready_wake_failures
+            .add(1, &[KeyValue::new(semconv::LABEL_KIND, wake.as_str())]);
     }
 }
 

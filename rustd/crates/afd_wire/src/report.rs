@@ -100,7 +100,11 @@ pub struct RenewRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ReportTelemetry {
-    /// Milliseconds until the first token arrived.
+    /// Milliseconds from the start of the run to its first answer chunk, or
+    /// `0` when it sent none.
+    ///
+    /// The run starts once the bundle, memory and sandbox are ready, so setup
+    /// is not counted here; `wall_ms` counts it.
     pub time_to_first_token_ms: u32,
     /// Total wall-clock milliseconds.
     pub wall_ms: u64,

@@ -17,7 +17,7 @@ use afd_core::clock::Clock;
 use afr_secrets::{FIELD_TOKEN, Scrub, Secret};
 
 use crate::admission::Admission;
-use crate::error::{Error, Result, raise};
+use crate::error::{Result, raise};
 use crate::mint::{Mint, Minted};
 use crate::placeholder::{self, SecretRef};
 
@@ -78,7 +78,7 @@ impl<'run> Vault<'run> {
             None => statics.field(secret.name, secret.field),
         };
         if let Some(missing) = wanted.iter().find(|secret| value(**secret).is_none()) {
-            return Err(Error::secret_not_found(missing.name, missing.field));
+            return Err(admission.unknown(*missing));
         }
         Ok(Secret::new(
             placeholder::substitute(template, value).into_owned(),

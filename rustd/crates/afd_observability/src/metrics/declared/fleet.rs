@@ -29,7 +29,7 @@ pub const SIGNUP_REPLAYED_TOTAL: Declared<CounterKind> =
 pub const SIGNUP_FAILED_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_signup_failed_total");
 
-/// The denominator for the two below.
+/// The denominator for the three below.
 pub const LEASE_POLLS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_lease_polls_total");
 
 /// Rate ÷ polls = fan-out per poll.
@@ -39,6 +39,11 @@ pub const LEASE_POLL_CANDIDATES_SCANNED_TOTAL: Declared<CounterKind> =
 /// Rate ÷ polls = DB cost per poll; idle polls must add zero.
 pub const LEASE_POLL_DB_ROUNDTRIPS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_lease_poll_db_roundtrips_total");
+
+/// Rate ÷ polls = Dragonfly cost per poll; an idle poll adds two, plus one per
+/// sandbox the runner holds.
+pub const LEASE_POLL_DRAGONFLY_COMMANDS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_lease_poll_dragonfly_commands_total");
 
 /// Bytes of earlier turns each chat lease carries.
 pub const LEASE_HISTORY_BYTES: Declared<HistogramKind> =
@@ -75,12 +80,26 @@ pub const FLEET_RUNS_STARTED_TOTAL: Declared<CounterKind> =
 pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
     Declared::new("agentsfleet_fleet_delivery_stage_seconds");
 
-/// Readiness backlog (not summable across replicas).
+/// Ready fleets a poll's peeks offered (not summable across replicas).
+///
+/// The rotation's partition and the one the readiness doorbell rang, if any,
+/// at most twice the poll ceiling, of which the candidate scan returns at
+/// most the ceiling.
 pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fleet_ready_depth");
 
 /// Dragonfly index writes failing.
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_write_failures_total");
+
+/// Readiness-doorbell rings and rung peeks failing or past their deadline,
+/// and stretches of rings a replica missed.
+///
+/// A ring past its deadline is counted though the publish may still land; a
+/// gap is counted per partition channel, so one redial counts up to sixteen.
+///
+/// Labels: `kind`.
+pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_fleet_ready_wake_failures_total");
 
 /// Installed fleets by lifecycle status, as the last census pass counted them.
 ///

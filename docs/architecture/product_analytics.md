@@ -1,8 +1,8 @@
 # Product analytics (PostHog)
 
-PostHog is the product-analytics plane — distinct from Prometheus metrics, the
-OpenTelemetry Protocol (OTLP) export, and the Postgres execution-telemetry
-store. Two halves write into one PostHog project:
+PostHog is the product-analytics plane, kept apart from the OpenTelemetry
+Protocol (OTLP) export of logs, traces and metrics and from the Postgres
+execution-telemetry store. Two halves write into one PostHog project:
 
 | Half | Owner | Captures |
 |---|---|---|
@@ -21,8 +21,9 @@ Single-sourced in `ui/packages/app/lib/analytics/events.ts` (`EVENTS`,
 object-first past tense (`fleet_created`, `api_key_minted`). Props carry IDs,
 names, and enum values only — never a token, raw API key, credential payload,
 or free-text from a sensitive field. Call sites import `EVENTS` +
-`captureProductEvent`; a grep test fails on any bare event-name literal outside
-the catalog. Catalog captures bypass the legacy `sanitizeProps` allowlist (its
+`captureProductEvent`; the `app-event-literal` rule in
+`scripts/check_app_source.py` (run by `make lint-all`) fails on any bare
+event-name literal outside the catalog. Catalog captures bypass the legacy `sanitizeProps` allowlist (its
 closed key set would silently drop event-specific keys) — the `EventProps`
 types are the compile-time guard, and the emit path allowlists every payload
 against the `EVENT_PROP_KEYS` runtime mirror, so a spread or widened argument
@@ -30,7 +31,7 @@ cannot smuggle extra fields. Capture is exception-contained: analytics can
 never break the product flow it instruments.
 
 `EVENTS` is the list. It carries two dozen entries across fleets, runners,
-keys, secrets, the library and onboarding, and it grows with the dashboard — so
+keys, secrets, models, approvals, the library and onboarding, and it grows with the dashboard — so
 reading it beats reading a copy here that stops being true the next time someone
 adds a surface.
 

@@ -9,10 +9,13 @@
 
 use afd_core::error_code::{self, Coded as _, Logged};
 use afd_core::id::Uuid7;
+use afd_dragonfly::Partition;
+use afd_observability::metrics::label::fleet::ReadyWake;
+use afd_observability::producers;
 
 /// The readiness index would not answer.
 ///
-/// These five are `LOGGING_STANDARD.md` §3 `event` values — `snake_case`
+/// Every `EVENT_` here is a `LOGGING_STANDARD.md` §3 `event` value — `snake_case`
 /// `verb_noun`, one declaration each (RULE UFS). Dashboards match on these
 /// spellings, so changing one is an operator-visible change.
 pub(super) const EVENT_READY_PEEK_FAILED: &str = "assign_ready_peek_failed";
@@ -28,6 +31,10 @@ pub(super) const EVENT_LEASE_RECLAIMED: &str = "lease_reclaimed";
 
 /// A held fleet's readiness could not be read; the poll went on without it.
 pub(super) const EVENT_HELD_READ_FAILED: &str = "assign_held_read_failed";
+
+/// The partition the doorbell rang could not be peeked; the poll went on with
+/// the rotation's partition, and the ring is not rung again.
+pub(super) const EVENT_WAKE_PEEK_FAILED: &str = "assign_ready_wake_peek_failed";
 
 /// Reports a queue failure that ended a poll before any fleet was examined.
 ///
@@ -75,6 +82,35 @@ pub(super) fn warn_held_read(runner_id: &Uuid7, fleet_id: &Uuid7, error: &afd_dr
         fleet_id = fleet,
         reason,
         "a held fleet's readiness could not be read; the poll goes on without it"
+    );
+}
+
+/// Reports a rung partition a poll could not peek, counted as a failed wake,
+/// naming the partition.
+///
+/// A `warn` and not a failed poll: the rotation's partition is still read, so
+/// the work behind the ring is reached within one rotation.
+pub(super) fn warn_rung_peek(
+    runner_id: &Uuid7,
+    partition: Partition,
+    error: &afd_dragonfly::Error,
+) {
+    producers::fleet::ready_wake_failed(ReadyWake::Peek);
+    let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+    let runner = runner_id.as_str();
+    let index = partition.index();
+    let Logged {
+        error_code: cause_error_code,
+        reason,
+    } = error.logged();
+    tracing::warn!(
+        error_code = code,
+        cause_error_code,
+        event = EVENT_WAKE_PEEK_FAILED,
+        runner_id = runner,
+        partition = index,
+        reason,
+        "a rung partition could not be peeked; the poll goes on with its rotation"
     );
 }
 

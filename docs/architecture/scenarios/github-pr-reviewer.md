@@ -4,7 +4,7 @@
 
 > References: [`../fleet_bundles.md`](../fleet_bundles.md) (bundle storage), [`../data_flow.md`](../data_flow.md) (trigger/execute loop), [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) (provider posture + credit gate).
 >
-> This is the single end-to-end walkthrough. It follows one persona — **John Doe** — installing the `github-pr-reviewer` fleet through the Command-Line Interface (CLI), connecting the shared GitHub App to his workspace, binding a repository to the fleet, and watching the fleet read a Pull Request (PR); the review post is refused at egress today (§4). Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
+> It follows one persona — **John Doe** — installing the `github-pr-reviewer` fleet through the Command-Line Interface (CLI), connecting the shared GitHub App to his workspace, binding a repository to the fleet, and watching the fleet read a Pull Request (PR); the review post is refused at egress today (§4). Provider posture, billing math, and the credit gate are not re-narrated here; those facts live in their topic docs.
 
 **Outcome under test:** from a GitHub Pull Request reviewer template to a posted review comment, with the fleet running its installed `SKILL.md` against a repository-bound App event and using a short-lived installation token for runtime GitHub API calls. Today the run reads the diff and the review post is refused at egress (§4). This scenario is **not yet proven**: it becomes green only when the repository-bound Pull Request integration test passes end to end.
 
@@ -16,7 +16,7 @@ sequenceDiagram
   participant Admin as Platform admin
   participant Op as Workspace user
   participant CLI as agentsfleet
-  participant API as agentsfleetd-api
+  participant API as agentsfleetd
   participant GH as GitHub
   participant R2 as R2 (object store)
   participant PG as Postgres
@@ -46,7 +46,8 @@ sequenceDiagram
   GH->>API: POST /v1/ingress/github
   API->>API: verify App signature before payload routing
   API->>PG: installation → workspace → repository/event/grant fleets
-  API->>API: claim body-digest+fleet replay slot → XADD fleet:{id}:events ✅
+  API->>PG: INSERT core.fleet_admissions (webhook_app, fleet:body digest)
+  API->>API: XADD fleet:{id}:events ✅
   Runner->>API: lease → { instructions:<SKILL>, event, bundle:{hash} }
   Runner->>API: GET /v1/runners/me/bundles/{hash} (no sandbox: every tool runs in the supervisor)
   API->>R2: GET bundle tar (the runner holds no object-store key)
@@ -68,14 +69,14 @@ The runner executes the fleet's `SKILL.md`, which reflects any `PATCH`, and take
 ## 3. Connect the App, bind the repository, then receive the PR
 
 1. **Platform setup and workspace connection.** The shared App's setup and John's user-authorization flow are in [`../connectors.md`](../connectors.md) §"GitHub App: platform setup to fleet execution". The App must already be installed on `acme/payments`; an installation already owned by another workspace returns 403 without changing either workspace.
-2. **Fleet subscription.** The installed fleet declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in `TRIGGER.md`. The App installation is the maximum repository set; this fleet list is the smaller event subscription. Omission receives no App traffic.
-3. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, claims an authenticated-body-digest/fleet replay slot, and appends the normalized event.
+2. **Fleet subscription.** The installed fleet declares `source: github`, `events: [pull_request]`, and `repositories: [acme/payments]` in `TRIGGER.md`. The App installation is the widest set of repositories; this list picks the ones this fleet hears. A fleet with no `repositories` list receives no App traffic (`serves_repository` in `rustd/crates/afd_ingress/src/binding.rs:250-256`).
+3. **A PR is opened.** GitHub signs and posts the event to `/v1/ingress/github`. The receiver verifies before reading routing fields, resolves the installation, selects only active and approved fleets matching `acme/payments` plus `pull_request`, writes one `core.fleet_admissions` row per fleet keyed by fleet and body digest, and appends the event to that fleet's stream ([`../lease_flow.md`](../lease_flow.md) §"Admission: the row is the acceptance, the stream entry is a receipt").
 
-4. **The authorisation, once, at install.** Installing the fleet writes an approved `core.integration_grants` row for `(fleet_id, "github")` and raises no approval card. Installing IS the answer: John chose the fleet, the bundle names the integration, and `TRIGGER.md` names the repositories and the access level — so a second question adds no fact he could act on. The mint reads that grant and nothing else; `ScopedRequest::for_binding` still narrows the token to the declared repositories, and `Granted::verify` still refuses a response that widened, admitting nothing unasked except GitHub's own `metadata: read`. What bounds the run is the App installation, the fleet's `budget.daily_dollars`, and `agentsfleet grant delete`, which takes effect on the next event with no provider call. A grant covers one fleet and one service, so deleting it stops every repository that fleet reaches through GitHub — narrowing reach is an edit to `repositories:`, not a deletion.
+4. **The authorisation, once, at install.** Installing the fleet writes an approved `core.integration_grants` row for `(fleet_id, "github")` and raises no approval card. The write is best effort: a failure is logged, the install still succeeds, and the first delivery asks for the grant instead (`rustd/crates/afd_fleet_lifecycle/src/install/grants.rs`). Why installing is the answer, how the mint still narrows the token, and how `agentsfleet grant delete` stops it: [`../connectors.md`](../connectors.md) §"Trust anchors", item 6. A grant covers one fleet and one service, so deleting it stops every repository that fleet reaches through GitHub. To narrow reach, edit `repositories:` instead.
 
    There is no per-event approval. A repository-write gate was raised on every first-encounter event until M202: a continuation carries a fresh event identifier, so each model turn re-parked, and one steer produced three cards and zero review comments. The grant replaced it because the grant already carried everything the card asked about.
 
-The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It uses the workspace webhook secret and does not require `repositories`; it is not the default App path.
+The manual `/v1/webhooks/{fleet_id}/github` route remains available for an operator-managed per-fleet hook. It verifies with the `webhook_secret` field of the workspace's `github` secret, does not require `repositories`, and is not the default App path (`rustd/crates/afd_api_ingress/src/handler/webhook/github_route.rs`).
 
 ## 4. The run — SKILL.md drives the review
 
@@ -104,7 +105,7 @@ Three remain open, and the scenario is not fixed until the first two pass:
 - **External `github-pr-reviewer` repository test.** Needs the App installed on
   a dedicated development repository and a real Pull Request. Fixture coverage
   is not evidence that the live path works.
-- **Compounding memory across Pull Requests** — parked design.
+- **Compounding memory across Pull Requests.** Parked design.
 
 Milestone status belongs to the spec, not to this page. When the external proof
 lands, the spec records it and this section says so in one line.
@@ -112,4 +113,4 @@ lands, the spec records it and this section says so in one line.
 ## 7. What is NOT in this scenario
 
 - **Provider posture, billing math, the credit gate.** These had their own scenarios; the canonical facts now live in [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md). The lease/execute/bill loop is unchanged from what that doc describes.
-- **Compounding memory** across PRs — a separate, parked design.
+- **Compounding memory** across PRs. A separate, parked design.

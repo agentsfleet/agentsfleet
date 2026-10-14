@@ -3,8 +3,8 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use afd_wire::lease::LeaseResponse;
@@ -12,7 +12,7 @@ use afd_wire::runner::HeartbeatStatus;
 use bytes::Bytes;
 use tokio::sync::watch;
 
-use super::{MIN_POLL_PAUSE, serve};
+use super::{MIN_POLL_PAUSE, first_poll_offset, serve};
 use crate::client::Verb;
 use crate::error;
 use crate::heartbeat::Assignment;
@@ -163,6 +163,76 @@ async fn a_worker_that_panics_is_started_again() {
         rig.prepared.load(Ordering::SeqCst),
         2,
         "the second lease ran on a fresh worker"
+    );
+}
+
+/// Four workers on a one-second hint make their first polls a quarter second
+/// apart, so fresh work waits for the next poll rather than the next second.
+#[tokio::test(start_paused = true)]
+async fn test_workers_stagger_first_poll() {
+    let polled_at = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&polled_at);
+    let rig = polling(move |_polled| {
+        seen.lock().unwrap().push(tokio::time::Instant::now());
+        idle(Some(10_000))
+    });
+    let started = tokio::time::Instant::now();
+    let (_published, watching) = watch::channel(assigned(4));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    let mut offsets: Vec<u128> = polled_at
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|at| at.duration_since(started).as_millis())
+        .collect();
+    offsets.sort_unstable();
+    assert_eq!(offsets, [0, 250, 500, 750], "one poll per quarter second");
+    assert_eq!(
+        first_poll_offset(5, 4),
+        Duration::from_millis(250),
+        "a worker past the count takes its place in the rotation"
+    );
+    assert_eq!(
+        first_poll_offset(0, 0),
+        Duration::ZERO,
+        "no workers, no wait"
+    );
+}
+
+/// A pool shut down while its workers wait out their offsets polls no more:
+/// only the worker with no offset has polled, and the pool joins at once
+/// rather than after the offsets run out.
+#[tokio::test(start_paused = true)]
+async fn test_a_worker_cancelled_during_its_offset_never_polls() {
+    const CANCEL_AFTER: Duration = Duration::from_millis(100);
+    let polls = Arc::new(AtomicUsize::new(0));
+    let seen = Arc::clone(&polls);
+    let rig = polling(move |_polled| {
+        seen.fetch_add(1, Ordering::SeqCst);
+        idle(Some(10_000))
+    });
+    let (_published, watching) = watch::channel(assigned(4));
+    let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching));
+
+    tokio::time::sleep(CANCEL_AFTER).await;
+    let cancelled_at = tokio::time::Instant::now();
+    rig.shutdown.cancel();
+    pool.await.unwrap();
+
+    assert_eq!(
+        polls.load(Ordering::SeqCst),
+        1,
+        "only the zero-offset worker polled"
+    );
+    assert!(
+        cancelled_at.elapsed() < first_poll_offset(1, 4).saturating_sub(CANCEL_AFTER),
+        "the pool did not wait out the offsets: {:?}",
+        cancelled_at.elapsed()
     );
 }
 

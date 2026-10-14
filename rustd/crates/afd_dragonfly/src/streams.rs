@@ -41,6 +41,8 @@ pub(crate) mod render;
 pub(crate) mod retain;
 mod tail;
 
+pub(crate) use self::tail::CMD_PUBLISH;
+
 #[cfg(feature = "test-util")]
 pub use self::render::rendered_field_samples;
 use self::render::stringify;

@@ -72,7 +72,7 @@ use crate::error::{Error, ErrorKind, Result};
 /// the process's memory ceiling. A reader that falls this far behind is told
 /// which is honest — the alternative is silently dropping messages it believes
 /// it received.
-const CHANNEL_CAPACITY: usize = 256;
+pub(crate) const CHANNEL_CAPACITY: usize = 256;
 
 /// One published message.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,6 +82,10 @@ pub struct Message {
     /// The payload, as published.
     pub payload: String,
 }
+
+/// The longest step production's redial schedule waits, and how long a
+/// connection must serve before its loss restarts the climb (`pump/pacing.rs`).
+pub(crate) const REDIAL_CEILING: Duration = Duration::from_secs(5);
 
 /// How long the pump waits before redialling a dropped connection.
 ///
@@ -105,7 +109,7 @@ pub const fn production_backoff() -> ExponentialBuilder {
     // redialled on.
     ExponentialBuilder::new()
         .with_min_delay(Duration::from_millis(200))
-        .with_max_delay(Duration::from_secs(5))
+        .with_max_delay(REDIAL_CEILING)
         .without_max_times()
         .with_jitter()
 }

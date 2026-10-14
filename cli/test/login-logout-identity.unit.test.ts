@@ -209,7 +209,7 @@ const stubHttpLayer = (
 ): Layer.Layer<HttpClient> =>
   Layer.succeed(HttpClient, {
     request: (input) =>
-      input.method === "DELETE" && input.path === "/v1/auth/sessions/all"
+      input.method === "DELETE" && input.path === "/v1/auth/sessions"
         ? (onDelete() as Effect.Effect<never, never>)
         : Effect.die(`unexpected ${input.method ?? "GET"} ${input.path}`),
   });

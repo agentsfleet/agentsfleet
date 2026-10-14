@@ -257,6 +257,20 @@ describe("CatalogueList — Default badge", () => {
 });
 
 describe("ModelsView", () => {
+  it("ends the model library at its rows yet lets a long one shrink and scroll", () => {
+    // As the Fleet library tables do: the page is fullHeight with its
+    // overflow hidden, so every container between it and the table shrinks
+    // (min-h-0) and none grows (flex-1).
+    renderWithTooltipProvider(React.createElement(ModelsView, { initial: { models: CATALOGUE }, activeDefault: null }));
+
+    const table = screen.getByTestId("data-table");
+    for (const container of [screen.getByLabelText("Model catalogue"), table.parentElement]) {
+      const classes = container?.className.split(" ") ?? [];
+      expect(classes).toContain("min-h-0");
+      expect(classes).not.toContain("flex-1");
+    }
+  });
+
   const initial = { models: CATALOGUE };
 
   it("renders the catalogue with no separate platform-default section", () => {

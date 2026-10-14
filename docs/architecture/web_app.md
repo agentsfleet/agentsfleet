@@ -1,6 +1,6 @@
 # Web app — `ui/packages/app`
 
-Five statements govern the dashboard (Next.js 16 App Router, React 19.2).
+Five statements govern the dashboard (Next.js 16 App Router, React 19.3).
 Each one is falsifiable by grep; the migration table at the bottom is the
 scoreboard. The backend has had this kind of doctrine for a year
 (`runner_fleet.md`, `data_flow.md`); the front end gets its own here.
@@ -72,7 +72,7 @@ Today — client-heavy path:
     │                              │─── async page, await ─────▶│
     │                              │◀────── fleets JSON ────────│   ← page blocks
     │◀═══ full HTML, all at once ══│                            │
-    │  hydrate ~90 client files ───────────────────┐            │
+    │  hydrate ~150 client files ──────────────────┐            │
     │                                              ▼            │
     │  useEffect fires ── second fetch from browser ───────────▶│   ← waterfall
     │◀──────────────────────────────────────────────────────────│
@@ -118,12 +118,13 @@ Run the greps, then move the numbers. Every row is measurable in one command,
 so a stale row is a choice. Re-measure at any milestone that touches the app
 and update this table in the same diff.
 
-Measured against `ui/packages/app` at 222 `.tsx` files.
+Measured Oct 14, 2026 against `ui/packages/app`: 210 non-test `.tsx` files
+under `app` and `components`.
 
 | Signal | Today | Target | Grep |
 |---|---|---|---|
-| `"use client"` files | 119 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
-| `useEffect` files | 31 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
+| `"use client"` files | 148 | ~25 | `grep -rl '"use client"' app components \| wc -l` |
+| `useEffect` files | 39 | ~5 | `grep -rl useEffect app components hooks \| wc -l` |
 | `useActionState` | 0 | every form | `grep -rl useActionState app components \| wc -l` |
 | `useOptimistic` | 5 | every mutation surface | `grep -rl useOptimistic app components \| wc -l` |
 | `Suspense` files | 5 | every data route | `grep -rl Suspense app \| wc -l` |

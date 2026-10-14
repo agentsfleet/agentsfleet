@@ -7,6 +7,8 @@
 //! terminal row and answers no-work, while a construction failure here means
 //! the fleet's own configuration cannot be enforced.
 
+use std::time::Instant;
+
 use afd_core::clock::UnixMillis;
 use afd_core::error_code::{Coded as _, Logged};
 use afd_core::id::Uuid7;
@@ -37,6 +39,7 @@ impl Plane {
         runner_id: &Uuid7,
         admitted: Admission2,
         now: UnixMillis,
+        began: Instant,
     ) -> Result<Step<Leased>> {
         let declared = self
             .vault
@@ -90,7 +93,8 @@ impl Plane {
             // raised rather than ending the event for good.
             Err(fault) => return Err(fault.into()),
         };
-        self.issue_ready(runner_id, &admitted, *policy, now).await
+        self.issue_ready(runner_id, &admitted, *policy, now, began)
+            .await
     }
 
     /// Ask for the grant this delivery needs, and say what the poll answers.
@@ -143,6 +147,7 @@ impl Plane {
         admitted: &Admission2,
         policy: ExecutionPolicy<'_>,
         now: UnixMillis,
+        began: Instant,
     ) -> Result<Step<Leased>> {
         // LAST, and only once everything above succeeded.
         let Some(issued) = self
@@ -172,12 +177,14 @@ impl Plane {
         let lease_id = issued.lease_id.as_str();
         let fleet_id = admitted.acquired.fleet_id.as_str();
         let agentsfleet_event_id = admitted.acquired.event_id.as_str();
+        let queue_wait_ms = queue_wait::of(&admitted.acquired, queue_wait::issued_at(now, began));
         tracing::info!(
             event = EVENT_LEASED,
             runner_id,
             lease_id,
             fleet_id,
             agentsfleet_event_id,
+            queue_wait_ms,
             "a lease was issued"
         );
         let history = history::turns(
@@ -328,6 +335,8 @@ const fn answers(asked: Option<Requested>) -> Ungranted {
         Some(Requested::Approved) | None => Ungranted::Retries,
     }
 }
+
+mod queue_wait;
 
 #[cfg(test)]
 mod tests;

@@ -59,7 +59,7 @@ pub fn auth_handler_for<D: Services>(verb: AuthRoute) -> Option<MethodRouter<Arc
         | AuthRoute::ApproveSession
         | AuthRoute::VerifySession
         | AuthRoute::DeleteSession
-        | AuthRoute::DeleteAllSessions => None,
+        | AuthRoute::DeleteOwnSessions => None,
     }
 }
 

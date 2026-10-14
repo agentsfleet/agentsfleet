@@ -30,7 +30,7 @@ use backon::ExponentialBuilder;
 use crate::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
-const BUDGET: Duration = Duration::from_secs(10);
+pub(crate) const BUDGET: Duration = Duration::from_secs(10);
 
 /// A redial schedule a test can wait out. Production doubles from 200ms to five
 /// seconds, which no test should sit through.
@@ -48,7 +48,7 @@ fn impatient() -> ExponentialBuilder {
 }
 
 /// The rule table for a fake that speaks enough pub/sub to hold a hub.
-fn pubsub_rules() -> Vec<(&'static str, Reply)> {
+pub(crate) fn pubsub_rules() -> Vec<(&'static str, Reply)> {
     vec![
         ("PING", Reply::Raw("+PONG\r\n")),
         ("SSUBSCRIBE", Reply::SubscribeAck),
@@ -61,7 +61,7 @@ fn pubsub_rules() -> Vec<(&'static str, Reply)> {
 /// Polling, not sleeping: the pump is a background task on its own schedule,
 /// and a fixed sleep either makes the test slow or makes it flaky on a loaded
 /// machine. The budget is the failure, not the wait.
-async fn until(label: &str, mut check: impl FnMut() -> bool) {
+pub(crate) async fn until(label: &str, mut check: impl FnMut() -> bool) {
     let deadline = tokio::time::Instant::now() + BUDGET;
     while tokio::time::Instant::now() < deadline {
         if check() {

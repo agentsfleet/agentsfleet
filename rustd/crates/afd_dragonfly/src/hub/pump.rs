@@ -29,9 +29,10 @@
 //! fallible thing, sleep, call it again, until the cluster answers.
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use afd_core::error_code::{Coded as _, Logged};
-use backon::{BackoffBuilder as _, ExponentialBuilder, Retryable as _};
+use backon::{ExponentialBuilder, Retryable as _};
 use redis::PushInfo;
 use redis::cluster_async::ClusterConnection;
 use tokio::sync::mpsc;
@@ -43,6 +44,7 @@ use super::repair;
 use crate::config::DragonflyConfig;
 use crate::error::{Error, Result};
 use crate::transport;
+use pacing::Pacing;
 
 /// Opens the first connection and leaves a task owning it.
 ///
@@ -97,6 +99,7 @@ async fn run(
         mut pushes,
     } = first;
     let mut redialled = false;
+    let mut pacing = Pacing::new(schedule);
     loop {
         // After a redial, everything readers hold is subscribed again here: a
         // reader that never noticed the drop must not be left listening to
@@ -110,22 +113,21 @@ async fn run(
         } else {
             Vec::new()
         };
-        let (loss, unhosted) =
+        let (loss, served) =
             match generation(&inner, &mut commands, &mut connection, pushes, channels).await {
-                Ok(Ended::HubDropped) => return,
-                Ok(Ended::Lost(loss)) => (loss, false),
-                Err(Unhosted) => (Loss::CommandFailed, true),
+                Ok((Ended::HubDropped, _served)) => return,
+                Ok((Ended::Lost(loss), served)) => (loss, served),
+                // It never served, however long the resubscribe hung.
+                Err(Unhosted) => (Loss::CommandFailed, Duration::ZERO),
             };
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
         let cause = loss.as_str();
         tracing::warn!(cause, error_code, event = "hub_connection_dropped");
-        // A cluster that accepted the dial but could not take the subscribes
-        // would accept the next dial at once too: wait a step first.
-        if unhosted {
-            tokio::time::sleep(schedule.build().next().unwrap_or_default()).await;
-        }
+        // A cluster that accepted the dial but could not hold it would accept
+        // the next dial at once too: a young generation waits a step first.
+        tokio::time::sleep(pacing.wait_after(served)).await;
 
         Connection { connection, pushes } = redial(&config, schedule).await;
         redialled = true;
@@ -139,7 +141,8 @@ async fn run(
 struct Unhosted;
 
 /// One connection's life: its pushes dispatched, what readers hold subscribed
-/// again, then its commands served until it has to go.
+/// again, then its commands served until it has to go, and for how long it
+/// served, timed from the resubscribe's answer so a hung one never counts.
 ///
 /// A re-subscribe that fails ends the generation at once. Carrying on would
 /// leave that channel's readers with neither frames nor a gap, which is the
@@ -151,11 +154,15 @@ async fn generation(
     connection: &mut ClusterConnection,
     pushes: mpsc::UnboundedReceiver<PushInfo>,
     channels: Vec<String>,
-) -> Result<Ended, Unhosted> {
+) -> Result<(Ended, Duration), Unhosted> {
     let (signal, mut signals) = mpsc::unbounded_channel();
     let dispatcher = dispatch::spawn(Arc::clone(inner), pushes, signal, channels.clone());
     let ended = match resubscribe(connection, &channels).await {
-        Ok(()) => Ok(serve(inner, commands, &mut signals, connection).await),
+        Ok(()) => {
+            let serving = Instant::now();
+            let ended = serve(inner, commands, &mut signals, connection).await;
+            Ok((ended, serving.elapsed()))
+        }
         Err(unhosted) => Err(unhosted),
     };
     dispatcher.abort();
@@ -264,6 +271,9 @@ async fn resubscribe(
     }
     Ok(())
 }
+
+#[path = "pump/pacing.rs"]
+mod pacing;
 
 #[cfg(test)]
 #[path = "pump/tests.rs"]

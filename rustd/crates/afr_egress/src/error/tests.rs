@@ -22,7 +22,9 @@ fn expected(name: &str) -> (Option<Refusal>, ErrorCode) {
         "placement not allowed" => refused(Refusal::PlacementNotAllowed),
         "credential host not allowed" => refused(Refusal::CredentialHostNotAllowed),
         "request policy not allowed" => refused(Refusal::RequestPolicyNotAllowed),
-        "secret not found" => (Some(Refusal::SecretNotFound), error_code::SECRET_NOT_FOUND),
+        "secret not found" | "secret field not found" => {
+            (Some(Refusal::SecretNotFound), error_code::SECRET_NOT_FOUND)
+        }
         "mint refused" => (
             Some(Refusal::CredentialMintRefused),
             error_code::GH_MINT_FAILED,
@@ -71,5 +73,29 @@ fn should_keep_the_cause_the_model_needs_in_its_sentence() {
     assert_eq!(
         sample("mint refused").as_deref(),
         Some("the credential could not be minted: d")
+    );
+}
+
+// A refusal the run cannot change tells the model so in the same sentence,
+// or the model spends a turn per guess: the 167K-token run on dev (event
+// 1791777420543-1356) retried one refused review post sixteen ways.
+#[test]
+fn should_tell_the_model_a_fixed_refusal_is_not_worth_retrying() {
+    let sample = |wanted: &str| {
+        one_of_each_kind()
+            .into_iter()
+            .find_map(|(name, error)| (name == wanted).then(|| error.detail()))
+    };
+
+    let policy = sample("request policy not allowed").unwrap_or_default();
+    assert!(policy.starts_with("no request rule at "), "{policy}");
+    assert!(policy.contains("fixed before it starts"), "{policy}");
+    assert!(policy.ends_with("or with another credential"), "{policy}");
+
+    let secret = sample("secret not found").unwrap_or_default();
+    assert!(secret.starts_with("this fleet has no secret "), "{secret}");
+    assert!(
+        secret.ends_with("do not retry with another secret name"),
+        "{secret}"
     );
 }
