@@ -197,9 +197,11 @@ pub struct Schedule {
     pub source: Source,
     /// The key the external scheduler knows it by.
     ///
-    /// Unique per fleet, and deliberately a different value from
-    /// [`Self::schedule_id`]: a schedule re-registered upstream gets a new key
-    /// while staying the same schedule to everyone here.
+    /// Unique per fleet. A create stores a placeholder, and the first push the
+    /// scheduler accepts records the id derived from [`Self::schedule_id`]
+    /// (see [`crate::upstream`]). A one-off a pause removed goes back to its own
+    /// id, which is how the reconciler recognises a schedule the scheduler does
+    /// not hold.
     pub source_key: String,
     /// The expression, in the grammar `validate` accepts.
     pub cron: String,

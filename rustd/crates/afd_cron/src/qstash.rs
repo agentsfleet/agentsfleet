@@ -16,9 +16,11 @@
 //! its own, while a vendor that answered 400 will answer 400 again forever and
 //! retrying is an outbound load with no end. [`crate::Error`] keeps them apart.
 
+use afd_core::id::Uuid7;
 use url::Url;
 
 use crate::error::{self, Result};
+use crate::upstream::{HEADER_SCHEDULE_ID, upstream_id};
 
 /// Where the scheduler's management calls go when a deployment names no base.
 ///
@@ -86,7 +88,8 @@ pub fn destination_url(api_url: &str) -> Result<String> {
 /// What the scheduler answered a management call with.
 #[derive(Debug, Clone)]
 pub struct Registered {
-    /// The key the scheduler now knows this schedule by.
+    /// The id the scheduler filed this schedule under: the one pushed, since
+    /// an answer naming any other is refused.
     pub schedule_id: String,
 }
 
@@ -143,12 +146,26 @@ impl QStash {
         &self.destination
     }
 
-    /// Registers or replaces a schedule upstream.
+    /// Registers or replaces `schedule` upstream, under the id the fire path
+    /// reads back.
+    ///
+    /// The id is this daemon's, sent in [`HEADER_SCHEDULE_ID`]: the scheduler
+    /// overwrites a schedule pushed again under the same id, so a repeat push
+    /// replaces the registration rather than adding a second one beside it.
+    /// See [`crate::upstream`] for why the fire path depends on it.
     ///
     /// # Errors
     /// Reports a scheduler that could not be reached, and one that answered and
-    /// refused — see the module note on why those are two failures.
-    pub async fn upsert(&self, cron: &str, timezone: &str, message: &str) -> Result<Registered> {
+    /// refused — see the module note on why those are two failures. An answer
+    /// naming any id but the one sent is refused too; see [`confirmed`].
+    pub async fn upsert(
+        &self,
+        schedule: &Uuid7,
+        cron: &str,
+        timezone: &str,
+        message: &str,
+    ) -> Result<Registered> {
+        let id = upstream_id(schedule);
         let answer = self
             .client
             .post(format!(
@@ -156,6 +173,7 @@ impl QStash {
                 self.api_base, self.destination
             ))
             .bearer_auth(self.token.expose())
+            .header(HEADER_SCHEDULE_ID, id.as_str())
             .header(HEADER_CRON, cron)
             .header(HEADER_TIMEZONE, timezone)
             .header(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON)
@@ -168,20 +186,12 @@ impl QStash {
             return Err(error::upstream_refused(status.as_u16()));
         }
 
-        // The scheduler's own id for the schedule, which becomes `source_key`.
-        // Read out of the answer rather than minted here: it is the value a
-        // later delete has to name, and a value this daemon invented would
-        // delete nothing.
         // Read as text and parsed here rather than through `Response::json`:
         // the workspace resolves `reqwest` without its `json` feature, and
         // turning one on for one call site would put `serde_json` inside every
         // other crate's HTTP client too.
         let body = answer.text().await?;
-        let registered: ScheduleAnswer =
-            serde_json::from_str(&body).map_err(|_unreadable| error::upstream_unreadable())?;
-        Ok(Registered {
-            schedule_id: registered.schedule_id,
-        })
+        confirmed(id, &body)
     }
 
     /// Removes a schedule upstream.
@@ -212,10 +222,29 @@ impl QStash {
 /// The scheduler's answer to a create.
 #[derive(Debug, serde::Deserialize)]
 struct ScheduleAnswer {
-    /// Its own id for the schedule.
+    /// The id it filed the schedule under.
     #[serde(rename = "scheduleId")]
     schedule_id: String,
 }
+
+/// The registration the scheduler's answer to a push of `sent` confirms.
+///
+/// Refused unless the answer names `sent`. A scheduler that never read the id
+/// header — a proxy that stripped it, an API version that ignores it — files
+/// the schedule under an id of its own, and adopting that id would mark the row
+/// synced while every fire it sends is dropped as naming no schedule. Refused
+/// as unreadable instead, so the row records `failed` and why.
+fn confirmed(sent: String, body: &str) -> Result<Registered> {
+    let answer: ScheduleAnswer =
+        serde_json::from_str(body).map_err(|_unreadable| error::upstream_unreadable())?;
+    if answer.schedule_id != sent {
+        return Err(error::upstream_unreadable());
+    }
+    Ok(Registered { schedule_id: sent })
+}
+
+#[cfg(test)]
+mod tests;
 
 #[cfg(test)]
 mod accessor_tests {

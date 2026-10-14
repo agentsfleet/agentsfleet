@@ -38,6 +38,7 @@ use self::harness::json_body;
 use crate::webhook_qstash_route::{
     BODY, CURRENT_KEY, FireClaims, HEADER_SCHEDULE, HEADER_SIGNATURE, fire, mint,
 };
+use afd_core::id::Uuid7;
 use afd_cron::DesiredStatus;
 use afd_fleet_lifecycle::FleetStatus;
 use http::StatusCode;
@@ -62,12 +63,16 @@ const ABSENT_SCHEDULE: &str = "019329c5-0000-7000-8000-0000000000de";
 /// and one that became a log line.
 async fn fire_at(router: &axum::Router, schedule: &str, message_id: &str) -> (StatusCode, Value) {
     let token = mint(&FireClaims::for_message(BODY, message_id), CURRENT_KEY);
+    // Named the way the scheduler names it: by the id this daemon registered.
+    let registered = afd_cron::upstream_id(
+        &Uuid7::parse(schedule).expect("the fixture names a canonical schedule id"),
+    );
     let response = fire(
         router,
         BODY,
         &[
             (HEADER_SIGNATURE, token.as_str()),
-            (HEADER_SCHEDULE, schedule),
+            (HEADER_SCHEDULE, registered.as_str()),
         ],
     )
     .await;

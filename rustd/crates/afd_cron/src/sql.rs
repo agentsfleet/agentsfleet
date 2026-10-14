@@ -49,7 +49,9 @@ macro_rules! select_row {
 /// Asked before anything else on every route, because the schedules surface is
 /// workspace-scoped and the fleet id arrives in the path. A statement that
 /// skipped it would let a person holding one workspace's capability edit
-/// another workspace's schedules by guessing a fleet id.
+/// another workspace's schedules by guessing a fleet id. A create asks it on
+/// its own transaction; every other route asks it through
+/// `Schedules::holds_fleet` before the schedule is read or claimed.
 pub const FLEET_IN_WORKSPACE: &str = "SELECT 1::bigint FROM core.fleets \
      WHERE id = $1::uuid AND workspace_id = $2::uuid LIMIT 1";
 
@@ -152,18 +154,17 @@ pub const CLAIM_CURRENT: &str = concat!(
     row_columns!()
 );
 
-/// Releases a fence a push succeeded under, adopting the scheduler's own key.
+/// Releases a fence a push succeeded under, recording the id it registered.
 ///
 /// `source_key = COALESCE($6, source_key)` and not a plain assignment: only the
-/// ACTIVE push learns a key (the scheduler answers one), while pausing removes
-/// upstream and learns nothing, and a pause must not blank the key its own later
-/// delete has to name. `NULL` there means "this push had nothing to teach".
+/// ACTIVE push registers an id, while pausing removes upstream and registers
+/// nothing, and a pause must not blank the key its own later delete names.
+/// `NULL` there means "this push had nothing to record".
 ///
-/// Storing it at all is the point. The key a create invents is not the key the
-/// scheduler filed the schedule under, and `QStash::remove` treats a 404 as
-/// success — so a delete naming an invented key reports success while the
-/// schedule keeps firing. See `qstash::QStash::upsert` on reading the id out of
-/// the answer rather than minting one.
+/// Recording it replaces the placeholder a create stores before anything was
+/// pushed with the derived id the scheduler filed the schedule under — see
+/// `crate::upstream`, and `qstash::QStash::upsert` on refusing an answer that
+/// names any other id.
 pub const FINALIZE_SUCCESS: &str = concat!(
     "UPDATE core.fleet_schedules SET sync_status = $4, sync_token = NULL, \
      sync_lease_until = NULL, last_error = NULL, updated_at = $5, \

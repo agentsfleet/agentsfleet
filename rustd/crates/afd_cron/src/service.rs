@@ -32,6 +32,7 @@ use crate::error::Result;
 use crate::model::{DesiredStatus, Schedule};
 use crate::qstash::QStash;
 use crate::store::Schedules as Store;
+use crate::upstream::upstream_id;
 
 /// What one reconcile did.
 ///
@@ -97,16 +98,14 @@ impl Schedules {
             // and ignored here. Leaving it would keep the scheduler calling a
             // fire this daemon then drops — real traffic, real cost, no effect.
             DesiredStatus::Paused | DesiredStatus::Deleting => {
-                self.upstream.remove(&held.source_key).await.map(|()| None)
+                self.unregister(held).await.map(|()| None)
             }
             // A one-off past its moment is removed rather than registered a
             // year late; see `missed`.
-            DesiredStatus::Active if missed => {
-                self.upstream.remove(&held.source_key).await.map(|()| None)
-            }
+            DesiredStatus::Active if missed => self.unregister(held).await.map(|()| None),
             DesiredStatus::Active => self
                 .upstream
-                .upsert(&held.cron, &held.timezone, &held.message)
+                .upsert(&held.schedule_id, &held.cron, &held.timezone, &held.message)
                 .await
                 .map(Some),
         };
@@ -124,14 +123,11 @@ impl Schedules {
                     Ok(Reconciled::Superseded)
                 }
             }
-            // The scheduler's own key is ADOPTED here, not discarded. A create
-            // invents a placeholder (`{fleet_id}-{millis}`) because it has not
-            // spoken to the scheduler yet; this is the first moment the real key
-            // exists, and the last moment it can be stored before a pause or a
-            // delete has to name it. Dropping it made `remove` name a key the
-            // scheduler never issued, which answers 404 — read as success by
-            // design — so the row reported Removed while the schedule kept
-            // firing. `None` on the pause path teaches nothing and keeps the key.
+            // The registered id is RECORDED here, replacing the placeholder a
+            // create stores before anything was pushed. `upsert` refuses an
+            // answer naming any id but the derived one, so what is stored is
+            // the id the fire path resolves. `None` on the pause path registers
+            // nothing and keeps the key.
             Ok(registered) => Ok(self
                 .store
                 .finalize_synced(
@@ -155,6 +151,17 @@ impl Schedules {
             }
         }
     }
+
+    /// Removes `held`'s registration upstream, under the id derived from it.
+    ///
+    /// The derived id and not the recorded key: a push the scheduler accepted
+    /// whose answer never arrived filed the schedule under the derived id while
+    /// the row kept the placeholder its create stored. A placeholder is never
+    /// registered, so removing it answers 404 — success by design — while the
+    /// real registration keeps firing.
+    async fn unregister(&self, held: &Schedule) -> Result<()> {
+        self.upstream.remove(&upstream_id(&held.schedule_id)).await
+    }
 }
 
 /// A `once` schedule not registered upstream, synced after the instant it
@@ -171,8 +178,8 @@ fn missed(held: &Schedule, now: UnixMillis) -> bool {
 /// Whether `QStash` holds no registration of this schedule.
 ///
 /// A fleet's schedule is keyed by its own id until its first successful sync
-/// adopts the key `QStash` files it under (see [`Schedules::reconcile`]), and
-/// a one-off goes back to its own id when a pause removes it
+/// records the derived id `QStash` files it under (see [`Schedules::reconcile`]),
+/// and a one-off goes back to its own id when a pause removes it
 /// ([`unregistered_key`]); a `once` schedule is only ever a fleet's.
 fn never_registered(held: &Schedule) -> bool {
     held.source_key == held.schedule_id.as_str()

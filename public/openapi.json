@@ -3821,7 +3821,7 @@
           {
             "name": "Upstash-Schedule-Id",
             "in": "header",
-            "description": "Schedule identifier supplied by QStash.",
+            "description": "The identifier the daemon registered the schedule under, `fleet-schedule-{schedule_id}`, sent back by QStash.",
             "required": true,
             "schema": {
               "type": "string"
@@ -12609,7 +12609,7 @@
           "Schedules"
         ],
         "summary": "List hosted schedules",
-        "description": "Lists the hosted schedules for a Fleet. The result is bounded by the per-Fleet schedule cap. ",
+        "description": "Lists the hosted schedules for a Fleet. The result is bounded by the per-Fleet schedule cap. An unknown Fleet, or one in another workspace, lists empty rather than answering 404. ",
         "operationId": "list_fleet_schedules",
         "parameters": [
           {

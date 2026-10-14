@@ -116,7 +116,8 @@ async fn test_fleet_deletes_its_schedule() {
     let qstash = FakeQStash::start().await;
     let leased = Leased::boot(&mut supervisor, &qstash).await;
     let (_status, created) = leased.create(false).await;
-    let member = format!("/{}", created["schedule_id"].as_str().expect("an id"));
+    let schedule_id = created["schedule_id"].as_str().expect("an id");
+    let member = format!("/{schedule_id}");
 
     let (status, _) = leased
         .call(Method::DELETE, &leased.fenced(&member), None)
@@ -126,9 +127,9 @@ async fn test_fleet_deletes_its_schedule() {
         qstash.told(),
         [
             Told::Upsert(WEEKLY.to_owned()),
-            Told::Delete("scd_fixture_1".to_owned())
+            Told::Delete(format!("fleet-schedule-{schedule_id}"))
         ],
-        "the key QStash issued is the key it is told to remove"
+        "the id the schedule was registered under is the id it is removed by"
     );
     assert_eq!(leased.held(None).await, 0);
     leased.finish(supervisor).await;
