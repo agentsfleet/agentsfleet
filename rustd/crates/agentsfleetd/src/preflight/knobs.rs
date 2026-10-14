@@ -208,6 +208,10 @@ pub(super) const WHY_AUDIENCE: &str = "the audience this daemon accepts, checked
 pub(super) const WHY_API_BASE: &str =
     "the provider API base a subject's capability claim is read from";
 
+/// Why a provider API base that is set is still refused.
+pub(super) const WHY_API_BASE_UNSAFE: &str = "an https URL, or http only on a loopback host for a \
+     local stand-in; the provider secret key is sent to it on every capability read";
+
 /// Why it needs a secret.
 pub(super) const WHY_SECRET: &str = "the provider secret that authorises reading a subject's claim";
 

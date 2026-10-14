@@ -11,8 +11,8 @@ use afd_core::error_code;
 use agentsfleetd::BootFailure;
 use agentsfleetd::preflight::{
     API_URL_KNOB, APP_URL_KNOB, ENCRYPTION_MASTER_KEY_KNOB, Fault, PLATFORM_ADMIN_WORKSPACE_KNOB,
-    R2_ACCESS_KEY_ID_KNOB, R2_ACCOUNT_ID_KNOB, R2_BUCKET_KNOB, R2_SECRET_ACCESS_KEY_KNOB,
-    SLACK_API_URL_KNOB, preflight,
+    PROVIDER_API_BASE_KNOB, R2_ACCESS_KEY_ID_KNOB, R2_ACCOUNT_ID_KNOB, R2_BUCKET_KNOB,
+    R2_SECRET_ACCESS_KEY_KNOB, SLACK_API_URL_KNOB, preflight,
 };
 
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
@@ -86,6 +86,44 @@ fn a_slack_base_follows_its_knob_only_where_a_token_is_safe() {
                 fault,
                 Fault::Invalid {
                     knob: SLACK_API_URL_KNOB,
+                    ..
+                }
+            )),
+            "{unsafe_base}: {refusal:?}"
+        );
+        assert!(
+            !format!("{refusal:?}").contains(unsafe_base),
+            "the refusal never echoes the value"
+        );
+    }
+}
+
+/// Every capability read sends the provider secret key to `CLERK_API_BASE`, so
+/// it is https, or http only on a loopback host; anything else refuses boot
+/// rather than sending the secret in the clear or to a host nobody meant.
+#[test]
+fn a_provider_base_boots_only_where_its_secret_is_safe() {
+    for safe in [
+        "https://api.clerk.example.test/v1",
+        "http://127.0.0.1:9/v1",
+        "http://localhost:9/v1",
+    ] {
+        preflight(&with_optional([(PROVIDER_API_BASE_KNOB, safe)]))
+            .unwrap_or_else(|refused| panic!("{safe} boots: {refused:?}"));
+    }
+    for unsafe_base in [
+        "http://api.clerk.example.test/v1",
+        "http://10.0.0.7/v1",
+        "ftp://127.0.0.1/v1",
+        "not a url",
+    ] {
+        let refusal = preflight(&with_optional([(PROVIDER_API_BASE_KNOB, unsafe_base)]))
+            .expect_err("an unsafe base refuses boot");
+        assert!(
+            refusal.faults().iter().any(|fault| matches!(
+                fault,
+                Fault::Invalid {
+                    knob: PROVIDER_API_BASE_KNOB,
                     ..
                 }
             )),

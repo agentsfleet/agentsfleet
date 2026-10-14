@@ -1896,7 +1896,7 @@
           "Authentication"
         ],
         "summary": "Bulk-abort every in-flight login session for the caller",
-        "description": "Caller-scoped bulk delete. Enumerates every session with the caller's `clerk_user_id` whose status is `pending` or `verification_pending` and transitions each to `aborted` with `reason=\"explicit_cancel\"`. Does NOT revoke already-minted JWTs; revoking those is the identity provider's concern, and an active CLI continues to work until its short-lived JWT expires. This endpoint clears in-flight login sessions only. ",
+        "description": "Caller-scoped bulk delete. Accepts the person's browser session or their own `afc_` command-line credential, so `agentsfleet logout` can end the logins it left unfinished; a tenant api-key is refused. Transitions every session the caller approved (status `verification_pending`, owned by the caller's `clerk_user_id`) to `aborted` with `reason=\"explicit_cancel\"`. A `pending` session has no owner until it is approved, so this cannot reach it; it expires on its own five-minute time-to-live. Revokes no credential: `DELETE /v1/cli-credentials/{id}` does that.",
         "operationId": "delete_all_auth_sessions",
         "responses": {
           "200": {
