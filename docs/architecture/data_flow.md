@@ -443,6 +443,11 @@ Onboarding (fetch, validate, re-pack, R2 + Postgres): [fleet_bundles.md](./fleet
     ├─► [Postgres] record nullable bundle snapshot metadata on the Fleet
     ├─► [Dragonfly] XGROUP CREATE MKSTREAM fleet:{id}:events fleet_lease 0
     │               (Fleets::ensure_stream — the lease XREADGROUP needs this group)
+    ├─► [Postgres] UPDATE core.fleets status installing → active
+    │               (the stream and the flip succeed together, or the row goes back)
+    ├─► [Postgres] INSERT core.integration_grants per declared credential —
+    │               best-effort: a failed write is logged and the install still
+    │               succeeds; the first delivery's grant card closes the gap
     └─► 201 to user  (invariant: data stream + group exist before 201)
 
    No worker thread to spawn. The Fleet is installable work the moment its
@@ -450,7 +455,8 @@ Onboarding (fetch, validate, re-pack, R2 + Postgres): [fleet_bundles.md](./fleet
 
    At rest:
      Postgres: core.fleets row (installing → active); an approved
-            core.integration_grants row per declared mintable credential.
+            core.integration_grants row per declared mintable credential,
+            unless that best-effort write failed.
             No core.fleet_sessions row: the first report's checkpoint writes it.
             No core.fleet_events. No billing.usage_ledger. No fleet.runner_leases.
      Dragonfly: stream fleet:{id}:events with group fleet_lease (empty).

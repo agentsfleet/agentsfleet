@@ -15,6 +15,8 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
                           source_markdown = SKILL.md)                         Postgres
                          stream fleet:{id}:events + consumer group            Dragonfly
                          core.integration_grants (fleet, "github") approved    Postgres
+                           (after the flip to active, best-effort: a failed
+                            write is logged, the install still succeeds)
                          nothing else: no admission, no event, no lease row
 
  PR OPENED               POST /v1/ingress/github
@@ -56,7 +58,7 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
 
 ### Install writes the fleet, the stream, the grant, and stops
 
-`afd_fleet_lifecycle/src/install.rs` writes the `core.fleets` row and then `ensure_stream` creates the per-fleet stream and its consumer group. Installing a bundle that declares a credential writes the approved `core.integration_grants` row at install, with no card (`docs/architecture/scenarios/github-pr-reviewer.md`). Install writes no admission, event, lease or affinity row (`afd_fleet_lifecycle/src/install.rs`). The fleet's display name ("AGENT BOB 01") is `core.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
+`afd_fleet_lifecycle/src/install.rs` writes the `core.fleets` row and then `ensure_stream` creates the per-fleet stream and its consumer group. Once the stream exists and the fleet is flipped to `active`, installing a bundle that declares a credential writes the approved `core.integration_grants` row, best-effort: a failed write is logged, the install still answers 201, and the grant card the first delivery raises closes the gap (`afd_fleet_lifecycle/src/install/grants.rs`). There is no card at install (`docs/architecture/scenarios/github-pr-reviewer.md`). Install writes no admission, event, lease or affinity row (`afd_fleet_lifecycle/src/install.rs`). The fleet's display name ("AGENT BOB 01") is `core.fleets.name`, read at lease time into `Installed.name` (`afd_fleet/src/lease/installed.rs`); nothing in routing reads it (next paragraph).
 
 ### Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet
 
