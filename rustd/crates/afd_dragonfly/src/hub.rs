@@ -72,7 +72,7 @@ use crate::error::{Error, ErrorKind, Result};
 /// the process's memory ceiling. A reader that falls this far behind is told
 /// which is honest — the alternative is silently dropping messages it believes
 /// it received.
-const CHANNEL_CAPACITY: usize = 256;
+pub(crate) const CHANNEL_CAPACITY: usize = 256;
 
 /// One published message.
 #[derive(Debug, Clone, PartialEq, Eq)]

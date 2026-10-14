@@ -43,7 +43,7 @@ use futures_util::future::try_join_all;
 use crate::client::Dragonfly;
 use crate::error::Result;
 
-pub use self::doorbell::{Doorbell, EVENT_WAKE_RING_FAILED};
+pub use self::doorbell::Doorbell;
 pub use self::partition::{Partition, READY_INDEX_KEY, READY_PARTITIONS, ReadyCursor, ReadyPrefix};
 
 /// Delete the field only if it still carries the token the caller observed.
@@ -83,7 +83,7 @@ const ARG_WITHVALUES: &str = "WITHVALUES";
 /// for equality, and every counter shape breaks on reuse — a clear deletes the
 /// field, so a per-fleet count restarts and re-mints a token a stale poll still
 /// holds.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReadyToken(String);
 
 impl ReadyToken {

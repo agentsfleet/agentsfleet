@@ -63,9 +63,9 @@ agentsfleet_lease_history_read_failures_total	counter	u64	{lease}	cumulative	-	-
 agentsfleet_lease_claims_empty_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	won claims that found nothing deliverable; each clears one drained mark
 agentsfleet_fleet_runs_started_total	counter	u64	1	cumulative	kind	-	fixed:2	no	traffic	leases granted; fresh ÷ appended admissions is pickup, a rising reclaimed share is runners dying mid-run
 agentsfleet_fleet_delivery_stage_seconds	histogram	f64	s	delta	stage	0.05,0.1,0.25,0.5,1,2,5,10,20,40,80,160,320	fixed:4	no	latency	event-to-lease, lease-to-first-chunk, event-to-first-chunk and zombie-to-first-chunk latency
-agentsfleet_fleet_ready_depth	gauge	u64	{fleet}	-	-	-	fixed:1	no	saturation	ready fleets a poll's peeks offered, the rotation's partition and one of the directory's oldest dirty ones, at most twice the poll ceiling, of which the candidate scan returns at most the ceiling (not summable across replicas)
+agentsfleet_fleet_ready_depth	gauge	u64	{fleet}	-	-	-	fixed:1	no	saturation	ready fleets a poll's peeks offered, the rotation's partition and the one the readiness doorbell rang, if any, at most twice the poll ceiling, of which the candidate scan returns at most the ceiling (not summable across replicas)
 agentsfleet_fleet_ready_write_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	Redis index writes failing
-agentsfleet_fleet_ready_wake_failures_total	counter	u64	1	cumulative	kind	-	fixed:2	no	errors	readiness-doorbell rings, and peeks of the partition a ring named, failing, by kind; the rotation still finds the work
+agentsfleet_fleet_ready_wake_failures_total	counter	u64	1	cumulative	kind	-	fixed:3	no	errors	readiness-doorbell rings and rung peeks failing or past their deadline, and gaps in a replica's rings, by kind; the rotation still finds the work
 agentsfleet_fleets	gauge	u64	{fleet}	-	status	-	fixed:5	yes	traffic	installed fleets by lifecycle status; active is the leasable set, a rising paused count is the anomaly gate holding work
 agentsfleet_runner_retention_swept_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	retention pruning throughput
 agentsfleet_runner_retention_sweep_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	retention sweeps failing

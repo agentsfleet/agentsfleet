@@ -11,29 +11,44 @@
 //! So a mark rings its own partition's channel, on that partition's slot, and
 //! every replica keeps what it heard as one bit per partition in its own
 //! memory. A poll reads an atomic: nothing to expire, nothing to delete under
-//! a token, no deadline to wait out.
+//! a token.
 //!
-//! # A missed ring is every bell rung
+//! # A missed ring is counted, not rung
 //!
 //! Pub/sub has no replay, and a gap or a lag cannot say which channels it
-//! lost, so either one rings all sixteen. The next polls each peek one more
-//! partition than they would have. A ring that is lost outright costs that
-//! fleet the rotation's speed and never its work: the mark is already in its
-//! partition, and the rotation visits every partition in turn.
+//! lost. Ringing all sixteen would send each poll to its own cursor's
+//! partition, which the rotation reads anyway, and would hide every real ring
+//! behind those bits for a full turn. So a gap is counted and
+//! nothing is rung. A lost ring costs that fleet the rotation's speed and
+//! never its work: the mark is already in its partition, and the rotation
+//! visits every partition in turn.
+//!
+//! # Every command under a deadline
+//!
+//! The ring and the peek of a rung partition give up at
+//! [`READY_WAKE_DEADLINE_MS`]: the doorbell exists to make a poll faster, so a
+//! slow node may cost a mark its ring or a poll its rung peek, never the
+//! datastore's request timeout.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::time::Duration;
 
 use afd_core::error_code::{self, Coded as _, Logged};
+use afd_core::timing::READY_WAKE_DEADLINE_MS;
 use afd_observability::metrics::label::fleet::ReadyWake;
 
 use super::partition::{Partition, READY_PARTITIONS, ReadyPrefix};
-use super::{ReadyIndex, ReadyToken};
+use super::{CMD_HRANDFIELD, Ready, ReadyIndex, ReadyToken};
+use crate::error::{self, Result};
 use crate::hub::{Received, Subscription, SubscriptionHub};
-use crate::streams::FleetStreams;
+use crate::streams::{CMD_PUBLISH, FleetStreams};
 
 /// The `event` a mark logs when its ring was not published.
-pub const EVENT_WAKE_RING_FAILED: &str = "ready_wake_ring_failed";
+pub(crate) const EVENT_WAKE_RING_FAILED: &str = "ready_wake_ring_failed";
+
+/// [`READY_WAKE_DEADLINE_MS`] as the duration a timeout takes.
+const WAKE_DEADLINE: Duration = Duration::from_millis(READY_WAKE_DEADLINE_MS);
 
 const _: () = assert!(
     READY_PARTITIONS as u32 == u16::BITS,
@@ -59,11 +74,6 @@ impl Doorbell {
     /// Rings `partition`.
     pub fn ring(&self, partition: Partition) {
         self.rung.fetch_or(bit(partition), Ordering::AcqRel);
-    }
-
-    /// Rings every partition, for a ring that may have been missed.
-    pub fn ring_all(&self) {
-        self.rung.store(u16::MAX, Ordering::Release);
     }
 
     /// Takes the first rung partition at or after `from`, clearing its bit.
@@ -100,13 +110,15 @@ impl Doorbell {
     }
 }
 
-/// Rings `partition` for every message on its channel, and every partition
-/// for a gap or a lag; ends when the hub shuts down.
+/// Rings `partition` for every message on its channel, and counts a gap or a
+/// lag as a gap; ends when the hub shuts down.
 async fn answer(mut subscription: Subscription, partition: Partition, doorbell: Doorbell) {
     while let Ok(received) = subscription.recv().await {
         match received {
             Received::Message(_) => doorbell.ring(partition),
-            Received::Lagged(_) | Received::Gap => doorbell.ring_all(),
+            Received::Lagged(_) | Received::Gap => {
+                afd_observability::producers::fleet::ready_wake_failed(ReadyWake::Gap);
+            }
         }
     }
 }
@@ -120,17 +132,35 @@ impl ReadyIndex {
     ///
     /// Called by [`ReadyIndex::mark`] after its mark is written, and never
     /// raised from there: the mark is the record a poll needs, and a lost ring
-    /// costs that fleet the rotation's speed, not its work. So a failure is
-    /// reported here, once, with the partition it concerned.
+    /// costs that fleet the rotation's speed, not its work. So a failure, or a
+    /// publish past the deadline, is reported here, once, with the partition
+    /// it concerned.
     pub(super) async fn ring(&self, partition: Partition, token: &ReadyToken) {
         let channel = partition.wake_channel_under(&self.prefix);
-        let published = FleetStreams::new(self.redis.clone())
-            .publish(&channel, token.as_str())
-            .await;
+        let streams = FleetStreams::new(self.redis.clone());
+        let published = within(CMD_PUBLISH, streams.publish(&channel, token.as_str())).await;
         if let Err(error) = published {
             report_unrung(partition, &error);
         }
     }
+
+    /// Samples a partition a ring named, as [`ReadyIndex::peek`] does, but
+    /// under the doorbell's deadline.
+    ///
+    /// # Errors
+    /// Returns a timeout error past the deadline, and a command error when the
+    /// read fails.
+    pub async fn peek_rung(&self, partition: Partition, count: usize) -> Result<Vec<Ready>> {
+        within(CMD_HRANDFIELD, self.peek(partition, count)).await
+    }
+}
+
+/// `command`'s answer, or a timeout error naming it once the doorbell's
+/// deadline passes.
+async fn within<T>(command: &'static str, sent: impl Future<Output = Result<T>>) -> Result<T> {
+    tokio::time::timeout(WAKE_DEADLINE, sent)
+        .await
+        .map_err(|_elapsed| error::timed_out(command, WAKE_DEADLINE.as_millis()))?
 }
 
 /// `partition`'s bit.

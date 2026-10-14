@@ -21,9 +21,8 @@ use afd_core::test_util::trace::Capture as Trace;
 use afd_observability::metrics::label::fleet::ReadyWake;
 use afd_observability::test_util::Capture;
 
-use crate::queue;
 use crate::requests::ENROLLED_AT;
-use crate::seed::{ACTOR, EVENT_TYPE, REQUEST_JSON, select_within_one_rotation};
+use crate::seed::select_within_one_rotation;
 
 #[path = "integration_lease_wake/broken.rs"]
 mod broken;
@@ -43,6 +42,10 @@ const KIND: &str = "kind";
 const NOT_A_HASH: &str = "not-a-hash";
 const CMD_SET: &str = "SET";
 const CMD_DEL: &str = "DEL";
+
+/// Held by every test that makes a rung peek fail: the failure counter is the
+/// process's, so one test's failure would land inside another's window.
+static RUNG_PEEK_FAILURES: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// A fleet marked away from the cursor's partition is leased on the very next
 /// poll, which costs the rotation peek, the rung peek beside it, and the two
@@ -137,21 +140,7 @@ async fn test_a_drained_claim_counts_its_stream_reads_and_clear() {
 async fn test_a_lost_ring_falls_back_to_rotation() {
     let scene = scene("lost").await;
     let fleet = scene.fleet(&[]).await;
-    queue::enqueue(
-        scene.fixtures.queue(),
-        &fleet.id,
-        &fleet.workspace,
-        ACTOR,
-        EVENT_TYPE,
-        REQUEST_JSON,
-        ENROLLED_AT,
-    )
-    .await;
-    scene
-        .index
-        .mark_quiet(&fleet.id)
-        .await
-        .expect("the private index takes a mark");
+    scene.send_quietly(&fleet).await;
     assert!(!scene.rung(fleet.partition()), "nothing rang");
 
     let leased = select_within_one_rotation(
@@ -207,6 +196,42 @@ async fn test_a_busy_rung_partition_does_not_starve_rotation() {
     scene.fixtures.cleanup().await;
 }
 
+/// A partition whose only marked fleet is running is not rung again by a poll
+/// that leased from its rotation: the scan never offered the running fleet,
+/// so nothing there waits untried, and later polls are not sent back to it.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_running_fleets_ring_is_not_rung_again() {
+    let scene = scene("running").await;
+    let running = scene.fleet(&[partition(0)]).await;
+    let other = scene.fleet(&[partition(0), running.partition()]).await;
+    scene.send(&running).await;
+    let (leased, _) = scene.poll(&running.runners[0]).await;
+    assert!(leased.is_some(), "the first fleet is running");
+    scene.send_quietly(&other).await;
+    for _idle in 1..other.partition().index() {
+        let (none, _) = scene.poll(&other.runners[1]).await;
+        assert!(
+            none.is_none(),
+            "nothing leasable before the other fleet's partition"
+        );
+    }
+
+    scene.send(&running).await;
+    let (leased, _) = scene.poll(&other.runners[0]).await;
+
+    assert_eq!(
+        leased.map(|acquired| acquired.fleet_id.to_string()),
+        Some(other.id.clone()),
+        "the poll leased from its rotation"
+    );
+    assert!(
+        !scene.rung(running.partition()),
+        "the running fleet's ring was not rung again"
+    );
+    scene.fixtures.cleanup().await;
+}
+
 /// A ring on the partition the cursor names is served by the one peek the
 /// poll makes anyway: that peek and the two stream reads that take the event.
 #[tokio::test]
@@ -236,6 +261,7 @@ async fn test_a_ring_on_the_rotations_partition_is_peeked_once() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_rung_peek_that_fails_leaves_the_ring_clear() {
+    let _counted_alone = RUNG_PEEK_FAILURES.lock().await;
     let capture = Capture::install();
     let scene = scene("unpeekable").await;
     let fleet = scene.fleet(&[partition(0)]).await;
@@ -253,7 +279,11 @@ async fn test_a_rung_peek_that_fails_leaves_the_ring_clear() {
     let refused = log.only("assign_ready_wake_peek_failed");
     let named = fleet.partition().index().to_string();
     assert_eq!(refused.field("partition"), Some(named.as_str()));
-    assert!(capture.sum(WAKE_FAILURES, &[(KIND, ReadyWake::Peek.as_str())]) > peeks);
+    assert_eq!(
+        capture.sum(WAKE_FAILURES, &[(KIND, ReadyWake::Peek.as_str())]),
+        peeks + 1,
+        "this poll's rung peek counted once"
+    );
     assert!(
         !scene.rung(fleet.partition()),
         "the unreadable partition is left clear"

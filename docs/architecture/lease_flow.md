@@ -35,11 +35,10 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
 
  RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
    (every ~1 s)          a peek the rotation's partition ∥ the first partition the doorbell
-                           rang at or after the cursor, its bit cleared; rotation's fleets
-                           first; zero Postgres if both empty; the bit is set again, in
-                           process, when this poll leased from the rotation while the rung
-                           peek found fleets, or from the rung one while its peek held
-                           other fleets
+                           rang at or after the cursor, its bit cleared, the rung peek
+                           under 100 ms; rotation's fleets first; zero Postgres if both
+                           empty; the bit is set again, in process, only when the scan
+                           offered a fleet from it that the poll never tried
                          b SELECT_READY_CANDIDATES ≤64: active, slot free, labels, then sticky
                          c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
                              leased_until = now+30 s            ← THE FENCE IS MINTED HERE

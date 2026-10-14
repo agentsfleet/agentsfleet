@@ -10,7 +10,7 @@ use afd_core::clock::UnixMillis;
 use afd_dragonfly::streams::fleet_stream_key;
 
 use super::scene::{partition, scene};
-use super::{CMD_DEL, CMD_SET, NOT_A_HASH};
+use super::{CMD_DEL, CMD_SET, NOT_A_HASH, RUNG_PEEK_FAILURES};
 use crate::requests::ENROLLED_AT;
 
 /// The cursor's partition cannot be read, but the doorbell rang another: the
@@ -40,6 +40,7 @@ async fn test_a_broken_rotation_partition_leaves_the_rung_one() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_both_peeks_refused_fail_the_poll() {
+    let _counted_alone = RUNG_PEEK_FAILURES.lock().await;
     let scene = scene("broken-both").await;
     let fleet = scene.fleet(&[partition(0)]).await;
     scene.send(&fleet).await;
