@@ -12,7 +12,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Event ingress | ONE — six producers | `steer` / `webhook` / `webhook_app` / `schedule_fire` / `gate_continuation` / `repair_verification` (`rustd/crates/afd_admission/src/lib.rs:81-106`) each commit a `core.fleet_admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt. Slack mentions reach admission through `rustd/crates/afd_api_ingress/src/handler/mention.rs` (M206_002) | §B. TRIGGER |
+| Event ingress | ONE — seven producers | `steer` / `webhook` / `webhook_app` / `schedule_fire` / `gate_continuation` / `repair_verification` / `slack_mention` (`rustd/crates/afd_admission/src/admission.rs`, `Producer`) each commit a `core.fleet_admissions` row, then `XADD fleet:{id}:events`; the LEDGER row carries the canonical event id and the stream entry id is its receipt. Slack mentions reach admission through `rustd/crates/afd_api_ingress/src/handler/mention.rs` (M206_002) | §B. TRIGGER |
 | Hot-path writes | 12, in the worker's order | `lease` does 1–6, `report` does 7–12; row-equivalent to the deleted worker (cutover Invariant 2) | §Steer flow end-to-end |
 | Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet_admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet_events` (one row per delivery) · `fleet_obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet_sessions` (one row per fleet, UPSERT) · `billing.usage_ledger` (two rows per FLEET-event — a receive and a stage — UNIQUE `(event_id, charge_type, fleet_id)`, so one event id charged by two fleets holds four rows, not two) | §The five durable stores |
 | Replay safety | idempotent | `INSERT … ON CONFLICT DO NOTHING` + the UNIQUE telemetry `event_id` | §C. EXECUTE |
@@ -60,6 +60,8 @@ The diagrams live with their flows — each is the section's proof, so none is d
 - the Dragonfly connection topology — §Connection topology
 - install, trigger envelope, execute, watch — §"End-to-end sequence" — A through D
 - the install failure window — §The install failure scenario, visually
+
+The same sequence told for two fleets at once, a Pull Request and a Slack thread, one picture per step: [`scenarios/two-fleets-github-slack.md`](./scenarios/two-fleets-github-slack.md).
 
 ## Decisions
 
@@ -541,7 +543,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                  `actor=continuation:steer:kishore` on every continuation,
                  not `continuation:continuation:continuation:...`).
 
-   All six producers land the same envelope on the same stream. The
+   All seven producers land the same envelope on the same stream. The
    reasoning loop never branches on actor. Actor is metadata for the
    SKILL.md prose and the user's history filter.
 
@@ -623,10 +625,10 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        and, when the readiness doorbell rang, the first rung partition at
        or after the cursor, together; both peeks' fleets reach the scan,
        the rotation's first; empty peeks answer at once and read no
-       Postgres. Afterwards ring the rung partition again, in process,
-       only when the scan offered a fleet from it that this poll never
-       tried. Keep the active fleets whose required_tags are a
-       subset of the runner's labels and whose slot no live runner holds;
+       Postgres. When the rung partition is rung again: runner_fleet.md
+       §Datastore topology, the doorbell row. Keep the active fleets whose
+       required_tags are a subset of the runner's labels and whose slot no
+       live runner holds;
        order them the rotation's partition first, then sticky by
        last_runner_id, ties at random, and keep at most 64;
        claim the per-fleet fleet.runner_affinity slot (wins iff free or

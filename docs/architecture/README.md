@@ -117,6 +117,7 @@ After that, dip into whichever of these matches the change you're making:
 | 🚑 [`scenarios/production-deploy-repair.md`](./scenarios/production-deploy-repair.md) | Diagnose a failed deploy toward a draft PR. |
 | 💬 [`scenarios/slack-channel-resident.md`](./scenarios/slack-channel-resident.md) | Rung-0 Slack bot: a per-channel resident fleet. |
 | 🚨 [`scenarios/slack-incident-responder.md`](./scenarios/slack-incident-responder.md) | An installed fleet answering one Slack channel. |
+| 🔀 [`scenarios/two-fleets-github-slack.md`](./scenarios/two-fleets-github-slack.md) | Two fleets end to end, one picture per step. |
 | 🔐 [`../AUTH.md`](../AUTH.md) | Principals, tokens and bearer routing. |
 
 ---
