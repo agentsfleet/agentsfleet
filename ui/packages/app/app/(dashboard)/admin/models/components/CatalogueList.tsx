@@ -123,7 +123,7 @@ function buildColumns({
       key: "provider",
       header: "Provider",
       // By the name the badge shows, so the column reads in order.
-      sortValue: (m) => (m.provider ? providerLabel(m.provider) : ""),
+      sortValue: (m) => providerLabel(m.provider),
       cell: (m) => <ProviderBadge provider={m.provider} />,
     },
     {
