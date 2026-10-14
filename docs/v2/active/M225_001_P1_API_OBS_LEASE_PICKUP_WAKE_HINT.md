@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Priority:** P1 — every steer waits about 2 s, up to about 4 s, before any runner looks at it
 **Categories:** API, OBS
 **Batch:** B1 — one Pull Request; the doorbell and the segment timings ship together so the second measures the first
-**Branch:** `feat/m225-lease-pickup-wake-hint` (worktree `~/Projects/agentsfleet-m225-lease-pickup`)
+**Branch:** `feat/m225-lease-pickup-wake-hint`
 **Baseline revision:** `4a53b948c727cfdc860373bb3c77b08f80bb418d`
 **Test Baseline:** unit=10301 integration=947
 **Baseline evidence:** playbooks/operations/acceptance/baselines/M225_001-20261013.md
