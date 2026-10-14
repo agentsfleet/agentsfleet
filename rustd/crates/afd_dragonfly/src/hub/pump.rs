@@ -97,6 +97,12 @@ async fn run(
         mut pushes,
     } = first;
     let mut redialled = false;
+    // The waits after a redial whose subscribes the cluster would not take,
+    // one schedule across consecutive such generations: a primary that stays
+    // down then costs a climbing wait up to the ceiling, not a redial and a
+    // gap for every reader at the first step, forever. A generation that held
+    // starts the climb again.
+    let mut unhosted_waits = schedule.build();
     loop {
         // After a redial, everything readers hold is subscribed again here: a
         // reader that never noticed the drop must not be left listening to
@@ -124,7 +130,9 @@ async fn run(
         // A cluster that accepted the dial but could not take the subscribes
         // would accept the next dial at once too: wait a step first.
         if unhosted {
-            tokio::time::sleep(schedule.build().next().unwrap_or_default()).await;
+            tokio::time::sleep(unhosted_waits.next().unwrap_or_default()).await;
+        } else {
+            unhosted_waits = schedule.build();
         }
 
         Connection { connection, pushes } = redial(&config, schedule).await;
