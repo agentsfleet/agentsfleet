@@ -372,6 +372,7 @@ Normal boot opens three Dragonfly connections when both optional background surf
 
 The hub refcounts subscribers and keeps one wire subscription per watched channel.
 Two tasks serve its one connection: a control task owns commands, re-subscribes and redials, and a dispatch task owns the pushes, so a slow subscribe never holds a frame.
+A connection that ends inside 5 s waits a climbing step before its redial, so a dead or flapping primary is not redialled at the first step forever; one that held 5 s is redialled at once.
 Recovery from a lost subscription: [datastore_scaling.md](./datastore_scaling.md) §"Target design".
 Each frame is one shared allocation, however many viewers read it.
 

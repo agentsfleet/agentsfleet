@@ -29,9 +29,10 @@
 //! fallible thing, sleep, call it again, until the cluster answers.
 
 use std::sync::Arc;
+use std::time::Instant;
 
 use afd_core::error_code::{Coded as _, Logged};
-use backon::{BackoffBuilder as _, ExponentialBuilder, Retryable as _};
+use backon::{ExponentialBuilder, Retryable as _};
 use redis::PushInfo;
 use redis::cluster_async::ClusterConnection;
 use tokio::sync::mpsc;
@@ -43,6 +44,7 @@ use super::repair;
 use crate::config::DragonflyConfig;
 use crate::error::{Error, Result};
 use crate::transport;
+use pacing::Pacing;
 
 /// Opens the first connection and leaves a task owning it.
 ///
@@ -97,12 +99,7 @@ async fn run(
         mut pushes,
     } = first;
     let mut redialled = false;
-    // The waits after a redial whose subscribes the cluster would not take,
-    // one schedule across consecutive such generations: a primary that stays
-    // down then costs a climbing wait up to the ceiling, not a redial and a
-    // gap for every reader at the first step, forever. A generation that held
-    // starts the climb again.
-    let mut unhosted_waits = schedule.build();
+    let mut pacing = Pacing::new(schedule);
     loop {
         // After a redial, everything readers hold is subscribed again here: a
         // reader that never noticed the drop must not be left listening to
@@ -116,24 +113,21 @@ async fn run(
         } else {
             Vec::new()
         };
-        let (loss, unhosted) =
-            match generation(&inner, &mut commands, &mut connection, pushes, channels).await {
-                Ok(Ended::HubDropped) => return,
-                Ok(Ended::Lost(loss)) => (loss, false),
-                Err(Unhosted) => (Loss::CommandFailed, true),
-            };
+        let started = Instant::now();
+        let loss = match generation(&inner, &mut commands, &mut connection, pushes, channels).await
+        {
+            Ok(Ended::HubDropped) => return,
+            Ok(Ended::Lost(loss)) => loss,
+            Err(Unhosted) => Loss::CommandFailed,
+        };
 
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
         let error_code = afd_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
         let cause = loss.as_str();
         tracing::warn!(cause, error_code, event = "hub_connection_dropped");
-        // A cluster that accepted the dial but could not take the subscribes
-        // would accept the next dial at once too: wait a step first.
-        if unhosted {
-            tokio::time::sleep(unhosted_waits.next().unwrap_or_default()).await;
-        } else {
-            unhosted_waits = schedule.build();
-        }
+        // A cluster that accepted the dial but could not hold it would accept
+        // the next dial at once too: a young generation waits a step first.
+        tokio::time::sleep(pacing.wait_after(started.elapsed())).await;
 
         Connection { connection, pushes } = redial(&config, schedule).await;
         redialled = true;
@@ -272,6 +266,9 @@ async fn resubscribe(
     }
     Ok(())
 }
+
+#[path = "pump/pacing.rs"]
+mod pacing;
 
 #[cfg(test)]
 #[path = "pump/tests.rs"]

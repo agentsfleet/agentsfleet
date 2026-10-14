@@ -91,8 +91,11 @@ pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fl
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_write_failures_total");
 
-/// Readiness-doorbell rings and rung peeks failing, and stretches of rings a
-/// replica missed.
+/// Readiness-doorbell rings and rung peeks failing or past their deadline,
+/// and stretches of rings a replica missed.
+///
+/// A ring past its deadline is counted though the publish may still land; a
+/// gap is counted per partition channel, so one redial counts up to sixteen.
 ///
 /// Labels: `kind`.
 pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =

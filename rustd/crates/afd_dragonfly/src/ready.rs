@@ -193,10 +193,11 @@ impl ReadyIndex {
 
     /// Marks `fleet_id` ready without ringing its partition.
     ///
-    /// For the reclaim sweeper's stream probe, which re-marks fleets already
-    /// marked or mid-run every pass: the rotation reaches the mark in its
-    /// turn, and ringing it would send a poll every pass to each partition a
-    /// running fleet holds.
+    /// For every reclaim sweeper re-mark, the stream probe's, a claimed
+    /// entry's and a stranded lease's: its pass re-marks fleets mid-run, and
+    /// an autoclaim of a long run's idle entry proves no dead holder, so
+    /// ringing would send a poll every pass to each partition a running fleet
+    /// holds. The rotation reaches the mark in its turn.
     ///
     /// # Errors
     /// As [`ReadyIndex::mark`].

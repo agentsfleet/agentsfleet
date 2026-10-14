@@ -188,7 +188,7 @@ mod listening {
 
     /// Held by every test that waits on the `gap` count: the counter is the
     /// process's, so one test's gap would end another's wait for its lag.
-    static MISSED: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    static GAP_COUNT: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     /// What a gap moves.
     const WAKE_FAILURES: &str = "agentsfleet_fleet_ready_wake_failures_total";
@@ -210,7 +210,7 @@ mod listening {
     /// would hide every real ring behind each poll's own partition for a turn.
     #[tokio::test]
     async fn test_a_gap_rings_nothing_and_is_counted() {
-        let _counted_alone = MISSED.lock().await;
+        let _counted_alone = GAP_COUNT.lock().await;
         let metrics = Metrics::install();
         let before = metrics.sum(WAKE_FAILURES, &[(KIND, ReadyWake::Gap.as_str())]);
         let (hub, server) = SubscriptionHub::detached();
@@ -232,7 +232,7 @@ mod listening {
     /// A lag is a gap too: counted, nothing rung.
     #[tokio::test]
     async fn test_a_lag_rings_nothing_and_is_counted() {
-        let _counted_alone = MISSED.lock().await;
+        let _counted_alone = GAP_COUNT.lock().await;
         let metrics = Metrics::install();
         let before = metrics.sum(WAKE_FAILURES, &[(KIND, ReadyWake::Gap.as_str())]);
         let (hub, server) = SubscriptionHub::detached();

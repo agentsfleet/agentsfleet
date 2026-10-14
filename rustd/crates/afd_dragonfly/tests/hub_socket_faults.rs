@@ -23,14 +23,14 @@
 
 use std::time::Duration;
 
+use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::{Doorbell, ReadyPrefix, SubscriptionHub};
 use backon::ExponentialBuilder;
 
 use crate::fake_redis::{FakeRedis, Reply, closed_port, install_subscriber};
 
 /// Short enough that a hang fails the test rather than the lane's timeout.
-const BUDGET: Duration = Duration::from_secs(10);
+pub(crate) const BUDGET: Duration = Duration::from_secs(10);
 
 /// A redial schedule a test can wait out. Production doubles from 200ms to five
 /// seconds, which no test should sit through.
@@ -48,7 +48,7 @@ fn impatient() -> ExponentialBuilder {
 }
 
 /// The rule table for a fake that speaks enough pub/sub to hold a hub.
-fn pubsub_rules() -> Vec<(&'static str, Reply)> {
+pub(crate) fn pubsub_rules() -> Vec<(&'static str, Reply)> {
     vec![
         ("PING", Reply::Raw("+PONG\r\n")),
         ("SSUBSCRIBE", Reply::SubscribeAck),
@@ -61,7 +61,7 @@ fn pubsub_rules() -> Vec<(&'static str, Reply)> {
 /// Polling, not sleeping: the pump is a background task on its own schedule,
 /// and a fixed sleep either makes the test slow or makes it flaky on a loaded
 /// machine. The budget is the failure, not the wait.
-async fn until(label: &str, mut check: impl FnMut() -> bool) {
+pub(crate) async fn until(label: &str, mut check: impl FnMut() -> bool) {
     let deadline = tokio::time::Instant::now() + BUDGET;
     while tokio::time::Instant::now() < deadline {
         if check() {
@@ -189,62 +189,6 @@ async fn test_a_resubscribe_onto_a_dead_socket_is_logged_and_survived() {
     .await;
 
     drop(subscription);
-}
-
-/// A cluster that keeps refusing the resubscribes after each redial, a
-/// primary down while the doorbell holds a channel on it, is redialled on a
-/// climbing wait, not at the schedule's first step forever.
-///
-/// The doorbell holds its sixteen channels for the life of the process, so
-/// every replica has channels on every primary. With the wait restarting each
-/// lap, one dead primary would redial every replica's hub about forty times a
-/// second here, each lap re-confirming the healthy channels into a gap for
-/// every reader. With the wait climbing to its ceiling the same second holds
-/// a handful.
-#[tokio::test(flavor = "multi_thread")]
-async fn test_a_cluster_refusing_resubscribes_is_redialled_on_a_climbing_wait() {
-    /// How long the redials are counted for once the refusals start.
-    const WINDOW: Duration = Duration::from_secs(1);
-    /// More than a climbing schedule fits in the window, far fewer than a flat
-    /// first step does: 25 + 50 + 100 + 200 ms climbs past a second in five.
-    const MOST_REDIALS: u64 = 12;
-
-    install_subscriber();
-    let server = FakeRedis::spawn(&pubsub_rules()).await;
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url());
-    let climbing = ExponentialBuilder::new()
-        .with_min_delay(Duration::from_millis(25))
-        .with_max_delay(Duration::from_millis(200))
-        .without_max_times();
-    let hub = tokio::time::timeout(
-        BUDGET,
-        SubscriptionHub::start_with_backoff(config, climbing),
-    )
-    .await
-    .expect("the fake serves, so the hub must start")
-    .expect("the fake serves, so the hub must start");
-    let doorbell = Doorbell::new();
-    doorbell.listen(&hub, &ReadyPrefix::production());
-    until("the doorbell's subscribes to reach the server", || {
-        server.seen().iter().any(|command| command == "SSUBSCRIBE")
-    })
-    .await;
-
-    server.set_reply("SSUBSCRIBE", Reply::Hangup);
-    server.cut();
-    until("the pump to redial onto the refusing server", || {
-        hub.connections_opened() >= 2
-    })
-    .await;
-    let before = hub.connections_opened();
-    tokio::time::sleep(WINDOW).await;
-    let redials = hub.connections_opened().saturating_sub(before);
-
-    assert!(redials >= 1, "the pump keeps redialling: {redials}");
-    assert!(
-        redials <= MOST_REDIALS,
-        "{redials} redials in {WINDOW:?}: the wait is not climbing"
-    );
 }
 
 /// The last reader leaving a channel over a socket that dies on the way out is
