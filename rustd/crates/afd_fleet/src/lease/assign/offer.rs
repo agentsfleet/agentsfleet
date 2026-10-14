@@ -18,6 +18,14 @@ use crate::error::Result;
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
 
+/// What one pass over offered fleets ended with: the fleet it leased, if any,
+/// and the fleets the scan offered after it, which it never tried.
+#[derive(Debug, Default)]
+pub(super) struct Claimed {
+    pub(super) acquired: Option<Acquired>,
+    pub(super) untried: Vec<Uuid7>,
+}
+
 impl Leases {
     /// The work of a fleet whose sandbox the runner holds, when one has any.
     ///
@@ -39,6 +47,7 @@ impl Leases {
         }
         self.first_offered(runner_id, &ready, ready.len(), now, cost)
             .await
+            .map(|claimed| claimed.acquired)
     }
 
     /// The held fleets with a readiness mark, each named once and all read at
@@ -76,7 +85,8 @@ impl Leases {
             .collect()
     }
 
-    /// The fleet this poll leases from `offer`, if any.
+    /// The fleet this poll leases from `offer`, if any, and the offered
+    /// fleets it never tried.
     ///
     /// # Errors
     /// The offer's own error, when no peek answered, and whatever the scan or
@@ -87,7 +97,7 @@ impl Leases {
         offer: Result<Offer>,
         now: UnixMillis,
         cost: &mut PollCost,
-    ) -> Result<Option<Acquired>> {
+    ) -> Result<Claimed> {
         let offer = offer?;
         cost.candidates_scanned = u64::try_from(offer.ready.len()).unwrap_or(u64::MAX);
         // The readiness depth this poll saw, published for the gauge that
@@ -97,7 +107,7 @@ impl Leases {
         // The zero-Postgres path. Skipping the scan here is what makes idle
         // cost scale with runner count alone instead of runners × fleets.
         if offer.ready.is_empty() {
-            return Ok(None);
+            return Ok(Claimed::default());
         }
         self.first_offered(runner_id, &offer.ready, offer.from_cursor, now, cost)
             .await
@@ -105,7 +115,8 @@ impl Leases {
 
     /// The first of `ready` the candidate scan offers and this runner wins:
     /// the first `cursor` of `ready` before the rest, sticky first within
-    /// each. One statement for the scan, then one per claim.
+    /// each, and the offered fleets after it. One statement for the scan,
+    /// then one per claim.
     pub(super) async fn first_offered(
         &self,
         runner_id: &Uuid7,
@@ -113,20 +124,25 @@ impl Leases {
         from_cursor: usize,
         now: UnixMillis,
         cost: &mut PollCost,
-    ) -> Result<Option<Acquired>> {
+    ) -> Result<Claimed> {
         let ids: Vec<&str> = ready.iter().map(|entry| entry.fleet_id.as_str()).collect();
         let cursor_ids: Vec<&str> = ids.iter().take(from_cursor).copied().collect();
         cost.database_roundtrips += 1;
         let offered = self.candidates(runner_id, &ids, &cursor_ids, now).await?;
-        for (fleet_id, token) in peeked(offered, ready) {
+        let mut queue = peeked(offered, ready).collect::<Vec<_>>().into_iter();
+        while let Some((fleet_id, token)) = queue.next() {
             cost.database_roundtrips += 1;
             if let Some(acquired) = self
                 .try_candidate(&fleet_id, token, runner_id, now, cost)
                 .await?
             {
-                return Ok(Some(acquired));
+                let untried = queue.map(|(fleet, _token)| fleet).collect();
+                return Ok(Claimed {
+                    acquired: Some(acquired),
+                    untried,
+                });
             }
         }
-        Ok(None)
+        Ok(Claimed::default())
     }
 }

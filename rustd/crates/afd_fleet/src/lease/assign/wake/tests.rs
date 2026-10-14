@@ -1,6 +1,7 @@
 //! The doorbell's decisions in a poll that need no datastore: whether a rung
 //! partition is rung again, and the order two peeks reach the scan in; and,
-//! against a dead store, what a refused rung peek costs.
+//! against a dead store, what a refused rung peek costs and what a dropped
+//! poll gives back.
 
 #![expect(
     clippy::expect_used,
@@ -8,10 +9,11 @@
 )]
 
 use afd_core::clock::UnixMillis;
+use afd_core::id::Uuid7;
 use afd_crypto::entropy::Entropy;
 use afd_dragonfly::{Partition, Ready, ReadyToken};
 
-use super::{MAX_READY_CANDIDATES_PER_POLL, cursor_first, rings_again};
+use super::{MAX_READY_CANDIDATES_PER_POLL, cursor_first, offered_untried};
 
 /// The instant every fixture token is minted at.
 const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
@@ -20,10 +22,11 @@ const AT: UnixMillis = UnixMillis::from_millis(1_767_225_600_000);
 const SEARCH: u32 = 10_000;
 
 /// A fleet id that lands in `partition`, found by walking a fixed spelling.
-fn fleet_in(partition: Partition) -> String {
+fn fleet_in(partition: Partition) -> Uuid7 {
     (0_u32..SEARCH)
         .map(|n| format!("0195b4ba-8d3a-7000-8abc-{n:012}"))
         .find(|fleet| Partition::of(fleet) == partition)
+        .and_then(|fleet| Uuid7::parse(&fleet).ok())
         .expect("sixteen partitions are all reachable")
 }
 
@@ -38,57 +41,32 @@ fn partition(index: u16) -> Partition {
     Partition::new(index).expect("a partition below sixteen")
 }
 
-/// A poll that leased from the rung partition, while its peek held other
-/// fleets, rings it again: the others are still waiting there.
+/// A fleet the scan offered from the rung partition, behind the one this poll
+/// leased, was never tried: the partition is rung again for the next poll.
 #[test]
-fn test_a_partition_still_holding_work_rings_again() {
+fn test_an_untried_offered_fleet_rings_again() {
     let rung = partition(5);
-    let leased = fleet_in(rung);
 
-    assert!(rings_again(rung, Some(2), Some(&leased)));
+    assert!(offered_untried(
+        rung,
+        &[fleet_in(partition(9)), fleet_in(rung)]
+    ));
 }
 
-/// A poll that leased from the rotation's partition rings the rung one again:
-/// the candidate scan may have offered the rotation's fleet first, so the
-/// rung fleets were never tried.
+/// Nothing untried from the rung partition leaves it clear: nothing leased or
+/// the poll failed (no untried list at all), its only offered fleet was the
+/// one leased, or every untried fleet sits in another partition. A fleet the
+/// scan left out, running or not this runner's labels, is never in the list,
+/// so it cannot hold the bell.
 #[test]
-fn test_a_lease_from_the_rotation_rings_again() {
+fn test_nothing_untried_from_the_rung_partition_stays_clear() {
     let rung = partition(5);
-    let elsewhere = fleet_in(partition(9));
 
-    assert!(rings_again(rung, Some(3), Some(&elsewhere)));
-}
-
-/// A partition the poll tried and could not lease from stays clear: nothing
-/// leased, its only fleet leased, a ring over an empty partition, or a peek
-/// that failed.
-#[test]
-fn test_a_dry_finished_or_unreadable_partition_stays_clear() {
-    let rung = partition(5);
-    let here = fleet_in(rung);
-    let elsewhere = fleet_in(partition(9));
-
+    assert!(!offered_untried(rung, &[]), "nothing untried");
     assert!(
-        !rings_again(rung, Some(3), None),
-        "nothing leased: every fleet offered was tried"
+        !offered_untried(rung, &[fleet_in(partition(9)), fleet_in(partition(2))]),
+        "only other partitions' fleets were left"
     );
-    assert!(
-        !rings_again(rung, Some(1), Some(&here)),
-        "its only fleet is the one now running"
-    );
-    assert!(
-        !rings_again(rung, Some(0), None),
-        "a ring over an empty partition"
-    );
-    assert!(
-        !rings_again(rung, Some(0), Some(&elsewhere)),
-        "an empty rung peek has nothing to come back for, wherever the poll leased"
-    );
-    assert!(
-        !rings_again(rung, None, Some(&elsewhere)),
-        "a failed peek is never come back to"
-    );
-    assert!(!rings_again(rung, None, None));
 }
 
 /// The cursor's partition's fleets lead the offer and the rung one's follow,
@@ -129,8 +107,8 @@ fn test_two_full_peeks_are_offered_whole() {
 }
 
 /// A rung peek the datastore refuses is logged once, naming the partition
-/// the doorbell rang, and costs the two commands the poll sent; the ring is
-/// not rung again, so the next poll is not sent back to it.
+/// the doorbell rang, and costs the two commands the poll sent; settled with
+/// nothing untried, the ring stays clear, so the next poll is not sent back.
 #[cfg(feature = "test-util")]
 #[tokio::test]
 async fn test_a_refused_rung_peek_is_logged_and_left_clear() {
@@ -148,7 +126,7 @@ async fn test_a_refused_rung_peek_is_logged_and_left_clear() {
     let mut cost = PollCost::default();
 
     let (offer, rung) = store.ready_this_poll(&id(9), &mut cost).await;
-    store.ring_again(rung, None);
+    store.ring_again(rung, &[]);
 
     assert!(offer.is_err(), "both peeks were refused");
     assert_eq!(cost.dragonfly_commands, 2, "both peeks were sent");
@@ -156,4 +134,29 @@ async fn test_a_refused_rung_peek_is_logged_and_left_clear() {
     assert_eq!(refused.field("partition"), Some("5"));
     assert_eq!(refused.field("runner_id"), Some(id(9).as_str()));
     assert_eq!(doorbell.take(partition(0)), None, "the ring stays clear");
+}
+
+/// A poll dropped before it settles its rung partition, its runner gone,
+/// gives the ring back rather than losing it.
+#[cfg(feature = "test-util")]
+#[tokio::test]
+async fn test_a_dropped_poll_gives_its_ring_back() {
+    use afd_dragonfly::Doorbell;
+
+    use super::PollCost;
+    use crate::lease::test_dead::{id, leases};
+
+    let doorbell = Doorbell::new();
+    doorbell.ring(partition(5));
+    let store = leases().with_doorbell(doorbell.clone());
+    let mut cost = PollCost::default();
+
+    let (_offer, rung) = store.ready_this_poll(&id(9), &mut cost).await;
+    assert!(!doorbell.is_rung(partition(5)), "the poll took the ring");
+    drop(rung);
+
+    assert!(
+        doorbell.is_rung(partition(5)),
+        "the unsettled ring came back"
+    );
 }

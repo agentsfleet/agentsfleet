@@ -24,7 +24,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §"C. EXECUTE" step 3 |
 | Install guarantee | stream + group before 201 | `ensure_stream` retries with jittered exponential backoff (200 ms base, 1500 ms cap, 4 attempts, ~1.4 s); exhaustion rolls back the PG row | §A. INSTALL |
 | SSE sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
-| Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + two pub/sub channels |
+| Client gap recovery | reconnect, or `catching_up` on either stream | bounded `fleet_events` list `since` last delivery − 2 s overlap, merged by event id; a lost server subscription arrives as `catching_up` with `dropped: 0` | §Two streams + one pub/sub channel |
 | Cron authority | QStash | signature verified at ingress; replay suppressed atomically; the runner owns no timer | §B. TRIGGER |
 | Cancel latency | none: a running lease is never cancelled | kill and pause write only `core.fleets.status`; the run ends on its own, at its fleet's stored budget ceiling, or at `MAX_RUNTIME_MS` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
 | Lease ownership | at most one active lease per fleet | atomic `runner_affinity` claim + monotonic `fencing_seq` | §One active lease per fleet |
@@ -35,7 +35,7 @@ Every row is extracted from the sections below; the owner column names the secti
 
 Each trap is enforced in its owner section; this list is the index.
 
-- The live tail is the eyeballs surface, not the audit surface; durable history is `core.fleet_events` (§Two streams + two pub/sub channels).
+- The live tail is the eyeballs surface, not the audit surface; durable history is `core.fleet_events` (§Two streams + one pub/sub channel).
 - A connection held across a blocking `SUBSCRIBE` can never return to a pool (§Connection topology).
 - Never acquire a second Postgres connection while holding one — that is how a pool deadlocks (§The Postgres pool).
 - The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
@@ -66,7 +66,7 @@ The diagrams live with their flows — each is the section's proof, so none is d
 | Decision | Reason | Where / artifact |
 |---|---|---|
 | Two per-delivery tables (`events` + `telemetry`) | different write authorities and retention rules | §The five durable stores |
-| `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + two pub/sub channels |
+| `fleet:control` removed | no per-fleet threads left to orchestrate | §Two streams + one pub/sub channel |
 | Dedicated Dragonfly tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
 | A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
 | Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
@@ -95,7 +95,7 @@ Headings are stable — specs cite them by text; insert new sections, never rena
 | **`agentsfleetd-api`** (`agentsfleetd serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Dragonfly pool, and the Vault. Steer, webhook, cron, and continuation handlers each commit an admission row and then `XADD` to `fleet:{id}:events` — single ingress, and the row is what makes the acceptance durable when the append does not land. On `lease` it does a non-blocking `XREADGROUP` to claim the next event, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `PUBLISH`er on `fleet:{id}:activity`. Never runs language-model code. |
 | **`agentsfleet-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `agt_r` token. Holds **zero datastore credentials**. A trusted supervisor runs the agent loop and holds the model key. A lease that needs one gets a sandbox (bubblewrap, Landlock, seccomp, cgroups) that runs tool calls and nothing else. The sandbox gets a network namespace of its own unless the runner's network policy is `allow_all`. Credential substitution happens in the supervisor at send time ([`runner_execution.md`](./runner_execution.md#process-model)). The supervisor forwards activity frames to `agentsfleetd` over the `activity` verb. |
 
-Streams and tables: §"Two streams + two pub/sub channels" and §"The five durable stores: who owns what".
+Streams and tables: §"Two streams + one pub/sub channel" and §"The five durable stores: who owns what".
 
 ---
 
@@ -333,7 +333,7 @@ The runner lease carries no second copy either. It used to hold its own `request
 
 **Partitioning is not done here, but its key is.** The ledger's uniqueness is fleet-scoped since slot 916 — `(event_id, charge_type, fleet_id)` — so a partition key may carry the fleet without splitting a row's own arbiter. `billing.usage_ledger` carries the originating event's creation time rather than the write time. A renewal firing hours after its receive row would otherwise land in a different partition, miss the conflict target, and silently duplicate ledger rows. Carrying the column now means a later partitioning decision has a stable key already present and needs no backfill; the machinery itself waits for a measurement that demands it.
 
-## Two streams + two pub/sub channels — and the one that retired
+## Two streams + one pub/sub channel — and the one that retired
 
 Two Dragonfly surfaces carry a fleet's work: a durable stream for ingress, and an ephemeral pub/sub channel for the live tail. A second pub/sub family, the readiness doorbell, wakes lease polls when a mark lands. `fleet:control` was removed at the cutover and the last row records why.
 
@@ -341,7 +341,7 @@ Two Dragonfly surfaces carry a fleet's work: a durable stream for ingress, and a
 |---|---|---|---|---|
 | `fleet:{id}:events` | Stream + consumer group `fleet_lease` | One per fleet | Single event ingress — steer / webhook / cron / continuation all `XADD` here, with no `MAXLEN`. `agentsfleetd` is now the consumer: a **non-blocking** `XREADGROUP` on each `lease`, `XACK`ed at `report`, and once acknowledged history is more than 100 entries past 1,000, the `XACK` trims it back to 1,000 without ever crossing the oldest pending or undelivered one. A fleet 10,000 entries behind refuses new admissions (503) instead of losing old ones; a lost group is recreated where the ledgers say delivery stopped. Idempotent on replay via `INSERT … ON CONFLICT DO NOTHING`. | High — every event the fleet handles. |
 | `fleet:{id}:activity` | Pub/sub channel (no consumer group, no persistence) | One per fleet | Best-effort live tail — `agentsfleetd` `PUBLISH`es `event_admitted` when a person's message is accepted, before any runner has it, then one frame per `event_received` / `tool_call_started` / `fleet_response_chunk` / `tool_call_progress` / `tool_call_completed` / `event_complete`, and `gate_opened` / `gate_resolved` when a human is asked and answers. The bracket and gate frames originate in `agentsfleetd`; the mid-run frames are forwarded from the runner over the `activity` verb. The SubscriptionHub `SUBSCRIBE`s once per channel-with-viewers on its one shared connection and fans frames out by copy into each SSE stream's bounded queue. No buffer beyond those queues, no ACK, no resume. | High during execution, zero when idle. |
-| `fleet:ready:{p}:wake` | Sharded pub/sub channel (no consumer group, no persistence) | Sixteen, one per readiness partition, each on its partition's slot | The readiness doorbell: `ReadyIndex::mark` publishes the partition number after each mark, and every replica's subscription hub turns it into a bit its next lease poll reads. A lost ring costs that fleet the rotation's speed, never its work ([`runner_fleet.md`](./runner_fleet.md) §Datastore topology) | One per mark |
+| `fleet:ready:{p}:wake` | Sharded pub/sub channel (no consumer group, no persistence) | Sixteen, one per readiness partition, each on its partition's slot | The readiness doorbell: `ReadyIndex::mark` publishes the mark's token after each mark, and every replica's subscription hub turns it into a bit its next lease poll reads. A lost ring costs that fleet the rotation's speed, never its work ([`runner_fleet.md`](./runner_fleet.md) §Datastore topology) | One per mark |
 | `fleet:control` | (removed) | — | **Removed at the cutover.** It existed to tell the worker watcher to spawn / cancel / reconfigure per-fleet threads — and there are no per-fleet threads anymore. The producer (`control_stream.publish` from the install / status / config handlers) and the dead `control_stream` module were deleted; the install path keeps only `Fleets::ensure_stream` (load-bearing — the `lease` `XREADGROUP` needs the events group to exist). | gone |
 
 `fleet:{id}:events` is durable (events appended, `XACK`ed entries pruned) and backs the at-least-once delivery guarantee. The pub/sub channel is ephemeral and exists only to power live user interfaces — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in `core.fleet_events`; the pub/sub channel is the eyeballs surface, not the audit surface.
@@ -623,9 +623,8 @@ The deleted worker's single in-process `processEvent` loop is now split across t
        or after the cursor, together; both peeks' fleets reach the scan,
        the rotation's first; empty peeks answer at once and read no
        Postgres. Afterwards ring the rung partition again, in process,
-       when this poll leased from the rotation's partition while the
-       rung one held fleets, or leased from the rung one while its peek
-       held other fleets. Keep the active fleets whose required_tags are a
+       only when the scan offered a fleet from it that this poll never
+       tried. Keep the active fleets whose required_tags are a
        subset of the runner's labels and whose slot no live runner holds;
        order them the rotation's partition first, then sticky by
        last_runner_id, ties at random, and keep at most 64;

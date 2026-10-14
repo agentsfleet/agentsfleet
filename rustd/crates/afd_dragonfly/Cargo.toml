@@ -55,6 +55,9 @@ tracing.workspace = true
 # The `tracing` capture the suites read their log lines back through
 # (`afd_core::test_util::trace`). A dev-dependency feature only.
 afd_core = { workspace = true, features = ["test-util"] }
+# The metric capture the doorbell's suites read their counters back through
+# (`afd_observability::test_util`). A dev-dependency feature only.
+afd_observability = { workspace = true, features = ["test-util"] }
 # The reconnect schedule the suites configure and assert on; the library half
 # is a regular dependency.
 backon.workspace = true

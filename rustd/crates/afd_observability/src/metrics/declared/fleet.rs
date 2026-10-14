@@ -91,7 +91,8 @@ pub const FLEET_READY_DEPTH: Declared<GaugeKind> = Declared::new("agentsfleet_fl
 pub const FLEET_READY_WRITE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_write_failures_total");
 
-/// Readiness-doorbell rings and rung peeks failing.
+/// Readiness-doorbell rings and rung peeks failing, and stretches of rings a
+/// replica missed.
 ///
 /// Labels: `kind`.
 pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =

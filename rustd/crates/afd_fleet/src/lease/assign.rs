@@ -133,14 +133,17 @@ impl Leases {
             return Ok(Some(acquired));
         }
         let (offer, rung) = self.ready_this_poll(runner_id, cost).await;
-        let acquired = self.offered(runner_id, offer, now, cost).await;
+        let claimed = self.offered(runner_id, offer, now, cost).await;
         // On every exit, a failed one included: when the fault was a rung
         // fleet's, ringing again would send every later poll back to it. A
         // fault elsewhere, a Postgres error say, leaves the ring clear too; the
         // rotation still reaches the rung fleets in its turn.
-        let leased = acquired.as_ref().ok().and_then(Option::as_ref);
-        self.ring_again(rung, leased);
-        acquired
+        let untried = claimed
+            .as_ref()
+            .map(|claimed| claimed.untried.as_slice())
+            .unwrap_or_default();
+        self.ring_again(rung, untried);
+        claimed.map(|claimed| claimed.acquired)
     }
 
     /// The eligible fleets among `ready`, those in `cursor` first, then in

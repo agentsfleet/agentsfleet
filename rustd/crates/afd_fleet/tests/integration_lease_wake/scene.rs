@@ -106,6 +106,14 @@ async fn settle(fixtures: &Fixtures, prefix: &ReadyPrefix, doorbell: &Doorbell) 
         tokio::time::sleep(PROBE_EVERY).await;
     }
     while doorbell.take(partition(0)).is_some() {}
+    // A probe re-sent while an earlier one was still in flight can land after
+    // the clear; wait it out and clear again, so no test starts with a ring.
+    tokio::time::sleep(PROBE_EVERY * 2).await;
+    while doorbell.take(partition(0)).is_some() {}
+    assert!(
+        Partition::all().all(|partition| !doorbell.is_rung(partition)),
+        "settling leaves the doorbell clear"
+    );
 }
 
 /// The partition numbered `index`.
@@ -134,6 +142,22 @@ impl Scene {
 
     /// Ingress: one event appended, then the fleet marked and its ring heard.
     pub(super) async fn send(&self, fleet: &Fleet) {
+        self.enqueue(fleet).await;
+        self.mark(fleet).await;
+    }
+
+    /// One event appended and the fleet marked without a ring, as a mark whose
+    /// ring was lost leaves it.
+    pub(super) async fn send_quietly(&self, fleet: &Fleet) {
+        self.enqueue(fleet).await;
+        self.index
+            .mark_quiet(&fleet.id)
+            .await
+            .expect("the private index takes a mark");
+    }
+
+    /// One event appended to the fleet's stream.
+    async fn enqueue(&self, fleet: &Fleet) {
         queue::enqueue(
             self.fixtures.queue(),
             &fleet.id,
@@ -144,7 +168,6 @@ impl Scene {
             ENROLLED_AT,
         )
         .await;
-        self.mark(fleet).await;
     }
 
     /// The fleet marked, and its ring heard by this scene's doorbell.

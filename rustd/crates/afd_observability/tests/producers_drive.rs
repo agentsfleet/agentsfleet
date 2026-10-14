@@ -87,7 +87,7 @@ fn test_every_fleet_producer_runs_its_body() {
     producers::fleet::signup_replayed();
     producers::fleet::lease_polled(11, 2, 3);
     producers::fleet::ready_write_failed();
-    for wake in [ReadyWake::Ring, ReadyWake::Peek] {
+    for wake in [ReadyWake::Ring, ReadyWake::Peek, ReadyWake::Gap] {
         producers::fleet::ready_wake_failed(wake);
     }
     producers::fleet::retention_swept(9);

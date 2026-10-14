@@ -16,7 +16,7 @@ use afd_runner::sql::LEASE_STATUS_ACTIVE;
 use afd_runner::sweep::Sweep as _;
 use afd_runner::sweep::reclaim::Reclaim;
 
-use crate::support::{RING_HEARD_WITHIN, Recorder, connect_redis, heard_ring, listen_for_rings};
+use crate::support::{RING_QUIET_FOR, Recorder, connect_redis, heard_ring, listen_for_rings};
 
 /// Held by every test that runs a reclaim pass: a pass sweeps every active
 /// fleet in the lane, so two passes in parallel claim each other's entries.
@@ -69,8 +69,8 @@ async fn an_entry_a_dead_consumer_left_idle_is_claimed_and_its_fleet_marked() {
     );
     let index = ReadyIndex::new(queue.clone());
     assert!(
-        rang(&index, &mut rings, &fixture.fleet).await,
-        "a claimed entry is deliverable, so its fleet is marked, and rung so the next poll takes it"
+        marked_quietly(&index, &mut rings, &fixture.fleet).await,
+        "a claimed entry is deliverable, so its fleet is marked, quietly: a claim proves no dead holder"
     );
     let _cleared = index.force_clear(&fixture.fleet).await;
     let _gone = streams.forget(&fixture.fleet).await;
@@ -128,8 +128,8 @@ async fn a_stranded_lease_is_marked_ready_and_left_active() {
 
     let index = ReadyIndex::new(queue.clone());
     assert!(
-        rang(&index, &mut rings, &fixture.fleet).await,
-        "the ledger's stranded fleet is marked ready, and rung so the next poll takes it"
+        marked_quietly(&index, &mut rings, &fixture.fleet).await,
+        "the ledger's stranded fleet is marked ready, quietly, for the rotation to reach"
     );
     assert_eq!(
         fixture.lease_statuses().await,
@@ -140,12 +140,12 @@ async fn a_stranded_lease_is_marked_ready_and_left_active() {
     fixture.cleanup().await;
 }
 
-/// Whether `fleet` is marked and its mark rang the partition's doorbell.
-async fn rang(index: &ReadyIndex, rings: &mut Subscription, fleet: &str) -> bool {
+/// Whether `fleet` is marked and its mark rang nothing.
+async fn marked_quietly(index: &ReadyIndex, rings: &mut Subscription, fleet: &str) -> bool {
     let Some(token) = index.token_for(fleet).await.expect("readable") else {
         return false;
     };
-    heard_ring(rings, &token, RING_HEARD_WITHIN).await
+    !heard_ring(rings, &token, RING_QUIET_FOR).await
 }
 
 /// Sets the entry's idle clock past the sweep's threshold, as time would.

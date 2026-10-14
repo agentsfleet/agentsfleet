@@ -100,6 +100,7 @@ a name — or a sweeper that quietly went back to a bare spawn — is a failing 
 | outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Dragonfly connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
 | SSE hub control task (`hub/pump.rs`) | `afd_dragonfly`'s `SubscriptionHub::start`; stopped by the supervised task `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright — no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
 | SSE hub dispatch task (`hub/dispatch.rs`) | the control task, once per connection | the connection's pushes: frames out to readers, confirmations into gaps, a lost node's attribution | reads the `channels` map; never touches the connection, so no round trip can hold a frame | aborted by the control task when its connection is redialled or the hub drops |
+| readiness doorbell listeners (sixteen, `ready/doorbell.rs`) | `Doorbell::listen`, from `ServingPlane::new` when the hub opened | one hub `Subscription` each, and the `Arc<AtomicU16>` every lease poll takes from | the atomic alone: `fetch_or` rings, `fetch_and` takes, no lock | the hub's shutdown closes each subscription, its `recv` errs, and the loop returns |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | reclaim sweeper (`sweeper:reclaim`) | `sweepers::spawn` | Postgres + Dragonfly, and the sweep's own keyset cursor | `Mutex<Cursor>` (leaf) | as above |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
@@ -138,7 +139,7 @@ a lock between those tasks (`rustd/crates/afr_supervisor/src/lib.rs`).
 
 Cross-task and cross-process channels, with producer/consumer roles and payload
 ownership. Dragonfly stream/channel **names** are canonical in
-[`data_flow.md`](./data_flow.md) §"Two streams + two pub/sub channels"; the roles
+[`data_flow.md`](./data_flow.md) §"Two streams + one pub/sub channel"; the roles
 below are the concurrency view.
 
 | Channel | Kind | Producer → Consumer | Payload ownership |
@@ -150,6 +151,7 @@ below are the concurrency view.
 | `fleet:{id}:events` | Dragonfly stream + consumer group `fleet_lease` | steer/webhook/cron/continuation `XADD` → `agentsfleetd` non-blocking `XREADGROUP` per lease | durable; `XACK`ed at report, idempotent on replay |
 | `connector:outbound` | Dragonfly stream + consumer group | report producer → dedicated blocking outbound reader | durable queue; worker acknowledges delivered jobs |
 | `fleet:{id}:activity` | Dragonfly sharded pub/sub (ephemeral) | `agentsfleetd` `SPUBLISH` (+ runner-forwarded frames) → the hub's one shared connection, one `SSUBSCRIBE` per channel, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
+| `fleet:ready:{p}:wake` (sixteen) | Dragonfly sharded pub/sub (ephemeral) | `ReadyIndex::mark` `SPUBLISH` after the mark lands → every replica's hub, one `SSUBSCRIBE` per partition held for the life of the process → that replica's `Doorbell` bit | ephemeral; the payload is the mark's token, which the doorbell does not read; a lost ring costs the rotation's speed |
 | `fleet:control` | **removed at the M80 cutover** | — | — |
 
 The hub holds exactly **one** pub/sub connection for all viewers, refcounting

@@ -74,6 +74,17 @@ pub const SANDBOX_HOLD_IDLE_MS: i64 = 600_000;
 /// `retry_after_ms`.
 pub const NO_WORK_RETRY_AFTER_MS: u32 = 1_000;
 
+/// How long a readiness-doorbell command may take before its caller goes on
+/// without it: the ring a mark publishes, and the peek of the partition a ring
+/// named.
+///
+/// The doorbell only ever makes a poll faster. Under the datastore's own
+/// request timeout a slow node could hold an admission, or a poll the rotation
+/// alone would have answered, for seconds; past this deadline the ring is
+/// reported lost or the rung peek counts as failed, and the rotation still
+/// reaches the work.
+pub const READY_WAKE_DEADLINE_MS: u64 = 100;
+
 /// One day, in the milliseconds every span here is counted in.
 ///
 /// Not a lease value. It is the one spelling of a day for whatever counts in
