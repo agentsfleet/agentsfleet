@@ -1888,15 +1888,13 @@
           }
         },
         "security": []
-      }
-    },
-    "/v1/auth/sessions/all": {
+      },
       "delete": {
         "tags": [
           "Authentication"
         ],
         "summary": "Bulk-abort every in-flight login session for the caller",
-        "description": "Caller-scoped bulk delete. Accepts the person's browser session or their own `afc_` command-line credential, so `agentsfleet logout` can end the logins it left unfinished; a tenant api-key is refused. Transitions every session the caller approved (status `verification_pending`, owned by the caller's `clerk_user_id`) to `aborted` with `reason=\"explicit_cancel\"`. A `pending` session has no owner until it is approved, so this cannot reach it; it expires on its own five-minute time-to-live. Revokes no credential: `DELETE /v1/cli-credentials/{id}` does that.",
+        "description": "Caller-scoped bulk delete. Accepts the person's browser session or their own `afc_` command-line credential; a tenant api-key is refused. `agentsfleet logout` uses it to end the logins it left unfinished. Transitions every session the caller approved (status `verification_pending`, owned by the caller's `clerk_user_id`) to `aborted` with `reason=\"explicit_cancel\"`. A `pending` session has no owner until it is approved, so this cannot reach it; it expires on its own five-minute time-to-live. Revokes no credential: `DELETE /v1/cli-credentials/{id}` does that.",
         "operationId": "delete_all_auth_sessions",
         "responses": {
           "200": {

@@ -26,7 +26,7 @@ use self::harness::Fleet;
 const SESSIONS: &str = "/v1/auth/sessions";
 
 /// The bulk-abort route.
-const ALL: &str = "/v1/auth/sessions/all";
+const ALL: &str = "/v1/auth/sessions";
 
 /// The dashboard's bearer, which the fixture identity accepts.
 const DASHBOARD_TOKEN: &str = "fixture.header.payload";

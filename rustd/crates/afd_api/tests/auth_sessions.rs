@@ -19,7 +19,7 @@ const SESSIONS: &str = "/v1/auth/sessions";
 const SESSION: &str = "/v1/auth/sessions/0195b4ba-8d3a-7f13-8abc-2b3e1e0f7051";
 const APPROVE: &str = "/v1/auth/sessions/0195b4ba-8d3a-7f13-8abc-2b3e1e0f7051/approve";
 const VERIFY: &str = "/v1/auth/sessions/0195b4ba-8d3a-7f13-8abc-2b3e1e0f7051/verify";
-const ALL: &str = "/v1/auth/sessions/all";
+const ALL: &str = "/v1/auth/sessions";
 const DASHBOARD_TOKEN: &str = "fixture.header.payload";
 /// An `afc_` command-line credential, the class `agentsfleet logout` presents.
 const TERMINAL: &str = "afc_fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";

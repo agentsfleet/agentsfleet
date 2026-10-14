@@ -188,17 +188,17 @@ pub(crate) async fn delete_one<D: Services>(
     }
 }
 
-/// `DELETE /v1/auth/sessions/all` — abort every login this person holds.
+/// `DELETE /v1/auth/sessions` — abort the caller's own in-flight logins.
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
-    path = "/v1/auth/sessions/all",
+    path = "/v1/auth/sessions",
     tag = afd_http::openapi::tag::AUTHENTICATION,
     operation_id = "delete_all_auth_sessions",
     summary = "Bulk-abort every in-flight login session for the caller",
     description = concat!(
         "Caller-scoped bulk delete. Accepts the person's browser session or ",
-        "their own `afc_` command-line credential, so `agentsfleet logout` can ",
-        "end the logins it left unfinished; a tenant api-key is refused. ",
+        "their own `afc_` command-line credential; a tenant api-key is refused. ",
+        "`agentsfleet logout` uses it to end the logins it left unfinished. ",
         "Transitions every session the caller approved (status ",
         "`verification_pending`, owned by the caller's `clerk_user_id`) to ",
         "`aborted` with `reason=\"explicit_cancel\"`. A `pending` session has ",

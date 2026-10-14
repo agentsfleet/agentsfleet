@@ -199,7 +199,7 @@ crate's only two-key script went when acceptance became a Postgres row.
 |---|---|---|
 | `session/approve.lua` | `PATCH /v1/auth/sessions/{id}/approve` | `pending` → `verification_pending` |
 | `session/verify_consume.lua` | `POST /v1/auth/sessions/{id}/verify` | `verification_pending` → `consumed` |
-| `session/abort.lua` | `DELETE /v1/auth/sessions/{id}` and `DELETE /v1/auth/sessions/all` | `verification_pending` → `aborted`, for the approver only; a `pending` session has no owner yet, so it answers `not_owner` |
+| `session/abort.lua` | `DELETE /v1/auth/sessions/{id}` and `DELETE /v1/auth/sessions` | `verification_pending` → `aborted`, for the approver only; a `pending` session has no owner yet, so it answers `not_owner` |
 
 They dispatch through `redis::Script`, which sends the 40-byte digest with
 `EVALSHA` and loads the body only when the server has never seen it — after the
@@ -216,7 +216,7 @@ per attempt, per user.
 | `PATCH /v1/auth/sessions/{id}/approve` | dashboard JS process | Clerk customized session token (the `api`-template JWT travels only inside the encrypted payload) · per-Clerk-user backstop deferred post-launch — Clerk-edge per-IP on sign-in / sign-up (L1) bounds upstream identity supply |
 | `POST /v1/auth/sessions/{id}/verify` | CLI with the verification code | the code IS the auth · ≤5 attempts per session (Lua-internal, L3) |
 | `DELETE /v1/auth/sessions/{id}` | the person who approved it | Bearer, browser session token only (`DashboardIdentity`, `rustd/crates/afd_http/src/auth/person.rs`) · must match session's `clerk_user_id` |
-| `DELETE /v1/auth/sessions/all` | the signed-in person | Bearer, browser session token only (`DashboardIdentity`). `agentsfleet logout` calls it with its stored `afc_` credential (`cli/src/commands/auth-logout.ts`), which this route refuses with 401 `UZ-AUTH-002`, so logout's session-abort half always reports a server-side failure |
+| `DELETE /v1/auth/sessions` | the signed-in person, for their own sessions only | Bearer: a browser session token or the person's own `afc_` credential (`HumanIdentity`); a tenant `agt_t` key is refused with 403. `agentsfleet logout` calls it (`cli/src/commands/auth-logout.ts`) to abort the logins its person approved and never redeemed |
 
 ## Security properties by layer
 
