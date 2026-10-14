@@ -1,6 +1,6 @@
 # Scenario — Two fleets, end to end: a Pull Request, a Slack thread, and a steer
 
-> Parent: [`README.md`](./README.md) · References: [`../data_flow.md`](../data_flow.md) (the canonical trigger → execute → watch sequence), [`../lease_flow.md`](../lease_flow.md) (one lease in detail), [`../runner_fleet.md`](../runner_fleet.md) §Datastore topology (the readiness index and the doorbell), [`../datastore_scaling.md`](../datastore_scaling.md) §"Readiness is partitioned", [`github-pr-reviewer.md`](./github-pr-reviewer.md), [`slack-incident-responder.md`](./slack-incident-responder.md).
+> Parent: [`README.md`](./README.md) · References: [`../data_flow.md`](../data_flow.md) (the canonical trigger → execute → watch sequence), [`../lease_flow.md`](../lease_flow.md) (one lease in detail), [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology" (the readiness index and the doorbell), [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design", [`github-pr-reviewer.md`](./github-pr-reviewer.md), [`slack-incident-responder.md`](./slack-incident-responder.md).
 >
 > One workspace, two fleets, three ways in. Each part is one picture of one step, with the rules it depends on linked rather than copied: when a picture and a linked section disagree, the linked section wins and this page is stale.
 
@@ -88,7 +88,7 @@ Installing runs nothing. It writes the fleet down and builds its empty inbox; a 
 
 ## 2. Trigger one: a Pull Request wakes fleet A
 
-Canonical: [`../lease_flow.md`](../lease_flow.md) §"Ingress" and §"Admission"; [`../connectors.md`](../connectors.md) §"Repository and event subscriptions belong to fleets".
+Canonical: [`../lease_flow.md`](../lease_flow.md) §"Ingress: how a PR on `agentsfleet/linkwarden` finds the fleet" and §"Admission: the row is the acceptance, the stream entry is a receipt"; [`../connectors.md`](../connectors.md) §"Repository and event subscriptions belong to fleets".
 
 ```
   GitHub  ── "pull_request opened" (signed body) ──►  POST /v1/ingress/github
@@ -131,7 +131,7 @@ GitHub gives this path ten seconds and never retries on its own, which is why th
 
 ## 3. Trigger two: a Slack mention wakes fleet B
 
-Under GitHub's "run 123 failed" announcement in `#ci-dev`, someone types `@agentsfleet-dev why did this fail?`. Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §§4–5.
+Under GitHub's "run 123 failed" announcement in `#ci-dev`, someone types `@agentsfleet-dev why did this fail?`. Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"4. Routing a mention" and §"5. What the fleet is told".
 
 ```
   Slack ── signed app_mention ──► agentsfleetd (mention handler)
@@ -209,7 +209,7 @@ Seven producers (`afd_admission::Producer`: steer, webhook, webhook_app, schedul
 
 ## 5. The waiting room: inboxes, shelves and doorbells
 
-Fleet A now holds two jobs (the PR and the steer) and fleet B one. A fleet's shelf is its id's Cyclic Redundancy Check (CRC16) modulo sixteen. Canonical: [`../runner_fleet.md`](../runner_fleet.md) §Datastore topology; the scale limits of this picture are in [`../datastore_scaling.md`](../datastore_scaling.md) §"Time order, the doorbell's bits, and scale".
+Fleet A now holds two jobs (the PR and the steer) and fleet B one. A fleet's shelf is its id's Cyclic Redundancy Check (CRC16) modulo sixteen. Canonical: [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology"; the scale limits of this picture are in [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design" ("Time order, the doorbell's bits, and scale").
 
 ```
                       DRAGONFLY  (four-node cluster)
@@ -244,7 +244,7 @@ The inbox holds the jobs. The note says where to look. The ring says look there 
 
 ## 6. Pickup: two runners, two leases
 
-Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll"; [`../data_flow.md`](../data_flow.md) §"C. EXECUTE".
+Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll: ready index → claim → event → row"; [`../data_flow.md`](../data_flow.md) §"C. EXECUTE".
 
 ```
   runner R1 ── POST /v1/runners/me/leases (Bearer agt_r) ──►┐
@@ -275,7 +275,7 @@ Canonical: [`../lease_flow.md`](../lease_flow.md) §"The poll"; [`../data_flow.m
   │  5. INSERT fleet.runner_leases  status=active, fencing_token, expiry   │
   │                                                                        │
   │ settle the rung shelf: rung again or left clear, by the rule in        │
-  │ runner_fleet.md §Datastore topology                                    │
+  │ runner_fleet.md, its Datastore topology table                          │
   └────────────────────────┬─────────────────────────────┬─────────────────┘
                            ▼                             ▼
              R1 ◄── 200 { lease A }          R2 ◄── 200 { lease B }

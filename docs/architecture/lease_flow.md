@@ -37,8 +37,8 @@ The example is the `github-pr-reviewer` bundle installed as "AGENT BOB 01" on `a
    (every ~1 s)          a peek the rotation's partition ∥ the first partition the doorbell
                            rang at or after the cursor, its bit cleared, the rung peek
                            under 100 ms; rotation's fleets first; zero Postgres if both
-                           empty; when the bit is set again: runner_fleet.md
-                           §Datastore topology
+                           empty; when the bit is set again: runner_fleet.md,
+                           the doorbell row of its Datastore topology table
                          b SELECT_READY_CANDIDATES ≤64: active, slot free, labels, then sticky
                          c CLAIM_AFFINITY_SLOT  fleet.runner_affinity: fencing_seq+1,
                              leased_until = now+30 s            ← THE FENCE IS MINTED HERE
