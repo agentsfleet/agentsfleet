@@ -12,6 +12,10 @@
 //!
 //! The suite runs the owner's own list first. A foreign read answering empty
 //! proves nothing unless the same row is visible to the workspace that holds it.
+//!
+//! Retiring a one-off has no route; the scheduler's callback reaches it with
+//! the workspace the row names. The plane is driven directly for that verb, so
+//! a future caller passing someone else's workspace is held to the same rule.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -21,6 +25,8 @@
 
 use crate::harness;
 
+use afd_api::Services as _;
+use afd_api::services::FleetSchedules as _;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_auth::scope::{Scope, ScopeSet};
@@ -40,8 +46,18 @@ const SUBJECT_CALLER: &str = "user_live_fleet_schedules_ownership_caller";
 /// The workspace whose schedule the caller reaches for.
 const SUBJECT_OWNER: &str = "user_live_fleet_schedules_ownership_owner";
 
+/// The caller of the retirement suite, apart from the route suite's so the two
+/// can seed side by side.
+const SUBJECT_RETIRING: &str = "user_live_fleet_schedules_ownership_retiring";
+
+/// The workspace whose schedule the retirement suite reaches for.
+const SUBJECT_RETIRED_OWNER: &str = "user_live_fleet_schedules_ownership_retired_owner";
+
 /// What the foreign schedule asks its fleet to do, and must go on asking.
 const OWNED_MESSAGE: &str = "summarise the overnight incidents";
+
+/// The foreign row's state when nothing has written to it.
+const UNTOUCHED: (&str, &str, i64) = (OWNED_MESSAGE, "active", 1);
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -101,13 +117,46 @@ async fn a_workspace_cannot_reach_another_workspaces_schedules() {
 
     assert_eq!(
         owner.read_back(&database, &schedule).await,
-        (OWNED_MESSAGE.to_owned(), "active".to_owned(), 1),
+        untouched(),
         "no verb wrote to the foreign schedule: message, intent and generation are as seeded"
     );
 
     caller.cleanup(&database).await;
     owner.cleanup(&database).await;
     let _ = lane;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn retiring_another_workspaces_schedule_answers_as_for_one_already_gone() {
+    let lane = TestDatabase::shared();
+    let database = lane.open(DbRole::Api, &[]).await;
+    let caller = Holder::seed(&database, SUBJECT_RETIRING).await;
+    let owner = Holder::seed(&database, SUBJECT_RETIRED_OWNER).await;
+    let schedule = owner.schedule(&database).await;
+    let plane = caller.fleet(&database);
+
+    plane
+        .schedules()
+        .retire(&caller.workspace, &owner.fleet, &schedule, plane.now())
+        .await
+        .expect("a schedule the workspace does not hold retires as one already gone");
+
+    assert_eq!(
+        owner.read_back(&database, &schedule).await,
+        untouched(),
+        "the foreign schedule is not marked for deletion"
+    );
+
+    caller.cleanup(&database).await;
+    owner.cleanup(&database).await;
+    let _ = lane;
+}
+
+/// [`UNTOUCHED`], as [`Holder::read_back`] answers it.
+fn untouched() -> (String, String, i64) {
+    let (message, intent, generation) = UNTOUCHED;
+    (message.to_owned(), intent.to_owned(), generation)
 }
 
 /// The rows a schedules page carries.
@@ -199,13 +248,17 @@ impl Holder {
 
     /// A router proven in this tenant's workspace and nobody else's.
     fn router(&self, database: &Db) -> axum::Router {
+        self.fleet(database).router()
+    }
+
+    /// The services behind [`Self::router`], for a verb no route reaches.
+    fn fleet(&self, database: &Db) -> Fleet {
         Fleet::live(
             database.clone(),
             self.subject,
             ScopeSet::from_scopes(&[Scope::ScheduleRead, Scope::ScheduleWrite]),
         )
         .with_owned_workspace(self.workspace.clone())
-        .router()
     }
 
     /// The schedules collection of `fleet`, under THIS tenant's workspace.
