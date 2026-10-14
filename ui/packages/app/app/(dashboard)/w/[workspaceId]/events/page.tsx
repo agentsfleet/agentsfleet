@@ -51,8 +51,8 @@ export default async function EventsPage({
     // parent with `flex-1`, and `flex-1` needs a parent of DEFINITE height to
     // fill. A minimum is not a definite height, so the table collapsed to its
     // content — five events left the wall floating in the top third of the
-    // screen with its pagination bar tucked under them, while Secrets and the
-    // Fleet library (both `h-full`) spanned correctly. Same shell, same result.
+    // screen with its pagination bar tucked under them, while Secrets (`h-full`)
+    // spanned correctly. Same shell, same result.
     <PageLayout fullHeight className="h-full overflow-hidden">
       <PageHeader description={EVENTS_DESCRIPTION}>
         <PageTitle>Events</PageTitle>
