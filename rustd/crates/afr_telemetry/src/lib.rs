@@ -28,6 +28,7 @@
 //! no-op in `sandbox`, in `probe`, and in every test that does not ask.
 #![forbid(unsafe_code)]
 #![deny(unused_crate_dependencies)]
+#![deny(clippy::self_named_module_files)]
 
 #[cfg(test)]
 use tokio as _;

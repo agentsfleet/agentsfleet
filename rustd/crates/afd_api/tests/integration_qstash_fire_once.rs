@@ -20,12 +20,13 @@ use crate::webhook_qstash_route::{
 /// A verified fire at the fixture's schedule, answered status.
 async fn fire_once(fixture: &Fixture, message_id: &str) -> StatusCode {
     let token = mint(&FireClaims::for_message(BODY, message_id), CURRENT_KEY);
+    let registered = afd_cron::upstream_id(&fixture.schedule);
     fire(
         &fixture.router(),
         BODY,
         &[
             (HEADER_SIGNATURE, token.as_str()),
-            (HEADER_SCHEDULE, fixture.schedule.as_str()),
+            (HEADER_SCHEDULE, registered.as_str()),
         ],
     )
     .await

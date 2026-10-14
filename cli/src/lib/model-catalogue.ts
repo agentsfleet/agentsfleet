@@ -117,7 +117,7 @@ const acceptedProviders = (
  * Names of coding-agent CLIs that run as a local binary rather than answer
  * over HTTPS. They carry no API key, so they are deliberately absent from the
  * catalogue and always will be — the allowlist does not carry them, and the
- * runner's provider table (rustd/crates/afr_providers/src/registry.rs) has no
+ * runner's provider table (rustd/crates/afr_providers/src/registry/mod.rs) has no
  * entry to dial them by.
  *
  * This is NOT a provider list and never widens or narrows what is accepted: it
@@ -147,7 +147,7 @@ const LIST_SEPARATOR = ", ";
 // Absent from the catalogue means UNPRICED, not unreachable. Most of these
 // names are dialable — the runner's provider table
 // (rustd/crates/afr_providers/assets/providers.json, embedded by
-// rustd/crates/afr_providers/src/registry.rs) names providers the catalogue
+// rustd/crates/afr_providers/src/registry/mod.rs) names providers the catalogue
 // does not price yet — and every one of them is still usable through
 // the custom-endpoint sentinel. A bare "not in this server's catalogue" reads
 // as "you cannot use this provider", which is false and sends the operator

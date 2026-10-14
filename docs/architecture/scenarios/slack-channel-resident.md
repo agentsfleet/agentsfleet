@@ -65,7 +65,7 @@ Thread A stored `prod=aurora`. Thread B — a different thread, possibly days la
 | Step | Status |
 |---|---|
 | Memory hydrate/capture loop (keyed by `fleet_id`) | ✅ lease-scoped (`Plane::hydrate`, `Plane::capture` in `rustd/crates/afd_fleet/src/lease/memory.rs`) |
-| The resident capturing a fact | 🟡 read from source, not run: the resident's policy is `tools: []` (`rustd/crates/afd_fleet_lifecycle/src/install/authored.rs:141`) and a run is offered only the tools its lease names (`Catalog::select`, `rustd/crates/afr_tools/src/catalog.rs:245`), so the model has no `memory_store` to call, though `resident.md` tells it to capture. A live two-thread run settles it. |
+| The resident capturing a fact | 🟡 read from source, not run: the resident's policy is `tools: []` (`rustd/crates/afd_fleet_lifecycle/src/install/authored.rs:141`) and a run is offered only the tools its lease names (`Catalog::select`, `rustd/crates/afr_tools/src/catalog/mod.rs:245`), so the model has no `memory_store` to call, though `resident.md` tells it to capture. A live two-thread run settles it. |
 | Single ingress / lease / execute / report | ✅ one `slack_mention` admission per Slack event (`rustd/crates/afd_api_ingress/src/handler/mention.rs`) |
 | Slack OAuth install — vault handle + generic `core.connector_installs` | ✅ |
 | Signed events ingress + `(team,channel)→fleet` routing (`core.connector_channels`) | ✅ (`rustd/crates/afd_ingress/src/slack/route.rs`) |

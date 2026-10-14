@@ -20,7 +20,6 @@
 use std::sync::Arc;
 
 use afd_core::error_code;
-use afd_core::id::Uuid7;
 use afd_cron::verifier;
 use afd_fleet_lifecycle::FleetStatus;
 use axum::extract::State;
@@ -46,9 +45,6 @@ const EVENT_DROPPED: &str = "schedule_fire_dropped";
 /// Fixed by the sender: Upstash `QStash` signs every delivery under this name.
 const HEADER_SIGNATURE: &str = "upstash-signature";
 
-/// The header naming which schedule fell due.
-const HEADER_SCHEDULE: &str = "upstash-schedule-id";
-
 /// The refusal a callback that did not prove itself earns.
 ///
 /// One sentence for every way it can fail. Which key, which claim, and which
@@ -62,8 +58,17 @@ const REASON_NO_SUCH_SCHEDULE: &str = "schedule_not_found";
 /// The reason a fire for a schedule nobody wants firing is dropped.
 const REASON_SCHEDULE_PAUSED: &str = "schedule_paused";
 
-/// The reason a fire naming no schedule at all is dropped.
+/// The reason a fire naming no schedule this daemon registered is dropped.
+///
+/// Covers a missing header and an id the scheduler chose itself alike: neither
+/// names a row here.
 const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
+
+/// The most of an unrecognised schedule id a dropped fire logs.
+///
+/// Room for any id this daemon or the scheduler issues, with margin; the rest
+/// of an oversized header is a sender's to keep.
+const MAX_LOGGED_ID_BYTES: usize = 96;
 
 /// `POST /v1/ingress/qstash/schedules`.
 ///
@@ -84,7 +89,7 @@ const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
     request_body(content = serde_json::Value, description = afd_http::openapi::DELIVERY),
     params(
         ("Upstash-Signature" = String, Header, description = "QStash signature over the exact request body and destination URL."),
-        ("Upstash-Schedule-Id" = String, Header, description = "Schedule identifier supplied by QStash."),
+        ("Upstash-Schedule-Id" = String, Header, description = "The identifier the daemon registered the schedule under, `fleet-schedule-{schedule_id}`, sent back by QStash."),
         ("Upstash-Message-Id" = String, Header, description = "QStash delivery identifier used for replay suppression."),
     ),
     responses(
@@ -129,9 +134,11 @@ pub(crate) async fn receive<D: Services>(
         },
     )?;
 
-    let Some(schedule) = text(&headers, HEADER_SCHEDULE).and_then(|id| Uuid7::parse(id).ok())
-    else {
-        return Ok(dropped(REASON_NO_SCHEDULE_HEADER));
+    // The schedule that fell due, by the id this daemon registered it under:
+    // a schedule the scheduler filed under an id of its own resolves to none.
+    let named = text(&headers, afd_cron::HEADER_SCHEDULE_ID);
+    let Some(schedule) = named.and_then(afd_cron::schedule_of) else {
+        return Ok(unnamed(named));
     };
 
     let Some(target) = services
@@ -140,7 +147,7 @@ pub(crate) async fn receive<D: Services>(
         .await
         .map_err(Refusal::at(EVENT_DROPPED))?
     else {
-        return Ok(dropped(REASON_NO_SUCH_SCHEDULE));
+        return Ok(no_such_schedule(&schedule));
     };
 
     // Both halves can stop a fire and they are different facts: the schedule
@@ -156,7 +163,7 @@ pub(crate) async fn receive<D: Services>(
         if target.once {
             services
                 .schedules()
-                .retire(&target.fleet, &schedule, services.now())
+                .retire(&target.workspace, &target.fleet, &schedule, services.now())
                 .await
                 .map_err(Refusal::at(EVENT_DROPPED))?;
         }
@@ -184,12 +191,67 @@ fn unverified() -> Refusal {
     Refusal::coded(error_code::WEBHOOK_SIGNATURE_INVALID, DETAIL_UNVERIFIED)
 }
 
+/// The 200 a fire naming no schedule of this daemon's answers with, logging
+/// the id it did name.
+///
+/// That id is the one clue an operator has: an `scd_…` here is a schedule the
+/// scheduler filed under an id of its own, still registered and still firing.
+/// Capped, because the header is outside the signature and its sender chooses
+/// its length.
+fn unnamed(named: Option<&str>) -> Response {
+    let named = logged_id(named);
+    tracing::info!(
+        named,
+        reason = REASON_NO_SCHEDULE_HEADER,
+        event = EVENT_DROPPED
+    );
+    ignored(REASON_NO_SCHEDULE_HEADER)
+}
+
+/// The 200 a fire naming a schedule this daemon no longer holds answers with,
+/// logging which schedule it named.
+///
+/// A deleted row whose registration survived upstream fires here, so the id
+/// is what an operator needs to remove that registration. It was parsed into
+/// a row id already, so it is bounded and safe to log whole.
+fn no_such_schedule(schedule: &afd_core::id::Uuid7) -> Response {
+    // Hoisted: see the `tracing` note in the workspace Cargo.toml.
+    let schedule_id = schedule.as_str();
+    tracing::info!(
+        schedule_id,
+        reason = REASON_NO_SUCH_SCHEDULE,
+        event = EVENT_DROPPED
+    );
+    ignored(REASON_NO_SUCH_SCHEDULE)
+}
+
+/// As much of `named` as a dropped fire logs: empty when absent, and no more
+/// than [`MAX_LOGGED_ID_BYTES`].
+///
+/// A header value read as text is visible ASCII today, but the cut still backs
+/// off to a character boundary, so a wider reader can never make it return the
+/// whole value uncapped.
+fn logged_id(named: Option<&str>) -> &str {
+    named.map_or("", |id| {
+        let mut end = id.len().min(MAX_LOGGED_ID_BYTES);
+        while !id.is_char_boundary(end) {
+            end = end.saturating_sub(1);
+        }
+        id.get(..end).unwrap_or_default()
+    })
+}
+
 /// The 200 a deliberately-dropped fire answers with.
 ///
 /// Logged as well as answered: the sender is a scheduler that will never look,
 /// and an operator asking "why did my schedule not run" has only this line.
 fn dropped(reason: &str) -> Response {
     tracing::info!(reason, event = EVENT_DROPPED);
+    ignored(reason)
+}
+
+/// The body every dropped fire is answered with.
+fn ignored(reason: &str) -> Response {
     (
         StatusCode::OK,
         Json(webhook::Ignored {
@@ -198,3 +260,6 @@ fn dropped(reason: &str) -> Response {
     )
         .into_response()
 }
+
+#[cfg(test)]
+mod tests;

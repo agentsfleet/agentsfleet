@@ -211,7 +211,7 @@ pub(crate) async fn runs<D: Services>(
     if page.is_empty() && cursor.is_none() {
         services
             .schedules()
-            .one(&lease.fleet_id, &schedule)
+            .one(&lease.workspace_id, &lease.fleet_id, &schedule)
             .await
             .map_err(Refusal::at(EVENT_FAILED))?
             .ok_or_else(not_found)?;

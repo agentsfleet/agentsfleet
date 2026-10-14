@@ -10,16 +10,25 @@
  * dialog itself is bounded to the viewport and scrolls.
  *
  * A paginating table fills the page it sits on only when two halves agree: the
- * page gives it a definite height and the table claims it. Each half once
- * shipped broken alone (Events had a min-height shell, Platform > Fleet
- * library a table that never grew), so the table is measured against its page.
+ * page gives it a definite height and the table claims it. Events once shipped
+ * a min-height shell that left its table short, so Secrets and Events are
+ * measured against their page. Both Fleet library tables end at their rows by
+ * design, so they are measured for that instead: no empty band inside the
+ * table, in a window that holds a full page of rows.
  */
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { v7 } from "uuid";
 import { signInAs } from "./fixtures/auth";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { FIXTURE_KEY, LIBRARY_LAYOUT_WORKSPACE_NAME } from "./fixtures/constants";
 import { clientFor } from "./fixtures/api-client";
-import { getDefaultWorkspaceId, seedFleet, skillMd, triggerMd, waitForFleetActive } from "./fixtures/seed";
+import {
+  ensureSecondWorkspace,
+  getDefaultWorkspaceId,
+  seedFleet,
+  skillMd,
+  triggerMd,
+  waitForFleetActive,
+} from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { SOURCE_KIND_UPLOAD } from "@/lib/types";
 import { workspaceHref } from "./fixtures/nav";
@@ -36,13 +45,23 @@ const LIBRARY_DESCRIPTION = '[data-testid^="library-card-description-"]';
 // Sub-pixel rounding between a line box and its element's height.
 const LINE_TOLERANCE_PX = 1;
 const TALL_WINDOW = { width: 1280, height: 1400 };
+// A full page of 25 library rows is about 1,310 px, so this one leaves room
+// below it; with no room, a stretched table and a fitted one measure the same.
+const LIBRARY_WINDOW = { width: 1280, height: 2000 };
 const FULL_HEIGHT_PAGE = '[data-page-layout="full-height"]';
 const DATA_TABLE = '[data-testid="data-table"]';
+// The scrolling box around the rows; its height is what a stretched table grows.
+const TABLE_VIEWPORT = `${DATA_TABLE} > [role="region"]`;
 // Section padding between the table's frame and the page's bottom edge. A
 // table that collapsed to its rows stops hundreds of pixels short in this window.
 const FILL_GAP_PX = 48;
 // A constant name: the global teardown sweep reaps fixture library rows.
-const TABLE_FILL_TEMPLATE = "e2e-table-fill";
+const LIBRARY_ROWS_TEMPLATE = "e2e-library-rows";
+// More rows than SHORT_WINDOW shows at about 49 px each, and fewer than the
+// table's 25-row page, so they overflow inside one page.
+const LONG_LIST_ROWS = 12;
+// The workspace route the library tests open.
+const WORKSPACE_LIBRARY = "library";
 // Each test seeds the library rows it reads: on a fresh deployment no other
 // project is guaranteed to have created one before this suite runs.
 const PLATFORM_ENTRY_ID = "e2e-measured-layout";
@@ -66,6 +85,75 @@ async function expectTableFillsPage(page: Page, path: string): Promise<void> {
   // A page that grows with its rows has no definite height to give the table.
   expect(measured.pastCanvas, `${path} grows past the canvas`).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
   expect(measured.gap, `${path} leaves its table short of the page`).toBeLessThanOrEqual(FILL_GAP_PX);
+}
+
+// The rows' own height, not `scrollHeight`: `scrollHeight` never drops below
+// `clientHeight`, so it cannot see an empty band under the last row.
+async function expectTableEndsAtRows(page: Page, path: string): Promise<void> {
+  await page.goto(path);
+  const layout = page.locator(FULL_HEIGHT_PAGE);
+  await expect(layout.locator(DATA_TABLE).first()).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+  const measured = await layout.evaluate((element, viewportSelector) => {
+    const viewport = element.querySelector(viewportSelector);
+    const rows = viewport?.querySelector("table");
+    if (!viewport || !rows) throw new Error(`no table inside ${viewportSelector}`);
+    return {
+      overflow: viewport.scrollHeight - viewport.clientHeight,
+      slack: viewport.clientHeight - rows.getBoundingClientRect().height,
+    };
+  }, TABLE_VIEWPORT);
+  expect(measured.overflow, `${path} has more rows than the window holds, so a stretch would not show`).toBeLessThanOrEqual(
+    LINE_TOLERANCE_PX,
+  );
+  expect(measured.slack, `${path} stretches its table past its rows`).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
+}
+
+// A list longer than its window: the rows scroll inside the table, and the
+// table shrinks to the page so its pagination bar stays on screen.
+async function expectRowsScrollInsideTable(page: Page, path: string): Promise<void> {
+  await page.goto(path);
+  const layout = page.locator(FULL_HEIGHT_PAGE);
+  await expect(layout.locator(DATA_TABLE).first()).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
+  const measured = await layout.evaluate(
+    (element, selectors) => {
+      const table = element.querySelector(selectors.table);
+      const viewport = element.querySelector(selectors.viewport);
+      if (!table || !viewport) throw new Error(`no ${selectors.viewport}`);
+      const contentBottom = element.getBoundingClientRect().bottom - Number.parseFloat(getComputedStyle(element).paddingBottom);
+      return {
+        overflow: viewport.scrollHeight - viewport.clientHeight,
+        clipped: table.getBoundingClientRect().bottom - contentBottom,
+      };
+    },
+    { table: DATA_TABLE, viewport: TABLE_VIEWPORT },
+  );
+  expect(measured.overflow, `${path} grew to its rows instead of scrolling them`).toBeGreaterThan(LINE_TOLERANCE_PX);
+  expect(measured.clipped, `${path} pushes its pagination bar below the page`).toBeLessThanOrEqual(LINE_TOLERANCE_PX);
+}
+
+// The workspace no other spec clears library entries from.
+async function layoutWorkspaceId(): Promise<string> {
+  return (await ensureSecondWorkspace(FIXTURE_KEY.regular, LIBRARY_LAYOUT_WORKSPACE_NAME)).id;
+}
+
+// Onboards `name` into `workspaceId`'s own Fleet library.
+async function seedLibraryEntry(workspaceId: string, name: string): Promise<void> {
+  await clientFor(FIXTURE_KEY.regular).post(`/v1/workspaces/${workspaceId}/fleet-libraries`, {
+    source_kind: SOURCE_KIND_UPLOAD,
+    skill_markdown: skillMd(name),
+    trigger_markdown: triggerMd(name),
+  });
+}
+
+// [`layoutWorkspaceId`], holding `count` library rows.
+async function libraryLayoutWorkspace(count: number): Promise<string> {
+  const workspaceId = await layoutWorkspaceId();
+  // One at a time: `count` is a small constant, and onboarding is idempotent
+  // per row, so a retried test re-seeds the same rows.
+  for (let row = 0; row < count; row += 1) {
+    await seedLibraryEntry(workspaceId, `${LIBRARY_ROWS_TEMPLATE}-${row}`);
+  }
+  return workspaceId;
 }
 
 // Onboards one platform row for the operator's library page, and removes it after.
@@ -140,12 +228,8 @@ test.describe("measured placement", () => {
 
   test("a gallery card's description stays one line however long it is", async ({ page }) => {
     await page.setViewportSize(PHONE_WINDOW);
-    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
-    await clientFor(FIXTURE_KEY.regular).post(`/v1/workspaces/${workspaceId}/fleet-libraries`, {
-      source_kind: SOURCE_KIND_UPLOAD,
-      skill_markdown: skillMd(GALLERY_TEMPLATE),
-      trigger_markdown: triggerMd(GALLERY_TEMPLATE),
-    });
+    const workspaceId = await layoutWorkspaceId();
+    await seedLibraryEntry(workspaceId, GALLERY_TEMPLATE);
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, "fleets/new"));
     const descriptions = page.locator(LIBRARY_DESCRIPTION);
@@ -167,15 +251,10 @@ test.describe("a paginating table fills the page it sits on", () => {
     await page.setViewportSize(TALL_WINDOW);
   });
 
-  test("Configuration > Fleet library, Secrets and Events fill their pages", async ({ page }) => {
+  test("Secrets and Events fill their pages", async ({ page }) => {
     const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const client = clientFor(FIXTURE_KEY.regular);
-    // Both lists show an empty state instead of a table until they hold a row.
-    await client.post(`/v1/workspaces/${workspaceId}/fleet-libraries`, {
-      source_kind: SOURCE_KIND_UPLOAD,
-      skill_markdown: skillMd(TABLE_FILL_TEMPLATE),
-      trigger_markdown: triggerMd(TABLE_FILL_TEMPLATE),
-    });
+    // Secrets shows an empty state instead of a table until it holds a row.
     const secrets = `/v1/workspaces/${workspaceId}/secrets`;
     const secret = `e2e-table-fill-${crypto.randomUUID()}`;
     await client.post(secrets, { name: secret, data: { purpose: "table fill fixture" } });
@@ -187,7 +266,7 @@ test.describe("a paginating table fills the page it sits on", () => {
         operation_id: v7(),
       });
       await signInAs(page, FIXTURE_KEY.regular);
-      for (const surface of ["library", "secrets", "events"]) {
+      for (const surface of ["secrets", "events"]) {
         await expectTableFillsPage(page, workspaceHref(workspaceId, surface));
       }
     } finally {
@@ -195,11 +274,31 @@ test.describe("a paginating table fills the page it sits on", () => {
       await cleanWorkspaceFleets(FIXTURE_KEY.regular, workspaceId, TABLE_FILL_FLEET_PREFIX);
     }
   });
+});
 
-  test("Platform > Fleet library fills its page", async ({ page }) => {
+test.describe("a Fleet library table ends at its rows", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize(LIBRARY_WINDOW);
+  });
+
+  test("Configuration > Fleet library", async ({ page }) => {
+    // The list shows an empty state instead of a table until it holds a row.
+    const workspaceId = await libraryLayoutWorkspace(1);
+    await signInAs(page, FIXTURE_KEY.regular);
+    await expectTableEndsAtRows(page, workspaceHref(workspaceId, WORKSPACE_LIBRARY));
+  });
+
+  test("Platform > Fleet library", async ({ page }) => {
     await withPlatformEntry(async () => {
       await signInAs(page, FIXTURE_KEY.operator);
-      await expectTableFillsPage(page, "/admin/fleet-libraries");
+      await expectTableEndsAtRows(page, "/admin/fleet-libraries");
     });
+  });
+
+  test("Configuration > Fleet library scrolls a long list inside its table", async ({ page }) => {
+    await page.setViewportSize(SHORT_WINDOW);
+    const workspaceId = await libraryLayoutWorkspace(LONG_LIST_ROWS);
+    await signInAs(page, FIXTURE_KEY.regular);
+    await expectRowsScrollInsideTable(page, workspaceHref(workspaceId, WORKSPACE_LIBRARY));
   });
 });

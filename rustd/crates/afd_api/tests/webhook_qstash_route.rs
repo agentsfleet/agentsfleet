@@ -59,8 +59,12 @@ const FOREIGN_KEY: &str = "not-this-deployments-signing-key";
 /// The delivery body a fire carries.
 pub(crate) const BODY: &str = r#"{"schedule_id":"01J0000000000000000000000A"}"#;
 
-/// A schedule identifier the header can carry.
-const SCHEDULE_ID: &str = "019329c5-0000-7000-8000-0000000000b1";
+/// A schedule the header can carry, by the id this daemon registers it under.
+///
+/// Spelled out rather than built from `afd_cron::upstream_id`: every schedule
+/// already registered upstream carries this exact shape, so a change to it is a
+/// change the deployed schedules would stop resolving under.
+const SCHEDULE_ID: &str = "fleet-schedule-019329c5-0000-7000-8000-0000000000b1";
 
 /// The reason a fire naming no schedule at all is dropped.
 const REASON_NO_SCHEDULE_HEADER: &str = "schedule_header_absent";
@@ -279,10 +283,10 @@ async fn a_verified_fire_naming_no_schedule_is_dropped_rather_than_refused() {
 }
 
 #[tokio::test]
-async fn a_schedule_header_that_is_not_an_identifier_is_dropped_the_same_way() {
-    // A header that will not parse is the same fact as no header: there is no
-    // schedule to look up either way, and the route must not read one from a
-    // string it could not make sense of.
+async fn a_schedule_id_this_daemon_did_not_register_is_dropped_the_same_way() {
+    // An id the scheduler chose for itself is the same fact as no header: no
+    // row is keyed by it, and the route must not guess one from its shape.
+    // Every schedule registered before this daemon named its own carried one.
     let token = mint(&FireClaims::good(BODY), CURRENT_KEY);
 
     let dropped = fire(
@@ -290,7 +294,7 @@ async fn a_schedule_header_that_is_not_an_identifier_is_dropped_the_same_way() {
         BODY,
         &[
             (HEADER_SIGNATURE, token.as_str()),
-            (HEADER_SCHEDULE, "not-a-uuid"),
+            (HEADER_SCHEDULE, "scd_7Rbtqx2Qm4kFz"),
         ],
     )
     .await;

@@ -68,7 +68,7 @@ The control plane's primitives are tokio's: `CancellationToken` for stop,
 guard is held across an await and `std::sync::Mutex` where a leaf map is not.
 The runner uses the same primitives: `CancellationToken` for stop, a `watch`
 channel for the heartbeat's assignment, and a `JoinSet` for its workers
-(`rustd/crates/afr_supervisor/src/worker_pool.rs`).
+(`rustd/crates/afr_supervisor/src/worker_pool/mod.rs`).
 
 ---
 
@@ -220,8 +220,8 @@ timeouts already bound it.
 The runner bounds each call in the HTTP client that makes it: the control-plane
 client's `CALL_TIMEOUT` (`rustd/crates/afr_supervisor/src/client/http.rs`), the
 egress transport's request and connect timeouts
-(`rustd/crates/afr_egress/src/network.rs`), and the model providers' connect and
-read timeouts (`rustd/crates/afr_providers/src/connect.rs`).
+(`rustd/crates/afr_egress/src/network/mod.rs`), and the model providers' connect and
+read timeouts (`rustd/crates/afr_providers/src/connect/mod.rs`).
 
 ---
 

@@ -278,7 +278,7 @@ the protocol, or `telemetry_export_disabled` once, and never the endpoint.
   `agentsfleet.lease.id` and `agentsfleet.event.id`. The tool span names its
   tool by the published catalog, `_other` for anything else, so a name the
   model made up never leaves the host.
-- **A fixed span budget** (`rustd/crates/afr_telemetry/src/budget.rs`): at
+- **A fixed span budget** (`rustd/crates/afr_telemetry/src/budget/mod.rs`): at
   most `MAX_LEASE_SPANS` (256) spans per lease, its root included, and
   `RUNNER_SPANS_PER_SECOND` (128) per monotonic second across the runner. A
   lease's root is never refused: it is charged to its second while the second
